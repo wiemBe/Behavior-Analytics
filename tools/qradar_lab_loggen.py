@@ -196,6 +196,15 @@ PHASE_A_SOURCES: dict[str, LabSource] = {
         "lab-fw-volume-03", "10.20.0.13", "firewall", "SyntheticFirewall"
     ),
     "lab-waf-volume-01": LabSource("lab-waf-volume-01", "10.20.0.21", "waf", "SyntheticWAF"),
+    # Phase B WAF behavior work gets its own identity rather than reusing
+    # lab-waf-volume-01. Phase B needs the source parsed as Universal LEEF with
+    # HTTP request properties mapped, and lab-waf-volume-01 carries Phase A
+    # history that a DSM or property change on the appliance would reinterpret.
+    # A second identifier keeps that history intact and costs one dict entry.
+    # It emits the identical WAF LEEF contract; only the identity differs.
+    "lab-waf-behavior-01": LabSource(
+        "lab-waf-behavior-01", "10.20.0.22", "waf", "SyntheticWAF"
+    ),
     "lab-ips-volume-01": LabSource("lab-ips-volume-01", "10.20.0.31", "ips", "SyntheticIPS"),
 }
 

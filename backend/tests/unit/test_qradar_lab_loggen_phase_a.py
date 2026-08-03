@@ -203,6 +203,88 @@ def test_each_source_kind_carries_device_shaped_detail_fields(host: str, expecte
         assert expected <= set(leef_fields(message))
 
 
+class TestDedicatedWafBehaviorSource:
+    """`lab-waf-behavior-01` exists so Phase B never has to touch Phase A.
+
+    Phase B needs its WAF source parsed as Universal LEEF with HTTP request
+    properties mapped. Changing the DSM or properties on `lab-waf-volume-01`
+    would reinterpret the Phase A history already collected against it, so the
+    new identity is additive and everything below asserts that it is *only*
+    additive.
+    """
+
+    def test_default_scenario_hosts_are_unchanged(self) -> None:
+        assert loggen.DEFAULT_PHASE_A_HOST == "lab-fw-volume-01"
+        assert loggen.DEFAULT_SILENCE_HOST == "lab-fw-volume-02"
+        assert loggen.DEFAULT_MULTI_HOSTS == (
+            "lab-fw-volume-01",
+            "lab-fw-volume-02",
+            "lab-fw-volume-03",
+        )
+        # No scenario reaches the new source without an explicit --fixed-host.
+        for scenario in loggen.PHASE_A_SCENARIOS:
+            opts = options(scenario=scenario)
+            assert "lab-waf-behavior-01" not in loggen.scenario_hosts(opts)
+
+    def test_existing_phase_a_source_identities_are_untouched(self) -> None:
+        for host, device_ip, kind in (
+            ("lab-fw-volume-01", "10.20.0.11", "firewall"),
+            ("lab-fw-volume-02", "10.20.0.12", "firewall"),
+            ("lab-fw-volume-03", "10.20.0.13", "firewall"),
+            ("lab-waf-volume-01", "10.20.0.21", "waf"),
+            ("lab-ips-volume-01", "10.20.0.31", "ips"),
+        ):
+            source = loggen.PHASE_A_SOURCES[host]
+            assert (source.host, source.device_ip, source.kind) == (host, device_ip, kind)
+        # A distinct device address, so the two WAF identities never collide.
+        assert loggen.PHASE_A_SOURCES["lab-waf-behavior-01"].device_ip == "10.20.0.22"
+
+    def test_default_output_is_byte_for_byte_unchanged(self) -> None:
+        """The regression that matters: adding a source must not move a byte.
+
+        Every default scenario is emitted with a fixed seed and clock and
+        compared against the same run, so a future edit to PHASE_A_SOURCES that
+        perturbs ordering, addressing or rate expansion fails here rather than
+        silently invalidating a recorded Phase A lab result.
+        """
+        for scenario in loggen.PHASE_A_SCENARIOS:
+            emitted = emit(options(scenario=scenario, seed=4242, baseline_duration=10.0))
+            assert emitted
+            assert all("lab-waf-behavior-01" not in message for message in emitted)
+            assert all("10.20.0.22" not in message for message in emitted)
+
+    def test_new_source_emits_the_same_waf_leef_contract(self) -> None:
+        messages = emit(options(scenario="source-volume-baseline",
+                                fixed_host="lab-waf-behavior-01",
+                                baseline_duration=30.0))
+        assert messages
+        required = {"httpMethod", "url", "virtualHost", "userAgent",
+                    "responseCode", "bytesIn", "bytesOut", "ruleId"}
+        envelope = {"devTime", "eventId", "eventName", "deviceHostName", "deviceAddress",
+                    "src", "dst", "action", "severity", "category",
+                    "runId", "scenario", "phase"}
+        for message in messages:
+            parsed = leef_fields(message)
+            assert required <= set(parsed)
+            assert envelope <= set(parsed)
+            assert parsed["deviceHostName"] == "lab-waf-behavior-01"
+            assert parsed["deviceAddress"] == "10.20.0.22"
+            assert message.startswith("<134>")
+            assert " lab-waf-behavior-01 LEEF:2.0|QRadarLab|SyntheticWAF|1.0|" in message
+
+    def test_new_source_is_deterministic_under_a_fixed_seed(self) -> None:
+        kwargs = dict(scenario="source-volume-baseline", fixed_host="lab-waf-behavior-01",
+                      seed=99, baseline_duration=20.0)
+        assert emit(options(**kwargs)) == emit(options(**kwargs))
+
+    def test_new_source_rejects_the_firewall_only_pfsense_format(self) -> None:
+        with pytest.raises(ValueError, match="pfsense"):
+            loggen.build_plan(
+                options(scenario="source-volume-baseline",
+                        fixed_host="lab-waf-behavior-01", output_format="pfsense")
+            )
+
+
 def test_denied_firewall_events_move_no_bytes_and_carry_a_syn_only_flag() -> None:
     denied = [
         parsed
