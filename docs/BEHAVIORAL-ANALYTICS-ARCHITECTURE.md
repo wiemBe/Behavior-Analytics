@@ -1,7 +1,9 @@
 # Behavioral Analytics Architecture
 
-Status: Phase A in progress. Phases B–F are roadmap only and MUST NOT be
-implemented from this document alone.
+Status: Phase A complete and live-validated. Phase B is in design and discovery —
+its implementation contract is [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md),
+and Phase B production code must be built from that document, not from this one.
+Phases C–F are roadmap only and MUST NOT be implemented from this document alone.
 
 ---
 
@@ -60,8 +62,8 @@ They must be preserved and kept working. They are not the product's headline.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **A** | Log-source volume behavior: EPS spike, drop, silence, seasonal baseline, anomaly-interval investigation, top-contributor explanation | **In progress** |
-| B | WAF behavior: client IP × normalized endpoint × HTTP method, endpoint request-rate baseline, peer-group baseline for new IPs, error/block ratio, new endpoint access, request-pattern anomalies | Roadmap |
+| **A** | Log-source volume behavior: EPS spike, drop, silence, seasonal baseline, anomaly-interval investigation, top-contributor explanation | **Complete**, live-validated 2026-08-02 |
+| **B** | WAF behavior: endpoint request-rate baseline, error/block ratio, new endpoint access, peer-group baseline for new clients, request-pattern anomalies | **Design in progress**; not implemented. See [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md) |
 | C | Firewall and IPS behavior: source IP × destination, source IP × destination port, distinct destination and port counts, deny-rate anomalies, scan behavior, exploit/signature bursts | Roadmap |
 | D | User behavior: user × host, user × source IP, user × application, login-time behavior, new system access, failed-login patterns, privileged activity | Roadmap |
 | E | Feedback and model management: false-positive feedback, threshold tuning, maintenance windows, baseline versions, model drift, detector performance | Roadmap |
@@ -83,7 +85,9 @@ The thing whose behavior is being modeled. An entity is an ordered tuple of
 identifying fields; the tuple is the natural key for baselines and anomalies.
 
 - Phase A: `(qradar_instance_id, log_source_id)`
-- Phase B: `(source_ip, normalized_endpoint, http_method)`
+- Phase B: roadmap sketch was `(source_ip, normalized_endpoint, http_method)`;
+  superseded by `(qradar_instance_id, waf_log_source_id, normalized_endpoint)` —
+  see [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md) §7
 - Phase C: `(source_ip)`
 - Phase D: `(username, destination_host)`
 
@@ -555,8 +559,8 @@ explanation:
 The same engine must later express, **without modification to its core**:
 
 ```yaml
-# Phase B — WAF
-entity: [source_ip, normalized_endpoint, http_method]
+# Phase B — WAF (superseded sketch; see PHASE-B-WAF-BEHAVIOR.md §7)
+entity: [qradar_instance_id, waf_log_source_id, normalized_endpoint]
 metric: {type: request_count}
 
 # Phase C — Firewall
@@ -609,7 +613,14 @@ investigation dashboard            ("What changed?")
 ```
 
 **Phase A status:** every stage above is implemented, from metric buckets
-through to the investigation dashboard at `/anomalies/[id]`, and gated by
-automated tests on both sides. The pipeline has **not** yet been exercised
-against live QRadar telemetry — all results to date come from the mock provider
-against a real PostgreSQL/TimescaleDB. Live validation is the next workstream.
+through to the investigation dashboard at `/anomalies/[id]`, gated by automated
+tests on both sides, and **exercised end to end against live QRadar telemetry on
+2026-08-02** — spike, drop, multi-source isolation and `NO_EVENTS` each observed
+through to `RESOLVED`. See [LAB-DEMO-RESULTS.md](LAB-DEMO-RESULTS.md).
+
+**Phase B status:** design and discovery only. The implementation contract is
+[PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md), which supersedes the Phase B
+entity and metric sketches in §3.1 and §10.1 below: live measurement found that
+`http_method` and response status do not exist in this environment, so the
+roadmap's `(source_ip, normalized_endpoint, http_method)` entity was assessed and
+rejected. No Phase B production code exists.

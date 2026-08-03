@@ -12,7 +12,10 @@ and it operates strictly **read-only** against QRadar.
 > to end — synthetic telemetry → ingestion → Ariel aggregation → seasonal baseline → detection →
 > lifecycle → contributor explanation → API → frontend — through to `RESOLVED`. Live validation
 > found and fixed five defects that automated tests had missed. See
-> [Roadmap](#roadmap), [the Phase A design](docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md) and
+> **Phase B** (WAF endpoint behavior) is in **design and discovery**; no Phase B production code
+> exists. See
+> [Roadmap](#roadmap), [the Phase A design](docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md),
+> [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) and
 > [the Phase 3 handoff](docs/PHASE3-HANDOFF.md).
 
 Phase 3.5 adds an opt-in, manual synthetic-telemetry lab without changing the read-only QRadar
@@ -691,13 +694,18 @@ lints and updates this README.
 - **Phase 3 ✅** — live read-only QRadar REST/Ariel collection, offenses, analytics rules,
   provenance-aware rule metrics and health, detection coverage, guarded APIs, Celery scheduling,
   MCP audit persistence, and operator dashboards.
-- **Phase A (backend ✅, frontend ✅, live validation pending)** — seasonal weekday×hour volume
-  baselines, `VOLUME_SPIKE` / `VOLUME_DROP` / `NO_EVENTS` detectors with an explicit anomaly
-  lifecycle, bounded Ariel contributor evidence, and the behavioral overview, source-behavior,
-  anomaly-list and investigation views. **Not yet validated against live QRadar telemetry.**
+- **Phase A ✅ (backend, frontend, UI refinement, automated gates, live validation)** — seasonal
+  weekday×hour volume baselines, `VOLUME_SPIKE` / `VOLUME_DROP` / `NO_EVENTS` detectors with an
+  explicit anomaly lifecycle, bounded Ariel contributor evidence, and the behavioral overview,
+  source-behavior, anomaly-list and investigation views. Validated end to end against live QRadar
+  telemetry on 2026-08-02.
+- **Phase B (design in progress)** — WAF endpoint behavior. The design and discovery contract is
+  written; see [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md). **Production implementation has
+  not started**, and its acceptance gate currently reports NO-GO: the available WAF log sources are
+  parsed by a DSM that exposes no HTTP method, no response status and no reliable request path.
 - **Phase 4** — security hardening, expanded tests, documentation, observability.
 
-Next: Phase A synthetic telemetry generator expansion and live QRadar validation.
+Next: clear the Phase B1 acceptance gate in [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md).
 
 ## License
 
