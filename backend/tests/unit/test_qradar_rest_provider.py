@@ -133,6 +133,138 @@ class TestLogSourceMetrics:
         with pytest.raises(ValueError, match="168-hour"):
             await provider.get_log_source_metrics(start, end)
 
+    @pytest.mark.asyncio
+    async def test_metric_query_sums_coalesced_event_counts(self) -> None:
+        """Volume must be SUM(eventcount), never COUNT(*).
+
+        QRadar coalesces identical events into one Ariel record carrying an
+        `eventcount` multiplier, so a record count is not an event count.
+        Measured live on 2026-08-03, four sources reported ~197 records for
+        ~7,570 actual events -- a 38x under-report -- while most sources sat at
+        exactly 1.0. The ratio is neither constant across sources nor constant
+        over time: a burst of identical events coalesces harder, so true volume
+        can rise sharply while the record count barely moves. That is the exact
+        reading VOLUME_SPIKE exists to catch.
+        """
+        captured_query = ""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal captured_query
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                captured_query = request.url.params["query_expression"]
+                return httpx.Response(201, json={"search_id": "metric-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/metric-1/results"):
+                return httpx.Response(200, json={"events": []})
+            if request.url.path.endswith("/ariel/searches/metric-1"):
+                return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler, page_size=10, max_pages=2)
+        await provider.get_log_source_metrics(
+            datetime(2026, 7, 31, 10, 0, tzinfo=UTC),
+            datetime(2026, 7, 31, 10, 5, tzinfo=UTC),
+        )
+
+        assert 'SUM(eventcount) AS "event_count"' in captured_query
+        assert "COUNT(*)" not in captured_query
+
+    @pytest.mark.asyncio
+    async def test_coalesced_rows_carry_their_full_event_volume(self) -> None:
+        """One heavily coalesced row and one ordinary row, in the same result.
+
+        Source 1 is the live-observed 38x case: 197 records, 7,570 events.
+        Source 2 does not coalesce at all. Both must arrive at their true event
+        volume, and each source's EPS must be derived from that volume -- so a
+        coalescing source and a non-coalescing source of equal real traffic
+        baseline to the same number.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                return httpx.Response(201, json={"search_id": "metric-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/metric-1/results"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "events": [
+                            # SUM(eventcount) comes back as a float from Ariel.
+                            {"qradar_id": "224", "event_count": 7570.0,
+                             "last_event_time": 1_785_506_699_000},
+                            {"qradar_id": "227", "event_count": 300.0,
+                             "last_event_time": 1_785_506_699_000},
+                        ]
+                    },
+                )
+            if request.url.path.endswith("/ariel/searches/metric-1"):
+                return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler, page_size=10, max_pages=2)
+        start = datetime(2026, 7, 31, 10, 0, tzinfo=UTC)
+        end = datetime(2026, 7, 31, 10, 5, tzinfo=UTC)
+
+        samples = {s.qradar_id: s for s in await provider.get_log_source_metrics(start, end)}
+
+        # The coalesced source keeps its full original volume, not its 197 rows.
+        assert samples[224].event_count == 7570
+        assert samples[224].average_eps == pytest.approx(7570 / 300)
+        assert samples[224].stored_event_count == 7570
+        # An ordinary, uncoalesced source is completely unaffected.
+        assert samples[227].event_count == 300
+        assert samples[227].average_eps == pytest.approx(1.0)
+
+    @pytest.mark.asyncio
+    async def test_empty_metric_result_is_a_measured_zero_not_a_failure(self) -> None:
+        """A successful search returning no rows yields no samples and no error.
+
+        This is what lets MetricCollector._zero_filled_rows write an explicit
+        COMPLETE zero bucket for a silent monitored source. If the provider
+        raised here instead, silence would be indistinguishable from a
+        collection gap and NO_EVENTS could never fire.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                return httpx.Response(201, json={"search_id": "metric-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/metric-1/results"):
+                return httpx.Response(200, json={"events": []})
+            if request.url.path.endswith("/ariel/searches/metric-1"):
+                return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler, page_size=10, max_pages=2)
+        samples = await provider.get_log_source_metrics(
+            datetime(2026, 7, 31, 10, 0, tzinfo=UTC),
+            datetime(2026, 7, 31, 10, 5, tzinfo=UTC),
+        )
+
+        assert samples == []
+
+    @pytest.mark.asyncio
+    async def test_failed_metric_search_raises_rather_than_reporting_zero(self) -> None:
+        """A failed search must not degrade into a zero-volume observation.
+
+        Returning [] here would be indistinguishable from the measured zero
+        above, and the collector would write COMPLETE zero buckets for every
+        monitored source at once -- a fleet-wide false VOLUME_DROP produced by
+        an appliance problem.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                return httpx.Response(201, json={"search_id": "metric-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/metric-1"):
+                return httpx.Response(200, json={"status": "ERROR", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler, page_size=10, max_pages=2)
+
+        with pytest.raises(ProviderError):
+            await provider.get_log_source_metrics(
+                datetime(2026, 7, 31, 10, 0, tzinfo=UTC),
+                datetime(2026, 7, 31, 10, 5, tzinfo=UTC),
+            )
+
 
 def build_provider(
     handler,
@@ -1096,6 +1228,97 @@ class TestDimensionAggregates:
             # for the half-open interval bound.
             assert f"starttime >= {start_ms} AND starttime < {end_ms}" in query
         assert [a.dimension for a in aggregates] == ["source_ip"]
+
+    @pytest.mark.asyncio
+    async def test_dimension_query_sums_coalesced_event_counts(self) -> None:
+        """A contributor's count is its share of events, not of Ariel records.
+
+        It is compared directly against the metric total, which now sums the
+        same way; mixing the two would make contributor shares silently fail to
+        add up. Coalescing is also uneven *within* a dimension -- measured live,
+        one source IP carried 1,056 events across 673 records while its peers
+        sat at exactly one event per record -- so counting rows changes the
+        contributor ranking, not merely its scale. ORDER BY moves with it so
+        "largest contributor" keeps meaning largest by event volume.
+        """
+        captured: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                captured.append(request.url.params["query_expression"])
+                return httpx.Response(201, json={"search_id": "dim-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/dim-1/results"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "events": [
+                            {"value": "203.0.113.50", "count": 1056.0},
+                            {"value": "203.0.113.51", "count": 12.0},
+                        ]
+                    },
+                )
+            if request.url.path.endswith("/ariel/searches/dim-1"):
+                return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler, page_size=10, max_pages=2)
+        (aggregate,) = await provider.get_dimension_aggregates(
+            qradar_log_source_id=227,
+            window_start=datetime(2026, 8, 2, 13, 8, tzinfo=UTC),
+            window_end=datetime(2026, 8, 2, 13, 12, tzinfo=UTC),
+            dimensions=["source_ip"],
+            top_n=5,
+        )
+
+        (query,) = captured
+        assert 'SUM(eventcount) AS "count"' in query
+        assert "ORDER BY SUM(eventcount) DESC" in query
+        assert "COUNT(*)" not in query
+        # The coalesced contributor keeps its full event volume, and the total
+        # the explanation package divides shares by is a total of events.
+        assert [v.count for v in aggregate.values] == [1056, 12]
+        assert aggregate.total_count == 1068
+
+    @pytest.mark.asyncio
+    async def test_dimension_cardinality_semantics_are_not_event_volumes(self) -> None:
+        """Distinct-value count and truncation must still count *rows*.
+
+        This is the guard against over-applying the coalescing fix. A dimension
+        returning three values totalling 9,000 events has a cardinality of 3 and
+        is not truncated at a cap of 5 -- summing event volume into either of
+        those would report a cardinality explosion that did not happen.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                return httpx.Response(201, json={"search_id": "dim-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/dim-1/results"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "events": [
+                            {"value": "203.0.113.50", "count": 7570.0},
+                            {"value": "203.0.113.51", "count": 1400.0},
+                            {"value": "203.0.113.52", "count": 30.0},
+                        ]
+                    },
+                )
+            if request.url.path.endswith("/ariel/searches/dim-1"):
+                return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler, page_size=10, max_pages=2)
+        (aggregate,) = await provider.get_dimension_aggregates(
+            qradar_log_source_id=227,
+            window_start=datetime(2026, 8, 2, 13, 8, tzinfo=UTC),
+            window_end=datetime(2026, 8, 2, 13, 12, tzinfo=UTC),
+            dimensions=["source_ip"],
+            top_n=5,
+        )
+
+        assert aggregate.distinct_count == 3
+        assert aggregate.truncated is False
+        assert aggregate.total_count == 9000
 
 
 # A throwaway self-signed certificate, used only to prove a CA bundle path is

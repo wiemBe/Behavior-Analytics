@@ -410,7 +410,18 @@ class QRadarRestProvider(QRadarProvider):
         start_ms = int(start.timestamp() * 1000)
         end_ms = int(end.timestamp() * 1000)
         aql = (
-            'SELECT logsourceid AS "qradar_id", COUNT(*) AS "event_count", '  # noqa: S608 - integer epochs only
+            # SUM(eventcount), not COUNT(*). QRadar coalesces identical events
+            # into a single Ariel record carrying an `eventcount` multiplier, so
+            # a row count is a count of *records*, not of events received. The
+            # gap is not a rounding error: measured live on 2026-08-03, four
+            # sources reported ~197 records for ~7,570 actual events -- a 38x
+            # under-report -- while most sources sat at exactly 1.0. Because the
+            # coalescing ratio varies per source and over time, COUNT(*) does
+            # not even under-report *consistently*: a burst of identical events
+            # coalesces harder, so true volume can rise sharply while the record
+            # count stays flat. That is precisely the spike a volume detector
+            # exists to catch, and it is the reading it would have missed.
+            'SELECT logsourceid AS "qradar_id", SUM(eventcount) AS "event_count", '  # noqa: S608 - integer epochs only
             'MAX(starttime) AS "last_event_time" FROM events '
             f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
             "GROUP BY logsourceid "
@@ -562,11 +573,25 @@ class QRadarRestProvider(QRadarProvider):
         # Only integer epochs and a fixed field whitelist are interpolated; no
         # caller-supplied string reaches the query text.
         aql = (
-            f'SELECT {field} AS "value", COUNT(*) AS "count"{label_select} '  # noqa: S608
+            # SUM(eventcount), for the reason given in get_log_source_metrics:
+            # a contributor's `count` is its share of *events*, and it is
+            # compared directly against the metric total that now sums the same
+            # way. Mixing the two would make contributor shares silently fail to
+            # add up. Coalescing is also uneven *within* a dimension -- measured
+            # live, one source IP on a coalescing source carried 1,056 events
+            # across 673 records while its peers sat at exactly one event per
+            # record -- so the distortion changes the ranking, not just the
+            # scale. ORDER BY moves with it so "largest contributor" keeps
+            # meaning largest by event volume.
+            #
+            # Cardinality semantics are deliberately untouched: `distinct_count`
+            # and `truncated` below are derived from the number of GROUP BY rows
+            # returned, which this change does not affect.
+            f'SELECT {field} AS "value", SUM(eventcount) AS "count"{label_select} '  # noqa: S608
             "FROM events "
             f"WHERE logsourceid = {int(qradar_log_source_id)} "
             f"AND starttime >= {start_ms} AND starttime < {end_ms} "
-            f"GROUP BY {field} ORDER BY COUNT(*) DESC LIMIT {limit} "
+            f"GROUP BY {field} ORDER BY SUM(eventcount) DESC LIMIT {limit} "
             # See get_log_source_metrics: without START/STOP the search falls
             # back to a recent default window, so contributor evidence for any
             # past anomaly interval would come back empty rather than absent.
