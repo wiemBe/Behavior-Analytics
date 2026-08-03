@@ -5,19 +5,25 @@ migration, model, collector, detector, API or UI exists, and none may be written
 alone. This document is the contract that Phase B1 must be built against, and it ends with a
 go/no-go gate in §24.
 
-**The gate outcome is NO-GO.** The design below is complete and implementable, but the live QRadar
-environment does not currently expose the fields it needs. §24 lists exactly what must change
-before Phase B1 begins. Nothing here is blocked on further design work.
+**The gate outcome remains NO-GO, for a smaller and more precise reason than before.** See §25 for
+the revision that superseded the first measurement round.
 
 Evidence in this document is labelled:
 
 | Label | Meaning |
 |---|---|
-| **[REPO]** | Verified by reading the current working tree at `ecee6ed`. |
-| **[LIVE]** | Measured against live QRadar 7.6.0.0 on 2026-08-03 by bounded read-only Ariel. |
+| **[REPO]** | Verified by reading the current working tree. |
+| **[LIVE-1]** | Measured 2026-08-03 against the **misparsed** F5 FirePass WAF sources. Superseded where §25 says so; retained because it is why the dedicated source exists. |
+| **[LIVE-2]** | Measured 2026-08-03 against the **corrected** Universal LEEF source `lab-waf-behavior-01` (QRadar log source 312). Authoritative. |
+| **[PROJECTED]** | Derived from the generator's deterministic output, not measured on the appliance. Says what a corrected run *will* produce; never presented as observed. |
 | **[DECISION]** | A design choice made here, with its rationale. |
 | **[ASSUMPTION]** | Not verified. Must be confirmed before it is relied on. |
 | **[OPEN]** | Unresolved question or blocker. |
+
+> **Reading order.** §4–§6 record the first measurement round against the misparsed sources. **§25
+> supersedes them** with the corrected-source results and is where the current entity selection,
+> cardinality figures and gate outcome live. Sections 7–23 are the design proper; §25.4 notes the
+> two places the corrected data changed a decision.
 
 ---
 
@@ -198,7 +204,11 @@ the difference.
 The Phase A lab table also shows `lab-waf-volume-01` with **no live QRadar ID**, i.e. the
 purpose-built WAF lab source was never configured on the appliance.
 
-### 4.2 Live field availability **[LIVE]**
+### 4.2 Live field availability — first round, misparsed sources **[LIVE-1]**
+
+> **Superseded by §25.2.** These numbers describe seven log sources parsed by the F5 FirePass VPN
+> DSM. They are the evidence that motivated the dedicated Universal LEEF source, not a description
+> of what WAF telemetry looks like when it is parsed correctly.
 
 Measured on log source **117** (`F5FirePass @ waf-prod-01`, the highest-volume WAF source), window
 `2026-08-02T00:00Z – 2026-08-03T00:00Z`, **11,493 records**.
@@ -253,7 +263,7 @@ alert log with the offending URI attached. Baselining a request rate per endpoin
 baseline *attacks per endpoint*, which is a different and much sparser signal than the roadmap
 describes.
 
-### 4.3 Cross-source consistency **[LIVE]**
+### 4.3 Cross-source consistency — first round **[LIVE-1]**
 
 | Log source | Name | Type | 48h events | `WAF_URL` populated |
 |---:|---|---:|---:|---|
@@ -293,7 +303,7 @@ Answering §5's twelve discovery questions directly:
 12. **Multiple WAF technologies or DSM mappings?** One in practice (type 232). A second
     (type 213) is configured but idle.
 
-### 4.4 Live discovery method and budget **[LIVE]**
+### 4.4 Live discovery method and budget — first round **[LIVE-1]**
 
 - **Path:** `QRadarRestProvider` only. MCP was not used for AQL at any point.
 - **Mode:** strictly read-only. No reference set, rule, saved search, log source, offense or any
@@ -314,10 +324,14 @@ Answering §5's twelve discovery questions directly:
 
 ---
 
-## 5. Live discovery findings — the decisive result
+## 5. First-round discovery findings **[LIVE-1 — superseded by §25]**
 
-> The measured WAF telemetry in this environment supports **neither** the roadmap entity model
-> **nor** any of the roadmap's ratio detectors.
+> The telemetry **as parsed by the F5 FirePass DSM** supports neither the roadmap entity model nor
+> any of the roadmap's ratio detectors.
+
+**§25 revises this.** The limitation was the DSM, not the telemetry: the generator was emitting every
+field all along and the VPN parser discarded them. What survives from this section is the reason a
+dedicated, correctly-typed source was needed.
 
 - `http_method` — **absent**, so it cannot be part of any entity key.
 - `normalized_endpoint` — present on **1 of 7** sources, for **67%** of that source's events, with
@@ -332,7 +346,7 @@ selecting a model that cannot be built and calling the design complete.
 
 ---
 
-## 6. Cardinality and density measurements **[LIVE]**
+## 6. Cardinality and density — first round **[LIVE-1 — superseded by §25.3]**
 
 Log source 117, 24 h, 11,493 records.
 
@@ -407,7 +421,7 @@ the seasonal cells that do fill up would fill up honestly.
 
 ---
 
-## 7. Selected entity model **[DECISION]**
+## 7. Entity model — first selection **[DECISION — revised in §25.4]**
 
 ```text
 (qradar_instance_id, waf_log_source_id, normalized_endpoint)
@@ -562,9 +576,13 @@ One row per `(instance, waf_log_source, normalized_endpoint, bucket_start)`.
 
 **`SUM(eventcount)`, not `COUNT(*)`.** `LAB-DEMO-RESULTS.md` records that QRadar coalesces identical
 events and that raw record counts therefore understate true volume — it also records that the Phase A
-metric AQL still uses `COUNT(*)` and that correcting it was deliberately deferred. Phase B must not
-inherit that defect: it starts with `SUM(eventcount)`. **[OPEN-4]** tracks whether Phase A should be
-corrected to match.
+metric AQL still used `COUNT(*)` and that correcting it was deliberately deferred.
+
+**OPEN-4 is resolved.** The defect was measured, confirmed and fixed in `ae9932a`: 19 of 50 live log
+sources reported `SUM(eventcount) > COUNT(*)`, four of them at ~38x (~197 records for ~7,570 events).
+Both the log-source metric query and the contributor evidence query now sum `eventcount`;
+`distinct_count` and `truncated` deliberately stay row-based. Phase B inherits correct semantics
+rather than a documented defect.
 
 **Nothing unavailable is mapped to zero or to an empty string.** `blocked_count = 0` would assert
 "we measured zero blocks"; the truth is "this DSM cannot tell us". That is NULL, and the API renders
@@ -1046,10 +1064,37 @@ LIMIT 20
 START <s> STOP <e>
 ```
 
-**[OPEN-3]:** binding an endpoint back to a raw path in the `WHERE` clause is unsound once §8's
-normalizer is many-to-one (`/users/1` and `/users/2` both normalize to `/users/{id}`). The evidence
-query must then filter on a *set* of raw paths, or accept a superset and re-normalize in the
-application. Phase B1 must resolve this before writing the evidence collector.
+**OPEN-3 is resolved — Approach B.** Binding an endpoint back to a raw path in the `WHERE` clause is
+unsound once §8's normalizer is many-to-one (`/users/1` and `/users/2` both normalize to
+`/users/{id}`). Three approaches were compared:
+
+| | **A — stored raw-path membership** | **B — query broad, normalize in memory** | **C — generated AQL predicate** |
+|---|---|---|---|
+| Correctness | Exact | Exact for rows returned | Exact only for endpoints with no templated segment |
+| Query cost | 1 query + a write path | 1 query, same shape as today | 1 query |
+| Cardinality | **Unbounded** — a scanner mints a new raw path per request | Bounded by `LIMIT` | Bounded |
+| Privacy | **Bad** — persists raw paths (or hashes that are trivially reversible for common paths), reintroducing exactly what §8's templating removes | Raw paths exist only in memory and are normalized before any column | Raw paths appear in query text |
+| Query strings | Would have to be stored or stripped before hashing, and a stripped hash no longer identifies the row | Stripped at normalization; never persisted | Would have to be matched on |
+| Truncation | Cap applies post-normalization | **Cap applies pre-normalization** — a rare endpoint whose raw variants are individually small can be cut off entirely | Cap applies per predicate |
+| Late arrivals | Membership set goes stale | Self-healing — re-running re-normalizes | Self-healing |
+| Normalizer change | Stored membership becomes wrong and needs a backfill | Self-healing — old rows keep their version, new queries use the new rules | Self-healing |
+| Auditability | Two artefacts to reconcile | One fixed AQL template | Query text varies per endpoint |
+
+**Selected: Approach B.** It is correct for every endpoint whether templated or not, it persists
+nothing raw, and it reuses the existing bounded-aggregate shape and its truncation semantics
+unchanged. Approach A is rejected on privacy and unbounded cardinality — persisting attacker-settable
+raw paths is the failure mode §8 and §20 exist to prevent. Approach C is rejected as a general
+mechanism because it only works for the untemplated subset, and building predicates from
+attacker-controlled raw paths is forbidden outright by §20.
+
+Approach B's one weakness is honest and already representable: the row cap applies to *raw* paths, so
+a heavily-templated endpoint can be truncated before normalization collapses it. That is reported
+with the existing `DimensionAvailability.TRUNCATED`, which already withholds "new" and "disappeared"
+claims (§13.3). No new evidence state, and no new table.
+
+**Persistence impact: none.** This is what removes the schema ambiguity from the §24 gate — Approach A
+would have required a raw-path membership table and Approach C a per-endpoint predicate cache;
+Approach B requires neither.
 
 ### 17.6 New-value comparison **[proposed]**
 
@@ -1253,22 +1298,27 @@ Deferred by decision, with the reason:
 | WAF overview / endpoint inventory route | Operable through existing surfaces (§18.3). |
 | Non-seasonal rolling and peer-group baselines for sparse entities | §12.3 — `INSUFFICIENT_DATA` is the honest answer. |
 | Generic-engine rewrite | §16 — three narrow blockers, none justifying it. |
-| Phase A `COUNT(*)` → `SUM(eventcount)` correction | Pre-existing, separately reviewed. **[OPEN-4]** |
+| ~~Phase A `COUNT(*)` → `SUM(eventcount)` correction~~ | **Done** in `ae9932a`; no longer deferred. |
 
 ---
 
-## 24. Open questions, blockers, and the Phase B1 acceptance gate
+## 24. First-round gate **[superseded by §25.5]**
+
+> Retained for the record. The criteria are unchanged; §25.5 re-evaluates all thirteen against the
+> corrected source.
+
+
 
 ### 24.1 Open questions
 
 | # | Question |
 |---|---|
-| **OPEN-1** | Can the WAF log sources be re-mapped to a DSM that parses HTTP request fields (F5 BIG-IP ASM, ModSecurity/CEF), or must Universal LEEF custom properties be authored for `url`, `httpMethod` and `responseCode`? This is an operator decision and it determines everything below. |
-| **OPEN-2** | Is the observed telemetry representative of the intended production estate, or is it entirely synthetic lab traffic? Every WAF source here is lab-shaped; a real deployment may expose a far better field set. |
-| **OPEN-3** | How does a contributor evidence query filter to an endpoint once normalization is many-to-one (§17.5)? Must be resolved before the B2 evidence collector. |
-| **OPEN-4** | Should the Phase A metric AQL be corrected from `COUNT(*)` to `SUM(eventcount)`? Phase B starts correct; Phase A's deferral is documented but still live. |
-| **OPEN-5** | Polymorphic evidence FK versus parallel WAF evidence tables (§15.2). |
-| **OPEN-6** | Is `WAF_URL` a site-authored custom property or a stock one? Its 67% coverage and attack-only values suggest a regex that matches only alert-shaped payloads. |
+| ~~OPEN-1~~ | **Answered.** A dedicated Universal LEEF source was created (§25.1); Universal LEEF custom properties must be authored (§25.6). |
+| **OPEN-2** | *Still open.* Every WAF measurement is synthetic lab telemetry; see §25.8. |
+| ~~OPEN-3~~ | **Resolved** — Approach B, no new table (§17.5). |
+| ~~OPEN-4~~ | **Resolved and fixed** in `ae9932a` (§9). |
+| **OPEN-5** | *Still open, but B1-internal.* Polymorphic evidence FK versus parallel WAF evidence tables (§15.2). Both satisfy the contract; neither changes the entity key. |
+| ~~OPEN-6~~ | **Moot.** `WAF_URL` is bound to other log source types and extracts nothing from Universal LEEF (§25.2); Phase B will use its own property. |
 
 ### 24.2 The gate
 
@@ -1317,3 +1367,256 @@ Nothing in this design should be revised to work around the missing data. Buildi
 baseline on a field that is absent two-thirds of the time would produce exactly the false assurance
 that `EvidenceStatus.UNAVAILABLE`, `BucketCompleteness.PARTIAL` and `AnomalyState.INSUFFICIENT_DATA`
 were all introduced to prevent.
+
+---
+
+## 25. Revision — the corrected WAF source (2026-08-03)
+
+This section supersedes §4.2, §4.3, §5, §6 and §24. It records what changed after the operator
+created a dedicated, correctly-typed WAF log source, and re-evaluates the gate against it.
+
+### 25.1 What the operator did, and what arrived **[LIVE-2]**
+
+| | Value |
+|---|---|
+| QRadar log source ID | **312** |
+| Name / identifier | `lab-waf-behavior-01` |
+| Type | **212 — Universal LEEF** (confirmed by REST, not assumed) |
+| Enabled | yes |
+| Protocol | Syslog UDP/514, identifier matching the syslog hostname |
+
+A dedicated source, not a remap: `lab-waf-volume-01` keeps its Phase A history, and none of the
+seven production-shaped F5 sources was touched. The generator gained a matching additive identity in
+`0fa7b3c` (`lab-waf-behavior-01`, device 10.20.0.22), with regressions proving no default scenario's
+output moved.
+
+**Bounded generator run.**
+
+| | Value |
+|---|---|
+| Run ID | `labrun-phaseb-20260803T0000Z` |
+| Scenario | `source-volume-baseline`, `--format leef` |
+| Seed | `20260803` (deterministic) |
+| Rate / duration | 2 EPS for 60 s |
+| Expected / attempted / sent / errors | 120 / 120 / **120** / **0** |
+| Window | `2026-08-03T19:27:58Z – 19:28:58Z` |
+
+Variation in the run, verified before sending: 2 HTTP methods (GET 83, POST 37); 5 raw URLs of which
+one carries a query string; 1 virtual host; 4 response codes (200, 304, 403, 404); both `ALLOW` (78)
+and `DENY` (42); 3 client addresses; one stable `runId`.
+
+**Arrival, measured read-only:** log source 312 received exactly **120 records / 120 events**
+(`COUNT(*)` and `SUM(eventcount)` agree — this synthetic traffic does not coalesce). Ingestion is
+therefore proven end to end: generator → syslog → Universal LEEF source → Ariel.
+
+### 25.2 Corrected field capability matrix **[LIVE-2]**
+
+Log source 312, run window, 120 events.
+
+| Field | QRadar property | Kind | Type | Populated | Distinct | Phase B | Missing-value semantics |
+|---|---|---|---|---:|---:|---|---|
+| Client IP | `sourceip` | normalized | ip | **100.0%** | 3 | required | bucket unusable |
+| Server IP | `destinationip` | normalized | ip | **100.0%** | 2 | optional | evidence-only |
+| Direction | `eventdirection` | normalized | enum | 100.0% | 1 (`R2L`) | not used | — |
+| Category | `CATEGORYNAME(category)` | normalized | string | 100.0% | 1 (`Unknown`) | not used | — |
+| Event name | `QIDNAME(qid)` | normalized | string | 100.0% | 1 (`unknown`) | not used | QIDs unmapped |
+| Username | `username` | normalized | string | **0.0%** | 0 | not used | generator emits no `usrName` on the WAF profile — correct, not a parser fault |
+| **URL / path** | `"URL"`, `"URL Path"`, `"URL Host"`, `"WAF_URL"` | custom | string | **0.0%** | 0 | **required** | **BLOCKER** |
+| **HTTP method** | *no property exists* | — | — | **n/a** | — | **required** | **BLOCKER** — query rejected |
+| **Virtual host** | `"Hostname"`; `"Virtual Host"` absent | custom | string | **0.0%** | 0 | **required** | **BLOCKER** |
+| **Response code** | *no property exists* | — | — | **n/a** | — | optional (ratios) | **BLOCKER** for ratio detectors |
+| **Action** | *no property exists* | — | — | **n/a** | — | optional | **BLOCKER** for ratio detectors |
+| Rule / signature ID | `"Rule ID"`, `"Rule Name"` | custom | string | **0.0%** | 0 | evidence-only | `UNAVAILABLE` |
+| Application | `"Application"` | custom | string | **0.0%** | 0 | optional | `UNAVAILABLE` |
+| Run ID | *no property exists* | — | — | **n/a** | — | lab isolation | falls back to the time window |
+| Scenario / phase | *no property exists* | — | — | **n/a** | — | lab only | — |
+
+Searchability/indexing was not probed: it is not safely observable read-only without touching index
+configuration, so it is left explicitly unmeasured rather than guessed.
+
+**The finding.** Ingestion is fixed; **parsing is not**. The Universal LEEF DSM auto-maps only its
+predefined keys — which is exactly why `src` and `dst` normalized perfectly to `sourceip` and
+`destinationip` at 100%. The generator's `url`, `httpMethod`, `virtualHost`, `responseCode`,
+`action`, `runId`, `scenario` and `phase` are LEEF *custom* keys, and Universal LEEF does not create
+properties for them automatically.
+
+This was verified two ways rather than inferred. The custom-property inventory is **unchanged at 115
+regex properties**, so no new property was authored. And probing eleven plausible names — `HTTP
+Method`, `Request Method`, `Response Code`, `Status Code`, `HTTP Status`, `Virtual Host`, `Request
+URL`, `Run ID`, `Scenario`, `Phase`, `Action` — had **every one rejected by QRadar as invalid**,
+which is proof of absence rather than a query that returns nulls. The pre-existing `URL`, `URL Path`,
+`URL Host` and `WAF_URL` properties do exist but are bound to other log source types, so they extract
+nothing from a Universal LEEF payload.
+
+**No compensation in application code.** Per §6 of the workstream brief, a missing required field is
+reported as a parser blocker, not worked around.
+
+### 25.3 Recomputed cardinality **[PROJECTED]**
+
+The endpoint dimension cannot be measured on the appliance while the properties are unmapped. The
+figures below are derived from the generator's deterministic output for one simulated hour at the
+sent rate — a **repository** fact describing what the corrected run will produce, never presented as
+an appliance measurement. They must be re-measured live once §25.6 is complete.
+
+Basis: 7,200 events/hour at 2 EPS, one log source.
+
+| | Value |
+|---|---:|
+| Distinct client IPs | 3 |
+| Distinct raw URLs | 5 |
+| Distinct paths after query-string removal | **5** |
+| Distinct HTTP methods | **2** (GET, POST) |
+| Distinct virtual hosts | 1 (`portal.lab.test`) |
+
+Normalized endpoints: `/`, `/api/v1/report`, `/api/v1/status`, `/portal/login`, `/static/app.css`.
+Note `/api/v1/report?id=1%27+OR+%271%27%3D%271` normalizing to `/api/v1/report` — §8 rule 3 removing
+a SQL-injection payload from the entity key, exactly as designed.
+
+| Candidate | Entities | Events/entity/h | Singletons | Rows/day | 28-day rows | Baseline cells |
+|---|---:|---:|---:|---:|---:|---:|
+| **C1** `(inst, ls, endpoint)` | 5 | 1,440 | 0.0% | 1,440 | 40,320 | 840 |
+| **C2** `(inst, ls, endpoint, method)` | 10 | 720 | 0.0% | 2,880 | 80,640 | 1,680 |
+| **C3** `(inst, ls, vhost, endpoint, method)` | 10 | 720 | 0.0% | 2,880 | 80,640 | 1,680 |
+| *A (roadmap)* `(inst, ls, client, endpoint, method)` | 30 | 240 | 0.0% | 8,640 | 241,920 | 5,040 |
+
+Every candidate is now comfortably baselineable — **0% singletons** and hundreds of observations per
+entity per hour, against the 2,958 tuples averaging 3.9 events/day that the misparsed source
+produced. The first round's entity problem was a symptom of the parsing problem.
+
+Candidate A is still rejected: its entity count scales with the client population, which in the lab
+is 3 and in production is the internet. The lab's flattering 30 is an artefact of a 3-address
+generator profile, not evidence that the roadmap model bounds.
+
+### 25.4 Revised entity selection **[DECISION — supersedes §7]**
+
+```text
+(qradar_instance_id, waf_log_source_id, normalized_virtual_host, normalized_endpoint, http_method)
+```
+
+**Candidate C3.** Two changes from the first selection, both forced by data that now exists:
+
+**`http_method` is restored to the key.** §7 dropped it only because the field did not exist. It does
+exist in the payload, and GET and POST on the same path are different behaviors that must not share a
+baseline: a POST spike on `/portal/login` is credential stuffing, a GET spike on the same path is
+scraping. Merging them hides both. The cost is exactly 2× the entities — 10 instead of 5 — which is
+nothing. This is the §7.1 path being taken, and the normalizer version is bumped accordingly.
+
+**`normalized_virtual_host` is added.** The workstream brief requires that unrelated applications
+sharing `/`, `/login` or `/api/status` must not be collapsed, and `waf_log_source_id` alone does not
+achieve that: one WAF appliance routinely fronts many virtual hosts and logs them all to a single
+log source. In the lab this changes nothing (one vhost, so C3 ≡ C2), which is precisely why it must
+be decided on the requirement rather than on the measurement — the lab cannot exhibit the collision
+it prevents.
+
+**Fallback when virtual host is unavailable [DECISION].** `normalized_virtual_host` is nullable. When
+a log source's DSM does not populate it, the column is **NULL — never a sentinel string** (§9), the
+unique constraint treats NULLs as equal so one coherent entity forms per `(ls, endpoint, method)`,
+and the log source carries an explicit `virtual_host_unavailable` flag. Every anomaly on such a source
+renders the collision caveat: *"this WAF source does not expose a virtual host, so endpoints with the
+same path on different applications are counted together."* The risk is then visible to the analyst
+rather than silently folded into the number. That is the same discipline as
+`DimensionAvailability.UNAVAILABLE`, applied to an entity key.
+
+Client IP remains a `distinct_client_count` metric and a bounded contributor dimension, unchanged
+from §7.
+
+**Normalizer contract (§8) is unaffected** and remains valid: it operates on the path alone, and
+none of its 20 rules or 18 worked examples depends on method or host. Host handling was already
+specified — rule 1 strips it from the path precisely because it belongs to the entity, which is now
+literally true.
+
+### 25.5 Re-evaluated Phase B1 gate
+
+| # | Requirement | First round | Now | Evidence |
+|---:|---|---|---|---|
+| 1 | At least one usable WAF source | ✗ | **⚠ PARTIAL** | Source 312 ingests 120/120, but parses no HTTP field (§25.2) |
+| 2 | Required field availability | ✗ | **✗ FAIL** | URL, method, vhost all 0% or non-existent (§25.2) |
+| 3 | Selected and bounded entity key | ✓ | **✓ PASS** | §25.4 — C3 |
+| 4 | Measured cardinality | ✓ | **⚠ PROJECTED** | §25.3 — derived from the generator, not yet measured live |
+| 5 | Defined normalizer behavior | ✓ | **✓ PASS** | §8, unaffected by §25.4 |
+| 6 | Defined completeness semantics | ✓ | **✓ PASS** | §10 |
+| 7 | Defined persistence natural key | ✓ | **✓ PASS** | §25.4 + §15.2 |
+| 8 | Selected first detector | ✓ | **✓ PASS** | `WAF_REQUEST_RATE_SPIKE` |
+| 9 | Defined evidence dimensions | ✓ | **✓ PASS** | §13 |
+| 10 | Defined query budget | ✓ | **✓ PASS** | §17, §20 |
+| 11 | Defined test fixtures | ✓ | **✓ PASS** | §21; `lab-waf-behavior-01` now exists and is deterministic |
+| 12 | Defined live-validation path | ⚠ | **✓ PASS** | §22; ingestion proven, only parsing outstanding |
+| 13 | No unresolved blocker that could change the schema | ✗ | **✓ PASS** | OPEN-3 resolved (Approach B, no new table); OPEN-4 resolved and fixed; OPEN-1 answered |
+| — | Actual event-volume semantics resolved | — | **✓ PASS** | `ae9932a` |
+
+Eleven of thirteen pass, against ten before, and — more importantly — **every remaining failure is a
+QRadar console configuration task, not a design question.** Criterion 13 passing is the substantive
+change: the schema is no longer capable of moving.
+
+### 25.6 Remaining operator checklist
+
+One task, in the QRadar console, by an operator. The application must never do this.
+
+On **log source 312 `lab-waf-behavior-01` only** — not `lab-waf-volume-01`, and not any of the seven
+production-shaped F5 sources — create LEEF key-based custom event properties, scoped to log source
+type **212 (Universal LEEF)**:
+
+| # | LEEF key emitted | Suggested property name | Type | Needed for |
+|---:|---|---|---|---|
+| 1 | `url` | `WAF Request URL` | string | **Required** — the entity key |
+| 2 | `httpMethod` | `WAF HTTP Method` | string | **Required** — the entity key |
+| 3 | `virtualHost` | `WAF Virtual Host` | string | **Required** — the entity key |
+| 4 | `responseCode` | `WAF Response Code` | string | Ratio detectors (§11.3) |
+| 5 | `action` | `WAF Action` | string | Ratio detectors (§11.3) |
+| 6 | `ruleId` | `WAF Rule ID` | string | Contributor evidence |
+| 7 | `runId` | `Lab Run ID` | string | Lab run isolation |
+| 8 | `scenario` | `Lab Scenario` | string | Lab only |
+| 9 | `phase` | `Lab Phase` | string | Lab only |
+
+Properties 1–3 are the gate. 4–5 unblock the ratio detectors that §11.2 currently lists as blocked.
+6–9 are convenience.
+
+Whatever names are chosen, they must be recorded here before Phase B1 writes a query: §25.2's probe
+established that display names do **not** follow the LEEF keys, so the AQL templates in §17 must be
+rewritten against the real property names rather than the emitted keys.
+
+Then re-run, against source 312 and the new run window only:
+
+1. §17.3 field availability for each of properties 1–5 — each must be effectively complete.
+2. §17.4 cardinality, and re-measure §25.3's C1/C2/C3 table live, replacing **[PROJECTED]** with
+   **[LIVE-2]**.
+3. Confirm `/api/v1/report?id=…` arrives with its query string intact, so §8 rule 3 is exercised on
+   real parsed data rather than on generator output.
+
+### 25.7 Recommendation
+
+Two separate verdicts, because they have different evidence.
+
+> ### Phase B1 development: NO-GO — pending one operator task
+>
+> Not a design blocker. Every design question that could move the schema is now closed: the entity
+> key is selected and justified (§25.4), evidence filtering needs no new table (§17.5), and the
+> event-volume defect is fixed and tested. What is missing is three custom event properties on one
+> lab log source. When §25.6's properties 1–3 exist and its three re-runs confirm them, this becomes
+> a **GO** with no further design work — the document does not need revising, only its
+> **[PROJECTED]** cardinality table re-measured and its §17 templates bound to the real property
+> names.
+
+> ### Production WAF onboarding: NO-GO — and not yet assessable
+>
+> Every WAF field measurement in this document comes from synthetic lab telemetry. The seven
+> production-shaped F5 sources remain parsed by a VPN DSM and were deliberately left untouched. No
+> claim is made about what a real F5 BIG-IP ASM, ModSecurity or cloud WAF deployment exposes.
+>
+> The schema does not depend on that answer, which is what allows the two verdicts to diverge:
+> §25.4's key uses only vendor-neutral concepts — log source, virtual host, path, method — and §25.4
+> already specifies the fallback for a source that cannot supply a virtual host. Production
+> onboarding therefore needs its own field-availability pass per WAF product, and that pass can
+> happen after B1 rather than blocking it.
+
+### 25.8 Remaining production-estate assumptions **[ASSUMPTION]**
+
+1. A production WAF DSM exposes request path, method and virtual host as queryable properties. Not
+   verified for any real product.
+2. Production endpoint cardinality is in the tens-to-hundreds per virtual host after §8
+   normalization. The lab's 5 proves nothing about this; §8.4's circuit breaker is the guard.
+3. Production traffic exhibits a diurnal pattern that `weekday × hour` can baseline. The lab's
+   bursty synthetic profile cannot demonstrate this.
+4. Coalescing behaves on WAF sources as measured elsewhere on this appliance. The synthetic run did
+   not coalesce at all (120 records / 120 events), so the fix in `ae9932a` is proven against
+   production-shaped sources but not yet against a WAF one.

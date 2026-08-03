@@ -86,8 +86,9 @@ identifying fields; the tuple is the natural key for baselines and anomalies.
 
 - Phase A: `(qradar_instance_id, log_source_id)`
 - Phase B: roadmap sketch was `(source_ip, normalized_endpoint, http_method)`;
-  superseded by `(qradar_instance_id, waf_log_source_id, normalized_endpoint)` —
-  see [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md) §7
+  superseded by `(qradar_instance_id, waf_log_source_id, normalized_virtual_host,
+  normalized_endpoint, http_method)` —
+  see [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md) §25.4
 - Phase C: `(source_ip)`
 - Phase D: `(username, destination_host)`
 
@@ -559,8 +560,9 @@ explanation:
 The same engine must later express, **without modification to its core**:
 
 ```yaml
-# Phase B — WAF (superseded sketch; see PHASE-B-WAF-BEHAVIOR.md §7)
-entity: [qradar_instance_id, waf_log_source_id, normalized_endpoint]
+# Phase B — WAF (superseded sketch; see PHASE-B-WAF-BEHAVIOR.md §25.4)
+entity: [qradar_instance_id, waf_log_source_id, normalized_virtual_host,
+         normalized_endpoint, http_method]
 metric: {type: request_count}
 
 # Phase C — Firewall
@@ -620,7 +622,8 @@ through to `RESOLVED`. See [LAB-DEMO-RESULTS.md](LAB-DEMO-RESULTS.md).
 
 **Phase B status:** design and discovery only. The implementation contract is
 [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md), which supersedes the Phase B
-entity and metric sketches in §3.1 and §10.1 below: live measurement found that
-`http_method` and response status do not exist in this environment, so the
-roadmap's `(source_ip, normalized_endpoint, http_method)` entity was assessed and
-rejected. No Phase B production code exists.
+entity and metric sketches in §3.1 and §10.1 below. The roadmap's
+`(source_ip, normalized_endpoint, http_method)` entity was assessed against live
+data and rejected: client IP is unbounded and attacker-settable, so it is a
+metric and a contributor dimension rather than an entity key. No Phase B
+production code exists.

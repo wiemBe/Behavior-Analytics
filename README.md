@@ -701,11 +701,14 @@ lints and updates this README.
   telemetry on 2026-08-02.
 - **Phase B (design in progress)** — WAF endpoint behavior. The design and discovery contract is
   written; see [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md). **Production implementation has
-  not started**, and its acceptance gate currently reports NO-GO: the available WAF log sources are
-  parsed by a DSM that exposes no HTTP method, no response status and no reliable request path.
+  not started.** Ingestion is proven end to end against a dedicated Universal LEEF lab source, and
+  every design question that could move the schema is closed. The gate still reports NO-GO on one
+  remaining QRadar console task: the LEEF custom event properties for request URL, HTTP method and
+  virtual host have not been authored, so those fields are unparsed.
 - **Phase 4** — security hardening, expanded tests, documentation, observability.
 
-Next: clear the Phase B1 acceptance gate in [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md).
+Next: author the three WAF custom event properties listed in
+[the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) section 25.6, then re-measure and start Phase B1.
 
 ## License
 
