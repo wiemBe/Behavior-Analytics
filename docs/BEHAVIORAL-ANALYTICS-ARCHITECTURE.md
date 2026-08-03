@@ -63,7 +63,7 @@ They must be preserved and kept working. They are not the product's headline.
 | Phase | Scope | Status |
 |---|---|---|
 | **A** | Log-source volume behavior: EPS spike, drop, silence, seasonal baseline, anomaly-interval investigation, top-contributor explanation | **Complete**, live-validated 2026-08-02 |
-| **B** | WAF behavior: endpoint request-rate baseline, error/block ratio, new endpoint access, peer-group baseline for new clients, request-pattern anomalies | **Design in progress**; not implemented. See [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md) |
+| **B** | WAF behavior: endpoint request-rate baseline, error/block ratio, new endpoint access, peer-group baseline for new clients, request-pattern anomalies | **Backend slice complete**, live-validated 2026-08-03; API/UI and ratio/novelty detectors pending. See [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md) |
 | C | Firewall and IPS behavior: source IP × destination, source IP × destination port, distinct destination and port counts, deny-rate anomalies, scan behavior, exploit/signature bursts | Roadmap |
 | D | User behavior: user × host, user × source IP, user × application, login-time behavior, new system access, failed-login patterns, privileged activity | Roadmap |
 | E | Feedback and model management: false-positive feedback, threshold tuning, maintenance windows, baseline versions, model drift, detector performance | Roadmap |
@@ -620,7 +620,10 @@ tests on both sides, and **exercised end to end against live QRadar telemetry on
 2026-08-02** — spike, drop, multi-source isolation and `NO_EVENTS` each observed
 through to `RESOLVED`. See [LAB-DEMO-RESULTS.md](LAB-DEMO-RESULTS.md).
 
-**Phase B status:** design and discovery only. The implementation contract is
+**Phase B status:** the backend vertical slice — endpoint normalizer, collector, seasonal
+baseline, `WAF_REQUEST_RATE_SPIKE` and lifecycle — is implemented and live-validated
+(2026-08-03), and is off by default. Its anomaly API, UI rendering and Celery
+schedule are not built. The implementation contract is
 [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md), which supersedes the Phase B
 entity and metric sketches in §3.1 and §10.1 below. The roadmap's
 `(source_ip, normalized_endpoint, http_method)` entity was assessed against live

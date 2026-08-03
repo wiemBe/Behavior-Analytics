@@ -12,8 +12,8 @@ and it operates strictly **read-only** against QRadar.
 > to end — synthetic telemetry → ingestion → Ariel aggregation → seasonal baseline → detection →
 > lifecycle → contributor explanation → API → frontend — through to `RESOLVED`. Live validation
 > found and fixed five defects that automated tests had missed. See
-> **Phase B** (WAF endpoint behavior) is in **design and discovery**; no Phase B production code
-> exists. See
+> **Phase B** (WAF endpoint behavior) has a **live-validated backend vertical slice**; its API and
+> UI are not built yet and production WAF onboarding is unvalidated. See
 > [Roadmap](#roadmap), [the Phase A design](docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md),
 > [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) and
 > [the Phase 3 handoff](docs/PHASE3-HANDOFF.md).
@@ -699,16 +699,19 @@ lints and updates this README.
   explicit anomaly lifecycle, bounded Ariel contributor evidence, and the behavioral overview,
   source-behavior, anomaly-list and investigation views. Validated end to end against live QRadar
   telemetry on 2026-08-02.
-- **Phase B (design in progress)** — WAF endpoint behavior. The design and discovery contract is
-  written; see [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md). **Production implementation has
-  not started.** Ingestion is proven end to end against a dedicated Universal LEEF lab source, and
-  every design question that could move the schema is closed. The gate still reports NO-GO on one
-  remaining QRadar console task: the LEEF custom event properties for request URL, HTTP method and
-  virtual host have not been authored, so those fields are unparsed.
+- **Phase B (backend vertical slice ✅, API/UI pending)** — WAF endpoint behavior: a versioned
+  endpoint normalizer, per-endpoint observation collection with measured completeness, a seasonal
+  request-rate baseline, and `WAF_REQUEST_RATE_SPIKE` on the reused Phase A lifecycle. Validated
+  end to end against live QRadar telemetry on 2026-08-03 —
+  `INSUFFICIENT_DATA → NORMAL → OPEN → RECOVERING → RESOLVED` on real data. Collection is **off by
+  default** (`WAF_COLLECTION_ENABLED=false`); the anomaly API, UI rendering and Celery schedule are
+  not built yet, and production WAF onboarding remains unvalidated. See
+  [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md).
 - **Phase 4** — security hardening, expanded tests, documentation, observability.
 
-Next: author the three WAF custom event properties listed in
-[the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) section 25.6, then re-measure and start Phase B1.
+Next: the additive anomaly-API fields and UI rendering for a WAF endpoint subject
+([design](docs/PHASE-B-WAF-BEHAVIOR.md) section 18.2), then a field-availability pass against a real
+WAF product before any production onboarding.
 
 ## License
 

@@ -14,16 +14,17 @@ Evidence in this document is labelled:
 |---|---|
 | **[REPO]** | Verified by reading the current working tree. |
 | **[LIVE-1]** | Measured 2026-08-03 against the **misparsed** F5 FirePass WAF sources. Superseded where §25 says so; retained because it is why the dedicated source exists. |
-| **[LIVE-2]** | Measured 2026-08-03 against the **corrected** Universal LEEF source `lab-waf-behavior-01` (QRadar log source 312). Authoritative. |
+| **[LIVE-2]** | Measured 2026-08-03 against the **corrected** Universal LEEF source `lab-waf-behavior-01` (QRadar log source 312), before its custom properties existed. |
+| **[LIVE-3]** | Measured 2026-08-03 against source 312 **after** the operator authored the custom event properties. Authoritative — see §26. |
 | **[PROJECTED]** | Derived from the generator's deterministic output, not measured on the appliance. Says what a corrected run *will* produce; never presented as observed. |
 | **[DECISION]** | A design choice made here, with its rationale. |
 | **[ASSUMPTION]** | Not verified. Must be confirmed before it is relied on. |
 | **[OPEN]** | Unresolved question or blocker. |
 
-> **Reading order.** §4–§6 record the first measurement round against the misparsed sources. **§25
-> supersedes them** with the corrected-source results and is where the current entity selection,
-> cardinality figures and gate outcome live. Sections 7–23 are the design proper; §25.4 notes the
-> two places the corrected data changed a decision.
+> **Reading order.** §4–§6 record the first measurement round against the misparsed sources; **§25
+> supersedes them** with the corrected-source results. **§26 is the current state**: it records the
+> verified custom properties, the live-measured cardinality, the implemented vertical slice and the
+> gate outcome. Sections 7–23 are the design proper.
 
 ---
 
@@ -1583,7 +1584,12 @@ Then re-run, against source 312 and the new run window only:
 3. Confirm `/api/v1/report?id=…` arrives with its query string intact, so §8 rule 3 is exercised on
    real parsed data rather than on generator output.
 
-### 25.7 Recommendation
+### 25.7 Recommendation **[superseded by §26.7]**
+
+> Superseded. The operator authored the properties; §26 records the verification and the revised
+> verdicts.
+
+### 25.7 Recommendation (as written before the properties existed)
 
 Two separate verdicts, because they have different evidence.
 
@@ -1620,3 +1626,255 @@ Two separate verdicts, because they have different evidence.
 4. Coalescing behaves on WAF sources as measured elsewhere on this appliance. The synthetic run did
    not coalesce at all (120 records / 120 events), so the fix in `ae9932a` is proven against
    production-shaped sources but not yet against a WAF one.
+
+---
+
+## 26. Wave 1 — verified properties and the implemented vertical slice (2026-08-03)
+
+This section supersedes §25.2, §25.3 and §25.7. The operator authored the WAF custom event
+properties; everything below is measured against them, and the Phase B1/B2 vertical slice is
+implemented.
+
+### 26.1 Confirmed property names **[LIVE-3]**
+
+The operator's names, which are authoritative and are what every Ariel query now uses:
+
+| Purpose | QRadar property | Declared type | Superseded guesses |
+|---|---|---|---|
+| Request URL | `"URL"` | string | `URL Path`, `WAF_URL`, `Request URL`, `url` |
+| HTTP method | `"HTTP_Method"` | string | `HTTP Method`, `Request Method`, `httpMethod` |
+| WAF action | `"WAF_Action"` | string | `WAF Action`, `Action`, `action` |
+| Response code | `"WAF_ResponseCode"` | **string** | `Response Code`, `Status Code`, `responseCode` |
+| User agent | `"WAF_USERAGENT"` | string | — |
+
+The guessing round is closed: §25.2 recorded eleven speculative names, all rejected by QRadar, and
+this table replaces them. The general lesson is recorded in the code — property names are
+**configuration** (`waf_url_property`, `waf_method_property`), never derived from the LEEF keys a
+device emits, because QRadar display names do not follow them.
+
+`WAF_ResponseCode` is declared **string**, not numeric. Application code therefore validates a strict
+three-digit status before converting, and an invalid or absent value stays missing rather than
+becoming 0 — `normalize_response_code` and its tests enforce exactly that.
+
+### 26.2 Population, measured on the controlled run **[LIVE-3]**
+
+Log source 312, run `labrun-phaseb-20260803T0000Z`, window `19:25Z–19:35Z`, 120 events
+(120 records / 120 events — this synthetic traffic does not coalesce).
+
+| Field | Property | Populated | Distinct | Values observed | Phase B role |
+|---|---|---:|---:|---|---|
+| Client IP | `sourceip` (normalized) | **100.0%** | 3 | — | metric + contributor |
+| Request URL | `"URL"` | **100.0%** | 5 | 4 clean paths + 1 carrying a query string | **entity key** |
+| HTTP method | `"HTTP_Method"` | **100.0%** | 2 | `GET` (83), `POST` (37) | **entity key** |
+| WAF action | `"WAF_Action"` | **100.0%** | 2 | `ALLOW` (78), `DENY` (42) | deferred (§11.3) |
+| Response code | `"WAF_ResponseCode"` | **100.0%** | 4 | `200` (42), `403` (42), `304` (22), `404` (14) | deferred (§11.3) |
+| User agent | `"WAF_USERAGENT"` | **100.0%** | 4 | — | contributor evidence only |
+| Virtual host | *no property* | — | — | — | **NULL**, see §25.4 |
+
+Every required field is effectively complete. The distributions match the generator's deterministic
+output exactly, which is what makes this run a usable fixture rather than merely a smoke test.
+
+`WAF_Action`'s bounded set was **discovered, not assumed**: the query enumerated distinct values and
+returned exactly `ALLOW` and `DENY` for this source. That is a fact about this generator profile, not
+a claim about WAF products in general, and a ratio detector built on it must re-discover the set per
+source.
+
+`WAF_USERAGENT` is confirmed and deliberately excluded from the entity key. It is bounded contributor
+evidence only; no user-agent baseline exists and none is planned for the MVP.
+
+### 26.3 Run isolation **[LIVE-3]**
+
+Run ID is not a QRadar property, so isolation is by dedicated source plus exact window. It is
+reliable here, so no `LAB_RunID` property is required:
+
+| Check | Result |
+|---|---|
+| Dedicated log source | 312, receiving only generated lab traffic |
+| Expected events | 120 |
+| Observed in the exact window | **120** |
+| Unrelated events in the window | **0** |
+| Generator errors | **0** |
+| Seed | `20260803`, deterministic |
+
+Because the observed count equals the expected count exactly, no unrelated traffic is present and the
+window uniquely identifies the run.
+
+### 26.4 Live cardinality — measured, replacing the projection **[LIVE-3]**
+
+§25.3's figures were derived from the generator and marked `[PROJECTED]`. They are now measured, and
+they match:
+
+| | Projected (§25.3) | **Measured** |
+|---|---:|---:|
+| Distinct client IPs | 3 | **3** |
+| Distinct raw URLs | 5 | **5** |
+| Distinct normalized endpoints | 5 | **5** |
+| Distinct HTTP methods | 2 | **2** |
+| C1 `(ls, endpoint)` entities | 5 | **5** |
+| **C2/C3 `(ls, [vhost,] endpoint, method)` entities** | 10 | **10** |
+| Singleton entities | 0% | **0%** |
+
+Normalized endpoints: `/`, `/api/v1/report`, `/api/v1/status`, `/portal/login`, `/static/app.css`.
+
+The SQL-injection payload on `/api/v1/report` normalizes to `/api/v1/report` — §8 rule 3 removing an
+attacker-controlled query string from the entity key, now demonstrated on live parsed data rather
+than on generator output. A live assertion confirms **zero** stored endpoints contain `?`.
+
+Storage at this shape: 10 entities × 288 five-minute buckets = 2,880 rows/day, 80,640 over a 28-day
+retention, 1,680 baseline cells.
+
+### 26.5 What was implemented
+
+| Concern | Commit | Contents |
+|---|---|---|
+| Coalescing correctness | `ae9932a` | `SUM(eventcount)` for volume; cardinality stays row-based |
+| Dedicated lab source | `0fa7b3c` | `lab-waf-behavior-01`, additive, with defaults-unchanged regressions |
+| Normalizer | `f2208c3` | §8's 20 rules, versioned, 99 tests |
+| Persistence | `b51cbcf` | Five tables, one additive migration, `NULLS NOT DISTINCT` |
+| Collector | `0142b61` | Two bounded aggregates, measured coverage, bounded zero-fill, retirement |
+| Detector + lifecycle | `82eed39` | `WAF_REQUEST_RATE_SPIKE`, baseline, engine |
+
+Deliberately **not** implemented: any API route, any frontend component, any Celery schedule
+registration, and any drop, ratio or novelty detector. WAF collection is off by default
+(`waf_collection_enabled=False`).
+
+### 26.6 Reused unchanged from Phase A
+
+`app.anomaly.statistics` (median, MAD, `effective_scale`, `robust_z_with_status`, `ratio`),
+`app.anomaly.evidence` (`AnomalyEvidence`, `healthy`, `insufficient`), and
+`app.anomaly.lifecycle.next_state`. Reusing the lifecycle unchanged is what gives Phase B the two
+rules Phase A learned in live validation — an `UNKNOWN` bucket advances nothing, and an active
+incident is not downgraded because one bucket was unreadable — without a second state machine to
+keep in sync.
+
+Phase A's `BaselineBuilder`, `MetricPoint`, detectors and `AnomalyEngine` were **not** reused: each
+is statically typed on the Phase A ORM classes. No Phase A file's behavior was changed by this
+workstream except the two AQL aggregate expressions in `ae9932a`.
+
+### 26.7 Bounded live lab validation **[LIVE-3]**
+
+The full vertical slice — generator → syslog → QRadar → REST/Ariel → normalization → PostgreSQL →
+baseline → detector → lifecycle — exercised against live telemetry with nothing stubbed but the
+clock.
+
+**The run.** `labrun-phaseb-spike`, seed `777`, log source 312 only, three phases at 60-second
+buckets:
+
+| Phase | Window (UTC) | Rate | Sent |
+|---|---|---:|---:|
+| baseline | 20:27:35 – 20:32:35 | 3 EPS | 900 |
+| anomaly | 20:32:35 – 20:34:35 | 20 EPS | 2,400 |
+| recovery | 20:34:35 – 20:37:35 | 3 EPS | 540 |
+| **total** | | peak 20 EPS | **3,840 attempted / 3,840 sent / 0 errors** |
+
+**Collection.** 11 buckets collected through the real REST provider; 10 entities; 110 metric rows
+(10 × 11, so every entity has an explicit row in every bucket including its measured zeros);
+**3,832 of 3,840 requests** accounted for — the eight-event gap is the run's tail crossing the
+window boundary, not a parsing loss. **110/110 buckets COMPLETE**, and **zero** stored endpoints
+contain a query string.
+
+**Detection**, on `GET /api/v1/report`:
+
+```
+20:27  20 requests   INSUFFICIENT_DATA
+20:28  43            INSUFFICIENT_DATA
+20:29  38            INSUFFICIENT_DATA
+20:30  37            INSUFFICIENT_DATA     <- baseline still below 4 samples
+20:31  43            NORMAL                <- baseline adequate, verdict healthy
+20:32  313           OPEN
+20:33  714           OPEN
+20:34  450           OPEN
+20:35  31            RECOVERING
+20:36  34            RESOLVED
+20:37  26            NORMAL
+```
+
+The incident: observed **714**, expected **38**, ratio **18.79x**, robust z **91.19**, opened and
+resolved, with three persisted transitions carrying their reasons —
+`NORMAL → OPEN` ("1 consecutive abnormal bucket(s)"), `OPEN → RECOVERING` ("normal bucket
+observed"), `RECOVERING → RESOLVED` ("2 consecutive normal bucket(s) reached the recovery threshold
+of 2").
+
+Four behaviours worth calling out, because each is a design decision being honoured rather than a
+happy path:
+
+1. **`INSUFFICIENT_DATA` came first, and was correct.** The first four buckets had fewer than
+   `baseline_min_samples` observations, so the detector refused a verdict instead of reporting
+   NORMAL. An unbaselined endpoint never masquerades as healthy.
+2. **The incident retained its worst reading, not its latest.** `observed_value` is 714 (the peak),
+   not 450 (the last abnormal bucket). An operator asking "how bad did this get?" is not shown the
+   tail of a recovery.
+3. **Recovery needed two consecutive normal buckets.** The single normal bucket at 20:35 moved the
+   incident to `RECOVERING`, not `RESOLVED`.
+4. **The explanation states what changed and no more** — observed, expected, ratio, delta, and the
+   basis that fired. No causal claim.
+
+**Query budget.** 22 bounded Ariel searches (2 per bucket), all aggregated, all `LIMIT`-capped, all
+`START`/`STOP`-scoped, read-only. No raw event was retrieved and no QRadar object was created,
+modified or deleted at any point in this workstream.
+
+### 26.8 Re-evaluated gate
+
+| # | Requirement | §25.5 | **Now** | Evidence |
+|---:|---|---|---|---|
+| 1 | At least one usable WAF source | ⚠ | **✓ PASS** | Source 312, all fields 100% (§26.2) |
+| 2 | Required field availability | ✗ | **✓ PASS** | URL and method 100%; action and status also present (§26.2) |
+| 3 | Selected and bounded entity key | ✓ | **✓ PASS** | §25.4, implemented in `b51cbcf` |
+| 4 | Measured cardinality | ⚠ projected | **✓ PASS** | Measured live; matches the projection exactly (§26.4) |
+| 5 | Defined normalizer behavior | ✓ | **✓ PASS** | Implemented and tested, `f2208c3` |
+| 6 | Defined completeness semantics | ✓ | **✓ PASS** | Implemented and tested, `0142b61` |
+| 7 | Defined persistence natural key | ✓ | **✓ PASS** | Migration `0005`, `NULLS NOT DISTINCT` asserted |
+| 8 | Selected first detector | ✓ | **✓ PASS** | `WAF_REQUEST_RATE_SPIKE`, `82eed39` |
+| 9 | Defined evidence dimensions | ✓ | **✓ PASS** | §13 |
+| 10 | Defined query budget | ✓ | **✓ PASS** | 2 bounded searches per source per bucket (§26.7) |
+| 11 | Defined test fixtures | ✓ | **✓ PASS** | Mock WAF surface + deterministic generator source |
+| 12 | Defined live-validation path | ✓ | **✓ PASS** | Executed (§26.7) |
+| 13 | No blocker that could change the schema | ✓ | **✓ PASS** | Schema built and exercised end to end |
+| — | Event-volume semantics | ✓ | **✓ PASS** | `SUM(eventcount)`, `ae9932a` |
+| — | Nullable virtual-host identity | — | **✓ PASS** | `NULLS NOT DISTINCT` + collector `IS NULL` lookup, both tested |
+| — | Exact-window isolation | — | **✓ PASS** | 120/120 and 3,840/3,840, no unrelated events |
+
+**Thirteen of thirteen.**
+
+### 26.9 Recommendation
+
+> ## Phase B1/B2 development: GO — and delivered
+>
+> Every development condition is met and the vertical slice is implemented, tested and validated
+> against live QRadar telemetry. `INSUFFICIENT_DATA → NORMAL → OPEN → RECOVERING → RESOLVED` was
+> observed end to end on real data (§26.7).
+>
+> What remains for a *complete* Phase B2 is deliberately not built here: the additive API fields of
+> §18.2, the UI rendering of a `WAF_ENDPOINT` subject, and Celery schedule registration. Those are
+> presentation and scheduling, not schema, and none of them can invalidate what is above.
+
+> ## Production WAF onboarding: NO-GO — unchanged, and still not assessable
+>
+> Every WAF measurement in this document is synthetic lab telemetry from a generator whose payload
+> the operator mapped by hand. The seven production-shaped F5 sources remain parsed by a VPN DSM and
+> were deliberately left untouched. Nothing here demonstrates what a real F5 BIG-IP ASM, ModSecurity
+> or cloud WAF deployment exposes, what its endpoint cardinality is after normalization, or whether
+> its traffic has a shape `weekday × hour` can baseline.
+>
+> The schema does not depend on those answers, which is what lets the two verdicts diverge: the
+> entity key uses only vendor-neutral concepts, property names are configuration rather than
+> constants, and the fallback for a source with no virtual host is specified and tested.
+> Onboarding needs its own field-availability pass per WAF product.
+
+### 26.10 Remaining production-estate assumptions **[ASSUMPTION]**
+
+Superseding §25.8. Still unverified, and none of them is a lab question:
+
+1. A production WAF DSM exposes request path and method as queryable properties. The lab proves only
+   that *a* Universal LEEF source with hand-authored properties does.
+2. Production endpoint cardinality stays in the tens-to-hundreds per application after §8
+   normalization. The lab's 10 entities prove the mechanism, not the scale; §8.4's circuit breaker
+   is the guard, and it has never been tripped by real traffic.
+3. Production traffic has a diurnal shape `weekday × hour` can baseline. The lab's profile is flat
+   by construction.
+4. Coalescing on a WAF source behaves as measured elsewhere on this appliance. Both lab runs were
+   1:1 (records = events), so `ae9932a` is proven against production-shaped sources and merely
+   *not contradicted* on a WAF one.
+5. A production WAF exposes a virtual host. None verified so far does, so the nullable fallback —
+   and its documented collision risk between applications sharing a path on one log source — is the
+   live path, not the exception.
