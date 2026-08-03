@@ -39,6 +39,22 @@ class AnomalyType(StrEnum):
     REPEATED_PAYLOAD = "REPEATED_PAYLOAD"
 
 
+class WafAnomalyType(StrEnum):
+    """Phase B WAF detector taxonomy.
+
+    Deliberately separate from `AnomalyType` rather than added to it: the Phase A
+    enum is persisted in `log_source_anomaly.anomaly_type` and in alert
+    fingerprints, and widening it would make a Phase A row's type column able to
+    hold a value no Phase A detector can produce.
+
+    Only the rate spike is implemented. The ratio detectors are named here
+    because their contract is specified (section 11.3) but they have no
+    numerator until a WAF source exposes blocked and error counts.
+    """
+
+    WAF_REQUEST_RATE_SPIKE = "WAF_REQUEST_RATE_SPIKE"
+
+
 class AnomalyState(StrEnum):
     """Explicit anomaly lifecycle.
 

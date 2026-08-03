@@ -41,6 +41,14 @@ from app.models.search import (
     SearchQueryVersion,
     SearchResultMetric,
 )
+from app.models.waf import (
+    WafAnomaly,
+    WafAnomalyTransition,
+    WafDetectorState,
+    WafEndpoint,
+    WafEndpointBaseline,
+    WafEndpointMetric,
+)
 
 # The set of tables Timescale should manage as hypertables, with their time
 # column. Consumed by the migration so this stays the single source of truth.
@@ -51,6 +59,7 @@ HYPERTABLES: dict[str, str] = {
     "offense_snapshot": "captured_at",
     "rule_health_snapshot": "evaluated_at",
     "detection_coverage_snapshot": "captured_at",
+    "waf_endpoint_metric": "bucket_start",
 }
 
 __all__ = [
@@ -88,5 +97,11 @@ __all__ = [
     "SearchResultMetric",
     "TechniqueMapping",
     "User",
+    "WafAnomaly",
+    "WafAnomalyTransition",
+    "WafDetectorState",
+    "WafEndpoint",
+    "WafEndpointBaseline",
+    "WafEndpointMetric",
     "user_role",
 ]
