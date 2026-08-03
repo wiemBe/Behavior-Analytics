@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 import ssl
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
@@ -49,6 +50,8 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    WafObservationBatch,
+    WafRequestGroup,
 )
 from app.providers.normalize import (
     as_int,
@@ -640,6 +643,108 @@ class QRadarRestProvider(QRadarProvider):
             distinct_count=len(values),
             total_count=total,
             truncated=len(values) >= limit,
+            query=aql,
+        )
+
+    # ------------------------------------------------------------ WAF (Phase B)
+    #: Custom-property names are site-authored and reach the query text, so they
+    #: are validated against this before interpolation. QRadar property names are
+    #: letters, digits, underscore, space and hyphen; anything else -- a quote, a
+    #: comma, a parenthesis -- is rejected rather than escaped, because an
+    #: allowlist that a reviewer can verify by eye beats a quoting scheme that
+    #: has to be trusted.
+    _PROPERTY_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ -]{0,63}$")
+
+    @classmethod
+    def _quote_property(cls, name: str) -> str:
+        if not cls._PROPERTY_NAME.match(name):
+            raise ValueError(f"unsafe QRadar property name: {name!r}")
+        return f'"{name}"'
+
+    async def get_waf_observations(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None = None,
+        max_groups: int = 500,
+    ) -> WafObservationBatch:
+        """Two bounded aggregates: grouped request volume, and the window total.
+
+        The second query is not redundant. Grouping by URL and method drops
+        events whose properties did not extract, so the grouped sum alone cannot
+        distinguish "this source sent 500 requests to three endpoints" from "this
+        source sent 5,000 requests and we could only parse 500 of them". The
+        ratio between them is the endpoint coverage that decides COMPLETE vs
+        PARTIAL, and guessing it would be exactly the silent-zero failure the
+        completeness model exists to prevent.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = self._bounded_window(window_start, window_end)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        limit = max(1, min(max_groups, self._page_size))
+
+        url = self._quote_property(url_property)
+        method = self._quote_property(method_property)
+        vhost = (
+            self._quote_property(virtual_host_property)
+            if virtual_host_property
+            else None
+        )
+        group_cols = f"{url}, {method}" + (f", {vhost}" if vhost else "")
+        vhost_select = f", {vhost} AS \"raw_virtual_host\"" if vhost else ""
+
+        # SUM(eventcount) for volume; COUNT(*) retained only as provenance so an
+        # operator can see the coalescing ratio. See commit ae9932a.
+        aql = (
+            f'SELECT {url} AS "raw_url", {method} AS "raw_method"{vhost_select}, '  # noqa: S608
+            'SUM(eventcount) AS "request_count", COUNT(*) AS "record_count", '
+            'UNIQUECOUNT(sourceip) AS "distinct_clients" FROM events '
+            f"WHERE logsourceid = {int(qradar_log_source_id)} "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY {group_cols} ORDER BY SUM(eventcount) DESC LIMIT {limit} "
+            # START/STOP scopes the search itself; without it a historical bucket
+            # silently returns nothing. See get_log_source_metrics.
+            f"START {start_ms} STOP {end_ms}"
+        )
+        rows = await self._run_bounded_aggregate(aql, max_rows=limit)
+
+        groups: list[WafRequestGroup] = []
+        for row in rows:
+            count = as_int(row.get("request_count"))
+            if count is None or count < 0:
+                continue
+            groups.append(
+                WafRequestGroup(
+                    raw_url=as_text(row.get("raw_url"), limit=2048),
+                    raw_method=as_text(row.get("raw_method"), limit=32),
+                    raw_virtual_host=as_text(row.get("raw_virtual_host"), limit=255),
+                    request_count=count,
+                    record_count=as_int(row.get("record_count")) or 0,
+                    distinct_client_count=as_int(row.get("distinct_clients")),
+                )
+            )
+
+        total_aql = (
+            'SELECT SUM(eventcount) AS "total_events" FROM events '  # noqa: S608
+            f"WHERE logsourceid = {int(qradar_log_source_id)} "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+            f"LIMIT 1 START {start_ms} STOP {end_ms}"
+        )
+        total_rows = await self._run_bounded_aggregate(total_aql, max_rows=1)
+        total = as_int(total_rows[0].get("total_events")) if total_rows else 0
+
+        return WafObservationBatch(
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=start,
+            window_end=end,
+            groups=groups,
+            total_events=total or 0,
+            truncated=len(groups) >= limit,
             query=aql,
         )
 

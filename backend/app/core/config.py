@@ -297,6 +297,40 @@ class Settings(BaseSettings):
         ]
     )
 
+    # --- Phase B: WAF endpoint behavior -------------------------------------
+    #: WAF collection is opt-in. Phase B is a development capability until a
+    #: real WAF source proves the production field equivalents, so it stays off
+    #: unless an operator turns it on for a source they have verified.
+    waf_collection_enabled: bool = False
+    #: QRadar custom-property display names. Site-authored and NOT derivable
+    #: from the LEEF keys a device emits -- assuming they matched cost an entire
+    #: round of zero-population measurements. Validated against a strict
+    #: allowlist before reaching any query text.
+    waf_url_property: str = "URL"
+    waf_method_property: str = "HTTP_Method"
+    #: No verified WAF DSM exposes a virtual host yet. Empty means "not
+    #: available", which the collector represents as NULL -- never "".
+    waf_virtual_host_property: str = ""
+    #: Groups fetched per source per bucket. The circuit breaker against
+    #: attacker-controlled path cardinality: hitting it marks the bucket PARTIAL
+    #: rather than silently storing a prefix as if it were the whole truth.
+    waf_max_groups_per_bucket: int = Field(default=500, ge=1, le=5000)
+    #: Below this share of a source's events carrying a parseable endpoint, the
+    #: bucket is PARTIAL. A bucket where a third of the traffic had no path is
+    #: not a whole observation of any endpoint in it.
+    waf_min_endpoint_coverage: float = Field(default=0.90, ge=0.0, le=1.0)
+    #: Days without an observation before an endpoint is retired and stops being
+    #: zero-filled. This is what bounds zero-row growth over time.
+    waf_endpoint_active_days: int = Field(default=7, ge=1, le=90)
+    #: Minimum requests per bucket for a defensible volume verdict. Mirrors the
+    #: Phase A guard that kills the 0.2-to-0.4-EPS false positive, at endpoint
+    #: scale rather than log-source scale.
+    waf_min_bucket_requests: float = Field(default=20.0, ge=0.0)
+    #: Minimum absolute change, in requests per bucket.
+    waf_min_absolute_delta_requests: float = Field(default=50.0, ge=0.0)
+    #: observed/expected must reach this to be a spike candidate.
+    waf_spike_ratio: float = Field(default=2.0, gt=1.0)
+
     # --- Notifications ------------------------------------------------------
     notify_max_retries: int = Field(default=5, ge=0, le=20)
     notify_retry_base_seconds: float = Field(default=2.0, ge=0.1)

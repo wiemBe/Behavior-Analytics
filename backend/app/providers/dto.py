@@ -111,6 +111,52 @@ class LogSourceMetricSample(ProviderDTO):
     payload_signature: str | None = None
 
 
+class WafRequestGroup(ProviderDTO):
+    """One (raw URL, method) group of WAF requests over a bounded window.
+
+    Deliberately *raw*: normalization is an application concern (see
+    app.waf.normalize), because the rules are not expressible in AQL and must
+    stay deterministic and unit-testable. `raw_url` therefore may still carry a
+    query string and must be normalized before any value derived from it is
+    persisted. It exists only for the lifetime of one collection call.
+
+    `request_count` is SUM(eventcount), never COUNT(*): QRadar coalesces
+    identical events into one Ariel record carrying a multiplier.
+    """
+
+    raw_url: str | None = None
+    raw_method: str | None = None
+    raw_virtual_host: str | None = None
+    request_count: int = 0
+    #: Physical Ariel rows behind `request_count`. Kept for provenance so an
+    #: operator can see how hard this group coalesced; never used as volume.
+    record_count: int = 0
+    distinct_client_count: int | None = None
+
+
+class WafObservationBatch(ProviderDTO):
+    """Everything one WAF log source produced over one bucket.
+
+    `total_events` is the source's whole volume for the window, including events
+    whose URL or method did not parse. `groups` covers only the parseable ones,
+    so `sum(g.request_count) / total_events` is the endpoint coverage ratio --
+    the number that decides whether the bucket is COMPLETE or PARTIAL. Deriving
+    coverage from a second query rather than assuming 1.0 is the whole point:
+    a bucket where a third of the traffic had no path is not a whole observation
+    of any endpoint in it.
+    """
+
+    qradar_log_source_id: int
+    window_start: datetime
+    window_end: datetime
+    groups: list[WafRequestGroup] = Field(default_factory=list)
+    total_events: int = 0
+    #: The group cap was hit, so `groups` is a prefix of the truth and the
+    #: bucket must be marked PARTIAL rather than presented as whole.
+    truncated: bool = False
+    query: str | None = None
+
+
 class OffenseDTO(ProviderDTO):
     qradar_id: int
     description: str | None = None

@@ -32,6 +32,7 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    WafObservationBatch,
 )
 
 
@@ -139,6 +140,34 @@ class QRadarProvider(ABC):
         marking the ones the source's DSM does not populate as
         ``available=False`` rather than omitting them. Silence about a field is
         indistinguishable from a measured zero, and only one of those is true.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_waf_observations(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None = None,
+        max_groups: int = 500,
+    ) -> WafObservationBatch:
+        """Bounded per-endpoint request volume for one WAF source and window.
+
+        The property names are passed in rather than hard-coded because they are
+        site-authored custom properties: QRadar display names do not follow the
+        LEEF keys a device emits, and assuming otherwise produced an entire
+        round of zero-population measurements. They are validated against a
+        strict allowlist pattern before reaching any query text.
+
+        Requires AQL_EXECUTION, so this never runs through MCP.
+
+        Implementations must return raw, un-normalized values -- normalization
+        is deterministic application logic (app.waf.normalize) and must not be
+        pushed into AQL where it cannot be unit-tested.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError

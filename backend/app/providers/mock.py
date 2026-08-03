@@ -32,6 +32,8 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    WafObservationBatch,
+    WafRequestGroup,
 )
 
 _LOG_SOURCE_TYPES = [
@@ -225,6 +227,79 @@ class MockQRadarProvider(QRadarProvider):
                 )
             )
         return out
+
+    #: Endpoints the mock WAF source publishes. Mirrors the shape the lab
+    #: generator produces so a fixture-driven test and a live lab run exercise
+    #: the same normalization paths -- including the query string, which must be
+    #: stripped, and the numeric id, which must be templated.
+    _MOCK_WAF_ENDPOINTS: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("/api/v1/report?id=1%27+OR+%271%27%3D%271", "GET"),
+        ("/api/v1/status", "GET"),
+        ("/portal/login", "POST"),
+        ("/portal/login", "GET"),
+        ("/static/app.css", "GET"),
+        ("/users/12345/orders/98", "GET"),
+        ("/", "GET"),
+    )
+
+    #: Requests the mock source emits that carry no parseable endpoint. Their
+    #: presence is what makes endpoint coverage < 1.0, so a collector test can
+    #: exercise the PARTIAL path without hand-building a batch.
+    _MOCK_WAF_UNPARSED_SHARE = 0.05
+
+    async def get_waf_observations(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None = None,
+        max_groups: int = 500,
+    ) -> WafObservationBatch:
+        """Deterministic per-endpoint volume, seeded from the window.
+
+        Values are raw and un-normalized on purpose: the mock stands in for
+        QRadar, and QRadar returns what the device sent. A mock that returned
+        pre-normalized paths would let a collector bug that skips normalization
+        pass every test.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        seconds = max(1.0, (window_end - window_start).total_seconds())
+        rng = random.Random(  # noqa: S311 - deterministic fixture, not crypto
+            f"waf:{qradar_log_source_id}:{int(window_start.timestamp())}"
+        )
+        groups: list[WafRequestGroup] = []
+        for raw_url, method in self._MOCK_WAF_ENDPOINTS:
+            weight = rng.random() ** 2
+            count = int(weight * seconds * 0.5) + 1
+            groups.append(
+                WafRequestGroup(
+                    raw_url=raw_url,
+                    raw_method=method,
+                    raw_virtual_host=(
+                        "portal.lab.test" if virtual_host_property else None
+                    ),
+                    request_count=count,
+                    record_count=count,
+                    distinct_client_count=1 + int(weight * 20),
+                )
+            )
+        groups.sort(key=lambda g: g.request_count, reverse=True)
+        capped = groups[:max_groups]
+        parsed = sum(g.request_count for g in capped)
+        # Total exceeds the parsed sum, so coverage is genuinely below 1.
+        total = int(parsed / (1.0 - self._MOCK_WAF_UNPARSED_SHARE))
+        return WafObservationBatch(
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            groups=capped,
+            total_events=total,
+            truncated=len(groups) > max_groups,
+            query=f"MOCK WAF GROUP BY {url_property}, {method_property}",
+        )
 
     def _seasonal_eps(self, when: datetime, shape: str) -> float:
         # ISO weekday 1..7, hour 0..23.
