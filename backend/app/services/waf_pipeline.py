@@ -100,6 +100,8 @@ class WafPipelineReport:
     log_source_id: uuid.UUID | None
     status: str = "ok"
     reason: str | None = None
+    planned_breakdowns: list[str] = field(default_factory=list)
+    skipped_breakdowns: dict[str, str] = field(default_factory=dict)
     collection: WafCollectionReport | None = None
     evaluated_buckets: list[datetime] = field(default_factory=list)
     endpoint_evaluations: int = 0
@@ -118,6 +120,8 @@ class WafPipelineReport:
             "log_source_id": str(self.log_source_id) if self.log_source_id else None,
             "status": self.status,
             "reason": self.reason,
+            "planned_breakdowns": self.planned_breakdowns,
+            "skipped_breakdowns": self.skipped_breakdowns,
             "intervals_collected": c.intervals_collected if c else 0,
             "rows_written": c.rows_written if c else 0,
             "ariel_searches": c.ariel_searches if c else 0,
@@ -192,6 +196,13 @@ class WafSourcePipeline:
             report.reason = "the profile's QRadar instance no longer exists"
             return report
 
+        plan = breakdown_plan(profile, self.settings)
+        report.planned_breakdowns = sorted(breakdown.value for breakdown in plan.collect)
+        report.skipped_breakdowns = {
+            breakdown.value: reason
+            for breakdown, reason in sorted(plan.skipped.items())
+        }
+
         async with CollectorAdvisoryLock(
             self.session,
             self.settings,
@@ -210,6 +221,7 @@ class WafSourcePipeline:
                 settings=self.settings,
                 clock=self._clock,
                 ariel_budget=self.ariel_budget,
+                breakdowns=plan,
             )
             report.collection = await collector.collect(instance, log_source=log_source)
             if report.collection.skipped_locked:
@@ -236,7 +248,7 @@ class WafSourcePipeline:
                 collector.metric_semantics,
                 {
                     breakdown: collector.breakdown_semantics(breakdown)
-                    for breakdown in breakdown_plan(profile, self.settings).collect
+                    for breakdown in plan.collect
                 },
                 report,
             )
