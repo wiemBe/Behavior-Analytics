@@ -108,15 +108,15 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-004 | B.2: fix the 7 ruff E501 errors | opencode `mimo-v2.6-flash-free` | DONE (`be79d8b`) | `make lint` clean; no behavior change in the diff |
 | T-005 | B.2: train the ratio and share baselines (`block_ratio`, `server_error_ratio`, `client_error_ratio`, `top1_client_share`) | Codex | DONE (`53385f0`) | Pooled sums and every exclusion tested; statement count unchanged; registry guard test |
 | T-006a | B.2: run the ratio and concentration detectors in the WAF engine | Codex | DONE (`b52a03d`) | Incidents open and persist; NOT_COLLECTED → INSUFFICIENT_DATA; settings off → engine unchanged; constant statements with 5 detectors per endpoint |
-| T-006b | B.2: novelty. Bulk first-appearance history (`NoveltyFacts`, `HistoryFacts`), `detect_new_endpoint_access` wired. Also replace the production `assert` left by T-006a with a reload-then-raise. | Codex | IN PROGRESS (`agent/t006b`) | History completeness proven per bucket; flood at appearance → INSUFFICIENT_DATA; constant statements |
+| T-006b | B.2: novelty (bulk `NoveltyFacts`/`HistoryFacts`, `detect_new_endpoint_access` wired); replace the production `assert` from T-006a; fix the T-006a mypy error at `engine.py:443` | Codex (cut off by its usage limit) → Sonnet finishing | IN PROGRESS (`agent/t006b`) | History completeness proven per bucket; flood at appearance → INSUFFICIENT_DATA; constant statements; no mypy error in `engine.py` |
 | T-007 | B.2: tests for `breakdown.py`, collector breakdown searches, and `get_waf_breakdown` (mock and REST) | Sonnet | DONE (`c122b42`) | FAILED, NOT_COLLECTED and truncated breakdowns are covered; unmapped action values never count as allowed |
 | T-008 | B.2: unit tests for every `behavior.py` detector guard | Sonnet | DONE (`e4fcaf5`) | Every INSUFFICIENT_DATA / HEALTHY / anomalous exit is pinned, including INCREASE_ONLY scope |
-| T-009 | B.2: capability truth. Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Orchestrator decides the values; agent applies them | TODO (after T-005, T-006a/b) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
+| T-009 | B.2: capability truth (spec written; launches after T-006b). Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Orchestrator decides the values; agent applies them | TODO (after T-005, T-006a/b) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
 | T-010 | B.2: design doc §30 and README roadmap entry | Sonnet | TODO (last) | Documents what was built, measured and deferred, in the existing doc style |
 | T-011 | Migration tests vs 0010: pin the 0009 test to revision `0009`; add a 0010 round-trip test under the transient-default convention | Sonnet | DONE | `test_migrations.py` 10/10 (re-run by the orchestrator on a fresh DB) |
 | T-012 | mypy regression at `waf_endpoint_collector.py:572`: an Optional is reassigned to a non-Optional variable. Type-only; the runtime is guarded. | opencode `ling-3.1-flash-free` | IN PROGRESS (`agent/t012`) | mypy back to 31 errors in 18 files |
 | T-013 | Breakdown fold defects found by T-007: non-ASCII status digits; unparseable source IPs posing as a client | Sonnet | DONE (`02374e9`) | ASCII-only status codes; unparseable values unattributed; regression tests; one defect-pinning test replaced with approval |
-| T-014 | **Production wiring gap:** the scheduled pipeline never passes a `BreakdownPlan` to the collector, so breakdowns, and hence B.2 detectors, never run in production | Codex | IN PROGRESS (`agent/t014`) | A test through `run_waf_source` proves collection when enabled and validated, NOT_COLLECTED otherwise, and a block-ratio incident opening through the scheduled path alone |
+| T-014 | **Production wiring gap:** the scheduled pipeline never passed a `BreakdownPlan` to the collector, so breakdowns, and hence B.2 detectors, never ran in production | Codex (cut off by its usage limit) → Sonnet finishing | IN PROGRESS (`agent/t014`) | A test through `run_waf_source` proves collection when enabled and validated, NOT_COLLECTED and zero searches otherwise, and a block-ratio incident opening through the scheduled path alone |
 
 **Later, not yet scheduled:**
 
@@ -226,6 +226,19 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
   `ling-3.1-flash-free`). The full suite is running on the integration branch.
 - Tooling note: pytest's project `addopts` already has `-q`, so adding another `-q` hides the
   summary line. Run without `-q`, or use `--junitxml`, to get counts.
+- **Round 2 status:**
+  - Full suite on the integration branch after round 1: **2,005 tests, 8 failed.** All 8 are the
+    T-009 set; the migration test is green.
+  - **Codex hit its ChatGPT usage limit** mid-task on both T-006b and T-014 (reset 19:24). It
+    still exits 0 and writes no report, so always check the log tail. Both half-done worktrees
+    were handed to Sonnet with the original spec and an instruction to review what they inherit.
+  - **mypy is at 33 errors in 20 files.** Two are B.2 regressions:
+    - `waf_endpoint_collector.py:572` → T-012 (diff correct, verification running);
+    - `engine.py:443`, introduced by T-006a (an Optional comprehension type) → folded into T-006b.
+  - **Rule breach by the free model on T-012:** it ran `mypy` in the main checkout instead of
+    its worktree. The command was read-only and the orchestrator verified the main checkout is
+    unchanged. From now on, free-model prompts put every command behind an explicit `cd` into
+    the worktree.
 - **Delegation round 1:** T-004 (opencode free), T-005 and T-006a (Codex), T-007, T-008 and T-011
   (Sonnet, medium). All run in parallel, each in its own worktree with its own database.
 - **D-2 resolved.** Free models probed; see §4.
