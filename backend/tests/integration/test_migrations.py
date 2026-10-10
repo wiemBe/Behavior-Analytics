@@ -420,7 +420,7 @@ def test_0009_backfills_measurement_and_its_downgrade_restores_dense_zeros(
                 " now(), 'waf-anomaly-engine')"
             ))
 
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0009")
 
         with engine.begin() as conn:
             measured = dict(conn.execute(text(
@@ -474,6 +474,126 @@ def test_0009_backfills_measurement_and_its_downgrade_restores_dense_zeros(
             )).scalar() is not None
 
         command.upgrade(cfg, "head")
+    finally:
+        engine.dispose()
+
+
+def test_0010_backfills_existing_rows_and_leaves_no_server_default(
+    clean_db: str,
+) -> None:
+    """0010 backfills existing rows to what they were, and its defaults are transient.
+
+    Buckets and profiles written before 0010 read NOT_COLLECTED, `{}` and NULLs,
+    and the measurement check constraints reject an unknown value. The backfill
+    defaults are dropped again, so a fresh install and an upgraded database match.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from alembic import command
+
+    cfg = _alembic_config(clean_db)
+    command.upgrade(cfg, "0009")
+    ls = "cccccccc-0000-0000-0000-000000000001"
+    sem = "request_count/v1;agg=SUM(eventcount);normalizer/v1;profile/v1"
+    b0, b2 = "2026-08-03 19:00+00", "2026-08-03 19:10+00"
+    bucket_columns = (
+        "log_source_id, bucket_start, bucket_seconds, profile_version, metric_semantics, "
+        "completeness, endpoint_coverage_ratio, total_events, parsed_events, group_count, "
+        "groups_truncated, unusable_groups, observed_endpoints, tracked_endpoints_observed, "
+        "admitted_endpoints, below_admission_threshold, rejected_over_quota, "
+        "untracked_endpoints, untracked_requests, admission_truncated, zero_filled_endpoints, "
+        "in_maintenance, collection_source, query_provenance, "
+        "request_count_measurement, sparse_endpoint_rows"
+    )
+
+    def insert_bucket(conn, start: str, measurements: str | None = None) -> None:
+        """A 0009 bucket, or a 0010 one when `measurements` names the three columns."""
+        columns = bucket_columns + (
+            ", action_measurement, response_code_measurement, client_measurement"
+            if measurements
+            else ""
+        )
+        conn.execute(text(
+            f"INSERT INTO waf_source_bucket ({columns}) "  # noqa: S608
+            f"VALUES (CAST(:ls AS uuid), '{start}', 300, 1, :sem, 'COMPLETE', 1.0, 40, 40, 1, "
+            "false, 0, 1, 1, 0, 0, 0, 0, 0, false, 0, false, 'mock', '{}'::jsonb, "
+            f"'EXACT', true{', ' + measurements if measurements else ''})"
+        ).bindparams(ls=ls, sem=sem))
+
+    breakdowns = ("action", "response_code", "client")
+    select_new = ", ".join(
+        f"{n}_measurement, {n}_semantics, {n}_events" for n in breakdowns
+    )
+    not_collected = ("NOT_COLLECTED", None, None) * 3
+
+    engine = create_engine(clean_db, future=True)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO qradar_instance (id, name, console_host, api_version, verify_ssl, "
+                " provider_kind, mcp_enabled, enabled, status, consecutive_failures) "
+                "VALUES (CAST(:i AS uuid), 'lab', 'qradar.lab.local', '20.0', true, 'REST', "
+                " false, true, 'HEALTHY', 0)"
+            ).bindparams(i=INSTANCE_ID))
+            conn.execute(text(
+                "INSERT INTO log_source (id, instance_id, qradar_id, name, enabled, criticality, "
+                " monitoring_enabled, maintenance_mode, business_hours_only, "
+                " business_hours_start, business_hours_end, business_days, timezone_name, "
+                " custom_thresholds) VALUES (CAST(:ls AS uuid), CAST(:i AS uuid), 312, 'waf', "
+                " true, 'MEDIUM', true, false, false, 8, 18, '[1,2,3,4,5]', 'UTC', '{}')"
+            ).bindparams(ls=ls, i=INSTANCE_ID))
+            insert_bucket(conn, b0)
+            conn.execute(text(
+                "INSERT INTO waf_source_profile (id, instance_id, log_source_id, enabled, "
+                " profile_version, url_property, method_property, validation_status, "
+                " validation_report) VALUES (gen_random_uuid(), CAST(:i AS uuid), "
+                " CAST(:ls AS uuid), false, 1, 'url', 'method', 'UNVALIDATED', '{}'::jsonb)"
+            ).bindparams(i=INSTANCE_ID, ls=ls))
+
+        command.upgrade(cfg, "0010")
+
+        with engine.begin() as conn:
+            # The bucket written at 0009 reads as nothing measured.
+            assert tuple(conn.execute(text(
+                f"SELECT {select_new} FROM waf_source_bucket"  # noqa: S608
+            )).one()) == not_collected
+
+            # A profile written at 0009 reads as having no authored action map.
+            assert conn.execute(text(
+                "SELECT action_value_map FROM waf_source_profile"
+            )).scalar_one() == {}
+
+            # The backfill defaults were transient: a fresh install has none, so an
+            # upgraded database must not either.
+            leftovers = [
+                row[0]
+                for row in conn.execute(text(
+                    "SELECT table_name || '.' || column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND column_default IS NOT NULL "
+                    "  AND column_name NOT IN ('created_at', 'updated_at')"
+                ))
+            ]
+            assert not leftovers, f"backfill server defaults were left behind: {leftovers}"
+
+        # A value outside the allowed set is still rejected.
+        for position, name in enumerate(breakdowns):
+            measurements = ["'EXACT'"] * 3
+            measurements[position] = "'BOGUS'"
+            with (
+                pytest.raises(IntegrityError, match=f"{name}_measurement_known"),
+                engine.begin() as conn,
+            ):
+                insert_bucket(conn, b2, ", ".join(measurements))
+
+        command.downgrade(cfg, "0009")
+        command.upgrade(cfg, "head")
+
+        from alembic.util.exc import AutogenerateDiffsDetected
+
+        try:
+            command.check(cfg)
+        except AutogenerateDiffsDetected as exc:  # pragma: no cover - failure path
+            pytest.fail(f"schema drift detected between models and migrations:\n{exc}")
     finally:
         engine.dispose()
 
