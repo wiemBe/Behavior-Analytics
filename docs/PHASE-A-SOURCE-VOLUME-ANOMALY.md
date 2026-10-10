@@ -24,11 +24,12 @@ Ariel bounded aggregate  ->  metric bucket  ->  seasonal baseline
 | Field | Meaning |
 |---|---|
 | `bucket_start` / `bucket_seconds` | Half-open UTC interval `[start, start+seconds)` |
-| `event_count`, `average_eps`, `peak_eps` | Observed volume |
+| `event_count`, `average_eps` | Observed volume. `event_count` is `SUM(eventcount)`: events, not Ariel records (`ae9932a`) |
+| `peak_eps` | Not measured by the live Ariel path. Stored as its 0.0 default; the API returns `null` |
 | `first_event_at`, `last_event_at` | Bounds of observed traffic |
 | `completeness` | `COMPLETE` / `PARTIAL` / `MISSING` |
 | `collection_source` | `ariel_aggregate` or `mock` |
-| `query_provenance` | AQL shape, window, row counts. Non-secret |
+| `query_provenance` | Collector, window, provider, sample count, `event_count_aggregation`, and the `telemetry` the provider measured. Non-secret. Rows collected before 2026-09-13 lack the last two |
 | `collection_duration_ms`, `collected_at`, `watermark_at` | Collection provenance |
 
 Bucket identity is `floor(epoch / bucket_seconds) * bucket_seconds`, so every
@@ -64,6 +65,10 @@ Below `BASELINE_MIN_SAMPLES` a cell is stored, marked `is_reliable=False`, and
 a misleading `NORMAL`.
 
 ## 4. Detection
+
+These three are the Phase A detectors that run on live data. `detectors.py` also
+implements six more, none of which is fed by the live Ariel aggregate; the engine
+does not run them on live buckets. See the architecture document §12.3.
 
 ### 4.1 Spike / drop
 
@@ -141,8 +146,10 @@ Counts are compared on a **rate basis**; comparing a 10-minute anomaly against a
 
 **Dimensions.** `qid`, `event_name`, `source_ip`, `destination_ip`,
 `destination_port`, `source_port`, `username`, `action`, `category`, `protocol`.
-One bounded aggregate Ariel query per dimension per window, `GROUP BY … ORDER BY
-COUNT(*) DESC LIMIT n`. No raw events are retrieved.
+One bounded aggregate Ariel query per dimension per window, `SUM(eventcount) …
+GROUP BY … ORDER BY SUM(eventcount) DESC LIMIT n`. No raw events are retrieved.
+Distinct counts and truncation still count returned rows: they measure
+cardinality, not volume.
 
 **Per contributor:** baseline count, anomaly count, absolute delta, percent
 delta, anomaly share, baseline share, signed contribution share, both ranks,
@@ -330,7 +337,7 @@ lint, typecheck and production build clean · `alembic upgrade head` +
 NO_EVENTS all passed against the real appliance; see `docs/LAB-DEMO-RESULTS.md`
 for run IDs, actual lifecycle timestamps and evidence limitations.
 
-Live validation found and fixed four defects that automated tests had missed,
+Live validation found and fixed five defects that automated tests had missed,
 each with regression coverage that fails without the fix:
 
 | Commit | Defect |
@@ -343,6 +350,36 @@ each with regression coverage that fails without the fix:
 
 Three of these share one root cause: reading `resolved_at` as a lifecycle
 signal. See §11.2.
+
+A sixth defect was found after validation by live measurement rather than by a
+lab run: `ae9932a` — volume and contributor counts used `COUNT(*)`, which counts
+coalesced Ariel records rather than events (~197 records for ~7,570 events on
+four sources). See the architecture document §12.4, including the
+mixed-history hazard for baselines that span the fix.
+
+**Preflight audit, 2026-09-13.** Of the nine `AnomalyType` detectors, only
+`NO_EVENTS`, `VOLUME_SPIKE` and `VOLUME_DROP` are fed by live telemetry. The other
+six were executed on every bucket and, for three of them, recorded HEALTHY
+verdicts from DTO defaults. The engine now runs a detector only on buckets that
+measured its inputs; see the architecture document §12.3.
+
+Gates after the preflight audit (2026-09-13): Ruff clean · Mypy 31 errors in 18
+files (unchanged) · **1401 backend tests passed, 0 failed** (1046 unit + 355
+integration) · **629 frontend tests passed** · frontend lint, typecheck and
+production build clean · `alembic upgrade head` + `alembic check` clean at
+revision `0007` on a freshly reset schema. The Phase A lifecycle, baseline,
+engine and API integration suites pass unchanged in behavior.
+
+**Maintenance semantics finding (Phase B.1, 2026-09-13) — not changed.** The
+maintenance rule has no start time and Phase A evaluates it against the current
+flag on every use. While maintenance is on, every baseline rebuild therefore
+excludes *every* bucket in the lookback that starts at or before
+`maintenance_until`, including buckets collected before maintenance was
+configured; a cell with no remaining samples keeps its previous values. When the
+flag is cleared, the maintenance buckets become eligible to train again. The WAF
+domain avoids both by recording the decision per bucket at collection time.
+Applying that to Phase A needs a column on `log_source_metric` and changes live
+behavior, so it awaits a decision. See `PHASE-B-WAF-BEHAVIOR.md` §28.4.
 
 **Remaining follow-ups (none blocking):**
 

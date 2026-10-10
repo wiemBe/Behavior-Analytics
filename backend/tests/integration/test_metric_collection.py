@@ -118,6 +118,29 @@ async def test_advisory_lock_prevents_overlap(db_session) -> None:
         holder.dispose()
 
 
+async def test_provenance_records_what_the_count_counts_and_what_was_measured(
+    db_session,
+) -> None:
+    """Every bucket states its event aggregation and its measured telemetry.
+
+    Without these a reader cannot tell events from Ariel records, or a measured
+    zero from a DTO default -- and the anomaly engine gates detectors on the
+    second. Zero-filled rows must carry the same declaration as reported ones.
+    """
+    instance = await _seed_inventory(db_session)
+    now = datetime(2026, 7, 15, 10, 3, tzinfo=UTC)
+    collector = MetricCollector(db_session, MockQRadarProvider(seed=1337),
+                                settings=_settings(), clock=lambda: now)
+    await collector.collect(instance)
+
+    rows = list((await db_session.scalars(select(LogSourceMetric))).all())
+    assert rows
+    expected = sorted(t.value for t in MockQRadarProvider.log_source_telemetry)
+    for row in rows:
+        assert row.query_provenance["event_count_aggregation"] == "synthetic"
+        assert row.query_provenance["telemetry"] == expected
+
+
 class TestZeroFill:
     """A silent source must leave an explicit zero bucket, not nothing at all.
 

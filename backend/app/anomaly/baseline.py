@@ -25,7 +25,14 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.anomaly import statistics as rstats
+from app.anomaly.seasonal import (
+    anomaly_exclusion_span,
+    in_any_span,
+    in_maintenance,
+    retained_fraction,
+    seasonal_key,
+    summarize_cell,
+)
 from app.core.config import Settings, get_settings
 from app.models.log_source import (
     LogSource,
@@ -102,8 +109,7 @@ class BaselineBuilder:
         # weekend without needing months of history to populate.
         cells: dict[tuple[str, int, int], list[float]] = {}
         for obs in observations:
-            weekday = obs.bucket_start.isoweekday()
-            hour = obs.bucket_start.hour
+            weekday, hour = seasonal_key(obs.bucket_start)
             for metric, value in obs.values.items():
                 cells.setdefault((metric, weekday, hour), []).append(value)
 
@@ -111,7 +117,7 @@ class BaselineBuilder:
         # candidate buckets in the lookback actually survived exclusion. A cell
         # built from 4 of 28 buckets is far weaker than one built from 26 even
         # when both clear the minimum sample count.
-        completeness = (len(observations) / candidates) if candidates else 0.0
+        completeness = retained_fraction(len(observations), candidates)
 
         written = 0
         for (metric, weekday, hour), values in cells.items():
@@ -214,11 +220,10 @@ class BaselineBuilder:
                 )
             ).all()
         )
-        spans: list[tuple[datetime, datetime]] = []
-        for a in anomalies:
-            span_end = a.resolved_at or a.anomaly_end or end
-            spans.append((a.detected_at, span_end))
-        return spans
+        return [
+            anomaly_exclusion_span(a.detected_at, a.anomaly_end, a.resolved_at, end)
+            for a in anomalies
+        ]
 
     def _exclusion_reason(
         self,
@@ -228,8 +233,10 @@ class BaselineBuilder:
     ) -> str | None:
         """The ExclusionTally field name to charge this bucket to, or None."""
         # Maintenance window.
-        if log_source.maintenance_mode and (
-            log_source.maintenance_until is None or when <= log_source.maintenance_until
+        if in_maintenance(
+            when,
+            maintenance_mode=log_source.maintenance_mode,
+            maintenance_until=log_source.maintenance_until,
         ):
             return "maintenance"
         # Business-hours-only sources: off-hours intervals are expected-empty and
@@ -238,7 +245,7 @@ class BaselineBuilder:
             return "off_hours"
         # Known anomaly spans. An ongoing incident must not poison the baseline
         # it will later be judged against.
-        if any(lo <= when <= hi for lo, hi in excluded):
+        if in_any_span(when, excluded):
             return "known_anomaly"
         return None
 
@@ -261,13 +268,10 @@ class BaselineBuilder:
         completeness: float,
         tally: ExclusionTally,
     ) -> None:
-        med = rstats.median(values)
-        mad_value = rstats.mad(values, med)
-        p05 = rstats.percentile(values, 5)
-        p95 = rstats.percentile(values, 95)
-        reliable = len(values) >= self.settings.baseline_min_samples
-        # Bound the stored observation sample so a hot cell doesn't bloat the row.
-        stored_obs = [round(v, 4) for v in values[-200:]]
+        cell = summarize_cell(values, min_samples=self.settings.baseline_min_samples)
+        med, mad_value, p05, p95 = cell.median, cell.mad, cell.p05, cell.p95
+        reliable = cell.is_reliable
+        stored_obs = cell.observations
 
         existing = await self.session.scalar(
             select(LogSourceBaseline).where(

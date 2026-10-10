@@ -12,31 +12,34 @@ Only the spike direction is implemented. Drop is deliberately absent: an
 endpoint receiving no requests is normal, Phase A's NO_EVENTS already detects
 whole-source silence, and raising a second alert for the same physical condition
 would be noise. See docs/PHASE-B-WAF-BEHAVIOR.md sections 10.4 and 11.2.
+
+**Lower bounds.** When a bucket's counts are lower bounds (grouping truncated or
+coverage below its floor) and the engine grants `INCREASE_ONLY` scope, the
+detector runs its guards on the lower bound. Every guard on the way to an
+anomalous verdict -- minimum volume, ratio, absolute delta, robust z, the
+degenerate-MAD band -- is monotonically non-decreasing in the observed count,
+so a lower bound that clears all of them proves the true count does too. Any
+exit that would have been a normal verdict becomes INSUFFICIENT_DATA instead:
+the hidden events may be exactly what makes it abnormal. See section 29.2.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from app.anomaly import statistics as rstats
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
 from app.models.enums import (
-    AnomalyType,
     BucketCompleteness,
     DetectorSignal,
     RobustScoreStatus,
     Severity,
     WafAnomalyType,
+    WafMeasurement,
 )
-
-#: The `AnomalyEvidence` value object is typed on the Phase A `AnomalyType`.
-#: Rather than widen that enum -- which is persisted in Phase A rows and alert
-#: fingerprints -- Phase B borrows VOLUME_SPIKE as the evidence-level shape and
-#: carries its real detector type separately, in `WafSpikeVerdict.detector_type`.
-#: Nothing persists the borrowed value: `waf_anomaly.detector_type` is written
-#: from the WafAnomalyType below.
-_EVIDENCE_TYPE = AnomalyType.VOLUME_SPIKE
+from app.waf.measurement import WafVerdictScope, default_measurement
 
 
 @dataclass(frozen=True)
@@ -61,6 +64,15 @@ class WafPoint:
     request_count: int
     endpoint_coverage_ratio: float
     distinct_client_count: int | None = None
+    #: What `request_count` claims. None: derive from completeness, which makes
+    #: only a COMPLETE point exact and never assumes a lower bound.
+    measurement: WafMeasurement | None = None
+
+    @property
+    def effective_measurement(self) -> WafMeasurement | None:
+        if self.measurement is not None:
+            return self.measurement
+        return default_measurement(self.completeness)
 
 
 @dataclass
@@ -73,6 +85,10 @@ class WafBaselineCell:
     is_reliable: bool
     completeness: float = 0.0
     baseline_version: int = 1
+    #: Ratio metrics: pooled numerator and denominator over the cell's buckets.
+    numerator_sum: float | None = None
+    denominator_sum: float | None = None
+    metric_semantics: str | None = None
 
 
 @dataclass
@@ -86,12 +102,39 @@ class WafDetectionContext:
     #: own precondition rather than trusting an upstream flag.
     min_coverage: float = 0.9
     extra: dict = field(default_factory=dict)
+    #: Set by the engine when a baseline cell exists but was built under a
+    #: different metric-semantics identity than the bucket. The detector then
+    #: refuses a verdict rather than comparing incomparable numbers.
+    baseline_incompatibility: str | None = None
+    #: What the engine, from the detector's declared measurement requirement
+    #: (app.anomaly.capabilities), allows this verdict to conclude. None means
+    #: no grant: FULL for an exact count and NONE otherwise -- lower-bound
+    #: reasoning is never assumed.
+    verdict_scope: WafVerdictScope | None = None
+    #: Why the scope is narrower than FULL, for the verdict's reason text.
+    scope_reason: str | None = None
+    #: Phase B.2 detectors read the whole observation (breakdown counts and
+    #: their measurement) rather than the request-only `point`.
+    observation: Any = None
+    #: Every baseline cell loaded for the endpoint, by metric name, so a
+    #: detector can put its verdict in context (a concentration verdict states
+    #: whether volume also changed).
+    baselines: dict[str, WafBaselineCell] = field(default_factory=dict)
+    behavior: Any = None
+    novelty: Any = None
+
+    @property
+    def effective_scope(self) -> WafVerdictScope:
+        if self.verdict_scope is not None:
+            return self.verdict_scope
+        exact = self.point.effective_measurement is WafMeasurement.EXACT
+        return WafVerdictScope.FULL if exact else WafVerdictScope.NONE
 
 
 @dataclass
 class WafSpikeVerdict:
     detector_type: WafAnomalyType
-    evidence: AnomalyEvidence
+    evidence: AnomalyEvidence[WafAnomalyType]
 
     @property
     def signal(self) -> DetectorSignal:
@@ -135,28 +178,58 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
     """
     p = ctx.point
     thr = ctx.thresholds
-    at = _EVIDENCE_TYPE
-    dt = WafAnomalyType.WAF_REQUEST_RATE_SPIKE
+    # The evidence carries the real WAF type: it is persisted in
+    # `waf_anomaly.details`, where a borrowed Phase A type would be false.
+    at = dt = WafAnomalyType.WAF_REQUEST_RATE_SPIKE
 
-    def verdict(ev: AnomalyEvidence) -> WafSpikeVerdict:
+    def verdict(ev: AnomalyEvidence[WafAnomalyType]) -> WafSpikeVerdict:
         return WafSpikeVerdict(detector_type=dt, evidence=ev)
 
-    # --- guard 1: the bucket must be a real, whole observation --------------
-    if p.completeness is not BucketCompleteness.COMPLETE:
+    scope = ctx.effective_scope
+    lower_bound = scope is WafVerdictScope.INCREASE_ONLY
+
+    # --- guard 1: the count must support a verdict ---------------------------
+    # A whole observation supports any verdict. A lower bound supports only a
+    # proven increase, and only when the engine granted that scope. Anything
+    # else -- MISSING, or a partial count with no recorded semantics -- none.
+    whole = p.completeness is BucketCompleteness.COMPLETE and scope is WafVerdictScope.FULL
+    partial_bound = lower_bound and p.completeness is BucketCompleteness.PARTIAL
+    if not (whole or partial_bound):
+        reason = f"bucket is {p.completeness.value.lower()}, not a whole observation"
+        if p.completeness is BucketCompleteness.COMPLETE and ctx.scope_reason:
+            reason = ctx.scope_reason
         return verdict(
             insufficient(
+                at, interval_start=p.bucket_start, interval_end=p.bucket_end, reason=reason,
+            )
+        )
+
+    def not_proven(reason: str, *, observed: float, expected: float) -> WafSpikeVerdict:
+        """The normal exit of a guard: healthy for an exact count, no verdict for a bound."""
+        if lower_bound:
+            return verdict(
+                insufficient(
+                    at, interval_start=p.bucket_start, interval_end=p.bucket_end,
+                    reason=(
+                        f"at least {observed:.0f} requests were attributed to this endpoint, "
+                        f"but the count is a lower bound and {reason}; a normal verdict "
+                        "cannot be concluded from a lower bound"
+                    ),
+                )
+            )
+        return verdict(
+            healthy(
                 at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                reason=(
-                    f"bucket is {p.completeness.value.lower()}, not a whole observation"
-                ),
+                observed=observed, expected=round(expected, 3), reason=reason,
             )
         )
 
     # --- guard 2: enough of the source's traffic carried an endpoint --------
     # A bucket where a third of the requests had no parseable path is not a
     # whole observation of any endpoint inside it, however complete the
-    # collection was.
-    if p.endpoint_coverage_ratio < ctx.min_coverage:
+    # collection was. For a lower bound this is already accounted for: the
+    # unattributed events are exactly what the bound leaves out.
+    if not lower_bound and p.endpoint_coverage_ratio < ctx.min_coverage:
         return verdict(
             insufficient(
                 at, interval_start=p.bucket_start, interval_end=p.bucket_end,
@@ -167,7 +240,14 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
             )
         )
 
-    # --- guard 3: adequate baseline ----------------------------------------
+    # --- guard 3: a compatible, adequate baseline ---------------------------
+    if ctx.baseline_incompatibility is not None:
+        return verdict(
+            insufficient(
+                at, interval_start=p.bucket_start, interval_end=p.bucket_end,
+                reason=ctx.baseline_incompatibility,
+            )
+        )
     cell = ctx.baseline
     if cell is None:
         return verdict(
@@ -200,20 +280,18 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
         "baseline_completeness": round(cell.completeness, 3),
         "baseline_version": cell.baseline_version,
         "distinct_client_count": p.distinct_client_count,
+        "request_count_measurement": (
+            WafMeasurement.LOWER_BOUND.value if lower_bound else WafMeasurement.EXACT.value
+        ),
         **ctx.extra,
     }
 
     # --- guard 4: minimum volume -------------------------------------------
     if observed < thr.min_bucket_requests:
-        return verdict(
-            healthy(
-                at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                observed=observed, expected=round(expected, 3),
-                reason=(
-                    f"{observed:.0f} requests/bucket is below the "
-                    f"{thr.min_bucket_requests:.0f} minimum for a defensible verdict"
-                ),
-            )
+        return not_proven(
+            f"{observed:.0f} requests/bucket is below the "
+            f"{thr.min_bucket_requests:.0f} minimum for a defensible verdict",
+            observed=observed, expected=expected,
         )
 
     # --- guard 5: ratio -----------------------------------------------------
@@ -224,28 +302,17 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
         # the absolute-delta guard below carries it alone.
         facts["ratio_basis"] = "expected_zero"
     elif ratio < thr.spike_ratio:
-        return verdict(
-            healthy(
-                at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                observed=observed, expected=round(expected, 3),
-                reason=(
-                    f"observed/expected ratio {ratio:.2f} has not reached "
-                    f"{thr.spike_ratio:.2f}"
-                ),
-            )
+        return not_proven(
+            f"observed/expected ratio {ratio:.2f} has not reached {thr.spike_ratio:.2f}",
+            observed=observed, expected=expected,
         )
 
     # --- guard 6: absolute delta -------------------------------------------
     if delta < thr.min_absolute_delta_requests:
-        return verdict(
-            healthy(
-                at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                observed=observed, expected=round(expected, 3),
-                reason=(
-                    f"increase of {delta:.0f} requests/bucket is below the "
-                    f"{thr.min_absolute_delta_requests:.0f} minimum absolute delta"
-                ),
-            )
+        return not_proven(
+            f"increase of {delta:.0f} requests/bucket is below the "
+            f"{thr.min_absolute_delta_requests:.0f} minimum absolute delta",
+            observed=observed, expected=expected,
         )
 
     # --- guard 7: robust score, or a deterministic fallback ----------------
@@ -257,15 +324,9 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
 
     if status is RobustScoreStatus.OK:
         if z < thr.deviation_z:
-            return verdict(
-                healthy(
-                    at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                    observed=observed, expected=round(expected, 3),
-                    reason=(
-                        f"robust z={z:.2f} has not reached the "
-                        f"+{thr.deviation_z} threshold"
-                    ),
-                )
+            return not_proven(
+                f"robust z={z:.2f} has not reached the +{thr.deviation_z} threshold",
+                observed=observed, expected=expected,
             )
         basis = f"robust z={z:.2f} (threshold +{thr.deviation_z})"
     else:
@@ -277,15 +338,10 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
         lower, upper = _expected_band(cell, ctx.mad_floor_ratio)
         facts["fallback_bound"] = round(upper, 4)
         if observed <= upper:
-            return verdict(
-                healthy(
-                    at, interval_start=p.bucket_start, interval_end=p.bucket_end,
-                    observed=observed, expected=round(expected, 3),
-                    reason=(
-                        "robust score unavailable (MAD=0) and observed value is "
-                        f"inside the expected band [{lower:.2f}, {upper:.2f}]"
-                    ),
-                )
+            return not_proven(
+                "robust score unavailable (MAD=0) and observed value is "
+                f"inside the expected band [{lower:.2f}, {upper:.2f}]",
+                observed=observed, expected=expected,
             )
         basis = (
             "robust score unavailable (MAD=0); observed value is outside the "
@@ -313,8 +369,14 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
             interval_end=p.bucket_end,
             confidence=confidence,
             reason=(
-                f"{observed:.0f} requests is above the baseline median "
-                f"{expected:.1f} ({ratio_text}, +{delta:.0f} requests/bucket); {basis}"
+                (
+                    f"at least {observed:.0f} requests (a lower bound: "
+                    f"{ctx.scope_reason or 'some events could not be attributed'}) "
+                    if lower_bound
+                    else f"{observed:.0f} requests "
+                )
+                + f"is above the baseline median {expected:.1f} "
+                f"({ratio_text}, +{delta:.0f} requests/bucket); {basis}"
             ),
             extra=facts,
         )

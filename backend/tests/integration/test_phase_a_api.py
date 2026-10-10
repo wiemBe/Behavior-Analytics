@@ -75,6 +75,7 @@ PHASE_A_ENDPOINTS = [
     "/api/v1/anomalies",
     "/api/v1/anomalies/summary",
     "/api/v1/behavior/sources",
+    "/api/v1/behavior/detectors",
 ]
 
 
@@ -496,6 +497,47 @@ class TestSourceBehavior:
     def test_unknown_source_is_404(self, seeded) -> None:
         r = client_for(READER).get(f"/api/v1/behavior/sources/{uuid.uuid4()}")
         assert r.status_code == 404
+
+
+class TestMeasuredValuesOnly:
+    def test_an_unmeasured_peak_is_null_not_zero(self, seeded) -> None:
+        """The seeded bucket declares no telemetry, so only volume is credited.
+
+        Its stored `peak_eps` is a column value, not a measurement; publishing it
+        is how a live bucket's NOT NULL default of 0.0 would reach the UI as a
+        measured peak.
+        """
+        window = {
+            "since": _iso(NOW - timedelta(hours=1)),
+            "until": _iso(NOW + timedelta(hours=1)),
+        }
+        body = client_for(READER).get(
+            f"/api/v1/behavior/sources/{seeded['source_id']}/metrics", params=window
+        ).json()
+        assert body, "the seeded bucket must be returned"
+        assert all(bucket["peak_eps"] is None for bucket in body)
+        assert body[0]["event_count"] == 1800
+
+
+class TestDetectorCapabilities:
+    def test_every_named_detector_is_published_with_its_status(self, db_schema) -> None:
+        body = client_for(READER).get("/api/v1/behavior/detectors").json()
+        status = {d["detector_type"]: d["status"] for d in body}
+        assert set(status) == {t.value for t in AnomalyType} | {"WAF_REQUEST_RATE_SPIKE"}
+        assert {t for t, s in status.items() if s == "OPERATIONAL"} == {
+            "NO_EVENTS",
+            "VOLUME_DROP",
+            "VOLUME_SPIKE",
+            "WAF_REQUEST_RATE_SPIKE",
+        }
+        assert status["CARDINALITY_DROP"] == "UNSUPPORTED"
+        assert status["TIMESTAMP_DELAY"] == "SYNTHETIC_ONLY"
+
+    def test_a_non_operational_detector_says_why(self, db_schema) -> None:
+        body = client_for(READER).get("/api/v1/behavior/detectors").json()
+        for detector in body:
+            if detector["status"] != "OPERATIONAL":
+                assert detector["limitation"], detector["detector_type"]
 
 
 class TestSummary:

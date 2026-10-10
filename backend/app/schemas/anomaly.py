@@ -42,9 +42,33 @@ class MetricBucketOut(BaseModel):
     bucket_seconds: int
     event_count: int
     average_eps: float
-    peak_eps: float
+    #: None when the bucket's collection path does not measure a peak. The
+    #: column is NOT NULL with a 0.0 default, and the live Ariel aggregate never
+    #: computes a peak, so serializing the column would publish an invented 0.
+    peak_eps: float | None = None
     completeness: BucketCompleteness
     last_event_at: datetime | None = None
+
+
+class DetectorCapabilityOut(BaseModel):
+    """One named detector: what it needs, and whether anything supplies it.
+
+    An anomaly type existing says nothing about whether it can fire. Clients
+    must read coverage from here rather than infer it from the type enum.
+    """
+
+    domain: str
+    detector_type: str
+    #: OPERATIONAL, NOT_SCHEDULED, SYNTHETIC_ONLY or UNSUPPORTED.
+    status: str
+    required_telemetry: list[str] = Field(default_factory=list)
+    required_baselines: list[str] = Field(default_factory=list)
+    scheduled_task: str | None = None
+    #: What stops the detector running on live data. None when nothing does.
+    limitation: str | None = None
+    #: WAF only: EXACT, or LOWER_BOUND_PROVES_INCREASE when an anomalous verdict
+    #: may be proven from a count that is a lower bound. None for log sources.
+    measurement_requirement: str | None = None
 
 
 class BaselineCellOut(BaseModel):

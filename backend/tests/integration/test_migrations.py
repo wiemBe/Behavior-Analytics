@@ -12,7 +12,9 @@ TEST_DATABASE_URL and drive Alembic's command API directly.
 
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -116,7 +118,7 @@ def test_timescale_extension_and_hypertables(clean_db: str) -> None:
                 )
             }
         assert {"log_source_metric", "search_result_metric", "rule_metric",
-                "offense_snapshot"} <= hypertables
+                "offense_snapshot", "waf_endpoint_metric", "waf_source_bucket"} <= hypertables
     finally:
         engine.dispose()
 
@@ -277,6 +279,201 @@ def test_upgrade_from_phase2_preserves_data_and_adds_phase3(clean_db: str) -> No
 
         for tbl in PHASE3_TABLES:
             assert _table_exists(engine, tbl), f"Phase 3 table {tbl} missing after upgrade"
+    finally:
+        engine.dispose()
+
+
+def test_0006_corrects_the_borrowed_detector_type_in_waf_evidence(clean_db: str) -> None:
+    """WAF evidence written before `AnomalyEvidence` was generic recorded the
+    Phase A VOLUME_SPIKE as the type of a WAF incident. The data migration makes
+    `details` agree with the typed column and leaves every other key alone."""
+    from alembic import command
+
+    cfg = _alembic_config(clean_db)
+    command.upgrade(cfg, "0005")
+
+    endpoint_id = "22222222-2222-2222-2222-222222222222"
+    engine = create_engine(clean_db, future=True)
+    try:
+        with engine.begin() as conn:
+            # The parent instance and log source are irrelevant to a data fix on
+            # waf_anomaly, so FK triggers are skipped for this transaction only.
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            conn.execute(
+                text(
+                    "INSERT INTO waf_endpoint "
+                    "(id, instance_id, log_source_id, normalized_endpoint, http_method, "
+                    " normalizer_version, first_seen_at, last_seen_at, is_active) "
+                    "VALUES (CAST(:e AS uuid), CAST(:i AS uuid), CAST(:i AS uuid), "
+                    "        '/api/v1/report', 'GET', 1, now(), now(), true)"
+                ).bindparams(e=endpoint_id, i=INSTANCE_ID)
+            )
+            for suffix, stored_type in (("1", "VOLUME_SPIKE"), ("2", "WAF_REQUEST_RATE_SPIKE")):
+                conn.execute(
+                    text(
+                        "INSERT INTO waf_anomaly "
+                        "(id, waf_endpoint_id, detector_type, severity, state, detected_at, "
+                        " consecutive_buckets, policy_version, normalizer_version, details, "
+                        " evidence_status, suppressed) "
+                        "VALUES (CAST(:a AS uuid), CAST(:e AS uuid), 'WAF_REQUEST_RATE_SPIKE', "
+                        "        'HIGH', 'RESOLVED', now(), 3, 1, 1, CAST(:d AS jsonb), "
+                        "        'NOT_REQUESTED', false)"
+                    ).bindparams(
+                        a=f"33333333-3333-3333-3333-33333333333{suffix}",
+                        e=endpoint_id,
+                        d=json.dumps(
+                            {"anomaly_type": stored_type, "observed_value": 714.0,
+                             "reason": "714 requests"}
+                        ),
+                    )
+                )
+
+        command.upgrade(cfg, "head")
+
+        with engine.connect() as conn:
+            details = conn.execute(text("SELECT details FROM waf_anomaly")).scalars().all()
+        assert [d["anomaly_type"] for d in details] == ["WAF_REQUEST_RATE_SPIKE"] * 2
+        assert all(d["observed_value"] == 714.0 for d in details)
+        assert all(d["reason"] == "714 requests" for d in details)
+    finally:
+        engine.dispose()
+
+
+def test_0009_backfills_measurement_and_its_downgrade_restores_dense_zeros(
+    clean_db: str,
+) -> None:
+    """0009 changes what an absent endpoint row means, so both directions carry data.
+
+    Upgrade: existing buckets stay dense and get the measurement their
+    completeness implied; endpoints get tracking windows; existing incident
+    readings are exact. Downgrade: the zeros sparse buckets implied are written
+    back, and slim rows get their bucket's identity, so 0008 code reads the same
+    history it would have collected itself.
+    """
+    from alembic import command
+
+    cfg = _alembic_config(clean_db)
+    command.upgrade(cfg, "0008")
+    ls = "cccccccc-0000-0000-0000-000000000001"
+    a, d, retired = (
+        "aaaaaaaa-0000-0000-0000-000000000001",
+        "aaaaaaaa-0000-0000-0000-000000000002",
+        "aaaaaaaa-0000-0000-0000-000000000003",
+    )
+    sem = "request_count/v1;agg=SUM(eventcount);normalizer/v1;profile/v1"
+    b0, b1, b2 = "2026-08-03 19:00+00", "2026-08-03 19:05+00", "2026-08-03 19:10+00"
+    at = {b: datetime.fromisoformat(b.replace("+00", "+00:00")) for b in (b0, b1, b2)}
+    bucket_columns = (
+        "log_source_id, bucket_start, bucket_seconds, profile_version, metric_semantics, "
+        "completeness, endpoint_coverage_ratio, total_events, parsed_events, group_count, "
+        "groups_truncated, unusable_groups, observed_endpoints, tracked_endpoints_observed, "
+        "admitted_endpoints, below_admission_threshold, rejected_over_quota, "
+        "untracked_endpoints, untracked_requests, admission_truncated, zero_filled_endpoints, "
+        "in_maintenance, collection_source, query_provenance"
+    )
+
+    def bucket_values(start: str, completeness: str) -> str:
+        return (
+            f"CAST(:ls AS uuid), '{start}', 300, 1, :sem, '{completeness}', 1.0, 40, 40, 1, "
+            "false, 0, 1, 1, 0, 0, 0, 0, 0, false, 0, false, 'mock', '{}'::jsonb"
+        )
+
+    engine = create_engine(clean_db, future=True)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO qradar_instance (id, name, console_host, api_version, verify_ssl, "
+                " provider_kind, mcp_enabled, enabled, status, consecutive_failures) "
+                "VALUES (CAST(:i AS uuid), 'lab', 'qradar.lab.local', '20.0', true, 'REST', "
+                " false, true, 'HEALTHY', 0)"
+            ).bindparams(i=INSTANCE_ID))
+            conn.execute(text(
+                "INSERT INTO log_source (id, instance_id, qradar_id, name, enabled, criticality, "
+                " monitoring_enabled, maintenance_mode, business_hours_only, "
+                " business_hours_start, business_hours_end, business_days, timezone_name, "
+                " custom_thresholds) VALUES (CAST(:ls AS uuid), CAST(:i AS uuid), 312, 'waf', "
+                " true, 'MEDIUM', true, false, false, 8, 18, '[1,2,3,4,5]', 'UTC', '{}')"
+            ).bindparams(ls=ls, i=INSTANCE_ID))
+            for eid, active, path in ((a, True, "/a"), (d, True, "/d"), (retired, False, "/r")):
+                conn.execute(text(
+                    "INSERT INTO waf_endpoint (id, instance_id, log_source_id, "
+                    " normalized_endpoint, http_method, normalizer_version, first_seen_at, "
+                    " last_seen_at, is_active, retired_at) VALUES "
+                    "(CAST(:e AS uuid), CAST(:i AS uuid), CAST(:ls AS uuid), "
+                    " :p, 'GET', 1, :b0, :b0, :active, CASE WHEN :active THEN NULL ELSE now() END)"
+                ).bindparams(e=eid, i=INSTANCE_ID, ls=ls, p=path, b0=at[b0], active=active))
+            for start, completeness in ((b0, "COMPLETE"), (b1, "PARTIAL")):
+                conn.execute(text(
+                    f"INSERT INTO waf_source_bucket ({bucket_columns}) "  # noqa: S608
+                    f"VALUES ({bucket_values(start, completeness)})"
+                ).bindparams(ls=ls, sem=sem))
+            conn.execute(text(
+                "INSERT INTO waf_anomaly (id, waf_endpoint_id, detector_type, severity, state, "
+                " detected_at, consecutive_buckets, policy_version, normalizer_version, details, "
+                " evidence_status, suppressed) VALUES ('bbbbbbbb-0000-0000-0000-000000000001', "
+                " CAST(:e AS uuid), 'WAF_REQUEST_RATE_SPIKE', 'HIGH', 'OPEN', now(), 1, 1, 1, "
+                " '{}'::jsonb, 'NOT_REQUESTED', false)"
+            ).bindparams(e=a))
+            conn.execute(text(
+                "INSERT INTO waf_anomaly_transition (id, anomaly_id, to_state, occurred_at, actor) "
+                "VALUES (gen_random_uuid(), 'bbbbbbbb-0000-0000-0000-000000000001', 'OPEN', "
+                " now(), 'waf-anomaly-engine')"
+            ))
+
+        command.upgrade(cfg, "head")
+
+        with engine.begin() as conn:
+            measured = dict(conn.execute(text(
+                "SELECT completeness, request_count_measurement FROM waf_source_bucket "
+                "WHERE sparse_endpoint_rows = false"
+            )).all())
+            assert measured == {"COMPLETE": "EXACT", "PARTIAL": "LOWER_BOUND"}
+            windows = {
+                str(r.id): (r.tracked_since == r.first_seen_at, r.tracked_until == r.last_seen_at)
+                for r in conn.execute(text(
+                    "SELECT id, tracked_since, first_seen_at, tracked_until, last_seen_at "
+                    "FROM waf_endpoint"
+                ))
+            }
+            assert windows == {a: (True, False), d: (True, False), retired: (True, True)}
+            assert conn.execute(text(
+                "SELECT (SELECT observed_measurement FROM waf_anomaly), "
+                "(SELECT observed_measurement FROM waf_anomaly_transition)"
+            )).one() == ("EXACT", "EXACT")
+            assert conn.execute(text(
+                "SELECT to_regclass('public.ix_waf_endpoint_metric_entity_time')"
+            )).scalar() is None
+
+            # A bucket collected after the upgrade: sparse, one slim row, the
+            # other tracked endpoint absent (a measured zero).
+            conn.execute(text(
+                f"INSERT INTO waf_source_bucket ({bucket_columns}, "  # noqa: S608
+                "request_count_measurement, sparse_endpoint_rows) "
+                f"VALUES ({bucket_values(b2, 'COMPLETE')}, 'EXACT', true)"
+            ).bindparams(ls=ls, sem=sem))
+            conn.execute(text(
+                "INSERT INTO waf_endpoint_metric (waf_endpoint_id, bucket_start, bucket_seconds, "
+                " request_count, endpoint_coverage_ratio, completeness, query_provenance, "
+                " normalizer_version) VALUES (CAST(:e AS uuid), :b2, 300, 40, 1.0, 'COMPLETE', "
+                " '{}'::jsonb, 1)"
+            ).bindparams(e=a, b2=at[b2]))
+
+        command.downgrade(cfg, "0008")
+
+        with engine.connect() as conn:
+            rows = {
+                str(r.waf_endpoint_id): (r.request_count, r.completeness, r.metric_semantics)
+                for r in conn.execute(text(
+                    "SELECT waf_endpoint_id, request_count, completeness, metric_semantics "
+                    "FROM waf_endpoint_metric WHERE bucket_start = :b2"
+                ).bindparams(b2=at[b2]))
+            }
+            assert rows == {a: (40, "COMPLETE", sem), d: (0, "COMPLETE", sem)}
+            assert conn.execute(text(
+                "SELECT to_regclass('public.ix_waf_endpoint_metric_entity_time')"
+            )).scalar() is not None
+
+        command.upgrade(cfg, "head")
     finally:
         engine.dispose()
 

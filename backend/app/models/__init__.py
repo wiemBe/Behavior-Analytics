@@ -48,6 +48,8 @@ from app.models.waf import (
     WafEndpoint,
     WafEndpointBaseline,
     WafEndpointMetric,
+    WafSourceBucket,
+    WafSourceProfile,
 )
 
 # The set of tables Timescale should manage as hypertables, with their time
@@ -60,6 +62,7 @@ HYPERTABLES: dict[str, str] = {
     "rule_health_snapshot": "evaluated_at",
     "detection_coverage_snapshot": "captured_at",
     "waf_endpoint_metric": "bucket_start",
+    "waf_source_bucket": "bucket_start",
 }
 
 __all__ = [
@@ -103,5 +106,7 @@ __all__ = [
     "WafEndpoint",
     "WafEndpointBaseline",
     "WafEndpointMetric",
+    "WafSourceBucket",
+    "WafSourceProfile",
     "user_role",
 ]

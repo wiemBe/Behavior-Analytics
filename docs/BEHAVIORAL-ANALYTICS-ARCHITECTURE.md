@@ -625,8 +625,134 @@ baseline, `WAF_REQUEST_RATE_SPIKE` and lifecycle — is implemented and live-val
 (2026-08-03), and is off by default. Its anomaly API, UI rendering and Celery
 schedule are not built. The implementation contract is
 [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md), which supersedes the Phase B
-entity and metric sketches in §3.1 and §10.1 below. The roadmap's
+entity and metric sketches in §3.1 and §10.1 above; §27 of that document is the
+consolidated design for what remains. The roadmap's
 `(source_ip, normalized_endpoint, http_method)` entity was assessed against live
 data and rejected: client IP is unbounded and attacker-settable, so it is a
-metric and a contributor dimension rather than an entity key. No Phase B
-production code exists.
+metric and a contributor dimension rather than an entity key.
+
+---
+
+## 12. Engine reuse boundary and detector capability
+
+Audited against the working tree on 2026-09-13. This section records what the
+code actually shares, what it deliberately does not, and which detectors can
+actually run — so Phase C starts from facts rather than from §3's intent.
+
+### 12.1 Shared primitives
+
+Pure modules with no entity concept. Every behavior domain composes these.
+
+| Module | Provides | Used by |
+|---|---|---|
+| `app/anomaly/statistics.py` | median, MAD, percentile, floored scale, `robust_z_with_status`, `ratio` | Phase A, Phase B |
+| `app/anomaly/seasonal.py` | `seasonal_key`, `summarize_cell`, `retained_fraction`, `anomaly_exclusion_span`, `in_any_span`, `in_maintenance` | both baseline builders, both engines, WAF collector |
+| `app/anomaly/lifecycle.py` | `next_state`, `advance_counters` | both engines |
+| `app/anomaly/evidence.py` | `AnomalyEvidence[T]`, generic over the domain's detector-type enum | every detector |
+| `app/models/enums.py` | `BucketCompleteness`, `AnomalyState`, `ACTIVE_ANOMALY_STATES`, `DetectorSignal`, `RobustScoreStatus`, `EvidenceStatus`, `DimensionAvailability` | every domain |
+| `app/anomaly/capabilities.py` | detector requirement registry, `bucket_telemetry`, `detector_status` | Phase A engine, API |
+| `app/anomaly/explanation.py` | contributor and dimension comparison over `DimensionAggregate` | Phase A; pure, reusable by Phase B evidence |
+
+`seasonal.py`, `advance_counters` and the generic evidence type were extracted in
+this audit from code that Phase A and Phase B had each written separately. The
+extraction preserves behavior exactly, including exclusion-span precedence: a
+resolved incident excludes through `resolved_at`, an unresolved one through
+`anomaly_end`.
+
+### 12.2 Domain bindings
+
+Deliberately **not** shared. Each domain owns typed persistence and detectors.
+
+| Concern | Log source (Phase A) | WAF endpoint (Phase B) |
+|---|---|---|
+| Entity | `LogSource` | `WafEndpoint` |
+| Metric rows | `LogSourceMetric` | `WafEndpointMetric` |
+| Baseline | `LogSourceBaseline`, `BaselineBuilder` | `WafEndpointBaseline`, `WafBaselineBuilder` |
+| Detection input | `MetricPoint`, `DetectionContext`, `detectors.py` | `WafPoint`, `WafDetectionContext`, `waf/detector.py` |
+| Thresholds | `ThresholdResolver` (criticality, `custom_thresholds`) | `WafThresholds` from `waf_*` settings |
+| State, incident, transition | `LogSourceDetectorState`, `LogSourceAnomaly`, `AnomalyStateTransition` | `WafDetectorState`, `WafAnomaly`, `WafAnomalyTransition` |
+| Engine | `AnomalyEngine`: alerts, maintenance, explanation hand-off | `WafAnomalyEngine`: maintenance (recorded per bucket); no alerts or explanation yet |
+| Metric identity | `query_provenance` telemetry and aggregation; not enforced | `metric_semantics` on rows, buckets and cells; enforced fail-closed |
+| Scheduling | `collect_metrics`, `evaluate_anomalies`, `rebuild_baselines` as separate jobs | one `collect_waf_source` run per source: collect → evaluate → train |
+| Evidence package | `AnomalyExplanation*`, `ExplanationCollector` | not built |
+| Detector-type enum | `AnomalyType` | `WafAnomalyType` |
+
+**The rule for Phase C and later.** A new domain adds its own entity, metric,
+baseline, state and incident tables, its own detector-type enum and its own
+detector functions, and composes §12.1. It does not add columns to Phase A
+tables, and it does not add members to `AnomalyType`, which is persisted in rows
+and alert fingerprints. A generic `entity_key` table was rejected: it would move
+typed, indexed, foreign-keyed Phase A columns into an opaque value and trade
+every existing constraint for nominal genericity.
+
+What is still duplicated between the two engines — incident creation,
+transition persistence, worst-reading tracking — is orchestration over
+domain-typed ORM rows. Extracting it would need a protocol over two unrelated
+table families; it is not done until a third domain shows the shape.
+
+### 12.3 Detector capability
+
+A detector is only as real as its inputs. The live collection path is one
+bounded Ariel aggregate per bucket, and it measures event volume and the newest
+event time — nothing else. Every other metric column keeps a default, and a
+detector reading `unknown_event_count = 0` reports a healthy ratio nobody
+measured.
+
+| Detector | Status | Why |
+|---|---|---|
+| `NO_EVENTS` | **Operational** | volume + `event_count` baseline |
+| `VOLUME_SPIKE`, `VOLUME_DROP` | **Operational** | volume + `average_eps` baseline |
+| `PARSING_DEGRADATION` | Synthetic only | Ariel aggregate computes no field-extraction ratios |
+| `UNKNOWN_EVENT_SPIKE` | Synthetic only | Ariel aggregate counts no unclassified events |
+| `TIMESTAMP_DELAY` | Synthetic only | the stored delay is newest-event-to-bucket-end, bounded by the bucket width; ingestion delay needs device time against receive time |
+| `REPEATED_PAYLOAD` | Synthetic only | a payload signature requires reading payloads, which the platform never does |
+| `CARDINALITY_DROP` | **Unsupported** | no `distinct_source_ip_count` baseline is built, and Ariel counts no distinct IPs |
+| `COLLECTION_ERROR` | **Unsupported** | a failed collection raises before any bucket exists; failures live on the collection watermark |
+| `WAF_REQUEST_RATE_SPIKE` | **Operational** (per enabled profile) | scheduled since Phase B.1 for sources with an enabled, validated profile; off by default; incidents not yet exposed by the analyst API. Declares `LOWER_BOUND_PROVES_INCREASE`: on a bucket whose counts are lower bounds it can prove a spike, never normality (Phase B §29.2) |
+
+**Enforcement.** Each metric row's `query_provenance.telemetry` records what its
+provider measured; rows collected before that key existed fall back to what
+their `collection_source` is known to measure. `AnomalyEngine` runs a detector
+on a bucket only when the bucket measured every input it reads **and** every
+baseline it compares against is built. A detector that cannot run gets no
+verdict, advances no counter and creates no state row; it is listed in
+`EvaluationReport.unsupported` with the missing input. The same registry backs
+`GET /api/v1/behavior/detectors`, so the published status cannot drift from what
+executes.
+
+**Existing state after upgrade.** Detector-state rows and incidents for the six
+non-operational types are left untouched, neither deleted nor resolved. On live
+data the only one that could ever have fired is `TIMESTAMP_DELAY`, on a source
+whose `expected_interval_seconds` was set below a third of the bucket width. Any
+such incident is no longer re-evaluated and needs an operator decision:
+
+```sql
+SELECT id, log_source_id, state, detected_at FROM log_source_anomaly
+WHERE anomaly_type = 'TIMESTAMP_DELAY' AND state IN ('CANDIDATE', 'OPEN', 'RECOVERING');
+```
+
+### 12.4 Event counting
+
+QRadar coalesces identical events into one Ariel record carrying an `eventcount`
+multiplier. Every application AQL was audited:
+
+| Query | Where | Volume | `COUNT(*)` |
+|---|---|---|---|
+| Log-source metric | `QRadarRestProvider.get_log_source_metrics` | `SUM(eventcount)` | none |
+| Contributor dimension | `_aggregate_one_dimension` | `SUM(eventcount)`, ordered by it | none; `distinct_count` and `truncated` count returned rows because they measure cardinality |
+| WAF grouped observation | `get_waf_observations` | `SUM(eventcount) AS request_count` | `record_count`, provenance only |
+| WAF coverage total | `get_waf_observations` | `SUM(eventcount) AS total_events` | none |
+| Scheduled searches | operator-authored | executed verbatim; the platform does not rewrite them | a search written with `COUNT(*)` counts records |
+
+**Provenance.** Metric rows record `event_count_aggregation` and `telemetry`. WAF
+rows record `request_count_aggregation`, the grouped `aql` and the `coverage_aql`
+behind their completeness verdict. Rows collected before this audit carry
+neither aggregation key; rows collected before `ae9932a` counted records.
+
+**Mixed-history hazard.** Baselines look back 28 days. On a source that coalesces,
+cells built partly from pre-`ae9932a` record counts expect less traffic than the
+source sends, so a `VOLUME_SPIKE` can open on unchanged traffic until the old
+rows leave the lookback. Metric rows do not record which query produced them, so
+the platform cannot separate the two populations automatically. See
+[PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md) §27.17 for the operator
+procedure.

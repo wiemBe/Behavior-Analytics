@@ -50,6 +50,9 @@ PERM_PROVIDER_READ = "read:providers"
 # destination addresses, usernames where the DSM supplies them), so the
 # investigation surface is guarded exactly like offences are.
 PERM_ANOMALY_READ = "read:anomalies"
+# Phase B.1. WAF collection operations: profile validation state, watermarks,
+# failures and admission counts. Administrative, so `read:*` does not grant it.
+PERM_WAF_ADMIN = "admin:waf"
 
 
 class PermissionDenied(Exception):

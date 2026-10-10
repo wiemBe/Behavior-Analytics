@@ -51,6 +51,21 @@ class LifecycleDecision:
     reason: str
 
 
+def advance_counters(
+    signal: DetectorSignal, consecutive_anomalous: int, consecutive_healthy: int
+) -> tuple[int, int]:
+    """Hysteresis counters after one bucket: (consecutive_anomalous, consecutive_healthy).
+
+    UNKNOWN leaves both untouched. Missing or unreadable data must neither
+    confirm an anomaly nor count towards recovery.
+    """
+    if signal is DetectorSignal.ANOMALOUS:
+        return consecutive_anomalous + 1, 0
+    if signal is DetectorSignal.HEALTHY:
+        return 0, consecutive_healthy + 1
+    return consecutive_anomalous, consecutive_healthy
+
+
 def next_state(inp: LifecycleInput) -> LifecycleDecision:
     """Compute the next lifecycle state. Returns the current state unchanged
     when no rule fires, so callers can compare and persist only real moves."""

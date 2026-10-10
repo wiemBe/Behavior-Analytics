@@ -16,6 +16,7 @@ checks scattered through services.
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import datetime
@@ -32,8 +33,22 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    WafBreakdownBatch,
     WafObservationBatch,
+    WafRejectionObservation,
+    WafSourceProbe,
 )
+
+#: The only shape a site-authored QRadar property name may take before it is
+#: interpolated into AQL. Letters, digits, underscore, space and hyphen; anything
+#: else -- a quote, a comma, a parenthesis -- is rejected rather than escaped,
+#: because an allowlist a reviewer can verify by eye beats a quoting scheme that
+#: has to be trusted. Property names are never expressions.
+PROPERTY_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ -]{0,63}$")
+
+#: Upper bound on a WAF property probe window. Validation is a spot check, not a
+#: survey, and a small window keeps it cheap on a loaded appliance.
+WAF_PROBE_MAX_WINDOW_SECONDS = 3600
 
 
 class ProviderCapability(StrEnum):
@@ -50,8 +65,51 @@ class ProviderCapability(StrEnum):
     CONFIG_SNAPSHOTS = "CONFIG_SNAPSHOTS"
 
 
+class LogSourceTelemetry(StrEnum):
+    """Which per-bucket log-source quantities a provider actually measures.
+
+    `LogSourceMetricSample` has a field for every quantity any detector reads,
+    and most of them default to 0 or None. A default is not a measurement: the
+    REST provider's Ariel aggregate never computes an unknown-event count, so a
+    stored `unknown_event_count=0` is an absence dressed as a zero. Declaring
+    the measured set lets the anomaly engine run a detector only on inputs that
+    were really observed, instead of judging a fabricated zero as healthy.
+    """
+
+    #: Event volume for the bucket: `event_count` and the `average_eps` derived
+    #: from it. Every bucket row carries this by construction.
+    EVENT_VOLUME = "EVENT_VOLUME"
+    #: Timestamp of the newest event in the bucket.
+    LAST_EVENT_TIME = "LAST_EVENT_TIME"
+    #: Peak events-per-second within the bucket.
+    PEAK_RATE = "PEAK_RATE"
+    #: Events QRadar could not classify.
+    UNKNOWN_EVENT_COUNT = "UNKNOWN_EVENT_COUNT"
+    #: Username / source-IP field-extraction ratios.
+    PARSE_RATIOS = "PARSE_RATIOS"
+    #: Distinct source IPs in the bucket.
+    DISTINCT_SOURCE_IPS = "DISTINCT_SOURCE_IPS"
+    #: Delay between an event happening and QRadar receiving it. Not the gap
+    #: between the newest event and the bucket end, which is bounded by the
+    #: bucket width and says nothing about ingestion lag.
+    INGESTION_DELAY = "INGESTION_DELAY"
+    #: Errors raised while collecting the bucket that still produced a row.
+    COLLECTION_ERRORS = "COLLECTION_ERRORS"
+    #: Hash of a representative payload.
+    PAYLOAD_SIGNATURE = "PAYLOAD_SIGNATURE"
+
+
 class ProviderError(RuntimeError):
-    """Base class for all provider failures."""
+    """Base class for all provider failures.
+
+    `status_code` is the upstream HTTP status when the failure was an HTTP
+    response, for callers that must record *how* QRadar refused something. The
+    message never carries upstream text.
+    """
+
+    def __init__(self, message: str = "", *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class ProviderUnavailableError(ProviderError):
@@ -60,6 +118,16 @@ class ProviderUnavailableError(ProviderError):
 
 class ProviderAuthError(ProviderError):
     """Authentication/authorization failure — not retryable."""
+
+
+class ProviderQueryRejectedError(ProviderError):
+    """QRadar refused the query as invalid (HTTP 422) before running it.
+
+    Distinct from a query that ran and failed, because only a rejection says
+    something about the query itself: an Ariel query naming a property that does
+    not exist is rejected, while a timeout or a failed search proves nothing
+    about whether the property exists.
+    """
 
 
 class CapabilityNotSupportedError(ProviderError):
@@ -76,6 +144,13 @@ class QRadarProvider(ABC):
 
     #: Concrete providers declare what they support.
     capabilities: frozenset[ProviderCapability] = frozenset()
+    #: The quantities `get_log_source_metrics` really measures. Anything absent
+    #: is left at its DTO default and must not be judged by a detector.
+    log_source_telemetry: frozenset[LogSourceTelemetry] = frozenset()
+    #: How `event_count` is aggregated, recorded as bucket provenance so a
+    #: reader can tell events (`SUM(eventcount)`) from Ariel records
+    #: (`COUNT(*)`). None when the provider does not aggregate Ariel at all.
+    event_count_aggregation: str | None = None
 
     def supports(self, capability: ProviderCapability) -> bool:
         return capability in self.capabilities
@@ -168,6 +243,75 @@ class QRadarProvider(ABC):
         Implementations must return raw, un-normalized values -- normalization
         is deterministic application logic (app.waf.normalize) and must not be
         pushed into AQL where it cannot be unit-tested.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_waf_breakdown(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None,
+        breakdown: str,
+        breakdown_property: str | None,
+        max_groups: int = 2000,
+    ) -> WafBreakdownBatch:
+        """One bounded breakdown of one WAF source's requests for one window.
+
+        Groups by the raw endpoint key plus one field -- a site-authored
+        property for ACTION and RESPONSE_CODE, QRadar's normalized `sourceip` for
+        SOURCE_IP (`breakdown_property` is then ignored) -- over events that
+        carry a value for it, ordered by `SUM(eventcount)` and capped at
+        `max_groups`. Values are raw: judging them is application logic.
+
+        Requires AQL_EXECUTION, so this never runs through MCP.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def probe_waf_properties(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        property_names: Sequence[str],
+        max_values: int = 50,
+    ) -> WafSourceProbe:
+        """Bounded read-only evidence about site-authored WAF properties.
+
+        For one log source over a small window (at most
+        `WAF_PROBE_MAX_WINDOW_SECONDS`): the source's total event volume, and per
+        property whether QRadar accepts it, how many events carry a value, how
+        many distinct values there are, and the most frequent values. A query
+        failure is reported per property rather than raised, so one bad name does
+        not hide the evidence about the others.
+
+        Returns raw values for the caller to judge and discard. Nothing here may
+        be persisted as returned.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def observe_property_rejection(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        property_names: Sequence[str],
+    ) -> list[WafRejectionObservation]:
+        """How QRadar answers an Ariel query naming each property. Read-only.
+
+        For the operator procedure that verifies what a nonexistent property
+        looks like on a real appliance (docs/PHASE-B-WAF-BEHAVIOR.md section
+        29.9). Records the HTTP status of the create, whether a search was
+        created and how it ended -- never a result row, so no event value is
+        fetched.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError

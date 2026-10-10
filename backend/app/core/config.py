@@ -311,16 +311,18 @@ class Settings(BaseSettings):
     #: No verified WAF DSM exposes a virtual host yet. Empty means "not
     #: available", which the collector represents as NULL -- never "".
     waf_virtual_host_property: str = ""
-    #: Groups fetched per source per bucket. The circuit breaker against
-    #: attacker-controlled path cardinality: hitting it marks the bucket PARTIAL
-    #: rather than silently storing a prefix as if it were the whole truth.
+    #: Groups fetched per source per bucket: the bound on the grouped Ariel
+    #: result, which is taken over raw URLs before normalization. Hitting it
+    #: makes every endpoint count in the bucket a lower bound (PARTIAL): enough
+    #: to prove a spike, never enough to call an endpoint normal. It does not
+    #: blind the bucket. See docs/PHASE-B-WAF-BEHAVIOR.md section 29.
     waf_max_groups_per_bucket: int = Field(default=500, ge=1, le=5000)
     #: Below this share of a source's events carrying a parseable endpoint, the
     #: bucket is PARTIAL. A bucket where a third of the traffic had no path is
     #: not a whole observation of any endpoint in it.
     waf_min_endpoint_coverage: float = Field(default=0.90, ge=0.0, le=1.0)
-    #: Days without an observation before an endpoint is retired and stops being
-    #: zero-filled. This is what bounds zero-row growth over time.
+    #: Days without an observation before an endpoint is retired. A retired
+    #: endpoint is no longer evaluated and its absence is no longer read as zero.
     waf_endpoint_active_days: int = Field(default=7, ge=1, le=90)
     #: Minimum requests per bucket for a defensible volume verdict. Mirrors the
     #: Phase A guard that kills the 0.2-to-0.4-EPS false positive, at endpoint
@@ -330,6 +332,104 @@ class Settings(BaseSettings):
     waf_min_absolute_delta_requests: float = Field(default=50.0, ge=0.0)
     #: observed/expected must reach this to be a spike candidate.
     waf_spike_ratio: float = Field(default=2.0, gt=1.0)
+
+    # --- Phase B.1: admission, validation, scheduling, retention ------------
+    # The per-source property mapping lives on `waf_source_profile`. The three
+    # `waf_*_property` settings above are not read by scheduled collection.
+    #: New endpoints admitted per source per bucket. Existing tracked endpoints
+    #: are never subject to this quota.
+    waf_max_new_endpoints_per_bucket: int = Field(default=20, ge=0, le=1000)
+    #: Active tracked endpoints per source. At the ceiling nothing new is
+    #: admitted until retirement frees room.
+    waf_max_active_endpoints_per_source: int = Field(default=2000, ge=1, le=50000)
+    #: Requests an unseen endpoint needs in one bucket to be admitted at all.
+    waf_min_admission_requests: int = Field(default=3, ge=1)
+    #: Profile validation probes this much recent history (seconds).
+    waf_validation_window_seconds: int = Field(default=900, ge=60, le=3600)
+    #: Minimum share for a required field's population and value plausibility.
+    waf_validation_min_ratio: float = Field(default=0.90, gt=0.0, le=1.0)
+    #: Most frequent values fetched per property during validation.
+    waf_validation_max_values: int = Field(default=50, ge=1, le=200)
+    #: Collected buckets evaluated per source per scheduled run.
+    waf_max_evaluation_buckets_per_run: int = Field(default=24, ge=1, le=2016)
+    #: Endpoints whose baselines are rebuilt per source per scheduled run,
+    #: least recently rebuilt first.
+    waf_baseline_endpoints_per_run: int = Field(default=50, ge=1, le=5000)
+    #: WAF retention runs with WAF collection. Unlike the generic Timescale
+    #: policies it is on by default: WAF collection is itself opt-in, and its
+    #: row growth is influenced by whoever sends requests.
+    waf_retention_enabled: bool = True
+    #: Endpoint metrics and source buckets. Must exceed BASELINE_LOOKBACK_DAYS.
+    waf_metric_retention_days: int = Field(default=35, ge=2)
+    #: Terminal (RESOLVED, closed-candidate) WAF anomalies and their transitions.
+    waf_anomaly_retention_days: int = Field(default=180, ge=1)
+    waf_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
+    waf_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    waf_retention_interval_seconds: int = Field(default=86400, ge=3600)
+
+    # --- Phase B.1.5: Ariel budget and batching ------------------------------
+    #: WAF sources that may have an Ariel search in flight at once, across every
+    #: worker. Each source collects one bucket per permit; a source that cannot
+    #: get one within `WAF_ARIEL_PERMIT_WAIT_SECONDS` stops, keeps its watermark
+    #: and retries on the next dispatch. Deliberately below
+    #: ARIEL_GLOBAL_MAX_CONCURRENT_SEARCHES so scheduled WAF work cannot consume
+    #: the appliance's whole search budget.
+    waf_ariel_max_concurrent_sources: int = Field(default=2, ge=1, le=20)
+    waf_ariel_permit_wait_seconds: float = Field(default=30.0, ge=0.0, le=600.0)
+    waf_ariel_permit_poll_seconds: float = Field(default=1.0, gt=0.0, le=30.0)
+    #: PostgreSQL advisory-lock namespace (first key) for WAF Ariel permits. Must
+    #: differ from COLLECTION_ADVISORY_LOCK_NAMESPACE so a permit slot can never
+    #: collide with a collector lock.
+    waf_ariel_permit_lock_namespace: int = 4712
+    #: Endpoints whose history is loaded into memory together during a baseline
+    #: rebuild. Bounds memory, not statements per endpoint.
+    waf_baseline_rebuild_chunk_size: int = Field(default=25, ge=1, le=500)
+
+    # --- Phase B.2: behavioural breakdowns and detectors ---------------------
+    # Each breakdown is ONE more bounded Ariel search per source per bucket,
+    # under the same permit as the two volume searches. All are off by default:
+    # turning one on is an explicit decision to spend Ariel budget on it.
+    #: Collect the action breakdown (blocked / unmapped requests per endpoint)
+    #: and the response-code breakdown (4xx / 5xx per endpoint), each only for a
+    #: profile whose field validated -- and, for action, whose map is authored.
+    waf_outcome_collection_enabled: bool = False
+    #: Collect the source-IP breakdown (per-endpoint traffic composition).
+    waf_client_collection_enabled: bool = False
+    #: Group cap for each breakdown search. A breakdown grouped by (URL, method,
+    #: host, field) has more groups than the volume search, so it has its own.
+    #: Hitting it makes that breakdown a lower bound for the bucket.
+    waf_max_breakdown_groups_per_bucket: int = Field(default=2000, ge=1, le=10000)
+
+    #: Ratio detectors (block, 5xx, 4xx). A verdict needs at least this many
+    #: requests carrying the field -- the denominator.
+    waf_ratio_min_denominator: int = Field(default=50, ge=1)
+    #: ... and at least this many in the numerator. Below it, with an exact
+    #: count, no ratio anomaly is possible and the verdict is normal.
+    waf_ratio_min_numerator: int = Field(default=10, ge=1)
+    #: Minimum rise over the expected proportion, in proportion units (0.10 =
+    #: ten percentage points).
+    waf_ratio_min_increase: float = Field(default=0.10, gt=0.0, le=1.0)
+    #: Observed proportion / expected proportion must reach this. An expected
+    #: proportion of zero has no ratio; the percentage-point guard carries it.
+    waf_ratio_min_multiple: float = Field(default=2.0, gt=1.0)
+
+    #: Client concentration: endpoint requests needed for a composition verdict.
+    waf_concentration_min_endpoint_requests: int = Field(default=50, ge=1)
+    #: Requests the largest source IP needs before its share can be material.
+    #: Also the floor at which a bucket's top contributors are stored.
+    waf_concentration_min_client_requests: int = Field(default=20, ge=1)
+    #: Minimum rise in the largest source IP's share, in proportion units.
+    waf_concentration_min_increase: float = Field(default=0.20, gt=0.0, le=1.0)
+
+    #: New-endpoint access: the history that must be complete before a first
+    #: material appearance may be called new. Must stay below metric retention.
+    waf_new_endpoint_history_days: int = Field(default=7, ge=1, le=60)
+    #: Buckets after first appearance during which an endpoint is "new".
+    waf_new_endpoint_window_buckets: int = Field(default=12, ge=1, le=2016)
+    #: Materiality: requests across the window so far, and distinct buckets with
+    #: traffic. One-off URIs never reach it.
+    waf_new_endpoint_min_requests: int = Field(default=20, ge=1)
+    waf_new_endpoint_min_buckets: int = Field(default=2, ge=1)
 
     # --- Notifications ------------------------------------------------------
     notify_max_retries: int = Field(default=5, ge=0, le=20)
@@ -471,6 +571,54 @@ class Settings(BaseSettings):
             raise ValueError("LAB_MODE is not permitted in production")
         for field_name, value in LAB_PROFILE.items():
             setattr(self, field_name, value)
+        return self
+
+    @model_validator(mode="after")
+    def _waf_retention_covers_the_baseline(self) -> Settings:
+        """Deleting metrics the baseline still needs would silently thin it.
+
+        A baseline rebuild reads `baseline_lookback_days` of history, so metric
+        retention at or below that removes samples every rebuild relies on --
+        cells would fall below their minimum and report INSUFFICIENT_DATA for a
+        reason no operator could see.
+        """
+        # Enforced only where it can bite: with WAF collection and WAF retention
+        # both on. A deployment that does not collect WAF telemetry -- every
+        # Phase A deployment today -- must not be refused startup over a WAF
+        # setting it does not use. The retention task repeats the check at run
+        # time, so a later settings change cannot slip past it.
+        if not (self.waf_collection_enabled and self.waf_retention_enabled):
+            return self
+        if self.waf_metric_retention_days <= self.baseline_lookback_days:
+            raise ValueError(
+                "WAF_METRIC_RETENTION_DAYS must exceed BASELINE_LOOKBACK_DAYS "
+                f"({self.waf_metric_retention_days} <= {self.baseline_lookback_days})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _waf_novelty_history_is_retained(self) -> Settings:
+        """A novelty history longer than retention could never be complete.
+
+        It would fail closed -- every new endpoint INSUFFICIENT_DATA forever --
+        but silently. Refused only where WAF collection is on, as above.
+        """
+        if not self.waf_collection_enabled:
+            return self
+        if self.waf_new_endpoint_history_days >= self.waf_metric_retention_days:
+            raise ValueError(
+                "WAF_NEW_ENDPOINT_HISTORY_DAYS must be below WAF_METRIC_RETENTION_DAYS "
+                f"({self.waf_new_endpoint_history_days} >= {self.waf_metric_retention_days})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _waf_permit_namespace_is_its_own(self) -> Settings:
+        if self.waf_ariel_permit_lock_namespace == self.collection_advisory_lock_namespace:
+            raise ValueError(
+                "WAF_ARIEL_PERMIT_LOCK_NAMESPACE must differ from "
+                "COLLECTION_ADVISORY_LOCK_NAMESPACE"
+            )
         return self
 
     @model_validator(mode="after")

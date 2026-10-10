@@ -1,12 +1,21 @@
 # Phase B — WAF Behavioral Analytics
 
-**Status: design and discovery (Phase B0). Not implemented.** No Phase B production code,
-migration, model, collector, detector, API or UI exists, and none may be written from the roadmap
-alone. This document is the contract that Phase B1 must be built against, and it ends with a
-go/no-go gate in §24.
+**Status (2026-09-16):** the B1/B2 backend vertical slice — normalizer, persistence, collector,
+baseline, `WAF_REQUEST_RATE_SPIKE`, lifecycle — is **implemented and validated against live lab
+telemetry** (§26). **Phase B.1 made it schedulable (§28):** per-source profiles and validation,
+bounded admission, recorded maintenance decisions, metric-semantics identities, retention and
+per-source scheduled runs. It is off by default and has **no analyst API or UI**. Production WAF
+onboarding is **NO-GO**.
 
-**The gate outcome remains NO-GO, for a smaller and more precise reason than before.** See §25 for
-the revision that superseded the first measurement round.
+**Phase B.1.5 (§29)** made collection resilient and bounded before detector expansion: path floods
+above the group cap now yield explicit lower bounds instead of blinding the source, endpoint storage
+is sparse, a scheduled run costs a constant number of SQL statements, and WAF Ariel concurrency is
+globally capped.
+
+**§29 records Phase B.1.5 and supersedes §28.12 and §28.14 items 1–3 and 6; §28 records what
+Phase B.1 built; §27 is the design for everything beyond it.** §1–§26 are the discovery record, written in order: statements there such as "not
+implemented" describe the workstream that section belonged to, and later sections supersede
+earlier ones where marked.
 
 Evidence in this document is labelled:
 
@@ -1878,3 +1887,1396 @@ Superseding §25.8. Still unverified, and none of them is a lab question:
 5. A production WAF exposes a virtual host. None verified so far does, so the nullable fallback —
    and its documented collision risk between applications sharing a path on one log source — is the
    live path, not the exception.
+
+---
+
+## 27. Consolidated Phase B design (preflight audit, 2026-09-13)
+
+This section is authoritative for all Phase B work not yet built. It is grounded in the working
+tree as of this audit and in the live measurements of §26. Where it restates an earlier section it
+says so; where it changes one, it supersedes it. Every item is marked **[BUILT]** (exists and is
+tested), **[DESIGN]** (specified here, not built) or **[BLOCKED]** (cannot be built until a named
+prerequisite exists).
+
+### 27.1 Guarantees every Phase B increment must keep
+
+| Guarantee | How Phase B keeps it |
+|---|---|
+| QRadar strictly read-only | Ariel aggregates and GET-only reference reads through `QRadarRestProvider`, gated on `AQL_EXECUTION`. Authoring a custom property stays an operator console action. |
+| No raw payload persistence | A raw URL exists only inside one collection call and is normalized before it reaches a column. Query strings are never persisted (§8.3). User-agent and forwarded-for values are request headers: never stored, only counted (§27.11). |
+| Bounded Ariel queries | §27.12 |
+| Incomplete observations never become zero | A failed query writes no row and holds the watermark; a truncated or under-covered bucket is `PARTIAL`; an unmeasured count is NULL **[BUILT]** |
+| Incomplete observations never poison a baseline | Only `COMPLETE`, adequately covered buckets of the current normalizer version, outside incident spans **[BUILT]**; profile version and maintenance windows **[DESIGN]** (§27.8) |
+| No misleading findings from truncated evidence | A `TRUNCATED` dimension withholds cardinality and new/disappeared claims (`404bc39`); a truncated endpoint attribution is `TRUNCATED`, not complete (§27.11) |
+| Deterministic decisions, no LLM | Pure detectors over stored rows; versioned normalizer, profile and policy |
+| Idempotent collection | Upsert on `(waf_endpoint_id, bucket_start)`; watermark per source **[BUILT — fixed in this audit]** |
+| Auditable provenance | Grouped AQL, coverage AQL, aggregation, window, truncation and coverage on every row **[BUILT]** |
+| UTC storage | `timestamptz` throughout; seasonal key computed in UTC |
+
+### 27.2 WAF source configuration [DESIGN]
+
+**Current state [BUILT].** Three global settings — `WAF_URL_PROPERTY`, `WAF_METHOD_PROPERTY`,
+`WAF_VIRTUAL_HOST_PROPERTY` — apply one property mapping to every WAF log source, and nothing
+declares which log sources are WAF sources: `WafEndpointCollector.collect(instance, log_source=…)`
+has no production caller. That was enough for one lab source. It is wrong for an estate, because
+two WAF products parsed by two DSMs expose different property names. On a source whose DSM lacks a
+mapped property, QRadar rejects every query and the source is never collected; on one where the
+property exists but is unpopulated, coverage collapses and every bucket is `PARTIAL`. Both fail
+safely — no false zero, no poisoned baseline — but the source is never monitored.
+
+**Design.** A per-log-source profile is the unit of WAF configuration.
+
+```text
+waf_source_profile
+  id                      uuid  PK
+  log_source_id           uuid  FK log_source(id) ON DELETE CASCADE   UNIQUE NOT NULL
+  enabled                 bool          DEFAULT false                 NOT NULL
+  profile_version         int           DEFAULT 1                     NOT NULL
+  product_label           varchar(128)                                -- operator note, never parsed
+  url_property            varchar(64)                                 NOT NULL
+  method_property         varchar(64)                                 NOT NULL
+  virtual_host_property   varchar(64)                                 -- NULL: source cannot supply one
+  action_property         varchar(64)
+  action_value_map        jsonb         DEFAULT '{}'                  NOT NULL
+  response_code_property  varchar(64)
+  user_agent_property     varchar(64)                                 -- cardinality only
+  client_address_field    varchar(64)   DEFAULT 'sourceip'            NOT NULL
+  forwarded_for_property  varchar(64)
+  trust_forwarded_for     bool          DEFAULT false                 NOT NULL
+  path_case_insensitive   bool          DEFAULT false                 NOT NULL
+  validation_status       varchar(24)   DEFAULT 'UNVALIDATED'         NOT NULL
+  validated_at            timestamptz
+  validation_report       jsonb         DEFAULT '{}'                  NOT NULL
+  created_at, updated_at
+```
+
+Rules:
+
+1. **Collection requires all three:** global `WAF_COLLECTION_ENABLED`, the profile's `enabled`, and
+   `validation_status = VALID`. A log source without a profile is not a WAF source.
+2. **Any mapping change bumps `profile_version` and resets `validation_status` to `UNVALIDATED`,**
+   pausing that source until it is revalidated. Property names decide what an endpoint *is*, so a
+   mapping change is an entity-semantics change exactly like a normalizer change (§8.6) and is
+   scoped the same way (§27.8).
+3. **`method_property` is required.** The key includes the method (§25.4) and
+   `waf_endpoint.http_method` is NOT NULL. A product with no method fails validation as
+   `UNSUPPORTED_FIELDS`. Supporting one needs a nullable method under the same NULLS NOT DISTINCT
+   discipline as `virtual_host` — a migration, not an assumption.
+4. **`action_value_map` maps site values to outcomes**, e.g.
+   `{"BLOCKED": ["DENY", "BLOCK"], "ALLOWED": ["ALLOW", "PASS"]}`, authored from values discovered
+   by validation (§27.3). A value in neither list is counted as `UNMAPPED`, never as allowed.
+   §26.2's `ALLOW`/`DENY` is a fact about the lab generator, not about WAF products.
+5. **Forwarded-for is untrusted by default** (§11.4). `trust_forwarded_for` may be set only for a
+   source documented as sitting behind a trusted proxy. A trusted value is parsed to one IP address
+   or discarded; the header value itself is never stored.
+6. **Profiles are application configuration, not QRadar configuration.** Writes go through a CLI
+   first (`python -m app.cli.waf profile set|validate|enable|disable`), each recorded in `AuditLog`.
+   An admin API behind a dedicated `admin:waf` permission may follow after its own review. No
+   profile operation writes to QRadar.
+7. The three global settings become the defaults a new profile is seeded from. The collector stops
+   reading them.
+
+### 27.3 QRadar custom-property mapping [DESIGN; allowlist BUILT]
+
+Property names are display names an operator authored in the QRadar console. They follow neither
+the LEEF keys a device emits (§25.2: eleven plausible names, all rejected) nor any cross-vendor
+convention. Nothing in Phase B may assume one.
+
+**Safety [BUILT].** Every name is matched against `^[A-Za-z0-9_][A-Za-z0-9_ -]{0,63}$` before it
+reaches AQL, and is rejected rather than escaped on failure.
+
+**Validation [DESIGN].** Bounded and read-only, run on demand and on every mapping change, scoped to
+one log source over an operator-chosen window (default the last hour, maximum 24 h), every query
+`START`/`STOP`-bounded:
+
+| Step | AQL shape | Establishes | Failure |
+|---|---|---|---|
+| Existence | `SELECT "<p>" FROM events WHERE logsourceid = <ls> LIMIT 1` | QRadar accepts the name | query rejected → `INVALID`, "property does not exist" — proof of absence, not an empty result |
+| Population | `SELECT SUM(eventcount) … AND "<p>" IS NOT NULL`, against the source total | share of events carrying it | URL or method below `WAF_MIN_ENDPOINT_COVERAGE` → `INVALID`, with the measured share |
+| Cardinality | `SELECT UNIQUECOUNT("<p>") …` | distinct raw values | recorded; URL cardinality feeds §27.5 |
+| Value discovery | `GROUP BY "<p>" ORDER BY SUM(eventcount) DESC LIMIT 50` | bounded value set for action and response code | a truncated set is recorded as truncated, and the action map must then be authored explicitly — never inferred from a prefix |
+| Normalized projection | URL groups `LIMIT 500`, normalized in memory | endpoint cardinality and singleton share after normalization | recorded; sizes the admission controls (§27.5) |
+
+Budget: at most 4 queries per mapped property and 24 per validation, one validation per source at a
+time. The report stores each query's AQL, window, row count and truncation flag and the measured
+numbers. It never stores a raw URL, query string or header value — only counts, discovered action
+and response-code values, and normalized endpoints.
+
+**Declared types.** The response-code property measured as a *string* on the lab appliance (§26.1),
+so values are validated in application code (`normalize_response_code`, strictly three digits) and
+never cast in AQL. Reading declared types from QRadar's custom-property reference API is
+**[ASSUMPTION]**: its availability depends on version and token capability. Where it is unavailable
+the type is inferred from values, and the report says so.
+
+**Drift.** A daily light check (existence and population over the last hour, two queries per
+property) marks a profile `STALE` when a required property's population drops below threshold — the
+signature of a DSM update or a parser edit. `STALE` does not stop collection, because per-bucket
+coverage already downgrades affected buckets to `PARTIAL`. It raises an operator-visible banner and
+must be cleared by revalidation.
+
+### 27.4 Endpoint normalization [BUILT]
+
+§8 is implemented as `ENDPOINT_NORMALIZER_VERSION = 1` (`f2208c3`), with two recorded refinements:
+a schemeless `//host/path` is a path, not an authority, so `//evil.example/admin` cannot be counted
+against `/admin`; and a long hex-shaped segment is `{hex}` before it is `{overlong}`. Absence is
+never `/`, an unknown method is never `"UNKNOWN"`, and a query string never survives.
+
+Changes from this audit:
+
+- **Version scoping now reaches the entity key.** The natural key omitted `normalizer_version` while
+  the collector looked endpoints up by it, so the first version bump would have raised an
+  IntegrityError on every unchanged endpoint and stopped collection. Migration `0007` adds the
+  version to the key, keeping NULLS NOT DISTINCT. A bump now creates fresh entities whose cells start
+  at `INSUFFICIENT_DATA`; old-version entities stop being zero-filled at once and retire on the
+  ordinary `WAF_ENDPOINT_ACTIVE_DAYS` schedule.
+- **Rule 10, case-insensitive paths,** becomes the profile's `path_case_insensitive` [DESIGN].
+  Because it changes what an endpoint is, applying it bumps `profile_version`.
+- **Route templates** (§8.5) remain out of scope.
+
+### 27.5 Entity cardinality strategy [BUILT in B.1, with changes — see §28.5]
+
+> **Superseded in part by §28.5.** Two rules below were changed when built. Admission truncation
+> does **not** mark a bucket `PARTIAL`: that would let anyone spraying new paths suppress verdicts
+> on every endpoint already tracked. And admission uses the per-bucket volume threshold only; the
+> "seen in two buckets within 24 h" alternative would have required storing refused endpoints.
+
+The entity is `(instance, log source, virtual host | NULL, normalized endpoint, method, normalizer
+version)` — §25.4 plus the version. Client address is never part of it.
+
+The normalizer bounds *structure*, not *intent*. A scanner requesting `/aaaa`, `/aaab`, … —
+alphabetic segments with too little entropy for rule 14 — mints a new entity per path. Today the only
+bound is `WAF_MAX_GROUPS_PER_BUCKET` (500), and it bounds the *query*, not the *entities*: a
+truncated bucket is marked `PARTIAL`, but every returned group still creates an endpoint. That is up
+to 500 new entities per source per bucket, each zero-filled for seven days. §8.4's circuit breaker
+was specified and never built. **It must exist before any WAF collection is scheduled (§27.18).**
+
+| Control | Rule |
+|---|---|
+| **Admission cap** | at most `WAF_MAX_NEW_ENDPOINTS_PER_BUCKET` (default 20) new entities per source per bucket, admitted in descending request volume. Overflow groups create no entity and no row; their count and summed volume are recorded in provenance as `admission_overflow`, and the bucket is `PARTIAL`. |
+| **Active ceiling** | at most `WAF_MAX_ACTIVE_ENDPOINTS_PER_SOURCE` (default 2,000). At the ceiling nothing new is admitted until retirement frees room, and the source reports it. |
+| **Activation threshold** | admitted only with ≥ `WAF_MIN_ADMISSION_REQUESTS` (default 3) in the bucket, or when seen in ≥ 2 distinct buckets within 24 h. One-off probes never become entities. |
+| **Retirement** | unchanged: no observation for `WAF_ENDPOINT_ACTIVE_DAYS` stops zero-filling **[BUILT]** |
+| **Measured before enabling** | validation reports normalized cardinality and singleton share (§27.3) |
+
+With these controls, zero-fill rows per source per day are at most the active ceiling × buckets per
+day, and new entities per day at most the admission cap × buckets per day. The lab's 10 entities
+give 2,880 rows/day; a source at the default ceiling gives 576,000. That is why the ceiling is a
+per-source setting sized from the validation report, not a constant.
+
+### 27.6 Endpoint behavior metrics
+
+Per endpoint, per bucket:
+
+| Metric | Source | Status | Notes |
+|---|---|---|---|
+| `request_count` | `SUM(eventcount)` | **[BUILT]**, baselined | the MVP metric |
+| `distinct_client_count` | `UNIQUECOUNT(<client>)` | **[BUILT]**, collected, not baselined | a lower bound after folding raw groups (maximum, not sum) — rendered "≥ n" |
+| `blocked_count` | `SUM(eventcount)` where action ∈ BLOCKED | [BLOCKED] on a validated action map | NULL when unmapped, never 0 |
+| `unmapped_action_count` | action in neither list | [DESIGN] | makes a stale map visible instead of silently "allowed" |
+| `client_error_count`, `server_error_count` | 4xx / 5xx from a validated response code | [BLOCKED] on a validated response-code property | NULL when unavailable |
+| `block_ratio`, `error_ratio` | derived at read time | [DESIGN] | §11.3 unchanged: minimum denominator, NULL on a zero denominator, an absolute floor as well as the seasonal guard |
+
+The method is part of the key, not a metric. Action and response class are added as `GROUP BY`
+columns on the existing grouped query rather than as new queries, then folded per endpoint in
+memory. That multiplies grouped cardinality by (actions × response classes), so the group cap is
+re-sized from the validation report before either is enabled.
+
+### 27.7 Client behavior metrics [DESIGN — wording revised by §28.11]
+
+> **Revised by §28.11.** The sentence below rules out *unbounded* per-client entities. It is not a
+> permanent prohibition on client-level rows: future detectors need to know which client address
+> dominates a source's traffic, what share it holds, and whether one fanned out across endpoints.
+> §28.11 defines the bounded client aggregate those detectors may add.
+
+Clients are unbounded and attacker-settable: there are **no unbounded per-client entities, rows or
+baselines** (§6.1, §25.4). Client behavior is measured in three bounded ways.
+
+1. **Per endpoint, per bucket:** `distinct_client_count` **[BUILT]**. Top-client share — the
+   fraction of an endpoint's requests from its largest client — is computed from the §27.11 evidence
+   query, and only for an endpoint already in an `OPEN` incident, never for every endpoint every
+   bucket.
+2. **Per source, per bucket:** `source_distinct_clients` and `source_top_client_share`, from one
+   more bounded query per source per bucket (`GROUP BY <client> ORDER BY SUM(eventcount) DESC LIMIT
+   20` with a `UNIQUECOUNT`), stored in a new `waf_source_metric` hypertable. This catches one client
+   spraying many endpoints, which no single endpoint's spike reveals. Share is scale-free and
+   baselines well.
+3. **At investigation time:** client-address contributors (§27.11), flagged *"client address not
+   observed in the baseline window"* only over the window actually queried and retained.
+
+Never claimed: identity ("user"), intent ("attacker"), or novelty beyond the retention actually held
+(§11.4). Behind NAT or a CDN a client address is an intermediary, and the wording says so.
+
+### 27.8 Baseline scopes
+
+| Scope | Key | Metric | Seasonality | Status |
+|---|---|---|---|---|
+| Endpoint | `waf_endpoint_id`, `normalizer_version`, `profile_version` | `request_count` | weekday × hour, UTC | **[BUILT]** except `profile_version` [DESIGN] |
+| Endpoint ratio | same | `block_ratio`, `error_ratio` | weekday × hour | [BLOCKED] on §27.6 fields |
+| Source client concentration | `log_source_id`, `profile_version` | `source_top_client_share`, `source_distinct_clients` | weekday × hour | [DESIGN] |
+| Peer group | — | — | — | **not designed** (§27.9) |
+
+Every scope uses `app.anomaly.seasonal` **[BUILT]**: median, MAD and p05/p95; the minimum sample
+count; incident-span exclusion; completeness as the retained fraction. Every scope excludes buckets
+that are not `COMPLETE`, fall below coverage, or lie in an incident span — and, new, buckets inside
+a **maintenance window on the WAF log source**. `WafBaselineBuilder` and `WafAnomalyEngine` ignore
+`LogSource.maintenance_mode` today, which Phase A honors; that gap is closed before scheduling
+(§27.18).
+
+A scope's key contains every version that changes what its observations mean. A baseline never
+mixes rows from two normalizer or profile versions; a version change starts new cells at
+`INSUFFICIENT_DATA`.
+
+### 27.9 Cold start and new clients
+
+**New source.** No collection until its profile is `VALID`. Before any cell is reliable, every
+verdict is `INSUFFICIENT_DATA`, never `NORMAL` **[BUILT; observed live, §26.7]**.
+
+**New endpoint.** `INSUFFICIENT_DATA` per seasonal cell until the cell holds `BASELINE_MIN_SAMPLES`
+complete samples. At 5-minute buckets a cell gains 12 samples per week, so a steady endpoint's cells
+become reliable in its first week; a sparse endpoint's may never, which is the honest outcome
+(§12.3). The endpoint's *appearance* is reported separately as `WAF_NEW_ENDPOINT` (§27.10), which is
+how a genuinely new surface is surfaced while it has no baseline.
+
+**New client.** Never baselined, so there is nothing to be cold. A new client counts towards its
+endpoint's volume and the source's concentration metrics, and at investigation time is flagged as
+not observed in the baseline window. If Ariel retention is shorter than the requested lookback, the
+flag is withheld and the dimension says why.
+
+**Peer-group baselines for new clients**, the roadmap's line item, are **not designed for
+implementation**. A peer group needs a peer dimension the telemetry lacks: no verified WAF source
+exposes application, tenant, ASN or geography, and a peer group over client addresses alone is the
+per-client entity §6.1 rejected. The item returns when a validated profile exposes such a dimension.
+Until then it would be an invented model.
+
+### 27.10 Anomaly types
+
+| Type | Verdict basis | Prerequisite | Status |
+|---|---|---|---|
+| `WAF_REQUEST_RATE_SPIKE` | endpoint `request_count` against its seasonal baseline; conjunctive guards; degenerate-MAD fallback | — | **[BUILT]**, not scheduled |
+| `WAF_NEW_ENDPOINT` | first admitted appearance of an entity, after the source has been `VALID` for one full lookback | admission controls (§27.5) | [DESIGN] — without the cap it amplifies scanners |
+| `WAF_BLOCK_RATIO_SPIKE` | `block_ratio` seasonal deviation **and** absolute floor **and** minimum denominator | validated action map | [BLOCKED] |
+| `WAF_ERROR_RATIO_SPIKE` | same, on server (5xx) and separately client (4xx) error ratios | validated response-code property | [BLOCKED] |
+| `WAF_CLIENT_CONCENTRATION_SPIKE` | `source_top_client_share` against its seasonal baseline, above a minimum source volume | `waf_source_metric` | [DESIGN] |
+| `WAF_REQUEST_RATE_DROP` | — | — | **excluded** (§10.4): endpoint silence is normal, source silence is Phase A `NO_EVENTS` |
+| `WAF_NEW_CLIENT_ENDPOINT` | — | — | **evidence only** (§11.4), never an incident |
+| Peer-group deviation | — | a peer dimension | **not designed** (§27.9) |
+
+Each type is a `WafAnomalyType` member with a `WAF_DETECTORS` entry in
+`app/anomaly/capabilities.py`, whose status `GET /api/v1/behavior/detectors` publishes, and each has
+its own detector-state row, so coexisting incidents on one endpoint recover independently (§14).
+
+### 27.11 Evidence collection [DESIGN]
+
+Built when an endpoint incident reaches `OPEN`, asynchronously, as in Phase A: detection never waits
+on Ariel.
+
+- **Windows.** The anomaly window is the incident's abnormal buckets, clamped to
+  `EXPLANATION_MAX_WINDOW_SECONDS`. The comparison window ends where the anomaly begins, is
+  `EXPLANATION_BASELINE_WINDOW_MULTIPLE` times as long, and is compared on a rate basis.
+- **Filtering (Approach B, §25).** AQL cannot apply the normalizer, so each dimension query filters
+  on log source and window only, groups by `(url, method, dimension)`, and the application keeps the
+  groups that normalize into the incident's endpoint.
+- **Attribution completeness.** If that grouped result is truncated, groups belonging to the
+  endpoint may be missing: the dimension is `TRUNCATED`, shares are stated as "among returned
+  groups", and cardinality, new-value and disappeared-value claims are withheld (`404bc39`). A
+  dimension where no returned group folds into the endpoint is `UNAVAILABLE` with that reason, never
+  an empty success.
+- **Dimensions.** Client address; action via the profile map; response class; QID and event name;
+  destination IP. A dimension whose profile property is unmapped is recorded `UNAVAILABLE` and
+  rendered, never omitted.
+- **Request headers are counted, never stored.** User agent and forwarded-for are request headers,
+  which the architecture forbids persisting (§7.5 there). They contribute only a distinct-value count
+  per window. The provenance AQL lets an analyst pivot to the values in QRadar itself. This
+  supersedes §26.2's "contributor evidence" role for `WAF_USERAGENT`.
+- **Storage.** Parallel typed tables `waf_anomaly_explanation`, `…_dimension` and `…_contributor`,
+  column for column the Phase A shape, reusing the pure comparison in `app/anomaly/explanation.py`.
+  §15.2's polymorphic foreign keys on the Phase A evidence tables are **rejected**: they alter
+  live-validated tables for no capability the parallel tables lack. This closes OPEN-5.
+- **Budget.** At most 2 queries per dimension per incident (anomaly and comparison window), 6
+  dimensions, and `EXPLANATION_MAX_PER_RUN` incidents per run, under a per-instance advisory lock.
+
+### 27.12 Query bounding
+
+| Query | Per | Bound | Status |
+|---|---|---|---|
+| Grouped observation | source × bucket | `LIMIT WAF_MAX_GROUPS_PER_BUCKET`; truncation → `PARTIAL` | **[BUILT]** |
+| Coverage total | source × bucket | single row | **[BUILT]** |
+| Source client concentration | source × bucket | `LIMIT 20` plus one `UNIQUECOUNT` | [DESIGN] |
+| Evidence | incident | §27.11 | [DESIGN] |
+| Validation | source, on demand and daily | §27.3 | [DESIGN] |
+
+Every query is read-only, aggregated and scoped to one log source; interpolates only integer epochs
+and allowlisted property names; carries `START`/`STOP` plus a half-open `starttime` predicate
+(`dc9aa34`); stays within the 168-hour window ceiling; polls for at most 120 s and cancels on timeout;
+and is capped by `LIMIT` and provider pagination. Steady-state collection costs 2 searches per enabled
+source per bucket, 3 with concentration — 576 to 864 per source per day at 5-minute buckets. The
+scheduled task processes sources sequentially under per-source locks and caps sources per run with
+`WAF_MAX_SOURCES_PER_RUN`, so a large estate falls visibly behind (watermark lag) rather than
+flooding Ariel.
+
+### 27.13 Retention [DESIGN]
+
+`waf_endpoint_metric` is a hypertable, but it is **absent from `Settings.retention_days()`**, so
+nothing ever drops it.
+
+| Table | Retention | Why |
+|---|---|---|
+| `waf_endpoint_metric`, `waf_source_metric` | `RETENTION_WAF_METRIC_DAYS`, default **35** | 28-day lookback plus a week, so a rebuild never runs off its own data |
+| `waf_endpoint_baseline` | lifetime of the endpoint | 168 cells per metric per endpoint, bounded by the active ceiling |
+| `waf_endpoint` (retired) | deleted `RETENTION_WAF_METRIC_DAYS` after `retired_at` when no incident references it | bounds retired-entity growth |
+| `waf_anomaly`, transitions, evidence | the Phase A incident policy | investigations must outlive the metrics that raised them |
+| `waf_source_profile` validation | latest report on the profile; history in `AuditLog` | |
+
+Applied through the existing non-destructive `app/services/timescale.py` path and never inside a
+migration, as Phase A does.
+
+### 27.14 API shape [DESIGN]
+
+Every route is `GET`, behind `read:anomalies`, paginated and range-bounded by `API_MAX_RANGE_DAYS`,
+and joins the existing GET-only route test.
+
+**Unified anomaly list and detail** — §18.2 in intent, made fully additive:
+
+```text
+AnomalyListItem / AnomalyDetailOut
+  + subject_kind      "LOG_SOURCE" | "WAF_ENDPOINT"
+  + waf_endpoint      {id, normalized_endpoint, http_method, virtual_host | null,
+                       virtual_host_available, normalizer_version} | null
+  ~ log_source_id     unchanged and still required: for a WAF subject, the WAF log source
+  ~ anomaly_type      AnomalyType | WafAnomalyType
+GET /api/v1/anomalies?subject_kind=&waf_endpoint_id=&log_source_id=
+```
+
+Keeping `log_source_id` required — the WAF log source, for a WAF subject — removes the one
+non-additive change §18.2 proposed. `detection` gains a WAF projection (observed and expected
+requests, coverage, normalizer version) through the same explicit whitelist.
+
+**WAF behavior:**
+
+```text
+GET /api/v1/behavior/waf/sources                                profile, validation status, coverage, endpoint counts
+GET /api/v1/behavior/waf/sources/{log_source_id}                one source, last validation report (counts only)
+GET /api/v1/behavior/waf/sources/{log_source_id}/endpoints      paged inventory: adequacy, last seen, state
+GET /api/v1/behavior/waf/endpoints/{id}/metrics                 buckets, completeness, coverage; NULL stays NULL
+GET /api/v1/behavior/waf/endpoints/{id}/baselines               cells, reliability, versions
+GET /api/v1/behavior/detectors                                  [BUILT] detector status, both domains
+```
+
+No route writes to QRadar. Profile writes stay CLI-only until an admin API is separately reviewed.
+
+### 27.15 UI shape [DESIGN]
+
+Reuses the investigation components that are generic over evidence (§3.4). No new visual system.
+
+- **Anomaly list.** A subject column rendering `GET /portal/login · lab-waf-behavior-01`, and a
+  subject-kind filter.
+- **Investigation detail.** The header names method, endpoint and source. When the source exposes no
+  virtual host it says: *"This WAF source does not expose a virtual host, so this endpoint may
+  combine traffic for different applications that share the path."* The timeline plots requests
+  against the seasonal band, `PARTIAL` buckets as gaps, and coverage as a secondary series. Evidence
+  renders all six evidence states and `UNAVAILABLE` sections exactly as Phase A does.
+- **`/behavior/waf`.** Per-source profile and validation status, coverage over time, active
+  endpoints against the ceiling, admission overflow.
+- **`/behavior/waf/sources/[id]`.** Endpoint inventory: baseline adequacy, last seen, retired, state.
+- **Detector coverage.** The `/behavior` overview lists every detector's status from
+  `/behavior/detectors`, so an operator sees that parsing or cardinality detection is not active
+  instead of inferring it from an empty list.
+- Honesty rules unchanged: unmeasured renders as an em dash, a measured zero as `0`, and
+  `distinct_client_count` as "≥ n".
+
+### 27.16 Live-lab validation strategy
+
+Against the dedicated source `lab-waf-behavior-01` (312): bounded, ≤ 20 EPS, deterministic seed,
+each scenario sized to one UTC hour, each recorded in a sanitized `LAB-*` document with no raw
+events.
+
+| # | Scenario | Proves |
+|---|---|---|
+| 1 | Validate a correct profile | existence, population and cardinality measured; `VALID` |
+| 2 | Validate a profile with one wrong property name | `INVALID`, "property does not exist"; nothing collected |
+| 3 | Baseline, spike on one endpoint, recovery — through the scheduled task | `INSUFFICIENT_DATA → NORMAL → OPEN → RECOVERING → RESOLVED`; sibling endpoints stay `NORMAL` |
+| 4 | Two WAF sources in one collection cycle | both collect every bucket (per-source watermark) |
+| 5 | 30% of events without a URL | buckets `PARTIAL`, excluded from baselines; detector `INSUFFICIENT_DATA` |
+| 6 | 1,000 distinct low-entropy paths in 10 minutes | admission cap holds; overflow recorded; entity count bounded |
+| 7 | Burst of byte-identical events | Ariel coalesces (`SUM(eventcount) > COUNT(*)`) and `request_count` equals events sent — the first WAF-source proof of `ae9932a` (§26.10 item 4) |
+| 8 | `DENY` burst on one endpoint | `WAF_BLOCK_RATIO_SPIKE` through the validated action map |
+| 9 | Normalizer or profile version bump mid-run | new entities at `INSUFFICIENT_DATA`, no IntegrityError, old entities retire |
+| 10 | Maintenance window on the WAF source | no incident opens; buckets excluded from baselines |
+| 11 | Evidence on an `OPEN` incident with a forced group cap | contributors present; the truncated dimension withholds cardinality claims |
+
+Each scenario states the QRadar event count it expects and checks the observed count by
+exact-window isolation (§26.3). Cleanup stops the generator and disables the profile. Nothing is
+written to QRadar beyond the generator's syslog traffic to the operator-configured lab source.
+
+### 27.17 Migration strategy
+
+**Done in this audit — additive, reversible, no Phase A table touched:**
+
+| Revision | Change |
+|---|---|
+| `0006` | Data only. `waf_anomaly.details.anomaly_type` corrected from the borrowed `VOLUME_SPIKE` to the row's `detector_type`. No-op downgrade. |
+| `0007` | `uq_waf_endpoint_natural_key` gains `normalizer_version`, keeping NULLS NOT DISTINCT. Downgrade fails loudly if endpoints exist under two versions. |
+
+The WAF collector's watermark moved from one `waf_endpoint_metric` row per instance to
+`waf_endpoint_metric:<QRadar log source id>` per source. The old row is left in place and no longer
+read. A source's first run under the new key collects its most recent interval, as every first run
+does.
+
+**Next Phase B revisions, in order, each additive:**
+
+1. `waf_source_profile` (§27.2), seeded for log sources that already have endpoints from the global
+   settings with `validation_status = UNVALIDATED` — so upgrading pauses WAF collection until each
+   source is validated instead of continuing on an unverified mapping.
+2. `profile_version` on `waf_endpoint`, `waf_endpoint_metric` and `waf_endpoint_baseline`: added
+   nullable, backfilled to 1, set NOT NULL and added to the natural key and baseline uniqueness in
+   the same revision, with the backfill default dropped so none is left behind.
+3. `waf_source_metric` hypertable, and WAF retention wired into `Settings.retention_days()`.
+4. `unmapped_action_count`, `client_error_count`, `server_error_count` added nullable. NULL is the
+   correct value for every historical row; `blocked_count` and `error_count` already exist as NULL.
+5. The parallel `waf_anomaly_explanation*` tables.
+
+Admission-overflow provenance needs no schema change (JSONB).
+
+**Operator procedure for the mixed-history hazard** (architecture §12.4), for a deployment whose
+28-day lookback spans `ae9932a`:
+
+1. Find coalescing sources with one bounded read-only aggregate:
+   `SELECT logsourceid, SUM(eventcount) AS events, COUNT(*) AS records FROM events GROUP BY logsourceid LAST 24 HOURS`.
+   A source whose `events / records` is close to 1.0 is unaffected.
+2. For each affected source choose one of:
+   - **wait** — `VOLUME_SPIKE` may open on unchanged traffic until pre-fix rows leave the lookback,
+     at most 28 days;
+   - **maintenance** — set `maintenance_mode` with `maintenance_until` 28 days after the deployment,
+     which suppresses incidents and excludes those buckets from baselines, at the cost of no
+     detection on that source for the period;
+   - **relearn** — delete that source's `log_source_metric` rows collected before the deployment
+     and rebuild its baselines, accepting `INSUFFICIENT_DATA` until they re-accumulate.
+3. Never reset a watermark while collection is running (Phase A §11.1).
+
+The platform does not do this automatically. Rows collected before this audit do not record which
+aggregate produced them, and deleting history on an inference is exactly the kind of silent
+destructive action the platform exists to avoid.
+
+### 27.18 Blockers
+
+**Before scheduling WAF collection at all — all cleared by Phase B.1 (§28):**
+
+1. ~~Per-source profiles and validation (§27.2, §27.3)~~ — built, §28.2–§28.3.
+2. ~~Admission controls (§27.5)~~ — built, §28.5.
+3. ~~Maintenance honoring in `WafBaselineBuilder` and `WafAnomalyEngine` (§27.8)~~ — built, §28.4.
+4. ~~Retention for `waf_endpoint_metric` (§27.13)~~ — built, §28.9.
+5. ~~A Celery task with per-source locks~~ — built as per-source fan-out, §28.6. A sources-per-run
+   cap is unnecessary once each source is its own task; Ariel load is instead bounded by worker
+   concurrency, see §28.14.
+
+The remaining open items are listed in §28.14.
+
+**Before exposing WAF incidents to analysts:** the §27.14 API fields, §27.11 evidence, §27.15
+rendering, and alert routing with a WAF fingerprint.
+
+**Before production WAF onboarding:** §26.10's five production-estate assumptions, answered per
+product by §27.3 validation against a real, non-lab source — including a coalescing measurement on
+WAF traffic.
+
+**Carried from Phase A, not specific to WAF:** watermark last-write-wins (Phase A §11.1),
+intermittent `MissingGreenlet` in collection (Phase A §11), local-development auth asymmetry
+(Phase A §11.3), and the mixed-history hazard (§27.17).
+
+---
+
+## 28. Phase B.1 — WAF collection productionization (2026-09-13)
+
+What was built to make WAF collection safe to schedule across several real WAF sources, the exact
+semantics it enforces, what it measurably costs, and what is still open. Built on the §27 design;
+where it departs from §27 it says so. No new detector, no analyst UI and no alert routing were
+added.
+
+### 28.1 Components
+
+| Concern | Where |
+|---|---|
+| Profile model and migration | `app/models/waf.py` (`WafSourceProfile`), `alembic/versions/0008_*` |
+| Logical field mapping, eligibility | `app/waf/profile.py` |
+| Validation judgement (pure) | `app/waf/validation.py` |
+| Validation queries (read-only) | `QRadarProvider.probe_waf_properties`, REST and mock |
+| Profile administration, audit | `app/services/waf_profiles.py`, `python -m app.cli.waf` |
+| Admission (pure) | `app/waf/admission.py` |
+| Per-source bucket record | `WafSourceBucket` hypertable, written by `WafEndpointCollector` |
+| Metric-semantics identity | `app/waf/semantics.py` |
+| Shared maintenance rule | `app/anomaly/seasonal.in_maintenance` (also used by Phase A, unchanged in effect) |
+| Scheduled pipeline | `app/services/waf_pipeline.py`; tasks `dispatch_waf_collection`, `collect_waf_source` |
+| Retention | `app/services/waf_retention.py`; task `apply_waf_retention` |
+| Operational status | `app/services/waf_status.py`, `GET /api/v1/waf/sources` (`admin:waf`) |
+
+### 28.2 Profile and configuration model
+
+One `waf_source_profile` per log source, belonging to that source's QRadar instance. It maps seven
+logical fields — `URL`, `METHOD`, `VIRTUAL_HOST`, `ACTION`, `RESPONSE_CODE`, `RULE_ID`,
+`USER_AGENT` — to site-authored QRadar property names. `URL` and `METHOD` are required; the rest
+are nullable, and **NULL means unavailable by configuration**, which validation reports as
+`NOT_MAPPED`: distinct from zero, from an empty string, from a parse failure and from an empty
+window.
+
+- **No property name is a default anywhere in collection.** The three `WAF_*_PROPERTY` settings
+  are no longer read by scheduled collection; the collector requires a mapping.
+- **Names only, never expressions.** Every name must match
+  `^[A-Za-z0-9_][A-Za-z0-9_ -]{0,63}$` at write time and again before it reaches AQL. A quote,
+  comma or parenthesis is refused, not escaped.
+- **Versioned.** Any mapping change increments `profile_version`, clears the validation report and
+  resets `validation_status` to `UNVALIDATED`.
+- **Audited.** Create, mapping change (with the full before and after mapping), enable, disable
+  and every validation are written to the append-only `audit_log` with the acting operator.
+- **SOC-admin controlled.** Writes go through the CLI only. The API is read-only and requires
+  `admin:waf`, which `read:*` does not grant.
+- **Eligibility fails closed.** A source is collected only when WAF collection is enabled globally,
+  the profile is enabled, the log source is monitored, and `validation_status = VALID` **for the
+  current `profile_version`**. Enabling a profile whose current version has not validated is
+  refused.
+
+`action_value_map`, `path_case_insensitive` and forwarded-for trust (§27.2) are **not** built: no
+code reads action, response code or forwarded-for yet, so storing their configuration now would be
+configuration without a reader.
+
+### 28.3 QRadar profile validation
+
+Read-only, bounded to `WAF_VALIDATION_WINDOW_SECONDS` (default 900 s, hard maximum 3,600 s), scoped
+to one log source, `START`/`STOP`-bounded and `LIMIT`-capped:
+
+1. **Log source lookup** — REST `GET` of the log source. Not found → `INVALID`, and **no Ariel
+   query is spent**. A failed lookup → `INCONCLUSIVE`.
+2. **Total volume** — one `SUM(eventcount)` over the window.
+3. **Per mapped property**, at most two aggregates: population (`SUM(eventcount)` and
+   `UNIQUECOUNT` over `IS NOT NULL` events) and the top `WAF_VALIDATION_MAX_VALUES` values by
+   `SUM(eventcount)`.
+
+Budget: at most 1 + 2 × 7 = 15 searches per validation.
+
+Per field the outcome is exactly one of:
+
+| Status | Established by | Proves |
+|---|---|---|
+| `NOT_MAPPED` | profile | unavailable by configuration |
+| `PROPERTY_REJECTED` | QRadar answered HTTP 422 to a query naming it | the property does not exist as named |
+| `QUERY_FAILED` | any other failure | nothing |
+| `NO_EVENTS` | the source's total was 0 | nothing |
+| `UNPOPULATED` | no event carried a value | the property exists and is empty |
+| `INSUFFICIENT_COVERAGE` | a collection field populated on < `WAF_VALIDATION_MIN_RATIO` of events | unusable for collection |
+| `IMPLAUSIBLE` | < `WAF_VALIDATION_MIN_RATIO` of sampled events pass the field's check | mapped to the wrong property |
+| `AVAILABLE` | everything above passed | usable |
+
+**A query succeeding is never taken as proof a field exists.** Existence also needs populated
+values, and usability needs plausible ones: a URL must normalize, a method must be a supported
+verb, a response code must be three digits, an action or rule id a bounded printable token.
+
+The profile is `VALID` only when every field collection reads — `URL`, `METHOD`, and
+`VIRTUAL_HOST` when mapped — is `AVAILABLE`. Any invalidating status on one of those makes it
+`INVALID`; `NO_EVENTS` or `QUERY_FAILED` on one makes it `INCONCLUSIVE`. Optional fields are
+reported but never decide the outcome.
+
+The stored report holds statuses, counts, ratios and query text. Only low-cardinality enumerations
+— method, action, response code — are recorded as discovered values. URLs, virtual hosts, rule
+ids and user agents are recorded as counts; their values are discarded after judgement.
+
+**[ASSUMPTION]** that QRadar answers an Ariel query naming a nonexistent property with HTTP 422. It
+is consistent with §25.2, where eleven guessed names were each "rejected as invalid" — the
+sanitized text this provider emits for 422 — but it has not been re-verified against the appliance
+in this workstream. If QRadar instead accepted such a query and returned no rows, validation would
+report `UNPOPULATED`, which is still `INVALID` for a collection field.
+
+### 28.4 Maintenance semantics
+
+**The rule** is Phase A's, now one shared function, `app.anomaly.seasonal.in_maintenance`, over the
+two columns a log source carries:
+
+| Configuration | Bucket `[start, start + width)` is in maintenance when |
+|---|---|
+| `maintenance_mode` off | never |
+| on, `maintenance_until` NULL | always |
+| on, `maintenance_until` set | `start <= maintenance_until` |
+
+So a bucket fully inside the window is in maintenance; a bucket the window ends inside (partial
+overlap) is in maintenance; the bucket starting exactly at `maintenance_until` is in maintenance;
+and **the first bucket not in maintenance is the first to start strictly after
+`maintenance_until`**.
+
+**When the rule is asked is the WAF difference.** The window has no start time, so re-asking the
+rule against the current flag rewrites history: turning maintenance on would put every earlier
+bucket in the lookback "in maintenance", and turning it off would take every maintenance bucket
+out. The WAF collector therefore asks once per bucket, at collection, and records the answer on
+`waf_source_bucket.in_maintenance`. Both the WAF engine and the WAF baseline builder read that
+record. Only a bucket with no record falls back to the rule evaluated now.
+
+This was found by the integration test, not by review: with the rule re-evaluated at rebuild time,
+entering maintenance excluded all eight buckets of the lookback, the cell was retrained on a single
+spike, and the next genuine spike was judged `INSUFFICIENT_DATA`.
+
+**Effects of a bucket in maintenance:**
+
+- It is collected: its metrics, admission record and provenance are stored.
+- It **never trains** a baseline (`exclusion_counts.maintenance`).
+- An anomalous verdict on it is demoted to `UNKNOWN`: it **advances no confirmation counter and
+  opens no incident**.
+- A detector in `NORMAL`, `INSUFFICIENT_DATA` or `RESOLVED` moves to `SUPPRESSED`. An incident
+  already `CANDIDATE`, `OPEN` or `RECOVERING` is not suppressed, and healthy buckets still count
+  towards its recovery — exactly as Phase A.
+
+**The first complete bucket after maintenance** moves `SUPPRESSED → NORMAL` ("suppression
+lifted") whatever its verdict, and that verdict does advance the counters. Detection resumes from
+the next bucket: with `ANOMALY_OPEN_AFTER_INTERVALS = 1`, a spike that starts in maintenance and
+continues is `SUPPRESSED, SUPPRESSED, NORMAL, OPEN` (tested). **Limitation:** an anomalous
+lift bucket opens no incident, so no incident span excludes it from training. It contributes one
+sample to a median/MAD cell. This is Phase A's lifecycle behavior, kept for consistency rather than
+changed in one domain.
+
+**Backfill.** A bucket collected late is judged against the flag at the time it is collected. A
+maintenance window configured before a backlog is collected therefore covers the backlog's buckets
+that start at or before `maintenance_until` — conservative: they are excluded rather than judged.
+
+**Phase A consequence — reported, not changed.** Phase A re-asks the rule against the current flag
+on every use. Its baseline builder therefore excludes every bucket in the 28-day lookback that
+starts at or before `maintenance_until` for as long as maintenance is on — including buckets from
+before the maintenance was configured — and readmits the maintenance buckets to training once the
+flag is cleared. (A Phase A cell whose samples are all excluded keeps its previous values, because
+the builder only rewrites cells that have samples.) Fixing that means recording the decision on
+`log_source_metric`, a schema change and a behavior change to the live-validated pipeline, so it is
+left for an explicit decision (§28.14).
+
+### 28.5 Endpoint admission and cardinality
+
+Implemented as §27.5 describes, with the two changes noted there.
+
+For each collected bucket, after folding raw groups into normalized `(virtual host, endpoint,
+method)` keys:
+
+1. **Tracked** — keys with an *active* entity of the current normalizer version — are always
+   collected. The new-endpoint quota never applies to them.
+2. **Unseen** — keys with no entity, or only a retired one — are candidates.
+3. A candidate below `WAF_MIN_ADMISSION_REQUESTS` (default 3) in the bucket is not admitted.
+4. The rest are ordered by request count descending, then virtual host (NULL first), endpoint and
+   method — a total order, so arrival order from QRadar cannot change the result.
+5. The first `min(WAF_MAX_NEW_ENDPOINTS_PER_BUCKET, WAF_MAX_ACTIVE_ENDPOINTS_PER_SOURCE − active)`
+   are admitted (defaults 20 and 2,000). A retired entity that is admitted is reactivated; its
+   `first_seen_at` is kept.
+6. Everything else creates no entity and no row, and is **never stored by name**.
+
+Every bucket's `WafSourceBucket` records `observed_endpoints`, `tracked_endpoints_observed`,
+`admitted_endpoints`, `below_admission_threshold`, `rejected_over_quota`, `untracked_endpoints`,
+`untracked_requests` and `admission_truncated` (eligible endpoints refused for want of quota). The
+record is written even when no endpoint row is.
+
+**Admission truncation does not make a bucket `PARTIAL`.** Every tracked endpoint's count in that
+bucket is still whole. **Provider group truncation still does**: when the grouped query hits
+`WAF_MAX_GROUPS_PER_BUCKET`, any tracked endpoint's raw groups may be missing, so the bucket cannot
+be a whole observation of anything. See the corresponding limitation in §28.14.
+
+The normalizer is the first bound. Numeric enumeration (`/users/1` … `/users/5000`) folds into one
+`/users/{id}` entity before admission runs (tested); admission is what bounds enumeration the
+normalizer cannot template, such as alphabetic segments.
+
+### 28.6 Scheduled task topology
+
+```
+beat: dispatch-waf-collection   every COLLECTION_INTERVAL_SECONDS
+  └─ dispatch_waf_collection    no-op while WAF_COLLECTION_ENABLED=false
+       └─ collect_waf_source(profile_id)   one Celery task per eligible profile
+            └─ run_waf_source   own session; commit on success
+                 └─ lock waf_pipeline:<qradar id>
+                      1. collect   watermark waf_endpoint_metric:<qradar id>
+                      2. evaluate  watermark waf_endpoint_evaluation:<qradar id>
+                      3. train     metadata on the evaluation watermark
+beat: apply-waf-retention       every WAF_RETENTION_INTERVAL_SECONDS (daily)
+  └─ apply_waf_retention
+```
+
+- **Independent sources.** Each source is its own task, session, lock, watermarks and failure
+  record, so a source whose Ariel searches hang for their full timeout delays no other source.
+- **Idempotent.** Collection resumes from its watermark and upserts on
+  `(waf_endpoint_id, bucket_start)` and `(log_source_id, bucket_start)`. Evaluation resumes from
+  its own watermark, and each detector state's `last_interval_start` makes a replayed bucket a
+  no-op.
+- **Duplicate delivery.** Two runs for one source: the second fails to take
+  `waf_pipeline:<qradar id>` and returns `locked`. A forced re-collection of an already-collected
+  bucket rewrites the same rows (tested).
+- **Failure is not traffic.** A failed run rolls back everything it wrote — no bucket, no metric,
+  no zero — leaves both watermarks where they were, and records `consecutive_failures`,
+  `last_error` and `last_failure_at` on the collection watermark in its own commit. A provider
+  error is recorded with its sanitized text; any other exception by class name only, because a
+  database error can echo request values.
+- **Observable lag.** Collection lag is the distance from the end of the last collected bucket to
+  now; evaluation lag and pending buckets are reported separately (§28.10).
+
+### 28.7 Collect → evaluate → train ordering
+
+Inside one run, in this order:
+
+1. **Collect** completed buckets; the collection watermark advances only past buckets written.
+2. **Evaluate** buckets with a `WafSourceBucket` newer than the evaluation watermark and no newer
+   than the collection watermark, oldest first, at most `WAF_MAX_EVALUATION_BUCKETS_PER_RUN`
+   (default 24). Every endpoint row in a bucket is judged against the baseline **as trained before
+   this run's step 3**.
+3. **Train** at most `WAF_BASELINE_ENDPOINTS_PER_RUN` (default 50) active endpoints, least recently
+   rebuilt first (`waf_endpoint.baseline_rebuilt_at`, NULL first, so an endpoint whose rebuild
+   writes no cell cannot starve the others), over buckets up to the **end of the last evaluated
+   bucket** only.
+
+So a bucket is never trained on before it is judged, and training can never run ahead of
+evaluation even when collection does (tested: two buckets collected, one evaluated, training bound
+to the one). Once judged, an anomalous bucket is excluded from training by its incident span.
+`PARTIAL` buckets are judged — as `INSUFFICIENT_DATA`, which advances nothing — and never train;
+a failed collection leaves no bucket to judge or train on (tested).
+
+### 28.8 Metric-semantics identity
+
+`app/waf/semantics.py` defines the identity of `request_count` as
+`request_count/v<definition>;agg=<aggregation>;normalizer/v<N>;profile/v<P>`, where `aggregation`
+comes from the provider (`SUM(eventcount)` for REST). Every `WafEndpointMetric`, `WafSourceBucket`
+and `WafEndpointBaseline` records the identity it was produced under.
+
+- The baseline builder trains only on rows whose identity equals the one being rebuilt for; others
+  are counted as `incompatible_semantics`.
+- The engine refuses a cell whose identity differs from the bucket's: the verdict is
+  `INSUFFICIENT_DATA` with the reason "rebuild required".
+- **NULL matches nothing.** Rows collected before identities existed can neither train nor be
+  judged. Nothing guesses what an old row counted.
+
+A change of event aggregation, normalizer version or profile mapping therefore fails closed until
+the next rebuild of each endpoint (tested: a remapped profile's spike is not judged against the old
+cell, and the rebuild excludes all six old rows).
+
+**Not applied to Phase A.** Enforcing an identity on `log_source_metric` would turn every existing
+row into an incompatible one and every Phase A source into `INSUFFICIENT_DATA` until relearned.
+That is a Phase A behavior change, so Phase A keeps the recorded-but-unenforced provenance of the
+preflight and the documented operator procedure (§27.17).
+
+### 28.9 Retention policy
+
+Run daily by `apply_waf_retention` while `WAF_RETENTION_ENABLED` (default **true** — unlike the
+generic Timescale policies, because WAF collection is itself opt-in and its growth is influenced by
+whoever sends requests). Each table has its own rule:
+
+| Data | Deleted when | Default |
+|---|---|---|
+| `waf_endpoint_metric`, `waf_source_bucket` (incl. their provenance) | bucket started before `WAF_METRIC_RETENTION_DAYS` | 35 days |
+| `waf_endpoint_baseline` | cell not recomputed within `WAF_METRIC_RETENTION_DAYS` — every sample behind it is already gone | 35 days |
+| `waf_anomaly` + transitions | state `RESOLVED`, or a closed candidate (`NORMAL`, `INSUFFICIENT_DATA`), ended before `WAF_ANOMALY_RETENTION_DAYS`, and referenced by no detector state | 180 days |
+| `waf_endpoint` + its detector state and remaining cells | retired before `WAF_METRIC_RETENTION_DAYS`, with no incident and no metric row | 35 days |
+| `waf_source_profile` | never; removed only with its log source | — |
+
+- **Never deleted:** an incident in `CANDIDATE`, `OPEN`, `RECOVERING` or `SUPPRESSED`, whatever its
+  age, nor any endpoint that still has an incident (tested with a 400-day-old `OPEN` incident on a
+  retired endpoint).
+- **The baseline window is protected.** With WAF collection and retention enabled, startup refuses
+  `WAF_METRIC_RETENTION_DAYS <= BASELINE_LOOKBACK_DAYS`; and the retention task itself deletes
+  nothing while that holds, so retention can never remove a sample a rebuild relies on. A
+  deployment without WAF collection is never refused startup over the WAF setting (tested).
+- **Bounded.** Deletes run as `DELETE … WHERE key IN (SELECT … LIMIT n)` in batches of
+  `WAF_RETENTION_BATCH_SIZE` (5,000), at most `WAF_RETENTION_MAX_BATCHES` (20) per table per run,
+  each committed separately. A table not cleared within the limit is reported `incomplete` and
+  continues next run (tested).
+- Evidence packages for WAF incidents do not exist yet; when built they inherit the incident rule.
+
+### 28.10 Observability
+
+`GET /api/v1/waf/sources` and `GET /api/v1/waf/sources/{profile_id}` (`admin:waf`), and
+`python -m app.cli.waf status [--json]`, report per source: profile enabled state, version,
+validation status, validated version and time, per-field validation status; collection eligibility
+with the reason when not eligible; collection watermark, last run, last success, lag, consecutive
+failures, last error and last failure time; the last bucket's completeness, coverage, observed,
+tracked, admitted and untracked endpoint counts, untracked requests, admission truncation,
+maintenance flag, profile version and metric identity; admission-truncated buckets in the last 24
+h; active endpoints against the ceiling; whether baseline training and detection are active,
+last training time and bound, endpoints never rebuilt; evaluation watermark and pending buckets.
+
+No field carries a URL, user agent, client address or other request value (tested).
+
+### 28.11 Client aggregates — kept possible, not built
+
+§27.7 is revised: there must be no **unbounded** per-client entity. Detectors planned for B.2 need
+to answer which client address contributes most WAF traffic, what share it holds, whether one
+fanned out across an abnormal number of endpoints, and whether one became dominant without total
+volume spiking. A structure conceptually like
+
+```text
+waf_client_bucket (qradar_instance, waf_log_source, bucket_start, client_address)
+  request_count, endpoint_count, share_of_source, …
+```
+
+is compatible with what B.1 built, **provided it is admitted the same way endpoints are**: only
+bounded, material clients — the top-N by volume, clients above a minimum share, or clients named by
+an open incident — with the refused remainder counted on `WafSourceBucket`, never stored by
+address. `WafSourceBucket` is the per-source, per-bucket anchor such a table joins to; the
+admission rules of §28.5 are pure and reusable for it; and retention (§28.9) would take it with the
+bucket it belongs to. Nothing in B.1 has been built in a way that prevents it. It is not built
+here.
+
+### 28.12 Measured cost
+
+> **Superseded by §29.7–§29.8**, which re-measures these scenarios before and after Phase B.1.5.
+
+Measured 2026-09-13 against the `timescale/timescaledb:2.17.2-pg16` test database on a developer
+workstation, through `run_waf_source` with a stub provider — so the figures below are **database
+cost only**, excluding Ariel round-trips. Plain tables (not hypertables) were used; treat them as
+orders of magnitude, not capacity guarantees.
+
+| Scenario | Wall time | SQL statements | Outcome |
+|---|---:|---:|---|
+| Attack bucket: 5,000 distinct normalized endpoints, one source | 0.19 s | 205 | 20 entities admitted, 4,980 untracked, 20 metric rows, 1 bucket record |
+| Steady bucket at the default ceiling: 2,000 active endpoints, 200 observed, 1,800 zero-filled; evaluation of 2,000 endpoints; 50 baseline rebuilds | 2.52 s | 6,273 | 2,000 metric rows |
+| One endpoint's full rebuild over the 28-day lookback (8,064 buckets) | 0.22 s | 341 | 168 cells |
+
+What follows from them:
+
+- **An attack is cheap to absorb.** Refused endpoints cost one bounded lookup and a count; nothing
+  is written per refused path.
+- **Steady-state cost is linear in active endpoints**, about three statements per endpoint
+  evaluation, dominated by per-endpoint baseline and detector-state reads. At the default ceiling
+  that is ~6,300 statements and ~2.5 s per source per five-minute bucket, ~1.8 M statements per
+  source per day. At the lab's 10 endpoints it is negligible.
+- **Storage.** Measured at ~430 bytes per `waf_endpoint_metric` row including indexes (a small table
+  overstates this). At the ceiling: 576,000 rows/day, roughly 250 MB/day and ~8.7 GB retained over
+  35 days per source; at the lab's 10 endpoints, 2,880 rows/day.
+- **Ariel cost is unchanged by B.1:** two bounded searches per source per bucket (576 per source per
+  day), plus at most 15 per validation. Admission, maintenance, identity and retention add no
+  Ariel query.
+- **Baseline training** at 50 endpoints per run costs ~50 × 0.22 s of database time in the worst
+  case (full lookback), and refreshes a 2,000-endpoint source's baselines about every 3.3 hours.
+
+**Not measured:** live Ariel latency under B.1 scheduling, hypertable chunk behavior at retention
+scale, and cardinality of any real WAF product. The first two belong to the §27.16 live-lab plan;
+the third to production onboarding.
+
+### 28.13 Migration impact
+
+- **`0008`** is additive: `waf_source_profile`, `waf_source_bucket` (hypertable when Timescale is
+  present), nullable `metric_semantics` on `waf_endpoint_metric` and `waf_endpoint_baseline`, and
+  `waf_endpoint.baseline_rebuilt_at`. Downgrade drops them, losing profiles and bucket records.
+  Upgrade → downgrade to `0007` → upgrade → `alembic check` was run on a freshly reset schema.
+- **Existing WAF data** — the lab rows of §26.7 — has no identity, so it neither trains nor is
+  judged; a source restarts at `INSUFFICIENT_DATA` and relearns.
+- **Existing deployments must create and validate a profile** before any WAF source is collected.
+  Without one nothing is collected, which is the safe default.
+- **New endpoint rows carry slim provenance** (`{"collector", "source_bucket", "zero_filled"}`); the
+  full query provenance is on the bucket record, written once instead of once per endpoint.
+- **Startup validation:** a deployment that enables WAF collection with `BASELINE_LOOKBACK_DAYS` of
+  35 or more must raise `WAF_METRIC_RETENTION_DAYS` too, or the backend refuses to start. The check
+  was first written unconditionally, which the full suite caught: it would have refused to boot a
+  Phase A-only deployment with a 60-day lookback. It now applies only with WAF collection on.
+- **New permission** `admin:waf`, granted by `admin:*`.
+- **Phase A:** no table touched. Its engine and baseline builder now call the shared
+  `in_maintenance`, which is the same rule they inlined, so their behavior is unchanged; the full
+  Phase A suite passes unmodified.
+
+### 28.14 Known limitations and open blockers
+
+> **Items 1, 2, 3 and 6 are addressed by Phase B.1.5 — see §29.1–§29.9.**
+
+1. **Group-cap blinding.** Admission cannot stop a source's grouped query from hitting
+   `WAF_MAX_GROUPS_PER_BUCKET` (500): grouping happens on raw URLs in AQL, before normalization, so
+   even `/users/1` … `/users/5000` produces 5,000 groups. A truncated bucket is correctly `PARTIAL`,
+   which means **anyone able to send more than ~500 distinct raw paths per bucket can suppress every
+   verdict on that source** for that bucket. Mitigations for B.2 — a second bounded query scoped to
+   tracked endpoints, or raising the cap with measured cost — need measurement against real traffic.
+2. **Evaluation cost is linear in active endpoints** — see §28.12 — because the engine judges each
+   endpoint with its own queries. Acceptable at the default ceiling at five-minute buckets; a B.2
+   detector that adds per-endpoint work must batch it.
+3. **No global Ariel concurrency cap for WAF.** Fan-out bounds WAF Ariel load by Celery worker
+   concurrency only; the existing in-process limiter serves scheduled searches. Size worker
+   concurrency, or add a shared limiter, before enabling many sources.
+4. **Phase A maintenance semantics** (§28.4) — historical buckets are excluded while maintenance is
+   on and readmitted when it is cleared. Needs a decision; not changed here.
+5. **Phase A metric identity** is recorded but not enforced (§28.8); the mixed-history procedure
+   (§27.17) still applies.
+6. **The HTTP 422 assumption** of §28.3 should be re-verified against the appliance.
+7. **Advisory-lock release after a database error.** A run that fails with a database error aborts
+   its transaction before the lock's release statement runs. In Celery the task disposes its engine,
+   closing the connection and releasing the lock; a long-lived caller reusing the connection would
+   hold it. The same pattern exists in every Phase A collector.
+8. **Carried from Phase A, inspected and left:** watermark last-write-wins (Phase A §11.1 — the WAF
+   watermarks share the pattern and the same manual procedure applies); the intermittent
+   `MissingGreenlet` (cause not established; the B.1 tests hit a *different* one — an ORM object
+   expired by a rollback and touched outside the async context — which the scheduled task avoids by
+   using a fresh session per run); the local-development auth asymmetry (a deliberate dev
+   convenience with test dependents; an isolated fix could not be proven not to break them).
+9. **Production WAF onboarding** remains NO-GO: §26.10's assumptions are unanswered for any real
+   WAF product.
+
+### 28.15 Gates
+
+2026-09-13, after B.1: Ruff clean · Mypy 31 errors in 18 files (unchanged baseline) · **1489
+backend tests passed, 0 failed** (1112 unit + 377 integration), including 66 new B.1 unit test cases
+and 22 new B.1 integration tests, with no existing Phase A or Phase B test weakened · frontend lint,
+typecheck, 629 tests and production build clean (frontend unchanged by B.1) · `alembic upgrade
+head` → `downgrade 0007` → `upgrade head` → `alembic check` clean on a freshly reset schema.
+
+### 28.16 Readiness for Phase B.2
+
+**Yes, for detector expansion on validated sources in the lab**, with §28.14 items 1–3 as explicit
+design inputs rather than surprises: a new detector reads the recorded bucket and identity, runs in
+the evaluate step, trains in the train step, inherits maintenance, retention and failure isolation,
+and must keep per-endpoint work batched. **Not yet** for production onboarding or analyst exposure.
+
+---
+
+## 29. Phase B.1.5 — collection resilience and scale hardening (2026-09-16)
+
+Phase B.1 was correct but had three design limits and one missing control that Phase B.2 would
+have built on: a raw-path flood above the group cap blinded a whole source (§28.14 item 1), a
+scheduled run cost about three SQL statements per active endpoint (§28.14 item 2), dense
+zero rows put the 35-day metric footprint of a 2,000-endpoint source near 8 GB, and nothing bounded
+how many WAF sources searched Ariel at once (§28.14 item 3). This section records how each was
+resolved, the exact guarantees now given, what it measurably costs, and what is still open. **No
+detector, analyst UI or alert routing was added.** Where this section changes an earlier one, it
+supersedes it.
+
+### 29.1 Root cause of the group-cap blind spot
+
+The grouped observation query groups by the **raw** `(URL, method[, virtual host])` in AQL,
+orders by `SUM(eventcount)` and stops at `WAF_MAX_GROUPS_PER_BUCKET` (500). Normalization happens
+afterwards, in the application. In B.1:
+
+1. `truncated` was set whenever the cap was reached (`len(groups) >= limit`), whatever the volumes.
+2. Coverage was computed as *returned* parsed events over the source total, so under truncation it
+   dropped as well — a second, independent route to the same verdict.
+3. Either condition set the **whole bucket** `PARTIAL`, and every row written for it — observed
+   endpoints and zero-filled ones alike — carried that completeness.
+4. The detector's first guard returned `INSUFFICIENT_DATA` for anything not `COMPLETE`.
+
+So 500 distinct raw paths in five minutes — at one request each — made every endpoint of the
+source unjudgeable for that bucket. The counts themselves were not wrong: every returned group's
+`SUM(eventcount)` was a real count of real events. They were *discarded* because a single flag
+could not say "incomplete, but only in one direction". Measured on the B.1 code: a tracked endpoint
+at 9× its baseline during a 5,000-path spray opened no incident (§29.7).
+
+### 29.2 Completeness dimensions and measurement semantics
+
+A bucket record now states each dimension separately:
+
+| Dimension | Where | Exact when | Otherwise |
+|---|---|---|---|
+| Source event volume | `waf_source_bucket.total_events` | always — it is its own ungrouped aggregate | — (a failed query writes no bucket) |
+| Endpoint grouping / new-endpoint discovery | `groups_truncated`, `discovery_complete` | the grouped result did not reach the cap | discovery saw only the returned groups; `observed_endpoints`, `untracked_endpoints` and `untracked_requests` are lower bounds |
+| Endpoint request counts | `request_count_measurement` | not truncated **and** coverage ≥ `WAF_MIN_ENDPOINT_COVERAGE` → `EXACT` (`COMPLETE`) | `LOWER_BOUND` (`PARTIAL`) |
+| Endpoint coverage ratio | `coverage_measurement` (derived) | not truncated | a lower bound on true coverage |
+| Composition | `distinct_client_count` | never — it is the maximum over folded raw groups | always a lower bound (unchanged from B.1) |
+
+`EXACT` keeps B.1's tolerance: a bucket with coverage at or above the floor counts as whole even
+though up to `1 − floor` of its events carried no endpoint. That tolerance is unchanged.
+
+**Lower-bound guarantee.** For a bucket whose counts are `LOWER_BOUND`, for every stored endpoint
+count *c* and the endpoint's true count *T*: **c ≤ T**. This rests on:
+
+- **G1** — each returned group's `SUM(eventcount)` counts only events matching its
+  `(URL, method[, host])`, the log source and the half-open window (`starttime` predicate plus
+  `START/STOP`), and every `eventcount ≥ 1`;
+- **G2** — an endpoint's count is the sum of the returned raw groups that normalize into it, and
+  omitted groups (truncation) or unattributed events (low coverage) can only add to *T*;
+- **[ASSUMPTION A1]** Ariel does not double-count an event inside one aggregate. G1 does *not*
+  assume the top-N is exact: if the appliance merged per-processor top-N lists, a returned group's
+  sum could only be an undercount, which keeps c ≤ T.
+
+**Which verdicts a lower bound can support.** Every guard on the way to a
+`WAF_REQUEST_RATE_SPIKE` verdict — minimum volume, ratio, absolute delta, robust *z*, and the
+degenerate-MAD band — is monotonically non-decreasing in the observed count. If *c* clears all of
+them, *T ≥ c* clears all of them. A normal verdict is never concluded from *c*: the hidden events
+may be exactly what makes the bucket abnormal. A randomized property test (4,000 cases, including
+MAD = 0 and zero-median baselines) asserts both properties
+(`tests/unit/test_waf_resilience.py::TestLowerBoundSpike::test_monotonicity_property`).
+
+**Capability model, not detector-specific checks.** `DetectorSpec.measurement`
+(`app/anomaly/capabilities.py`) declares how a detector may use a lower bound:
+
+| Requirement | Exact count | Lower bound | Unknown semantics |
+|---|---|---|---|
+| `EXACT` | any verdict | **no verdict** | no verdict |
+| `LOWER_BOUND_PROVES_INCREASE` | any verdict | anomalous verdict only; every other exit is `INSUFFICIENT_DATA` | no verdict |
+
+`WAF_REQUEST_RATE_SPIKE` declares `LOWER_BOUND_PROVES_INCREASE`. A detector with no declared
+requirement is treated as `EXACT`. The engine computes the scope from the spec and passes it to the
+pure detector; the detector never grants itself lower-bound reasoning — a `PARTIAL` point without a
+granted scope, or with no recorded semantics, gets no verdict (a row with no bucket record is exact
+only when `COMPLETE`, never assumed a lower bound). The scope is published by
+`GET /api/v1/behavior/detectors` as `measurement_requirement`.
+
+**Never displayed as exact.** A lower-bound verdict's reason reads "at least *n* requests (a lower
+bound: …)"; its evidence carries `request_count_measurement: LOWER_BOUND`; and
+`waf_anomaly.observed_measurement` and `waf_anomaly_transition.observed_measurement` record whether
+the stored reading is exact. An incident keeps its worst reading; if that reading is a lower bound,
+the incident says so.
+
+**Considered and not built:** upper-bound reasoning (true count ≤ visible + residual unattributed
+volume) to prove *normal* behaviour under truncation. It would depend on two separately timed
+searches being consistent, and under exactly the floods that matter the residual is large enough to
+prove nothing.
+
+**Behaviour change — low coverage.** The same semantics apply when coverage, not truncation, is the
+cause: unattributed events can only belong to some endpoint. A low-coverage bucket therefore now
+proves a sufficiently large spike, where B.1 gave no verdict. Every non-spike outcome is still
+`INSUFFICIENT_DATA`, and such buckets still never train (§27.16 scenario 5 holds).
+
+### 29.3 Adversarial flood behaviour
+
+Driven through `run_waf_source` with the REST provider's exact truncation shape
+(`tests/integration/test_waf_resilience.py::TestPathFloods`); cap 500:
+
+| Scenario | Bucket | Tracked endpoints | Incidents | Baseline |
+|---|---|---|---|---|
+| 5,000 unique raw paths, tracked endpoints at normal volume | `PARTIAL`, `LOWER_BOUND`, discovery incomplete, `total_events` exact; ≤ 20 admitted | `INSUFFICIENT_DATA` — **not** `NORMAL` | none | bucket excluded (`incomplete`); next exact bucket returns them to `NORMAL` |
+| 5,000 raw `/users/<n>` paths (3 requests each) folding into tracked `/users/{id}` (baseline ≈ 100) | as above | 500 visible groups → lower bound 1,500 | **OPEN**, `observed_measurement = LOWER_BOUND`, "at least 1500 requests" | excluded |
+| Tracked `/portal/login` at 900 (baseline ≈ 100) plus 5,000 one-off paths | as above | login proven; sibling at normal volume `INSUFFICIENT_DATA` | **OPEN** on login only | excluded |
+| An `OPEN` incident; login back to normal during a 3,000-path spray of 10 each; `/rare` (3 requests) pushed below the cap | as above | login unprovable; `/rare` has no row and its absence is **not** zero | stays `OPEN` — unprovable normality is not recovery | excluded |
+| … the spray stops | `COMPLETE` | exact again | `RECOVERING → RESOLVED` | trains |
+
+The group query stays bounded throughout (`max_groups` is the configured cap on every call).
+
+**What an attacker can still do.** Suppress *normal* verdicts and baseline training for as long as
+they sustain more than *cap* distinct raw groups per bucket — at a cost of one request per group per
+bucket — and so keep existing incidents from resolving and cells from refreshing. That is fail-closed
+and visible (`lower_bound_buckets_24h`). To *hide a spike* whose raw group carries *V* requests they
+must place at least *cap* groups each at or above *V* — at least `500 × V` requests in the same
+bucket, which is itself an exact source-volume anomaly Phase A's `VOLUME_SPIKE` can see. A spike
+spread thinly over more raw variants than the cap (each below the cut) is visible only up to the
+returned share.
+
+### 29.4 Sparse storage
+
+**Why the rows existed.** B.1 wrote an explicit zero row for every active tracked endpoint absent
+from a bucket: at the 2,000-endpoint ceiling, 576,000 rows per source per day whatever the traffic,
+each ~380–430 bytes with indexes.
+
+**Now.** A row is written only for an endpoint the grouped result mentioned. Absence is read through
+the bucket record (`app/waf/observations.py`, shared by the engine and the builder):
+
+| Row | Bucket record | Endpoint tracked at the bucket | Meaning |
+|---|---|---|---|
+| yes | yes | — | the row, under the bucket's measurement semantics |
+| yes | no (pre-0008 row) | — | the row; exact only when `COMPLETE` |
+| no | sparse, `EXACT` | yes | **a measured zero** |
+| no | sparse, `LOWER_BOUND` | yes | unknown — lower bound 0; judged `INSUFFICIENT_DATA`, trains as `incomplete` |
+| no | sparse | no | not an observation |
+| no | dense (pre-0009) | — | not tracked (0008 wrote its zeros explicitly) |
+| no | none — collection failed or never ran | — | nothing; never zero |
+
+**Why the zero is sound.** A tracked endpoint is written whenever the grouped result mentions it,
+whatever its volume, so its absence from an exact result is zero. An untracked endpoint may have
+been refused admission without a row (below the threshold or over quota), so its absence says
+nothing — which is why the *tracking window* matters:
+
+- `waf_endpoint.tracked_since` — start of the bucket that created or last reactivated the entity;
+- `waf_endpoint.tracked_until` — set at retirement to the last bucket the run collected while the
+  endpoint was still tracked, so a lagging backfill collected afterwards does not read its absence
+  as zero.
+
+**Evaluation** judges every endpoint with a row plus, in a sparse bucket, every endpoint tracked at
+it — so an incident on an endpoint that goes completely silent still recovers and resolves on
+measured zeros (tested). **Training** reconstructs the same series; a unit test asserts that the same
+randomized traffic stored densely (B.1) and sparsely (B.1.5), with exact, lower-bound, maintenance
+and failed buckets mixed, trains identical samples, exclusions and candidate counts.
+
+**Slim rows.** Collection time, provenance, watermark and the metric-semantics identity are the same
+for every row of a bucket; they now live only on the bucket record (the row fields stay nullable and
+are left NULL or `{}`). A row's identity is its own when set (pre-0009 rows) and otherwise its
+bucket's. **Re-collecting a bucket replaces its rows** (delete, then insert, in the run's
+transaction), so a row can never outlive the bucket record it inherits from; B.1 merged instead,
+which could leave a stale row for an endpoint the fresh result no longer mentioned.
+
+**Behaviour change — reactivation.** A retired endpoint that returns starts a new tracking period.
+Rows from before retirement no longer train: they lost the zeros that belonged with them, and
+training on the non-zero half of a period would bias the baseline upward. Its rebuild is queued first
+(`baseline_rebuilt_at = NULL`). `first_seen_at` still records the first sighting.
+
+**Retention** is unchanged: buckets and rows age out together by bucket start, so no bucket record
+survives to vouch for an absence its rows no longer back (tested).
+
+### 29.5 SQL batching
+
+Profiled with a statement counter on the driver (`before_cursor_execute`). B.1's collection was
+already bulk (11 statements); evaluation was the amplification.
+
+| Path | B.1 | B.1.5 |
+|---|---|---|
+| Evaluation | per endpoint: baseline cell lookup, detector state lookup (+ insert), anomaly lookups, flush — ~3 statements per endpoint | per bucket: 1 query for rows + tracked endpoints (outer join), 1 for cells, 1 for states, 1 for live incidents, 1 flush — **6 statements**, any N |
+| Training | per endpoint: rows, spans, and a SELECT + INSERT/UPDATE **per cell** (341 statements for one endpoint's full lookback) | bucket records once; per chunk of 25 endpoints: rows, spans, one bulk `INSERT … ON CONFLICT` for all cells, one batched rebuild-time update |
+| Collection | 11 statements; zero rows written | 13 statements; rows replaced per bucket; no zero rows |
+| Retirement | SELECT + one UPDATE per retired endpoint | one `UPDATE … RETURNING` |
+
+One non-obvious fix was found by the regression test rather than by review: SQLAlchemy batches
+UPDATEs into one `executemany` only across *consecutive* rows that change the same columns.
+Detector states that transitioned interleaved with states that only advanced a counter, and the
+flush fragmented into one UPDATE per row (5 statements for 60 endpoints, 299 for 1,200). The engine
+now marks the full column set on every modified state and incident, so each table is one batch.
+
+**Regression guards** (`tests/integration/test_waf_scale.py`): a scheduled run issues the same
+number of statements for 60 and 1,200 endpoints (≤ 40); evaluation is equal for 40 and 800
+endpoints with one detector and with a second registered detector (≤ one extra statement, never
+per endpoint); a rebuild of 100 endpoints costs exactly 3 × 4 statements more than of 25; a
+2,000-endpoint bucket with 2,000 observed endpoints is ≤ 40 statements. Reverting the uniform-update
+fix fails four of the five.
+
+### 29.6 Global WAF Ariel budget
+
+`app/services/waf_ariel_budget.py`. A counting semaphore of `WAF_ARIEL_MAX_CONCURRENT_SOURCES`
+(default **2**) slots built from the primitive the collectors already use: PostgreSQL session
+advisory locks. Slot *i* is `pg_try_advisory_lock(WAF_ARIEL_PERMIT_LOCK_NAMESPACE, i)` (namespace
+4712, refused at startup if equal to the collector namespace), held on a **dedicated
+autocommit connection** for the duration of one bucket's searches.
+
+- **Per-source independence and the per-source lock are unchanged.** A run takes its source lock
+  first; only then does collection take one permit per bucket. A locked source spends no permit.
+- **Cross-worker** — every worker sees the same lock table. **Crash recovery / no leaked permits** —
+  the lock belongs to its connection; if the worker dies, the server ends the backend and the slot is
+  free, with no TTL to tune (tested with `pg_terminate_backend` and with a connection dropped without
+  unlocking). The permit is outside the run's transaction, so a rollback or aborted transaction
+  cannot strand it.
+- **Bounded wait** — polls every `WAF_ARIEL_PERMIT_POLL_SECONDS` (1 s) for at most
+  `WAF_ARIEL_PERMIT_WAIT_SECONDS` (30 s); never queues behind a lock.
+- **On no permit:** the collection loop stops before issuing that bucket's searches. Nothing is
+  written for it — no bucket, no row, no zero. The watermark stays on the last bucket actually
+  written (a squeezed backfill keeps the two buckets it got; tested), buckets already collected are
+  still evaluated and trained, the failure counter is untouched, and the run reports
+  `capacity_unavailable`. The next dispatch resumes exactly there.
+- **Tested across workers:** four sources in four concurrent sessions on four engines with a limit of
+  2 — peak concurrent searches exactly 2, all four collected.
+
+**Why not Redis.** `RedisConcurrencyLimiter` exists but no production path uses it, and its
+INCR/EXPIRE design refreshes a shared TTL on every acquire, so a slot leaked by a dead worker is not
+reclaimed while other workers keep acquiring. Advisory locks give exact ownership and release on
+connection loss.
+
+**Limits of the mechanism.** A worker that is alive but stuck holds its slot until its Ariel poll
+bound (120 s per search, cancelled on timeout) or its task time limit ends it. A host that vanishes
+without closing TCP holds its slot until the database server's TCP keepalive notices. One permit per
+source covers that bucket's two sequential searches — it bounds concurrent *sources*, i.e. at most
+`2 × limit` concurrent WAF searches counting both queries of a bucket as one unit of work. Profile
+validation (operator CLI, ≤ 15 searches) is not budgeted.
+
+### 29.7 Measured cost — database only
+
+Stub provider, `timescale/timescaledb:2.17.2-pg16` test database on a developer workstation, plain
+tables created from metadata. **No Ariel time is included and nothing here was measured on a QRadar
+appliance.** "Before" is the B.1 working tree snapshotted before this workstream, run through the
+same harness. One steady-state scheduled run (collect → evaluate → train 50 endpoints) with detector
+states and reliable cells already present.
+
+**Per bucket, 10% of tracked endpoints requested:**
+
+| Endpoints | Before: statements | Before: seconds | Before: rows written | After: statements | After: seconds | After: rows written |
+|---:|---:|---:|---:|---:|---:|---:|
+| 100 | 573 | 0.23 | 100 | **36** | 0.034 | 10 |
+| 500 | 1,773 | 0.74 | 500 | **36** | 0.073 | 50 |
+| 1,000 | 3,273 | 1.38 | 1,000 | **36** | 0.108 | 100 |
+| 2,000 | 6,273 | 2.60 | 2,000 | **36** | 0.249 | 200 |
+
+**Per bucket, every tracked endpoint requested (worst case for sparse storage):**
+
+| Endpoints | Before: statements | Before: seconds | After: statements | After: seconds | Rows written (both) |
+|---:|---:|---:|---:|---:|---:|
+| 100 | 573 | 0.25 | **36** | 0.056 | 100 |
+| 500 | 1,773 | 0.74 | **36** | 0.156 | 500 |
+| 1,000 | 3,273 | 1.49 | **36** | 0.208 | 1,000 |
+| 2,000 | 6,273 | 2.76 | **36** | 0.410 | 2,000 |
+
+**Baseline evaluation cost** (evaluate phase alone, 10% requested): before 303 / 1,503 / 3,003 /
+6,003 statements and 0.11 / 0.55 / 1.08 / 2.14 s; after **6** statements at every size and 0.011 /
+0.041 / 0.075 / 0.197 s (the remaining time is pure-Python detector and lifecycle work).
+
+**Training** — 50 endpoints, each with a row in every bucket of a full 28-day lookback (403,200
+rows, 8,400 cells): before **16,951 statements, 11.5 s**; after **9 statements, 4.7 s**.
+
+**Group-cap flood bucket** (tracked endpoint at 9× baseline, 5,000 one-off paths, cap 500): before
+95 statements, bucket `PARTIAL`, spike `INSUFFICIENT_DATA`, **0 incidents**; after 35 statements,
+bucket `PARTIAL`/`LOWER_BOUND`, **incident OPEN** with a lower-bound reading.
+
+**Storage per row** (`waf_endpoint_metric`, 200,000 rows, table + indexes): before 376 bytes (PK plus
+the duplicate `(endpoint, bucket_start)` index); after **164 bytes** (slim row, PK only). With a
+`bucket_start` time index as a Timescale hypertable adds, a separate side-by-side measurement gave
+387 → **173 bytes**; the projections below use those. A fully populated baseline cell (48
+observations) is 1,219 bytes; a bucket record ~600 bytes.
+
+### 29.8 Capacity estimates and the endpoint ceiling
+
+Per WAF source, 5-minute buckets, 35-day metric retention. *Activity* is the share of tracked
+endpoints requested in a given bucket; B.1 wrote a row for every tracked endpoint regardless.
+
+| Tracked endpoints | Metric rows/day (B.1) | Metric rows/day (B.1.5, 100% / 10% active) | 35-day metrics (B.1) | 35-day metrics (B.1.5, 100% / 10%) | Baseline cells | **Rough total incl. PostgreSQL overhead ×1.3** (B.1.5, 100% / 10%) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 100 | 28,800 | 28,800 / 2,880 | 390 MB | 174 MB / 17 MB | 20 MB | 0.26 GB / 0.05 GB |
+| 500 | 144,000 | 144,000 / 14,400 | 1.95 GB | 0.87 GB / 87 MB | 102 MB | 1.3 GB / 0.25 GB |
+| 1,000 | 288,000 | 288,000 / 28,800 | 3.90 GB | 1.74 GB / 174 MB | 205 MB | 2.5 GB / 0.5 GB |
+| 2,000 | 576,000 | 576,000 / 57,600 | 7.80 GB | 3.49 GB / 349 MB | 410 MB | 5.1 GB / 1.0 GB |
+
+The ×1.3 factor is a **rough allowance**, not a measurement, for chunk metadata, page fill, dead
+tuples from detector-state updates between vacuums, and statistics; WAL and backups are excluded.
+§28.12's 8.7 GB used 430 bytes per row from a smaller table; the larger measurement here gives 387.
+
+Database time per bucket stays under half a second at 2,000 endpoints; training at full history and
+100% activity is the largest cost (~4.7 s per run per source, rebuilding each endpoint about every
+3.3 hours at 50 per run).
+
+**Ariel side [PROJECTED, not measured].** Two searches per source per bucket, unchanged. With
+`WAF_ARIEL_MAX_CONCURRENT_SOURCES = L` and *S* seconds per bucket's searches, the budget sustains
+about `L × 300 / S` sources per 5-minute interval before lag grows: with L = 2, ≈ 300 sources at
+S = 2 s (the order of §4.4's lab searches), ≈ 20 at S = 30 s. Live Ariel latency under load is not
+known; size L from observed `last_collection_duration_ms` and lag.
+
+**Default ceiling: kept at 2,000.** The database no longer limits it (36 statements and ≤ 0.41 s per
+bucket; worst-case ~5 GB per source per 35 days). The binding limit is different and is now
+surfaced rather than hidden: **the grouped query cannot return more than `WAF_MAX_GROUPS_PER_BUCKET`
+(500) raw groups**, so a bucket in which more than ~500 distinct raw `(URL, method)` combinations are
+requested yields only lower bounds — it can prove spikes but never trains or proves normality.
+Tracking more endpoints than the cap is useful only while fewer than the cap are active in any one
+bucket. `GET /api/v1/waf/sources` reports `active_endpoints_exceed_group_cap`, and
+`lower_bound_buckets_24h` shows whether it is biting. A source whose normal traffic truncates needs
+a larger cap (measured against its Ariel cost) or a narrower profile, not a larger ceiling.
+
+### 29.9 QRadar rejection semantics (the HTTP 422 assumption)
+
+Still **[ASSUMPTION]** — not verified in this workstream. What changed is that correctness no longer
+leans on it and there is a procedure to verify it:
+
+- **Fail-closed regardless.** `PROPERTY_REJECTED` (HTTP 422) makes a required field `INVALID`; any
+  other failure is `QUERY_FAILED` → `INCONCLUSIVE`; a search that QRadar accepts and completes with
+  no values is `UNPOPULATED` → `INVALID`. None of them enables collection, so a different real
+  behaviour costs diagnostic precision, never safety.
+- **Operator procedure:**
+  `python -m app.cli.waf probe-rejection --instance <name> --log-source <id> [--json]` issues two
+  bounded, read-only searches over the last 15 minutes of one log source — one naming a randomly
+  generated property that cannot exist (`QRDASH_NONEXISTENT_<hex>`), one naming the profile's URL
+  property as a control — and records for each the create's HTTP status, whether a search was
+  created, and how it ended. **No result row is fetched.** It prints a conclusion
+  (`CONFIRMED_422`, `REJECTED_WITH_OTHER_STATUS`, `REJECTED_ASYNCHRONOUSLY`, `ACCEPTED_SILENTLY`,
+  `INCONCLUSIVE`, or `INCONCLUSIVE_CONTROL_FAILED`) and writes the observation to the audit log as
+  `waf.qradar.rejection_semantics_observed`. Run it once per appliance version and record the result
+  here.
+
+### 29.10 Query budget observability
+
+Admin-only (`admin:waf`), counts and timestamps only — no query text in status:
+
+- `GET /api/v1/waf/ariel-budget` — `enforced`, `max_concurrent_sources`, `active_permits` (held now,
+  by any worker, from `pg_locks`), `permit_wait_seconds`.
+- Per source, `GET /api/v1/waf/sources[/{id}]` adds: `ariel_searches_last_run`,
+  `last_collection_duration_ms`, `last_run_intervals_collected` / `_due`, `last_permit_wait_ms`,
+  `last_skip_reason` (`source_locked` | `global_capacity`), `last_skipped_at`,
+  `previous_run_skipped`, `lower_bound_buckets_24h`, `active_endpoints_exceed_group_cap`, and on the
+  last bucket `request_count_measurement`, `groups_truncated`, `discovery_complete`,
+  `coverage_measurement`, `sparse_endpoint_rows`. Collection lag was already reported.
+- `python -m app.cli.waf status` prints the permit line and per-source searches, duration and skip.
+
+A run skipped because another worker holds the source is recorded on a separate
+`waf_scheduling:<qradar id>` row with one atomic upsert, so the skipped worker neither waits on nor
+overwrites the watermark row the running worker is updating.
+
+### 29.11 Detector batch preparation for Phase B.2
+
+The engine (`app/waf/engine.py`) is batch-first: for one bucket it loads every endpoint the bucket
+observed (rows plus reconstructed zeros and lower bounds), every registered detector's baseline
+cells, every detector state and every live incident in a fixed number of queries, runs the pure
+detectors and lifecycle in memory, and flushes once. A Phase B.2 detector is added as
+
+1. a pure function in `WAF_DETECTOR_FUNCTIONS`;
+2. a `DetectorSpec` in `WAF_DETECTORS` with its baseline metrics and a **declared measurement
+   requirement** — ratio detectors (`WAF_BLOCK_RATIO_SPIKE`, `WAF_ERROR_RATIO_SPIKE`) must declare
+   `EXACT`: a ratio of two lower bounds bounds nothing;
+3. if it needs per-bucket inputs beyond request counts, an extension of the bulk loaders and
+   `app/waf/observations.py` — never a query inside the detector loop.
+
+Novelty detectors need a further rule the model already exposes: "new endpoint" may be claimed from
+a visible group, but "not seen before" or "disappeared" requires `discovery_complete` across the
+comparison window. `tests/integration/test_waf_scale.py` registers a second detector and proves the
+statement count does not grow with endpoints × detectors.
+
+### 29.12 Migration 0009
+
+Additive for every existing row's meaning; no Phase A table touched.
+
+- `waf_source_bucket.request_count_measurement` (backfilled from completeness: `PARTIAL` buckets were
+  PARTIAL only through truncation or low coverage, so `LOWER_BOUND`) and `sparse_endpoint_rows`
+  (false for existing buckets).
+- `waf_endpoint.tracked_since` (= `first_seen_at`) and `tracked_until` (= `last_seen_at` for already
+  retired endpoints). Existing buckets are dense and never consult them; the values only need to be
+  right for buckets collected afterwards, which they are.
+- `observed_measurement` on `waf_anomaly` and `waf_anomaly_transition` (existing readings `EXACT`).
+- Drops `ix_waf_endpoint_metric_entity_time`, which duplicated the primary key.
+- **Downgrade restores 0008 semantics, not just its shape:** it copies each bucket's identity onto
+  slim rows and re-materializes the zero rows sparse buckets implied (with the bucket's
+  completeness, for endpoints tracked at the bucket). Its choice of normalizer version uses the
+  highest stored, an approximation of the code constant 0008 zero-filled for.
+- Verified: `upgrade head` → `alembic check` → `downgrade 0008` → `upgrade head` → `alembic check`
+  on a fresh database, and a data-carrying round trip test
+  (`test_0009_backfills_measurement_and_its_downgrade_restores_dense_zeros`).
+
+Existing dense history stays as it is and ages out with retention; nothing is rewritten on upgrade.
+
+### 29.13 Behaviour changes, stated explicitly
+
+1. A `PARTIAL` WAF bucket (truncated or low coverage) can now open or sustain a
+   `WAF_REQUEST_RATE_SPIKE` incident from a lower bound (§29.2). Every other outcome on such a
+   bucket is unchanged: `INSUFFICIENT_DATA`, no recovery, no training.
+2. Explicit zero rows are no longer written; the zero is reconstructed (§29.4). The B.1 test
+   `test_a_previously_seen_endpoint_gets_an_explicit_zero` asserted the row itself; it now asserts
+   the reconstructed exact zero from the bucket record and tracking window
+   (`…_gets_a_measured_zero`).
+3. A reactivated endpoint's baseline relearns from its reactivation (§29.4).
+4. Re-collecting a bucket replaces its endpoint rows rather than merging (§29.4).
+5. Collection stops early without a global permit and reports `capacity_unavailable` (§29.6).
+6. The B.1 test `test_a_mapping_change_fails_closed_until_rebuilt` spied on the per-endpoint rebuild
+   method the pipeline no longer calls; it now spies on `rebuild_endpoints`. Its assertions are
+   unchanged.
+
+No other existing test was modified, and no Phase A behaviour changed: the only shared-code edits
+are an optional `status_code` on `ProviderError`, a new optional provider method, and one additive
+field on the detector capability API.
+
+### 29.14 Gates
+
+2026-09-16, after B.1.5: Ruff clean · Mypy 31 errors in 18 files — the identical pre-existing set
+(it caught one real defect during this workstream: an insertion had moved `@abstractmethod` from
+`list_rules` onto the new provider method) · **1,559 backend tests passed, 0 failed** (1,153 unit +
+406 integration; B.1 recorded 1,489), including 38 new unit tests and 27 new integration tests
+(13 flood and sparse-storage, 5 statement-count, 8 Ariel-budget, 1 migration round trip), with two
+B.1 tests adapted as §29.13 states · frontend lint, typecheck, 629 tests and production build clean
+(frontend unchanged) · `alembic upgrade head` → `alembic check` → `downgrade 0008` → `upgrade head`
+→ `alembic check` clean on a freshly created database.
+
+New tests were checked against deliberate regressions: declaring the spike detector `EXACT` fails
+the two flood-spike tests; removing the tracking-window check fails two unit tests and the retirement
+integration test; removing the uniform-update fix fails four of the five statement-count tests.
+
+### 29.15 Remaining risks
+
+1. **[ASSUMPTION A1]** — no double counting inside one Ariel aggregate — underpins every lower
+   bound; not verified on an appliance.
+2. **Sustained floods suppress normal verdicts.** For as long as a source's buckets truncate, no
+   incident on it can resolve and no cell refreshes (fail-closed, visible, §29.3). Spikes hidden
+   below the cut by an attacker willing to spend `cap × V` requests are not detected per endpoint.
+3. **Group cap versus active endpoints** (§29.8): a source that normally exceeds ~500 raw groups per
+   bucket never trains. Surfaced, not solved; raising the cap has unmeasured Ariel cost.
+4. **Ariel performance under the budget is unmeasured.** The default of 2 concurrent sources is
+   conservative by intent, not by measurement.
+5. **A stuck-but-alive worker or a half-open connection holds a permit** until its search bound,
+   task time limit or TCP keepalive ends it (§29.6).
+6. **The HTTP 422 assumption** remains unverified until the §29.9 procedure is run.
+7. **Training CPU at full history** (~4.7 s per run per source, all endpoints active) scales with the
+   number of sources; not measured beyond one source.
+8. **Detector-state row churn** — every tracked endpoint's state is updated every bucket (as in
+   B.1); HOT updates keep this cheap, but autovacuum behaviour at many sources was not measured.
+9. **Carried from §28.14, unchanged:** the Phase A maintenance-history defect (item 4, a separate
+   corrective workstream), Phase A metric identity not enforced (item 5), advisory-lock release after
+   a database error for the per-source lock (item 7 — the Ariel permit is not affected), Phase A
+   carried items (item 8), and production WAF onboarding NO-GO (item 9).
+
+### 29.16 Readiness for Phase B.2
+
+> ## Phase B.2 detector development: **GO** — on validated lab sources
+>
+> The three limits that would have made every new detector inherit a blind spot, a per-endpoint query
+> cost or an unbounded storage and Ariel footprint are resolved and pinned by tests: floods degrade to
+> honest lower bounds instead of silence, a run costs a constant 36 statements, storage follows
+> traffic, and WAF Ariel concurrency is globally bounded and observable. Conditions: every new
+> detector declares a measurement requirement (§29.11; ratios `EXACT`), novelty claims require
+> discovery completeness, and per-bucket inputs are added through the bulk loaders.
+
+> ## Production WAF onboarding: **NO-GO** — unchanged
+>
+> §26.10's assumptions, A1, the 422 assumption and live Ariel cost under the budget are all
+> unmeasured on a real WAF product and appliance.

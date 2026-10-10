@@ -155,6 +155,105 @@ class WafObservationBatch(ProviderDTO):
     #: bucket must be marked PARTIAL rather than presented as whole.
     truncated: bool = False
     query: str | None = None
+    #: The AQL behind `total_events`. Recorded separately because coverage --
+    #: and therefore COMPLETE vs PARTIAL -- is derived from it, and provenance
+    #: that names only the grouped query cannot justify the completeness verdict.
+    total_query: str | None = None
+    #: Ariel searches issued to produce this batch. 0 for a provider that does
+    #: not search Ariel (mock). Reported for query-budget observability.
+    ariel_searches: int = 0
+
+
+class WafBreakdownGroup(ProviderDTO):
+    """One (raw URL, method[, host], value) group of one breakdown. Transient.
+
+    `raw_value` is the action value, the response-code value or the source IP,
+    depending on the breakdown, and is raw: the collector judges it (against the
+    action map, as a three-digit status, as an address) and never persists an
+    action or response-code value verbatim.
+    """
+
+    raw_url: str | None = None
+    raw_method: str | None = None
+    raw_virtual_host: str | None = None
+    raw_value: str | None = None
+    request_count: int = 0
+
+
+class WafBreakdownBatch(ProviderDTO):
+    """One breakdown search over one bucket.
+
+    Only events carrying a value for the breakdown field are counted (`IS NOT
+    NULL` in the query), so for each endpoint the groups' sum is the
+    denominator and the matching groups' sum the numerator -- both from this one
+    search, never divided across two separately timed ones.
+    """
+
+    breakdown: str
+    qradar_log_source_id: int
+    window_start: datetime
+    window_end: datetime
+    groups: list[WafBreakdownGroup] = Field(default_factory=list)
+    #: The group cap was hit: every value derived from `groups` is a lower bound.
+    truncated: bool = False
+    query: str | None = None
+    ariel_searches: int = 0
+
+
+class WafPropertyValue(ProviderDTO):
+    """One raw property value and the events that carried it. Transient."""
+
+    value: str
+    events: int
+
+
+class WafPropertyProbe(ProviderDTO):
+    """What a bounded probe established about one site-authored property.
+
+    `rejected` and `error` are different findings. A rejected query means QRadar
+    refused the property name; an error means the question went unanswered.
+    """
+
+    property_name: str
+    rejected: bool = False
+    error: str | None = None
+    #: Events in the window carrying a non-NULL value. None when not measured.
+    populated_events: int | None = None
+    distinct_values: int | None = None
+    #: Most frequent values, capped. Raw and transient: judged, then discarded.
+    values: list[WafPropertyValue] = Field(default_factory=list)
+    values_truncated: bool = False
+    queries: list[str] = Field(default_factory=list)
+
+
+class WafSourceProbe(ProviderDTO):
+    qradar_log_source_id: int
+    window_start: datetime
+    window_end: datetime
+    #: None when the total could not be measured; 0 is a measured empty window.
+    total_events: int | None = None
+    total_error: str | None = None
+    total_query: str | None = None
+    properties: list[WafPropertyProbe] = Field(default_factory=list)
+
+
+class WafRejectionObservation(ProviderDTO):
+    """What QRadar did with one Ariel query naming one property.
+
+    `outcome` is one of: `REJECTED_AT_CREATE` (the create returned 4xx),
+    `CREATE_FAILED` (transport failure or 5xx -- nothing learned),
+    `SEARCH_FAILED` (created, then ended in an error state), `SEARCH_COMPLETED`
+    (created and completed: QRadar accepted the name), `TIMED_OUT`.
+    """
+
+    property_name: str
+    outcome: str
+    create_http_status: int | None = None
+    search_created: bool = False
+    search_status: str | None = None
+    #: Rows the completed search matched, as QRadar reported it. A count only.
+    record_count: int | None = None
+    query: str
 
 
 class OffenseDTO(ProviderDTO):

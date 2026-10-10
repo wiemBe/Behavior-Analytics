@@ -17,9 +17,11 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from app.anomaly.capabilities import all_detectors, bucket_telemetry, detector_status
 from app.api.deps import SessionDep, SettingsDep
 from app.models.enums import AnomalyState, AnomalyType, EvidenceStatus, Severity
 from app.models.log_source import LogSource, LogSourceAnomaly
+from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
 from app.schemas.anomaly import (
     AnomalyDetailOut,
@@ -28,6 +30,7 @@ from app.schemas.anomaly import (
     BaselineCellOut,
     BehaviorSummaryOut,
     ContributorOut,
+    DetectorCapabilityOut,
     ExplanationDimensionOut,
     ExplanationOut,
     MetricBucketOut,
@@ -285,7 +288,36 @@ async def source_metrics(
     rows = await repo.metric_history(
         log_source_id, since=start, until=end, limit=limit
     )
-    return [MetricBucketOut.model_validate(r) for r in rows]
+    out: list[MetricBucketOut] = []
+    for row in rows:
+        item = MetricBucketOut.model_validate(row)
+        telemetry = bucket_telemetry(row.collection_source, row.query_provenance)
+        if LogSourceTelemetry.PEAK_RATE not in telemetry:
+            item.peak_eps = None
+        out.append(item)
+    return out
+
+
+@behavior_router.get("/detectors", response_model=list[DetectorCapabilityOut])
+async def detector_capabilities() -> list[DetectorCapabilityOut]:
+    """Every named detector, and whether anything can actually run it.
+
+    Derived from the same registry the engine enforces, not from stored rows, so
+    what this reports cannot drift from what is executed.
+    """
+    return [
+        DetectorCapabilityOut(
+            domain=spec.domain.value,
+            detector_type=spec.detector_type,
+            status=detector_status(spec).value,
+            required_telemetry=sorted(t.value for t in spec.telemetry),
+            required_baselines=sorted(spec.baseline_metrics),
+            scheduled_task=spec.scheduled_task,
+            limitation=spec.limitation,
+            measurement_requirement=spec.measurement.value if spec.measurement else None,
+        )
+        for spec in all_detectors()
+    ]
 
 
 @behavior_router.get(
