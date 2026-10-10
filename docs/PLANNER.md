@@ -110,10 +110,10 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-006a | B.2: run the ratio and concentration detectors in the WAF engine. Gate them on their enabling settings; scope from the declared inputs; breakdown semantics fail closed. | Codex | IN PROGRESS (`agent/t006`) | Incidents open and persist; NOT_COLLECTED → INSUFFICIENT_DATA; settings off → engine unchanged; statement count independent of detector count |
 | T-006b | B.2: novelty. Load each endpoint's first-appearance history in bulk (`NoveltyFacts`, `HistoryFacts`), then run `detect_new_endpoint_access`. | Codex | TODO (after T-006a) | History completeness is proven per bucket; flood at appearance → INSUFFICIENT_DATA; constant statements |
 | T-007 | B.2: tests for `breakdown.py`, collector breakdown searches, and `get_waf_breakdown` (mock and REST) | Sonnet | IN PROGRESS (`agent/t007`) | FAILED, NOT_COLLECTED and truncated breakdowns are covered; unmapped action values never count as allowed |
-| T-008 | B.2: unit tests for every `behavior.py` detector guard | Sonnet | IN PROGRESS (`agent/t008`) | Every INSUFFICIENT_DATA / HEALTHY / anomalous exit is pinned, including INCREASE_ONLY scope |
+| T-008 | B.2: unit tests for every `behavior.py` detector guard | Sonnet | DONE (`e4fcaf5`) | Every INSUFFICIENT_DATA / HEALTHY / anomalous exit is pinned, including INCREASE_ONLY scope |
 | T-009 | B.2: capability truth. Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Orchestrator decides the values; agent applies them | TODO (after T-005, T-006a/b) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
 | T-010 | B.2: design doc §30 and README roadmap entry | Sonnet | TODO (last) | Documents what was built, measured and deferred, in the existing doc style |
-| T-011 | Migration 0010: `*_measurement` columns get `server_default 'NOT_COLLECTED'` (rolling-deploy safety), plus a 0010 round-trip test | Sonnet | IN PROGRESS (`agent/t011`) | `test_migrations.py` all green, including the 0009 test; `alembic check` clean |
+| T-011 | Migration tests vs 0010. ~~Add server defaults~~ (rejected; see the log). Instead: pin the 0009 test to revision `0009`, and add a 0010 round-trip test under the transient-default convention. | Sonnet | IN PROGRESS (revised scope) | `test_migrations.py` all green, including the server-default allowlist test; `alembic check` clean |
 | T-012 | mypy regression at `waf_endpoint_collector.py:572`: an Optional is reassigned to a non-Optional variable. Type-only; the runtime is guarded. | opencode free model | TODO | mypy back to 31 errors in 18 files |
 
 **Later, not yet scheduled:**
@@ -123,6 +123,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 - Phase A maintenance-history defect (design §28.14, item 4).
 - Phase 4 hardening.
 - Retire or rewrite `docs/NEXT-SESSION-PROMPT.md`, which still describes Phase 2.
+- Document the upgrade procedure: stop `backend`, `celery-worker` and `celery-beat` before `docker compose run --rm migrate`. Every migration since 0002 adds NOT NULL columns whose backfill default is dropped, so a writer still running the old code fails until it is replaced.
 
 ---
 
@@ -176,6 +177,29 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
     `waf_endpoint_collector.py:572` → T-012.
   - `alembic upgrade head` + `alembic check` on a fresh DB: no drift.
   - Frontend: lint clean, typecheck clean, 629/629 tests, production build OK.
+- **T-011 decision.** The Sonnet agent added `server_default`s to 0010, as first specified, and
+  that broke `test_upgrade_from_phase2_preserves_data_and_adds_phase3`. That test pins a
+  deliberate project convention:
+  - backfill defaults are transient (migrations 0002 and 0004 document this);
+  - the models use client-side defaults;
+  - a fresh install and an upgraded database must be identical.
+
+  0010 had followed that convention. The real defect was the 0009 test, which inserts 0009-shaped
+  rows at `head`. The scope was revised to pin that test to revision `0009` and keep the
+  convention. The rolling-deploy risk applies to every migration, so it is moved to "Later" as an
+  operations item.
+- **T-008 accepted** (`e4fcaf5`). 275 unit tests in `tests/unit/test_waf_behavior.py`; no
+  detector defect found. Orchestrator verification:
+  - re-ran the file: all pass;
+  - ruff clean;
+  - `backend/app` untouched;
+  - three independent mutations — lower-bound branch removed, rise guard neutered, flood guard
+    removed — each fail the suite.
+
+  Agent notes for T-006a/b:
+  - `detect_ratio` reads `ctx.baseline`, while `ctx.baselines` feeds only the volume context, so
+    the engine must fill both;
+  - concentration never runs under INCREASE_ONLY, by design.
 - **Delegation round 1:** T-004 (opencode free), T-005 and T-006a (Codex), T-007, T-008 and T-011
   (Sonnet, medium). All run in parallel, each in its own worktree with its own database.
 - **D-2 resolved.** Free models probed; see §4.
