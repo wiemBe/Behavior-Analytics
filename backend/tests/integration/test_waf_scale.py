@@ -17,11 +17,12 @@ from datetime import timedelta
 from enum import StrEnum
 
 import pytest
-from sqlalchemy import event, insert, select
+from sqlalchemy import event, insert, select, update
 
 from app.anomaly import capabilities
 from app.anomaly.capabilities import BehaviorDomain, DetectorSpec
 from app.anomaly.evidence import healthy
+from app.models.enums import WafBreakdown, WafTelemetryStatus
 from app.models.log_source import LogSource
 from app.models.waf import (
     WafDetectorState,
@@ -37,7 +38,7 @@ from app.waf.detector import WafSpikeVerdict
 from app.waf.engine import WafAnomalyEngine
 from app.waf.measurement import WafMeasurementRequirement
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
-from app.waf.semantics import request_count_semantics
+from app.waf.semantics import breakdown_semantics, request_count_semantics
 from tests.integration.factories import make_instance
 from tests.integration.test_waf_productionization import (
     STEP,
@@ -297,6 +298,79 @@ class TestStatementCounts:
         # endpoints' rebuild time. 25 or 100 endpoints: only the chunk count moves.
         assert one_chunk == 5
         assert four_chunks - one_chunk == 3 * 4, (one_chunk, four_chunks)
+
+    async def test_training_statement_count_is_unchanged_with_breakdowns(self, db_session) -> None:
+        settings = cfg(
+            waf_baseline_rebuild_chunk_size=25,
+            baseline_min_samples=1,
+            waf_ratio_min_denominator=1,
+            waf_concentration_min_endpoint_requests=1,
+        )
+        instance = await make_instance(db_session)
+        profile_id, source_id, provider = await seeded(db_session, instance, 312, 25, settings)
+        for k in range(4):
+            await run(db_session, profile_id, provider, settings, k)
+        source = await db_session.get(LogSource, source_id)
+        endpoints = list((await db_session.scalars(
+            select(WafEndpoint).where(WafEndpoint.log_source_id == source_id)
+        )).all())
+        builder = WafBaselineBuilder(db_session, settings=settings)
+
+        with counting(db_session) as statements:
+            await builder.rebuild_endpoints(
+                endpoints, semantics=SEMANTICS, now=T0 + STEP * 4, log_source=source
+            )
+        without_breakdowns = len(statements)
+
+        identities = {
+            breakdown: breakdown_semantics(
+                breakdown.value,
+                aggregation="SUM(eventcount)",
+                normalizer_version=ENDPOINT_NORMALIZER_VERSION,
+                profile_version=1,
+            )
+            for breakdown in WafBreakdown
+        }
+        await db_session.execute(
+            update(WafSourceBucket)
+            .where(WafSourceBucket.log_source_id == source_id)
+            .values(
+                action_measurement=WafTelemetryStatus.EXACT,
+                action_semantics=identities[WafBreakdown.ACTION],
+                response_code_measurement=WafTelemetryStatus.EXACT,
+                response_code_semantics=identities[WafBreakdown.RESPONSE_CODE],
+                client_measurement=WafTelemetryStatus.EXACT,
+                client_semantics=identities[WafBreakdown.SOURCE_IP],
+            )
+        )
+        await db_session.execute(
+            update(WafEndpointMetric)
+            .where(WafEndpointMetric.waf_endpoint_id.in_([endpoint.id for endpoint in endpoints]))
+            .values(
+                action_events=WafEndpointMetric.request_count,
+                blocked_count=1,
+                unmapped_action_count=0,
+                response_code_events=WafEndpointMetric.request_count,
+                client_error_count=1,
+                server_error_count=1,
+                unclassified_response_count=0,
+                client_events=WafEndpointMetric.request_count,
+                top1_client_requests=1,
+            )
+        )
+        await db_session.flush()
+
+        with counting(db_session) as statements:
+            await builder.rebuild_endpoints(
+                endpoints,
+                semantics=SEMANTICS,
+                breakdown_identities=identities,
+                now=T0 + STEP * 5,
+                log_source=source,
+            )
+        with_breakdowns = len(statements)
+
+        assert with_breakdowns == without_breakdowns == 5
 
 
 async def test_collection_at_the_default_ceiling_is_bulk(db_session) -> None:

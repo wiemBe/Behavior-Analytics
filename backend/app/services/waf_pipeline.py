@@ -41,7 +41,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -55,6 +55,7 @@ from app.collectors.waf_endpoint_collector import (
     watermark_collector,
 )
 from app.core.config import Settings, get_settings
+from app.models.enums import WafBreakdown
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
@@ -65,7 +66,7 @@ from app.services.waf_ariel_budget import WafArielBudget
 from app.waf.baseline import WafBaselineBuilder
 from app.waf.engine import WafAnomalyEngine
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
-from app.waf.profile import WafFieldMapping, collection_ineligibility
+from app.waf.profile import WafFieldMapping, breakdown_plan, collection_ineligibility
 
 logger = logging.getLogger("app.waf.pipeline")
 
@@ -230,7 +231,14 @@ class WafSourcePipeline:
             )
             await self._evaluate(log_source, collection_wm, evaluation_wm, report)
             await self._train(
-                log_source, evaluation_wm, collector.metric_semantics, report
+                log_source,
+                evaluation_wm,
+                collector.metric_semantics,
+                {
+                    breakdown: collector.breakdown_semantics(breakdown)
+                    for breakdown in breakdown_plan(profile, self.settings).collect
+                },
+                report,
             )
             await self.session.flush()
         return report
@@ -292,6 +300,7 @@ class WafSourcePipeline:
         log_source: LogSource,
         evaluation_wm: CollectionWatermark,
         semantics: str,
+        breakdown_identities: Mapping[WafBreakdown, str],
         report: WafPipelineReport,
     ) -> None:
         if evaluation_wm.watermark_at is None:
@@ -328,6 +337,7 @@ class WafSourcePipeline:
             now=now,
             train_through=train_through,
             log_source=log_source,
+            breakdown_identities=breakdown_identities,
         )
         report.baseline_endpoints_rebuilt = len(endpoints)
         report.baseline_train_through = train_through

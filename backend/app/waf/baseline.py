@@ -60,6 +60,7 @@ from app.anomaly.seasonal import (
     summarize_cell,
 )
 from app.core.config import Settings, get_settings
+from app.models.enums import WafBreakdown, WafMeasurement, WafTelemetryStatus
 from app.models.log_source import LogSource
 from app.models.waf import (
     WafAnomaly,
@@ -81,6 +82,59 @@ BLOCK_RATIO_METRIC = "block_ratio"
 SERVER_ERROR_RATIO_METRIC = "server_error_ratio"
 CLIENT_ERROR_RATIO_METRIC = "client_error_ratio"
 TOP_CLIENT_SHARE_METRIC = "top1_client_share"
+
+
+@dataclass(frozen=True)
+class RatioMetric:
+    """How one stored breakdown becomes a proportion baseline."""
+
+    numerator: str
+    denominator: str
+    breakdown: WafBreakdown
+    status: str
+    semantics: str
+    uncertain: str | None
+    materiality_setting: str
+
+
+RATIO_METRICS: dict[str, RatioMetric] = {
+    BLOCK_RATIO_METRIC: RatioMetric(
+        numerator="blocked",
+        denominator="action_events",
+        breakdown=WafBreakdown.ACTION,
+        status="action",
+        semantics="action_semantics",
+        uncertain="unmapped_actions",
+        materiality_setting="waf_ratio_min_denominator",
+    ),
+    SERVER_ERROR_RATIO_METRIC: RatioMetric(
+        numerator="server_errors",
+        denominator="response_code_events",
+        breakdown=WafBreakdown.RESPONSE_CODE,
+        status="response_code",
+        semantics="response_code_semantics",
+        uncertain="unclassified_responses",
+        materiality_setting="waf_ratio_min_denominator",
+    ),
+    CLIENT_ERROR_RATIO_METRIC: RatioMetric(
+        numerator="client_errors",
+        denominator="response_code_events",
+        breakdown=WafBreakdown.RESPONSE_CODE,
+        status="response_code",
+        semantics="response_code_semantics",
+        uncertain="unclassified_responses",
+        materiality_setting="waf_ratio_min_denominator",
+    ),
+    TOP_CLIENT_SHARE_METRIC: RatioMetric(
+        numerator="top1_client_requests",
+        denominator="client_events",
+        breakdown=WafBreakdown.SOURCE_IP,
+        status="client",
+        semantics="client_semantics",
+        uncertain=None,
+        materiality_setting="waf_concentration_min_endpoint_requests",
+    ),
+}
 
 
 @dataclass
@@ -105,6 +159,33 @@ class WafExclusionTally:
             "maintenance": self.maintenance,
             "incompatible_semantics": self.incompatible_semantics,
         }
+
+
+@dataclass
+class WafRatioExclusionTally(WafExclusionTally):
+    """Ratio-only exclusions; request-count tallies retain their original shape."""
+
+    unavailable: int = 0
+    uncertain_values: int = 0
+    inexact_request_count: int = 0
+    immaterial: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            **super().as_dict(),
+            "unavailable": self.unavailable,
+            "uncertain_values": self.uncertain_values,
+            "inexact_request_count": self.inexact_request_count,
+            "immaterial": self.immaterial,
+        }
+
+
+@dataclass(frozen=True)
+class RatioSample:
+    bucket_start: datetime
+    proportion: float
+    numerator: int
+    denominator: int
 
 
 def clean_samples(
@@ -149,6 +230,73 @@ def clean_samples(
     return out, tally, len(series)
 
 
+def clean_ratio_samples(
+    series: Sequence[EndpointObservation],
+    metric: RatioMetric,
+    *,
+    end: datetime,
+    semantics: str,
+    min_coverage: float,
+    min_denominator: int,
+    spans: Sequence[tuple[datetime, datetime]],
+    maintenance_rule: Callable[[datetime], bool],
+) -> tuple[list[RatioSample], WafRatioExclusionTally, int]:
+    """Material exact proportions that may train one ratio metric. Pure."""
+    tally = WafRatioExclusionTally()
+    out: list[RatioSample] = []
+    for obs in series:
+        if obs.bucket_end > end:
+            tally.unfinished += 1
+            continue
+        status = getattr(obs.breakdowns, metric.status)
+        if (
+            status in (WafTelemetryStatus.EXACT, WafTelemetryStatus.LOWER_BOUND)
+            and getattr(obs.breakdowns, metric.semantics) != semantics
+        ):
+            tally.incompatible_semantics += 1
+            continue
+        recorded = obs.in_maintenance
+        if recorded if recorded is not None else maintenance_rule(obs.bucket_start):
+            tally.maintenance += 1
+            continue
+
+        if status in (WafTelemetryStatus.NOT_COLLECTED, WafTelemetryStatus.FAILED):
+            tally.unavailable += 1
+            continue
+        if status is not WafTelemetryStatus.EXACT:
+            tally.incomplete += 1
+            continue
+        numerator = getattr(obs.counts, metric.numerator)
+        denominator = getattr(obs.counts, metric.denominator)
+        uncertain = getattr(obs.counts, metric.uncertain) if metric.uncertain else 0
+        if numerator is None or denominator is None or uncertain is None:
+            tally.unavailable += 1
+            continue
+        if uncertain:
+            tally.uncertain_values += 1
+            continue
+        if obs.measurement is not WafMeasurement.EXACT:
+            tally.inexact_request_count += 1
+            continue
+        # A sparse exact breakdown reconstructs 0/0 for an absent endpoint.
+        # It says no ratio population existed, not that the proportion was zero.
+        if denominator == 0:
+            tally.immaterial += 1
+            continue
+        coverage = denominator / obs.request_count if obs.request_count else 0.0
+        if coverage < min_coverage:
+            tally.low_coverage += 1
+            continue
+        if denominator < min_denominator:
+            tally.immaterial += 1
+            continue
+        if in_any_span(obs.bucket_start, spans):
+            tally.known_anomaly += 1
+            continue
+        out.append(RatioSample(obs.bucket_start, numerator / denominator, numerator, denominator))
+    return out, tally, len(series)
+
+
 class WafBaselineBuilder:
     def __init__(
         self, session: AsyncSession, *, settings: Settings | None = None
@@ -164,6 +312,7 @@ class WafBaselineBuilder:
         now: datetime | None = None,
         train_through: datetime | None = None,
         log_source: LogSource | None = None,
+        breakdown_identities: Mapping[WafBreakdown, str] | None = None,
     ) -> int:
         """Recompute baseline cells for one endpoint. Returns cells written."""
         written = await self.rebuild_endpoints(
@@ -172,6 +321,7 @@ class WafBaselineBuilder:
             now=now,
             train_through=train_through,
             log_source=log_source,
+            breakdown_identities=breakdown_identities,
         )
         return written[endpoint.id]
 
@@ -184,13 +334,15 @@ class WafBaselineBuilder:
         train_through: datetime | None = None,
         log_source: LogSource | None = None,
         source_buckets: Mapping[datetime, BucketFacts] | None = None,
+        breakdown_identities: Mapping[WafBreakdown, str] | None = None,
     ) -> dict[uuid.UUID, int]:
         """Recompute the cells of many endpoints of one source. Returns cells per endpoint.
 
-        `semantics` is the identity being rebuilt for; observations under any
-        other identity are excluded. `train_through` bounds the window's end
-        below `now`. `source_buckets` may be supplied by a caller that already
-        loaded the source's bucket records for the same window.
+        `semantics` is the request-count identity being rebuilt. Ratio metrics
+        are rebuilt only for breakdowns present in `breakdown_identities`, and
+        each uses that breakdown's identity. `train_through` bounds the window's
+        end below `now`. `source_buckets` may be supplied by a caller that
+        already loaded the source's bucket records for the same window.
         """
         written: dict[uuid.UUID, int] = {e.id: 0 for e in endpoints}
         if not endpoints:
@@ -243,11 +395,57 @@ class WafBaselineBuilder:
                 for (weekday, hour), samples in cells.items():
                     cell_rows.append(
                         self._cell_row(
-                            endpoint.id, weekday, hour, samples, lookback_start, window_end,
+                            endpoint.id, WAF_BASELINE_METRIC, weekday, hour, samples,
+                            lookback_start, window_end,
                             completeness=completeness, tally=tally, semantics=semantics,
                         )
                     )
-                written[endpoint.id] = len(cells)
+                written[endpoint.id] += len(cells)
+
+                for metric_name, metric in RATIO_METRICS.items():
+                    identity = (breakdown_identities or {}).get(metric.breakdown)
+                    if identity is None:
+                        continue
+                    ratio_values, ratio_tally, ratio_candidates = clean_ratio_samples(
+                        series,
+                        metric,
+                        end=window_end,
+                        semantics=identity,
+                        min_coverage=self.settings.waf_min_endpoint_coverage,
+                        min_denominator=getattr(self.settings, metric.materiality_setting),
+                        spans=spans.get(endpoint.id, ()),
+                        maintenance_rule=rule,
+                    )
+                    ratio_cells: dict[tuple[int, int], list[RatioSample]] = {}
+                    for sample in ratio_values:
+                        ratio_cells.setdefault(
+                            seasonal_key(sample.bucket_start), []
+                        ).append(sample)
+                    ratio_completeness = retained_fraction(
+                        len(ratio_values), ratio_candidates
+                    )
+                    for (weekday, hour), ratio_samples in ratio_cells.items():
+                        cell_rows.append(
+                            self._cell_row(
+                                endpoint.id,
+                                metric_name,
+                                weekday,
+                                hour,
+                                [sample.proportion for sample in ratio_samples],
+                                lookback_start,
+                                window_end,
+                                completeness=ratio_completeness,
+                                tally=ratio_tally,
+                                semantics=identity,
+                                numerator_sum=sum(
+                                    sample.numerator for sample in ratio_samples
+                                ),
+                                denominator_sum=sum(
+                                    sample.denominator for sample in ratio_samples
+                                ),
+                            )
+                        )
+                    written[endpoint.id] += len(ratio_cells)
                 endpoint.baseline_rebuilt_at = now
             await self._upsert_cells(cell_rows)
         await self.session.flush()
@@ -262,7 +460,9 @@ class WafBaselineBuilder:
             select(
                 b.bucket_start, b.bucket_seconds, b.completeness, b.endpoint_coverage_ratio,
                 b.metric_semantics, b.in_maintenance, b.request_count_measurement,
-                b.sparse_endpoint_rows,
+                b.sparse_endpoint_rows, b.action_measurement, b.action_semantics,
+                b.response_code_measurement, b.response_code_semantics,
+                b.client_measurement, b.client_semantics,
             ).where(b.log_source_id == log_source_id, b.bucket_start >= start, b.bucket_start < end)
         )
         return {row.bucket_start: BucketFacts.of(row) for row in rows.all()}
@@ -275,7 +475,11 @@ class WafBaselineBuilder:
             select(
                 m.waf_endpoint_id, m.bucket_start, m.bucket_seconds, m.request_count,
                 m.distinct_client_count, m.completeness, m.endpoint_coverage_ratio,
-                m.metric_semantics, m.normalizer_version,
+                m.metric_semantics, m.normalizer_version, m.action_events, m.blocked_count,
+                m.unmapped_action_count, m.response_code_events, m.client_error_count,
+                m.server_error_count, m.unclassified_response_count, m.client_events,
+                m.top1_client_requests, m.top5_client_requests, m.client_sources,
+                m.top_clients,
             ).where(
                 m.waf_endpoint_id.in_([e.id for e in endpoints]),
                 m.bucket_start >= start,
@@ -316,6 +520,7 @@ class WafBaselineBuilder:
     def _cell_row(
         self,
         endpoint_id: uuid.UUID,
+        metric_name: str,
         weekday: int,
         hour: int,
         values: list[float],
@@ -325,12 +530,14 @@ class WafBaselineBuilder:
         completeness: float,
         tally: WafExclusionTally,
         semantics: str,
+        numerator_sum: float | None = None,
+        denominator_sum: float | None = None,
     ) -> dict:
         cell = summarize_cell(values, min_samples=self.settings.baseline_min_samples)
         return {
             "id": uuid.uuid4(),
             "waf_endpoint_id": endpoint_id,
-            "metric_name": WAF_BASELINE_METRIC,
+            "metric_name": metric_name,
             "weekday": weekday,
             "hour": hour,
             "median": cell.median,
@@ -346,6 +553,8 @@ class WafBaselineBuilder:
             "normalizer_version": ENDPOINT_NORMALIZER_VERSION,
             "observations": cell.observations,
             "completeness": completeness,
+            "numerator_sum": numerator_sum,
+            "denominator_sum": denominator_sum,
             "excluded_sample_count": tally.total,
             "exclusion_counts": tally.as_dict(),
             "metric_semantics": semantics,
