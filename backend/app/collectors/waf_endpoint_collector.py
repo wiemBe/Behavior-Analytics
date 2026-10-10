@@ -715,6 +715,15 @@ class WafEndpointCollector:
                         "groups": len(r.batch.groups) if r.batch is not None else None,
                         "max_groups": self.settings.waf_max_breakdown_groups_per_bucket,
                         "error_class": r.error_class,
+                        # Source-IP requests whose value is not an address: not
+                        # attributed to any client, so absent from client_events.
+                        **(
+                            {"unattributed_requests": sum(
+                                c.unattributed for c in folded.clients.values()
+                            )}
+                            if b is WafBreakdown.SOURCE_IP and folded.clients is not None
+                            else {}
+                        ),
                     }
                     for b, r in sorted(fetched.breakdowns.items())
                 },

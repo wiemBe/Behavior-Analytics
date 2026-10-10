@@ -17,7 +17,12 @@ What each breakdown measures per endpoint:
     5xx separately; and values that are not a three-digit status. A 403 is
     counted as a 4xx response, never as a WAF block.
   * SOURCE_IP -- requests attributed to a source IP; the largest source IP's
-    requests, the five largest's, and the number of distinct source IPs. The
+    requests, the five largest's, and the number of distinct source IPs. A
+    value that is not an address is not attributed: it counts in neither
+    `events` nor any ranking, only in `unattributed`, so a flood of garbage
+    values can never pose as a dominant client. It lowers the breakdown's
+    coverage (`client_events / request_count`) instead, and a detector's
+    coverage floor then yields INSUFFICIENT_DATA. The
     address is QRadar's normalized `sourceip`: behind a proxy, load balancer or
     NAT it is the intermediary, not the end user, and nothing here claims more.
 
@@ -48,8 +53,6 @@ EndpointKey = tuple[str | None, str, str]
 
 #: Contributors stored per endpoint, per bucket, at most.
 TOP_CLIENTS_STORED = 5
-#: Stands in for a source-IP value that is not an address. Counted, never stored.
-UNPARSEABLE_ADDRESS = "<unparseable>"
 
 
 @dataclass
@@ -69,7 +72,16 @@ class ResponseCounts:
 
 @dataclass
 class ClientCounts:
+    """Requests attributed to a parseable source IP, and the ones that were not.
+
+    `events` and `by_source` cover attributed requests only. `unattributed`
+    counts the requests whose value is not an address: they are kept out of
+    every ranking and out of the stored contributors, so they cannot look like
+    a client, and out of `events`, so they show up as lost coverage.
+    """
+
     events: int = 0
+    unattributed: int = 0
     by_source: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -156,17 +168,21 @@ def fold_response_codes(batch: WafBreakdownBatch) -> tuple[dict[EndpointKey, Res
     return _fold(batch, ResponseCounts, add)
 
 
-def normalize_source_ip(raw: str | None) -> str:
+def normalize_source_ip(raw: str | None) -> str | None:
+    """The canonical address, or None when the value is not an address."""
     try:
         return str(ipaddress.ip_address((raw or "").strip()))
     except ValueError:
-        return UNPARSEABLE_ADDRESS
+        return None
 
 
 def fold_source_ips(batch: WafBreakdownBatch) -> tuple[dict[EndpointKey, ClientCounts], int]:
     def add(c: ClientCounts, g: WafBreakdownGroup) -> None:
-        c.events += g.request_count
         ip = normalize_source_ip(g.raw_value)
+        if ip is None:
+            c.unattributed += g.request_count
+            return
+        c.events += g.request_count
         # One source IP reaching an endpoint through several raw URLs is one
         # contributor: summed, exactly as the endpoint's volume is.
         c.by_source[ip] = c.by_source.get(ip, 0) + g.request_count

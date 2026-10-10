@@ -300,7 +300,8 @@ def normalize_response_code(raw_code: str | int | None) -> int | None:
     than cast. Anything that is not a plausible status code -- an empty field, a
     vendor string, a float, a four-digit number -- stays missing. It must never
     become 0, which would be indistinguishable from a real measurement and would
-    drag an error-ratio numerator downwards.
+    drag an error-ratio numerator downwards. Only ASCII digits qualify, and the
+    function never raises: its callers fold whole buckets.
     """
     if raw_code is None:
         return None
@@ -310,7 +311,10 @@ def normalize_response_code(raw_code: str | int | None) -> int | None:
         value = raw_code
     else:
         text = str(raw_code).strip()
-        if not text.isdigit():
+        # ASCII only: str.isdigit() also accepts "²", which int() rejects with a
+        # ValueError, and int() accepts other scripts' decimal digits (Arabic-Indic,
+        # full-width), none of which is a status code QRadar would send.
+        if not (text.isascii() and text.isdigit()):
             return None
         value = int(text)
     return value if 100 <= value <= 599 else None

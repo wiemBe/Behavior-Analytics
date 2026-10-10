@@ -18,7 +18,6 @@ from app.providers.dto import WafBreakdownBatch, WafBreakdownGroup
 from app.providers.mock import MockQRadarProvider
 from app.waf.breakdown import (
     TOP_CLIENTS_STORED,
-    UNPARSEABLE_ADDRESS,
     fold_actions,
     fold_response_codes,
     fold_source_ips,
@@ -191,6 +190,16 @@ class TestFoldResponseCodes:
         folded, _ = fold_response_codes(batch("RESPONSE_CODE", [group(" 404 ", 2)]))
         assert folded[LOGIN].client_errors == 2
 
+    def test_a_response_code_that_int_rejects_is_unclassified_not_an_error(self) -> None:
+        folded, _ = fold_response_codes(
+            batch(
+                "RESPONSE_CODE",
+                [group("\u00b2", 7), group("404", 3), group("\u0664\u0660\u0664", 2)],
+            )
+        )
+        c = folded[LOGIN]
+        assert (c.events, c.unclassified, c.client_errors) == (12, 9, 3)
+
 
 class TestFoldSourceIps:
     def clients(self, counts: dict[str, int]) -> list[WafBreakdownGroup]:
@@ -239,13 +248,36 @@ class TestFoldSourceIps:
         c = folded[LOGIN]
         assert c.by_source == {"2001:db8::1": 25, "192.0.2.1": 10}
 
-    def test_a_value_that_is_not_an_address_is_counted_under_the_placeholder(self) -> None:
+    def test_a_value_that_is_not_an_address_is_counted_as_unattributed(self) -> None:
         folded, _ = fold_source_ips(
             batch("SOURCE_IP", [group("not-an-ip", 4), group("192.0.2.1", 6)])
         )
         c = folded[LOGIN]
-        assert c.events == 10
-        assert c.by_source == {UNPARSEABLE_ADDRESS: 4, "192.0.2.1": 6}
+        assert c.events == 6
+        assert c.by_source == {"192.0.2.1": 6}
+        assert c.unattributed == 4
+
+    def test_garbage_values_never_reach_a_ranking_even_as_the_largest_group(self) -> None:
+        folded, _ = fold_source_ips(
+            batch(
+                "SOURCE_IP",
+                [group("garbage-a", 500), group("garbage-b", 300), group("192.0.2.1", 25),
+                 group("192.0.2.2", 20)],
+            )
+        )
+        c = folded[LOGIN]
+        assert (c.events, c.unattributed) == (45, 800)
+        assert (c.top1, c.top5, c.sources) == (25, 45, 2)
+        assert c.contributors(min_top_requests=20) == [
+            {"source_ip": "192.0.2.1", "requests": 25},
+            {"source_ip": "192.0.2.2", "requests": 20},
+        ]
+
+    def test_only_garbage_values_leave_no_client_and_no_contributors(self) -> None:
+        folded, _ = fold_source_ips(batch("SOURCE_IP", [group("x", 900), group("", 100)]))
+        c = folded[LOGIN]
+        assert (c.events, c.unattributed, c.top1, c.top5, c.sources) == (0, 1000, 0, 0, 0)
+        assert c.contributors(min_top_requests=1) is None
 
     def test_the_ranking_is_total_ties_break_by_address(self) -> None:
         folded, _ = fold_source_ips(

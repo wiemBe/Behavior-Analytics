@@ -610,3 +610,41 @@ class TestEndpointMentionedOnlyByABreakdown:
         names = set((await db_session.scalars(select(WafEndpoint.normalized_endpoint))).all())
         assert names == {"/portal/login", "/api/v1/status"}
         assert set(await metric_rows(db_session)) == names
+
+
+# ====================================== values that must not cost the bucket
+class TestOddBreakdownValues:
+    async def test_a_response_code_python_cannot_int_does_not_fail_the_bucket(
+        self, db_session
+    ) -> None:
+        settings, provider = served()
+        provider.serve(
+            "RESPONSE_CODE", T0, [(*LOGIN, "\u00b2", 8), (*LOGIN, "403", 20), (*LOGIN, "200", 72)]
+        )
+        _, _, report, bucket = await collect_bucket(db_session, provider, settings)
+
+        assert report.intervals_collected == 1
+        assert bucket is not None
+        assert bucket.request_count_measurement == WafMeasurement.EXACT
+        assert bucket.response_code_measurement == WafTelemetryStatus.EXACT
+        login = (await metric_rows(db_session))["/portal/login"]
+        assert login.request_count == 100
+        assert (login.response_code_events, login.client_error_count,
+                login.unclassified_response_count) == (100, 20, 8)
+
+    async def test_unparseable_source_values_lower_coverage_and_are_recorded(
+        self, db_session
+    ) -> None:
+        settings, provider = served()
+        provider.serve(
+            "SOURCE_IP", T0, [(*LOGIN, "garbage", 60), (*LOGIN, "198.51.100.1", 40)]
+        )
+        _, _, _, bucket = await collect_bucket(db_session, provider, settings)
+
+        login = (await metric_rows(db_session))["/portal/login"]
+        assert (login.client_events, login.top1_client_requests, login.client_sources) == (
+            40, 40, 1
+        )
+        assert [c["source_ip"] for c in login.top_clients or []] == ["198.51.100.1"]
+        recorded = bucket.query_provenance["breakdowns"]["SOURCE_IP"]
+        assert recorded["unattributed_requests"] == 60
