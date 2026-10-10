@@ -114,9 +114,9 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-009 | B.2: capability truth (spec written; launches after T-006b). Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Orchestrator decides the values; agent applies them | TODO (after T-005, T-006a/b) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
 | T-010 | B.2: design doc §30 and README roadmap entry | Sonnet | TODO (last) | Documents what was built, measured and deferred, in the existing doc style |
 | T-011 | Migration tests vs 0010: pin the 0009 test to revision `0009`; add a 0010 round-trip test under the transient-default convention | Sonnet | DONE | `test_migrations.py` 10/10 (re-run by the orchestrator on a fresh DB) |
-| T-012 | mypy regression at `waf_endpoint_collector.py:572`: an Optional is reassigned to a non-Optional variable. Type-only; the runtime is guarded. | opencode `ling-3.1-flash-free` | IN PROGRESS (`agent/t012`) | mypy back to 31 errors in 18 files |
+| T-012 | mypy regression at `waf_endpoint_collector.py:572` (type-only) | opencode `ling-3.1-flash-free` | DONE (`75b2f1e`) | That error gone; ruff clean |
 | T-013 | Breakdown fold defects found by T-007: non-ASCII status digits; unparseable source IPs posing as a client | Sonnet | DONE (`02374e9`) | ASCII-only status codes; unparseable values unattributed; regression tests; one defect-pinning test replaced with approval |
-| T-014 | **Production wiring gap:** the scheduled pipeline never passed a `BreakdownPlan` to the collector, so breakdowns, and hence B.2 detectors, never ran in production | Codex (cut off by its usage limit) → Sonnet finishing | IN PROGRESS (`agent/t014`) | A test through `run_waf_source` proves collection when enabled and validated, NOT_COLLECTED and zero searches otherwise, and a block-ratio incident opening through the scheduled path alone |
+| T-014 | **Production wiring gap:** the scheduled pipeline never passed a `BreakdownPlan` to the collector | Codex → Sonnet | DONE (`8e00bbb`) | 4 tests through `run_waf_source`, including a block-ratio incident opening through the scheduled path alone; 127 WAF integration tests re-run green |
 
 **Later, not yet scheduled:**
 
@@ -239,6 +239,16 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
     its worktree. The command was read-only and the orchestrator verified the main checkout is
     unchanged. From now on, free-model prompts put every command behind an explicit `cd` into
     the worktree.
+- **T-014 accepted** (`8e00bbb`).
+  - Sonnet found the inherited Codex code correct, and its tests passed on the first run.
+  - The orchestrator read the test file and re-ran 127 WAF integration tests on a fresh DB: green.
+  - Breakdown searches run inside the bucket's single Ariel permit, which is held longer per
+    bucket.
+  - Gap noted: no test covers a present-but-unvalidated action map. The `breakdown_plan` unit
+    tests from T-007 cover the stale-map case.
+- **T-012 accepted** (`75b2f1e`). The free model's diff is exactly the rename, and its report was
+  accurate: it correctly identified the one remaining extra mypy error, `engine.py:443`, which is
+  in T-006b's scope.
 - **Delegation round 1:** T-004 (opencode free), T-005 and T-006a (Codex), T-007, T-008 and T-011
   (Sonnet, medium). All run in parallel, each in its own worktree with its own database.
 - **D-2 resolved.** Free models probed; see §4.
