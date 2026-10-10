@@ -35,11 +35,11 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.anomaly.capabilities import WAF_DETECTORS, waf_verdict_scope
+from app.anomaly.capabilities import WAF_DETECTORS, waf_input_scope, waf_verdict_scope
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import (
     LifecycleDecision,
@@ -55,6 +55,7 @@ from app.models.enums import (
     DetectorSignal,
     EvidenceStatus,
     WafAnomalyType,
+    WafBreakdown,
     WafMeasurement,
 )
 from app.models.log_source import LogSource
@@ -66,6 +67,13 @@ from app.models.waf import (
     WafEndpointBaseline,
     WafEndpointMetric,
     WafSourceBucket,
+)
+from app.waf.behavior import (
+    WafBehaviorThresholds,
+    detect_block_ratio_spike,
+    detect_client_concentration_spike,
+    detect_client_error_ratio_spike,
+    detect_error_ratio_spike,
 )
 from app.waf.detector import (
     WafBaselineCell,
@@ -83,6 +91,10 @@ from app.waf.semantics import semantics_incompatibility
 #: in `app.anomaly.capabilities.WAF_DETECTORS` (unit-tested).
 WAF_DETECTOR_FUNCTIONS: dict[WafAnomalyType, Callable[[WafDetectionContext], WafSpikeVerdict]] = {
     WafAnomalyType.WAF_REQUEST_RATE_SPIKE: detect_request_rate_spike,
+    WafAnomalyType.WAF_BLOCK_RATIO_SPIKE: detect_block_ratio_spike,
+    WafAnomalyType.WAF_ERROR_RATIO_SPIKE: detect_error_ratio_spike,
+    WafAnomalyType.WAF_CLIENT_ERROR_RATIO_SPIKE: detect_client_error_ratio_spike,
+    WafAnomalyType.WAF_CLIENT_CONCENTRATION_SPIKE: detect_client_concentration_spike,
 }
 
 #: Bound on ids per IN list, far below asyncpg's bind-parameter limit.
@@ -173,6 +185,39 @@ class WafAnomalyEngine:
             open_after=s.anomaly_open_after_intervals,
             resolve_after=s.anomaly_resolve_after_intervals,
         )
+
+    def _behavior_thresholds(self) -> WafBehaviorThresholds:
+        s = self.settings
+        return WafBehaviorThresholds(
+            deviation_z=s.anomaly_deviation_threshold,
+            min_coverage=s.waf_min_endpoint_coverage,
+            mad_floor_ratio=s.baseline_mad_floor_ratio,
+            ratio_min_denominator=s.waf_ratio_min_denominator,
+            ratio_min_numerator=s.waf_ratio_min_numerator,
+            ratio_min_increase=s.waf_ratio_min_increase,
+            ratio_min_multiple=s.waf_ratio_min_multiple,
+            concentration_min_endpoint_requests=s.waf_concentration_min_endpoint_requests,
+            concentration_min_client_requests=s.waf_concentration_min_client_requests,
+            concentration_min_increase=s.waf_concentration_min_increase,
+            new_endpoint_min_requests=s.waf_new_endpoint_min_requests,
+            new_endpoint_min_buckets=s.waf_new_endpoint_min_buckets,
+            new_endpoint_window_buckets=s.waf_new_endpoint_window_buckets,
+            new_endpoint_history_days=s.waf_new_endpoint_history_days,
+            admission_min_requests=s.waf_min_admission_requests,
+        )
+
+    def _enabled_types(self) -> list[WafAnomalyType]:
+        enabled: list[WafAnomalyType] = []
+        for detector_type in self.detectors:
+            spec = WAF_DETECTORS.get(detector_type)
+            if spec is None:
+                continue
+            if spec.enabling_setting is not None and not getattr(
+                self.settings, spec.enabling_setting
+            ):
+                continue
+            enabled.append(detector_type)
+        return enabled
 
     # ------------------------------------------------------------ entry points
     async def evaluate_bucket(
@@ -284,6 +329,49 @@ class WafAnomalyEngine:
                 out[(row.waf_endpoint_id, str(row.detector_type))] = row
         return out
 
+    async def _ensure_states(
+        self,
+        ids: Sequence[uuid.UUID],
+        types: Sequence[WafAnomalyType],
+        states: dict[tuple[uuid.UUID, str], WafDetectorState],
+    ) -> None:
+        """Create every missing detector state in one statement, at any batch size."""
+        missing = [
+            (uuid.uuid4(), endpoint_id, detector_type.value)
+            for endpoint_id in ids
+            for detector_type in types
+            if (endpoint_id, detector_type.value) not in states
+        ]
+        if not missing:
+            return
+        statement = text(
+            """
+            INSERT INTO waf_detector_state (
+                id, waf_endpoint_id, detector_type, consecutive_anomalous,
+                consecutive_healthy, state
+            )
+            SELECT pending.id, pending.waf_endpoint_id, pending.detector_type, 0, 0, 'NORMAL'
+            FROM unnest(
+                CAST(:state_ids AS uuid[]),
+                CAST(:endpoint_ids AS uuid[]),
+                CAST(:detector_types AS text[])
+            ) AS pending(id, waf_endpoint_id, detector_type)
+            ON CONFLICT ON CONSTRAINT uq_waf_detector_state DO NOTHING
+            RETURNING waf_detector_state.*
+            """
+        )
+        query = select(WafDetectorState).from_statement(statement)
+        created = await self.session.scalars(
+            query,
+            {
+                "state_ids": [item[0] for item in missing],
+                "endpoint_ids": [item[1] for item in missing],
+                "detector_types": [item[2] for item in missing],
+            },
+        )
+        for state in created:
+            states[(state.waf_endpoint_id, str(state.detector_type))] = state
+
     async def _load_anomalies(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, WafAnomaly]:
         out: dict[uuid.UUID, WafAnomaly] = {}
         ordered = sorted(ids)
@@ -300,7 +388,7 @@ class WafAnomalyEngine:
     ) -> list[WafEvaluationReport]:
         if not subjects:
             return []
-        types = [t for t in self.detectors if t in WAF_DETECTORS]
+        types = self._enabled_types()
         metrics = {m for t in types for m in WAF_DETECTORS[t].baseline_metrics}
         ids = [s.endpoint.id for s in subjects]
         by_hour: dict[tuple[int, int], list[uuid.UUID]] = {}
@@ -308,9 +396,11 @@ class WafAnomalyEngine:
             key = (s.observation.bucket_start.isoweekday(), s.observation.bucket_start.hour)
             by_hour.setdefault(key, []).append(s.endpoint.id)
         cells: dict[tuple[uuid.UUID, str], WafEndpointBaseline] = {}
-        for (weekday, hour), hour_ids in by_hour.items():
-            cells.update(await self._load_cells(hour_ids, metrics, weekday, hour))
-        states = await self._load_states(ids, types)
+        if metrics:
+            for (weekday, hour), hour_ids in by_hour.items():
+                cells.update(await self._load_cells(hour_ids, metrics, weekday, hour))
+        states = await self._load_states(ids, types) if types else {}
+        await self._ensure_states(ids, types, states)
         anomalies = await self._load_anomalies(
             {
                 aid
@@ -321,6 +411,7 @@ class WafAnomalyEngine:
         )
 
         thresholds = self._thresholds()
+        behavior = self._behavior_thresholds()
         reports: list[WafEvaluationReport] = []
         modified: list[WafDetectorState] = []
         for subject in subjects:
@@ -338,24 +429,25 @@ class WafAnomalyEngine:
                     maintenance_mode=log_source.maintenance_mode,
                     maintenance_until=log_source.maintenance_until,
                 )
+            baselines = {
+                metric: self._cell(row)
+                for metric in metrics
+                if (row := cells.get((endpoint.id, metric))) is not None
+            }
             for detector_type in types:
                 spec = WAF_DETECTORS[detector_type]
                 metric_name = next(iter(sorted(spec.baseline_metrics)))
                 row = cells.get((endpoint.id, metric_name))
                 verdict = self.detectors[detector_type](
-                    self._context(obs, row, detector_type, thresholds)
+                    self._context(
+                        obs, row, detector_type, thresholds, behavior, baselines,
+                        endpoint=endpoint,
+                    )
                 )
                 if verdict.is_anomalous:
                     report.anomalous.append(verdict.detector_type.value)
                 state = states.get((endpoint.id, detector_type.value))
-                if state is None:
-                    state = WafDetectorState(
-                        id=uuid.uuid4(), waf_endpoint_id=endpoint.id, detector_type=detector_type,
-                        consecutive_anomalous=0, consecutive_healthy=0,
-                        state=AnomalyState.NORMAL,
-                    )
-                    self.session.add(state)
-                    states[(endpoint.id, detector_type.value)] = state
+                assert state is not None
                 if self._apply_hysteresis(
                     endpoint, obs, detector_type, verdict.evidence, state, anomalies,
                     report, thresholds,
@@ -386,13 +478,28 @@ class WafAnomalyEngine:
         row: WafEndpointBaseline | None,
         detector_type: WafAnomalyType,
         thresholds: WafThresholds,
+        behavior: WafBehaviorThresholds,
+        baselines: dict[str, WafBaselineCell],
+        *,
+        endpoint: WafEndpoint,
     ) -> WafDetectionContext:
+        spec = WAF_DETECTORS[detector_type]
+        bucket_semantics = obs.metric_semantics
+        if spec.breakdowns == frozenset({WafBreakdown.ACTION}):
+            bucket_semantics = obs.breakdowns.action_semantics
+        elif spec.breakdowns == frozenset({WafBreakdown.RESPONSE_CODE}):
+            bucket_semantics = obs.breakdowns.response_code_semantics
+        elif spec.breakdowns == frozenset({WafBreakdown.SOURCE_IP}):
+            bucket_semantics = obs.breakdowns.client_semantics
         incompatibility: str | None = None
-        if obs.metric_semantics is None:
+        if bucket_semantics is None:
             incompatibility = semantics_incompatibility(None, None)
         elif row is not None:
-            incompatibility = semantics_incompatibility(obs.metric_semantics, row.metric_semantics)
-        scope = waf_verdict_scope(detector_type, obs.measurement)
+            incompatibility = semantics_incompatibility(bucket_semantics, row.metric_semantics)
+        if detector_type is WafAnomalyType.WAF_REQUEST_RATE_SPIKE or not spec.inputs:
+            scope = waf_verdict_scope(detector_type, obs.measurement)
+        else:
+            scope = waf_input_scope(detector_type, obs)
         return WafDetectionContext(
             point=WafPoint(
                 bucket_start=obs.bucket_start,
@@ -410,10 +517,18 @@ class WafAnomalyEngine:
             extra={
                 "normalizer_version": obs.normalizer_version,
                 "metric_semantics": obs.metric_semantics,
+                "entity": {
+                    "virtual_host": endpoint.virtual_host,
+                    "normalized_endpoint": endpoint.normalized_endpoint,
+                    "http_method": endpoint.http_method,
+                },
             },
             baseline_incompatibility=incompatibility,
             verdict_scope=scope.scope,
             scope_reason=scope.reason,
+            observation=obs,
+            baselines=baselines,
+            behavior=behavior,
         )
 
     @staticmethod
@@ -429,6 +544,9 @@ class WafAnomalyEngine:
             is_reliable=row.is_reliable,
             completeness=row.completeness,
             baseline_version=row.baseline_version,
+            numerator_sum=row.numerator_sum,
+            denominator_sum=row.denominator_sum,
+            metric_semantics=row.metric_semantics,
         )
 
     def _apply_hysteresis(
@@ -589,9 +707,9 @@ class WafAnomalyEngine:
             confidence=evidence.confidence,
             deviation_ratio=_as_float(facts.get("ratio")),
             robust_z=_as_float(facts.get("robust_z")),
-            absolute_delta=_as_float(facts.get("absolute_delta_requests")),
+            absolute_delta=_absolute_delta(facts),
             consecutive_buckets=1,
-            baseline_version=_as_int(facts.get("baseline_version")),
+            baseline_version=_baseline_version(facts),
             policy_version=self.settings.anomaly_policy_version,
             normalizer_version=obs.normalizer_version,
             evidence_status=EvidenceStatus.NOT_REQUESTED,
@@ -634,7 +752,7 @@ class WafAnomalyEngine:
             anomaly.deviation_score = evidence.deviation_score
             anomaly.deviation_ratio = _as_float(facts.get("ratio"))
             anomaly.robust_z = _as_float(facts.get("robust_z"))
-            anomaly.absolute_delta = _as_float(facts.get("absolute_delta_requests"))
+            anomaly.absolute_delta = _absolute_delta(facts)
             anomaly.explanation = evidence.reason
             anomaly.details = evidence.to_dict()
 
@@ -673,10 +791,21 @@ class WafAnomalyEngine:
 
 
 def _measurement(evidence: AnomalyEvidence) -> WafMeasurement:
-    value = (evidence.extra or {}).get("request_count_measurement")
+    facts = evidence.extra or {}
+    value = facts.get("observed_measurement", facts.get("request_count_measurement"))
     return WafMeasurement.LOWER_BOUND if value == WafMeasurement.LOWER_BOUND else (
         WafMeasurement.EXACT
     )
+
+
+def _absolute_delta(facts: dict) -> float | None:
+    return _as_float(facts.get("absolute_delta_requests", facts.get("absolute_delta")))
+
+
+def _baseline_version(facts: dict) -> int | None:
+    expected = facts.get("expected")
+    nested = expected.get("baseline_version") if isinstance(expected, dict) else None
+    return _as_int(facts.get("baseline_version", nested))
 
 
 def _as_float(value: object) -> float | None:

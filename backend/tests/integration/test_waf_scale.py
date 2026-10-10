@@ -214,6 +214,60 @@ class TestStatementCounts:
         assert two[800] <= one[800] + 1, (one, two)
         assert await count(db_session, WafDetectorState) == 2 * (40 + 800)
 
+    async def test_evaluation_cost_is_constant_with_every_b2_detector_enabled(
+        self, db_session
+    ) -> None:
+        collection_settings = settings_for_scale()
+        enabled_settings = collection_settings.model_copy(
+            update={
+                "waf_outcome_collection_enabled": True,
+                "waf_client_collection_enabled": True,
+            }
+        )
+        instance = await make_instance(db_session)
+        small = await seeded(db_session, instance, 312, 40, collection_settings)
+        large = await seeded(db_session, instance, 313, 800, collection_settings)
+        for profile_id, _source_id, provider in (small, large):
+            for k in range(3):
+                await run(db_session, profile_id, provider, collection_settings, k)
+
+        async def rewind(source_id, to: int) -> None:  # type: ignore[no-untyped-def]
+            states = await db_session.scalars(
+                select(WafDetectorState)
+                .join(WafEndpoint)
+                .where(WafEndpoint.log_source_id == source_id)
+            )
+            for state in states:
+                state.last_interval_start = T0 + STEP * to
+            await db_session.flush()
+
+        async def evaluate(source_id, k: int, settings) -> int:  # type: ignore[no-untyped-def]
+            source = await db_session.get(LogSource, source_id)
+            bucket = await db_session.get(WafSourceBucket, (source_id, T0 + STEP * k))
+            with counting(db_session) as statements:
+                result = await WafAnomalyEngine(
+                    db_session, settings=settings
+                ).evaluate_bucket(source, bucket)
+            assert len(result.endpoint_reports) in (40, 800)
+            return len(statements)
+
+        off: dict[int, int] = {}
+        first_on: dict[int, int] = {}
+        steady_on: dict[int, int] = {}
+        for size, (_profile_id, source_id, _provider) in ((40, small), (800, large)):
+            await rewind(source_id, 0)
+            off[size] = await evaluate(source_id, 1, collection_settings)
+            await rewind(source_id, 0)
+            first_on[size] = await evaluate(source_id, 1, enabled_settings)
+            await rewind(source_id, 1)
+            steady_on[size] = await evaluate(source_id, 2, enabled_settings)
+
+        assert off[40] == off[800]
+        assert first_on[40] == first_on[800]
+        assert steady_on[40] == steady_on[800]
+        assert first_on[800] <= off[800] + 1, (off, first_on)
+        assert steady_on[800] <= off[800] + 1, (off, steady_on)
+
     async def test_training_scales_with_chunks_not_endpoints(self, db_session) -> None:
         settings = cfg(waf_baseline_rebuild_chunk_size=25, baseline_min_samples=1)
         instance = await make_instance(db_session)
