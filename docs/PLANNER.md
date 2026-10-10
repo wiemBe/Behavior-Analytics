@@ -109,12 +109,14 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-005 | B.2: train the ratio and share baselines (`block_ratio`, `server_error_ratio`, `client_error_ratio`, `top1_client_share`). Write pooled `numerator_sum` / `denominator_sum` and statistics over per-bucket proportions, through the bulk loaders. | Codex | IN PROGRESS (`agent/t005`) | Unit and integration tests prove pooled sums and every exclusion; statement count unchanged; guard test that every `WAF_BASELINE_METRICS` entry is trained |
 | T-006a | B.2: run the ratio and concentration detectors in the WAF engine. Gate them on their enabling settings; scope from the declared inputs; breakdown semantics fail closed. | Codex | IN PROGRESS (`agent/t006`) | Incidents open and persist; NOT_COLLECTED → INSUFFICIENT_DATA; settings off → engine unchanged; statement count independent of detector count |
 | T-006b | B.2: novelty. Load each endpoint's first-appearance history in bulk (`NoveltyFacts`, `HistoryFacts`), then run `detect_new_endpoint_access`. | Codex | TODO (after T-006a) | History completeness is proven per bucket; flood at appearance → INSUFFICIENT_DATA; constant statements |
-| T-007 | B.2: tests for `breakdown.py`, collector breakdown searches, and `get_waf_breakdown` (mock and REST) | Sonnet | IN PROGRESS (`agent/t007`) | FAILED, NOT_COLLECTED and truncated breakdowns are covered; unmapped action values never count as allowed |
+| T-007 | B.2: tests for `breakdown.py`, collector breakdown searches, and `get_waf_breakdown` (mock and REST) | Sonnet | DONE (`c122b42`) | FAILED, NOT_COLLECTED and truncated breakdowns are covered; unmapped action values never count as allowed |
 | T-008 | B.2: unit tests for every `behavior.py` detector guard | Sonnet | DONE (`e4fcaf5`) | Every INSUFFICIENT_DATA / HEALTHY / anomalous exit is pinned, including INCREASE_ONLY scope |
 | T-009 | B.2: capability truth. Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Orchestrator decides the values; agent applies them | TODO (after T-005, T-006a/b) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
 | T-010 | B.2: design doc §30 and README roadmap entry | Sonnet | TODO (last) | Documents what was built, measured and deferred, in the existing doc style |
 | T-011 | Migration tests vs 0010: pin the 0009 test to revision `0009`; add a 0010 round-trip test under the transient-default convention | Sonnet | DONE | `test_migrations.py` 10/10 (re-run by the orchestrator on a fresh DB) |
 | T-012 | mypy regression at `waf_endpoint_collector.py:572`: an Optional is reassigned to a non-Optional variable. Type-only; the runtime is guarded. | opencode free model | TODO | mypy back to 31 errors in 18 files |
+| T-013 | Breakdown fold defects found by T-007. (1) `normalize_response_code` raises on non-ASCII digits such as `"²"`, failing the whole bucket; it also accepts `"٤٠٤"`. (2) Unparseable source-IP values are pooled into one placeholder "client" that can be ranked, stored and drive concentration. | Sonnet | IN PROGRESS (`agent/t013`) | ASCII-only status codes; unparseable values unattributed (lower coverage, never a client); regression tests; the one test that pinned the defect is replaced with orchestrator approval |
+| T-014 | **Production wiring gap found by T-007:** `WafSourcePipeline.run` builds `WafEndpointCollector` without `breakdowns=`, and nothing calls `breakdown_plan`. Scheduled collection therefore always records NOT_COLLECTED, and the B.2 detectors could never fire in production. | Codex | TODO (after T-005, which also edits `waf_pipeline.py`) | A test through `run_waf_source` proves breakdowns are collected when enabled and validated, and not collected otherwise |
 
 **Later, not yet scheduled:**
 
@@ -200,6 +202,13 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
   - `detect_ratio` reads `ctx.baseline`, while `ctx.baselines` feeds only the volume context, so
     the engine must fill both;
   - concentration never runs under INCREASE_ONLY, by design.
+- **T-011 accepted** (`8b709a4`). **T-007 accepted** (`c122b42`): 96 unit and 24 integration
+  tests, re-run by the orchestrator on a fresh DB, all pass, content scanned. The agent's
+  findings, all three reproduced by the orchestrator:
+  1. `normalize_response_code("²")` raises ValueError → T-013.
+  2. The unparseable-address placeholder poses as a client → T-013.
+  3. **The scheduled pipeline never passes a breakdown plan**, so no breakdown, and hence no B.2
+     detector, would ever run in production → T-014.
 - **Delegation round 1:** T-004 (opencode free), T-005 and T-006a (Codex), T-007, T-008 and T-011
   (Sonnet, medium). All run in parallel, each in its own worktree with its own database.
 - **D-2 resolved.** Free models probed; see §4.
