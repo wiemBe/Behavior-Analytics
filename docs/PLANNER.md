@@ -8,6 +8,60 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶ Resume here (saved 2026-10-10 ~17:40, at the end of the first orchestration session)
+
+**Branches:**
+- `main` (`6f17a73`) is green and pushed.
+- All Phase B.1, B.1.5 and B.2 work is on **`feat/phase-b2`** (pushed). It merges to `main` only
+  when every gate is green.
+- Backup of the original uncommitted tree: `refs/backup/pre-t001-2026-10-10` (local ref).
+
+**Integration branch health, as last measured after round 1:**
+- Full suite: 2,005 tests, 8 failed. The 8 are exactly the T-009 set.
+- ruff: clean.
+- mypy: 32 errors in 19 files after T-012. The one above the 31 baseline is `engine.py:443`,
+  which T-006b fixes.
+- Merged since that measurement: T-014 (re-run green) and T-012.
+
+**In flight when the session ended:**
+- **T-006b, novelty.**
+  - Codex started it; Sonnet **finished** it just before the session ended.
+  - The final state is pushed as **`agent/t006b` @ `6c82ae7`**. Worktree:
+    `../QRadar-Dash-wt/t006b`. Database: `qradar_obs_t006b`.
+  - The agent's report is saved in [`docs/tasks/T-006b.report.md`](tasks/T-006b.report.md). It
+    reports ruff clean, unit tests with only the 7 known T-009 failures, and 151 WAF integration
+    tests green.
+  - **The orchestrator has NOT reviewed it yet.** Before cherry-picking:
+    - It **edited five existing tests**, because `WAF_NEW_ENDPOINT_ACCESS` is always on: the
+      state count in `test_waf_scale.py` went from 2× to 3×, and four tests gained a
+      request-rate `detector_type` filter. Check that none is weakened.
+    - It changed the inherited `lower_bound` rule to also fail closed on uncollected buckets.
+    - It added the `@overload` fix for `engine.py:443`.
+    - It replaced the `assert` with reload-then-`RuntimeError`.
+    - Re-run the gates yourself on a fresh database.
+  - Spec: [`docs/tasks/T-006b.md`](tasks/T-006b.md).
+- **New decision D-4:** should `WAF_NEW_ENDPOINT_ACCESS` get an enabling setting, like the other
+  B.2 detectors? It currently runs on every WAF collection, with no off switch. Decide before
+  T-009, because it changes T-009's expected deployment statuses.
+
+**Next steps, in order:**
+1. Review T-006b (`6c82ae7`) as above, then cherry-pick it onto `feat/phase-b2`. Decide D-4.
+2. Launch **T-009** with Sonnet. The spec is ready at [`docs/tasks/T-009.md`](tasks/T-009.md);
+   create worktree `t009` and database `qradar_obs_t009`. Goal: 0 failed tests.
+3. Run the full gates on `feat/phase-b2`: full pytest, `alembic check`, mypy = 31/18, frontend.
+4. Decide **D-3** (§4). Then **T-010**: design doc §30 plus the README.
+5. Merge `feat/phase-b2` → `main`.
+
+**Environment notes:**
+- The test DB container `qradar-observability-test-test-db-1` runs on `:5433`, on tmpfs, so its
+  data is lost on restart. Recreate the per-task databases with `createdb`.
+- Codex's ChatGPT usage limit resets at 19:24 on 2026-10-10. GLM credits return on 2026-10-14.
+- Working free models: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`,
+  `longcat-2.5-preview-free`, `nemotron-3-ultra-free`.
+- Task specs given to agents are kept in [`docs/tasks/`](tasks/).
+
+---
+
 ## 1. How this project is run
 
 **Orchestrator:** Claude Opus 5.5, xhigh effort. It plans, splits the work into tasks, delegates
