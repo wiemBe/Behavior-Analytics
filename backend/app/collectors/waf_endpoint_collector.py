@@ -569,15 +569,15 @@ class WafEndpointCollector:
         # so its breakdown counts are kept. Its visible volume is zero.
         observed_keys = {o.key for o in observations}
         for key in sorted(breakdown_keys - observed_keys, key=lambda k: (k[0] or "", k[1], k[2])):
-            endpoint = existing.get(key)
-            if endpoint is None or not endpoint.is_active:
+            endpoint_or_none = existing.get(key)
+            if endpoint_or_none is None or not endpoint_or_none.is_active:
                 continue
             tracked.append((
                 _Observation(
                     virtual_host=key[0], endpoint=key[1], method=key[2],
                     request_count=0, distinct_clients=None, record_count=0,
                 ),
-                endpoint,
+                endpoint_or_none,
             ))
         created: list[WafEndpoint] = []
         for obs in decision.admitted:
