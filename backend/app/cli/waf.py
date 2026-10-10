@@ -13,8 +13,8 @@
 on this source. `--blocked-actions` / `--allowed-actions` author the action map
 from the values `validate` discovered; blocking is never inferred from a response
 code, and a value in neither list is counted as unmapped. Every change is
-audited with the acting operator (`--actor`, default the OS user). `validate` runs bounded read-only queries against QRadar;
-nothing here writes to QRadar.
+audited with the acting operator (`--actor`, default the OS user). `validate` runs
+bounded read-only queries against QRadar; nothing here writes to QRadar.
 
 `probe-rejection` is the operator procedure for docs/PHASE-B-WAF-BEHAVIOR.md
 section 29.9. Validation assumes QRadar refuses an Ariel query naming a

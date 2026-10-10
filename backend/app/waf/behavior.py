@@ -239,7 +239,9 @@ class _Guard:
             reason=reason, sample_count=sample_count,
         ))
 
-    def not_proven(self, reason: str, *, observed: float, expected: float | None) -> WafSpikeVerdict:
+    def not_proven(
+        self, reason: str, *, observed: float, expected: float | None
+    ) -> WafSpikeVerdict:
         if self.lower_bound:
             return self.insufficient(
                 f"{reason}; the numerator is a lower bound "
@@ -339,7 +341,9 @@ CLIENT_ERROR_RATIO = RatioDefinition(
         "itself a block, and WAF blocking is reported separately."
     ),
 )
-RATIO_DEFINITIONS = {d.detector_type: d for d in (BLOCK_RATIO, SERVER_ERROR_RATIO, CLIENT_ERROR_RATIO)}
+RATIO_DEFINITIONS = {
+    d.detector_type: d for d in (BLOCK_RATIO, SERVER_ERROR_RATIO, CLIENT_ERROR_RATIO)
+}
 
 
 def _measured(status: WafTelemetryStatus) -> bool:
@@ -456,7 +460,8 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
         + f"); {basis}"
     )
     severity = Severity.HIGH if (
-        rise >= 2 * thr.ratio_min_increase and (multiple is None or multiple >= 2 * thr.ratio_min_multiple)
+        rise >= 2 * thr.ratio_min_increase
+        and (multiple is None or multiple >= 2 * thr.ratio_min_multiple)
     ) else Severity.MEDIUM
     return _result(d.detector_type, AnomalyEvidence(
         anomaly_type=d.detector_type,
@@ -662,7 +667,9 @@ def detect_new_endpoint_access(ctx: WafDetectionContext) -> WafSpikeVerdict:
             "buckets_with_traffic": buckets,
             "first_seen_at": novelty.first_seen_at.isoformat(),
             "measurement": {
-                "requests": (WafMeasurement.LOWER_BOUND if lower_bound else WafMeasurement.EXACT).value
+                "requests": (
+                    WafMeasurement.LOWER_BOUND if lower_bound else WafMeasurement.EXACT
+                ).value
             },
         },
         "expected": {
@@ -686,8 +693,12 @@ def detect_new_endpoint_access(ctx: WafDetectionContext) -> WafSpikeVerdict:
             "request_count_measurement": obs.measurement.value if obs.measurement else None,
         },
         "contributors": contributors(obs, min_top_requests=thr.concentration_min_client_requests),
-        "provenance": {"record": "waf_endpoint", "first_seen_at": novelty.first_seen_at.isoformat()},
-        "observed_measurement": (WafMeasurement.LOWER_BOUND if lower_bound else WafMeasurement.EXACT).value,
+        "provenance": {
+            "record": "waf_endpoint", "first_seen_at": novelty.first_seen_at.isoformat()
+        },
+        "observed_measurement": (
+            WafMeasurement.LOWER_BOUND if lower_bound else WafMeasurement.EXACT
+        ).value,
         "absolute_delta": float(requests),
         "caveat": "A newly requested endpoint may be a deployment as easily as a probe.",
     }
