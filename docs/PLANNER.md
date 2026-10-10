@@ -104,14 +104,17 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 |---|---|---|---|---|
 | T-001 | Get the uncommitted work under version control and pushed | Orchestrator | DONE (changed scope; see the 2026-10-10 log) | Work pushed; `main` unchanged and green |
 | T-002 | Write `AGENTS.md`: the shared rules every agent follows | Orchestrator | DONE | Codex and opencode pick it up; Sonnet prompts reference it |
-| T-003 | Re-establish the full gate baseline on `feat/phase-b2`: integration tests on the test DB, `make check`, mypy, frontend gates | Orchestrator | IN PROGRESS | Actual output of each gate recorded in the log |
-| T-004 | B.2: fix the 7 ruff E501 errors | opencode free model | TODO | `make lint` clean; no behavior change in the diff |
-| T-005 | B.2: train ratio baselines. Write `numerator_sum` / `denominator_sum` for the block, server-error and client-error ratio cells through the bulk loaders (§29.11). | Codex | TODO | Unit and integration tests prove pooled sums; the statement count per run stays constant |
-| T-006 | B.2: register the `behavior.py` detectors in the WAF engine | Codex or Sonnet | TODO (after T-005) | Each detector runs, persists through the Phase A lifecycle, and honors its declared measurement requirement |
-| T-007 | B.2: tests for `breakdown.py`, collector breakdown searches, and `get_waf_breakdown` (mock and REST) | Sonnet | TODO | FAILED, NOT_COLLECTED and truncated breakdowns are covered; unmapped action values never count as allowed |
-| T-008 | B.2: unit tests for every `behavior.py` detector guard | Sonnet | TODO | Every INSUFFICIENT_DATA / HEALTHY / anomalous exit is pinned, including INCREASE_ONLY scope |
-| T-009 | B.2: set `EXPECTED_STATUS` for the new types (fixes the 6 failing unit tests) | Orchestrator decides the values; agent applies them | TODO (after T-006) | Statuses match what actually runs; no test weakened |
+| T-003 | Re-establish the full gate baseline on `feat/phase-b2`: integration tests on the test DB, `make check`, mypy, frontend gates | Orchestrator | DONE | Actual output of each gate recorded in the log |
+| T-004 | B.2: fix the 7 ruff E501 errors | opencode `mimo-v2.6-flash-free` | IN PROGRESS (`agent/t004`) | `make lint` clean; no behavior change in the diff |
+| T-005 | B.2: train the ratio and share baselines (`block_ratio`, `server_error_ratio`, `client_error_ratio`, `top1_client_share`). Write pooled `numerator_sum` / `denominator_sum` and statistics over per-bucket proportions, through the bulk loaders. | Codex | IN PROGRESS (`agent/t005`) | Unit and integration tests prove pooled sums and every exclusion; statement count unchanged; guard test that every `WAF_BASELINE_METRICS` entry is trained |
+| T-006a | B.2: run the ratio and concentration detectors in the WAF engine. Gate them on their enabling settings; scope from the declared inputs; breakdown semantics fail closed. | Codex | IN PROGRESS (`agent/t006`) | Incidents open and persist; NOT_COLLECTED → INSUFFICIENT_DATA; settings off → engine unchanged; statement count independent of detector count |
+| T-006b | B.2: novelty. Load each endpoint's first-appearance history in bulk (`NoveltyFacts`, `HistoryFacts`), then run `detect_new_endpoint_access`. | Codex | TODO (after T-006a) | History completeness is proven per bucket; flood at appearance → INSUFFICIENT_DATA; constant statements |
+| T-007 | B.2: tests for `breakdown.py`, collector breakdown searches, and `get_waf_breakdown` (mock and REST) | Sonnet | IN PROGRESS (`agent/t007`) | FAILED, NOT_COLLECTED and truncated breakdowns are covered; unmapped action values never count as allowed |
+| T-008 | B.2: unit tests for every `behavior.py` detector guard | Sonnet | IN PROGRESS (`agent/t008`) | Every INSUFFICIENT_DATA / HEALTHY / anomalous exit is pinned, including INCREASE_ONLY scope |
+| T-009 | B.2: capability truth. Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Orchestrator decides the values; agent applies them | TODO (after T-005, T-006a/b) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
 | T-010 | B.2: design doc §30 and README roadmap entry | Sonnet | TODO (last) | Documents what was built, measured and deferred, in the existing doc style |
+| T-011 | Migration 0010: `*_measurement` columns get `server_default 'NOT_COLLECTED'` (rolling-deploy safety), plus a 0010 round-trip test | Sonnet | IN PROGRESS (`agent/t011`) | `test_migrations.py` all green, including the 0009 test; `alembic check` clean |
+| T-012 | mypy regression at `waf_endpoint_collector.py:572`: an Optional is reassigned to a non-Optional variable. Type-only; the runtime is guarded. | opencode free model | TODO | mypy back to 31 errors in 18 files |
 
 **Later, not yet scheduled:**
 
@@ -128,7 +131,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | # | Question | Needed for |
 |---|---|---|
 | D-1 | ~~May the orchestrator commit and push?~~ **Resolved 2026-10-10:** yes, standing permission unless there is a hard block. | — |
-| D-2 | Which opencode free models to use (IDs)? | T-004 and other mechanical tasks |
+| D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
 
@@ -157,6 +160,25 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
   - Test DB `timescale/timescaledb:2.17.2-pg16` is up on `:5433` (tmpfs only, no bind mounts).
   - Created per-agent databases `qradar_obs_t004` … `qradar_obs_t008`.
   - The full suite is running on `qradar_obs_test`.
+- **T-003 backend gates on `feat/phase-b2` (snapshot `7f8bd39`):**
+  - **Full suite: 1,570 tests, 8 failed.**
+    - 6 × `test_detector_capabilities::test_status_matrix`, and
+      `test_phase_a_api::test_every_named_detector_is_published_with_its_status`. These two have
+      one root: the B.2 types are published, but the tests do not expect them.
+    - **`test_migrations::test_0009_…`.** A real defect: migration 0010 makes the
+      `*_measurement` columns NOT NULL without a server default. Any 0009-era writer then breaks,
+      including during a rolling deploy. → T-011.
+  - **Finding:** the capability registry reports all five B.2 detectors `OPERATIONAL`, and
+    `WAF_BASELINE_METRICS` claims the builder trains the four ratio metrics. In fact the engine
+    runs none of the five and the builder trains none of the four. The registry over-claims.
+    → T-005, T-006a/b, T-009.
+  - mypy: 32 errors in 19 files, against the 31 / 18 baseline. The new one is
+    `waf_endpoint_collector.py:572` → T-012.
+  - `alembic upgrade head` + `alembic check` on a fresh DB: no drift.
+  - Frontend: lint clean, typecheck clean, 629/629 tests, production build OK.
+- **Delegation round 1:** T-004 (opencode free), T-005 and T-006a (Codex), T-007, T-008 and T-011
+  (Sonnet, medium). All run in parallel, each in its own worktree with its own database.
+- **D-2 resolved.** Free models probed; see §4.
 - **Status assessment.** Last commit `6f17a73` (2026-08-03). B.1 and B.1.5 are complete per the
   design doc but not committed. An undocumented, half-built B.2 was found in the working tree; it
   is inventoried in §2.
