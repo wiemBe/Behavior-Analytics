@@ -105,18 +105,18 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-001 | Get the uncommitted work under version control and pushed | Orchestrator | DONE (changed scope; see the 2026-10-10 log) | Work pushed; `main` unchanged and green |
 | T-002 | Write `AGENTS.md`: the shared rules every agent follows | Orchestrator | DONE | Codex and opencode pick it up; Sonnet prompts reference it |
 | T-003 | Re-establish the full gate baseline on `feat/phase-b2`: integration tests on the test DB, `make check`, mypy, frontend gates | Orchestrator | DONE | Actual output of each gate recorded in the log |
-| T-004 | B.2: fix the 7 ruff E501 errors | opencode `mimo-v2.6-flash-free` | IN PROGRESS (`agent/t004`) | `make lint` clean; no behavior change in the diff |
-| T-005 | B.2: train the ratio and share baselines (`block_ratio`, `server_error_ratio`, `client_error_ratio`, `top1_client_share`). Write pooled `numerator_sum` / `denominator_sum` and statistics over per-bucket proportions, through the bulk loaders. | Codex | IN PROGRESS (`agent/t005`) | Unit and integration tests prove pooled sums and every exclusion; statement count unchanged; guard test that every `WAF_BASELINE_METRICS` entry is trained |
-| T-006a | B.2: run the ratio and concentration detectors in the WAF engine. Gate them on their enabling settings; scope from the declared inputs; breakdown semantics fail closed. | Codex | IN PROGRESS (`agent/t006`) | Incidents open and persist; NOT_COLLECTED → INSUFFICIENT_DATA; settings off → engine unchanged; statement count independent of detector count |
-| T-006b | B.2: novelty. Load each endpoint's first-appearance history in bulk (`NoveltyFacts`, `HistoryFacts`), then run `detect_new_endpoint_access`. | Codex | TODO (after T-006a) | History completeness is proven per bucket; flood at appearance → INSUFFICIENT_DATA; constant statements |
+| T-004 | B.2: fix the 7 ruff E501 errors | opencode `mimo-v2.6-flash-free` | DONE (`be79d8b`) | `make lint` clean; no behavior change in the diff |
+| T-005 | B.2: train the ratio and share baselines (`block_ratio`, `server_error_ratio`, `client_error_ratio`, `top1_client_share`) | Codex | DONE (`53385f0`) | Pooled sums and every exclusion tested; statement count unchanged; registry guard test |
+| T-006a | B.2: run the ratio and concentration detectors in the WAF engine | Codex | DONE (`b52a03d`) | Incidents open and persist; NOT_COLLECTED → INSUFFICIENT_DATA; settings off → engine unchanged; constant statements with 5 detectors per endpoint |
+| T-006b | B.2: novelty. Bulk first-appearance history (`NoveltyFacts`, `HistoryFacts`), `detect_new_endpoint_access` wired. Also replace the production `assert` left by T-006a with a reload-then-raise. | Codex | IN PROGRESS (`agent/t006b`) | History completeness proven per bucket; flood at appearance → INSUFFICIENT_DATA; constant statements |
 | T-007 | B.2: tests for `breakdown.py`, collector breakdown searches, and `get_waf_breakdown` (mock and REST) | Sonnet | DONE (`c122b42`) | FAILED, NOT_COLLECTED and truncated breakdowns are covered; unmapped action values never count as allowed |
 | T-008 | B.2: unit tests for every `behavior.py` detector guard | Sonnet | DONE (`e4fcaf5`) | Every INSUFFICIENT_DATA / HEALTHY / anomalous exit is pinned, including INCREASE_ONLY scope |
 | T-009 | B.2: capability truth. Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Orchestrator decides the values; agent applies them | TODO (after T-005, T-006a/b) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
 | T-010 | B.2: design doc §30 and README roadmap entry | Sonnet | TODO (last) | Documents what was built, measured and deferred, in the existing doc style |
 | T-011 | Migration tests vs 0010: pin the 0009 test to revision `0009`; add a 0010 round-trip test under the transient-default convention | Sonnet | DONE | `test_migrations.py` 10/10 (re-run by the orchestrator on a fresh DB) |
-| T-012 | mypy regression at `waf_endpoint_collector.py:572`: an Optional is reassigned to a non-Optional variable. Type-only; the runtime is guarded. | opencode free model | TODO | mypy back to 31 errors in 18 files |
-| T-013 | Breakdown fold defects found by T-007. (1) `normalize_response_code` raises on non-ASCII digits such as `"²"`, failing the whole bucket; it also accepts `"٤٠٤"`. (2) Unparseable source-IP values are pooled into one placeholder "client" that can be ranked, stored and drive concentration. | Sonnet | IN PROGRESS (`agent/t013`) | ASCII-only status codes; unparseable values unattributed (lower coverage, never a client); regression tests; the one test that pinned the defect is replaced with orchestrator approval |
-| T-014 | **Production wiring gap found by T-007:** `WafSourcePipeline.run` builds `WafEndpointCollector` without `breakdowns=`, and nothing calls `breakdown_plan`. Scheduled collection therefore always records NOT_COLLECTED, and the B.2 detectors could never fire in production. | Codex | TODO (after T-005, which also edits `waf_pipeline.py`) | A test through `run_waf_source` proves breakdowns are collected when enabled and validated, and not collected otherwise |
+| T-012 | mypy regression at `waf_endpoint_collector.py:572`: an Optional is reassigned to a non-Optional variable. Type-only; the runtime is guarded. | opencode `ling-3.1-flash-free` | IN PROGRESS (`agent/t012`) | mypy back to 31 errors in 18 files |
+| T-013 | Breakdown fold defects found by T-007: non-ASCII status digits; unparseable source IPs posing as a client | Sonnet | DONE (`02374e9`) | ASCII-only status codes; unparseable values unattributed; regression tests; one defect-pinning test replaced with approval |
+| T-014 | **Production wiring gap:** the scheduled pipeline never passes a `BreakdownPlan` to the collector, so breakdowns, and hence B.2 detectors, never run in production | Codex | IN PROGRESS (`agent/t014`) | A test through `run_waf_source` proves collection when enabled and validated, NOT_COLLECTED otherwise, and a block-ratio incident opening through the scheduled path alone |
 
 **Later, not yet scheduled:**
 
@@ -134,6 +134,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | # | Question | Needed for |
 |---|---|---|
 | D-1 | ~~May the orchestrator commit and push?~~ **Resolved 2026-10-10:** yes, standing permission unless there is a hard block. | — |
+| D-3 | **Open design question.** The request-count baseline and the request-rate detector drop buckets whose *source-level* endpoint coverage (`endpoint_coverage_ratio`) is below the floor. Ratio training and the ratio detectors check only the breakdown's coverage of the endpoint's visible requests. If attack or blocked requests are disproportionately unparseable, the visible proportion is biased low. Should ratio paths also require source-level coverage? | Before T-010; decide with evidence from a live run |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
@@ -209,6 +210,22 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
   2. The unparseable-address placeholder poses as a client → T-013.
   3. **The scheduled pipeline never passes a breakdown plan**, so no breakdown, and hence no B.2
      detector, would ever run in production → T-014.
+- **Round 1 merged** into `feat/phase-b2`:
+  - **T-004** (`be79d8b`). The orchestrator replaced a backslash continuation inside the CLI
+    docstring with a plain reflow.
+  - **T-006a** (`b52a03d`), reviewed line by line. 101 WAF and engine integration tests re-run
+    green. Noted: detector-state creation moved to one `INSERT … SELECT unnest … ON CONFLICT DO
+    NOTHING RETURNING`, so statements stay constant with 5 detectors per endpoint; its
+    lost-conflict path relied on an `assert`, fix folded into T-006b. Its one new unit failure
+    (`test_waf_resilience::…declared_requirement`) only checks the legacy single `measurement`;
+    B.2 specs declare per-input requirements. → T-009.
+  - **T-005** (`53385f0`), reviewed. All WAF tests re-run green; the two red integration tests in
+    its worktree were the known T-011/T-009 ones. Open design question raised → D-3.
+  - **T-013** (`02374e9`): 253 tests re-run green.
+- **Round 2 launched:** T-006b and T-014 (Codex, in parallel; disjoint files) and T-012 (opencode
+  `ling-3.1-flash-free`). The full suite is running on the integration branch.
+- Tooling note: pytest's project `addopts` already has `-q`, so adding another `-q` hides the
+  summary line. Run without `-q`, or use `--junitxml`, to get counts.
 - **Delegation round 1:** T-004 (opencode free), T-005 and T-006a (Codex), T-007, T-008 and T-011
   (Sonnet, medium). All run in parallel, each in its own worktree with its own database.
 - **D-2 resolved.** Free models probed; see §4.
