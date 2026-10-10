@@ -113,7 +113,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-008 | B.2: unit tests for every `behavior.py` detector guard | Sonnet | DONE (`e4fcaf5`) | Every INSUFFICIENT_DATA / HEALTHY / anomalous exit is pinned, including INCREASE_ONLY scope |
 | T-009 | B.2: capability truth. Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Orchestrator decides the values; agent applies them | TODO (after T-005, T-006a/b) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
 | T-010 | B.2: design doc §30 and README roadmap entry | Sonnet | TODO (last) | Documents what was built, measured and deferred, in the existing doc style |
-| T-011 | Migration tests vs 0010. ~~Add server defaults~~ (rejected; see the log). Instead: pin the 0009 test to revision `0009`, and add a 0010 round-trip test under the transient-default convention. | Sonnet | IN PROGRESS (revised scope) | `test_migrations.py` all green, including the server-default allowlist test; `alembic check` clean |
+| T-011 | Migration tests vs 0010: pin the 0009 test to revision `0009`; add a 0010 round-trip test under the transient-default convention | Sonnet | DONE | `test_migrations.py` 10/10 (re-run by the orchestrator on a fresh DB) |
 | T-012 | mypy regression at `waf_endpoint_collector.py:572`: an Optional is reassigned to a non-Optional variable. Type-only; the runtime is guarded. | opencode free model | TODO | mypy back to 31 errors in 18 files |
 
 **Later, not yet scheduled:**
