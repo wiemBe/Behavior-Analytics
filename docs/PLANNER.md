@@ -27,8 +27,6 @@ G3 rule analytics). Every task is scheduled against them.
 - `feat/phase-b2` is merged and kept for reference only.
 
 **In flight** (each in `../QRadar-Dash-wt/<id>`, with database `qradar_obs_<id>`):
-- **T-021**, Sonnet: UI quality pass. Accepting it requires reviewing its before/after screenshots
-  under scratchpad `t021/` against §3a.
 - **T-022**, Codex: Phase C.1. Log: scratchpad `t022_codex.log`. Check the tail for "usage limit".
   Migration `0011`.
 - **T-025**, Sonnet: Phase E.1a. Migration `0012`, **temporarily chained to `0010`**. Whichever of
@@ -262,9 +260,10 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-019 | Defect: `Alert.severity` loads as `str`, so `_render` (`.value`) crashes on any DB-loaded alert when a route matches. This hits Phase A recovery and the API acknowledge/resolve paths. Reproduce first, fix in the dispatcher, drop T-016's workaround | Codex | DONE (`6d860e8`; reproduced 3 failures first; re-run by the orchestrator: 41 passed) | Failing regression tests before the fix; green after; audit list of similar `.value` reads |
 | T-010 | (re-listed) B.2 design doc §30 and README | Sonnet | DONE (`9951470`, with one follow-up round) | §30.1–§30.14; README status, roadmap, data model, test counts |
 | T-020 | Replace the stale `docs/NEXT-SESSION-PROMPT.md` with a pointer to the planner | opencode `ling-3.1-flash-free` | DONE (verified: exact text, one file) | Exact text; one file |
-| T-021 | **UI quality pass** on the behavioral routes, against AGENTS.md §3a (the user's "no AI slop" bar) | Sonnet | IN PROGRESS (`agent/t021`) | Known defects fixed; before/after screenshots at 3 viewports reviewed by the orchestrator; frontend gates green |
+| T-021 | **UI quality pass** on the behavioral routes, against AGENTS.md §3a (the user's "no AI slop" bar) | Sonnet | DONE (`526e0d0`; screenshots reviewed by the orchestrator; 695 frontend tests, lint, typecheck and build re-run) | Clean chart (band, units, UTC), one metrics block, UTC everywhere, states designed. Left for T-024: the overview table's severity column has no header; two overview stat cards are uneven; the sidebar background stops at the viewport height on long pages. |
 | T-022 | **Phase C.1 (G1):** inventory enrichment (groups, types, facts), migration `0011`, `classify()` with seed rules, new-source detection and alert ([design](PHASE-C-LOG-SOURCE-FLEET.md)) | Codex | IN PROGRESS (`agent/t022`) | Full gates; constant SQL per sync; the seed list reviewed by the orchestrator |
 | T-025 | **Phase E.1a (G3):** measured rule matches from `creEventList`, migration `0012` (temporarily chained to `0010`; re-chain at merge), rule-health integration ([design](PHASE-E-RULE-ANALYTICS.md)) | Sonnet | IN PROGRESS (`agent/t025`) | Full gates; EVENT rules provably silent only over complete windows; COMMON never silent |
+| T-026 | Record the T-021 contracts (`IncidentMetrics`, `LoadingState`/`ErrorState`, UTC, the severity tone) in the UX guidelines | opencode `longcat-2.5-preview-free` | IN PROGRESS (`agent/t026`) | Three verbatim insertions; one file |
 
 **Later, not yet scheduled:**
 
