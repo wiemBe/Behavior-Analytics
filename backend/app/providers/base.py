@@ -34,6 +34,7 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    RuleMatchBatch,
     WafBreakdownBatch,
     WafObservationBatch,
     WafRejectionObservation,
@@ -224,6 +225,22 @@ class QRadarProvider(ABC):
         marking the ones the source's DSM does not populate as
         ``available=False`` rather than omitting them. Silence about a field is
         indistinguishable from a measured zero, and only one of those is true.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_rule_matches(
+        self, window_start: datetime, window_end: datetime, *, max_rows: int
+    ) -> RuleMatchBatch:
+        """How many events matched each rule or building block in one window.
+
+        One bounded aggregate over `creEventList`, capped at `max_rows`. A full
+        page sets ``truncated``: the batch is then a prefix, and a rule missing
+        from it proves nothing. Events that matched no rule (a null id) are not
+        rows.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only: it
+        only searches events.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError

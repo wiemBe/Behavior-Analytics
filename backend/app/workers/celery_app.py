@@ -97,6 +97,12 @@ celery_app.conf.beat_schedule = {
         "task": "collect_rule_metrics",
         "schedule": float(settings.rule_metric_collection_interval_seconds),
     },
+    "collect-rule-matches": {
+        # Measured rule matches (Phase E.1a): one read-only Ariel search per
+        # window. A no-op while RULE_MATCH_COLLECTION_ENABLED is false.
+        "task": "collect_rule_matches",
+        "schedule": float(settings.rule_match_collection_interval_seconds),
+    },
     "evaluate-rule-health": {
         "task": "evaluate_rule_health",
         "schedule": float(settings.rule_health_evaluation_interval_seconds),

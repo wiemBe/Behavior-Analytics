@@ -37,6 +37,8 @@ from app.models.rule import (
     DetectionCoverageSnapshot,
     RuleDependency,
     RuleHealthSnapshot,
+    RuleMatchMetric,
+    RuleMatchWindow,
     RuleMetric,
     RuleStateTransition,
     TechniqueMapping,
@@ -69,6 +71,7 @@ HYPERTABLES: dict[str, str] = {
     "detection_coverage_snapshot": "captured_at",
     "waf_endpoint_metric": "bucket_start",
     "waf_source_bucket": "bucket_start",
+    "rule_match_metric": "bucket_start",
 }
 
 __all__ = [
@@ -102,6 +105,8 @@ __all__ = [
     "Role",
     "RuleDependency",
     "RuleHealthSnapshot",
+    "RuleMatchMetric",
+    "RuleMatchWindow",
     "RuleMetric",
     "RuleStateTransition",
     "ScheduledSearch",

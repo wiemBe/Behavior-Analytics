@@ -54,6 +54,8 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    RuleMatchBatch,
+    RuleMatchRow,
     WafBreakdownBatch,
     WafBreakdownGroup,
     WafObservationBatch,
@@ -89,6 +91,57 @@ DEFAULT_PAGE_SIZE = 500
 #: Hard ceiling on pages walked in one call, so a pathological or hostile
 #: upstream cannot turn a list call into an unbounded loop.
 DEFAULT_MAX_PAGES = 200
+
+#: Version of the stored rule-match AQL. Bump it with any change to the query
+#: text, so a stored window can always be tied to the query that produced it.
+RULE_MATCH_QUERY_VERSION = "rule_match/v1"
+
+
+def _rule_id(value: Any) -> int | None:
+    """A rule id exactly as QRadar sends it: a non-negative integer.
+
+    Stricter than `as_int`, which truncates a float: a fractional id is a
+    malformed row, not rule 5.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, float):
+        return int(value) if value.is_integer() and value >= 0 else None
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        return int(value)
+    return None
+
+
+def parse_rule_match_rows(raw_rows: Sequence[dict]) -> tuple[list[RuleMatchRow], int]:
+    """Parse `creEventList` rows defensively; returns (rows, malformed count).
+
+    A null id is the events that matched no rule at all: excluded, and not
+    malformed. A missing or non-integer id, or a count that is not a
+    non-negative integer, drops the row and is counted, so a parsing change on
+    the appliance shows up as a number rather than as quietly missing rules.
+    """
+    out: list[RuleMatchRow] = []
+    malformed = 0
+    for row in raw_rows:
+        if "rule_id" in row and row["rule_id"] is None:
+            continue
+        rule_id = _rule_id(row.get("rule_id"))
+        records = as_int(row.get("records"))
+        events = as_int(row.get("events"))
+        if (
+            rule_id is None
+            or records is None
+            or events is None
+            or records < 0
+            or events < 0
+        ):
+            malformed += 1
+            continue
+        out.append(RuleMatchRow(qradar_rule_id=rule_id, records=records, events=events))
+    return out, malformed
+
 
 class MalformedUpstreamResponse(ProviderError):
     """QRadar returned something we could not safely interpret."""
@@ -703,6 +756,47 @@ class QRadarRestProvider(QRadarProvider):
             total_count=total,
             truncated=len(values) >= limit,
             query=aql,
+        )
+
+    async def get_rule_matches(
+        self, window_start: datetime, window_end: datetime, *, max_rows: int
+    ) -> RuleMatchBatch:
+        """One bounded aggregate: events matched per rule or building block.
+
+        Only the validated window bounds and the integer cap reach the query
+        text. Read-only: one Ariel search over ``events``, no raw event kept.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = self._bounded_window(window_start, window_end)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        limit = max(1, min(int(max_rows), self._page_size * self._max_pages))
+        aql = (
+            # COUNT(*) is retained as provenance only; SUM(eventcount) is the
+            # volume, for the coalescing reason given in get_log_source_metrics.
+            # `creEventList` comes back as a bare integer id, one row per rule
+            # or building block an event matched (T-015 section 11).
+            'SELECT creEventList AS "rule_id", COUNT(*) AS "records", '  # noqa: S608
+            'SUM(eventcount) AS "events" FROM events '
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY creEventList ORDER BY COUNT(*) DESC LIMIT {limit} "
+            # START/STOP scopes the search itself; see get_log_source_metrics.
+            f"START {start_ms} STOP {end_ms}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=limit)
+        rows, malformed = parse_rule_match_rows(raw)
+        return RuleMatchBatch(
+            window_start=start,
+            window_end=end,
+            rows=rows,
+            # Judged on the raw page, not the parsed rows: a page full of
+            # dropped rows is still a full page.
+            truncated=len(raw) >= limit,
+            row_cap=limit,
+            malformed_rows=malformed,
+            query_version=RULE_MATCH_QUERY_VERSION,
+            query=aql,
+            ariel_searches=1,
         )
 
     # ------------------------------------------------------------ WAF (Phase B)

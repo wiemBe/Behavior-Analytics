@@ -38,6 +38,8 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    RuleMatchBatch,
+    RuleMatchRow,
     WafBreakdownBatch,
     WafBreakdownGroup,
     WafObservationBatch,
@@ -303,6 +305,45 @@ class MockQRadarProvider(QRadarProvider):
                 )
             )
         return out
+
+    #: Ids the mock reports as matching: some mock rules, all three mock
+    #: building blocks, and one id that is in neither inventory list.
+    _MOCK_MATCHED_RULE_IDS: ClassVar[tuple[int, ...]] = (
+        5001, 5002, 5004, 6000, 6001, 6002, 999_001,
+    )
+
+    async def get_rule_matches(
+        self, window_start: datetime, window_end: datetime, *, max_rows: int
+    ) -> RuleMatchBatch:
+        """Deterministic rule matches, seeded from the window.
+
+        Covers rules, building blocks and an unknown id, so the fold's join and
+        its unknown-id count are both exercised without a QRadar.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        seconds = max(1.0, (window_end - window_start).total_seconds())
+        rng = random.Random(  # noqa: S311 - deterministic fixture, not crypto
+            f"rule-match:{int(window_start.timestamp())}"
+        )
+        rows: list[RuleMatchRow] = []
+        for rule_id in self._MOCK_MATCHED_RULE_IDS:
+            records = int(rng.random() ** 2 * seconds * 0.2) + 1
+            rows.append(
+                RuleMatchRow(
+                    qradar_rule_id=rule_id, records=records, events=records * 2 + 1
+                )
+            )
+        rows.sort(key=lambda r: (-r.records, r.qradar_rule_id))
+        cap = max(1, max_rows)
+        return RuleMatchBatch(
+            window_start=window_start,
+            window_end=window_end,
+            rows=rows[:cap],
+            truncated=len(rows) >= cap,
+            row_cap=cap,
+            query_version="rule_match/v1",
+            query=f"MOCK creEventList LIMIT {cap}",
+        )
 
     #: Endpoints the mock WAF source publishes. Mirrors the shape the lab
     #: generator produces so a fixture-driven test and a live lab run exercise

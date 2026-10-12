@@ -180,6 +180,43 @@ class WafObservationBatch(ProviderDTO):
     ariel_searches: int = 0
 
 
+class RuleMatchRow(ProviderDTO):
+    """One rule-or-building-block id and how many events matched it in a window."""
+
+    qradar_rule_id: int
+    #: Ariel records, `COUNT(*)`. Provenance only: QRadar coalesces identical
+    #: events into one record, so this is not a volume.
+    records: int
+    #: Events, `SUM(eventcount)`. The quantity a rule's match volume is read from.
+    events: int
+
+
+class RuleMatchBatch(ProviderDTO):
+    """Everything one `creEventList` search returned for one window.
+
+    `creEventList` is expanded by Ariel, so an event that matched several rules
+    is counted once per rule. Rules and building blocks share one id space, so
+    the batch holds ids only; joining them to names and types is the caller's
+    job, because `RULENAME()` is unreliable.
+    """
+
+    window_start: datetime
+    window_end: datetime
+    rows: list[RuleMatchRow] = Field(default_factory=list)
+    #: The row cap was reached, so `rows` is a prefix of the truth: a rule absent
+    #: from a truncated batch may still have matched.
+    truncated: bool = False
+    #: The effective row cap the search ran with.
+    row_cap: int = 0
+    #: Rows dropped because the id was missing or not an integer. A null id is
+    #: not counted here: it is the events that matched no rule at all.
+    malformed_rows: int = 0
+    #: Version of the stored AQL, so a stored window can be re-justified.
+    query_version: str = ""
+    query: str | None = None
+    ariel_searches: int = 0
+
+
 class WafBreakdownGroup(ProviderDTO):
     """One (raw URL, method[, host], value) group of one breakdown. Transient.
 

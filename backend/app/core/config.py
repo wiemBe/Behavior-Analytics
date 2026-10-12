@@ -196,6 +196,24 @@ class Settings(BaseSettings):
     rule_metric_collection_interval_seconds: int = Field(default=3600, ge=60)
     rule_metric_lookback_days: int = Field(default=30, ge=1, le=365)
     rule_metric_max_offenses: int = Field(default=10_000, ge=1, le=1_000_000)
+    # Measured rule matches (Phase E.1a): one Ariel `creEventList` search per
+    # window. Off by default -- the cost on a busy console is unmeasured.
+    rule_match_collection_enabled: bool = False
+    rule_match_collection_interval_seconds: int = Field(default=900, ge=60)
+    rule_match_window_seconds: int = Field(default=3600, ge=60, le=86_400)
+    # A window is collected only once it ended this long ago, so late-arriving
+    # events do not land in a window already recorded as COMPLETE.
+    rule_match_settle_lag_seconds: int = Field(default=300, ge=0, le=86_400)
+    rule_match_max_windows_per_run: int = Field(default=6, ge=1, le=168)
+    # A window that failed this many times stays recorded as FAILED and the
+    # watermark moves past it, so one unanswerable window cannot stall collection.
+    rule_match_max_window_attempts: int = Field(default=3, ge=1, le=20)
+    # A watermark further behind than this (after downtime) jumps to the horizon;
+    # every skipped window is recorded as FAILED, never as an empty COMPLETE one.
+    rule_match_max_catchup_seconds: int = Field(default=86_400, ge=60)
+    # A full page makes the window TRUNCATED. Capped at 5,000 so one bulk upsert
+    # (5 bound values a row) stays under the 32,767-parameter statement limit.
+    rule_match_max_rows: int = Field(default=2000, ge=10, le=5000)
     # Evaluation window for "has this rule fired recently".
     rule_health_window_days: int = Field(default=30, ge=1, le=365)
     # A rule newer than this is INSUFFICIENT_DATA, never INACTIVE: a detection
@@ -214,7 +232,8 @@ class Settings(BaseSettings):
     rule_health_flap_threshold: int = Field(default=2, ge=1, le=10)
     # Bumped whenever classification logic changes meaning, so historical
     # snapshots stay interpretable. Not operator-tunable in practice.
-    rule_health_logic_version: int = 1
+    # 2: EVENT rules are judged on measured rule matches when they exist (E.1a).
+    rule_health_logic_version: int = 2
     # Health classification reads only stored data, so it can run more often
     # than the inventory sync that feeds it.
     rule_health_evaluation_interval_seconds: int = Field(default=1800, ge=60)

@@ -35,6 +35,7 @@ from app.collectors.log_source_collector import LogSourceCollector
 from app.collectors.metric_collector import MetricCollector
 from app.collectors.offense_collector import OffenseCollector
 from app.collectors.rule_collector import RuleCollector
+from app.collectors.rule_match_collector import RuleMatchCollector
 from app.collectors.rule_metric_collector import RuleMetricCollector
 from app.core.config import get_settings
 from app.core.database import dispose_engine, get_sessionmaker
@@ -253,6 +254,41 @@ async def collect_rule_metrics(instance_name: str | None = None) -> dict:
         }
 
     return await _for_each_instance(run, instance_name, needs_provider=False)
+
+
+async def collect_rule_matches(instance_name: str | None = None) -> dict:
+    """Collect measured rule matches, one Ariel search per window.
+
+    A no-op while RULE_MATCH_COLLECTION_ENABLED is false: the cost on a busy
+    console is unmeasured, so the beat entry exists but does nothing by default.
+    """
+    if not get_settings().rule_match_collection_enabled:
+        return {"status": "disabled"}
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        report = await RuleMatchCollector(session, provider).collect(instance)
+        return {
+            "status": (
+                "skipped_locked"
+                if report.skipped_locked
+                else "unsupported"
+                if report.unsupported
+                else "failed" if report.partial_failure else "ok"
+            ),
+            "windows_attempted": report.windows_attempted,
+            "windows_complete": report.windows_complete,
+            "windows_truncated": report.windows_truncated,
+            "windows_failed": report.windows_failed,
+            "rows_written": report.rows_written,
+            "unknown_ids": report.unknown_ids,
+            "duration_ms": report.duration_ms,
+            "error": report.error,
+        }
+
+    return await _for_each_instance(run, instance_name)
 
 
 async def detect_stale_offense_collection(instance_name: str | None = None) -> dict:
@@ -648,6 +684,11 @@ def detect_stale_offense_collection_task(instance_name: str | None = None) -> di
 @celery_app.task(name="calculate_offense_aggregates")
 def calculate_offense_aggregates_task(instance_name: str | None = None) -> dict:
     return _run(calculate_offense_aggregates(instance_name))
+
+
+@celery_app.task(name="collect_rule_matches")
+def collect_rule_matches_task(instance_name: str | None = None) -> dict:
+    return _run(collect_rule_matches(instance_name))
 
 
 @celery_app.task(name="evaluate_rule_health")
