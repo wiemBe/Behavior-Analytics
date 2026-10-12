@@ -3831,7 +3831,16 @@ detector-capability fields.
 
 ### 30.12 Gates
 
-Gates: recorded by the orchestrator at merge.
+Measured by the orchestrator on `feat/phase-b2` immediately before the merge to `main`
+(2026-10-12), on fresh databases:
+
+| Gate | Result |
+|---|---|
+| `ruff check app tests` | clean |
+| `pytest` (unit + integration) | **2,088 passed, 0 failed** |
+| `mypy app` (advisory) | 31 errors in 18 files, the unchanged baseline |
+| `alembic upgrade head` → `check` → `downgrade 0009` → `upgrade head` → `check` | clean; no drift |
+| Frontend `lint` / `typecheck` / `test` / `build` | clean / clean / 629 passed / built |
 
 ### 30.13 Remaining risks
 
