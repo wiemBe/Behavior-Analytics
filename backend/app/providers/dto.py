@@ -262,6 +262,41 @@ class WafBreakdownBatch(ProviderDTO):
     ariel_searches: int = 0
 
 
+class WafObservationBucketBatch(ProviderDTO):
+    """One keyed WAF volume search, split into one `WafObservationBatch` per bucket.
+
+    Every bucket of the searched window has an entry, empty if no row fell in
+    it, and each is exactly what the per-bucket search would have returned
+    after the per-bucket top-N cut (`app.waf.bucketed`). When the search as a
+    whole was `truncated` the buckets are empty by construction: a truncated
+    search proves nothing about any bucket, and the caller must split.
+    """
+
+    buckets: dict[datetime, WafObservationBatch] = Field(default_factory=dict)
+    #: More than the row budget came back: no bucket may be kept.
+    truncated: bool = False
+    rows_returned: int = 0
+    query: str | None = None
+    total_query: str | None = None
+    #: Ariel searches issued (the grouped search, and the totals search when the
+    #: grouped one was whole).
+    ariel_searches: int = 0
+
+
+class WafBreakdownBucketBatch(ProviderDTO):
+    """One keyed WAF breakdown search, split into one batch per bucket.
+
+    The same contract as `WafObservationBucketBatch`.
+    """
+
+    breakdown: str
+    buckets: dict[datetime, WafBreakdownBatch] = Field(default_factory=dict)
+    truncated: bool = False
+    rows_returned: int = 0
+    query: str | None = None
+    ariel_searches: int = 0
+
+
 class WafPropertyValue(ProviderDTO):
     """One raw property value and the events that carried it. Transient."""
 

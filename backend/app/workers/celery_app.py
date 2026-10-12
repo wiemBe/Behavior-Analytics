@@ -117,10 +117,11 @@ celery_app.conf.beat_schedule = {
     "dispatch-waf-collection": {
         # Enqueues one `collect_waf_source` task per eligible WAF source, so a
         # slow or failing source never delays another. Each run collects, then
-        # evaluates, then trains, under that source's own advisory lock. A no-op
-        # while WAF_COLLECTION_ENABLED is false.
+        # evaluates, then trains, under that source's own advisory lock. Ticks
+        # every minute; the WAF_COLLECTION cadence gate decides whether a tick
+        # is due. A no-op while WAF_COLLECTION_ENABLED is false.
         "task": "dispatch_waf_collection",
-        "schedule": float(settings.collection_interval_seconds),
+        "schedule": 60.0,
     },
     "apply-waf-retention": {
         "task": "apply_waf_retention",

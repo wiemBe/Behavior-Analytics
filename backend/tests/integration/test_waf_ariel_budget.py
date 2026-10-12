@@ -173,7 +173,35 @@ class TestPipelineUnderBudget:
         assert status.last_collection_duration_ms is not None
         assert status.last_run_intervals_collected == 1
 
-    async def test_backfill_stops_at_the_first_bucket_without_a_permit(self, db_session) -> None:
+    async def test_a_tick_without_a_permit_collects_nothing(self, db_session) -> None:
+        settings = budget_settings()
+        starts = [T0 + STEP * i for i in range(5)]
+        provider = StubWafProvider([batch(s, [("/portal/login", "GET", 40)]) for s in starts])
+        profile, _source = await source_with_profile(db_session, provider, settings)
+        profile_id = profile.id
+        await run_at(db_session, profile_id, provider, settings, starts[0])
+        calls_before = provider.observation_calls
+
+        squeezed = await run_waf_source(
+            db_session, profile_id, provider_factory=lambda _i: provider, settings=settings,
+            clock=lambda: starts[4] + STEP + timedelta(seconds=5),
+            ariel_budget=GrantingBudget(0, settings),
+        )
+        assert squeezed["status"] == "capacity_unavailable"
+        assert squeezed["capacity_unavailable"] is True
+        assert squeezed["intervals_collected"] == 0
+        # Not one search was sent, the watermark did not move, no bucket was written.
+        assert provider.observation_calls == calls_before
+        assert squeezed["collection_watermark_at"] == starts[0].isoformat()
+        buckets = set((await db_session.scalars(select(WafSourceBucket.bucket_start))).all())
+        assert buckets == {starts[0]}
+
+        resumed = await run_at(db_session, profile_id, provider, settings, starts[4])
+        assert resumed["status"] == "ok" and resumed["intervals_collected"] == 4
+        buckets = set((await db_session.scalars(select(WafSourceBucket.bucket_start))).all())
+        assert buckets == set(starts)
+
+    async def test_one_permit_collects_the_whole_window(self, db_session) -> None:
         settings = budget_settings()
         starts = [T0 + STEP * i for i in range(5)]
         provider = StubWafProvider([batch(s, [("/portal/login", "GET", 40)]) for s in starts])
@@ -181,24 +209,14 @@ class TestPipelineUnderBudget:
         profile_id = profile.id
         await run_at(db_session, profile_id, provider, settings, starts[0])
 
-        squeezed = await run_waf_source(
+        budget = GrantingBudget(1, settings)
+        tick = await run_waf_source(
             db_session, profile_id, provider_factory=lambda _i: provider, settings=settings,
-            clock=lambda: starts[4] + STEP + timedelta(seconds=5),
-            ariel_budget=GrantingBudget(2, settings),
+            clock=lambda: starts[4] + STEP + timedelta(seconds=5), ariel_budget=budget,
         )
-        assert squeezed["status"] == "capacity_unavailable"
-        assert squeezed["intervals_collected"] == 2
-        # The watermark stands on the last bucket written, and what was collected
-        # was still evaluated.
-        assert squeezed["collection_watermark_at"] == starts[2].isoformat()
-        assert squeezed["evaluated_through"] == starts[2].isoformat()
-        buckets = set((await db_session.scalars(select(WafSourceBucket.bucket_start))).all())
-        assert buckets == set(starts[:3])
-
-        resumed = await run_at(db_session, profile_id, provider, settings, starts[4])
-        assert resumed["status"] == "ok" and resumed["intervals_collected"] == 2
-        buckets = set((await db_session.scalars(select(WafSourceBucket.bucket_start))).all())
-        assert buckets == set(starts)
+        # Four buckets on exactly the one permit that was granted.
+        assert tick["status"] == "ok" and tick["intervals_collected"] == 4
+        assert budget.remaining == 0
 
     async def test_a_locked_source_spends_no_permit_and_records_the_skip(
         self, db_session, db_schema

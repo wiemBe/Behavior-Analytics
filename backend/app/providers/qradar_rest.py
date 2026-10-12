@@ -62,12 +62,12 @@ from app.providers.dto import (
     RuleMatchBatch,
     RuleMatchRow,
     WafBreakdownBatch,
-    WafBreakdownGroup,
+    WafBreakdownBucketBatch,
     WafObservationBatch,
+    WafObservationBucketBatch,
     WafPropertyProbe,
     WafPropertyValue,
     WafRejectionObservation,
-    WafRequestGroup,
     WafSourceProbe,
     WindowedRuleMatches,
 )
@@ -83,6 +83,12 @@ from app.providers.tls import build_ssl_context
 from app.rules.matches import fold_windowed_rows, window_starts
 from app.security.sanitizer import sanitize_text
 from app.services.backoff import backoff_delay
+from app.waf.bucketed import (
+    fold_breakdown_buckets,
+    fold_observation_buckets,
+    parse_breakdown_row,
+    parse_group_row,
+)
 
 logger = logging.getLogger("app.providers.qradar_rest")
 
@@ -998,21 +1004,7 @@ class QRadarRestProvider(QRadarProvider):
         )
         rows = await self._run_bounded_aggregate(aql, max_rows=limit)
 
-        groups: list[WafRequestGroup] = []
-        for row in rows:
-            count = as_int(row.get("request_count"))
-            if count is None or count < 0:
-                continue
-            groups.append(
-                WafRequestGroup(
-                    raw_url=as_text(row.get("raw_url"), limit=2048),
-                    raw_method=as_text(row.get("raw_method"), limit=32),
-                    raw_virtual_host=as_text(row.get("raw_virtual_host"), limit=255),
-                    request_count=count,
-                    record_count=as_int(row.get("record_count")) or 0,
-                    distinct_client_count=as_int(row.get("distinct_clients")),
-                )
-            )
+        groups = [g for g in map(parse_group_row, rows) if g is not None]
 
         total_aql = (
             'SELECT SUM(eventcount) AS "total_events" FROM events '  # noqa: S608
@@ -1086,20 +1078,7 @@ class QRadarRestProvider(QRadarProvider):
             f"START {start_ms} STOP {end_ms}"
         )
         rows = await self._run_bounded_aggregate(aql, max_rows=limit)
-        groups: list[WafBreakdownGroup] = []
-        for row in rows:
-            count = as_int(row.get("request_count"))
-            if count is None or count < 0:
-                continue
-            groups.append(
-                WafBreakdownGroup(
-                    raw_url=as_text(row.get("raw_url"), limit=2048),
-                    raw_method=as_text(row.get("raw_method"), limit=32),
-                    raw_virtual_host=as_text(row.get("raw_virtual_host"), limit=255),
-                    raw_value=as_text(row.get("raw_value"), limit=255),
-                    request_count=count,
-                )
-            )
+        groups = [g for g in map(parse_breakdown_row, rows) if g is not None]
         return WafBreakdownBatch(
             breakdown=breakdown,
             qradar_log_source_id=qradar_log_source_id,
@@ -1107,6 +1086,186 @@ class QRadarRestProvider(QRadarProvider):
             window_end=end,
             groups=groups,
             truncated=len(rows) >= limit,
+            query=aql,
+            ariel_searches=1,
+        )
+
+    def _keyed_row_cap(self, max_rows: int) -> int:
+        """The row budget of one keyed search, bounded as the results read is."""
+        return max(1, min(int(max_rows), self._page_size * self._max_pages))
+
+    async def get_waf_observations_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None = None,
+        max_groups: int = 500,
+        max_rows: int,
+    ) -> WafObservationBucketBatch:
+        """`get_waf_observations` over many whole buckets: two keyed aggregates.
+
+        Today's grouped query and totals query, each with ``starttime /
+        {bucket_ms} AS "k"`` selected and grouped (integer division: ``k *
+        bucket_ms`` is a bucket's start in epoch-UTC milliseconds, T-032 Q1) and
+        ``LIMIT max_rows + 1``. The totals query loses its ``LIMIT 1`` and
+        returns one row per bucket. More than ``max_rows`` rows in either read
+        as truncated: no bucket is built, and the caller splits. When the
+        grouped search was whole, `fold_observation_buckets` makes the
+        per-bucket top-N cut that ``LIMIT`` cannot make per bucket.
+
+        Only validated integers and allowlisted property names reach the query
+        text. Read-only: Ariel searches over ``events``, nothing kept.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        bucket_ms = int(bucket_seconds) * 1000
+        # The per-bucket cut is the one today's single-bucket query makes.
+        limit = max(1, min(max_groups, self._page_size))
+        cap = self._keyed_row_cap(max_rows)
+
+        url = self._quote_property(url_property)
+        method = self._quote_property(method_property)
+        vhost = (
+            self._quote_property(virtual_host_property) if virtual_host_property else None
+        )
+        group_cols = f"{url}, {method}" + (f", {vhost}" if vhost else "")
+        vhost_select = f", {vhost} AS \"raw_virtual_host\"" if vhost else ""
+        where = (
+            f"WHERE logsourceid = {int(qradar_log_source_id)} "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+        )
+        aql = (
+            f'SELECT {url} AS "raw_url", {method} AS "raw_method"{vhost_select}, '  # noqa: S608
+            f'starttime / {bucket_ms} AS "k", '
+            'SUM(eventcount) AS "request_count", COUNT(*) AS "record_count", '
+            'UNIQUECOUNT(sourceip) AS "distinct_clients" FROM events '
+            f"{where}"
+            f"GROUP BY {group_cols}, starttime / {bucket_ms} LIMIT {cap + 1} "
+            f"START {start_ms} STOP {end_ms}"
+        )
+        total_aql = (
+            f'SELECT starttime / {bucket_ms} AS "k", '  # noqa: S608
+            'SUM(eventcount) AS "total_events" FROM events '
+            f"{where}"
+            f"GROUP BY starttime / {bucket_ms} LIMIT {cap + 1} "
+            f"START {start_ms} STOP {end_ms}"
+        )
+        group_rows = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        if len(group_rows) > cap:
+            return WafObservationBucketBatch(
+                truncated=True,
+                rows_returned=len(group_rows),
+                query=aql,
+                total_query=total_aql,
+                ariel_searches=1,
+            )
+        total_rows = await self._run_bounded_aggregate(total_aql, max_rows=cap + 1)
+        if len(total_rows) > cap:
+            return WafObservationBucketBatch(
+                truncated=True,
+                rows_returned=len(group_rows) + len(total_rows),
+                query=aql,
+                total_query=total_aql,
+                ariel_searches=2,
+            )
+        return WafObservationBucketBatch(
+            buckets=fold_observation_buckets(
+                group_rows,
+                total_rows,
+                qradar_log_source_id=qradar_log_source_id,
+                window_start=start,
+                window_end=end,
+                bucket_seconds=bucket_seconds,
+                max_groups=limit,
+                query=aql,
+                total_query=total_aql,
+            ),
+            rows_returned=len(group_rows) + len(total_rows),
+            query=aql,
+            total_query=total_aql,
+            ariel_searches=2,
+        )
+
+    async def get_waf_breakdown_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None,
+        breakdown: str,
+        breakdown_property: str | None,
+        max_groups: int = 2000,
+        max_rows: int,
+    ) -> WafBreakdownBucketBatch:
+        """`get_waf_breakdown` over many whole buckets: one keyed aggregate.
+
+        The same query with the bucket key selected and grouped and ``LIMIT
+        max_rows + 1``; see `get_waf_observations_bucketed`.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        bucket_ms = int(bucket_seconds) * 1000
+        limit = max(1, min(max_groups, self._page_size * self._max_pages))
+        cap = self._keyed_row_cap(max_rows)
+
+        if breakdown == "SOURCE_IP":
+            value = "sourceip"
+        elif breakdown in ("ACTION", "RESPONSE_CODE") and breakdown_property:
+            value = self._quote_property(breakdown_property)
+        else:
+            raise ValueError(f"unsupported WAF breakdown {breakdown!r}")
+        url = self._quote_property(url_property)
+        method = self._quote_property(method_property)
+        vhost = (
+            self._quote_property(virtual_host_property) if virtual_host_property else None
+        )
+        group_cols = f"{url}, {method}" + (f", {vhost}" if vhost else "") + f", {value}"
+        vhost_select = f", {vhost} AS \"raw_virtual_host\"" if vhost else ""
+        aql = (
+            f'SELECT {url} AS "raw_url", {method} AS "raw_method"{vhost_select}, '  # noqa: S608
+            f'{value} AS "raw_value", starttime / {bucket_ms} AS "k", '
+            'SUM(eventcount) AS "request_count" FROM events '
+            f"WHERE logsourceid = {int(qradar_log_source_id)} "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+            f"AND {value} IS NOT NULL "
+            f"GROUP BY {group_cols}, starttime / {bucket_ms} LIMIT {cap + 1} "
+            f"START {start_ms} STOP {end_ms}"
+        )
+        rows = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        if len(rows) > cap:
+            return WafBreakdownBucketBatch(
+                breakdown=breakdown,
+                truncated=True,
+                rows_returned=len(rows),
+                query=aql,
+                ariel_searches=1,
+            )
+        return WafBreakdownBucketBatch(
+            breakdown=breakdown,
+            buckets=fold_breakdown_buckets(
+                rows,
+                breakdown=breakdown,
+                qradar_log_source_id=qradar_log_source_id,
+                window_start=start,
+                window_end=end,
+                bucket_seconds=bucket_seconds,
+                max_groups=limit,
+                query=aql,
+            ),
+            rows_returned=len(rows),
             query=aql,
             ariel_searches=1,
         )

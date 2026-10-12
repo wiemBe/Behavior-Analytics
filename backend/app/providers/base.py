@@ -37,7 +37,9 @@ from app.providers.dto import (
     OffenseDTO,
     RuleMatchBatch,
     WafBreakdownBatch,
+    WafBreakdownBucketBatch,
     WafObservationBatch,
+    WafObservationBucketBatch,
     WafRejectionObservation,
     WafSourceProbe,
     WindowedRuleMatches,
@@ -333,6 +335,58 @@ class QRadarProvider(ABC):
         `max_groups`. Values are raw: judging them is application logic.
 
         Requires AQL_EXECUTION, so this never runs through MCP.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_waf_observations_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None = None,
+        max_groups: int = 500,
+        max_rows: int,
+    ) -> WafObservationBucketBatch:
+        """`get_waf_observations` for many whole buckets in one keyed search.
+
+        The span must be a whole number of epoch-aligned `bucket_seconds`
+        buckets; anything else is a ValueError before any request. One batch
+        comes back per bucket, keyed by its start, each after the per-bucket
+        top-`max_groups` cut and with the per-bucket ``truncated`` rule of the
+        single-bucket search (``>= max_groups`` groups). The row budget
+        `max_rows` covers the span as a whole: more rows set ``truncated`` on
+        the result, and the buckets are then empty, to be split by the caller.
+        A key outside the span, or one that is not an integer, fails the whole
+        search with a ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_waf_breakdown_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None,
+        breakdown: str,
+        breakdown_property: str | None,
+        max_groups: int = 2000,
+        max_rows: int,
+    ) -> WafBreakdownBucketBatch:
+        """`get_waf_breakdown` for many whole buckets in one keyed search.
+
+        The same contract as `get_waf_observations_bucketed`.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError

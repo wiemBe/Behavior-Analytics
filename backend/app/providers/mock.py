@@ -42,8 +42,10 @@ from app.providers.dto import (
     RuleMatchBatch,
     RuleMatchRow,
     WafBreakdownBatch,
+    WafBreakdownBucketBatch,
     WafBreakdownGroup,
     WafObservationBatch,
+    WafObservationBucketBatch,
     WafPropertyProbe,
     WafPropertyValue,
     WafRejectionObservation,
@@ -52,6 +54,12 @@ from app.providers.dto import (
     WindowedRuleMatches,
 )
 from app.rules.matches import window_starts
+from app.waf.bucketed import (
+    breakdown_sort_key,
+    fold_breakdown_buckets,
+    fold_observation_buckets,
+    observation_sort_key,
+)
 
 _LOG_SOURCE_TYPES = [
     (12, "Cisco ASA", False, False),
@@ -480,7 +488,7 @@ class MockQRadarProvider(QRadarProvider):
                     distinct_client_count=1 + int(weight * 20),
                 )
             )
-        groups.sort(key=lambda g: g.request_count, reverse=True)
+        groups.sort(key=observation_sort_key)
         capped = groups[:max_groups]
         parsed = sum(g.request_count for g in capped)
         # Total exceeds the parsed sum, so coverage is genuinely below 1.
@@ -491,7 +499,8 @@ class MockQRadarProvider(QRadarProvider):
             window_end=window_end,
             groups=capped,
             total_events=total,
-            truncated=len(groups) > max_groups,
+            # The rule the REST provider applies to a bucket: a full page.
+            truncated=len(capped) >= max_groups,
             query=f"MOCK WAF GROUP BY {url_property}, {method_property}",
             total_query="MOCK WAF TOTAL",
         )
@@ -539,7 +548,7 @@ class MockQRadarProvider(QRadarProvider):
             for value, share in self._MOCK_WAF_BREAKDOWN_VALUES[breakdown]
             if int(g.request_count * share) > 0
         ]
-        groups.sort(key=lambda g: g.request_count, reverse=True)
+        groups.sort(key=breakdown_sort_key)
         return WafBreakdownBatch(
             breakdown=breakdown,
             qradar_log_source_id=qradar_log_source_id,
@@ -548,6 +557,167 @@ class MockQRadarProvider(QRadarProvider):
             groups=groups[:max_groups],
             truncated=len(groups) >= max_groups,
             query=f"MOCK WAF BREAKDOWN {breakdown}",
+        )
+
+    async def get_waf_observations_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None = None,
+        max_groups: int = 500,
+        max_rows: int,
+    ) -> WafObservationBucketBatch:
+        """The keyed result, built from the per-bucket generator and the real fold.
+
+        Each bucket is what `get_waf_observations` returns for it; its groups
+        become keyed rows and go through `fold_observation_buckets`, so a mock
+        run exercises the same cut and truncation rule as the REST provider. A
+        bucket whose own answer says it was truncated stays truncated.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        if max_rows < 1:
+            raise ValueError("WAF row limit must be positive")
+        starts = window_starts(window_start, window_end, bucket_seconds)
+        per_bucket: dict[datetime, WafObservationBatch] = {}
+        group_rows: list[dict] = []
+        total_rows: list[dict] = []
+        for start in starts:
+            batch = await self.get_waf_observations(
+                qradar_log_source_id=qradar_log_source_id,
+                window_start=start,
+                window_end=start + timedelta(seconds=bucket_seconds),
+                url_property=url_property,
+                method_property=method_property,
+                virtual_host_property=virtual_host_property,
+                max_groups=max_groups,
+            )
+            per_bucket[start] = batch
+            key = int(start.timestamp()) // bucket_seconds
+            group_rows.extend(
+                {
+                    "k": key,
+                    "raw_url": g.raw_url,
+                    "raw_method": g.raw_method,
+                    "raw_virtual_host": g.raw_virtual_host,
+                    "request_count": g.request_count,
+                    "record_count": g.record_count,
+                    "distinct_clients": g.distinct_client_count,
+                }
+                for g in batch.groups
+            )
+            if batch.groups or batch.total_events:
+                total_rows.append({"k": key, "total_events": batch.total_events})
+        aql = (
+            f"MOCK WAF GROUP BY {url_property}, {method_property}, "
+            f"starttime / {bucket_seconds * 1000}"
+        )
+        if len(group_rows) > max_rows or len(total_rows) > max_rows:
+            return WafObservationBucketBatch(
+                truncated=True,
+                rows_returned=len(group_rows) + len(total_rows),
+                query=aql,
+                total_query="MOCK WAF TOTAL",
+            )
+        folded = fold_observation_buckets(
+            group_rows,
+            total_rows,
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            bucket_seconds=bucket_seconds,
+            max_groups=max_groups,
+            query=aql,
+            total_query="MOCK WAF TOTAL",
+        )
+        return WafObservationBucketBatch(
+            buckets={
+                start: batch.model_copy(
+                    update={"truncated": batch.truncated or per_bucket[start].truncated}
+                )
+                for start, batch in folded.items()
+            },
+            rows_returned=len(group_rows) + len(total_rows),
+            query=aql,
+            total_query="MOCK WAF TOTAL",
+        )
+
+    async def get_waf_breakdown_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None,
+        breakdown: str,
+        breakdown_property: str | None,
+        max_groups: int = 2000,
+        max_rows: int,
+    ) -> WafBreakdownBucketBatch:
+        """The keyed breakdown, built as `get_waf_observations_bucketed` is."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        if max_rows < 1:
+            raise ValueError("WAF row limit must be positive")
+        starts = window_starts(window_start, window_end, bucket_seconds)
+        per_bucket: dict[datetime, WafBreakdownBatch] = {}
+        rows: list[dict] = []
+        for start in starts:
+            batch = await self.get_waf_breakdown(
+                qradar_log_source_id=qradar_log_source_id,
+                window_start=start,
+                window_end=start + timedelta(seconds=bucket_seconds),
+                url_property=url_property,
+                method_property=method_property,
+                virtual_host_property=virtual_host_property,
+                breakdown=breakdown,
+                breakdown_property=breakdown_property,
+                max_groups=max_groups,
+            )
+            per_bucket[start] = batch
+            key = int(start.timestamp()) // bucket_seconds
+            rows.extend(
+                {
+                    "k": key,
+                    "raw_url": g.raw_url,
+                    "raw_method": g.raw_method,
+                    "raw_virtual_host": g.raw_virtual_host,
+                    "raw_value": g.raw_value,
+                    "request_count": g.request_count,
+                }
+                for g in batch.groups
+            )
+        aql = f"MOCK WAF BREAKDOWN {breakdown} starttime / {bucket_seconds * 1000}"
+        if len(rows) > max_rows:
+            return WafBreakdownBucketBatch(
+                breakdown=breakdown, truncated=True, rows_returned=len(rows), query=aql
+            )
+        folded = fold_breakdown_buckets(
+            rows,
+            breakdown=breakdown,
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            bucket_seconds=bucket_seconds,
+            max_groups=max_groups,
+            query=aql,
+        )
+        return WafBreakdownBucketBatch(
+            breakdown=breakdown,
+            buckets={
+                start: batch.model_copy(
+                    update={"truncated": batch.truncated or per_bucket[start].truncated}
+                )
+                for start, batch in folded.items()
+            },
+            rows_returned=len(rows),
+            query=aql,
         )
 
     #: The properties the mock "site" authored, with the value distribution

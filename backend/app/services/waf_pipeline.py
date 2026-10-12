@@ -56,13 +56,14 @@ from app.collectors.waf_endpoint_collector import (
     watermark_collector,
 )
 from app.core.config import Settings, get_settings
-from app.models.enums import WafBreakdown
+from app.models.enums import SearchFamily, WafBreakdown
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafEndpoint, WafSourceBucket, WafSourceProfile
 from app.providers.base import ProviderError, QRadarProvider
 from app.services.locks import CollectorAdvisoryLock
+from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
 from app.waf.baseline import WafBaselineBuilder
 from app.waf.engine import WafAnomalyEngine
@@ -275,12 +276,25 @@ class WafSourcePipeline:
         )
         if evaluation_wm.watermark_at is not None:
             query = query.where(WafSourceBucket.bucket_start > evaluation_wm.watermark_at)
+        cadence = await SearchCadenceService(self.session, self.settings).get(
+            SearchFamily.WAF_COLLECTION
+        )
+        cadence_buckets = max(
+            1, cadence.cadence_seconds // self.settings.collection_interval_seconds
+        )
+        per_run = self.settings.waf_max_evaluation_buckets_per_run
+        if cadence_buckets > 1:
+            # A run spans several buckets and the next is a whole cadence away, so a
+            # smaller bound would grow the backlog every tick. At one bucket per run
+            # the configured cap already drains any backlog.
+            per_run = max(
+                per_run,
+                cadence_buckets + self.settings.collection_max_backfill_intervals,
+            )
         buckets = list(
             (
                 await self.session.scalars(
-                    query.order_by(WafSourceBucket.bucket_start).limit(
-                        self.settings.waf_max_evaluation_buckets_per_run
-                    )
+                    query.order_by(WafSourceBucket.bucket_start).limit(per_run)
                 )
             ).all()
         )

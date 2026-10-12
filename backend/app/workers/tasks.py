@@ -717,22 +717,47 @@ async def run_due_searches() -> dict:
 
 # ------------------------------------------------------------------ WAF (B.1)
 async def dispatch_waf_collection(enqueue: Callable[[str], object] | None = None) -> dict:
-    """Enqueue one independent run per eligible WAF source.
+    """Enqueue one independent run per eligible WAF source, once per cadence slot.
 
     Fan-out rather than a loop, so one appliance search hanging for its full
     timeout on one source cannot delay any other source. Duplicate delivery is
     harmless: each run takes its source's advisory lock, a second concurrent run
     skips, and every write is an idempotent upsert behind a watermark.
+
+    Ticks every minute; the WAF_COLLECTION cadence gate decides whether a tick is
+    due, and a tick that is not sends nothing. Only the dispatch is gated:
+    `collect_waf_source` runs whenever it is enqueued. The per-source tasks run
+    asynchronously and are not aggregated, so the run is recorded without counts.
     """
     settings = get_settings()
     if not settings.waf_collection_enabled:
         return {"status": "disabled", "dispatched": 0}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.WAF_COLLECTION
     maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        claimed_slot = await SearchCadenceService(cadence_session, settings).claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
+
     async with maker() as session:
         profile_ids, skipped = await eligible_profile_ids(session, settings)
     send = enqueue or collect_waf_source_task.delay
     for profile_id in profile_ids:
         send(str(profile_id))
+    async with maker() as cadence_session:
+        await SearchCadenceService(cadence_session, settings).record_run(
+            family,
+            outcome="dispatched" if profile_ids else "no-sources",
+            searches=None,
+            buckets=None,
+            splits=None,
+        )
+        await cadence_session.commit()
     return {"status": "ok", "dispatched": len(profile_ids), "skipped": skipped}
 
 

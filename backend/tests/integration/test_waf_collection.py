@@ -30,7 +30,8 @@ from app.models.waf import (
     WafEndpointMetric,
     WafSourceBucket,
 )
-from app.providers.dto import WafObservationBatch, WafRequestGroup
+from app.providers.dto import WafObservationBatch, WafObservationBucketBatch, WafRequestGroup
+from app.rules.matches import window_starts
 from app.waf.baseline import WafBaselineBuilder
 from app.waf.engine import WafAnomalyEngine
 from app.waf.observations import BucketFacts, observe
@@ -104,6 +105,17 @@ class StubProvider:
             truncated=False,
             query="MOCK EMPTY",
         )
+
+    async def get_waf_observations_bucketed(self, **kwargs) -> WafObservationBucketBatch:
+        """The keyed answer, assembled from this stub's per-bucket answers."""
+        size = kwargs["bucket_seconds"]
+        buckets = {}
+        for start in window_starts(kwargs["window_start"], kwargs["window_end"], size):
+            buckets[start] = await self.get_waf_observations(
+                **{**kwargs, "window_start": start,
+                   "window_end": start + timedelta(seconds=size)}
+            )
+        return WafObservationBucketBatch(buckets=buckets, query="STUB KEYED")
 
 
 def batch(

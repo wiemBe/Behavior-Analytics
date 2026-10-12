@@ -13,7 +13,13 @@ from datetime import datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.models.enums import AnomalyState, BucketCompleteness, WafAnomalyType, WafMeasurement
+from app.models.enums import (
+    AnomalyState,
+    BucketCompleteness,
+    SearchFamily,
+    WafAnomalyType,
+    WafMeasurement,
+)
 from app.models.waf import (
     WafAnomaly,
     WafAnomalyTransition,
@@ -25,6 +31,7 @@ from app.models.waf import (
 )
 from app.providers.base import ProviderUnavailableError
 from app.providers.dto import WafObservationBatch
+from app.services.search_cadence import SearchCadenceService
 from app.services.waf_retention import WafRetention
 from app.services.waf_status import waf_source_statuses
 from app.waf.baseline import WafBaselineBuilder
@@ -355,6 +362,11 @@ class TestSparseSemantics:
         settings = cfg(waf_endpoint_active_days=1, waf_max_groups_per_bucket=CAP)
         tracked = [("/portal/login", "POST", 100), ("/other", "GET", 100)]
         settings, provider, profile, source = await prime(db_session, tracked, settings=settings)
+        # The window of a gap is one cadence plus the backfill bound. This test
+        # pins the bound at its 5-minute-cadence value (1 + backfill).
+        await SearchCadenceService(db_session, settings).set_cadence(
+            SearchFamily.WAF_COLLECTION, 300, actor="waf-resilience-test", source_ip=None
+        )
         login = await endpoint_named(db_session, "/portal/login")
         login_id = login.id
 
