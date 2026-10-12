@@ -31,7 +31,7 @@ from app.alerts.notifiers.base import NotificationMessage, Notifier, NotifierErr
 from app.alerts.routing import RoutingPolicy
 from app.core.config import Settings, get_settings
 from app.models.alert import Alert, AlertNotification
-from app.models.enums import AlertTransition, NotificationChannel, NotificationStatus
+from app.models.enums import AlertTransition, NotificationChannel, NotificationStatus, Severity
 from app.security.redaction import redact
 from app.services.backoff import backoff_delay
 
@@ -171,7 +171,7 @@ class NotificationDispatcher:
         return {
             "title": alert.title,
             "body": alert.description or alert.title,
-            "severity": alert.severity.value,
+            "severity": Severity(alert.severity).value,
             "transition": transition.value,
             "alert_id": str(alert.id),
             "fingerprint": alert.fingerprint,
@@ -184,8 +184,6 @@ class NotificationDispatcher:
         }
 
     def _message_from_payload(self, notif: AlertNotification) -> NotificationMessage:
-        from app.models.enums import Severity
-
         p = notif.payload or {}
         return NotificationMessage(
             title=p.get("title", "alert"),

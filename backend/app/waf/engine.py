@@ -59,7 +59,6 @@ from app.models.enums import (
     AnomalyState,
     DetectorSignal,
     EvidenceStatus,
-    Severity,
     WafAnomalyType,
     WafBreakdown,
     WafMeasurement,
@@ -1006,9 +1005,6 @@ class WafAnomalyEngine:
             return
         for result in [*opened_or_updated, *resolved]:
             if result is not None and result.transition is not None:
-                # String-backed enum columns load as str; dispatch rendering
-                # expects the domain enum's `.value` attribute.
-                result.alert.severity = Severity(result.alert.severity)
                 await self._enqueuer.enqueue(result.alert, result.transition)
 
     def _alert_input(
