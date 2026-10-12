@@ -147,6 +147,18 @@ WafProfileHistoryEntryOut
   outcome, reasons | null                          -- for `validated`
 ```
 
+**Contract additions (reconciled 2026-10-13 from T-044's questions; binding on both sides):**
+- `MappingSchemaOut` also carries `min_coverage_ratio` (the `waf_validation_min_ratio` setting,
+  e.g. 0.9), so the UI never hard-codes the threshold.
+- `GET /waf/sources` items (`WafSourceStatusOut`) also carry `validation_pending`,
+  `validation_requested_at` and `validation_requested_by`, so the list can show "Validating v5…".
+- Each `/waf/candidates` item also carries `instance_id`, which the §FM.7 prefill needs.
+- **Every 409 has a structured `detail`:** `{"message": str, "current_version": int | null,
+  "updated_by": str | null, "pending_since": datetime | null}`. `message` is safe to show; the
+  other keys are filled where they apply (stale version; validation already pending).
+- A 422 keeps FastAPI's shape for body validation; a `WafProfileError` 422 has
+  `detail = {"message": str}`.
+
 **PUT semantics.**
 - No profile and `expected_profile_version` is null → create (disabled, `UNVALIDATED`), 201.
 - Profile exists and `expected_profile_version` ≠ its version (or is null) → **409**, body says the
