@@ -323,8 +323,35 @@ IPS screens are the same components with the IPS schema.
 
 ## FM.9 IPS (Phase D) — the contract it inherits
 
+**Facts (T-030, lab 7.6, 2026-10-13, [report](tasks/T-030.report.md)).** QRadar auto-discovered both
+vendor-native lab sources within seconds: `PaSeries @ pa-fw-01` (id 412, type 206 "Palo Alto PA
+Series", from raw PAN-OS THREAT CSV) and `CiscoFirepowerThreatDefense @ ftd-01` (id 413, type 448).
+
+| Logical field | Cisco FTD | Palo Alto THREAT | Lab population |
+|---|---|---|---|
+| `SOURCE_IP` | normalized `sourceip` | normalized `sourceip` | 100 % |
+| `DESTINATION_IP` | normalized `destinationip` | normalized `destinationip` | 100 % |
+| `DESTINATION_PORT` | normalized `destinationport` (> 0) | normalized `destinationport` (> 0) | 100 % |
+| `PROTOCOL` | normalized `protocolid` (> 0) | normalized `protocolid` (> 0) | 100 % |
+| `SIGNATURE` | `QIDNAME(qid)`; one generic "Unknown Snort Event" | `QIDNAME(qid)`; several threats collapse onto "URL Filtering" | 100 % |
+| `ACTION` | **absent** | **absent** (no property, QID or severity separates block from allow) | 0 % |
+| `SEVERITY` | normalized `severity`, constant | normalized `severity`, varies by QID | 100 % |
+
+Consequences:
+- **The normalized defaults are right for both products**, so a new IPS profile starts valid for
+  everything except the action.
+- **`ACTION` is exactly the site-specific mapping this design exists for.** Neither DSM exposes it;
+  an operator authors a custom property in QRadar (e.g. extracting the PAN-OS action column or the
+  FTD `AccessControlRuleAction` key) and maps it in the editor. Until then the block-ratio detector
+  is `INSUFFICIENT_DATA`, never "no blocks".
+- `SIGNATURE` by QID is coarse on PAN (several threats per QID). A threat-id custom property, where
+  a site has one, is the finer choice; the editor offers it as a `CUSTOM_PROPERTY` alternative.
+- The PAN type has nine custom properties (zones, application, bytes, URL), all unpopulated on the
+  raw CSV; FTD's type has none.
+- The lab events are deterministic: these numbers show what parses, not how a real fleet behaves.
+
 Phase D is not built (§0 roadmap item 4). When it is, IPS sources get the same administration, with
-these differences, to be confirmed by T-030 (live FTD and PAN THREAT sources) and T-041:
+these differences (T-030 and T-041 confirmed the syntax and the population):
 
 - **Field references have two kinds.** IPS fields are mostly QRadar **normalized** fields, which
   DSMs fill for every product: `sourceip`, `destinationip`, `destinationport`, `protocolid`, `qid`.
