@@ -50,6 +50,14 @@ class MetricBucketOut(BaseModel):
     last_event_at: datetime | None = None
 
 
+class InputRequirementOut(BaseModel):
+    """What one measured input of a WAF detector must be for a verdict."""
+
+    input: str
+    role: str
+    requirement: str
+
+
 class DetectorCapabilityOut(BaseModel):
     """One named detector: what it needs, and whether anything supplies it.
 
@@ -59,7 +67,7 @@ class DetectorCapabilityOut(BaseModel):
 
     domain: str
     detector_type: str
-    #: OPERATIONAL, NOT_SCHEDULED, SYNTHETIC_ONLY or UNSUPPORTED.
+    #: OPERATIONAL, NOT_ENABLED, NOT_SCHEDULED, SYNTHETIC_ONLY or UNSUPPORTED.
     status: str
     required_telemetry: list[str] = Field(default_factory=list)
     required_baselines: list[str] = Field(default_factory=list)
@@ -69,6 +77,13 @@ class DetectorCapabilityOut(BaseModel):
     #: WAF only: EXACT, or LOWER_BOUND_PROVES_INCREASE when an anomalous verdict
     #: may be proven from a count that is a lower bound. None for log sources.
     measurement_requirement: str | None = None
+    #: WAF only: the setting that must be true before the detector's telemetry is
+    #: collected. None when it needs no opt-in.
+    enabling_setting: str | None = None
+    #: What must be configured, beyond the setting, before it reaches a verdict.
+    activation: str | None = None
+    #: WAF only: the requirement on each measured input. Empty without inputs.
+    input_requirements: list[InputRequirementOut] = Field(default_factory=list)
 
 
 class BaselineCellOut(BaseModel):

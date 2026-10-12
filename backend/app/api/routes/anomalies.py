@@ -17,7 +17,13 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.anomaly.capabilities import all_detectors, bucket_telemetry, detector_status
+from app.anomaly.capabilities import (
+    DetectorSpec,
+    DetectorStatus,
+    all_detectors,
+    bucket_telemetry,
+    detector_status,
+)
 from app.api.deps import SessionDep, SettingsDep
 from app.models.enums import AnomalyState, AnomalyType, EvidenceStatus, Severity
 from app.models.log_source import LogSource, LogSourceAnomaly
@@ -33,6 +39,7 @@ from app.schemas.anomaly import (
     DetectorCapabilityOut,
     ExplanationDimensionOut,
     ExplanationOut,
+    InputRequirementOut,
     MetricBucketOut,
     PagedAnomalies,
     SourceBehaviorOut,
@@ -298,26 +305,46 @@ async def source_metrics(
     return out
 
 
+def _detector_limitation(spec: DetectorSpec, state: DetectorStatus) -> str | None:
+    """The code's limitation, or for a disabled detector the setting that enables it."""
+    if spec.limitation is not None or state is not DetectorStatus.NOT_ENABLED:
+        return spec.limitation
+    text = f"Disabled in this deployment: set {str(spec.enabling_setting).upper()}=true."
+    return f"{text} Activation: {spec.activation}" if spec.activation else text
+
+
 @behavior_router.get("/detectors", response_model=list[DetectorCapabilityOut])
-async def detector_capabilities() -> list[DetectorCapabilityOut]:
+async def detector_capabilities(settings: SettingsDep) -> list[DetectorCapabilityOut]:
     """Every named detector, and whether anything can actually run it.
 
-    Derived from the same registry the engine enforces, not from stored rows, so
-    what this reports cannot drift from what is executed.
+    Derived from the same registry the engine enforces, and from this
+    deployment's settings, not from stored rows, so what this reports cannot
+    drift from what is executed.
     """
-    return [
-        DetectorCapabilityOut(
-            domain=spec.domain.value,
-            detector_type=spec.detector_type,
-            status=detector_status(spec).value,
-            required_telemetry=sorted(t.value for t in spec.telemetry),
-            required_baselines=sorted(spec.baseline_metrics),
-            scheduled_task=spec.scheduled_task,
-            limitation=spec.limitation,
-            measurement_requirement=spec.measurement.value if spec.measurement else None,
+    out: list[DetectorCapabilityOut] = []
+    for spec in all_detectors():
+        state = detector_status(spec, settings)
+        out.append(
+            DetectorCapabilityOut(
+                domain=spec.domain.value,
+                detector_type=spec.detector_type,
+                status=state.value,
+                required_telemetry=sorted(t.value for t in spec.telemetry),
+                required_baselines=sorted(spec.baseline_metrics),
+                scheduled_task=spec.scheduled_task,
+                limitation=_detector_limitation(spec, state),
+                measurement_requirement=spec.measurement.value if spec.measurement else None,
+                enabling_setting=spec.enabling_setting,
+                activation=spec.activation,
+                input_requirements=[
+                    InputRequirementOut(
+                        input=i.input.value, role=i.role, requirement=i.requirement.value
+                    )
+                    for i in spec.inputs
+                ],
+            )
         )
-        for spec in all_detectors()
-    ]
+    return out
 
 
 @behavior_router.get(

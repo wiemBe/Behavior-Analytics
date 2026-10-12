@@ -79,7 +79,10 @@ class TestVerdictScope:
 
     def test_every_executable_detector_has_a_spec_and_a_declared_requirement(self) -> None:
         assert set(WAF_DETECTOR_FUNCTIONS) <= set(WAF_DETECTORS)
-        assert all(WAF_DETECTORS[t].measurement is not None for t in WAF_DETECTOR_FUNCTIONS)
+        for t in WAF_DETECTOR_FUNCTIONS:
+            spec = WAF_DETECTORS[t]
+            assert spec.measurement is not None or spec.inputs, t
+            assert all(i.requirement is not None for i in spec.inputs), t
 
 
 # ------------------------------------------------------------ lower-bound detector

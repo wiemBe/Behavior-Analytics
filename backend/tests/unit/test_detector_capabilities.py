@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 
 import pytest
 
@@ -17,6 +18,7 @@ from app.anomaly.capabilities import (
     ARIEL_AGGREGATE_TELEMETRY,
     LOG_SOURCE_DETECTORS,
     SYNTHETIC_TELEMETRY,
+    WAF_BASELINE_METRICS,
     WAF_DETECTORS,
     DetectorSpec,
     DetectorStatus,
@@ -34,6 +36,7 @@ from app.anomaly.detectors import (
 )
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.thresholds import Thresholds
+from app.core.config import Settings
 from app.models.enums import (
     AnomalyType,
     BucketCompleteness,
@@ -43,6 +46,8 @@ from app.models.enums import (
 from app.providers.base import LogSourceTelemetry as T
 from app.providers.mock import MockQRadarProvider
 from app.providers.qradar_rest import QRadarRestProvider
+from app.waf.baseline import RATIO_METRICS
+from app.waf.engine import WAF_DETECTOR_FUNCTIONS
 
 EXPECTED_STATUS = {
     "NO_EVENTS": DetectorStatus.OPERATIONAL,
@@ -55,6 +60,12 @@ EXPECTED_STATUS = {
     "CARDINALITY_DROP": DetectorStatus.UNSUPPORTED,
     "COLLECTION_ERROR": DetectorStatus.UNSUPPORTED,
     "WAF_REQUEST_RATE_SPIKE": DetectorStatus.OPERATIONAL,
+    "WAF_BLOCK_RATIO_SPIKE": DetectorStatus.OPERATIONAL,
+    "WAF_ERROR_RATIO_SPIKE": DetectorStatus.OPERATIONAL,
+    "WAF_CLIENT_ERROR_RATIO_SPIKE": DetectorStatus.OPERATIONAL,
+    "WAF_CLIENT_CONCENTRATION_SPIKE": DetectorStatus.OPERATIONAL,
+    "WAF_NEW_ENDPOINT_ACCESS": DetectorStatus.OPERATIONAL,
+    "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE": DetectorStatus.UNSUPPORTED,
 }
 
 
@@ -76,6 +87,61 @@ def test_every_named_detector_has_a_spec() -> None:
 @pytest.mark.parametrize("spec", all_detectors(), ids=lambda s: s.detector_type)
 def test_status_matrix(spec: DetectorSpec) -> None:
     assert detector_status(spec) is EXPECTED_STATUS[spec.detector_type]
+
+
+def test_engine_and_registry_agree_on_what_is_executable() -> None:
+    """A detector the registry calls OPERATIONAL must have an engine function, and
+    the reverse. B.2 once claimed five OPERATIONAL detectors the engine did not run."""
+    operational = {
+        s.detector_type
+        for s in WAF_DETECTORS.values()
+        if detector_status(s) is DetectorStatus.OPERATIONAL
+    }
+    assert operational == {t.value for t in WAF_DETECTOR_FUNCTIONS}
+
+
+def test_every_waf_baseline_metric_is_trained() -> None:
+    """The registry may only claim baseline metrics the builder writes. (Also pinned
+    for equality in test_waf_ratio_baseline; this states the subset direction.)"""
+    assert {"request_count", *RATIO_METRICS} >= WAF_BASELINE_METRICS
+
+
+def test_every_operational_waf_detector_needs_only_trained_baselines() -> None:
+    trained = {"request_count", *RATIO_METRICS}
+    for spec in WAF_DETECTORS.values():
+        if detector_status(spec) is DetectorStatus.OPERATIONAL:
+            assert spec.baseline_metrics <= trained, spec.detector_type
+
+
+class TestDeploymentStatus:
+    GATED: ClassVar[set[str]] = {
+        "WAF_BLOCK_RATIO_SPIKE",
+        "WAF_ERROR_RATIO_SPIKE",
+        "WAF_CLIENT_ERROR_RATIO_SPIKE",
+        "WAF_CLIENT_CONCENTRATION_SPIKE",
+    }
+    UNGATED: ClassVar[set[str]] = {"WAF_REQUEST_RATE_SPIKE", "WAF_NEW_ENDPOINT_ACCESS"}
+
+    @staticmethod
+    def _statuses(settings: Settings) -> dict[str, DetectorStatus]:
+        return {t: detector_status(WAF_DETECTORS[WafAnomalyType(t)], settings) for t in (
+            TestDeploymentStatus.GATED | TestDeploymentStatus.UNGATED
+        )}
+
+    def test_defaults_gate_the_opt_in_detectors(self) -> None:
+        got = self._statuses(Settings(_env_file=None))
+        for t in self.GATED:
+            assert got[t] is DetectorStatus.NOT_ENABLED, t
+        for t in self.UNGATED:
+            assert got[t] is DetectorStatus.OPERATIONAL, t
+
+    def test_both_settings_on_makes_all_operational(self) -> None:
+        settings = Settings(
+            _env_file=None,
+            waf_outcome_collection_enabled=True,
+            waf_client_collection_enabled=True,
+        )
+        assert set(self._statuses(settings).values()) == {DetectorStatus.OPERATIONAL}
 
 
 def test_every_non_operational_detector_states_its_limitation() -> None:
