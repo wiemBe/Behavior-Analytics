@@ -8,48 +8,58 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (saved 2026-10-12, second orchestration session)
+## ▶ Resume here (saved 2026-10-12, at the end of the second session: session limit reached)
 
 **Read §0 first.** The user set three product goals (G1 log-source fleet, G2 IPS/WAF behavior,
 G3 rule analytics). Every task is scheduled against them.
 
 **Working model:**
 - The orchestrator writes **no code**, not even probe scripts.
-- Every round spreads its work across Sonnet (medium), Codex and the opencode free models.
-- UI work must clear AGENTS.md §3a, the frontend quality bar ("no AI slop"), and the orchestrator
-  reviews its screenshots before accepting it.
+- Each round uses Sonnet (medium), Codex **and** the opencode free models.
+- UI work must clear AGENTS.md §3a ("no AI slop"), and the orchestrator reviews its screenshots.
+- **Run `codex exec` and `opencode run` with `< /dev/null`**: without it they can hang on stdin.
 
 **Branches:**
-- **`main` @ `ed620a0`** has B.1, B.1.5 and B.2 merged, with every gate green: 2,088 backend tests,
-  629 frontend tests, ruff, mypy 31/18, and alembic clean.
-- **`feat/phase-ce`** (from `main`) is the integration branch for Phases C and E. The main
-  checkout is on it.
-- `feat/phase-b2` is merged and kept for reference only.
+- **`main` @ `ed620a0`** has B.1, B.1.5 and B.2 merged, with every gate green (2,088 backend tests,
+  629 frontend tests).
+- **`feat/phase-ce`** is the integration branch for Phases C and E, and the main checkout is on it.
+  It holds T-021 (the UI quality pass) and the task specs.
 
-**In flight** (each in `../QRadar-Dash-wt/<id>`, with database `qradar_obs_<id>`):
-- **T-022**, Codex: Phase C.1. Log: scratchpad `t022_codex.log`. Check the tail for "usage limit".
-  Migration `0011`.
-- **T-025**, Sonnet: Phase E.1a. Migration `0012`, **temporarily chained to `0010`**. Whichever of
-  T-022 and T-025 merges second must be re-chained: the agent re-points `down_revision` to
-  `'0011'` and re-runs the migration tests.
+**In flight, or done but not yet merged.** Review each one before merging; every one has a
+worktree in `../QRadar-Dash-wt/<id>`.
 
-**Next steps, in order:**
-1. Review T-021, T-022 and T-025 as they land. Cherry-pick them onto `feat/phase-ce`, re-chain
-   migration 0012, and run the full gates.
-2. Phase C: T-023 (fleet APIs and routing by class), then T-024 (fleet UI, after T-021).
-3. Phase E: the E.3 statistics API, then the UI. D-5 (the rule-logic source for the AI) is the
-   user's call; ask before E.3's AI work.
-4. Phase D (IPS, G2): design document first.
-5. The WAF analyst API and UI (design §27.14–§27.15).
+| Task | State | What the next session does |
+|---|---|---|
+| T-022 + T-022b (Phase C.1, Codex) | T-022 reviewed: `classify()`, bootstrap and constant SQL are good; the upgrade path is safe. T-022b was relaunched with stdin closed; log at scratchpad `t022b_codex.log`. **Uncommitted** in worktree `t022`. | Check that T-022b finished, then review the seed guard test, the built-in upsert (keeps `enabled`) and the upgrade test. Commit on `agent/t022`, cherry-pick onto `feat/phase-ce`, run the full gates. |
+| T-025 + T-025b (Phase E.1a, Sonnet) | **Committed and pushed: `agent/t025` @ `d8ac421`.** The T-025 code is reviewed; the T-025b code diff (liveness, plus `attempts` and `last_error` columns added to 0012) is reported green but not yet read by the orchestrator. | After T-022 merges: read the T-025b diff, have an agent re-chain `0012.down_revision` to `'0011'`, cherry-pick, then run the alembic round trip, the migration tests and the full suite. |
+| T-028 (security, Sonnet) | Running at session end: every route must require a principal, with a guard test walking all routes. Worktree `t028`. | Review the route audit table and the guard test; mutate it once yourself; merge. |
+| T-026 (docs, opencode `mimo`) | Relaunched with stdin closed. Worktree `t026`. | Verify the three verbatim insertions, then merge. |
+| T-029 (Phase D generator, PAN THREAT + FTD 430001) | **Spec ready, not launched.** Worktree `t029` created. | Launch on **Codex** with stdin closed. |
+
+**Next steps, after the above:**
+1. **T-030:** the live run. Send vendor-native PAN THREAT and FTD syslog at 5 EPS or less to the
+   lab console, per the lab guide's safety contract, so that **QRadar auto-discovers** the IPS
+   sources. Never create them through the API. The user asked the orchestrator to create them.
+   Then verify them with read-only AQL. If auto-discovery fails, ask the user to create them in
+   the UI.
+2. **The Phase D (IPS) design,** from the T-027 and T-030 facts. Production IPS is Cisco FTD and
+   Palo Alto Threat (§0).
+3. **T-023:** the fleet APIs and routing by class (needs T-022 and T-028). Then **T-024:** the
+   fleet UI, with T-021's leftovers (an overview severity column with no header, uneven stat
+   cards, a sidebar that does not run the full height).
+4. **The E.3 rule statistics API, then its UI.** D-5 (where rule logic comes from for the AI) is
+   the user's call.
+5. Then: the WAF analyst API and UI, and Phase 4 OIDC. **No authenticated route works in
+   production until OIDC lands.**
 
 **Environment notes:**
 - The test DB container `qradar-observability-test-test-db-1` runs on `:5433`, on tmpfs. Restart
-  it with `docker compose -f docker-compose.test.yml up -d test-db`.
+  it with `docker compose -f docker-compose.test.yml up -d test-db`, then `createdb` per task.
 - The lab QRadar is reachable. For host-side read-only runs, override `QRADAR_API_TOKEN_FILE` and
   `QRADAR_CA_BUNDLE` to `.secrets/` in the process environment only.
 - **Never call `GET /analytics/rules/{id}/dependents`:** it starts a server-side task.
-- GLM credits return on 2026-10-14. Working free models: `mimo-v2.6-flash-free`,
-  `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`.
+- GLM credits return on 2026-10-14. Working free models: `mimo-v2.6-flash-free` and
+  `ling-3.1-flash-free` (both verified). `longcat-2.5-preview-free` hung on its first task.
 
 ---
 
@@ -267,7 +277,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-020 | Replace the stale `docs/NEXT-SESSION-PROMPT.md` with a pointer to the planner | opencode `ling-3.1-flash-free` | DONE (verified: exact text, one file) | Exact text; one file |
 | T-021 | **UI quality pass** on the behavioral routes, against AGENTS.md §3a (the user's "no AI slop" bar) | Sonnet | DONE (`526e0d0`; screenshots reviewed by the orchestrator; 695 frontend tests, lint, typecheck and build re-run) | Clean chart (band, units, UTC), one metrics block, UTC everywhere, states designed. Left for T-024: the overview table's severity column has no header; two overview stat cards are uneven; the sidebar background stops at the viewport height on long pages. |
 | T-022 | **Phase C.1 (G1):** inventory enrichment (groups, types, facts), migration `0011`, `classify()` with seed rules, new-source detection and alert ([design](PHASE-C-LOG-SOURCE-FLEET.md)) | Codex | IN PROGRESS (`agent/t022`) | Full gates; constant SQL per sync; the seed list reviewed by the orchestrator |
-| T-025 | **Phase E.1a (G3):** measured rule matches from `creEventList`, migration `0012` (temporarily chained to `0010`; re-chain at merge), rule-health integration ([design](PHASE-E-RULE-ANALYTICS.md)) | Sonnet | IN PROGRESS (`agent/t025`) | Full gates; EVENT rules provably silent only over complete windows; COMMON never silent |
+| T-025 | **Phase E.1a (G3):** measured rule matches from `creEventList`, migration `0012` (temporarily chained to `0010`; re-chain at merge), rule-health integration ([design](PHASE-E-RULE-ANALYTICS.md)) | Sonnet | DONE, not merged (`agent/t025` @ `d8ac421`, pushed; see Resume here) | Full gates; EVENT rules provably silent only over complete windows; COMMON never silent |
 | T-026 | Record the T-021 contracts (`IncidentMetrics`, `LoadingState`/`ErrorState`, UTC, the severity tone) in the UX guidelines | opencode `longcat-2.5-preview-free` | IN PROGRESS (`agent/t026`) | Three verbatim insertions; one file |
 | T-022b | Follow-ups on T-022: the seed overlap (Azure AD matched CLOUD and IDENTITY at equal priority); built-in rule updates must reach existing installs (upsert definitions, keep `enabled`); pin the upgrade path (pre-0011 sources become REVIEWED, no alert flood) | Codex | IN PROGRESS (`agent/t022`) | Guard test over ≥ 40 realistic DSM names; upsert test; upgrade test |
 | T-025b | Follow-up on T-025, liveness: a permanently failing window stalled the watermark forever. Bounded attempts, then skip as FAILED; a catch-up horizon with a bulk skip | Sonnet | IN PROGRESS (`agent/t025`) | Skip after N attempts; transient failures not skipped; constant-cost bulk skip; health stays fail-closed over skipped spans |
