@@ -49,6 +49,57 @@ The project is an on-premises IBM QRadar behavioral-analytics platform. It is st
 - **Never run `ruff format`.** It is not part of this toolchain and would restyle unrelated files.
 - `mypy app` is advisory. The baseline is 31 errors in 18 files; do not add any.
 
+## 3a. Frontend quality bar
+
+The user's standing requirement (2026-10-12) is a high-quality frontend, **not AI slop**. This
+is a SOC analyst's investigation tool. Judge it against professional observability tools, not
+against a template dashboard.
+
+**Read before any UI change:** [`docs/PRODUCT-UX-GUIDELINES.md`](docs/PRODUCT-UX-GUIDELINES.md)
+(it is normative) and `frontend/src/app/tokens.css`.
+
+**Build from what exists:**
+- Use the existing components (guidelines §8) and the tokens.
+- No new colour, spacing or type literal outside `tokens.css`.
+- No new UI, icon or CSS framework (Tailwind, MUI, shadcn and the like), unless the task says so.
+- No inline styles.
+
+**Never:**
+- gradients, glows, glassmorphism, decorative shadows, emoji or decorative icons;
+- a row of identical KPI cards holding vanity numbers;
+- hero or marketing copy, or text that restates the heading;
+- cards nested in cards;
+- placeholder, random or invented data;
+- a zero drawn where the measurement is missing;
+- a chart with no unit on its axis, a library-default chart style (a marker on every point,
+  rainbow series), or a pie chart with more than five slices;
+- vague copy such as "Something went wrong", or exclamation marks.
+
+**Always:**
+- Each view answers one question, and its first screen answers it.
+- Numbers carry their unit, use tabular figures, and are right-aligned in tables.
+- Times show their timezone.
+- Every state is designed, not left to the default:
+  - loading;
+  - empty, which says what is empty and why;
+  - error, which says what failed and what the analyst can do;
+  - the honesty states INSUFFICIENT_DATA, PARTIAL, TRUNCATED and NOT_COLLECTED (guidelines §4
+    and §6).
+- Expected ranges render as a band, not as three lines.
+- Pages pass guidelines §9 (no page overflow at 1440×900, 1280×800 and 1024×768) and §10
+  (accessibility).
+- Vitest tests cover each state.
+
+**Acceptance of a UI task needs screenshots.**
+- Capture the changed routes at all three viewports with headless Chrome
+  (`/usr/bin/google-chrome`), against a deterministic fixture API, as
+  `docs/UI-WORKSTREAM-COMPLETION.md` §4 describes.
+- Keep any capture script outside the repository.
+- List the PNG paths in your report.
+
+The orchestrator reviews the screenshots before accepting the task. "The tests pass" is not
+enough.
+
 ## 4. Tests
 
 - **Never weaken, skip, `xfail` or delete an existing test.** If a test seems wrong, say so in your

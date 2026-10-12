@@ -126,6 +126,14 @@ decided later.
    a top-cost list. The two are independent and can run in parallel.
 3. **WAF alerting** (G2): route WAF incidents through `AlertService`. Then the analyst API and UI
    (design §27.14–27.15).
+   Before any new UI: a **UI quality pass** on the existing behavioral routes against §3a. Known
+   defects:
+   - a marker on every chart point;
+   - the expected range drawn as three dashed lines instead of a band;
+   - a row of identical KPI cards on the incident page;
+   - oversized wrapping titles.
+
+   New screens then start from a corrected base.
 4. **Phase D, IPS behavior** (G2): design document first, then build.
 5. **Phase C.2** (G1): an outage-alert policy per class and per source, and SIM Generic Log
    tracking. **Phase E.2** (G3): measured firing counts from `creEventList`. Both need live
@@ -182,6 +190,10 @@ code itself.
 - `make check` (migration drift)
 - `mypy app`: advisory. The baseline is 31 errors; do not regress it.
 - Frontend: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`
+- **UI tasks, additionally:** screenshots at 1440×900, 1280×800 and 1024×768, captured against a
+  fixture API and **reviewed by the orchestrator** against `AGENTS.md` §3a, the frontend quality
+  bar the user set on 2026-10-12 ("no AI slop"). Green tests alone do not accept a UI task. UI
+  work goes to Sonnet or Codex, never to the free models.
 
 ---
 
