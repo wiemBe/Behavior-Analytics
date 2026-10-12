@@ -3185,6 +3185,8 @@ a visible group, but "not seen before" or "disappeared" requires `discovery_comp
 comparison window. `tests/integration/test_waf_scale.py` registers a second detector and proves the
 statement count does not grow with endpoints × detectors.
 
+*Superseded for ratio numerators by §30.4.*
+
 ### 29.12 Migration 0009
 
 Additive for every existing row's meaning; no Phase A table touched.
@@ -3275,8 +3277,610 @@ integration test; removing the uniform-update fix fails four of the five stateme
 > traffic, and WAF Ariel concurrency is globally bounded and observable. Conditions: every new
 > detector declares a measurement requirement (§29.11; ratios `EXACT`), novelty claims require
 > discovery completeness, and per-bucket inputs are added through the bulk loaders.
+>
+> *Superseded for ratio numerators by §30.4.*
 
 > ## Production WAF onboarding: **NO-GO** — unchanged
 >
 > §26.10's assumptions, A1, the 422 assumption and live Ariel cost under the budget are all
 > unmeasured on a real WAF product and appliance.
+
+What Phase B.2 built under these conditions, and its readiness, is recorded in §30.
+
+## 30. Phase B.2 — behavioral detectors (2026-10-12)
+
+Phase B.2 adds five detectors on top of the B.1.5 base, plus the per-endpoint inputs they read
+(action, response-code and source-IP breakdowns), pooled ratio baselines, a verified-history
+novelty claim and, as a separate opt-in, alerting from WAF incidents. This section records what the
+code at this commit does, the exact claim each detector makes, what it costs, and what is still
+open. It is written from the code, not from the plan: **[BUILT]** means present and tested at this
+commit. Where it supersedes §27–§29 it says so. **No analyst API or UI for WAF incidents was
+added**, and production WAF onboarding is still unvalidated.
+
+Every detector follows the §29 rules it inherits. A missing, failed or truncated input is
+`INSUFFICIENT_DATA` and never a zero or a normal verdict. A detector never grants itself
+lower-bound reasoning: its verdict scope is computed by the engine from the per-input requirements
+declared in `app/anomaly/capabilities.py`. No detector asserts intent: a high block ratio is not a
+successful attack, a 5xx rise is not malicious traffic, a dominant source IP is a composition, and
+a new endpoint may be a deployment.
+
+### 30.1 Components **[BUILT]**
+
+| Concern | Where |
+|---|---|
+| Breakdown folds (pure): action, response code, source IP | `app/waf/breakdown.py` |
+| Breakdown searches, per-breakdown completeness, row and bucket columns | `WafEndpointCollector` in `app/collectors/waf_endpoint_collector.py` |
+| Which breakdowns a source may collect | `BreakdownPlan`, `breakdown_plan()` in `app/waf/profile.py` |
+| Breakdown search (AQL, read-only, bounded) | `get_waf_breakdown` in `app/providers/base.py`, `qradar_rest.py`, `mock.py` |
+| Per-input measurement and scope inputs | `app/waf/inputs.py`; requirements in `app/anomaly/capabilities.py` |
+| Ratio, concentration and novelty detectors (pure) | `app/waf/behavior.py` |
+| Novelty history verification (pure) | `app/waf/novelty.py` |
+| Novelty facts, bulk loaders, lifecycle, alert work | `app/waf/engine.py` |
+| Pooled ratio baselines | `app/waf/baseline.py` (`RATIO_METRICS`, `clean_ratio_samples`) |
+| Scheduled wiring (plan to collector and to training) | `app/services/waf_pipeline.py` |
+| WAF alert fingerprint | `waf_anomaly_fingerprint` in `app/alerts/fingerprint.py` |
+| Schema | `alembic/versions/0010_waf_behavior_breakdowns.py` |
+
+The detector functions are registered in `WAF_DETECTOR_FUNCTIONS` (`app/waf/engine.py`) next to
+`WAF_REQUEST_RATE_SPIKE`, and each has a `DetectorSpec` in `WAF_DETECTORS`. The engine reads them
+through the bulk loaders of §29.11; no detector issues a query.
+
+### 30.2 Breakdowns **[BUILT]**
+
+A breakdown groups one source's requests by the raw endpoint key plus one more field, over events
+that carry a value for it (`<field> IS NOT NULL`), ordered by `SUM(eventcount)` and capped at
+`WAF_MAX_BREAKDOWN_GROUPS_PER_BUCKET` (default 2,000; the REST provider also bounds it by what it
+can page). Numerator and denominator of a ratio come from the **same** search, so they describe the
+same population of events. Normalization is many-to-one and happens in the application: raw groups
+are summed into normalized endpoints exactly as `fold_groups` does for volume.
+
+| Breakdown | Field | Per endpoint it yields | Stored |
+|---|---|---|---|
+| `ACTION` | the profile's action property | events carrying an action; of those the ones the map names `BLOCKED`; the ones it names in neither list (`unmapped`) | `action_events`, `blocked_count`, `unmapped_action_count` |
+| `RESPONSE_CODE` | the profile's response-code property | events carrying a value; 4xx; 5xx; values that are not a three-digit status (`unclassified`) | `response_code_events`, `client_error_count`, `server_error_count`, `unclassified_response_count` |
+| `SOURCE_IP` | QRadar's normalized `sourceip` (never a configured property, never quoted) | attributed events; the largest source IP's requests; the five largest's; distinct source IPs; the bounded contributor list | `client_events`, `top1_client_requests`, `top5_client_requests`, `client_sources`, `top_clients` |
+
+**One bounded search each, under the bucket's single permit.** Each planned breakdown is one more
+read-only Ariel search per source per bucket, so a bucket costs two volume searches plus at most
+three. They run inside the same global WAF Ariel permit as the volume searches (§29.6; the fetch
+happens inside `permit()`), so the concurrency bound is unchanged and a bucket that gets no permit
+still writes nothing. AQL runs only through `QRadarRestProvider`.
+
+**Each breakdown has its own completeness.** The bucket's `action_measurement`,
+`response_code_measurement` and `client_measurement` each hold a `WafTelemetryStatus`:
+
+| Status | Meaning | Per-endpoint values |
+|---|---|---|
+| `EXACT` | the grouped result was whole | exact; an endpoint the search did not mention reads zero of that breakdown |
+| `LOWER_BOUND` | the result reached its cap | the visible part only; an unmentioned endpoint reads a visible zero |
+| `NOT_COLLECTED` | the breakdown was not in the source's plan | NULL |
+| `FAILED` | the search raised `ProviderError` or `ValueError` | NULL |
+
+A failed breakdown is recorded with the exception class name only (a message can echo query text),
+and it **does not fail the bucket**: the volume searches succeeded and are still judged, so an
+unreliable optional field cannot stop request-rate detection. A whole volume search says nothing
+about whether the action search was whole, which is why the completeness is per breakdown. Each
+breakdown also records its own metric-semantics identity (`*_semantics`, built by
+`breakdown_semantics` in `app/waf/semantics.py`) and the sum of its visible groups (`*_events`).
+
+**The settings gate Ariel spend.** `WAF_OUTCOME_COLLECTION_ENABLED` (default false) gates the
+`ACTION` and `RESPONSE_CODE` searches; `WAF_CLIENT_COLLECTION_ENABLED` (default false) gates the
+`SOURCE_IP` search. Turning one on is an explicit decision to spend Ariel budget, and the engine
+runs the detectors that read a breakdown only while its setting is on. A detector that reads only
+data already collected needs no such setting (§30.5, decision D-4). `breakdown_plan()` fails closed,
+and every condition must hold for the profile's current version:
+
+- `ACTION` needs the setting, an action property mapped and validated `AVAILABLE` for the current
+  profile version, an authored map naming at least one `BLOCKED` value, and **every action value
+  validation discovered must be mapped**.
+- `RESPONSE_CODE` needs the setting and a response-code property validated `AVAILABLE`.
+- `SOURCE_IP` needs only its setting, since every event carries a normalized `sourceip`.
+
+A breakdown left out of the plan has its reason in `BreakdownPlan.skipped`, and the buckets record
+it `NOT_COLLECTED`.
+
+**The action map, and why an unmapped value is never allowed.** A profile authors
+`action_value_map` as `{"BLOCKED": [...], "ALLOWED": [...]}` from values validation discovered.
+Values are compared trimmed and case-folded, a value in both lists is refused, and changing the map
+bumps the profile version exactly as a property change does, because it changes what a blocked
+count means. A value in neither list is `unmapped`, and the fold counts it in `events` but in
+neither `blocked` nor an allowed total: nothing is ever treated as allowed. While any unmapped value
+exists the blocked count is only a **lower bound** (§30.4), which can prove a block-ratio rise but
+never a normal verdict. A 403 is counted as a 4xx response and never as a WAF block; WAF blocking is
+read only through the action map.
+
+**T-013 fixes.** Two folds could be steered by hostile values, and both were closed:
+
+- Response-code status digits are **ASCII only** (`normalize_response_code`). `str.isdigit()` also
+  accepts `²`, which `int()` rejects with `ValueError`, and `int()` accepts other scripts' decimal
+  digits; either let one odd value fail a whole bucket or count as a status. Such a value is now
+  `unclassified`, and the function never raises. Pinned by
+  `test_a_response_code_that_int_rejects_is_unclassified_not_an_error`.
+- A source-IP value that is not a parseable address is **left unattributed**
+  (`normalize_source_ip`). It counts in `unattributed` and in neither `events` nor any ranking, so a
+  flood of garbage values can never pose as the largest client; it lowers the breakdown's coverage
+  instead, and the concentration detector's coverage floor then yields `INSUFFICIENT_DATA`. Pinned
+  by `test_garbage_values_never_reach_a_ranking_even_as_the_largest_group`.
+
+**T-014: the scheduled path now passes the plan.** `WafSourcePipeline.run` once built the
+collector without a `BreakdownPlan`, so in production every bucket recorded every breakdown
+`NOT_COLLECTED` and no B.2 detector could ever reach a verdict; only tests that drove the collector
+directly collected breakdowns. The pipeline now computes `breakdown_plan(profile, settings)` **once
+per run**, passes it to the collector, and derives the training identities from the same plan
+object, so collection and training cannot disagree within a run. The pipeline report carries
+`planned_breakdowns` and `skipped_breakdowns` with their reasons. Pinned by
+`test_scheduled_run_collects_the_plan_and_reports_it`,
+`test_scheduled_run_with_breakdown_settings_off_issues_no_search`,
+`test_missing_action_map_skips_only_action_and_reports_the_reason` and the end-to-end
+`test_scheduled_cycles_train_and_open_a_block_ratio_incident`.
+
+**What is persisted.** Counts, a semantics identity and a completeness per breakdown, and per
+endpoint per bucket at most the five largest source IPs with their request counts, stored only when
+the largest source IP reached `WAF_CONCENTRATION_MIN_CLIENT_REQUESTS` (default 20). Action values,
+response codes and the other source IPs live only inside the fold functions. The source IP is
+QRadar's normalized field: behind a proxy, load balancer or NAT it is the intermediary, and the
+evidence says so (`client_identity`).
+
+### 30.3 Ratio baselines **[BUILT]**
+
+`RATIO_METRICS` defines four proportion metrics. Each seasonal (weekday, hour) cell keeps, besides
+the usual median, MAD, p05 and p95 of the bucket proportions, its **pooled** `numerator_sum` and
+`denominator_sum`.
+
+| Metric | Numerator | Denominator | Minimum denominator setting |
+|---|---|---|---|
+| `block_ratio` | `blocked` | `action_events` | `WAF_RATIO_MIN_DENOMINATOR` |
+| `server_error_ratio` | `server_errors` | `response_code_events` | `WAF_RATIO_MIN_DENOMINATOR` |
+| `client_error_ratio` | `client_errors` | `response_code_events` | `WAF_RATIO_MIN_DENOMINATOR` |
+| `top1_client_share` | `top1_client_requests` | `client_events` | `WAF_CONCENTRATION_MIN_ENDPOINT_REQUESTS` |
+
+The expected proportion is `numerator_sum / denominator_sum`, not the median of bucket
+proportions: a bucket with two requests weighs two requests, so a quiet hour cannot dominate a cell.
+The median and MAD still feed the seasonal robust score (§30.4). A ratio metric trains only for a
+breakdown that has a semantics identity in the plan, and only on **exact, material** buckets.
+
+`clean_ratio_samples` attributes each excluded bucket to the first rule that applies, and the order
+is part of the contract operators read: `unfinished`, `incompatible_semantics`, `maintenance`,
+`unavailable`, `incomplete`, `uncertain_values`, `inexact_request_count`, `low_source_coverage`,
+`immaterial` (empty population), `low_coverage`, `immaterial` (below the minimum denominator),
+`known_anomaly`. Concretely:
+
+| Exclusion | A bucket is excluded when |
+|---|---|
+| `unfinished` | it ends after the rebuild's end |
+| `incompatible_semantics` | its breakdown identity differs from the plan's |
+| `maintenance` | it was in maintenance when collected (the recorded decision) |
+| `unavailable` | the breakdown was `NOT_COLLECTED` or `FAILED`, or a count is NULL |
+| `incomplete` | the breakdown is a `LOWER_BOUND` |
+| `uncertain_values` | any unmapped action or unclassified response exists |
+| `inexact_request_count` | the endpoint's request count is a lower bound |
+| `low_source_coverage` | fewer than `WAF_MIN_ENDPOINT_COVERAGE` of the **source's** events parsed to an endpoint (decision D-3, §30.6) |
+| `immaterial` | the population is empty (a sparse exact breakdown reconstructs 0/0 for an absent endpoint, which is no ratio population, not a zero proportion), or below the minimum denominator |
+| `low_coverage` | the breakdown covers fewer than `WAF_MIN_ENDPOINT_COVERAGE` of the endpoint's visible requests |
+| `known_anomaly` | it lies inside an incident span |
+
+`low_source_coverage` and `low_coverage` are different quantities and are tallied separately.
+The cell's `completeness` is the retained fraction of candidates. Training cost scales with chunks
+of `WAF_BASELINE_REBUILD_CHUNK_SIZE` endpoints, never with endpoints or metrics (§30.9).
+
+### 30.4 Detectors **[BUILT]**
+
+| Detector | Status | Reads | Enabling setting |
+|---|---|---|---|
+| `WAF_BLOCK_RATIO_SPIKE` | built | blocked share of requests carrying an action | `WAF_OUTCOME_COLLECTION_ENABLED` |
+| `WAF_ERROR_RATIO_SPIKE` | built | 5xx share of requests carrying a response code | `WAF_OUTCOME_COLLECTION_ENABLED` |
+| `WAF_CLIENT_ERROR_RATIO_SPIKE` | built | 4xx share of requests carrying a response code | `WAF_OUTCOME_COLLECTION_ENABLED` |
+| `WAF_CLIENT_CONCENTRATION_SPIKE` | built | largest source IP's share of attributed requests | `WAF_CLIENT_COLLECTION_ENABLED` |
+| `WAF_NEW_ENDPOINT_ACCESS` | built | material traffic to an endpoint absent from a verified history (§30.5) | none (D-4) |
+| `WAF_CLIENT_ENDPOINT_FANOUT_SPIKE` | **named only** | not built; `UNSUPPORTED` | — |
+
+All are scheduled by `dispatch_waf_collection` and evaluated in the same engine pass as
+`WAF_REQUEST_RATE_SPIKE`. The engine skips a detector whose enabling setting is off entirely; it
+does not write a verdict for it.
+
+**Why `WAF_CLIENT_ENDPOINT_FANOUT_SPIKE` is not built.** Distinct normalized endpoints per source
+IP need a search grouped by raw URL, method, host and source IP, because normalization cannot run
+in AQL. Under its group cap that search drops the lowest-volume groups first, which is one request
+per path, exactly the enumeration signature, so the lower bound it leaves is structurally blind to
+the behaviour. A per-client baseline would be an unbounded per-client entity, and no source-scoped
+incident subject exists. It needs a QRadar-side normalized-endpoint property with verified
+`UNIQUECOUNT` exactness and a source-scoped detector subject. Its spec publishes this as its
+`limitation`, with `implemented=False`.
+
+**Declared input requirements** (`app/anomaly/capabilities.py`). A verdict is only as strong as the
+narrowest input (`narrowest`).
+
+| Detector | Input (role) | Required | Why |
+|---|---|---|---|
+| block ratio | `BLOCKED_REQUESTS` (numerator) | `LOWER_BOUND_PROVES_INCREASE` | an unmapped action may have been a block, so blocked is a lower bound while any exist |
+| | `ACTION_EVENTS` (denominator) | `EXACT` | a lower-bound denominator can make a proportion too large or too small |
+| | `REQUEST_COUNT` (population coverage) | `EXACT` | coverage is checked against the exact request count |
+| 5xx ratio | `SERVER_ERRORS` (numerator) | `LOWER_BOUND_PROVES_INCREASE` | an unclassified value may have been a 5xx |
+| | `RESPONSE_CODE_EVENTS` (denominator), `REQUEST_COUNT` (coverage) | `EXACT` | as above |
+| 4xx ratio | `CLIENT_ERRORS` (numerator) | `LOWER_BOUND_PROVES_INCREASE` | an unclassified value may have been a 4xx |
+| | `RESPONSE_CODE_EVENTS` (denominator), `REQUEST_COUNT` (coverage) | `EXACT` | as above |
+| concentration | `TOP_CLIENT_REQUESTS` (largest contributor), `CLIENT_EVENTS` (total), `REQUEST_COUNT` (coverage) | `EXACT` | in a truncated breakdown the largest source IP may be hidden entirely, and hidden raw groups can fold into a visible one |
+| new endpoint | `ENDPOINT_HISTORY` (history) | `EXACT` | "not seen before" is an absence claim |
+| | `REQUEST_COUNT` (materiality) | `LOWER_BOUND_PROVES_INCREASE` | minimum requests and buckets are non-decreasing in the counts |
+
+`input_measurement` (`app/waf/inputs.py`) turns each input into `EXACT`, `LOWER_BOUND` or unknown
+for one observation. A ratio numerator is a lower bound when its search was, **or** when any
+unmapped or unclassified value exists in the denominator's events; a denominator is exact only when
+its search was whole. The resulting scope per bucket:
+
+| Situation | Block, 5xx, 4xx | Concentration | New endpoint |
+|---|---|---|---|
+| everything exact | `FULL` | `FULL` | `FULL` |
+| breakdown whole, some unmapped or unclassified values | `INCREASE_ONLY` | not applicable | not applicable |
+| breakdown truncated | `NONE` | `NONE` | not applicable |
+| request count a lower bound | `NONE` | `NONE` | `INCREASE_ONLY` |
+| history incomplete | not applicable | not applicable | `NONE` |
+
+Under `INCREASE_ONLY` every exit that would have been `HEALTHY` becomes `INSUFFICIENT_DATA`,
+because every anomalous guard is non-decreasing in the numerator: a lower bound that clears them
+proves the true proportion does. **This supersedes the wording of §29.11 and §29.16 that ratio
+detectors "must declare `EXACT`".** The numerator may prove an increase; the denominator, the
+coverage input and the whole of the concentration detector still need exact inputs. The registry,
+not the detector, decides: `behavior.py` takes the scope from `ctx.effective_scope`.
+
+**Materiality thresholds** (settings, defaults; the engine builds `WafBehaviorThresholds` from
+them). Ratios must clear all of the following at once.
+
+| Guard | Setting | Default |
+|---|---|---|
+| minimum denominator | `WAF_RATIO_MIN_DENOMINATOR` | 50 |
+| minimum numerator | `WAF_RATIO_MIN_NUMERATOR` | 10 |
+| minimum rise, in proportion units | `WAF_RATIO_MIN_INCREASE` | 0.10 |
+| minimum multiple of the expected proportion (when it is nonzero) | `WAF_RATIO_MIN_MULTIPLE` | 2.0 |
+| seasonal robust score | `ANOMALY_DEVIATION_THRESHOLD` | 3.5 |
+| MAD floor ratio | `BASELINE_MAD_FLOOR_RATIO` | 0.1 |
+| coverage floor (source level and population level) | `WAF_MIN_ENDPOINT_COVERAGE` | 0.90 |
+| concentration: endpoint requests | `WAF_CONCENTRATION_MIN_ENDPOINT_REQUESTS` | 50 |
+| concentration: largest source IP's requests | `WAF_CONCENTRATION_MIN_CLIENT_REQUESTS` | 20 |
+| concentration: minimum rise in share | `WAF_CONCENTRATION_MIN_INCREASE` | 0.20 |
+| novelty: requests since first appearance | `WAF_NEW_ENDPOINT_MIN_REQUESTS` | 20 |
+| novelty: buckets with traffic | `WAF_NEW_ENDPOINT_MIN_BUCKETS` | 2 |
+| novelty: window after first appearance, in buckets | `WAF_NEW_ENDPOINT_WINDOW_BUCKETS` | 12 |
+| novelty: verified history, in days | `WAF_NEW_ENDPOINT_HISTORY_DAYS` | 7 |
+
+When the cell's MAD is zero the robust score is unavailable and the observed proportion must exceed
+the cell's p95 instead. Concentration uses the same score against its own cell. Severity is `HIGH`
+when the rise is at least twice its minimum (and, for ratios, the multiple at least twice its
+minimum), otherwise `MEDIUM`; novelty is always `MEDIUM`.
+
+**`INSUFFICIENT_DATA` exits, in order.**
+
+- *Ratios:* the breakdown was `NOT_COLLECTED` or `FAILED` (the reason names the breakdown and says
+  the value is "unavailable, not zero"); the scope is `NONE`; fewer than the coverage floor of the
+  **source's** events parsed to an endpoint (D-3); the breakdown covers fewer than the floor of the
+  endpoint's requests; the baseline cell is missing, incompatible, below its minimum sample count or
+  has no pooled denominator; fewer than the minimum denominator. Below the minimum **numerator**,
+  or short of the rise, multiple or robust score, the verdict is `HEALTHY` under `FULL` scope and
+  `INSUFFICIENT_DATA` under `INCREASE_ONLY`.
+- *Concentration:* the breakdown was not collected or failed; the scope is not `FULL`; the source
+  or population coverage is under the floor (unattributed garbage values land here); the baseline
+  exits above; fewer than the minimum endpoint requests. Below the largest source IP's minimum,
+  the minimum rise or the robust score it is `HEALTHY`. It **never** runs under `INCREASE_ONLY`.
+- *Novelty:* see §30.5.
+
+Evidence carries the observed and expected proportions with their numerators and denominators, the
+measurement of each, the baseline version and identity, the exit reasoning, a neutral caveat, and
+the bounded contributor list. Contributors describe **all** of the endpoint's requests in the
+bucket, because the breakdowns are separate searches: a blocked-request or 5xx verdict cannot
+attribute its numerator to a source IP, and the evidence says so. Shares are given only when the
+source-IP breakdown is exact; a truncated list is marked `TRUNCATED`.
+
+### 30.5 Novelty — `WAF_NEW_ENDPOINT_ACCESS` **[BUILT]**
+
+**The claim, exactly.** In every bucket of the history window before the endpoint's first
+appearance, the endpoint was not requested at least `WAF_MIN_ADMISSION_REQUESTS` (default 3) times
+in any one bucket, each bucket being recorded, with whole discovery and whole admission, under the
+same profile version and normalizer. Admission is how an endpoint becomes an entity, so an endpoint
+requested at or above the threshold in such a bucket would already exist. "Never requested" is
+**not** claimed: traffic below the threshold is never recorded. The evidence states the claim in
+those words (`expected.claim`).
+
+**History completeness** (`verify_endpoint_history`, pure). The history is
+`[first_seen_at - WAF_NEW_ENDPOINT_HISTORY_DAYS, first_seen_at)`. The guards run in this order,
+which is the order reported to operators: the window is divisible by the bucket width; every
+expected bucket was collected; there is no extra or misaligned record; every bucket has the same
+width; none had truncated endpoint discovery; none had truncated admission; every bucket carries
+the first-appearance profile version; every bucket's metric-semantics identity names the same
+normalizer version (read as the component `normalizer/v<N>`, so `v1` is never taken for `v10`).
+Separately the engine requires the first-appearance bucket itself to exist, to carry a profile
+version and to match the endpoint's normalizer. A reactivated endpoint keeps its original
+`first_seen_at`, so it is established, not new.
+
+**Exits, in order** (`detect_new_endpoint_access`):
+
+1. first appearance not established: `INSUFFICIENT_DATA`;
+2. the bucket is at or past `first_seen_at + WAF_NEW_ENDPOINT_WINDOW_BUCKETS` buckets: `HEALTHY`,
+   "established endpoint" (no history is loaded for it);
+3. scope `NONE` (the history is incomplete, or its measurement is unknown): `INSUFFICIENT_DATA`
+   naming the missing bucket or the failed condition;
+4. **appearance flood** — endpoint discovery or admission was truncated in the first-appearance
+   bucket: `INSUFFICIENT_DATA`. A flood of raw paths can make an old endpoint look newly admitted,
+   or hide when it first appeared, so its first appearance proves nothing;
+5. fewer than `WAF_NEW_ENDPOINT_MIN_REQUESTS` requests, or `WAF_NEW_ENDPOINT_MIN_BUCKETS` buckets
+   with traffic, since first appearance: `HEALTHY` with exact counts, `INSUFFICIENT_DATA` with lower
+   bounds; otherwise `ANOMALOUS`.
+
+**Lower-bound traffic.** The counts since first appearance are lower bounds when the scope is
+`INCREASE_ONLY`, when any source bucket from first appearance through the judged bucket counted
+only a lower bound, or when one of those buckets was never collected (an uncollected bucket's
+traffic is unknown). A lower bound that clears the materiality floors still opens ("at least N
+requests"); one that does not never concludes normal.
+
+**Cost: +2 statements, and only when some endpoint is inside its window.** Novelty facts are built
+in bulk: one statement for the source's bucket records over the needed history, and one for the
+post-appearance traffic and recorded buckets of every in-window endpoint (the latter is issued once
+per chunk of up to 5,000 endpoint ids). An evaluation with no in-window endpoint does no novelty
+I/O at all. Pinned by `test_novelty_cost_is_constant_with_and_without_in_window_endpoints`
+(§30.9).
+
+**Decision D-4 [DECISION], 2026-10-12: `WAF_NEW_ENDPOINT_ACCESS` has no enabling setting.** The
+B.2 enabling settings exist because they gate Ariel spend, and this detector adds no search: it
+reads data already collected. It is `OPERATIONAL` whenever WAF collection runs. The decision is
+pinned by `test_the_detector_has_no_enabling_setting_and_is_registered`. It is revisited if
+operators need a per-detector mute now that alerting exists (§30.7, §30.13). A startup validator
+refuses `WAF_NEW_ENDPOINT_HISTORY_DAYS` at or above `WAF_METRIC_RETENTION_DAYS` when WAF collection
+is on, because such a history could never be complete.
+
+### 30.6 Decision D-3 — source-level coverage on the ratio paths **[DECISION]**
+
+**Decision (2026-10-12): the ratio and concentration paths require source-level coverage, in both
+training and detection** (T-017; fail closed).
+
+The ratio guards already required that the breakdown cover the endpoint's visible requests
+(`low_coverage`, and the matching detector exit). That says nothing about the events of the source
+that never parsed to an endpoint at all. Those unparseable requests may differ in kind from the
+parseable ones: if 50% of a source's events carry no URL, the visible 5% block ratio may describe
+a different population from the real one. The visible proportion then **bounds nothing**, however
+complete the breakdown is over what is visible. The volume detector already treats low source
+coverage as a lower bound; the ratio paths now treat it as no verdict.
+
+- *Detection:* `detect_ratio` and `detect_client_concentration_spike` return `INSUFFICIENT_DATA`
+  when `endpoint_coverage_ratio < WAF_MIN_ENDPOINT_COVERAGE`, with the reason "only N% of this
+  source's events parsed to an endpoint, below the 90% coverage floor: the unparsed requests may
+  differ in kind from the parsed ones, so the visible proportion bounds nothing". A bucket exactly
+  at the floor is still judged. The check precedes the population-coverage check.
+- *Training:* `clean_ratio_samples` tallies `low_source_coverage` and does not train the bucket. It
+  comes after `inexact_request_count` and before the empty-population and `low_coverage` checks.
+- *Relaxation:* only with live evidence that unparsed requests do not differ in kind.
+
+Pinned by `TestSourceCoverage` in `tests/unit/test_waf_behavior.py`, by
+`test_low_source_coverage_is_excluded_and_not_called_breakdown_coverage` and its two ordering tests
+in `tests/unit/test_waf_ratio_baseline.py`, and by
+`test_ratio_rise_in_a_low_source_coverage_bucket_opens_no_incident` (engine level).
+
+### 30.7 WAF alerting **[BUILT]**
+
+Alerting from WAF incidents is a separate, default-off switch, `WAF_ALERTING_ENABLED`, so a source
+can collect and baseline silently in **shadow mode** before its incidents can page anyone. With the
+switch off the lifecycle is unchanged and no alert or notification is written.
+
+**Fingerprint identity** (`waf_anomaly_fingerprint`, `app/alerts/fingerprint.py`). The identity of
+one detector condition on one endpoint is the endpoint's whole natural key plus the detector type:
+instance, log source, virtual host, normalized endpoint, HTTP method, normalizer version and
+detector type, hashed with `compute_fingerprint` (`source_type="waf_endpoint"`). It never uses the
+endpoint's row id, which would change with the entity; a new normalizer version is a new identity.
+Each detector owns its own fingerprint, so detectors open and resolve independently. The
+`condition` family is **`waf_anomaly`**, so the fingerprint begins `waf_anomaly:` and a Phase A
+routing rule limited to `alert_types={"anomaly"}` does not match it; a route must name
+`waf_anomaly`.
+`AnomalyType` is untouched (§2 rule 6).
+
+**Which transitions alert.** Only lifecycle transitions that change the operator's picture:
+
+| Lifecycle event | Alert | Notification |
+|---|---|---|
+| `CANDIDATE`, `RECOVERING`, `INSUFFICIENT_DATA`, `NORMAL` | none | none |
+| to `OPEN` | opens the alert for the fingerprint (or updates an active one) | enqueued when it is newly opened |
+| still `OPEN` and the verdict is anomalous | refreshes evidence and occurrence count | none |
+| to `RESOLVED` | resolves the alert (`condition recovered`) | enqueued |
+
+A recurrence after `RESOLVED` opens a new alert. Alert severity is the evidence's severity. The
+alert carries the title `<DETECTOR> on <source>: <METHOD> <endpoint>`, the evidence, the incident
+id, `source_type="waf_endpoint"` with the endpoint id as `source_id`, and the routing context
+(log source, owner, criticality, instance, virtual host, endpoint, method, detector type).
+
+**Maintenance.** The bucket's recorded maintenance decision applies as for the incidents
+themselves (§28.4): an anomalous verdict in maintenance is demoted to unknown, so it cannot open an
+incident, and **no alert is opened and none is refreshed** while the bucket is in maintenance. A
+resolution is not suppressed: a recovered incident still closes its alert. Pinned by
+`test_maintenance_neither_opens_nor_refreshes`.
+
+**Cost.** The synchronous fold only collects alert work; one async phase applies it, with one
+active-alert lookup (a PostgreSQL array query, so bind count does not grow with endpoints) and one
+batched update for refreshes. New alerts keep the savepoint protection of the partial unique index.
+Measured (T-016, not asserted to the exact figure): with no transitions, 4 statements per
+evaluation at both 40 and 800 endpoints with alerting off and with it on; every endpoint holding an
+open incident and alert, 8 statements on refresh at both sizes; one transition with one matching
+route costs **+7** statements for OPEN (14 against 7 in shadow mode) and **+5** for RESOLVED (12
+against 7). Pinned by `<=` bounds (§30.9). The Celery WAF task builds an enqueue-only
+`NotificationDispatcher` with the default routing policy and passes it through the pipeline.
+
+**Known limit: no coalescing.** There is no source-level notification coalescing or burst cap. A
+broadly correlated event can open one alert per affected endpoint and detector, and each alert
+creates one notification per matching route (§30.13 item 3).
+
+### 30.8 Capability truth (T-009) **[BUILT]**
+
+The registry once reported all five B.2 detectors `OPERATIONAL` and `WAF_BASELINE_METRICS` claimed
+four ratio baselines, while the engine ran none of the detectors and the builder trained none of
+the baselines. That is the failure `app/anomaly/capabilities.py` exists to prevent, so it is now
+guarded in both directions.
+
+- `GET /api/v1/behavior/detectors` is derived from the same registry the engine enforces plus this
+  deployment's settings, not from stored rows. `detector_status(spec, settings)` reports
+  **`NOT_ENABLED`** for a WAF detector whose enabling setting is off, with a limitation text that
+  names the setting (`Disabled in this deployment: set WAF_OUTCOME_COLLECTION_ENABLED=true.`) and
+  the activation prerequisites. With default settings `WAF_REQUEST_RATE_SPIKE` and
+  `WAF_NEW_ENDPOINT_ACCESS` are `OPERATIONAL`, the four opt-in detectors are `NOT_ENABLED`,
+  `WAF_CLIENT_ENDPOINT_FANOUT_SPIKE` and `CARDINALITY_DROP` are `UNSUPPORTED`, and
+  `TIMESTAMP_DELAY` is `SYNTHETIC_ONLY`. Without settings the status is what the code supports.
+- Guard tests make the registry and the engine agree:
+  `test_engine_and_registry_agree_on_what_is_executable` (a detector the registry calls
+  `OPERATIONAL` has an engine function, and the reverse),
+  `test_every_waf_baseline_metric_is_trained` (the registry claims only metrics the builder writes),
+  and `test_every_operational_waf_detector_needs_only_trained_baselines`. `TestDeploymentStatus`
+  pins the defaults and the both-settings-on case, and
+  `test_every_non_operational_detector_states_its_limitation` requires a stated limitation for
+  everything that is not operational. The API tests `TestDetectorCapabilities` pin the published
+  statuses.
+
+### 30.9 Cost **[BUILT]**
+
+All figures are SQL statements on the test database; **no Ariel time is included and nothing was
+measured on a QRadar appliance**. The assertions below are quoted from
+`tests/integration/test_waf_scale.py`; measured values that are not asserted exactly are labelled.
+
+| Test | What it pins (quoted assertions) |
+|---|---|
+| `test_a_scheduled_run_does_not_grow_with_endpoints` | `assert per_run[60] == per_run[1200]`; `assert max(per_run[1200]) <= 40` |
+| `test_evaluation_does_not_multiply_by_endpoints_times_detectors` | `assert one[40] == one[800]`; `assert two[800] <= one[800] + 1`; `assert await count(db_session, WafDetectorState) == 3 * (40 + 800)` |
+| `test_evaluation_cost_is_constant_with_every_b2_detector_enabled` | `assert first_on[800] <= off[800] + 1`; `assert steady_on[800] <= off[800] + 1`, with equality across 40 and 800 endpoints |
+| `test_novelty_cost_is_constant_with_and_without_in_window_endpoints` | `assert in_window[800] - established[800] == 2` |
+| `test_alerting_without_transitions_adds_at_most_one_statement` | `assert on[800] <= off[800] + 1`, with equality across sizes |
+| `test_refreshing_every_open_alert_is_constant_cost` | `assert costs[40] == costs[800], costs` |
+| `test_alert_transition_statement_cost_is_bounded` | `assert 0 < open_cost <= 8`; `assert 0 < resolve_cost <= 6` |
+| `test_training_scales_with_chunks_not_endpoints` | `assert one_chunk == 5`; `assert four_chunks - one_chunk == 3 * 4` |
+| `test_training_statement_count_is_unchanged_with_breakdowns` | `assert with_breakdowns == without_breakdowns == 5` |
+| `test_collection_at_the_default_ceiling_is_bulk` | `assert len(statements) <= 40` at 2,000 endpoints |
+
+Reading them together: an evaluation costs the same number of statements at 40 and at 800
+endpoints with all B.2 detectors enabled, and enabling them adds at most one statement; training
+cost does not change when the three ratio-bearing breakdowns are present; novelty adds exactly two
+statements, only when some endpoint is inside its window. **Measured by T-016 and not asserted
+exactly:** an evaluation with no transitions is 4 statements at 40 and 800 endpoints with alerting
+off and on; refreshing every open alert is 8 at both sizes; an OPEN transition with one route costs
++7 and a RESOLVED one +5. The cost of breakdown collection is Ariel time, which was not measured
+(§30.13 item 1).
+
+### 30.10 Migration 0010 **[BUILT]**
+
+`0010_waf_behavior_breakdowns` follows `0009` and is additive for every existing row's meaning; no
+Phase A table is touched.
+
+- `waf_source_profile.action_value_map` (JSONB, NOT NULL): backfilled `{}`, which leaves the action
+  breakdown uncollectable until an operator authors a map.
+- `waf_source_bucket.{action,response_code,client}_measurement` (String(16), NOT NULL, with
+  check constraints `ck_waf_source_bucket_<name>_measurement_known` limiting them to the four
+  `WafTelemetryStatus` values), `*_semantics` (String(160)) and `*_events` (BigInteger). Existing
+  buckets read `NOT_COLLECTED` with NULL semantics and events: nothing was measured, and NULL
+  semantics matches nothing, so no existing bucket can train or be judged by a breakdown metric.
+- `waf_endpoint_metric`: ten nullable count columns (`action_events`, `unmapped_action_count`,
+  `response_code_events`, `client_error_count`, `server_error_count`, `unclassified_response_count`,
+  `client_events`, `top1_client_requests`, `top5_client_requests`, `client_sources`) and the
+  `top_clients` JSONB. NULL is the correct value for every existing row.
+- `waf_endpoint_baseline.numerator_sum` and `denominator_sum` (Float, nullable): NULL for the
+  existing `request_count` cells, which are not ratios.
+- Downgrade drops the columns; 0009 code never read them, so it reads the same history it wrote.
+  Profiles lose their authored action maps.
+
+**The transient-default convention.** The two NOT NULL backfills are done in three steps: add the
+column nullable, `UPDATE` existing rows, then `ALTER ... SET NOT NULL`. No `server_default` is left
+behind. This is a deliberate project convention (migration 0004 documents it): backfill
+defaults are transient, the models use client-side defaults, and a fresh install and an upgraded
+database must be identical, which `alembic check` verifies. T-011 first added server defaults to
+0010 and broke `test_upgrade_from_phase2_preserves_data_and_adds_phase3`, which pins the
+convention; the defect was in the 0009 test instead. That test
+(`test_0009_backfills_measurement_and_its_downgrade_restores_dense_zeros`) inserted 0009-shaped rows
+at `head`, where 0010's NOT NULL columns reject them. It is now pinned to revision `0009`
+(`command.upgrade(cfg, "0009")` before its inserts), and
+`test_0010_backfills_existing_rows_and_leaves_no_server_default` covers 0010 under the convention:
+backfilled values, the rejected unknown measurement values, no leftover column default, a
+downgrade to `0009`, an upgrade to `head`, and no drift. **Rolling-deploy risk:** a 0009-era writer
+running against a 0010 schema fails on the NOT NULL measurement columns. That risk applies to every
+migration that adds a NOT NULL column under this convention and is tracked as an operations item
+in `docs/PLANNER.md`, not solved here.
+
+### 30.11 Behaviour changes, stated explicitly
+
+1. Five detectors exist where B.1.5 had one. Four are `NOT_ENABLED` by default and collect nothing
+   until their setting is on; `WAF_NEW_ENDPOINT_ACCESS` runs whenever WAF collection runs (D-4).
+2. A bucket now records one completeness per breakdown. A truncated or failed breakdown never fails
+   the bucket; it makes only its own detectors `INSUFFICIENT_DATA`.
+3. An unmapped action value or a non-three-digit response code makes the numerator a lower bound. It
+   can prove a rise and never a normal verdict (`INCREASE_ONLY`), and it excludes the bucket from
+   training (`uncertain_values`).
+4. **Supersedes §29.11 and §29.16:** ratio detectors do not require every input `EXACT`. The
+   numerator may be a lower bound; the denominator and coverage input must be exact.
+5. **Source-level coverage (D-3):** a ratio or concentration verdict, and a ratio training sample,
+   now require at least `WAF_MIN_ENDPOINT_COVERAGE` of the source's events to have parsed to an
+   endpoint. Below it: `INSUFFICIENT_DATA`, and `low_source_coverage` in the exclusion tally.
+6. Response-code digits are ASCII only, and an unparseable source IP is unattributed (T-013). Both
+   change what an odd value counts as; neither can fail a bucket.
+7. The scheduled path collects the planned breakdowns, and training and collection share one plan
+   (T-014).
+8. Evaluation gains statements only for in-window novelty (+2, §30.5) and, with alerting on, for
+   transitions (§30.7).
+9. `GET /behavior/detectors` reports deployment status, including `NOT_ENABLED`, and names the
+   setting that enables a detector (T-009).
+10. With `WAF_ALERTING_ENABLED` on, an `OPEN` WAF incident raises an alert under the `waf_anomaly`
+    condition family. With it off, nothing changes.
+11. Migration 0010 adds nullable columns, two backfilled NOT NULL columns and no server default.
+12. Notifications for alerts loaded from the database now render (T-019). Before, a matching route
+    crashed `NotificationDispatcher._render` on Phase A recovery across runs and on the operator
+    acknowledge and resolve API; the dispatcher now normalizes through `Severity`.
+
+The one existing test adapted for B.2 is the 0009 migration test, pinned to its revision (§30.10);
+its assertions are unchanged. No Phase A behaviour changed: the shared-code edits are the optional
+`waf_anomaly` fingerprint, a generic bulk alert-action helper in `AlertService`, and additive
+detector-capability fields.
+
+### 30.12 Gates
+
+Gates: recorded by the orchestrator at merge.
+
+### 30.13 Remaining risks
+
+1. **Breakdown Ariel cost is unmeasured.** Each enabled source adds up to three searches per bucket
+   under the existing permit. The default of 2 concurrent sources and the 2,000-group cap are
+   conservative by intent, not by measurement; nothing here was run on an appliance.
+2. **Field availability is unverified on a real WAF product.** The action map, the response-code
+   property and the `sourceip` semantics were checked in the lab and against the mock only. Whether
+   a real product exposes an action and response code per event, with values the profile can map, is
+   the open question, and a site that cannot map them gets `NOT_COLLECTED`, not a detector.
+3. **Alert storms.** Alert identity is one per endpoint per detector, and there is no
+   source-level coalescing or burst cap. A source-wide event, such as a scanner sweep, a WAF rule
+   change flipping many block ratios, or a deployment introducing many endpoints, can open many
+   incidents in one bucket and one notification per alert per matching route. Admission
+   (`WAF_MAX_NEW_ENDPOINTS_PER_BUCKET`, default 20, bounds how many endpoints enter per bucket),
+   `ANOMALY_OPEN_AFTER_INTERVALS` hysteresis and shadow mode bound or delay this; they do not cap
+   it.
+   Coalescing changes the fixed fingerprint identity and is separate design work. Stage thresholds
+   and routing with `WAF_ALERTING_ENABLED=false` before enabling paging.
+4. **Novelty alerts a deployment as readily as a probe.** The evidence says so, but D-4 leaves no
+   per-detector mute. Revisit when alerting is live.
+5. **Source-IP identity.** Behind a proxy, load balancer or NAT the dominant source IP is the
+   intermediary, which can raise or hide concentration. The evidence labels it.
+6. **Coverage floors may starve a source.** A source whose events mostly do not parse to an
+   endpoint never trains a ratio cell and never gets a ratio verdict (D-3). Visible in the
+   exclusion tally; relaxed only with live evidence.
+7. **Contributors are not an attribution.** A block or 5xx incident's contributor list covers all
+   of the endpoint's requests, not the blocked ones.
+8. **Rolling deploy against migration 0010** (§30.10).
+9. **Carried from §29.15, unchanged:** assumption A1, the HTTP 422 assumption, sustained floods
+   suppressing normal verdicts, the group cap versus active endpoints, stuck permits, training CPU
+   at many sources, detector-state row churn.
+
+### 30.14 Readiness
+
+> ## Phase B.2 detectors: **GO** — for lab use, with breakdowns enabled per source
+>
+> The five detectors are built, exercised through the scheduled path (a block-ratio incident and an
+> alert open end to end), and fail closed:
+> every missing, failed, truncated or low-coverage input is `INSUFFICIENT_DATA`, every verdict
+> scope comes from declared requirements that the registry and the engine are tested to agree on,
+> and evaluation, training and alerting cost a bounded number of statements whatever the number of
+> endpoints. Enable `WAF_OUTCOME_COLLECTION_ENABLED` and `WAF_CLIENT_COLLECTION_ENABLED` per source
+> on validated lab sources, author the action map from discovered values, and run alerting in
+> shadow mode first.
+
+> ## Production WAF onboarding: **NO-GO** — unchanged
+>
+> The field-availability pass against a real WAF product has not been done (item 2), live Ariel cost
+> under three extra searches per bucket is unmeasured (item 1), and the alert-storm risk with many
+> endpoints opening at once has no cap (item 3). Assumption A1 and the 422 assumption from §29.15
+> remain unverified. There is still no analyst API or UI for WAF incidents.

@@ -23,7 +23,10 @@ and it operates strictly **read-only** against QRadar.
 > instead of blinding a source, endpoint storage is sparse, a scheduled run costs a constant number
 > of SQL statements, and WAF Ariel concurrency is globally capped. Collection stays off unless
 > enabled per source; WAF incidents have no analyst API or UI yet, and production WAF onboarding is
-> unvalidated. See
+> unvalidated. **Phase B.2** then adds five behavioural detectors — block, 5xx and 4xx ratios,
+> source-IP concentration and new-endpoint access — over opt-in per-endpoint breakdowns, each
+> failing closed to `INSUFFICIENT_DATA` and each stating the exact claim it makes; a default-off
+> shadow-mode switch lets WAF incidents raise alerts. See
 > [Roadmap](#roadmap), [the Phase A design](docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md),
 > [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) and
 > [the Phase 3 handoff](docs/PHASE3-HANDOFF.md).
@@ -566,8 +569,8 @@ search executor and scheduler, search alerting, notification dispatch, the resul
 the API against a real database. All QRadar
 responses in tests are mocked and no notification is ever really sent (`MockNotifier`).
 
-Current suite (2026-09-13, after Phase B.1): **1489 tests — 1112 unit + 377 integration — all
-passing, 0 failed** against a real `timescale/timescaledb:2.17.2-pg16` instance. `ruff check` is
+Current suite (2026-10-12): **2,088 backend tests (unit + integration) and 629 frontend tests**
+against a real `timescale/timescaledb:2.17.2-pg16` instance. `ruff check` is
 clean; `mypy app` reports **31 existing errors in 18 files**, unchanged from the Phase A backend
 baseline, with no new errors. Alembic upgrades a fresh database through `0008`, downgrades to
 `0007` and upgrades again, and `alembic check` reports no drift.
@@ -633,7 +636,10 @@ Highlights:
 - **Anomaly types.** Operational on live data: `NO_EVENTS`, `VOLUME_DROP`, `VOLUME_SPIKE`.
   Synthetic telemetry only (mock provider): `PARSING_DEGRADATION`, `UNKNOWN_EVENT_SPIKE`,
   `TIMESTAMP_DELAY`, `REPEATED_PAYLOAD`. Unsupported by any collection path: `CARDINALITY_DROP`,
-  `COLLECTION_ERROR`. Phase B: `WAF_REQUEST_RATE_SPIKE`, scheduled for enabled WAF profiles. The engine
+  `COLLECTION_ERROR`. Phase B: `WAF_REQUEST_RATE_SPIKE`, plus the B.2 types `WAF_BLOCK_RATIO_SPIKE`,
+  `WAF_ERROR_RATIO_SPIKE`, `WAF_CLIENT_ERROR_RATIO_SPIKE`, `WAF_CLIENT_CONCENTRATION_SPIKE` and
+  `WAF_NEW_ENDPOINT_ACCESS`, scheduled for enabled WAF profiles (the first four need their
+  collection setting). The engine
   refuses to run a detector on a bucket that did not measure its inputs, and
   `GET /api/v1/behavior/detectors` publishes each status with its reason.
 - **Event counting.** Volume is `SUM(eventcount)`, never `COUNT(*)`: QRadar coalesces identical
@@ -750,11 +756,21 @@ lints and updates this README.
   scheduled run (6,273 before, at 2,000 endpoints); a crash-safe global WAF Ariel concurrency budget;
   query-budget status; and an operator procedure for QRadar's rejection semantics. See
   [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §29.
+- **Phase B.2 ✅ (behavioural detectors)** — action, response-code and source-IP breakdowns, each
+  one bounded read-only Ariel search per bucket with its own completeness and gated by
+  `WAF_OUTCOME_COLLECTION_ENABLED` / `WAF_CLIENT_COLLECTION_ENABLED` (off by default); pooled ratio
+  baselines; `WAF_BLOCK_RATIO_SPIKE`, `WAF_ERROR_RATIO_SPIKE`, `WAF_CLIENT_ERROR_RATIO_SPIKE`,
+  `WAF_CLIENT_CONCENTRATION_SPIKE` and `WAF_NEW_ENDPOINT_ACCESS` (the last needs a verified history
+  and no setting); source-level coverage required on the ratio paths; and alerts from WAF incidents
+  behind `WAF_ALERTING_ENABLED` (off by default, shadow mode first).
+  `GET /api/v1/behavior/detectors` reports each detector's deployment status. Lab use only:
+  production WAF onboarding remains unvalidated and there is no source-level alert coalescing. See
+  [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §30.
 - **Phase 4** — security hardening, expanded tests, documentation, observability.
 
-Next: Phase B.2 detector expansion under the conditions recorded in
-[the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §29.16, then the analyst API and UI for WAF
-incidents, and a field-availability pass against a real WAF product before production onboarding.
+Next: the analyst API and UI for WAF incidents, then the goals in
+[the planner](docs/PLANNER.md) §0. Production WAF onboarding still needs a field-availability pass
+against a real WAF product ([the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §30.14).
 
 ## License
 
