@@ -122,6 +122,38 @@ def test_breakdown_coverage_below_the_detector_floor_is_excluded() -> None:
     assert samples == [] and tally.low_coverage == 1
 
 
+def test_low_source_coverage_is_excluded_and_not_called_breakdown_coverage() -> None:
+    # The breakdown covers every visible request; only 85% of the source's events parsed.
+    samples, tally, _ = clean(observation(endpoint_coverage_ratio=0.85))
+
+    assert samples == []
+    assert tally.low_source_coverage == 1 and tally.low_coverage == 0
+    assert tally.as_dict()["low_source_coverage"] == 1
+
+
+def test_source_coverage_exactly_at_the_floor_trains() -> None:
+    samples, tally, _ = clean(observation(endpoint_coverage_ratio=0.9))
+
+    assert len(samples) == 1 and tally.total == 0
+
+
+def test_inexact_request_count_is_attributed_before_low_source_coverage() -> None:
+    samples, tally, _ = clean(
+        observation(measurement=WafMeasurement.LOWER_BOUND, endpoint_coverage_ratio=0.5)
+    )
+
+    assert samples == []
+    assert tally.inexact_request_count == 1 and tally.low_source_coverage == 0
+
+
+def test_low_source_coverage_is_attributed_before_breakdown_coverage() -> None:
+    counts = replace(observation().counts, action_events=50, blocked=10)
+    samples, tally, _ = clean(observation(counts=counts, endpoint_coverage_ratio=0.5))
+
+    assert samples == []
+    assert tally.low_source_coverage == 1 and tally.low_coverage == 0
+
+
 def test_immaterial_denominator_is_not_a_zero_proportion_sample() -> None:
     counts = replace(observation().counts, action_events=0, blocked=0)
     samples, tally, _ = clean(observation(request_count=0, counts=counts))

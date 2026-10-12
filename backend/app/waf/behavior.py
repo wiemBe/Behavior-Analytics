@@ -355,6 +355,14 @@ def _unavailable(breakdown: str, status: WafTelemetryStatus) -> str:
     return f"the {breakdown} breakdown {what} for this bucket: the value is unavailable, not zero"
 
 
+def _low_source_coverage(ratio: float, floor: float) -> str:
+    return (
+        f"only {ratio:.0%} of this source's events parsed to an endpoint, below the "
+        f"{floor:.0%} coverage floor: the unparsed requests may differ in kind from the parsed "
+        "ones, so the visible proportion bounds nothing"
+    )
+
+
 def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdict:
     g = _Guard(ctx, d.detector_type)
     obs, thr = g.obs, ctx.behavior
@@ -367,6 +375,9 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
     k = d.numerator(obs.counts) or 0
     n = d.denominator(obs.counts) or 0
     uncertain = d.uncertain(obs.counts) or 0
+
+    if obs.endpoint_coverage_ratio < thr.min_coverage:
+        return g.insufficient(_low_source_coverage(obs.endpoint_coverage_ratio, thr.min_coverage))
 
     # The population the ratio is over must be (nearly) all of the endpoint's
     # requests. The request count is exact here: the scope requires it.
@@ -512,6 +523,9 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
         return g.insufficient(_unavailable("SOURCE_IP", status))
     if ctx.effective_scope is not WafVerdictScope.FULL:
         return g.insufficient(ctx.scope_reason or "composition needs exact measurements")
+    if obs.endpoint_coverage_ratio < thr.min_coverage:
+        return g.insufficient(_low_source_coverage(obs.endpoint_coverage_ratio, thr.min_coverage))
+
     top1 = obs.counts.top1_client_requests or 0
     top5 = obs.counts.top5_client_requests or 0
     n = obs.counts.client_events or 0

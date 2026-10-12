@@ -168,6 +168,7 @@ class WafRatioExclusionTally(WafExclusionTally):
     unavailable: int = 0
     uncertain_values: int = 0
     inexact_request_count: int = 0
+    low_source_coverage: int = 0
     immaterial: int = 0
 
     def as_dict(self) -> dict[str, int]:
@@ -176,6 +177,7 @@ class WafRatioExclusionTally(WafExclusionTally):
             "unavailable": self.unavailable,
             "uncertain_values": self.uncertain_values,
             "inexact_request_count": self.inexact_request_count,
+            "low_source_coverage": self.low_source_coverage,
             "immaterial": self.immaterial,
         }
 
@@ -241,7 +243,20 @@ def clean_ratio_samples(
     spans: Sequence[tuple[datetime, datetime]],
     maintenance_rule: Callable[[datetime], bool],
 ) -> tuple[list[RatioSample], WafRatioExclusionTally, int]:
-    """Material exact proportions that may train one ratio metric. Pure."""
+    """Material exact proportions that may train one ratio metric. Pure.
+
+    The order of the checks is the order exclusions are attributed in, and is
+    part of the contract operators read: unfinished, incompatible_semantics,
+    maintenance, unavailable, incomplete, uncertain_values, inexact_request_count,
+    low_source_coverage, immaterial (empty population), low_coverage, immaterial
+    (below the minimum denominator), known_anomaly.
+
+    `low_source_coverage` is the share of the source's events that parsed to an
+    endpoint at all (decision D-3). `low_coverage` is the breakdown's share of
+    the endpoint's visible requests. Unparseable requests may differ in kind from
+    parseable ones, so the visible proportion bounds nothing when the former is
+    low, however complete the latter is.
+    """
     tally = WafRatioExclusionTally()
     out: list[RatioSample] = []
     for obs in series:
@@ -277,6 +292,9 @@ def clean_ratio_samples(
             continue
         if obs.measurement is not WafMeasurement.EXACT:
             tally.inexact_request_count += 1
+            continue
+        if obs.endpoint_coverage_ratio < min_coverage:
+            tally.low_source_coverage += 1
             continue
         # A sparse exact breakdown reconstructs 0/0 for an absent endpoint.
         # It says no ratio population existed, not that the proportion was zero.

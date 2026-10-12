@@ -290,6 +290,46 @@ async def test_ratio_detector_opens_and_persists_evidence(db_session, case: Rati
     assert anomaly.absolute_delta == anomaly.details["extra"]["absolute_delta"]
 
 
+@pytest.mark.parametrize("case", RATIO_CASES, ids=lambda case: case.metric)
+async def test_ratio_rise_in_a_low_source_coverage_bucket_opens_no_incident(
+    db_session, case: RatioCase
+) -> None:
+    # Decision D-3: the breakdown covers every visible request, but only 50% of the
+    # source's events parsed to an endpoint, so the visible proportion bounds nothing.
+    settings = behavior_settings()
+    _source, endpoint = await seed_endpoint(db_session)
+    add_cell(db_session, endpoint, case.metric, case.semantics)
+    engine = WafAnomalyEngine(db_session, settings=settings)
+
+    for index, numerator in enumerate((60, 80)):
+        kwargs = {
+            case.status_field: WafTelemetryStatus.EXACT,
+            case.semantics_field: case.semantics,
+            case.count_field: numerator,
+            case.denominator_field: 100,
+        }
+        bucket, metric = await add_observation(
+            db_session, endpoint, T0 + STEP * index, **kwargs
+        )
+        bucket.endpoint_coverage_ratio = 0.5
+        metric.endpoint_coverage_ratio = 0.5
+        await db_session.flush()
+        report = await engine.evaluate_interval(endpoint, metric, source_bucket=bucket)
+
+    assert report.states[case.detector_type.value] != AnomalyState.OPEN.value
+    assert (
+        await db_session.scalar(
+            select(WafAnomaly).where(WafAnomaly.detector_type == case.detector_type)
+        )
+    ) is None
+    state = await db_session.scalar(
+        select(WafDetectorState).where(
+            WafDetectorState.detector_type == case.detector_type.value
+        )
+    )
+    assert state is not None and state.consecutive_anomalous == 0
+
+
 @pytest.mark.parametrize(
     "status", (WafTelemetryStatus.NOT_COLLECTED, WafTelemetryStatus.FAILED)
 )

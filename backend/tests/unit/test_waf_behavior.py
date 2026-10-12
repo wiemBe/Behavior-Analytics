@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 
@@ -590,6 +591,44 @@ class TestConcentrationInputs:
         assert_insufficient(
             d(conc_ctx(60, base=cell(**{**SHARE_CELL, "denominator": 0}))), "no pooled denominator"
         )
+
+
+# ------------------------------------------- source-level coverage (decision D-3)
+def _with_source_coverage(ctx: WafDetectionContext, ratio: float) -> WafDetectionContext:
+    ctx.observation = replace(ctx.observation, endpoint_coverage_ratio=ratio)
+    return ctx
+
+
+class TestSourceCoverage:
+    """Breakdown coverage is 100% throughout; only the source-level coverage varies."""
+
+    def test_ratio_low_source_coverage_is_insufficient(self, kind) -> None:
+        v = run(kind, _with_source_coverage(ratio_ctx(kind, 40), 0.85))
+        assert_insufficient(v, "85%", "90%", "bounds nothing")
+        assert v.detector_type is RATIOS[kind][1]
+
+    def test_ratio_at_the_source_floor_still_reaches_its_verdict(self, kind) -> None:
+        assert run(kind, _with_source_coverage(ratio_ctx(kind, 40), 0.9)).is_anomalous
+        assert_healthy(run(kind, _with_source_coverage(ratio_ctx(kind, 10), 0.9)))
+
+    def test_ratio_source_coverage_is_checked_before_breakdown_coverage(self, kind) -> None:
+        ctx = _with_source_coverage(ratio_ctx(kind, 40, 85, request_count=100), 0.5)
+        assert_insufficient(run(kind, ctx), "50%", "bounds nothing")
+
+    def test_concentration_low_source_coverage_is_insufficient(self) -> None:
+        ctx = _with_source_coverage(conc_ctx(60), 0.85)
+        v = detect_client_concentration_spike(ctx)
+        assert_insufficient(v, "85%", "90%", "bounds nothing")
+
+    def test_concentration_at_the_source_floor_still_reaches_its_verdict(self) -> None:
+        v = detect_client_concentration_spike(_with_source_coverage(conc_ctx(60), 0.9))
+        assert v.is_anomalous
+        v = detect_client_concentration_spike(_with_source_coverage(conc_ctx(10), 0.9))
+        assert_healthy(v)
+
+    def test_concentration_source_coverage_is_checked_before_breakdown_coverage(self) -> None:
+        ctx = _with_source_coverage(conc_ctx(60, 85, request_count=100), 0.5)
+        assert_insufficient(detect_client_concentration_spike(ctx), "50%", "bounds nothing")
 
 
 class TestConcentrationGuards:
