@@ -38,12 +38,12 @@ celery_app.conf.imports = ("app.workers.tasks",)
 celery_app.conf.beat_schedule = {
     "collect-metrics": {
         "task": "collect_metrics",
-        "schedule": float(settings.collection_interval_seconds),
+        "schedule": 60.0,
     },
     "evaluate-anomalies": {
         # Runs shortly after each collection cycle.
         "task": "evaluate_anomalies",
-        "schedule": float(settings.collection_interval_seconds),
+        "schedule": 60.0,
     },
     "dispatch-notifications": {
         "task": "dispatch_notifications",

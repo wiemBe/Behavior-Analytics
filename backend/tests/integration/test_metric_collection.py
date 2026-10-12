@@ -4,10 +4,10 @@ DB-gated."""
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, delete, func, select, text
 
 from app.collectors.metric_collector import (
     COLLECTOR_NAME,
@@ -15,10 +15,14 @@ from app.collectors.metric_collector import (
     floor_to_interval,
 )
 from app.core.config import Settings
-from app.models.log_source import LogSourceMetric
+from app.models.enums import SearchFamily
+from app.models.log_source import LogSource, LogSourceMetric
+from app.models.monitoring import CollectionWatermark
+from app.providers.base import ProviderError
 from app.providers.mock import MockQRadarProvider
 from app.services.inventory_sync import InventorySyncService
 from app.services.locks import collector_lock_key
+from app.services.search_cadence import SearchCadenceService
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -36,6 +40,15 @@ async def _seed_inventory(session):
     instance = await svc.ensure_default_instance()
     await svc.sync(instance)
     return instance
+
+
+async def _set_phase_a_cadence(session, settings: Settings, seconds: int) -> None:
+    await SearchCadenceService(session, settings).set_cadence(
+        SearchFamily.PHASE_A_VOLUME,
+        seconds,
+        actor="metric-collection-test",
+        source_ip=None,
+    )
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -80,11 +93,299 @@ async def test_bounded_backfill(db_session) -> None:
 
     # Now jump 2 hours ahead: 24 intervals missed, but backfill is capped at 3+1.
     t1 = datetime(2026, 7, 15, 10, 3, tzinfo=UTC)
+    settings = _settings(collection_max_backfill_intervals=3)
+    await _set_phase_a_cadence(db_session, settings, 300)
     collector1 = MetricCollector(db_session, MockQRadarProvider(seed=1337),
-                                 settings=_settings(collection_max_backfill_intervals=3),
+                                 settings=settings,
                                  clock=lambda: t1)
     report = await collector1.collect(instance)
     assert report.intervals_collected <= 4  # never unbounded
+
+
+async def test_default_hour_cadence_adds_backfill_beyond_its_twelve_buckets(
+    db_session,
+) -> None:
+    instance = await _seed_inventory(db_session)
+    settings = _settings(collection_max_backfill_intervals=3)
+    first = datetime(2026, 7, 15, 8, 3, tzinfo=UTC)
+    await MetricCollector(
+        db_session,
+        MockQRadarProvider(seed=1337),
+        settings=settings,
+        clock=lambda: first,
+    ).collect(instance)
+
+    report = await MetricCollector(
+        db_session,
+        MockQRadarProvider(seed=1337),
+        settings=settings,
+        clock=lambda: datetime(2026, 7, 15, 10, 3, tzinfo=UTC),
+    ).collect(instance)
+
+    assert report.intervals_collected == 15
+    assert report.searches_sent == 1
+
+
+class RecordingBucketProvider(MockQRadarProvider):
+    def __init__(self, truncate) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(seed=1337)
+        self.truncate = truncate
+        self.windows: list[tuple[datetime, datetime]] = []
+
+    async def get_log_source_metrics_bucketed(
+        self, window_start, window_end, *, bucket_seconds, max_rows
+    ):  # type: ignore[no-untyped-def]
+        self.windows.append((window_start, window_end))
+        batch = await super().get_log_source_metrics_bucketed(
+            window_start,
+            window_end,
+            bucket_seconds=bucket_seconds,
+            max_rows=max_rows,
+        )
+        if self.truncate(window_start, window_end, len(self.windows)):
+            return batch.model_copy(update={"truncated": True})
+        return batch
+
+
+async def _seed_watermark(session, instance, at: datetime) -> CollectionWatermark:
+    watermark = CollectionWatermark(
+        instance_id=instance.id,
+        collector=COLLECTOR_NAME,
+        watermark_at=at,
+    )
+    session.add(watermark)
+    await session.flush()
+    return watermark
+
+
+async def test_twelve_buckets_use_one_search(db_session) -> None:
+    instance = await _seed_inventory(db_session)
+    boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+    await _seed_watermark(db_session, instance, boundary - timedelta(minutes=65))
+    report = await MetricCollector(
+        db_session,
+        MockQRadarProvider(seed=1337),
+        settings=_settings(collection_max_backfill_intervals=0),
+        clock=lambda: boundary,
+    ).collect(instance)
+
+    assert report.buckets_collected == 12
+    assert report.searches_sent == 1
+    assert report.splits == 0
+
+
+async def test_truncation_splits_cover_window_without_overlap(db_session) -> None:
+    instance = await _seed_inventory(db_session)
+    boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+    start = boundary - timedelta(hours=1)
+    await _seed_watermark(db_session, instance, start - timedelta(minutes=5))
+    provider = RecordingBucketProvider(
+        lambda _start, _end, call: call == 1
+    )
+    report = await MetricCollector(
+        db_session,
+        provider,
+        settings=_settings(collection_max_backfill_intervals=0),
+        clock=lambda: boundary,
+    ).collect(instance)
+
+    assert report.buckets_collected == 12
+    assert report.searches_sent == 3
+    assert report.splits == 1
+    assert provider.windows[1:] == [
+        (start, start + timedelta(minutes=30)),
+        (start + timedelta(minutes=30), boundary),
+    ]
+    rows = list((await db_session.scalars(select(LogSourceMetric))).all())
+    left = next(row for row in rows if row.bucket_start == start)
+    right = next(row for row in rows if row.bucket_start == start + timedelta(minutes=30))
+    assert left.query_provenance["search_window_start"] == start.isoformat()
+    assert left.query_provenance["search_window_end"] == (
+        start + timedelta(minutes=30)
+    ).isoformat()
+    assert left.query_provenance["search_bucket_count"] == 6
+    assert left.query_provenance["bucket_key"] == "starttime / 300000"
+    assert left.query_provenance["split_depth"] == 1
+    assert right.query_provenance["search_window_start"] == (
+        start + timedelta(minutes=30)
+    ).isoformat()
+
+
+async def test_single_bucket_truncation_writes_nothing_and_holds_watermark(
+    db_session,
+) -> None:
+    instance = await _seed_inventory(db_session)
+    now = datetime(2026, 7, 15, 10, 3, tzinfo=UTC)
+    provider = RecordingBucketProvider(lambda *_args: True)
+
+    async def truncated_bucket(_start, _end):  # type: ignore[no-untyped-def]
+        raise ProviderError("QRadar Ariel metric search was truncated at 5000 rows")
+
+    provider.get_log_source_metrics = truncated_bucket  # type: ignore[method-assign]
+    with pytest.raises(ProviderError, match="truncated at 5000 rows"):
+        await MetricCollector(
+            db_session, provider, settings=_settings(), clock=lambda: now
+        ).collect(instance)
+
+    assert await db_session.scalar(select(func.count()).select_from(LogSourceMetric)) == 0
+    watermark = await db_session.scalar(select(CollectionWatermark))
+    assert watermark is not None and watermark.watermark_at is None
+
+
+async def test_failed_single_bucket_keeps_prefix_and_holds_watermark_before_it(
+    db_session,
+) -> None:
+    instance = await _seed_inventory(db_session)
+    boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+    start = boundary - timedelta(minutes=20)
+    await _seed_watermark(db_session, instance, start - timedelta(minutes=5))
+
+    class ThirdBucketTruncated(RecordingBucketProvider):
+        in_batch = False
+
+        async def get_log_source_metrics_bucketed(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            self.in_batch = True
+            try:
+                return await super().get_log_source_metrics_bucketed(*args, **kwargs)
+            finally:
+                self.in_batch = False
+
+        async def get_log_source_metrics(self, window_start, window_end):  # type: ignore[no-untyped-def]
+            if not self.in_batch and window_start == start + timedelta(minutes=10):
+                raise ProviderError("QRadar Ariel metric search was truncated at 5000 rows")
+            return await super().get_log_source_metrics(window_start, window_end)
+
+    provider = ThirdBucketTruncated(lambda *_args: True)
+    report = await MetricCollector(
+        db_session,
+        provider,
+        settings=_settings(collection_max_backfill_intervals=0),
+        clock=lambda: boundary,
+    ).collect(instance)
+
+    assert report.buckets_collected == 2
+    assert report.partial is True
+    starts = {
+        row.bucket_start for row in (await db_session.scalars(select(LogSourceMetric))).all()
+    }
+    assert starts == {start, start + timedelta(minutes=5)}
+    watermark = await db_session.scalar(select(CollectionWatermark))
+    assert watermark is not None
+    assert watermark.watermark_at == start + timedelta(minutes=5)
+
+
+async def test_search_cap_keeps_only_contiguous_complete_prefix(db_session) -> None:
+    instance = await _seed_inventory(db_session)
+    boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+    start = boundary - timedelta(hours=1)
+    await _seed_watermark(db_session, instance, start - timedelta(minutes=5))
+    provider = RecordingBucketProvider(
+        lambda _start, _end, call: call in {1, 3}
+    )
+    report = await MetricCollector(
+        db_session,
+        provider,
+        settings=_settings(
+            collection_max_backfill_intervals=0,
+            search_cadence_max_searches_per_tick=3,
+        ),
+        clock=lambda: boundary,
+    ).collect(instance)
+
+    assert report.buckets_collected == 6
+    assert report.searches_sent == 3
+    assert report.partial is True
+    watermark = await db_session.scalar(select(CollectionWatermark))
+    assert watermark is not None
+    assert watermark.watermark_at == start + timedelta(minutes=25)
+
+
+async def test_eight_hour_cadence_collects_ninety_six_buckets_in_one_search(
+    db_session,
+) -> None:
+    instance = await _seed_inventory(db_session)
+    boundary = datetime(2026, 7, 15, 16, 0, tzinfo=UTC)
+    await _seed_watermark(db_session, instance, boundary - timedelta(hours=8, minutes=5))
+    settings = _settings(collection_max_backfill_intervals=0)
+    await _set_phase_a_cadence(db_session, settings, 28_800)
+    report = await MetricCollector(
+        db_session,
+        MockQRadarProvider(seed=1337),
+        settings=settings,
+        clock=lambda: boundary,
+    ).collect(instance)
+
+    assert report.buckets_collected == 96
+    assert report.searches_sent == 1
+
+
+async def test_bucketed_collection_matches_private_per_bucket_control_for_24_buckets(
+    db_session,
+) -> None:
+    instance = await _seed_inventory(db_session)
+    provider = MockQRadarProvider(seed=1337)
+    original = provider.get_log_source_metrics
+
+    async def without_one_silent_source(window_start, window_end):  # type: ignore[no-untyped-def]
+        samples = await original(window_start, window_end)
+        return [sample for sample in samples if sample.qradar_id != 1001]
+
+    provider.get_log_source_metrics = without_one_silent_source  # type: ignore[method-assign]
+    settings = _settings(collection_max_backfill_intervals=12)
+    start = datetime(2026, 7, 15, 8, 0, tzinfo=UTC)
+    end = start + timedelta(hours=2)
+    control = MetricCollector(
+        db_session, provider, settings=settings, clock=lambda: end
+    )
+    last_done = start - timedelta(minutes=5)
+    for index in range(24):
+        bucket_start = start + timedelta(minutes=5 * index)
+        await control._collect_interval(
+            instance,
+            bucket_start,
+            bucket_start + timedelta(minutes=5),
+            watermark_at=last_done,
+        )
+        last_done = bucket_start
+
+    excluded = {
+        "query_provenance",
+        "collected_at",
+        "collection_duration_ms",
+        "watermark_at",
+    }
+
+    async def snapshot() -> dict:  # type: ignore[no-untyped-def]
+        sources = {
+            source.id: source.qradar_id
+            for source in (await db_session.scalars(select(LogSource))).all()
+        }
+        rows = (await db_session.scalars(select(LogSourceMetric))).all()
+        return {
+            (sources[row.log_source_id], row.bucket_start): {
+                column.name: getattr(row, column.name)
+                for column in LogSourceMetric.__table__.columns
+                if column.name not in excluded
+            }
+            for row in rows
+        }
+
+    expected = await snapshot()
+    assert len({key[0] for key in expected}) >= 3
+    assert all(expected[(1001, start + timedelta(minutes=5 * index))]["event_count"] == 0
+               for index in range(24))
+
+    await db_session.execute(delete(LogSourceMetric))
+    await db_session.execute(delete(CollectionWatermark))
+    await db_session.flush()
+    await _seed_watermark(db_session, instance, start - timedelta(minutes=5))
+    report = await MetricCollector(
+        db_session, provider, settings=settings, clock=lambda: end
+    ).collect(instance)
+
+    assert report.buckets_collected == 24
+    assert report.searches_sent == 1
+    assert await snapshot() == expected
 
 
 async def test_advisory_lock_prevents_overlap(db_session) -> None:

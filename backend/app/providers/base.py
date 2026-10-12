@@ -31,6 +31,7 @@ from app.providers.dto import (
     InstanceInfoDTO,
     LogSourceDTO,
     LogSourceGroupDTO,
+    LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
@@ -201,6 +202,18 @@ class QRadarProvider(ABC):
         (Phase 3); the mock synthesizes them deterministically.
         """
         self.require(ProviderCapability.INVENTORY)
+        raise NotImplementedError
+
+    async def get_log_source_metrics_bucketed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> LogSourceMetricBucketBatch:
+        """Per-source metric samples keyed by bucket start for one bounded window."""
+        self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError
 
     async def get_dimension_aggregates(

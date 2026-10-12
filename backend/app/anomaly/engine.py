@@ -16,6 +16,7 @@ because the detector state records the last interval processed.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -59,7 +60,10 @@ from app.models.log_source import (
     LogSourceDetectorState,
     LogSourceMetric,
 )
+from app.models.monitoring import AnomalyEvaluationWatermark
 from app.providers.base import LogSourceTelemetry
+
+logger = logging.getLogger(__name__)
 
 #: Detector types whose incidents warrant a bounded explanation package. A
 #: silence has no volume to attribute, so there is nothing to explain.
@@ -135,6 +139,88 @@ class AnomalyEngine:
         if metric is None:
             return EvaluationReport(log_source.id, None, skipped_reason="no metrics")
         return await self.evaluate_interval(log_source, metric)
+
+    async def evaluate_pending(self, log_source: LogSource) -> EvaluationReport:
+        """Evaluate unseen buckets in order and advance only after each success."""
+        if not log_source.monitoring_enabled:
+            return EvaluationReport(
+                log_source.id, None, skipped_reason="monitoring disabled"
+            )
+
+        watermark = await self.session.get(AnomalyEvaluationWatermark, log_source.id)
+        if watermark is None:
+            metric = await self.session.scalar(
+                select(LogSourceMetric)
+                .where(LogSourceMetric.log_source_id == log_source.id)
+                .order_by(LogSourceMetric.bucket_start.desc())
+                .limit(1)
+            )
+            if metric is None:
+                return EvaluationReport(log_source.id, None, skipped_reason="no metrics")
+            try:
+                async with self.session.begin_nested():
+                    report = await self.evaluate_interval(log_source, metric)
+                    self.session.add(
+                        AnomalyEvaluationWatermark(
+                            log_source_id=log_source.id,
+                            evaluated_through=metric.bucket_start,
+                            updated_at=self._clock(),
+                        )
+                    )
+                    await self.session.flush()
+            except Exception as exc:
+                logger.warning(
+                    "anomaly evaluation failed",
+                    extra={"log_source_id": str(log_source.id), "error_class": type(exc).__name__},
+                )
+                return EvaluationReport(
+                    log_source.id,
+                    metric.bucket_start,
+                    skipped_reason="evaluation failed",
+                )
+            return report
+
+        metrics = list(
+            (
+                await self.session.scalars(
+                    select(LogSourceMetric)
+                    .where(
+                        LogSourceMetric.log_source_id == log_source.id,
+                        LogSourceMetric.bucket_start > watermark.evaluated_through,
+                    )
+                    .order_by(LogSourceMetric.bucket_start.asc())
+                    .limit(self.settings.anomaly_max_buckets_per_evaluation)
+                )
+            ).all()
+        )
+        combined = EvaluationReport(log_source.id, None)
+        if not metrics:
+            combined.skipped_reason = "no pending metrics"
+            return combined
+
+        for metric in metrics:
+            try:
+                async with self.session.begin_nested():
+                    report = await self.evaluate_interval(log_source, metric)
+                    watermark.evaluated_through = metric.bucket_start
+                    watermark.updated_at = self._clock()
+                    await self.session.flush()
+            except Exception as exc:
+                logger.warning(
+                    "anomaly evaluation failed",
+                    extra={"log_source_id": str(log_source.id), "error_class": type(exc).__name__},
+                )
+                combined.skipped_reason = "evaluation failed"
+                break
+            combined.interval_start = report.interval_start
+            combined.opened.extend(report.opened)
+            combined.resolved.extend(report.resolved)
+            combined.anomalous.extend(report.anomalous)
+            combined.candidates.extend(report.candidates)
+            combined.recovering.extend(report.recovering)
+            combined.states = report.states
+            combined.unsupported = report.unsupported
+        return combined
 
     async def evaluate_interval(
         self, log_source: LogSource, metric: LogSourceMetric

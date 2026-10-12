@@ -29,7 +29,7 @@ from app.models.log_source import (
     LogSourceDetectorState,
     LogSourceMetric,
 )
-from app.models.monitoring import CollectionWatermark
+from app.models.monitoring import AnomalyEvaluationWatermark, CollectionWatermark
 from app.models.offense import OffenseSnapshot
 from app.models.rule import (
     AnalyticsRule,
@@ -81,6 +81,7 @@ __all__ = [
     "Alert",
     "AlertNotification",
     "AnalyticsRule",
+    "AnomalyEvaluationWatermark",
     "AnomalyExplanation",
     "AnomalyExplanationContributor",
     "AnomalyExplanationDimension",

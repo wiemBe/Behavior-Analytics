@@ -30,6 +30,10 @@ from typing import Any, ClassVar
 
 import httpx
 
+from app.collectors.bucketed_metrics import (
+    fold_log_source_metric_buckets,
+    validate_bucketed_metric_window,
+)
 from app.providers.base import (
     PROPERTY_NAME_PATTERN,
     WAF_PROBE_MAX_WINDOW_SECONDS,
@@ -51,6 +55,7 @@ from app.providers.dto import (
     InstanceInfoDTO,
     LogSourceDTO,
     LogSourceGroupDTO,
+    LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
@@ -598,6 +603,61 @@ class QRadarRestProvider(QRadarProvider):
                 )
             )
         return samples
+
+    async def get_log_source_metrics_bucketed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> LogSourceMetricBucketBatch:
+        """Collect one keyed Ariel aggregate spanning multiple metric buckets."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        if max_rows < 1:
+            raise ValueError("metric row limit must be positive")
+        start, end = validate_bucketed_metric_window(
+            window_start, window_end, bucket_seconds
+        )
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        bucket_ms = bucket_seconds * 1000
+        aql = (
+            'SELECT logsourceid AS "qradar_id", '  # noqa: S608 - validated integers only
+            f'starttime / {bucket_ms} AS "k", '
+            'SUM(eventcount) AS "event_count", MAX(starttime) AS "last_event_time" '
+            "FROM events "
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY logsourceid, starttime / {bucket_ms} "
+            f"LIMIT {max_rows + 1} START {start_ms} STOP {end_ms}"
+        )
+        handle = await self.create_ariel_search(aql)
+        status: ArielSearchStatusDTO | None = None
+        for _ in range(120):
+            status = await self.get_ariel_search_status(handle.search_id)
+            if status.is_terminal:
+                break
+            await self._sleep(1.0)
+        else:
+            await self.cancel_ariel_search(handle.search_id)
+            raise ProviderUnavailableError("QRadar Ariel metric search timed out")
+
+        if status is None or not status.is_success:
+            raise ProviderError("QRadar Ariel metric search did not complete")
+
+        results = await self.get_ariel_search_results(handle.search_id, max_rows=max_rows)
+        buckets = fold_log_source_metric_buckets(
+            results.rows,
+            start,
+            end,
+            bucket_seconds=bucket_seconds,
+        )
+        return LogSourceMetricBucketBatch(
+            buckets=buckets,
+            truncated=results.truncated,
+            rows_returned=len(results.rows),
+            aql=aql,
+        )
 
     # -------------------------------------------------- explanation evidence
     #: Explanation dimension -> the Ariel field that carries it, plus an

@@ -138,6 +138,8 @@ class Settings(BaseSettings):
     search_failure_alert_after: int = Field(default=3, ge=1)
     # Delay a cadence slot after its boundary so late QRadar events can arrive.
     search_cadence_settle_seconds: int = Field(default=120, ge=0, le=900)
+    search_cadence_max_searches_per_tick: int = Field(default=16, ge=1, le=256)
+    ariel_multi_bucket_max_rows: int = Field(default=5000, ge=1, le=100_000)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention
@@ -283,6 +285,7 @@ class Settings(BaseSettings):
     anomaly_policy_version: int = Field(default=1, ge=1)
     #: Buckets of expected-but-absent traffic tolerated before NO_EVENTS fires.
     anomaly_silence_grace_buckets: int = Field(default=1, ge=0)
+    anomaly_max_buckets_per_evaluation: int = Field(default=120, ge=1, le=10_000)
 
     # --- Phase A explanation evidence ---------------------------------------
     explanation_enabled: bool = True

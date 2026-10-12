@@ -9,8 +9,8 @@ Guarantees:
   * Explicit UTC interval boundaries — intervals are floored to the configured
     interval width in UTC.
   * Watermark + lag persisted per (instance, collector).
-  * Bounded backfill — at most `collection_max_backfill_intervals` missed
-    intervals are filled; it never silently walks unlimited history.
+  * Bounded backfill — at most one cadence plus
+    `collection_max_backfill_intervals` is filled per tick.
 """
 
 from __future__ import annotations
@@ -24,12 +24,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.models.enums import BucketCompleteness
+from app.models.enums import BucketCompleteness, SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceMetric
 from app.models.monitoring import CollectionWatermark
-from app.providers.base import QRadarProvider
+from app.providers.base import ProviderError, QRadarProvider
+from app.providers.dto import LogSourceMetricSample
 from app.services.locks import CollectorAdvisoryLock
+from app.services.search_cadence import SearchCadenceService
 
 COLLECTOR_NAME = "log_source_metric"
 
@@ -42,6 +44,24 @@ class CollectionReport:
     skipped_locked: bool = False
     watermark_at: datetime | None = None
     lag_seconds: int | None = None
+    searches_sent: int = 0
+    splits: int = 0
+    partial: bool = False
+
+    @property
+    def buckets_collected(self) -> int:
+        return self.intervals_collected
+
+
+@dataclass(frozen=True)
+class _CompletedBucket:
+    samples: list[LogSourceMetricSample]
+    search_window_start: datetime
+    search_window_end: datetime
+    search_bucket_count: int
+    split_depth: int
+    duration_ms: int
+    collected_at: datetime
 
 
 def floor_to_interval(dt: datetime, interval_seconds: int) -> datetime:
@@ -87,16 +107,42 @@ class MetricCollector:
                 return CollectionReport(instance.id, 0, 0, skipped_locked=True)
 
             watermark = await self._get_or_create_watermark(instance)
-            intervals = self._intervals_to_collect(watermark, current_boundary, interval)
+            cadence = await SearchCadenceService(self.session, self.settings).get(
+                SearchFamily.PHASE_A_VOLUME
+            )
+            cadence_buckets = max(1, cadence.cadence_seconds // interval)
+            max_intervals = cadence_buckets + self.settings.collection_max_backfill_intervals
+            intervals = self._intervals_to_collect(
+                watermark, current_boundary, interval, max_intervals=max_intervals
+            )
+
+            completed, searches_sent, splits, search_partial = (
+                await self._collect_bucketed_window(intervals, interval)
+            )
 
             total_samples = 0
+            buckets_collected = 0
             last_done: datetime | None = watermark.watermark_at
             for start in intervals:
+                bucket = completed.get(start)
+                if bucket is None:
+                    break
                 end = start + timedelta(seconds=interval)
-                written = await self._collect_interval(
-                    instance, start, end, watermark_at=last_done
+                written = await self._write_bucket(
+                    instance,
+                    start,
+                    end,
+                    bucket.samples,
+                    watermark_at=last_done,
+                    duration_ms=bucket.duration_ms,
+                    collected_at=bucket.collected_at,
+                    search_window_start=bucket.search_window_start,
+                    search_window_end=bucket.search_window_end,
+                    search_bucket_count=bucket.search_bucket_count,
+                    split_depth=bucket.split_depth,
                 )
                 total_samples += written
+                buckets_collected += 1
                 # The watermark only advances past an interval that completed.
                 # A partial failure raises out of this loop, leaving the
                 # watermark on the last whole interval so the next run retries
@@ -105,7 +151,7 @@ class MetricCollector:
 
             watermark.watermark_at = last_done
             watermark.last_run_at = now
-            watermark.intervals_collected += len(intervals)
+            watermark.intervals_collected += buckets_collected
             if last_done is not None:
                 watermark.lag_seconds = int((now - (last_done + timedelta(seconds=interval)))
                                             .total_seconds())
@@ -115,18 +161,24 @@ class MetricCollector:
 
             return CollectionReport(
                 instance_id=instance.id,
-                intervals_collected=len(intervals),
+                intervals_collected=buckets_collected,
                 samples_written=total_samples,
                 watermark_at=watermark.watermark_at,
                 lag_seconds=watermark.lag_seconds,
+                searches_sent=searches_sent,
+                splits=splits,
+                partial=search_partial or buckets_collected < len(intervals),
             )
 
     def _intervals_to_collect(
-        self, watermark: CollectionWatermark, current_boundary: datetime, interval: int
+        self,
+        watermark: CollectionWatermark,
+        current_boundary: datetime,
+        interval: int,
+        *,
+        max_intervals: int,
     ) -> list[datetime]:
-        """Intervals strictly before the current boundary, resuming from the
-        watermark, capped by the backfill limit."""
-        max_backfill = self.settings.collection_max_backfill_intervals
+        """Intervals before the boundary, resuming at a bounded cadence window."""
         if watermark.watermark_at is None:
             # First run: just the most recent completed interval.
             start = current_boundary - timedelta(seconds=interval)
@@ -135,10 +187,93 @@ class MetricCollector:
         first = watermark.watermark_at + timedelta(seconds=interval)
         out: list[datetime] = []
         cursor = first
-        while cursor < current_boundary and len(out) < max_backfill + 1:
+        while cursor < current_boundary and len(out) < max_intervals:
             out.append(cursor)
             cursor += timedelta(seconds=interval)
         return out
+
+    async def _collect_bucketed_window(
+        self, intervals: list[datetime], interval: int
+    ) -> tuple[dict[datetime, _CompletedBucket], int, int, bool]:
+        """Search, recursively split truncation, and retain complete buckets."""
+        completed: dict[datetime, _CompletedBucket] = {}
+        searches_sent = 0
+        splits = 0
+        capped = False
+        failure: ProviderError | None = None
+
+        async def search(start: datetime, bucket_count: int, split_depth: int) -> None:
+            nonlocal searches_sent, splits, capped, failure
+            if failure is not None:
+                return
+            if searches_sent >= self.settings.search_cadence_max_searches_per_tick:
+                capped = True
+                return
+            end = start + timedelta(seconds=interval * bucket_count)
+            searches_sent += 1
+            started = self._clock()
+            if bucket_count == 1:
+                try:
+                    samples = await self.provider.get_log_source_metrics(start, end)
+                except ProviderError as exc:
+                    # A lone bucket that fails (or is still truncated) writes
+                    # nothing; the watermark stops before it.
+                    failure = exc
+                    return
+                collected_at = self._clock()
+                completed[start] = _CompletedBucket(
+                    samples=samples,
+                    search_window_start=start,
+                    search_window_end=end,
+                    search_bucket_count=1,
+                    split_depth=split_depth,
+                    duration_ms=int((collected_at - started).total_seconds() * 1000),
+                    collected_at=collected_at,
+                )
+                return
+            try:
+                batch = await self.provider.get_log_source_metrics_bucketed(
+                    start,
+                    end,
+                    bucket_seconds=interval,
+                    max_rows=self.settings.ariel_multi_bucket_max_rows,
+                )
+            except ProviderError as exc:
+                failure = exc
+                return
+            collected_at = self._clock()
+            duration_ms = int((collected_at - started).total_seconds() * 1000)
+            if batch.truncated:
+                splits += 1
+                left_count = bucket_count // 2
+                await search(start, left_count, split_depth + 1)
+                if not capped and failure is None:
+                    await search(
+                        start + timedelta(seconds=interval * left_count),
+                        bucket_count - left_count,
+                        split_depth + 1,
+                    )
+                return
+
+            for index in range(bucket_count):
+                bucket_start = start + timedelta(seconds=interval * index)
+                completed[bucket_start] = _CompletedBucket(
+                    samples=batch.buckets.get(bucket_start, []),
+                    search_window_start=start,
+                    search_window_end=end,
+                    search_bucket_count=bucket_count,
+                    split_depth=split_depth,
+                    duration_ms=duration_ms,
+                    collected_at=collected_at,
+                )
+
+        if intervals:
+            await search(intervals[0], len(intervals), 0)
+        # Complete buckets before the failure are kept; with none, nothing
+        # advanced and the error surfaces so the run is recorded as failed.
+        if failure is not None and intervals[0] not in completed:
+            raise failure
+        return completed, searches_sent, splits, capped or failure is not None
 
     async def _collect_interval(
         self,
@@ -152,6 +287,32 @@ class MetricCollector:
         samples = await self.provider.get_log_source_metrics(start, end)
         collected_at = self._clock()
         duration_ms = int((collected_at - started).total_seconds() * 1000)
+        return await self._write_bucket(
+            instance,
+            start,
+            end,
+            samples,
+            watermark_at=watermark_at,
+            duration_ms=duration_ms,
+            collected_at=collected_at,
+        )
+
+    async def _write_bucket(
+        self,
+        instance: QRadarInstance,
+        start: datetime,
+        end: datetime,
+        samples: list[LogSourceMetricSample],
+        *,
+        watermark_at: datetime | None,
+        duration_ms: int,
+        collected_at: datetime,
+        search_window_start: datetime | None = None,
+        search_window_end: datetime | None = None,
+        search_bucket_count: int | None = None,
+        split_depth: int | None = None,
+    ) -> int:
+        """Persist one complete bucket through the existing upsert and zero-fill."""
 
         # Map qradar_id -> internal LogSource id for this instance.
         id_map = await self._log_source_id_map(instance.id)
@@ -171,6 +332,16 @@ class MetricCollector:
             "event_count_aggregation": self.provider.event_count_aggregation,
             "telemetry": sorted(t.value for t in self.provider.log_source_telemetry),
         }
+        if search_window_start is not None and search_window_end is not None:
+            provenance.update(
+                {
+                    "search_window_start": search_window_start.isoformat(),
+                    "search_window_end": search_window_end.isoformat(),
+                    "search_bucket_count": search_bucket_count,
+                    "bucket_key": f"starttime / {int((end - start).total_seconds()) * 1000}",
+                    "split_depth": split_depth,
+                }
+            )
 
         rows = []
         for s in samples:

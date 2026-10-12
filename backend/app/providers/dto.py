@@ -127,6 +127,15 @@ class LogSourceMetricSample(ProviderDTO):
     payload_signature: str | None = None
 
 
+class LogSourceMetricBucketBatch(ProviderDTO):
+    """One bounded Ariel result split into its original metric buckets."""
+
+    buckets: dict[datetime, list[LogSourceMetricSample]] = Field(default_factory=dict)
+    truncated: bool = False
+    rows_returned: int = 0
+    aql: str
+
+
 class WafRequestGroup(ProviderDTO):
     """One (raw URL, method) group of WAF requests over a bounded window.
 

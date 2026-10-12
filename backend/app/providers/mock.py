@@ -35,6 +35,7 @@ from app.providers.dto import (
     InstanceInfoDTO,
     LogSourceDTO,
     LogSourceGroupDTO,
+    LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
@@ -231,6 +232,49 @@ class MockQRadarProvider(QRadarProvider):
             sample = self._build_sample(qid, window_start, bucket_seconds, base_eps, shape)
             samples.append(sample)
         return samples
+
+    async def get_log_source_metrics_bucketed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> LogSourceMetricBucketBatch:
+        """Build the keyed mock result from the existing per-bucket generator."""
+        from app.collectors.bucketed_metrics import validate_bucketed_metric_window
+
+        if max_rows < 1:
+            raise ValueError("metric row limit must be positive")
+        start, end = validate_bucketed_metric_window(
+            window_start, window_end, bucket_seconds
+        )
+        bucket_ms = bucket_seconds * 1000
+        aql = (
+            'SELECT logsourceid AS "qradar_id", '  # noqa: S608 - validated integers only
+            f'starttime / {bucket_ms} AS "k" FROM events '
+            f"GROUP BY logsourceid, starttime / {bucket_ms} LIMIT {max_rows + 1}"
+        )
+        buckets: dict[datetime, list[LogSourceMetricSample]] = {}
+        cursor = start
+        rows_returned = 0
+        truncated = False
+        while cursor < end:
+            samples = await self.get_log_source_metrics(
+                cursor, cursor + timedelta(seconds=bucket_seconds)
+            )
+            remaining = max_rows - rows_returned
+            buckets[cursor] = samples[: max(0, remaining)]
+            rows_returned += len(buckets[cursor])
+            if len(samples) > remaining:
+                truncated = True
+            cursor += timedelta(seconds=bucket_seconds)
+        return LogSourceMetricBucketBatch(
+            buckets=buckets,
+            truncated=truncated,
+            rows_returned=rows_returned,
+            aql=aql,
+        )
 
     #: Dimensions the mock "DSM" populates, and the value alphabet for each.
     #: `username` and `category` are deliberately absent so tests exercise the

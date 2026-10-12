@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, utcnow
 
 
 class CollectionWatermark(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -53,3 +53,19 @@ class CollectionWatermark(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # produced.  Rule metrics use this to distinguish a complete observation
     # window from the deliberately incomplete offense-contribution feed.
     collection_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class AnomalyEvaluationWatermark(Base):
+    """Last Phase A bucket evaluated for one monitored log source."""
+
+    __tablename__ = "anomaly_evaluation_watermark"
+
+    log_source_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("log_source.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    evaluated_through: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )

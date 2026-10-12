@@ -74,21 +74,75 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
 # ---------------------------------------------------------------- collection
 async def collect_metrics(instance_name: str | None = None) -> dict:
     """Collect log-source metrics independently for every enabled instance."""
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    settings = get_settings()
+    family = SearchFamily.PHASE_A_VOLUME
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed_slot = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
 
     async def run(
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
     ) -> dict:
         assert provider is not None
-        report = await MetricCollector(session, provider).collect(instance)
+        report = await MetricCollector(session, provider, settings=settings).collect(instance)
         return {
-            "status": "skipped_locked" if report.skipped_locked else "ok",
+            "status": (
+                "skipped_locked"
+                if report.skipped_locked
+                else "partial" if report.partial else "ok"
+            ),
             "intervals": report.intervals_collected,
+            "buckets_collected": report.buckets_collected,
+            "searches_sent": report.searches_sent,
+            "splits": report.splits,
             "samples": report.samples_written,
             "watermark_at": report.watermark_at,
             "lag_seconds": report.lag_seconds,
         }
 
-    return await _for_each_instance(run, instance_name)
+    try:
+        result = await _for_each_instance(run, instance_name)
+    except Exception:
+        # The slot stays claimed (no retry inside a slot); the counts are unknown.
+        async with maker() as cadence_session:
+            await SearchCadenceService(cadence_session, settings).record_run(
+                family, outcome="failed", searches=None, buckets=None, splits=None
+            )
+            await cadence_session.commit()
+        raise
+    statuses = [item.get("status") for item in result.get("results", [])]
+    if "failed" in statuses:
+        outcome = "failed"
+        searches = buckets = splits = None
+    else:
+        outcome = (
+            "partial"
+            if any(status in {"partial", "skipped_locked"} for status in statuses)
+            else "ok"
+        )
+        searches = sum(item.get("searches_sent", 0) for item in result.get("results", []))
+        buckets = sum(
+            item.get("buckets_collected", 0) for item in result.get("results", [])
+        )
+        splits = sum(item.get("splits", 0) for item in result.get("results", []))
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        await cadence.record_run(
+            family,
+            outcome=outcome,
+            searches=searches,
+            buckets=buckets,
+            splits=splits,
+        )
+        await cadence_session.commit()
+    return result
 
 
 # ------------------------------------------------------- phase 3 collection
@@ -468,7 +522,7 @@ async def evaluate_anomalies() -> dict:
         )
         opened = resolved = 0
         for source in sources:
-            report = await engine.evaluate_latest(source)
+            report = await engine.evaluate_pending(source)
             opened += len(report.opened)
             resolved += len(report.resolved)
         await session.commit()
