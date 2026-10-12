@@ -71,3 +71,46 @@ def test_policy_returns_multiple_channels() -> None:
     ])
     channels = {r.channel for r in policy.resolve(_alert())}
     assert channels == {NotificationChannel.SLACK, NotificationChannel.TEAMS}
+
+
+def _classed(source_class: str | None, *, fingerprint="anomaly:abc") -> Alert:
+    alert = _alert(fingerprint=fingerprint)
+    alert.context = {"source_class": source_class} if source_class else {}
+    return alert
+
+
+def test_source_class_rule_matches_only_those_classes() -> None:
+    rule = RoutingRule(channel=NotificationChannel.SLACK, target="fw-hook",
+                       source_classes=frozenset({"FIREWALL", "IPS"}))
+    assert rule.matches(_classed("FIREWALL"))
+    assert rule.matches(_classed("IPS"))
+    assert not rule.matches(_classed("LINUX"))
+
+
+def test_alert_without_source_class_matches_only_rules_without_the_condition() -> None:
+    scoped = RoutingRule(channel=NotificationChannel.SLACK, target="fw-hook",
+                         source_classes=frozenset({"FIREWALL"}))
+    open_rule = RoutingRule(channel=NotificationChannel.SLACK, target="all-hook")
+    assert not scoped.matches(_classed(None))
+    assert not scoped.matches(_alert())
+    assert open_rule.matches(_classed(None))
+    assert open_rule.matches(_classed("FIREWALL"))
+
+
+def test_source_class_combines_with_other_conditions() -> None:
+    rule = RoutingRule(channel=NotificationChannel.TEAMS, target="t",
+                       min_severity=Severity.HIGH, alert_types=frozenset({"inventory"}),
+                       source_classes=frozenset({"WAF"}))
+    assert rule.matches(_classed("WAF", fingerprint="inventory:x"))
+    assert not rule.matches(_classed("WAF", fingerprint="anomaly:x"))
+    assert not rule.matches(_classed("DNS", fingerprint="inventory:x"))
+
+
+def test_policy_resolves_class_scoped_route() -> None:
+    policy = RoutingPolicy(rules=[
+        RoutingRule(channel=NotificationChannel.SLACK, target="fw",
+                    source_classes=frozenset({"FIREWALL"})),
+        RoutingRule(channel=NotificationChannel.EMAIL, target="soc@x"),
+    ])
+    assert {r.target for r in policy.resolve(_classed("FIREWALL"))} == {"fw", "soc@x"}
+    assert {r.target for r in policy.resolve(_classed("LINUX"))} == {"soc@x"}

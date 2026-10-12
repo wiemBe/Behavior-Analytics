@@ -54,6 +54,16 @@ _BODIES: dict[tuple[str, str], dict] = {
         "technique_id": "T1059",
         "rule_id": "00000000-0000-0000-0000-000000000000",
     },
+    # Phase C. Both routes check their write permission in the handler, after body
+    # validation, so the guard needs a body that passes validation.
+    ("POST", "/api/v1/classification-rules"): {
+        "kind": "NAME_REGEX",
+        "pattern": "^guard-",
+        "target_class": "OTHER",
+    },
+    ("PATCH", "/api/v1/log-sources/{log_source_id}/classification"): {
+        "override_class": None,
+    },
 }
 
 _ID = str(uuid.uuid4())
