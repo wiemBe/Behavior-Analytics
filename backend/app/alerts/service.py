@@ -17,10 +17,12 @@ notification router owns delivery; this service only records the intent.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import String, any_, bindparam, select
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +49,13 @@ class AlertResult:
     opened: bool          # a new alert was created
     updated: bool         # an existing open alert was refreshed
     transition: AlertTransition | None
+
+
+@dataclass(frozen=True)
+class AlertResolution:
+    fingerprint: str
+    actor: str
+    reason: str | None = None
 
 
 class AlertService:
@@ -143,6 +152,127 @@ class AlertService:
         if alert is None:
             return None
         return await self.resolve(alert.id, actor=actor, reason=reason)
+
+    async def apply_bulk(
+        self,
+        open_or_updates: Sequence[AlertInput],
+        resolutions: Sequence[AlertResolution],
+    ) -> tuple[list[AlertResult], list[AlertResult | None]]:
+        """Apply a bucket's alert work after one active-alert lookup.
+
+        Refreshes are deliberately flushed together so a bucket with hundreds
+        of already-open conditions issues one batched UPDATE, not one statement
+        per endpoint. New alerts retain the partial unique index's concurrency
+        protection by inserting inside a savepoint.
+        """
+        fingerprints = {
+            data.fingerprint for data in open_or_updates
+        } | {item.fingerprint for item in resolutions}
+        active: dict[str, Alert] = {}
+        if fingerprints:
+            rows = await self.session.scalars(
+                select(Alert).where(
+                    Alert.dedup_key
+                    == any_(
+                        bindparam(
+                            "active_alert_fingerprints",
+                            type_=ARRAY(String()),
+                        )
+                    ),
+                    Alert.status != AlertStatus.RESOLVED,
+                ),
+                {"active_alert_fingerprints": sorted(fingerprints)},
+            )
+            active = {row.dedup_key: row for row in rows}
+
+        opened_or_updated: list[AlertResult] = []
+        for data in open_or_updates:
+            now = self._clock()
+            existing = active.get(data.fingerprint)
+            if existing is not None:
+                existing.occurrence_count += 1
+                existing.last_seen_at = now
+                existing.severity = data.severity
+                if data.evidence is not None:
+                    existing.evidence_snapshot = data.evidence
+                if data.source_anomaly_ids:
+                    merged = set(existing.source_anomaly_ids) | set(data.source_anomaly_ids)
+                    existing.source_anomaly_ids = sorted(merged)
+                opened_or_updated.append(
+                    AlertResult(
+                        alert=existing, opened=False, updated=True, transition=None
+                    )
+                )
+                continue
+
+            alert = Alert(
+                dedup_key=data.fingerprint,
+                fingerprint=data.fingerprint,
+                title=data.title,
+                description=data.description,
+                severity=data.severity,
+                status=AlertStatus.OPEN,
+                source_type=data.source_type,
+                source_id=data.source_id,
+                context=data.context or {},
+                opened_at=now,
+                first_seen_at=now,
+                last_seen_at=now,
+                occurrence_count=1,
+                evidence_snapshot=data.evidence or {},
+                source_anomaly_ids=data.source_anomaly_ids or [],
+            )
+            try:
+                async with self.session.begin_nested():
+                    self.session.add(alert)
+                    await self.session.flush([alert])
+            except IntegrityError:
+                # A concurrent worker won after the bulk snapshot. Reload only
+                # this exceptional fingerprint and preserve the outer work.
+                existing = await self._find_active(data.fingerprint)
+                if existing is None:
+                    raise
+                existing.occurrence_count += 1
+                existing.last_seen_at = self._clock()
+                active[data.fingerprint] = existing
+                opened_or_updated.append(
+                    AlertResult(
+                        alert=existing, opened=False, updated=True, transition=None
+                    )
+                )
+                continue
+            active[data.fingerprint] = alert
+            opened_or_updated.append(
+                AlertResult(
+                    alert=alert,
+                    opened=True,
+                    updated=False,
+                    transition=AlertTransition.OPENED,
+                )
+            )
+
+        resolved: list[AlertResult | None] = []
+        for item in resolutions:
+            resolving = active.get(item.fingerprint)
+            if resolving is None:
+                resolved.append(None)
+                continue
+            resolving.status = AlertStatus.RESOLVED
+            resolving.resolved_at = self._clock()
+            resolving.resolved_by = item.actor
+            resolving.resolution_reason = item.reason
+            active.pop(item.fingerprint, None)
+            resolved.append(
+                AlertResult(
+                    alert=resolving,
+                    opened=False,
+                    updated=True,
+                    transition=AlertTransition.RESOLVED,
+                )
+            )
+
+        await self.session.flush()
+        return opened_or_updated, resolved
 
     async def _find_active(self, fingerprint: str) -> Alert | None:
         return await self.session.scalar(

@@ -579,12 +579,14 @@ async def collect_waf_source(profile_id: str) -> dict:
     """Collect, evaluate and train one WAF source in its own session."""
     maker = get_sessionmaker()
     async with maker() as session:
+        enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
         return await run_waf_source(
             session,
             uuid.UUID(profile_id),
             provider_factory=lambda instance: build_provider_for_instance(
                 instance, audit_session=session
             ),
+            enqueuer=enqueuer,
         )
 
 

@@ -41,6 +41,9 @@ from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.alerts.dispatcher import AlertEnqueuer
+from app.alerts.fingerprint import waf_anomaly_fingerprint
+from app.alerts.service import AlertInput, AlertResolution, AlertService
 from app.anomaly.capabilities import WAF_DETECTORS, waf_input_scope, waf_verdict_scope
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import (
@@ -56,10 +59,12 @@ from app.models.enums import (
     AnomalyState,
     DetectorSignal,
     EvidenceStatus,
+    Severity,
     WafAnomalyType,
     WafBreakdown,
     WafMeasurement,
 )
+from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.waf import (
     WafAnomaly,
@@ -161,6 +166,23 @@ class _Subject:
     observation: EndpointObservation
 
 
+@dataclass(frozen=True)
+class _AlertOpenOrUpdate:
+    endpoint: WafEndpoint
+    detector_type: WafAnomalyType
+    evidence: AnomalyEvidence
+    anomaly_id: uuid.UUID | None
+
+
+@dataclass(frozen=True)
+class _AlertResolve:
+    endpoint: WafEndpoint
+    detector_type: WafAnomalyType
+
+
+type _AlertAction = _AlertOpenOrUpdate | _AlertResolve
+
+
 def _chunks(ids: Sequence[uuid.UUID]) -> Iterable[Sequence[uuid.UUID]]:
     for i in range(0, len(ids), _ID_CHUNK):
         yield ids[i : i + _ID_CHUNK]
@@ -176,11 +198,14 @@ class WafAnomalyEngine:
         detectors: dict[
             WafAnomalyType, Callable[[WafDetectionContext], WafSpikeVerdict]
         ] | None = None,
+        enqueuer: AlertEnqueuer | None = None,
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
         self._clock = clock or (lambda: datetime.now(UTC))
         self.detectors = detectors if detectors is not None else WAF_DETECTOR_FUNCTIONS
+        self.alerts = AlertService(session, clock=self._clock)
+        self._enqueuer = enqueuer
 
     def _thresholds(self) -> WafThresholds:
         s = self.settings
@@ -631,6 +656,7 @@ class WafAnomalyEngine:
         )
         reports: list[WafEvaluationReport] = []
         modified: list[WafDetectorState] = []
+        alert_actions: list[_AlertAction] = []
         for subject in subjects:
             endpoint, obs = subject.endpoint, subject.observation
             report = WafEvaluationReport(endpoint.id, obs.bucket_start)
@@ -672,12 +698,15 @@ class WafAnomalyEngine:
                     )
                 if self._apply_hysteresis(
                     endpoint, obs, detector_type, verdict.evidence, state, anomalies,
-                    report, thresholds,
+                    report, thresholds, alert_actions,
                 ):
                     modified.append(state)
             reports.append(report)
         self._uniform_updates(modified, anomalies.values())
-        await self.session.flush()
+        if alert_actions:
+            await self._apply_alert_actions(log_source, alert_actions)
+        else:
+            await self.session.flush()
         return reports
 
     def _uniform_updates(
@@ -795,6 +824,7 @@ class WafAnomalyEngine:
         anomalies: dict[uuid.UUID, WafAnomaly],
         report: WafEvaluationReport,
         thr: WafThresholds,
+        alert_actions: list[_AlertAction],
     ) -> bool:
         """Fold one verdict into the state. False when the bucket was already folded."""
         # Idempotency: this bucket already folded into the counters.
@@ -829,7 +859,15 @@ class WafAnomalyEngine:
             )
         )
         self._apply_transition(
-            endpoint, obs, detector_type, evidence, state, decision, anomalies, report
+            endpoint,
+            obs,
+            detector_type,
+            evidence,
+            state,
+            decision,
+            anomalies,
+            report,
+            alert_actions,
         )
         return True
 
@@ -843,6 +881,7 @@ class WafAnomalyEngine:
         decision: LifecycleDecision,
         anomalies: dict[uuid.UUID, WafAnomaly],
         report: WafEvaluationReport,
+        alert_actions: list[_AlertAction],
     ) -> None:
         previous = AnomalyState(state.state)
         target = decision.state
@@ -851,6 +890,16 @@ class WafAnomalyEngine:
         if target is previous:
             if previous is AnomalyState.OPEN:
                 self._touch(state, obs, evidence, anomalies)
+                if (
+                    self.settings.waf_alerting_enabled
+                    and evidence.is_anomalous
+                    and not report.in_maintenance
+                ):
+                    alert_actions.append(
+                        _AlertOpenOrUpdate(
+                            endpoint, detector_type, evidence, state.open_anomaly_id
+                        )
+                    )
             return
 
         state.state = target
@@ -879,6 +928,10 @@ class WafAnomalyEngine:
             self._touch(state, obs, evidence, anomalies)
             self._record_transition(incident, previous, target, obs, decision.reason, evidence)
             report.opened.append(detector_type.value)
+            if self.settings.waf_alerting_enabled and not report.in_maintenance:
+                alert_actions.append(
+                    _AlertOpenOrUpdate(endpoint, detector_type, evidence, incident.id)
+                )
             return
 
         if anomaly is not None:
@@ -902,6 +955,8 @@ class WafAnomalyEngine:
             # a new one rather than reviving this closed incident.
             state.active_anomaly_id = None
             report.resolved.append(detector_type.value)
+            if self.settings.waf_alerting_enabled:
+                alert_actions.append(_AlertResolve(endpoint, detector_type))
             return
 
         if target is AnomalyState.SUPPRESSED:
@@ -918,6 +973,90 @@ class WafAnomalyEngine:
             anomaly.anomaly_end = obs.bucket_start
         state.active_anomaly_id = None
         state.open_anomaly_id = None
+
+    async def _apply_alert_actions(
+        self, log_source: LogSource | None, actions: Sequence[_AlertAction]
+    ) -> None:
+        """Apply the synchronous fold's alert side effects in one async batch."""
+        if log_source is None:
+            await self.session.flush()
+            return
+
+        opens = [item for item in actions if isinstance(item, _AlertOpenOrUpdate)]
+        instance_name: str | None = None
+        if opens:
+            instance = await self.session.get(QRadarInstance, log_source.instance_id)
+            instance_name = instance.name if instance is not None else None
+
+        open_inputs = [
+            self._alert_input(log_source, instance_name, item)
+            for item in opens
+        ]
+        resolves = [
+            AlertResolution(
+                fingerprint=self._fingerprint(item.endpoint, item.detector_type),
+                actor="waf-anomaly-engine",
+                reason="condition recovered",
+            )
+            for item in actions
+            if isinstance(item, _AlertResolve)
+        ]
+        opened_or_updated, resolved = await self.alerts.apply_bulk(open_inputs, resolves)
+        if self._enqueuer is None:
+            return
+        for result in [*opened_or_updated, *resolved]:
+            if result is not None and result.transition is not None:
+                # String-backed enum columns load as str; dispatch rendering
+                # expects the domain enum's `.value` attribute.
+                result.alert.severity = Severity(result.alert.severity)
+                await self._enqueuer.enqueue(result.alert, result.transition)
+
+    def _alert_input(
+        self,
+        log_source: LogSource,
+        instance_name: str | None,
+        action: _AlertOpenOrUpdate,
+    ) -> AlertInput:
+        endpoint = action.endpoint
+        detector_type = action.detector_type
+        evidence = action.evidence
+        return AlertInput(
+            fingerprint=self._fingerprint(endpoint, detector_type),
+            title=(
+                f"{detector_type.value} on {log_source.name}: "
+                f"{endpoint.http_method} {endpoint.normalized_endpoint}"
+            ),
+            severity=evidence.severity,
+            source_type="waf_endpoint",
+            source_id=endpoint.id,
+            description=evidence.reason,
+            evidence=evidence.to_dict(),
+            source_anomaly_ids=(
+                [str(action.anomaly_id)] if action.anomaly_id is not None else []
+            ),
+            context={
+                "log_source": log_source.name,
+                "owner": log_source.owner,
+                "criticality": str(log_source.criticality),
+                "instance": instance_name,
+                "virtual_host": endpoint.virtual_host,
+                "endpoint": endpoint.normalized_endpoint,
+                "method": endpoint.http_method,
+                "detector_type": detector_type.value,
+            },
+        )
+
+    @staticmethod
+    def _fingerprint(endpoint: WafEndpoint, detector_type: WafAnomalyType) -> str:
+        return waf_anomaly_fingerprint(
+            instance_id=endpoint.instance_id,
+            log_source_id=endpoint.log_source_id,
+            virtual_host=endpoint.virtual_host,
+            normalized_endpoint=endpoint.normalized_endpoint,
+            http_method=endpoint.http_method,
+            normalizer_version=endpoint.normalizer_version,
+            detector_type=detector_type.value,
+        )
 
     def _create_incident(
         self,

@@ -302,6 +302,9 @@ class Settings(BaseSettings):
     #: real WAF source proves the production field equivalents, so it stays off
     #: unless an operator turns it on for a source they have verified.
     waf_collection_enabled: bool = False
+    #: WAF alerting is separately opt-in, so a source can collect and baseline
+    #: silently in shadow mode before its endpoint incidents can page anyone.
+    waf_alerting_enabled: bool = False
     #: QRadar custom-property display names. Site-authored and NOT derivable
     #: from the LEEF keys a device emits -- assuming they matched cost an entire
     #: round of zero-population measurements. Validated against a strict

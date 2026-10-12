@@ -49,6 +49,7 @@ from typing import Any
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.alerts.dispatcher import AlertEnqueuer
 from app.collectors.waf_endpoint_collector import (
     WafCollectionReport,
     WafEndpointCollector,
@@ -175,12 +176,14 @@ class WafSourcePipeline:
         settings: Settings | None = None,
         clock: Callable[[], datetime] | None = None,
         ariel_budget: WafArielBudget | None = None,
+        enqueuer: AlertEnqueuer | None = None,
     ) -> None:
         self.session = session
         self.provider = provider
         self.settings = settings or get_settings()
         self._clock = clock or (lambda: datetime.now(UTC))
         self.ariel_budget = ariel_budget or WafArielBudget.for_session(session, self.settings)
+        self._enqueuer = enqueuer
 
     async def run(self, profile: WafSourceProfile) -> WafPipelineReport:
         report = WafPipelineReport(profile.id, profile.log_source_id)
@@ -282,7 +285,12 @@ class WafSourcePipeline:
             ).all()
         )
 
-        engine = WafAnomalyEngine(self.session, settings=self.settings, clock=self._clock)
+        engine = WafAnomalyEngine(
+            self.session,
+            settings=self.settings,
+            clock=self._clock,
+            enqueuer=self._enqueuer,
+        )
         for bucket in buckets:
             result = await engine.evaluate_bucket(log_source, bucket)
             report.endpoint_evaluations += len(result.endpoint_reports)
@@ -433,6 +441,7 @@ async def run_waf_source(
     settings: Settings | None = None,
     clock: Callable[[], datetime] | None = None,
     ariel_budget: WafArielBudget | None = None,
+    enqueuer: AlertEnqueuer | None = None,
 ) -> dict[str, Any]:
     """One isolated, committed pipeline run for one source.
 
@@ -451,7 +460,12 @@ async def run_waf_source(
     log_source_id = profile.log_source_id
     try:
         report = await WafSourcePipeline(
-            session, provider, settings=settings, clock=clock, ariel_budget=ariel_budget
+            session,
+            provider,
+            settings=settings,
+            clock=clock,
+            ariel_budget=ariel_budget,
+            enqueuer=enqueuer,
         ).run(profile)
         await session.commit()
         skip = {

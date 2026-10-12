@@ -17,12 +17,21 @@ from datetime import timedelta
 from enum import StrEnum
 
 import pytest
-from sqlalchemy import event, insert, select, update
+from sqlalchemy import event, func, insert, select, update
 
+from app.alerts.dispatcher import NotificationDispatcher
+from app.alerts.routing import RoutingPolicy, RoutingRule
 from app.anomaly import capabilities
 from app.anomaly.capabilities import BehaviorDomain, DetectorSpec
 from app.anomaly.evidence import healthy
-from app.models.enums import WafBreakdown, WafTelemetryStatus
+from app.models.alert import Alert
+from app.models.enums import (
+    BucketCompleteness,
+    NotificationChannel,
+    WafBreakdown,
+    WafMeasurement,
+    WafTelemetryStatus,
+)
 from app.models.log_source import LogSource
 from app.models.waf import (
     WafDetectorState,
@@ -128,6 +137,62 @@ async def run(session, profile_id, provider, settings, k: int) -> dict:  # type:
         session, profile_id, provider_factory=lambda _i: provider, settings=settings,
         clock=lambda: at + STEP + timedelta(seconds=5),
     )
+
+
+async def add_full_bucket(
+    session, source_id, at, endpoint_ids, *, request_count: int
+):  # type: ignore[no-untyped-def]
+    """A dense evaluation bucket with one row for every seeded endpoint."""
+    await session.execute(
+        insert(WafSourceBucket),
+        [
+            dict(
+                log_source_id=source_id,
+                bucket_start=at,
+                bucket_seconds=300,
+                profile_version=1,
+                metric_semantics=SEMANTICS,
+                completeness=BucketCompleteness.COMPLETE,
+                endpoint_coverage_ratio=1.0,
+                total_events=request_count * len(endpoint_ids),
+                parsed_events=request_count * len(endpoint_ids),
+                group_count=len(endpoint_ids),
+                groups_truncated=False,
+                unusable_groups=0,
+                observed_endpoints=len(endpoint_ids),
+                tracked_endpoints_observed=len(endpoint_ids),
+                admitted_endpoints=0,
+                below_admission_threshold=0,
+                rejected_over_quota=0,
+                untracked_endpoints=0,
+                untracked_requests=0,
+                admission_truncated=False,
+                zero_filled_endpoints=0,
+                request_count_measurement=WafMeasurement.EXACT,
+                sparse_endpoint_rows=False,
+                in_maintenance=False,
+                collection_source="TEST",
+                query_provenance={},
+            )
+        ],
+    )
+    await session.execute(
+        insert(WafEndpointMetric),
+        [
+            dict(
+                waf_endpoint_id=endpoint_id,
+                bucket_start=at,
+                bucket_seconds=300,
+                request_count=request_count,
+                distinct_client_count=3,
+                endpoint_coverage_ratio=1.0,
+                completeness=BucketCompleteness.COMPLETE,
+                normalizer_version=ENDPOINT_NORMALIZER_VERSION,
+            )
+            for endpoint_id in endpoint_ids
+        ],
+    )
+    await session.flush()
 
 
 class TestStatementCounts:
@@ -315,6 +380,161 @@ class TestStatementCounts:
         assert in_window[40] == in_window[800]
         # The bucket records and one chunk of traffic aggregates: two statements.
         assert in_window[800] - established[800] == 2, (established, in_window)
+
+    async def test_alerting_without_transitions_adds_at_most_one_statement(
+        self, db_session
+    ) -> None:
+        settings = settings_for_scale()
+        alerting = settings.model_copy(update={"waf_alerting_enabled": True})
+        instance = await make_instance(db_session)
+        small = await seeded(db_session, instance, 312, 40, settings)
+        large = await seeded(db_session, instance, 313, 800, settings)
+        for profile_id, _source_id, provider in (small, large):
+            for k in range(3):
+                await run(db_session, profile_id, provider, settings, k)
+
+        async def rewind(source_id) -> None:  # type: ignore[no-untyped-def]
+            states = await db_session.scalars(
+                select(WafDetectorState)
+                .join(WafEndpoint)
+                .where(WafEndpoint.log_source_id == source_id)
+            )
+            for state in states:
+                state.last_interval_start = T0
+            await db_session.flush()
+
+        async def evaluate(source_id, configured) -> int:  # type: ignore[no-untyped-def]
+            source = await db_session.get(LogSource, source_id)
+            bucket = await db_session.get(WafSourceBucket, (source_id, T0 + STEP))
+            with counting(db_session) as statements:
+                result = await WafAnomalyEngine(
+                    db_session, settings=configured
+                ).evaluate_bucket(source, bucket)
+            assert len(result.endpoint_reports) in (40, 800)
+            return len(statements)
+
+        off: dict[int, int] = {}
+        on: dict[int, int] = {}
+        for size, (_profile_id, source_id, _provider) in ((40, small), (800, large)):
+            await rewind(source_id)
+            off[size] = await evaluate(source_id, settings)
+            await rewind(source_id)
+            on[size] = await evaluate(source_id, alerting)
+
+        assert off[40] == off[800]
+        assert on[40] == on[800]
+        assert on[800] <= off[800] + 1, (off, on)
+
+    async def test_refreshing_every_open_alert_is_constant_cost(self, db_session) -> None:
+        settings = settings_for_scale().model_copy(
+            update={
+                "waf_alerting_enabled": True,
+                "anomaly_open_after_intervals": 1,
+            }
+        )
+        instance = await make_instance(db_session)
+        small = await seeded(db_session, instance, 312, 40, settings)
+        large = await seeded(db_session, instance, 313, 800, settings)
+        costs: dict[int, int] = {}
+        for size, (_profile_id, source_id, _provider) in ((40, small), (800, large)):
+            endpoint_ids = list(
+                (
+                    await db_session.scalars(
+                        select(WafEndpoint.id).where(
+                            WafEndpoint.log_source_id == source_id
+                        )
+                    )
+                ).all()
+            )
+            open_at = T0 + STEP * 10
+            refresh_at = open_at + STEP
+            await add_full_bucket(
+                db_session, source_id, open_at, endpoint_ids, request_count=500
+            )
+            source = await db_session.get(LogSource, source_id)
+            bucket = await db_session.get(WafSourceBucket, (source_id, open_at))
+            opened = await WafAnomalyEngine(
+                db_session, settings=settings
+            ).evaluate_bucket(source, bucket)
+            assert opened.opened == size
+            assert int(
+                await db_session.scalar(
+                    select(func.count()).select_from(Alert).where(
+                        Alert.source_id.in_(endpoint_ids)
+                    )
+                )
+                or 0
+            ) == size
+
+            await add_full_bucket(
+                db_session, source_id, refresh_at, endpoint_ids, request_count=600
+            )
+            bucket = await db_session.get(WafSourceBucket, (source_id, refresh_at))
+            with counting(db_session) as statements:
+                refreshed = await WafAnomalyEngine(
+                    db_session, settings=settings
+                ).evaluate_bucket(source, bucket)
+            assert refreshed.opened == 0
+            costs[size] = len(statements)
+
+        assert costs[40] == costs[800], costs
+
+    async def test_alert_transition_statement_cost_is_bounded(self, db_session) -> None:
+        base = settings_for_scale().model_copy(
+            update={"anomaly_open_after_intervals": 1, "anomaly_resolve_after_intervals": 1}
+        )
+        alerting = base.model_copy(update={"waf_alerting_enabled": True})
+        instance = await make_instance(db_session)
+        shadow = await seeded(db_session, instance, 312, 1, base)
+        paging = await seeded(db_session, instance, 313, 1, alerting)
+        route = RoutingPolicy(
+            rules=[
+                RoutingRule(
+                    channel=NotificationChannel.SLACK,
+                    target="scale-test",
+                    alert_types=frozenset({"waf_anomaly"}),
+                )
+            ]
+        )
+
+        async def evaluate(
+            seeded_source, configured, at, count, *, enqueuer=None
+        ) -> int:  # type: ignore[no-untyped-def]
+            _profile_id, source_id, _provider = seeded_source
+            endpoint_ids = list(
+                (
+                    await db_session.scalars(
+                        select(WafEndpoint.id).where(WafEndpoint.log_source_id == source_id)
+                    )
+                ).all()
+            )
+            await add_full_bucket(
+                db_session, source_id, at, endpoint_ids, request_count=count
+            )
+            source = await db_session.get(LogSource, source_id)
+            bucket = await db_session.get(WafSourceBucket, (source_id, at))
+            with counting(db_session) as statements:
+                await WafAnomalyEngine(
+                    db_session, settings=configured, enqueuer=enqueuer
+                ).evaluate_bucket(source, bucket)
+            return len(statements)
+
+        dispatcher = NotificationDispatcher(db_session, {}, route, settings=alerting)
+        open_at = T0 + STEP * 10
+        shadow_open = await evaluate(shadow, base, open_at, 500)
+        paging_open = await evaluate(
+            paging, alerting, open_at, 500, enqueuer=dispatcher
+        )
+        resolve_at = open_at + STEP
+        shadow_resolve = await evaluate(shadow, base, resolve_at, 40)
+        paging_resolve = await evaluate(
+            paging, alerting, resolve_at, 40, enqueuer=dispatcher
+        )
+
+        open_cost = paging_open - shadow_open
+        resolve_cost = paging_resolve - shadow_resolve
+        assert 0 < open_cost <= 8, (shadow_open, paging_open)
+        assert 0 < resolve_cost <= 6, (shadow_resolve, paging_resolve)
 
     async def test_training_scales_with_chunks_not_endpoints(self, db_session) -> None:
         settings = cfg(waf_baseline_rebuild_chunk_size=25, baseline_min_samples=1)
