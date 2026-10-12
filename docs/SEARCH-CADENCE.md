@@ -77,6 +77,10 @@ source per hour replace 36–72.
 | `last_slot_start` | `DateTime(tz)`, NULL | Start of the last cadence slot this family was dispatched for. |
 | `updated_at` | `DateTime(tz)`, NOT NULL | |
 | `updated_by` | `String(255)`, NULL | The principal's subject; NULL for the seed. |
+| `last_run_at`, `last_run_outcome`, `last_run_searches`, `last_run_buckets`, `last_run_splits` | NULL until the family first reports | Written by the family through `SearchCadenceService.record_run`. The API's `last_run` comes from these columns. NULL means "not run since the upgrade" and is never shown as a zero. |
+
+Migration `0013` (T-034) creates `search_cadence`. Migration `0014` (T-035) creates
+`anomaly_evaluation_watermark`.
 
 **`anomaly_evaluation_watermark`**: one row per log source.
 
@@ -124,6 +128,14 @@ This is a new table, so Phase A tables stay as they are (AGENTS.md rule 6).
 - A family's run failing after it claimed its slot does not un-claim it. Collectors resume from
   their own watermark at the next slot, as today. Retrying inside a slot would multiply searches
   against a failing appliance.
+
+**A family is gated in the same task that makes it multi-bucket. Never earlier.** The reason:
+- Gated to 1 hour, a family still on per-bucket searches needs 12 or more buckets per run.
+- Its per-run caps were sized for one bucket per run. Rule matches, for example, would fall
+  behind the catch-up horizon and record windows as FAILED.
+- Phase A would also evaluate only the latest of 12 new buckets.
+
+T-034 therefore gates only `ANOMALY_EXPLANATION`, which has no buckets.
 
 **What runs on the slot:**
 - `PHASE_A_VOLUME` gates `collect_metrics`.
@@ -275,10 +287,10 @@ QRadar, and what does that cost in latency?**
 | ID | Task | Agent | Depends on |
 |---|---|---|---|
 | T-033 | **Defect:** `get_ariel_search_results` can never report truncation, so a scheduled search capped at `max_result_rows` is recorded as complete. Reproduce first. Then fetch `max_rows + 1` and keep `max_rows`. Audit every caller. | Sonnet | — |
-| T-034 | Cadence core: `SearchFamily`/`SearchCadence` enums, migration (both tables, seeded), `SearchCadenceService.claim_slot`, beat gating for the four families, API and permissions, audit | Codex | T-025 merged |
-| T-035 | Phase A: keyed multi-bucket collection, split on truncation, equivalence tests, evaluation watermark | Sonnet | T-033, T-034 |
-| T-036 | WAF: keyed endpoint, totals and breakdown searches, per-bucket top-N in the fold, split, equivalence tests | Codex | T-033, T-034 |
-| T-037 | Rule matches: keyed multi-window search | Sonnet | T-025, T-034 |
+| T-034 | Cadence core: `SearchFamily`/`SearchCadence` enums, migration `0013` (seeded), `SearchCadenceService` (`claim_slot`, `record_run`, get/set), the gate helper, API and permissions, audit. Gates `ANOMALY_EXPLANATION` only. | Codex | T-025 merged |
+| T-035 | Phase A: keyed multi-bucket collection, split on truncation, equivalence tests, evaluation watermark (migration `0014`), and Phase A's gate | Sonnet | T-033, T-034 |
+| T-036 | WAF: keyed endpoint, totals and breakdown searches, per-bucket top-N in the fold, split, equivalence tests, and the WAF gate | Codex | T-033, T-034 |
+| T-037 | Rule matches: keyed multi-window search, with per-run caps sized to the cadence, and the rule-match gate | Sonnet | T-025, T-034 |
 | T-038 | UI: cadence admin page and the scheduled-search preset picker, with screenshots at three viewports | Sonnet | T-034 |
 | T-039 | Docs: README configuration table, upgrade note, deprecated settings | opencode free | T-034 |
 
