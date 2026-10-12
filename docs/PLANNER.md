@@ -246,7 +246,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-015 | G1/G3 research: live discovery on the lab QRadar. Log-source fields, groups and types; SIM Generic; REST `average_eps`; rule capacity fields; rule-statistics and rule-logic endpoints; a `creEventList` firing-count AQL | Sonnet | IN PROGRESS (stopped once on token path; resumed with process-env overrides) | `docs/tasks/T-015.report.md` answers the 11 questions with measured facts; read-only; ≤ 12 Ariel searches |
 | T-016 | G2: raise alerts from WAF incidents (`waf_anomaly` fingerprint, `waf_alerting_enabled` shadow-mode switch, enqueuer wiring) | Codex | IN PROGRESS (`agent/t016`) | Open/refresh/resolve alerts; nothing in maintenance or with the setting off; statements constant with no transitions and on refresh |
 | T-017 | B.2: decision D-3. Ratio and concentration training and detection require source-level coverage | Sonnet | IN PROGRESS (`agent/t017`) | New `low_source_coverage` tally; INSUFFICIENT_DATA below the floor; at-floor still judged; no assertion changed |
-| T-018 | Test hygiene: drop the redundant module-level asyncio mark in `test_waf_collection.py` (5 PytestWarnings) | opencode `mimo-v2.6-flash-free` | IN PROGRESS (`agent/t018`) | Same pass count, warnings gone |
+| T-018 | Test hygiene: drop the redundant module-level asyncio mark in `test_waf_collection.py` (5 PytestWarnings) | opencode `mimo-v2.6-flash-free` | DONE (re-run by the orchestrator: 23 passed, 0 warnings) | Same pass count, warnings gone |
 
 **Later, not yet scheduled:**
 
