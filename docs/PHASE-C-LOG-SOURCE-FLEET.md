@@ -101,8 +101,10 @@ their own.
 - `TYPE_NAME_REGEX` per class, for well-known DSM names. Examples:
   - WAF: BIG-IP ASM, Imperva, FortiWeb, Barracuda WAF, ModSecurity.
   - IPS: Snort, Suricata, McAfee Network Security Platform, TippingPoint, Firepower IPS.
-  - FIREWALL: iptables, pfSense, FortiGate, Palo Alto PA Series, Check Point, Cisco ASA,
-    Juniper SRX.
+  - FIREWALL: iptables, pfSense, Cisco ASA.
+  - **No type rule for multi-role NGFW DSMs** (FortiGate, Palo Alto PA Series, Check Point, Cisco
+    Firepower Threat Defense, Juniper SRX; T-022c). One DSM carries firewall, IPS and threat logs,
+    and the user runs FTD and Palo Alto as IPS, so the site's naming convention decides.
   - PROXY: Squid, Blue Coat, Zscaler.
   - VPN: FirePass, Pulse Secure, GlobalProtect.
   - LINUX: Linux OS, plus Red Hat- and Ubuntu-named types.
