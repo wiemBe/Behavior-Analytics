@@ -69,6 +69,7 @@ from app.providers.dto import (
     WafRejectionObservation,
     WafRequestGroup,
     WafSourceProbe,
+    WindowedRuleMatches,
 )
 from app.providers.normalize import (
     as_int,
@@ -79,6 +80,7 @@ from app.providers.normalize import (
 )
 from app.providers.telemetry import EndpointCategory, ErrorClass, observe
 from app.providers.tls import build_ssl_context
+from app.rules.matches import fold_windowed_rows, window_starts
 from app.security.sanitizer import sanitize_text
 from app.services.backoff import backoff_delay
 
@@ -100,6 +102,9 @@ DEFAULT_MAX_PAGES = 200
 #: Version of the stored rule-match AQL. Bump it with any change to the query
 #: text, so a stored window can always be tied to the query that produced it.
 RULE_MATCH_QUERY_VERSION = "rule_match/v1"
+#: The keyed multi-window form of the same query (T-037). Its text differs, so
+#: its windows carry their own version.
+RULE_MATCH_WINDOWED_QUERY_VERSION = "rule_match/v2"
 
 
 def _rule_id(value: Any) -> int | None:
@@ -861,6 +866,67 @@ class QRadarRestProvider(QRadarProvider):
             row_cap=limit,
             malformed_rows=malformed,
             query_version=RULE_MATCH_QUERY_VERSION,
+            query=aql,
+            ariel_searches=1,
+        )
+
+    async def get_rule_matches_windowed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        window_seconds: int,
+        max_rows: int,
+    ) -> WindowedRuleMatches:
+        """One keyed aggregate: events matched per rule, per whole window.
+
+        `starttime / {window_ms}` is integer division, so ``k * window_ms`` is a
+        window's start in epoch-UTC milliseconds with no timezone involved
+        (T-032 Q1, Q6). `LIMIT` caps the result as a whole, so it asks for
+        ``max_rows + 1`` and reads more than ``max_rows`` rows as truncated;
+        the caller then keeps nothing and splits. Only validated epochs and
+        integers reach the query text. Read-only: one Ariel search over
+        ``events``, no raw event kept.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        # Validates alignment and whole windows before any request. The 168 h
+        # bound of `_bounded_window` is not applied: the span is a count of
+        # windows chosen by the collector, and the row cap bounds the answer.
+        window_starts(window_start, window_end, window_seconds)
+        start, end = window_start.astimezone(UTC), window_end.astimezone(UTC)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        window_ms = int(window_seconds) * 1000
+        # The same effective cap the single-window query records as `row_cap`.
+        cap = max(1, min(int(max_rows), self._page_size * self._max_pages))
+        aql = (
+            # See get_rule_matches for COUNT(*) and SUM(eventcount).
+            'SELECT creEventList AS "rule_id", '  # noqa: S608
+            f'starttime / {window_ms} AS "k", '
+            'COUNT(*) AS "records", SUM(eventcount) AS "events" FROM events '
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY creEventList, starttime / {window_ms} "
+            f"ORDER BY COUNT(*) DESC LIMIT {cap + 1} "
+            f"START {start_ms} STOP {end_ms}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        truncated = len(raw) > cap
+        return WindowedRuleMatches(
+            window_start=start,
+            window_end=end,
+            window_seconds=window_seconds,
+            batches=fold_windowed_rows(
+                raw,
+                window_start=start,
+                window_end=end,
+                window_seconds=window_seconds,
+                row_cap=cap,
+                parse_rows=parse_rule_match_rows,
+                query_version=RULE_MATCH_WINDOWED_QUERY_VERSION,
+                query=aql,
+            ),
+            truncated=truncated,
+            row_cap=cap,
             query=aql,
             ariel_searches=1,
         )

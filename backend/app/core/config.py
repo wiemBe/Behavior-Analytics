@@ -203,11 +203,14 @@ class Settings(BaseSettings):
     # Measured rule matches (Phase E.1a): one Ariel `creEventList` search per
     # window. Off by default -- the cost on a busy console is unmeasured.
     rule_match_collection_enabled: bool = False
+    #: Deprecated by `search_cadence`; the beat no longer reads this setting.
     rule_match_collection_interval_seconds: int = Field(default=900, ge=60)
     rule_match_window_seconds: int = Field(default=3600, ge=60, le=86_400)
     # A window is collected only once it ended this long ago, so late-arriving
     # events do not land in a window already recorded as COMPLETE.
     rule_match_settle_lag_seconds: int = Field(default=300, ge=0, le=86_400)
+    # Windows per run when the cadence is no longer than the window; beyond that,
+    # the extra windows of one cadence are added: ceil(cadence / window) + this - 1.
     rule_match_max_windows_per_run: int = Field(default=6, ge=1, le=168)
     # A window that failed this many times stays recorded as FAILED and the
     # watermark moves past it, so one unanswerable window cannot stall collection.

@@ -49,7 +49,9 @@ from app.providers.dto import (
     WafRejectionObservation,
     WafRequestGroup,
     WafSourceProbe,
+    WindowedRuleMatches,
 )
+from app.rules.matches import window_starts
 
 _LOG_SOURCE_TYPES = [
     (12, "Cisco ASA", False, False),
@@ -387,6 +389,37 @@ class MockQRadarProvider(QRadarProvider):
             row_cap=cap,
             query_version="rule_match/v1",
             query=f"MOCK creEventList LIMIT {cap}",
+        )
+
+    async def get_rule_matches_windowed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        window_seconds: int,
+        max_rows: int,
+    ) -> WindowedRuleMatches:
+        """Per-window `get_rule_matches`, as one search.
+
+        Each window's batch is exactly what `get_rule_matches` returns for it,
+        so tests and the lab profile exercise the real collector path. The
+        search is truncated when the span holds more than ``max_rows`` raw rows.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        step = timedelta(seconds=window_seconds)
+        batches = {
+            start: await self.get_rule_matches(start, start + step, max_rows=max_rows)
+            for start in window_starts(window_start, window_end, window_seconds)
+        }
+        raw_total = len(self._MOCK_MATCHED_RULE_IDS) * len(batches)
+        return WindowedRuleMatches(
+            window_start=window_start,
+            window_end=window_end,
+            window_seconds=window_seconds,
+            batches=batches,
+            truncated=raw_total > max(1, max_rows),
+            row_cap=max(1, max_rows),
+            query=f"MOCK creEventList WINDOWED LIMIT {max(1, max_rows) + 1}",
         )
 
     #: Endpoints the mock WAF source publishes. Mirrors the shape the lab

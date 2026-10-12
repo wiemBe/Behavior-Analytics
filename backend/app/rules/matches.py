@@ -15,13 +15,14 @@ detector never grants itself more reasoning than that table allows:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 from app.models.rule import RuleMatchWindowStatus
-from app.providers.dto import RuleMatchBatch
+from app.providers.base import ProviderError
+from app.providers.dto import RuleMatchBatch, RuleMatchRow
 
 
 class MatchEvidence(StrEnum):
@@ -145,6 +146,99 @@ def floor_to_window(value: datetime, window_seconds: int) -> datetime:
     """Floor a datetime to the UTC window grid, so every worker agrees on it."""
     epoch = int(value.astimezone(UTC).timestamp())
     return datetime.fromtimestamp(epoch - (epoch % window_seconds), tz=UTC)
+
+
+def window_starts(start: datetime, end: datetime, window_seconds: int) -> list[datetime]:
+    """The window starts of a span that is a whole number of aligned windows.
+
+    Aligned exactly as `floor_to_window` aligns them (epoch-UTC multiples of
+    `window_seconds`), so a keyed search and the per-window path agree on every
+    boundary. Anything else raises ValueError, before any request is made.
+    """
+    if window_seconds <= 0:
+        raise ValueError("window_seconds must be positive")
+    if start.tzinfo is None or end.tzinfo is None:
+        raise ValueError("the window span must be timezone-aware")
+    start, end = start.astimezone(UTC), end.astimezone(UTC)
+    if end <= start:
+        raise ValueError("the window span must end after its start")
+    if floor_to_window(start, window_seconds) != start or start.microsecond:
+        raise ValueError("the window span does not start on the window grid")
+    span = (end - start).total_seconds()
+    if span % window_seconds:
+        raise ValueError("the window span is not a whole number of windows")
+    step = timedelta(seconds=window_seconds)
+    return [start + step * i for i in range(int(span // window_seconds))]
+
+
+def _window_key(value: object) -> int | None:
+    """A bucket key exactly as QRadar sends it: an integer, possibly as 5.0."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
+
+
+def fold_windowed_rows(
+    raw_rows: Sequence[dict],
+    *,
+    window_start: datetime,
+    window_end: datetime,
+    window_seconds: int,
+    row_cap: int,
+    parse_rows: Callable[[Sequence[dict]], tuple[list[RuleMatchRow], int]],
+    query_version: str,
+    query: str,
+) -> dict[datetime, RuleMatchBatch]:
+    """Split the rows of one keyed search into one batch per window.
+
+    Pure. Each row carries ``k = starttime / window_ms`` (integer division), so
+    ``k * window_ms`` is its window's start. Every window of the span gets a
+    batch, empty if no row fell in it. Within a window, rows are read by
+    `parse_rows` (the same parser the per-window query uses), so a malformed
+    row is dropped and counted exactly as there.
+
+    A row whose ``k`` is missing, not an integer, or outside the span means the
+    appliance did not answer the question asked, so the whole search fails
+    rather than losing the row to a window it does not belong to. This applies
+    to a null rule id too: that row is excluded from the counts, not from the
+    check.
+
+    A window is marked truncated when it holds `row_cap` or more raw rows, as
+    the per-window query would, so the fold is column-for-column what the
+    per-window path stores.
+    """
+    starts = window_starts(window_start, window_end, window_seconds)
+    window_ms = window_seconds * 1000
+    first_key = int(window_start.timestamp() * 1000) // window_ms
+    grouped: dict[int, list[dict]] = {i: [] for i in range(len(starts))}
+    for row in raw_rows:
+        key = _window_key(row.get("k"))
+        if key is None:
+            raise ProviderError("rule match row has a missing or non-integer window key")
+        index = key - first_key
+        if not 0 <= index < len(starts):
+            raise ProviderError("rule match row has a window key outside the searched span")
+        grouped[index].append(row)
+
+    out: dict[datetime, RuleMatchBatch] = {}
+    for index, start in enumerate(starts):
+        rows, malformed = parse_rows(grouped[index])
+        out[start] = RuleMatchBatch(
+            window_start=start,
+            window_end=start + timedelta(seconds=window_seconds),
+            rows=rows,
+            truncated=len(grouped[index]) >= row_cap,
+            row_cap=row_cap,
+            malformed_rows=malformed,
+            query_version=query_version,
+            query=query,
+            ariel_searches=0,
+        )
+    return out
 
 
 class CoverageState(StrEnum):

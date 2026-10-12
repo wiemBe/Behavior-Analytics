@@ -14,9 +14,8 @@ def test_the_task_is_registered_and_scheduled() -> None:
 
     assert "collect_rule_matches" in celery_app.tasks
     assert schedule["collect-rule-matches"]["task"] == "collect_rule_matches"
-    assert schedule["collect-rule-matches"]["schedule"] == float(
-        get_settings().rule_match_collection_interval_seconds
-    )
+    # The beat only ticks; the RULE_MATCH cadence gate decides when a run happens.
+    assert schedule["collect-rule-matches"]["schedule"] == 60.0
 
 
 def test_collection_is_disabled_by_default() -> None:

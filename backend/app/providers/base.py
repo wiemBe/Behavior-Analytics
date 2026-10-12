@@ -40,6 +40,7 @@ from app.providers.dto import (
     WafObservationBatch,
     WafRejectionObservation,
     WafSourceProbe,
+    WindowedRuleMatches,
 )
 
 #: The only shape a site-authored QRadar property name may take before it is
@@ -251,6 +252,30 @@ class QRadarProvider(ABC):
         page sets ``truncated``: the batch is then a prefix, and a rule missing
         from it proves nothing. Events that matched no rule (a null id) are not
         rows.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only: it
+        only searches events.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_rule_matches_windowed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        window_seconds: int,
+        max_rows: int,
+    ) -> WindowedRuleMatches:
+        """`get_rule_matches` for many whole windows in one keyed search.
+
+        The span must be a whole number of `window_seconds` windows, aligned to
+        the UTC grid exactly as `floor_to_window` aligns them; anything else is
+        a ValueError before any request. One batch comes back per window, keyed
+        by its start. The row cap covers the span as a whole: more than
+        ``max_rows`` raw rows set ``truncated``, and the batches are then a
+        prefix the caller must not keep. A key outside the span, or one that is
+        not an integer, fails the whole search with a ProviderError.
 
         Requires AQL_EXECUTION, so this never runs through MCP. Read-only: it
         only searches events.

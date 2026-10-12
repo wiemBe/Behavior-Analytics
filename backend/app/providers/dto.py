@@ -419,3 +419,25 @@ class ArielSearchResultsDTO(ProviderDTO):
     rows: list[dict] = Field(default_factory=list)
     total_count: int = 0
     truncated: bool = False
+
+
+class WindowedRuleMatches(ProviderDTO):
+    """What one keyed `creEventList` search returned for many whole windows.
+
+    `batches` holds one entry per window of the span, keyed by the window's start,
+    and a window with no rows has an empty batch: the search covered it. When
+    `truncated` is set the whole result is a prefix and the batches must not be
+    kept, because `LIMIT` caps the result as a whole and cannot be applied per
+    window (T-032 Q3).
+    """
+
+    window_start: datetime
+    window_end: datetime
+    window_seconds: int
+    batches: dict[datetime, RuleMatchBatch] = Field(default_factory=dict)
+    #: More than `row_cap` raw rows came back for the span as a whole.
+    truncated: bool = False
+    row_cap: int = 0
+    query: str = ""
+    #: Ariel searches issued: 1 for the real provider, 0 for the mock.
+    ariel_searches: int = 0

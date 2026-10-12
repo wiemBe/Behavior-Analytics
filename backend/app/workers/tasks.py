@@ -311,13 +311,28 @@ async def collect_rule_metrics(instance_name: str | None = None) -> dict:
 
 
 async def collect_rule_matches(instance_name: str | None = None) -> dict:
-    """Collect measured rule matches, one Ariel search per window.
+    """Collect measured rule matches, one keyed Ariel search per cadence tick.
 
     A no-op while RULE_MATCH_COLLECTION_ENABLED is false: the cost on a busy
     console is unmeasured, so the beat entry exists but does nothing by default.
+    The RULE_MATCH cadence slot is claimed first, in its own committed session,
+    so a tick that is not due builds no provider and sends nothing to QRadar.
     """
-    if not get_settings().rule_match_collection_enabled:
+    settings = get_settings()
+    if not settings.rule_match_collection_enabled:
         return {"status": "disabled"}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.RULE_MATCH
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed_slot = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
 
     async def run(
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
@@ -336,13 +351,39 @@ async def collect_rule_matches(instance_name: str | None = None) -> dict:
             "windows_complete": report.windows_complete,
             "windows_truncated": report.windows_truncated,
             "windows_failed": report.windows_failed,
+            "searches_sent": report.searches_sent,
+            "splits": report.splits,
             "rows_written": report.rows_written,
             "unknown_ids": report.unknown_ids,
             "duration_ms": report.duration_ms,
             "error": report.error,
         }
 
-    return await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name)
+    results = result.get("results", [])
+    outcome = result.get("status")
+    if outcome is None:
+        outcome = (
+            "failed" if any(item.get("status") == "failed" for item in results) else "ok"
+        )
+    # An instance that raised reports no counts, so the totals are unknown, not
+    # a smaller number: record None rather than a count that under-reports.
+    measured = bool(results) and all("searches_sent" in item for item in results)
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        await cadence.record_run(
+            family,
+            outcome=outcome,
+            searches=sum(i["searches_sent"] for i in results) if measured else None,
+            buckets=(
+                sum(i["windows_complete"] + i["windows_truncated"] for i in results)
+                if measured
+                else None
+            ),
+            splits=sum(i["splits"] for i in results) if measured else None,
+        )
+        await cadence_session.commit()
+    return result
 
 
 async def detect_stale_offense_collection(instance_name: str | None = None) -> dict:

@@ -382,7 +382,9 @@ class TestLiveness:
 
         by_start = {w.window_start: w for w in await windows(db_session, inst)}
         assert by_start[W10].status == RuleMatchWindowStatus.COMPLETE
-        assert by_start[W10].attempts == 2
+        # Split-first: the failed multi-window search charged no window, and W10
+        # was then collected by its first single-window search.
+        assert by_start[W10].attempts == 1
         assert by_start[W10].last_error is None
         assert await metric_count(db_session) == 2
 
