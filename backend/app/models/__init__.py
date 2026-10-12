@@ -49,6 +49,7 @@ from app.models.search import (
     SearchQueryVersion,
     SearchResultMetric,
 )
+from app.models.search_cadence import SearchCadenceSetting
 from app.models.waf import (
     WafAnomaly,
     WafAnomalyTransition,
@@ -110,6 +111,7 @@ __all__ = [
     "RuleMetric",
     "RuleStateTransition",
     "ScheduledSearch",
+    "SearchCadenceSetting",
     "SearchExecution",
     "SearchQueryVersion",
     "SearchResultMetric",

@@ -136,6 +136,8 @@ class Settings(BaseSettings):
     # A search that has quietly stopped producing results is exactly the blind
     # spot this platform exists to surface, so it is alertable in its own right.
     search_failure_alert_after: int = Field(default=3, ge=1)
+    # Delay a cadence slot after its boundary so late QRadar events can arrive.
+    search_cadence_settle_seconds: int = Field(default=120, ge=0, le=900)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention
@@ -297,7 +299,7 @@ class Settings(BaseSettings):
     #: two queries per dimension, so a backlog is worked through over several
     #: runs rather than in one burst against the appliance.
     explanation_max_per_run: int = Field(default=5, ge=1, le=100)
-    #: How often the explanation task drains the pending queue.
+    #: Deprecated by `search_cadence`; the beat no longer reads this setting.
     explanation_collection_interval_seconds: int = Field(default=300, ge=30)
     #: Per-dimension Ariel timeout for an explanation job.
     explanation_query_timeout_seconds: int = Field(default=120, ge=10, le=900)

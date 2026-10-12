@@ -15,6 +15,7 @@ from app.api.routes import (
     overview,
     providers,
     rules,
+    search_cadence,
     searches,
     waf,
 )
@@ -27,6 +28,7 @@ from app.security.rbac import (
     PERM_OVERVIEW_READ,
     PERM_PROVIDER_READ,
     PERM_RULE_READ,
+    PERM_SEARCH_CADENCE_READ,
     PERM_SEARCH_READ,
     PERM_WAF_ADMIN,
 )
@@ -46,6 +48,10 @@ api_router.include_router(
     searches.router, dependencies=[Depends(requires(PERM_SEARCH_READ))]
 )
 api_router.include_router(alerts.router, dependencies=[Depends(requires(PERM_ALERT_READ))])
+api_router.include_router(
+    search_cadence.router,
+    dependencies=[Depends(requires(PERM_SEARCH_CADENCE_READ))],
+)
 # --- Phase 3 ---
 # Guarded at the router. These endpoints expose offence records (parsed
 # usernames, source addresses, analyst assignment) and a map of where detection

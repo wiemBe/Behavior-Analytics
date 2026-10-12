@@ -64,7 +64,7 @@ celery_app.conf.beat_schedule = {
         # dimension, so an unresponsive appliance must delay evidence rather
         # than delay the alert that something is wrong.
         "task": "collect_anomaly_explanations",
-        "schedule": float(settings.explanation_collection_interval_seconds),
+        "schedule": 60.0,
     },
     # --- Phase 3 -------------------------------------------------------------
     # Every interval below is configurable; none is a hardcoded production

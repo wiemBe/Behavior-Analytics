@@ -66,6 +66,10 @@ PERM_LOG_SOURCE_WRITE = "log_source:write"
 # handlers checked a write permission. Now guarded at the router like the rest.
 PERM_SEARCH_READ = "read:searches"
 PERM_ALERT_READ = "read:alerts"
+# Search-family cadence is visible to read-only roles, while changing it is an
+# operational control reserved for administrators, matching the WAF pattern.
+PERM_SEARCH_CADENCE_READ = "read:search_cadence"
+PERM_SEARCH_CADENCE_ADMIN = "admin:search_cadence"
 
 
 class PermissionDenied(Exception):

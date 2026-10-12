@@ -1,9 +1,9 @@
 """Migration 0012 (measured rule matches): round trip, hypertable, constraints.
 
 Kept apart from `test_migrations.py` on purpose, so the parallel T-022 work and
-this one never edit the same file. It is written against `head` and `-1` rather
-than a revision number, so re-chaining 0012 behind another migration does not
-break it.
+this one never edit the same file.
+The round trip is pinned to revision 0012 (up to 0012, down to 0011), so later
+migrations on top of it do not break it; the drift check still runs at head.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def test_0012_round_trips_and_leaves_no_drift(clean_db: str) -> None:
     cfg = _alembic_config(clean_db)
     engine = create_engine(clean_db, future=True)
     try:
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0012")
         with engine.connect() as conn:
             assert _exists(conn, "rule_match_metric")
             assert _exists(conn, "rule_match_window")
@@ -87,7 +87,7 @@ def test_0012_round_trips_and_leaves_no_drift(clean_db: str) -> None:
             ]
             assert not leftovers
 
-        command.downgrade(cfg, "-1")
+        command.downgrade(cfg, "0011")
         with engine.connect() as conn:
             assert not _exists(conn, "rule_match_metric")
             assert not _exists(conn, "rule_match_window")

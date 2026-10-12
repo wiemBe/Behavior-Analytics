@@ -487,6 +487,18 @@ async def collect_anomaly_explanations(instance_name: str | None = None) -> dict
     if not settings.explanation_enabled:
         return {"status": "disabled", "instances": 0, "results": []}
 
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.ANOMALY_EXPLANATION
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed_slot = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
+
     async def run(
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
     ) -> dict:
@@ -529,7 +541,25 @@ async def collect_anomaly_explanations(instance_name: str | None = None) -> dict
                 "by_status": statuses,
             }
 
-    return await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name)
+    outcome = result.get("status")
+    if outcome is None:
+        outcome = (
+            "failed"
+            if any(item.get("status") == "failed" for item in result["results"])
+            else "ok"
+        )
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        await cadence.record_run(
+            family,
+            outcome=outcome,
+            searches=None,
+            buckets=None,
+            splits=None,
+        )
+        await cadence_session.commit()
+    return result
 
 
 # ------------------------------------------------------------------ baselines
