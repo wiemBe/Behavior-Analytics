@@ -453,6 +453,26 @@ an em dash, never as zero.
 Secondary and raw implementation detail — thresholds, versions, provenance.
 **Must not** dominate the initial investigation hierarchy, and starts collapsed.
 
+### `IncidentMetrics`
+
+The incident page's four primary metrics — observed, expected, deviation,
+duration — rendered as **one comparison block**, not four identical cards. The
+observed value carries the most weight; expected and deviation sit beside it at
+a lower weight; duration is smallest. Every figure carries its unit, and
+detector confidence is a labelled footer of the block. A null renders as an em
+dash: an unmeasured value is not a zero, and a still-running incident has no
+duration.
+
+### `LoadingState` / `ErrorState`
+
+Every data route tree has a `loading.tsx` and an `error.tsx` built from these
+(`components/ui/RouteState.tsx`). Both are plain text — no spinner, no
+skeleton. `LoadingState` is a polite live region naming what is loading.
+`ErrorState` is an alert that says the page could not be displayed, that
+nothing was changed, and what to try; it **must not** render the exception
+text, which can carry a stack trace or an upstream URL. Next's error digest may
+be shown as a reference.
+
 ---
 
 ## 9. Responsive layout
@@ -524,12 +544,17 @@ The rules below are contracts with regression coverage. This repository has
 - Active navigation uses `aria-current="page"` (§8).
 - Tabs expose valid, resolving tab-and-panel relationships.
 - Disclosures use native semantics (§8).
+- Timestamps are UTC and always carry the zone (`formatDateTime`,
+  `formatDateTimeCompact`). A time without a zone is ambiguous to an analyst
+  comparing it with QRadar or another system.
 - Status and severity meaning is available in text. **Color must never be the
   sole carrier of meaning** — this covers severity (`LOW`, `MEDIUM`, `HIGH`,
   `CRITICAL`), lifecycle state including `INSUFFICIENT_DATA`, and evidence and
   dimension states including `UNAVAILABLE`, `FAILED` and truncation. No two
   states in a set may reduce to the same words, and only a genuinely good
   outcome may take a positive tone.
+- A severity never takes the positive tone: `LOW` and `INFO` are `info`, not
+  `ok` (`sevTone`). A low-severity anomaly is still an anomaly.
 - Tables use real column-header semantics, carry an accessible name or caption,
   and their sorting and pagination controls have names identifying the column
   and the action or state.
