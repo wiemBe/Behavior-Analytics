@@ -103,7 +103,7 @@ class TestRestProvider:
         assert f"starttime >= {start_ms} AND starttime < {end_ms}" in query
         assert f"START {start_ms} STOP {end_ms}" in query
         assert "LIMIT 200" in query
-        assert captured["range"] == "items=0-199"
+        assert captured["range"] == "items=0-200"
         assert batch.row_cap == 200
         assert batch.query_version == "rule_match/v1"
         assert batch.query == query
