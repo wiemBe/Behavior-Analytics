@@ -23,7 +23,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-import re
 import ssl
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
@@ -32,9 +31,13 @@ from typing import Any, ClassVar
 import httpx
 
 from app.providers.base import (
+    PROPERTY_NAME_PATTERN,
+    WAF_PROBE_MAX_WINDOW_SECONDS,
+    LogSourceTelemetry,
     ProviderAuthError,
     ProviderCapability,
     ProviderError,
+    ProviderQueryRejectedError,
     ProviderUnavailableError,
     QRadarProvider,
 )
@@ -50,8 +53,14 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    WafBreakdownBatch,
+    WafBreakdownGroup,
     WafObservationBatch,
+    WafPropertyProbe,
+    WafPropertyValue,
+    WafRejectionObservation,
     WafRequestGroup,
+    WafSourceProbe,
 )
 from app.providers.normalize import (
     as_int,
@@ -114,6 +123,14 @@ class QRadarRestProvider(QRadarProvider):
             ProviderCapability.CONFIG_SNAPSHOTS,
         }
     )
+    #: Exactly what the one metric aggregate in `get_log_source_metrics`
+    #: computes. `event_delay_seconds` is populated too, but it is the gap from
+    #: the newest event to the bucket end -- bounded by the bucket width -- so it
+    #: is deliberately not declared as INGESTION_DELAY.
+    log_source_telemetry = frozenset(
+        {LogSourceTelemetry.EVENT_VOLUME, LogSourceTelemetry.LAST_EVENT_TIME}
+    )
+    event_count_aggregation = "SUM(eventcount)"
 
     def __init__(
         self,
@@ -229,7 +246,9 @@ class QRadarRestProvider(QRadarProvider):
                         outcome["error_class"] = (
                             ErrorClass.RATE_LIMITED if status == 429 else ErrorClass.UPSTREAM_ERROR
                         )
-                        last_exc = ProviderUnavailableError(_sanitize_upstream_error(status))
+                        last_exc = ProviderUnavailableError(
+                            _sanitize_upstream_error(status), status_code=status
+                        )
                         retry_after = self._retry_after_seconds(response)
                         if attempt < attempts:
                             await self._sleep(
@@ -242,7 +261,14 @@ class QRadarRestProvider(QRadarProvider):
 
                     if status >= 400:
                         outcome["error_class"] = ErrorClass.UPSTREAM_ERROR
-                        raise ProviderError(_sanitize_upstream_error(status))
+                        if status == 422:
+                            # A subclass, so every existing `except ProviderError`
+                            # behaves as before. Callers that need to tell "QRadar
+                            # refused this query" from "the query failed" can.
+                            raise ProviderQueryRejectedError(
+                                _sanitize_upstream_error(status), status_code=status
+                            )
+                        raise ProviderError(_sanitize_upstream_error(status), status_code=status)
 
                     return self._decode(response, outcome)
 
@@ -653,7 +679,7 @@ class QRadarRestProvider(QRadarProvider):
     #: comma, a parenthesis -- is rejected rather than escaped, because an
     #: allowlist that a reviewer can verify by eye beats a quoting scheme that
     #: has to be trusted.
-    _PROPERTY_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ -]{0,63}$")
+    _PROPERTY_NAME = PROPERTY_NAME_PATTERN
 
     @classmethod
     def _quote_property(cls, name: str) -> str:
@@ -746,7 +772,266 @@ class QRadarRestProvider(QRadarProvider):
             total_events=total or 0,
             truncated=len(groups) >= limit,
             query=aql,
+            total_query=total_aql,
+            ariel_searches=2,
         )
+
+    async def get_waf_breakdown(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None,
+        breakdown: str,
+        breakdown_property: str | None,
+        max_groups: int = 2000,
+    ) -> WafBreakdownBatch:
+        """One bounded aggregate: requests by raw endpoint key and one field.
+
+        `IS NOT NULL` on the breakdown field defines the population explicitly,
+        so the result does not depend on how Ariel groups a NULL value: for each
+        endpoint, the denominator is the requests that carried the field, and
+        numerator and denominator come from this same search.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = self._bounded_window(window_start, window_end)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        limit = max(1, min(max_groups, self._page_size * self._max_pages))
+
+        if breakdown == "SOURCE_IP":
+            # A normalized QRadar field, not a custom property: never quoted, and
+            # never taken from configuration.
+            value = "sourceip"
+        elif breakdown in ("ACTION", "RESPONSE_CODE") and breakdown_property:
+            value = self._quote_property(breakdown_property)
+        else:
+            raise ValueError(f"unsupported WAF breakdown {breakdown!r}")
+        url = self._quote_property(url_property)
+        method = self._quote_property(method_property)
+        vhost = (
+            self._quote_property(virtual_host_property) if virtual_host_property else None
+        )
+        group_cols = f"{url}, {method}" + (f", {vhost}" if vhost else "") + f", {value}"
+        vhost_select = f", {vhost} AS \"raw_virtual_host\"" if vhost else ""
+        aql = (
+            f'SELECT {url} AS "raw_url", {method} AS "raw_method"{vhost_select}, '  # noqa: S608
+            f'{value} AS "raw_value", SUM(eventcount) AS "request_count" FROM events '
+            f"WHERE logsourceid = {int(qradar_log_source_id)} "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+            f"AND {value} IS NOT NULL "
+            f"GROUP BY {group_cols} ORDER BY SUM(eventcount) DESC LIMIT {limit} "
+            f"START {start_ms} STOP {end_ms}"
+        )
+        rows = await self._run_bounded_aggregate(aql, max_rows=limit)
+        groups: list[WafBreakdownGroup] = []
+        for row in rows:
+            count = as_int(row.get("request_count"))
+            if count is None or count < 0:
+                continue
+            groups.append(
+                WafBreakdownGroup(
+                    raw_url=as_text(row.get("raw_url"), limit=2048),
+                    raw_method=as_text(row.get("raw_method"), limit=32),
+                    raw_virtual_host=as_text(row.get("raw_virtual_host"), limit=255),
+                    raw_value=as_text(row.get("raw_value"), limit=255),
+                    request_count=count,
+                )
+            )
+        return WafBreakdownBatch(
+            breakdown=breakdown,
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=start,
+            window_end=end,
+            groups=groups,
+            truncated=len(rows) >= limit,
+            query=aql,
+            ariel_searches=1,
+        )
+
+    async def probe_waf_properties(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        property_names: Sequence[str],
+        max_values: int = 50,
+    ) -> WafSourceProbe:
+        """One total plus at most two bounded aggregates per property.
+
+        Read-only, scoped to one log source, `START`/`STOP`-bounded, `LIMIT`-capped
+        and at most one hour wide. Property names pass the same allowlist as
+        collection; a name that fails it is reported rejected without a query.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = self._bounded_window(window_start, window_end)
+        if (end - start).total_seconds() > WAF_PROBE_MAX_WINDOW_SECONDS:
+            raise ValueError("WAF property probe window exceeds the one-hour bound")
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        scope = (
+            f"WHERE logsourceid = {int(qradar_log_source_id)} "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms}"
+        )
+        bound = f"START {start_ms} STOP {end_ms}"
+        limit = max(1, min(max_values, self._page_size))
+
+        total_aql = f'SELECT SUM(eventcount) AS "total_events" FROM events {scope} LIMIT 1 {bound}'  # noqa: S608
+        total: int | None = None
+        total_error: str | None = None
+        try:
+            rows = await self._run_bounded_aggregate(total_aql, max_rows=1)
+            total = (as_int(rows[0].get("total_events")) if rows else 0) or 0
+        except (ProviderError, ValueError) as exc:
+            total_error = f"{type(exc).__name__}: {exc}"[:400]
+
+        probes = [
+            await self._probe_property(name, scope=scope, bound=bound, limit=limit)
+            for name in dict.fromkeys(property_names)
+        ]
+        return WafSourceProbe(
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=start,
+            window_end=end,
+            total_events=total,
+            total_error=total_error,
+            total_query=total_aql,
+            properties=probes,
+        )
+
+    async def _probe_property(
+        self, name: str, *, scope: str, bound: str, limit: int
+    ) -> WafPropertyProbe:
+        try:
+            prop = self._quote_property(name)
+        except ValueError as exc:
+            return WafPropertyProbe(property_name=name, rejected=True, error=str(exc)[:400])
+
+        population_aql = (
+            f'SELECT SUM(eventcount) AS "populated", UNIQUECOUNT({prop}) AS "distinct_values" '  # noqa: S608
+            f"FROM events {scope} AND {prop} IS NOT NULL LIMIT 1 {bound}"
+        )
+        queries = [population_aql]
+        try:
+            rows = await self._run_bounded_aggregate(population_aql, max_rows=1)
+        except ProviderQueryRejectedError as exc:
+            return WafPropertyProbe(
+                property_name=name, rejected=True, error=str(exc)[:400], queries=queries
+            )
+        except (ProviderError, ValueError) as exc:
+            return WafPropertyProbe(
+                property_name=name, error=f"{type(exc).__name__}: {exc}"[:400], queries=queries
+            )
+        populated = (as_int(rows[0].get("populated")) if rows else 0) or 0
+        distinct = as_int(rows[0].get("distinct_values")) if rows else None
+
+        values_aql = (
+            f'SELECT {prop} AS "value", SUM(eventcount) AS "events" FROM events {scope} '  # noqa: S608
+            f"AND {prop} IS NOT NULL GROUP BY {prop} ORDER BY SUM(eventcount) DESC "
+            f"LIMIT {limit} {bound}"
+        )
+        queries.append(values_aql)
+        try:
+            value_rows = await self._run_bounded_aggregate(values_aql, max_rows=limit)
+        except (ProviderError, ValueError) as exc:
+            return WafPropertyProbe(
+                property_name=name,
+                error=f"{type(exc).__name__}: {exc}"[:400],
+                populated_events=populated,
+                distinct_values=distinct,
+                queries=queries,
+            )
+        values: list[WafPropertyValue] = []
+        for row in value_rows:
+            value = as_text(row.get("value"), limit=1024)
+            events = as_int(row.get("events"))
+            if value is None or events is None or events < 0:
+                continue
+            values.append(WafPropertyValue(value=value, events=events))
+        return WafPropertyProbe(
+            property_name=name,
+            populated_events=populated,
+            distinct_values=distinct,
+            values=values,
+            values_truncated=len(value_rows) >= limit,
+            queries=queries,
+        )
+
+    async def observe_property_rejection(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        property_names: Sequence[str],
+    ) -> list[WafRejectionObservation]:
+        """One bounded search per property; the outcome is recorded, results are not fetched.
+
+        Exists to verify an assumption rather than to rely on one: validation
+        treats HTTP 422 as "the property does not exist". Whatever QRadar really
+        does -- 422, another 4xx, a search that is created and then errors, or a
+        search that completes -- is recorded here as observed.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = self._bounded_window(window_start, window_end)
+        if (end - start).total_seconds() > WAF_PROBE_MAX_WINDOW_SECONDS:
+            raise ValueError("rejection probe window exceeds the one-hour bound")
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        out: list[WafRejectionObservation] = []
+        for name in dict.fromkeys(property_names):
+            prop = self._quote_property(name)
+            aql = (
+                f'SELECT {prop} AS "v" FROM events '  # noqa: S608
+                f"WHERE logsourceid = {int(qradar_log_source_id)} "
+                f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+                f"LIMIT 1 START {start_ms} STOP {end_ms}"
+            )
+            try:
+                handle = await self.create_ariel_search(aql)
+            except ProviderUnavailableError as exc:
+                out.append(WafRejectionObservation(
+                    property_name=name, outcome="CREATE_FAILED",
+                    create_http_status=exc.status_code, query=aql,
+                ))
+                continue
+            except ProviderError as exc:
+                status = exc.status_code
+                outcome = (
+                    "REJECTED_AT_CREATE" if status is not None and 400 <= status < 500
+                    else "CREATE_FAILED"
+                )
+                out.append(WafRejectionObservation(
+                    property_name=name, outcome=outcome, create_http_status=status, query=aql,
+                ))
+                continue
+            status_dto: ArielSearchStatusDTO | None = None
+            for _ in range(120):
+                status_dto = await self.get_ariel_search_status(handle.search_id)
+                if status_dto.is_terminal:
+                    break
+                await self._sleep(1.0)
+            else:
+                await self.cancel_ariel_search(handle.search_id)
+                out.append(WafRejectionObservation(
+                    property_name=name, outcome="TIMED_OUT", search_created=True,
+                    search_status=status_dto.status if status_dto else None, query=aql,
+                ))
+                continue
+            assert status_dto is not None
+            out.append(WafRejectionObservation(
+                property_name=name,
+                outcome="SEARCH_COMPLETED" if status_dto.is_success else "SEARCH_FAILED",
+                search_created=True,
+                search_status=status_dto.status,
+                record_count=status_dto.record_count,
+                query=aql,
+            ))
+        return out
 
     async def _run_bounded_aggregate(self, aql: str, *, max_rows: int) -> list[dict]:
         """Create, poll and fetch one aggregate search under a hard time bound."""

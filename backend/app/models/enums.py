@@ -47,12 +47,81 @@ class WafAnomalyType(StrEnum):
     fingerprints, and widening it would make a Phase A row's type column able to
     hold a value no Phase A detector can produce.
 
-    Only the rate spike is implemented. The ratio detectors are named here
-    because their contract is specified (section 11.3) but they have no
-    numerator until a WAF source exposes blocked and error counts.
+    Each member has a spec in `app.anomaly.capabilities.WAF_DETECTORS`, which
+    states what it measures and whether anything can run it. A member existing
+    says nothing about whether it can fire: `WAF_CLIENT_ENDPOINT_FANOUT_SPIKE`
+    is named so its blocker is published, and has no detector function.
     """
 
+    #: Endpoint request volume above its seasonal baseline.
     WAF_REQUEST_RATE_SPIKE = "WAF_REQUEST_RATE_SPIKE"
+    #: The share of an endpoint's requests from its largest source IP rose.
+    WAF_CLIENT_CONCENTRATION_SPIKE = "WAF_CLIENT_CONCENTRATION_SPIKE"
+    #: The proportion of an endpoint's requests the WAF blocked rose, judged
+    #: through the profile's validated action map -- never from HTTP 403.
+    WAF_BLOCK_RATIO_SPIKE = "WAF_BLOCK_RATIO_SPIKE"
+    #: The proportion of an endpoint's responses that were HTTP 5xx rose.
+    WAF_ERROR_RATIO_SPIKE = "WAF_ERROR_RATIO_SPIKE"
+    #: The proportion of an endpoint's responses that were HTTP 4xx rose. Kept
+    #: separate from 5xx: client and server errors are different operational
+    #: conditions, and one incident per class lets each recover on its own.
+    WAF_CLIENT_ERROR_RATIO_SPIKE = "WAF_CLIENT_ERROR_RATIO_SPIKE"
+    #: Material traffic to a normalized endpoint absent from a verified history.
+    WAF_NEW_ENDPOINT_ACCESS = "WAF_NEW_ENDPOINT_ACCESS"
+    #: Unsupported: see its capability spec for the blocker.
+    WAF_CLIENT_ENDPOINT_FANOUT_SPIKE = "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE"
+
+
+class WafLogicalField(StrEnum):
+    """A logical WAF field a source profile maps onto a site-authored property.
+
+    The logical name is what business logic reads. The QRadar property that
+    carries it is per-source configuration, because display names are authored
+    per site and differ between WAF products and DSMs.
+    """
+
+    URL = "URL"
+    METHOD = "METHOD"
+    VIRTUAL_HOST = "VIRTUAL_HOST"
+    ACTION = "ACTION"
+    RESPONSE_CODE = "RESPONSE_CODE"
+    RULE_ID = "RULE_ID"
+    USER_AGENT = "USER_AGENT"
+
+
+class WafFieldStatus(StrEnum):
+    """What validation established about one logical field on one source.
+
+    Kept deliberately fine-grained, because each state calls for a different
+    operator action and collapsing any two of them misleads: a property QRadar
+    rejects does not exist; one that exists but carries nothing is a parser
+    problem; one that carries nonsense is a mapping problem; and a window with no
+    events says nothing about the field at all.
+    """
+
+    AVAILABLE = "AVAILABLE"
+    #: The profile maps no property to this field. Unavailable by configuration.
+    NOT_MAPPED = "NOT_MAPPED"
+    #: QRadar rejected a query naming the property: it does not exist as named.
+    PROPERTY_REJECTED = "PROPERTY_REJECTED"
+    #: The source had events in the window, and none carried a value.
+    UNPOPULATED = "UNPOPULATED"
+    #: Populated on too small a share of the source's events.
+    INSUFFICIENT_COVERAGE = "INSUFFICIENT_COVERAGE"
+    #: Populated, but too few values pass the field's plausibility check.
+    IMPLAUSIBLE = "IMPLAUSIBLE"
+    #: The source produced no events in the window, so nothing can be concluded.
+    NO_EVENTS = "NO_EVENTS"
+    #: The query failed for a reason that is not proof of absence.
+    QUERY_FAILED = "QUERY_FAILED"
+
+
+class WafProfileValidationStatus(StrEnum):
+    UNVALIDATED = "UNVALIDATED"
+    VALID = "VALID"
+    INVALID = "INVALID"
+    #: Validation could not decide -- no events in the window, or a query failed.
+    INCONCLUSIVE = "INCONCLUSIVE"
 
 
 class AnomalyState(StrEnum):
@@ -97,6 +166,57 @@ class BucketCompleteness(StrEnum):
     COMPLETE = "COMPLETE"
     PARTIAL = "PARTIAL"
     MISSING = "MISSING"
+
+
+class WafMeasurement(StrEnum):
+    """What a stored WAF request count claims about the true count.
+
+    `EXACT`: the bucket observed every event of the endpoint -- no grouped result
+    was truncated and endpoint coverage met its floor -- so the count is the
+    count, and in a sparse bucket an absent tracked endpoint served zero.
+
+    `LOWER_BOUND`: some of the bucket's events could not be attributed to an
+    endpoint (the grouped query hit its cap, or too many events carried no
+    parseable endpoint). Every attributed group's SUM(eventcount) is still a real
+    count of real events, so the stored value can only *understate* the truth.
+    It may prove an increase; it can never prove normality or a decrease, and it
+    must never be displayed as an exact count.
+    """
+
+    EXACT = "EXACT"
+    LOWER_BOUND = "LOWER_BOUND"
+
+
+class WafBreakdown(StrEnum):
+    """An optional per-endpoint breakdown collected with its own bounded search.
+
+    Each is grouped by the raw endpoint key plus one more field, so it measures
+    something the request-volume query cannot: how an endpoint's requests
+    divide by WAF action, by response class, or by source IP.
+    """
+
+    ACTION = "ACTION"
+    RESPONSE_CODE = "RESPONSE_CODE"
+    SOURCE_IP = "SOURCE_IP"
+
+
+class WafTelemetryStatus(StrEnum):
+    """What one breakdown established about one bucket.
+
+    Deliberately not a count: NOT_COLLECTED and FAILED mean nothing was
+    measured, and every per-endpoint value of that breakdown is NULL. A detector
+    reading them must say "unavailable", never "zero".
+    """
+
+    #: The breakdown's grouped result was whole: every value is exact, and a
+    #: tracked endpoint absent from it had none of the measured events.
+    EXACT = "EXACT"
+    #: The grouped result hit its cap: every value is the visible part only.
+    LOWER_BOUND = "LOWER_BOUND"
+    #: Not collected: disabled, or the profile field is not validated.
+    NOT_COLLECTED = "NOT_COLLECTED"
+    #: The search was attempted and failed.
+    FAILED = "FAILED"
 
 
 class EvidenceStatus(StrEnum):

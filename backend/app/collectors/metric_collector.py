@@ -164,6 +164,12 @@ class MetricCollector:
             "window_end": end.isoformat(),
             "provider": type(self.provider).__name__,
             "sample_count": len(samples),
+            # What `event_count` counts, and which columns were really measured.
+            # Without these a reader cannot tell events (SUM(eventcount)) from
+            # Ariel records (COUNT(*)), or a measured zero from a DTO default.
+            # Rows written before these keys existed carry neither.
+            "event_count_aggregation": self.provider.event_count_aggregation,
+            "telemetry": sorted(t.value for t in self.provider.log_source_telemetry),
         }
 
         rows = []

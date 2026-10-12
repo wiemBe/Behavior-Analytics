@@ -24,6 +24,7 @@ Determinism rules:
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 
 
@@ -55,6 +56,36 @@ def anomaly_fingerprint(log_source_id: str | uuid.UUID, anomaly_type: str) -> st
         source_id=log_source_id,
         condition="anomaly",
         subtype=anomaly_type,
+    )
+
+
+def waf_anomaly_fingerprint(
+    *,
+    instance_id: str | uuid.UUID,
+    log_source_id: str | uuid.UUID,
+    virtual_host: str | None,
+    normalized_endpoint: str,
+    http_method: str,
+    normalizer_version: int,
+    detector_type: str,
+) -> str:
+    """Identity of one WAF detector condition on an endpoint natural key."""
+    natural_key = json.dumps(
+        [
+            str(instance_id),
+            str(log_source_id),
+            virtual_host,
+            normalized_endpoint,
+            http_method,
+            normalizer_version,
+        ],
+        separators=(",", ":"),
+    )
+    return compute_fingerprint(
+        source_type="waf_endpoint",
+        source_id=natural_key,
+        condition="waf_anomaly",
+        subtype=detector_type,
     )
 
 

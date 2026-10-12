@@ -14,24 +14,38 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.collectors.waf_endpoint_collector import WafEndpointCollector, fold_groups
+from app.collectors import waf_endpoint_collector
+from app.collectors.waf_endpoint_collector import (
+    WafEndpointCollector,
+    fold_groups,
+    watermark_collector,
+)
 from app.core.config import Settings, get_settings
-from app.models.enums import AnomalyState, BucketCompleteness, WafAnomalyType
+from app.models.enums import AnomalyState, BucketCompleteness, WafAnomalyType, WafMeasurement
 from app.models.waf import (
     WafAnomaly,
     WafAnomalyTransition,
     WafDetectorState,
     WafEndpoint,
     WafEndpointMetric,
+    WafSourceBucket,
 )
 from app.providers.dto import WafObservationBatch, WafRequestGroup
 from app.waf.baseline import WafBaselineBuilder
 from app.waf.engine import WafAnomalyEngine
+from app.waf.observations import BucketFacts, observe
+from app.waf.profile import WafFieldMapping
+from app.waf.semantics import request_count_semantics
 from tests.integration.factories import make_instance, make_log_source
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+pytestmark = pytest.mark.integration
 
 BUCKET = datetime(2026, 8, 3, 19, 25, tzinfo=UTC)
+#: The lab site's property names, as a profile would supply them.
+LAB_MAPPING = WafFieldMapping(url="URL", method="HTTP_Method")
+LAB_SEMANTICS = request_count_semantics(
+    aggregation="SUM(eventcount)", normalizer_version=1, profile_version=1
+)
 
 
 def settings(**overrides) -> Settings:
@@ -62,6 +76,9 @@ class StubProvider:
     configured batch must return an empty *successful* result -- which is a
     measured zero -- rather than falling off the end of a list.
     """
+
+    #: Stands in for the REST provider, so it declares the REST aggregation.
+    event_count_aggregation = "SUM(eventcount)"
 
     def __init__(self, batches: list[WafObservationBatch | Exception]) -> None:
         self.error = next((b for b in batches if isinstance(b, Exception)), None)
@@ -170,7 +187,8 @@ async def _collect(
     instance = await make_instance(db_session)
     source = await make_log_source(db_session, instance)
     collector = WafEndpointCollector(
-        db_session, provider, settings=cfg or settings(), clock=lambda: now  # type: ignore[arg-type]
+        db_session, provider, mapping=LAB_MAPPING, profile_version=1,
+        settings=cfg or settings(), clock=lambda: now  # type: ignore[arg-type]
     )
     report = await collector.collect(instance, log_source=source)
     return instance, source, report
@@ -229,7 +247,8 @@ class TestCollectionCompleteness:
         instance = await make_instance(db_session)
         source = await make_log_source(db_session, instance)
         collector = WafEndpointCollector(
-            db_session, provider, settings=settings(),  # type: ignore[arg-type]
+        db_session, provider, mapping=LAB_MAPPING, profile_version=1,
+        settings=settings(),  # type: ignore[arg-type]
             clock=lambda: BUCKET + timedelta(seconds=300),
         )
         with pytest.raises(RuntimeError):
@@ -249,9 +268,16 @@ class TestCollectionCompleteness:
 
 
 class TestZeroMaterializationIsBounded:
-    async def test_a_previously_seen_endpoint_gets_an_explicit_zero(
+    async def test_a_previously_seen_endpoint_gets_a_measured_zero(
         self, db_session: AsyncSession
     ) -> None:
+        """Absence from an exact bucket is a measured zero -- now without a row.
+
+        Until B.1.5 the zero was materialized as a row. Storage is sparse now, so
+        the zero is asserted where it is read: the bucket record says the counts
+        are exact and rows are sparse, the endpoint was tracked, and the shared
+        reconstruction yields an exact, inferred 0.
+        """
         provider = StubProvider(
             [
                 batch([("/portal/login", "GET", 40)]),
@@ -263,7 +289,8 @@ class TestZeroMaterializationIsBounded:
         cfg = settings()
         for tick in (0, 300):
             collector = WafEndpointCollector(
-                db_session, provider, settings=cfg,  # type: ignore[arg-type]
+        db_session, provider, mapping=LAB_MAPPING, profile_version=1,
+        settings=cfg,  # type: ignore[arg-type]
                 clock=lambda t=tick: BUCKET + timedelta(seconds=300 + t),
             )
             await collector.collect(instance, log_source=source)
@@ -283,9 +310,16 @@ class TestZeroMaterializationIsBounded:
             )
         ).all()
         counts = {r.bucket_start: r.request_count for r in rows}
-        assert counts[BUCKET] == 40
+        assert counts == {BUCKET: 40}
         # The measured zero for the bucket it did not appear in.
-        assert counts[BUCKET + timedelta(seconds=300)] == 0
+        second = BUCKET + timedelta(seconds=300)
+        bucket = await db_session.get(WafSourceBucket, (source.id, second))
+        assert bucket is not None and bucket.sparse_endpoint_rows
+        assert bucket.request_count_measurement == WafMeasurement.EXACT
+        assert endpoint.tracked_at(second)
+        zero = observe(None, BucketFacts.of(bucket), tracked=True, normalizer_version=1)
+        assert zero is not None and zero.inferred
+        assert (zero.request_count, zero.measurement) == (0, WafMeasurement.EXACT)
 
     async def test_an_unseen_endpoint_is_never_zero_filled(
         self, db_session: AsyncSession
@@ -312,7 +346,8 @@ class TestZeroMaterializationIsBounded:
         later = BUCKET + timedelta(days=30)
         provider2 = StubProvider([batch([("/new", "GET", 10)], window_start=later)])
         collector = WafEndpointCollector(
-            db_session, provider2, settings=settings(),  # type: ignore[arg-type]
+        db_session, provider2, mapping=LAB_MAPPING, profile_version=1,
+        settings=settings(),  # type: ignore[arg-type]
             clock=lambda: later + timedelta(seconds=300),
         )
         report = await collector.collect(instance, log_source=source)
@@ -333,7 +368,8 @@ class TestIdempotency:
         for count in (40, 99):
             provider = StubProvider([batch([("/portal/login", "GET", count)])])
             collector = WafEndpointCollector(
-                db_session, provider, settings=cfg,  # type: ignore[arg-type]
+        db_session, provider, mapping=LAB_MAPPING, profile_version=1,
+        settings=cfg,  # type: ignore[arg-type]
                 clock=lambda: BUCKET + timedelta(seconds=300),
             )
             # Reset the watermark so the same interval is collected twice.
@@ -342,7 +378,7 @@ class TestIdempotency:
 
             wm = await db_session.scalar(
                 select(CollectionWatermark).where(
-                    CollectionWatermark.collector == "waf_endpoint_metric"
+                    CollectionWatermark.collector == watermark_collector(source)
                 )
             )
             assert wm is not None
@@ -371,7 +407,8 @@ class TestIdempotency:
                 [batch([("/portal/login", "GET", 40)], window_start=start)]
             )
             collector = WafEndpointCollector(
-                db_session, provider, settings=cfg,  # type: ignore[arg-type]
+        db_session, provider, mapping=LAB_MAPPING, profile_version=1,
+        settings=cfg,  # type: ignore[arg-type]
                 clock=lambda s=start: s + timedelta(seconds=300),
             )
             await collector.collect(instance, log_source=source)
@@ -379,6 +416,78 @@ class TestIdempotency:
         endpoints = (await db_session.scalars(select(WafEndpoint))).all()
         assert len(endpoints) == 1
         assert endpoints[0].virtual_host is None
+
+    async def test_each_source_keeps_its_own_watermark(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Two WAF sources collected in the same cycle must both be collected.
+
+        With one watermark per instance, the first source's run advanced it past
+        the bucket and the second source found nothing left to collect -- every
+        cycle, without an error.
+        """
+        instance = await make_instance(db_session)
+        first = await make_log_source(db_session, instance, qradar_id=312, name="waf-a")
+        second = await make_log_source(db_session, instance, qradar_id=313, name="waf-b")
+        cfg = settings()
+
+        for source, endpoint in ((first, "/portal/login"), (second, "/api/v1/status")):
+            provider = StubProvider([batch([(endpoint, "GET", 40)])])
+            collector = WafEndpointCollector(
+        db_session, provider, mapping=LAB_MAPPING, profile_version=1,
+        settings=cfg,  # type: ignore[arg-type]
+                clock=lambda: BUCKET + timedelta(seconds=300),
+            )
+            report = await collector.collect(instance, log_source=source)
+            assert report.intervals_collected == 1, source.name
+
+        collected = {
+            (e.log_source_id, e.normalized_endpoint)
+            for e in (await db_session.scalars(select(WafEndpoint))).all()
+        }
+        assert collected == {(first.id, "/portal/login"), (second.id, "/api/v1/status")}
+
+    async def test_a_normalizer_version_bump_starts_fresh_entities(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A version bump must not collide with the endpoints of the old version.
+
+        The collector looks endpoints up per version. While the natural key
+        omitted the version, the first bump raised an IntegrityError for every
+        unchanged endpoint and stopped collection outright.
+        """
+        later = BUCKET + timedelta(seconds=300)
+        provider = StubProvider(
+            [
+                batch([("/portal/login", "GET", 40)]),
+                batch([("/portal/login", "GET", 45)], window_start=later),
+            ]
+        )
+        instance, source, _ = await _collect(db_session, provider)
+
+        monkeypatch.setattr(waf_endpoint_collector, "ENDPOINT_NORMALIZER_VERSION", 2)
+        collector = WafEndpointCollector(
+        db_session, provider, mapping=LAB_MAPPING, profile_version=1,
+        settings=settings(),  # type: ignore[arg-type]
+            clock=lambda: later + timedelta(seconds=300),
+        )
+        await collector.collect(instance, log_source=source)
+
+        endpoints = {
+            e.normalizer_version: e
+            for e in (await db_session.scalars(select(WafEndpoint))).all()
+        }
+        assert set(endpoints) == {1, 2}
+        later_rows = (
+            await db_session.scalars(
+                select(WafEndpointMetric).where(WafEndpointMetric.bucket_start == later)
+            )
+        ).all()
+        # The new version's entity holds the observation; the old version's is
+        # not zero-filled, because its observations are not comparable any more.
+        assert [(r.waf_endpoint_id, r.request_count) for r in later_rows] == [
+            (endpoints[2].id, 45)
+        ]
 
 
 class TestLifecycle:
@@ -411,6 +520,7 @@ class TestLifecycle:
                 endpoint_coverage_ratio=1.0,
                 completeness=BucketCompleteness.COMPLETE,
                 normalizer_version=1,
+                metric_semantics=LAB_SEMANTICS,
             )
             db_session.add(m)
             metrics.append(m)
@@ -425,7 +535,7 @@ class TestLifecycle:
         )
         builder = WafBaselineBuilder(db_session, settings=cfg)
         await builder.rebuild_for_endpoint(
-            endpoint, now=metrics[8].bucket_start
+            endpoint, semantics=LAB_SEMANTICS, now=metrics[8].bucket_start
         )
 
         engine = WafAnomalyEngine(db_session, settings=cfg)
@@ -459,7 +569,7 @@ class TestLifecycle:
             db_session, [100] * 8 + [900, 100], cfg=cfg
         )
         await WafBaselineBuilder(db_session, settings=cfg).rebuild_for_endpoint(
-            endpoint, now=metrics[8].bucket_start
+            endpoint, semantics=LAB_SEMANTICS, now=metrics[8].bucket_start
         )
         engine = WafAnomalyEngine(db_session, settings=cfg)
         await engine.evaluate_interval(endpoint, metrics[8])
@@ -482,13 +592,17 @@ class TestLifecycle:
             db_session, [100] * 8 + [900], cfg=cfg
         )
         await WafBaselineBuilder(db_session, settings=cfg).rebuild_for_endpoint(
-            endpoint, now=metrics[8].bucket_start
+            endpoint, semantics=LAB_SEMANTICS, now=metrics[8].bucket_start
         )
         engine = WafAnomalyEngine(db_session, settings=cfg)
         await engine.evaluate_interval(endpoint, metrics[8])
         await engine.evaluate_interval(endpoint, metrics[8])
 
-        state = (await db_session.scalars(select(WafDetectorState))).one()
+        state = (await db_session.scalars(
+            select(WafDetectorState).where(
+                WafDetectorState.detector_type == WafAnomalyType.WAF_REQUEST_RATE_SPIKE
+            )
+        )).one()
         assert state.consecutive_anomalous == 1
         assert len((await db_session.scalars(select(WafAnomaly))).all()) == 1
 
@@ -500,7 +614,7 @@ class TestLifecycle:
             db_session, [100] * 8 + [900, 950, 1000], cfg=cfg
         )
         await WafBaselineBuilder(db_session, settings=cfg).rebuild_for_endpoint(
-            endpoint, now=metrics[8].bucket_start
+            endpoint, semantics=LAB_SEMANTICS, now=metrics[8].bucket_start
         )
         engine = WafAnomalyEngine(db_session, settings=cfg)
         for m in metrics[8:]:
@@ -521,7 +635,7 @@ class TestLifecycle:
 
         builder = WafBaselineBuilder(db_session, settings=cfg)
         await builder.rebuild_for_endpoint(
-            endpoint, now=metrics[-1].bucket_start + timedelta(seconds=300)
+            endpoint, semantics=LAB_SEMANTICS, now=metrics[-1].bucket_start + timedelta(seconds=300)
         )
         from app.models.waf import WafEndpointBaseline
 

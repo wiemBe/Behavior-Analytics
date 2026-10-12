@@ -19,7 +19,12 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 
-from app.providers.base import ProviderCapability, QRadarProvider
+from app.providers.base import (
+    PROPERTY_NAME_PATTERN,
+    LogSourceTelemetry,
+    ProviderCapability,
+    QRadarProvider,
+)
 from app.providers.dto import (
     AnalyticsRuleDTO,
     ArielSearchHandleDTO,
@@ -32,8 +37,14 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    WafBreakdownBatch,
+    WafBreakdownGroup,
     WafObservationBatch,
+    WafPropertyProbe,
+    WafPropertyValue,
+    WafRejectionObservation,
     WafRequestGroup,
+    WafSourceProbe,
 )
 
 _LOG_SOURCE_TYPES = [
@@ -69,6 +80,13 @@ class MockQRadarProvider(QRadarProvider):
             ProviderCapability.CONFIG_SNAPSHOTS,
         }
     )
+    #: Synthetic, but genuinely varied per shape, so dev and tests can exercise
+    #: the detectors that read them. COLLECTION_ERRORS is absent: the mock never
+    #: simulates a collection error, so its constant 0 is not a measurement.
+    log_source_telemetry = frozenset(LogSourceTelemetry) - {
+        LogSourceTelemetry.COLLECTION_ERRORS
+    }
+    event_count_aggregation = "synthetic"
 
     def __init__(self, *, seed: int = 1337, now: datetime | None = None) -> None:
         self._seed = seed
@@ -299,7 +317,150 @@ class MockQRadarProvider(QRadarProvider):
             total_events=total,
             truncated=len(groups) > max_groups,
             query=f"MOCK WAF GROUP BY {url_property}, {method_property}",
+            total_query="MOCK WAF TOTAL",
         )
+
+    #: Deterministic breakdown values: (value, share of an endpoint's requests).
+    _MOCK_WAF_BREAKDOWN_VALUES: ClassVar[dict[str, tuple[tuple[str, float], ...]]] = {
+        "ACTION": (("ALLOW", 0.9), ("DENY", 0.1)),
+        "RESPONSE_CODE": (("200", 0.8), ("404", 0.15), ("500", 0.05)),
+        "SOURCE_IP": (("192.0.2.30", 0.5), ("198.51.100.30", 0.3), ("203.0.113.50", 0.2)),
+    }
+
+    async def get_waf_breakdown(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None,
+        breakdown: str,
+        breakdown_property: str | None,
+        max_groups: int = 2000,
+    ) -> WafBreakdownBatch:
+        """The mock endpoints' volume, divided by a fixed value distribution."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        volume = await self.get_waf_observations(
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            url_property=url_property,
+            method_property=method_property,
+            virtual_host_property=virtual_host_property,
+            max_groups=5000,
+        )
+        groups = [
+            WafBreakdownGroup(
+                raw_url=g.raw_url,
+                raw_method=g.raw_method,
+                raw_virtual_host=g.raw_virtual_host,
+                raw_value=value,
+                request_count=int(g.request_count * share),
+            )
+            for g in volume.groups
+            for value, share in self._MOCK_WAF_BREAKDOWN_VALUES[breakdown]
+            if int(g.request_count * share) > 0
+        ]
+        groups.sort(key=lambda g: g.request_count, reverse=True)
+        return WafBreakdownBatch(
+            breakdown=breakdown,
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            groups=groups[:max_groups],
+            truncated=len(groups) >= max_groups,
+            query=f"MOCK WAF BREAKDOWN {breakdown}",
+        )
+
+    #: The properties the mock "site" authored, with the value distribution
+    #: measured on the lab source (docs/PHASE-B-WAF-BEHAVIOR.md section 26.2).
+    #: Any other name is rejected, exactly as QRadar rejects an unknown property.
+    _MOCK_WAF_PROPERTY_VALUES: ClassVar[dict[str, tuple[tuple[str, int], ...]]] = {
+        "URL": (
+            ("/portal/login", 50),
+            ("/api/v1/report?id=1%27+OR+%271%27%3D%271", 40),
+            ("/static/app.css", 30),
+        ),
+        "HTTP_Method": (("GET", 83), ("POST", 37)),
+        "WAF_Action": (("ALLOW", 78), ("DENY", 42)),
+        "WAF_ResponseCode": (("200", 42), ("403", 42), ("304", 22), ("404", 14)),
+        "WAF_USERAGENT": (("Mozilla/5.0 (lab)", 120),),
+    }
+    _MOCK_WAF_TOTAL_EVENTS = 120
+
+    async def probe_waf_properties(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        property_names: Sequence[str],
+        max_values: int = 50,
+    ) -> WafSourceProbe:
+        self.require(ProviderCapability.AQL_EXECUTION)
+        probes: list[WafPropertyProbe] = []
+        for name in dict.fromkeys(property_names):
+            known = self._MOCK_WAF_PROPERTY_VALUES.get(name)
+            if known is None or not PROPERTY_NAME_PATTERN.match(name):
+                probes.append(
+                    WafPropertyProbe(
+                        property_name=name,
+                        rejected=True,
+                        error="QRadar rejected the request as invalid",
+                        queries=[f"MOCK PROBE {name}"],
+                    )
+                )
+                continue
+            capped = known[:max_values]
+            probes.append(
+                WafPropertyProbe(
+                    property_name=name,
+                    populated_events=sum(c for _, c in known),
+                    distinct_values=len(known),
+                    values=[WafPropertyValue(value=v, events=c) for v, c in capped],
+                    values_truncated=len(known) >= max_values,
+                    queries=[f"MOCK PROBE {name}"],
+                )
+            )
+        return WafSourceProbe(
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            total_events=self._MOCK_WAF_TOTAL_EVENTS,
+            total_query="MOCK PROBE TOTAL",
+            properties=probes,
+        )
+
+    async def observe_property_rejection(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        property_names: Sequence[str],
+    ) -> list[WafRejectionObservation]:
+        """Models the *assumed* appliance behaviour: an unknown name is a 422.
+
+        That is an assumption under verification (docs section 29.9); the mock
+        encodes it only so the CLI procedure can be exercised end to end.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        out: list[WafRejectionObservation] = []
+        for name in dict.fromkeys(property_names):
+            query = f"MOCK REJECTION PROBE {name}"
+            if name in self._MOCK_WAF_PROPERTY_VALUES and PROPERTY_NAME_PATTERN.match(name):
+                out.append(WafRejectionObservation(
+                    property_name=name, outcome="SEARCH_COMPLETED", search_created=True,
+                    search_status="COMPLETED", record_count=1, query=query,
+                ))
+            else:
+                out.append(WafRejectionObservation(
+                    property_name=name, outcome="REJECTED_AT_CREATE",
+                    create_http_status=422, query=query,
+                ))
+        return out
 
     def _seasonal_eps(self, when: datetime, shape: str) -> float:
         # ISO weekday 1..7, hour 0..23.

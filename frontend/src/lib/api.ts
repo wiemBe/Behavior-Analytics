@@ -468,7 +468,9 @@ export interface MetricBucket {
   bucket_seconds: number;
   event_count: number;
   average_eps: number;
-  peak_eps: number;
+  // Null when the bucket's collection path does not measure a peak. The live
+  // Ariel aggregate never does, so this is null for every live bucket.
+  peak_eps: number | null;
   completeness: BucketCompleteness;
   last_event_at: string | null;
 }

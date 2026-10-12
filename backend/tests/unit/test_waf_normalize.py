@@ -279,6 +279,16 @@ class TestResponseCodeNormalization:
         """0 would be indistinguishable from a measurement and would skew ratios."""
         assert normalize_response_code(raw) is None  # type: ignore[arg-type]
 
+    @pytest.mark.parametrize(
+        "raw", ["\u00b2", "\u0664\u0660\u0664", "\uff14\uff10\uff14", "4\u00b24"]
+    )
+    def test_non_ascii_digits_are_missing_and_never_raise(self, raw: str) -> None:
+        assert normalize_response_code(raw) is None
+
+    @pytest.mark.parametrize("raw", ["404", " 404 "])
+    def test_ascii_digits_still_parse(self, raw: str) -> None:
+        assert normalize_response_code(raw) == 404
+
 
 class TestVirtualHostNormalization:
     @pytest.mark.parametrize(

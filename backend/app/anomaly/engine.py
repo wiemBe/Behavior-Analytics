@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.fingerprint import anomaly_fingerprint
 from app.alerts.service import AlertInput, AlertService
+from app.anomaly.capabilities import bucket_telemetry, unmet_requirement
 from app.anomaly.detectors import (
     DETECTORS,
     SUPPRESSED_BY_NO_EVENTS,
@@ -33,7 +34,13 @@ from app.anomaly.detectors import (
     MetricPoint,
 )
 from app.anomaly.evidence import AnomalyEvidence
-from app.anomaly.lifecycle import LifecycleDecision, LifecycleInput, next_state
+from app.anomaly.lifecycle import (
+    LifecycleDecision,
+    LifecycleInput,
+    advance_counters,
+    next_state,
+)
+from app.anomaly.seasonal import in_maintenance
 from app.anomaly.thresholds import ThresholdResolver
 from app.core.config import Settings, get_settings
 from app.models.enums import (
@@ -52,6 +59,7 @@ from app.models.log_source import (
     LogSourceDetectorState,
     LogSourceMetric,
 )
+from app.providers.base import LogSourceTelemetry
 
 #: Detector types whose incidents warrant a bounded explanation package. A
 #: silence has no volume to attribute, so there is nothing to explain.
@@ -69,6 +77,10 @@ class EvaluationReport:
     recovering: list[str] = field(default_factory=list)
     #: Final lifecycle state per detector type after this bucket.
     states: dict[str, str] = field(default_factory=dict)
+    #: Detectors not run on this bucket, with the input they lacked. They get no
+    #: verdict and no state change: a detector that was never given its input
+    #: must not report the source as healthy.
+    unsupported: dict[str, str] = field(default_factory=dict)
     skipped_reason: str | None = None
 
 
@@ -136,7 +148,8 @@ class AnomalyEngine:
         in_maintenance = self._in_maintenance(log_source, metric.bucket_start)
 
         ctx = await self._build_context(log_source, metric)
-        evidences = self._run_detectors(ctx)
+        telemetry = bucket_telemetry(metric.collection_source, metric.query_provenance)
+        evidences = self._run_detectors(ctx, telemetry, report)
 
         for evidence in evidences:
             if evidence.is_anomalous:
@@ -263,8 +276,25 @@ class AnomalyEngine:
         )
         return list(reversed(rows))  # oldest -> newest
 
-    def _run_detectors(self, ctx: DetectionContext) -> list[AnomalyEvidence]:
-        results = [d(ctx) for d in DETECTORS]
+    def _run_detectors(
+        self,
+        ctx: DetectionContext,
+        telemetry: frozenset[LogSourceTelemetry],
+        report: EvaluationReport,
+    ) -> list[AnomalyEvidence]:
+        """Run the detectors this bucket can support.
+
+        Detectors are pure, so each runs and its verdict is then kept only if
+        the bucket measured every input it read. A dropped verdict never
+        reaches hysteresis, so its state neither advances nor changes.
+        """
+        results: list[AnomalyEvidence] = []
+        for evidence in (d(ctx) for d in DETECTORS):
+            reason = unmet_requirement(evidence.anomaly_type, telemetry)
+            if reason is None:
+                results.append(evidence)
+            else:
+                report.unsupported[evidence.anomaly_type.value] = reason
         no_events = next(
             (e for e in results if e.anomaly_type == AnomalyType.NO_EVENTS), None
         )
@@ -305,14 +335,9 @@ class AnomalyEngine:
         if in_maintenance and signal is DetectorSignal.ANOMALOUS:
             signal = DetectorSignal.UNKNOWN
 
-        if signal is DetectorSignal.ANOMALOUS:
-            state.consecutive_anomalous += 1
-            state.consecutive_healthy = 0
-        elif signal is DetectorSignal.HEALTHY:
-            state.consecutive_healthy += 1
-            state.consecutive_anomalous = 0
-        # UNKNOWN: leave counters untouched. Missing or unreadable data must
-        # neither confirm an anomaly nor count towards recovery.
+        state.consecutive_anomalous, state.consecutive_healthy = advance_counters(
+            signal, state.consecutive_anomalous, state.consecutive_healthy
+        )
 
         state.last_interval_start = metric.bucket_start
 
@@ -652,11 +677,11 @@ class AnomalyEngine:
 
     # ---------------------------------------------------------------- helpers
     def _in_maintenance(self, log_source: LogSource, when: datetime) -> bool:
-        if not log_source.maintenance_mode:
-            return False
-        if log_source.maintenance_until is None:
-            return True
-        return when <= log_source.maintenance_until
+        return in_maintenance(
+            when,
+            maintenance_mode=log_source.maintenance_mode,
+            maintenance_until=log_source.maintenance_until,
+        )
 
     def _is_expected_active(self, log_source: LogSource, when: datetime) -> bool:
         if not log_source.business_hours_only:

@@ -105,4 +105,17 @@ celery_app.conf.beat_schedule = {
         "task": "evaluate_detection_coverage",
         "schedule": float(settings.coverage_evaluation_interval_seconds),
     },
+    # --- Phase B.1 -----------------------------------------------------------
+    "dispatch-waf-collection": {
+        # Enqueues one `collect_waf_source` task per eligible WAF source, so a
+        # slow or failing source never delays another. Each run collects, then
+        # evaluates, then trains, under that source's own advisory lock. A no-op
+        # while WAF_COLLECTION_ENABLED is false.
+        "task": "dispatch_waf_collection",
+        "schedule": float(settings.collection_interval_seconds),
+    },
+    "apply-waf-retention": {
+        "task": "apply_waf_retention",
+        "schedule": float(settings.waf_retention_interval_seconds),
+    },
 }

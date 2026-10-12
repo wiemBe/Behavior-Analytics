@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import ssl
 from datetime import UTC, datetime
 
@@ -264,6 +265,181 @@ class TestLogSourceMetrics:
                 datetime(2026, 7, 31, 10, 0, tzinfo=UTC),
                 datetime(2026, 7, 31, 10, 5, tzinfo=UTC),
             )
+
+
+class CoalescingAriel:
+    """A minimal Ariel that answers aggregate searches over coalesced records.
+
+    QRadar coalesces identical events into one record carrying an `eventcount`
+    multiplier. This fake evaluates whichever aggregate a query actually asks for
+    -- SUM(eventcount) or COUNT(*) -- over those records, and honours the ORDER BY
+    and LIMIT it was given. A provider that counted rows therefore gets row
+    counts back and fails on the *numbers*, not merely on the query text.
+    """
+
+    def __init__(self, records: list[dict]) -> None:
+        self.records = records
+        self.queries: list[str] = []
+
+    @staticmethod
+    def _aggregate(query: str, alias: str, rows: list[dict]) -> int:
+        if f'SUM(eventcount) AS "{alias}"' in query:
+            return sum(r["eventcount"] for r in rows)
+        if f'COUNT(*) AS "{alias}"' in query:
+            return len(rows)
+        raise AssertionError(f"no recognised aggregate for {alias!r}: {query}")
+
+    def _group(
+        self, query: str, keys: list[str], aliases: list[str], value_alias: str
+    ) -> list[dict]:
+        groups: dict[tuple, list[dict]] = {}
+        for record in self.records:
+            groups.setdefault(tuple(record[k] for k in keys), []).append(record)
+        ordered = list(groups.items())
+        if "ORDER BY SUM(eventcount) DESC" in query:
+            ordered.sort(key=lambda kv: sum(r["eventcount"] for r in kv[1]), reverse=True)
+        elif "ORDER BY COUNT(*) DESC" in query:
+            ordered.sort(key=lambda kv: len(kv[1]), reverse=True)
+        limit = re.search(r"LIMIT (\d+)", query)
+        if limit:
+            ordered = ordered[: int(limit.group(1))]
+
+        out: list[dict] = []
+        for key, rows in ordered:
+            # Ariel returns aggregates as floats.
+            row: dict = dict(zip(aliases, key, strict=True))
+            row[value_alias] = float(self._aggregate(query, value_alias, rows))
+            if '"record_count"' in query:
+                row["record_count"] = float(self._aggregate(query, "record_count", rows))
+            if '"distinct_clients"' in query:
+                row["distinct_clients"] = float(len({r["sourceip"] for r in rows}))
+            out.append(row)
+        return out
+
+    def _results(self, query: str) -> list[dict]:
+        if '"qradar_id"' in query:
+            rows = self._group(query, ["logsourceid"], ["qradar_id"], "event_count")
+            for row in rows:
+                row["last_event_time"] = 1_785_506_699_000
+            return rows
+        if '"raw_url"' in query:
+            return self._group(
+                query, ["url", "method"], ["raw_url", "raw_method"], "request_count"
+            )
+        if '"total_events"' in query:
+            return [{"total_events": float(self._aggregate(query, "total_events", self.records))}]
+        if '"value"' in query:
+            return self._group(query, ["sourceip"], ["value"], "count")
+        raise AssertionError(f"unrecognised query: {query}")
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "POST" and path.endswith("/ariel/searches"):
+            self.queries.append(request.url.params["query_expression"])
+            return httpx.Response(
+                201, json={"search_id": f"s-{len(self.queries)}", "status": "WAIT"}
+            )
+        if path.endswith("/results"):
+            index = int(path.split("/")[-2].removeprefix("s-")) - 1
+            return httpx.Response(200, json={"events": self._results(self.queries[index])})
+        if "/ariel/searches/s-" in path:
+            return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+
+def _records(count: int, eventcount: int, **fields) -> list[dict]:
+    return [{"eventcount": eventcount, **fields} for _ in range(count)]
+
+
+WINDOW = (datetime(2026, 8, 3, 10, 0, tzinfo=UTC), datetime(2026, 8, 3, 10, 5, tzinfo=UTC))
+
+
+class TestCoalescedEventCounts:
+    """Ariel record count and actual event count diverge; volume must be events.
+
+    Each scenario is built so COUNT(*) and SUM(eventcount) disagree not only in
+    scale but in *ranking*, because that is the failure that matters: a burst of
+    identical events coalesces harder than the traffic around it, so counting
+    records hides exactly the change a behavior detector exists to see.
+    """
+
+    @pytest.mark.asyncio
+    async def test_log_source_volume_counts_events_not_records(self) -> None:
+        # The live-measured 38x case: 197 records carrying 7,570 events, against
+        # an uncoalesced neighbour with more records and far fewer events.
+        coalesced = _records(196, 38, logsourceid=224) + _records(1, 122, logsourceid=224)
+        plain = _records(300, 1, logsourceid=227)
+        ariel = CoalescingAriel(coalesced + plain)
+        assert (len(coalesced), sum(r["eventcount"] for r in coalesced)) == (197, 7570)
+
+        provider, _ = build_provider(ariel.handler, page_size=10, max_pages=2)
+        samples = {s.qradar_id: s for s in await provider.get_log_source_metrics(*WINDOW)}
+
+        assert samples[224].event_count == 7570
+        assert samples[227].event_count == 300
+        # By records, 227 (300) would look busier than 224 (197). By events it is
+        # 25x quieter.
+        assert samples[224].event_count > samples[227].event_count
+        assert samples[224].average_eps == pytest.approx(7570 / 300)
+
+    @pytest.mark.asyncio
+    async def test_contributor_ranking_follows_events_not_records(self) -> None:
+        heavy = _records(10, 100, sourceip="203.0.113.50")   # 10 records, 1,000 events
+        light = _records(40, 1, sourceip="203.0.113.51")     # 40 records, 40 events
+        ariel = CoalescingAriel(heavy + light)
+
+        provider, _ = build_provider(ariel.handler, page_size=10, max_pages=2)
+        (aggregate,) = await provider.get_dimension_aggregates(
+            qradar_log_source_id=224,
+            window_start=WINDOW[0],
+            window_end=WINDOW[1],
+            dimensions=["source_ip"],
+            top_n=5,
+        )
+
+        assert [(v.value, v.count) for v in aggregate.values] == [
+            ("203.0.113.50", 1000),
+            ("203.0.113.51", 40),
+        ]
+        assert aggregate.total_count == 1040
+        # Cardinality is a count of distinct values, not of events.
+        assert aggregate.distinct_count == 2
+        assert aggregate.truncated is False
+
+    @pytest.mark.asyncio
+    async def test_waf_request_volume_counts_events_and_keeps_records_as_provenance(
+        self,
+    ) -> None:
+        # A coalesced credential-stuffing burst on one endpoint beside ordinary
+        # uncoalesced traffic on another.
+        login = _records(5, 120, url="/portal/login", method="POST", sourceip="198.51.100.7")
+        status = _records(50, 1, url="/api/v1/status", method="GET", sourceip="192.0.2.8")
+        ariel = CoalescingAriel(login + status)
+
+        provider, _ = build_provider(ariel.handler, page_size=10, max_pages=2)
+        batch = await provider.get_waf_observations(
+            qradar_log_source_id=312,
+            window_start=WINDOW[0],
+            window_end=WINDOW[1],
+            url_property="URL",
+            method_property="HTTP_Method",
+            max_groups=10,
+        )
+
+        assert [(g.raw_url, g.request_count, g.record_count) for g in batch.groups] == [
+            ("/portal/login", 600, 5),
+            ("/api/v1/status", 50, 50),
+        ]
+        # The coverage denominator sums events too. Were it a record count (55)
+        # against a grouped event sum (650), coverage would read 11.8 and be
+        # clamped to a meaningless 1.0 on any source that coalesces.
+        assert batch.total_events == 650
+        assert sum(g.request_count for g in batch.groups) / batch.total_events == 1.0
+        # Both queries are provenance, and both say what they count.
+        assert batch.query is not None and batch.total_query is not None
+        assert 'SUM(eventcount) AS "request_count"' in batch.query
+        assert 'SUM(eventcount) AS "total_events"' in batch.total_query
+        assert "COUNT(*)" not in batch.total_query
 
 
 def build_provider(

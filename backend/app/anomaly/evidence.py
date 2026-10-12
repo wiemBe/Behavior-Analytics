@@ -4,19 +4,25 @@ Every detector returns this shape (never a bare label) so the UI and the alert
 payload can show *why* something fired: observed vs expected, the baseline band,
 the deviation score, the threshold it crossed, how many samples backed the
 baseline, the affected interval, a confidence, and a human-readable reason.
+
+Shared by every behavior domain. The detector type is a type parameter rather
+than the Phase A `AnomalyType`, so a WAF or firewall detector records its own
+type instead of borrowing a log-source one: the stored `details` payload carries
+`anomaly_type`, and a borrowed value there would be false provenance.
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from enum import StrEnum
 
-from app.models.enums import AnomalyType, DetectorSignal, Severity
+from app.models.enums import DetectorSignal, Severity
 
 
 @dataclass
-class AnomalyEvidence:
-    anomaly_type: AnomalyType
+class AnomalyEvidence[T: StrEnum]:
+    anomaly_type: T
     signal: DetectorSignal
     severity: Severity
     observed_value: float | None
@@ -52,15 +58,15 @@ class AnomalyEvidence:
         return d
 
 
-def healthy(
-    anomaly_type: AnomalyType,
+def healthy[T: StrEnum](
+    anomaly_type: T,
     *,
     interval_start: datetime,
     interval_end: datetime,
     observed: float | None = None,
     expected: float | None = None,
     reason: str = "within expected range",
-) -> AnomalyEvidence:
+) -> AnomalyEvidence[T]:
     return AnomalyEvidence(
         anomaly_type=anomaly_type,
         signal=DetectorSignal.HEALTHY,
@@ -79,13 +85,13 @@ def healthy(
     )
 
 
-def unknown(
-    anomaly_type: AnomalyType,
+def unknown[T: StrEnum](
+    anomaly_type: T,
     *,
     interval_start: datetime,
     interval_end: datetime,
     reason: str,
-) -> AnomalyEvidence:
+) -> AnomalyEvidence[T]:
     return AnomalyEvidence(
         anomaly_type=anomaly_type,
         signal=DetectorSignal.UNKNOWN,
@@ -104,14 +110,14 @@ def unknown(
     )
 
 
-def insufficient(
-    anomaly_type: AnomalyType,
+def insufficient[T: StrEnum](
+    anomaly_type: T,
     *,
     interval_start: datetime,
     interval_end: datetime,
     reason: str,
     sample_count: int = 0,
-) -> AnomalyEvidence:
+) -> AnomalyEvidence[T]:
     """No verdict is possible: the baseline or the bucket is inadequate.
 
     Deliberately not `healthy()`. Returning "normal" because we could not

@@ -174,3 +174,94 @@ async def test_idempotent_reevaluation(db_session) -> None:
         )
     )
     assert state.consecutive_anomalous == 1  # not 3
+
+
+async def _detector_state_types(session, ls) -> set[str]:
+    from app.models.log_source import LogSourceDetectorState
+
+    return set(
+        (
+            await session.scalars(
+                select(LogSourceDetectorState.anomaly_type).where(
+                    LogSourceDetectorState.log_source_id == ls.id
+                )
+            )
+        ).all()
+    )
+
+
+VOLUME_DETECTORS = {
+    AnomalyType.NO_EVENTS.value,
+    AnomalyType.VOLUME_DROP.value,
+    AnomalyType.VOLUME_SPIKE.value,
+}
+
+
+async def test_live_ariel_bucket_runs_only_the_volume_detectors(db_session) -> None:
+    """A live bucket measures volume and newest-event time, nothing more.
+
+    Its other columns hold DTO defaults -- an unknown-event count of 0, no
+    collection errors -- and a detector reading them would record a healthy
+    verdict on a measurement nobody made. Those detectors must get no verdict
+    and no detector state at all.
+    """
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst)
+    start = utc(h=10)
+    await _reliable_eps_baseline(db_session, ls, weekday=start.isoweekday(), hour=10)
+    engine = AnomalyEngine(db_session, settings=_settings())
+
+    m = await add_metric(
+        db_session, ls, start, average_eps=50.0, event_count=15000,
+        unknown_event_count=0, parsed_username_ratio=None, parsed_source_ip_ratio=None,
+        payload_signature=None, collection_source="ariel_aggregate",
+        query_provenance={
+            "event_count_aggregation": "SUM(eventcount)",
+            "telemetry": ["EVENT_VOLUME", "LAST_EVENT_TIME"],
+        },
+    )
+    report = await engine.evaluate_interval(ls, m)
+
+    assert await _detector_state_types(db_session, ls) == VOLUME_DETECTORS
+    assert set(report.states) == VOLUME_DETECTORS
+    assert set(report.unsupported) == {t.value for t in AnomalyType} - VOLUME_DETECTORS
+    assert "UNKNOWN_EVENT_COUNT" in report.unsupported["UNKNOWN_EVENT_SPIKE"]
+
+
+async def test_legacy_live_bucket_without_declared_telemetry_is_gated_the_same(
+    db_session,
+) -> None:
+    """Rows collected before provenance declared telemetry fall back to what the
+    Ariel path is known to measure, so upgrading does not re-enable a detector."""
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst)
+    start = utc(h=10)
+    await _reliable_eps_baseline(db_session, ls, weekday=start.isoweekday(), hour=10)
+    engine = AnomalyEngine(db_session, settings=_settings())
+
+    m = await add_metric(
+        db_session, ls, start, average_eps=50.0, event_count=15000,
+        collection_source="ariel_aggregate", query_provenance={},
+    )
+    await engine.evaluate_interval(ls, m)
+
+    assert await _detector_state_types(db_session, ls) == VOLUME_DETECTORS
+
+
+async def test_synthetic_bucket_runs_the_detectors_the_mock_measures(db_session) -> None:
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst)
+    start = utc(h=10)
+    await _reliable_eps_baseline(db_session, ls, weekday=start.isoweekday(), hour=10)
+    engine = AnomalyEngine(db_session, settings=_settings())
+
+    m = await add_metric(db_session, ls, start, collection_source="mock")
+    report = await engine.evaluate_interval(ls, m)
+
+    # Neither path can supply these two: no distinct-IP baseline is built, and a
+    # failed collection writes no bucket to carry an error count.
+    unsupported = {AnomalyType.CARDINALITY_DROP.value, AnomalyType.COLLECTION_ERROR.value}
+    assert set(report.unsupported) == unsupported
+    assert await _detector_state_types(db_session, ls) == (
+        {t.value for t in AnomalyType} - unsupported
+    )

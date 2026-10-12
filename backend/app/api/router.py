@@ -16,6 +16,7 @@ from app.api.routes import (
     providers,
     rules,
     searches,
+    waf,
 )
 from app.security.rbac import (
     PERM_ANOMALY_READ,
@@ -23,6 +24,7 @@ from app.security.rbac import (
     PERM_OFFENSE_READ,
     PERM_PROVIDER_READ,
     PERM_RULE_READ,
+    PERM_WAF_ADMIN,
 )
 
 api_router = APIRouter()
@@ -57,3 +59,7 @@ api_router.include_router(
 api_router.include_router(
     anomalies.behavior_router, dependencies=[Depends(requires(PERM_ANOMALY_READ))]
 )
+# --- Phase B.1 ---
+# WAF collection operations. Administrative rather than analytical, so it needs
+# `admin:waf`; the `read:*` wildcard does not satisfy it.
+api_router.include_router(waf.router, dependencies=[Depends(requires(PERM_WAF_ADMIN))])

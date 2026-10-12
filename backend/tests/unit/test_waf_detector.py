@@ -80,6 +80,28 @@ def ctx(**overrides) -> WafDetectionContext:
     return WafDetectionContext(**base)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    "context",
+    [
+        pytest.param(lambda: ctx(point=point(requests=900)), id="anomalous"),
+        pytest.param(lambda: ctx(point=point(requests=110)), id="healthy"),
+        pytest.param(
+            lambda: ctx(point=point(completeness=BucketCompleteness.PARTIAL)),
+            id="insufficient",
+        ),
+    ],
+)
+def test_evidence_carries_the_waf_detector_type(context) -> None:
+    """`waf_anomaly.details` persists `evidence.to_dict()`.
+
+    It used to record VOLUME_SPIKE there, because the evidence object could only
+    hold a Phase A type. Migration 0006 corrects rows written that way.
+    """
+    evidence = detect_request_rate_spike(context()).evidence
+    assert evidence.anomaly_type is WafAnomalyType.WAF_REQUEST_RATE_SPIKE
+    assert evidence.to_dict()["anomaly_type"] == "WAF_REQUEST_RATE_SPIKE"
+
+
 class TestFiresWhenEveryGuardPasses:
     def test_a_material_spike_fires(self) -> None:
         v = detect_request_rate_spike(ctx())

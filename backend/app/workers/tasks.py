@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
@@ -50,6 +51,8 @@ from app.services.locks import CollectorAdvisoryLock
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
 from app.services.search_scheduler import SearchScheduler
+from app.services.waf_pipeline import eligible_profile_ids, run_waf_source
+from app.services.waf_retention import WafRetention
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger("app.tasks")
@@ -551,6 +554,49 @@ async def run_due_searches() -> dict:
         await provider.aclose()
 
 
+# ------------------------------------------------------------------ WAF (B.1)
+async def dispatch_waf_collection(enqueue: Callable[[str], object] | None = None) -> dict:
+    """Enqueue one independent run per eligible WAF source.
+
+    Fan-out rather than a loop, so one appliance search hanging for its full
+    timeout on one source cannot delay any other source. Duplicate delivery is
+    harmless: each run takes its source's advisory lock, a second concurrent run
+    skips, and every write is an idempotent upsert behind a watermark.
+    """
+    settings = get_settings()
+    if not settings.waf_collection_enabled:
+        return {"status": "disabled", "dispatched": 0}
+    maker = get_sessionmaker()
+    async with maker() as session:
+        profile_ids, skipped = await eligible_profile_ids(session, settings)
+    send = enqueue or collect_waf_source_task.delay
+    for profile_id in profile_ids:
+        send(str(profile_id))
+    return {"status": "ok", "dispatched": len(profile_ids), "skipped": skipped}
+
+
+async def collect_waf_source(profile_id: str) -> dict:
+    """Collect, evaluate and train one WAF source in its own session."""
+    maker = get_sessionmaker()
+    async with maker() as session:
+        enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
+        return await run_waf_source(
+            session,
+            uuid.UUID(profile_id),
+            provider_factory=lambda instance: build_provider_for_instance(
+                instance, audit_session=session
+            ),
+            enqueuer=enqueuer,
+        )
+
+
+async def apply_waf_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await WafRetention(session).run()
+        return report.as_dict()
+
+
 # --------------------------------------------------------------- notifications
 async def dispatch_notifications() -> dict:
     maker = get_sessionmaker()
@@ -637,3 +683,18 @@ def run_due_searches_task() -> dict:
 @celery_app.task(name="dispatch_notifications")
 def dispatch_notifications_task() -> dict:
     return _run(dispatch_notifications())
+
+
+@celery_app.task(name="dispatch_waf_collection")
+def dispatch_waf_collection_task() -> dict:
+    return _run(dispatch_waf_collection())
+
+
+@celery_app.task(name="collect_waf_source")
+def collect_waf_source_task(profile_id: str) -> dict:
+    return _run(collect_waf_source(profile_id))
+
+
+@celery_app.task(name="apply_waf_retention")
+def apply_waf_retention_task() -> dict:
+    return _run(apply_waf_retention())

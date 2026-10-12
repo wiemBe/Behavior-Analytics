@@ -11,9 +11,22 @@ and it operates strictly **read-only** against QRadar.
 > telemetry** (2026-08-02). Spike, drop, multi-source isolation and NO_EVENTS were each observed end
 > to end — synthetic telemetry → ingestion → Ariel aggregation → seasonal baseline → detection →
 > lifecycle → contributor explanation → API → frontend — through to `RESOLVED`. Live validation
-> found and fixed five defects that automated tests had missed. See
-> **Phase B** (WAF endpoint behavior) has a **live-validated backend vertical slice**; its API and
-> UI are not built yet and production WAF onboarding is unvalidated. See
+> found and fixed five defects that automated tests had missed; live measurement afterwards found a
+> sixth — volume counted Ariel records instead of events (`ae9932a`).
+> Of the nine log-source detector types the code names, **only `VOLUME_SPIKE`, `VOLUME_DROP` and
+> `NO_EVENTS` run on live data**; the rest lack collected telemetry or a baseline and are not
+> executed there. See [detector capability](docs/BEHAVIORAL-ANALYTICS-ARCHITECTURE.md#123-detector-capability).
+> **Phase B** (WAF endpoint behavior): the lab-validated backend slice is now **schedulable**
+> (Phase B.1) — per-source profiles with read-only QRadar validation, bounded endpoint admission,
+> recorded maintenance decisions, metric-semantics identities, WAF retention and per-source Celery
+> runs — and **resilient at scale** (Phase B.1.5): raw-path floods degrade to explicit lower bounds
+> instead of blinding a source, endpoint storage is sparse, a scheduled run costs a constant number
+> of SQL statements, and WAF Ariel concurrency is globally capped. Collection stays off unless
+> enabled per source; WAF incidents have no analyst API or UI yet, and production WAF onboarding is
+> unvalidated. **Phase B.2** then adds five behavioural detectors — block, 5xx and 4xx ratios,
+> source-IP concentration and new-endpoint access — over opt-in per-endpoint breakdowns, each
+> failing closed to `INSUFFICIENT_DATA` and each stating the exact claim it makes; a default-off
+> shadow-mode switch lets WAF incidents raise alerts. See
 > [Roadmap](#roadmap), [the Phase A design](docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md),
 > [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) and
 > [the Phase 3 handoff](docs/PHASE3-HANDOFF.md).
@@ -47,8 +60,10 @@ QRadar tells you about *offenses*. It is far less good at telling you when it ha
 *seeing* — a log source that went silent at 02:00, a DSM update that broke username parsing, a rule
 that has not fired in ninety days, a MITRE technique whose only detection is disabled. Those
 failures are invisible precisely because they produce no events. This platform watches for the
-**absence** of signal as well as its presence, scores each log source's health, and alerts once —
-without duplicate noise — when something degrades.
+**absence** of signal as well as its presence and alerts once — without duplicate noise — when a
+source's behavior departs from its baseline. Today that means event volume: parsing, delay and
+cardinality failures are named in the code but not yet measurable from live telemetry (see
+[detector capability](docs/BEHAVIORAL-ANALYTICS-ARCHITECTURE.md#123-detector-capability)).
 
 ## Architecture
 
@@ -484,7 +499,7 @@ docker compose logs --tail=300
 ```
 
 Expected: `postgres`, `redis`, `backend`, `celery-worker`, `celery-beat` and `frontend` healthy,
-with `migrate` exited 0 at revision `0004`. The frontend is on `:3000`, the backend on `:8000`
+with `migrate` exited 0 at revision `0008`. The frontend is on `:3000`, the backend on `:8000`
 (`/api/v1/health/live`, `/api/v1/health/ready`).
 
 If `docker compose up` fails with `network id ... not found` for `qradar-vmnet`, the external
@@ -516,10 +531,19 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
 **Scheduling:** Celery + Redis is the default. Every background job is an `async` function in
 `app/workers/tasks.py` with a thin Celery shim around it, so the same orchestration runs unchanged
 under APScheduler — the documented MVP fallback for teams not running Celery. Celery Beat drives
-13 configurable jobs: log-source metrics/inventory, offense collection/staleness/aggregates,
-rule inventory/metrics/health, detection coverage, anomaly evaluation, scheduled searches,
-notification dispatch, and baseline rebuilds. Building blocks are collected in the same locked
+16 configurable jobs: log-source metrics/inventory, offense collection/staleness/aggregates,
+rule inventory/metrics/health, detection coverage, anomaly evaluation, anomaly explanation
+collection, scheduled searches, notification dispatch, baseline rebuilds, WAF collection dispatch
+and WAF retention. WAF dispatch enqueues one `collect_waf_source` task per enabled, validated WAF
+profile, and each run collects, evaluates and then trains that source under its own lock; it is a
+no-op while `WAF_COLLECTION_ENABLED=false`. Building blocks are collected in the same locked
 inventory pass as analytics rules.
+
+WAF sources are administered with `python -m app.cli.waf` (`set`, `validate`, `enable`, `disable`,
+`status`, and `probe-rejection` to verify how the appliance refuses an unknown property) and
+observed through `GET /api/v1/waf/sources` and `GET /api/v1/waf/ariel-budget`, which require
+`admin:waf`. At most `WAF_ARIEL_MAX_CONCURRENT_SOURCES` (default 2) WAF sources search Ariel at once
+across all workers.
 
 ## Testing
 
@@ -545,10 +569,11 @@ search executor and scheduler, search alerting, notification dispatch, the resul
 the API against a real database. All QRadar
 responses in tests are mocked and no notification is ever really sent (`MockNotifier`).
 
-Current suite: **1078 tests, all passing with 0 skipped and 0 failed** against a real
-`timescale/timescaledb:2.17.2-pg16` instance. `ruff check` is clean; `mypy app` reports **31
-existing errors in 18 files**, unchanged from the Phase A backend baseline, with no new errors.
-Alembic upgrades a fresh database through `0004` and reports no drift.
+Current suite (2026-10-12): **2,088 backend tests (unit + integration) and 629 frontend tests**
+against a real `timescale/timescaledb:2.17.2-pg16` instance. `ruff check` is
+clean; `mypy app` reports **31 existing errors in 18 files**, unchanged from the Phase A backend
+baseline, with no new errors. Alembic upgrades a fresh database through `0008`, downgrades to
+`0007` and upgrades again, and `alembic check` reports no drift.
 
 > Never run two `pytest` processes against the same test database concurrently. The schema fixture
 > drops and recreates tables, so a second run fails with unrelated collection errors, and a
@@ -563,7 +588,7 @@ npm ci
 npm audit --omit=dev
 npm run lint
 npm run typecheck
-npm test             # 275 tests
+npm test             # 629 tests
 npm run build
 ```
 
@@ -595,18 +620,30 @@ codebase uses a compact hand-formatted style throughout.
 
 ## Data model
 
-18 domain models across bounded contexts (`instance`, `log_source`, `search`, `offense`, `rule`,
-`config_change`, `alert`, `identity`). Four are **TimescaleDB hypertables** for time-series:
-`log_source_metric`, `search_result_metric`, `rule_metric`, `offense_snapshot`.
+40 tables across bounded contexts (`instance`, `log_source`, `explanation`, `search`, `offense`,
+`rule`, `config_change`, `alert`, `identity`, `monitoring`, `waf`). Eight are **TimescaleDB
+hypertables**: `log_source_metric`, `search_result_metric`, `rule_metric`, `offense_snapshot`,
+`rule_health_snapshot`, `detection_coverage_snapshot`, `waf_endpoint_metric` and
+`waf_source_bucket`.
 
 Highlights:
 
-- **Log-source health** is scored 0–100 as **40% freshness + 25% volume + 20% parsing +
-  15% collection** (`app/services/health_score.py`, a pure function).
+- **Log-source health** — a pure 0–100 scoring function exists (`app/services/health_score.py`,
+  40% freshness + 25% volume + 20% parsing + 15% collection), but **no collector or task calls
+  it**, so `log_source.health_score` is not populated by the live pipeline. Its parsing and
+  collection components would read fields the Ariel path does not measure.
 - **Baselines** use **median + MAD** per (weekday, hour) cell — robust to incident spikes, no ML.
-- **Anomaly types:** `NO_EVENTS`, `VOLUME_DROP`, `VOLUME_SPIKE`, `PARSING_DEGRADATION`,
-  `UNKNOWN_EVENT_SPIKE`, `TIMESTAMP_DELAY`, `CARDINALITY_DROP`, `COLLECTION_ERROR`,
-  `REPEATED_PAYLOAD`.
+- **Anomaly types.** Operational on live data: `NO_EVENTS`, `VOLUME_DROP`, `VOLUME_SPIKE`.
+  Synthetic telemetry only (mock provider): `PARSING_DEGRADATION`, `UNKNOWN_EVENT_SPIKE`,
+  `TIMESTAMP_DELAY`, `REPEATED_PAYLOAD`. Unsupported by any collection path: `CARDINALITY_DROP`,
+  `COLLECTION_ERROR`. Phase B: `WAF_REQUEST_RATE_SPIKE`, plus the B.2 types `WAF_BLOCK_RATIO_SPIKE`,
+  `WAF_ERROR_RATIO_SPIKE`, `WAF_CLIENT_ERROR_RATIO_SPIKE`, `WAF_CLIENT_CONCENTRATION_SPIKE` and
+  `WAF_NEW_ENDPOINT_ACCESS`, scheduled for enabled WAF profiles (the first four need their
+  collection setting). The engine
+  refuses to run a detector on a bucket that did not measure its inputs, and
+  `GET /api/v1/behavior/detectors` publishes each status with its reason.
+- **Event counting.** Volume is `SUM(eventcount)`, never `COUNT(*)`: QRadar coalesces identical
+  events into one Ariel record, so a row count under-reports by up to ~38x on this appliance.
 - **Alert lifecycle:** `OPEN → ACKNOWLEDGED → RESOLVED`, with a **partial unique index** on
   `dedup_key` for non-resolved alerts that structurally prevents duplicate notifications.
 - **Scheduled searches** store the AQL, enforce timeout / max time-range / max rows / concurrency,
@@ -703,15 +740,37 @@ lints and updates this README.
   endpoint normalizer, per-endpoint observation collection with measured completeness, a seasonal
   request-rate baseline, and `WAF_REQUEST_RATE_SPIKE` on the reused Phase A lifecycle. Validated
   end to end against live QRadar telemetry on 2026-08-03 —
-  `INSUFFICIENT_DATA → NORMAL → OPEN → RECOVERING → RESOLVED` on real data. Collection is **off by
-  default** (`WAF_COLLECTION_ENABLED=false`); the anomaly API, UI rendering and Celery schedule are
-  not built yet, and production WAF onboarding remains unvalidated. See
-  [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md).
+  `INSUFFICIENT_DATA → NORMAL → OPEN → RECOVERING → RESOLVED` on real data.
+- **Phase B.1 ✅ (collection productionization)** — per-source WAF profiles with audited,
+  versioned field mappings and read-only QRadar validation; deterministic endpoint admission
+  bounded per bucket and per source; maintenance decisions recorded per bucket; metric-semantics
+  identities that make incompatible baselines fail closed; bounded WAF retention; per-source
+  scheduled collect → evaluate → train runs with failure isolation; and an admin status API. Collection
+  is **off by default** (`WAF_COLLECTION_ENABLED=false`, and per profile). The analyst anomaly API,
+  UI, evidence and alert routing for WAF incidents are not built, and production WAF onboarding
+  remains unvalidated. See [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §28.
+- **Phase B.1.5 ✅ (collection resilience and scale)** — per-dimension completeness with explicit
+  exact/lower-bound request counts, so a path flood above the group cap can still prove a spike
+  but never a normal verdict; sparse, slim endpoint metric rows (about 2.2× smaller per row, and
+  rows only where traffic exists); batch evaluation and training at a constant 36 SQL statements per
+  scheduled run (6,273 before, at 2,000 endpoints); a crash-safe global WAF Ariel concurrency budget;
+  query-budget status; and an operator procedure for QRadar's rejection semantics. See
+  [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §29.
+- **Phase B.2 ✅ (behavioural detectors)** — action, response-code and source-IP breakdowns, each
+  one bounded read-only Ariel search per bucket with its own completeness and gated by
+  `WAF_OUTCOME_COLLECTION_ENABLED` / `WAF_CLIENT_COLLECTION_ENABLED` (off by default); pooled ratio
+  baselines; `WAF_BLOCK_RATIO_SPIKE`, `WAF_ERROR_RATIO_SPIKE`, `WAF_CLIENT_ERROR_RATIO_SPIKE`,
+  `WAF_CLIENT_CONCENTRATION_SPIKE` and `WAF_NEW_ENDPOINT_ACCESS` (the last needs a verified history
+  and no setting); source-level coverage required on the ratio paths; and alerts from WAF incidents
+  behind `WAF_ALERTING_ENABLED` (off by default, shadow mode first).
+  `GET /api/v1/behavior/detectors` reports each detector's deployment status. Lab use only:
+  production WAF onboarding remains unvalidated and there is no source-level alert coalescing. See
+  [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §30.
 - **Phase 4** — security hardening, expanded tests, documentation, observability.
 
-Next: the additive anomaly-API fields and UI rendering for a WAF endpoint subject
-([design](docs/PHASE-B-WAF-BEHAVIOR.md) section 18.2), then a field-availability pass against a real
-WAF product before any production onboarding.
+Next: the analyst API and UI for WAF incidents, then the goals in
+[the planner](docs/PLANNER.md) §0. Production WAF onboarding still needs a field-availability pass
+against a real WAF product ([the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §30.14).
 
 ## License
 
