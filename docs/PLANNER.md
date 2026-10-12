@@ -264,13 +264,19 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-022 | **Phase C.1 (G1):** inventory enrichment (groups, types, facts), migration `0011`, `classify()` with seed rules, new-source detection and alert ([design](PHASE-C-LOG-SOURCE-FLEET.md)) | Codex | IN PROGRESS (`agent/t022`) | Full gates; constant SQL per sync; the seed list reviewed by the orchestrator |
 | T-025 | **Phase E.1a (G3):** measured rule matches from `creEventList`, migration `0012` (temporarily chained to `0010`; re-chain at merge), rule-health integration ([design](PHASE-E-RULE-ANALYTICS.md)) | Sonnet | IN PROGRESS (`agent/t025`) | Full gates; EVENT rules provably silent only over complete windows; COMMON never silent |
 | T-026 | Record the T-021 contracts (`IncidentMetrics`, `LoadingState`/`ErrorState`, UTC, the severity tone) in the UX guidelines | opencode `longcat-2.5-preview-free` | IN PROGRESS (`agent/t026`) | Three verbatim insertions; one file |
+| T-022b | Follow-ups on T-022: the seed overlap (Azure AD matched CLOUD and IDENTITY at equal priority); built-in rule updates must reach existing installs (upsert definitions, keep `enabled`); pin the upgrade path (pre-0011 sources become REVIEWED, no alert flood) | Codex | IN PROGRESS (`agent/t022`) | Guard test over ≥ 40 realistic DSM names; upsert test; upgrade test |
+| T-025b | Follow-up on T-025, liveness: a permanently failing window stalled the watermark forever. Bounded attempts, then skip as FAILED; a catch-up horizon with a bulk skip | Sonnet | IN PROGRESS (`agent/t025`) | Skip after N attempts; transient failures not skipped; constant-cost bulk skip; health stays fail-closed over skipped spans |
+| T-027 | G2 research: live IPS field discovery for the Phase D design | Sonnet | IN PROGRESS | `docs/tasks/T-027.report.md`; ≤ 10 bounded searches |
+| T-028 | **Security fix:** the `/log-sources` (incl. PATCH and sync) and `/overview` routers were mounted with **no authentication**, and read routes of searches and alerts may be too. Router-level `requires()`, new permissions, an audit record on PATCH, and a guard test walking every route | Sonnet | IN PROGRESS (`agent/t028`) | Every route except the allowlisted health/docs returns 401 without a principal; read-only gets 403 on every mutation |
 
 **Later, not yet scheduled:**
 
 - WAF analyst API and UI (design §27.14–27.15).
 - Field-availability pass against a real WAF product. Production onboarding is NO-GO until then.
 - Phase A maintenance-history defect (design §28.14, item 4).
-- Phase 4 hardening.
+- Phase 4 hardening. **OIDC token verification is not implemented** (`_oidc_principal` fails
+  closed with 501), so no authenticated route works in production yet. This blocks any production
+  deployment, independently of the WAF NO-GO.
 - Retire or rewrite `docs/NEXT-SESSION-PROMPT.md`, which still describes Phase 2.
 - Document the upgrade procedure: stop `backend`, `celery-worker` and `celery-beat` before `docker compose run --rm migrate`. Every migration since 0002 adds NOT NULL columns whose backfill default is dropped, so a writer still running the old code fails until it is replaced.
 
