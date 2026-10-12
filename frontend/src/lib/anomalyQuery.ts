@@ -57,10 +57,17 @@ function uuid(value: string | undefined): string {
   return value && UUID_RE.test(value) ? value : "";
 }
 
-/** `datetime-local` value → ISO instant, or "" if it is not a real timestamp. */
+/**
+ * `datetime-local` value → ISO instant, or "" if it is not a real timestamp.
+ *
+ * A value with no zone designator is read as UTC, which is the timezone the
+ * filter's labels and every timestamp on these pages state. Left bare,
+ * `Date.parse` would read it in the server's local zone.
+ */
 function instant(value: string | undefined): string {
   if (!value) return "";
-  const ms = Date.parse(value);
+  const zoned = /(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
+  const ms = Date.parse(zoned);
   return Number.isNaN(ms) ? "" : new Date(ms).toISOString();
 }
 

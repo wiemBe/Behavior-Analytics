@@ -17,8 +17,18 @@ from app.providers.factory import build_provider
 from app.services.inventory_sync import InventorySyncService
 
 _ROLES = {
-    "admin": ["admin:*", "search:execute", "search:write", "alert:ack", "alert:resolve"],
-    "analyst": ["search:execute", "alert:ack", "alert:resolve"],
+    "admin": [
+        "admin:*", "search:execute", "search:write", "alert:ack", "alert:resolve",
+        "log_source:write", "rule:write", "coverage:write",
+        "admin:classification",
+    ],
+    # Every read route is guarded, so an analyst needs `read:*` to see anything.
+    # The write permissions cover the SOC-owned metadata the analyst curates:
+    # rule ownership/MITRE mapping and the technique mappings coverage rests on.
+    "analyst": [
+        "read:*", "search:execute", "alert:ack", "alert:resolve", "log_source:write",
+        "rule:write", "coverage:write",
+    ],
     "viewer": ["read:*"],
 }
 
@@ -30,6 +40,12 @@ async def seed() -> None:
             existing = await session.scalar(select(Role).where(Role.name == name))
             if existing is None:
                 session.add(Role(name=name, permissions=perms))
+            else:
+                # Additive only: roles seeded before a permission existed gain it,
+                # and nothing an operator granted is ever removed.
+                missing = [p for p in perms if p not in existing.permissions]
+                if missing:
+                    existing.permissions = [*existing.permissions, *missing]
         await session.flush()
 
         admin_role = await session.scalar(select(Role).where(Role.name == "admin"))

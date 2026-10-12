@@ -30,6 +30,10 @@ from typing import Any, ClassVar
 
 import httpx
 
+from app.collectors.bucketed_metrics import (
+    fold_log_source_metric_buckets,
+    validate_bucketed_metric_window,
+)
 from app.providers.base import (
     PROPERTY_NAME_PATTERN,
     WAF_PROBE_MAX_WINDOW_SECONDS,
@@ -46,21 +50,27 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CustomPropertyDTO,
     DimensionAggregate,
     DimensionValueCount,
     InstanceInfoDTO,
     LogSourceDTO,
+    LogSourceGroupDTO,
+    LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    RuleMatchBatch,
+    RuleMatchRow,
     WafBreakdownBatch,
-    WafBreakdownGroup,
+    WafBreakdownBucketBatch,
     WafObservationBatch,
+    WafObservationBucketBatch,
     WafPropertyProbe,
     WafPropertyValue,
     WafRejectionObservation,
-    WafRequestGroup,
     WafSourceProbe,
+    WindowedRuleMatches,
 )
 from app.providers.normalize import (
     as_int,
@@ -71,7 +81,15 @@ from app.providers.normalize import (
 )
 from app.providers.telemetry import EndpointCategory, ErrorClass, observe
 from app.providers.tls import build_ssl_context
+from app.rules.matches import fold_windowed_rows, window_starts
+from app.security.sanitizer import sanitize_text
 from app.services.backoff import backoff_delay
+from app.waf.bucketed import (
+    fold_breakdown_buckets,
+    fold_observation_buckets,
+    parse_breakdown_row,
+    parse_group_row,
+)
 
 logger = logging.getLogger("app.providers.qradar_rest")
 
@@ -87,6 +105,60 @@ DEFAULT_PAGE_SIZE = 500
 #: Hard ceiling on pages walked in one call, so a pathological or hostile
 #: upstream cannot turn a list call into an unbounded loop.
 DEFAULT_MAX_PAGES = 200
+
+#: Version of the stored rule-match AQL. Bump it with any change to the query
+#: text, so a stored window can always be tied to the query that produced it.
+RULE_MATCH_QUERY_VERSION = "rule_match/v1"
+#: The keyed multi-window form of the same query (T-037). Its text differs, so
+#: its windows carry their own version.
+RULE_MATCH_WINDOWED_QUERY_VERSION = "rule_match/v2"
+
+
+def _rule_id(value: Any) -> int | None:
+    """A rule id exactly as QRadar sends it: a non-negative integer.
+
+    Stricter than `as_int`, which truncates a float: a fractional id is a
+    malformed row, not rule 5.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, float):
+        return int(value) if value.is_integer() and value >= 0 else None
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        return int(value)
+    return None
+
+
+def parse_rule_match_rows(raw_rows: Sequence[dict]) -> tuple[list[RuleMatchRow], int]:
+    """Parse `creEventList` rows defensively; returns (rows, malformed count).
+
+    A null id is the events that matched no rule at all: excluded, and not
+    malformed. A missing or non-integer id, or a count that is not a
+    non-negative integer, drops the row and is counted, so a parsing change on
+    the appliance shows up as a number rather than as quietly missing rules.
+    """
+    out: list[RuleMatchRow] = []
+    malformed = 0
+    for row in raw_rows:
+        if "rule_id" in row and row["rule_id"] is None:
+            continue
+        rule_id = _rule_id(row.get("rule_id"))
+        records = as_int(row.get("records"))
+        events = as_int(row.get("events"))
+        if (
+            rule_id is None
+            or records is None
+            or events is None
+            or records < 0
+            or events < 0
+        ):
+            malformed += 1
+            continue
+        out.append(RuleMatchRow(qradar_rule_id=rule_id, records=records, events=events))
+    return out, malformed
+
 
 class MalformedUpstreamResponse(ProviderError):
     """QRadar returned something we could not safely interpret."""
@@ -121,6 +193,8 @@ class QRadarRestProvider(QRadarProvider):
             ProviderCapability.OFFENSES,
             ProviderCapability.AQL_EXECUTION,
             ProviderCapability.CONFIG_SNAPSHOTS,
+            ProviderCapability.LOG_SOURCE_GROUPS,
+            ProviderCapability.CUSTOM_PROPERTY_CATALOG,
         }
     )
     #: Exactly what the one metric aggregate in `get_log_source_metrics`
@@ -412,7 +486,99 @@ class QRadarRestProvider(QRadarProvider):
             name = row.get("name")
             if type_id is None or not isinstance(name, str):
                 continue
-            out.append(LogSourceTypeDTO(type_id=type_id, name=name[:255]))
+            out.append(
+                LogSourceTypeDTO(
+                    type_id=type_id,
+                    name=name[:255],
+                    internal=row.get("internal") is True,
+                    custom=row.get("custom") is True,
+                )
+            )
+        return out
+
+    async def list_log_source_groups(self) -> list[LogSourceGroupDTO]:
+        self.require(ProviderCapability.LOG_SOURCE_GROUPS)
+        rows = await self._paginate(
+            "/config/event_sources/log_source_management/log_source_groups",
+            category=EndpointCategory.LOG_SOURCE_LIST,
+        )
+        out: list[LogSourceGroupDTO] = []
+        for row in rows:
+            qradar_id = as_int(row.get("id"))
+            name = row.get("name")
+            if qradar_id is None or not isinstance(name, str) or not name.strip():
+                continue
+            out.append(
+                LogSourceGroupDTO(
+                    qradar_id=qradar_id,
+                    name=name.strip()[:255],
+                    description=sanitize_text(as_text(row.get("description"), limit=4096)),
+                    parent_qradar_id=as_int(row.get("parent_id")),
+                    assignable=row.get("assignable") is True,
+                )
+            )
+        return out
+
+    async def list_custom_properties(
+        self, *, log_source_type_id: int | None = None
+    ) -> list[CustomPropertyDTO]:
+        """Join regex properties to the types their enabled expressions cover.
+
+        Two slim GETs, always with `fields=` so no regex or payload body is ever
+        requested (a full row is ~1.4 KB against ~140 B). Only enabled expressions
+        that cover a whole type (`log_source_id == -1`) count.
+        """
+        self.require(ProviderCapability.CUSTOM_PROPERTY_CATALOG)
+        base = "/config/event_sources/custom_properties"
+        props = await self._paginate(
+            f"{base}/regex_properties",
+            category=EndpointCategory.LOG_SOURCE_LIST,
+            params={
+                "fields": "id,identifier,name,property_type,use_for_rule_engine,auto_discovered"
+            },
+        )
+        expr_params = {
+            "fields": "regex_property_identifier,log_source_type_id,log_source_id,enabled"
+        }
+        if log_source_type_id is not None:
+            expr_params["filter"] = f"log_source_type_id={int(log_source_type_id)}"
+        exprs = await self._paginate(
+            f"{base}/property_expressions",
+            category=EndpointCategory.LOG_SOURCE_LIST,
+            params=expr_params,
+        )
+        types_by_identifier: dict[str, set[int]] = {}
+        for expr in exprs:
+            identifier = expr.get("regex_property_identifier")
+            type_id = as_int(expr.get("log_source_type_id"))
+            if (
+                not isinstance(identifier, str)
+                or type_id is None
+                or expr.get("enabled") is not True
+                or as_int(expr.get("log_source_id")) != -1
+            ):
+                continue
+            types_by_identifier.setdefault(identifier, set()).add(type_id)
+
+        out: list[CustomPropertyDTO] = []
+        for row in props:
+            qradar_id = as_int(row.get("id"))
+            identifier = row.get("identifier")
+            name = row.get("name")
+            if qradar_id is None or not isinstance(identifier, str) or not isinstance(name, str):
+                continue
+            out.append(
+                CustomPropertyDTO(
+                    qradar_id=qradar_id,
+                    identifier=identifier,
+                    name=name,
+                    property_type=str(row.get("property_type") or "string")[:32],
+                    use_for_rule_engine=row.get("use_for_rule_engine") is True,
+                    auto_discovered=row.get("auto_discovered") is True,
+                    log_source_type_ids=tuple(sorted(types_by_identifier.get(identifier, ()))),
+                    name_allowed=PROPERTY_NAME_PATTERN.match(name) is not None,
+                )
+            )
         return out
 
     async def get_log_source_metrics(
@@ -481,6 +647,12 @@ class QRadarRestProvider(QRadarProvider):
         results = await self.get_ariel_search_results(
             handle.search_id, max_rows=max_rows
         )
+        if results.truncated:
+            # A capped aggregate drops sources, and the collector would zero-fill
+            # them as complete silence. Fail the interval instead.
+            raise ProviderError(
+                f"QRadar Ariel metric search was truncated at {max_rows} rows"
+            )
         samples: list[LogSourceMetricSample] = []
         for row in results.rows:
             qradar_id = as_int(row.get("qradar_id"))
@@ -506,6 +678,61 @@ class QRadarRestProvider(QRadarProvider):
                 )
             )
         return samples
+
+    async def get_log_source_metrics_bucketed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> LogSourceMetricBucketBatch:
+        """Collect one keyed Ariel aggregate spanning multiple metric buckets."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        if max_rows < 1:
+            raise ValueError("metric row limit must be positive")
+        start, end = validate_bucketed_metric_window(
+            window_start, window_end, bucket_seconds
+        )
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        bucket_ms = bucket_seconds * 1000
+        aql = (
+            'SELECT logsourceid AS "qradar_id", '  # noqa: S608 - validated integers only
+            f'starttime / {bucket_ms} AS "k", '
+            'SUM(eventcount) AS "event_count", MAX(starttime) AS "last_event_time" '
+            "FROM events "
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY logsourceid, starttime / {bucket_ms} "
+            f"LIMIT {max_rows + 1} START {start_ms} STOP {end_ms}"
+        )
+        handle = await self.create_ariel_search(aql)
+        status: ArielSearchStatusDTO | None = None
+        for _ in range(120):
+            status = await self.get_ariel_search_status(handle.search_id)
+            if status.is_terminal:
+                break
+            await self._sleep(1.0)
+        else:
+            await self.cancel_ariel_search(handle.search_id)
+            raise ProviderUnavailableError("QRadar Ariel metric search timed out")
+
+        if status is None or not status.is_success:
+            raise ProviderError("QRadar Ariel metric search did not complete")
+
+        results = await self.get_ariel_search_results(handle.search_id, max_rows=max_rows)
+        buckets = fold_log_source_metric_buckets(
+            results.rows,
+            start,
+            end,
+            bucket_seconds=bucket_seconds,
+        )
+        return LogSourceMetricBucketBatch(
+            buckets=buckets,
+            truncated=results.truncated,
+            rows_returned=len(results.rows),
+            aql=aql,
+        )
 
     # -------------------------------------------------- explanation evidence
     #: Explanation dimension -> the Ariel field that carries it, plus an
@@ -672,6 +899,108 @@ class QRadarRestProvider(QRadarProvider):
             query=aql,
         )
 
+    async def get_rule_matches(
+        self, window_start: datetime, window_end: datetime, *, max_rows: int
+    ) -> RuleMatchBatch:
+        """One bounded aggregate: events matched per rule or building block.
+
+        Only the validated window bounds and the integer cap reach the query
+        text. Read-only: one Ariel search over ``events``, no raw event kept.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = self._bounded_window(window_start, window_end)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        limit = max(1, min(int(max_rows), self._page_size * self._max_pages))
+        aql = (
+            # COUNT(*) is retained as provenance only; SUM(eventcount) is the
+            # volume, for the coalescing reason given in get_log_source_metrics.
+            # `creEventList` comes back as a bare integer id, one row per rule
+            # or building block an event matched (T-015 section 11).
+            'SELECT creEventList AS "rule_id", COUNT(*) AS "records", '  # noqa: S608
+            'SUM(eventcount) AS "events" FROM events '
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY creEventList ORDER BY COUNT(*) DESC LIMIT {limit} "
+            # START/STOP scopes the search itself; see get_log_source_metrics.
+            f"START {start_ms} STOP {end_ms}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=limit)
+        rows, malformed = parse_rule_match_rows(raw)
+        return RuleMatchBatch(
+            window_start=start,
+            window_end=end,
+            rows=rows,
+            # Judged on the raw page, not the parsed rows: a page full of
+            # dropped rows is still a full page.
+            truncated=len(raw) >= limit,
+            row_cap=limit,
+            malformed_rows=malformed,
+            query_version=RULE_MATCH_QUERY_VERSION,
+            query=aql,
+            ariel_searches=1,
+        )
+
+    async def get_rule_matches_windowed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        window_seconds: int,
+        max_rows: int,
+    ) -> WindowedRuleMatches:
+        """One keyed aggregate: events matched per rule, per whole window.
+
+        `starttime / {window_ms}` is integer division, so ``k * window_ms`` is a
+        window's start in epoch-UTC milliseconds with no timezone involved
+        (T-032 Q1, Q6). `LIMIT` caps the result as a whole, so it asks for
+        ``max_rows + 1`` and reads more than ``max_rows`` rows as truncated;
+        the caller then keeps nothing and splits. Only validated epochs and
+        integers reach the query text. Read-only: one Ariel search over
+        ``events``, no raw event kept.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        # Validates alignment and whole windows before any request. The 168 h
+        # bound of `_bounded_window` is not applied: the span is a count of
+        # windows chosen by the collector, and the row cap bounds the answer.
+        window_starts(window_start, window_end, window_seconds)
+        start, end = window_start.astimezone(UTC), window_end.astimezone(UTC)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        window_ms = int(window_seconds) * 1000
+        # The same effective cap the single-window query records as `row_cap`.
+        cap = max(1, min(int(max_rows), self._page_size * self._max_pages))
+        aql = (
+            # See get_rule_matches for COUNT(*) and SUM(eventcount).
+            'SELECT creEventList AS "rule_id", '  # noqa: S608
+            f'starttime / {window_ms} AS "k", '
+            'COUNT(*) AS "records", SUM(eventcount) AS "events" FROM events '
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY creEventList, starttime / {window_ms} "
+            f"ORDER BY COUNT(*) DESC LIMIT {cap + 1} "
+            f"START {start_ms} STOP {end_ms}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        truncated = len(raw) > cap
+        return WindowedRuleMatches(
+            window_start=start,
+            window_end=end,
+            window_seconds=window_seconds,
+            batches=fold_windowed_rows(
+                raw,
+                window_start=start,
+                window_end=end,
+                window_seconds=window_seconds,
+                row_cap=cap,
+                parse_rows=parse_rule_match_rows,
+                query_version=RULE_MATCH_WINDOWED_QUERY_VERSION,
+                query=aql,
+            ),
+            truncated=truncated,
+            row_cap=cap,
+            query=aql,
+            ariel_searches=1,
+        )
+
     # ------------------------------------------------------------ WAF (Phase B)
     #: Custom-property names are site-authored and reach the query text, so they
     #: are validated against this before interpolation. QRadar property names are
@@ -739,21 +1068,7 @@ class QRadarRestProvider(QRadarProvider):
         )
         rows = await self._run_bounded_aggregate(aql, max_rows=limit)
 
-        groups: list[WafRequestGroup] = []
-        for row in rows:
-            count = as_int(row.get("request_count"))
-            if count is None or count < 0:
-                continue
-            groups.append(
-                WafRequestGroup(
-                    raw_url=as_text(row.get("raw_url"), limit=2048),
-                    raw_method=as_text(row.get("raw_method"), limit=32),
-                    raw_virtual_host=as_text(row.get("raw_virtual_host"), limit=255),
-                    request_count=count,
-                    record_count=as_int(row.get("record_count")) or 0,
-                    distinct_client_count=as_int(row.get("distinct_clients")),
-                )
-            )
+        groups = [g for g in map(parse_group_row, rows) if g is not None]
 
         total_aql = (
             'SELECT SUM(eventcount) AS "total_events" FROM events '  # noqa: S608
@@ -827,20 +1142,7 @@ class QRadarRestProvider(QRadarProvider):
             f"START {start_ms} STOP {end_ms}"
         )
         rows = await self._run_bounded_aggregate(aql, max_rows=limit)
-        groups: list[WafBreakdownGroup] = []
-        for row in rows:
-            count = as_int(row.get("request_count"))
-            if count is None or count < 0:
-                continue
-            groups.append(
-                WafBreakdownGroup(
-                    raw_url=as_text(row.get("raw_url"), limit=2048),
-                    raw_method=as_text(row.get("raw_method"), limit=32),
-                    raw_virtual_host=as_text(row.get("raw_virtual_host"), limit=255),
-                    raw_value=as_text(row.get("raw_value"), limit=255),
-                    request_count=count,
-                )
-            )
+        groups = [g for g in map(parse_breakdown_row, rows) if g is not None]
         return WafBreakdownBatch(
             breakdown=breakdown,
             qradar_log_source_id=qradar_log_source_id,
@@ -848,6 +1150,186 @@ class QRadarRestProvider(QRadarProvider):
             window_end=end,
             groups=groups,
             truncated=len(rows) >= limit,
+            query=aql,
+            ariel_searches=1,
+        )
+
+    def _keyed_row_cap(self, max_rows: int) -> int:
+        """The row budget of one keyed search, bounded as the results read is."""
+        return max(1, min(int(max_rows), self._page_size * self._max_pages))
+
+    async def get_waf_observations_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None = None,
+        max_groups: int = 500,
+        max_rows: int,
+    ) -> WafObservationBucketBatch:
+        """`get_waf_observations` over many whole buckets: two keyed aggregates.
+
+        Today's grouped query and totals query, each with ``starttime /
+        {bucket_ms} AS "k"`` selected and grouped (integer division: ``k *
+        bucket_ms`` is a bucket's start in epoch-UTC milliseconds, T-032 Q1) and
+        ``LIMIT max_rows + 1``. The totals query loses its ``LIMIT 1`` and
+        returns one row per bucket. More than ``max_rows`` rows in either read
+        as truncated: no bucket is built, and the caller splits. When the
+        grouped search was whole, `fold_observation_buckets` makes the
+        per-bucket top-N cut that ``LIMIT`` cannot make per bucket.
+
+        Only validated integers and allowlisted property names reach the query
+        text. Read-only: Ariel searches over ``events``, nothing kept.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        bucket_ms = int(bucket_seconds) * 1000
+        # The per-bucket cut is the one today's single-bucket query makes.
+        limit = max(1, min(max_groups, self._page_size))
+        cap = self._keyed_row_cap(max_rows)
+
+        url = self._quote_property(url_property)
+        method = self._quote_property(method_property)
+        vhost = (
+            self._quote_property(virtual_host_property) if virtual_host_property else None
+        )
+        group_cols = f"{url}, {method}" + (f", {vhost}" if vhost else "")
+        vhost_select = f", {vhost} AS \"raw_virtual_host\"" if vhost else ""
+        where = (
+            f"WHERE logsourceid = {int(qradar_log_source_id)} "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+        )
+        aql = (
+            f'SELECT {url} AS "raw_url", {method} AS "raw_method"{vhost_select}, '  # noqa: S608
+            f'starttime / {bucket_ms} AS "k", '
+            'SUM(eventcount) AS "request_count", COUNT(*) AS "record_count", '
+            'UNIQUECOUNT(sourceip) AS "distinct_clients" FROM events '
+            f"{where}"
+            f"GROUP BY {group_cols}, starttime / {bucket_ms} LIMIT {cap + 1} "
+            f"START {start_ms} STOP {end_ms}"
+        )
+        total_aql = (
+            f'SELECT starttime / {bucket_ms} AS "k", '  # noqa: S608
+            'SUM(eventcount) AS "total_events" FROM events '
+            f"{where}"
+            f"GROUP BY starttime / {bucket_ms} LIMIT {cap + 1} "
+            f"START {start_ms} STOP {end_ms}"
+        )
+        group_rows = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        if len(group_rows) > cap:
+            return WafObservationBucketBatch(
+                truncated=True,
+                rows_returned=len(group_rows),
+                query=aql,
+                total_query=total_aql,
+                ariel_searches=1,
+            )
+        total_rows = await self._run_bounded_aggregate(total_aql, max_rows=cap + 1)
+        if len(total_rows) > cap:
+            return WafObservationBucketBatch(
+                truncated=True,
+                rows_returned=len(group_rows) + len(total_rows),
+                query=aql,
+                total_query=total_aql,
+                ariel_searches=2,
+            )
+        return WafObservationBucketBatch(
+            buckets=fold_observation_buckets(
+                group_rows,
+                total_rows,
+                qradar_log_source_id=qradar_log_source_id,
+                window_start=start,
+                window_end=end,
+                bucket_seconds=bucket_seconds,
+                max_groups=limit,
+                query=aql,
+                total_query=total_aql,
+            ),
+            rows_returned=len(group_rows) + len(total_rows),
+            query=aql,
+            total_query=total_aql,
+            ariel_searches=2,
+        )
+
+    async def get_waf_breakdown_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None,
+        breakdown: str,
+        breakdown_property: str | None,
+        max_groups: int = 2000,
+        max_rows: int,
+    ) -> WafBreakdownBucketBatch:
+        """`get_waf_breakdown` over many whole buckets: one keyed aggregate.
+
+        The same query with the bucket key selected and grouped and ``LIMIT
+        max_rows + 1``; see `get_waf_observations_bucketed`.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        bucket_ms = int(bucket_seconds) * 1000
+        limit = max(1, min(max_groups, self._page_size * self._max_pages))
+        cap = self._keyed_row_cap(max_rows)
+
+        if breakdown == "SOURCE_IP":
+            value = "sourceip"
+        elif breakdown in ("ACTION", "RESPONSE_CODE") and breakdown_property:
+            value = self._quote_property(breakdown_property)
+        else:
+            raise ValueError(f"unsupported WAF breakdown {breakdown!r}")
+        url = self._quote_property(url_property)
+        method = self._quote_property(method_property)
+        vhost = (
+            self._quote_property(virtual_host_property) if virtual_host_property else None
+        )
+        group_cols = f"{url}, {method}" + (f", {vhost}" if vhost else "") + f", {value}"
+        vhost_select = f", {vhost} AS \"raw_virtual_host\"" if vhost else ""
+        aql = (
+            f'SELECT {url} AS "raw_url", {method} AS "raw_method"{vhost_select}, '  # noqa: S608
+            f'{value} AS "raw_value", starttime / {bucket_ms} AS "k", '
+            'SUM(eventcount) AS "request_count" FROM events '
+            f"WHERE logsourceid = {int(qradar_log_source_id)} "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+            f"AND {value} IS NOT NULL "
+            f"GROUP BY {group_cols}, starttime / {bucket_ms} LIMIT {cap + 1} "
+            f"START {start_ms} STOP {end_ms}"
+        )
+        rows = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        if len(rows) > cap:
+            return WafBreakdownBucketBatch(
+                breakdown=breakdown,
+                truncated=True,
+                rows_returned=len(rows),
+                query=aql,
+                ariel_searches=1,
+            )
+        return WafBreakdownBucketBatch(
+            breakdown=breakdown,
+            buckets=fold_breakdown_buckets(
+                rows,
+                breakdown=breakdown,
+                qradar_log_source_id=qradar_log_source_id,
+                window_start=start,
+                window_end=end,
+                bucket_seconds=bucket_seconds,
+                max_groups=limit,
+                query=aql,
+            ),
+            rows_returned=len(rows),
             query=aql,
             ariel_searches=1,
         )
@@ -1210,7 +1692,9 @@ class QRadarRestProvider(QRadarProvider):
             "GET",
             f"/ariel/searches/{search_id}/results",
             category=EndpointCategory.ARIEL_RESULTS,
-            headers={"Range": f"items=0-{max(0, max_rows - 1)}"},
+            # One row past the cap: the server honours the range, so seeing the
+            # extra row is the only way to tell a capped result from a whole one.
+            headers={"Range": f"items=0-{max(0, max_rows)}"},
         )
         if not isinstance(body, dict):
             raise MalformedUpstreamResponse("QRadar Ariel results were not an object")
@@ -1220,13 +1704,15 @@ class QRadarRestProvider(QRadarProvider):
             if isinstance(value, list):
                 rows = [r for r in value if isinstance(r, dict)]
                 break
+        truncated = len(rows) > max_rows
+        rows = rows[:max_rows]
         columns = sorted({key for row in rows for key in row}) if rows else []
         return ArielSearchResultsDTO(
             search_id=search_id,
             columns=columns,
-            rows=rows[:max_rows],
+            rows=rows,
             total_count=len(rows),
-            truncated=len(rows) > max_rows,
+            truncated=truncated,
         )
 
     async def cancel_ariel_search(self, search_id: str) -> None:
@@ -1250,6 +1736,11 @@ class QRadarRestProvider(QRadarProvider):
             return None
         raw_type = row.get("type")
         type_info: dict = raw_type if isinstance(raw_type, dict) else {}
+        identifiers = row.get("log_source_identifiers")
+        first_identifier = identifiers[0] if isinstance(identifiers, list) and identifiers else {}
+        identifier = (
+            first_identifier.get("identifier") if isinstance(first_identifier, dict) else None
+        )
         return LogSourceDTO(
             qradar_id=qradar_id,
             name=name.strip()[:255],
@@ -1263,6 +1754,16 @@ class QRadarRestProvider(QRadarProvider):
             target_event_collector_id=as_int(row.get("target_event_collector_id")),
             average_eps=None,
             last_event_time=parse_qradar_time(row.get("last_event_time")),
+            qradar_created_at=parse_qradar_time(row.get("creation_date")),
+            qradar_modified_at=parse_qradar_time(row.get("modified_date")),
+            auto_discovered=(
+                row.get("auto_discovered")
+                if isinstance(row.get("auto_discovered"), bool)
+                else None
+            ),
+            group_ids=as_int_list(row.get("group_ids")),
+            identifier=sanitize_text(as_text(identifier, limit=255)),
+            internal=row.get("internal") if isinstance(row.get("internal"), bool) else None,
         )
 
     @staticmethod

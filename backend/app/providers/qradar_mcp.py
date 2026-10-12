@@ -50,10 +50,12 @@ from app.providers.normalize import (
     as_int,
     as_int_list,
     as_str_list,
+    as_text,
     parse_qradar_time,
 )
 from app.providers.qradar_rest import MalformedUpstreamResponse
 from app.providers.telemetry import EndpointCategory, ErrorClass, observe
+from app.security.sanitizer import sanitize_text
 
 logger = logging.getLogger("app.providers.qradar_mcp")
 
@@ -515,7 +517,14 @@ class QRadarMCPProvider(QRadarProvider):
             type_id = as_int(row.get("id"))
             name = row.get("name")
             if type_id is not None and isinstance(name, str):
-                out.append(LogSourceTypeDTO(type_id=type_id, name=name[:255]))
+                out.append(
+                    LogSourceTypeDTO(
+                        type_id=type_id,
+                        name=name[:255],
+                        internal=row.get("internal") is True,
+                        custom=row.get("custom") is True,
+                    )
+                )
         return out
 
     async def list_rules(self) -> list[AnalyticsRuleDTO]:
@@ -590,6 +599,11 @@ class QRadarMCPProvider(QRadarProvider):
         raw_type = row.get("type")
         type_info: dict = raw_type if isinstance(raw_type, dict) else {}
         status = row.get("status")
+        identifiers = row.get("log_source_identifiers")
+        first_identifier = identifiers[0] if isinstance(identifiers, list) and identifiers else {}
+        identifier = (
+            first_identifier.get("identifier") if isinstance(first_identifier, dict) else None
+        )
         return LogSourceDTO(
             qradar_id=qradar_id,
             name=name.strip()[:255],
@@ -607,6 +621,16 @@ class QRadarMCPProvider(QRadarProvider):
             target_event_collector_id=as_int(row.get("target_event_collector_id")),
             average_eps=None,
             last_event_time=parse_qradar_time(row.get("last_event_time")),
+            qradar_created_at=parse_qradar_time(row.get("creation_date")),
+            qradar_modified_at=parse_qradar_time(row.get("modified_date")),
+            auto_discovered=(
+                row.get("auto_discovered")
+                if isinstance(row.get("auto_discovered"), bool)
+                else None
+            ),
+            group_ids=as_int_list(row.get("group_ids")),
+            identifier=sanitize_text(as_text(identifier, limit=255)),
+            internal=row.get("internal") if isinstance(row.get("internal"), bool) else None,
         )
 
     @staticmethod

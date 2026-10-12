@@ -20,6 +20,12 @@ precedence produces actively misleading answers:
      "this has never worked" and "this stopped working" get different responses.
   6. **HEALTHY**.
 
+Measured rule matches (Phase E.1a) add evidence per rule type, via
+`app.rules.matches.match_evidence`. An EVENT rule is judged on its measured match
+count, and its silence is provable only when every window of the evaluation span
+is COMPLETE. A COMMON rule's measured matches are a lower bound: they prove firing
+and never silence. Every other type is judged exactly as before.
+
 Zero offenses is not zero detections: `trigger_count` and
 `offense_contribution_count` are evaluated separately, so a rule that fires
 normally but is configured to create no offense reads HEALTHY rather than dead.
@@ -53,7 +59,17 @@ from app.models.rule import (
     AnalyticsRule,
     RuleDependency,
     RuleHealthSnapshot,
+    RuleMatchMetric,
+    RuleMatchWindow,
     RuleMetric,
+)
+from app.rules.matches import (
+    CoverageState,
+    MatchCoverage,
+    MatchEvidence,
+    assess_coverage,
+    floor_to_window,
+    match_evidence,
 )
 
 logger = logging.getLogger("app.services.rule_health")
@@ -83,6 +99,18 @@ class HealthVerdict:
     required_log_sources_healthy: bool | None = None
     missing_dependencies: list[str] = field(default_factory=list)
     evidence: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MeasuredMatches:
+    """Measured rule-match evidence for one rule over the evaluation window."""
+
+    evidence: MatchEvidence
+    coverage: MatchCoverage
+    #: Sum of `matched_events` over the span. Positive evidence whatever the
+    #: coverage: a stored row is a match that happened.
+    events: int = 0
+    last_match_at: datetime | None = None
 
 
 @dataclass
@@ -140,8 +168,16 @@ class RuleHealthEvaluator:
         ls_health = await self._log_source_type_health(instance.id, now)
         observation_status = await self._observation_status(instance.id, window_start)
         observation_complete = observation_status == "complete"
+        coverage = await self._match_coverage(instance.id, window_start, now)
+        match_sums = (
+            await self._match_sums([r.id for r in rules], window_start)
+            if coverage.state != CoverageState.NONE
+            else {}
+        )
 
         for rule in rules:
+            evidence = match_evidence(rule.rule_type)
+            events, last_match = match_sums.get(rule.id, (0, None))
             verdict = self.classify(
                 rule,
                 now=now,
@@ -154,6 +190,11 @@ class RuleHealthEvaluator:
                 log_source_type_healthy=ls_health,
                 observation_complete=observation_complete,
                 observation_status=observation_status,
+                matches=(
+                    MeasuredMatches(evidence, coverage, events, last_match)
+                    if coverage.state != CoverageState.NONE
+                    else None
+                ),
             )
             report.evaluated += 1
             report.by_status[verdict.status] = report.by_status.get(verdict.status, 0) + 1
@@ -184,6 +225,7 @@ class RuleHealthEvaluator:
         observation_complete: bool = False,
         observation_status: str = "never_run",
         metric_inferred: bool = False,
+        matches: MeasuredMatches | None = None,
     ) -> HealthVerdict:
         """Classify one rule.
 
@@ -191,8 +233,69 @@ class RuleHealthEvaluator:
         covered the window. It defaults to False — fail closed — because without
         it a zero trigger count carries no information, and NEVER_OBSERVED would
         be an assertion the platform cannot support.
+
+        `matches` carries measured rule-match evidence and is None when the
+        match collector has never run, which leaves every verdict as it was.
+        What it adds depends on the rule's type: an EVENT rule's measured count
+        replaces the inferred one, and its silence is provable only with
+        COMPLETE coverage; a COMMON rule's count is a lower bound that can prove
+        firing but never silence; any other type ignores it. Incomplete
+        coverage of an EVENT rule overrides `observation_complete` to False, so
+        the measured path can only ever be stricter than the old one.
         """
         expected = rule.expected_daily_firings
+        last_fired = rule.last_fired_at
+        measurement: dict = {}
+        measured_exact = False  # a measured count over a fully observed span
+        measured_lower_bound = False  # matches were the figure that set the count
+        if (
+            matches is not None
+            and matches.evidence != MatchEvidence.NOT_MEASURED
+            and matches.coverage.state != CoverageState.NONE
+        ):
+            measurement = {
+                "match_evidence": str(matches.evidence),
+                "match_coverage": str(matches.coverage.state),
+                "match_windows": {
+                    "expected": matches.coverage.expected,
+                    "complete": matches.coverage.complete,
+                    "truncated": matches.coverage.truncated,
+                    "failed": matches.coverage.failed,
+                    "missing": matches.coverage.missing,
+                },
+                "measured_events": matches.events,
+            }
+            if (
+                matches.events > 0
+                and matches.last_match_at is not None
+                and (
+                    last_fired is None
+                    or self._aware(last_fired) < self._aware(matches.last_match_at)
+                )
+            ):
+                last_fired = matches.last_match_at
+            if (
+                matches.evidence == MatchEvidence.EXACT
+                and matches.coverage.state == CoverageState.COMPLETE
+            ):
+                # A measured count over a fully observed span: exact, and a zero
+                # is a real zero.
+                trigger_count = matches.events
+                measured_exact = True
+                metric_inferred = False
+                observation_complete = True
+                observation_status = "complete"
+            else:
+                # A lower bound: either the type is not fully searched (COMMON)
+                # or some window is missing, TRUNCATED or FAILED. Matches still
+                # prove firing; nothing here can prove silence.
+                if matches.events > trigger_count:
+                    trigger_count = matches.events
+                    measured_lower_bound = True
+                    metric_inferred = True
+                if matches.evidence == MatchEvidence.EXACT:
+                    observation_complete = False
+                    observation_status = "incomplete"
 
         def verdict(
             status: RuleHealthStatus,
@@ -215,7 +318,7 @@ class RuleHealthEvaluator:
                 confidence=confidence,
                 window_start=window_start,
                 window_end=now,
-                last_triggered_at=rule.last_fired_at,
+                last_triggered_at=last_fired,
                 trigger_count=trigger_count,
                 offense_contribution_count=offense_count,
                 expected_daily_firings=expected,
@@ -223,7 +326,7 @@ class RuleHealthEvaluator:
                 building_blocks_healthy=building_blocks_healthy,
                 required_log_sources_healthy=required_log_sources_healthy,
                 missing_dependencies=missing_dependencies or [],
-                evidence=evidence or {},
+                evidence={**(evidence or {}), **measurement},
             )
 
         # 1. Intentionally disabled is a state, not a fault.
@@ -299,7 +402,7 @@ class RuleHealthEvaluator:
             )
 
         # 5. Genuine silence, with dependencies healthy.
-        if rule.last_fired_at is None and trigger_count == 0:
+        if last_fired is None and trigger_count == 0:
             if not observation_complete:
                 # A zero count with no completed collection behind it is an
                 # absence of measurement, not an absence of firings. Claiming
@@ -309,9 +412,21 @@ class RuleHealthEvaluator:
                 return verdict(
                     RuleHealthStatus.INSUFFICIENT_DATA,
                     (
-                        "No completed rule-metric collection covers the evaluation "
-                        "window, so the absence of observed firings is not evidence "
-                        "that the rule has never fired."
+                        (
+                            "Measured rule-match coverage of the evaluation window is "
+                            f"incomplete ({matches.coverage.complete} of "
+                            f"{matches.coverage.expected} windows are COMPLETE), so the "
+                            "absence of measured matches is not evidence that the rule "
+                            "has never fired."
+                        )
+                        if matches is not None
+                        and measurement
+                        and matches.evidence == MatchEvidence.EXACT
+                        else (
+                            "No completed rule-metric collection covers the evaluation "
+                            "window, so the absence of observed firings is not evidence "
+                            "that the rule has never fired."
+                        )
                     ),
                     confidence=0.2,
                     building_blocks_healthy=bb_ok,
@@ -325,8 +440,17 @@ class RuleHealthEvaluator:
             return verdict(
                 RuleHealthStatus.NEVER_OBSERVED,
                 (
-                    f"The rule is enabled and its dependencies are healthy, but it has "
-                    f"never been observed firing in {age_days:.0f} days."
+                    (
+                        "The rule is enabled and its dependencies are healthy, but no "
+                        "matching event was measured in any of the "
+                        f"{matches.coverage.expected} COMPLETE windows of the evaluation "
+                        "span."
+                    )
+                    if measured_exact and matches is not None
+                    else (
+                        f"The rule is enabled and its dependencies are healthy, but it "
+                        f"has never been observed firing in {age_days:.0f} days."
+                    )
                 ),
                 building_blocks_healthy=bb_ok,
                 required_log_sources_healthy=ls_ok,
@@ -337,8 +461,8 @@ class RuleHealthEvaluator:
                 },
             )
 
-        if rule.last_fired_at is not None:
-            quiet_days = (now - self._aware(rule.last_fired_at)).total_seconds() / 86400.0
+        if last_fired is not None:
+            quiet_days = (now - self._aware(last_fired)).total_seconds() / 86400.0
             if quiet_days > self.settings.rule_health_inactivity_days:
                 return verdict(
                     RuleHealthStatus.INACTIVE,
@@ -357,6 +481,11 @@ class RuleHealthEvaluator:
             RuleHealthStatus.HEALTHY,
             (
                 (
+                    f"At least {trigger_count} matching events were measured in the "
+                    "evaluation window with healthy dependencies."
+                )
+                if measured_lower_bound
+                else (
                     f"At least {trigger_count} offense-contributing firings were "
                     "observed in the evaluation window with healthy dependencies."
                 )
@@ -369,7 +498,11 @@ class RuleHealthEvaluator:
             building_blocks_healthy=bb_ok,
             required_log_sources_healthy=ls_ok,
             evidence={
-                "metric_kind": "inferred" if metric_inferred else "direct",
+                "metric_kind": (
+                    "measured_lower_bound"
+                    if measured_lower_bound
+                    else "inferred" if metric_inferred else "direct"
+                ),
                 "observation_status": observation_status,
             },
         )
@@ -448,6 +581,67 @@ class RuleHealthEvaluator:
             rid: (int(fires), int(offenses), bool(inferred))
             for rid, fires, offenses, inferred in rows.all()
         }
+
+    async def _match_coverage(
+        self, instance_id: uuid.UUID, window_start: datetime, now: datetime
+    ) -> MatchCoverage:
+        """How much of the evaluation span the match windows cover.
+
+        Two queries for the whole instance, whatever the number of rules.
+        """
+        ever = (
+            await self.session.scalar(
+                select(RuleMatchWindow.instance_id)
+                .where(RuleMatchWindow.instance_id == instance_id)
+                .limit(1)
+            )
+        ) is not None
+        rows: list[tuple[datetime, int, str]] = []
+        if ever:
+            result = await self.session.execute(
+                select(
+                    RuleMatchWindow.window_start,
+                    RuleMatchWindow.window_seconds,
+                    RuleMatchWindow.status,
+                ).where(
+                    RuleMatchWindow.instance_id == instance_id,
+                    RuleMatchWindow.window_start >= window_start,
+                )
+            )
+            rows = [(start, seconds, str(status)) for start, seconds, status in result.all()]
+        return assess_coverage(
+            rows,
+            evaluation_start=window_start,
+            now=now,
+            window_seconds=self.settings.rule_match_window_seconds,
+            settle_seconds=self.settings.rule_match_settle_lag_seconds,
+            ever_collected=ever,
+        )
+
+    async def _match_sums(
+        self, rule_ids: list[uuid.UUID], window_start: datetime
+    ) -> dict[uuid.UUID, tuple[int, datetime | None]]:
+        """Measured events and latest matching window start, per rule."""
+        if not rule_ids:
+            return {}
+        # Only windows on the evaluation grid count, as the coverage check does:
+        # a bucket straddling the span's start is not part of what was verified.
+        first = floor_to_window(window_start, self.settings.rule_match_window_seconds)
+        if first < window_start:
+            first += timedelta(seconds=self.settings.rule_match_window_seconds)
+        rows = await self.session.execute(
+            select(
+                RuleMatchMetric.rule_id,
+                func.coalesce(func.sum(RuleMatchMetric.matched_events), 0),
+                func.max(RuleMatchMetric.bucket_start),
+            )
+            .where(
+                RuleMatchMetric.rule_id.in_(rule_ids),
+                RuleMatchMetric.bucket_start >= first,
+            )
+            .group_by(RuleMatchMetric.rule_id)
+        )
+        return {rid: (int(events), last) for rid, events, last in rows.all()}
 
     async def _observation_status(
         self, instance_id: uuid.UUID, window_start: datetime

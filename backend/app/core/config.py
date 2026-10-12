@@ -136,6 +136,12 @@ class Settings(BaseSettings):
     # A search that has quietly stopped producing results is exactly the blind
     # spot this platform exists to surface, so it is alertable in its own right.
     search_failure_alert_after: int = Field(default=3, ge=1)
+    # Delay a cadence slot after its boundary so late QRadar events can arrive.
+    search_cadence_settle_seconds: int = Field(default=120, ge=0, le=900)
+    search_cadence_max_searches_per_tick: int = Field(default=16, ge=1, le=256)
+    #: How long the QRadar custom-property catalog is reused per instance.
+    qradar_property_catalog_ttl_seconds: int = Field(default=600, ge=60, le=86400)
+    ariel_multi_bucket_max_rows: int = Field(default=5000, ge=1, le=100_000)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention
@@ -166,6 +172,8 @@ class Settings(BaseSettings):
     # Full inventory pass; log sources are added and renamed rarely, so this is
     # deliberately far less frequent than metric collection.
     log_source_sync_interval_seconds: int = Field(default=3600, ge=60)
+    # New, non-internal inventory rows open a deduplicated review alert.
+    inventory_new_source_alerts_enabled: bool = True
 
     # --- Offense collection (Phase 3) ---------------------------------------
     offense_collection_interval_seconds: int = Field(default=300, ge=60)
@@ -194,6 +202,27 @@ class Settings(BaseSettings):
     rule_metric_collection_interval_seconds: int = Field(default=3600, ge=60)
     rule_metric_lookback_days: int = Field(default=30, ge=1, le=365)
     rule_metric_max_offenses: int = Field(default=10_000, ge=1, le=1_000_000)
+    # Measured rule matches (Phase E.1a): one Ariel `creEventList` search per
+    # window. Off by default -- the cost on a busy console is unmeasured.
+    rule_match_collection_enabled: bool = False
+    #: Deprecated by `search_cadence`; the beat no longer reads this setting.
+    rule_match_collection_interval_seconds: int = Field(default=900, ge=60)
+    rule_match_window_seconds: int = Field(default=3600, ge=60, le=86_400)
+    # A window is collected only once it ended this long ago, so late-arriving
+    # events do not land in a window already recorded as COMPLETE.
+    rule_match_settle_lag_seconds: int = Field(default=300, ge=0, le=86_400)
+    # Windows per run when the cadence is no longer than the window; beyond that,
+    # the extra windows of one cadence are added: ceil(cadence / window) + this - 1.
+    rule_match_max_windows_per_run: int = Field(default=6, ge=1, le=168)
+    # A window that failed this many times stays recorded as FAILED and the
+    # watermark moves past it, so one unanswerable window cannot stall collection.
+    rule_match_max_window_attempts: int = Field(default=3, ge=1, le=20)
+    # A watermark further behind than this (after downtime) jumps to the horizon;
+    # every skipped window is recorded as FAILED, never as an empty COMPLETE one.
+    rule_match_max_catchup_seconds: int = Field(default=86_400, ge=60)
+    # A full page makes the window TRUNCATED. Capped at 5,000 so one bulk upsert
+    # (5 bound values a row) stays under the 32,767-parameter statement limit.
+    rule_match_max_rows: int = Field(default=2000, ge=10, le=5000)
     # Evaluation window for "has this rule fired recently".
     rule_health_window_days: int = Field(default=30, ge=1, le=365)
     # A rule newer than this is INSUFFICIENT_DATA, never INACTIVE: a detection
@@ -212,7 +241,8 @@ class Settings(BaseSettings):
     rule_health_flap_threshold: int = Field(default=2, ge=1, le=10)
     # Bumped whenever classification logic changes meaning, so historical
     # snapshots stay interpretable. Not operator-tunable in practice.
-    rule_health_logic_version: int = 1
+    # 2: EVENT rules are judged on measured rule matches when they exist (E.1a).
+    rule_health_logic_version: int = 2
     # Health classification reads only stored data, so it can run more often
     # than the inventory sync that feeds it.
     rule_health_evaluation_interval_seconds: int = Field(default=1800, ge=60)
@@ -260,6 +290,7 @@ class Settings(BaseSettings):
     anomaly_policy_version: int = Field(default=1, ge=1)
     #: Buckets of expected-but-absent traffic tolerated before NO_EVENTS fires.
     anomaly_silence_grace_buckets: int = Field(default=1, ge=0)
+    anomaly_max_buckets_per_evaluation: int = Field(default=120, ge=1, le=10_000)
 
     # --- Phase A explanation evidence ---------------------------------------
     explanation_enabled: bool = True
@@ -276,7 +307,7 @@ class Settings(BaseSettings):
     #: two queries per dimension, so a backlog is worked through over several
     #: runs rather than in one burst against the appliance.
     explanation_max_per_run: int = Field(default=5, ge=1, le=100)
-    #: How often the explanation task drains the pending queue.
+    #: Deprecated by `search_cadence`; the beat no longer reads this setting.
     explanation_collection_interval_seconds: int = Field(default=300, ge=30)
     #: Per-dimension Ariel timeout for an explanation job.
     explanation_query_timeout_seconds: int = Field(default=120, ge=10, le=900)

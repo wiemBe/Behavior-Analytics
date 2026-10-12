@@ -437,9 +437,8 @@ def test_waf_tasks_are_registered_and_scheduled_from_settings() -> None:
     )
     schedule = celery_app.conf.beat_schedule
     settings = get_settings()
-    assert schedule["dispatch-waf-collection"]["schedule"] == float(
-        settings.collection_interval_seconds
-    )
+    # Ticks every minute: the WAF_COLLECTION cadence gate now decides when a run happens.
+    assert schedule["dispatch-waf-collection"]["schedule"] == 60.0
     assert schedule["apply-waf-retention"]["schedule"] == float(
         settings.waf_retention_interval_seconds
     )

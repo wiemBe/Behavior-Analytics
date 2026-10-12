@@ -28,11 +28,31 @@ from its own ungrouped aggregate, stays exact either way, and the bucket is
 still collected, recorded and evaluated -- a flood of raw paths cannot blind the
 source. See docs/PHASE-B-WAF-BEHAVIOR.md section 29.
 
-**Ariel budget.** Each bucket's searches run under one global WAF Ariel permit
-(`app.services.waf_ariel_budget`). A bucket that cannot get one is not
-collected: the loop stops, the watermark stays on the last bucket actually
-written, and the next run retries. Nothing is written for it -- in particular,
-no zero.
+**One keyed search per kind per tick** (docs/SEARCH-CADENCE.md section SC.5). A
+tick covers every complete bucket since the watermark -- at most one cadence plus
+the backfill bound -- with one keyed volume search and one keyed search per
+planned breakdown (`get_waf_observations_bucketed`, `get_waf_breakdown_bucketed`).
+The per-bucket top-N cut happens in the fold (`app.waf.bucketed`). A kind whose
+keyed search was truncated keeps nothing for that window: the window is split in
+halves of whole buckets and that kind is searched again for each half, down to a
+single bucket, where the search is exactly the per-bucket one with its own
+truncation semantics. The other kinds keep what they already got. Each bucket is
+then persisted by `_persist_interval`, unchanged.
+
+**Ariel budget.** The whole tick's searches run under one global WAF Ariel permit
+(`app.services.waf_ariel_budget`). A tick that cannot get one collects nothing:
+the watermark stays where it was and the next run retries. Nothing is written
+for it -- in particular, no zero.
+
+**Caps and failures.** A tick sends at most `search_cadence_max_searches_per_tick`
+searches (a keyed volume search is one search; it issues two Ariel statements).
+On reaching the cap, or on a provider failure of a volume search, only the
+contiguous run of buckets for which *every* kind completed is written and the
+watermark stops before the first bucket that did not. A failure is not split
+around: whether a wide search fails because it is wide is a question for live
+validation (docs/SEARCH-CADENCE.md section SC.6). A failed keyed breakdown is
+recorded FAILED for every bucket it covered, exactly as the per-bucket search
+records it, and does not stop the tick.
 
 **Breakdowns (Phase B.2).** A profile's `BreakdownPlan` may add up to three more
 bounded searches per bucket, under the same permit: requests by endpoint and
@@ -51,11 +71,13 @@ name is a default here.
 
 from __future__ import annotations
 
+import dataclasses
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -66,6 +88,7 @@ from app.collectors.metric_collector import floor_to_interval
 from app.core.config import Settings, get_settings
 from app.models.enums import (
     BucketCompleteness,
+    SearchFamily,
     WafBreakdown,
     WafMeasurement,
     WafTelemetryStatus,
@@ -75,8 +98,13 @@ from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafEndpoint, WafEndpointMetric, WafSourceBucket
 from app.providers.base import ProviderError, QRadarProvider
-from app.providers.dto import WafBreakdownBatch, WafObservationBatch
+from app.providers.dto import (
+    WafBreakdownBatch,
+    WafObservationBatch,
+    WafObservationBucketBatch,
+)
 from app.services.locks import CollectorAdvisoryLock
+from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
 from app.waf.admission import AdmissionPolicy, decide_admission
 from app.waf.breakdown import (
@@ -129,6 +157,16 @@ class WafCollectionReport:
     untracked_requests: int = 0
     #: Ariel searches the provider reported issuing during this run.
     ariel_searches: int = 0
+    #: Provider search calls made this run: one keyed volume search counts once
+    #: although it issues two Ariel statements. This is what the per-tick cap
+    #: `search_cadence_max_searches_per_tick` counts.
+    searches_sent: int = 0
+    #: Keyed searches that were truncated and therefore split.
+    splits: int = 0
+    #: A volume search failed (not truncated) and ended the tick; the class name.
+    provider_failure_class: str | None = None
+    #: The per-tick search cap stopped the tick before every kind completed.
+    search_cap_reached: bool = False
     #: Wall time of the whole collection, including permit waits.
     duration_ms: int = 0
     #: Collection stopped because no global WAF Ariel permit freed up in time.
@@ -148,6 +186,26 @@ class WafCollectionReport:
     breakdown_failed_buckets: dict[str, list[str]] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _SearchMeta:
+    """Which search produced a bucket's result, for its provenance."""
+
+    window_start: datetime
+    window_end: datetime
+    bucket_count: int
+    split_depth: int
+    duration_ms: int
+    collected_at: datetime
+
+    def provenance(self) -> dict[str, object]:
+        return {
+            "search_window_start": self.window_start.isoformat(),
+            "search_window_end": self.window_end.isoformat(),
+            "search_bucket_count": self.bucket_count,
+            "split_depth": self.split_depth,
+        }
+
+
 @dataclass
 class _BreakdownResult:
     """One breakdown's outcome for one bucket."""
@@ -155,6 +213,7 @@ class _BreakdownResult:
     status: WafTelemetryStatus
     batch: WafBreakdownBatch | None = None
     error_class: str | None = None
+    search: _SearchMeta | None = None
 
 
 @dataclass
@@ -178,6 +237,9 @@ class _Fetched:
     breakdowns: dict[WafBreakdown, _BreakdownResult]
     duration_ms: int
     collected_at: datetime
+    #: The keyed volume search behind this bucket; None for a bucket fetched by
+    #: the control path.
+    search: _SearchMeta | None = None
 
 
 @dataclass
@@ -316,37 +378,48 @@ class WafEndpointCollector:
                 return report
 
             watermark = await self._get_or_create_watermark(instance, collector)
+            cadence = await SearchCadenceService(self.session, self.settings).get(
+                SearchFamily.WAF_COLLECTION
+            )
+            cadence_buckets = max(1, cadence.cadence_seconds // interval)
             intervals = self._intervals_to_collect(
-                watermark, current_boundary, interval
+                watermark,
+                current_boundary,
+                interval,
+                max_intervals=cadence_buckets + self.settings.collection_max_backfill_intervals,
+            )
+
+            fetched_by_start = await self._fetch_window_under_permit(
+                log_source, intervals, interval, report
             )
 
             last_done = watermark.watermark_at
             collected = 0
             for start in intervals:
                 end = start + timedelta(seconds=interval)
-                fetched = await self._fetch_under_permit(log_source, start, end, report)
+                fetched = fetched_by_start.get(start)
                 if fetched is None:
-                    # No permit: stop here. Nothing is written for this bucket
-                    # or any later one, and the watermark stays on the last
-                    # bucket that was, so the next run resumes exactly here.
-                    report.capacity_unavailable = True
+                    # This bucket, or a search kind behind it, did not complete:
+                    # nothing is written for it or any later bucket, and the
+                    # watermark stays on the last bucket that was, so the next
+                    # run resumes exactly here.
                     break
                 await self._persist_interval(
                     log_source, start, end, fetched, watermark_at=last_done, report=report,
                 )
-                # Only advances past an interval that completed. A failure
-                # raises out of this loop and leaves the watermark behind, so
-                # the next run retries the gap rather than skipping it.
+                # Only advances past an interval that completed.
                 last_done = start
                 collected += 1
 
             watermark.watermark_at = last_done
             watermark.last_run_at = now
             watermark.intervals_collected += collected
-            if collected or not intervals:
+            failed = report.provider_failure_class is not None
+            if (collected and not failed) or not intervals:
                 # A run that collected nothing because capacity was exhausted
                 # has proven nothing about the source; it neither clears nor
-                # adds to its failure record.
+                # adds to its failure record. Neither does one that a provider
+                # failure ended early.
                 watermark.consecutive_failures = 0
                 watermark.last_error = None
             if last_done is not None:
@@ -362,6 +435,8 @@ class WafEndpointCollector:
                 "profile_version": self.profile_version,
                 "metric_semantics": self.metric_semantics,
                 "last_run_ariel_searches": report.ariel_searches,
+                "last_run_searches_sent": report.searches_sent,
+                "last_run_splits": report.splits,
                 "last_run_duration_ms": report.duration_ms,
                 "last_run_intervals": collected,
                 "last_run_intervals_due": len(intervals),
@@ -369,7 +444,9 @@ class WafEndpointCollector:
             }
             if report.capacity_unavailable:
                 metadata["last_capacity_skip_at"] = now.isoformat()
-            if collected or not intervals:
+            if report.provider_failure_class is not None:
+                metadata["last_provider_failure_class"] = report.provider_failure_class
+            if (collected and not failed) or not intervals:
                 metadata["last_success_at"] = now.isoformat()
             watermark.collection_metadata = metadata
 
@@ -378,44 +455,165 @@ class WafEndpointCollector:
             return report
 
     def _intervals_to_collect(
-        self, watermark: CollectionWatermark, current_boundary: datetime, interval: int
+        self,
+        watermark: CollectionWatermark,
+        current_boundary: datetime,
+        interval: int,
+        *,
+        max_intervals: int,
     ) -> list[datetime]:
-        max_backfill = self.settings.collection_max_backfill_intervals
+        """Complete buckets after the watermark, at most one cadence plus backfill."""
         if watermark.watermark_at is None:
             start = current_boundary - timedelta(seconds=interval)
             return [start] if start < current_boundary else []
         cursor = watermark.watermark_at + timedelta(seconds=interval)
         out: list[datetime] = []
-        while cursor < current_boundary and len(out) < max_backfill + 1:
+        while cursor < current_boundary and len(out) < max_intervals:
             out.append(cursor)
             cursor += timedelta(seconds=interval)
         return out
 
-    async def _fetch_under_permit(
+    async def _fetch_window_under_permit(
         self,
         log_source: LogSource,
-        start: datetime,
-        end: datetime,
+        intervals: list[datetime],
+        interval: int,
         report: WafCollectionReport,
-    ) -> _Fetched | None:
-        """One bucket's Ariel searches under a global permit, or None without one."""
+    ) -> dict[datetime, _Fetched]:
+        """The tick's searches under one global permit; nothing without one."""
+        if not intervals:
+            return {}
         if self.ariel_budget is None:
-            return await self._fetch(log_source, start, end, report)
+            return await self._fetch_window(log_source, intervals, interval, report)
         async with self.ariel_budget.permit() as permit:
             if permit is None:
-                return None
+                report.capacity_unavailable = True
+                return {}
             report.permit_wait_ms += int(permit.waited_seconds * 1000)
-            return await self._fetch(log_source, start, end, report)
+            return await self._fetch_window(log_source, intervals, interval, report)
 
-    async def _fetch(
+    async def _fetch_window(
         self,
         log_source: LogSource,
-        start: datetime,
-        end: datetime,
+        intervals: list[datetime],
+        interval: int,
         report: WafCollectionReport,
-    ) -> _Fetched:
-        started = self._clock()
-        batch = await self.provider.get_waf_observations(
+    ) -> dict[datetime, _Fetched]:
+        """Search the window once per kind, splitting a kind that was truncated.
+
+        Returns the buckets for which every kind completed. The caller writes
+        only the contiguous run of them from the front of the window.
+        """
+        observations: dict[datetime, tuple[WafObservationBatch, _SearchMeta]] = {}
+        breakdowns: dict[WafBreakdown, dict[datetime, _BreakdownResult]] = {
+            b: {} for b in sorted(self.planned_breakdowns())
+        }
+        kinds: list[WafBreakdown | None] = [None, *breakdowns]
+        failure: ProviderError | None = None
+        capped = False
+
+        async def search(
+            pending: list[WafBreakdown | None], start: datetime, count: int, depth: int
+        ) -> None:
+            nonlocal failure, capped
+            if failure is not None:
+                return
+            truncated: list[WafBreakdown | None] = []
+            end = start + timedelta(seconds=interval * count)
+            for kind in pending:
+                if report.searches_sent >= self.settings.search_cadence_max_searches_per_tick:
+                    capped = True
+                    report.search_cap_reached = True
+                    return
+                report.searches_sent += 1
+                began = self._clock()
+                if kind is None:
+                    try:
+                        if count == 1:
+                            batch = await self._observations_one(log_source, start, end)
+                            report.ariel_searches += batch.ariel_searches
+                            per_bucket = {start: batch}
+                            was_truncated = False
+                        else:
+                            keyed = await self._observations_keyed(
+                                log_source, start, end, interval
+                            )
+                            report.ariel_searches += keyed.ariel_searches
+                            per_bucket, was_truncated = keyed.buckets, keyed.truncated
+                    except ProviderError as exc:
+                        # A lone bucket that fails writes nothing; the buckets
+                        # complete before it are still kept.
+                        failure = exc
+                        report.provider_failure_class = type(exc).__name__
+                        return
+                    finished = self._clock()
+                    if was_truncated:
+                        truncated.append(kind)
+                        report.splits += 1
+                        continue
+                    meta = _SearchMeta(
+                        start, end, count, depth,
+                        int((finished - began).total_seconds() * 1000), finished,
+                    )
+                    for bucket_start, batch in per_bucket.items():
+                        observations[bucket_start] = (batch, meta)
+                    continue
+
+                results, was_truncated, searches = await self._breakdown_search(
+                    log_source, start, end, interval, count, kind
+                )
+                report.ariel_searches += searches
+                finished = self._clock()
+                if was_truncated:
+                    truncated.append(kind)
+                    report.splits += 1
+                    continue
+                meta = _SearchMeta(
+                    start, end, count, depth,
+                    int((finished - began).total_seconds() * 1000), finished,
+                )
+                for bucket_start, result in results.items():
+                    result.search = meta
+                    breakdowns[kind][bucket_start] = result
+            if truncated:
+                left = count // 2
+                await search(truncated, start, left, depth + 1)
+                if not capped and failure is None:
+                    await search(
+                        truncated,
+                        start + timedelta(seconds=interval * left),
+                        count - left,
+                        depth + 1,
+                    )
+
+        await search(kinds, intervals[0], len(intervals), 0)
+        if failure is not None and intervals[0] not in observations:
+            # Nothing advanced, so the error surfaces and the run is recorded
+            # as failed.
+            raise failure
+
+        out: dict[datetime, _Fetched] = {}
+        for start in intervals:
+            found = observations.get(start)
+            results_here = {b: per.get(start) for b, per in breakdowns.items()}
+            if found is None or any(r is None for r in results_here.values()):
+                continue
+            batch, meta = found
+            metas = [meta, *(r.search for r in results_here.values() if r and r.search)]
+            out[start] = _Fetched(
+                batch=batch,
+                breakdowns={b: r for b, r in results_here.items() if r is not None},
+                duration_ms=sum(m.duration_ms for m in metas),
+                collected_at=max(m.collected_at for m in metas),
+                search=meta,
+            )
+        return out
+
+    async def _observations_one(
+        self, log_source: LogSource, start: datetime, end: datetime
+    ) -> WafObservationBatch:
+        """The per-bucket volume search: the base case of a split window."""
+        return await self.provider.get_waf_observations(
             qradar_log_source_id=log_source.qradar_id,
             window_start=start,
             window_end=end,
@@ -424,12 +622,126 @@ class WafEndpointCollector:
             virtual_host_property=self.mapping.virtual_host,
             max_groups=self.settings.waf_max_groups_per_bucket,
         )
+
+    async def _observations_keyed(
+        self, log_source: LogSource, start: datetime, end: datetime, interval: int
+    ) -> WafObservationBucketBatch:
+        return await self.provider.get_waf_observations_bucketed(
+            qradar_log_source_id=log_source.qradar_id,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=interval,
+            url_property=self.mapping.url,
+            method_property=self.mapping.method,
+            virtual_host_property=self.mapping.virtual_host,
+            max_groups=self.settings.waf_max_groups_per_bucket,
+            max_rows=self.settings.ariel_multi_bucket_max_rows,
+        )
+
+    def _breakdown_property(self, breakdown: WafBreakdown) -> str | None:
+        return {
+            WafBreakdown.ACTION: self.mapping.action,
+            WafBreakdown.RESPONSE_CODE: self.mapping.response_code,
+            WafBreakdown.SOURCE_IP: None,
+        }[breakdown]
+
+    async def _breakdown_search(
+        self,
+        log_source: LogSource,
+        start: datetime,
+        end: datetime,
+        interval: int,
+        count: int,
+        breakdown: WafBreakdown,
+    ) -> tuple[dict[datetime, _BreakdownResult], bool, int]:
+        """One breakdown search over `count` buckets: results, truncated?, searches.
+
+        A single bucket is the per-bucket search. A failure is recorded as FAILED
+        for every bucket the search covered; the class name only, as a message
+        can echo query text. A truncated keyed search returns no results.
+        """
+        starts = [start + timedelta(seconds=interval * i) for i in range(count)]
+        common: dict[str, Any] = {
+            "qradar_log_source_id": log_source.qradar_id,
+            "url_property": self.mapping.url,
+            "method_property": self.mapping.method,
+            "virtual_host_property": self.mapping.virtual_host,
+            "breakdown": breakdown.value,
+            "breakdown_property": self._breakdown_property(breakdown),
+            "max_groups": self.settings.waf_max_breakdown_groups_per_bucket,
+        }
+        try:
+            if count == 1:
+                single = await self.provider.get_waf_breakdown(
+                    window_start=start, window_end=end, **common
+                )
+                batches, whole_truncated, searches = {start: single}, False, single.ariel_searches
+            else:
+                keyed = await self.provider.get_waf_breakdown_bucketed(
+                    window_start=start,
+                    window_end=end,
+                    bucket_seconds=interval,
+                    max_rows=self.settings.ariel_multi_bucket_max_rows,
+                    **common,
+                )
+                batches, whole_truncated, searches = (
+                    keyed.buckets, keyed.truncated, keyed.ariel_searches
+                )
+        except (ProviderError, ValueError) as exc:
+            failed = _BreakdownResult(WafTelemetryStatus.FAILED, error_class=type(exc).__name__)
+            return {s: dataclasses.replace(failed) for s in starts}, False, 0
+        if whole_truncated:
+            return {}, True, searches
+        return (
+            {
+                bucket_start: _BreakdownResult(
+                    WafTelemetryStatus.LOWER_BOUND if batch.truncated else WafTelemetryStatus.EXACT,
+                    batch,
+                )
+                for bucket_start, batch in batches.items()
+            },
+            False,
+            searches,
+        )
+
+    def _account_breakdowns(
+        self, start: datetime, fetched: _Fetched, report: WafCollectionReport
+    ) -> None:
+        """Record, for a bucket about to be written, which breakdowns were not whole."""
+        for breakdown, result in sorted(fetched.breakdowns.items()):
+            if result.status is WafTelemetryStatus.FAILED:
+                report.breakdown_failed_buckets.setdefault(breakdown.value, []).append(
+                    start.isoformat()
+                )
+            elif result.status is WafTelemetryStatus.LOWER_BOUND:
+                report.breakdown_lower_bound_buckets.setdefault(breakdown.value, []).append(
+                    start.isoformat()
+                )
+
+    async def _fetch_per_bucket_control(
+        self,
+        log_source: LogSource,
+        start: datetime,
+        end: datetime,
+        report: WafCollectionReport,
+    ) -> _Fetched:
+        """One bucket by the per-bucket searches, as collection did before T-036.
+
+        Production never calls this. It is the control the equivalence tests
+        compare the keyed path against: every persisted column must match.
+        """
+        started = self._clock()
+        batch = await self._observations_one(log_source, start, end)
         report.ariel_searches += batch.ariel_searches
+        report.searches_sent += 1
         breakdowns: dict[WafBreakdown, _BreakdownResult] = {}
         for breakdown in sorted(self.planned_breakdowns()):
-            breakdowns[breakdown] = await self._fetch_breakdown(
-                log_source, start, end, breakdown, report
+            results, _, searches = await self._breakdown_search(
+                log_source, start, end, 0, 1, breakdown
             )
+            report.ariel_searches += searches
+            report.searches_sent += 1
+            breakdowns[breakdown] = results[start]
         collected_at = self._clock()
         return _Fetched(
             batch=batch,
@@ -437,46 +749,6 @@ class WafEndpointCollector:
             duration_ms=int((collected_at - started).total_seconds() * 1000),
             collected_at=collected_at,
         )
-
-    async def _fetch_breakdown(
-        self,
-        log_source: LogSource,
-        start: datetime,
-        end: datetime,
-        breakdown: WafBreakdown,
-        report: WafCollectionReport,
-    ) -> _BreakdownResult:
-        prop = {
-            WafBreakdown.ACTION: self.mapping.action,
-            WafBreakdown.RESPONSE_CODE: self.mapping.response_code,
-            WafBreakdown.SOURCE_IP: None,
-        }[breakdown]
-        try:
-            batch = await self.provider.get_waf_breakdown(
-                qradar_log_source_id=log_source.qradar_id,
-                window_start=start,
-                window_end=end,
-                url_property=self.mapping.url,
-                method_property=self.mapping.method,
-                virtual_host_property=self.mapping.virtual_host,
-                breakdown=breakdown.value,
-                breakdown_property=prop,
-                max_groups=self.settings.waf_max_breakdown_groups_per_bucket,
-            )
-        except (ProviderError, ValueError) as exc:
-            # Recorded, not raised: the volume searches succeeded and must still
-            # be judged. The class name only -- a message can echo query text.
-            report.breakdown_failed_buckets.setdefault(breakdown.value, []).append(
-                start.isoformat()
-            )
-            return _BreakdownResult(WafTelemetryStatus.FAILED, error_class=type(exc).__name__)
-        report.ariel_searches += batch.ariel_searches
-        if batch.truncated:
-            report.breakdown_lower_bound_buckets.setdefault(breakdown.value, []).append(
-                start.isoformat()
-            )
-            return _BreakdownResult(WafTelemetryStatus.LOWER_BOUND, batch)
-        return _BreakdownResult(WafTelemetryStatus.EXACT, batch)
 
     async def _persist_interval(
         self,
@@ -490,6 +762,7 @@ class WafEndpointCollector:
     ) -> None:
         batch = fetched.batch
         duration_ms, collected_at = fetched.duration_ms, fetched.collected_at
+        self._account_breakdowns(start, fetched, report)
         observations, unusable = fold_groups(batch)
         folded = self._fold_breakdowns(fetched.breakdowns)
         breakdown_keys = folded.keys()
@@ -727,6 +1000,22 @@ class WafEndpointCollector:
                     }
                     for b, r in sorted(fetched.breakdowns.items())
                 },
+                # The searches behind this bucket (SC.5.5): the volume search at
+                # the top level, each breakdown's own beneath. Absent from a
+                # bucket the control path fetched.
+                **(
+                    {
+                        **fetched.search.provenance(),
+                        "bucket_key": f"starttime / {bucket_seconds * 1000}",
+                        "breakdown_searches": {
+                            b.value: r.search.provenance()
+                            for b, r in sorted(fetched.breakdowns.items())
+                            if r.search is not None
+                        },
+                    }
+                    if fetched.search is not None
+                    else {}
+                ),
             },
             "collection_duration_ms": duration_ms,
             "collected_at": collected_at,

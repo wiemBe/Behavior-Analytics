@@ -41,11 +41,46 @@ class LogSourceDTO(ProviderDTO):
     target_event_collector_id: int | None = None
     average_eps: float | None = None
     last_event_time: datetime | None = None
+    qradar_created_at: datetime | None = None
+    qradar_modified_at: datetime | None = None
+    auto_discovered: bool | None = None
+    group_ids: list[int] = Field(default_factory=list)
+    identifier: str | None = None
+    internal: bool | None = None
 
 
 class LogSourceTypeDTO(ProviderDTO):
     type_id: int
     name: str
+    internal: bool = False
+    custom: bool = False
+
+
+class LogSourceGroupDTO(ProviderDTO):
+    qradar_id: int
+    name: str
+    description: str | None = None
+    parent_qradar_id: int | None = None
+    assignable: bool = False
+
+
+class CustomPropertyDTO(ProviderDTO):
+    """One QRadar custom property, as the mapping editor may offer it.
+
+    Deliberately carries no regex, payload, format string, capture group or
+    expression: the catalog is a list of names, never of extraction logic.
+    """
+
+    qradar_id: int
+    identifier: str
+    name: str
+    property_type: str
+    use_for_rule_engine: bool = False
+    auto_discovered: bool = False
+    #: Types with an enabled, whole-type expression, sorted. Empty: none.
+    log_source_type_ids: tuple[int, ...] = ()
+    #: The name matches `PROPERTY_NAME_PATTERN`, so it may be used in AQL.
+    name_allowed: bool = True
 
 
 class DimensionValueCount(ProviderDTO):
@@ -111,6 +146,15 @@ class LogSourceMetricSample(ProviderDTO):
     payload_signature: str | None = None
 
 
+class LogSourceMetricBucketBatch(ProviderDTO):
+    """One bounded Ariel result split into its original metric buckets."""
+
+    buckets: dict[datetime, list[LogSourceMetricSample]] = Field(default_factory=dict)
+    truncated: bool = False
+    rows_returned: int = 0
+    aql: str
+
+
 class WafRequestGroup(ProviderDTO):
     """One (raw URL, method) group of WAF requests over a bounded window.
 
@@ -164,6 +208,43 @@ class WafObservationBatch(ProviderDTO):
     ariel_searches: int = 0
 
 
+class RuleMatchRow(ProviderDTO):
+    """One rule-or-building-block id and how many events matched it in a window."""
+
+    qradar_rule_id: int
+    #: Ariel records, `COUNT(*)`. Provenance only: QRadar coalesces identical
+    #: events into one record, so this is not a volume.
+    records: int
+    #: Events, `SUM(eventcount)`. The quantity a rule's match volume is read from.
+    events: int
+
+
+class RuleMatchBatch(ProviderDTO):
+    """Everything one `creEventList` search returned for one window.
+
+    `creEventList` is expanded by Ariel, so an event that matched several rules
+    is counted once per rule. Rules and building blocks share one id space, so
+    the batch holds ids only; joining them to names and types is the caller's
+    job, because `RULENAME()` is unreliable.
+    """
+
+    window_start: datetime
+    window_end: datetime
+    rows: list[RuleMatchRow] = Field(default_factory=list)
+    #: The row cap was reached, so `rows` is a prefix of the truth: a rule absent
+    #: from a truncated batch may still have matched.
+    truncated: bool = False
+    #: The effective row cap the search ran with.
+    row_cap: int = 0
+    #: Rows dropped because the id was missing or not an integer. A null id is
+    #: not counted here: it is the events that matched no rule at all.
+    malformed_rows: int = 0
+    #: Version of the stored AQL, so a stored window can be re-justified.
+    query_version: str = ""
+    query: str | None = None
+    ariel_searches: int = 0
+
+
 class WafBreakdownGroup(ProviderDTO):
     """One (raw URL, method[, host], value) group of one breakdown. Transient.
 
@@ -196,6 +277,41 @@ class WafBreakdownBatch(ProviderDTO):
     groups: list[WafBreakdownGroup] = Field(default_factory=list)
     #: The group cap was hit: every value derived from `groups` is a lower bound.
     truncated: bool = False
+    query: str | None = None
+    ariel_searches: int = 0
+
+
+class WafObservationBucketBatch(ProviderDTO):
+    """One keyed WAF volume search, split into one `WafObservationBatch` per bucket.
+
+    Every bucket of the searched window has an entry, empty if no row fell in
+    it, and each is exactly what the per-bucket search would have returned
+    after the per-bucket top-N cut (`app.waf.bucketed`). When the search as a
+    whole was `truncated` the buckets are empty by construction: a truncated
+    search proves nothing about any bucket, and the caller must split.
+    """
+
+    buckets: dict[datetime, WafObservationBatch] = Field(default_factory=dict)
+    #: More than the row budget came back: no bucket may be kept.
+    truncated: bool = False
+    rows_returned: int = 0
+    query: str | None = None
+    total_query: str | None = None
+    #: Ariel searches issued (the grouped search, and the totals search when the
+    #: grouped one was whole).
+    ariel_searches: int = 0
+
+
+class WafBreakdownBucketBatch(ProviderDTO):
+    """One keyed WAF breakdown search, split into one batch per bucket.
+
+    The same contract as `WafObservationBucketBatch`.
+    """
+
+    breakdown: str
+    buckets: dict[datetime, WafBreakdownBatch] = Field(default_factory=dict)
+    truncated: bool = False
+    rows_returned: int = 0
     query: str | None = None
     ariel_searches: int = 0
 
@@ -345,8 +461,37 @@ class ArielSearchStatusDTO(ProviderDTO):
 
 
 class ArielSearchResultsDTO(ProviderDTO):
+    """One page of Ariel rows.
+
+    `total_count` is the number of rows returned, not the size of the full
+    result. When `truncated` is true the search had more rows than were fetched
+    and `total_count` is only a lower bound; every reader must treat it as one.
+    """
+
     search_id: str
     columns: list[str] = Field(default_factory=list)
     rows: list[dict] = Field(default_factory=list)
     total_count: int = 0
     truncated: bool = False
+
+
+class WindowedRuleMatches(ProviderDTO):
+    """What one keyed `creEventList` search returned for many whole windows.
+
+    `batches` holds one entry per window of the span, keyed by the window's start,
+    and a window with no rows has an empty batch: the search covered it. When
+    `truncated` is set the whole result is a prefix and the batches must not be
+    kept, because `LIMIT` caps the result as a whole and cannot be applied per
+    window (T-032 Q3).
+    """
+
+    window_start: datetime
+    window_end: datetime
+    window_seconds: int
+    batches: dict[datetime, RuleMatchBatch] = Field(default_factory=dict)
+    #: More than `row_cap` raw rows came back for the span as a whole.
+    truncated: bool = False
+    row_cap: int = 0
+    query: str = ""
+    #: Ariel searches issued: 1 for the real provider, 0 for the mock.
+    ariel_searches: int = 0

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -228,6 +230,96 @@ class RuleMetric(Base):
     inferred: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     rule: Mapped[AnalyticsRule] = relationship(back_populates="metrics")
+
+
+class RuleMatchWindowStatus(StrEnum):
+    """What one measured rule-match window established.
+
+    Kept here, not in `enums.py`: it is meaningful only next to
+    `RuleMatchWindow`, and a second place to register it would only invite drift.
+    """
+
+    #: The search finished and returned fewer rows than its cap, so every rule
+    #: that matched is in `rule_match_metric` and an absent EVENT rule matched
+    #: zero events.
+    COMPLETE = "COMPLETE"
+    #: The cap was reached (or rows were dropped as malformed): the stored rows
+    #: are positive evidence, but absence proves nothing.
+    TRUNCATED = "TRUNCATED"
+    #: The search failed. No rows were written, and none may be read as zero.
+    FAILED = "FAILED"
+
+
+class RuleMatchMetric(Base):
+    """Events matched by one rule or building block in one measured window.
+
+    Sparse: a row exists only for an id that matched. A rule's *absence* from a
+    window means something only through `RuleMatchWindow`, and what it means
+    depends on the rule type (`app.rules.matches.match_evidence`). Separate from
+    `RuleMetric`, whose key would collide with the daily offense-contribution
+    rows at midnight.
+
+    TimescaleDB hypertable on `bucket_start`.
+    """
+
+    __tablename__ = "rule_match_metric"
+    __table_args__ = (
+        CheckConstraint("bucket_seconds > 0", name="bucket_seconds_positive"),
+        CheckConstraint("match_records >= 0", name="match_records_non_negative"),
+        CheckConstraint("matched_events >= 0", name="matched_events_non_negative"),
+    )
+
+    rule_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("analytics_rule.id", ondelete="CASCADE"), primary_key=True
+    )
+    bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    bucket_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Ariel records, `COUNT(*)`. Provenance: coalescing makes it smaller than
+    #: the event count.
+    match_records: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    #: Events, `SUM(eventcount)`. A rule's measured match volume.
+    matched_events: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class RuleMatchWindow(Base):
+    """What one rule-match collection established about one window.
+
+    One row per (instance, window), written for every attempted window. It is
+    what gives a rule's absence from `rule_match_metric` meaning, in the same
+    way `waf_source_bucket` does for WAF endpoints.
+    """
+
+    __tablename__ = "rule_match_window"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('COMPLETE', 'TRUNCATED', 'FAILED')", name="status_known"
+        ),
+        CheckConstraint("window_seconds > 0", name="window_seconds_positive"),
+        CheckConstraint("rows_returned >= 0", name="rows_returned_non_negative"),
+        CheckConstraint("unknown_ids >= 0", name="unknown_ids_non_negative"),
+        CheckConstraint("attempts >= 0", name="attempts_non_negative"),
+    )
+
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("qradar_instance.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    window_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[RuleMatchWindowStatus] = mapped_column(String(16), nullable=False)
+    rows_returned: Mapped[int] = mapped_column(Integer, nullable=False)
+    row_cap: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Ids that are in neither REST list (rules or building blocks).
+    unknown_ids: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    query_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: Ariel searches tried for this window. 0 for a window that was skipped
+    #: beyond the catch-up horizon and never tried.
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Why a FAILED window failed (sanitized class and message). NULL otherwise.
+    last_error: Mapped[str | None] = mapped_column(String(512))
 
 
 class TechniqueMapping(UUIDPrimaryKeyMixin, TimestampMixin, Base):

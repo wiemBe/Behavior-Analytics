@@ -152,6 +152,37 @@ export interface SearchExecution {
   threshold_breached: boolean;
 }
 
+export type SearchFamily =
+  | "PHASE_A_VOLUME"
+  | "WAF_COLLECTION"
+  | "ANOMALY_EXPLANATION"
+  | "RULE_MATCH";
+
+// Mirrors SearchCadenceLastRunOut. `searches_sent` is null for a family that
+// does not count its searches yet: that is "not counted", never zero.
+export interface SearchCadenceLastRun {
+  at: string;
+  outcome: string | null;
+  searches_sent: number | null;
+  buckets_collected: number | null;
+  split_count: number | null;
+}
+
+export interface SearchCadenceItem {
+  family: SearchFamily;
+  cadence_seconds: number;
+  allowed_cadences_seconds: number[];
+  // Null for a family with no buckets (anomaly explanations).
+  bucket_seconds: number | null;
+  settle_seconds: number;
+  last_slot_start: string | null;
+  next_dispatch_at: string;
+  updated_at: string;
+  updated_by: string | null;
+  // Null when the family has not run since the upgrade.
+  last_run: SearchCadenceLastRun | null;
+}
+
 export interface SearchVersion {
   version: number;
   aql_query: string;
@@ -710,6 +741,20 @@ export const api = {
   runSearch: (id: string) =>
     request<SearchExecution>(`/searches/${id}/run`, { method: "POST" }),
 
+  // Authorization is the backend's job here too: the cadence PUT and the
+  // schedule PATCH are guarded endpoints, and a 403 is shown, not pre-empted.
+  searchCadence: () => request<SearchCadenceItem[]>("/admin/search-cadence"),
+  setSearchCadence: (family: SearchFamily, cadenceSeconds: number) =>
+    request<SearchCadenceItem>(`/admin/search-cadence/${family}`, {
+      method: "PUT",
+      body: JSON.stringify({ cadence_seconds: cadenceSeconds }),
+    }),
+  setSearchSchedule: (id: string, scheduleCron: string) =>
+    request<ScheduledSearch>(`/searches/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ schedule_cron: scheduleCron }),
+    }),
+
   alerts: (status?: string) =>
     request<Alert[]>(`/alerts${status ? `?status=${status}` : ""}`),
   alert: (id: string) => request<Alert>(`/alerts/${id}`),
@@ -808,8 +853,13 @@ export function actionErrorMessage(err: unknown): string {
 }
 
 // Severity → CSS pill class, shared by Phase 2 views.
+//
+// Severity grades how bad a finding is. It never takes the positive tone: a
+// LOW finding is still a finding, and green is reserved for a genuinely good
+// outcome (guidelines §10). An unrecognised value is neutral.
 export function sevTone(sev: string): string {
   if (sev === "CRITICAL" || sev === "HIGH") return "crit";
   if (sev === "MEDIUM") return "warn";
-  return "ok";
+  if (sev === "LOW" || sev === "INFO") return "info";
+  return "";
 }

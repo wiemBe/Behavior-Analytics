@@ -844,6 +844,130 @@ class TestRetries:
         assert timeout.pool == 45.0
 
 
+class TestArielResultTruncation:
+    """The `Range` header caps rows before the client can compare them.
+
+    The provider therefore asks for one row more than `max_rows`; seeing that
+    extra row is the only evidence the result was cut. T-033.
+    """
+
+    @staticmethod
+    def _provider(available: int):
+        requested: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if not request.url.path.endswith("/ariel/searches/s-1/results"):
+                raise AssertionError(f"unexpected request: {request.method} {request.url}")
+            header = request.headers["Range"]
+            requested.append(header)
+            first, last = (int(n) for n in header.removeprefix("items=").split("-"))
+            rows = [{"n": i} for i in range(available)][first : last + 1]
+            return httpx.Response(200, json={"events": rows})
+
+        provider, _ = build_provider(handler)
+        return provider, requested
+
+    @pytest.mark.asyncio
+    async def test_result_larger_than_max_rows_is_truncated(self) -> None:
+        provider, requested = self._provider(available=50)
+        results = await provider.get_ariel_search_results("s-1", max_rows=10)
+        assert requested == ["items=0-10"]
+        assert results.truncated is True
+        assert len(results.rows) == 10
+        # total_count is the number of rows returned: a lower bound here.
+        assert results.total_count == 10
+
+    @pytest.mark.asyncio
+    async def test_result_of_exactly_max_rows_is_whole(self) -> None:
+        provider, _ = self._provider(available=10)
+        results = await provider.get_ariel_search_results("s-1", max_rows=10)
+        assert results.truncated is False
+        assert len(results.rows) == 10
+        assert results.total_count == 10
+
+    @pytest.mark.asyncio
+    async def test_result_of_max_rows_plus_one_is_truncated(self) -> None:
+        provider, _ = self._provider(available=11)
+        results = await provider.get_ariel_search_results("s-1", max_rows=10)
+        assert results.truncated is True
+        assert len(results.rows) == 10
+        assert results.total_count == 10
+
+    @pytest.mark.asyncio
+    async def test_short_result_is_whole(self) -> None:
+        provider, _ = self._provider(available=3)
+        results = await provider.get_ariel_search_results("s-1", max_rows=10)
+        assert results.truncated is False
+        assert results.total_count == 3
+
+    @pytest.mark.asyncio
+    async def test_mock_and_rest_agree_on_total_count_and_truncation(self) -> None:
+        from app.providers.mock import MockQRadarProvider
+
+        mock = MockQRadarProvider(seed=1337)
+        aql = "SELECT sourceip, COUNT(*) FROM events GROUP BY sourceip LAST 1 HOURS"
+        handle = await mock.create_ariel_search(aql)
+        full = await mock.get_ariel_search_results(handle.search_id, max_rows=1000)
+        assert len(full.rows) > 1, "fixture needs a multi-row mock result"
+        for cap in (len(full.rows) - 1, len(full.rows), len(full.rows) + 1):
+            m = await mock.get_ariel_search_results(handle.search_id, max_rows=cap)
+            provider, _ = self._provider(available=len(full.rows))
+            r = await provider.get_ariel_search_results("s-1", max_rows=cap)
+            assert (m.total_count, m.truncated, len(m.rows)) == (
+                r.total_count,
+                r.truncated,
+                len(r.rows),
+            )
+
+    @pytest.mark.asyncio
+    async def test_log_source_metrics_raise_rather_than_drop_sources(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                return httpx.Response(201, json={"search_id": "metric-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/metric-1/results"):
+                first, last = (
+                    int(n) for n in request.headers["Range"].removeprefix("items=").split("-")
+                )
+                rows = [
+                    {"qradar_id": str(i), "event_count": "5", "last_event_time": 1_785_506_699_000}
+                    for i in range(30)
+                ][first : last + 1]
+                return httpx.Response(200, json={"events": rows})
+            if request.url.path.endswith("/ariel/searches/metric-1"):
+                return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler, page_size=10, max_pages=2)  # cap = 20 < 30
+        start = datetime(2026, 7, 31, 10, 0, tzinfo=UTC)
+        with pytest.raises(ProviderError, match="truncated"):
+            await provider.get_log_source_metrics(start, datetime(2026, 7, 31, 10, 5, tzinfo=UTC))
+
+    @pytest.mark.asyncio
+    async def test_log_source_metrics_at_exactly_the_cap_are_accepted(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                return httpx.Response(201, json={"search_id": "metric-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/metric-1/results"):
+                first, last = (
+                    int(n) for n in request.headers["Range"].removeprefix("items=").split("-")
+                )
+                rows = [
+                    {"qradar_id": str(i), "event_count": "5", "last_event_time": 1_785_506_699_000}
+                    for i in range(20)
+                ][first : last + 1]
+                return httpx.Response(200, json={"events": rows})
+            if request.url.path.endswith("/ariel/searches/metric-1"):
+                return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(handler, page_size=10, max_pages=2)
+        start = datetime(2026, 7, 31, 10, 0, tzinfo=UTC)
+        samples = await provider.get_log_source_metrics(
+            start, datetime(2026, 7, 31, 10, 5, tzinfo=UTC)
+        )
+        assert len(samples) == 20
+
+
 # ----------------------------------------------------------------- pagination
 class TestPagination:
     @pytest.mark.asyncio
@@ -1303,7 +1427,7 @@ class TestArielLifecycle:
         provider, _ = build_provider(handler)
         results = await provider.get_ariel_search_results("s1", max_rows=4)
 
-        assert captured["range"] == "items=0-3"
+        assert captured["range"] == "items=0-4"
         assert len(results.rows) == 4
         assert results.truncated is True
         assert results.columns == ["qid", "sourceip"]

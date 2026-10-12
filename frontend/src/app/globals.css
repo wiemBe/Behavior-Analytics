@@ -232,9 +232,30 @@ a {
 .num,
 .card .v,
 .metric-value,
+.measure-value,
 td.num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
+}
+/* A number in a table column is right-aligned, header included, so digits of
+   equal place line up. Text-only columns keep the default left alignment. */
+td.num,
+th.num {
+  text-align: right;
+}
+td.num {
+  white-space: nowrap;
+}
+/* A numeric header that carries a unit may wrap onto two lines, which keeps its
+   column as narrow as its figures. */
+th.num {
+  white-space: normal;
+}
+/* A cell holding a user-supplied name of unbounded length (a source host name).
+   It wraps anywhere and is capped, so one long name cannot take the table. */
+td.cell-name {
+  max-width: 34ch;
+  overflow-wrap: anywhere;
 }
 
 /* --- panels and cards ------------------------------------------------------ */
@@ -354,26 +375,29 @@ td.num {
    One stacked bar showing proportion, plus the same figures as a text list.
    The bar is decoration over data that is fully present without it. */
 .health-bar {
-  display: flex;
+  display: block;
+  width: 100%;
   height: 10px;
   border-radius: var(--r-pill);
-  overflow: hidden;
   background: var(--surface-2);
-  gap: 2px;
+  overflow: hidden;
 }
+/* A hairline of the page colour between segments, at constant width however
+   the bar is scaled. */
 .health-seg {
-  display: block;
-  min-width: 4px;
-  background: var(--neutral);
+  fill: var(--neutral);
+  stroke: var(--canvas);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
 }
 .health-seg.crit {
-  background: var(--crit);
+  fill: var(--crit);
 }
 .health-seg.warn {
-  background: var(--warn);
+  fill: var(--warn);
 }
 .health-seg.ok {
-  background: var(--ok);
+  fill: var(--ok);
 }
 .health-legend {
   display: flex;
@@ -486,7 +510,7 @@ th[aria-sort="descending"] .sort-link {
   font-weight: var(--fw-normal);
 }
 
-/* A label paired with a status badge.
+/* A label paired with a status badge, on one line.
  *
  * The label may wrap; the badge may not. `min-width: 0` on the label lets it
  * shrink and wrap instead of forcing the row wider, and the badge keeps its
@@ -495,7 +519,6 @@ th[aria-sort="descending"] .sort-link {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  flex-wrap: wrap;
   min-width: 0;
 }
 .issue-with-severity__label {
@@ -529,8 +552,8 @@ th[aria-sort="descending"] .sort-link {
   background:
     linear-gradient(to right, var(--canvas) 30%, transparent) left center,
     linear-gradient(to left, var(--canvas) 30%, transparent) right center,
-    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.5), transparent) left center,
-    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.5), transparent) right center;
+    radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), transparent) right center;
   background-repeat: no-repeat;
   background-size:
     32px 100%,
@@ -633,7 +656,7 @@ tbody tr:hover td {
 
 button.action {
   background: var(--info);
-  color: #06101f;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--r-md);
   padding: var(--sp-2) var(--sp-4);
@@ -709,7 +732,7 @@ button.action.secondary:hover {
 }
 .filters button {
   background: var(--info);
-  color: #06101f;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--r-md);
   padding: var(--sp-2) var(--sp-4);
@@ -717,6 +740,16 @@ button.action.secondary:hover {
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   font-family: inherit;
+}
+
+/* A visible label beside a control whose purpose is not obvious from its
+   content, such as a bare date-time input. */
+.filter-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
 }
 
 .pagination {
@@ -754,20 +787,62 @@ button.action.secondary:hover {
   font-weight: var(--fw-medium);
 }
 
-/* --- incident header -------------------------------------------------------- */
+/* --- incident header -------------------------------------------------------
+   The identity line (what kind of change, its state, severity and interval) is
+   the primary text. The source name is the page's <h1> but is set at body-plus
+   size: a 120-character source name at headline size took two lines and pushed
+   the identity below the fold. */
 
+.incident-header > div:first-child {
+  min-width: 0;
+  flex: 1 1 360px;
+}
 .incident-back {
   margin: 0 0 var(--sp-2);
   font-size: var(--fs-sm);
 }
 .incident-meta {
   margin-top: var(--sp-2);
-  gap: var(--sp-3);
+  gap: var(--sp-2) var(--sp-3);
   font-size: var(--fs-sm);
 }
-.incident-detector {
-  font-weight: var(--fw-medium);
+/* A page whose title is a user-supplied name of unbounded length (a source
+   host name). Smaller than the default title and wrapped anywhere, so one long
+   name cannot take the first screen. */
+.page-title-long {
+  min-width: 0;
+  font-size: var(--fs-lg);
+  overflow-wrap: anywhere;
+}
+.incident-identity {
+  gap: var(--sp-2) var(--sp-3);
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
   color: var(--text-2);
+}
+.incident-detector {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+.incident-interval {
+  /* Each end of the interval stays on one line; the arrow may wrap between. */
+  font-variant-numeric: tabular-nums;
+}
+.incident-interval time {
+  white-space: nowrap;
+}
+.page-title.incident-source {
+  min-width: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
+  line-height: var(--lh-base);
+  color: var(--text-2);
+  /* Host names are one unbroken token; wrap them rather than widen the row. */
+  overflow-wrap: anywhere;
 }
 /* The lifecycle badge is the page's dominant status; severity and evidence
    beside it are deliberately quieter. */
@@ -791,8 +866,104 @@ button.action.secondary:hover {
   align-items: center;
   text-decoration: none;
 }
+/* A link that is an action: drawn like the secondary button so it reads as one,
+   not as a stray inline link in the page header. */
+a.action.secondary {
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.main a.action.secondary {
+  color: var(--text);
+}
+a.action.secondary:hover {
+  background: var(--surface-3);
+}
 .main a.button-link:hover {
   text-decoration: none;
+}
+
+/* --- incident measurements -------------------------------------------------
+   One block, not four cards: observed against expected is a single comparison
+   and reads as one. Weight follows importance: the observed value is the
+   largest figure, expected and deviation are secondary, duration is smallest.
+   Confidence is the block's footer, where it qualifies the numbers above. */
+
+.measure {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin: 0;
+}
+.measure-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+.measure-item {
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border-left: 1px solid var(--border);
+}
+.measure-item:first-child {
+  border-left: none;
+}
+.measure-item dt {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+.measure-item dd {
+  margin: 0;
+}
+.measure-value {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.measure-lead .measure-value {
+  font-size: var(--fs-metric);
+}
+.measure-item-minor .measure-value {
+  font-size: var(--fs-md);
+}
+.measure-unit {
+  margin-left: var(--sp-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+  letter-spacing: 0;
+}
+.measure-note {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: var(--lh-base);
+}
+.measure-foot {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.measure-foot dt,
+.measure-foot dd {
+  display: inline;
+  margin: 0;
+}
+.measure-foot dt {
+  color: var(--text-3);
+}
+.measure-foot dt::after {
+  content: " ";
 }
 
 /* --- top contributors -------------------------------------------------------- */
@@ -1137,6 +1308,9 @@ button.action.secondary:hover {
   justify-content: space-between;
   gap: var(--sp-4);
 }
+.section-head {
+  margin-bottom: var(--sp-3);
+}
 .section-head .section-title {
   margin-bottom: 0;
 }
@@ -1176,8 +1350,9 @@ button.action.secondary:hover {
   color: var(--text-3);
 }
 /* A timestamp in a metric slot cannot carry the metric type size and stay on
-   one line. */
-.metric-timestamp {
+   one line. Written as `.card .v.metric-timestamp` so it outranks the metric
+   size in `.card .v`, which it previously lost to. */
+.card .v.metric-timestamp {
   font-size: var(--fs-md);
   font-weight: var(--fw-medium);
 }
@@ -1227,6 +1402,57 @@ pre {
 .chart {
   width: 100%;
   height: 320px;
+}
+/* A key for the marks the chart actually drew. Drawn in CSS from the same
+   tokens the canvas reads, so the swatch and the mark cannot disagree. */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.chart-key {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 0;
+}
+.chart-key-observed {
+  border-top: 2px solid var(--chart-observed);
+}
+.chart-key-expected {
+  border-top: 1px dashed var(--chart-expected);
+}
+.chart-key-band {
+  height: 10px;
+  background: var(--chart-band);
+}
+.chart-key-gap {
+  height: 10px;
+  background: var(--chart-gap);
+  border: 1px solid var(--warn-border);
+}
+.chart-key-anomaly {
+  height: 10px;
+  background: var(--chart-anomaly);
+  border: 1px solid var(--crit-border);
+}
+.chart-key-rule {
+  width: 0;
+  height: 10px;
+  border-left: 1px dashed var(--chart-marker);
+}
+.chart-note {
+  margin: var(--sp-2) 0 0;
 }
 
 /* --- utilities -------------------------------------------------------------- */
@@ -1281,6 +1507,18 @@ pre {
 @media (max-width: 1080px) {
   .grid-4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* The comparison block folds to two columns: the lead figure takes the first
+     row, the three secondary ones share the second. */
+  .measure-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .measure-lead {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--border);
+  }
+  .measure-lead + .measure-item {
+    border-left: none;
   }
   /* Three contributor cards do not fit legibly beside a 196 px sidebar; they
      stack rather than shrinking their values into ellipses. */

@@ -13,6 +13,12 @@ from app.models.explanation import (
     AnomalyExplanationContributor,
     AnomalyExplanationDimension,
 )
+from app.models.fleet import (
+    ClassificationRule,
+    LogSourceClassification,
+    LogSourceGroup,
+    LogSourceType,
+)
 from app.models.identity import AuditLog, Role, User, user_role
 from app.models.instance import QRadarInstance
 from app.models.log_source import (
@@ -23,7 +29,7 @@ from app.models.log_source import (
     LogSourceDetectorState,
     LogSourceMetric,
 )
-from app.models.monitoring import CollectionWatermark
+from app.models.monitoring import AnomalyEvaluationWatermark, CollectionWatermark
 from app.models.offense import OffenseSnapshot
 from app.models.rule import (
     AnalyticsRule,
@@ -31,6 +37,8 @@ from app.models.rule import (
     DetectionCoverageSnapshot,
     RuleDependency,
     RuleHealthSnapshot,
+    RuleMatchMetric,
+    RuleMatchWindow,
     RuleMetric,
     RuleStateTransition,
     TechniqueMapping,
@@ -41,6 +49,7 @@ from app.models.search import (
     SearchQueryVersion,
     SearchResultMetric,
 )
+from app.models.search_cadence import SearchCadenceSetting
 from app.models.waf import (
     WafAnomaly,
     WafAnomalyTransition,
@@ -63,6 +72,7 @@ HYPERTABLES: dict[str, str] = {
     "detection_coverage_snapshot": "captured_at",
     "waf_endpoint_metric": "bucket_start",
     "waf_source_bucket": "bucket_start",
+    "rule_match_metric": "bucket_start",
 }
 
 __all__ = [
@@ -71,12 +81,14 @@ __all__ = [
     "Alert",
     "AlertNotification",
     "AnalyticsRule",
+    "AnomalyEvaluationWatermark",
     "AnomalyExplanation",
     "AnomalyExplanationContributor",
     "AnomalyExplanationDimension",
     "AnomalyStateTransition",
     "AuditLog",
     "Base",
+    "ClassificationRule",
     "CollectionWatermark",
     "ConfigurationChange",
     "ConfigurationSnapshot",
@@ -85,16 +97,22 @@ __all__ = [
     "LogSource",
     "LogSourceAnomaly",
     "LogSourceBaseline",
+    "LogSourceClassification",
     "LogSourceDetectorState",
+    "LogSourceGroup",
     "LogSourceMetric",
+    "LogSourceType",
     "OffenseSnapshot",
     "QRadarInstance",
     "Role",
     "RuleDependency",
     "RuleHealthSnapshot",
+    "RuleMatchMetric",
+    "RuleMatchWindow",
     "RuleMetric",
     "RuleStateTransition",
     "ScheduledSearch",
+    "SearchCadenceSetting",
     "SearchExecution",
     "SearchQueryVersion",
     "SearchResultMetric",

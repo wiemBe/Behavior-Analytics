@@ -31,9 +31,9 @@ import {
   type SourceBehavior,
 } from "@/lib/api";
 import {
+  detectorLabel,
   formatMetric,
   formatRatio,
-  hasConfidenceLimitation,
   isUnjudged,
   stateMeaning,
 } from "@/lib/behavior";
@@ -221,7 +221,7 @@ export default async function SourceBehaviorPage({
               .map((a) => ({
                 start: a.anomaly_start as string,
                 end: a.anomaly_end,
-                label: a.anomaly_type,
+                label: detectorLabel(a.anomaly_type),
               }))}
             ariaLabel={`Observed EPS for ${behavior.name} against its expected baseline`}
             textSummary={chartSummary}

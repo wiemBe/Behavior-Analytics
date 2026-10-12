@@ -17,7 +17,7 @@ import hashlib
 import random
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import ClassVar
+from typing import ClassVar, TypedDict
 
 from app.providers.base import (
     PROPERTY_NAME_PATTERN,
@@ -30,45 +30,100 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CustomPropertyDTO,
     DimensionAggregate,
     DimensionValueCount,
     InstanceInfoDTO,
     LogSourceDTO,
+    LogSourceGroupDTO,
+    LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    RuleMatchBatch,
+    RuleMatchRow,
     WafBreakdownBatch,
+    WafBreakdownBucketBatch,
     WafBreakdownGroup,
     WafObservationBatch,
+    WafObservationBucketBatch,
     WafPropertyProbe,
     WafPropertyValue,
     WafRejectionObservation,
     WafRequestGroup,
     WafSourceProbe,
+    WindowedRuleMatches,
+)
+from app.rules.matches import window_starts
+from app.waf.bucketed import (
+    breakdown_sort_key,
+    fold_breakdown_buckets,
+    fold_observation_buckets,
+    observation_sort_key,
 )
 
 _LOG_SOURCE_TYPES = [
-    (12, "Cisco ASA"),
-    (13, "Microsoft Windows Security Event Log"),
-    (2, "Linux OS"),
-    (95, "Palo Alto PA Series"),
-    (145, "Okta"),
-    (351, "AWS CloudTrail"),
+    (12, "Cisco ASA", False, False),
+    (13, "Microsoft Windows Security Event Log", False, False),
+    (2, "Linux OS", False, False),
+    (25, "McAfee Network Security Platform", False, False),
+    (95, "Palo Alto PA Series", False, False),
+    (145, "Okta", False, False),
+    (212, "Universal LEEF", False, False),
+    (351, "AWS CloudTrail", False, False),
+    (368, "Health Metrics", True, False),
 ]
+
+class _SourceTemplateFacts(TypedDict, total=False):
+    auto_discovered: bool
+    group_ids: list[int]
+    identifier: str
+    internal: bool
+
 
 # name, type_id, health-shape. The health-shape drives what the mock emits so
 # the detector has deterministic targets.
-_SOURCE_TEMPLATES = [
-    ("fw-edge-01 Cisco ASA", 12, "healthy"),
-    ("fw-edge-02 Cisco ASA", 12, "healthy"),
-    ("dc01 Windows Security", 13, "healthy"),
-    ("dc02 Windows Security", 13, "silent"),          # -> NO_EVENTS
-    ("web-cluster Linux", 2, "volume_drop"),          # -> VOLUME_DROP
-    ("pan-fw-01 Palo Alto", 95, "healthy"),
-    ("okta-prod Okta", 145, "parsing_degraded"),      # -> PARSING_DEGRADATION
-    ("aws-org CloudTrail", 351, "spike"),             # -> VOLUME_SPIKE
-    ("legacy-unix Linux", 2, "disabled"),
+_SOURCE_TEMPLATES: list[tuple[str, int, str, _SourceTemplateFacts]] = [
+    ("fw-edge-01 Cisco ASA", 12, "healthy", {}),
+    ("fw-edge-02 Cisco ASA", 12, "healthy", {}),
+    ("dc01 Windows Security", 13, "healthy", {}),
+    ("dc02 Windows Security", 13, "silent", {}),  # -> NO_EVENTS
+    ("web-cluster Linux", 2, "volume_drop", {}),  # -> VOLUME_DROP
+    ("pan-fw-01 Palo Alto", 95, "healthy", {}),
+    ("okta-prod Okta", 145, "parsing_degraded", {}),  # -> PARSING_DEGRADATION
+    ("aws-org CloudTrail", 351, "spike", {}),  # -> VOLUME_SPIKE
+    ("legacy-unix Linux", 2, "disabled", {}),
+    (
+        "dmz-waf-01",
+        212,
+        "healthy",
+        {"auto_discovered": True, "group_ids": [20]},
+    ),
+    ("linux-auth-01", 25, "healthy", {"group_ids": [20]}),
+    (
+        "Health Metrics-2 :: mock",
+        368,
+        "healthy",
+        {"identifier": "127.0.0.1", "internal": True},
+    ),
 ]
+
+
+#: (qradar_id, identifier, name, property_type, use_for_rule_engine, type ids).
+#: The lab shape from T-041: five properties on the WAF type 212, `WAF_URL`
+#: only on 232, `IPS_Action` on Snort type 2, one property nobody extracts, and
+#: one name the AQL allowlist refuses.
+_CUSTOM_PROPERTIES: tuple[tuple[int, str, str, str, bool, tuple[int, ...]], ...] = (
+    (101, "DEFAULTCUSTOMEVENT10", "HTTP_Method", "string", False, (212,)),
+    (102, "DEFAULTCUSTOMEVENT11", "URL", "string", True, (2, 64, 212)),
+    (103, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1001", "WAF_Action", "string", False, (212,)),
+    (104, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1002", "WAF_ResponseCode", "numeric", False, (212,)),
+    (105, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1003", "WAF_USERAGENT", "string", False, (212,)),
+    (106, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1004", "WAF_URL", "string", False, (232,)),
+    (107, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1005", "IPS_Action", "string", False, (2,)),
+    (108, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1006", "Unused Property", "string", False, ()),
+    (109, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1007", "Bad.Name(1)", "string", False, (212,)),
+)
 
 
 class MockQRadarProvider(QRadarProvider):
@@ -78,6 +133,8 @@ class MockQRadarProvider(QRadarProvider):
             ProviderCapability.OFFENSES,
             ProviderCapability.AQL_EXECUTION,
             ProviderCapability.CONFIG_SNAPSHOTS,
+            ProviderCapability.LOG_SOURCE_GROUPS,
+            ProviderCapability.CUSTOM_PROPERTY_CATALOG,
         }
     )
     #: Synthetic, but genuinely varied per shape, so dev and tests can exercise
@@ -107,8 +164,9 @@ class MockQRadarProvider(QRadarProvider):
 
     async def list_log_sources(self) -> list[LogSourceDTO]:
         out: list[LogSourceDTO] = []
-        for idx, (name, type_id, shape) in enumerate(_SOURCE_TEMPLATES, start=1):
-            type_name = dict(_LOG_SOURCE_TYPES).get(type_id)
+        type_names = {type_id: name for type_id, name, _internal, _custom in _LOG_SOURCE_TYPES}
+        for idx, (name, type_id, shape, facts) in enumerate(_SOURCE_TEMPLATES, start=1):
+            type_name = type_names.get(type_id)
             enabled = shape != "disabled"
             avg_eps, last_event = self._shape_liveness(shape)
             out.append(
@@ -125,6 +183,12 @@ class MockQRadarProvider(QRadarProvider):
                     target_event_collector_id=1,
                     average_eps=avg_eps,
                     last_event_time=last_event,
+                    qradar_created_at=self._now - timedelta(days=90 - idx),
+                    qradar_modified_at=self._now - timedelta(days=idx),
+                    auto_discovered=facts.get("auto_discovered", False),
+                    group_ids=facts.get("group_ids", [10]),
+                    identifier=facts.get("identifier", name.split()[0]),
+                    internal=facts.get("internal", False),
                 )
             )
         return out
@@ -150,7 +214,51 @@ class MockQRadarProvider(QRadarProvider):
         return None
 
     async def list_log_source_types(self) -> list[LogSourceTypeDTO]:
-        return [LogSourceTypeDTO(type_id=t, name=n) for t, n in _LOG_SOURCE_TYPES]
+        return [
+            LogSourceTypeDTO(type_id=t, name=n, internal=internal, custom=custom)
+            for t, n, internal, custom in _LOG_SOURCE_TYPES
+        ]
+
+    async def list_custom_properties(
+        self, *, log_source_type_id: int | None = None
+    ) -> list[CustomPropertyDTO]:
+        self.require(ProviderCapability.CUSTOM_PROPERTY_CATALOG)
+        return [
+            CustomPropertyDTO(
+                qradar_id=qid,
+                identifier=ident,
+                name=name,
+                property_type=ptype,
+                use_for_rule_engine=rule_engine,
+                log_source_type_ids=types,
+                name_allowed=PROPERTY_NAME_PATTERN.match(name) is not None,
+            )
+            for qid, ident, name, ptype, rule_engine, types in _CUSTOM_PROPERTIES
+            if log_source_type_id is None or log_source_type_id in types
+        ]
+
+    async def list_log_source_groups(self) -> list[LogSourceGroupDTO]:
+        return [
+            LogSourceGroupDTO(
+                qradar_id=10,
+                name="Production",
+                parent_qradar_id=0,
+                assignable=False,
+            ),
+            LogSourceGroupDTO(
+                qradar_id=20,
+                name="DMZ",
+                description="Internet-facing systems",
+                parent_qradar_id=10,
+                assignable=True,
+            ),
+            LogSourceGroupDTO(
+                qradar_id=0,
+                name="Other",
+                parent_qradar_id=10,
+                assignable=False,
+            ),
+        ]
 
     async def get_log_source_metrics(
         self, window_start: datetime, window_end: datetime
@@ -165,12 +273,55 @@ class MockQRadarProvider(QRadarProvider):
         """
         bucket_seconds = int((window_end - window_start).total_seconds()) or 300
         samples: list[LogSourceMetricSample] = []
-        for idx, (_name, _type_id, shape) in enumerate(_SOURCE_TEMPLATES, start=1):
+        for idx, (_name, _type_id, shape, _facts) in enumerate(_SOURCE_TEMPLATES, start=1):
             qid = 1000 + idx
             base_eps = self._seasonal_eps(window_start, shape)
             sample = self._build_sample(qid, window_start, bucket_seconds, base_eps, shape)
             samples.append(sample)
         return samples
+
+    async def get_log_source_metrics_bucketed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> LogSourceMetricBucketBatch:
+        """Build the keyed mock result from the existing per-bucket generator."""
+        from app.collectors.bucketed_metrics import validate_bucketed_metric_window
+
+        if max_rows < 1:
+            raise ValueError("metric row limit must be positive")
+        start, end = validate_bucketed_metric_window(
+            window_start, window_end, bucket_seconds
+        )
+        bucket_ms = bucket_seconds * 1000
+        aql = (
+            'SELECT logsourceid AS "qradar_id", '  # noqa: S608 - validated integers only
+            f'starttime / {bucket_ms} AS "k" FROM events '
+            f"GROUP BY logsourceid, starttime / {bucket_ms} LIMIT {max_rows + 1}"
+        )
+        buckets: dict[datetime, list[LogSourceMetricSample]] = {}
+        cursor = start
+        rows_returned = 0
+        truncated = False
+        while cursor < end:
+            samples = await self.get_log_source_metrics(
+                cursor, cursor + timedelta(seconds=bucket_seconds)
+            )
+            remaining = max_rows - rows_returned
+            buckets[cursor] = samples[: max(0, remaining)]
+            rows_returned += len(buckets[cursor])
+            if len(samples) > remaining:
+                truncated = True
+            cursor += timedelta(seconds=bucket_seconds)
+        return LogSourceMetricBucketBatch(
+            buckets=buckets,
+            truncated=truncated,
+            rows_returned=rows_returned,
+            aql=aql,
+        )
 
     #: Dimensions the mock "DSM" populates, and the value alphabet for each.
     #: `username` and `category` are deliberately absent so tests exercise the
@@ -246,6 +397,76 @@ class MockQRadarProvider(QRadarProvider):
             )
         return out
 
+    #: Ids the mock reports as matching: some mock rules, all three mock
+    #: building blocks, and one id that is in neither inventory list.
+    _MOCK_MATCHED_RULE_IDS: ClassVar[tuple[int, ...]] = (
+        5001, 5002, 5004, 6000, 6001, 6002, 999_001,
+    )
+
+    async def get_rule_matches(
+        self, window_start: datetime, window_end: datetime, *, max_rows: int
+    ) -> RuleMatchBatch:
+        """Deterministic rule matches, seeded from the window.
+
+        Covers rules, building blocks and an unknown id, so the fold's join and
+        its unknown-id count are both exercised without a QRadar.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        seconds = max(1.0, (window_end - window_start).total_seconds())
+        rng = random.Random(  # noqa: S311 - deterministic fixture, not crypto
+            f"rule-match:{int(window_start.timestamp())}"
+        )
+        rows: list[RuleMatchRow] = []
+        for rule_id in self._MOCK_MATCHED_RULE_IDS:
+            records = int(rng.random() ** 2 * seconds * 0.2) + 1
+            rows.append(
+                RuleMatchRow(
+                    qradar_rule_id=rule_id, records=records, events=records * 2 + 1
+                )
+            )
+        rows.sort(key=lambda r: (-r.records, r.qradar_rule_id))
+        cap = max(1, max_rows)
+        return RuleMatchBatch(
+            window_start=window_start,
+            window_end=window_end,
+            rows=rows[:cap],
+            truncated=len(rows) >= cap,
+            row_cap=cap,
+            query_version="rule_match/v1",
+            query=f"MOCK creEventList LIMIT {cap}",
+        )
+
+    async def get_rule_matches_windowed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        window_seconds: int,
+        max_rows: int,
+    ) -> WindowedRuleMatches:
+        """Per-window `get_rule_matches`, as one search.
+
+        Each window's batch is exactly what `get_rule_matches` returns for it,
+        so tests and the lab profile exercise the real collector path. The
+        search is truncated when the span holds more than ``max_rows`` raw rows.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        step = timedelta(seconds=window_seconds)
+        batches = {
+            start: await self.get_rule_matches(start, start + step, max_rows=max_rows)
+            for start in window_starts(window_start, window_end, window_seconds)
+        }
+        raw_total = len(self._MOCK_MATCHED_RULE_IDS) * len(batches)
+        return WindowedRuleMatches(
+            window_start=window_start,
+            window_end=window_end,
+            window_seconds=window_seconds,
+            batches=batches,
+            truncated=raw_total > max(1, max_rows),
+            row_cap=max(1, max_rows),
+            query=f"MOCK creEventList WINDOWED LIMIT {max(1, max_rows) + 1}",
+        )
+
     #: Endpoints the mock WAF source publishes. Mirrors the shape the lab
     #: generator produces so a fixture-driven test and a live lab run exercise
     #: the same normalization paths -- including the query string, which must be
@@ -304,7 +525,7 @@ class MockQRadarProvider(QRadarProvider):
                     distinct_client_count=1 + int(weight * 20),
                 )
             )
-        groups.sort(key=lambda g: g.request_count, reverse=True)
+        groups.sort(key=observation_sort_key)
         capped = groups[:max_groups]
         parsed = sum(g.request_count for g in capped)
         # Total exceeds the parsed sum, so coverage is genuinely below 1.
@@ -315,7 +536,8 @@ class MockQRadarProvider(QRadarProvider):
             window_end=window_end,
             groups=capped,
             total_events=total,
-            truncated=len(groups) > max_groups,
+            # The rule the REST provider applies to a bucket: a full page.
+            truncated=len(capped) >= max_groups,
             query=f"MOCK WAF GROUP BY {url_property}, {method_property}",
             total_query="MOCK WAF TOTAL",
         )
@@ -363,7 +585,7 @@ class MockQRadarProvider(QRadarProvider):
             for value, share in self._MOCK_WAF_BREAKDOWN_VALUES[breakdown]
             if int(g.request_count * share) > 0
         ]
-        groups.sort(key=lambda g: g.request_count, reverse=True)
+        groups.sort(key=breakdown_sort_key)
         return WafBreakdownBatch(
             breakdown=breakdown,
             qradar_log_source_id=qradar_log_source_id,
@@ -372,6 +594,167 @@ class MockQRadarProvider(QRadarProvider):
             groups=groups[:max_groups],
             truncated=len(groups) >= max_groups,
             query=f"MOCK WAF BREAKDOWN {breakdown}",
+        )
+
+    async def get_waf_observations_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None = None,
+        max_groups: int = 500,
+        max_rows: int,
+    ) -> WafObservationBucketBatch:
+        """The keyed result, built from the per-bucket generator and the real fold.
+
+        Each bucket is what `get_waf_observations` returns for it; its groups
+        become keyed rows and go through `fold_observation_buckets`, so a mock
+        run exercises the same cut and truncation rule as the REST provider. A
+        bucket whose own answer says it was truncated stays truncated.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        if max_rows < 1:
+            raise ValueError("WAF row limit must be positive")
+        starts = window_starts(window_start, window_end, bucket_seconds)
+        per_bucket: dict[datetime, WafObservationBatch] = {}
+        group_rows: list[dict] = []
+        total_rows: list[dict] = []
+        for start in starts:
+            batch = await self.get_waf_observations(
+                qradar_log_source_id=qradar_log_source_id,
+                window_start=start,
+                window_end=start + timedelta(seconds=bucket_seconds),
+                url_property=url_property,
+                method_property=method_property,
+                virtual_host_property=virtual_host_property,
+                max_groups=max_groups,
+            )
+            per_bucket[start] = batch
+            key = int(start.timestamp()) // bucket_seconds
+            group_rows.extend(
+                {
+                    "k": key,
+                    "raw_url": g.raw_url,
+                    "raw_method": g.raw_method,
+                    "raw_virtual_host": g.raw_virtual_host,
+                    "request_count": g.request_count,
+                    "record_count": g.record_count,
+                    "distinct_clients": g.distinct_client_count,
+                }
+                for g in batch.groups
+            )
+            if batch.groups or batch.total_events:
+                total_rows.append({"k": key, "total_events": batch.total_events})
+        aql = (
+            f"MOCK WAF GROUP BY {url_property}, {method_property}, "
+            f"starttime / {bucket_seconds * 1000}"
+        )
+        if len(group_rows) > max_rows or len(total_rows) > max_rows:
+            return WafObservationBucketBatch(
+                truncated=True,
+                rows_returned=len(group_rows) + len(total_rows),
+                query=aql,
+                total_query="MOCK WAF TOTAL",
+            )
+        folded = fold_observation_buckets(
+            group_rows,
+            total_rows,
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            bucket_seconds=bucket_seconds,
+            max_groups=max_groups,
+            query=aql,
+            total_query="MOCK WAF TOTAL",
+        )
+        return WafObservationBucketBatch(
+            buckets={
+                start: batch.model_copy(
+                    update={"truncated": batch.truncated or per_bucket[start].truncated}
+                )
+                for start, batch in folded.items()
+            },
+            rows_returned=len(group_rows) + len(total_rows),
+            query=aql,
+            total_query="MOCK WAF TOTAL",
+        )
+
+    async def get_waf_breakdown_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None,
+        breakdown: str,
+        breakdown_property: str | None,
+        max_groups: int = 2000,
+        max_rows: int,
+    ) -> WafBreakdownBucketBatch:
+        """The keyed breakdown, built as `get_waf_observations_bucketed` is."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        if max_rows < 1:
+            raise ValueError("WAF row limit must be positive")
+        starts = window_starts(window_start, window_end, bucket_seconds)
+        per_bucket: dict[datetime, WafBreakdownBatch] = {}
+        rows: list[dict] = []
+        for start in starts:
+            batch = await self.get_waf_breakdown(
+                qradar_log_source_id=qradar_log_source_id,
+                window_start=start,
+                window_end=start + timedelta(seconds=bucket_seconds),
+                url_property=url_property,
+                method_property=method_property,
+                virtual_host_property=virtual_host_property,
+                breakdown=breakdown,
+                breakdown_property=breakdown_property,
+                max_groups=max_groups,
+            )
+            per_bucket[start] = batch
+            key = int(start.timestamp()) // bucket_seconds
+            rows.extend(
+                {
+                    "k": key,
+                    "raw_url": g.raw_url,
+                    "raw_method": g.raw_method,
+                    "raw_virtual_host": g.raw_virtual_host,
+                    "raw_value": g.raw_value,
+                    "request_count": g.request_count,
+                }
+                for g in batch.groups
+            )
+        aql = f"MOCK WAF BREAKDOWN {breakdown} starttime / {bucket_seconds * 1000}"
+        if len(rows) > max_rows:
+            return WafBreakdownBucketBatch(
+                breakdown=breakdown, truncated=True, rows_returned=len(rows), query=aql
+            )
+        folded = fold_breakdown_buckets(
+            rows,
+            breakdown=breakdown,
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            bucket_seconds=bucket_seconds,
+            max_groups=max_groups,
+            query=aql,
+        )
+        return WafBreakdownBucketBatch(
+            breakdown=breakdown,
+            buckets={
+                start: batch.model_copy(
+                    update={"truncated": batch.truncated or per_bucket[start].truncated}
+                )
+                for start, batch in folded.items()
+            },
+            rows_returned=len(rows),
+            query=aql,
         )
 
     #: The properties the mock "site" authored, with the value distribution
@@ -730,7 +1113,7 @@ class MockQRadarProvider(QRadarProvider):
             search_id=search_id,
             columns=cols,
             rows=rows[:max_rows],
-            total_count=len(rows),
+            total_count=min(len(rows), max_rows),
             truncated=truncated,
         )
 

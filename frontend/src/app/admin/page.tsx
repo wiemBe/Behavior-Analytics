@@ -1,12 +1,26 @@
+import type { Metadata } from "next";
+
+import { PageHeader } from "@/components/ui/PageHeader";
+
+import "@/components/ui/controls.css";
+
+export const metadata: Metadata = {
+  title: "Administration",
+};
+
 export default function Page() {
   return (
     <>
-      <h2>Administration</h2>
-      <p className="subtitle">Planned for Phase 4.</p>
-      <div className="notice">
-        This section is scaffolded. Its data model and API exist (or arrive) in Phase 4;
-        the view is implemented in that phase per the development order.
-      </div>
+      <PageHeader
+        title="Administration"
+        description="Settings that change how the platform runs. Further sections arrive in Phase 4."
+      />
+      <ul className="admin-links" aria-label="Administration sections">
+        <li>
+          <a href="/admin/search-cadence">Search cadence</a>
+          <span className="cell-sub">How often each search family queries QRadar</span>
+        </li>
+      </ul>
     </>
   );
 }

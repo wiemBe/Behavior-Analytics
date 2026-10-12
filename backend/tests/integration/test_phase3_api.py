@@ -15,12 +15,14 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.database import get_session
 from app.main import create_app
 from app.models.enums import CoverageStatus, MappingSource, RuleHealthStatus
+from app.models.identity import AuditLog
 from app.models.rule import AnalyticsRule, DetectionCoverage, TechniqueMapping
 from app.security.auth import get_principal
 from app.security.rbac import Principal
@@ -40,6 +42,12 @@ ADMIN = Principal(subject="admin", permissions=frozenset({"admin:*"}))
 READER = Principal(subject="reader", permissions=frozenset({"read:*"}))
 NOBODY = Principal(subject="nobody", permissions=frozenset())
 ALERTS_ONLY = Principal(subject="alerts", permissions=frozenset({"alert:ack"}))
+RULE_EDITOR = Principal(
+    subject="rule-editor", permissions=frozenset({"read:*", "rule:write"})
+)
+COVERAGE_EDITOR = Principal(
+    subject="coverage-editor", permissions=frozenset({"read:*", "coverage:write"})
+)
 
 PHASE3_ENDPOINTS = [
     "/api/v1/offenses",
@@ -271,6 +279,159 @@ class TestCoverageApi:
         client = client_for(READER)
         assert client.get("/api/v1/coverage/by-rule").status_code == 200
         assert client.get("/api/v1/coverage/by-data-source").status_code == 200
+
+
+async def make_rule(session, *, qradar_id: int = 100) -> AnalyticsRule:
+    inst = await make_instance(session)
+    rule = AnalyticsRule(
+        instance_id=inst.id, qradar_id=qradar_id, name=f"rule-{qradar_id}",
+        health_status=RuleHealthStatus.UNKNOWN,
+    )
+    session.add(rule)
+    await session.flush()
+    return rule
+
+
+async def audit_rows(session, action: str) -> list[AuditLog]:
+    stmt = select(AuditLog).where(AuditLog.action == action)
+    return list((await session.scalars(stmt)).all())
+
+
+# ============================================================================
+class TestRuleWriteAuthorization:
+    """PATCH /rules/{id} needs rule:write on top of the router's read:rules.
+
+    A `read:*` principal must not be able to edit SOC-owned rule metadata, and
+    authorization is decided before the rule is looked up so a forbidden caller
+    cannot probe which ids exist.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_read_only_principal_cannot_patch_and_the_row_is_unchanged(
+        self, db_session
+    ) -> None:
+        rule = await make_rule(db_session)
+        rule_id = str(rule.id)
+        await db_session.commit()
+
+        denied = client_for(READER)
+        resp = denied.patch(f"/api/v1/rules/{rule_id}", json={"soc_notes": "tampered"})
+        assert resp.status_code == 403
+        assert denied.get(f"/api/v1/rules/{rule_id}").json()["soc_notes"] is None
+        assert await audit_rows(db_session, "rule.update") == []
+
+    @pytest.mark.asyncio
+    async def test_a_read_only_principal_gets_403_before_404(self, db_session) -> None:
+        resp = client_for(READER).patch(
+            "/api/v1/rules/00000000-0000-0000-0000-000000000000",
+            json={"soc_notes": "x"},
+        )
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_rule_write_grants_the_patch_and_records_the_actor(
+        self, db_session
+    ) -> None:
+        rule = await make_rule(db_session)
+        rule_id = str(rule.id)
+        await db_session.commit()
+
+        resp = client_for(RULE_EDITOR).patch(
+            f"/api/v1/rules/{rule_id}",
+            json={"soc_notes": "tuned", "owner": "soc-team"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["soc_notes"] == "tuned"
+
+        rows = await audit_rows(db_session, "rule.update")
+        assert len(rows) == 1
+        assert rows[0].actor == "rule-editor"
+        assert rows[0].object_type == "rule"
+        assert rows[0].object_id == rule_id
+        assert rows[0].detail["changes"]["soc_notes"] == {"from": None, "to": "tuned"}
+
+    @pytest.mark.asyncio
+    async def test_the_rule_write_permission_does_not_grant_coverage(
+        self, db_session
+    ) -> None:
+        rule = await make_rule(db_session)
+        await db_session.commit()
+        resp = client_for(RULE_EDITOR).post(
+            "/api/v1/coverage/mappings",
+            json={"technique_id": "T1059", "rule_id": str(rule.id)},
+        )
+        assert resp.status_code == 403
+
+
+# ============================================================================
+class TestCoverageWriteAuthorization:
+    """POST /coverage/mappings needs coverage:write, not just read:coverage."""
+
+    @pytest.mark.asyncio
+    async def test_a_read_only_principal_cannot_create_a_mapping(
+        self, db_session
+    ) -> None:
+        rule = await make_rule(db_session)
+        await db_session.commit()
+
+        resp = client_for(READER).post(
+            "/api/v1/coverage/mappings",
+            json={"technique_id": "T1059", "rule_id": str(rule.id)},
+        )
+        assert resp.status_code == 403
+        assert list((await db_session.scalars(select(TechniqueMapping))).all()) == []
+        assert await audit_rows(db_session, "coverage.mapping.create") == []
+
+    @pytest.mark.asyncio
+    async def test_a_read_only_principal_gets_403_before_404(self, db_session) -> None:
+        # An instance exists, so without the guard an unknown rule would be 404.
+        await make_rule(db_session)
+        await db_session.commit()
+
+        resp = client_for(READER).post(
+            "/api/v1/coverage/mappings",
+            json={
+                "technique_id": "T1059",
+                "rule_id": "00000000-0000-0000-0000-000000000000",
+            },
+        )
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_coverage_write_creates_the_mapping_and_records_the_actor(
+        self, db_session
+    ) -> None:
+        rule = await make_rule(db_session)
+        await db_session.commit()
+
+        resp = client_for(COVERAGE_EDITOR).post(
+            "/api/v1/coverage/mappings",
+            json={
+                "technique_id": "T1059",
+                "technique_name": "Command and Scripting Interpreter",
+                "rule_id": str(rule.id),
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.json()["technique_id"] == "T1059"
+
+        rows = await audit_rows(db_session, "coverage.mapping.create")
+        assert len(rows) == 1
+        assert rows[0].actor == "coverage-editor"
+        assert rows[0].object_type == "technique_mapping"
+        assert rows[0].detail["technique_id"] == "T1059"
+
+    @pytest.mark.asyncio
+    async def test_the_coverage_write_permission_does_not_grant_rules(
+        self, db_session
+    ) -> None:
+        rule = await make_rule(db_session)
+        rule_id = str(rule.id)
+        await db_session.commit()
+        resp = client_for(COVERAGE_EDITOR).patch(
+            f"/api/v1/rules/{rule_id}", json={"soc_notes": "x"}
+        )
+        assert resp.status_code == 403
 
 
 class TestProviderCapabilitiesApi:

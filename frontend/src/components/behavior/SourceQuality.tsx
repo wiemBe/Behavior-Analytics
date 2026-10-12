@@ -9,7 +9,11 @@
 // Neither section presents an absence of collection as source silence, and
 // neither presents a zero MAD as an error.
 
-import type { BaselineQuality, CollectionHealth } from "@/lib/sourceDetail";
+import {
+  seasonalCellLabel,
+  type BaselineQuality,
+  type CollectionHealth,
+} from "@/lib/sourceDetail";
 import { formatMetric } from "@/lib/behavior";
 import { formatDateTime } from "@/lib/health";
 
@@ -56,7 +60,7 @@ export function SourceQuality({
               <div>
                 <dt>Seasonal cell</dt>
                 <dd className="num">
-                  Weekday {baseline.cell.weekday}, hour {baseline.cell.hour}
+                  {seasonalCellLabel(baseline.cell.weekday, baseline.cell.hour)}
                 </dd>
               </div>
               <div>
@@ -66,13 +70,13 @@ export function SourceQuality({
                 </dd>
               </div>
               <div>
-                <dt>MAD</dt>
+                <dt>MAD (EPS)</dt>
                 <dd className="num">{formatMetric(baseline.cell.mad, 3)}</dd>
               </div>
             </>
           )}
           <div>
-            <dt>Expected range</dt>
+            <dt>Expected range (EPS)</dt>
             <dd className="num">
               {/* No band exists without a baseline. An em dash says so; a
                   "0.00 – 0.00" would be an expectation we never formed. */}

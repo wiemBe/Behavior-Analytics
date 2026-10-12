@@ -51,6 +51,8 @@ Stable default identities are used unless `--multiple-devices` is explicit:
 | `windows_auth`, `windows_account` | `DC-LAB-01` |
 | `dns` | `dns-lab-01` |
 | `proxy` | `proxy-lab-01` |
+| `pan_threat` | `pa-fw-01` |
+| `ftd_ips` | `ftd-01` |
 
 ## Manual QRadar log-source setup
 
@@ -190,6 +192,78 @@ FROM events WHERE LOGSOURCENAME(logsourceid) = 'LAB Proxy' LAST 15 MINUTES
 
 Troubleshooting: verify URL parsing separately from source routing. The event can route correctly
 while a QRadar version lacks the desired custom-property mapping.
+
+## Vendor-native IPS (Phase D)
+
+These profiles exercise Phase D with native IPS payloads instead of Universal LEEF. They are
+bounded by the same 100 EPS opt-in guard as every other recipe. Always preview them with
+`--dry-run --stdout`; a live run belongs to the separate validation procedure.
+
+| Profile | Syslog hostname | Native payload | Expected auto-discovered type |
+|---|---|---|---|
+| `pan_threat` | `pa-fw-01` | PAN-OS 11.1 default THREAT CSV | Palo Alto PA Series (`UNVERIFIED`; see below) |
+| `ftd_ips` | `ftd-01` | Cisco FTD `%FTD-1-430001` NVP | Cisco Firepower Threat Defense (key order `UNVERIFIED`) |
+
+Sources (fetched 2026-10-12): Palo Alto Networks, "Threat Log Fields" (PAN-OS 11.1); Cisco,
+"Cisco Secure Firewall Threat Defense Syslog Messages", security event messages (430001); IBM DSM
+guide pages "Palo Alto PA DSM specifications" and "Cisco Firepower Threat Defense DSM
+specifications". Each renderer carries its citation in a comment in `tools/qradar_lab_loggen.py`.
+
+- `pan_threat`: the 123 THREAT fields and their order are verified against the Palo Alto page. The
+  page has no example line, so the time format (`YYYY/MM/DD HH:MM:SS`) is `UNVERIFIED`. IBM lists
+  only LEEF and CEF for the PA DSM, not raw PAN-OS CSV, so auto-discovery and parsing of this CSV
+  is `UNVERIFIED` until the separate live task measures it. If the lab does not discover it, a
+  PAN-OS LEEF variant is the documented-format fallback.
+- `ftd_ips`: the key names are checked against Cisco's 430001 field list. The on-wire key order and
+  the `EventPriority`, `InstanceID`, `ConnectionID`, `AccessControlRuleAction`, `IngressVRF` and
+  `EgressVRF` keys are `UNVERIFIED` (no 430001 example was reachable). IBM documents Syslog, NVP
+  and automatic discovery for this DSM.
+
+These profiles are opt-in (`--types`); the default mix does not include them. They need
+`--format vendor`, accept only `pan_threat` and `ftd_ips` together, and the payload source IP must
+stay in RFC 5737 and the destination in `10.10.20.0/24`.
+
+The six scenarios work with either profile. For the four change scenarios, a bounded run uses its
+first half as baseline and its second half as the changed interval.
+
+| Scenario | Shape |
+|---|---|
+| `ips-baseline` | 12 service ports, 30 RFC 5737 sources, 10 signatures, and 10% blocking actions |
+| `ips-port-sweep` | One source visits 2,048 sequential destination ports on one protected host |
+| `ips-new-port` | Baseline service ports followed by sustained traffic to previously unseen port 8443 |
+| `ips-source-concentration` | One source rises above 60% of the changed interval |
+| `ips-signature-burst` | One signature rises from 10% to 100%, a 10x rate change |
+| `ips-block-shift` | Blocking actions rise from 10% to 60% |
+
+```bash
+# PAN-OS THREAT CSV preview; no packet is sent
+python tools/qradar_lab_loggen.py --types pan_threat --format vendor \
+  --scenario ips-baseline --seed 42 --eps 1 --count 5 --dry-run --stdout
+
+# Cisco FTD 430001 preview; no packet is sent
+python tools/qradar_lab_loggen.py --types ftd_ips --format vendor \
+  --scenario ips-block-shift --seed 42 --eps 1 --count 20 --dry-run --stdout
+```
+
+After a live validation run, use only normalized Ariel properties already accepted by the lab.
+`SUM(eventcount)` is event volume and `COUNT(*)` is record provenance; port `0` is absent and is
+excluded. `QIDNAME(qid)` is the portable signature name until DSM-specific properties are measured.
+
+```sql
+SELECT logsourceid, destinationport, sourceip, destinationip, protocolid,
+       QIDNAME(qid) AS signature, SUM(eventcount) AS ec, COUNT(*) AS records
+FROM events
+WHERE LOGSOURCETYPENAME(devicetype) IN
+      ('Palo Alto PA Series', 'Cisco Firepower Threat Defense')
+  AND destinationport > 0 AND protocolid > 0
+GROUP BY logsourceid, destinationport, sourceip, destinationip, protocolid, qid
+ORDER BY ec DESC
+LIMIT 500 LAST 15 MINUTES
+```
+
+Do not infer action coverage from an empty value. T-027 found the custom property `IPS_Action` but
+could not measure it on any live IPS event. Until the live task confirms its population and value
+set for each DSM, action-dependent validation remains `INSUFFICIENT_DATA`.
 
 ## Controlled scenarios
 

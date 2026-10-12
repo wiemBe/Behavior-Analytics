@@ -8,50 +8,144 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (saved 2026-10-12, second orchestration session, in progress)
+## ▶ Resume here (saved 2026-10-12 23:38, at the end of the third session)
+
+**Fourth session, started 2026-10-12 23:40 — in flight (check these first):**
+- The user asked for **D-8** (§4): field mappings (WAF custom-property names such as the URI)
+  editable from the UI, and the same for IPS. Design: [`FIELD-MAPPING.md`](FIELD-MAPPING.md).
+  T-041 (research) is done; T-042 (Codex), T-043 (Sonnet) and T-044 (Sonnet, UI) are running in
+  worktrees `t042`, `t043`, `t044`. T-045 (docs) follows their merge.
+- The user also said: keep the other work going, and use the agents. In flight: **T-040** (Sonnet,
+  live validation, worktree `t040`), **T-022c** (opencode `mimo`, `t022c`), **T-031** (opencode
+  `big-pickle`, `t031`).
+- Agent logs: the session scratchpad `logs/` (opencode and Codex). Reports land in each worktree's
+  `docs/tasks/T-xxx.report.md`.
+- Merge order when green: T-031, T-022c, T-042 (migration 0015), T-043, T-044 (contract reconciled
+  against T-042/T-043 first), then T-045.
 
 **Read §0 first.** The user set three product goals (G1 log-source fleet, G2 IPS/WAF behavior,
 G3 rule analytics). Every task is scheduled against them.
 
-**Working model:** the orchestrator writes **no code**, not even research scripts. Every coding
-or probing job goes to an agent. The user asked (2026-10-12) that Codex and the opencode free
-models be used alongside Sonnet.
+**Working model:**
+- The orchestrator writes **no code**, not even probe scripts.
+- Each round uses Sonnet (medium), Codex **and** the opencode free models.
+- UI work must clear AGENTS.md §3a ("no AI slop"), and the orchestrator reviews its screenshots.
+- **Run `codex exec` and `opencode run` with `< /dev/null`**: without it they can hang on stdin.
+- **Agents stop on test conflicts.** When an existing test asserts behavior a spec deliberately
+  changes, the agent stops and reports it. The orchestrator then rules on it:
+  - Prefer changing **setup only**, for example pinning a test's cadence to 5 min, where the old
+    bound still holds.
+  - Prefer changing the **code**, if that keeps the old behavior.
+  - Update a pinned value only when the spec changes it on purpose.
+
+  Every ruling of this session is recorded in the task rows of §3.
+- **The user, on 2026-10-12: "hangisi iyiyse onu kullan bana takılma".** Pick the free models
+  yourself, and do not ask about them.
 
 **Branches:**
-- `main` (`6f17a73`) is green and pushed.
-- `feat/phase-b2` is pushed. At `543d7ff`: **2,055 tests passed, 0 failed**; ruff clean;
-  mypy 31/18 (the baseline). T-006b and T-009 are merged.
-- Backup of the original uncommitted tree: `refs/backup/pre-t001-2026-10-10` (local ref).
+- **`main` @ `ed620a0`** has B.1, B.1.5 and B.2. It was not touched this session.
+- **`feat/phase-ce` @ `2f13e6e`** is pushed, 39 commits ahead of `main`, and its **full gate is
+  green** (below). The main checkout is on it. It holds:
+  - T-021, T-022/T-022b, T-025/T-025b, T-026, T-028, T-029;
+  - T-033 (and its test-pin follow-up `67b718b`);
+  - T-034 to T-039 (search cadence).
 
-**In flight** (each in `../QRadar-Dash-wt/<id>`, with database `qradar_obs_<id>`):
-- **T-015**, Sonnet, read-only lab discovery. Its report goes to `docs/tasks/T-015.report.md` in
-  the main checkout. The lab token is at `.secrets/qradar.sec`, with the CA at
-  `.secrets/qradar-ca.pem`. `.env` names the container path `/run/secrets/...`, so host-side runs
-  override `QRADAR_API_TOKEN_FILE` and `QRADAR_CA_BUNDLE` in the process environment only.
-- **T-016**, Codex, WAF alerting. Log: scratchpad `t016_codex.log`. Check the tail for "usage
-  limit".
-- **T-017**, Sonnet, D-3: the source-coverage guard on the ratio paths.
-- **T-018**, opencode `mimo-v2.6-flash-free`, test-warning hygiene.
+  Migration head: `0014`.
+- **Worktrees** `../QRadar-Dash-wt/t021` … `t039` still exist. Every `agent/*` branch is pushed
+  and merged (cherry-picked). Remove them when convenient.
 
-**Next steps, in order:**
-1. Review T-016, T-017 and T-018 as they land, then re-run the full gates on `feat/phase-b2`.
-2. `alembic check` on a fresh DB, plus the frontend gates (lint, typecheck, test, build).
-3. **T-010**: design doc §30 and the README, covering B.2, D-3, D-4 and WAF alerting.
-4. Merge `feat/phase-b2` → `main`.
-5. From T-015's findings, write the specs for **Phase C.1** (G1) and **Phase E.1** (G3). They are
-   independent and can run in parallel. Their migrations chain after 0010, so the orchestrator
-   assigns revision ids.
-6. Then follow the roadmap in §0.
+**State by thread:**
+
+| Thread | State | What the next session does |
+|---|---|---|
+| T-022 + T-022b (Phase C.1, Codex) | **Merged and gated** (`e10c922`). | **T-022c**: multi-role NGFW DSMs (Palo Alto PA Series, Cisco Firepower Threat Defense, FortiGate, Check Point, Juniper SRX) must have **no** built-in type rule, so the site's naming convention decides (the user runs FTD and PA as IPS). Today they pin FIREWALL, and a name like `…-ips-…` only shows up as a conflict. Update the seed and the 62-name matrix. |
+| T-025 + T-025b (Phase E.1a, Sonnet) | **Merged into `feat/phase-ce`** (`e77cb99` and the re-chain `0d037f5`). The orchestrator read the T-025b liveness diff: bounded attempts, then FAILED and the watermark moves on; a failed retry never downgrades COMPLETE; bulk skip beyond the horizon records FAILED, never empty. Sonnet re-chained 0012 to 0011, after the opencode free models failed. Round trip 0010→0012→0010→0012 clean, and `alembic check` reports no drift. **Gated.** T-037 later reworked its collection to one keyed search per cadence tick. | Phase E.2/E.3 (§0 roadmap). |
+| T-028 (security, Sonnet) | **Merged into `feat/phase-ce` (`0e2bf71`)**; the branch is pushed as `agent/t028`. Every router guarded; a guard test walks all 61 routes. The orchestrator re-ran 32 API tests green. | **T-031:** `PATCH /rules/{id}` and `POST /coverage/mappings` mutate state behind a read permission only. They need write permissions; then remove their `_READONLY_MAY_MUTATE` allowlist entries. Optionally replace the guard test's allowlist `skip`s with filtered parametrization. |
+| T-029 (Phase D generator, PAN THREAT + FTD 430001) | **Done and accepted** (`agent/t029` @ `140df40`, pushed; [report](tasks/T-029.report.md)). Sonnet finished the work Codex left. It found that Codex's tests cited "vendor reference lines" that neither vendor page contains, and replaced them with tests that pin the documented field names and positions. It also made the new profiles opt-in, so the default streams are unchanged, and moved FTD to the `%FTD-1-430001:` form. The orchestrator re-ran ruff and 1,640 unit tests green, and checked the safety rules: RFC 5737 sources, `10.10.20.0/24` destinations, `--format vendor`. **Risk for T-030:** IBM's Palo Alto DSM page lists only LEEF and CEF, not the raw PAN-OS CSV, so `pan_threat` may not auto-discover. A LEEF variant is the fallback. **Merged and gated** (`a9d52d2`). | **T-030** measures auto-discovery (next steps, item 3). |
+| **Search cadence (D-7)** — the user's note of 2026-10-12 | **Built, merged and gated (T-032 to T-039; see §3 and [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md)).** <br>• Every search family (Phase A volume, WAF, anomaly explanations, rule matches) has its own cadence: 5 min to 8 h, default 1 h. It is set at `/admin/search-cadence` with no restart, and every change is audited. <br>• The cadence decides only when a family searches; the bucket width stays 5 min. At each tick, one Ariel search keyed by `starttime / bucket_ms` returns every bucket. It is split on truncation, and its rows equal the per-bucket path column for column (an equivalence test per family). <br>• Phase A now judges every new bucket in order, through an evaluation watermark (0014). <br>• Per hour, Phase A goes from 12 searches to 1. WAF goes from 60 to 5 per source (with 3 breakdowns). <br>• Defects found and fixed on the way: Ariel truncation never reported (T-033); Phase A judging only the latest bucket; rule matches falling behind at long cadences; an unbounded WAF evaluation backlog at long cadences. <br>• Scheduled searches have preset schedules, and a truncated run reads "≥ N" and "no verdict". | **T-040: live validation** on the lab (1 h and 8 h). Also settle the open Phase A split-on-failure question (§SC.6) and the live WAF custom-property grouping. Then merge `feat/phase-ce` to `main` once its full gates are green. |
+
+**Full gate on `feat/phase-ce` @ `d2e37fc`, 2026-10-12 ~23:30: green.** (`2f13e6e` adds only
+planner and design text on top.)
+- Backend: **2,685 passed**, 7 skipped, 0 failed, on a fresh DB.
+- ruff clean; mypy 31 errors in 18 files (the baseline).
+- Alembic: 0012→0014→0012→0014 clean, and `alembic check` reports no drift.
+- Frontend: lint, typecheck and build pass; **796/796** tests.
+
+**Next steps:**
+1. **T-040: live validation of search cadence** (the spec is not yet written; see the §3 row).
+   - Run on the lab with read-only AQL and a bounded Ariel budget.
+   - Run Phase A, rule matches, and WAF if a WAF source is live, at 1 h and at 8 h. Check:
+     - one search per kind per tick;
+     - per-bucket rows equal a per-bucket control run;
+     - alerts still open on the generator's spike scenario.
+   - Settle two open questions:
+     - Do wide searches time out on a busy console? If they do, Phase A needs split-on-failure,
+       like rule matches (§SC.6).
+     - Does `GROUP BY <custom property>, starttime / bucket_ms` work live for WAF?
+2. **Merge `feat/phase-ce` → `main`** after T-040. The code is green, but the default 1 h cadence
+   changes production behavior (outage alerts arrive about an hour later; see the README upgrade
+   note), so validate first.
+3. **T-030:** the live run. Send vendor-native PAN THREAT and FTD syslog at 5 EPS or less to the
+   lab console, per the lab guide's safety contract, so that **QRadar auto-discovers** the IPS
+   sources. Never create them through the API. The user asked the orchestrator to create them.
+   Then verify them with read-only AQL. If auto-discovery fails, ask the user to create them in
+   the UI.
+   - Risk from T-029: IBM's Palo Alto DSM lists only LEEF and CEF, so the raw PAN CSV may not
+     auto-discover.
+4. **Small queued tasks:**
+   - **T-022c:** multi-role NGFW DSMs get no built-in type rule.
+   - **T-031:** write permissions for `PATCH /rules/{id}` and `POST /coverage/mappings`.
+5. **The Phase D (IPS) design,** from the T-027 and T-030 facts. Production IPS is Cisco FTD and
+   Palo Alto Threat (§0).
+6. **T-023:** the fleet APIs and routing by class (needs T-022 and T-028). Then **T-024:** the
+   fleet UI, with T-021's leftovers:
+   - an overview severity column with no header;
+   - uneven stat cards;
+   - a sidebar that does not run the full height. It is visible on every page, including
+     `/admin/search-cadence`.
+7. **The E.3 rule statistics API, then its UI.** D-5 (where rule logic comes from for the AI) is
+   the user's call.
+8. Then: the WAF analyst API and UI, and Phase 4 OIDC. **No authenticated route works in
+   production until OIDC lands.**
+
+**Known open points (small):**
+- **Threshold validation gap (T-033).** A `GT` threshold set above a search's `max_result_rows`
+  can never fire on a truncated run.
+- **"No verdict" storage (T-033).** It is stored as `threshold_breached=False`. The alert evaluator
+  tells it apart through `truncated`; a three-state column would need a migration.
+- `RunSearchButton.test.tsx` flaked once under load during T-038. It passed on every re-run.
+- **WAF dispatch counts.** The dispatcher records its runs with `searches_sent = null` ("not
+  counted"), because per-source tasks run asynchronously and are not aggregated.
 
 **Environment notes:**
-- The test DB container `qradar-observability-test-test-db-1` runs on `:5433`, on tmpfs, so its
-  data is lost on restart. Restart it with `docker compose -f docker-compose.test.yml up -d
-  test-db`, and recreate the per-task databases with `createdb`.
-- The lab QRadar console is reachable from this host on 443.
+- The test DB container `qradar-observability-test-test-db-1` runs on `:5433`, on tmpfs. Restart
+  it with `docker compose -f docker-compose.test.yml up -d test-db`, then `createdb` per task.
+- The lab QRadar is reachable. For host-side read-only runs, override `QRADAR_API_TOKEN_FILE` and
+  `QRADAR_CA_BUNDLE` to `.secrets/` in the process environment only.
+- **Never call `GET /analytics/rules/{id}/dependents`:** it starts a server-side task.
+- **Codex.**
+  - It hit its usage limit at 19:28 on 2026-10-12, after about three tasks (T-034, its fix, and
+    most of T-035). It resets at 23:41.
+  - Give it one large piece per window. Check every log for "usage limit".
+  - For review fixes, continue the same session with `codex exec resume <session-id> -c sandbox_mode='"workspace-write"' -c sandbox_workspace_write.network_access=true -o <file> "<msg>" < /dev/null`,
+    run from the worktree.
+- **opencode** is v2.0.27. The user re-authenticated it after the "Invalid credential" failure.
+  `opencode models` lists models again without a TTY.
+  - Verified on 2026-10-12 with a file-reading tool test:
+    - **`opencode/`:** `big-pickle`, `space-bunny-free`, `muse-spark-1.3-contributor-free`,
+      `nemotron-3-ultra-free`, `longcat-2.5-preview-free`, `mimo-v2.6-flash-free`,
+      `nemotron-3.5-lightning-free`, `ling-3.1-flash-free`.
+    - **`openrouter/…:free`:** `thinkingmachines/inkling(-small)`,
+      `nvidia/nemotron-3-super-120b-a12b`, `nvidia/nemotron-3-ultra-550b-a55b`,
+      `nvidia/nemotron-3.5-lightning`, `cohere/north-mini-code`, `apodex/apodex-1.1-mini`,
+      `dots-studio/dots-3-note-preview`, `poolside/laguna-xs-2.1`.
+  - Avoid:
+    - `poolside/laguna-s-2.1` and `nemotron-3-nano-omni`, which gave wrong answers;
+    - both `gemma-4` models, which return provider errors;
+    - `exo-free` (deprecated) and `ling-3.0-flash-fin-free` (unavailable).
+  - This session, `big-pickle` (a migration-test pin) and `mimo` (T-039 docs) did real work
+    cleanly.
 - GLM credits return on 2026-10-14.
-- Working free models: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`,
-  `longcat-2.5-preview-free`, `nemotron-3-ultra-free`.
-- Task specs given to agents are kept in [`docs/tasks/`](tasks/).
 
 ---
 
@@ -101,6 +195,11 @@ normal rates, and alert on a deviation.
 | WAF alerting | WAF incidents have a lifecycle. | **WAF incidents raise no alerts at all** (`app/waf` never calls `AlertService`). There is no analyst API and no UI. |
 | IPS port and IP behavior | Nothing. Phase A volume detectors run on IPS sources as on any source. | A whole phase: per-source destination-port and IP behavior, built on the WAF architecture (profiles, validated field mapping, bounded breakdowns, fail-closed). Design first. |
 | Real products | Lab-only validation. | A field-availability pass against the production WAF and IPS products. |
+
+**Production IPS products (user, 2026-10-12): Cisco Firepower/FTD and Palo Alto (THREAT logs).**
+Phase D's profiles target these first. The user asked the orchestrator to create the lab IPS
+sources. Because the platform is read-only and the lab guide forbids API creation, they are
+created through QRadar auto-discovery from vendor-native synthetic syslog (T-029, T-030).
 
 ### G3 — Rule analytics
 
@@ -262,16 +361,42 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-019 | Defect: `Alert.severity` loads as `str`, so `_render` (`.value`) crashes on any DB-loaded alert when a route matches. This hits Phase A recovery and the API acknowledge/resolve paths. Reproduce first, fix in the dispatcher, drop T-016's workaround | Codex | DONE (`6d860e8`; reproduced 3 failures first; re-run by the orchestrator: 41 passed) | Failing regression tests before the fix; green after; audit list of similar `.value` reads |
 | T-010 | (re-listed) B.2 design doc §30 and README | Sonnet | DONE (`9951470`, with one follow-up round) | §30.1–§30.14; README status, roadmap, data model, test counts |
 | T-020 | Replace the stale `docs/NEXT-SESSION-PROMPT.md` with a pointer to the planner | opencode `ling-3.1-flash-free` | DONE (verified: exact text, one file) | Exact text; one file |
-| T-021 | **UI quality pass** on the behavioral routes, against AGENTS.md §3a (the user's "no AI slop" bar) | Sonnet | IN PROGRESS (`agent/t021`) | Known defects fixed; before/after screenshots at 3 viewports reviewed by the orchestrator; frontend gates green |
+| T-021 | **UI quality pass** on the behavioral routes, against AGENTS.md §3a (the user's "no AI slop" bar) | Sonnet | DONE (`526e0d0`; screenshots reviewed by the orchestrator; 695 frontend tests, lint, typecheck and build re-run) | Clean chart (band, units, UTC), one metrics block, UTC everywhere, states designed. Left for T-024: the overview table's severity column has no header; two overview stat cards are uneven; the sidebar background stops at the viewport height on long pages. |
 | T-022 | **Phase C.1 (G1):** inventory enrichment (groups, types, facts), migration `0011`, `classify()` with seed rules, new-source detection and alert ([design](PHASE-C-LOG-SOURCE-FLEET.md)) | Codex | IN PROGRESS (`agent/t022`) | Full gates; constant SQL per sync; the seed list reviewed by the orchestrator |
-| T-025 | **Phase E.1a (G3):** measured rule matches from `creEventList`, migration `0012` (temporarily chained to `0010`; re-chain at merge), rule-health integration ([design](PHASE-E-RULE-ANALYTICS.md)) | Sonnet | IN PROGRESS (`agent/t025`) | Full gates; EVENT rules provably silent only over complete windows; COMMON never silent |
+| T-025 | **Phase E.1a (G3):** measured rule matches from `creEventList`, migration `0012` (temporarily chained to `0010`; re-chain at merge), rule-health integration ([design](PHASE-E-RULE-ANALYTICS.md)) | Sonnet | DONE, merged into `feat/phase-ce` (`e77cb99` + re-chain `0d037f5`) | Full gates; EVENT rules provably silent only over complete windows; COMMON never silent |
+| T-026 | Record the T-021 contracts (`IncidentMetrics`, `LoadingState`/`ErrorState`, UTC, the severity tone) in the UX guidelines | opencode `mimo-v2.6-flash-free` (`longcat` hung) | DONE (verified: additions only, placed correctly) | Three verbatim insertions; one file |
+| T-022b | Follow-ups on T-022: the seed overlap (Azure AD matched CLOUD and IDENTITY at equal priority); built-in rule updates must reach existing installs (upsert definitions, keep `enabled`); pin the upgrade path (pre-0011 sources become REVIEWED, no alert flood) | Codex | IN PROGRESS (`agent/t022`) | Guard test over ≥ 40 realistic DSM names; upsert test; upgrade test |
+| T-025b | Follow-up on T-025, liveness: a permanently failing window stalled the watermark forever. Bounded attempts, then skip as FAILED; a catch-up horizon with a bulk skip | Sonnet | DONE (diff read by the orchestrator; merged with T-025) | Skip after N attempts; transient failures not skipped; constant-cost bulk skip; health stays fail-closed over skipped spans |
+| T-027 | G2 research: live IPS field discovery for the Phase D design | Sonnet | DONE ([report](tasks/T-027.report.md)) | **The lab has no live IPS telemetry**: 12 Snort/McAfee sources have been silent for about 71 days, and the Phase A IPS source does not exist. Ariel syntax facts: `SUM(CASE…)` is rejected, absent ports are 0 (not NULL), `UNIQUECOUNT` counts 0. Phase D validation needs a lab IPS source created by the user and a generator extension. |
+| T-032 | **Search cadence research (D-7):** live, read-only. Can one Ariel search return every 5-minute bucket of a cadence window? Covers a timezone-free bucket key, equivalence with today's per-bucket query, cost at 1 h and 8 h, `LIMIT` across buckets, `creEventList` by bucket, and the settle delay | Sonnet | DONE ([report](tasks/T-032.report.md); verified against the raw outputs) | ≤ 12 searches; every question answered with exact AQL; the design implications |
+| T-033 | **Defect:** `get_ariel_search_results` can never report truncation, because the `Range` header caps rows before the check. As a result, scheduled searches record capped results as complete and apply thresholds to them, and Phase A would zero-fill dropped sources. Reproduce first; fail closed | Sonnet | DONE (`6c225f9`, cherry-picked from `agent/t033`). Reproduced with 4 unit and 8 integration failures. The orchestrator read the diff and re-ran 110 unit and 43 integration tests green. It approved one existing-test edit: the `Range` header pin `items=0-3`→`items=0-4`, the new required value, with no weakening. Open: a GT threshold above `max_result_rows` can never fire on a truncated run (search-config validation gap); "no verdict" is stored as `threshold_breached=False`, and the alert evaluator tells it apart through `truncated`. | Failing tests first; no total metric and no resolve on truncated results; Phase A raises; caller audit |
+| T-034 | Search cadence core: `search_cadence` (0013), slot claim, API and audit; gates `ANOMALY_EXPLANATION` | Codex | DONE (`5d6cf4a`). The orchestrator found that `next_dispatch_at` was off the new grid after a cadence change. Codex fixed it (resumed session) with an all-pairs property test. The 0012 migration test was pinned to its revision by opencode `big-pickle`. The orchestrator re-ran 135 unit and 25 integration tests; alembic 0012↔0013 is clean with no drift. | One winner per slot (concurrency test); 401/403/404/422; audit on change |
+| T-035 | Phase A: one keyed search per tick, split on truncation, evaluation watermark (0014), Phase A gate | Codex → Sonnet | IN PROGRESS (`agent/t035`). Codex first stopped correctly on a test conflict: `test_bounded_backfill` asserts ≤ 4 buckets. The orchestrator ruled: keep the assertion, pin that test's cadence to 5 min (where the new bound 1+3 equals the old one), and add a new 1-hour test expecting 15 buckets. Codex then hit its usage limit after about 900 lines (reset 23:41). The work was handed to Sonnet with "review what you inherit". **DONE** (`0f7a014`). Sonnet kept the inherited work and fixed three gaps: a lone-bucket failure rolled back the earlier complete buckets; two evaluation handlers swallowed errors silently; a crashed run was never recorded. The orchestrator reviewed the collector, `evaluate_pending`, the gate, the REST AQL and the equivalence test (24 buckets, silent source, every column). It re-ran 1,971 unit and 42 integration tests; alembic 0013↔0014 is clean with no drift. | Equivalence with per-bucket rows, zero-fill included; every new bucket judged in order |
+| T-036 | WAF: keyed searches and the WAF gate ([spec](tasks/T-036.md)) | Sonnet (Codex was out until 23:41) | DONE (`c5c61a4`). Two rounds of orchestrator rulings on 4 conflicting tests: the beat pin went to 60 s; the per-bucket permit test was rewritten to "a tick without a permit collects nothing"; a stub gained the keyed method; an evaluation-bound test was pinned to 5 min with its assertions kept. The orchestrator also found a real defect: the WAF evaluation cap (24) was below what one long-cadence tick persists, so the backlog would grow every tick. The bound is now raised to the cadence window when a run spans several buckets. The orchestrator re-ran 2,067 unit and 93 WAF integration tests. Per-tick cost with 3 breakdowns: 5 Ariel searches instead of 60, and DB statements are 6 per bucket plus 6. | §SC.9 |
+| T-037 | Rule matches: one keyed search per tick, windows per run sized to the cadence, rule-match gate | Sonnet | DONE (`agent/t037` @ `6bd5881`, awaiting cherry-pick after the T-035 gate). The agent stopped on 5 conflicting tests. The orchestrator ruled on them: 3 kept unchanged by changing the formula to `ceil(cadence/window) + max_windows_per_run - 1`, which keeps today's bound when the cadence is no longer than the window; the beat pin updated to 60 s; one `attempts` pin updated from 2 to 1 under split-first, with the transient-failure intent kept. The orchestrator re-ran 1,991 unit and 49 integration tests. | Equivalence with per-window rows; every T-025/T-025b guarantee kept |
+| T-038 | UI: `/admin/search-cadence`, schedule presets, truncated-run honesty | Sonnet | DONE (`f451936`). The orchestrator reviewed the screenshots over two fix rounds. Round 1 fixed: raw outcome strings, a cadence table that scrolled at 1024, and `ResultTrend` failing §3a (no time axis, no unit, a marker on every point, colour literals). Round 2 fixed durations in ms, a "Schedule:" label restating its heading, and a wrapping cron. The last polish put the change status in a full-width sub-row, so the permission name no longer breaks. The orchestrator re-ran frontend lint, typecheck, build and 796/796 tests. Open: `RunSearchButton.test.tsx` was seen to flake once under load (not touched). | §3a; screenshots at 3 viewports reviewed by the orchestrator | §3a; screenshots at 3 viewports reviewed by the orchestrator |
+| T-039 | Docs: README configuration, upgrade note, deprecated settings | opencode `mimo-v2.6-flash-free` | DONE (`d2e37fc`). Verbatim insertion of the orchestrator's text, checked with `diff`. The model also flagged an ambiguous anchor in the spec and resolved it correctly. | §SC.9 |
+| T-040 | **Live validation of search cadence** on the lab. Run Phase A, rule matches and WAF (if a WAF source is live) at 1 h and at 8 h. Check: one search per kind per tick; per-bucket rows equal a per-bucket control run; alerts still open on the generator's spike scenario. Also verify live that `GROUP BY <custom property>, starttime / bucket_ms` works for WAF, and whether wide searches time out (the Phase A split-on-failure question, §SC.6) ([spec](tasks/T-040.md)) | Sonnet | IN PROGRESS (`agent/t040`, launched 2026-10-12 23:47) | Read-only; ≤ 40 Ariel searches |
+| T-022c | Multi-role NGFW DSMs (FortiGate, Palo Alto PA Series, Check Point, Cisco FTD, Juniper SRX) lose their built-in FIREWALL type rule, so the site's naming decides ([spec](tasks/T-022c.md)) | opencode `mimo-v2.6-flash-free` | DONE (`8123988`). The orchestrator read the matrix restructuring: neutral-name rows keep their exact assertions, and the new rows assert no type rule claims a multi-role DSM. Re-ran 81 unit and 11 fleet integration tests. Design §C.3 updated. | Matrix updated only for the five; upgrade path test |
+| T-031 | Write permissions `rule:write` and `coverage:write` for `PATCH /rules/{id}` and `POST /coverage/mappings`; allowlist entries removed ([spec](tasks/T-031.md)) | opencode `big-pickle` | DONE (`89b1ece`). Diff read; both mutations now audited too. Re-ran the guard test (70) and the Phase 3 API tests (67). | 403 for `read:*`; 403 before 404; audit actor; analyst role keeps working |
+| T-041 | **D-8 research (live, read-only):** the QRadar custom-property catalog endpoints, the property→DSM-type join, quoted normalized fields ([spec](tasks/T-041.md)) | Sonnet | DONE ([report](tasks/T-041.report.md); checked for secrets by the orchestrator). 24/30 GETs, 3/3 searches. `regex_properties` + `property_expressions` joined on `identifier` give the per-type list; on the lab WAF type five properties apply and `WAF_URL` does not. | ≤ 30 GETs, ≤ 3 searches; no expression bodies |
+| T-042 | **D-8 backend:** WAF profile admin API (§FM.4), async validation and migration 0015 (§FM.5) ([spec](tasks/T-042.md)) | Codex | IN PROGRESS (`agent/t042`) | Every guard and exit path; the stale-version race; alembic round trip |
+| T-043 | **D-8 backend:** property catalog provider method, cache and route (§FM.6) ([spec](tasks/T-043.md)) | Sonnet | DONE (`dadbe0d`). Diff read: `fields=` on both GETs, no body field in the DTO, failure uncached, MCP lacks the capability. Re-ran 87 unit and the API test. | No expression body anywhere; failure not cached; MCP unsupported |
+| T-044 | **D-8 UI:** `/admin/waf-sources` and the editor, generic `fieldmapping` components (§FM.8) ([spec](tasks/T-044.md)) | Sonnet | IN PROGRESS: review round 1 sent after the orchestrator read the screenshots (row separators under the first column only; raw `PROPERTY_REJECTED` text; unrealistic fixture; unlisted action value only addable as blocked; disabled primary button). Its 7 contract questions were reconciled in §FM.4 "Contract additions". | §3a; every state tested; screenshots at 3 viewports reviewed by the orchestrator |
+| T-023 | **Phase C.1 (G1):** fleet summary and sources API, classification override and review, classification-rule CRUD, routing by source class ([spec](tasks/T-023.md)) | Sonnet | DONE (`8b27ca9`). Review round 1: expected EPS compared a 7-day mean with the window-end cell only; now the mean over every spanned weekday-hour cell, a source counting only when all are reliable; two `type: ignore` replaced by annotations. The orchestrator checked the weekday convention (`isoweekday`, as the engine), that inventory alerts already carry `source_class`, and re-ran 104 unit and 43+18 integration tests. A router conflict with T-043 resolved by keeping both. Open: WAF anomaly alerts carry no `source_class`. | Completeness never hidden; constant SQL at two fleet sizes; fingerprints unchanged |
+| T-046 | **Phase E.1b (G3):** rule statistics API, match rate, capacity history (migration `0016`, chained to `0014` until re-chained after T-042's `0015`) ([spec](tasks/T-046.md)) | Sonnet | REVIEW: diff read and accepted; **merge waits for T-042** so `0016` can be re-chained after `0015`. | Silence only where provable; benchmark labelled as such; constant SQL |
+| T-030 | Live: lab IPS sources (PAN THREAT, FTD 430001) through auto-discovery, and what they parse, for Phase D and §FM.9 ([spec](tasks/T-030.md)) | Sonnet (the T-040 agent, after T-040) | TODO | ≤ 5 EPS; ≤ 15 searches; never API-created |
+| T-045 | **D-8 docs:** README admin section; WAF design §27.2 rule 6 and §27.14 point to FIELD-MAPPING.md | opencode free model | TODO (after T-042–T-044 merge) | Verbatim text from the orchestrator |
+| T-028 | **Security fix (DONE, `0e2bf71`):** the `/log-sources` (incl. PATCH and sync) and `/overview` routers were mounted with **no authentication**, and read routes of searches and alerts may be too. Router-level `requires()`, new permissions, an audit record on PATCH, and a guard test walking every route | Sonnet | IN PROGRESS (`agent/t028`) | Every route except the allowlisted health/docs returns 401 without a principal; read-only gets 403 on every mutation |
 
 **Later, not yet scheduled:**
 
 - WAF analyst API and UI (design §27.14–27.15).
 - Field-availability pass against a real WAF product. Production onboarding is NO-GO until then.
 - Phase A maintenance-history defect (design §28.14, item 4).
-- Phase 4 hardening.
+- Phase 4 hardening. **OIDC token verification is not implemented** (`_oidc_principal` fails
+  closed with 501), so no authenticated route works in production yet. This blocks any production
+  deployment, independently of the WAF NO-GO.
 - Retire or rewrite `docs/NEXT-SESSION-PROMPT.md`, which still describes Phase 2.
 - Document the upgrade procedure: stop `backend`, `celery-worker` and `celery-beat` before `docker compose run --rm migrate`. Every migration since 0002 adds NOT NULL columns whose backfill default is dropped, so a writer still running the old code fails until it is replaced.
 
@@ -286,11 +411,86 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-4 | ~~Should `WAF_NEW_ENDPOINT_ACCESS` get an enabling setting?~~ **Resolved 2026-10-12: no.** The B.2 enabling settings gate Ariel spend (extra breakdown searches). This detector adds none: it reads data already collected. It is OPERATIONAL whenever WAF collection runs. Revisit if operators need a per-detector mute once WAF alerting (T-016) is live. | — |
 | D-5 | **Open (G3).** Where does a rule's logic (its tests) come from for the AI rule-analysis package? It is not in the 7.6 `/analytics/rules` payload. T-015 checks whether any GET endpoint returns it. | Phase E.3 |
 | D-6 | ~~Lift the SELinux bind-mount ban?~~ **Resolved 2026-10-12 by the user:** private-label `:Z` is allowed only on a dedicated, secret-free directory (never the repo root, `.secrets/`, home or system paths). Shared `:z`, `label:disable`, permissive mode and relabel tools stay banned. AGENTS.md §5 and the orchestrator's memory updated. | — |
+| D-7 | **Search cadence. Decided by the user on 2026-10-12; the design is pending T-032.** The user's note: let operators set how often the searches run, or QRadar drowns in searches. Options are 5 min, 15 min, 30 min, 1 h, 2 h, 4 h and 8 h; the default is 1 h. The user's answers: <br>• **Scope:** every search family, each set separately: Phase A volume, WAF collection, anomaly explanations, rule matches (`creEventList`) and operator scheduled searches. <br>• **Where:** set in the UI, stored in the DB, audited, with no restart. <br>• **Default 1 h everywhere, Phase A included.** The user accepted that an outage (`NO_EVENTS`) alert then arrives 1–2 h late. <br>**Orchestrator constraint:** the cadence must **not** change the bucket width. With 1 h buckets, Phase A gets at most 4 samples per weekday×hour cell in 28 days, against `baseline_min_samples=8`, so it would never train. The 100-event delta floor is also tuned for 5 min. The design is therefore one search per cadence tick returning every 5-minute bucket (time-keyed `GROUP BY`), each bucket judged as today. A further finding: the Phase A baseline builder groups by weekday×hour **without** filtering on `bucket_seconds`, so a width change on a live install would mix widths in one cell. | Search cadence build |
+| D-8 | **Field mappings editable in the UI. Asked by the user on 2026-10-12:** custom-property names such as the WAF URI differ between environments, so they must be changeable from the UI; the same for IPS. **Design: [`FIELD-MAPPING.md`](FIELD-MAPPING.md).** <br>• The per-source WAF profile (mapping, versioning, validation, audit) already existed but was CLI-only. The design adds the admin API (§FM.4, the "separately reviewed admin API" of WAF design §27.2 rule 6; review in §FM.10), asynchronous validation with a never-stamp-a-stale-version rule (§FM.5, migration 0015), the QRadar property catalog filtered by the source's DSM type (§FM.6, T-041), environment prefill and copy-from (§FM.7), and the UI (§FM.8). <br>• **IPS:** Phase D is not built, so §FM.9 fixes the contract it inherits: normalized *or* custom field references, product presets for FTD and PAN THREAT, the same components. <br>• Orchestrator choices (the user may overrule): per-source profiles stay the unit (an environment is a set of sources); no bulk apply; a mapping change pauses collection until it validates (fail closed). | T-041–T-045; Phase D |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
 
 ## 5. Log
+
+### 2026-10-12
+
+- **Third session.** The user left a note at the top of this file asking for search cadence
+  settings (5 min to 8 h, default 1 h). It is recorded as **D-7**, and the user's answers on scope,
+  storage and default are in it.
+  - The orchestrator found that cadence cannot equal the bucket width: a 1 h Phase A bucket never
+    reaches `baseline_min_samples`. The cadence and the bucket width are therefore decoupled.
+  - **T-032** (live research into a multi-bucket Ariel search) was launched on Sonnet.
+  - T-029 was found cut off by the Codex usage limit.
+- **Merges into `feat/phase-ce`:**
+  - T-025, with the re-chain. The full gate was then green.
+  - T-033 (`6c225f9`). After it, the full suite had **1 failure**: a T-025 test still pinned the
+    old `Range` header (`items=0-199`). T-025's own truncation check (`LIMIT` and
+    `len >= limit`) was correct throughout. Sonnet updated the pin to `items=0-200` as an
+    approved single-line edit (`67b718b`).
+  - T-029 (`a9d52d2`).
+  - **Full suite on `a9d52d2`: 2,424 passed, 7 skipped, 0 failed.** ruff is clean, including
+    the generator. mypy was 31, the baseline, after T-033; nothing in `app/` has changed since.
+- **T-034 launched on Codex** at 18:45, after the user reported that Codex's usage limit had
+  reset.
+- **Search cadence completed (third session, evening).** The orchestrator reviewed every task
+  before merging, as follows.
+  - **T-034** (Codex): the core.
+    - In review, `next_dispatch_at` was found off the new grid after a cadence change. The fix
+      went back to the same Codex session.
+    - `big-pickle` pinned the 0012 migration test to its revision.
+  - **T-035** (Codex → Sonnet): Phase A.
+    - Codex stopped correctly on `test_bounded_backfill`. The ruling: pin its cadence to 5 min,
+      keep the assertion, and add a 1 h test.
+    - Codex then hit its usage limit, and Sonnet finished the work. Sonnet fixed a lone-bucket
+      rollback, swallowed evaluation errors, and a crashed run that was never recorded.
+  - **T-037** (Sonnet): rule matches.
+    - Five conflicting tests were ruled on. Three were kept by changing the formula to
+      `ceil(cadence/window) + max - 1`; the beat pin went to 60 s; one `attempts` pin went to 1
+      under split-first.
+  - **T-038** (Sonnet): the UI. The screenshots were reviewed over three rounds.
+    - Round 1: raw outcome strings, a 1024 overflow, and `ResultTrend` failing §3a.
+    - Round 2: durations, a redundant label, and a wrapping cron.
+    - Polish: the permission name broke mid-word.
+  - **T-036** (Sonnet): WAF.
+    - Four conflicting tests were ruled on.
+    - The orchestrator found an unbounded WAF evaluation backlog at long cadences. The fix raises
+      the bound to the cadence window when a run spans several buckets.
+  - **T-039** (opencode `mimo`): docs, inserted verbatim.
+- **opencode was re-authenticated by the user.** The orchestrator re-probed the free models with a
+  tool-use test: 8 opencode and 9 OpenRouter `:free` models work (Resume here, environment
+  notes).
+- **Final full gate on `d2e37fc`: green.** Backend 2,685 passed; frontend 796/796; ruff clean;
+  mypy at the baseline; alembic clean. `feat/phase-ce` was pushed at `2f13e6e`. Next: T-040.
+- **The user set the product goals** (§0) and the working model: the orchestrator writes no code,
+  and Codex and the opencode free models are used alongside Sonnet.
+- **D-4: no setting.** T-006b reviewed and merged; its test edits were filters, not weakening.
+- **T-009 merged; the branch went fully green.**
+- **T-015 (live discovery).**
+  - The token file in `.env` points at a container path, so it was overridden in the process
+    environment only.
+  - Findings: there are no type categories, and groups are empty in the lab. `average_eps` is
+    unusable as volume, and the capacity fields are a static benchmark. No GET returns rule logic.
+    `creEventList` grouping works.
+  - Side effect: `/analytics/rules/{id}/dependents` started a QRadar task; it is now banned.
+- **D-3: yes, fail closed.** T-017 merged.
+- **T-016 (WAF alerting).** Merged. The full suite was 2,085 green.
+- **T-019.** Codex's T-016 work hid a real defect: notifications crashed on any alert loaded from
+  the database when a route matched. That hit Phase A recovery and the operator API. Fixed at the
+  root, with the defect reproduced first.
+- **T-018 and T-020.** Done by opencode free models and verified.
+- **The user lifted the `:Z` ban** on dedicated secret-free mounts (D-6).
+- **The user set the frontend quality bar** (AGENTS.md §3a); T-021 was launched.
+- **T-010.** Docs merged, after one follow-up round.
+- **B.2 merged into `main`** (`ed620a0`): 2,088 backend and 629 frontend tests, all gates green.
+- **Phase C and Phase E designed** ([C](PHASE-C-LOG-SOURCE-FLEET.md),
+  [E](PHASE-E-RULE-ANALYTICS.md)). T-022 (Codex) and T-025 (Sonnet) were launched in parallel.
 
 ### 2026-10-10
 

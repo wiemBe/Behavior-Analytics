@@ -14,6 +14,7 @@ from app.core.config import Settings
 from app.models.alert import Alert
 from app.models.enums import AlertStatus, AnomalyType, Criticality
 from app.models.log_source import LogSourceAnomaly, LogSourceBaseline
+from app.models.monitoring import AnomalyEvaluationWatermark
 from tests.integration.factories import add_metric, make_instance, make_log_source, utc
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -176,6 +177,185 @@ async def test_idempotent_reevaluation(db_session) -> None:
     assert state.consecutive_anomalous == 1  # not 3
 
 
+async def _seed_evaluation_watermark(session, ls, at) -> AnomalyEvaluationWatermark:
+    watermark = AnomalyEvaluationWatermark(
+        log_source_id=ls.id,
+        evaluated_through=at,
+        updated_at=at,
+    )
+    session.add(watermark)
+    await session.flush()
+    return watermark
+
+
+async def test_evaluate_pending_judges_twelve_buckets_in_order_and_catches_midwindow_spike(
+    db_session,
+) -> None:
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst, criticality=Criticality.MEDIUM)
+    start = utc(h=10)
+    await _reliable_eps_baseline(
+        db_session, ls, weekday=start.isoweekday(), hour=start.hour
+    )
+    await _seed_evaluation_watermark(db_session, ls, start - timedelta(minutes=5))
+    for index in range(12):
+        eps = 120.0 if index in {2, 3} else 50.0
+        await add_metric(
+            db_session,
+            ls,
+            start + timedelta(minutes=5 * index),
+            average_eps=eps,
+            event_count=int(eps * 300),
+            payload_signature=f"pending-{index}",
+        )
+
+    engine = AnomalyEngine(db_session, settings=_settings())
+    evaluated: list = []
+    evaluate_interval = engine.evaluate_interval
+
+    async def tracking(log_source, metric):  # type: ignore[no-untyped-def]
+        evaluated.append(metric.bucket_start)
+        return await evaluate_interval(log_source, metric)
+
+    engine.evaluate_interval = tracking  # type: ignore[method-assign]
+    report = await engine.evaluate_pending(ls)
+
+    assert evaluated == [start + timedelta(minutes=5 * index) for index in range(12)]
+    assert AnomalyType.VOLUME_SPIKE.value in report.opened
+    watermark = await db_session.get(AnomalyEvaluationWatermark, ls.id)
+    assert watermark is not None
+    assert watermark.evaluated_through == start + timedelta(minutes=55)
+
+
+async def test_evaluate_pending_preserves_no_events_on_zero_filled_buckets(
+    db_session,
+) -> None:
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst, criticality=Criticality.CRITICAL)
+    start = utc(h=10)
+    db_session.add(
+        LogSourceBaseline(
+            log_source_id=ls.id,
+            metric_name="event_count",
+            weekday=start.isoweekday(),
+            hour=start.hour,
+            median=15_000.0,
+            mad=500.0,
+            p05=14_000.0,
+            p95=16_000.0,
+            sample_count=30,
+            is_reliable=True,
+            baseline_version=1,
+            observations=[15_000.0],
+        )
+    )
+    await db_session.flush()
+    await _seed_evaluation_watermark(db_session, ls, start - timedelta(minutes=5))
+    for index in range(2):
+        await add_metric(
+            db_session,
+            ls,
+            start + timedelta(minutes=5 * index),
+            average_eps=0.0,
+            event_count=0,
+            stored_event_count=0,
+            last_event_at=None,
+            event_delay_seconds=None,
+            collection_source="mock",
+            query_provenance={"zero_filled": True},
+        )
+
+    report = await AnomalyEngine(db_session, settings=_settings()).evaluate_pending(ls)
+
+    assert AnomalyType.NO_EVENTS.value in report.opened
+
+
+async def test_evaluate_pending_first_run_only_judges_latest_and_seeds_watermark(
+    db_session,
+) -> None:
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst)
+    start = utc(h=10)
+    for index in range(12):
+        await add_metric(db_session, ls, start + timedelta(minutes=5 * index))
+    engine = AnomalyEngine(db_session, settings=_settings())
+    evaluated: list = []
+    evaluate_interval = engine.evaluate_interval
+
+    async def tracking(log_source, metric):  # type: ignore[no-untyped-def]
+        evaluated.append(metric.bucket_start)
+        return await evaluate_interval(log_source, metric)
+
+    engine.evaluate_interval = tracking  # type: ignore[method-assign]
+    await engine.evaluate_pending(ls)
+
+    assert evaluated == [start + timedelta(minutes=55)]
+    watermark = await db_session.get(AnomalyEvaluationWatermark, ls.id)
+    assert watermark is not None
+    assert watermark.evaluated_through == start + timedelta(minutes=55)
+
+
+async def test_evaluate_pending_respects_per_run_bound(db_session) -> None:
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst)
+    start = utc(h=10)
+    await _seed_evaluation_watermark(db_session, ls, start - timedelta(minutes=5))
+    for index in range(5):
+        await add_metric(db_session, ls, start + timedelta(minutes=5 * index))
+
+    engine = AnomalyEngine(
+        db_session,
+        settings=Settings(
+            encryption_key="x" * 44,
+            anomaly_max_buckets_per_evaluation=2,
+        ),
+    )
+    await engine.evaluate_pending(ls)
+
+    watermark = await db_session.get(AnomalyEvaluationWatermark, ls.id)
+    assert watermark is not None
+    assert watermark.evaluated_through == start + timedelta(minutes=5)
+
+
+async def test_evaluate_pending_failure_holds_watermark_before_failed_bucket(
+    db_session,
+) -> None:
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst)
+    start = utc(h=10)
+    await _seed_evaluation_watermark(db_session, ls, start - timedelta(minutes=5))
+    for index in range(3):
+        await add_metric(db_session, ls, start + timedelta(minutes=5 * index))
+    engine = AnomalyEngine(db_session, settings=_settings())
+    evaluate_interval = engine.evaluate_interval
+    attempted: list = []
+
+    async def fail_second(log_source, metric):  # type: ignore[no-untyped-def]
+        attempted.append(metric.bucket_start)
+        if metric.bucket_start == start + timedelta(minutes=5):
+            raise RuntimeError("detector failed")
+        return await evaluate_interval(log_source, metric)
+
+    engine.evaluate_interval = fail_second  # type: ignore[method-assign]
+    report = await engine.evaluate_pending(ls)
+
+    assert attempted == [start, start + timedelta(minutes=5)]
+    assert report.skipped_reason == "evaluation failed"
+    watermark = await db_session.get(AnomalyEvaluationWatermark, ls.id)
+    assert watermark is not None and watermark.evaluated_through == start
+
+
+async def test_evaluate_pending_skips_monitoring_disabled_source(db_session) -> None:
+    inst = await make_instance(db_session)
+    ls = await make_log_source(db_session, inst, monitoring_enabled=False)
+    await add_metric(db_session, ls, utc(h=10))
+
+    report = await AnomalyEngine(db_session, settings=_settings()).evaluate_pending(ls)
+
+    assert report.skipped_reason == "monitoring disabled"
+    assert await db_session.get(AnomalyEvaluationWatermark, ls.id) is None
+
+
 async def _detector_state_types(session, ls) -> set[str]:
     from app.models.log_source import LogSourceDetectorState
 
@@ -265,3 +445,35 @@ async def test_synthetic_bucket_runs_the_detectors_the_mock_measures(db_session)
     assert await _detector_state_types(db_session, ls) == (
         {t.value for t in AnomalyType} - unsupported
     )
+
+
+async def test_anomaly_alert_context_carries_source_class_without_moving_fingerprint(
+    db_session,
+) -> None:
+    from app.models.enums import ClassificationReviewStatus, SourceClass
+    from app.models.fleet import LogSourceClassification
+
+    inst = await make_instance(db_session)
+    classified = await make_log_source(db_session, inst, qradar_id=1, name="fw-1")
+    bare = await make_log_source(db_session, inst, qradar_id=2, name="unclassified-1")
+    start = utc(h=10)
+    db_session.add(
+        LogSourceClassification(
+            log_source_id=classified.id, source_class=SourceClass.FIREWALL.value,
+            basis="NAME_REGEX", conflicts=[], classified_at=start,
+            review_status=ClassificationReviewStatus.REVIEWED.value,
+        )
+    )
+    await db_session.flush()
+    engine = AnomalyEngine(db_session, settings=_settings())
+    for ls in (classified, bare):
+        await _reliable_eps_baseline(db_session, ls, weekday=start.isoweekday(), hour=10)
+        await _feed(engine, ls, db_session, start=start, count=3, eps=3.0)
+
+    with_class = await _open_alert(db_session, classified, AnomalyType.VOLUME_DROP)
+    without = await _open_alert(db_session, bare, AnomalyType.VOLUME_DROP)
+    assert with_class is not None and without is not None
+    assert with_class.context["source_class"] == "FIREWALL"
+    assert "source_class" not in without.context
+    # Looked up by the class-free fingerprint: identity is unchanged.
+    assert with_class.dedup_key == anomaly_fingerprint(classified.id, "VOLUME_DROP")

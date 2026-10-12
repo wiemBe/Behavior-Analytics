@@ -76,7 +76,12 @@ class LogSourceCollector:
             watermark = await self._get_or_create_watermark(instance)
 
             try:
-                result = await InventorySyncService(self.session, self.provider).sync(instance)
+                result = await InventorySyncService(
+                    self.session,
+                    self.provider,
+                    settings=self.settings,
+                    clock=self._clock,
+                ).sync(instance)
             except ProviderError as exc:
                 # The watermark is deliberately not advanced: a failed pass must
                 # not read downstream as a completed observation.

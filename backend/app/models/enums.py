@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 
 class Criticality(StrEnum):
@@ -12,12 +12,63 @@ class Criticality(StrEnum):
     LOW = "LOW"
 
 
+class SourceClass(StrEnum):
+    WAF = "WAF"
+    IPS = "IPS"
+    FIREWALL = "FIREWALL"
+    PROXY = "PROXY"
+    VPN = "VPN"
+    LINUX = "LINUX"
+    WINDOWS = "WINDOWS"
+    NETWORK = "NETWORK"
+    DNS = "DNS"
+    DATABASE = "DATABASE"
+    EMAIL = "EMAIL"
+    ENDPOINT = "ENDPOINT"
+    CLOUD = "CLOUD"
+    IDENTITY = "IDENTITY"
+    APPLICATION = "APPLICATION"
+    QRADAR_INTERNAL = "QRADAR_INTERNAL"
+    OTHER = "OTHER"
+    UNCLASSIFIED = "UNCLASSIFIED"
+
+
+class ClassificationRuleKind(StrEnum):
+    GROUP = "GROUP"
+    TYPE = "TYPE"
+    TYPE_NAME_REGEX = "TYPE_NAME_REGEX"
+    NAME_REGEX = "NAME_REGEX"
+    IDENTIFIER_REGEX = "IDENTIFIER_REGEX"
+
+
+class ClassificationReviewStatus(StrEnum):
+    NEW = "NEW"
+    REVIEWED = "REVIEWED"
+
+
 class Severity(StrEnum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
     LOW = "LOW"
     INFO = "INFO"
+
+
+class SearchFamily(StrEnum):
+    PHASE_A_VOLUME = "PHASE_A_VOLUME"
+    WAF_COLLECTION = "WAF_COLLECTION"
+    ANOMALY_EXPLANATION = "ANOMALY_EXPLANATION"
+    RULE_MATCH = "RULE_MATCH"
+
+
+class SearchCadence(IntEnum):
+    FIVE_MINUTES = 300
+    FIFTEEN_MINUTES = 900
+    THIRTY_MINUTES = 1800
+    ONE_HOUR = 3600
+    TWO_HOURS = 7200
+    FOUR_HOURS = 14400
+    EIGHT_HOURS = 28800
 
 
 class AnomalyType(StrEnum):

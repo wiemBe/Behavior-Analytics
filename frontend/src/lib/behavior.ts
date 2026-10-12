@@ -85,6 +85,23 @@ export function formatDuration(seconds: number | null | undefined): string {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
+// --- detectors -------------------------------------------------------------
+
+/** Detector identifiers as an analyst would say them. */
+const DETECTOR_LABELS: Record<string, string> = {
+  VOLUME_SPIKE: "Volume spike",
+  VOLUME_DROP: "Volume drop",
+  NO_EVENTS: "No events",
+};
+
+/**
+ * The detector's name for display. An identifier this build does not know is
+ * shown as-is rather than hidden or guessed at.
+ */
+export function detectorLabel(type: string): string {
+  return DETECTOR_LABELS[type] ?? type;
+}
+
 // --- lifecycle -------------------------------------------------------------
 
 /**

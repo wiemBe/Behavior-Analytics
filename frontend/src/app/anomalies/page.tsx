@@ -90,7 +90,7 @@ export default async function AnomaliesPage({
     <>
       <PageHeader
         title="Anomalies"
-        description="Every detected behavioral deviation, with the observed and expected values that produced the verdict. Open one to see what changed during the anomalous interval."
+        description="Open an anomaly to see what changed during its interval. Times are UTC."
       />
 
       <AnomalyFilters
@@ -132,10 +132,16 @@ export default async function AnomaliesPage({
                   <th scope="col">Source</th>
                   <th scope="col">Detector</th>
                   <th scope="col">State</th>
-                  <th scope="col">Observed → Expected</th>
-                  <th scope="col">Deviation</th>
+                  <th scope="col" className="num">
+                    Observed → Expected (EPS)
+                  </th>
+                  <th scope="col" className="num">
+                    Deviation
+                  </th>
                   <th scope="col">Severity</th>
-                  <th scope="col">Started</th>
+                  <th scope="col" className="num">
+                    Started
+                  </th>
                   <th scope="col">Evidence</th>
                   <th scope="col">
                     <span className="sr-only">Actions</span>

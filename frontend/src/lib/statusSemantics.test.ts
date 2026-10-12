@@ -58,6 +58,15 @@ describe("severity is ordered and never silent", () => {
     expect(sevTone("MEDIUM")).not.toBe(sevTone("HIGH"));
   });
 
+  it("never gives a severity the positive tone", () => {
+    // Only a genuinely good outcome may be green (guidelines 10). A LOW finding
+    // is still a finding.
+    for (const severity of [...SEVERITIES, "INFO"]) {
+      expect(sevTone(severity), severity).not.toBe("ok");
+    }
+    expect(sevTone("NOT_A_SEVERITY")).not.toBe("ok");
+  });
+
   it("does not invent a tone for an unrecognised severity", () => {
     // An unknown value must not fall through to the most alarming class.
     expect(sevTone("NOT_A_SEVERITY")).not.toBe(sevTone("CRITICAL"));

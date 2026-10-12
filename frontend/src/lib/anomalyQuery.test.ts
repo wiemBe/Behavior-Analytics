@@ -142,3 +142,27 @@ describe("paginationParams", () => {
     expect("offset" in params).toBe(false);
   });
 });
+
+describe("time filters", () => {
+  it("reads a zoneless datetime-local value as UTC, whatever the server timezone", () => {
+    // Left bare, Date.parse reads it in the server's zone, so the same URL
+    // would filter a different window on a differently configured host.
+    expect(parseAnomalyQuery({ since: "2026-10-12T09:15" }).since).toBe(
+      "2026-10-12T09:15:00.000Z",
+    );
+  });
+
+  it("honours an explicit offset rather than overriding it", () => {
+    expect(parseAnomalyQuery({ since: "2026-10-12T11:15:00+02:00" }).since).toBe(
+      "2026-10-12T09:15:00.000Z",
+    );
+    expect(parseAnomalyQuery({ since: "2026-10-12T09:15:00Z" }).since).toBe(
+      "2026-10-12T09:15:00.000Z",
+    );
+  });
+
+  it("still rejects a value that is not a timestamp", () => {
+    expect(parseAnomalyQuery({ since: "yesterday" }).since).toBe("");
+  });
+});
+

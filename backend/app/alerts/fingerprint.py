@@ -59,6 +59,18 @@ def anomaly_fingerprint(log_source_id: str | uuid.UUID, anomaly_type: str) -> st
     )
 
 
+def inventory_fingerprint(
+    instance_id: str | uuid.UUID, qradar_log_source_id: int
+) -> str:
+    """Identity of one QRadar source first appearing on one instance."""
+    return compute_fingerprint(
+        source_type="log_source",
+        source_id=f"{instance_id}:{qradar_log_source_id}",
+        condition="inventory",
+        subtype="NEW_LOG_SOURCE",
+    )
+
+
 def waf_anomaly_fingerprint(
     *,
     instance_id: str | uuid.UUID,

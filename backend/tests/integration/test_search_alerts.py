@@ -208,3 +208,70 @@ async def test_failure_and_threshold_alerts_coexist(db_session) -> None:
     assert await _alert_for(db_session, search_threshold_fingerprint(search.id)) is not None
     assert await _alert_for(db_session, search_failure_fingerprint(search.id)) is not None
     assert await db_session.scalar(select(func.count()).select_from(Alert)) == 2
+
+
+# --------------------------------------------------- truncated results (T-033)
+async def _open_breach(db_session, search, evaluator):
+    breach = await _execution(
+        db_session, search, run_key="r1", result_count=250, threshold_breached=True
+    )
+    await evaluator.evaluate(search, breach)
+    return await _alert_for(db_session, search_threshold_fingerprint(search.id))
+
+
+async def test_truncated_run_under_threshold_never_resolves_the_alert(db_session) -> None:
+    search = await make_search(db_session, name="cap-no-resolve", threshold_value=100)
+    enqueuer = RecordingEnqueuer()
+    evaluator = SearchAlertEvaluator(db_session, enqueuer=enqueuer)
+    await _open_breach(db_session, search, evaluator)
+
+    capped = await _execution(
+        db_session, search, run_key="r2", result_count=5, threshold_breached=False,
+        truncated=True,
+    )
+    assert await evaluator.evaluate(search, capped) == []
+
+    alert = await _alert_for(db_session, search_threshold_fingerprint(search.id))
+    assert alert.status == AlertStatus.OPEN
+    assert [t for _, t in enqueuer.enqueued] == [AlertTransition.OPENED]
+
+
+async def test_truncated_lower_bound_breach_opens_an_alert_with_the_flag(db_session) -> None:
+    search = await make_search(db_session, name="cap-opens", threshold_value=100)
+    enqueuer = RecordingEnqueuer()
+    execution = await _execution(
+        db_session, search, run_key="r1", result_count=1000, threshold_breached=True,
+        truncated=True,
+    )
+
+    await SearchAlertEvaluator(db_session, enqueuer=enqueuer).evaluate(search, execution)
+
+    alert = await _alert_for(db_session, search_threshold_fingerprint(search.id))
+    assert alert is not None
+    assert alert.evidence_snapshot["truncated"] is True
+    assert "at least" in alert.description
+    assert [t for _, t in enqueuer.enqueued] == [AlertTransition.OPENED]
+
+
+async def test_truncated_run_without_a_breach_opens_nothing(db_session) -> None:
+    search = await make_search(db_session, name="cap-quiet", threshold_value=100)
+    execution = await _execution(
+        db_session, search, run_key="r1", result_count=5, threshold_breached=False,
+        truncated=True,
+    )
+
+    await SearchAlertEvaluator(db_session).evaluate(search, execution)
+    assert await _alert_for(db_session, search_threshold_fingerprint(search.id)) is None
+
+
+async def test_whole_run_under_threshold_still_resolves(db_session) -> None:
+    search = await make_search(db_session, name="whole-resolves", threshold_value=100)
+    evaluator = SearchAlertEvaluator(db_session)
+    await _open_breach(db_session, search, evaluator)
+    clear = await _execution(
+        db_session, search, run_key="r2", result_count=5, threshold_breached=False,
+        truncated=False,
+    )
+    await evaluator.evaluate(search, clear)
+    alert = await _alert_for(db_session, search_threshold_fingerprint(search.id))
+    assert alert.status == AlertStatus.RESOLVED

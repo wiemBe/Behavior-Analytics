@@ -20,20 +20,14 @@ import type { Metadata } from "next";
 import { EvidenceBanner } from "@/components/behavior/EvidenceBanner";
 import { DimensionExplorer } from "@/components/behavior/DimensionExplorer";
 import { IncidentHeader } from "@/components/behavior/IncidentHeader";
+import { IncidentMetrics } from "@/components/behavior/IncidentMetrics";
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
 import { TechnicalDetails } from "@/components/behavior/TechnicalDetails";
 import { TopContributors } from "@/components/behavior/TopContributors";
 import { VolumeChart } from "@/components/behavior/VolumeChart";
 import { AnomalyTabs } from "@/components/behavior/AnomalyTabs";
 import { ApiError, api, type AnomalyDetail, type MetricBucket } from "@/lib/api";
-import {
-  dimensionLabel,
-  formatDuration,
-  formatMetric,
-  formatRatio,
-  hasConfidenceLimitation,
-  stateMeaning,
-} from "@/lib/behavior";
+import { dimensionLabel, hasConfidenceLimitation, stateMeaning } from "@/lib/behavior";
 import { summarizeAnomaly, summarizeTimeline } from "@/lib/summarize";
 import { buildSeries } from "@/lib/timeseries";
 
@@ -130,44 +124,8 @@ export default async function AnomalyDetailPage({
       {summary.caveat && <p className="subtitle">{summary.caveat}</p>}
       <p className="subtitle">{stateMeaning(anomaly.state)}</p>
 
-      {/* --- C. four primary metrics ------------------------------------- */}
-      <div className="grid-4">
-        <div className="card">
-          <div className="k">Observed</div>
-          <div className="v">{formatMetric(anomaly.observed_value)}</div>
-          <p className="metric-note">EPS during the anomalous interval</p>
-        </div>
-        <div className="card">
-          <div className="k">Expected</div>
-          <div className="v">{formatMetric(anomaly.expected_value)}</div>
-          <p className="metric-note">Seasonal baseline for this weekday and hour</p>
-        </div>
-        <div className="card">
-          <div className="k">Deviation</div>
-          <div className="v">{formatRatio(anomaly.deviation_ratio)}</div>
-          <p className="metric-note">Observed against expected</p>
-        </div>
-        <div className="card">
-          <div className="k">Duration</div>
-          <div className="v">{formatDuration(anomaly.duration_seconds)}</div>
-          <p className="metric-note">
-            {anomaly.anomaly_end ? "Interval length" : "Still running"}
-          </p>
-        </div>
-      </div>
-
-      {/* Confidence is secondary, and carries its limitation at the point it
-          is read rather than in a paragraph further down the page. */}
-      <p className="confidence-line">
-        <span className="muted">Confidence </span>
-        <span className="num">{formatMetric(anomaly.confidence)}</span>
-        {degenerate && (
-          <span className="muted">
-            {" · "}Confidence limited because baseline variability is zero. See
-            technical details.
-          </span>
-        )}
-      </p>
+      {/* --- C. the four primary metrics, as one comparison --------------- */}
+      <IncidentMetrics anomaly={anomaly} confidenceLimited={degenerate} />
 
       {/* --- D. the timeline --------------------------------------------- */}
       <section>

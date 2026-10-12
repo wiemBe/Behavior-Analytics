@@ -363,35 +363,55 @@ describe("deterministic summary", () => {
 });
 
 describe("primary metrics", () => {
-  it("shows exactly four", async () => {
+  // The four primary metrics are one comparison block rather than four cards
+  // (AGENTS.md 3a bans a row of identical KPI cards). The contract that
+  // survives: exactly four measures, no robust z-score among them, and
+  // confidence as the block's qualifier, not a fifth measure.
+  const block = (container: HTMLElement) =>
+    container.querySelector(".measure") as HTMLElement;
+
+  it("shows exactly four measures in one block", async () => {
     const { container } = await renderPage();
-    const primary = container.querySelector(".grid-4")!;
-    expect(primary.querySelectorAll(".card")).toHaveLength(4);
+    expect(container.querySelectorAll(".measure")).toHaveLength(1);
+    expect(container.querySelectorAll(".grid-4")).toHaveLength(0);
+    expect(block(container).querySelectorAll(".measure-grid > .measure-item")).toHaveLength(4);
   });
 
-  it("shows observed, expected, deviation and duration", async () => {
+  it("shows observed, expected, deviation and duration, each with its unit", async () => {
     const { container } = await renderPage();
-    const primary = container.querySelector(".grid-4") as HTMLElement;
-    expect(within(primary).getByText("Observed")).toBeInTheDocument();
-    expect(within(primary).getByText("5.98")).toBeInTheDocument();
-    expect(within(primary).getByText("Expected")).toBeInTheDocument();
-    expect(within(primary).getByText("1.98")).toBeInTheDocument();
-    expect(within(primary).getByText("3.02x")).toBeInTheDocument();
-    expect(within(primary).getByText("4m")).toBeInTheDocument();
+    const m = within(block(container));
+    expect(m.getByText("Observed")).toBeInTheDocument();
+    expect(m.getByText("5.98")).toBeInTheDocument();
+    expect(m.getByText("Expected")).toBeInTheDocument();
+    expect(m.getByText("1.98")).toBeInTheDocument();
+    expect(m.getAllByText("EPS")).toHaveLength(2);
+    expect(m.getByText("3.02x")).toBeInTheDocument();
+    // The absolute delta, in events, beside the ratio.
+    expect(m.getByText("+240")).toBeInTheDocument();
+    expect(m.getByText("4m")).toBeInTheDocument();
   });
 
-  it("keeps the robust z-score out of the primary row", async () => {
+  it("gives the observed value more weight than the other measures", async () => {
     const { container } = await renderPage();
-    const primary = container.querySelector(".grid-4") as HTMLElement;
-    expect(within(primary).queryByText(/Robust z/i)).toBeNull();
-    expect(within(primary).queryByText("20.17")).toBeNull();
+    const items = Array.from(block(container).querySelectorAll(".measure-item"));
+    expect(items[0].className).toContain("measure-lead");
+    expect(items.slice(1).some((i) => i.className.includes("measure-lead"))).toBe(false);
   });
 
-  it("shows confidence as a secondary line, not a fifth card", async () => {
+  it("keeps the robust z-score out of the primary measures", async () => {
     const { container } = await renderPage();
-    const primary = container.querySelector(".grid-4") as HTMLElement;
-    expect(within(primary).queryByText(/Confidence/i)).toBeNull();
-    expect(container.querySelector(".confidence-line")).toHaveTextContent("0.46");
+    const m = within(block(container));
+    expect(m.queryByText(/Robust z/i)).toBeNull();
+    expect(m.queryByText("20.17")).toBeNull();
+  });
+
+  it("states confidence as a labelled qualifier inside the block, not a fifth measure", async () => {
+    const { container } = await renderPage();
+    const el = block(container);
+    expect(el.querySelectorAll(".measure-grid > .measure-item")).toHaveLength(4);
+    expect(within(el).getByText("Detector confidence")).toBeInTheDocument();
+    expect(el.querySelector(".measure-foot")).toHaveTextContent("0.46");
+    expect(container.querySelector(".confidence-line")).toBeNull();
   });
 
   it("caveats a capped confidence where it is read", async () => {
@@ -455,7 +475,7 @@ describe("timeline", () => {
     ).toEqual(["Timeline", "What changed", "Investigation detail"]);
 
     const h1 = screen.getByRole("heading", { level: 1 });
-    const metrics = container.querySelector(".grid-4")!;
+    const metrics = container.querySelector(".measure")!;
     const timeline = screen.getByRole("heading", { level: 2, name: "Timeline" });
 
     const follows = Node.DOCUMENT_POSITION_FOLLOWING;
@@ -486,7 +506,7 @@ describe("timeline", () => {
 
   it("appears after the primary metrics", async () => {
     const { container } = await renderPage();
-    const grid = container.querySelector(".grid-4")!;
+    const grid = container.querySelector(".measure")!;
     const chart = container.querySelector(".chart")!;
     expect(
       grid.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING,

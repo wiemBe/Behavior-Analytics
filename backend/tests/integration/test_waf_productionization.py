@@ -18,6 +18,7 @@ from app.core.config import Settings, get_settings
 from app.models.enums import (
     AnomalyState,
     BucketCompleteness,
+    SearchFamily,
     WafAnomalyType,
     WafFieldStatus,
     WafLogicalField,
@@ -39,6 +40,7 @@ from app.models.waf import (
 from app.providers.base import ProviderUnavailableError
 from app.providers.dto import LogSourceDTO, WafObservationBatch, WafRequestGroup
 from app.providers.mock import MockQRadarProvider
+from app.services.search_cadence import SearchCadenceService
 from app.services.waf_pipeline import (
     eligible_profile_ids,
     evaluation_collector,
@@ -366,6 +368,10 @@ class TestScheduling:
         starts = [T0 + STEP * i for i in range(3)]
         provider = StubWafProvider([batch(s, [("/portal/login", "GET", 40)]) for s in starts])
         profile, _source = await source_with_profile(db_session, provider, settings)
+        # At a 5-minute cadence a run is one bucket, so the configured cap applies as set.
+        await SearchCadenceService(db_session, settings).set_cadence(
+            SearchFamily.WAF_COLLECTION, 300, actor="waf-test", source_ip=None
+        )
         # First run: one bucket collected and evaluated.
         await run_at(db_session, profile, provider, settings, starts[0])
         # A run two buckets later collects two, but may evaluate only one.

@@ -10,6 +10,8 @@ generator.  Addresses in event bodies come from RFC 5737 documentation ranges;
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import ipaddress
 import json
 import random
@@ -52,6 +54,8 @@ DEFAULT_DEVICES: dict[str, tuple[str, str]] = {
     "windows_account": ("DC-LAB-01", "192.168.10.5"),
     "dns": ("dns-lab-01", "172.16.20.53"),
     "proxy": ("proxy-lab-01", "172.16.20.80"),
+    "pan_threat": ("pa-fw-01", "10.10.20.1"),
+    "ftd_ips": ("ftd-01", "10.10.20.2"),
 }
 
 ALTERNATE_DEVICES: dict[str, tuple[tuple[str, str], ...]] = {
@@ -81,6 +85,11 @@ ALTERNATE_DEVICES.update(
 )
 
 PROFILES = tuple(DEFAULT_DEVICES)
+# The vendor-native IPS profiles are opt-in (--types); the default mix keeps its
+# Phase A/B/C composition so existing seeded streams do not change.
+DEFAULT_PROFILES = tuple(
+    profile for profile in DEFAULT_DEVICES if profile not in ("pan_threat", "ftd_ips")
+)
 SCENARIOS = (
     "normal",
     "brute-force",
@@ -99,7 +108,25 @@ SCENARIOS = (
     "parsing-degradation",
     "timestamp-delay",
     "cardinality-drop",
+    "ips-baseline",
+    "ips-port-sweep",
+    "ips-new-port",
+    "ips-source-concentration",
+    "ips-signature-burst",
+    "ips-block-shift",
 )
+
+VENDOR_IPS_PROFILES = ("pan_threat", "ftd_ips")
+VENDOR_IPS_SCENARIOS = (
+    "ips-baseline",
+    "ips-port-sweep",
+    "ips-new-port",
+    "ips-source-concentration",
+    "ips-signature-burst",
+    "ips-block-shift",
+)
+IPS_BASELINE_PORTS = (22, 25, 53, 80, 110, 143, 443, 445, 993, 1433, 3389, 8080)
+IPS_NEW_PORT = 8443
 
 EVENT_IDS = {
     "ips_scan": "IPS-2100365",
@@ -138,7 +165,183 @@ WINDOWS_EVENTS: dict[int, tuple[str, str, int]] = {
     7045: ("Service installed", "installed", 9),
 }
 
+
+@dataclass(frozen=True)
+class IPSSignature:
+    """Public signature metadata used by both vendor-native IPS profiles."""
+
+    name: str
+    pan_id: int
+    gid: int
+    sid: int
+    revision: int
+    classification: str
+    severity: str
+    application: str
+    client: str
+
+
+IPS_SIGNATURES = (
+    IPSSignature(
+        "Apache Struts Remote Code Execution Vulnerability",
+        33435,
+        1,
+        2010935,
+        1,
+        "Attempted Administrator Privilege Gain",
+        "critical",
+        "web-browsing",
+        "HTTP client",
+    ),
+    IPSSignature(
+        "Nmap SYN Scan",
+        8001,
+        1,
+        2100365,
+        4,
+        "Detection of a Network Scan",
+        "medium",
+        "unknown-tcp",
+        "Network scanner",
+    ),
+    IPSSignature(
+        "SQL Injection Attempt",
+        33436,
+        1,
+        2024218,
+        3,
+        "Web Application Attack",
+        "high",
+        "web-browsing",
+        "HTTP client",
+    ),
+    IPSSignature(
+        "PowerShell Download Activity",
+        18001,
+        1,
+        2027757,
+        2,
+        "A Network Trojan was Detected",
+        "high",
+        "ssl",
+        "TLS client",
+    ),
+    IPSSignature(
+        "SMB Invalid Message Size",
+        33437,
+        133,
+        17,
+        7,
+        "Potentially Bad Traffic",
+        "medium",
+        "ms-ds-smb",
+        "NetBIOS-ssn (SMB) client",
+    ),
+    IPSSignature(
+        "ICMP Echo Reply",
+        8501,
+        1,
+        408,
+        8,
+        "Misc Activity",
+        "low",
+        "ping",
+        "ICMP client",
+    ),
+    IPSSignature(
+        "Executable Code Detected",
+        33438,
+        1,
+        648,
+        18,
+        "Executable Code was Detected",
+        "high",
+        "unknown-tcp",
+        "TCP client",
+    ),
+    IPSSignature(
+        "Suspicious TLS Client Hello",
+        15001,
+        1,
+        2034647,
+        1,
+        "Potential Corporate Privacy Violation",
+        "medium",
+        "ssl",
+        "TLS client",
+    ),
+    IPSSignature(
+        "DNS Request for Suspicious Domain",
+        15002,
+        1,
+        2013504,
+        6,
+        "A Network Trojan was Detected",
+        "high",
+        "dns",
+        "DNS client",
+    ),
+    IPSSignature(
+        "HTTP Directory Traversal Attempt",
+        33439,
+        1,
+        37732,
+        6,
+        "Web Application Attack",
+        "high",
+        "web-browsing",
+        "HTTP client",
+    ),
+)
+
+# PAN-OS 11.1 Threat Log Fields, in the documented default CSV order. Keeping
+# reserved slots named makes index drift visible in tests and reviews.
+PAN_THREAT_FIELD_NAMES = (
+    "future_use_1", "receive_time", "serial_number", "type", "subtype",
+    "future_use_2", "generated_time", "source_address", "destination_address",
+    "nat_source_ip", "nat_destination_ip", "rule_name", "source_user",
+    "destination_user", "application", "virtual_system", "source_zone",
+    "destination_zone", "inbound_interface", "outbound_interface", "log_action",
+    "future_use_3", "session_id", "repeat_count", "source_port", "destination_port",
+    "nat_source_port", "nat_destination_port", "flags", "ip_protocol", "action",
+    "url_filename", "threat_id", "category", "severity", "direction",
+    "sequence_number", "action_flags", "source_location", "destination_location",
+    "future_use_4", "content_type", "pcap_id", "file_digest", "cloud", "url_index",
+    "user_agent", "file_type", "xff", "referer", "sender", "subject", "recipient",
+    "report_id", "dg_hier_level_1", "dg_hier_level_2", "dg_hier_level_3",
+    "dg_hier_level_4", "virtual_system_name", "device_name", "future_use_5",
+    "source_vm_uuid", "destination_vm_uuid", "http_method", "tunnel_id_imsi",
+    "monitor_tag_imei", "parent_session_id", "parent_start_time", "tunnel_type",
+    "threat_category", "content_version", "future_use_6", "sctp_association_id",
+    "payload_protocol_id", "http_headers", "url_category_list", "rule_uuid",
+    "http2_connection", "dynamic_user_group_name", "xff_address",
+    "source_device_category", "source_device_profile", "source_device_model",
+    "source_device_vendor", "source_device_os_family", "source_device_os_version",
+    "source_hostname", "source_mac_address", "destination_device_category",
+    "destination_device_profile", "destination_device_model", "destination_device_vendor",
+    "destination_device_os_family", "destination_device_os_version", "destination_hostname",
+    "destination_mac_address", "container_id", "pod_namespace", "pod_name",
+    "source_edl", "destination_edl", "host_id", "user_device_serial_number", "domain_edl",
+    "source_dynamic_address_group", "destination_dynamic_address_group", "partial_hash",
+    "high_resolution_timestamp", "reason", "justification", "nssai_sst",
+    "application_subcategory", "application_category", "application_technology",
+    "application_risk", "application_characteristic", "application_container",
+    "tunneled_application", "application_saas", "application_sanctioned_state",
+    "cloud_report_id", "flow_type", "cluster_name",
+)
+
+FTD_REQUIRED_KEYS = (
+    "EventPriority", "DeviceUUID", "InstanceID", "FirstPacketSecond", "ConnectionID",
+    "AccessControlRuleAction", "SrcIP", "DstIP", "SrcPort", "DstPort", "Protocol",
+    "IngressInterface", "EgressInterface", "IngressZone", "EgressZone", "IntrusionPolicy",
+    "GID", "SID", "Revision", "Message", "Classification", "Client",
+    "ApplicationProtocol", "InlineResult",
+)
+
 DOCUMENTATION_PREFIXES = ("192.0.2", "198.51.100", "203.0.113")
+IPS_EXTERNAL_IPS = tuple(
+    f"{prefix}.{host}" for prefix in DOCUMENTATION_PREFIXES for host in range(10, 20)
+)
 PORT_SCAN_PORTS = (21, 22, 23, 25, 53, 80, 135, 139, 443, 445, 3389, 5985)
 
 # ---------------------------------------------------------------- Phase A ---
@@ -147,7 +350,7 @@ PORT_SCAN_PORTS = (21, 22, 23, 25, 53, 80, 135, 139, 443, 445, 3389, 5985)
 # these vary *volume over time* against a stable source identity, which is the
 # only thing the volume detectors judge.
 
-GENERATOR_VERSION = "1.1.0"
+GENERATOR_VERSION = "1.2.0"
 
 PHASE_A_SCENARIOS = (
     "source-volume-baseline",
@@ -367,7 +570,7 @@ class Options:
     port: int = DEFAULT_PORT
     protocol: str = "udp"
     eps: float = DEFAULT_EPS
-    profiles: tuple[str, ...] = PROFILES
+    profiles: tuple[str, ...] = DEFAULT_PROFILES
     output_format: str = "leef"
     scenario: str = "normal"
     count: int = 0
@@ -409,6 +612,9 @@ class Event:
     status_code: int = 0
     rule_id: str = "-"
     vendor_message: str | None = None
+    subtype: str = "vulnerability"
+    direction: str = "client-to-server"
+    ips_signature: IPSSignature | None = None
 
 
 def _rfc3164(value: datetime) -> str:
@@ -545,6 +751,8 @@ class EventGenerator:
         )
 
     def _normal_event(self, profile: str, now: datetime, index: int) -> Event:
+        if profile in VENDOR_IPS_PROFILES:
+            return self._ips_event(profile, now, index, "ips-baseline")
         if profile == "ips":
             key, signature, severity = self.rng.choice(
                 (
@@ -675,6 +883,13 @@ class EventGenerator:
         return replace(event, vendor_message=self._windows_vendor(event, event_id))
 
     def _scenario_event(self, scenario: str, now: datetime, index: int) -> Event:
+        if scenario in VENDOR_IPS_SCENARIOS:
+            profiles = tuple(
+                profile for profile in self.options.profiles if profile in VENDOR_IPS_PROFILES
+            )
+            profile = profiles[index % len(profiles)]
+            local_index = index // len(profiles)
+            return self._ips_event(profile, now, local_index, scenario)
         stable_src = self.options.fixed_source_ip or "198.51.100.44"
         stable_user = self.options.fixed_username or "compromised.user"
         if scenario == "brute-force":
@@ -763,6 +978,68 @@ class EventGenerator:
             return replace(event, vendor_message=self._linux_firewall_vendor(event))
         raise ValueError(f"unsupported scenario: {scenario}")
 
+    def _ips_event(self, profile: str, now: datetime, index: int, scenario: str) -> Event:
+        """Build one bounded vendor IPS event with a deterministic scenario shape."""
+        planned = self.options.count
+        if planned == 0 and self.options.duration is not None:
+            planned = int(self.options.duration * self.options.eps)
+        transition = max(1, planned // 2) if planned else 1_000
+        anomaly = index >= transition
+
+        source_index = index % len(IPS_EXTERNAL_IPS)
+        signature_index = index % len(IPS_SIGNATURES)
+        destination_port = IPS_BASELINE_PORTS[index % len(IPS_BASELINE_PORTS)]
+        destination_host = 10 + index % 20
+
+        if scenario == "ips-port-sweep":
+            source_index = len(IPS_EXTERNAL_IPS) - 1
+            destination_port = 1_024 + index % 2_048
+            destination_host = 10
+        elif scenario == "ips-new-port" and anomaly:
+            destination_port = IPS_NEW_PORT
+        elif scenario == "ips-source-concentration" and anomaly and index % 10 < 7:
+            source_index = 0
+        elif scenario == "ips-signature-burst" and anomaly:
+            signature_index = 0
+
+        blocked = index % 10 == 0
+        if scenario == "ips-block-shift" and anomaly:
+            blocked = index % 10 < 6
+
+        signature = IPS_SIGNATURES[signature_index]
+        if profile == "pan_threat":
+            blocked_actions = ("drop", "reset-client", "reset-server", "reset-both", "block-ip")
+            action = blocked_actions[(index // 10) % len(blocked_actions)] if blocked else (
+                "alert" if index % 2 else "allow"
+            )
+        else:
+            action = "Blocked" if blocked else ("Would block" if index % 10 == 7 else "Allowed")
+
+        subtype = ("vulnerability", "spyware", "url")[signature_index % 3]
+        src = self.options.fixed_source_ip or IPS_EXTERNAL_IPS[source_index]
+        dst = self.options.fixed_destination_ip or f"10.10.20.{destination_host}"
+        event = self._base(
+            profile,
+            now,
+            event_id=str(signature.pan_id if profile == "pan_threat" else signature.sid),
+            category="malware" if subtype == "url" else "any",
+            action=action,
+            severity={"low": 3, "medium": 5, "high": 8, "critical": 10}[signature.severity],
+            signature=f"{signature.name}({signature.pan_id})",
+            src=src,
+            dst_port=destination_port,
+            proto="UDP" if destination_port == 53 else "TCP",
+            username="test.user",
+        )
+        return replace(
+            event,
+            dst=dst,
+            rule_id=str(signature.sid),
+            subtype=subtype,
+            direction="server-to-client" if index % 8 == 0 else "client-to-server",
+            ips_signature=signature,
+        )
+
     def _auth_scenario(
         self,
         now: datetime,
@@ -801,6 +1078,10 @@ class EventGenerator:
         return f"LEEF:2.0|SyntheticLab|QRadarLab|1.0|{event.event_id}|0x09|{extension}"
 
     def _vendor(self, event: Event) -> str:
+        if event.profile == "pan_threat":
+            return render_pan_threat(event)
+        if event.profile == "ftd_ips":
+            return render_ftd_ips(event)
         if event.profile in {"ips", "waf"}:
             return (
                 f"CEF:0|SyntheticLab|{event.profile}|1.0|{event.event_id}|{event.signature}|"
@@ -870,6 +1151,159 @@ class EventGenerator:
             f"Computer={event.host} Message={signature} SubjectUserName={event.username} "
             f"IpAddress={event.src}{extra}"
         )
+
+
+def _csv_line(values: Sequence[object]) -> str:
+    output = io.StringIO()
+    csv.writer(output, lineterminator="").writerow(values)
+    return output.getvalue()
+
+
+# Source: Palo Alto Networks, "Threat Log Fields" (PAN-OS syslog field
+# descriptions, PAN-OS 11.1), fetched 2026-10-12:
+# https://docs.paloaltonetworks.com/ngfw/administration/monitoring/use-syslog-for-monitoring/syslog-field-descriptions/threat-log-fields
+# Verified against that page: the field names and their order (PAN_THREAT_FIELD_NAMES).
+# UNVERIFIED: the page has no example line, so the Receive/Generated Time format
+# (YYYY/MM/DD HH:MM:SS), the config-version slot, and the "1" in the first
+# FUTURE_USE slot come from operator knowledge of PAN-OS output, not the page.
+# QRadar source: IBM, "Palo Alto PA DSM specifications" (online DSM guide,
+# fetched 2026-10-12): https://www.ibm.com/docs/en/dsm?topic=series-palo-alto-pa-dsm-specifications
+# It states auto-discovery "Yes" but lists only LEEF (PAN-OS 3.0-10.2, 11.0.4) and
+# CEF (PAN-OS 4.0-6.1, 11.1.6); it does not list raw PAN-OS CSV. QRadar
+# auto-discovery and parsing of this CSV renderer is therefore UNVERIFIED.
+def render_pan_threat(event: Event) -> str:
+    """Render the PAN-OS 11.1 default THREAT CSV field order."""
+    assert event.ips_signature is not None
+    signature = event.ips_signature
+    timestamp = event.timestamp.astimezone(UTC)
+    received = timestamp.strftime("%Y/%m/%d %H:%M:%S")
+    high_resolution = timestamp.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    url = "portal.example.test/lab" if event.subtype == "url" else ""
+    values: dict[str, object] = dict.fromkeys(PAN_THREAT_FIELD_NAMES, "")
+    values.update(
+        {
+            "future_use_1": "1",
+            "receive_time": received,
+            "serial_number": "007051000000001",
+            "type": "THREAT",
+            "subtype": event.subtype,
+            "future_use_2": "11.1",
+            "generated_time": received,
+            "source_address": event.src,
+            "destination_address": event.dst,
+            "nat_source_ip": event.src,
+            "nat_destination_ip": event.dst,
+            "rule_name": "lab-ips-inbound",
+            "source_user": event.username,
+            "application": signature.application,
+            "virtual_system": "vsys1",
+            "source_zone": "untrust",
+            "destination_zone": "protected",
+            "inbound_interface": "ethernet1/1",
+            "outbound_interface": "ethernet1/2",
+            "log_action": "qradar-syslog",
+            "session_id": event.src_port * 100_000 + event.dst_port,
+            "repeat_count": "1",
+            "source_port": event.src_port,
+            "destination_port": event.dst_port,
+            "nat_source_port": event.src_port,
+            "nat_destination_port": event.dst_port,
+            "flags": "0x0",
+            "ip_protocol": event.proto.lower(),
+            "action": event.action,
+            "url_filename": url,
+            "threat_id": event.signature,
+            "category": event.category,
+            "severity": signature.severity,
+            "direction": event.direction,
+            "sequence_number": event.src_port * 1_000 + event.dst_port,
+            "action_flags": "0x0",
+            "source_location": "US",
+            "destination_location": "10.0.0.0-10.255.255.255",
+            "pcap_id": "0",
+            "url_index": "1" if event.subtype == "url" else "0",
+            "user_agent": "Mozilla/5.0" if event.subtype == "url" else "",
+            "dg_hier_level_1": "1",
+            "dg_hier_level_2": "0",
+            "dg_hier_level_3": "0",
+            "dg_hier_level_4": "0",
+            "virtual_system_name": "vsys1",
+            "device_name": event.host,
+            "http_method": "GET" if event.subtype == "url" else "",
+            "parent_session_id": "0",
+            "tunnel_type": "N/A",
+            "threat_category": signature.classification.replace(" ", "-").lower(),
+            "content_version": "Apps and Threats-9000-0000",
+            "http2_connection": "0",
+            "high_resolution_timestamp": high_resolution,
+            "application_subcategory": "internet-utility",
+            "application_category": "general-internet",
+            "application_technology": "client-server",
+            "application_risk": "4",
+            "application_saas": "0",
+            "application_sanctioned_state": "0",
+            "flow_type": "NonProxyTraffic",
+        }
+    )
+    return _csv_line([values[name] for name in PAN_THREAT_FIELD_NAMES])
+
+
+# Sources: Cisco, "Cisco Secure Firewall Threat Defense Syslog Messages -
+# Security Event Syslog Messages" (intrusion events, message 430001, introduced
+# in 6.3), fetched 2026-10-12:
+# https://www.cisco.com/c/en/us/td/docs/security/firepower/Syslogs/fptd_syslog_guide/security-event-syslog-messages.html
+# Verified: that page lists the 430001 field names (alphabetically, not in
+# message order) and says empty or unknown fields are omitted from 6.3 on.
+# UNVERIFIED: the on-wire key order, the EventPriority and AccessControlRuleAction
+# keys (named in the T-029 spec, absent from the page's field list), the
+# IngressVRF/EgressVRF keys, and the "%FTD-1-430001" severity digit; no 430001
+# example line was reachable.
+# IBM, "Cisco Firepower Threat Defense DSM specifications" (fetched 2026-10-12):
+# https://www.ibm.com/docs/en/dsm?topic=defense-cisco-firepower-threat-dsm-specifications
+# states supported version 6.3, protocol Syslog, formats Syslog/CSV/NVP, and
+# automatic discovery "Yes".
+def render_ftd_ips(event: Event) -> str:
+    """Render a Cisco FTD 430001 fully-qualified intrusion event."""
+    assert event.ips_signature is not None
+    signature = event.ips_signature
+    blocked = event.action == "Blocked"
+    fields = (
+        ("EventPriority", "High" if signature.severity in {"high", "critical"} else "Low"),
+        ("DeviceUUID", "b2433c5c-a6a1-11eb-a6e7-be0b9833091f"),
+        ("InstanceID", "1"),
+        ("FirstPacketSecond", event.timestamp.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")),
+        ("ConnectionID", str(event.src_port * 100_000 + event.dst_port)),
+        ("AccessControlRuleAction", "Block" if blocked else "Allow"),
+        ("SrcIP", event.src),
+        ("DstIP", event.dst),
+        ("SrcPort", str(event.src_port)),
+        ("DstPort", str(event.dst_port)),
+        ("Protocol", event.proto.lower()),
+        ("IngressInterface", "outside"),
+        ("EgressInterface", "inside"),
+        ("IngressZone", "UNTRUST"),
+        ("EgressZone", "PROTECTED"),
+        ("Priority", {"low": "3", "medium": "2", "high": "1", "critical": "1"}[
+            signature.severity
+        ]),
+        ("GID", str(signature.gid)),
+        ("SID", str(signature.sid)),
+        ("Revision", str(signature.revision)),
+        ("Message", f"{signature.name} ({signature.gid}:{signature.sid}:{signature.revision})"),
+        ("Classification", signature.classification),
+        ("User", event.username),
+        ("Client", signature.client),
+        ("ApplicationProtocol", signature.application),
+        ("IntrusionPolicy", "LAB Balanced Security"),
+        ("ACPolicy", "LAB Access Control"),
+        ("AccessControlRuleName", "LAB IPS inspection"),
+        ("NAPPolicy", "Balanced Security and Connectivity"),
+        ("InlineResult", event.action),
+        ("IngressVRF", "Global"),
+        ("EgressVRF", "Global"),
+    )
+    body = ", ".join(f"{key}: {value}" for key, value in fields)
+    return f"%FTD-1-430001: {body}"
 
 
 @dataclass(frozen=True)
@@ -1684,6 +2118,29 @@ def validate_options(options: Options) -> None:
         raise ValueError("--fixed-host must be a valid synthetic hostname")
     if options.fixed_username and options.fixed_username not in SYNTHETIC_USERS:
         raise ValueError("--fixed-username must be a synthetic username")
+    if options.scenario in VENDOR_IPS_SCENARIOS:
+        selected = tuple(
+            profile for profile in options.profiles if profile in VENDOR_IPS_PROFILES
+        )
+        if not selected:
+            raise ValueError("vendor IPS scenarios need --types pan_threat and/or ftd_ips")
+        if selected != options.profiles:
+            raise ValueError("vendor IPS scenarios accept only pan_threat and ftd_ips profiles")
+        if options.output_format != "vendor":
+            raise ValueError("vendor IPS scenarios require --format vendor")
+        if options.fixed_source_ip is not None:
+            source = ipaddress.ip_address(options.fixed_source_ip)
+            documentation_networks = (
+                ipaddress.ip_network("192.0.2.0/24"),
+                ipaddress.ip_network("198.51.100.0/24"),
+                ipaddress.ip_network("203.0.113.0/24"),
+            )
+            if not any(source in network for network in documentation_networks):
+                raise ValueError("vendor IPS source IP must be inside an RFC 5737 network")
+        if options.fixed_destination_ip is not None:
+            destination = ipaddress.ip_address(options.fixed_destination_ip)
+            if destination not in ipaddress.ip_network("10.10.20.0/24"):
+                raise ValueError("vendor IPS destination IP must be inside 10.10.20.0/24")
 
 
 def run(
@@ -1769,7 +2226,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="profiles",
         nargs="+",
         choices=(*PROFILES, *PROFILE_ALIASES),
-        default=list(PROFILES),
+        default=list(DEFAULT_PROFILES),
     )
     parser.add_argument(
         "--format",

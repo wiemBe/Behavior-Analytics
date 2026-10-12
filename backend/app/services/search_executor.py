@@ -140,7 +140,9 @@ class SearchExecutor:
             execution.ariel_status = "COMPLETED"
             execution.status = ExecutionStatus.COMPLETED
             await self._store_metrics(search, execution, results)
-            self._apply_threshold(search, execution, results["total_count"])
+            self._apply_threshold(
+                search, execution, results["total_count"], truncated=results["truncated"]
+            )
             await self.session.flush()
             return execution
 
@@ -208,17 +210,20 @@ class SearchExecutor:
         self, search: ScheduledSearch, execution: SearchExecution, results: dict
     ) -> None:
         bucket = _floor_minute(execution.completed_at or self.clock())
-        # Always store the total. Aggregated only — never raw events.
-        self.session.add(
-            SearchResultMetric(
-                execution_id=execution.id,
-                search_id=search.id,
-                bucket_start=bucket,
-                metric_key="total",
-                value=float(results["total_count"]),
-                dimensions={},
+        # Store the total only when it was measured. A truncated result's count
+        # is a cap, not a measurement, and the execution row already says so.
+        # Aggregated only — never raw events.
+        if not results["truncated"]:
+            self.session.add(
+                SearchResultMetric(
+                    execution_id=execution.id,
+                    search_id=search.id,
+                    bucket_start=bucket,
+                    metric_key="total",
+                    value=float(results["total_count"]),
+                    dimensions={},
+                )
             )
-        )
         # Grouped rows become per-dimension metrics (bounded by max_result_rows).
         for row in results["rows"]:
             key, value = _row_to_metric(row)
@@ -236,13 +241,27 @@ class SearchExecutor:
             )
 
     def _apply_threshold(
-        self, search: ScheduledSearch, execution: SearchExecution, value: int
+        self,
+        search: ScheduledSearch,
+        execution: SearchExecution,
+        value: int,
+        *,
+        truncated: bool = False,
     ) -> None:
         if search.threshold_value is None:
             execution.threshold_breached = False
             return
         op = search.threshold_operator
         t = search.threshold_value
+        if truncated:
+            # `value` is a lower bound on the true count. Only "greater than"
+            # comparisons can be proven from one; for LT, LE and EQ (and any
+            # unknown operator) there is no verdict, recorded as not breached.
+            # The alert evaluator reads `truncated` to keep that from resolving.
+            execution.threshold_breached = bool(
+                {"GT": value > t, "GE": value >= t}.get(op, False)
+            )
+            return
         breached = {
             "GT": value > t,
             "GE": value >= t,

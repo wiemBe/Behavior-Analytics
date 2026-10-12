@@ -23,7 +23,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, utcnow
 from app.models.enums import (
     AnomalyState,
     AnomalyType,
@@ -65,6 +65,15 @@ class LogSource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     credibility: Mapped[int | None] = mapped_column(Integer)
     target_event_collector_id: Mapped[int | None] = mapped_column(Integer)
     last_event_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    qradar_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    qradar_modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    auto_discovered: Mapped[bool | None] = mapped_column(Boolean)
+    group_ids: Mapped[list[int] | None] = mapped_column(JSONB)
+    identifier: Mapped[str | None] = mapped_column(String(255))
+    is_internal: Mapped[bool | None] = mapped_column(Boolean)
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
     # --- SOC-owned metadata -------------------------------------------------
     criticality: Mapped[Criticality] = mapped_column(

@@ -38,12 +38,12 @@ celery_app.conf.imports = ("app.workers.tasks",)
 celery_app.conf.beat_schedule = {
     "collect-metrics": {
         "task": "collect_metrics",
-        "schedule": float(settings.collection_interval_seconds),
+        "schedule": 60.0,
     },
     "evaluate-anomalies": {
         # Runs shortly after each collection cycle.
         "task": "evaluate_anomalies",
-        "schedule": float(settings.collection_interval_seconds),
+        "schedule": 60.0,
     },
     "dispatch-notifications": {
         "task": "dispatch_notifications",
@@ -64,7 +64,7 @@ celery_app.conf.beat_schedule = {
         # dimension, so an unresponsive appliance must delay evidence rather
         # than delay the alert that something is wrong.
         "task": "collect_anomaly_explanations",
-        "schedule": float(settings.explanation_collection_interval_seconds),
+        "schedule": 60.0,
     },
     # --- Phase 3 -------------------------------------------------------------
     # Every interval below is configurable; none is a hardcoded production
@@ -97,6 +97,14 @@ celery_app.conf.beat_schedule = {
         "task": "collect_rule_metrics",
         "schedule": float(settings.rule_metric_collection_interval_seconds),
     },
+    "collect-rule-matches": {
+        # Measured rule matches (Phase E.1a): one read-only keyed Ariel search
+        # per cadence tick. Ticks every minute; the RULE_MATCH cadence gate
+        # decides whether a tick is due. A no-op while
+        # RULE_MATCH_COLLECTION_ENABLED is false.
+        "task": "collect_rule_matches",
+        "schedule": 60.0,
+    },
     "evaluate-rule-health": {
         "task": "evaluate_rule_health",
         "schedule": float(settings.rule_health_evaluation_interval_seconds),
@@ -109,10 +117,11 @@ celery_app.conf.beat_schedule = {
     "dispatch-waf-collection": {
         # Enqueues one `collect_waf_source` task per eligible WAF source, so a
         # slow or failing source never delays another. Each run collects, then
-        # evaluates, then trains, under that source's own advisory lock. A no-op
-        # while WAF_COLLECTION_ENABLED is false.
+        # evaluates, then trains, under that source's own advisory lock. Ticks
+        # every minute; the WAF_COLLECTION cadence gate decides whether a tick
+        # is due. A no-op while WAF_COLLECTION_ENABLED is false.
         "task": "dispatch_waf_collection",
-        "schedule": float(settings.collection_interval_seconds),
+        "schedule": 60.0,
     },
     "apply-waf-retention": {
         "task": "apply_waf_retention",

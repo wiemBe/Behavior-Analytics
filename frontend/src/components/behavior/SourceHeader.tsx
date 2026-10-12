@@ -25,7 +25,7 @@ export function SourceHeader({
           <Link href="/behavior/sources">← All sources</Link>
         </p>
 
-        <h1 className="page-title">{behavior.name}</h1>
+        <h1 className="page-title page-title-long">{behavior.name}</h1>
 
         <div className="row incident-meta">
           <span className={`pill pill-strong ${stateTone(behavior.state)}`}>

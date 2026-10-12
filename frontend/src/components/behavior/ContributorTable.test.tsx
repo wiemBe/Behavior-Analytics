@@ -52,9 +52,9 @@ describe("default columns", () => {
       .map((h) => h.textContent?.trim());
     expect(headers).toEqual([
       "Value",
-      "Baseline",
-      "Anomaly",
-      "Delta",
+      "Baseline (events)",
+      "Anomaly (events)",
+      "Delta (events)",
       "Contribution",
       "Row detail",
     ]);

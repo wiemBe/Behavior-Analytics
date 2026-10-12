@@ -18,7 +18,9 @@ import { Fragment, useState } from "react";
 
 import { sevTone, type AnomalySummary } from "@/lib/api";
 import {
+  detectorLabel,
   evidenceTone,
+  formatDelta,
   formatDuration,
   formatMetric,
   formatRatio,
@@ -36,12 +38,12 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
         return (
           <Fragment key={a.id}>
             <tr>
-              <td>
+              <td className="cell-name">
                 <a href={`/behavior/sources/${a.log_source_id}`}>
                   {a.log_source_name ?? a.log_source_id}
                 </a>
               </td>
-              <td>{a.anomaly_type}</td>
+              <td>{detectorLabel(a.anomaly_type)}</td>
               <td>
                 <span className={`pill pill-strong ${stateTone(a.state)}`}>
                   {a.state}
@@ -75,9 +77,9 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                     type="button"
                     className="row-toggle"
                     aria-expanded={open}
-                    aria-label={`${open ? "Hide" : "Show"} technical detail for the ${
-                      a.anomaly_type
-                    } on ${a.log_source_name ?? a.log_source_id}`}
+                    aria-label={`${open ? "Hide" : "Show"} technical detail for the ${detectorLabel(
+                      a.anomaly_type,
+                    ).toLowerCase()} on ${a.log_source_name ?? a.log_source_id}`}
                     onClick={() => setExpanded(open ? null : a.id)}
                   >
                     {open ? "Less" : "More"}
@@ -92,7 +94,16 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                   <dl className="dimension-meta">
                     <div>
                       <dt>Absolute delta</dt>
-                      <dd className="num">{formatMetric(a.absolute_delta, 0)}</dd>
+                      <dd className="num">
+                        {a.absolute_delta == null ? (
+                          formatDelta(a.absolute_delta)
+                        ) : (
+                          <>
+                            {formatDelta(a.absolute_delta)}
+                            <span className="muted"> events</span>
+                          </>
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>Duration</dt>

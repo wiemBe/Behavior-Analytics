@@ -61,15 +61,31 @@ export function SourceAdvanced({
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Weekday</th>
-                  <th scope="col">Hour</th>
-                  <th scope="col">Median</th>
-                  <th scope="col">MAD</th>
-                  <th scope="col">p05 – p95</th>
-                  <th scope="col">Samples</th>
-                  <th scope="col">Completeness</th>
+                  <th scope="col" className="num">
+                    Weekday (ISO)
+                  </th>
+                  <th scope="col" className="num">
+                    Hour (UTC)
+                  </th>
+                  <th scope="col" className="num">
+                    Median (EPS)
+                  </th>
+                  <th scope="col" className="num">
+                    MAD (EPS)
+                  </th>
+                  <th scope="col" className="num">
+                    p05 – p95 (EPS)
+                  </th>
+                  <th scope="col" className="num">
+                    Samples
+                  </th>
+                  <th scope="col" className="num">
+                    Completeness
+                  </th>
                   <th scope="col">Reliable</th>
-                  <th scope="col">Version</th>
+                  <th scope="col" className="num">
+                    Version
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -117,12 +133,22 @@ export function SourceAdvanced({
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Interval</th>
-                  <th scope="col">Events</th>
-                  <th scope="col">Average EPS</th>
-                  <th scope="col">Peak EPS</th>
+                  <th scope="col" className="num">
+                    Interval
+                  </th>
+                  <th scope="col" className="num">
+                    Events
+                  </th>
+                  <th scope="col" className="num">
+                    Average EPS
+                  </th>
+                  <th scope="col" className="num">
+                    Peak EPS
+                  </th>
                   <th scope="col">Completeness</th>
-                  <th scope="col">Last event</th>
+                  <th scope="col" className="num">
+                    Last event
+                  </th>
                 </tr>
               </thead>
               <tbody>

@@ -27,16 +27,23 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CustomPropertyDTO,
     DimensionAggregate,
     InstanceInfoDTO,
     LogSourceDTO,
+    LogSourceGroupDTO,
+    LogSourceMetricBucketBatch,
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    RuleMatchBatch,
     WafBreakdownBatch,
+    WafBreakdownBucketBatch,
     WafObservationBatch,
+    WafObservationBucketBatch,
     WafRejectionObservation,
     WafSourceProbe,
+    WindowedRuleMatches,
 )
 
 #: The only shape a site-authored QRadar property name may take before it is
@@ -63,6 +70,8 @@ class ProviderCapability(StrEnum):
     OFFENSES = "OFFENSES"
     AQL_EXECUTION = "AQL_EXECUTION"  # create/poll/fetch Ariel searches
     CONFIG_SNAPSHOTS = "CONFIG_SNAPSHOTS"
+    LOG_SOURCE_GROUPS = "LOG_SOURCE_GROUPS"
+    CUSTOM_PROPERTY_CATALOG = "CUSTOM_PROPERTY_CATALOG"  # custom-property names, never bodies
 
 
 class LogSourceTelemetry(StrEnum):
@@ -182,6 +191,25 @@ class QRadarProvider(ABC):
     async def list_log_source_types(self) -> list[LogSourceTypeDTO]:
         ...
 
+    async def list_log_source_groups(self) -> list[LogSourceGroupDTO]:
+        """Log-source group hierarchy, when exposed by the backend."""
+        self.require(ProviderCapability.LOG_SOURCE_GROUPS)
+        raise CapabilityNotSupportedError(
+            f"{type(self).__name__} does not support log-source groups"
+        )
+
+    async def list_custom_properties(
+        self, *, log_source_type_id: int | None = None
+    ) -> list[CustomPropertyDTO]:
+        """Custom-property names and the log-source types they apply to.
+
+        Names, types and flags only: never a regex, payload or expression body.
+        """
+        self.require(ProviderCapability.CUSTOM_PROPERTY_CATALOG)
+        raise CapabilityNotSupportedError(
+            f"{type(self).__name__} does not support the custom-property catalog"
+        )
+
     async def get_log_source_metrics(
         self, window_start: datetime, window_end: datetime
     ) -> list[LogSourceMetricSample]:
@@ -191,6 +219,18 @@ class QRadarProvider(ABC):
         (Phase 3); the mock synthesizes them deterministically.
         """
         self.require(ProviderCapability.INVENTORY)
+        raise NotImplementedError
+
+    async def get_log_source_metrics_bucketed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> LogSourceMetricBucketBatch:
+        """Per-source metric samples keyed by bucket start for one bounded window."""
+        self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError
 
     async def get_dimension_aggregates(
@@ -215,6 +255,46 @@ class QRadarProvider(ABC):
         marking the ones the source's DSM does not populate as
         ``available=False`` rather than omitting them. Silence about a field is
         indistinguishable from a measured zero, and only one of those is true.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_rule_matches(
+        self, window_start: datetime, window_end: datetime, *, max_rows: int
+    ) -> RuleMatchBatch:
+        """How many events matched each rule or building block in one window.
+
+        One bounded aggregate over `creEventList`, capped at `max_rows`. A full
+        page sets ``truncated``: the batch is then a prefix, and a rule missing
+        from it proves nothing. Events that matched no rule (a null id) are not
+        rows.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only: it
+        only searches events.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_rule_matches_windowed(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        window_seconds: int,
+        max_rows: int,
+    ) -> WindowedRuleMatches:
+        """`get_rule_matches` for many whole windows in one keyed search.
+
+        The span must be a whole number of `window_seconds` windows, aligned to
+        the UTC grid exactly as `floor_to_window` aligns them; anything else is
+        a ValueError before any request. One batch comes back per window, keyed
+        by its start. The row cap covers the span as a whole: more than
+        ``max_rows`` raw rows set ``truncated``, and the batches are then a
+        prefix the caller must not keep. A key outside the span, or one that is
+        not an integer, fails the whole search with a ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only: it
+        only searches events.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError
@@ -269,6 +349,58 @@ class QRadarProvider(ABC):
         `max_groups`. Values are raw: judging them is application logic.
 
         Requires AQL_EXECUTION, so this never runs through MCP.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_waf_observations_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None = None,
+        max_groups: int = 500,
+        max_rows: int,
+    ) -> WafObservationBucketBatch:
+        """`get_waf_observations` for many whole buckets in one keyed search.
+
+        The span must be a whole number of epoch-aligned `bucket_seconds`
+        buckets; anything else is a ValueError before any request. One batch
+        comes back per bucket, keyed by its start, each after the per-bucket
+        top-`max_groups` cut and with the per-bucket ``truncated`` rule of the
+        single-bucket search (``>= max_groups`` groups). The row budget
+        `max_rows` covers the span as a whole: more rows set ``truncated`` on
+        the result, and the buckets are then empty, to be split by the caller.
+        A key outside the span, or one that is not an integer, fails the whole
+        search with a ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_waf_breakdown_bucketed(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        url_property: str,
+        method_property: str,
+        virtual_host_property: str | None,
+        breakdown: str,
+        breakdown_property: str | None,
+        max_groups: int = 2000,
+        max_rows: int,
+    ) -> WafBreakdownBucketBatch:
+        """`get_waf_breakdown` for many whole buckets in one keyed search.
+
+        The same contract as `get_waf_observations_bucketed`.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError

@@ -35,6 +35,7 @@ from app.collectors.log_source_collector import LogSourceCollector
 from app.collectors.metric_collector import MetricCollector
 from app.collectors.offense_collector import OffenseCollector
 from app.collectors.rule_collector import RuleCollector
+from app.collectors.rule_match_collector import RuleMatchCollector
 from app.collectors.rule_metric_collector import RuleMetricCollector
 from app.core.config import get_settings
 from app.core.database import dispose_engine, get_sessionmaker
@@ -73,21 +74,75 @@ def _run[T](coro: Coroutine[Any, Any, T]) -> T:
 # ---------------------------------------------------------------- collection
 async def collect_metrics(instance_name: str | None = None) -> dict:
     """Collect log-source metrics independently for every enabled instance."""
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    settings = get_settings()
+    family = SearchFamily.PHASE_A_VOLUME
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed_slot = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
 
     async def run(
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
     ) -> dict:
         assert provider is not None
-        report = await MetricCollector(session, provider).collect(instance)
+        report = await MetricCollector(session, provider, settings=settings).collect(instance)
         return {
-            "status": "skipped_locked" if report.skipped_locked else "ok",
+            "status": (
+                "skipped_locked"
+                if report.skipped_locked
+                else "partial" if report.partial else "ok"
+            ),
             "intervals": report.intervals_collected,
+            "buckets_collected": report.buckets_collected,
+            "searches_sent": report.searches_sent,
+            "splits": report.splits,
             "samples": report.samples_written,
             "watermark_at": report.watermark_at,
             "lag_seconds": report.lag_seconds,
         }
 
-    return await _for_each_instance(run, instance_name)
+    try:
+        result = await _for_each_instance(run, instance_name)
+    except Exception:
+        # The slot stays claimed (no retry inside a slot); the counts are unknown.
+        async with maker() as cadence_session:
+            await SearchCadenceService(cadence_session, settings).record_run(
+                family, outcome="failed", searches=None, buckets=None, splits=None
+            )
+            await cadence_session.commit()
+        raise
+    statuses = [item.get("status") for item in result.get("results", [])]
+    if "failed" in statuses:
+        outcome = "failed"
+        searches = buckets = splits = None
+    else:
+        outcome = (
+            "partial"
+            if any(status in {"partial", "skipped_locked"} for status in statuses)
+            else "ok"
+        )
+        searches = sum(item.get("searches_sent", 0) for item in result.get("results", []))
+        buckets = sum(
+            item.get("buckets_collected", 0) for item in result.get("results", [])
+        )
+        splits = sum(item.get("splits", 0) for item in result.get("results", []))
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        await cadence.record_run(
+            family,
+            outcome=outcome,
+            searches=searches,
+            buckets=buckets,
+            splits=splits,
+        )
+        await cadence_session.commit()
+    return result
 
 
 # ------------------------------------------------------- phase 3 collection
@@ -253,6 +308,82 @@ async def collect_rule_metrics(instance_name: str | None = None) -> dict:
         }
 
     return await _for_each_instance(run, instance_name, needs_provider=False)
+
+
+async def collect_rule_matches(instance_name: str | None = None) -> dict:
+    """Collect measured rule matches, one keyed Ariel search per cadence tick.
+
+    A no-op while RULE_MATCH_COLLECTION_ENABLED is false: the cost on a busy
+    console is unmeasured, so the beat entry exists but does nothing by default.
+    The RULE_MATCH cadence slot is claimed first, in its own committed session,
+    so a tick that is not due builds no provider and sends nothing to QRadar.
+    """
+    settings = get_settings()
+    if not settings.rule_match_collection_enabled:
+        return {"status": "disabled"}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.RULE_MATCH
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed_slot = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        report = await RuleMatchCollector(session, provider).collect(instance)
+        return {
+            "status": (
+                "skipped_locked"
+                if report.skipped_locked
+                else "unsupported"
+                if report.unsupported
+                else "failed" if report.partial_failure else "ok"
+            ),
+            "windows_attempted": report.windows_attempted,
+            "windows_complete": report.windows_complete,
+            "windows_truncated": report.windows_truncated,
+            "windows_failed": report.windows_failed,
+            "searches_sent": report.searches_sent,
+            "splits": report.splits,
+            "rows_written": report.rows_written,
+            "unknown_ids": report.unknown_ids,
+            "duration_ms": report.duration_ms,
+            "error": report.error,
+        }
+
+    result = await _for_each_instance(run, instance_name)
+    results = result.get("results", [])
+    outcome = result.get("status")
+    if outcome is None:
+        outcome = (
+            "failed" if any(item.get("status") == "failed" for item in results) else "ok"
+        )
+    # An instance that raised reports no counts, so the totals are unknown, not
+    # a smaller number: record None rather than a count that under-reports.
+    measured = bool(results) and all("searches_sent" in item for item in results)
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        await cadence.record_run(
+            family,
+            outcome=outcome,
+            searches=sum(i["searches_sent"] for i in results) if measured else None,
+            buckets=(
+                sum(i["windows_complete"] + i["windows_truncated"] for i in results)
+                if measured
+                else None
+            ),
+            splits=sum(i["splits"] for i in results) if measured else None,
+        )
+        await cadence_session.commit()
+    return result
 
 
 async def detect_stale_offense_collection(instance_name: str | None = None) -> dict:
@@ -432,7 +563,7 @@ async def evaluate_anomalies() -> dict:
         )
         opened = resolved = 0
         for source in sources:
-            report = await engine.evaluate_latest(source)
+            report = await engine.evaluate_pending(source)
             opened += len(report.opened)
             resolved += len(report.resolved)
         await session.commit()
@@ -450,6 +581,18 @@ async def collect_anomaly_explanations(instance_name: str | None = None) -> dict
     settings = get_settings()
     if not settings.explanation_enabled:
         return {"status": "disabled", "instances": 0, "results": []}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.ANOMALY_EXPLANATION
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed_slot = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
 
     async def run(
         session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
@@ -493,7 +636,25 @@ async def collect_anomaly_explanations(instance_name: str | None = None) -> dict
                 "by_status": statuses,
             }
 
-    return await _for_each_instance(run, instance_name)
+    result = await _for_each_instance(run, instance_name)
+    outcome = result.get("status")
+    if outcome is None:
+        outcome = (
+            "failed"
+            if any(item.get("status") == "failed" for item in result["results"])
+            else "ok"
+        )
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        await cadence.record_run(
+            family,
+            outcome=outcome,
+            searches=None,
+            buckets=None,
+            splits=None,
+        )
+        await cadence_session.commit()
+    return result
 
 
 # ------------------------------------------------------------------ baselines
@@ -556,22 +717,47 @@ async def run_due_searches() -> dict:
 
 # ------------------------------------------------------------------ WAF (B.1)
 async def dispatch_waf_collection(enqueue: Callable[[str], object] | None = None) -> dict:
-    """Enqueue one independent run per eligible WAF source.
+    """Enqueue one independent run per eligible WAF source, once per cadence slot.
 
     Fan-out rather than a loop, so one appliance search hanging for its full
     timeout on one source cannot delay any other source. Duplicate delivery is
     harmless: each run takes its source's advisory lock, a second concurrent run
     skips, and every write is an idempotent upsert behind a watermark.
+
+    Ticks every minute; the WAF_COLLECTION cadence gate decides whether a tick is
+    due, and a tick that is not sends nothing. Only the dispatch is gated:
+    `collect_waf_source` runs whenever it is enqueued. The per-source tasks run
+    asynchronously and are not aggregated, so the run is recorded without counts.
     """
     settings = get_settings()
     if not settings.waf_collection_enabled:
         return {"status": "disabled", "dispatched": 0}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.WAF_COLLECTION
     maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        claimed_slot = await SearchCadenceService(cadence_session, settings).claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
+
     async with maker() as session:
         profile_ids, skipped = await eligible_profile_ids(session, settings)
     send = enqueue or collect_waf_source_task.delay
     for profile_id in profile_ids:
         send(str(profile_id))
+    async with maker() as cadence_session:
+        await SearchCadenceService(cadence_session, settings).record_run(
+            family,
+            outcome="dispatched" if profile_ids else "no-sources",
+            searches=None,
+            buckets=None,
+            splits=None,
+        )
+        await cadence_session.commit()
     return {"status": "ok", "dispatched": len(profile_ids), "skipped": skipped}
 
 
@@ -648,6 +834,11 @@ def detect_stale_offense_collection_task(instance_name: str | None = None) -> di
 @celery_app.task(name="calculate_offense_aggregates")
 def calculate_offense_aggregates_task(instance_name: str | None = None) -> dict:
     return _run(calculate_offense_aggregates(instance_name))
+
+
+@celery_app.task(name="collect_rule_matches")
+def collect_rule_matches_task(instance_name: str | None = None) -> dict:
+    return _run(collect_rule_matches(instance_name))
 
 
 @celery_app.task(name="evaluate_rule_health")
