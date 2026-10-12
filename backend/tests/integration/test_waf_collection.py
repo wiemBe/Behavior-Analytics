@@ -38,7 +38,7 @@ from app.waf.profile import WafFieldMapping
 from app.waf.semantics import request_count_semantics
 from tests.integration.factories import make_instance, make_log_source
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+pytestmark = pytest.mark.integration
 
 BUCKET = datetime(2026, 8, 3, 19, 25, tzinfo=UTC)
 #: The lab site's property names, as a profile would supply them.
