@@ -1,6 +1,7 @@
 # Search cadence — how often the platform searches QRadar (D-7)
 
-Status: **design, 2026-10-12**. Written by the orchestrator. It rests on the live facts measured
+Status: **built on `feat/phase-ce`, 2026-10-12** (T-033 to T-039). **Live validation (T-040)
+is pending.** Written by the orchestrator. It rests on the live facts measured
 in [`tasks/T-032.report.md`](tasks/T-032.report.md) and records decision D-7 in
 [`PLANNER.md`](PLANNER.md) §4.
 
