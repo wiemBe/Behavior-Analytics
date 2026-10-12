@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -19,6 +20,10 @@ export default function Page() {
         <li>
           <a href="/admin/search-cadence">Search cadence</a>
           <span className="cell-sub">How often each search family queries QRadar</span>
+        </li>
+        <li>
+          <Link href="/admin/waf-sources">WAF sources</Link>
+          <span className="cell-sub">Which QRadar properties each WAF source is read from</span>
         </li>
       </ul>
     </>

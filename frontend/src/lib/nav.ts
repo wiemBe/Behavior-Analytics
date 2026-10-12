@@ -48,7 +48,10 @@ export const NAV: NavGroup[] = [
   },
   {
     label: "Administration",
-    items: [{ href: "/admin/search-cadence", label: "Search cadence" }],
+    items: [
+      { href: "/admin/search-cadence", label: "Search cadence" },
+      { href: "/admin/waf-sources", label: "WAF sources" },
+    ],
   },
 ];
 
