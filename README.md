@@ -649,6 +649,55 @@ Highlights:
 - **Scheduled searches** store the AQL, enforce timeout / max time-range / max rows / concurrency,
   keep query **version history**, and store **aggregated** results by default — never raw events.
 
+### Search cadence
+
+Every search the platform sends to QRadar belongs to a **search family**, and each family has its
+own cadence: how often it searches.
+- Operators set it on `/admin/search-cadence`, or with `PUT /admin/search-cadence/{family}`
+  (permission `admin:search_cadence`).
+- Every change is audited.
+- The choices are 5 min, 15 min, 30 min, 1 h, 2 h, 4 h and 8 h. **Every family defaults to 1 h.**
+
+| Family | What it searches | Bucket |
+|---|---|---|
+| `PHASE_A_VOLUME` | Event count per log source | `COLLECTION_INTERVAL_SECONDS` (5 min) |
+| `WAF_COLLECTION` | Endpoint volume and breakdowns, per WAF source | `COLLECTION_INTERVAL_SECONDS` |
+| `ANOMALY_EXPLANATION` | Evidence for open anomalies | — |
+| `RULE_MATCH` | Events matched per rule (`creEventList`) | `RULE_MATCH_WINDOW_SECONDS` (1 h) |
+
+**The cadence decides when a family searches, not how finely it measures.**
+- At each tick, a family runs **one** Ariel search covering every complete bucket since its last
+  run. The search is keyed by `starttime / <bucket ms>`.
+- Each bucket is stored and judged exactly as before. So a 1-hour cadence sends one Phase A
+  search an hour instead of twelve.
+- A search that reaches its row cap keeps nothing and is split in halves. No bucket is ever
+  written from a truncated result.
+
+**The cost is latency.** A detection can arrive up to *cadence + bucket + settle* late: about
+1 h 7 min at the defaults. The admin page shows this for each family.
+
+Operator-defined scheduled searches keep their own cron. Their schedule control offers the same
+presets.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `SEARCH_CADENCE_SETTLE_SECONDS` | 120 | Wait after a slot boundary before searching, so late events can arrive |
+| `ARIEL_MULTI_BUCKET_MAX_ROWS` | 5000 | Row cap of one keyed search; above it, the window is split |
+| `SEARCH_CADENCE_MAX_SEARCHES_PER_TICK` | 16 | Searches one family may send per tick, splits included |
+| `ANOMALY_MAX_BUCKETS_PER_EVALUATION` | 120 | Phase A buckets judged per source in one evaluation run |
+
+**Settings that changed meaning:**
+- `COLLECTION_INTERVAL_SECONDS` now sets only the bucket width. It no longer schedules
+  collection.
+- `EXPLANATION_COLLECTION_INTERVAL_SECONDS` and `RULE_MATCH_COLLECTION_INTERVAL_SECONDS` are
+  deprecated. The scheduler no longer reads them.
+
+**Upgrading.** Migration `0013` seeds every family at 1 h. Before it, Phase A and WAF searched
+every 5 minutes. So after the upgrade, an outage (`NO_EVENTS`) alert can arrive about an hour
+later than before. If that latency matters more than the search load, set the family back to
+5 min on the admin page. The design is in
+[`docs/SEARCH-CADENCE.md`](docs/SEARCH-CADENCE.md).
+
 ### Scheduled-search dispatch
 
 `app/services/search_scheduler.py` expands each search's cron expression (via APScheduler's
@@ -767,6 +816,11 @@ lints and updates this README.
   production WAF onboarding remains unvalidated and there is no source-level alert coalescing. See
   [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §30.
 - **Phase 4** — security hardening, expanded tests, documentation, observability.
+- **Search cadence ✅ (D-7)** — the operator sets each search family's cadence (5 min to 8 h,
+  default 1 h) from the admin UI, and every change is audited.
+  - One Ariel search per tick, keyed by time, returns every bucket. It is split when truncated.
+  - Phase A judges every new bucket in order.
+  - Live validation on the lab is pending.
 
 Next: the analyst API and UI for WAF incidents, then the goals in
 [the planner](docs/PLANNER.md) §0. Production WAF onboarding still needs a field-availability pass

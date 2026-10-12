@@ -258,10 +258,10 @@ detector bug cannot reach the UI disguised as a measurement.
 
 | Task | Cadence | Lock |
 |---|---|---|
-| `collect_metrics` | `COLLECTION_INTERVAL_SECONDS` | per-instance advisory |
-| `evaluate_anomalies` | `COLLECTION_INTERVAL_SECONDS` | — |
+| `collect_metrics` | 60 s beat; runs when the `PHASE_A_VOLUME` cadence is due (default 1 h) | per-instance advisory |
+| `evaluate_anomalies` | 60 s; judges every new bucket in order | — |
 | `rebuild_baselines` | daily | — |
-| `collect_anomaly_explanations` | `EXPLANATION_COLLECTION_INTERVAL_SECONDS` | per-instance advisory |
+| `collect_anomaly_explanations` | 60 s beat; runs when the `ANOMALY_EXPLANATION` cadence is due | per-instance advisory |
 
 14 registered tasks, 14 beat schedules.
 
