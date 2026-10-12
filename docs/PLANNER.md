@@ -8,50 +8,50 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (saved 2026-10-12, second orchestration session, in progress)
+## ▶ Resume here (saved 2026-10-12, second orchestration session)
 
 **Read §0 first.** The user set three product goals (G1 log-source fleet, G2 IPS/WAF behavior,
 G3 rule analytics). Every task is scheduled against them.
 
-**Working model:** the orchestrator writes **no code**, not even research scripts. Every coding
-or probing job goes to an agent. The user asked (2026-10-12) that Codex and the opencode free
-models be used alongside Sonnet.
+**Working model:**
+- The orchestrator writes **no code**, not even probe scripts.
+- Every round spreads its work across Sonnet (medium), Codex and the opencode free models.
+- UI work must clear AGENTS.md §3a, the frontend quality bar ("no AI slop"), and the orchestrator
+  reviews its screenshots before accepting it.
 
 **Branches:**
-- `main` (`6f17a73`) is green and pushed.
-- `feat/phase-b2` is pushed. At `543d7ff`: **2,055 tests passed, 0 failed**; ruff clean;
-  mypy 31/18 (the baseline). T-006b and T-009 are merged.
-- Backup of the original uncommitted tree: `refs/backup/pre-t001-2026-10-10` (local ref).
+- **`main` @ `ed620a0`** has B.1, B.1.5 and B.2 merged, with every gate green: 2,088 backend tests,
+  629 frontend tests, ruff, mypy 31/18, and alembic clean.
+- **`feat/phase-ce`** (from `main`) is the integration branch for Phases C and E. The main
+  checkout is on it.
+- `feat/phase-b2` is merged and kept for reference only.
 
 **In flight** (each in `../QRadar-Dash-wt/<id>`, with database `qradar_obs_<id>`):
-- **T-015**, Sonnet, read-only lab discovery. Its report goes to `docs/tasks/T-015.report.md` in
-  the main checkout. The lab token is at `.secrets/qradar.sec`, with the CA at
-  `.secrets/qradar-ca.pem`. `.env` names the container path `/run/secrets/...`, so host-side runs
-  override `QRADAR_API_TOKEN_FILE` and `QRADAR_CA_BUNDLE` in the process environment only.
-- **T-016**, Codex, WAF alerting. Log: scratchpad `t016_codex.log`. Check the tail for "usage
-  limit".
-- **T-017**, Sonnet, D-3: the source-coverage guard on the ratio paths.
-- **T-018**, opencode `mimo-v2.6-flash-free`, test-warning hygiene.
+- **T-021**, Sonnet: UI quality pass. Accepting it requires reviewing its before/after screenshots
+  under scratchpad `t021/` against §3a.
+- **T-022**, Codex: Phase C.1. Log: scratchpad `t022_codex.log`. Check the tail for "usage limit".
+  Migration `0011`.
+- **T-025**, Sonnet: Phase E.1a. Migration `0012`, **temporarily chained to `0010`**. Whichever of
+  T-022 and T-025 merges second must be re-chained: the agent re-points `down_revision` to
+  `'0011'` and re-runs the migration tests.
 
 **Next steps, in order:**
-1. Review T-016, T-017 and T-018 as they land, then re-run the full gates on `feat/phase-b2`.
-2. `alembic check` on a fresh DB, plus the frontend gates (lint, typecheck, test, build).
-3. **T-010**: design doc §30 and the README, covering B.2, D-3, D-4 and WAF alerting.
-4. Merge `feat/phase-b2` → `main`.
-5. From T-015's findings, write the specs for **Phase C.1** (G1) and **Phase E.1** (G3). They are
-   independent and can run in parallel. Their migrations chain after 0010, so the orchestrator
-   assigns revision ids.
-6. Then follow the roadmap in §0.
+1. Review T-021, T-022 and T-025 as they land. Cherry-pick them onto `feat/phase-ce`, re-chain
+   migration 0012, and run the full gates.
+2. Phase C: T-023 (fleet APIs and routing by class), then T-024 (fleet UI, after T-021).
+3. Phase E: the E.3 statistics API, then the UI. D-5 (the rule-logic source for the AI) is the
+   user's call; ask before E.3's AI work.
+4. Phase D (IPS, G2): design document first.
+5. The WAF analyst API and UI (design §27.14–§27.15).
 
 **Environment notes:**
-- The test DB container `qradar-observability-test-test-db-1` runs on `:5433`, on tmpfs, so its
-  data is lost on restart. Restart it with `docker compose -f docker-compose.test.yml up -d
-  test-db`, and recreate the per-task databases with `createdb`.
-- The lab QRadar console is reachable from this host on 443.
-- GLM credits return on 2026-10-14.
-- Working free models: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`,
-  `longcat-2.5-preview-free`, `nemotron-3-ultra-free`.
-- Task specs given to agents are kept in [`docs/tasks/`](tasks/).
+- The test DB container `qradar-observability-test-test-db-1` runs on `:5433`, on tmpfs. Restart
+  it with `docker compose -f docker-compose.test.yml up -d test-db`.
+- The lab QRadar is reachable. For host-side read-only runs, override `QRADAR_API_TOKEN_FILE` and
+  `QRADAR_CA_BUNDLE` to `.secrets/` in the process environment only.
+- **Never call `GET /analytics/rules/{id}/dependents`:** it starts a server-side task.
+- GLM credits return on 2026-10-14. Working free models: `mimo-v2.6-flash-free`,
+  `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`.
 
 ---
 
@@ -291,6 +291,32 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 ---
 
 ## 5. Log
+
+### 2026-10-12
+
+- **The user set the product goals** (§0) and the working model: the orchestrator writes no code,
+  and Codex and the opencode free models are used alongside Sonnet.
+- **D-4: no setting.** T-006b reviewed and merged; its test edits were filters, not weakening.
+- **T-009 merged; the branch went fully green.**
+- **T-015 (live discovery).**
+  - The token file in `.env` points at a container path, so it was overridden in the process
+    environment only.
+  - Findings: there are no type categories, and groups are empty in the lab. `average_eps` is
+    unusable as volume, and the capacity fields are a static benchmark. No GET returns rule logic.
+    `creEventList` grouping works.
+  - Side effect: `/analytics/rules/{id}/dependents` started a QRadar task; it is now banned.
+- **D-3: yes, fail closed.** T-017 merged.
+- **T-016 (WAF alerting).** Merged. The full suite was 2,085 green.
+- **T-019.** Codex's T-016 work hid a real defect: notifications crashed on any alert loaded from
+  the database when a route matched. That hit Phase A recovery and the operator API. Fixed at the
+  root, with the defect reproduced first.
+- **T-018 and T-020.** Done by opencode free models and verified.
+- **The user lifted the `:Z` ban** on dedicated secret-free mounts (D-6).
+- **The user set the frontend quality bar** (AGENTS.md §3a); T-021 was launched.
+- **T-010.** Docs merged, after one follow-up round.
+- **B.2 merged into `main`** (`ed620a0`): 2,088 backend and 629 frontend tests, all gates green.
+- **Phase C and Phase E designed** ([C](PHASE-C-LOG-SOURCE-FLEET.md),
+  [E](PHASE-E-RULE-ANALYTICS.md)). T-022 (Codex) and T-025 (Sonnet) were launched in parallel.
 
 ### 2026-10-10
 
