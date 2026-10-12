@@ -93,30 +93,39 @@ export function formatAge(seconds: number | null | undefined): string {
   return `${m}m`;
 }
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * An instant as `2026-10-12 09:15:00 UTC`.
+ *
+ * Always UTC and always says so. The locale default rendered the viewer's
+ * timezone without naming it, and on a server-rendered page that is the
+ * server's timezone, which differs from the browser's. QRadar and the backend
+ * both report UTC, so the same instant now reads the same everywhere.
+ */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
   const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
+  if (Number.isNaN(d.getTime())) return "—";
+  return (
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`
+  );
 }
 
 /**
- * A timestamp for a dense table column.
+ * A timestamp for a dense table column, as `10-12 09:15 UTC`.
  *
- * The locale default renders "8/3/2026, 12:55:00 AM", which wraps to three
- * lines in a narrow column and makes the column the widest thing in the table.
- * This drops the year and the seconds and uses a 24-hour clock, so the value
- * stays on one line. It is for table cells only: anywhere the exact instant
- * matters, `formatDateTime` remains the right function.
+ * Drops the year and the seconds so the value stays on one line in a narrow
+ * column, and keeps the timezone. It is for table cells only: anywhere the
+ * exact instant matters, `formatDateTime` remains the right function.
  */
 export function formatDateTimeCompact(value: string | null | undefined): string {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  return (
+    `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`
+  );
 }

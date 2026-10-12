@@ -37,8 +37,8 @@ import {
   healthDistribution,
   healthSummaryText,
 } from "@/lib/behaviorOverview";
-import { formatMetric, formatRatio, stateTone } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { detectorLabel, formatMetric, formatRatio, stateTone } from "@/lib/behavior";
+import { formatDateTimeCompact } from "@/lib/health";
 
 export const metadata: Metadata = {
   title: "Overview",
@@ -96,7 +96,7 @@ export default async function BehaviorPage() {
     <>
       <PageHeader
         title="Behavioral overview"
-        description="What every monitored log source is doing, against what it normally does at this weekday and hour."
+        description={`${summary.monitored_sources} monitored sources, each compared with its own baseline for this weekday and hour. Times are UTC.`}
       />
 
       {/* --- level 1: the four counters that decide whether to keep reading -- */}
@@ -198,9 +198,15 @@ export default async function BehaviorPage() {
                     <th scope="col">Source</th>
                     <th scope="col">State</th>
                     <th scope="col">Issue</th>
-                    <th scope="col">Observed / expected</th>
-                    <th scope="col">Deviation</th>
-                    <th scope="col">Started</th>
+                    <th scope="col" className="num">
+                      Observed / expected (EPS)
+                    </th>
+                    <th scope="col" className="num">
+                      Deviation
+                    </th>
+                    <th scope="col" className="num">
+                      Started
+                    </th>
                     <th scope="col">
                       <span className="sr-only">Detail</span>
                     </th>
@@ -209,7 +215,7 @@ export default async function BehaviorPage() {
                 <tbody>
                   {attention.slice(0, ATTENTION_LIMIT).map((row) => (
                     <tr key={row.key}>
-                      <td>
+                      <td className="cell-name">
                         <a href={`/behavior/sources/${row.sourceId}`}>
                           {row.sourceName}
                         </a>
@@ -246,7 +252,7 @@ export default async function BehaviorPage() {
                         )}
                       </td>
                       <td className="num">{formatRatio(row.deviation)}</td>
-                      <td className="num">{formatDateTime(row.at)}</td>
+                      <td className="num">{formatDateTimeCompact(row.at)}</td>
                       <td>
                         <a href={row.href}>
                           {row.href.startsWith("/anomalies") ? "Investigate" : "Detail"}
@@ -284,7 +290,9 @@ export default async function BehaviorPage() {
                   <th scope="col">Source</th>
                   <th scope="col">Detector</th>
                   <th scope="col">Severity</th>
-                  <th scope="col">Resolved</th>
+                  <th scope="col" className="num">
+                    Resolved
+                  </th>
                   <th scope="col">
                     <span className="sr-only">Detail</span>
                   </th>
@@ -293,14 +301,14 @@ export default async function BehaviorPage() {
               <tbody>
                 {recent.map((a) => (
                   <tr key={a.id}>
-                    <td>{a.log_source_name ?? a.log_source_id}</td>
-                    <td>{a.anomaly_type}</td>
+                    <td className="cell-name">{a.log_source_name ?? a.log_source_id}</td>
+                    <td>{detectorLabel(a.anomaly_type)}</td>
                     <td>
                       <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
                         {a.severity}
                       </span>
                     </td>
-                    <td className="num">{formatDateTime(a.resolved_at)}</td>
+                    <td className="num">{formatDateTimeCompact(a.resolved_at)}</td>
                     <td>
                       <a href={`/anomalies/${a.id}`}>Investigate</a>
                     </td>

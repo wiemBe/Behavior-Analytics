@@ -1,38 +1,41 @@
 // The incident's identity, in one block.
 //
 // Everything an analyst needs to know they are looking at the right thing:
-// which source, what kind of change, how it is currently classified, and when
-// it ran. The source name is the <h1> and appears exactly once — the previous
-// header repeated both it and the detector in the title, the badge row and the
-// summary paragraph.
+// what kind of change, how it is currently classified, when it ran, and which
+// source. The identity line is the primary text; the source name is the page's
+// <h1> and appears exactly once, at a size that survives a host name of
+// unbounded length.
 
 import Link from "next/link";
 
 import type { AnomalyDetail } from "@/lib/api";
 import { sevTone } from "@/lib/api";
-import { stateTone } from "@/lib/behavior";
+import { detectorLabel, stateTone } from "@/lib/behavior";
 import { formatDateTime } from "@/lib/health";
 
-/** Detector identifiers as an analyst would say them. */
-const DETECTOR_LABELS: Record<string, string> = {
-  VOLUME_SPIKE: "Volume spike",
-  VOLUME_DROP: "Volume drop",
-  NO_EVENTS: "No events",
-};
+export { detectorLabel };
 
-export function detectorLabel(type: string): string {
-  return DETECTOR_LABELS[type] ?? type;
-}
-
-/** The anomaly's interval, or an explicit statement that it has not ended. */
-export function intervalText(anomaly: AnomalyDetail): string {
-  if (!anomaly.anomaly_start) return "Interval not recorded";
-  const start = formatDateTime(anomaly.anomaly_start);
-  // Still running: no end exists, and inventing one would report a closed
-  // incident that is still open.
-  return anomaly.anomaly_end
-    ? `${start} → ${formatDateTime(anomaly.anomaly_end)}`
-    : `${start} → still running`;
+/**
+ * The anomaly's interval, or an explicit statement that it has not ended.
+ *
+ * Each end is a `time` element held on one line, so the interval can only wrap
+ * at the arrow rather than through a timestamp.
+ */
+function Interval({ anomaly }: { anomaly: AnomalyDetail }) {
+  if (!anomaly.anomaly_start) return <>Interval not recorded</>;
+  return (
+    <>
+      <time dateTime={anomaly.anomaly_start}>{formatDateTime(anomaly.anomaly_start)}</time>
+      {" → "}
+      {anomaly.anomaly_end ? (
+        <time dateTime={anomaly.anomaly_end}>{formatDateTime(anomaly.anomaly_end)}</time>
+      ) : (
+        // Still running: no end exists, and inventing one would report a
+        // closed incident that is still open.
+        "still running"
+      )}
+    </>
+  );
 }
 
 export function IncidentHeader({ anomaly }: { anomaly: AnomalyDetail }) {
@@ -43,11 +46,7 @@ export function IncidentHeader({ anomaly }: { anomaly: AnomalyDetail }) {
           <Link href="/anomalies">← All anomalies</Link>
         </p>
 
-        <h1 className="page-title">
-          {anomaly.log_source_name ?? "Unknown source"}
-        </h1>
-
-        <div className="row incident-meta">
+        <div className="row incident-identity">
           <span className="incident-detector">
             {detectorLabel(anomaly.anomaly_type)}
           </span>
@@ -63,8 +62,14 @@ export function IncidentHeader({ anomaly }: { anomaly: AnomalyDetail }) {
           {anomaly.suppressed && (
             <span className="pill pill-quiet warn">Suppressed</span>
           )}
-          <span className="muted">{intervalText(anomaly)}</span>
+          <span className="incident-interval">
+            <Interval anomaly={anomaly} />
+          </span>
         </div>
+
+        <h1 className="page-title incident-source">
+          {anomaly.log_source_name ?? "Unknown source"}
+        </h1>
       </div>
 
       <div className="page-header-actions">

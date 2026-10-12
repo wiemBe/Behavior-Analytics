@@ -90,7 +90,7 @@ describe("default columns", () => {
         "Source",
         "Detector",
         "State",
-        "Observed → Expected",
+        "Observed → Expected (EPS)",
         "Deviation",
         "Severity",
         "Started",
@@ -185,8 +185,8 @@ describe("filters", () => {
     expect(screen.getByLabelText("Lifecycle state")).toBeInTheDocument();
     expect(screen.getByLabelText("Detector type")).toBeInTheDocument();
     expect(screen.getByLabelText("Severity")).toBeInTheDocument();
-    expect(screen.getByLabelText("Start time")).toBeInTheDocument();
-    expect(screen.getByLabelText("End time")).toBeInTheDocument();
+    expect(screen.getByLabelText("Start time (UTC)")).toBeInTheDocument();
+    expect(screen.getByLabelText("End time (UTC)")).toBeInTheDocument();
   });
 
   it("keeps source, instance and evidence behind a disclosure", async () => {
@@ -212,8 +212,8 @@ describe("filters", () => {
       "Lifecycle state",
       "Detector type",
       "Severity",
-      "Start time",
-      "End time",
+      "Start time (UTC)",
+      "End time (UTC)",
       "Log source",
       "QRadar instance",
       "Evidence status",

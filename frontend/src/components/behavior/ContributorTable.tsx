@@ -131,10 +131,18 @@ export function ContributorTable({ dimension }: { dimension: ExplanationDimensio
               <thead>
                 <tr>
                   <th scope="col">Value</th>
-                  <th scope="col">Baseline</th>
-                  <th scope="col">Anomaly</th>
-                  <th scope="col">Delta</th>
-                  <th scope="col">Contribution</th>
+                  <th scope="col" className="num">
+                    Baseline (events)
+                  </th>
+                  <th scope="col" className="num">
+                    Anomaly (events)
+                  </th>
+                  <th scope="col" className="num">
+                    Delta (events)
+                  </th>
+                  <th scope="col" className="num">
+                    Contribution
+                  </th>
                   <th scope="col">
                     <span className="sr-only">Row detail</span>
                   </th>

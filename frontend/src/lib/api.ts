@@ -808,8 +808,13 @@ export function actionErrorMessage(err: unknown): string {
 }
 
 // Severity → CSS pill class, shared by Phase 2 views.
+//
+// Severity grades how bad a finding is. It never takes the positive tone: a
+// LOW finding is still a finding, and green is reserved for a genuinely good
+// outcome (guidelines §10). An unrecognised value is neutral.
 export function sevTone(sev: string): string {
   if (sev === "CRITICAL" || sev === "HIGH") return "crit";
   if (sev === "MEDIUM") return "warn";
-  return "ok";
+  if (sev === "LOW" || sev === "INFO") return "info";
+  return "";
 }

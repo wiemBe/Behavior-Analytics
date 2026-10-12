@@ -110,3 +110,19 @@ export function kindMeaning(kind: PointKind): string {
       return "";
   }
 }
+
+/**
+ * Observed points with no observed neighbour on either side.
+ *
+ * A line needs two points to be seen. A single measured bucket between gaps
+ * draws nothing at all, so it is marked explicitly — otherwise a real
+ * observation would vanish into the gap it sits in.
+ */
+export function isolatedPoints(points: SeriesPoint[]): SeriesPoint[] {
+  return points.filter(
+    (p, i) =>
+      p.observed != null &&
+      points[i - 1]?.observed == null &&
+      points[i + 1]?.observed == null,
+  );
+}

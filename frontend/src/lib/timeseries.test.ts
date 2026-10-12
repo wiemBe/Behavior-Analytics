@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildSeries, kindMeaning, unobservedIntervals } from "./timeseries";
+import { buildSeries, isolatedPoints, kindMeaning, unobservedIntervals } from "./timeseries";
 import type { MetricBucket } from "./api";
 
 function bucket(over: Partial<MetricBucket> = {}): MetricBucket {
@@ -126,5 +126,44 @@ describe("kindMeaning", () => {
     expect(kindMeaning("MISSING")).toMatch(/not evidence of silence/i);
     expect(kindMeaning("GAP")).toMatch(/no bucket/i);
     expect(kindMeaning("COMPLETE")).toMatch(/whole interval/i);
+  });
+});
+
+describe("isolatedPoints", () => {
+  const at = (i: number, over: Partial<MetricBucket> = {}) =>
+    bucket({ bucket_start: new Date(T0 + i * FIVE_MIN).toISOString(), ...over });
+
+  it("finds a single measured bucket between two uncollected ones", () => {
+    const points = buildSeries([
+      at(0, { completeness: "MISSING" }),
+      at(1),
+      at(2, { completeness: "PARTIAL" }),
+    ]);
+    expect(isolatedPoints(points).map((p) => p.t)).toEqual([T0 + FIVE_MIN]);
+  });
+
+  it("finds a single measured bucket across an absent interval", () => {
+    // Nothing stored between the first and last bucket: buildSeries inserts the
+    // GAP points that isolate them.
+    const points = buildSeries([at(0), at(3)]);
+    expect(isolatedPoints(points)).toHaveLength(2);
+  });
+
+  it("ignores points that are part of a line", () => {
+    expect(isolatedPoints(buildSeries([at(0), at(1), at(2)]))).toEqual([]);
+  });
+
+  it("treats the end of the series as a gap", () => {
+    expect(isolatedPoints(buildSeries([at(0)]))).toHaveLength(1);
+  });
+
+  it("never marks a null point", () => {
+    const points = buildSeries([at(0, { completeness: "MISSING" })]);
+    expect(isolatedPoints(points)).toEqual([]);
+  });
+
+  it("marks a measured zero like any other measurement", () => {
+    const points = buildSeries([at(0, { average_eps: 0, event_count: 0 })]);
+    expect(isolatedPoints(points)).toHaveLength(1);
   });
 });

@@ -19,7 +19,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, type SourceBehavior } from "@/lib/api";
 import { formatMetric, formatRatio, isUnjudged, stateTone } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { formatDateTimeCompact } from "@/lib/health";
 import {
   SOURCE_PAGE_SIZE,
   ariaSort,
@@ -41,15 +41,18 @@ function SortHeader({
   label,
   column,
   query,
+  numeric = false,
 }: {
   label: string;
   column: "deviation" | "last_event" | "name";
   query: ReturnType<typeof parseSourceQuery>;
+  /** A numeric column is right-aligned, header included. */
+  numeric?: boolean;
 }) {
   const sort = ariaSort(query, column);
   const arrow = sort === "none" ? "" : sort === "ascending" ? " ↑" : " ↓";
   return (
-    <th scope="col" aria-sort={sort}>
+    <th scope="col" aria-sort={sort} className={numeric ? "num" : undefined}>
       <a href={sortHref(query, column)} className="sort-link">
         {label}
         <span aria-hidden="true">{arrow}</span>
@@ -91,9 +94,8 @@ export default async function SourcesIndexPage({
         title="Sources"
         description={
           <>
-            Every monitored log source and how its current volume compares with
-            its seasonal baseline. Open a source for its timeline, baseline
-            quality and collection health.
+            Current volume against the seasonal baseline for this weekday and
+            hour. Times are UTC.
           </>
         }
       />
@@ -122,11 +124,17 @@ export default async function SourcesIndexPage({
                 <tr>
                   <SortHeader label="Source" column="name" query={query} />
                   <th scope="col">State</th>
-                  <th scope="col">Observed</th>
-                  <th scope="col">Expected</th>
-                  <SortHeader label="Deviation" column="deviation" query={query} />
-                  <SortHeader label="Last event" column="last_event" query={query} />
-                  <th scope="col">Anomalies</th>
+                  <th scope="col" className="num">
+                    Observed (EPS)
+                  </th>
+                  <th scope="col" className="num">
+                    Expected (EPS)
+                  </th>
+                  <SortHeader label="Deviation" column="deviation" query={query} numeric />
+                  <SortHeader label="Last event" column="last_event" query={query} numeric />
+                  <th scope="col" className="num">
+                    Anomalies
+                  </th>
                   <th scope="col">
                     <span className="sr-only">Detail</span>
                   </th>
@@ -135,7 +143,7 @@ export default async function SourcesIndexPage({
               <tbody>
                 {visible.map((s) => (
                   <tr key={s.log_source_id}>
-                    <td>
+                    <td className="cell-name">
                       <a href={`/behavior/sources/${s.log_source_id}`}>{s.name}</a>
                     </td>
                     <td>
@@ -153,7 +161,7 @@ export default async function SourcesIndexPage({
                       )}
                     </td>
                     <td className="num">{formatRatio(s.deviation_ratio)}</td>
-                    <td className="num">{formatDateTime(s.last_event_at)}</td>
+                    <td className="num">{formatDateTimeCompact(s.last_event_at)}</td>
                     <td className="num">
                       {s.open_anomaly_count > 0 ? (
                         <a

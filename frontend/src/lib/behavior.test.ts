@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   completenessMeaning,
+  detectorLabel,
   dimensionLabel,
   dimensionMeaning,
   dimensionTone,
@@ -233,3 +234,16 @@ describe("degenerate MAD", () => {
     expect(hasConfidenceLimitation(null)).toBe(false);
   });
 });
+
+describe("detectorLabel", () => {
+  it("names each known detector as an analyst would say it", () => {
+    expect(detectorLabel("VOLUME_SPIKE")).toBe("Volume spike");
+    expect(detectorLabel("VOLUME_DROP")).toBe("Volume drop");
+    expect(detectorLabel("NO_EVENTS")).toBe("No events");
+  });
+
+  it("shows an unknown detector as it is rather than hiding or guessing", () => {
+    expect(detectorLabel("FUTURE_DETECTOR")).toBe("FUTURE_DETECTOR");
+  });
+});
+

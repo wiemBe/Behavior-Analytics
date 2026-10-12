@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VolumeChart } from "./VolumeChart";
@@ -28,9 +28,9 @@ vi.mock("echarts/core", () => ({ init, use }));
 vi.mock("echarts/charts", () => ({ LineChart: {} }));
 vi.mock("echarts/components", () => ({
   GridComponent: {},
-  LegendComponent: {},
   MarkAreaComponent: {},
   MarkLineComponent: {},
+  MarkPointComponent: {},
   TooltipComponent: {},
 }));
 vi.mock("echarts/renderers", () => ({ CanvasRenderer: {} }));
@@ -211,13 +211,35 @@ describe("missing and partial data", () => {
 });
 
 describe("expected band", () => {
-  it("draws the expected line and both bounds", () => {
+  it("draws the expected range as one band and the median as one line", () => {
     render(
       <VolumeChart buckets={[bucket()]} expected={2} expectedLow={1.7} expectedHigh={2.3} />,
     );
     expect(seriesNamed("Expected EPS").data).toHaveLength(1);
-    expect(seriesNamed("Expected low").data).toHaveLength(1);
-    expect(seriesNamed("Expected high").data).toHaveLength(1);
+    // The band is a stacked pair: an invisible floor at the lower bound, and a
+    // filled series whose height is the width of the range.
+    const floor = seriesNamed("Expected low") as StubSeries & { stack?: string };
+    const band = seriesNamed("Expected range") as StubSeries & {
+      stack?: string;
+      areaStyle?: unknown;
+    };
+    expect(floor.stack).toBeDefined();
+    expect(floor.stack).toBe(band.stack);
+    expect(floor.data[0]).toEqual([expect.any(Number), 1.7]);
+    expect((band.data[0] as [number, number])[1]).toBeCloseTo(0.6);
+    expect(band.areaStyle).toBeDefined();
+    // The old three-line form must not come back.
+    expect(setOption.mock.calls[0][0].series.map((s: StubSeries) => s.name)).not.toContain(
+      "Expected high",
+    );
+  });
+
+  it("draws no band when either bound is missing", () => {
+    render(
+      <VolumeChart buckets={[bucket()]} expected={2} expectedLow={1.7} expectedHigh={null} />,
+    );
+    expect(seriesNamed("Expected low").data).toHaveLength(0);
+    expect(seriesNamed("Expected range").data).toHaveLength(0);
   });
 
   it("draws no expected line when there is no baseline to draw", () => {
@@ -227,6 +249,127 @@ describe("expected band", () => {
       <VolumeChart buckets={[bucket()]} expected={null} expectedLow={null} expectedHigh={null} />,
     );
     expect(seriesNamed("Expected EPS").data).toHaveLength(0);
+  });
+});
+
+describe("drawing style", () => {
+  const render1 = (extra: Partial<Parameters<typeof VolumeChart>[0]> = {}) =>
+    render(
+      <VolumeChart
+        buckets={[bucket(), bucket({ bucket_start: "2026-07-20T10:05:00Z" })]}
+        expected={2}
+        expectedLow={1.7}
+        expectedHigh={2.3}
+        {...extra}
+      />,
+    );
+
+  it("draws a clean line, with no marker on every point", () => {
+    render1();
+    expect((seriesNamed("Observed EPS") as { showSymbol?: boolean }).showSymbol).toBe(false);
+  });
+
+  it("marks a lone measured bucket, which a line cannot show", () => {
+    render(
+      <VolumeChart
+        buckets={[
+          bucket({ completeness: "MISSING" }),
+          bucket({ bucket_start: "2026-07-20T10:05:00Z" }),
+          bucket({ bucket_start: "2026-07-20T10:10:00Z", completeness: "PARTIAL" }),
+        ]}
+        expected={2}
+        expectedLow={null}
+        expectedHigh={null}
+      />,
+    );
+    const marks = (seriesNamed("Observed EPS") as { markPoint?: { data: unknown[] } }).markPoint;
+    expect(marks?.data).toHaveLength(1);
+  });
+
+  it("marks nothing when every measured point is part of a line", () => {
+    render1();
+    expect((seriesNamed("Observed EPS") as { markPoint?: unknown }).markPoint).toBeUndefined();
+  });
+
+  it("takes every colour from the tokens, never from a literal", () => {
+    // jsdom has no stylesheet, so each token resolves to a recognisable
+    // stand-in. If any colour in the option were a literal, it would show up
+    // here as a hex or rgb() value.
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      getPropertyValue: (name: string) => `token(${name})`,
+    } as unknown as CSSStyleDeclaration);
+    render1({
+      buckets: [
+        bucket(),
+        bucket({ bucket_start: "2026-07-20T10:05:00Z", completeness: "PARTIAL" }),
+      ],
+      anomalies: [{ start: "2026-07-20T10:00:00Z", end: null }],
+      transitions: [{ at: "2026-07-20T10:05:00Z", label: "OPEN" }],
+    });
+    const json = JSON.stringify(setOption.mock.calls[0][0]);
+    expect(json).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
+    expect(json).toContain("token(--chart-observed)");
+    expect(json).toContain("token(--chart-band)");
+    expect(json).toContain("token(--chart-gap)");
+    expect(json).toContain("token(--chart-anomaly)");
+  });
+
+  it("does not colour the expected range green", () => {
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      getPropertyValue: (name: string) => `token(${name})`,
+    } as unknown as CSSStyleDeclaration);
+    render1();
+    expect(JSON.stringify(seriesNamed("Expected range"))).not.toContain("--ok");
+    expect(JSON.stringify(seriesNamed("Expected EPS"))).not.toContain("--ok");
+  });
+});
+
+describe("axes", () => {
+  it("carries the unit on the value axis and the timezone on the time axis", () => {
+    render(<VolumeChart buckets={[bucket()]} expected={2} expectedLow={null} expectedHigh={null} />);
+    const option = setOption.mock.calls[0][0] as {
+      useUTC: boolean;
+      xAxis: { name: string };
+      yAxis: { name: string; min: number };
+    };
+    expect(option.yAxis.name).toMatch(/EPS/);
+    expect(option.xAxis.name).toMatch(/UTC/);
+    expect(option.useUTC).toBe(true);
+    // A drawn zero is a measurement; the axis must be able to show one.
+    expect(option.yAxis.min).toBe(0);
+  });
+});
+
+describe("key", () => {
+  const keyItems = () =>
+    within(screen.getByRole("list", { name: "Chart key" }))
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+
+  it("names only the marks that were drawn", () => {
+    render(<VolumeChart buckets={[bucket()]} expected={null} expectedLow={null} expectedHigh={null} />);
+    expect(keyItems()).toEqual(["Observed EPS"]);
+  });
+
+  it("names the band, the median, the gaps and the overlays when present", () => {
+    render(
+      <VolumeChart
+        buckets={[bucket(), bucket({ bucket_start: "2026-07-20T10:05:00Z", completeness: "PARTIAL" })]}
+        expected={2}
+        expectedLow={1.7}
+        expectedHigh={2.3}
+        anomalies={[{ start: "2026-07-20T10:00:00Z", end: null }]}
+        transitions={[{ at: "2026-07-20T10:05:00Z", label: "OPEN" }]}
+      />,
+    );
+    expect(keyItems()).toEqual([
+      "Observed EPS",
+      "Expected median",
+      "Expected range",
+      "Not fully collected",
+      "Anomalous interval",
+      "Lifecycle transition",
+    ]);
   });
 });
 

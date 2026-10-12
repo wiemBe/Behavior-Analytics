@@ -11,6 +11,7 @@ import {
   parseRange,
   partitionAnomalies,
   rangeLabel,
+  seasonalCellLabel,
   summarizeSourceTimeline,
 } from "./sourceDetail";
 
@@ -327,5 +328,19 @@ describe("summarizeSourceTimeline", () => {
     expect(summarizeSourceTimeline({ ...base, anomalyCount: 3 })).toContain(
       "3 anomalies were detected",
     );
+  });
+});
+
+describe("seasonalCellLabel", () => {
+  it("names the ISO weekday and the UTC hour", () => {
+    expect(seasonalCellLabel(1, 12)).toBe("Mon 12:00 UTC");
+    expect(seasonalCellLabel(7, 3)).toBe("Sun 03:00 UTC");
+  });
+
+  it("does not guess at a cell it cannot name", () => {
+    // Weekday 0 is not an ISO weekday; mislabelling it as a real day would
+    // state the wrong seasonal cell.
+    expect(seasonalCellLabel(0, 12)).toBe("ISO weekday 0, hour 12 UTC");
+    expect(seasonalCellLabel(3, 24)).toBe("ISO weekday 3, hour 24 UTC");
   });
 });

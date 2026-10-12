@@ -7,7 +7,13 @@
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import { sevTone, type AnomalySummary } from "@/lib/api";
-import { evidenceTone, formatMetric, formatRatio, stateTone } from "@/lib/behavior";
+import {
+  detectorLabel,
+  evidenceTone,
+  formatMetric,
+  formatRatio,
+  stateTone,
+} from "@/lib/behavior";
 import { formatDateTimeCompact } from "@/lib/health";
 
 function AnomalyTable({
@@ -27,9 +33,15 @@ function AnomalyTable({
           <tr>
             <th scope="col">Detector</th>
             <th scope="col">State</th>
-            <th scope="col">Observed → Expected</th>
-            <th scope="col">Deviation</th>
-            <th scope="col">Started</th>
+            <th scope="col" className="num">
+              Observed → Expected (EPS)
+            </th>
+            <th scope="col" className="num">
+              Deviation
+            </th>
+            <th scope="col" className="num">
+              Started
+            </th>
             <th scope="col">Evidence</th>
             <th scope="col">
               <span className="sr-only">Actions</span>
@@ -39,7 +51,7 @@ function AnomalyTable({
         <tbody>
           {anomalies.map((a) => (
             <tr key={a.id}>
-              <td>{a.anomaly_type}</td>
+              <td>{detectorLabel(a.anomaly_type)}</td>
               <td>
                 <span className={`pill pill-strong ${stateTone(a.state)}`}>{a.state}</span>
               </td>

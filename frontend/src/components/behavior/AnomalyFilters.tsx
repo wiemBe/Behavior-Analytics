@@ -15,6 +15,8 @@
 import Link from "next/link";
 
 import type { SourceBehavior } from "@/lib/api";
+import { detectorLabel } from "@/lib/behavior";
+import { formatDateTime } from "@/lib/health";
 
 const DETECTOR_TYPES = ["VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS"];
 const STATES = [
@@ -61,7 +63,7 @@ export function chipLabel(
     case "instance_id":
       return `Instance: ${value}`;
     case "anomaly_type":
-      return `Detector: ${value}`;
+      return `Detector: ${detectorLabel(value)}`;
     case "state":
       return `State: ${value}`;
     case "severity":
@@ -69,9 +71,9 @@ export function chipLabel(
     case "evidence_status":
       return `Evidence: ${value}`;
     case "since":
-      return `From: ${value.replace("T", " ")}`;
+      return `From: ${formatDateTime(value)}`;
     case "until":
-      return `To: ${value.replace("T", " ")}`;
+      return `To: ${formatDateTime(value)}`;
     default:
       return `${key}: ${value}`;
   }
@@ -88,6 +90,18 @@ export function withoutFilter(
   }
   const s = qs.toString();
   return s ? `/anomalies?${s}` : "/anomalies";
+}
+
+/**
+ * An ISO instant as a `datetime-local` value.
+ *
+ * The page hands this component the normalised ISO instant
+ * (`2026-10-12T09:15:00.000Z`), which a datetime-local input cannot display:
+ * it needs `YYYY-MM-DDTHH:mm`. Without this the field came back blank after the
+ * very filter it had just applied.
+ */
+export function toInputValue(iso: string): string {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso) ? iso.slice(0, 16) : "";
 }
 
 export function AnomalyFilters({
@@ -130,7 +144,7 @@ export function AnomalyFilters({
           <option value="">All detectors</option>
           {DETECTOR_TYPES.map((t) => (
             <option key={t} value={t}>
-              {t}
+              {detectorLabel(t)}
             </option>
           ))}
         </select>
@@ -148,25 +162,27 @@ export function AnomalyFilters({
         </select>
 
         {/* The backend caps the range; these are datetime-local so an operator
-            cannot accidentally request an unbounded window. */}
-        <label className="sr-only" htmlFor="anomaly-since">
-          Start time
+            cannot accidentally request an unbounded window. The label is
+            visible, because two bare date fields say neither which is which
+            nor which timezone they mean. */}
+        <label className="filter-field" htmlFor="anomaly-since">
+          Start time (UTC)
+          <input
+            id="anomaly-since"
+            type="datetime-local"
+            name="since"
+            defaultValue={toInputValue(values.since)}
+          />
         </label>
-        <input
-          id="anomaly-since"
-          type="datetime-local"
-          name="since"
-          defaultValue={values.since}
-        />
-        <label className="sr-only" htmlFor="anomaly-until">
-          End time
+        <label className="filter-field" htmlFor="anomaly-until">
+          End time (UTC)
+          <input
+            id="anomaly-until"
+            type="datetime-local"
+            name="until"
+            defaultValue={toInputValue(values.until)}
+          />
         </label>
-        <input
-          id="anomaly-until"
-          type="datetime-local"
-          name="until"
-          defaultValue={values.until}
-        />
 
         <button type="submit">Filter</button>
 

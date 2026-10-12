@@ -77,6 +77,12 @@
      an accent-coloured control as well as on the canvas. */
   --focus: #8ab4ff;
 
+  /* Text on a solid `--info` fill (the primary action button). */
+  --on-accent: #06101f;
+
+  /* The edge shadow that says a table scrolls. Functional, not decorative. */
+  --scroll-shadow: rgba(0, 0, 0, 0.5);
+
   /* --- spacing -----------------------------------------------------------
      A 4 px scale. `--sp-5` (16 px) is the default gap inside a panel and
      `--sp-7` (32 px) the gap between semantic sections of a page. */
@@ -136,4 +142,18 @@
   --chart-grid: #1a2336;
   --chart-axis: #2a3350;
   --chart-label: #8b98b0;
+
+  /* The series, by role. The observed line is the one saturated mark on the
+     chart. The expected range is neutral, not green: green is a status colour
+     and "expected" is not a good outcome. Unobserved and anomalous intervals
+     reuse the warn and crit fills because they ARE those statuses. */
+  --chart-observed: var(--info);
+  --chart-expected: var(--neutral-text);
+  --chart-band: rgba(139, 152, 176, 0.16);
+  --chart-gap: var(--warn-bg);
+  --chart-anomaly: var(--crit-bg);
+  --chart-marker: var(--neutral);
+  --chart-tooltip-bg: var(--surface-2);
+  --chart-tooltip-border: var(--border-strong);
+  --chart-tooltip-text: var(--text);
 }

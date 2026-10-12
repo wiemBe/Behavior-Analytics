@@ -37,16 +37,29 @@ export function HealthDistribution({
       {/* The visual bar carries no information the list below lacks, so it is
           hidden from assistive technology rather than read out as a row of
           meaningless generic elements. */}
-      <div className="health-bar" aria-hidden="true">
-        {groups.map((g) => (
-          <span
+      {/* Drawn as SVG so each segment's width is an attribute rather than an
+          inline style. The viewBox is the fleet size, so a segment's width is
+          simply its count. */}
+      <svg
+        className="health-bar"
+        viewBox={`0 0 ${Math.max(1, groups.reduce((n, g) => n + g.count, 0))} 1`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+        focusable="false"
+      >
+        {groups.map((g, i) => (
+          <rect
             key={g.key}
             className={`health-seg ${g.tone}`}
-            style={{ flexGrow: g.count }}
-            title={`${g.label}: ${g.count}`}
-          />
+            x={groups.slice(0, i).reduce((n, h) => n + h.count, 0)}
+            y={0}
+            width={g.count}
+            height={1}
+          >
+            <title>{`${g.label}: ${g.count}`}</title>
+          </rect>
         ))}
-      </div>
+      </svg>
 
       <ul className="health-legend">
         {groups.map((g) => (

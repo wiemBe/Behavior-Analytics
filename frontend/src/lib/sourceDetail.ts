@@ -40,6 +40,22 @@ export function rangeLabel(hours: RangeHours): string {
   return hours === 1 ? "1 hour" : `${hours} hours`;
 }
 
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/**
+ * A seasonal cell as an analyst reads it: `Mon 12:00 UTC`.
+ *
+ * The backend keys cells by ISO weekday (1 = Monday) and the UTC hour. A bare
+ * "Weekday 7, hour 12" asks the reader to know both conventions.
+ */
+export function seasonalCellLabel(weekday: number, hour: number): string {
+  const day = WEEKDAYS[weekday - 1];
+  if (!day || !Number.isInteger(hour) || hour < 0 || hour > 23) {
+    return `ISO weekday ${weekday}, hour ${hour} UTC`;
+  }
+  return `${day} ${String(hour).padStart(2, "0")}:00 UTC`;
+}
+
 // --- baseline quality ------------------------------------------------------
 
 export type BaselineStatus =

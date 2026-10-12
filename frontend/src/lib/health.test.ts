@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatAge,
   formatDateTime,
+  formatDateTimeCompact,
   healthMeaning,
   healthTone,
   isUnestablished,
@@ -133,5 +134,23 @@ describe("formatDateTime", () => {
 
   it("renders a valid timestamp", () => {
     expect(formatDateTime("2026-07-20T12:00:00Z")).not.toBe("—");
+  });
+});
+
+describe("timestamps name their timezone", () => {
+  it("renders the instant in UTC and says so, whatever the host timezone", () => {
+    // 23:30 UTC on the 31st is already the next day in UTC+2; a locale
+    // formatter would move the date.
+    expect(formatDateTime("2026-07-31T23:30:05Z")).toBe("2026-07-31 23:30:05 UTC");
+    expect(formatDateTime("2026-08-01T01:30:05+02:00")).toBe("2026-07-31 23:30:05 UTC");
+  });
+
+  it("keeps the timezone in the compact form", () => {
+    expect(formatDateTimeCompact("2026-10-12T09:15:42Z")).toBe("10-12 09:15 UTC");
+  });
+
+  it("renders a dash, not a date, when there is no instant", () => {
+    expect(formatDateTimeCompact(null)).toBe("—");
+    expect(formatDateTimeCompact("not-a-date")).toBe("—");
   });
 });
