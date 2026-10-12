@@ -41,11 +41,27 @@ class LogSourceDTO(ProviderDTO):
     target_event_collector_id: int | None = None
     average_eps: float | None = None
     last_event_time: datetime | None = None
+    qradar_created_at: datetime | None = None
+    qradar_modified_at: datetime | None = None
+    auto_discovered: bool | None = None
+    group_ids: list[int] = Field(default_factory=list)
+    identifier: str | None = None
+    internal: bool | None = None
 
 
 class LogSourceTypeDTO(ProviderDTO):
     type_id: int
     name: str
+    internal: bool = False
+    custom: bool = False
+
+
+class LogSourceGroupDTO(ProviderDTO):
+    qradar_id: int
+    name: str
+    description: str | None = None
+    parent_qradar_id: int | None = None
+    assignable: bool = False
 
 
 class DimensionValueCount(ProviderDTO):

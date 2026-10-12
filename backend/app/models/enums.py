@@ -12,6 +12,40 @@ class Criticality(StrEnum):
     LOW = "LOW"
 
 
+class SourceClass(StrEnum):
+    WAF = "WAF"
+    IPS = "IPS"
+    FIREWALL = "FIREWALL"
+    PROXY = "PROXY"
+    VPN = "VPN"
+    LINUX = "LINUX"
+    WINDOWS = "WINDOWS"
+    NETWORK = "NETWORK"
+    DNS = "DNS"
+    DATABASE = "DATABASE"
+    EMAIL = "EMAIL"
+    ENDPOINT = "ENDPOINT"
+    CLOUD = "CLOUD"
+    IDENTITY = "IDENTITY"
+    APPLICATION = "APPLICATION"
+    QRADAR_INTERNAL = "QRADAR_INTERNAL"
+    OTHER = "OTHER"
+    UNCLASSIFIED = "UNCLASSIFIED"
+
+
+class ClassificationRuleKind(StrEnum):
+    GROUP = "GROUP"
+    TYPE = "TYPE"
+    TYPE_NAME_REGEX = "TYPE_NAME_REGEX"
+    NAME_REGEX = "NAME_REGEX"
+    IDENTIFIER_REGEX = "IDENTIFIER_REGEX"
+
+
+class ClassificationReviewStatus(StrEnum):
+    NEW = "NEW"
+    REVIEWED = "REVIEWED"
+
+
 class Severity(StrEnum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"

@@ -50,6 +50,7 @@ from app.providers.dto import (
     DimensionValueCount,
     InstanceInfoDTO,
     LogSourceDTO,
+    LogSourceGroupDTO,
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
@@ -71,6 +72,7 @@ from app.providers.normalize import (
 )
 from app.providers.telemetry import EndpointCategory, ErrorClass, observe
 from app.providers.tls import build_ssl_context
+from app.security.sanitizer import sanitize_text
 from app.services.backoff import backoff_delay
 
 logger = logging.getLogger("app.providers.qradar_rest")
@@ -121,6 +123,7 @@ class QRadarRestProvider(QRadarProvider):
             ProviderCapability.OFFENSES,
             ProviderCapability.AQL_EXECUTION,
             ProviderCapability.CONFIG_SNAPSHOTS,
+            ProviderCapability.LOG_SOURCE_GROUPS,
         }
     )
     #: Exactly what the one metric aggregate in `get_log_source_metrics`
@@ -412,7 +415,37 @@ class QRadarRestProvider(QRadarProvider):
             name = row.get("name")
             if type_id is None or not isinstance(name, str):
                 continue
-            out.append(LogSourceTypeDTO(type_id=type_id, name=name[:255]))
+            out.append(
+                LogSourceTypeDTO(
+                    type_id=type_id,
+                    name=name[:255],
+                    internal=row.get("internal") is True,
+                    custom=row.get("custom") is True,
+                )
+            )
+        return out
+
+    async def list_log_source_groups(self) -> list[LogSourceGroupDTO]:
+        self.require(ProviderCapability.LOG_SOURCE_GROUPS)
+        rows = await self._paginate(
+            "/config/event_sources/log_source_management/log_source_groups",
+            category=EndpointCategory.LOG_SOURCE_LIST,
+        )
+        out: list[LogSourceGroupDTO] = []
+        for row in rows:
+            qradar_id = as_int(row.get("id"))
+            name = row.get("name")
+            if qradar_id is None or not isinstance(name, str) or not name.strip():
+                continue
+            out.append(
+                LogSourceGroupDTO(
+                    qradar_id=qradar_id,
+                    name=name.strip()[:255],
+                    description=sanitize_text(as_text(row.get("description"), limit=4096)),
+                    parent_qradar_id=as_int(row.get("parent_id")),
+                    assignable=row.get("assignable") is True,
+                )
+            )
         return out
 
     async def get_log_source_metrics(
@@ -1250,6 +1283,11 @@ class QRadarRestProvider(QRadarProvider):
             return None
         raw_type = row.get("type")
         type_info: dict = raw_type if isinstance(raw_type, dict) else {}
+        identifiers = row.get("log_source_identifiers")
+        first_identifier = identifiers[0] if isinstance(identifiers, list) and identifiers else {}
+        identifier = (
+            first_identifier.get("identifier") if isinstance(first_identifier, dict) else None
+        )
         return LogSourceDTO(
             qradar_id=qradar_id,
             name=name.strip()[:255],
@@ -1263,6 +1301,16 @@ class QRadarRestProvider(QRadarProvider):
             target_event_collector_id=as_int(row.get("target_event_collector_id")),
             average_eps=None,
             last_event_time=parse_qradar_time(row.get("last_event_time")),
+            qradar_created_at=parse_qradar_time(row.get("creation_date")),
+            qradar_modified_at=parse_qradar_time(row.get("modified_date")),
+            auto_discovered=(
+                row.get("auto_discovered")
+                if isinstance(row.get("auto_discovered"), bool)
+                else None
+            ),
+            group_ids=as_int_list(row.get("group_ids")),
+            identifier=sanitize_text(as_text(identifier, limit=255)),
+            internal=row.get("internal") if isinstance(row.get("internal"), bool) else None,
         )
 
     @staticmethod

@@ -13,6 +13,12 @@ from app.models.explanation import (
     AnomalyExplanationContributor,
     AnomalyExplanationDimension,
 )
+from app.models.fleet import (
+    ClassificationRule,
+    LogSourceClassification,
+    LogSourceGroup,
+    LogSourceType,
+)
 from app.models.identity import AuditLog, Role, User, user_role
 from app.models.instance import QRadarInstance
 from app.models.log_source import (
@@ -77,6 +83,7 @@ __all__ = [
     "AnomalyStateTransition",
     "AuditLog",
     "Base",
+    "ClassificationRule",
     "CollectionWatermark",
     "ConfigurationChange",
     "ConfigurationSnapshot",
@@ -85,8 +92,11 @@ __all__ = [
     "LogSource",
     "LogSourceAnomaly",
     "LogSourceBaseline",
+    "LogSourceClassification",
     "LogSourceDetectorState",
+    "LogSourceGroup",
     "LogSourceMetric",
+    "LogSourceType",
     "OffenseSnapshot",
     "QRadarInstance",
     "Role",

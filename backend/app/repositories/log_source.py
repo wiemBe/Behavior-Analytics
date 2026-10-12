@@ -45,6 +45,13 @@ class LogSourceRepository:
         )
         return await self.session.scalar(stmt)
 
+    async def by_qradar_id(self, instance_id: uuid.UUID) -> dict[int, LogSource]:
+        """Load an instance's inventory once for a bulk sync."""
+        rows = await self.session.scalars(
+            select(LogSource).where(LogSource.instance_id == instance_id)
+        )
+        return {row.qradar_id: row for row in rows}
+
     async def open_anomaly_counts(self) -> dict[uuid.UUID, int]:
         """Map of log_source_id -> count of active, unsuppressed anomalies."""
         stmt = (

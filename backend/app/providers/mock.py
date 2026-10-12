@@ -17,7 +17,7 @@ import hashlib
 import random
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import ClassVar
+from typing import ClassVar, TypedDict
 
 from app.providers.base import (
     PROPERTY_NAME_PATTERN,
@@ -34,6 +34,7 @@ from app.providers.dto import (
     DimensionValueCount,
     InstanceInfoDTO,
     LogSourceDTO,
+    LogSourceGroupDTO,
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
@@ -48,26 +49,49 @@ from app.providers.dto import (
 )
 
 _LOG_SOURCE_TYPES = [
-    (12, "Cisco ASA"),
-    (13, "Microsoft Windows Security Event Log"),
-    (2, "Linux OS"),
-    (95, "Palo Alto PA Series"),
-    (145, "Okta"),
-    (351, "AWS CloudTrail"),
+    (12, "Cisco ASA", False, False),
+    (13, "Microsoft Windows Security Event Log", False, False),
+    (2, "Linux OS", False, False),
+    (25, "McAfee Network Security Platform", False, False),
+    (95, "Palo Alto PA Series", False, False),
+    (145, "Okta", False, False),
+    (212, "Universal LEEF", False, False),
+    (351, "AWS CloudTrail", False, False),
+    (368, "Health Metrics", True, False),
 ]
+
+class _SourceTemplateFacts(TypedDict, total=False):
+    auto_discovered: bool
+    group_ids: list[int]
+    identifier: str
+    internal: bool
+
 
 # name, type_id, health-shape. The health-shape drives what the mock emits so
 # the detector has deterministic targets.
-_SOURCE_TEMPLATES = [
-    ("fw-edge-01 Cisco ASA", 12, "healthy"),
-    ("fw-edge-02 Cisco ASA", 12, "healthy"),
-    ("dc01 Windows Security", 13, "healthy"),
-    ("dc02 Windows Security", 13, "silent"),          # -> NO_EVENTS
-    ("web-cluster Linux", 2, "volume_drop"),          # -> VOLUME_DROP
-    ("pan-fw-01 Palo Alto", 95, "healthy"),
-    ("okta-prod Okta", 145, "parsing_degraded"),      # -> PARSING_DEGRADATION
-    ("aws-org CloudTrail", 351, "spike"),             # -> VOLUME_SPIKE
-    ("legacy-unix Linux", 2, "disabled"),
+_SOURCE_TEMPLATES: list[tuple[str, int, str, _SourceTemplateFacts]] = [
+    ("fw-edge-01 Cisco ASA", 12, "healthy", {}),
+    ("fw-edge-02 Cisco ASA", 12, "healthy", {}),
+    ("dc01 Windows Security", 13, "healthy", {}),
+    ("dc02 Windows Security", 13, "silent", {}),  # -> NO_EVENTS
+    ("web-cluster Linux", 2, "volume_drop", {}),  # -> VOLUME_DROP
+    ("pan-fw-01 Palo Alto", 95, "healthy", {}),
+    ("okta-prod Okta", 145, "parsing_degraded", {}),  # -> PARSING_DEGRADATION
+    ("aws-org CloudTrail", 351, "spike", {}),  # -> VOLUME_SPIKE
+    ("legacy-unix Linux", 2, "disabled", {}),
+    (
+        "dmz-waf-01",
+        212,
+        "healthy",
+        {"auto_discovered": True, "group_ids": [20]},
+    ),
+    ("linux-auth-01", 25, "healthy", {"group_ids": [20]}),
+    (
+        "Health Metrics-2 :: mock",
+        368,
+        "healthy",
+        {"identifier": "127.0.0.1", "internal": True},
+    ),
 ]
 
 
@@ -78,6 +102,7 @@ class MockQRadarProvider(QRadarProvider):
             ProviderCapability.OFFENSES,
             ProviderCapability.AQL_EXECUTION,
             ProviderCapability.CONFIG_SNAPSHOTS,
+            ProviderCapability.LOG_SOURCE_GROUPS,
         }
     )
     #: Synthetic, but genuinely varied per shape, so dev and tests can exercise
@@ -107,8 +132,9 @@ class MockQRadarProvider(QRadarProvider):
 
     async def list_log_sources(self) -> list[LogSourceDTO]:
         out: list[LogSourceDTO] = []
-        for idx, (name, type_id, shape) in enumerate(_SOURCE_TEMPLATES, start=1):
-            type_name = dict(_LOG_SOURCE_TYPES).get(type_id)
+        type_names = {type_id: name for type_id, name, _internal, _custom in _LOG_SOURCE_TYPES}
+        for idx, (name, type_id, shape, facts) in enumerate(_SOURCE_TEMPLATES, start=1):
+            type_name = type_names.get(type_id)
             enabled = shape != "disabled"
             avg_eps, last_event = self._shape_liveness(shape)
             out.append(
@@ -125,6 +151,12 @@ class MockQRadarProvider(QRadarProvider):
                     target_event_collector_id=1,
                     average_eps=avg_eps,
                     last_event_time=last_event,
+                    qradar_created_at=self._now - timedelta(days=90 - idx),
+                    qradar_modified_at=self._now - timedelta(days=idx),
+                    auto_discovered=facts.get("auto_discovered", False),
+                    group_ids=facts.get("group_ids", [10]),
+                    identifier=facts.get("identifier", name.split()[0]),
+                    internal=facts.get("internal", False),
                 )
             )
         return out
@@ -150,7 +182,33 @@ class MockQRadarProvider(QRadarProvider):
         return None
 
     async def list_log_source_types(self) -> list[LogSourceTypeDTO]:
-        return [LogSourceTypeDTO(type_id=t, name=n) for t, n in _LOG_SOURCE_TYPES]
+        return [
+            LogSourceTypeDTO(type_id=t, name=n, internal=internal, custom=custom)
+            for t, n, internal, custom in _LOG_SOURCE_TYPES
+        ]
+
+    async def list_log_source_groups(self) -> list[LogSourceGroupDTO]:
+        return [
+            LogSourceGroupDTO(
+                qradar_id=10,
+                name="Production",
+                parent_qradar_id=0,
+                assignable=False,
+            ),
+            LogSourceGroupDTO(
+                qradar_id=20,
+                name="DMZ",
+                description="Internet-facing systems",
+                parent_qradar_id=10,
+                assignable=True,
+            ),
+            LogSourceGroupDTO(
+                qradar_id=0,
+                name="Other",
+                parent_qradar_id=10,
+                assignable=False,
+            ),
+        ]
 
     async def get_log_source_metrics(
         self, window_start: datetime, window_end: datetime
@@ -165,7 +223,7 @@ class MockQRadarProvider(QRadarProvider):
         """
         bucket_seconds = int((window_end - window_start).total_seconds()) or 300
         samples: list[LogSourceMetricSample] = []
-        for idx, (_name, _type_id, shape) in enumerate(_SOURCE_TEMPLATES, start=1):
+        for idx, (_name, _type_id, shape, _facts) in enumerate(_SOURCE_TEMPLATES, start=1):
             qid = 1000 + idx
             base_eps = self._seasonal_eps(window_start, shape)
             sample = self._build_sample(qid, window_start, bucket_seconds, base_eps, shape)

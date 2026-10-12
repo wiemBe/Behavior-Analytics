@@ -30,6 +30,7 @@ from app.providers.dto import (
     DimensionAggregate,
     InstanceInfoDTO,
     LogSourceDTO,
+    LogSourceGroupDTO,
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
@@ -63,6 +64,7 @@ class ProviderCapability(StrEnum):
     OFFENSES = "OFFENSES"
     AQL_EXECUTION = "AQL_EXECUTION"  # create/poll/fetch Ariel searches
     CONFIG_SNAPSHOTS = "CONFIG_SNAPSHOTS"
+    LOG_SOURCE_GROUPS = "LOG_SOURCE_GROUPS"
 
 
 class LogSourceTelemetry(StrEnum):
@@ -181,6 +183,13 @@ class QRadarProvider(ABC):
     @abstractmethod
     async def list_log_source_types(self) -> list[LogSourceTypeDTO]:
         ...
+
+    async def list_log_source_groups(self) -> list[LogSourceGroupDTO]:
+        """Log-source group hierarchy, when exposed by the backend."""
+        self.require(ProviderCapability.LOG_SOURCE_GROUPS)
+        raise CapabilityNotSupportedError(
+            f"{type(self).__name__} does not support log-source groups"
+        )
 
     async def get_log_source_metrics(
         self, window_start: datetime, window_end: datetime

@@ -166,6 +166,8 @@ class Settings(BaseSettings):
     # Full inventory pass; log sources are added and renamed rarely, so this is
     # deliberately far less frequent than metric collection.
     log_source_sync_interval_seconds: int = Field(default=3600, ge=60)
+    # New, non-internal inventory rows open a deduplicated review alert.
+    inventory_new_source_alerts_enabled: bool = True
 
     # --- Offense collection (Phase 3) ---------------------------------------
     offense_collection_interval_seconds: int = Field(default=300, ge=60)
