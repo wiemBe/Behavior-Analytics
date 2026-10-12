@@ -217,6 +217,16 @@ T-034 therefore gates only `ANOMALY_EXPLANATION`, which has no buckets.
 - One keyed search per tick, `GROUP BY creEventList, starttime / {window_ms}`. Every window
   keeps its own `rule_match_window` row and completeness, as today.
 - Counts are never summed across rule ids (T-032 Q6).
+- Windows per run are `ceil(cadence / window) + rule_match_max_windows_per_run - 1`. When the
+  cadence is no longer than the window, that is exactly today's per-run count.
+- A failed multi-window search splits first and charges no window. Only a single-window failure
+  counts an attempt. A down appliance costs at most `2n - 1` failing searches per tick.
+
+**Asymmetry to settle in live validation.** On a failed (not truncated) multi-bucket search,
+Phase A stops the tick and keeps the complete prefix, while rule matches split. If live runs
+show wide searches timing out on a busy console, Phase A would hold its watermark and never
+progress. In that case, give Phase A the same split-on-failure, bounded by
+`search_cadence_max_searches_per_tick`.
 
 **Scheduled searches**
 - The editor offers the seven presets as cron. A new search defaults to 1 h.
