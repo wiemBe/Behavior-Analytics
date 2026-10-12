@@ -14,8 +14,7 @@ Neither table has a backfill: nothing was measured before this revision, and an
 empty `rule_match_window` is exactly how that reads. No retention or compression
 policy is set here, matching 0001, 0002 and 0005.
 
-`down_revision` is '0010' while T-022's '0011' is unmerged; the orchestrator
-re-chains it at merge.
+Chained after 0011 (Phase C.1, log-source fleet).
 """
 from __future__ import annotations
 
@@ -26,7 +25,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = '0012'
-down_revision: str | None = '0010'
+down_revision: str | None = '0011'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
