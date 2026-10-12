@@ -18,6 +18,7 @@ from app.api.routes import (
     search_cadence,
     searches,
     waf,
+    waf_catalog,
 )
 from app.security.rbac import (
     PERM_ALERT_READ,
@@ -82,3 +83,5 @@ api_router.include_router(
 # WAF collection operations. Administrative rather than analytical, so it needs
 # `admin:waf`; the `read:*` wildcard does not satisfy it.
 api_router.include_router(waf.router, dependencies=[Depends(requires(PERM_WAF_ADMIN))])
+# The mapping editor's property-name catalog: names only, read-only, same admin:waf guard.
+api_router.include_router(waf_catalog.router, dependencies=[Depends(requires(PERM_WAF_ADMIN))])

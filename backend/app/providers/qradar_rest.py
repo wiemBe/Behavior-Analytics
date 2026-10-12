@@ -50,6 +50,7 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CustomPropertyDTO,
     DimensionAggregate,
     DimensionValueCount,
     InstanceInfoDTO,
@@ -193,6 +194,7 @@ class QRadarRestProvider(QRadarProvider):
             ProviderCapability.AQL_EXECUTION,
             ProviderCapability.CONFIG_SNAPSHOTS,
             ProviderCapability.LOG_SOURCE_GROUPS,
+            ProviderCapability.CUSTOM_PROPERTY_CATALOG,
         }
     )
     #: Exactly what the one metric aggregate in `get_log_source_metrics`
@@ -513,6 +515,68 @@ class QRadarRestProvider(QRadarProvider):
                     description=sanitize_text(as_text(row.get("description"), limit=4096)),
                     parent_qradar_id=as_int(row.get("parent_id")),
                     assignable=row.get("assignable") is True,
+                )
+            )
+        return out
+
+    async def list_custom_properties(
+        self, *, log_source_type_id: int | None = None
+    ) -> list[CustomPropertyDTO]:
+        """Join regex properties to the types their enabled expressions cover.
+
+        Two slim GETs, always with `fields=` so no regex or payload body is ever
+        requested (a full row is ~1.4 KB against ~140 B). Only enabled expressions
+        that cover a whole type (`log_source_id == -1`) count.
+        """
+        self.require(ProviderCapability.CUSTOM_PROPERTY_CATALOG)
+        base = "/config/event_sources/custom_properties"
+        props = await self._paginate(
+            f"{base}/regex_properties",
+            category=EndpointCategory.LOG_SOURCE_LIST,
+            params={
+                "fields": "id,identifier,name,property_type,use_for_rule_engine,auto_discovered"
+            },
+        )
+        expr_params = {
+            "fields": "regex_property_identifier,log_source_type_id,log_source_id,enabled"
+        }
+        if log_source_type_id is not None:
+            expr_params["filter"] = f"log_source_type_id={int(log_source_type_id)}"
+        exprs = await self._paginate(
+            f"{base}/property_expressions",
+            category=EndpointCategory.LOG_SOURCE_LIST,
+            params=expr_params,
+        )
+        types_by_identifier: dict[str, set[int]] = {}
+        for expr in exprs:
+            identifier = expr.get("regex_property_identifier")
+            type_id = as_int(expr.get("log_source_type_id"))
+            if (
+                not isinstance(identifier, str)
+                or type_id is None
+                or expr.get("enabled") is not True
+                or as_int(expr.get("log_source_id")) != -1
+            ):
+                continue
+            types_by_identifier.setdefault(identifier, set()).add(type_id)
+
+        out: list[CustomPropertyDTO] = []
+        for row in props:
+            qradar_id = as_int(row.get("id"))
+            identifier = row.get("identifier")
+            name = row.get("name")
+            if qradar_id is None or not isinstance(identifier, str) or not isinstance(name, str):
+                continue
+            out.append(
+                CustomPropertyDTO(
+                    qradar_id=qradar_id,
+                    identifier=identifier,
+                    name=name,
+                    property_type=str(row.get("property_type") or "string")[:32],
+                    use_for_rule_engine=row.get("use_for_rule_engine") is True,
+                    auto_discovered=row.get("auto_discovered") is True,
+                    log_source_type_ids=tuple(sorted(types_by_identifier.get(identifier, ()))),
+                    name_allowed=PROPERTY_NAME_PATTERN.match(name) is not None,
                 )
             )
         return out
