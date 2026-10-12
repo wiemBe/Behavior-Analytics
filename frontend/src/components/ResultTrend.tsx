@@ -18,6 +18,9 @@ import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { actionErrorMessage, api, type ResultMetricPoint, type SearchResultTrend } from "@/lib/api";
+import { readChartPalette } from "@/lib/chartPalette";
+import { formatDateTime } from "@/lib/health";
+import { axisTimeLabel, formatRunDuration, isolatedIndices, trendRows } from "@/lib/searchRuns";
 
 import type { EChartsOption } from "echarts";
 
@@ -35,18 +38,22 @@ echarts.use([
 
 const FAILED_STATUSES = new Set(["FAILED", "TIMEOUT", "CANCELLED"]);
 
-function formatDuration(ms: number | null): string {
-  if (ms == null) return "—";
-  return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${ms} ms`;
-}
-
 /** Indices where the query version changes — results either side of an AQL
  *  change are not comparable, so the chart must say where the break is. */
 function versionBoundaries(points: ResultMetricPoint[]): ResultMetricPoint[] {
   return points.filter((p, i) => i > 0 && p.query_version !== points[i - 1].query_version);
 }
 
-export function ResultTrend({ searchId, metricKey = "total" }: { searchId: string; metricKey?: string }) {
+export function ResultTrend({
+  searchId,
+  metricKey = "total",
+  truncatedAt = [],
+}: {
+  searchId: string;
+  metricKey?: string;
+  /** Times of truncated runs. They have no stored point; each becomes a gap. */
+  truncatedAt?: string[];
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
 
@@ -76,6 +83,15 @@ export function ResultTrend({ searchId, metricKey = "total" }: { searchId: strin
     };
   }, [searchId, metricKey]);
 
+  // A new array identity on every render would rebuild the chart each time;
+  // the times themselves are what the chart depends on.
+  const truncatedKey = truncatedAt.join("|");
+  const rows = useMemo(
+    () => (trend ? trendRows(trend.points, truncatedKey ? truncatedKey.split("|") : []) : []),
+    [trend, truncatedKey],
+  );
+  const gapCount = rows.filter((r) => r.point === null).length;
+
   const option = useMemo<EChartsOption | null>(() => {
     if (!trend || trend.points.length === 0) return null;
     const points = trend.points;
@@ -83,36 +99,58 @@ export function ResultTrend({ searchId, metricKey = "total" }: { searchId: strin
     // A failed run has no trustworthy count. Plotting it as 0 would invent a
     // cliff that never happened, so the line is broken with null and the run is
     // marked separately.
-    const values = points.map((p) => (FAILED_STATUSES.has(p.execution_status) ? null : p.value));
+    //
+    // A truncated run has no point at all (its count is a cap, not a
+    // measurement), so its row is null too. connectNulls stays false, which is
+    // what breaks the line there instead of bridging the neighbours.
+    const values = rows.map((r) =>
+      r.point === null || FAILED_STATUSES.has(r.point.execution_status) ? null : r.point.value,
+    );
 
-    const failures = points
-      .map((p, i) => (FAILED_STATUSES.has(p.execution_status) ? { coord: [i, 0], value: p.execution_status } : null))
+    const failures = rows
+      .map((r, i) =>
+        r.point !== null && FAILED_STATUSES.has(r.point.execution_status)
+          ? { coord: [i, 0], value: r.point.execution_status }
+          : null,
+      )
       .filter((x): x is { coord: number[]; value: string } => x !== null);
 
     const boundaries = versionBoundaries(points);
+    const c = readChartPalette();
+    const text = { color: c.label, fontFamily: c.font };
+    const lone = isolatedIndices(values);
 
     return {
-      grid: { left: 56, right: 24, top: 32, bottom: 48 },
-      textStyle: { color: "#8b98b0" },
+      grid: { left: 56, right: 24, top: 32, bottom: 56 },
+      textStyle: text,
       tooltip: {
         trigger: "axis",
-        backgroundColor: "#131a2a",
-        borderColor: "#263048",
-        textStyle: { color: "#e6edf7" },
+        backgroundColor: c.tooltipBg,
+        borderColor: c.tooltipBorder,
+        textStyle: { color: c.tooltipText, fontFamily: c.font },
+        extraCssText: "box-shadow: none;",
         formatter: (params: unknown) => {
           const list = Array.isArray(params) ? params : [params];
           const first = list[0] as { dataIndex?: number } | undefined;
           const idx = first?.dataIndex;
-          if (idx == null || !points[idx]) return "";
-          const p = points[idx];
+          if (idx == null || !rows[idx]) return "";
+          const row = rows[idx];
+          if (row.point === null) {
+            return [
+              formatDateTime(row.at),
+              "Truncated run: no result count recorded",
+              "The search hit its row cap, so only a lower bound exists",
+            ].join("<br/>");
+          }
+          const p = row.point;
           const count = FAILED_STATUSES.has(p.execution_status)
             ? "no result (run failed)"
             : String(p.value);
           return [
-            new Date(p.bucket_start).toLocaleString(),
+            formatDateTime(p.bucket_start),
             `Result count: ${count}`,
             `Status: ${p.execution_status}`,
-            `Duration: ${formatDuration(p.duration_ms)}`,
+            `Duration: ${formatRunDuration(p.duration_ms)}`,
             `Query version: v${p.query_version}`,
             p.threshold_breached ? "Threshold: breached" : "",
           ]
@@ -122,15 +160,22 @@ export function ResultTrend({ searchId, metricKey = "total" }: { searchId: strin
       },
       xAxis: {
         type: "category",
-        data: points.map((p) => new Date(p.bucket_start).toLocaleString()),
-        axisLine: { lineStyle: { color: "#263048" } },
-        axisLabel: { show: false },
+        data: rows.map((r) => axisTimeLabel(r.at)),
+        name: "Time (UTC)",
+        nameLocation: "middle",
+        nameGap: 32,
+        nameTextStyle: text,
+        axisLine: { lineStyle: { color: c.axis } },
+        axisLabel: { ...text, hideOverlap: true },
       },
       yAxis: {
         type: "value",
-        name: metricKey,
-        splitLine: { lineStyle: { color: "#1a2336" } },
-        axisLine: { lineStyle: { color: "#263048" } },
+        name: metricKey === "total" ? "Result rows" : metricKey,
+        nameTextStyle: { ...text, align: "left" },
+        min: 0,
+        splitLine: { lineStyle: { color: c.grid } },
+        axisLine: { lineStyle: { color: c.axis } },
+        axisLabel: text,
       },
       series: [
         {
@@ -139,52 +184,69 @@ export function ResultTrend({ searchId, metricKey = "total" }: { searchId: strin
           data: values,
           // Leave a visible gap rather than bridging a failed run.
           connectNulls: false,
-          showSymbol: true,
-          symbolSize: 6,
-          lineStyle: { color: "#4f8cff", width: 2 },
-          itemStyle: { color: "#4f8cff" },
+          // No marker on every point: a dense series reads as a string of
+          // beads. A point with no measured neighbour would be invisible as a
+          // line, so only those get a mark (below).
+          showSymbol: false,
+          lineStyle: { color: c.observed, width: 1.5 },
+          itemStyle: { color: c.observed },
           markLine: boundaries.length
             ? {
                 silent: true,
                 symbol: "none",
                 label: {
                   formatter: (p: { name?: string }) => p.name ?? "",
-                  color: "#d29922",
+                  color: c.warn,
                   position: "insideEndTop",
                 },
-                lineStyle: { color: "#d29922", type: "dashed" },
+                lineStyle: { color: c.warn, type: "dashed" },
                 data: boundaries.map((b) => ({
-                  xAxis: points.indexOf(b),
+                  xAxis: rows.findIndex((r) => r.point === b),
                   name: `v${b.query_version}`,
                 })),
               }
             : undefined,
-          markPoint: failures.length
-            ? {
-                symbol: "pin",
-                symbolSize: 34,
-                itemStyle: { color: "#f85149" },
-                label: { color: "#ffffff", fontSize: 9, formatter: "fail" },
-                data: failures.map((f) => ({ coord: f.coord, name: f.value })),
-              }
-            : undefined,
+          markPoint:
+            failures.length || lone.length
+              ? {
+                  silent: true,
+                  label: { show: false },
+                  data: [
+                    ...lone.map((i) => ({
+                      name: "Measured run between gaps",
+                      coord: [i, values[i] as number],
+                      symbol: "circle",
+                      symbolSize: 5,
+                      itemStyle: { color: c.observed },
+                    })),
+                    ...failures.map((f) => ({
+                      name: f.value,
+                      coord: f.coord,
+                      symbol: "pin",
+                      symbolSize: 44,
+                      itemStyle: { color: c.crit },
+                      label: { show: true, color: c.tooltipText, fontSize: 12, formatter: "fail" },
+                    })),
+                  ],
+                }
+              : undefined,
         },
         ...(trend.threshold_value != null
           ? [
               {
                 type: "line" as const,
                 name: "threshold",
-                data: points.map(() => trend.threshold_value),
+                data: rows.map(() => trend.threshold_value),
                 showSymbol: false,
-                lineStyle: { color: "#f85149", type: "dotted" as const, width: 1 },
-                itemStyle: { color: "#f85149" },
+                lineStyle: { color: c.crit, type: "dotted" as const, width: 1 },
+                itemStyle: { color: c.crit },
                 tooltip: { show: false },
               },
             ]
           : []),
       ],
     };
-  }, [trend, metricKey]);
+  }, [trend, metricKey, rows]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -234,6 +296,9 @@ export function ResultTrend({ searchId, metricKey = "total" }: { searchId: strin
           : ""}
         {versionBoundaries(trend.points).length > 0
           ? " · dashed lines mark query-version changes; results across versions are not comparable"
+          : ""}
+        {gapCount > 0
+          ? ` · ${gapCount} truncated run${gapCount === 1 ? "" : "s"} left a gap: no count was stored, so the line is broken there`
           : ""}
       </p>
     </>

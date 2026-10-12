@@ -168,4 +168,140 @@ describe("ResultTrend", () => {
     expect(option.series.map((s) => s.name)).toContain("threshold");
     expect(screen.getByText(/threshold GT 50/)).toBeInTheDocument();
   });
+
+  it("draws a truncated run as a gap: no value, no zero, no bridge", async () => {
+    vi.spyOn(api, "searchResults").mockResolvedValue(
+      trend({
+        points: [
+          point({ bucket_start: "2026-07-20T10:00:00Z", value: 100 }),
+          point({ bucket_start: "2026-07-20T12:00:00Z", value: 120 }),
+        ],
+      }),
+    );
+    render(<ResultTrend searchId="s-1" truncatedAt={["2026-07-20T11:00:00Z"]} />);
+
+    await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
+    const option = setOption.mock.calls[0][0] as {
+      series: { data: (number | null)[]; connectNulls?: boolean }[];
+      xAxis: { data: string[] };
+    };
+    expect(option.series[0].data).toEqual([100, null, 120]);
+    expect(option.series[0].data).not.toContain(0);
+    expect(option.series[0].connectNulls).toBe(false);
+    expect(option.xAxis.data).toHaveLength(3);
+    expect(screen.getByText(/1 truncated run left a gap/i)).toBeInTheDocument();
+  });
+
+  it("keeps the version-boundary marker on the right point after a gap", async () => {
+    vi.spyOn(api, "searchResults").mockResolvedValue(
+      trend({
+        points: [
+          point({ bucket_start: "2026-07-20T10:00:00Z", query_version: 1 }),
+          point({ bucket_start: "2026-07-20T12:00:00Z", query_version: 2, query_version_id: "v-2" }),
+        ],
+      }),
+    );
+    render(<ResultTrend searchId="s-1" truncatedAt={["2026-07-20T11:00:00Z"]} />);
+
+    await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
+    const option = setOption.mock.calls[0][0] as {
+      series: { markLine?: { data: { xAxis: number }[] } }[];
+    };
+    // The gap occupies index 1, so v2 starts at index 2.
+    expect(option.series[0].markLine?.data[0].xAxis).toBe(2);
+  });
+
+  it("says nothing about gaps when no run was truncated", async () => {
+    vi.spyOn(api, "searchResults").mockResolvedValue(trend());
+    render(<ResultTrend searchId="s-1" />);
+    await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/truncated run/i)).not.toBeInTheDocument();
+  });
+
+  describe("chart presentation", () => {
+    type Opt = {
+      xAxis: { name: string; data: string[]; axisLabel: { show?: boolean } };
+      yAxis: { name: string; min: number };
+      series: {
+        name: string;
+        showSymbol?: boolean;
+        markPoint?: { data: { coord: number[]; symbol: string }[] };
+      }[];
+    };
+    const lastOption = () => setOption.mock.calls[0][0] as Opt;
+
+    it("labels the x-axis with UTC times and says UTC in its title", async () => {
+      vi.spyOn(api, "searchResults").mockResolvedValue(
+        trend({ points: [point({ bucket_start: "2026-07-20T10:05:00Z" })] }),
+      );
+      render(<ResultTrend searchId="s-1" />);
+      await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
+      expect(lastOption().xAxis.axisLabel.show).not.toBe(false);
+      expect(lastOption().xAxis.data).toEqual(["07-20 10:05"]);
+      expect(lastOption().xAxis.name).toMatch(/UTC/);
+    });
+
+    it("names the value axis as result rows and starts it at zero", async () => {
+      vi.spyOn(api, "searchResults").mockResolvedValue(trend());
+      render(<ResultTrend searchId="s-1" />);
+      await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
+      expect(lastOption().yAxis.name).toMatch(/result rows/i);
+      expect(lastOption().yAxis.min).toBe(0);
+    });
+
+    it("draws a clean line with no marker on every point", async () => {
+      vi.spyOn(api, "searchResults").mockResolvedValue(
+        trend({
+          points: [
+            point({ bucket_start: "2026-07-20T10:00:00Z" }),
+            point({ bucket_start: "2026-07-20T11:00:00Z" }),
+          ],
+        }),
+      );
+      render(<ResultTrend searchId="s-1" />);
+      await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
+      expect(lastOption().series[0].showSymbol).toBe(false);
+      expect(lastOption().series[0].markPoint).toBeUndefined();
+    });
+
+    it("marks only a point isolated between gaps, which a line cannot show", async () => {
+      vi.spyOn(api, "searchResults").mockResolvedValue(
+        trend({
+          points: [
+            point({ bucket_start: "2026-07-20T10:00:00Z" }),
+            point({ bucket_start: "2026-07-20T11:00:00Z" }),
+            point({ bucket_start: "2026-07-20T13:00:00Z" }),
+          ],
+        }),
+      );
+      render(<ResultTrend searchId="s-1" truncatedAt={["2026-07-20T12:00:00Z"]} />);
+      await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
+      const marks = lastOption().series[0].markPoint?.data ?? [];
+      expect(marks).toHaveLength(1);
+      expect(marks[0].coord[0]).toBe(3);
+    });
+
+    it("takes every colour from the tokens, never from a literal", async () => {
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({
+        getPropertyValue: (name: string) => `token(${name})`,
+      } as unknown as CSSStyleDeclaration);
+      vi.spyOn(api, "searchResults").mockResolvedValue(
+        trend({
+          threshold_value: 50,
+          points: [
+            point({ bucket_start: "2026-07-20T10:00:00Z", query_version: 1 }),
+            point({ bucket_start: "2026-07-20T11:00:00Z", query_version: 2, query_version_id: "v-2" }),
+            point({ bucket_start: "2026-07-20T12:00:00Z", execution_status: "FAILED" }),
+          ],
+        }),
+      );
+      render(<ResultTrend searchId="s-1" />);
+      await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
+      const json = JSON.stringify(lastOption());
+      expect(json).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
+      expect(json).toContain("token(--chart-observed)");
+      expect(json).toContain("token(--crit)");
+      expect(json).toContain("token(--warn)");
+    });
+  });
 });

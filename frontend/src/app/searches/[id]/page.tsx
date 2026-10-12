@@ -1,12 +1,18 @@
+import type { Metadata } from "next";
+
 import { ResultTrend } from "@/components/ResultTrend";
 import { RunSearchButton } from "@/components/RunSearchButton";
+import { ExecutionsTable } from "@/components/searches/ExecutionsTable";
+import { ScheduleControl } from "@/components/searches/ScheduleControl";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type SearchExecution } from "@/lib/api";
+import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { truncatedRunTimes } from "@/lib/searchRuns";
 
-function execTone(status: string): string {
-  if (status === "COMPLETED") return "ok";
-  if (status === "FAILED" || status === "TIMEOUT") return "crit";
-  return "warn";
-}
+export const metadata: Metadata = {
+  title: "Search",
+};
 
 export default async function SearchDetailPage({
   params,
@@ -26,91 +32,99 @@ export default async function SearchDetailPage({
   } catch {
     return (
       <>
-        <h2>Search Detail</h2>
-        <div className="notice">Could not load search {id}.</div>
+        <PageHeader title="Search detail" />
+        <div className="notice" role="alert">
+          <p>
+            <strong>Search {id} could not be loaded.</strong>
+          </p>
+          <p>It may have been removed, or the backend may be unreachable. Reload the page to try again.</p>
+        </div>
       </>
     );
   }
 
   return (
     <>
-      <div className="actions" style={{ justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>{search.name}</h2>
-        <RunSearchButton searchId={search.id} />
-      </div>
-      <p className="subtitle">
-        {search.category ?? "uncategorised"} · severity {search.severity} · v
-        {search.query_version} · <code>{search.schedule_cron}</code>
-        {search.next_run_at ? ` · next run ${new Date(search.next_run_at).toLocaleString()}` : ""}
-      </p>
+      <PageHeader
+        title={search.name}
+        description={
+          <>
+            {search.category ?? "uncategorised"} · severity {search.severity} · v
+            {search.query_version}
+            {search.next_run_at ? ` · next run ${formatDateTime(search.next_run_at)}` : ""}
+          </>
+        }
+        actions={<RunSearchButton searchId={search.id} />}
+      />
 
-      <div className="card">
-        <div className="k">Current AQL (v{search.query_version})</div>
-        <pre style={{ whiteSpace: "pre-wrap", margin: "8px 0 0" }}>{search.aql_query}</pre>
-      </div>
+      <>
+        <section aria-labelledby="schedule-title">
+          <h2 id="schedule-title" className="section-title">
+            Schedule
+          </h2>
+          <ScheduleControl searchId={search.id} cron={search.schedule_cron} />
+        </section>
 
-      <h3 style={{ marginTop: 24 }}>Execution History</h3>
-      {executions.length === 0 ? (
-        <div className="notice">No executions yet.</div>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Started</th>
-              <th>Status</th>
-              <th>Trigger</th>
-              <th>Ver</th>
-              <th>Duration</th>
-              <th>Results</th>
-              <th>Retries</th>
-              <th>Threshold</th>
-              <th>Error</th>
-            </tr>
-          </thead>
-          <tbody>
-            {executions.map((e) => (
-              <tr key={e.id}>
-                <td>{e.started_at ? new Date(e.started_at).toLocaleString() : "—"}</td>
-                <td><span className={`pill ${execTone(e.status)}`}>{e.status}</span></td>
-                <td>{e.trigger}</td>
-                <td>v{e.query_version}</td>
-                <td>{e.duration_ms != null ? `${e.duration_ms} ms` : "—"}</td>
-                <td>{e.result_count ?? "—"}{e.truncated ? " (trunc)" : ""}</td>
-                <td>{e.retry_count}</td>
-                <td>{e.threshold_breached ? <span className="pill crit">breached</span> : "—"}</td>
-                <td>{e.error_type ? <span className="pill crit">{e.error_type}</span> : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+        <section aria-labelledby="aql-title">
+          <h2 id="aql-title" className="section-title">
+            Current AQL (v{search.query_version})
+          </h2>
+          <div className="card">
+            <pre>{search.aql_query}</pre>
+          </div>
+        </section>
 
-      <h3 style={{ marginTop: 24 }}>Query Version History</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Version</th>
-            <th>Changed by</th>
-            <th>Note</th>
-            <th>When</th>
-          </tr>
-        </thead>
-        <tbody>
-          {versions.map((v) => (
-            <tr key={v.version}>
-              <td>v{v.version}</td>
-              <td>{v.changed_by ?? "—"}</td>
-              <td>{v.change_note ?? "—"}</td>
-              <td>{new Date(v.created_at).toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        <section aria-labelledby="exec-title">
+          <h2 id="exec-title" className="section-title">
+            Execution history
+          </h2>
+          {executions.length === 0 ? (
+            <div className="notice">
+              No executions yet. The first appears after this search runs on its schedule or is run
+              now.
+            </div>
+          ) : (
+            <ExecutionsTable executions={executions} />
+          )}
+        </section>
 
-      <h3 style={{ marginTop: 24 }}>Result Trend</h3>
-      <div className="card">
-        <ResultTrend searchId={search.id} />
-      </div>
+        <section aria-labelledby="versions-title">
+          <h2 id="versions-title" className="section-title">
+            Query version history
+          </h2>
+          <TableScroll label="Query version history">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Version</th>
+                  <th scope="col">Changed by</th>
+                  <th scope="col">Note</th>
+                  <th scope="col">When (UTC)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {versions.map((v) => (
+                  <tr key={v.version}>
+                    <td>v{v.version}</td>
+                    <td>{v.changed_by ?? "—"}</td>
+                    <td>{v.change_note ?? "—"}</td>
+                    <td>{formatDateTimeCompact(v.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        </section>
+
+        <section aria-labelledby="trend-title">
+          <h2 id="trend-title" className="section-title">
+            Result trend
+          </h2>
+          <div className="card">
+            <ResultTrend searchId={search.id} truncatedAt={truncatedRunTimes(executions)} />
+          </div>
+        </section>
+      </>
     </>
   );
 }

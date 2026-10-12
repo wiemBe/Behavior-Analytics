@@ -17,6 +17,10 @@ export const CHART_TOKENS = {
   gap: "--chart-gap",
   anomaly: "--chart-anomaly",
   marker: "--chart-marker",
+  // Status hues, for marks that ARE those statuses: a failed run, a breached
+  // threshold, a query-version change.
+  crit: "--crit",
+  warn: "--warn",
   tooltipBg: "--chart-tooltip-bg",
   tooltipBorder: "--chart-tooltip-border",
   tooltipText: "--chart-tooltip-text",

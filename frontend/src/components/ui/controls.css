@@ -1,0 +1,130 @@
+/* Controls that change a stored setting in place: the select, the line that
+ * reports its outcome, and the notes under a table. Built from tokens only. */
+
+.select-control {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+  max-width: 100%;
+}
+.select-control:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* The outcome of a change, on the line under the control. The words carry the
+   meaning ("Not changed", "Saved"); the tone only reinforces them. */
+.change-status {
+  margin: var(--sp-1) 0 0;
+  max-width: 30ch;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.change-status.ok {
+  color: var(--ok-text);
+}
+.change-status.crit {
+  color: var(--crit-text);
+}
+
+/* A second line in a table cell: the scope under a name, the bound under a
+   figure. */
+.cell-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-base);
+  color: var(--text-3);
+}
+th .cell-sub {
+  white-space: normal;
+}
+
+/* A family or setting name with its scope beneath. Words wrap at spaces; the
+   floor keeps the column from collapsing into one word per line. */
+td.cell-family {
+  min-width: 14ch;
+}
+td.cell-family .cell-sub {
+  max-width: 28ch;
+}
+
+/* The cadence column holds a select and its outcome line. */
+.cadence-cell {
+  min-width: 0;
+}
+
+/* What a column header means, when the header alone would be ambiguous. */
+.table-notes {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+  max-width: 96ch;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+
+.setting-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-5);
+}
+.setting-line > * {
+  min-width: 0;
+}
+
+.admin-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-3);
+}
+
+/* A cron expression is one token: it never wraps inside itself. */
+.cron {
+  white-space: nowrap;
+}
+
+/* A table that must fit its column without scrolling at 1024 px: tighter
+   horizontal padding, and numeric cells may wrap at spaces. Figures that must
+   stay whole (times) carry `.nowrap`. */
+.table-dense th,
+.table-dense td {
+  padding: var(--sp-3) var(--sp-2);
+}
+.table-dense td.num {
+  white-space: normal;
+}
+.nowrap {
+  white-space: nowrap;
+}
+
+/* A change status rendered as its own row, attached to the row above it. */
+.has-status td {
+  border-bottom: none;
+}
+.status-row td {
+  padding-top: 0;
+  padding-bottom: var(--sp-3);
+}
+.status-row .change-status {
+  margin: 0;
+  max-width: none;
+}
+/* A permission name is one token: it never breaks inside itself. */
+.perm {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}

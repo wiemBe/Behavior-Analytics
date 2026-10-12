@@ -46,6 +46,10 @@ export const NAV: NavGroup[] = [
       { href: "/", label: "SOC Overview" },
     ],
   },
+  {
+    label: "Administration",
+    items: [{ href: "/admin/search-cadence", label: "Search cadence" }],
+  },
 ];
 
 /**

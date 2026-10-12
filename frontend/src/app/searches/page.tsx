@@ -1,3 +1,5 @@
+import { ScheduleLabel } from "@/components/searches/ScheduleLabel";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type ScheduledSearch } from "@/lib/api";
 
 export default async function SearchCatalogPage() {
@@ -22,34 +24,38 @@ export default async function SearchCatalogPage() {
       ) : searches.length === 0 ? (
         <div className="notice">No scheduled searches defined yet.</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Category</th>
-              <th>MITRE</th>
-              <th>Schedule</th>
-              <th>Severity</th>
-              <th>Ver</th>
-              <th>Enabled</th>
-            </tr>
-          </thead>
-          <tbody>
-            {searches.map((s) => (
-              <tr key={s.id}>
-                <td>
-                  <a href={`/searches/${s.id}`}>{s.name}</a>
-                </td>
-                <td>{s.category ?? "—"}</td>
-                <td>{s.mitre_techniques.join(", ") || "—"}</td>
-                <td><code>{s.schedule_cron}</code></td>
-                <td><span className={`pill ${sevTone(s.severity)}`}>{s.severity}</span></td>
-                <td>v{s.query_version}</td>
-                <td>{s.enabled ? "yes" : <span className="pill warn">no</span>}</td>
+        <TableScroll label="Scheduled searches">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>MITRE</th>
+                <th>Schedule</th>
+                <th>Severity</th>
+                <th>Ver</th>
+                <th>Enabled</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {searches.map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <a href={`/searches/${s.id}`}>{s.name}</a>
+                  </td>
+                  <td>{s.category ?? "—"}</td>
+                  <td>{s.mitre_techniques.join(", ") || "—"}</td>
+                  <td>
+                    <ScheduleLabel cron={s.schedule_cron} />
+                  </td>
+                  <td><span className={`pill ${sevTone(s.severity)}`}>{s.severity}</span></td>
+                  <td>v{s.query_version}</td>
+                  <td>{s.enabled ? "yes" : <span className="pill warn">no</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
     </>
   );

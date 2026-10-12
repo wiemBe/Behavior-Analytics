@@ -25,6 +25,12 @@ describe("NAV", () => {
     ]);
   });
 
+  it("lists search cadence under its own administration group", () => {
+    expect(NAV[2].label).toBe("Administration");
+    expect(NAV[2].items).toEqual([{ href: "/admin/search-cadence", label: "Search cadence" }]);
+    expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
+  });
+
   // A nav entry is a promise that something is on the other side of it.
   it("links to no route that does not exist", () => {
     const hrefs = NAV.flatMap((g) => g.items.map((i) => i.href));
