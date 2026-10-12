@@ -46,6 +46,13 @@ PERM_OFFENSE_READ = "read:offenses"
 PERM_RULE_READ = "read:rules"
 PERM_COVERAGE_READ = "read:coverage"
 PERM_PROVIDER_READ = "read:providers"
+# Editing SOC-owned rule metadata (owner, MITRE mapping, expected firing rate)
+# and recording a detection-coverage mapping. Both are writes, so `read:*` must
+# not grant them: a read-only role can already see ownership and the detection
+# map, and letting it rewrite either would change the evidence the coverage
+# verdict rests on -- a viewer could quietly mark a real gap as covered.
+PERM_RULE_WRITE = "rule:write"
+PERM_COVERAGE_WRITE = "coverage:write"
 # Phase A. Behavioral anomalies expose contributor evidence (source and
 # destination addresses, usernames where the DSM supplies them), so the
 # investigation surface is guarded exactly like offences are.
