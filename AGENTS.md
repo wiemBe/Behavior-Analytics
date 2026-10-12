@@ -80,13 +80,21 @@ PYTHONPATH=. TEST_DATABASE_URL=<the URL from your task> .venv/bin/pytest -q -m i
 
 For the frontend, Node is at `~/.local/node/bin`. Put it on `PATH` first.
 
-**SELinux is enforcing on this machine. Never touch it.** That means:
-- never `setenforce`;
-- never the `:z` / `:Z` volume flags;
-- never `label:disable`;
-- never disable or relabel anything.
+**SELinux is enforcing on this machine and stays enforcing.** That means:
+- never `setenforce`, permissive mode, or disabling SELinux;
+- never `label:disable` / `label=disable`;
+- never the shared-label `:z` volume flag. It opens the directory to every container, and on the
+  repository root it would expose `.secrets/`;
+- never `chcon`, `restorecon` or `semanage` on anything.
 
-If something fails because of SELinux, stop and report it.
+There is one exception, approved by the user on 2026-10-12. The private-label `:Z` flag is
+allowed on a bind mount, but only when **all** of these hold:
+- the directory is dedicated to that one container;
+- it contains no secrets;
+- it is **not** the repository root, `.secrets/`, a home directory, or a system path.
+
+Prefer named volumes or tmpfs, which need no label at all. If something else fails because of
+SELinux, stop and report it.
 
 ## 6. Your final report
 
