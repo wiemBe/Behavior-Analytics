@@ -612,7 +612,11 @@ class TestMaintenance:
         out = []
         for s in starts:
             await run_at(db_session, profile, provider, settings, s)
-            state = await db_session.scalar(select(WafDetectorState))
+            state = await db_session.scalar(
+                select(WafDetectorState).where(
+                    WafDetectorState.detector_type == WafAnomalyType.WAF_REQUEST_RATE_SPIKE
+                )
+            )
             out.append(AnomalyState(state.state))
         return out
 

@@ -62,6 +62,85 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## 0. Product goals (set by the user on 2026-10-12)
+
+Every phase and task is scheduled against these three goals. When a piece of work serves none of
+them, question it before starting it.
+
+### G1 — Log-source fleet monitoring
+
+The user's goal, in summary:
+- detect a log source whose flow departs from its normal pattern;
+- raise alerts when selected sources stop sending (outage);
+- see which sources consume more EPS than normal;
+- detect newly arrived sources and classify them;
+  - sources are mostly named after what they are (`waf`, `ips`, `linux`, `windows`), so a name
+    regex can classify them;
+  - pulling QRadar's type and group would classify them more reliably;
+- track SIM Generic Log as well.
+
+| Need | What exists | Gap |
+|---|---|---|
+| Flow departs from normal | Phase A: seasonal weekday×hour baselines; `VOLUME_SPIKE`, `VOLUME_DROP`, `NO_EVENTS`; lifecycle; alerts. Live-validated 2026-08-02. | — |
+| Outage alerts for selected sources | `NO_EVENTS` raises alerts. Routing matches severity, owner, instance and alert type. Per-source `criticality`, `monitoring_enabled` and maintenance exist. | No policy for "alert on outage only for these sources or classes". Routing cannot match a source class. |
+| EPS above normal | `VOLUME_SPIKE`. `log_source_metric` holds `average_eps` and `peak_eps`. | No fleet EPS view: per class, top consumers, EPS against baseline. |
+| New sources | Inventory sync creates rows silently. | No `first_seen_at` on `log_source`, no review queue, no new-source alert. |
+| Classification | `type_id` and `type_name` (resolved through `log_source_types`). | No class field. QRadar log-source groups (`group_ids`, `/log_source_groups`) are not fetched. No name-regex rules. |
+| SIM Generic Log | Nothing. | Volume tracking for SIM Generic / unknown events, and a bounded list of the senders feeding it (candidate unconfigured devices). |
+
+The planned order of precedence for classification is:
+operator override > QRadar group mapping > QRadar type mapping > name regex > `UNCLASSIFIED`.
+The class that applied and the rule that matched are recorded with it.
+
+### G2 — IPS and WAF traffic behavior
+
+The goal: detect whether the ports, IPs and endpoints seen on the IPS and WAF arrive at their
+normal rates, and alert on a deviation.
+- **IPS:** track ports and IPs.
+- **WAF:** the same, plus URI and HTTP status.
+
+| Need | What exists | Gap |
+|---|---|---|
+| WAF URI rate | `WAF_REQUEST_RATE_SPIKE` per normalized endpoint. Live-validated 2026-08-03. | — |
+| WAF HTTP status | `WAF_ERROR_RATIO_SPIKE` (5xx) and `WAF_CLIENT_ERROR_RATIO_SPIKE` (4xx). | Phase B.2 is finishing on `feat/phase-b2`. |
+| WAF IPs | `WAF_CLIENT_CONCENTRATION_SPIKE`. | Phase B.2, same branch. |
+| WAF new URIs | `WAF_NEW_ENDPOINT_ACCESS`. | T-006b, in review. |
+| WAF alerting | WAF incidents have a lifecycle. | **WAF incidents raise no alerts at all** (`app/waf` never calls `AlertService`). There is no analyst API and no UI. |
+| IPS port and IP behavior | Nothing. Phase A volume detectors run on IPS sources as on any source. | A whole phase: per-source destination-port and IP behavior, built on the WAF architecture (profiles, validated field mapping, bounded breakdowns, fail-closed). Design first. |
+| Real products | Lab-only validation. | A field-availability pass against the production WAF and IPS products. |
+
+### G3 — Rule analytics
+
+The goal: see how much each rule fires, how much EPS it consumes, and how many rules are active
+or passive. Collect every rule statistic available and analyze it. Later, give the statistics and
+each rule's context to the internal AI for rule analysis. The questions to ask the AI are to be
+decided later.
+
+| Need | What exists | Gap |
+|---|---|---|
+| Active / passive counts | Rule and building-block inventory (`enabled`, `origin`, `type`). Live-validated: 352 rows. `/rules/health-summary`. | No statistics view: counts by type, origin, building block and state. Unknown whether the UI shows them. |
+| EPS cost | `/analytics/rules` on 7.6 returns `average_capacity`, `base_capacity`, `base_host_id` and `capacity_timestamp` (PHASE3-HANDOFF §11.2). Only `average_capacity` is stored, and each sync overwrites it. | Store all four as a time series. Rank the most expensive rules and show the trend. |
+| Firing counts | Inferred lower bounds from offense contributions (`rule_metric_collector`). Rule health is mostly `INSUFFICIENT_DATA`. | A measured source: an Ariel aggregate over `creEventList`, bounded and one search per interval. **The AQL must be validated on live QRadar first.** |
+| AI analysis | `LLMProvider` exists as an interface, disabled by default. | A rule-context package: metadata, statistics and logic. The rule logic (tests) is **not** in the 7.6 REST payload, so where it comes from is an open question (D-5). |
+
+### Roadmap, in order
+
+1. **Finish Phase B.2** (G2, WAF): T-006b, T-009, full gates, D-3, T-010, then merge to `main`.
+   It is nearly done, and every later phase adds migrations, which must chain after 0010.
+2. **Phase C.1, source inventory and classification** (G1). Groups, `first_seen_at`, the class
+   with its provenance, the regex rules, a new-source queue and alert, and an EPS-by-class view.
+   **Phase E.1, rule statistics and cost** (G3). Capacity history, active/passive statistics and
+   a top-cost list. The two are independent and can run in parallel.
+3. **WAF alerting** (G2): route WAF incidents through `AlertService`. Then the analyst API and UI
+   (design §27.14–27.15).
+4. **Phase D, IPS behavior** (G2): design document first, then build.
+5. **Phase C.2** (G1): an outage-alert policy per class and per source, and SIM Generic Log
+   tracking. **Phase E.2** (G3): measured firing counts from `creEventList`. Both need live
+   QRadar validation.
+6. **Phase E.3** (G3): the AI rule-analysis package, once D-5 is settled.
+
+---
+
 ## 1. How this project is run
 
 **Orchestrator:** Claude Opus 5.5, xhigh effort. It plans, splits the work into tasks, delegates

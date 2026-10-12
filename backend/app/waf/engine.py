@@ -30,10 +30,12 @@ each spec's baseline metrics for every endpoint in one query.
 
 from __future__ import annotations
 
+import bisect
 import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import overload
 
 from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,11 +71,13 @@ from app.models.waf import (
     WafSourceBucket,
 )
 from app.waf.behavior import (
+    NoveltyFacts,
     WafBehaviorThresholds,
     detect_block_ratio_spike,
     detect_client_concentration_spike,
     detect_client_error_ratio_spike,
     detect_error_ratio_spike,
+    detect_new_endpoint_access,
 )
 from app.waf.detector import (
     WafBaselineCell,
@@ -83,7 +87,9 @@ from app.waf.detector import (
     WafThresholds,
     detect_request_rate_spike,
 )
+from app.waf.inputs import HistoryFacts
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
+from app.waf.novelty import semantics_normalizer_version, verify_endpoint_history
 from app.waf.observations import BucketFacts, EndpointObservation, RowFacts, observe
 from app.waf.semantics import semantics_incompatibility
 
@@ -95,6 +101,7 @@ WAF_DETECTOR_FUNCTIONS: dict[WafAnomalyType, Callable[[WafDetectionContext], Waf
     WafAnomalyType.WAF_ERROR_RATIO_SPIKE: detect_error_ratio_spike,
     WafAnomalyType.WAF_CLIENT_ERROR_RATIO_SPIKE: detect_client_error_ratio_spike,
     WafAnomalyType.WAF_CLIENT_CONCENTRATION_SPIKE: detect_client_concentration_spike,
+    WafAnomalyType.WAF_NEW_ENDPOINT_ACCESS: detect_new_endpoint_access,
 }
 
 #: Bound on ids per IN list, far below asyncpg's bind-parameter limit.
@@ -382,6 +389,192 @@ class WafAnomalyEngine:
                 out[row.id] = row
         return out
 
+    async def _load_novelty_traffic(
+        self, subjects: Sequence[_Subject]
+    ) -> dict[uuid.UUID, tuple[int, int, bool]]:
+        """Post-appearance requests, buckets with traffic and lower-bound-ness per endpoint.
+
+        One statement per id chunk. The counts are a lower bound when any source
+        bucket from first appearance through the judged bucket counted only a lower
+        bound, or was never collected: an uncollected bucket's traffic is unknown.
+        """
+        out: dict[uuid.UUID, tuple[int, int, bool]] = {}
+        by_id = {subject.endpoint.id: subject for subject in subjects}
+        statement = text(
+            """
+            SELECT
+                pending.endpoint_id,
+                COALESCE(traffic.requests, 0)::bigint,
+                COALESCE(traffic.traffic_buckets, 0)::integer,
+                COALESCE(recorded.bucket_count, 0)::integer,
+                COALESCE(recorded.lower_bound, false)
+            FROM unnest(
+                CAST(:endpoint_ids AS uuid[]),
+                CAST(:first_seen_ats AS timestamptz[]),
+                CAST(:judged_ats AS timestamptz[])
+            ) AS pending(endpoint_id, first_seen_at, judged_at)
+            LEFT JOIN LATERAL (
+                SELECT SUM(metric.request_count) AS requests,
+                       COUNT(*) FILTER (WHERE metric.request_count > 0) AS traffic_buckets
+                FROM waf_endpoint_metric AS metric
+                WHERE metric.waf_endpoint_id = pending.endpoint_id
+                  AND metric.bucket_start >= pending.first_seen_at
+                  AND metric.bucket_start <= pending.judged_at
+            ) AS traffic ON true
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS bucket_count,
+                       BOOL_OR(source_bucket.request_count_measurement = 'LOWER_BOUND')
+                           AS lower_bound
+                FROM waf_source_bucket AS source_bucket
+                WHERE source_bucket.log_source_id = :log_source_id
+                  AND source_bucket.bucket_start >= pending.first_seen_at
+                  AND source_bucket.bucket_start <= pending.judged_at
+            ) AS recorded ON true
+            """
+        )
+        for chunk in _chunks(sorted(by_id)):
+            rows = await self.session.execute(
+                statement,
+                {
+                    "endpoint_ids": list(chunk),
+                    "first_seen_ats": [by_id[item].endpoint.first_seen_at for item in chunk],
+                    "judged_ats": [by_id[item].observation.bucket_start for item in chunk],
+                    "log_source_id": by_id[chunk[0]].endpoint.log_source_id,
+                },
+            )
+            for endpoint_id, requests, traffic_buckets, recorded, lower_bound in rows:
+                subject = by_id[endpoint_id]
+                width = timedelta(seconds=subject.observation.bucket_seconds)
+                expected = (
+                    subject.observation.bucket_start - subject.endpoint.first_seen_at
+                ) // width + 1
+                out[endpoint_id] = (
+                    int(requests),
+                    int(traffic_buckets),
+                    bool(lower_bound) or recorded < expected,
+                )
+        return out
+
+    async def _load_novelty(
+        self, subjects: Sequence[_Subject], thresholds: WafBehaviorThresholds
+    ) -> dict[uuid.UUID, NoveltyFacts]:
+        """Build novelty facts in bulk. Established endpoints cost no I/O at all."""
+        history_delta = timedelta(days=thresholds.new_endpoint_history_days)
+        result: dict[uuid.UUID, NoveltyFacts] = {}
+        in_window: list[_Subject] = []
+        window_ends: dict[uuid.UUID, datetime] = {}
+        for subject in subjects:
+            endpoint, obs = subject.endpoint, subject.observation
+            window_end = endpoint.first_seen_at + timedelta(
+                seconds=thresholds.new_endpoint_window_buckets * obs.bucket_seconds
+            )
+            window_ends[endpoint.id] = window_end
+            if obs.bucket_start >= window_end:
+                result[endpoint.id] = NoveltyFacts(
+                    first_seen_at=endpoint.first_seen_at,
+                    window_end=window_end,
+                    within_window=False,
+                    history=HistoryFacts(
+                        complete=False, reason="history was not loaded for an established endpoint"
+                    ),
+                    history_start=endpoint.first_seen_at - history_delta,
+                    history_end=endpoint.first_seen_at,
+                    history_buckets=0,
+                    appearance_flood=None,
+                    requests_since_first_seen=0,
+                    buckets_with_traffic=0,
+                    lower_bound=False,
+                )
+            else:
+                in_window.append(subject)
+        if not in_window:
+            return result
+
+        earliest = min(item.endpoint.first_seen_at for item in in_window) - history_delta
+        latest = max(item.endpoint.first_seen_at for item in in_window)
+        rows = await self.session.scalars(
+            select(WafSourceBucket)
+            .where(
+                WafSourceBucket.log_source_id == in_window[0].endpoint.log_source_id,
+                WafSourceBucket.bucket_start >= earliest,
+                WafSourceBucket.bucket_start <= latest,
+            )
+            .order_by(WafSourceBucket.bucket_start)
+        )
+        buckets = [BucketFacts.of(row) for row in rows]
+        starts = [bucket.bucket_start for bucket in buckets]
+        by_start = {bucket.bucket_start: bucket for bucket in buckets}
+        traffic = await self._load_novelty_traffic(in_window)
+
+        # Endpoints first seen in the same bucket under one normalizer share a history.
+        verified: dict[tuple[datetime, int], tuple[HistoryFacts, int, str | None]] = {}
+        for subject in in_window:
+            endpoint = subject.endpoint
+            first_seen = endpoint.first_seen_at
+            key = (first_seen, endpoint.normalizer_version)
+            if key not in verified:
+                verified[key] = self._verify_history(
+                    first_seen, endpoint.normalizer_version, history_delta,
+                    buckets, starts, by_start,
+                )
+            history, history_buckets, flood = verified[key]
+            requests, traffic_buckets, lower_bound = traffic[endpoint.id]
+            result[endpoint.id] = NoveltyFacts(
+                first_seen_at=first_seen,
+                window_end=window_ends[endpoint.id],
+                within_window=True,
+                history=history,
+                history_start=first_seen - history_delta,
+                history_end=first_seen,
+                history_buckets=history_buckets,
+                appearance_flood=flood,
+                requests_since_first_seen=requests,
+                buckets_with_traffic=traffic_buckets,
+                lower_bound=lower_bound,
+            )
+        return result
+
+    @staticmethod
+    def _verify_history(
+        first_seen: datetime,
+        normalizer_version: int,
+        history_delta: timedelta,
+        buckets: Sequence[BucketFacts],
+        starts: Sequence[datetime],
+        by_start: dict[datetime, BucketFacts],
+    ) -> tuple[HistoryFacts, int, str | None]:
+        """History facts, verified bucket count and appearance flood for one first sighting."""
+        history_start = first_seen - history_delta
+        history_rows = buckets[
+            bisect.bisect_left(starts, history_start) : bisect.bisect_left(starts, first_seen)
+        ]
+        appearance = by_start.get(first_seen)
+        if appearance is None:
+            reason = "the first-appearance bucket was never collected"
+        elif appearance.profile_version is None:
+            reason = "the first-appearance bucket carries no profile version"
+        elif semantics_normalizer_version(appearance.metric_semantics) != normalizer_version:
+            reason = (
+                "the first-appearance bucket is incompatible with endpoint normalizer "
+                f"version {normalizer_version}"
+            )
+        else:
+            history = verify_endpoint_history(
+                history_rows,
+                history_start=history_start,
+                history_end=first_seen,
+                bucket_seconds=appearance.bucket_seconds,
+                profile_version=appearance.profile_version,
+                normalizer_version=normalizer_version,
+            )
+            flood: str | None = None
+            if appearance.groups_truncated:
+                flood = "endpoint discovery was truncated in the first-appearance bucket"
+            elif appearance.admission_truncated:
+                flood = "endpoint admission was truncated in the first-appearance bucket"
+            return history, len(history_rows), flood
+        return HistoryFacts(complete=False, reason=reason), len(history_rows), None
+
     # --------------------------------------------------------------- evaluation
     async def _evaluate(
         self, log_source: LogSource | None, subjects: list[_Subject]
@@ -401,6 +594,25 @@ class WafAnomalyEngine:
                 cells.update(await self._load_cells(hour_ids, metrics, weekday, hour))
         states = await self._load_states(ids, types) if types else {}
         await self._ensure_states(ids, types, states)
+        still_missing = [
+            (endpoint_id, detector_type)
+            for endpoint_id in ids
+            for detector_type in types
+            if (endpoint_id, detector_type.value) not in states
+        ]
+        if still_missing:
+            states.update(
+                await self._load_states(
+                    sorted({item[0] for item in still_missing}),
+                    sorted({item[1] for item in still_missing}, key=lambda item: item.value),
+                )
+            )
+        for endpoint_id, detector_type in still_missing:
+            if (endpoint_id, detector_type.value) not in states:
+                raise RuntimeError(
+                    f"detector state is missing for endpoint {endpoint_id} and "
+                    f"detector {detector_type.value} after creation and reload"
+                )
         anomalies = await self._load_anomalies(
             {
                 aid
@@ -412,6 +624,11 @@ class WafAnomalyEngine:
 
         thresholds = self._thresholds()
         behavior = self._behavior_thresholds()
+        novelty = (
+            await self._load_novelty(subjects, behavior)
+            if WafAnomalyType.WAF_NEW_ENDPOINT_ACCESS in types
+            else {}
+        )
         reports: list[WafEvaluationReport] = []
         modified: list[WafDetectorState] = []
         for subject in subjects:
@@ -436,18 +653,23 @@ class WafAnomalyEngine:
             }
             for detector_type in types:
                 spec = WAF_DETECTORS[detector_type]
-                metric_name = next(iter(sorted(spec.baseline_metrics)))
-                row = cells.get((endpoint.id, metric_name))
+                metric_name = next(iter(sorted(spec.baseline_metrics)), None)
+                row = cells.get((endpoint.id, metric_name)) if metric_name is not None else None
                 verdict = self.detectors[detector_type](
                     self._context(
                         obs, row, detector_type, thresholds, behavior, baselines,
                         endpoint=endpoint,
+                        novelty=novelty.get(endpoint.id),
                     )
                 )
                 if verdict.is_anomalous:
                     report.anomalous.append(verdict.detector_type.value)
                 state = states.get((endpoint.id, detector_type.value))
-                assert state is not None
+                if state is None:
+                    raise RuntimeError(
+                        f"detector state is missing for endpoint {endpoint.id} and "
+                        f"detector {detector_type.value}"
+                    )
                 if self._apply_hysteresis(
                     endpoint, obs, detector_type, verdict.evidence, state, anomalies,
                     report, thresholds,
@@ -482,6 +704,7 @@ class WafAnomalyEngine:
         baselines: dict[str, WafBaselineCell],
         *,
         endpoint: WafEndpoint,
+        novelty: NoveltyFacts | None,
     ) -> WafDetectionContext:
         spec = WAF_DETECTORS[detector_type]
         bucket_semantics = obs.metric_semantics
@@ -499,7 +722,11 @@ class WafAnomalyEngine:
         if detector_type is WafAnomalyType.WAF_REQUEST_RATE_SPIKE or not spec.inputs:
             scope = waf_verdict_scope(detector_type, obs.measurement)
         else:
-            scope = waf_input_scope(detector_type, obs)
+            scope = waf_input_scope(
+                detector_type,
+                obs,
+                novelty.history if novelty is not None else None,
+            )
         return WafDetectionContext(
             point=WafPoint(
                 bucket_start=obs.bucket_start,
@@ -529,7 +756,16 @@ class WafAnomalyEngine:
             observation=obs,
             baselines=baselines,
             behavior=behavior,
+            novelty=novelty,
         )
+
+    @overload
+    @staticmethod
+    def _cell(row: WafEndpointBaseline) -> WafBaselineCell: ...
+
+    @overload
+    @staticmethod
+    def _cell(row: None) -> None: ...
 
     @staticmethod
     def _cell(row: WafEndpointBaseline | None) -> WafBaselineCell | None:

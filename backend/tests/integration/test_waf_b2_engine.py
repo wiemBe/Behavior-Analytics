@@ -419,7 +419,11 @@ async def test_disabled_b2_detectors_create_no_states(db_session) -> None:
     detector_types = set(
         (await db_session.scalars(select(WafDetectorState.detector_type))).all()
     )
-    assert detector_types == {WafAnomalyType.WAF_REQUEST_RATE_SPIKE.value}
+    # New-endpoint access has no enabling setting, so it always runs (T-006b).
+    assert detector_types == {
+        WafAnomalyType.WAF_REQUEST_RATE_SPIKE.value,
+        WafAnomalyType.WAF_NEW_ENDPOINT_ACCESS.value,
+    }
 
 
 async def test_client_concentration_opens_on_top_client_share_rise(db_session) -> None:

@@ -598,7 +598,11 @@ class TestLifecycle:
         await engine.evaluate_interval(endpoint, metrics[8])
         await engine.evaluate_interval(endpoint, metrics[8])
 
-        state = (await db_session.scalars(select(WafDetectorState))).one()
+        state = (await db_session.scalars(
+            select(WafDetectorState).where(
+                WafDetectorState.detector_type == WafAnomalyType.WAF_REQUEST_RATE_SPIKE
+            )
+        )).one()
         assert state.consecutive_anomalous == 1
         assert len((await db_session.scalars(select(WafAnomaly))).all()) == 1
 

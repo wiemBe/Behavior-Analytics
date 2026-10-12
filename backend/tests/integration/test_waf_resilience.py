@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.models.enums import AnomalyState, BucketCompleteness, WafMeasurement
+from app.models.enums import AnomalyState, BucketCompleteness, WafAnomalyType, WafMeasurement
 from app.models.waf import (
     WafAnomaly,
     WafAnomalyTransition,
@@ -76,7 +76,10 @@ async def state_of(session, path: str) -> str:  # type: ignore[no-untyped-def]
         select(WafEndpoint).where(WafEndpoint.normalized_endpoint == path)
     )
     state = await session.scalar(
-        select(WafDetectorState).where(WafDetectorState.waf_endpoint_id == endpoint.id)
+        select(WafDetectorState).where(
+            WafDetectorState.waf_endpoint_id == endpoint.id,
+            WafDetectorState.detector_type == WafAnomalyType.WAF_REQUEST_RATE_SPIKE,
+        )
     )
     return str(state.state)
 
@@ -262,7 +265,10 @@ class TestSparseSemantics:
         # Both endpoints were judged; one from a reconstructed zero.
         assert result["endpoint_evaluations"] == 2 and result["inferred_evaluations"] == 1
         state = await db_session.scalar(
-            select(WafDetectorState).where(WafDetectorState.waf_endpoint_id == login.id)
+            select(WafDetectorState).where(
+                WafDetectorState.waf_endpoint_id == login.id,
+                WafDetectorState.detector_type == WafAnomalyType.WAF_REQUEST_RATE_SPIKE,
+            )
         )
         assert state.last_interval_start == at and state.state == AnomalyState.NORMAL
 

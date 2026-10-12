@@ -213,7 +213,8 @@ class TestStatementCounts:
         two = {n: await evaluate(src, 4, two_detectors) for n, (_p, src, _pr) in sizes}
         assert two[40] == two[800]
         assert two[800] <= one[800] + 1, (one, two)
-        assert await count(db_session, WafDetectorState) == 2 * (40 + 800)
+        # Request rate, the always-on new-endpoint detector (T-006b), and the fake one.
+        assert await count(db_session, WafDetectorState) == 3 * (40 + 800)
 
     async def test_evaluation_cost_is_constant_with_every_b2_detector_enabled(
         self, db_session
@@ -268,6 +269,52 @@ class TestStatementCounts:
         assert steady_on[40] == steady_on[800]
         assert first_on[800] <= off[800] + 1, (off, first_on)
         assert steady_on[800] <= off[800] + 1, (off, steady_on)
+
+    async def test_novelty_cost_is_constant_with_and_without_in_window_endpoints(
+        self, db_session
+    ) -> None:
+        settings = settings_for_scale()
+        instance = await make_instance(db_session)
+        small = await seeded(db_session, instance, 312, 40, settings)
+        large = await seeded(db_session, instance, 313, 800, settings)
+        for profile_id, _s, provider in (small, large):
+            for k in range(4):
+                await run(db_session, profile_id, provider, settings, k)
+
+        async def evaluate(source_id, k: int) -> int:  # type: ignore[no-untyped-def]
+            for state in (await db_session.scalars(
+                select(WafDetectorState)
+                .join(WafEndpoint)
+                .where(WafEndpoint.log_source_id == source_id)
+            )).all():
+                state.last_interval_start = T0 + STEP * (k - 1)
+            await db_session.flush()
+            source = await db_session.get(LogSource, source_id)
+            bucket = await db_session.get(WafSourceBucket, (source_id, T0 + STEP * k))
+            with counting(db_session) as statements:
+                result = await WafAnomalyEngine(
+                    db_session, settings=settings
+                ).evaluate_bucket(source, bucket)
+            assert len(result.endpoint_reports) in (40, 800)
+            return len(statements)
+
+        established: dict[int, int] = {}
+        in_window: dict[int, int] = {}
+        for size, (_p, source_id, _pr) in ((40, small), (800, large)):
+            established[size] = await evaluate(source_id, 3)
+            # Every endpoint first appeared at T0, inside its novelty window.
+            await db_session.execute(
+                update(WafEndpoint)
+                .where(WafEndpoint.log_source_id == source_id)
+                .values(first_seen_at=T0)
+            )
+            db_session.expire_all()
+            in_window[size] = await evaluate(source_id, 3)
+
+        assert established[40] == established[800]
+        assert in_window[40] == in_window[800]
+        # The bucket records and one chunk of traffic aggregates: two statements.
+        assert in_window[800] - established[800] == 2, (established, in_window)
 
     async def test_training_scales_with_chunks_not_endpoints(self, db_session) -> None:
         settings = cfg(waf_baseline_rebuild_chunk_size=25, baseline_min_samples=1)
