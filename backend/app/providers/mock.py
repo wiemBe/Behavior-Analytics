@@ -829,7 +829,7 @@ class MockQRadarProvider(QRadarProvider):
             search_id=search_id,
             columns=cols,
             rows=rows[:max_rows],
-            total_count=len(rows),
+            total_count=min(len(rows), max_rows),
             truncated=truncated,
         )
 

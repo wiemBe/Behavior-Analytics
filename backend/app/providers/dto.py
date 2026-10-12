@@ -398,6 +398,13 @@ class ArielSearchStatusDTO(ProviderDTO):
 
 
 class ArielSearchResultsDTO(ProviderDTO):
+    """One page of Ariel rows.
+
+    `total_count` is the number of rows returned, not the size of the full
+    result. When `truncated` is true the search had more rows than were fetched
+    and `total_count` is only a lower bound; every reader must treat it as one.
+    """
+
     search_id: str
     columns: list[str] = Field(default_factory=list)
     rows: list[dict] = Field(default_factory=list)

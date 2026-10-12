@@ -5,7 +5,8 @@ so they never deduplicate into one another (app/alerts/fingerprint.py):
 
   * ``search_threshold`` — a completed run whose aggregated result crossed the
     search's configured threshold. Recovers when a later run completes under
-    the threshold, which resolves the open alert.
+    the threshold, which resolves the open alert. A truncated run only holds a
+    lower bound: it may open or keep a breach, but never resolves one.
   * ``search_failure`` — the search itself has failed to run
     ``search_failure_alert_after`` times consecutively. A scheduled detection
     that has quietly stopped executing produces no results and therefore no
@@ -78,6 +79,10 @@ class SearchAlertEvaluator:
 
         fingerprint = search_threshold_fingerprint(search.id)
         if not execution.threshold_breached:
+            # A truncated result is a lower bound: "not breached" is no verdict
+            # on it, so it neither opens nor resolves anything.
+            if execution.truncated:
+                return None
             return await self.alerts.resolve_by_fingerprint(
                 fingerprint, actor="search-scheduler", reason="result back within threshold"
             )
@@ -91,8 +96,8 @@ class SearchAlertEvaluator:
                 source_type="scheduled_search",
                 source_id=search.id,
                 description=(
-                    f"{search.name} returned {observed:g} "
-                    f"({search.threshold_operator} {search.threshold_value:g})"
+                    f"{search.name} returned {'at least ' if execution.truncated else ''}"
+                    f"{observed:g} ({search.threshold_operator} {search.threshold_value:g})"
                 ),
                 evidence={
                     "observed_value": observed,

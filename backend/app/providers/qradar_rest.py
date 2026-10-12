@@ -567,6 +567,12 @@ class QRadarRestProvider(QRadarProvider):
         results = await self.get_ariel_search_results(
             handle.search_id, max_rows=max_rows
         )
+        if results.truncated:
+            # A capped aggregate drops sources, and the collector would zero-fill
+            # them as complete silence. Fail the interval instead.
+            raise ProviderError(
+                f"QRadar Ariel metric search was truncated at {max_rows} rows"
+            )
         samples: list[LogSourceMetricSample] = []
         for row in results.rows:
             qradar_id = as_int(row.get("qradar_id"))
@@ -1337,7 +1343,9 @@ class QRadarRestProvider(QRadarProvider):
             "GET",
             f"/ariel/searches/{search_id}/results",
             category=EndpointCategory.ARIEL_RESULTS,
-            headers={"Range": f"items=0-{max(0, max_rows - 1)}"},
+            # One row past the cap: the server honours the range, so seeing the
+            # extra row is the only way to tell a capped result from a whole one.
+            headers={"Range": f"items=0-{max(0, max_rows)}"},
         )
         if not isinstance(body, dict):
             raise MalformedUpstreamResponse("QRadar Ariel results were not an object")
@@ -1347,13 +1355,15 @@ class QRadarRestProvider(QRadarProvider):
             if isinstance(value, list):
                 rows = [r for r in value if isinstance(r, dict)]
                 break
+        truncated = len(rows) > max_rows
+        rows = rows[:max_rows]
         columns = sorted({key for row in rows for key in row}) if rows else []
         return ArielSearchResultsDTO(
             search_id=search_id,
             columns=columns,
-            rows=rows[:max_rows],
+            rows=rows,
             total_count=len(rows),
-            truncated=len(rows) > max_rows,
+            truncated=truncated,
         )
 
     async def cancel_ariel_search(self, search_id: str) -> None:

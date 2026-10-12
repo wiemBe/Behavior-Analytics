@@ -146,3 +146,140 @@ async def test_incapable_provider_fails_validation(db_session) -> None:
     execution = await executor.execute(search, run_key="x", instance_key="default")
     assert execution.status == ExecutionStatus.FAILED
     assert execution.error_type == ExecutionErrorType.VALIDATION.value
+
+
+# --------------------------------------------------------- truncated results (T-033)
+def _capped_provider(*, reported: int, truncated: bool = True):
+    """A provider whose Ariel result was cut at `reported` rows."""
+    from app.providers.dto import ArielSearchResultsDTO
+
+    class Capped(MockQRadarProvider):
+        async def get_ariel_search_results(self, search_id: str, *, max_rows: int):
+            return ArielSearchResultsDTO(
+                search_id=search_id, columns=["grouping", "event_count"],
+                rows=[{"grouping": "h1", "event_count": 5}],
+                total_count=reported, truncated=truncated,
+            )
+
+    return Capped()
+
+
+async def _metric_keys(session, execution) -> list[str]:
+    from app.models.search import SearchResultMetric
+
+    return list(
+        (
+            await session.scalars(
+                select(SearchResultMetric.metric_key).where(
+                    SearchResultMetric.execution_id == execution.id
+                )
+            )
+        ).all()
+    )
+
+
+async def test_rest_capped_search_is_recorded_as_truncated(db_session) -> None:
+    """End to end through the REST provider: a search with more rows than its cap."""
+    import random
+
+    import httpx
+
+    from app.providers.qradar_rest import QRadarRestProvider
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "POST" and path.endswith("/ariel/searches"):
+            return httpx.Response(201, json={"search_id": "s-1", "status": "WAIT"})
+        if path.endswith("/ariel/searches/s-1/results"):
+            first, last = (
+                int(n) for n in request.headers["Range"].removeprefix("items=").split("-")
+            )
+            rows = [{"grouping": f"h{i}", "event_count": 1} for i in range(50)]
+            return httpx.Response(200, json={"events": rows[first : last + 1]})
+        if path.endswith("/ariel/searches/s-1"):
+            return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="https://qradar.example.internal/api",
+        headers={"SEC": "t", "Version": "20.0", "Accept": "application/json"},
+    )
+    provider = QRadarRestProvider(
+        base_url="https://qradar.example.internal", sec_token="t", client=client,
+        rng=random.Random(1), sleep=_noop_sleep,
+    )
+    search = await make_search(db_session, threshold_value=10, max_result_rows=20)
+    executor = SearchExecutor(db_session, provider, _limiter(), sleep=_noop_sleep)
+    execution = await executor.execute(search, run_key="cap", instance_key="default")
+    assert execution.status == ExecutionStatus.COMPLETED
+    assert execution.truncated is True
+    assert "total" not in await _metric_keys(db_session, execution)
+
+
+async def test_truncated_result_does_not_store_a_total_metric(db_session) -> None:
+    search = await make_search(db_session, threshold_value=None)
+    executor = SearchExecutor(
+        db_session, _capped_provider(reported=1000), _limiter(), sleep=_noop_sleep
+    )
+    execution = await executor.execute(search, run_key="t1", instance_key="default")
+    assert execution.truncated is True
+    assert execution.result_count == 1000  # recorded, but as the lower bound it is
+    keys = await _metric_keys(db_session, execution)
+    assert "total" not in keys
+    assert "h1" in keys  # the grouped rows that were returned are still stored
+
+
+async def test_whole_result_still_stores_the_total_metric(db_session) -> None:
+    search = await make_search(db_session, threshold_value=None)
+    executor = SearchExecutor(
+        db_session, _capped_provider(reported=5, truncated=False), _limiter(),
+        sleep=_noop_sleep,
+    )
+    execution = await executor.execute(search, run_key="w1", instance_key="default")
+    assert execution.truncated is False
+    assert "total" in await _metric_keys(db_session, execution)
+
+
+@pytest.mark.parametrize(
+    ("operator", "threshold", "reported", "breached"),
+    [
+        # A lower bound already past the line proves the breach for GT and GE.
+        ("GT", 10, 100, True),
+        ("GE", 100, 100, True),
+        # A lower bound that has not reached the line decides nothing.
+        ("GT", 1000, 100, False),
+        ("GE", 1000, 100, False),
+        # For LT, LE and EQ a lower bound proves nothing in either direction,
+        # even where the capped number happens to satisfy the comparison.
+        ("LT", 1000, 100, False),
+        ("LE", 1000, 100, False),
+        ("EQ", 100, 100, False),
+        ("LT", 10, 100, False),
+        ("EQ", 7, 100, False),
+    ],
+)
+async def test_truncated_threshold_sees_only_a_lower_bound(
+    db_session, operator, threshold, reported, breached
+) -> None:
+    search = await make_search(
+        db_session, threshold_value=threshold, threshold_operator=operator
+    )
+    executor = SearchExecutor(
+        db_session, _capped_provider(reported=reported), _limiter(), sleep=_noop_sleep
+    )
+    execution = await executor.execute(
+        search, run_key=f"{operator}-{threshold}", instance_key="default"
+    )
+    assert execution.truncated is True
+    assert execution.threshold_breached is breached
+
+
+async def test_whole_result_keeps_every_operator_decisive(db_session) -> None:
+    search = await make_search(db_session, threshold_value=1000, threshold_operator="LT")
+    executor = SearchExecutor(
+        db_session, _capped_provider(reported=5, truncated=False), _limiter(),
+        sleep=_noop_sleep,
+    )
+    execution = await executor.execute(search, run_key="lt", instance_key="default")
+    assert execution.threshold_breached is True

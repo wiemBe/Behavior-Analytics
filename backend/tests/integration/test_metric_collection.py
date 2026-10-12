@@ -213,3 +213,66 @@ class TestZeroFill:
 
         count = await db_session.scalar(select(func.count()).select_from(LogSourceMetric))
         assert count == 0, "an unmonitored source is never evaluated, so it needs no row"
+
+
+class TestTruncatedAggregate:
+    """A capped Ariel aggregate must not become bucket rows (T-033).
+
+    The sources beyond the cap would be zero-filled as complete silence, which
+    reads as a false NO_EVENTS. The provider raises instead, and the collector's
+    contract for a raising interval is: no rows, watermark stays put.
+    """
+
+    async def test_truncated_result_writes_no_rows_and_holds_the_watermark(
+        self, db_session
+    ) -> None:
+        import random
+
+        import httpx
+
+        from app.models.monitoring import CollectionWatermark
+        from app.providers.base import ProviderError
+        from app.providers.qradar_rest import QRadarRestProvider
+
+        instance = await _seed_inventory(db_session)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            if request.method == "POST" and path.endswith("/ariel/searches"):
+                return httpx.Response(201, json={"search_id": "m-1", "status": "WAIT"})
+            if path.endswith("/ariel/searches/m-1/results"):
+                first, last = (
+                    int(n) for n in request.headers["Range"].removeprefix("items=").split("-")
+                )
+                rows = [
+                    {"qradar_id": str(i), "event_count": "9", "last_event_time": 1_784_000_000_000}
+                    for i in range(1, 40)
+                ]
+                return httpx.Response(200, json={"events": rows[first : last + 1]})
+            if path.endswith("/ariel/searches/m-1"):
+                return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        async def _nosleep(_s: float) -> None:
+            return None
+
+        client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            base_url="https://qradar.example.internal/api",
+            headers={"SEC": "t", "Version": "20.0", "Accept": "application/json"},
+        )
+        provider = QRadarRestProvider(
+            base_url="https://qradar.example.internal", sec_token="t", client=client,
+            page_size=10, max_pages=2, rng=random.Random(1), sleep=_nosleep,
+        )
+        now = datetime(2026, 7, 15, 10, 3, tzinfo=UTC)
+        collector = MetricCollector(
+            db_session, provider, settings=_settings(), clock=lambda: now
+        )
+
+        with pytest.raises(ProviderError, match="truncated"):
+            await collector.collect(instance)
+
+        assert await db_session.scalar(select(func.count()).select_from(LogSourceMetric)) == 0
+        watermark = await db_session.scalar(select(CollectionWatermark))
+        assert watermark is None or watermark.watermark_at is None
