@@ -100,6 +100,11 @@ normal rates, and alert on a deviation.
 | IPS port and IP behavior | Nothing. Phase A volume detectors run on IPS sources as on any source. | A whole phase: per-source destination-port and IP behavior, built on the WAF architecture (profiles, validated field mapping, bounded breakdowns, fail-closed). Design first. |
 | Real products | Lab-only validation. | A field-availability pass against the production WAF and IPS products. |
 
+**Production IPS products (user, 2026-10-12): Cisco Firepower/FTD and Palo Alto (THREAT logs).**
+Phase D's profiles target these first. The user asked the orchestrator to create the lab IPS
+sources. Because the platform is read-only and the lab guide forbids API creation, they are
+created through QRadar auto-discovery from vendor-native synthetic syslog (T-029, T-030).
+
 ### G3 — Rule analytics
 
 The goal: see how much each rule fires, how much EPS it consumes, and how many rules are active
