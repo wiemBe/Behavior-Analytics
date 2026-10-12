@@ -8,54 +8,47 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (saved 2026-10-10 ~17:40, at the end of the first orchestration session)
+## ▶ Resume here (saved 2026-10-12, second orchestration session, in progress)
+
+**Read §0 first.** The user set three product goals (G1 log-source fleet, G2 IPS/WAF behavior,
+G3 rule analytics). Every task is scheduled against them.
+
+**Working model:** the orchestrator writes **no code**, not even research scripts. Every coding
+or probing job goes to an agent. The user asked (2026-10-12) that Codex and the opencode free
+models be used alongside Sonnet.
 
 **Branches:**
 - `main` (`6f17a73`) is green and pushed.
-- All Phase B.1, B.1.5 and B.2 work is on **`feat/phase-b2`** (pushed). It merges to `main` only
-  when every gate is green.
+- `feat/phase-b2` is pushed. At `543d7ff`: **2,055 tests passed, 0 failed**; ruff clean;
+  mypy 31/18 (the baseline). T-006b and T-009 are merged.
 - Backup of the original uncommitted tree: `refs/backup/pre-t001-2026-10-10` (local ref).
 
-**Integration branch health, as last measured after round 1:**
-- Full suite: 2,005 tests, 8 failed. The 8 are exactly the T-009 set.
-- ruff: clean.
-- mypy: 32 errors in 19 files after T-012. The one above the 31 baseline is `engine.py:443`,
-  which T-006b fixes.
-- Merged since that measurement: T-014 (re-run green) and T-012.
-
-**In flight when the session ended:**
-- **T-006b, novelty.**
-  - Codex started it; Sonnet **finished** it just before the session ended.
-  - The final state is pushed as **`agent/t006b` @ `6c82ae7`**. Worktree:
-    `../QRadar-Dash-wt/t006b`. Database: `qradar_obs_t006b`.
-  - The agent's report is saved in [`docs/tasks/T-006b.report.md`](tasks/T-006b.report.md). It
-    reports ruff clean, unit tests with only the 7 known T-009 failures, and 151 WAF integration
-    tests green.
-  - **The orchestrator has NOT reviewed it yet.** Before cherry-picking:
-    - It **edited five existing tests**, because `WAF_NEW_ENDPOINT_ACCESS` is always on: the
-      state count in `test_waf_scale.py` went from 2× to 3×, and four tests gained a
-      request-rate `detector_type` filter. Check that none is weakened.
-    - It changed the inherited `lower_bound` rule to also fail closed on uncollected buckets.
-    - It added the `@overload` fix for `engine.py:443`.
-    - It replaced the `assert` with reload-then-`RuntimeError`.
-    - Re-run the gates yourself on a fresh database.
-  - Spec: [`docs/tasks/T-006b.md`](tasks/T-006b.md).
-- **New decision D-4:** should `WAF_NEW_ENDPOINT_ACCESS` get an enabling setting, like the other
-  B.2 detectors? It currently runs on every WAF collection, with no off switch. Decide before
-  T-009, because it changes T-009's expected deployment statuses.
+**In flight** (each in `../QRadar-Dash-wt/<id>`, with database `qradar_obs_<id>`):
+- **T-015**, Sonnet, read-only lab discovery. Its report goes to `docs/tasks/T-015.report.md` in
+  the main checkout. The lab token is at `.secrets/qradar.sec`, with the CA at
+  `.secrets/qradar-ca.pem`. `.env` names the container path `/run/secrets/...`, so host-side runs
+  override `QRADAR_API_TOKEN_FILE` and `QRADAR_CA_BUNDLE` in the process environment only.
+- **T-016**, Codex, WAF alerting. Log: scratchpad `t016_codex.log`. Check the tail for "usage
+  limit".
+- **T-017**, Sonnet, D-3: the source-coverage guard on the ratio paths.
+- **T-018**, opencode `mimo-v2.6-flash-free`, test-warning hygiene.
 
 **Next steps, in order:**
-1. Review T-006b (`6c82ae7`) as above, then cherry-pick it onto `feat/phase-b2`. Decide D-4.
-2. Launch **T-009** with Sonnet. The spec is ready at [`docs/tasks/T-009.md`](tasks/T-009.md);
-   create worktree `t009` and database `qradar_obs_t009`. Goal: 0 failed tests.
-3. Run the full gates on `feat/phase-b2`: full pytest, `alembic check`, mypy = 31/18, frontend.
-4. Decide **D-3** (§4). Then **T-010**: design doc §30 plus the README.
-5. Merge `feat/phase-b2` → `main`.
+1. Review T-016, T-017 and T-018 as they land, then re-run the full gates on `feat/phase-b2`.
+2. `alembic check` on a fresh DB, plus the frontend gates (lint, typecheck, test, build).
+3. **T-010**: design doc §30 and the README, covering B.2, D-3, D-4 and WAF alerting.
+4. Merge `feat/phase-b2` → `main`.
+5. From T-015's findings, write the specs for **Phase C.1** (G1) and **Phase E.1** (G3). They are
+   independent and can run in parallel. Their migrations chain after 0010, so the orchestrator
+   assigns revision ids.
+6. Then follow the roadmap in §0.
 
 **Environment notes:**
 - The test DB container `qradar-observability-test-test-db-1` runs on `:5433`, on tmpfs, so its
-  data is lost on restart. Recreate the per-task databases with `createdb`.
-- Codex's ChatGPT usage limit resets at 19:24 on 2026-10-10. GLM credits return on 2026-10-14.
+  data is lost on restart. Restart it with `docker compose -f docker-compose.test.yml up -d
+  test-db`, and recreate the per-task databases with `createdb`.
+- The lab QRadar console is reachable from this host on 443.
+- GLM credits return on 2026-10-14.
 - Working free models: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`,
   `longcat-2.5-preview-free`, `nemotron-3-ultra-free`.
 - Task specs given to agents are kept in [`docs/tasks/`](tasks/).
@@ -241,15 +234,19 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-004 | B.2: fix the 7 ruff E501 errors | opencode `mimo-v2.6-flash-free` | DONE (`be79d8b`) | `make lint` clean; no behavior change in the diff |
 | T-005 | B.2: train the ratio and share baselines (`block_ratio`, `server_error_ratio`, `client_error_ratio`, `top1_client_share`) | Codex | DONE (`53385f0`) | Pooled sums and every exclusion tested; statement count unchanged; registry guard test |
 | T-006a | B.2: run the ratio and concentration detectors in the WAF engine | Codex | DONE (`b52a03d`) | Incidents open and persist; NOT_COLLECTED → INSUFFICIENT_DATA; settings off → engine unchanged; constant statements with 5 detectors per endpoint |
-| T-006b | B.2: novelty (bulk `NoveltyFacts`/`HistoryFacts`, `detect_new_endpoint_access` wired); replace the production `assert` from T-006a; fix the T-006a mypy error at `engine.py:443` | Codex (cut off by its usage limit) → Sonnet finishing | IN PROGRESS (`agent/t006b`) | History completeness proven per bucket; flood at appearance → INSUFFICIENT_DATA; constant statements; no mypy error in `engine.py` |
+| T-006b | B.2: novelty (bulk `NoveltyFacts`/`HistoryFacts`, `detect_new_endpoint_access` wired); replace the production `assert` from T-006a; fix the T-006a mypy error at `engine.py:443` | Codex (cut off by its usage limit) → Sonnet finishing | DONE (`26fe0d9`) | History completeness proven per bucket; flood at appearance → INSUFFICIENT_DATA; constant statements; no mypy error in `engine.py` |
 | T-007 | B.2: tests for `breakdown.py`, collector breakdown searches, and `get_waf_breakdown` (mock and REST) | Sonnet | DONE (`c122b42`) | FAILED, NOT_COLLECTED and truncated breakdowns are covered; unmapped action values never count as allowed |
 | T-008 | B.2: unit tests for every `behavior.py` detector guard | Sonnet | DONE (`e4fcaf5`) | Every INSUFFICIENT_DATA / HEALTHY / anomalous exit is pinned, including INCREASE_ONLY scope |
-| T-009 | B.2: capability truth (spec written; launches after T-006b). Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Orchestrator decides the values; agent applies them | TODO (after T-005, T-006a/b) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
+| T-009 | B.2: capability truth (spec written; launches after T-006b). Set `EXPECTED_STATUS` and the published-detector API test for the new types (fixes 7 failing tests), and add a guard that every OPERATIONAL WAF spec has a registered engine function. | Sonnet | DONE (`977adf0`) | Statuses match what actually runs; the registry can no longer claim a detector the engine does not run |
 | T-010 | B.2: design doc §30 and README roadmap entry | Sonnet | TODO (last) | Documents what was built, measured and deferred, in the existing doc style |
 | T-011 | Migration tests vs 0010: pin the 0009 test to revision `0009`; add a 0010 round-trip test under the transient-default convention | Sonnet | DONE | `test_migrations.py` 10/10 (re-run by the orchestrator on a fresh DB) |
 | T-012 | mypy regression at `waf_endpoint_collector.py:572` (type-only) | opencode `ling-3.1-flash-free` | DONE (`75b2f1e`) | That error gone; ruff clean |
 | T-013 | Breakdown fold defects found by T-007: non-ASCII status digits; unparseable source IPs posing as a client | Sonnet | DONE (`02374e9`) | ASCII-only status codes; unparseable values unattributed; regression tests; one defect-pinning test replaced with approval |
 | T-014 | **Production wiring gap:** the scheduled pipeline never passed a `BreakdownPlan` to the collector | Codex → Sonnet | DONE (`8e00bbb`) | 4 tests through `run_waf_source`, including a block-ratio incident opening through the scheduled path alone; 127 WAF integration tests re-run green |
+| T-015 | G1/G3 research: live discovery on the lab QRadar. Log-source fields, groups and types; SIM Generic; REST `average_eps`; rule capacity fields; rule-statistics and rule-logic endpoints; a `creEventList` firing-count AQL | Sonnet | IN PROGRESS (stopped once on token path; resumed with process-env overrides) | `docs/tasks/T-015.report.md` answers the 11 questions with measured facts; read-only; ≤ 12 Ariel searches |
+| T-016 | G2: raise alerts from WAF incidents (`waf_anomaly` fingerprint, `waf_alerting_enabled` shadow-mode switch, enqueuer wiring) | Codex | IN PROGRESS (`agent/t016`) | Open/refresh/resolve alerts; nothing in maintenance or with the setting off; statements constant with no transitions and on refresh |
+| T-017 | B.2: decision D-3. Ratio and concentration training and detection require source-level coverage | Sonnet | IN PROGRESS (`agent/t017`) | New `low_source_coverage` tally; INSUFFICIENT_DATA below the floor; at-floor still judged; no assertion changed |
+| T-018 | Test hygiene: drop the redundant module-level asyncio mark in `test_waf_collection.py` (5 PytestWarnings) | opencode `mimo-v2.6-flash-free` | IN PROGRESS (`agent/t018`) | Same pass count, warnings gone |
 
 **Later, not yet scheduled:**
 
@@ -267,7 +264,10 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | # | Question | Needed for |
 |---|---|---|
 | D-1 | ~~May the orchestrator commit and push?~~ **Resolved 2026-10-10:** yes, standing permission unless there is a hard block. | — |
-| D-3 | **Open design question.** The request-count baseline and the request-rate detector drop buckets whose *source-level* endpoint coverage (`endpoint_coverage_ratio`) is below the floor. Ratio training and the ratio detectors check only the breakdown's coverage of the endpoint's visible requests. If attack or blocked requests are disproportionately unparseable, the visible proportion is biased low. Should ratio paths also require source-level coverage? | Before T-010; decide with evidence from a live run |
+| D-3 | ~~Should ratio paths also require source-level coverage?~~ **Resolved 2026-10-12: yes** (fail closed, AGENTS.md rule 8). When unparseable requests differ in kind, the visible proportion bounds nothing. Training and detection both require `endpoint_coverage_ratio >= waf_min_endpoint_coverage`. It may be relaxed only with live evidence. → T-017. | — |
+| D-4 | ~~Should `WAF_NEW_ENDPOINT_ACCESS` get an enabling setting?~~ **Resolved 2026-10-12: no.** The B.2 enabling settings gate Ariel spend (extra breakdown searches). This detector adds none: it reads data already collected. It is OPERATIONAL whenever WAF collection runs. Revisit if operators need a per-detector mute once WAF alerting (T-016) is live. | — |
+| D-5 | **Open (G3).** Where does a rule's logic (its tests) come from for the AI rule-analysis package? It is not in the 7.6 `/analytics/rules` payload. T-015 checks whether any GET endpoint returns it. | Phase E.3 |
+| D-6 | **Open, the user's call.** The user asked (2026-10-12) to lift the SELinux bind-mount ban (`:z`/`:Z`) if it is not a security risk. The orchestrator's assessment was given to the user; awaiting their choice. Until then the ban in AGENTS.md stays. | Any containerized dev workflow |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
