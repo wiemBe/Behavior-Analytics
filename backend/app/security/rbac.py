@@ -53,6 +53,19 @@ PERM_ANOMALY_READ = "read:anomalies"
 # Phase B.1. WAF collection operations: profile validation state, watermarks,
 # failures and admission counts. Administrative, so `read:*` does not grant it.
 PERM_WAF_ADMIN = "admin:waf"
+# Log-source inventory and the SOC overview. The inventory is a map of every
+# monitored system and its owner; the overview aggregates it. Both were once
+# mounted with no guard at all. `read:*` satisfies the two read capabilities.
+PERM_LOG_SOURCE_READ = "read:log_sources"
+PERM_OVERVIEW_READ = "read:overview"
+# Editing SOC-owned log-source fields (monitoring_enabled, maintenance_mode ...).
+# A write, so `read:*` does not grant it: switching monitoring off silently
+# blinds the platform to that source. Inventory sync needs `admin:*` instead.
+PERM_LOG_SOURCE_WRITE = "log_source:write"
+# Searches and alerts: the read routes were unguarded while their mutating
+# handlers checked a write permission. Now guarded at the router like the rest.
+PERM_SEARCH_READ = "read:searches"
+PERM_ALERT_READ = "read:alerts"
 
 
 class PermissionDenied(Exception):

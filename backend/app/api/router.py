@@ -19,20 +19,33 @@ from app.api.routes import (
     waf,
 )
 from app.security.rbac import (
+    PERM_ALERT_READ,
     PERM_ANOMALY_READ,
     PERM_COVERAGE_READ,
+    PERM_LOG_SOURCE_READ,
     PERM_OFFENSE_READ,
+    PERM_OVERVIEW_READ,
     PERM_PROVIDER_READ,
     PERM_RULE_READ,
+    PERM_SEARCH_READ,
     PERM_WAF_ADMIN,
 )
 
 api_router = APIRouter()
 api_router.include_router(health.router)
-api_router.include_router(overview.router)
-api_router.include_router(log_sources.router)
-api_router.include_router(searches.router)
-api_router.include_router(alerts.router)
+# Guarded at the router, like everything below. /health is the only open surface:
+# container probes carry no credentials. Handlers that mutate state keep their own
+# write-permission checks on top of the router's read requirement.
+api_router.include_router(
+    overview.router, dependencies=[Depends(requires(PERM_OVERVIEW_READ))]
+)
+api_router.include_router(
+    log_sources.router, dependencies=[Depends(requires(PERM_LOG_SOURCE_READ))]
+)
+api_router.include_router(
+    searches.router, dependencies=[Depends(requires(PERM_SEARCH_READ))]
+)
+api_router.include_router(alerts.router, dependencies=[Depends(requires(PERM_ALERT_READ))])
 # --- Phase 3 ---
 # Guarded at the router. These endpoints expose offence records (parsed
 # usernames, source addresses, analyst assignment) and a map of where detection
