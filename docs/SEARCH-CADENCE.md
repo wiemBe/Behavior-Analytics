@@ -1,0 +1,287 @@
+# Search cadence — how often the platform searches QRadar (D-7)
+
+Status: **design, 2026-10-12**. Written by the orchestrator. It rests on the live facts measured
+in [`tasks/T-032.report.md`](tasks/T-032.report.md) and records decision D-7 in
+[`PLANNER.md`](PLANNER.md) §4.
+
+## SC.0 What the user asked for
+
+The platform must not flood QRadar with Ariel searches. The user's requirements:
+- Operators choose how often each search family runs: **5 min, 15 min, 30 min, 1 h, 2 h, 4 h or
+  8 h**.
+- **The default is 1 h for every family**, Phase A included.
+- Each family is set separately, from the UI, with no restart.
+- Every change is audited.
+
+The user accepted the cost: an outage (`NO_EVENTS`) alert can arrive up to one cadence late.
+
+The search families are:
+
+| Family | What it searches today | Searches today |
+|---|---|---|
+| `PHASE_A_VOLUME` | `SUM(eventcount)` per log source | 1 per 5-min bucket |
+| `WAF_COLLECTION` | Endpoint groups, totals and breakdowns, per WAF source | About 3–6 per source per bucket |
+| `ANOMALY_EXPLANATION` | Evidence for open anomalies | 2 per dimension per anomaly |
+| `RULE_MATCH` | `GROUP BY creEventList` (T-025) | 1 per window |
+| Scheduled searches | Operator AQL | Each search's own cron |
+
+## SC.1 The constraint: cadence is not the bucket width
+
+The detectors are tuned for 5-minute buckets. Making the bucket 1 hour wide would break Phase A
+outright.
+- **Training:** each weekday×hour baseline cell would get one sample a week. That is at most 4 in
+  the 28-day lookback, against `baseline_min_samples = 8`, so Phase A would never train.
+- **Floors:** the 100-event absolute-delta floor is calibrated per 5-minute bucket.
+- **Mixing widths:** the Phase A baseline builder groups by weekday×hour without filtering on
+  `bucket_seconds`. A width change on a live install would put 5-minute and 1-hour counts in the
+  same cell.
+
+**So the cadence controls only when a family searches. The bucket width stays as it is.** At each
+cadence tick, a family runs **one** search covering every complete bucket since its watermark. The
+search is keyed by time, so it returns each bucket separately. Each bucket is then stored and
+judged exactly as it is today.
+
+At a 1-hour cadence this means 1 Phase A search an hour instead of 12. For WAF, 3–6 searches per
+source per hour replace 36–72.
+
+## SC.2 Facts (T-032, lab QRadar 7.6, 2026-10-12)
+
+- **Bucket key.**
+  - `starttime / <bucket_ms>` is accepted in `SELECT` and `GROUP BY`. It is integer division, so
+    `k * bucket_ms` is the bucket start in epoch-UTC milliseconds, with no timezone involved.
+  - `FLOOR(...)` is rejected.
+  - `DATEFORMAT` is accepted, but its timezone is unproven and it would merge buckets at a DST
+    change, so it is **not** used.
+- **Equivalence.** The multi-bucket search and today's per-bucket query gave identical
+  `SUM(eventcount)` and `MAX(starttime)` in 12 of 12 comparisons.
+- **Cost.**
+  - Phase A over 1 hour: 37 rows in 0.37 s.
+  - Phase A over 8 hours (5 hours of data): 184 rows in 0.61 s, about 54 B per row.
+  - A fleet of 51 sources at 96 buckets is about 4,900 rows.
+- **`LIMIT` caps the whole result, not each bucket.** With `LIMIT 10`, 2 of 12 buckets lost
+  every row. No per-bucket top-N exists in AQL.
+- **`truncated` from `get_ariel_search_results` is always false.** The `Range` header caps the
+  rows before the comparison runs. This is a live defect, fixed by T-033 (§SC.9).
+- **`creEventList`** grouped with the bucket key is accepted: about 8–10 rows per bucket.
+- **Settle.** Internal sources' last events sat 3–7 s before the window end. No forwarded source
+  was live, so late arrival on real sources is unmeasured.
+
+## SC.3 Data model (migration after T-025's 0012)
+
+**`search_cadence`**: one row per family, seeded by the migration.
+
+| Column | Type | Notes |
+|---|---|---|
+| `family` | `String(32)`, PK | A `SearchFamily` value. This is a new enum, not `AnomalyType`. |
+| `cadence_seconds` | `Integer`, NOT NULL | `CHECK cadence_seconds IN (300, 900, 1800, 3600, 7200, 14400, 28800)`. Seeded with `3600`. |
+| `last_slot_start` | `DateTime(tz)`, NULL | Start of the last cadence slot this family was dispatched for. |
+| `updated_at` | `DateTime(tz)`, NOT NULL | |
+| `updated_by` | `String(255)`, NULL | The principal's subject; NULL for the seed. |
+
+**`anomaly_evaluation_watermark`**: one row per log source.
+
+| Column | Type | Notes |
+|---|---|---|
+| `log_source_id` | FK, PK | References `log_source`. |
+| `evaluated_through` | `DateTime(tz)`, NOT NULL | Bucket start of the last evaluated bucket. |
+| `updated_at` | `DateTime(tz)`, NOT NULL | |
+
+This is a new table, so Phase A tables stay as they are (AGENTS.md rule 6).
+
+**The rest of the model:**
+- The allowed cadences live in one place: a `SearchCadence` `IntEnum` in `app/models/enums.py`.
+  The CHECK constraint, the API schema and the UI options all derive from it.
+- `collection_interval_seconds` keeps its meaning, the bucket width. It **no longer** drives the
+  beat schedule.
+- The existing `*_interval_seconds` settings of the four families stop driving the beat.
+  `explanation_collection_interval_seconds` and `rule_match_collection_interval_seconds` are
+  replaced by the cadence row. Their settings stay readable for one release, ignored, with a
+  deprecation note.
+
+## SC.4 Dispatch: the cadence gate
+
+**The beat.** Each family's beat entry ticks every **60 s**. A tick first asks
+`SearchCadenceService.claim_slot(family, now)`:
+
+1. Compute the slot: `slot = floor_to(now - settle, cadence_seconds)`, aligned to epoch UTC. So
+   4-hour slots start at 00:00, 04:00, 08:00 … UTC.
+2. Claim it atomically:
+   ```sql
+   UPDATE search_cadence SET last_slot_start = :slot
+   WHERE family = :f AND (last_slot_start IS NULL OR last_slot_start < :slot)
+   RETURNING family
+   ```
+   - Exactly one tick wins a slot.
+   - A losing or early tick returns `{"skipped": "not_due"}` and sends nothing to QRadar.
+3. `settle` is a new setting, `search_cadence_settle_seconds`, defaulting to 120 s. A 1-hour slot
+   is therefore dispatched at hh:02. T-032 gives only a lower bound for late arrival, so the
+   value stays configurable.
+
+**Changes and failures:**
+- A cadence change takes effect from the next slot of the new cadence. No restart.
+- Shortening the cadence never triggers a burst: a collector reads from its own watermark, so a
+  tick collects only what is new.
+- A family's run failing after it claimed its slot does not un-claim it. Collectors resume from
+  their own watermark at the next slot, as today. Retrying inside a slot would multiply searches
+  against a failing appliance.
+
+**What runs on the slot:**
+- `PHASE_A_VOLUME` gates `collect_metrics`.
+- `WAF_COLLECTION` gates `dispatch_waf_collection`.
+- `ANOMALY_EXPLANATION` gates `collect_anomaly_explanations`.
+- `RULE_MATCH` gates `collect_rule_matches`.
+- `evaluate_anomalies` is DB-only and sends no search. It stays on a short beat of 60 s, and
+  evaluates whatever new buckets exist (§SC.6).
+
+## SC.5 The multi-bucket search contract (all collecting families)
+
+1. **Key and bounds.**
+   - Select `starttime / {bucket_ms} AS "k"` and group by the same expression.
+   - Keep the half-open `WHERE starttime >= a AND starttime < b` **and** `START a STOP b`.
+   - Here `a` is the first uncollected bucket start, and `b` is the current bucket boundary, the
+     same rule as today.
+2. **Window bound.**
+   - At most `cadence_seconds / bucket_seconds + collection_max_backfill_intervals` buckets per
+     tick.
+   - The backfill cap now counts **beyond** one cadence. Today 12 buckets of backfill would not
+     even cover a 2-hour cadence.
+3. **Row budget and truncation.**
+   - The AQL carries `LIMIT n + 1`, and the results read requests `n + 1` rows (after T-033).
+     Here `n` is the new setting `ariel_multi_bucket_max_rows`, default 5,000, the largest value
+     T-032 measured.
+   - More than `n` rows means truncated.
+   - **A truncated search keeps no bucket.** It is split into two halves of whole buckets, and each
+     half is searched again.
+   - The recursion ends at a single bucket. There the search is exactly today's per-bucket query,
+     with today's truncation semantics.
+   - The searches of one tick are capped by `search_cadence_max_searches_per_tick`, default 16.
+     On reaching the cap, the collector stops. Its watermark stays at the last contiguous complete
+     bucket, and the next slot resumes.
+   - A bucket is never written from a truncated result (AGENTS.md rule 8).
+4. **Fold.** A pure function maps rows to buckets.
+   - It rejects any `k` outside the window. A malformed key fails the whole search.
+   - **Equivalence is the acceptance bar:** for any window, the persisted rows per bucket equal,
+     column for column, what per-bucket collection writes. This includes Phase A's zero-filled
+     rows for silent monitored sources. Only provenance, `collected_at` and duration may differ.
+5. **Provenance.** Each bucket's `query_provenance` adds:
+   - `search_window_start` and `search_window_end`;
+   - `search_bucket_count`;
+   - `bucket_key` (the literal expression);
+   - `split_depth`.
+6. **Mock provider.** It implements the same multi-bucket methods, so unit tests and the lab
+   profile exercise the real fold.
+
+## SC.6 Per family
+
+**`PHASE_A_VOLUME`**
+- `MetricCollector` runs one keyed search per tick and folds it into per-bucket samples. It writes
+  them through the existing upsert, and zero-fills per bucket.
+- **Evaluation moves from "latest" to "every new bucket, in order".**
+  - Today `evaluate_anomalies` calls `evaluate_latest`, so 11 of 12 buckets ingested in one tick
+    would never be judged. The hysteresis counts (`anomaly_open_after_intervals`,
+    `anomaly_resolve_after_intervals`) also assume one call per bucket.
+  - The new loop evaluates buckets with `bucket_start > evaluated_through` in ascending order,
+    each through the existing `evaluate_interval`. It then advances the watermark.
+  - Each run is bounded by a new setting, `anomaly_max_buckets_per_evaluation`, default 120.
+  - **First run** (no watermark row): evaluate only the latest bucket, as today, and seed the
+    watermark. An upgrade must not replay history into alerts.
+
+**`WAF_COLLECTION`**
+- Per source per tick: one keyed endpoint search, one keyed totals search, and one keyed search
+  per enabled breakdown.
+- The **per-bucket top-N cut (`max_groups`) moves into the fold.** Each bucket keeps its top
+  `max_groups` by request count. This is identical to today whenever the search was not
+  truncated.
+- Truncation splits as §SC.5. The single-bucket base case is today's query.
+- The bucket's single Ariel permit becomes one permit per source per tick.
+- WAF already evaluates per bucket through its own `evaluated_through` watermark. Verify it walks
+  every new bucket in order, and pin that with a test at 12 buckets per tick.
+
+**`ANOMALY_EXPLANATION`**
+- Only gated. The number of searches per anomaly is unchanged, and evidence arrives up to one
+  cadence later.
+
+**`RULE_MATCH`** (after T-025 merges)
+- One keyed search per tick, `GROUP BY creEventList, starttime / {window_ms}`. Every window
+  keeps its own `rule_match_window` row and completeness, as today.
+- Counts are never summed across rule ids (T-032 Q6).
+
+**Scheduled searches**
+- The editor offers the seven presets as cron. A new search defaults to 1 h.
+
+  | Preset | Cron |
+  |---|---|
+  | 5 min | `*/5 * * * *` |
+  | 15 min | `*/15 * * * *` |
+  | 30 min | `*/30 * * * *` |
+  | 1 h | `0 * * * *` |
+  | 2 h | `0 */2 * * *` |
+  | 4 h | `0 */4 * * *` |
+  | 8 h | `0 */8 * * *` |
+
+- An existing cron that matches no preset shows as **Custom** and is kept verbatim.
+- The API is unchanged; `schedule_cron` stays authoritative.
+
+## SC.7 API and permissions
+
+**New permissions** in `app/security/rbac.py`:
+- `read:search_cadence` — read-only roles get it.
+- `admin:search_cadence` — admin only, the same pattern as `admin:waf`.
+
+**`GET /admin/search-cadence`** returns one item per family:
+- `family`;
+- `cadence_seconds`;
+- `allowed_cadences_seconds`;
+- `bucket_seconds`;
+- `last_slot_start` and `next_slot_start` (UTC);
+- `updated_at` and `updated_by`;
+- `last_run`, from that family's own collection report: `searches_sent`, `buckets_collected`,
+  `split_count`, `outcome`.
+
+`last_run` is null when the family has not run since the upgrade. It never shows a zero.
+
+**`PUT /admin/search-cadence/{family}`** takes `{"cadence_seconds": <allowed>}`.
+- Any other value gets a 422.
+- An unknown family gets a 404.
+- Writes an `audit_log` record holding the old and the new value.
+
+## SC.8 UI
+
+The page lives under `/admin`. The question it answers: **how often does each family search
+QRadar, and what does that cost in latency?**
+
+**Layout:** one table, one row per family, with these columns:
+- the family name and a one-line scope;
+- the cadence (a select of the seven presets);
+- the bucket width;
+- the worst-case detection delay, computed as `cadence + bucket + settle` and shown as text such
+  as "up to 1 h 7 min";
+- the last slot and the next slot (UTC);
+- the searches sent in the last run.
+
+**Interaction:**
+- A change is confirmed inline and shows who changed it and when.
+- The table is read-only for a principal without `admin:search_cadence`.
+
+**Rules:**
+- AGENTS.md §3a applies in full.
+- No KPI cards. Numbers right-aligned in tabular figures. Times in UTC.
+- Designed states: loading, error, and "not run since upgrade".
+
+**The scheduled-search editor** gets the preset picker (§SC.6).
+
+## SC.9 Tasks
+
+| ID | Task | Agent | Depends on |
+|---|---|---|---|
+| T-033 | **Defect:** `get_ariel_search_results` can never report truncation, so a scheduled search capped at `max_result_rows` is recorded as complete. Reproduce first. Then fetch `max_rows + 1` and keep `max_rows`. Audit every caller. | Sonnet | — |
+| T-034 | Cadence core: `SearchFamily`/`SearchCadence` enums, migration (both tables, seeded), `SearchCadenceService.claim_slot`, beat gating for the four families, API and permissions, audit | Codex | T-025 merged |
+| T-035 | Phase A: keyed multi-bucket collection, split on truncation, equivalence tests, evaluation watermark | Sonnet | T-033, T-034 |
+| T-036 | WAF: keyed endpoint, totals and breakdown searches, per-bucket top-N in the fold, split, equivalence tests | Codex | T-033, T-034 |
+| T-037 | Rule matches: keyed multi-window search | Sonnet | T-025, T-034 |
+| T-038 | UI: cadence admin page and the scheduled-search preset picker, with screenshots at three viewports | Sonnet | T-034 |
+| T-039 | Docs: README configuration table, upgrade note, deprecated settings | opencode free | T-034 |
+
+**Live validation after the build:** run a 1-hour and an 8-hour cadence on the lab. Confirm one
+Phase A search per tick, the per-bucket rows equal a per-bucket control run, and the alerts still
+open on the generator's spike scenario.
