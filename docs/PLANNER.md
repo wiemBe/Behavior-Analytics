@@ -33,11 +33,17 @@ worktree in `../QRadar-Dash-wt/<id>`.
 | T-022 + T-022b (Phase C.1, Codex) | **Merged into `feat/phase-ce` (`e10c922`)**; the branch is pushed as `agent/t022`. The agent's full suites were green; a post-merge full gate on `feat/phase-ce` is still owed. | Run the full gates on `feat/phase-ce`, then **T-022c**: multi-role NGFW DSMs (Palo Alto PA Series, Cisco Firepower Threat Defense, FortiGate, Check Point, Juniper SRX) must have **no** built-in type rule, so the site's naming convention decides (the user runs FTD and PA as IPS). Today they pin FIREWALL, and a name like `…-ips-…` only shows up as a conflict. Update the seed and the 62-name matrix. |
 | T-025 + T-025b (Phase E.1a, Sonnet) | **Merged into `feat/phase-ce`** (`e77cb99` and the re-chain `0d037f5`). The orchestrator read the T-025b liveness diff: bounded attempts, then FAILED and the watermark moves on; a failed retry never downgrades COMPLETE; bulk skip beyond the horizon records FAILED, never empty. Sonnet re-chained 0012 to 0011, after the opencode free models failed. Round trip 0010→0012→0010→0012 clean, and `alembic check` reports no drift. | Read the full gate result (running), then push. |
 | T-028 (security, Sonnet) | **Merged into `feat/phase-ce` (`0e2bf71`)**; the branch is pushed as `agent/t028`. Every router guarded; a guard test walks all 61 routes. The orchestrator re-ran 32 API tests green. | **T-031:** `PATCH /rules/{id}` and `POST /coverage/mappings` mutate state behind a read permission only. They need write permissions; then remove their `_READONLY_MAY_MUTATE` allowlist entries. Optionally replace the guard test's allowlist `skip`s with filtered parametrization. |
-| T-029 (Phase D generator, PAN THREAT + FTD 430001) | Codex hit its usage limit mid-task. **Handed to Sonnet with "review what you inherit"**, in the same worktree `t029`. | Review the vendor citations, any `UNVERIFIED` renderers and the dry-run samples. |
-| **Search cadence (new; D-7)** | **T-032 done and accepted.** The orchestrator checked its claims against the raw outputs. **Design written: [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md)**, with tasks T-033 to T-039 in §SC.9. **T-033** (defect: Ariel truncation is never reported) **launched on Sonnet**, in worktree `t033` with DB `qradar_obs_t033`. | Review T-033. Merge T-025 (it unblocks T-034). Then T-034 (Codex), followed by T-035/T-036/T-037/T-038/T-039 in the order of §SC.9. |
+| T-029 (Phase D generator, PAN THREAT + FTD 430001) | **Done and accepted** (`agent/t029` @ `140df40`, pushed; [report](tasks/T-029.report.md)). Sonnet finished the work Codex left. It found that Codex's tests cited "vendor reference lines" that neither vendor page contains, and replaced them with tests that pin the documented field names and positions. It also made the new profiles opt-in, so the default streams are unchanged, and moved FTD to the `%FTD-1-430001:` form. The orchestrator re-ran ruff and 1,640 unit tests green, and checked the safety rules: RFC 5737 sources, `10.10.20.0/24` destinations, `--format vendor`. **Risk for T-030:** IBM's Palo Alto DSM page lists only LEEF and CEF, not the raw PAN-OS CSV, so `pan_threat` may not auto-discover. A LEEF variant is the fallback. | Cherry-pick into `feat/phase-ce` after the current gate run. Then T-030 measures auto-discovery. |
+| **Search cadence (new; D-7)** | **T-032 done and accepted.** The orchestrator checked its claims against the raw outputs. **Design written: [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md)**, with tasks T-033 to T-039 in §SC.9. **T-033 done and merged** (`6c225f9`). T-025 is merged too. **The T-034 spec is ready** ([`tasks/T-034.md`](tasks/T-034.md)). It is scoped to the core, and gates only `ANOMALY_EXPLANATION`: each family is gated by its own task (§SC.4). | Launch T-034 on Codex once its usage limit resets. Then T-035/T-036/T-037/T-038/T-039 in the order of §SC.9. T-038 also owns the truncated-run UI (§SC.8). |
 
-**A full gate on `feat/phase-ce` is owed.** It now holds T-021, T-022, T-026 and T-028. A run started
-mid-cherry-pick does not count; start a fresh one on a new database.
+**Full gate on `feat/phase-ce` @ `1d67df0` (T-021, T-022, T-025, T-026, T-028), 2026-10-12: green.**
+- Backend: 2,361 passed, 7 skipped, 0 failed, on a fresh DB.
+- ruff clean; mypy 31 errors in 18 files (the baseline).
+- Alembic: 0010→0012→0010→0012 clean, and `alembic check` reports no drift.
+- Frontend: lint, typecheck and build pass; 695/695 tests.
+
+The branch is pushed. T-033, its test-pin follow-up and T-029 were added on top, and
+**`a9d52d2` is green**: 2,424 passed, 0 failed.
 
 **Next steps, after the above:**
 1. **T-030:** the live run. Send vendor-native PAN THREAT and FTD syslog at 5 EPS or less to the
@@ -290,7 +296,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-025b | Follow-up on T-025, liveness: a permanently failing window stalled the watermark forever. Bounded attempts, then skip as FAILED; a catch-up horizon with a bulk skip | Sonnet | DONE (diff read by the orchestrator; merged with T-025) | Skip after N attempts; transient failures not skipped; constant-cost bulk skip; health stays fail-closed over skipped spans |
 | T-027 | G2 research: live IPS field discovery for the Phase D design | Sonnet | DONE ([report](tasks/T-027.report.md)) | **The lab has no live IPS telemetry**: 12 Snort/McAfee sources have been silent for about 71 days, and the Phase A IPS source does not exist. Ariel syntax facts: `SUM(CASE…)` is rejected, absent ports are 0 (not NULL), `UNIQUECOUNT` counts 0. Phase D validation needs a lab IPS source created by the user and a generator extension. |
 | T-032 | **Search cadence research (D-7):** live, read-only. Can one Ariel search return every 5-minute bucket of a cadence window? Covers a timezone-free bucket key, equivalence with today's per-bucket query, cost at 1 h and 8 h, `LIMIT` across buckets, `creEventList` by bucket, and the settle delay | Sonnet | DONE ([report](tasks/T-032.report.md); verified against the raw outputs) | ≤ 12 searches; every question answered with exact AQL; the design implications |
-| T-033 | **Defect:** `get_ariel_search_results` can never report truncation, because the `Range` header caps rows before the check. As a result, scheduled searches record capped results as complete and apply thresholds to them, and Phase A would zero-fill dropped sources. Reproduce first; fail closed | Sonnet | IN PROGRESS (`agent/t033`) | Failing tests first; no total metric and no resolve on truncated results; Phase A raises; caller audit |
+| T-033 | **Defect:** `get_ariel_search_results` can never report truncation, because the `Range` header caps rows before the check. As a result, scheduled searches record capped results as complete and apply thresholds to them, and Phase A would zero-fill dropped sources. Reproduce first; fail closed | Sonnet | DONE (`6c225f9`, cherry-picked from `agent/t033`). Reproduced with 4 unit and 8 integration failures. The orchestrator read the diff and re-ran 110 unit and 43 integration tests green. It approved one existing-test edit: the `Range` header pin `items=0-3`→`items=0-4`, the new required value, with no weakening. Open: a GT threshold above `max_result_rows` can never fire on a truncated run (search-config validation gap); "no verdict" is stored as `threshold_breached=False`, and the alert evaluator tells it apart through `truncated`. | Failing tests first; no total metric and no resolve on truncated results; Phase A raises; caller audit |
 | T-034 … T-039 | Search cadence build: core and API, Phase A, WAF, rule matches, UI, docs ([§SC.9](SEARCH-CADENCE.md)) | Codex / Sonnet / opencode | TODO (T-034 needs T-025 merged) | Per §SC.9; equivalence with per-bucket collection is the acceptance bar |
 | T-028 | **Security fix (DONE, `0e2bf71`):** the `/log-sources` (incl. PATCH and sync) and `/overview` routers were mounted with **no authentication**, and read routes of searches and alerts may be too. Router-level `requires()`, new permissions, an audit record on PATCH, and a guard test walking every route | Sonnet | IN PROGRESS (`agent/t028`) | Every route except the allowlisted health/docs returns 401 without a principal; read-only gets 403 on every mutation |
 
@@ -332,6 +338,17 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
     reaches `baseline_min_samples`. The cadence and the bucket width are therefore decoupled.
   - **T-032** (live research into a multi-bucket Ariel search) was launched on Sonnet.
   - T-029 was found cut off by the Codex usage limit.
+- **Merges into `feat/phase-ce`:**
+  - T-025, with the re-chain. The full gate was then green.
+  - T-033 (`6c225f9`). After it, the full suite had **1 failure**: a T-025 test still pinned the
+    old `Range` header (`items=0-199`). T-025's own truncation check (`LIMIT` and
+    `len >= limit`) was correct throughout. Sonnet updated the pin to `items=0-200` as an
+    approved single-line edit (`67b718b`).
+  - T-029 (`a9d52d2`).
+  - **Full suite on `a9d52d2`: 2,424 passed, 7 skipped, 0 failed.** ruff is clean, including
+    the generator. mypy was 31, the baseline, after T-033; nothing in `app/` has changed since.
+- **T-034 launched on Codex** at 18:45, after the user reported that Codex's usage limit had
+  reset.
 - **The user set the product goals** (§0) and the working model: the orchestrator writes no code,
   and Codex and the opencode free models are used alongside Sonnet.
 - **D-4: no setting.** T-006b reviewed and merged; its test edits were filters, not weakening.

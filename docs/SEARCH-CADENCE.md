@@ -282,6 +282,13 @@ QRadar, and what does that cost in latency?**
 
 **The scheduled-search editor** gets the preset picker (§SC.6).
 
+**Truncated scheduled-search runs** (after T-033) also need UI work on `/searches/[id]`:
+- The result count reads as a lower bound ("≥ 500"), not "500 (trunc)".
+- The threshold column says "no verdict" for a truncated run that did not breach, instead of the
+  "—" a run within its threshold also shows.
+- The `total` trend now has no point for a truncated run. The chart must draw a gap there,
+  never a zero (AGENTS.md §3a).
+
 ## SC.9 Tasks
 
 | ID | Task | Agent | Depends on |
