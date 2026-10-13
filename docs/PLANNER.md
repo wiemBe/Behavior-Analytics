@@ -8,9 +8,16 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (sixth session, 2026-10-13, from ~11:28)
+## ▶ Resume here (saved 2026-10-13 ~16:10, end of the sixth session — user: "session limit")
 
-**Sixth session in progress.** State at the last save is in "In flight" below; `main` @ `dabd744`.
+**Four agents were still running at save time** (table below). They may have finished or died
+with the session; check each worktree's `git status` and `docs/tasks/T-xxx.report.md`. Nothing of
+theirs is committed. Background runs (`codex exec`, `opencode run`) continue without the Claude
+session; Sonnet sub-agents die with it — relaunch with the spec + "review what you inherit".
+**`main` @ `3f9c4fa`** (T-061 only this session). **`feat/phase-ce` @ `58b1558`** pushed, migration
+head **`0017`**. Before `main`: a full gate (ruff, mypy 31, full unit + integration on a fresh DB,
+alembic round trip, frontend lint/typecheck/test/build) — `main` still carries the WAF time-bomb
+test failure and the 422 "Add WAF source" picker, both fixed on `feat/phase-ce`.
 
 **Read §0 first.** The user set three product goals (G1 log-source fleet, G2 IPS/WAF behavior,
 G3 rule analytics). Every task is scheduled against them.
@@ -47,7 +54,7 @@ G3 rule analytics). Every task is scheduled against them.
     carry `source_class`; **T-059** deterministic double-submit tests; **T-045** D-8 docs.
 - The full gate passed and `main` was merged (above). The `gate` worktree is detached again.
 
-**In flight (sixth session, updated ~16:20):**
+**In flight at save time (sixth session, ~16:10):**
 
 - **Merged this session (`feat/phase-ce`, pushed; migration head `0017`):** T-061 (also `main` @
   `3f9c4fa`), T-064, **T-060** WAF analyst UI, **T-049** IPS profile + `/ips` (`0017`), **T-062**
@@ -74,17 +81,24 @@ Contract follow-ups: T-060 (`numerator_sum`/`denominator_sum` on `WafBaselineCel
 reasons; `SOURCE_BUSY` status field; `/admin` hub link).
 
 **Next steps, in order:**
-1. ~~Full gate → `main`~~ done (`dabd744`).
-2. T-049 review/merge (migration `0017`). Then **T-050** (IPS collection, design §D.5): split into
-   T-050a (provider keyed fleet searches + pure folds; Sonnet) and T-050b (tables `0018`,
-   collector, `IPS_COLLECTION` family and gate, admission; Codex). Write both specs after reading
-   T-049's field-reference types. Then T-051 → T-052; **T-053** `/admin/ips-sources` UI (reuses the
-   T-044/T-058 components) after T-049; T-054 live; T-055 docs.
-3. T-060 review/merge; then the gate again and `main`.
-4. Later: E.3 rule-statistics UI (D-5 still the user's call); Phase C.2 (per-class outage policy,
-   SIM Generic); Phase 4 OIDC (**no authenticated route works in production until OIDC lands**).
+1. Collect the four in-flight tasks (table above): T-050b (Codex: check its log for "usage
+   limit"), T-074 (live; if `QIDNAME`/`ORDER BY UNIQUECOUNT` is rejected, fix `_ips_keyed_query`
+   before T-050b relies on it), T-068 round 1 (`big-pickle`), T-069 (Sonnet). **Migrations:**
+   merge `0018` (T-050b) first, then re-chain T-068's `0019` → `0018` and T-069's `0020` → `0019`
+   (pin each round-trip test to its own revision; alembic round trip + `alembic check`).
+2. Full gate on `feat/phase-ce` → merge to `main` (fixes the WAF time bomb and the 422 picker on
+   `main`).
+3. T-070 C.2 UI (`/admin/outage-policy`, `/fleet/catchall`; Sonnet/Codex, screenshots), T-071 C.2
+   live; T-051 → T-052 (IPS detectors, alerting; then the IPS analyst view), T-054 IPS live, T-055
+   docs.
+4. Later: E.3 AI rule analysis (D-5, user's call); Phase 4 OIDC (**no authenticated route works in
+   production until OIDC lands**); contract follow-ups listed above.
 
-**User decisions this session (2026-10-13):**
+**User decisions, sixth session (2026-10-13):** D-9 — outage alerts stay on for every monitored
+source by default (`RECORD_ONLY` per class/source is opt-in); new SIM Generic senders go to a review
+queue only, no alert.
+
+**User decisions, fifth session (2026-10-13):**
 - Asked whether the custom properties can be seen and mapped ("WAF'ta bu budur"): yes — T-043
   catalog + T-044 editor + T-042 API. **No automatic suggestion** ("öneri sunmayalım"); **a search
   inside the property list instead** ("aşağı kaydır veya ctrl f yapmıyım") → T-058, merged.
@@ -434,6 +448,18 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 ---
 
 ## 5. Log
+
+### 2026-10-13 (sixth session, 11:28–16:10)
+
+- Codex died on T-049 (usage limit 11:27); Sonnet finished it. All four Sonnet agents hit the
+  Claude session limit ~12:30 (reset 14:30) and were resumed with `SendMessage`.
+- **Merged:** T-061, T-064, T-060, T-049, T-062, T-053, T-072, T-073, T-050a; T-061 also to `main`.
+- **Live checks paid off:** T-065 found QRadar rejects `LIKE` on IP fields (→ `INCIDR`) before any
+  IPS profile could validate; T-063 found the SIM Generic sender field (`logsourceidentifier`).
+- **Defects found:** two wall-clock time bombs in the profile-admin tests (one on `main`); the
+  "Add WAF source" picker 422 (missing `instance_id`, on `main`); "(last validated: None)".
+- **Orchestrator error:** committed a worktree `node_modules` symlink; fixed (see Resume here).
+- Designs: Phase C.2 (PHASE-C §C.7–§C.9); D-9 decided by the user.
 
 ### 2026-10-13
 
