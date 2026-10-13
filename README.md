@@ -521,12 +521,30 @@ docker compose logs --tail=300
 ```
 
 Expected: `postgres`, `redis`, `backend`, `celery-worker`, `celery-beat` and `frontend` healthy,
-with `migrate` exited 0 at revision `0008`. The frontend is on `:3000`, the backend on `:8000`
+with `migrate` exited 0 at the latest revision. The frontend is on `:3000`, the backend on `:8000`
 (`/api/v1/health/live`, `/api/v1/health/ready`).
 
 If `docker compose up` fails with `network id ... not found` for `qradar-vmnet`, the external
 macvlan is stale — typically after a Docker daemon restart. Remove and recreate it:
 `docker network rm qradar-vmnet && bash deploy/create-vmnet.sh`.
+
+### Upgrading
+
+Stop every writer before migrating. Migrations add `NOT NULL` columns whose backfill default is
+dropped once the backfill has run (the project's transient-default convention), so a backend or
+Celery process still running the old code fails on its next insert until it is replaced.
+
+```bash
+git pull --recurse-submodules
+docker compose stop backend celery-worker celery-beat
+docker compose build backend celery-worker celery-beat migrate frontend
+docker compose run --rm migrate            # alembic upgrade head
+docker compose up -d backend frontend celery-worker celery-beat
+```
+
+`docker compose logs migrate` shows the revision reached. Every migration downgrades one step
+(`alembic downgrade -1`), but a downgrade drops the columns and tables that revision added,
+with their data.
 
 ## Development
 
@@ -591,11 +609,11 @@ search executor and scheduler, search alerting, notification dispatch, the resul
 the API against a real database. All QRadar
 responses in tests are mocked and no notification is ever really sent (`MockNotifier`).
 
-Current suite (2026-10-12): **2,088 backend tests (unit + integration) and 629 frontend tests**
-against a real `timescale/timescaledb:2.17.2-pg16` instance. `ruff check` is
-clean; `mypy app` reports **31 existing errors in 18 files**, unchanged from the Phase A backend
-baseline, with no new errors. Alembic upgrades a fresh database through `0008`, downgrades to
-`0007` and upgrades again, and `alembic check` reports no drift.
+Current suite (2026-10-13): **2,940 backend tests (2,177 unit, 763 integration) and 1,097
+frontend tests**, the integration tests against a real `timescale/timescaledb:2.17.2-pg16`
+instance. `ruff check` is clean; `mypy app` reports **31 existing errors in 18 files**, unchanged
+from the Phase A backend baseline, with no new errors. Alembic upgrades a fresh database to the
+head revision, downgrades two revisions and upgrades again, and `alembic check` reports no drift.
 
 > Never run two `pytest` processes against the same test database concurrently. The schema fixture
 > drops and recreates tables, so a second run fails with unrelated collection errors, and a
