@@ -8,46 +8,43 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (saved 2026-10-13 ~21:45, seventh session — at the user's request)
+## ▶ Resume here (saved 2026-10-13 ~22:40, end of the seventh session; the user is moving to a new chat)
 
-**The user stopped here, before the UI redesign, at ~21:50.** The chat had grown long, and the next
-step will probably start in a new chat. The agent branches `agent/t050b` (WIP), `t068`, `t069`,
-`t070a` and `t075` are pushed to origin as a backup. **Begin a new chat with step 1 of "Next steps"
-below.** The UI redesign (UI-R0) waits until steps 1–3 are done.
+**Start the new chat here.** The UI redesign (UI-R0) waits until steps 1–3 of "Next steps" below
+are done.
 
-**Branch cleanup (user request, ~22:00).** Before deleting anything, each branch's content was
-verified to be in `feat/phase-ce` or `main`, either as an ancestor or as an equivalent cherry-pick:
-T-022, T-023 and the T-006b WIP were checked commit by commit.
-- 25 merged worktrees were removed.
-- 56 local agent branches were deleted, plus `feat/phase-b2` and
-  `fix/deploy-selinux-and-bootstrap` (both in `main`).
-- 20 remote branches were deleted.
-- The test DBs of those tasks were dropped.
+**State at save:**
+- **T-050b is DONE and merged** into `feat/phase-ce` (`64152e3`, migration `0018`), after four
+  review rounds. Its worktree, branch and DBs were removed.
+- **Finished and committed on their agent branches, all pushed to origin**, waiting for the
+  migration chain:
+  - **T-068**: `agent/t068`, `0019`; `feat/phase-ce` is already merged into it (`a24f055`);
+  - **T-069**: `agent/t069` @ `0534a47`, `0020`;
+  - **T-070a**: `agent/t070a` @ `25a7bb8`, which contains `agent/t068`;
+  - **T-070b**: `agent/t070b` @ `7438958`, which contains `agent/t069`. It was accepted after one
+    screenshot round: gap shading at every width, no dual axis, hostnames break only at `.` or `-`.
+- **In flight: T-076 Part A** ([spec](tasks/T-076.md)). opencode `big-pickle` runs in the `t068`
+  worktree:
+  - log: `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/718a4478-8643-430e-9cee-227f95f48d16/scratchpad/t076a.log`;
+  - it re-chains `0019` → `0018`, and moves the drift checks of `test_migration_0018` and `_0019`
+    to `head`;
+  - at save, the alembic sequence was green (single head `0019`, no drift), and the full
+    integration suite on `qradar_obs_t068` was running;
+  - it runs in the background and continues without this chat.
 
-What remains:
-- **local branches:** `main`, `feat/phase-ce`, and `agent/t050b`, `t068`, `t069`, `t070a`, `t070b`;
-- **remote branches:** the same, without `t070b`;
-- **worktrees:** `gate`, `t050b`, `t068`, `t069`, `t070a`, `t070b`;
-- the backup ref `refs/backup/pre-t001-2026-10-10`, which is kept.
-
-**From now on:** once a task is merged, remove its worktree, its branch (local and remote) and its
-DB.
-
-**Two agents are running at save time:**
-- **T-050b round 3:** Codex, session `01a1355d-31e8-74f1-be9f-e1e0016d460a`, in worktree `t050b`.
-  Its work up to round 2 is committed as WIP `4951f3d`.
-- **T-070b:** Sonnet, in worktree `t070b`.
-
-How to pick them up after a session break:
-- Background `codex exec` runs continue without the Claude session.
-- Sonnet sub-agents die with the session. Relaunch them with the spec plus "review what you
-  inherit".
-- Check each worktree's `git status` and its `docs/tasks/T-xxx.report.md`.
+**Branch cleanup (user request, ~22:00):**
+- Every branch's content was verified to be in `feat/phase-ce` or `main` first.
+- 25 worktrees, 58 local and 20 remote branches, and their test DBs were removed.
+- **Remaining:** `main`, `feat/phase-ce`, and `agent/t068`, `t069`, `t070a`, `t070b` (local and
+  origin); the worktrees `gate`, `t068`, `t069`, `t070a`, `t070b`; and
+  `refs/backup/pre-t001-2026-10-10`.
+- **Rule from now on:** once a task is merged, remove its worktree, its branch (local and remote)
+  and its DB.
 
 **Branch state:**
 - **`main` @ `3f9c4fa`.**
-- **`feat/phase-ce`** is pushed. It holds T-075 and the docs. Its migration head is still
-  **`0017`**.
+- **`feat/phase-ce` @ `64152e3`** is pushed. It holds T-075 and T-050b. Its migration head is
+  **`0018`**.
 - Finished and committed **on their own agent branches**, waiting for the migration chain:
   - T-068 (`agent/t068`, `0019`);
   - T-069 (`agent/t069`, `0020`);
@@ -205,18 +202,23 @@ while WAF buckets are fixed at 300 s.
 - T-053: `/ips/sources` per-field reasons, and a `SOURCE_BUSY` status field.
 - T-070a: an instance-scoped class row has no covered count.
 
-**Next steps, in order (seventh session, updated ~21:45):**
-1. **Collect T-050b round 3** (Codex). Check its log for "usage limit". Review the budget rule,
-   then run the gates, and merge `0018` first. **Then the migration chain:**
-   - re-chain T-068's `0019` → `0018`, then merge `agent/t068` and `agent/t070a`;
-   - re-chain T-069's `0020` → `0019`, then merge `agent/t069`, plus `agent/t070b` once it is
-     reviewed.
-
-   Pin each round-trip test to its own revision, run the alembic round trip and `alembic check`,
-   and confirm a single head `0020`. Give the re-chains to an opencode free model.
-   - At the merge, `SearchFamily` ends `…, RULE_MATCH, IPS_COLLECTION, CATCHALL_SENDERS`.
-   - Both branches carry the same `test_migration_0013` edit.
-2. **Review T-070b's screenshots** (Sonnet, `/fleet/catchall`).
+**Next steps, in order (updated ~22:40, end of the seventh session):**
+1. **Finish the migration chain.** T-050b and `0018` are already merged.
+   - **Collect T-076 Part A** from `t068`: read `docs/tasks/T-076.report.md` and the log tail, and
+     review the diff, which should change only the down_revision and the three tests. Commit it on
+     `agent/t068`. Then merge `agent/t068`, followed by `agent/t070a` (which contains `t068`),
+     into `feat/phase-ce`.
+   - **T-076 Part B, still to write and run.** In `t069`, merge `feat/phase-ce` in first. Then
+     re-chain `0020` → `0019` and change the final drift check of `test_migration_0019` to `head`,
+     as in Part A. Gates: a single head `0020`, and the full integration suite. Then merge
+     `agent/t069`, followed by `agent/t070b`.
+   - **Expect a conflict when T-069 merges:**
+     - In `SearchFamily`, keep `…, RULE_MATCH, IPS_COLLECTION, CATCHALL_SENDERS`.
+     - In `frontend/src/lib/api.ts` and `searchCadence.ts`, keep both entries, in the same order.
+     - Both branches carry the same `test_migration_0013` edit.
+     - Let the agent resolve it.
+   - After each merge, remove the merged worktree, branch and DB.
+2. ~~Review T-070b's screenshots~~: done and accepted.
 3. **Full gate on `feat/phase-ce` → merge to `main`**: ruff; mypy at 31; the full unit and
    integration suites on a fresh DB; the alembic round trip; the frontend gates. This also fixes
    the WAF time bomb and the 422 picker on `main`.
