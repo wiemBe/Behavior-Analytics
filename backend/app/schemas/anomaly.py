@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -30,7 +31,34 @@ from app.models.enums import (
     EvidenceStatus,
     RobustScoreStatus,
     Severity,
+    WafAnomalyType,
 )
+
+
+class SubjectKind(StrEnum):
+    """What an anomaly is about. A response shape, never persisted.
+
+    The analyst list unifies several detector families through this one
+    discriminator. A new family (design Phase D: IPS subjects) adds a member and
+    a branch in the repository's union; it does not reshape the response.
+    """
+
+    LOG_SOURCE = "LOG_SOURCE"
+    WAF_ENDPOINT = "WAF_ENDPOINT"
+
+
+class WafEndpointRefOut(BaseModel):
+    """The WAF endpoint an anomaly is about. Identity only, no measurements."""
+
+    id: uuid.UUID
+    normalized_endpoint: str
+    http_method: str
+    #: None when the source exposes no virtual host. Never an empty string.
+    virtual_host: str | None = None
+    #: Whether this WAF source can tell applications apart by host. False means
+    #: the endpoint may combine traffic of different applications sharing a path.
+    virtual_host_available: bool
+    normalizer_version: int
 
 
 class MetricBucketOut(BaseModel):
@@ -147,11 +175,17 @@ class AnomalyListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    #: What the anomaly is about. Phase A rows are LOG_SOURCE.
+    subject_kind: SubjectKind = SubjectKind.LOG_SOURCE
+    #: For a WAF_ENDPOINT subject, the WAF log source that carries the endpoint.
     log_source_id: uuid.UUID
     #: Resolved by the route from the owning source. None only when the source
     #: row is gone, which the UI renders as the id rather than as a blank cell.
     log_source_name: str | None = None
-    anomaly_type: AnomalyType
+    #: Set for a WAF_ENDPOINT subject, otherwise None.
+    waf_endpoint: WafEndpointRefOut | None = None
+    #: A Phase A type, or for a WAF subject the row's detector type.
+    anomaly_type: AnomalyType | WafAnomalyType
     state: AnomalyState
     severity: Severity
     observed_value: float | None = None
@@ -168,6 +202,9 @@ class AnomalyListItem(BaseModel):
     resolved_at: datetime | None = None
     evidence_status: EvidenceStatus
     suppressed: bool = False
+    #: WAF only: EXACT, or LOWER_BOUND when `observed_value` is "at least n".
+    #: None for Phase A rows, which have no such distinction.
+    observed_measurement: str | None = None
     #: Server-rendered detector reasoning, so the UI never reconstructs
     #: detection logic to explain a verdict.
     explanation: str | None = None
@@ -295,6 +332,48 @@ class DetectionDetailOut(BaseModel):
     fallback_bound: float | None = None
 
 
+class WafDetectionDetailOut(BaseModel):
+    """The WAF detector's working, projected from the stored evidence by whitelist.
+
+    Same rule as `DetectionDetailOut`: named keys only, from the two known levels
+    of the evidence dict. The evidence also holds contributor lists and the
+    detector's entity block; none of that is forwarded here. A missing value is
+    None, never 0.
+    """
+
+    reason: str | None = None
+    expected_low: float | None = None
+    expected_high: float | None = None
+    threshold: float | None = None
+    baseline_sample_count: int | None = None
+    baseline_completeness: float | None = None
+    baseline_version: int | None = None
+    normalizer_version: int | None = None
+
+    #: Volume detector: requests in the anomalous bucket and the baseline median.
+    observed_requests: float | None = None
+    expected_requests: float | None = None
+    absolute_delta_requests: float | None = None
+    #: Share of the source's events that carried a parseable endpoint.
+    endpoint_coverage_ratio: float | None = None
+    #: EXACT, or LOWER_BOUND when `observed_requests` is "at least n".
+    request_count_measurement: str | None = None
+
+    #: Ratio detectors: the observed and expected proportion of the endpoint's
+    #: requests, and the counts the observed proportion was computed from.
+    observed_proportion: float | None = None
+    expected_proportion: float | None = None
+    observed_numerator: float | None = None
+    observed_denominator: float | None = None
+    percentage_point_change: float | None = None
+
+    ratio: float | None = None
+    ratio_basis: str | None = None
+    robust_score_status: RobustScoreStatus | None = None
+    robust_z: float | None = None
+    fallback_bound: float | None = None
+
+
 class AnomalyDetailOut(AnomalyListItem):
     """Everything the investigation page needs for one anomaly."""
 
@@ -304,7 +383,8 @@ class AnomalyDetailOut(AnomalyListItem):
     #: None when evidence was never requested or has not yet been collected.
     explanation_package: ExplanationOut | None = None
     #: None when the anomaly recorded no structured detector evidence.
-    detection: DetectionDetailOut | None = None
+    #: A WAF subject carries the WAF projection; a log source the Phase A one.
+    detection: WafDetectionDetailOut | DetectionDetailOut | None = None
 
 
 class BehaviorSummaryOut(BaseModel):
@@ -390,6 +470,286 @@ def detection_detail(details: dict[str, Any] | None) -> DetectionDetailOut | Non
 
 class PagedAnomalies(BaseModel):
     items: list[AnomalyListItem]
+    total: int
+    limit: int
+    offset: int
+
+
+def _num(source: dict[str, Any], key: str) -> float | None:
+    value = source.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _text(source: dict[str, Any], key: str) -> str | None:
+    value = source.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _section(source: dict[str, Any], key: str) -> dict[str, Any]:
+    value = source.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def waf_detection_detail(
+    details: dict[str, Any] | None, *, normalizer_version: int | None = None
+) -> WafDetectionDetailOut | None:
+    """Project a stored WAF evidence dict onto the typed WAF detection block.
+
+    Reads named keys only. The nested `observed` and `expected` sections of the
+    ratio detectors are read by key too, so their contributor lists, entity block
+    and provenance never reach the response.
+    """
+    if not details:
+        return None
+    extra = _section(details, "extra")
+    observed = _section(extra, "observed")
+    expected = _section(extra, "expected")
+
+    sample_count = _num(details, "sample_count")
+    version = _num(extra, "baseline_version")
+    if version is None:
+        version = _num(expected, "baseline_version")
+    completeness = _num(extra, "baseline_completeness")
+    if completeness is None:
+        completeness = _num(expected, "completeness")
+    status = _text(extra, "robust_score_status")
+    measurement = _text(extra, "request_count_measurement")
+
+    return WafDetectionDetailOut(
+        reason=_text(details, "reason"),
+        expected_low=_num(details, "baseline_low"),
+        expected_high=_num(details, "baseline_high"),
+        threshold=_num(details, "threshold"),
+        baseline_sample_count=int(sample_count) if sample_count is not None else None,
+        baseline_completeness=completeness,
+        baseline_version=int(version) if version is not None else None,
+        normalizer_version=normalizer_version,
+        observed_requests=_num(extra, "observed_requests"),
+        expected_requests=_num(extra, "expected_requests"),
+        absolute_delta_requests=_num(extra, "absolute_delta_requests"),
+        endpoint_coverage_ratio=_num(extra, "endpoint_coverage_ratio"),
+        request_count_measurement=measurement if measurement in ("EXACT", "LOWER_BOUND") else None,
+        observed_proportion=_num(observed, "proportion"),
+        expected_proportion=_num(expected, "proportion"),
+        observed_numerator=_num(observed, "numerator"),
+        observed_denominator=_num(observed, "denominator"),
+        percentage_point_change=_num(extra, "percentage_point_change"),
+        ratio=_num(extra, "ratio"),
+        ratio_basis=_text(extra, "ratio_basis"),
+        robust_score_status=(
+            RobustScoreStatus(status) if status in set(RobustScoreStatus) else None
+        ),
+        robust_z=_num(extra, "robust_z"),
+        fallback_bound=_num(extra, "fallback_bound"),
+    )
+
+
+# ------------------------------------------------------------ WAF behavior
+class WafLatestBucketOut(BaseModel):
+    """The most recent bucket a WAF source collected, and how whole it was."""
+
+    bucket_start: datetime
+    bucket_seconds: int
+    completeness: str
+    #: Share of the source's events that carried a parseable endpoint.
+    endpoint_coverage_ratio: float
+    #: LOWER_BOUND when grouping was truncated: the ratio is then itself a floor.
+    coverage_measurement: str
+    #: EXACT, or LOWER_BOUND when endpoint request counts are "at least n".
+    request_count_measurement: str
+    total_events: int
+    in_maintenance: bool
+    groups_truncated: bool
+    admission_truncated: bool
+
+
+class WafAdmissionOverflowOut(BaseModel):
+    """Endpoints refused tracking in the range. Counts over the collected buckets.
+
+    The sums are None when no bucket was collected in the range: "nothing was
+    refused" is a claim only a collected bucket can make.
+    """
+
+    buckets_in_range: int
+    buckets_admission_truncated: int | None = None
+    rejected_over_quota: int | None = None
+    below_admission_threshold: int | None = None
+    untracked_requests: int | None = None
+
+
+class WafSourceBehaviorOut(BaseModel):
+    """One WAF source: profile status, latest coverage, endpoint pressure."""
+
+    log_source_id: uuid.UUID
+    log_source_name: str
+    product_label: str | None = None
+    enabled: bool
+    profile_version: int
+    #: Validation status of the profile. Collection requires VALID for the
+    #: current version; `validation_current` says whether that holds.
+    validation_status: str
+    validated_profile_version: int | None = None
+    validated_at: datetime | None = None
+    validation_current: bool
+    virtual_host_available: bool
+    #: None before the first bucket is collected.
+    latest_bucket: WafLatestBucketOut | None = None
+    active_endpoints: int
+    total_endpoints: int
+    active_endpoint_ceiling: int
+    admission: WafAdmissionOverflowOut
+
+
+class WafValidationFieldOut(BaseModel):
+    """One logical field's validation outcome. Counts and ratios only."""
+
+    field: str
+    property_name: str | None = None
+    status: str
+    used_by_collection: bool
+    populated_events: int | None = None
+    populated_ratio: float | None = None
+    distinct_values: int | None = None
+    plausible_ratio: float | None = None
+    sampled_events: int | None = None
+    values_truncated: bool | None = None
+    #: How many bounded sample values the report holds. The values are not served.
+    discovered_value_count: int | None = None
+    detail: str | None = None
+
+
+class WafValidationReportOut(BaseModel):
+    """The last validation report with no queries and no sampled values."""
+
+    status: str | None = None
+    reasons: list[str] = Field(default_factory=list)
+    log_source_found: bool | None = None
+    total_events: int | None = None
+    window_start: str | None = None
+    window_end: str | None = None
+    profile_version: int | None = None
+    validated_at: str | None = None
+    fields: list[WafValidationFieldOut] = Field(default_factory=list)
+
+
+class WafSourceDetailOut(WafSourceBehaviorOut):
+    #: None when the profile has never been validated.
+    validation_report: WafValidationReportOut | None = None
+
+
+class PagedWafSources(BaseModel):
+    items: list[WafSourceBehaviorOut]
+    total: int
+    limit: int
+    offset: int
+    range_start: datetime
+    range_end: datetime
+
+
+class WafBaselineAdequacyOut(BaseModel):
+    """How many seasonal cells of the request-count baseline can drive a verdict."""
+
+    cells_total: int
+    reliable_cells: int
+
+
+class WafEndpointInventoryOut(BaseModel):
+    id: uuid.UUID
+    normalized_endpoint: str
+    http_method: str
+    virtual_host: str | None = None
+    normalizer_version: int
+    first_seen_at: datetime
+    last_seen_at: datetime
+    is_active: bool
+    retired_at: datetime | None = None
+    tracked_since: datetime
+    baseline: WafBaselineAdequacyOut
+    baseline_rebuilt_at: datetime | None = None
+    #: Worst state across the endpoint's detectors. None when no detector has
+    #: evaluated it: unevaluated is not NORMAL.
+    state: AnomalyState | None = None
+    active_anomaly_count: int = 0
+
+
+class PagedWafEndpoints(BaseModel):
+    items: list[WafEndpointInventoryOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class WafMetricBucketOut(BaseModel):
+    """One endpoint-bucket. A missing measurement is None, never 0.
+
+    A bucket with no row for this endpoint is absent here, not synthesized as a
+    zero: whether absence means zero depends on the bucket record's measurement.
+    """
+
+    bucket_start: datetime
+    bucket_seconds: int
+    request_count: int | None = None
+    #: From the source's bucket record. None when that record is missing.
+    request_count_measurement: str | None = None
+    completeness: str
+    #: PARTIAL buckets are displayable but never train or judge a baseline.
+    partial: bool
+    endpoint_coverage_ratio: float | None = None
+    in_maintenance: bool | None = None
+    normalizer_version: int
+    #: Always a lower bound: the maximum over folded raw groups.
+    distinct_client_count: int | None = None
+    #: Each breakdown's own status. Its counts below are None when it was not collected.
+    action_measurement: str | None = None
+    response_code_measurement: str | None = None
+    client_measurement: str | None = None
+    blocked_count: int | None = None
+    action_events: int | None = None
+    unmapped_action_count: int | None = None
+    response_code_events: int | None = None
+    client_error_count: int | None = None
+    server_error_count: int | None = None
+    unclassified_response_count: int | None = None
+    client_events: int | None = None
+    client_sources: int | None = None
+    top1_client_requests: int | None = None
+    top5_client_requests: int | None = None
+
+
+class PagedWafMetrics(BaseModel):
+    items: list[WafMetricBucketOut]
+    total: int
+    limit: int
+    offset: int
+    range_start: datetime
+    range_end: datetime
+
+
+class WafBaselineCellOut(BaseModel):
+    metric_name: str
+    weekday: int
+    hour: int
+    median: float
+    mad: float
+    p05: float | None = None
+    p95: float | None = None
+    sample_count: int
+    #: False means too few samples to drive a verdict: "still learning".
+    is_reliable: bool
+    completeness: float
+    baseline_version: int
+    normalizer_version: int
+    excluded_sample_count: int
+    metric_semantics: str | None = None
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    computed_at: datetime | None = None
+
+
+class PagedWafBaselines(BaseModel):
+    items: list[WafBaselineCellOut]
     total: int
     limit: int
     offset: int
