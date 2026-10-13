@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import case, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
 from app.ips.profile import (
@@ -228,13 +229,24 @@ async def get_mapping_schema(settings: SettingsDep) -> IpsMappingSchemaOut:
     )
 
 
+async def _resolve_instance(
+    session: AsyncSession, instance_id: uuid.UUID | None
+) -> uuid.UUID | None:
+    if instance_id is not None:
+        return instance_id
+    return await session.scalar(select(QRadarInstance.id).limit(1))
+
+
 @router.get("/candidates", response_model=list[IpsCandidateOut])
 async def list_ips_candidates(
     session: SessionDep,
-    instance_id: uuid.UUID,
+    instance_id: uuid.UUID | None = Query(default=None),
     q: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[IpsCandidateOut]:
+    resolved = await _resolve_instance(session, instance_id)
+    if resolved is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no instance registered")
     query = (
         select(LogSource, LogSourceClassification.source_class)
         .outerjoin(IpsSourceProfile, IpsSourceProfile.log_source_id == LogSource.id)
@@ -242,7 +254,7 @@ async def list_ips_candidates(
             LogSourceClassification,
             LogSourceClassification.log_source_id == LogSource.id,
         )
-        .where(LogSource.instance_id == instance_id, IpsSourceProfile.id.is_(None))
+        .where(LogSource.instance_id == resolved, IpsSourceProfile.id.is_(None))
         .order_by(
             case((LogSourceClassification.source_class == SourceClass.IPS, 0), else_=1),
             func.lower(LogSource.name),

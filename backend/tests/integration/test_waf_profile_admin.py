@@ -470,6 +470,60 @@ async def test_candidates_literal_filters_order_and_limit(db_session, db_schema)
     assert api.get(f"{base}&limit=201").status_code == 422
 
 
+async def test_candidates_without_instance_id_resolves_the_default(
+    db_session, db_schema
+) -> None:
+    instance, profiled = await seed_source(db_session, name="Already configured")
+    names = ["Zulu", "AlphaWAF", "Beta"]
+    sources = []
+    for offset, name in enumerate(names, start=30):
+        source = LogSource(
+            instance_id=instance.id,
+            qradar_id=offset,
+            name=name,
+            monitoring_enabled=True,
+        )
+        db_session.add(source)
+        sources.append(source)
+    await db_session.flush()
+    db_session.add(
+        LogSourceClassification(
+            log_source_id=sources[0].id,
+            source_class=SourceClass.WAF,
+            basis="TYPE",
+            conflicts=[],
+            classified_at=NOW,
+            review_status=ClassificationReviewStatus.NEW,
+        )
+    )
+    db_session.add(
+        WafSourceProfile(
+            instance_id=instance.id,
+            log_source_id=profiled.id,
+            url_property="URL",
+            method_property="HTTP_Method",
+        )
+    )
+    await db_session.commit()
+    api = admin_client(db_schema)
+    explicit = api.get(f"/api/v1/waf/candidates?instance_id={instance.id}")
+    assert explicit.status_code == 200
+    implicit = api.get("/api/v1/waf/candidates")
+    assert implicit.status_code == 200, implicit.text
+    assert implicit.json() == explicit.json()
+    # WAF-classified first, then by name: the default instance resolves to the
+    # same rows in the same order as the explicit id.
+    assert [item["name"] for item in implicit.json()] == ["Zulu", "AlphaWAF", "Beta"]
+    assert {item["instance_id"] for item in implicit.json()} == {str(instance.id)}
+
+
+async def test_candidates_without_instance_id_and_no_instance_is_404(db_schema) -> None:
+    api = admin_client(db_schema)
+    response = api.get("/api/v1/waf/candidates")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "no instance registered"
+
+
 async def test_history_is_newest_first_and_capped(db_session, db_schema) -> None:
     _, source = await seed_source(db_session)
     profile = WafSourceProfile(
