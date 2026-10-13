@@ -37,6 +37,72 @@ _COLUMN_BY_FIELD: dict[WafLogicalField, str] = {
 }
 
 
+@dataclass(frozen=True)
+class WafMappingField:
+    """One UI-editable logical field in the WAF mapping contract."""
+
+    key: WafLogicalField
+    label: str
+    description: str
+    required: bool
+    used_by_collection: bool
+
+
+#: The API and editor read this declaration; labels and help copy do not have a
+#: second source in a route or frontend fixture.
+WAF_MAPPING_FIELDS = (
+    WafMappingField(
+        WafLogicalField.URL,
+        "URL path",
+        "The request path. Normalized into the endpoint every WAF metric is counted for.",
+        True,
+        True,
+    ),
+    WafMappingField(
+        WafLogicalField.METHOD,
+        "HTTP method",
+        "Part of the endpoint key, e.g. GET /login.",
+        True,
+        True,
+    ),
+    WafMappingField(
+        WafLogicalField.VIRTUAL_HOST,
+        "Virtual host",
+        "Separates applications that share a path. Unmapped, endpoints combine their traffic.",
+        False,
+        True,
+    ),
+    WafMappingField(
+        WafLogicalField.ACTION,
+        "Action",
+        "What the WAF did. Feeds the block ratio, through the action value map.",
+        False,
+        False,
+    ),
+    WafMappingField(
+        WafLogicalField.RESPONSE_CODE,
+        "HTTP status",
+        "Feeds the 4xx and 5xx ratios.",
+        False,
+        False,
+    ),
+    WafMappingField(
+        WafLogicalField.RULE_ID,
+        "WAF rule id",
+        "Counted for evidence only.",
+        False,
+        False,
+    ),
+    WafMappingField(
+        WafLogicalField.USER_AGENT,
+        "User agent",
+        "Counted for cardinality only; values are never stored.",
+        False,
+        False,
+    ),
+)
+
+
 class WafProfileError(ValueError):
     """A profile operation was refused. The message is safe to show an operator."""
 
@@ -188,13 +254,13 @@ def collection_ineligibility(
         return "the profile is disabled"
     if not log_source.monitoring_enabled:
         return "monitoring is disabled for the log source"
-    if profile.validation_status != WafProfileValidationStatus.VALID:
-        return f"profile validation is {profile.validation_status}"
     if profile.validated_profile_version != profile.profile_version:
         return (
             f"profile version {profile.profile_version} has not been validated "
             f"(last validated: {profile.validated_profile_version})"
         )
+    if profile.validation_status != WafProfileValidationStatus.VALID:
+        return f"profile validation is {profile.validation_status}"
     return None
 
 

@@ -8,8 +8,129 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class MappingFieldOut(BaseModel):
+    key: str
+    label: str
+    description: str
+    required: bool
+    used_by_collection: bool
+    kinds: list[Literal["CUSTOM_PROPERTY"]]
+    normalized_options: list[str] = Field(default_factory=list)
+    default: str | None = None
+
+
+class ValueMapSchemaOut(BaseModel):
+    field: str
+    outcomes: list[str]
+
+
+class MappingSchemaOut(BaseModel):
+    domain: Literal["WAF"] = "WAF"
+    property_name_pattern: str
+    min_coverage_ratio: float
+    fields: list[MappingFieldOut]
+    value_maps: list[ValueMapSchemaOut]
+
+
+class WafMappingIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str = Field(alias="URL")
+    method: str = Field(alias="METHOD")
+    virtual_host: str | None = Field(default=None, alias="VIRTUAL_HOST")
+    action: str | None = Field(default=None, alias="ACTION")
+    response_code: str | None = Field(default=None, alias="RESPONSE_CODE")
+    rule_id: str | None = Field(default=None, alias="RULE_ID")
+    user_agent: str | None = Field(default=None, alias="USER_AGENT")
+
+
+class WafActionValueMapIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    blocked: list[str] = Field(alias="BLOCKED")
+    allowed: list[str] = Field(alias="ALLOWED")
+
+
+class WafProfileIn(BaseModel):
+    expected_profile_version: int | None = Field(default=None, ge=1)
+    product_label: str | None = Field(default=None, max_length=128)
+    mapping: WafMappingIn
+    action_value_map: WafActionValueMapIn
+
+
+class WafValidationFieldOut(BaseModel):
+    field: str
+    property_name: str | None = None
+    status: str
+    used_by_collection: bool
+    populated_events: int | None = None
+    populated_ratio: float | None = None
+    distinct_values: int | None = None
+    plausible_ratio: float | None = None
+    sampled_events: int | None = None
+    values_truncated: bool
+    discovered_values: list[dict[str, Any]] = Field(default_factory=list)
+    detail: str | None = None
+
+
+class WafValidationReportOut(BaseModel):
+    status: str
+    reasons: list[str]
+    total_events: int | None = None
+    window_start: datetime
+    window_end: datetime
+    profile_version: int
+    fields: list[WafValidationFieldOut]
+
+
+class WafProfileOut(BaseModel):
+    profile_id: uuid.UUID
+    instance_id: uuid.UUID
+    log_source_id: uuid.UUID
+    qradar_log_source_id: int
+    log_source_name: str
+    log_source_type_name: str | None = None
+    product_label: str | None = None
+    profile_version: int
+    enabled: bool
+    mapping: WafMappingIn
+    action_value_map: WafActionValueMapIn
+    validation_status: str
+    validated_profile_version: int | None = None
+    validated_at: datetime | None = None
+    validation: WafValidationReportOut | None = None
+    validation_pending: bool
+    validation_requested_at: datetime | None = None
+    validation_requested_by: str | None = None
+    collection_eligible: bool
+    ineligible_reason: str | None = None
+    updated_by: str | None = None
+    updated_at: datetime
+
+
+class WafCandidateOut(BaseModel):
+    instance_id: uuid.UUID
+    log_source_id: uuid.UUID
+    qradar_id: int
+    name: str
+    type_name: str | None = None
+    source_class: str | None = None
+
+
+class WafProfileHistoryEntryOut(BaseModel):
+    at: datetime
+    actor: str | None = None
+    action: str
+    profile_version: int | None = None
+    mapping_before: dict[str, Any] | None = None
+    mapping_after: dict[str, Any] | None = None
+    outcome: str
+    reasons: list[str] | None = None
 
 
 class WafFieldStatusOut(BaseModel):
@@ -58,6 +179,9 @@ class WafSourceStatusOut(BaseModel):
     validated_profile_version: int | None = None
     validated_at: datetime | None = None
     validation_fields: list[WafFieldStatusOut] = Field(default_factory=list)
+    validation_pending: bool
+    validation_requested_at: datetime | None = None
+    validation_requested_by: str | None = None
 
     #: Whether scheduled runs will process this source, and if not, why not.
     collection_eligible: bool

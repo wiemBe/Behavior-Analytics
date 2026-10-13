@@ -182,6 +182,9 @@ async def waf_source_statuses(
                 validation_status=str(profile.validation_status),
                 validated_profile_version=profile.validated_profile_version,
                 validated_at=profile.validated_at,
+                validation_pending=profile.validation_requested_at is not None,
+                validation_requested_at=profile.validation_requested_at,
+                validation_requested_by=profile.validation_requested_by,
                 validation_fields=[
                     WafFieldStatusOut(
                         field=str(f.get("field")),
