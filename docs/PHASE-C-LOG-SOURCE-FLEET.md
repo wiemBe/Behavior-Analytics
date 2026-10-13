@@ -169,3 +169,116 @@ builds on.
 | T-022 | Codex | C.2 model, migration `0011`, provider/DTO enrichment (log-source facts, types with `internal`, groups), bulk inventory sync, `classify()` with seed rules, re-classification after sync, new-source detection and alert |
 | T-023 | after T-022 | C.5 APIs, and routing by class |
 | T-024 | after T-021 | Fleet UI |
+
+---
+
+# Part 2 (Phase C.2): outage policy and catch-all senders
+
+Status: **design, 2026-10-13 (sixth session).** Written by the orchestrator. Live facts:
+[`tasks/T-063.report.md`](tasks/T-063.report.md). It covers the two G1 gaps C.1 left: "be alerted
+when **selected** sources stop" and "track SIM Generic Log".
+
+## C.7 Outage alert policy [DECISION, default open to the user as D-9]
+
+**Today.** Every monitored source (`monitoring_enabled`) that goes silent opens a `NO_EVENTS`
+anomaly, and the engine opens an alert for it. Maintenance windows are the only exception. Which
+channel is notified is decided by routing (severity, owner, instance, class). There is no way to
+say "record outages of these sources, but only alert on those". On a large fleet, every silent
+test box pages.
+
+**Policy.** A new table, `outage_alert_policy`:
+
+| Column | Meaning |
+|---|---|
+| `id`, `instance_id` (nullable: global) | |
+| `scope_kind` | `CLASS` or `SOURCE` |
+| `scope_value` | a `SourceClass` value, or a `log_source.id` |
+| `mode` | `ALERT` (open an alert, as today) or `RECORD_ONLY` (the anomaly is recorded and visible; no alert) |
+| `silence_grace_buckets` | nullable; overrides `anomaly_silence_grace_buckets` for this scope (bounded 0–48) |
+| `updated_by`, timestamps | |
+
+The pair `(instance_id, scope_kind, scope_value)` is unique.
+
+**Precedence:** source row > class row > `outage_alert_default` (a new setting: `ALERT`, which keeps
+today's behaviour on upgrade). The class is the source's effective class from C.3.
+
+**Effect, and only this effect:**
+- When the policy resolves to `RECORD_ONLY`, the Phase A engine does not open, refresh or notify
+  an alert for that source's `NO_EVENTS` anomaly. Detection, the anomaly row, its lifecycle and
+  the UI are unchanged.
+- If an alert is already open when a source switches to `RECORD_ONLY`, it resolves normally when
+  the anomaly does. The policy never mass-resolves alerts.
+- `silence_grace_buckets` changes when `NO_EVENTS` fires for that scope.
+- `VOLUME_DROP` and `VOLUME_SPIKE` are not touched. "Outage" means `NO_EVENTS`.
+- Fingerprints and Phase A tables do not change (AGENTS.md rule 6). The engine loads the policy
+  once per evaluation run, in one statement (rule 9).
+
+**API:** `GET/PUT/DELETE /api/v1/outage-policy` (class rows and source rows), under a new
+permission `admin:outage`. Every change is audited. `GET /fleet/summary` gains each class's
+resolved mode.
+
+**UI:** `/admin/outage-policy`. Per class, one row with the mode, the grace, and the number of
+monitored sources it covers. A source-override list, with search over the fleet. Each row shows
+what it changes: "12 monitored sources will no longer raise outage alerts".
+
+## C.8 Catch-all senders (SIM Generic and the Universal DSMs)
+
+**Facts (T-063, lab 7.6).**
+- Unparseable syslog from unknown hosts lands in the existing SIM Generic source (type 67). No
+  source is auto-created, and nothing is dropped.
+- `sourceip` is the transport address. In production it is often a relay, with many hosts behind
+  one IP.
+- **The Ariel field `logsourceidentifier` carries the sender's syslog hostname**, with no payload
+  read. (`"Log Source Identifier"` is rejected by Ariel.)
+- The unknown-event marker is `qid = 18750001` (`category = 10008`), independent of language.
+- One keyed search over the catch-all types takes about 4 s:
+  `devicetype IN (67, 39, 212, 367, 4000)`, grouped by `logsourceid, logsourceidentifier,
+  starttime / bucket_ms`, with `SUM(eventcount)` and `LIMIT n+1`.
+- Ingest latency is 35–90 s, which the existing settle delay and `STOP` pad absorb.
+
+**What is tracked.** Phase A already judges the catch-all sources' total volume: they are log
+sources like any other. C.2b adds **who is feeding them**:
+- **`catchall_sender`**: `(instance_id, catchall_log_source_id, identifier)` unique.
+  - `identifier` is sanitized: printable characters only, at most 255, stored only for senders
+    that pass the admission rule below.
+  - `first_seen_at`, `last_seen_at`, `events_24h` (rolling, recomputed per run),
+    `review_status` (`NEW` / `REVIEWED` / `DISMISSED`), `reviewed_by`, `reviewed_at`.
+- **`catchall_bucket`** (a hypertable, PK `(catchall_log_source_id, bucket_start)`):
+  - total events and records;
+  - `distinct_senders`, a lower bound when truncated;
+  - the measurement (`EXACT` / `LOWER_BOUND` / `FAILED` / `NOT_COLLECTED`);
+  - the top senders, at most 20 `(identifier, events)` (a bounded contributor list, AGENTS.md
+    rule 3);
+  - `untracked_senders` and `untracked_events`;
+  - `query_provenance`.
+- **Admission** bounds what an attacker-controlled hostname can do. It reuses the WAF/IPS
+  controls: a per-bucket new-sender quota (default 20), an active ceiling per catch-all source
+  (default 2,000), and a minimum of 3 events in the bucket. Refused senders are counted, never
+  stored by name.
+- **A new sender** raises an inventory-class alert of subtype `NEW_CATCHALL_SENDER`, severity
+  `LOW`. It is off by default (`catchall_new_sender_alerts_enabled = false`), and the first run
+  only bootstraps `REVIEWED`, exactly as C.4 does. Reviewing or dismissing a sender is audited.
+
+**Collection.**
+- A new search family, `CATCHALL_SENDERS`, defaults to 1 h with the §SC.4 gate.
+- One keyed search runs per tick per instance, under the §SC.5 contract (split on truncation,
+  time first; a bucket is never written from a truncated wide result; one bucket truncated gives
+  `LOWER_BOUND` with the top kept).
+- The type ids are a setting (`catchall_type_ids`, default `[67, 39, 212, 367, 4000]`), because
+  sites have their own catch-alls. They are ints only, validated before quoting.
+
+**Out of C.2:** unknown events on *parsed* sources. T-063 found no single QID marker (each DSM has
+its own "Unknown …" QIDs), so it needs a per-DSM QID set from `qid_records`. Recorded as a gap.
+
+**UI.** `/fleet/catchall` answers "Which unconfigured devices are sending to the catch-all sources,
+and how much?" It shows the senders queue (NEW first) with first seen, last seen and 24 h events,
+the per-bucket honesty states, and review and dismiss actions.
+
+## C.9 Part 2 task split
+
+| Task | Agent | Content |
+|---|---|---|
+| T-068 | Sonnet or Codex | C.7 backend: `outage_alert_policy`, migration, the engine hook (one load per run), the API, `admin:outage`, audit, the `fleet/summary` field |
+| T-069 | Codex or Sonnet | C.8 backend: the provider keyed search and fold, tables, admission, collector, the `CATCHALL_SENDERS` family and gate, alerts, the review API |
+| T-070 | Sonnet | UI: `/admin/outage-policy` and `/fleet/catchall` (§3a, screenshots) |
+| T-071 | Sonnet | Live validation: a T-063-style sender at ≤ 2 EPS shows up as a `NEW` sender; a `RECORD_ONLY` class silences its outage alert while the anomaly is still recorded |
