@@ -8,10 +8,26 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import (
+    Boolean,
+    ColumnElement,
+    Integer,
+    Select,
+    String,
+    cast,
+    exists,
+    func,
+    literal_column,
+    null,
+    or_,
+    select,
+    union_all,
+)
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import defer, selectinload
 
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
@@ -19,6 +35,7 @@ from app.models.enums import (
     AnomalyType,
     EvidenceStatus,
     Severity,
+    WafAnomalyType,
 )
 from app.models.explanation import AnomalyExplanation
 from app.models.log_source import (
@@ -27,6 +44,21 @@ from app.models.log_source import (
     LogSourceBaseline,
     LogSourceMetric,
 )
+from app.models.waf import (
+    WafAnomaly,
+    WafDetectorState,
+    WafEndpoint,
+    WafEndpointBaseline,
+    WafEndpointMetric,
+    WafSourceBucket,
+    WafSourceProfile,
+)
+from app.schemas.anomaly import SubjectKind
+from app.waf.baseline import WAF_BASELINE_METRIC
+from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
+
+_PHASE_A_TYPES = frozenset(t.value for t in AnomalyType)
+_WAF_TYPES = frozenset(t.value for t in WafAnomalyType)
 
 
 class AnomalyRepository:
@@ -94,6 +126,175 @@ class AnomalyRepository:
             ).all()
         )
         return rows, int(total or 0)
+
+    # ------------------------------------------------------- unified list
+    @staticmethod
+    def _applicable_kinds(
+        *,
+        subject_kind: SubjectKind | None,
+        waf_endpoint_id: uuid.UUID | None,
+        anomaly_type: str | None,
+    ) -> tuple[bool, bool]:
+        """Which anomaly families a filter set can match: (Phase A, WAF).
+
+        A filter that cannot apply to a family excludes it. Ignoring it would
+        return rows the caller asked not to see.
+        """
+        phase_a = subject_kind in (None, SubjectKind.LOG_SOURCE)
+        waf = subject_kind in (None, SubjectKind.WAF_ENDPOINT)
+        if waf_endpoint_id is not None:
+            phase_a = False
+        if anomaly_type is not None:
+            phase_a = phase_a and anomaly_type in _PHASE_A_TYPES
+            waf = waf and anomaly_type in _WAF_TYPES
+        return phase_a, waf
+
+    def _unified_phase_a(self, conditions: list[ColumnElement[bool]]) -> Select:
+        a = LogSourceAnomaly
+        return (
+            select(
+                a.id,
+                cast(literal_column("'LOG_SOURCE'"), String).label("subject_kind"),
+                a.log_source_id,
+                LogSource.name.label("log_source_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("waf_endpoint_id"),
+                cast(null(), String).label("endpoint_normalized"),
+                cast(null(), String).label("endpoint_method"),
+                cast(null(), String).label("endpoint_virtual_host"),
+                cast(null(), Boolean).label("endpoint_virtual_host_available"),
+                cast(null(), Integer).label("endpoint_normalizer_version"),
+                a.anomaly_type.label("anomaly_type"),
+                a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
+                a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
+                a.detected_at, a.opened_at, a.anomaly_start, a.anomaly_end, a.resolved_at,
+                a.evidence_status, a.suppressed,
+                cast(null(), String).label("observed_measurement"),
+                a.explanation,
+            )
+            .select_from(a)
+            .outerjoin(LogSource, LogSource.id == a.log_source_id)
+            .where(*conditions)
+        )
+
+    def _unified_waf(self, conditions: list[ColumnElement[bool]]) -> Select:
+        w = WafAnomaly
+        e = WafEndpoint
+        host_available = or_(
+            e.virtual_host.is_not(None),
+            exists().where(
+                WafSourceProfile.log_source_id == e.log_source_id,
+                WafSourceProfile.virtual_host_property.is_not(None),
+            ),
+        )
+        return (
+            select(
+                w.id,
+                cast(literal_column("'WAF_ENDPOINT'"), String).label("subject_kind"),
+                e.log_source_id,
+                LogSource.name.label("log_source_name"),
+                e.id.label("waf_endpoint_id"),
+                e.normalized_endpoint.label("endpoint_normalized"),
+                e.http_method.label("endpoint_method"),
+                e.virtual_host.label("endpoint_virtual_host"),
+                host_available.label("endpoint_virtual_host_available"),
+                e.normalizer_version.label("endpoint_normalizer_version"),
+                w.detector_type.label("anomaly_type"),
+                w.state, w.severity, w.observed_value, w.expected_value, w.deviation_ratio,
+                w.robust_z, w.absolute_delta, w.consecutive_buckets, w.confidence,
+                w.detected_at, w.opened_at, w.anomaly_start, w.anomaly_end, w.resolved_at,
+                w.evidence_status, w.suppressed,
+                w.observed_measurement.label("observed_measurement"),
+                w.explanation,
+            )
+            .select_from(w)
+            .join(e, e.id == w.waf_endpoint_id)
+            .outerjoin(LogSource, LogSource.id == e.log_source_id)
+            .where(*conditions)
+        )
+
+    async def list_unified(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        subject_kind: SubjectKind | None = None,
+        waf_endpoint_id: uuid.UUID | None = None,
+        log_source_id: uuid.UUID | None = None,
+        instance_id: uuid.UUID | None = None,
+        anomaly_type: str | None = None,
+        state: AnomalyState | None = None,
+        severity: Severity | None = None,
+        evidence_status: EvidenceStatus | None = None,
+        active_only: bool = False,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> tuple[list[dict], int]:
+        """Phase A and WAF anomalies in one ordering: two statements, any page size.
+
+        One `UNION ALL` of the applicable families, counted once and paged once.
+        Source names and endpoint identity are joined into the branches, so a page
+        costs no resolution query and nothing is merged in Python. Ordered by
+        detection time, newest first, with the id as a tiebreak so a page boundary
+        inside a tie cannot repeat or drop a row.
+        """
+        phase_a, waf = self._applicable_kinds(
+            subject_kind=subject_kind, waf_endpoint_id=waf_endpoint_id, anomaly_type=anomaly_type
+        )
+        active = [s.value for s in ACTIVE_ANOMALY_STATES]
+
+        def common(model: Any) -> list[ColumnElement[bool]]:
+            out: list[ColumnElement[bool]] = []
+            if state is not None:
+                out.append(model.state == state)
+            if severity is not None:
+                out.append(model.severity == severity)
+            if evidence_status is not None:
+                out.append(model.evidence_status == evidence_status)
+            if active_only:
+                out.append(model.state.in_(active))
+            if since is not None:
+                out.append(model.detected_at >= since)
+            if until is not None:
+                out.append(model.detected_at < until)
+            return out
+
+        branches: list[Select] = []
+        if phase_a:
+            conditions = common(LogSourceAnomaly)
+            if log_source_id is not None:
+                conditions.append(LogSourceAnomaly.log_source_id == log_source_id)
+            if instance_id is not None:
+                conditions.append(
+                    LogSourceAnomaly.log_source_id.in_(
+                        select(LogSource.id).where(LogSource.instance_id == instance_id)
+                    )
+                )
+            if anomaly_type is not None:
+                conditions.append(LogSourceAnomaly.anomaly_type == anomaly_type)
+            branches.append(self._unified_phase_a(conditions))
+        if waf:
+            conditions = common(WafAnomaly)
+            if log_source_id is not None:
+                conditions.append(WafEndpoint.log_source_id == log_source_id)
+            if instance_id is not None:
+                conditions.append(WafEndpoint.instance_id == instance_id)
+            if waf_endpoint_id is not None:
+                conditions.append(WafAnomaly.waf_endpoint_id == waf_endpoint_id)
+            if anomaly_type is not None:
+                conditions.append(WafAnomaly.detector_type == anomaly_type)
+            branches.append(self._unified_waf(conditions))
+        if not branches:
+            return [], 0
+
+        union = (branches[0] if len(branches) == 1 else union_all(*branches)).subquery()
+        total = await self.session.scalar(select(func.count()).select_from(union))
+        rows = await self.session.execute(
+            select(union)
+            .order_by(union.c.detected_at.desc(), union.c.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return [dict(r._mapping) for r in rows.all()], int(total or 0)
 
     async def get_detail(self, anomaly_id: uuid.UUID) -> LogSourceAnomaly | None:
         """One anomaly with its lifecycle history and evidence package.
@@ -269,6 +470,266 @@ class AnomalyRepository:
             .group_by(LogSourceAnomaly.log_source_id)
         )
         return {sid: int(count) for sid, count in rows.all()}
+
+    # ------------------------------------------------------------ WAF detail
+    async def get_waf_detail(self, anomaly_id: uuid.UUID) -> WafAnomaly | None:
+        """One WAF anomaly with its endpoint and lifecycle history, eager-loaded."""
+        return await self.session.scalar(
+            select(WafAnomaly)
+            .where(WafAnomaly.id == anomaly_id)
+            .options(selectinload(WafAnomaly.transitions), selectinload(WafAnomaly.endpoint))
+        )
+
+    async def virtual_host_available(self, log_source_id: uuid.UUID) -> bool:
+        """Whether the source's profile maps a virtual host property."""
+        mapped = await self.session.scalar(
+            select(WafSourceProfile.virtual_host_property.is_not(None)).where(
+                WafSourceProfile.log_source_id == log_source_id
+            )
+        )
+        return bool(mapped)
+
+    # ---------------------------------------------------------- WAF sources
+    async def waf_sources_page(
+        self, *, limit: int, offset: int
+    ) -> tuple[list[tuple[WafSourceProfile, LogSource]], int]:
+        total = await self.session.scalar(select(func.count()).select_from(WafSourceProfile))
+        rows = await self.session.execute(
+            select(WafSourceProfile, LogSource)
+            .join(LogSource, LogSource.id == WafSourceProfile.log_source_id)
+            .order_by(LogSource.name, WafSourceProfile.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return [(p, ls) for p, ls in rows.all()], int(total or 0)
+
+    async def waf_source(
+        self, log_source_id: uuid.UUID
+    ) -> tuple[WafSourceProfile, LogSource] | None:
+        row = (
+            await self.session.execute(
+                select(WafSourceProfile, LogSource)
+                .join(LogSource, LogSource.id == WafSourceProfile.log_source_id)
+                .where(WafSourceProfile.log_source_id == log_source_id)
+            )
+        ).first()
+        return (row[0], row[1]) if row is not None else None
+
+    async def waf_latest_buckets(
+        self, log_source_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, WafSourceBucket]:
+        """The newest collected bucket per source, in one statement."""
+        if not log_source_ids:
+            return {}
+        b = WafSourceBucket
+        rows = await self.session.scalars(
+            select(b)
+            .where(b.log_source_id.in_(log_source_ids))
+            .distinct(b.log_source_id)
+            .order_by(b.log_source_id, b.bucket_start.desc())
+            .options(defer(b.query_provenance))
+        )
+        return {r.log_source_id: r for r in rows.all()}
+
+    async def waf_endpoint_counts(
+        self, log_source_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[int, int]]:
+        """(active under the current normalizer, all) endpoint counts per source."""
+        if not log_source_ids:
+            return {}
+        e = WafEndpoint
+        rows = await self.session.execute(
+            select(
+                e.log_source_id,
+                func.count().filter(
+                    e.is_active.is_(True), e.normalizer_version == ENDPOINT_NORMALIZER_VERSION
+                ),
+                func.count(),
+            )
+            .where(e.log_source_id.in_(log_source_ids))
+            .group_by(e.log_source_id)
+        )
+        return {sid: (int(active), int(total)) for sid, active, total in rows.all()}
+
+    async def waf_admission_overflow(
+        self, log_source_ids: list[uuid.UUID], *, since: datetime, until: datetime
+    ) -> dict[uuid.UUID, tuple[int, int, int, int, int]]:
+        """Per source over the collected buckets in range: (buckets, truncated,
+        rejected over quota, below threshold, untracked requests)."""
+        if not log_source_ids:
+            return {}
+        b = WafSourceBucket
+        rows = await self.session.execute(
+            select(
+                b.log_source_id,
+                func.count(),
+                func.count().filter(b.admission_truncated.is_(True)),
+                func.coalesce(func.sum(b.rejected_over_quota), 0),
+                func.coalesce(func.sum(b.below_admission_threshold), 0),
+                func.coalesce(func.sum(b.untracked_requests), 0),
+            )
+            .where(
+                b.log_source_id.in_(log_source_ids),
+                b.bucket_start >= since,
+                b.bucket_start < until,
+            )
+            .group_by(b.log_source_id)
+        )
+        return {
+            sid: (int(n), int(trunc), int(rej), int(below), int(untracked))
+            for sid, n, trunc, rej, below, untracked in rows.all()
+        }
+
+    async def waf_virtual_host_mapped(self, log_source_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+        return set(
+            (
+                await self.session.scalars(
+                    select(WafSourceProfile.log_source_id).where(
+                        WafSourceProfile.log_source_id.in_(log_source_ids),
+                        WafSourceProfile.virtual_host_property.is_not(None),
+                    )
+                )
+            ).all()
+        )
+
+    # -------------------------------------------------------- WAF endpoints
+    async def waf_endpoints_page(
+        self,
+        log_source_id: uuid.UUID,
+        *,
+        limit: int,
+        offset: int,
+        active_only: bool,
+        seen_since: datetime | None,
+        seen_until: datetime | None,
+    ) -> tuple[list[WafEndpoint], int]:
+        e = WafEndpoint
+        conditions = [e.log_source_id == log_source_id]
+        if active_only:
+            conditions.append(e.is_active.is_(True))
+        if seen_since is not None:
+            conditions.append(e.last_seen_at >= seen_since)
+        if seen_until is not None:
+            conditions.append(e.last_seen_at < seen_until)
+        total = await self.session.scalar(select(func.count()).select_from(e).where(*conditions))
+        rows = await self.session.scalars(
+            select(e)
+            .where(*conditions)
+            .order_by(e.normalized_endpoint, e.http_method, e.virtual_host, e.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(rows.all()), int(total or 0)
+
+    async def waf_baseline_adequacy(
+        self, endpoint_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[int, int]]:
+        """(cells, reliable cells) of the request-count baseline per endpoint.
+
+        Counted for the endpoint's own normalizer version only: a cell from another
+        version is stale and proves nothing about this entity.
+        """
+        if not endpoint_ids:
+            return {}
+        b = WafEndpointBaseline
+        rows = await self.session.execute(
+            select(b.waf_endpoint_id, func.count(), func.count().filter(b.is_reliable.is_(True)))
+            .join(WafEndpoint, WafEndpoint.id == b.waf_endpoint_id)
+            .where(
+                b.waf_endpoint_id.in_(endpoint_ids),
+                b.metric_name == WAF_BASELINE_METRIC,
+                b.normalizer_version == WafEndpoint.normalizer_version,
+            )
+            .group_by(b.waf_endpoint_id)
+        )
+        return {eid: (int(n), int(reliable)) for eid, n, reliable in rows.all()}
+
+    async def waf_detector_states(
+        self, endpoint_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[str]]:
+        """Every detector's lifecycle state per endpoint."""
+        if not endpoint_ids:
+            return {}
+        out: dict[uuid.UUID, list[str]] = {}
+        rows = await self.session.execute(
+            select(WafDetectorState.waf_endpoint_id, WafDetectorState.state).where(
+                WafDetectorState.waf_endpoint_id.in_(endpoint_ids)
+            )
+        )
+        for eid, state in rows.all():
+            out.setdefault(eid, []).append(str(state))
+        return out
+
+    async def waf_active_anomaly_counts(
+        self, endpoint_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        if not endpoint_ids:
+            return {}
+        rows = await self.session.execute(
+            select(WafAnomaly.waf_endpoint_id, func.count())
+            .where(
+                WafAnomaly.waf_endpoint_id.in_(endpoint_ids),
+                WafAnomaly.state.in_([s.value for s in ACTIVE_ANOMALY_STATES]),
+            )
+            .group_by(WafAnomaly.waf_endpoint_id)
+        )
+        return {eid: int(n) for eid, n in rows.all()}
+
+    # ----------------------------------------------- WAF metrics, baselines
+    async def waf_metrics_page(
+        self,
+        endpoint: WafEndpoint,
+        *,
+        since: datetime,
+        until: datetime,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[tuple[WafEndpointMetric, WafSourceBucket | None]], int]:
+        """Endpoint buckets in range with the source's bucket record, if any.
+
+        The bucket record carries what the endpoint row cannot: whether the counts
+        are exact, and each breakdown's own status. It is outer-joined, so a row
+        whose bucket record is missing is reported with those fields unknown.
+        """
+        m = WafEndpointMetric
+        b = WafSourceBucket
+        window = (
+            m.waf_endpoint_id == endpoint.id,
+            m.bucket_start >= since,
+            m.bucket_start < until,
+        )
+        total = await self.session.scalar(select(func.count()).select_from(m).where(*window))
+        rows = await self.session.execute(
+            select(m, b)
+            .outerjoin(
+                b,
+                (b.log_source_id == endpoint.log_source_id) & (b.bucket_start == m.bucket_start),
+            )
+            .where(*window)
+            .order_by(m.bucket_start)
+            .limit(limit)
+            .offset(offset)
+            .options(defer(m.query_provenance), defer(m.top_clients), defer(b.query_provenance))
+        )
+        return [(row[0], row[1]) for row in rows.all()], int(total or 0)
+
+    async def waf_baselines_page(
+        self, endpoint_id: uuid.UUID, *, metric: str | None, limit: int, offset: int
+    ) -> tuple[list[WafEndpointBaseline], int]:
+        b = WafEndpointBaseline
+        conditions = [b.waf_endpoint_id == endpoint_id]
+        if metric is not None:
+            conditions.append(b.metric_name == metric)
+        total = await self.session.scalar(select(func.count()).select_from(b).where(*conditions))
+        rows = await self.session.scalars(
+            select(b)
+            .where(*conditions)
+            .order_by(b.metric_name, b.normalizer_version, b.weekday, b.hour)
+            .limit(limit)
+            .offset(offset)
+            .options(defer(b.observations), defer(b.exclusion_counts))
+        )
+        return list(rows.all()), int(total or 0)
 
 
 def default_window(days: int = 1) -> tuple[datetime, datetime]:
