@@ -54,7 +54,7 @@ G3 rule analytics). Every task is scheduled against them.
 | Task | Agent | Where | What to do when it ends |
 |---|---|---|---|
 | **T-049** IPS profile, read-only validation, `/ips` admin API, migration `0017` ([spec](tasks/T-049.md)) | Codex (`codex exec` under `nohup`, started ~10:52; it runs on independently of the Claude session; log `t049.log` and last message `t049.out` in the old session scratchpad, which may be gone — the report `docs/tasks/T-049.report.md` in the worktree is what counts). At ~11:10 it had written the model, `0017`, `app/ips/`, routes, services and provider changes; no report yet. | worktree `t049`, DB `qradar_obs_t049` | Check the log for "usage limit". Review the diff: new IPS Ariel queries must use `_ariel_scope` (T-048 merged after T-049 was cut — the merge may need it added); `admin:ips` separate from `admin:waf`; validation fail-closed; `SOURCE_BUSY` keeps the previous state (the T-042 round-2 ruling). Re-gate, alembic 0016↔0017, merge. If Codex died, hand the worktree to Sonnet with the spec + "review what you inherit". |
-| **T-060** WAF analyst UI (§27.15) ([spec](tasks/T-060.md)) | Sonnet (a sub-agent of the ended session — **it most likely stopped with the session**; its partial work is uncommitted in the worktree) | worktree `t060`, scratch `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/6582a571-…/scratchpad/t060/` (may be gone) | Look for `docs/tasks/T-060.report.md` in the worktree. If absent: relaunch Sonnet on the same worktree with the spec + "review what you inherit, finish the tests, capture the screenshots". Then review the screenshots at 3 viewports against §3a yourself, re-run the frontend gates, merge. |
+| **T-060** WAF analyst UI (§27.15) ([spec](tasks/T-060.md)) | Sonnet | worktree `t060` (uncommitted), screenshots `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/6582a571-4c83-4b06-b9c8-1922d6237bf4/scratchpad/t060/shots/` (30 PNGs; may be gone after a reboot — re-capture with `t060/cap*` there or ask the agent's successor) | **FINISHED at session end, NOT reviewed, NOT merged.** Agent's claims: lint, typecheck, **1,240/1,240** tests, build; 24 break-it checks; no page overflow at 3 viewports. Its report file is short; the essentials are here. **Orchestrator must, next session:** (1) review the screenshots against §3a; (2) **rule on a test conflict:** `app/anomalies/page.test.tsx` pins the first header "Source"; the agent made the header "Subject" only when a WAF row is on the page — prefer authorizing the pin change to an unconditional "Subject" (the spec asks for a Subject column); (3) known leftovers: "Observed → Expected" header wraps; `.table-scroll` scrolls locally on `/anomalies` at 1280/1024 with the Evidence column off-screen at 1280 — fix before accepting (T-024 round-2 standard); a missing space before ✕ in a filter chip; (4) contract questions: no coverage-over-time series, no per-bucket expected band (drawn flat "at detection"), no ratio series, `explanation_package` null for WAF, meaning of `rejected_over_quota` / `below_admission_threshold` (labelled "in range, endpoint keys"); `subjectQuery.ts` duplicates `lib/anomalyQuery.ts` parsing (fold together). |
 
 **Next steps, in order:**
 1. ~~Full gate → `main`~~ done (`dabd744`).
@@ -71,6 +71,14 @@ G3 rule analytics). Every task is scheduled against them.
 - Asked whether the custom properties can be seen and mapped ("WAF'ta bu budur"): yes — T-043
   catalog + T-044 editor + T-042 API. **No automatic suggestion** ("öneri sunmayalım"); **a search
   inside the property list instead** ("aşağı kaydır veya ctrl f yapmıyım") → T-058, merged.
+
+**⚠ Regression on `main` (found by T-060, fix first next session):** since T-057 the
+`GET /anomalies` list returns Phase A **and WAF** rows when `subject_kind` is not given. The existing
+pages `frontend/src/app/behavior/page.tsx` and `app/behavior/sources/[id]/page.tsx` call
+`api.anomalies` without it, so on an install with WAF anomalies they render WAF rows with Phase A
+components, in EPS. Fix: pass `subject_kind: "LOG_SOURCE"` there (and audit every other
+`api.anomalies` caller), with tests; small, can ride with the T-060 merge or go alone first.
+Invisible in the lab while no WAF anomaly exists, but wrong on `main`.
 
 **Known open points (small):**
 - **"No verdict" storage (T-033).** It is stored as `threshold_breached=False`. The alert evaluator
