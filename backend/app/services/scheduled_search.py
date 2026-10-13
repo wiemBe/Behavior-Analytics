@@ -16,7 +16,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.search import ScheduledSearch, SearchExecution, SearchQueryVersion
-from app.schemas.search import ScheduledSearchCreate, ScheduledSearchUpdate
+from app.schemas.search import (
+    ScheduledSearchCreate,
+    ScheduledSearchUpdate,
+    ThresholdUnreachableError,
+    unreachable_threshold_reason,
+)
 
 
 class ScheduledSearchService:
@@ -74,6 +79,19 @@ class ScheduledSearchService:
     ) -> ScheduledSearch:
         data = payload.model_dump(exclude_unset=True, exclude={"change_note"})
         new_aql = data.pop("aql_query", None)
+
+        # The threshold rule applies to the *effective* search after this patch:
+        # lowering max_result_rows under an existing threshold, raising the
+        # threshold above the existing cap, or changing only the operator is
+        # refused before anything is written. A reachable patch never gets here.
+        effective_operator = data.get("threshold_operator", search.threshold_operator)
+        effective_threshold = data.get("threshold_value", search.threshold_value)
+        effective_max_rows = data.get("max_result_rows", search.max_result_rows)
+        reason = unreachable_threshold_reason(
+            effective_operator, effective_threshold, effective_max_rows
+        )
+        if reason is not None:
+            raise ThresholdUnreachableError(reason)
 
         for field, value in data.items():
             setattr(search, field, value)
