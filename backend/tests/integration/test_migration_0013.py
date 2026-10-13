@@ -55,7 +55,7 @@ def test_0013_round_trip_seed_check_and_no_drift(clean_db: str) -> None:
     config = _alembic_config(clean_db)
     engine = create_engine(clean_db, future=True)
     try:
-        command.upgrade(config, "head")
+        command.upgrade(config, "0013")
         with engine.connect() as connection:
             rows = connection.execute(
                 text(
