@@ -885,6 +885,9 @@ export interface AnomalyListParams {
   active_only?: boolean;
   since?: string;
   until?: string;
+  // Backend `SubjectKind`. Unset means every detector family; Phase A pages
+  // set "LOG_SOURCE" so WAF anomalies never render in Phase A components.
+  subject_kind?: "LOG_SOURCE" | "WAF_ENDPOINT";
 }
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
