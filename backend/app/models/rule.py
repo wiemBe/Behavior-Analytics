@@ -322,6 +322,30 @@ class RuleMatchWindow(Base):
     last_error: Mapped[str | None] = mapped_column(String(512))
 
 
+class RuleCapacitySample(Base):
+    """One QRadar capacity benchmark of one rule, keyed by when QRadar took it.
+
+    The values are QRadar's benchmark of how fast the rule could be evaluated
+    (lower = costlier), in millions of "EPS". They are not a firing rate. A
+    sample is stored only when `capacity_timestamp` is new, so the table is a
+    history of benchmarks, not of syncs.
+    """
+
+    __tablename__ = "rule_capacity_sample"
+
+    rule_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("analytics_rule.id", ondelete="CASCADE"), primary_key=True
+    )
+    capacity_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True
+    )
+    average_capacity: Mapped[float | None] = mapped_column(Float)
+    base_capacity: Mapped[float | None] = mapped_column(Float)
+    base_host_id: Mapped[int | None] = mapped_column(Integer)
+    #: When this platform first saw the benchmark (detection time).
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class TechniqueMapping(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """SOC-owned MITRE technique <-> rule mapping.
 

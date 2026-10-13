@@ -415,6 +415,12 @@ class AnalyticsRuleDTO(ProviderDTO):
     is_building_block: bool = False
     owner: str | None = None
     average_capacity: float | None = None
+    # QRadar's capacity benchmark triple (7.6). `capacity_timestamp` is when the
+    # benchmark was taken: a new value means a new measurement, an unchanged one
+    # is the same measurement read again.
+    base_capacity: float | None = None
+    base_host_id: int | None = None
+    capacity_timestamp: datetime | None = None
     categories: list[str] = Field(default_factory=list)
     mitre_techniques: list[str] = Field(default_factory=list)
     created_at: datetime | None = None

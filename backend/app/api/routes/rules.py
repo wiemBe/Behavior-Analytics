@@ -22,6 +22,7 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.models.enums import RuleHealthStatus
 from app.models.instance import QRadarInstance
+from app.models.rule import RuleCapacitySample
 from app.repositories.audit import record_audit
 from app.repositories.rule import SORTABLE, RuleFilters, RuleRepository
 from app.schemas.rule import (
@@ -33,6 +34,7 @@ from app.schemas.rule import (
     RuleSummary,
     RuleUpdate,
 )
+from app.schemas.rule_statistics import CapacitySampleOut, RuleStatistics
 from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_RULE_WRITE,
@@ -40,8 +42,11 @@ from app.security.rbac import (
     Principal,
     require_permission,
 )
+from app.services.rule_statistics import RuleStatisticsService
 
 router = APIRouter(prefix="/rules", tags=["rules"])
+
+CAPACITY_HISTORY_LIMIT = 100
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
@@ -129,6 +134,27 @@ async def health_summary(
     return [RuleHealthSummaryEntry(**r) for r in rows]
 
 
+@router.get("/statistics", response_model=RuleStatistics)
+async def rule_statistics(
+    session: SessionDep,
+    settings: SettingsDep,
+    instance_id: uuid.UUID | None = Query(default=None),
+    days: int = Query(default=7, ge=1, le=30),
+    top: int = Query(default=10, ge=1, le=50),
+) -> RuleStatistics:
+    """Rule counts, measured matches, silence and the capacity benchmark.
+
+    Declared before `/{rule_id}` so the literal path wins. Sections that cannot
+    be measured come back null with a reason, never as zero.
+    """
+    resolved = await _resolve_instance(session, instance_id)
+    if resolved is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no instance registered")
+    return await RuleStatisticsService(session, settings).compute(
+        resolved, days=days, top=top
+    )
+
+
 def _health_view(
     name: str, health: RuleHealthStatus, description: str
 ) -> Callable[..., Awaitable[RulePage]]:
@@ -198,6 +224,25 @@ async def rule_health_history(
         rule_id, limit=max(1, min(limit, settings.api_max_page_size)), since=since
     )
     return [RuleHealthSnapshotOut.model_validate(r) for r in rows]
+
+
+@router.get("/{rule_id}/capacity-history", response_model=list[CapacitySampleOut])
+async def rule_capacity_history(
+    rule_id: uuid.UUID, session: SessionDep
+) -> list[CapacitySampleOut]:
+    """QRadar's capacity benchmarks for the rule, newest first (at most 100).
+
+    A history of benchmarks, one per `capacity_timestamp`; not a firing rate.
+    """
+    if await RuleRepository(session).get(rule_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "rule not found")
+    rows = await session.scalars(
+        select(RuleCapacitySample)
+        .where(RuleCapacitySample.rule_id == rule_id)
+        .order_by(RuleCapacitySample.capacity_timestamp.desc())
+        .limit(CAPACITY_HISTORY_LIMIT)
+    )
+    return [CapacitySampleOut.model_validate(r) for r in rows.all()]
 
 
 @router.get("/{rule_id}/transitions", response_model=list[RuleStateTransitionOut])
