@@ -32,6 +32,7 @@ from app.models.log_source import (
 )
 from app.models.monitoring import AnomalyEvaluationWatermark, CollectionWatermark
 from app.models.offense import OffenseSnapshot
+from app.models.outage import OutageAlertPolicy
 from app.models.rule import (
     AnalyticsRule,
     DetectionCoverage,
@@ -106,6 +107,7 @@ __all__ = [
     "LogSourceMetric",
     "LogSourceType",
     "OffenseSnapshot",
+    "OutageAlertPolicy",
     "QRadarInstance",
     "Role",
     "RuleCapacitySample",

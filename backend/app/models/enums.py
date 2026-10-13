@@ -46,6 +46,30 @@ class ClassificationReviewStatus(StrEnum):
     REVIEWED = "REVIEWED"
 
 
+class OutagePolicyScope(StrEnum):
+    """What an ``outage_alert_policy`` row applies to.
+
+    ``CLASS`` names a :class:`SourceClass`; ``SOURCE`` names one ``log_source``.
+    The scope is part of the row's identity, so a class and a source can never
+    collide even if their values were equal.
+    """
+
+    CLASS = "CLASS"
+    SOURCE = "SOURCE"
+
+
+class OutagePolicyMode(StrEnum):
+    """Whether a source's ``NO_EVENTS`` opens an alert.
+
+    ``RECORD_ONLY`` records the anomaly and its lifecycle exactly as before and
+    only suppresses the alert and its notification. ``ALERT`` keeps Phase A's
+    behaviour, and is the default (D-9), so an upgrade alerts as it did.
+    """
+
+    ALERT = "ALERT"
+    RECORD_ONLY = "RECORD_ONLY"
+
+
 class Severity(StrEnum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"

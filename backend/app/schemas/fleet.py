@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.models.enums import (
     ClassificationReviewStatus,
     ClassificationRuleKind,
+    OutagePolicyMode,
     SourceClass,
 )
 
@@ -80,6 +81,10 @@ class ClassSummary(BaseModel):
     baseline_share: float | None
     open_incidents: dict[str, int]
     top_sources: list[TopSource]
+    # The class's resolved outage mode ignoring source overrides (the global
+    # class row or the default), and how many source rows override it.
+    outage_mode: OutagePolicyMode
+    outage_overrides: int
 
 
 class InternalSummary(BaseModel):

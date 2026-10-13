@@ -93,6 +93,10 @@ _BODIES: dict[tuple[str, str], dict] = {
     ("PATCH", "/api/v1/log-sources/{log_source_id}/classification"): {
         "override_class": None,
     },
+    # Phase C.2. The outage policy router guards every method at the mount, but
+    # supply a valid body so a body-first failure cannot mask a missing guard.
+    ("PUT", "/api/v1/outage-policy/classes/{source_class}"): {"mode": "ALERT"},
+    ("PUT", "/api/v1/outage-policy/sources/{log_source_id}"): {"mode": "ALERT"},
 }
 
 _ID = str(uuid.uuid4())

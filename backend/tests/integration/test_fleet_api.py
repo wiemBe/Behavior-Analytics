@@ -31,6 +31,7 @@ from app.models.enums import (
 from app.models.fleet import ClassificationRule, LogSourceClassification
 from app.models.identity import AuditLog
 from app.models.log_source import LogSourceAnomaly, LogSourceBaseline
+from app.models.outage import OutageAlertPolicy
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 from tests.integration.factories import add_metric, make_instance, make_log_source
@@ -319,6 +320,44 @@ def test_summary_window_sizes_and_validation(db_schema) -> None:
     assert week["buckets"]["expected"] == 2016 and week["events"] == 600
     assert client.get("/api/v1/fleet/summary").json()["window"] == "24h"
     assert client.get("/api/v1/fleet/summary?window=2h").status_code == 422
+
+
+def test_summary_reports_the_class_outage_mode_and_counts_source_overrides(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        fw_a = await make_log_source(s, inst, qradar_id=1, name="fw-a")
+        fw_b = await make_log_source(s, inst, qradar_id=2, name="fw-b")
+        ips = await make_log_source(s, inst, qradar_id=3, name="ips-a")
+        s.add_all([
+            classification(fw_a, "FIREWALL"),
+            classification(fw_b, "FIREWALL"),
+            classification(ips, "IPS"),
+        ])
+        s.add_all([
+            OutageAlertPolicy(scope_kind="CLASS", scope_value="FIREWALL",
+                              mode="RECORD_ONLY"),
+            # A source override: counts against its class, but the class mode
+            # stays what the class row (or the default) says.
+            OutageAlertPolicy(scope_kind="SOURCE", scope_value=str(fw_a.id),
+                              mode="ALERT"),
+            OutageAlertPolicy(scope_kind="SOURCE", scope_value=str(ips.id),
+                              mode="RECORD_ONLY"),
+        ])
+        await s.flush()
+
+    run(setup)
+    classes = by_class(Client(VIEWER).get("/api/v1/fleet/summary?window=1h").json())
+
+    # The class row decides FIREWALL as a whole, ignoring its ALERT override.
+    assert classes["FIREWALL"]["outage_mode"] == "RECORD_ONLY"
+    assert classes["FIREWALL"]["outage_overrides"] == 1
+    # No class row for IPS: its only row is a source override, which the class
+    # mode ignores, so the default applies; the override is still counted.
+    assert classes["IPS"]["outage_mode"] == "ALERT"
+    assert classes["IPS"]["outage_overrides"] == 1
+    # No rows at all: the default, and nothing overridden.
+    assert classes["DNS"]["outage_mode"] == "ALERT"
+    assert classes["DNS"]["outage_overrides"] == 0
 
 
 @pytest.mark.parametrize("window", ["1h", "7d"])
