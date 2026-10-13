@@ -2637,3 +2637,125 @@ td.cell-name.ips-source-cell {
   flex-wrap: wrap;
   gap: var(--sp-1) var(--sp-5);
 }
+
+/* --- catch-all senders (T-070b) ----------------------------------------------
+   Tokens only. The queue is a fleet-table; these rules keep a long syslog
+   hostname inside its cell, set the first/last seen pair, and lay out the
+   selected bucket. */
+.catchall-table th.cell-sender {
+  max-width: 30ch;
+  min-width: 14ch;
+}
+.sender-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  /* Breaks after . and - (see SenderId); anywhere only for one unbroken run. */
+  overflow-wrap: anywhere;
+}
+.catchall-table td.cell-source {
+  overflow-wrap: anywhere;
+  max-width: 24ch;
+}
+.catchall-table .seen {
+  display: block;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.catchall-table .seen-label {
+  display: inline-block;
+  min-width: 5ch;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.catchall-table td.num {
+  white-space: nowrap;
+}
+.catchall-table .cell-sub {
+  max-width: 24ch;
+  white-space: normal;
+}
+.queue-count {
+  margin-bottom: var(--sp-2);
+}
+.denied-note {
+  color: var(--warn-text);
+}
+.load-more {
+  margin-top: var(--sp-4);
+}
+.catchall-volume button[aria-pressed="true"] {
+  background: var(--surface-3);
+  border-color: var(--info-border);
+  color: var(--info-text);
+  font-weight: var(--fw-semibold);
+}
+.catchall-volume .range-selector {
+  margin-bottom: 0;
+}
+.collected-up-to {
+  margin-bottom: var(--sp-2);
+}
+.chart-key-bar {
+  height: 10px;
+  background: var(--chart-observed);
+}
+.chart-key-bar-lower {
+  height: 10px;
+  background: var(--warn);
+}
+.bucket-top-table {
+  min-width: 0;
+}
+.bucket-top-table table {
+  width: 100%;
+}
+.bucket-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  margin: var(--sp-4) 0;
+  font-size: var(--fs-xs);
+}
+.bucket-detail {
+  min-width: 0;
+}
+.bucket-detail .bucket-detail-title {
+  margin: 0 0 var(--sp-3);
+}
+.bucket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--sp-5) var(--sp-6);
+  min-width: 0;
+}
+.bucket-grid > * {
+  min-width: 0;
+}
+.bucket-grid h4 {
+  margin-top: 0;
+}
+.bucket-facts {
+  display: grid;
+  gap: var(--sp-3);
+  align-content: start;
+  margin: 0;
+}
+.bucket-facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.bucket-facts dd {
+  margin: 0;
+  font-size: var(--fs-base);
+}
+.bucket-admission li {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+/* The last row of a table with row headers ends without a rule in both cells,
+   so the closing line does not stop at the header cell. */
+.catchall-table tbody tr:last-child th {
+  border-bottom: none;
+}

@@ -29,6 +29,8 @@ from app.schemas.catchall import (
     CatchallBucketOut,
     CatchallSenderOut,
     CatchallSenderPage,
+    CatchallSourceList,
+    CatchallSourceOut,
 )
 from app.security.auth import get_principal
 from app.security.rbac import (
@@ -77,6 +79,49 @@ def _sender_out(sender: CatchallSender, source_name: str) -> CatchallSenderOut:
         review_status=CatchallReviewStatus(sender.review_status),
         reviewed_by=sender.reviewed_by,
         reviewed_at=sender.reviewed_at,
+    )
+
+
+@router.get("/sources", response_model=CatchallSourceList)
+async def list_sources(session: SessionDep, settings: SettingsDep) -> CatchallSourceList:
+    """The catch-all sources: each log source of a catch-all type, in one statement.
+
+    `latest_bucket_start` is null when no bucket was ever measured for the source.
+    """
+    type_ids = sorted(set(settings.catchall_type_ids))
+    latest = (
+        select(func.max(CatchallBucket.bucket_start))
+        .where(CatchallBucket.catchall_log_source_id == LogSource.id)
+        .scalar_subquery()
+    )
+    new_senders = (
+        select(func.count())
+        .select_from(CatchallSender)
+        .where(
+            CatchallSender.catchall_log_source_id == LogSource.id,
+            CatchallSender.review_status == CatchallReviewStatus.NEW.value,
+        )
+        .scalar_subquery()
+    )
+    rows = (
+        await session.execute(
+            select(LogSource.id, LogSource.name, LogSource.type_name, latest, new_senders)
+            .where(LogSource.type_id.in_(type_ids))
+            .order_by(LogSource.name, LogSource.id)
+        )
+    ).all()
+    return CatchallSourceList(
+        catchall_type_ids=type_ids,
+        items=[
+            CatchallSourceOut(
+                id=row[0],
+                name=row[1],
+                type_name=row[2],
+                latest_bucket_start=row[3],
+                new_sender_count=row[4] or 0,
+            )
+            for row in rows
+        ],
     )
 
 

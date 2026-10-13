@@ -69,3 +69,18 @@ class CatchallBucketList(BaseModel):
     since: datetime
     until: datetime
     items: list[CatchallBucketOut]
+
+
+class CatchallSourceOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    type_name: str | None
+    #: The newest measured bucket; null when none was ever measured.
+    latest_bucket_start: datetime | None
+    new_sender_count: int
+
+
+class CatchallSourceList(BaseModel):
+    #: The QRadar device-type ids that count as catch-all (a setting).
+    catchall_type_ids: list[int]
+    items: list[CatchallSourceOut]

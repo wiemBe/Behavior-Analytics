@@ -68,6 +68,10 @@ export const FAMILY_INFO: Record<SearchFamily, { name: string; scope: string }> 
     name: "Rule matches",
     scope: "Events matched per rule",
   },
+  CATCHALL_SENDERS: {
+    name: "Catch-all senders",
+    scope: "Senders feeding SIM Generic and the Universal DSMs",
+  },
 };
 
 /** Name and scope for a family. An unknown family keeps its raw key. */

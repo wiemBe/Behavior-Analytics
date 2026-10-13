@@ -18,6 +18,7 @@ describe("NAV", () => {
     expect(NAV[1].items.map((i) => i.label)).toEqual([
       "Fleet",
       "Fleet sources",
+      "Catch-all senders",
       "Offenses",
       "Rules",
       "Rule statistics",
@@ -39,6 +40,11 @@ describe("NAV", () => {
     ]);
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
     expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");
+  });
+
+  it("resolves the catch-all page to its own entry, not to Fleet", () => {
+    expect(activeNavHref("/fleet/catchall")).toBe("/fleet/catchall");
+    expect(activeNavHref("/fleet")).toBe("/fleet");
   });
 
   // A nav entry is a promise that something is on the other side of it.

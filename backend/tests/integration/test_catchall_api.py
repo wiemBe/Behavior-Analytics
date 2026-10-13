@@ -15,6 +15,7 @@ from app.models.alert import Alert
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.enums import AlertStatus, Severity
 from app.models.identity import AuditLog
+from app.models.instance import QRadarInstance
 from app.security.rbac import Principal
 from tests.integration.factories import make_instance, make_log_source
 from tests.integration.test_fleet_api import Client, run
@@ -362,6 +363,72 @@ class TestReview:
         Client(EDITOR).post(f"{BASE}/senders/{target}/review")
         (entry,) = audits("catchall_sender.review")
         assert entry.detail["alert_resolved"] is False
+
+
+class TestSources:
+    def test_lists_each_catchall_source_with_its_latest_bucket_and_new_count(
+        self, seeded
+    ) -> None:
+        async def other(s):  # type: ignore[no-untyped-def]
+            inst = await s.get(QRadarInstance, seeded["inst"])
+            await make_log_source(s, inst, qradar_id=3, name="Firewall", type_id=5)
+            await make_log_source(s, inst, qradar_id=4, name="Never collected", type_id=367)
+
+        run(other)
+        body = Client(VIEWER).get(f"{BASE}/sources").json()
+        assert body["catchall_type_ids"] == [39, 67, 212, 367, 4000]
+        rows = {r["name"]: r for r in body["items"]}
+        assert set(rows) == {"SIM Generic", "Universal LEEF", "Never collected"}
+        one = rows["SIM Generic"]
+        assert one["id"] == str(seeded["one"]) and one["new_sender_count"] == 3
+        assert one["latest_bucket_start"].startswith("2026-10-13T10:15:00")
+        assert rows["Universal LEEF"]["new_sender_count"] == 0
+        assert rows["Universal LEEF"]["latest_bucket_start"].startswith("2026-10-13T10:00:00")
+        # Never measured is null, not a time and not zero buckets.
+        assert rows["Never collected"]["latest_bucket_start"] is None
+        assert [r["name"] for r in body["items"]] == sorted(rows)
+
+    def test_the_new_count_follows_review(self, seeded) -> None:
+        client = Client(EDITOR)
+        client.post(f"{BASE}/senders/{seeded['senders']['new-busy']}/review")
+        rows = {r["name"]: r for r in client.get(f"{BASE}/sources").json()["items"]}
+        assert rows["SIM Generic"]["new_sender_count"] == 2
+
+    def test_an_inventory_without_catchall_sources_is_empty_but_names_the_types(
+        self, db_schema
+    ) -> None:
+        async def _seed(s):  # type: ignore[no-untyped-def]
+            await make_log_source(s, await make_instance(s), qradar_id=1, name="Firewall",
+                                  type_id=5)
+
+        run(_seed)
+        body = Client(VIEWER).get(f"{BASE}/sources").json()
+        assert body["items"] == [] and body["catchall_type_ids"]
+
+    def test_needs_read_fleet(self, seeded) -> None:
+        assert Client(NOTHING).get(f"{BASE}/sources").status_code == 403
+
+    def test_statement_count_is_constant_at_two_sizes(self, db_schema) -> None:
+        counts = {}
+        total = 0
+        for size in (2, 12):
+            total += size
+
+            async def _seed(s, size=size):  # type: ignore[no-untyped-def]
+                inst = await make_instance(s)
+                for n in range(size):
+                    src = await make_log_source(
+                        s, inst, qradar_id=100 + n, name=f"catch-{size}-{n}", type_id=67
+                    )
+                    s.add(sender(inst, src, f"host-{n}", status="NEW"))
+                    s.add(bucket(src, NOW))
+
+            run(_seed)
+            client = Client(VIEWER)
+            body = client.get(f"{BASE}/sources").json()
+            assert len(body["items"]) == total
+            counts[size] = client.statements
+        assert counts[2] == counts[12] and counts[2] <= 2
 
 
 def test_the_ids_in_the_fixture_are_unique() -> None:
