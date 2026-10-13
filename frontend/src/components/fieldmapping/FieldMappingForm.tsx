@@ -20,17 +20,14 @@ export interface CopyOption {
   label: string;
 }
 
-function suggestionsFor(field: MappingFieldOut, catalog: PropertyCatalogOut | null): CatalogProperty[] {
-  const out: CatalogProperty[] = [];
-  if (field.kinds.includes("NORMALIZED")) {
-    for (const name of field.normalized_options) {
-      out.push({ name, property_type: null, applies_to_source_type: null, name_allowed: true });
-    }
-  }
-  if (field.kinds.includes("CUSTOM_PROPERTY") && catalog?.status === "AVAILABLE") {
-    out.push(...catalog.properties);
-  }
-  return out;
+function normalizedFor(field: MappingFieldOut): string[] {
+  return field.kinds.includes("NORMALIZED") ? field.normalized_options : [];
+}
+
+function propertiesFor(field: MappingFieldOut, catalog: PropertyCatalogOut | null): CatalogProperty[] {
+  return field.kinds.includes("CUSTOM_PROPERTY") && catalog?.status === "AVAILABLE"
+    ? catalog.properties
+    : [];
 }
 
 function CopyFrom({
@@ -211,7 +208,8 @@ export function FieldMappingForm({
                     label={`${field.label} property`}
                     value={value}
                     placeholder={field.required ? "Property name" : "Not mapped"}
-                    suggestions={suggestionsFor(field, catalog)}
+                    suggestions={propertiesFor(field, catalog)}
+                    normalized={normalizedFor(field)}
                     describedBy={hasMsg ? `${descId} ${msgId}` : descId}
                     invalid={Boolean(error)}
                     disabled={disabled}
