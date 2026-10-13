@@ -12,7 +12,7 @@ deploy/mcp/config.json
 # Python
 __pycache__/
 *.py[cod]
-.venv/
+.venv
 venv/
 .pytest_cache/
 .ruff_cache/
@@ -22,7 +22,7 @@ venv/
 htmlcov/
 
 # Node / Next
-node_modules/
+node_modules
 .next/
 frontend/out/
 npm-debug.log*
