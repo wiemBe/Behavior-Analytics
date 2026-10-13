@@ -435,6 +435,57 @@ async def test_pending_enable_disable_report_history_and_candidates(
     assert mutation_actors == {"ips-admin"}
 
 
+async def test_candidates_without_instance_id_resolves_the_default(
+    db_session, db_schema
+) -> None:
+    instance, _ = await seed_source(db_session)
+    names = ["Zulu", "AlphaIPS", "Beta"]
+    sources = []
+    for offset, name in enumerate(names, start=600):
+        source = LogSource(
+            instance_id=instance.id,
+            qradar_id=offset,
+            name=name,
+            monitoring_enabled=True,
+        )
+        db_session.add(source)
+        sources.append(source)
+    await db_session.flush()
+    db_session.add(
+        LogSourceClassification(
+            log_source_id=sources[0].id,
+            source_class=SourceClass.IPS,
+            basis="TYPE",
+            conflicts=[],
+            classified_at=NOW,
+            review_status=ClassificationReviewStatus.NEW,
+        )
+    )
+    await db_session.commit()
+    api = admin_client(db_schema)
+    explicit = api.get(f"/api/v1/ips/candidates?instance_id={instance.id}")
+    assert explicit.status_code == 200
+    implicit = api.get("/api/v1/ips/candidates")
+    assert implicit.status_code == 200, implicit.text
+    assert implicit.json() == explicit.json()
+    # IPS-classified first, then by name: the default instance resolves to the
+    # same rows in the same order as the explicit id.
+    assert [item["name"] for item in implicit.json()] == [
+        "Zulu",
+        "AlphaIPS",
+        "Beta",
+        "Cisco FTD primary",
+    ]
+    assert {item["instance_id"] for item in implicit.json()} == {str(instance.id)}
+
+
+async def test_candidates_without_instance_id_and_no_instance_is_404(db_schema) -> None:
+    api = admin_client(db_schema)
+    response = api.get("/api/v1/ips/candidates")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "no instance registered"
+
+
 class ValidationProvider(MockQRadarProvider):
     def __init__(self, hook=None, error: Exception | None = None) -> None:  # type: ignore[no-untyped-def]
         super().__init__(now=NOW)

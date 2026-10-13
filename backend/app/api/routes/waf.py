@@ -13,11 +13,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import case, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SessionDep, SettingsDep
 from app.models.enums import SourceClass, WafLogicalField
 from app.models.fleet import LogSourceClassification
 from app.models.identity import AuditLog
+from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.waf import WafSourceProfile
 from app.providers.base import PROPERTY_NAME_PATTERN
@@ -196,13 +198,24 @@ async def get_mapping_schema(settings: SettingsDep) -> MappingSchemaOut:
     )
 
 
+async def _resolve_instance(
+    session: AsyncSession, instance_id: uuid.UUID | None
+) -> uuid.UUID | None:
+    if instance_id is not None:
+        return instance_id
+    return await session.scalar(select(QRadarInstance.id).limit(1))
+
+
 @router.get("/candidates", response_model=list[WafCandidateOut])
 async def list_waf_candidates(
     session: SessionDep,
-    instance_id: uuid.UUID,
+    instance_id: uuid.UUID | None = Query(default=None),
     q: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[WafCandidateOut]:
+    resolved = await _resolve_instance(session, instance_id)
+    if resolved is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no instance registered")
     query = (
         select(LogSource, LogSourceClassification.source_class)
         .outerjoin(WafSourceProfile, WafSourceProfile.log_source_id == LogSource.id)
@@ -211,7 +224,7 @@ async def list_waf_candidates(
             LogSourceClassification.log_source_id == LogSource.id,
         )
         .where(
-            LogSource.instance_id == instance_id,
+            LogSource.instance_id == resolved,
             WafSourceProfile.id.is_(None),
         )
         .order_by(
