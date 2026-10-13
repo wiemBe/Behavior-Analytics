@@ -55,3 +55,32 @@ export function subjectText(a: AnomalySummary): string {
 export function isLowerBound(m: MeasurementKind | string | null | undefined): boolean {
   return m === "LOWER_BOUND";
 }
+
+const STATE_LABELS: Record<string, string> = {
+  INSUFFICIENT_DATA: "Insufficient data",
+  NORMAL: "Normal",
+  CANDIDATE: "Candidate",
+  OPEN: "Open",
+  RECOVERING: "Recovering",
+  RESOLVED: "Resolved",
+  SUPPRESSED: "Suppressed",
+};
+
+/** A lifecycle state as a word: "Insufficient data", never `INSUFFICIENT_DATA`. */
+export function stateLabel(state: string): string {
+  return STATE_LABELS[state] ?? state;
+}
+
+const EVIDENCE_LABELS: Record<string, string> = {
+  NOT_REQUESTED: "Not requested",
+  PENDING: "Pending",
+  COMPLETE: "Complete",
+  PARTIAL: "Partial",
+  UNAVAILABLE: "Unavailable",
+  FAILED: "Failed",
+};
+
+/** An evidence status as a word. */
+export function evidenceLabel(status: string): string {
+  return EVIDENCE_LABELS[status] ?? status;
+}

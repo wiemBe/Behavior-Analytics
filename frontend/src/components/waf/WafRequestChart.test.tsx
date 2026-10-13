@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { wafBucket } from "./fixtures";
 import { WafRequestChart } from "./WafRequestChart";
+import { RATIO_SPECS } from "./wafSeries";
+import { wafBaselineCell } from "./fixtures";
 
 // jsdom has no canvas, so ECharts is stubbed; what is under test is the option
 // the component hands it. Hoisted because `echarts.use` runs at import time.
@@ -155,5 +157,111 @@ describe("WafRequestChart", () => {
     chart([wafBucket()], { textSummary: "Requests to GET /x across 1 stored buckets." });
     expect(screen.getByRole("img", { name: /Requests against the expected range/ })).toBeInTheDocument();
     expect(screen.getByText(/across 1 stored buckets/)).toBeInTheDocument();
+  });
+});
+
+describe("WafRequestChart: seasonal band", () => {
+  // 2026-10-12 is a Monday: weekday 1.
+  const H = (h: number, m = 0) => `2026-10-12T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`;
+  const buckets = [
+    wafBucket({ bucket_start: H(9) }),
+    wafBucket({ bucket_start: H(10) }),
+    wafBucket({ bucket_start: H(11) }),
+  ];
+  const lookup = {
+    cells: [
+      wafBaselineCell({ weekday: 1, hour: 9, median: 40, p05: 20, p95: 60 }),
+      wafBaselineCell({ weekday: 1, hour: 10, median: 80, p05: 50, p95: 120 }),
+      // Hour 11 is not reliable: no band there.
+      wafBaselineCell({ weekday: 1, hour: 11, is_reliable: false }),
+    ],
+    metric: "request_count",
+    normalizerVersion: 2,
+  };
+
+  function seasonal(over: Partial<Parameters<typeof WafRequestChart>[0]> = {}) {
+    return chart(buckets, { baseline: lookup, ...over });
+  }
+
+  it("follows the cell of each bucket's weekday and hour, not one flat range", () => {
+    seasonal();
+    // Hourly buckets are separated by uncollected spans, which are points with no band.
+    expect(series("Expected low").data.map((d) => d[1])).toEqual([20, null, 50, null, null]);
+    expect(series("Expected range").data.map((d) => d[1])).toEqual([40, null, 70, null, null]);
+    expect(series("Expected requests").data.map((d) => d[1])).toEqual([40, null, 80, null, null]);
+  });
+
+  it("leaves a bucket with a missing or unreliable cell without a band, never a zero band", () => {
+    seasonal();
+    const low = series("Expected low").data.map((d) => d[1]);
+    const range = series("Expected range").data.map((d) => d[1]);
+    expect(low[4]).toBeNull();
+    expect(range[4]).toBeNull();
+    expect(low).not.toContain(0);
+    expect(series("Expected range").connectNulls).toBe(false);
+  });
+
+  it("labels the seasonal band Expected range, and keeps the key to marks it drew", () => {
+    seasonal();
+    const key = screen.getByRole("list", { name: "Chart key" });
+    expect(key).toHaveTextContent("Expected range");
+    expect(key).not.toHaveTextContent("at detection");
+    expect(key).toHaveTextContent("Expected median");
+  });
+
+  it("falls back to the flat range at detection, labelled so, when no baseline was loaded", () => {
+    chart(buckets, { baseline: null });
+    expect(series("Expected low").data.map((d) => d[1])).toEqual([22, 22, 22, 22, 22]);
+    expect(screen.getByRole("list", { name: "Chart key" })).toHaveTextContent("Expected range at detection");
+  });
+
+  it("draws no band at all when no bucket has a reliable cell", () => {
+    chart(buckets, { baseline: { cells: [], metric: "request_count", normalizerVersion: 2 } });
+    expect(series("Expected low").data).toEqual([]);
+    expect(series("Expected range").data).toEqual([]);
+    expect(screen.getByRole("list", { name: "Chart key" })).not.toHaveTextContent("Expected range");
+  });
+});
+
+describe("WafRequestChart: ratio detector", () => {
+  const spec = RATIO_SPECS.WAF_BLOCK_RATIO_SPIKE;
+  const T0 = (m: number) => `2026-10-12T09:${String(m).padStart(2, "0")}:00Z`;
+
+  function ratioChart(buckets: ReturnType<typeof wafBucket>[], over = {}) {
+    return chart(buckets, { ratio: spec, expected: 0.02, expectedLow: 0.01, expectedHigh: 0.05, ...over });
+  }
+
+  it("plots the proportion in percent on an axis that names its unit", () => {
+    ratioChart([wafBucket({ bucket_start: T0(0), blocked_count: 10, action_events: 40 })]);
+    expect(option().yAxis[0].name).toBe("Blocked share of requests (%)");
+    expect(series("Requests").data.map((d) => d[1])).toEqual([25]);
+  });
+
+  it("plots a bucket whose breakdown was not collected, partial or empty as a gap, never 0", () => {
+    ratioChart([
+      wafBucket({ bucket_start: T0(0), action_measurement: "NOT_COLLECTED", blocked_count: null, action_events: null }),
+      wafBucket({ bucket_start: T0(5), completeness: "PARTIAL", partial: true }),
+      wafBucket({ bucket_start: T0(10), blocked_count: 0, action_events: 0 }),
+      wafBucket({ bucket_start: T0(15), blocked_count: 0, action_events: 40 }),
+    ]);
+    expect(series("Requests").data.map((d) => d[1])).toEqual([null, null, null, 0]);
+  });
+
+  it("draws the expected proportion at detection as a flat line in percent", () => {
+    ratioChart([wafBucket()]);
+    expect(series("Expected requests").data[0][1]).toBeCloseTo(2);
+    expect(screen.getByRole("list", { name: "Chart key" })).toHaveTextContent("Expected at detection");
+  });
+
+  it("names the proportion in the key and keeps coverage as the secondary panel in percent", () => {
+    ratioChart([wafBucket({ endpoint_coverage_ratio: 0.5 })]);
+    expect(screen.getByRole("list", { name: "Chart key" })).toHaveTextContent("Blocked share of requests");
+    expect(option().yAxis[1].name).toBe("Coverage (%)");
+    expect(series("Endpoint coverage").data[0][1]).toBe(50);
+  });
+
+  it("states ratio gaps as not 0 %", () => {
+    ratioChart([wafBucket()]);
+    expect(screen.getByText(/They are not 0 %/)).toBeInTheDocument();
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { wafSource } from "./fixtures";
-import { isJudged, needsAttention, sortByAttention, validationView } from "./wafSourceHealth";
+import { isJudged, isOverflowing, needsAttention, sortByAttention, validationView } from "./wafSourceHealth";
 
 describe("validationView", () => {
   it("calls a profile VALID only when it is valid for the current version", () => {
@@ -60,5 +60,28 @@ describe("judging and attention", () => {
     const ok = wafSource({ log_source_id: "a", log_source_name: "alpha" });
     const bad = wafSource({ log_source_id: "z", log_source_name: "zulu", enabled: false });
     expect(sortByAttention([ok, bad]).map((s) => s.log_source_id)).toEqual(["z", "a"]);
+  });
+});
+
+describe("isOverflowing", () => {
+  const admission = (over: Partial<ReturnType<typeof wafSource>["admission"]>) =>
+    wafSource({
+      admission: {
+        buckets_in_range: 10,
+        buckets_admission_truncated: 0,
+        rejected_over_quota: 0,
+        below_admission_threshold: 0,
+        untracked_requests: 0,
+        ...over,
+      },
+    });
+
+  it("counts quota refusals and admission truncation", () => {
+    expect(isOverflowing(admission({ rejected_over_quota: 3 }))).toBe(true);
+    expect(isOverflowing(admission({ buckets_admission_truncated: 2 }))).toBe(true);
+  });
+
+  it("never counts keys below the admission threshold, which are ordinary noise", () => {
+    expect(isOverflowing(admission({ below_admission_threshold: 702 }))).toBe(false);
   });
 });

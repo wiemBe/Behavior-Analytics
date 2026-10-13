@@ -128,3 +128,36 @@ describe("WafSourcesTable", () => {
     expect(screen.getByRole("columnheader", { name: /Active endpoints/ })).toHaveClass("num");
   });
 });
+
+describe("WafSourcesTable: admission wording", () => {
+  const overflow = (over = {}) =>
+    wafSource({
+      admission: {
+        buckets_in_range: 211,
+        buckets_admission_truncated: 0,
+        rejected_over_quota: 1893,
+        below_admission_threshold: 702,
+        untracked_requests: 10,
+        ...over,
+      },
+    });
+
+  it("says quota refusals and below-threshold keys apart, each counted per key-bucket", () => {
+    render(<WafSourcesTable sources={[overflow()]} />);
+    const row = within(rowOf("lab-waf-behavior-01"));
+    expect(row.getByText("1,893 refused over quota")).toBeInTheDocument();
+    expect(row.getByText("702 below admission threshold")).toBeInTheDocument();
+    expect(row.getAllByText("(key-buckets)")).toHaveLength(2);
+    expect(row.getAllByText("(key-buckets)")[0]).toHaveAttribute("title", expect.stringMatching(/once for each/));
+    expect(screen.getByText(/A key-bucket is one endpoint key in one collected bucket/)).toBeInTheDocument();
+  });
+
+  it("calls quota refusals overflow, but never the below-threshold count", () => {
+    const { unmount } = render(<WafSourcesTable sources={[overflow()]} />);
+    expect(screen.getByText("Overflowing")).toBeInTheDocument();
+    unmount();
+    render(<WafSourcesTable sources={[overflow({ rejected_over_quota: 0 })]} />);
+    expect(screen.queryByText("Overflowing")).not.toBeInTheDocument();
+    expect(screen.getByText("702 below admission threshold")).toBeInTheDocument();
+  });
+});

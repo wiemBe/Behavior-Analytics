@@ -17,9 +17,12 @@ import { formatDateTime } from "@/lib/health";
 export function LifecycleTimeline({
   transitions,
   policyVersion,
+  stateLabel = (state) => state,
 }: {
   transitions: AnomalyTransition[];
   policyVersion: number | null;
+  /** How a state is worded. Defaults to the raw value; WAF pages pass a word. */
+  stateLabel?: (state: string) => string;
 }) {
   if (transitions.length === 0) {
     return (
@@ -42,7 +45,7 @@ export function LifecycleTimeline({
                   origin, not an unknown, and is labelled as such. */}
               {t.from_state ? (
                 <span className={`pill pill-quiet ${stateTone(t.from_state)}`}>
-                  {t.from_state}
+                  {stateLabel(t.from_state)}
                 </span>
               ) : (
                 <span className="muted">initial</span>
@@ -50,7 +53,7 @@ export function LifecycleTimeline({
               <span className="muted" aria-hidden="true">
                 →
               </span>
-              <span className={`pill ${stateTone(t.to_state)}`}>{t.to_state}</span>
+              <span className={`pill ${stateTone(t.to_state)}`}>{stateLabel(t.to_state)}</span>
               <time className="muted num" dateTime={t.occurred_at}>
                 {formatDateTime(t.occurred_at)}
               </time>

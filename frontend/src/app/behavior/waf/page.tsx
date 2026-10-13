@@ -88,7 +88,7 @@ export default async function WafBehaviorPage({
               {judged} of {page?.total ?? items.length}
             </strong>{" "}
             {(page?.total ?? items.length) === 1 ? "source is" : "sources are"} collected and
-            judged: profile enabled and VALID for its current version. The others produce no
+            judged: profile enabled and valid for its current version. The others produce no
             verdicts.
           </p>
 

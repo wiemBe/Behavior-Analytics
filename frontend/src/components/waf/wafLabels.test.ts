@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { wafListItem } from "./fixtures";
-import { WAF_TYPES, anomalyTypeLabel, isWafRow, isWafType, subjectText } from "./wafLabels";
+import {
+  WAF_TYPES,
+  anomalyTypeLabel,
+  evidenceLabel,
+  isWafRow,
+  isWafType,
+  stateLabel,
+  subjectText,
+} from "./wafLabels";
 
 describe("anomalyTypeLabel", () => {
   it("never shows a raw enum string for a WAF type that has a name", () => {
@@ -38,5 +46,22 @@ describe("subjectText", () => {
 
   it("does not treat a WAF row with no endpoint as a WAF subject", () => {
     expect(isWafRow(wafListItem({ waf_endpoint: null }))).toBe(false);
+  });
+});
+
+describe("stateLabel and evidenceLabel", () => {
+  it("speak a lifecycle state and an evidence status as words", () => {
+    expect(stateLabel("INSUFFICIENT_DATA")).toBe("Insufficient data");
+    expect(stateLabel("NORMAL")).toBe("Normal");
+    expect(stateLabel("RESOLVED")).toBe("Resolved");
+    expect(evidenceLabel("NOT_REQUESTED")).toBe("Not requested");
+    expect(evidenceLabel("PARTIAL")).toBe("Partial");
+    expect(evidenceLabel("COMPLETE")).toBe("Complete");
+    expect(evidenceLabel("UNAVAILABLE")).toBe("Unavailable");
+  });
+
+  it("shows an unknown value as sent", () => {
+    expect(stateLabel("SOMETHING_NEW")).toBe("SOMETHING_NEW");
+    expect(evidenceLabel("SOMETHING_NEW")).toBe("SOMETHING_NEW");
   });
 });

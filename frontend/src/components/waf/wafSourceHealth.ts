@@ -51,8 +51,16 @@ export function atCeiling(s: WafSourceBehavior): boolean {
   return s.active_endpoint_ceiling > 0 && s.active_endpoints >= s.active_endpoint_ceiling;
 }
 
+/**
+ * Admission is overflowing when a bucket's admission was truncated or keys were
+ * refused for quota. Keys below the admission threshold are ordinary noise and
+ * never count.
+ */
 export function isOverflowing(s: WafSourceBehavior): boolean {
-  return (s.admission.buckets_admission_truncated ?? 0) > 0;
+  return (
+    (s.admission.buckets_admission_truncated ?? 0) > 0 ||
+    (s.admission.rejected_over_quota ?? 0) > 0
+  );
 }
 
 /** Sources that need an analyst first: not judged, overflowing, or at the ceiling. */

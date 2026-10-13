@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 
 const PAGE_SIZE = 50;
 
-function Problem({ title, text }: { title: string; text: string }) {
+function Problem({ title, text }: { title: string; text: React.ReactNode }) {
   return (
     <>
       <PageHeader title="WAF source endpoints" />
@@ -65,7 +65,13 @@ export default async function WafSourceEndpointsPage({
       return (
         <Problem
           title="This WAF source does not exist."
-          text="No WAF behavior profile matches this address. It may have been removed, or the link may be wrong. Open WAF behavior to see the sources that exist."
+          text={
+            <>
+              No WAF behavior profile matches this address. It may have been removed, or the link
+              may be wrong. <Link href="/behavior/waf">Open WAF behavior</Link> to see the sources
+              that exist.
+            </>
+          }
         />
       );
     }
@@ -105,7 +111,13 @@ export default async function WafSourceEndpointsPage({
           <>
             <span className={`pill pill-strong ${v.tone}`}>{v.label}</span>
             <span>{v.detail}</span>
+            <span className="muted" aria-hidden="true">
+              ·
+            </span>
             <span>{source.enabled ? "Profile enabled" : "Profile disabled"}</span>
+            <span className="muted" aria-hidden="true">
+              ·
+            </span>
             <span className="num">
               {formatCount(source.active_endpoints)} of {formatCount(source.active_endpoint_ceiling)}{" "}
               endpoints active

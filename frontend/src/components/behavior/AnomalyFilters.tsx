@@ -15,7 +15,7 @@
 import Link from "next/link";
 
 import type { SourceBehavior } from "@/lib/api";
-import { subjectKindLabel, SUBJECT_KINDS } from "@/components/waf/subjectQuery";
+import { subjectKindLabel, SUBJECT_KINDS } from "@/lib/anomalyQuery";
 import { WAF_TYPES, anomalyTypeLabel } from "@/components/waf/wafLabels";
 import { formatDateTime } from "@/lib/health";
 
@@ -276,10 +276,14 @@ export function AnomalyFilters({
         <div className="row filter-chips">
           <span className="muted">Filtered by</span>
           {activeChips.map(([key, value]) => (
-            <Link key={key} href={withoutFilter(values, key)} className="filter-chip">
+            <Link
+              key={key}
+              href={withoutFilter(values, key)}
+              className="filter-chip"
+              aria-label={`Remove filter ${chipLabel(key, value, sources)}`}
+            >
               {chipLabel(key, value, sources)}
-              <span aria-hidden="true"> ✕</span>
-              <span className="sr-only">, remove this filter</span>
+              <span aria-hidden="true">✕</span>
             </Link>
           ))}
           <Link href="/anomalies" className="filter-clear">

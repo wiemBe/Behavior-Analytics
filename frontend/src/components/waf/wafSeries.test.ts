@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { wafBucket } from "./fixtures";
-import { buildWafSeries, wafUnobserved } from "./wafSeries";
+import {
+  RATIO_SPECS,
+  buildWafRatioSeries,
+  buildWafSeries,
+  wafRatioUnobserved,
+  wafUnobserved,
+} from "./wafSeries";
 
 const T = (m: number) => `2026-10-12T09:${String(m).padStart(2, "0")}:00Z`;
 
@@ -73,5 +79,104 @@ describe("wafUnobserved", () => {
 
   it("is empty when everything was collected", () => {
     expect(wafUnobserved([wafBucket({ bucket_start: T(0) }), wafBucket({ bucket_start: T(5) })])).toEqual([]);
+  });
+});
+
+describe("buildWafRatioSeries", () => {
+  const block = RATIO_SPECS.WAF_BLOCK_RATIO_SPIKE;
+
+  it("is blocked / action events where the action breakdown is exact", () => {
+    const [p] = buildWafRatioSeries([wafBucket({ blocked_count: 10, action_events: 40 })], block);
+    expect(p.observed).toBe(0.25);
+    expect(p.kind).toBe("COMPLETE");
+    // The request count stays beside it for the hover readout.
+    expect(p.reported).toBe(41);
+  });
+
+  it("keeps a measured 0 blocked of a non-zero denominator as 0", () => {
+    const [p] = buildWafRatioSeries([wafBucket({ blocked_count: 0, action_events: 40 })], block);
+    expect(p.observed).toBe(0);
+  });
+
+  it("makes a breakdown that was not collected a gap, never 0", () => {
+    for (const status of ["NOT_COLLECTED", "FAILED", null]) {
+      const [p] = buildWafRatioSeries(
+        [wafBucket({ action_measurement: status, blocked_count: null, action_events: null })],
+        block,
+      );
+      expect(p.observed).toBeNull();
+      expect(p.kind).toBe("MISSING");
+    }
+  });
+
+  it("makes a capped breakdown (LOWER_BOUND) a gap: its share is not a measurement", () => {
+    const [p] = buildWafRatioSeries(
+      [wafBucket({ action_measurement: "LOWER_BOUND", blocked_count: 10, action_events: 40 })],
+      block,
+    );
+    expect(p.observed).toBeNull();
+    expect(p.kind).toBe("PARTIAL");
+  });
+
+  it("makes a PARTIAL bucket a gap even when its counts divide", () => {
+    const [p] = buildWafRatioSeries(
+      [wafBucket({ completeness: "PARTIAL", partial: true, blocked_count: 10, action_events: 40 })],
+      block,
+    );
+    expect(p.observed).toBeNull();
+    expect(p.kind).toBe("PARTIAL");
+  });
+
+  it("makes a zero denominator a gap, not 0 %", () => {
+    const [p] = buildWafRatioSeries([wafBucket({ blocked_count: 0, action_events: 0 })], block);
+    expect(p.observed).toBeNull();
+    expect(p.kind).toBe("MISSING");
+  });
+
+  it("makes a null numerator a gap", () => {
+    const [p] = buildWafRatioSeries([wafBucket({ blocked_count: null, action_events: 40 })], block);
+    expect(p.observed).toBeNull();
+  });
+
+  it("divides each detector's own counts", () => {
+    const b = wafBucket({
+      server_error_count: 4,
+      client_error_count: 8,
+      response_code_events: 40,
+      top1_client_requests: 30,
+      client_events: 40,
+    });
+    expect(buildWafRatioSeries([b], RATIO_SPECS.WAF_ERROR_RATIO_SPIKE)[0].observed).toBe(0.1);
+    expect(buildWafRatioSeries([b], RATIO_SPECS.WAF_CLIENT_ERROR_RATIO_SPIKE)[0].observed).toBe(0.2);
+    expect(buildWafRatioSeries([b], RATIO_SPECS.WAF_CLIENT_CONCENTRATION_SPIKE)[0].observed).toBe(0.75);
+  });
+
+  it("judges each breakdown by its own status, not another's", () => {
+    const [p] = buildWafRatioSeries(
+      [wafBucket({ client_measurement: "FAILED", client_events: null, top1_client_requests: null })],
+      RATIO_SPECS.WAF_CLIENT_CONCENTRATION_SPIKE,
+    );
+    expect(p.observed).toBeNull();
+    const [q] = buildWafRatioSeries(
+      [wafBucket({ client_measurement: "FAILED", client_events: null, top1_client_requests: null })],
+      RATIO_SPECS.WAF_BLOCK_RATIO_SPIKE,
+    );
+    expect(q.observed).not.toBeNull();
+  });
+
+  it("still declares an interval with no stored bucket a gap", () => {
+    const points = buildWafRatioSeries(
+      [wafBucket({ bucket_start: T(0) }), wafBucket({ bucket_start: T(20) })],
+      block,
+    );
+    expect(points.map((p) => p.kind)).toEqual(["COMPLETE", "GAP", "COMPLETE"]);
+  });
+
+  it("lists unmeasured proportions for shading", () => {
+    const spans = wafRatioUnobserved(
+      [wafBucket({ bucket_start: T(0) }), wafBucket({ bucket_start: T(5), action_events: 0 })],
+      block,
+    );
+    expect(spans.map((s) => s.kind)).toEqual(["MISSING"]);
   });
 });

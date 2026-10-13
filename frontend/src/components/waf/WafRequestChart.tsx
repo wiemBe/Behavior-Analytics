@@ -34,8 +34,17 @@ import type { WafMetricBucket } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
 import { formatDateTime } from "@/lib/health";
 
+import { buildBaselineLookup, type BaselineSource } from "./wafBaseline";
 import { bucketWidth } from "./wafFormat";
-import { buildWafSeries, isolatedPoints, kindMeaning, wafUnobserved } from "./wafSeries";
+import {
+  buildWafRatioSeries,
+  buildWafSeries,
+  isolatedPoints,
+  kindMeaning,
+  wafRatioUnobserved,
+  wafUnobserved,
+  type RatioSpec,
+} from "./wafSeries";
 
 import type { EChartsOption } from "echarts";
 
@@ -73,6 +82,8 @@ export function WafRequestChart({
   transitions = [],
   ariaLabel = "Requests against the expected range, and endpoint coverage",
   textSummary,
+  ratio = null,
+  baseline,
 }: {
   buckets: WafMetricBucket[];
   expected: number | null;
@@ -83,16 +94,61 @@ export function WafRequestChart({
   ariaLabel?: string;
   /** The chart as prose, for readers who cannot see a canvas. */
   textSummary?: string;
+  /**
+   * A proportion detector's quantity. When set the primary panel plots that
+   * proportion in %, and `expected`, `expectedLow` and `expectedHigh` are
+   * fractions. The request count moves to the hover readout.
+   */
+  ratio?: RatioSpec | null;
+  /**
+   * The seasonal cells, looked up per bucket by UTC weekday and hour. When
+   * given, the band and the expected median follow it, and a bucket with no
+   * reliable cell has none. When absent (the cells could not be loaded) the
+   * band is the flat range recorded at detection, and is labelled so.
+   */
+  baseline?: BaselineSource | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const points = useMemo(() => buildWafSeries(buckets), [buckets]);
-  const unobserved = useMemo(() => wafUnobserved(buckets), [buckets]);
-  const hasBand = expectedLow != null && expectedHigh != null;
-  const hasLowerBound = points.some((p) => p.lowerBound);
+  const points = useMemo(
+    () => (ratio ? buildWafRatioSeries(buckets, ratio) : buildWafSeries(buckets)),
+    [buckets, ratio],
+  );
+  const unobserved = useMemo(
+    () => (ratio ? wafRatioUnobserved(buckets, ratio) : wafUnobserved(buckets)),
+    [buckets, ratio],
+  );
+  const scale = ratio ? 100 : 1;
+  const seasonal = baseline != null;
+  const lookup = useMemo(
+    () =>
+      baseline ? buildBaselineLookup(baseline.cells, baseline.metric, baseline.normalizerVersion) : null,
+    [baseline],
+  );
+  // Per bucket, from the baseline cell of that bucket's weekday and hour. A
+  // gap point, and a bucket whose cell is missing or unreliable, has none.
+  const cells = useMemo(
+    () => (lookup ? points.map((p) => (p.kind === "GAP" ? null : lookup(p.t))) : []),
+    [lookup, points],
+  );
+  const hasBand = seasonal
+    ? cells.some((c) => c?.low != null && c.high != null)
+    : expectedLow != null && expectedHigh != null;
+  const hasMedian = seasonal && !ratio ? cells.some((c) => c != null) : expected != null;
+  const hasLowerBound = !ratio && points.some((p) => p.lowerBound);
   const hasCoverage = points.some((p) => p.coverage != null);
   const width = bucketWidth(buckets[0]?.bucket_seconds);
-  const countAxis = width ? `Requests per ${width} (count)` : "Requests per bucket (count)";
+  const countAxis = ratio
+    ? `${ratio.label} (%)`
+    : width
+      ? `Requests per ${width} (count)`
+      : "Requests per bucket (count)";
+  const bandLabel = seasonal
+    ? ratio
+      ? "Seasonal p05–p95 of bucket proportions"
+      : "Expected range"
+    : "Expected range at detection";
+  const medianLabel = ratio ? "Expected at detection" : "Expected median";
 
   const buildOption = useMemo(() => {
     if (points.length === 0) return null;
@@ -100,7 +156,13 @@ export function WafRequestChart({
     return (): EChartsOption => {
       const c = readChartPalette();
       const flat = (value: number | null) =>
-        value == null ? [] : points.map((p) => [p.t, value] as [number, number]);
+        value == null ? [] : points.map((p) => [p.t, value * scale] as [number, number]);
+      const perBucket = (pick: (c: NonNullable<(typeof cells)[number]>) => number | null) =>
+        points.map((p, i) => {
+          const c = cells[i];
+          const v = c ? pick(c) : null;
+          return [p.t, v == null ? null : v * scale] as [number, number | null];
+        });
 
       const gapAreas: MarkAreaPair[] = unobserved.map(
         (u): MarkAreaPair => [
@@ -147,17 +209,40 @@ export function WafRequestChart({
             const p = first?.dataIndex != null ? points[first.dataIndex] : undefined;
             if (!p) return "";
             const unit = width ? `requests / ${width}` : "requests / bucket";
-            const observed =
-              p.observed != null
+            const fmt = (v: number) => (ratio ? `${(v * scale).toFixed(1)}%` : v.toFixed(1));
+            const suffix = ratio ? "" : ` ${unit}`;
+            const cell = seasonal && points[first!.dataIndex!].kind !== "GAP" ? cells[first!.dataIndex!] : null;
+            const requests =
+              p.reported != null
+                ? `${p.lowerBound ? "≥ " : ""}${p.reported} ${unit}`
+                : "not recorded";
+            const observed = ratio
+              ? p.observed != null
+                ? `${ratio.label}: ${(p.observed * 100).toFixed(1)}%`
+                : `${ratio.label}: not measured (${kindMeaning(p.kind)})`
+              : p.observed != null
                 ? `Requests: ${p.lowerBound ? "≥ " : ""}${p.observed} ${unit}`
                 : `Requests: not measured (${kindMeaning(p.kind)})`;
             const reported =
-              p.observed == null && p.reported != null
+              !ratio && p.observed == null && p.reported != null
                 ? `Reported by the partial collection: ${p.reported} ${unit}`
                 : "";
-            const band = hasBand
-              ? `Expected range at detection: ${expectedLow.toFixed(1)} – ${expectedHigh.toFixed(1)} ${unit}`
-              : "";
+            const requestLine = ratio ? `Requests: ${requests}` : "";
+            let band = "";
+            let median = "";
+            if (seasonal) {
+              band =
+                cell?.low != null && cell.high != null
+                  ? `${bandLabel}: ${fmt(cell.low)} – ${fmt(cell.high)}${suffix}`
+                  : `${bandLabel}: no reliable baseline for this weekday and hour`;
+              median = cell && !ratio ? `Expected median: ${fmt(cell.median)}${suffix}` : "";
+            } else if (hasBand) {
+              band = `${bandLabel}: ${fmt(expectedLow!)} – ${fmt(expectedHigh!)}${suffix}`;
+            }
+            const atDetection =
+              expected != null && (!seasonal || ratio)
+                ? `${medianLabel}: ${fmt(expected)}${suffix}`
+                : "";
             const coverage =
               p.coverage != null
                 ? `Endpoint coverage: ${(p.coverage * 100).toFixed(1)}%`
@@ -166,7 +251,9 @@ export function WafRequestChart({
               formatDateTime(new Date(p.t).toISOString()),
               observed,
               reported,
-              expected != null ? `Expected: ${expected.toFixed(1)} ${unit}` : "",
+              requestLine,
+              median,
+              atDetection,
               band,
               coverage,
               `Collection: ${kindMeaning(p.kind)}`,
@@ -220,7 +307,7 @@ export function WafRequestChart({
             name: "Requests",
             xAxisIndex: 0,
             yAxisIndex: 0,
-            data: points.map((p) => [p.t, p.observed] as [number, number | null]),
+            data: points.map((p) => [p.t, p.observed == null ? null : p.observed * scale] as [number, number | null]),
             // Bridging a null would draw traffic that was never observed.
             connectNulls: false,
             showSymbol: false,
@@ -236,7 +323,7 @@ export function WafRequestChart({
                   label: { show: false },
                   data: lone.map((p) => ({
                     name: "Measured interval between gaps",
-                    coord: [p.t, p.observed as number],
+                    coord: [p.t, (p.observed as number) * scale],
                   })),
                 }
               : undefined,
@@ -258,7 +345,10 @@ export function WafRequestChart({
             name: "Expected requests",
             xAxisIndex: 0,
             yAxisIndex: 0,
-            data: flat(expected),
+            data:
+              seasonal && !ratio ? perBucket((v) => v.median) : flat(expected),
+            ...(seasonal && !ratio ? { step: "end" as const } : {}),
+            connectNulls: false,
             showSymbol: false,
             silent: true,
             lineStyle: { color: c.expected, type: "dashed", width: 1 },
@@ -271,7 +361,9 @@ export function WafRequestChart({
             name: "Expected low",
             xAxisIndex: 0,
             yAxisIndex: 0,
-            data: hasBand ? flat(expectedLow) : [],
+            data: !hasBand ? [] : seasonal ? perBucket((v) => v.low) : flat(expectedLow),
+            ...(seasonal ? { step: "end" as const } : {}),
+            connectNulls: false,
             stack: "expected-range",
             showSymbol: false,
             silent: true,
@@ -282,7 +374,13 @@ export function WafRequestChart({
             name: "Expected range",
             xAxisIndex: 0,
             yAxisIndex: 0,
-            data: hasBand ? flat(expectedHigh - expectedLow) : [],
+            data: !hasBand
+              ? []
+              : seasonal
+                ? perBucket((v) => (v.low != null && v.high != null ? v.high - v.low : null))
+                : flat(expectedHigh! - expectedLow!),
+            ...(seasonal ? { step: "end" as const } : {}),
+            connectNulls: false,
             stack: "expected-range",
             showSymbol: false,
             silent: true,
@@ -317,6 +415,12 @@ export function WafRequestChart({
     transitions,
     width,
     countAxis,
+    ratio,
+    scale,
+    seasonal,
+    cells,
+    bandLabel,
+    medianLabel,
   ]);
 
   useEffect(() => {
@@ -351,18 +455,18 @@ export function WafRequestChart({
       <ul className="chart-legend" aria-label="Chart key">
         <li>
           <span className="chart-key chart-key-observed" aria-hidden="true" />
-          Requests
+          {ratio ? ratio.label : "Requests"}
         </li>
-        {expected != null && (
+        {hasMedian && (
           <li>
             <span className="chart-key chart-key-expected" aria-hidden="true" />
-            Expected median
+            {medianLabel}
           </li>
         )}
         {hasBand && (
           <li>
             <span className="chart-key chart-key-band" aria-hidden="true" />
-            Expected range at detection
+            {bandLabel}
           </li>
         )}
         {hasCoverage && (
@@ -391,8 +495,12 @@ export function WafRequestChart({
         )}
       </ul>
       <p className="subtitle chart-note">
-        Gaps in the line are buckets that were partial or not stored. They are not zero requests.
+        {ratio
+          ? "Gaps in the line are buckets whose breakdown was not collected, failed, hit its cap or had no requests to divide. They are not 0 %."
+          : "Gaps in the line are buckets that were partial or not stored. They are not zero requests."}
         {hasLowerBound && " Some buckets are lower bounds (at least the plotted count)."}
+        {seasonal &&
+          " The band follows the baseline cell of each bucket's UTC weekday and hour, and is absent where that cell is missing or not yet reliable."}
       </p>
     </>
   );

@@ -15,6 +15,9 @@ import { atCeiling, isOverflowing, sortByAttention, validationView } from "./waf
 
 import "@/components/ui/controls.css";
 
+const KEY_BUCKETS_MEANING =
+  "Counted per bucket: an endpoint key refused in several buckets of the range counts once for each of them.";
+
 function Unmeasured({ meaning }: { meaning: string }) {
   return (
     <span className="muted">
@@ -68,8 +71,20 @@ function OverflowCell({ s }: { s: WafSourceBehavior }) {
         {truncated == null ? NOT_MEASURED : formatCount(truncated)} of {formatCount(a.buckets_in_range)}{" "}
         buckets truncated
       </span>
-      <span className="cell-sub">{formatCount(a.rejected_over_quota)} refused over quota</span>
-      <span className="cell-sub">{formatCount(a.below_admission_threshold)} below threshold</span>
+      <span className="cell-sub">
+        {formatCount(a.rejected_over_quota)} refused over quota
+        <span className="muted key-buckets" title={KEY_BUCKETS_MEANING}>
+          {" "}
+          (key-buckets)
+        </span>
+      </span>
+      <span className="cell-sub">
+        {formatCount(a.below_admission_threshold)} below admission threshold
+        <span className="muted key-buckets" title={KEY_BUCKETS_MEANING}>
+          {" "}
+          (key-buckets)
+        </span>
+      </span>
       <span className="cell-sub">{formatCount(a.untracked_requests)} untracked requests</span>
     </>
   );
@@ -78,6 +93,7 @@ function OverflowCell({ s }: { s: WafSourceBehavior }) {
 export function WafSourcesTable({ sources }: { sources: WafSourceBehavior[] }) {
   const rows = sortByAttention(sources);
   return (
+    <>
     <TableScroll label="WAF sources">
       <table className="table-dense">
         <caption className="sr-only">
@@ -145,5 +161,12 @@ export function WafSourcesTable({ sources }: { sources: WafSourceBehavior[] }) {
         </tbody>
       </table>
     </TableScroll>
+    <p className="subtitle">
+      A key-bucket is one endpoint key in one collected bucket, so a key refused in several
+      buckets counts once for each. Refused over quota means the key met the volume threshold but
+      the per-bucket quota for new endpoints, or the source&apos;s active ceiling, was full. Below
+      admission threshold is ordinary low-volume noise, not overflow.
+    </p>
+    </>
   );
 }

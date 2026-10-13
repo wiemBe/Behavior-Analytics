@@ -99,6 +99,21 @@ describe("WAF source endpoints: failures", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/Open WAF behavior/);
   });
 
+  it("makes 'Open WAF behavior' a link to /behavior/waf on a 404", async () => {
+    vi.spyOn(api, "wafBehaviorSource").mockRejectedValue(new ApiError(404, "WAF source not found"));
+    vi.spyOn(api, "wafBehaviorEndpoints").mockRejectedValue(new ApiError(404, "WAF source not found"));
+    render(
+      await WafSourceEndpointsPage({
+        params: Promise.resolve({ id: "x" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(screen.getByRole("link", { name: "Open WAF behavior" })).toHaveAttribute(
+      "href",
+      "/behavior/waf",
+    );
+  });
+
   it("says what failed on an outage, without the exception text", async () => {
     vi.spyOn(api, "wafBehaviorSource").mockRejectedValue(new Error("ECONNREFUSED 10.1.2.3"));
     vi.spyOn(api, "wafBehaviorEndpoints").mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
@@ -134,5 +149,16 @@ describe("route states", () => {
     render(<WafSourceError error={new Error("x")} reset={reset} />);
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(reset).toHaveBeenCalled();
+  });
+});
+
+describe("WAF source endpoints: header", () => {
+  it("separates the four facts of the header instead of running them together", async () => {
+    const { container } = await renderPage();
+    const meta = container.querySelector(".page-meta") as HTMLElement;
+    const separators = Array.from(meta.querySelectorAll('[aria-hidden="true"]')).map((e) => e.textContent);
+    expect(separators).toEqual(["·", "·"]);
+    expect(meta).toHaveTextContent("Profile enabled");
+    expect(meta).toHaveTextContent("132 of 500 endpoints active");
   });
 });

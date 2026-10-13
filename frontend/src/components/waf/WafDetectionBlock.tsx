@@ -12,7 +12,8 @@ import {
   robustScoreMeaning,
 } from "@/lib/behavior";
 
-import { formatRequests } from "./wafFormat";
+import { formatPercent, formatRequests, requestsUnit } from "./wafFormat";
+import { isRatioType } from "./wafSummary";
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -23,7 +24,14 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export function WafDetectionBlock({ anomaly }: { anomaly: WafAnomalyDetail }) {
+export function WafDetectionBlock({
+  anomaly,
+  bucketSeconds = null,
+}: {
+  anomaly: WafAnomalyDetail;
+  /** Bucket width from the stored buckets, for the unit; null when unknown. */
+  bucketSeconds?: number | null;
+}) {
   const d = anomaly.detection;
   if (!d) {
     return (
@@ -35,19 +43,31 @@ export function WafDetectionBlock({ anomaly }: { anomaly: WafAnomalyDetail }) {
   }
 
   const reason = d.reason ?? anomaly.explanation;
+  const ratio = isRatioType(anomaly.anomaly_type);
+  const hasRange = d.expected_low != null && d.expected_high != null;
+  // A range carries its unit; a missing one says it was not recorded rather than
+  // standing as a bare dash.
+  const range = !hasRange ? (
+    <span className="muted">
+      —<span className="sr-only"> not recorded for this incident</span>
+    </span>
+  ) : ratio ? (
+    <>
+      {formatPercent(d.expected_low)} – {formatPercent(d.expected_high)}
+      <span className="muted"> of bucket requests</span>
+    </>
+  ) : (
+    <>
+      {formatRequests(d.expected_low)} – {formatRequests(d.expected_high)}
+      <span className="muted"> {requestsUnit(bucketSeconds)}</span>
+    </>
+  );
   return (
     <div className="stack-6">
       {reason && <p className="waf-reason">{reason}</p>}
 
       <dl className="dimension-meta">
-        <Row
-          label="Expected range at detection"
-          value={
-            d.expected_low != null && d.expected_high != null
-              ? `${formatRequests(d.expected_low)} – ${formatRequests(d.expected_high)}`
-              : "—"
-          }
-        />
+        <Row label={ratio ? "Seasonal p05–p95 at detection" : "Expected range at detection"} value={range} />
         <Row label="Surprise threshold" value={d.threshold != null ? `±${formatMetric(d.threshold)}` : "—"} />
         <Row label="Baseline samples" value={formatCount(d.baseline_sample_count)} />
         <Row label="Baseline completeness" value={formatShare(d.baseline_completeness)} />

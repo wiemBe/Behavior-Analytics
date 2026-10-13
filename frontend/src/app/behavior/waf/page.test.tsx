@@ -150,3 +150,12 @@ describe("route states", () => {
     );
   });
 });
+
+describe("WAF behavior: headline", () => {
+  it("writes 'valid' in lower case inside the sentence", async () => {
+    await renderPage();
+    const lead = document.querySelector(".waf-lead") as HTMLElement;
+    expect(lead).toHaveTextContent("profile enabled and valid for its current version");
+    expect(lead).not.toHaveTextContent("VALID");
+  });
+});

@@ -7,6 +7,7 @@ import type {
   WafAnomalyDetail,
   WafDetectionDetail,
   WafEndpointInventory,
+  WafBaselineCell,
   WafEndpointRef,
   WafMetricBucket,
   WafSourceBehavior,
@@ -136,6 +137,37 @@ export function wafBucket(over: Partial<WafMetricBucket> = {}): WafMetricBucket 
     in_maintenance: false,
     normalizer_version: 2,
     distinct_client_count: 14,
+    action_measurement: "EXACT",
+    response_code_measurement: "EXACT",
+    client_measurement: "EXACT",
+    blocked_count: 2,
+    action_events: 40,
+    response_code_events: 40,
+    client_error_count: 3,
+    server_error_count: 1,
+    client_events: 41,
+    top1_client_requests: 9,
+    ...over,
+  };
+}
+
+/** A seasonal cell. ISO weekday 1-7 (Monday = 1), UTC hour. */
+export function wafBaselineCell(over: Partial<WafBaselineCell> = {}): WafBaselineCell {
+  return {
+    metric_name: "request_count",
+    weekday: 1,
+    hour: 9,
+    median: 41.5,
+    mad: 6,
+    p05: 22,
+    p95: 68,
+    sample_count: 31,
+    is_reliable: true,
+    completeness: 0.94,
+    baseline_version: 6,
+    normalizer_version: 2,
+    excluded_sample_count: 3,
+    metric_semantics: null,
     ...over,
   };
 }

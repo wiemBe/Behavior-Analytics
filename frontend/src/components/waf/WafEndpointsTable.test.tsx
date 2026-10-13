@@ -15,7 +15,7 @@ describe("WafEndpointsTable", () => {
     expect(row.getByText("Virtual host portal.lab.example")).toBeInTheDocument();
     expect(row.getByText("131 / 168")).toBeInTheDocument();
     expect(row.getAllByText(/10-13 08:55 UTC/).length).toBeGreaterThan(0);
-    expect(row.getByText("NORMAL")).toBeInTheDocument();
+    expect(row.getByText("Normal")).toBeInTheDocument();
     expect(row.getByText("Active")).toBeInTheDocument();
   });
 
@@ -36,12 +36,12 @@ describe("WafEndpointsTable", () => {
     const row = within(rowOf("GET /portal/login"));
     expect(row.getByText("Not evaluated")).toBeInTheDocument();
     expect(row.getByText("No detector has judged this endpoint")).toBeInTheDocument();
-    expect(row.queryByText("NORMAL")).not.toBeInTheDocument();
+    expect(row.queryByText("Normal")).not.toBeInTheDocument();
   });
 
   it("keeps INSUFFICIENT_DATA neutral rather than healthy", () => {
     render(<WafEndpointsTable endpoints={[wafEndpoint({ state: "INSUFFICIENT_DATA" })]} />);
-    const pill = screen.getByText("INSUFFICIENT_DATA");
+    const pill = screen.getByText("Insufficient data");
     expect(pill.className).not.toContain("ok");
     expect(pill.className).not.toContain("crit");
   });

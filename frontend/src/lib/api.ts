@@ -974,6 +974,18 @@ export interface WafMetricBucket {
   in_maintenance: boolean | null;
   normalizer_version: number;
   distinct_client_count: number | null;
+  // Each breakdown's own status: EXACT, LOWER_BOUND, NOT_COLLECTED or FAILED. Its
+  // counts below are null unless it was measured. Absent on an older response.
+  action_measurement?: string | null;
+  response_code_measurement?: string | null;
+  client_measurement?: string | null;
+  blocked_count?: number | null;
+  action_events?: number | null;
+  response_code_events?: number | null;
+  client_error_count?: number | null;
+  server_error_count?: number | null;
+  client_events?: number | null;
+  top1_client_requests?: number | null;
 }
 
 export interface PagedWafMetrics {
@@ -983,6 +995,32 @@ export interface PagedWafMetrics {
   offset: number;
   range_start: string;
   range_end: string;
+}
+
+/** One seasonal cell of an endpoint's baseline (`WafBaselineCellOut`). Weekday is
+ *  ISO (1 = Monday) and the hour is UTC, as in Phase A. */
+export interface WafBaselineCell {
+  metric_name: string;
+  weekday: number;
+  hour: number;
+  median: number;
+  mad: number;
+  p05: number | null;
+  p95: number | null;
+  sample_count: number;
+  is_reliable: boolean;
+  completeness: number;
+  baseline_version: number;
+  normalizer_version: number;
+  excluded_sample_count: number;
+  metric_semantics: string | null;
+}
+
+export interface PagedWafBaselines {
+  items: WafBaselineCell[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface WafLatestBucket {
@@ -1177,6 +1215,11 @@ export const api = {
     id: string,
     params: { since?: string; until?: string; limit?: number; offset?: number } = {},
   ) => request<PagedWafMetrics>(`/behavior/waf/endpoints/${id}/metrics${qs({ ...params })}`),
+
+  wafEndpointBaselines: (
+    id: string,
+    params: { metric?: string; limit?: number; offset?: number } = {},
+  ) => request<PagedWafBaselines>(`/behavior/waf/endpoints/${id}/baselines${qs({ ...params })}`),
 
   // --- WAF source administration -------------------------------------------
   // Guarded by admin:waf. Profile writes save the application's database only;

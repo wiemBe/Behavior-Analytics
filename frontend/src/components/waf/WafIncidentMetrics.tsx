@@ -82,6 +82,7 @@ export function WafIncidentMetrics({
               <>
                 {" · range "}
                 <span className="num">{band}</span>
+                <span className="muted"> {unit}</span>
               </>
             )}
           </dd>

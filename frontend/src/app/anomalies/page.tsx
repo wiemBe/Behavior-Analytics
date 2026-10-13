@@ -15,7 +15,6 @@ import type { Metadata } from "next";
 import { AnomalyFilters } from "@/components/behavior/AnomalyFilters";
 import { AnomalyRows } from "@/components/behavior/AnomalyRows";
 import { Pagination } from "@/components/Pagination";
-import { parseSubjectQuery } from "@/components/waf/subjectQuery";
 import { isWafRow } from "@/components/waf/wafLabels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -30,6 +29,7 @@ import {
   PAGE_SIZE,
   paginationParams,
   parseAnomalyQuery,
+  parseSubjectQuery,
 } from "@/lib/anomalyQuery";
 
 export const metadata: Metadata = {
@@ -95,12 +95,10 @@ export default async function AnomaliesPage({
       q.until,
   );
   const items = page?.items ?? [];
-  // The first column names what the rows are about. A page of log-source rows
-  // keeps its "Source" heading; once a WAF endpoint is on the page the column
-  // holds subjects of two kinds, and the unit of the observed figures differs
-  // per row, so each cell carries its own unit instead of the heading.
+  // Every cell of the observed column names its own unit (EPS, req / 5 min or %),
+  // so the heading carries none once a WAF row is on the page. A page of log
+  // sources keeps the "(EPS)" its existing test pins.
   const hasWaf = items.some(isWafRow);
-
   return (
     <>
       <PageHeader
@@ -145,20 +143,24 @@ export default async function AnomaliesPage({
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">{hasWaf ? "Subject" : "Source"}</th>
+                  <th scope="col">Subject</th>
                   <th scope="col">Detector</th>
                   <th scope="col">State</th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="num col-nowrap">
                     {hasWaf ? "Observed → Expected" : "Observed → Expected (EPS)"}
                   </th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="num col-md">
                     Deviation
                   </th>
-                  <th scope="col">Severity</th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="col-sm">
+                    Severity
+                  </th>
+                  <th scope="col" className="num col-sm">
                     Started
                   </th>
-                  <th scope="col">Evidence</th>
+                  <th scope="col" className="col-md">
+                    Evidence
+                  </th>
                   <th scope="col">
                     <span className="sr-only">Actions</span>
                   </th>
