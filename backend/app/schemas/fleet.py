@@ -72,8 +72,9 @@ class ClassSummary(BaseModel):
     # counts say how much of the window that is.
     events: int | None
     mean_eps: float | None
-    # Sum of reliable per-source baseline medians for the current weekday-hour,
-    # null when no source in the class has one.
+    # Sum, over the class's sources, of each source's mean reliable baseline
+    # median across every (UTC weekday, hour) cell the window spans; a source
+    # counts only when all of its spanned cells are reliable. Null when none does.
     expected_eps: float | None
     baseline_sources: int
     baseline_share: float | None

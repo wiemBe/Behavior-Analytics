@@ -1973,6 +1973,9 @@ Rules:
    first (`python -m app.cli.waf profile set|validate|enable|disable`), each recorded in `AuditLog`.
    An admin API behind a dedicated `admin:waf` permission may follow after its own review. No
    profile operation writes to QRadar.
+   **[BUILT 2026-10-13]** That review is [`FIELD-MAPPING.md`](FIELD-MAPPING.md) §FM.10; the admin
+   API is §FM.4–§FM.5 (T-042) and the UI is `/admin/waf-sources` (T-044, with the searchable
+   property picker of T-058).
 7. The three global settings become the defaults a new profile is seeded from. The collector stops
    reading them.
 
@@ -2262,7 +2265,8 @@ GET /api/v1/behavior/waf/endpoints/{id}/baselines               cells, reliabili
 GET /api/v1/behavior/detectors                                  [BUILT] detector status, both domains
 ```
 
-No route writes to QRadar. Profile writes stay CLI-only until an admin API is separately reviewed.
+No route writes to QRadar. Profile writes go through the CLI or the `admin:waf` API of
+[`FIELD-MAPPING.md`](FIELD-MAPPING.md) §FM.4 (built 2026-10-13); the routes above stay read-only.
 
 ### 27.15 UI shape [DESIGN]
 
