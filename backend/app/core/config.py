@@ -21,6 +21,8 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.models.enums import OutagePolicyMode
+
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
@@ -301,6 +303,12 @@ class Settings(BaseSettings):
     #: Buckets of expected-but-absent traffic tolerated before NO_EVENTS fires.
     anomaly_silence_grace_buckets: int = Field(default=1, ge=0)
     anomaly_max_buckets_per_evaluation: int = Field(default=120, ge=1, le=10_000)
+
+    # --- Phase C.2: outage alert policy -------------------------------------
+    #: What a source's NO_EVENTS does when no `outage_alert_policy` row applies.
+    #: ALERT keeps Phase A's behaviour, so an upgrade alerts exactly as before
+    #: and operators opt sources or classes into RECORD_ONLY (decision D-9).
+    outage_alert_default: OutagePolicyMode = OutagePolicyMode.ALERT
 
     # --- Phase A explanation evidence ---------------------------------------
     explanation_enabled: bool = True

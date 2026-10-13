@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -44,6 +44,7 @@ from app.anomaly.lifecycle import (
 from app.anomaly.seasonal import in_maintenance
 from app.anomaly.thresholds import ThresholdResolver
 from app.core.config import Settings, get_settings
+from app.fleet.outage_policy import ResolvedOutage, resolve
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     AnomalyState,
@@ -51,6 +52,8 @@ from app.models.enums import (
     BucketCompleteness,
     DetectorSignal,
     EvidenceStatus,
+    OutagePolicyMode,
+    OutagePolicyScope,
 )
 from app.models.fleet import LogSourceClassification
 from app.models.log_source import (
@@ -62,6 +65,7 @@ from app.models.log_source import (
     LogSourceMetric,
 )
 from app.models.monitoring import AnomalyEvaluationWatermark
+from app.models.outage import OutageAlertPolicy
 from app.providers.base import LogSourceTelemetry
 
 logger = logging.getLogger(__name__)
@@ -130,6 +134,16 @@ class AnomalyEngine:
         # alert transitions produce notification rows. None in unit tests.
         self._enqueuer = enqueuer
         self._source_class_cache: dict[uuid.UUID, str | None] = {}
+        # Phase C.2 outage policy: the rows are loaded once per engine instance
+        # (one statement for the whole run) and the per-source verdict is
+        # memoised, so a refresh every bucket still costs one load (rule 9).
+        self._policy_rows: list[OutageAlertPolicy] | None = None
+        self._outage_cache: dict[uuid.UUID, ResolvedOutage] = {}
+        # The class map outage resolution reads, loaded in one statement the
+        # first time a CLASS policy row needs a source's class and reused for
+        # the rest of the run. Distinct from `_source_class_cache`, which the
+        # alert context fills one source at a time.
+        self._class_map: dict[uuid.UUID, str] | None = None
 
     async def evaluate_latest(self, log_source: LogSource) -> EvaluationReport:
         metric = await self.session.scalar(
@@ -259,6 +273,14 @@ class AnomalyEngine:
         thresholds = self._resolver.resolve(
             criticality=log_source.criticality, custom=log_source.custom_thresholds
         )
+        # A resolved grace overrides the configured one for this source's
+        # NO_EVENTS evaluation. Only NO_EVENTS reads this field, so the override
+        # is exactly scoped and every volume detector is untouched.
+        outage = await self._outage(log_source)
+        if outage.silence_grace_buckets is not None:
+            thresholds = replace(
+                thresholds, silence_grace_buckets=outage.silence_grace_buckets
+            )
         expected_interval = float(
             log_source.expected_interval_seconds or metric.bucket_seconds or 300
         )
@@ -613,6 +635,14 @@ class AnomalyEngine:
         # Maintenance anomalies are recorded but never alerted.
         if in_maintenance:
             return
+        # A RECORD_ONLY outage keeps the anomaly, its state, its transitions and
+        # its explanation pending; only the alert and its notification are
+        # suppressed. The fingerprint and every Phase A table are untouched.
+        if (
+            evidence.anomaly_type == AnomalyType.NO_EVENTS
+            and (await self._outage(log_source)).mode is OutagePolicyMode.RECORD_ONLY
+        ):
+            return
         result = await self.alerts.open_or_update(
             self._alert_input(
                 log_source,
@@ -701,6 +731,65 @@ class AnomalyEngine:
             )
         return self._source_class_cache[log_source_id]
 
+    async def _policies(self) -> list[OutageAlertPolicy]:
+        """Every outage policy row, loaded once per engine instance.
+
+        One statement for the whole run, whatever the fleet size (rule 9); the
+        per-source verdict is folded in Python and memoised.
+        """
+        if self._policy_rows is None:
+            self._policy_rows = list(
+                (await self.session.scalars(select(OutageAlertPolicy))).all()
+            )
+        return self._policy_rows
+
+    async def _classes(self) -> dict[uuid.UUID, str]:
+        """Every classified source's class, loaded once per engine instance.
+
+        Only a CLASS policy row makes the class relevant -- the caller checks
+        for one before asking -- so a SOURCE-only or empty policy never pays
+        for this. When it is needed, the whole map loads in one statement
+        whatever the fleet size (rule 9), rather than a lookup per source.
+        """
+        if self._class_map is None:
+            rows = (
+                await self.session.execute(
+                    select(
+                        LogSourceClassification.log_source_id,
+                        LogSourceClassification.source_class,
+                    )
+                )
+            ).all()
+            self._class_map = {
+                log_source_id: str(source_class)
+                for log_source_id, source_class in rows
+            }
+        return self._class_map
+
+    async def _outage(self, log_source: LogSource) -> ResolvedOutage:
+        """The resolved outage verdict for one source, memoised per engine run."""
+        cached = self._outage_cache.get(log_source.id)
+        if cached is None:
+            policies = await self._policies()
+            # A SOURCE row resolves without the class; only a CLASS row needs
+            # it. No policy rows at all falls through to the default here with
+            # the class never read, so the per-source grace override in
+            # `_build_context` costs no class lookup per source (rule 9).
+            source_class: str | None = None
+            if any(
+                row.scope_kind == OutagePolicyScope.CLASS.value for row in policies
+            ):
+                source_class = (await self._classes()).get(log_source.id)
+            cached = resolve(
+                policies,
+                log_source_id=log_source.id,
+                source_class=source_class,
+                instance_id=log_source.instance_id,
+                default=OutagePolicyMode(self.settings.outage_alert_default),
+            )
+            self._outage_cache[log_source.id] = cached
+        return cached
+
     def _alert_input(
         self,
         log_source: LogSource,
@@ -744,6 +833,11 @@ class AnomalyEngine:
         the anti-noise guarantee, and it is why no enqueue happens here.
         """
         if in_maintenance:
+            return
+        if (
+            evidence.anomaly_type == AnomalyType.NO_EVENTS
+            and (await self._outage(log_source)).mode is OutagePolicyMode.RECORD_ONLY
+        ):
             return
         await self.alerts.open_or_update(
             self._alert_input(
