@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from app.api.deps import SessionDep, SettingsDep
 from app.models.enums import CoverageStatus
 from app.models.instance import QRadarInstance
 from app.models.rule import AnalyticsRule, TechniqueMapping
+from app.repositories.audit import record_audit
 from app.repositories.coverage import CoverageRepository
 from app.schemas.coverage import (
     CoveragePage,
@@ -29,8 +31,24 @@ from app.schemas.coverage import (
     TechniqueMappingIn,
     TechniqueMappingOut,
 )
+from app.security.auth import get_principal
+from app.security.rbac import (
+    PERM_COVERAGE_WRITE,
+    PermissionDenied,
+    Principal,
+    require_permission,
+)
 
 router = APIRouter(prefix="/coverage", tags=["coverage"])
+
+PrincipalDep = Annotated[Principal, Depends(get_principal)]
+
+
+def _guard(principal: Principal, permission: str) -> None:
+    try:
+        require_permission(principal, permission)
+    except PermissionDenied as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
 
 
 async def _resolve_instance(
@@ -193,6 +211,7 @@ async def technique_history(
 async def create_mapping(
     payload: TechniqueMappingIn,
     session: SessionDep,
+    principal: PrincipalDep,
     instance_id: uuid.UUID | None = Query(default=None),
 ) -> TechniqueMappingOut:
     """Record a SOC-owned technique mapping.
@@ -200,7 +219,11 @@ async def create_mapping(
     Writes only to this platform's database. The MITRE identifier and any
     descriptive text come from the caller — the platform imports no MITRE
     content of its own.
+
+    Requires coverage:write, checked before any lookup so a forbidden caller
+    cannot learn whether the instance or rule exists.
     """
+    _guard(principal, PERM_COVERAGE_WRITE)
     resolved = await _resolve_instance(session, instance_id)
     if resolved is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no QRadar instance configured")
@@ -236,4 +259,12 @@ async def create_mapping(
     )
     session.add(mapping)
     await session.flush()
+    await record_audit(
+        session, action="coverage.mapping.create", actor=principal.subject,
+        object_type="technique_mapping", object_id=str(mapping.id),
+        detail={
+            "technique_id": mapping.technique_id,
+            "confidence": mapping.confidence,
+        },
+    )
     return TechniqueMappingOut.model_validate(mapping)

@@ -32,6 +32,7 @@ class ValueMapSchemaOut(BaseModel):
 class MappingSchemaOut(BaseModel):
     domain: Literal["WAF"] = "WAF"
     property_name_pattern: str
+    min_coverage_ratio: float
     fields: list[MappingFieldOut]
     value_maps: list[ValueMapSchemaOut]
 
@@ -113,6 +114,7 @@ class WafProfileOut(BaseModel):
 
 
 class WafCandidateOut(BaseModel):
+    instance_id: uuid.UUID
     log_source_id: uuid.UUID
     qradar_id: int
     name: str
@@ -177,6 +179,9 @@ class WafSourceStatusOut(BaseModel):
     validated_profile_version: int | None = None
     validated_at: datetime | None = None
     validation_fields: list[WafFieldStatusOut] = Field(default_factory=list)
+    validation_pending: bool
+    validation_requested_at: datetime | None = None
+    validation_requested_by: str | None = None
 
     #: Whether scheduled runs will process this source, and if not, why not.
     collection_eligible: bool

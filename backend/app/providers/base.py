@@ -27,6 +27,7 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CustomPropertyDTO,
     DimensionAggregate,
     InstanceInfoDTO,
     LogSourceDTO,
@@ -70,6 +71,7 @@ class ProviderCapability(StrEnum):
     AQL_EXECUTION = "AQL_EXECUTION"  # create/poll/fetch Ariel searches
     CONFIG_SNAPSHOTS = "CONFIG_SNAPSHOTS"
     LOG_SOURCE_GROUPS = "LOG_SOURCE_GROUPS"
+    CUSTOM_PROPERTY_CATALOG = "CUSTOM_PROPERTY_CATALOG"  # custom-property names, never bodies
 
 
 class LogSourceTelemetry(StrEnum):
@@ -194,6 +196,18 @@ class QRadarProvider(ABC):
         self.require(ProviderCapability.LOG_SOURCE_GROUPS)
         raise CapabilityNotSupportedError(
             f"{type(self).__name__} does not support log-source groups"
+        )
+
+    async def list_custom_properties(
+        self, *, log_source_type_id: int | None = None
+    ) -> list[CustomPropertyDTO]:
+        """Custom-property names and the log-source types they apply to.
+
+        Names, types and flags only: never a regex, payload or expression body.
+        """
+        self.require(ProviderCapability.CUSTOM_PROPERTY_CATALOG)
+        raise CapabilityNotSupportedError(
+            f"{type(self).__name__} does not support the custom-property catalog"
         )
 
     async def get_log_source_metrics(

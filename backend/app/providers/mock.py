@@ -30,6 +30,7 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CustomPropertyDTO,
     DimensionAggregate,
     DimensionValueCount,
     InstanceInfoDTO,
@@ -108,6 +109,23 @@ _SOURCE_TEMPLATES: list[tuple[str, int, str, _SourceTemplateFacts]] = [
 ]
 
 
+#: (qradar_id, identifier, name, property_type, use_for_rule_engine, type ids).
+#: The lab shape from T-041: five properties on the WAF type 212, `WAF_URL`
+#: only on 232, `IPS_Action` on Snort type 2, one property nobody extracts, and
+#: one name the AQL allowlist refuses.
+_CUSTOM_PROPERTIES: tuple[tuple[int, str, str, str, bool, tuple[int, ...]], ...] = (
+    (101, "DEFAULTCUSTOMEVENT10", "HTTP_Method", "string", False, (212,)),
+    (102, "DEFAULTCUSTOMEVENT11", "URL", "string", True, (2, 64, 212)),
+    (103, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1001", "WAF_Action", "string", False, (212,)),
+    (104, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1002", "WAF_ResponseCode", "numeric", False, (212,)),
+    (105, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1003", "WAF_USERAGENT", "string", False, (212,)),
+    (106, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1004", "WAF_URL", "string", False, (232,)),
+    (107, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1005", "IPS_Action", "string", False, (2,)),
+    (108, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1006", "Unused Property", "string", False, ()),
+    (109, "2f6c1d4e-0a51-4b0e-9c1a-5b7d3e8a1007", "Bad.Name(1)", "string", False, (212,)),
+)
+
+
 class MockQRadarProvider(QRadarProvider):
     capabilities = frozenset(
         {
@@ -116,6 +134,7 @@ class MockQRadarProvider(QRadarProvider):
             ProviderCapability.AQL_EXECUTION,
             ProviderCapability.CONFIG_SNAPSHOTS,
             ProviderCapability.LOG_SOURCE_GROUPS,
+            ProviderCapability.CUSTOM_PROPERTY_CATALOG,
         }
     )
     #: Synthetic, but genuinely varied per shape, so dev and tests can exercise
@@ -198,6 +217,24 @@ class MockQRadarProvider(QRadarProvider):
         return [
             LogSourceTypeDTO(type_id=t, name=n, internal=internal, custom=custom)
             for t, n, internal, custom in _LOG_SOURCE_TYPES
+        ]
+
+    async def list_custom_properties(
+        self, *, log_source_type_id: int | None = None
+    ) -> list[CustomPropertyDTO]:
+        self.require(ProviderCapability.CUSTOM_PROPERTY_CATALOG)
+        return [
+            CustomPropertyDTO(
+                qradar_id=qid,
+                identifier=ident,
+                name=name,
+                property_type=ptype,
+                use_for_rule_engine=rule_engine,
+                log_source_type_ids=types,
+                name_allowed=PROPERTY_NAME_PATTERN.match(name) is not None,
+            )
+            for qid, ident, name, ptype, rule_engine, types in _CUSTOM_PROPERTIES
+            if log_source_type_id is None or log_source_type_id in types
         ]
 
     async def list_log_source_groups(self) -> list[LogSourceGroupDTO]:

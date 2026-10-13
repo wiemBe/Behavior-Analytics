@@ -780,11 +780,11 @@ async def collect_waf_source(profile_id: str) -> dict:
 
 async def validate_waf_profile(
     profile_id: str,
-    enqueue: Callable[[str], object] | None = None,
+    lock_retry_count: int = 0,
+    enqueue: Callable[[str, int, int], object] | None = None,
 ) -> dict:
     """Validate one requested profile without stamping a result onto a newer version."""
     maker = get_sessionmaker()
-    send = enqueue or validate_waf_profile_task.delay
     async with maker() as session:
         profile_uuid = uuid.UUID(profile_id)
         profile = await session.get(WafSourceProfile, profile_uuid)
@@ -798,6 +798,13 @@ async def validate_waf_profile(
         actor = profile.validation_requested_by or "system"
         started_version = profile.profile_version
         settings = get_settings()
+
+        def send(retry_count: int, countdown: int) -> object:
+            if enqueue is not None:
+                return enqueue(profile_id, retry_count, countdown)
+            return validate_waf_profile_task.apply_async(
+                args=[profile_id, retry_count], countdown=countdown
+            )
 
         async def fail(error_class: str) -> dict:
             await session.rollback()
@@ -813,7 +820,7 @@ async def validate_waf_profile(
             if current.profile_version != started_version:
                 await session.commit()
                 if current.validation_requested_at is not None:
-                    send(profile_id)
+                    send(0, 0)
                 return {
                     "status": "stale_requeued",
                     "profile_id": profile_id,
@@ -843,8 +850,61 @@ async def validate_waf_profile(
         ) as acquired:
             if not acquired:
                 await session.rollback()
-                send(profile_id)
-                return {"status": "locked_requeued", "profile_id": profile_id}
+                if lock_retry_count < settings.waf_validation_lock_max_retries:
+                    next_retry_count = lock_retry_count + 1
+                    send(
+                        next_retry_count,
+                        settings.waf_validation_lock_retry_delay_seconds,
+                    )
+                    return {
+                        "status": "locked_requeued",
+                        "profile_id": profile_id,
+                        "lock_retry_count": next_retry_count,
+                    }
+
+                current = await session.scalar(
+                    select(WafSourceProfile)
+                    .where(WafSourceProfile.id == profile_uuid)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if current is None:
+                    await session.commit()
+                    return {"status": "not_found", "profile_id": profile_id}
+                if current.profile_version != started_version:
+                    await session.commit()
+                    if current.validation_requested_at is not None:
+                        send(0, 0)
+                    return {
+                        "status": "stale_requeued",
+                        "profile_id": profile_id,
+                        "validated_version": started_version,
+                        "current_version": current.profile_version,
+                    }
+                if current.validation_requested_at is None:
+                    await session.commit()
+                    return {"status": "not_pending", "profile_id": profile_id}
+                await WafProfileService(
+                    session, settings=settings
+                ).record_validation_source_busy(
+                    current,
+                    actor=actor,
+                    retry_count=lock_retry_count,
+                )
+                await session.commit()
+                logger.warning(
+                    "WAF profile validation exhausted source-lock retries",
+                    extra={
+                        "profile_id": profile_id,
+                        "profile_version": started_version,
+                        "lock_retry_count": lock_retry_count,
+                    },
+                )
+                return {
+                    "status": "source_busy",
+                    "profile_id": profile_id,
+                    "lock_retry_count": lock_retry_count,
+                }
 
             provider: QRadarProvider | None = None
             result = None
@@ -882,7 +942,7 @@ async def validate_waf_profile(
             if current.profile_version != started_version:
                 await session.commit()
                 if current.validation_requested_at is not None:
-                    send(profile_id)
+                    send(0, 0)
                 return {
                     "status": "stale_requeued",
                     "profile_id": profile_id,
@@ -1011,8 +1071,8 @@ def collect_waf_source_task(profile_id: str) -> dict:
 
 
 @celery_app.task(name="validate_waf_profile")
-def validate_waf_profile_task(profile_id: str) -> dict:
-    return _run(validate_waf_profile(profile_id))
+def validate_waf_profile_task(profile_id: str, lock_retry_count: int = 0) -> dict:
+    return _run(validate_waf_profile(profile_id, lock_retry_count))
 
 
 @celery_app.task(name="apply_waf_retention")

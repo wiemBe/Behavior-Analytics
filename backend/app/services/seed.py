@@ -19,11 +19,15 @@ from app.services.inventory_sync import InventorySyncService
 _ROLES = {
     "admin": [
         "admin:*", "search:execute", "search:write", "alert:ack", "alert:resolve",
-        "log_source:write",
+        "log_source:write", "rule:write", "coverage:write",
+        "admin:classification",
     ],
     # Every read route is guarded, so an analyst needs `read:*` to see anything.
+    # The write permissions cover the SOC-owned metadata the analyst curates:
+    # rule ownership/MITRE mapping and the technique mappings coverage rests on.
     "analyst": [
         "read:*", "search:execute", "alert:ack", "alert:resolve", "log_source:write",
+        "rule:write", "coverage:write",
     ],
     "viewer": ["read:*"],
 }

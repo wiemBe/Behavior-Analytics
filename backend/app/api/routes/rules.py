@@ -12,8 +12,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +22,7 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.models.enums import RuleHealthStatus
 from app.models.instance import QRadarInstance
+from app.repositories.audit import record_audit
 from app.repositories.rule import SORTABLE, RuleFilters, RuleRepository
 from app.schemas.rule import (
     RuleDetail,
@@ -31,8 +33,24 @@ from app.schemas.rule import (
     RuleSummary,
     RuleUpdate,
 )
+from app.security.auth import get_principal
+from app.security.rbac import (
+    PERM_RULE_WRITE,
+    PermissionDenied,
+    Principal,
+    require_permission,
+)
 
 router = APIRouter(prefix="/rules", tags=["rules"])
+
+PrincipalDep = Annotated[Principal, Depends(get_principal)]
+
+
+def _guard(principal: Principal, permission: str) -> None:
+    try:
+        require_permission(principal, permission)
+    except PermissionDenied as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
 
 
 async def _resolve_instance(
@@ -198,15 +216,29 @@ async def rule_transitions(
 
 @router.patch("/{rule_id}", response_model=RuleDetail)
 async def update_rule_metadata(
-    rule_id: uuid.UUID, payload: RuleUpdate, session: SessionDep
+    rule_id: uuid.UUID,
+    payload: RuleUpdate,
+    session: SessionDep,
+    principal: PrincipalDep,
 ) -> RuleDetail:
-    """Update SOC-owned metadata. QRadar is never written to."""
+    """Update SOC-owned metadata. QRadar is never written to.
+
+    Requires rule:write, checked before the lookup so a forbidden caller cannot
+    learn whether the rule exists. The change is audited as {field: {from, to}}.
+    """
+    _guard(principal, PERM_RULE_WRITE)
     repo = RuleRepository(session)
     rule = await repo.get(rule_id)
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "rule not found")
 
+    changes: dict[str, dict[str, object]] = {}
     for field, value in payload.model_dump(exclude_unset=True).items():
+        changes[field] = {"from": getattr(rule, field, None), "to": value}
         setattr(rule, field, value)
     await session.flush()
+    await record_audit(
+        session, action="rule.update", actor=principal.subject,
+        object_type="rule", object_id=str(rule_id), detail={"changes": changes},
+    )
     return RuleDetail.model_validate(rule)

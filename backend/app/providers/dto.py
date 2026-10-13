@@ -64,6 +64,25 @@ class LogSourceGroupDTO(ProviderDTO):
     assignable: bool = False
 
 
+class CustomPropertyDTO(ProviderDTO):
+    """One QRadar custom property, as the mapping editor may offer it.
+
+    Deliberately carries no regex, payload, format string, capture group or
+    expression: the catalog is a list of names, never of extraction logic.
+    """
+
+    qradar_id: int
+    identifier: str
+    name: str
+    property_type: str
+    use_for_rule_engine: bool = False
+    auto_discovered: bool = False
+    #: Types with an enabled, whole-type expression, sorted. Empty: none.
+    log_source_type_ids: tuple[int, ...] = ()
+    #: The name matches `PROPERTY_NAME_PATTERN`, so it may be used in AQL.
+    name_allowed: bool = True
+
+
 class DimensionValueCount(ProviderDTO):
     """One value of one field, and how many events carried it in a window."""
 

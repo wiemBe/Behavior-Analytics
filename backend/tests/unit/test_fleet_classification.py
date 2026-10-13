@@ -189,7 +189,8 @@ REALISTIC_DSM_TYPES = (
     ("SIM Generic Log DSM", None),
     ("McAfee Network Security Platform", SourceClass.IPS),
     ("Squid Web Proxy", SourceClass.PROXY),
-    ("Fortinet FortiGate Security Gateway", SourceClass.FIREWALL),
+    # Multi-role NGFW DSM: the source name decides (see MULTI_ROLE_DSM_CASES).
+    ("Fortinet FortiGate Security Gateway", None),
     ("Universal LEEF", None),
     ("F5 Networks BIG-IP ASM", SourceClass.WAF),
     ("F5 Networks FirePass", SourceClass.VPN),
@@ -203,11 +204,12 @@ REALISTIC_DSM_TYPES = (
     ("Suricata", SourceClass.IPS),
     ("TippingPoint", SourceClass.IPS),
     ("Firepower IPS", SourceClass.IPS),
-    ("Cisco Firepower Threat Defense", SourceClass.FIREWALL),
-    ("Palo Alto PA Series", SourceClass.FIREWALL),
-    ("Check Point Firewall-1", SourceClass.FIREWALL),
+    # Multi-role NGFW DSMs: the source name decides (see MULTI_ROLE_DSM_CASES).
+    ("Cisco Firepower Threat Defense", None),
+    ("Palo Alto PA Series", None),
+    ("Check Point Firewall-1", None),
     ("Cisco ASA", SourceClass.FIREWALL),
-    ("Juniper SRX Series Services Gateway", SourceClass.FIREWALL),
+    ("Juniper SRX Series Services Gateway", None),
     ("Blue Coat ProxySG", SourceClass.PROXY),
     ("Zscaler NSS", SourceClass.PROXY),
     ("Pulse Secure", SourceClass.VPN),
@@ -241,16 +243,42 @@ REALISTIC_DSM_TYPES = (
     ("IBM Custom DSM", None),
 )
 
+# A source name carrying no class token, so the type rule alone must decide.
+NEUTRAL_SOURCE_NAME = "source"
 
-@pytest.mark.parametrize(("type_name", "expected_class"), REALISTIC_DSM_TYPES)
+# The multi-role NGFW DSMs listed as `None` above under a name that carries a
+# class token: their type carries firewall, IPS and threat logs alike, so no
+# built-in type rule may claim them and the site's naming convention decides.
+MULTI_ROLE_DSM_CASES = (
+    ("Fortinet FortiGate Security Gateway", "fgt-fw-01", SourceClass.FIREWALL),
+    ("Palo Alto PA Series", "pa-ips-01", SourceClass.IPS),
+    ("Check Point Firewall-1", "cp-fw-01", SourceClass.FIREWALL),
+    ("Cisco Firepower Threat Defense", "fp-fw-01", SourceClass.FIREWALL),
+    ("Juniper SRX Series Services Gateway", "srx-ips-01", SourceClass.IPS),
+)
+
+DSM_CASES: tuple[tuple[str, str, SourceClass | None], ...] = (
+    *((type_name, NEUTRAL_SOURCE_NAME, expected) for type_name, expected in REALISTIC_DSM_TYPES),
+    *MULTI_ROLE_DSM_CASES,
+)
+
+
+@pytest.mark.parametrize(("type_name", "source_name", "expected_class"), DSM_CASES)
 def test_seed_type_rules_classify_realistic_dsm_names_without_priority_ties(
-    type_name: str, expected_class: SourceClass | None
+    type_name: str, source_name: str, expected_class: SourceClass | None
 ) -> None:
+    # Name rules join the type rules so the matrix pins both directions: a
+    # neutral name is decided by the type rule, a class token by the name.
     rules = [
         RuleFacts(item.id, item.kind, item.pattern, item.target_class, item.priority)
-        for item in TYPE_NAME_RULES
+        for item in (*TYPE_NAME_RULES, *NAME_RULES)
     ]
-    result = classify(SourceFacts(name="source", type_id=1), rules, [TypeFacts(1, type_name)], [])
+    result = classify(
+        SourceFacts(name=source_name, type_id=1),
+        rules,
+        [TypeFacts(1, type_name)],
+        [],
+    )
     matches = [
         item
         for item in TYPE_NAME_RULES
@@ -261,8 +289,12 @@ def test_seed_type_rules_classify_realistic_dsm_names_without_priority_ties(
         for item in matches
         if item.priority == max((match.priority for match in matches), default=0)
     }
+    # A neutral name must be claimed by the pinned type rule and no other; a
+    # class-token name means no built-in type rule may claim the type at all.
+    expected_type_classes = (
+        {expected_class} if expected_class and source_name == NEUTRAL_SOURCE_NAME else set()
+    )
 
     assert result.source_class == (expected_class or SourceClass.UNCLASSIFIED)
-    expected_matches = {expected_class} if expected_class else set()
-    assert {item.target_class for item in matches} == expected_matches
+    assert {item.target_class for item in matches} == expected_type_classes
     assert len(tied_classes) <= 1

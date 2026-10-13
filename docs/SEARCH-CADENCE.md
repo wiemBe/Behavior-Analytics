@@ -315,3 +315,27 @@ QRadar, and what does that cost in latency?**
 **Live validation after the build:** run a 1-hour and an 8-hour cadence on the lab. Confirm one
 Phase A search per tick, the per-bucket rows equal a per-bucket control run, and the alerts still
 open on the generator's spike scenario.
+
+## SC.10 Live validation (T-040, lab 7.6, 2026-10-12) — [report](tasks/T-040.report.md)
+
+- **One search per kind per tick held.** Phase A at 1 h (12 buckets) and 8 h (96 buckets): one
+  search each, no split. Rule matches at 1 h (12 five-minute windows) and 8 h (8 one-hour
+  windows): one search each. WAF at 1 h: endpoints + totals, plus one per enabled breakdown.
+  Nothing was truncated.
+- **Equivalence.** Phase A matched the per-bucket path exactly in 6 of 6 buckets, zero-filled
+  silent sources included. WAF matched in 3 of 3 data buckets (totals and all endpoint groups).
+  Rule matches matched in 5 of 6 windows; the sixth differed by 5 events on 6 rules out of about
+  2.4 million.
+- **The `STOP` edge effect (low).** An event whose `starttime` is just before a span's `STOP` but
+  that QRadar stored just after it is dropped by that search. The last bucket of a span is
+  therefore slightly low, and the per-bucket path (every bucket is a last bucket) is the lower
+  one. The keyed path is closer to the truth. Padding the Ariel `STOP` (not the `WHERE` bound) by
+  the settle delay would make both exact; this is follow-up T-048, not a blocker.
+- **Timing.** The 8 h searches took about 2.2 s; the slowest search was 3.5 s, the first of its
+  process. No search failed or timed out. GROUP BY a quoted custom property with the bucket key
+  works live.
+- **The evaluation watermark (0014)** walked every new bucket in order for all 51 sources.
+- **Not covered** (the lab is nearly idle: 282 rows in 8 h against a 5,000-row budget): truncation
+  and the split path, a failing wide search (so the §SC.6 Phase A split-on-failure question stays
+  open until a busy console is measured), the WAF action and response-code breakdowns, and a real
+  Beat through `claim_slot`.

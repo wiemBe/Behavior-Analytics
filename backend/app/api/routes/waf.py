@@ -152,6 +152,21 @@ def _field_mapping(payload: WafProfileIn) -> WafFieldMapping:
     )
 
 
+def _conflict_detail(
+    message: str, profile: WafSourceProfile | None = None
+) -> dict[str, str | int | None]:
+    return {
+        "message": message,
+        "current_version": profile.profile_version if profile is not None else None,
+        "updated_by": profile.updated_by if profile is not None else None,
+        "pending_since": (
+            profile.validation_requested_at.isoformat()
+            if profile is not None and profile.validation_requested_at is not None
+            else None
+        ),
+    }
+
+
 @router.get("/mapping-schema", response_model=MappingSchemaOut)
 async def get_mapping_schema(settings: SettingsDep) -> MappingSchemaOut:
     defaults = {
@@ -161,6 +176,7 @@ async def get_mapping_schema(settings: SettingsDep) -> MappingSchemaOut:
     }
     return MappingSchemaOut(
         property_name_pattern=PROPERTY_NAME_PATTERN.pattern,
+        min_coverage_ratio=settings.waf_validation_min_ratio,
         fields=[
             MappingFieldOut(
                 key=field.key.value,
@@ -210,6 +226,7 @@ async def list_waf_candidates(
     rows = (await session.execute(query)).all()
     return [
         WafCandidateOut(
+            instance_id=source.instance_id,
             log_source_id=source.id,
             qradar_id=source.qradar_id,
             name=source.name,
@@ -251,7 +268,9 @@ async def put_waf_profile(
         if payload.expected_profile_version is not None:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
-                "the profile does not exist; create it with expected_profile_version null",
+                _conflict_detail(
+                    "the profile does not exist; create it with expected_profile_version null"
+                ),
             )
         created = True
         mapping_changed = True
@@ -260,13 +279,17 @@ async def put_waf_profile(
         if payload.expected_profile_version != current:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
-                f"profile version conflict; current version is {current}",
+                _conflict_detail(
+                    f"profile version conflict; current version is {current}", existing
+                ),
             )
         created = False
         try:
             mapping_changed = WafFieldMapping.from_profile(existing) != _field_mapping(payload)
         except WafProfileError as exc:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, {"message": str(exc)}
+            ) from exc
 
     try:
         mapping = _field_mapping(payload)
@@ -280,7 +303,9 @@ async def put_waf_profile(
         if mapping_changed:
             await service.request_validation(profile, actor=principal.subject)
     except WafProfileError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, {"message": str(exc)}
+        ) from exc
 
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return _profile_out(profile, source, settings)
@@ -303,7 +328,9 @@ async def request_waf_validation(
     try:
         await service.request_validation(profile, actor=principal.subject)
     except WafProfileError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, _conflict_detail(str(exc), profile)
+        ) from exc
     return _profile_out(profile, source, settings)
 
 
@@ -321,7 +348,9 @@ async def _set_enabled(
             profile, enabled, actor=principal.subject
         )
     except WafProfileError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, _conflict_detail(str(exc), profile)
+        ) from exc
     return _profile_out(profile, source, settings)
 
 

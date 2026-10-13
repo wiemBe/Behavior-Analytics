@@ -25,9 +25,12 @@ describe("NAV", () => {
     ]);
   });
 
-  it("lists search cadence under its own administration group", () => {
+  it("lists search cadence and WAF sources under the administration group", () => {
     expect(NAV[2].label).toBe("Administration");
-    expect(NAV[2].items).toEqual([{ href: "/admin/search-cadence", label: "Search cadence" }]);
+    expect(NAV[2].items).toEqual([
+      { href: "/admin/search-cadence", label: "Search cadence" },
+      { href: "/admin/waf-sources", label: "WAF sources" },
+    ]);
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
   });
 

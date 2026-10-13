@@ -8,7 +8,9 @@ from app.api.deps import requires
 from app.api.routes import (
     alerts,
     anomalies,
+    classification_rules,
     coverage,
+    fleet,
     health,
     log_sources,
     offenses,
@@ -18,11 +20,13 @@ from app.api.routes import (
     search_cadence,
     searches,
     waf,
+    waf_catalog,
 )
 from app.security.rbac import (
     PERM_ALERT_READ,
     PERM_ANOMALY_READ,
     PERM_COVERAGE_READ,
+    PERM_FLEET_READ,
     PERM_LOG_SOURCE_READ,
     PERM_OFFENSE_READ,
     PERM_OVERVIEW_READ,
@@ -82,3 +86,12 @@ api_router.include_router(
 # WAF collection operations. Administrative rather than analytical, so it needs
 # `admin:waf`; the `read:*` wildcard does not satisfy it.
 api_router.include_router(waf.router, dependencies=[Depends(requires(PERM_WAF_ADMIN))])
+# The mapping editor's property-name catalog: names only, read-only, same admin:waf guard.
+api_router.include_router(waf_catalog.router, dependencies=[Depends(requires(PERM_WAF_ADMIN))])
+# --- Phase C ---
+# The fleet view and classification rules. Both reads need `read:fleet` (satisfied
+# by `read:*`); rule writes check `admin:classification` in the handler.
+api_router.include_router(fleet.router, dependencies=[Depends(requires(PERM_FLEET_READ))])
+api_router.include_router(
+    classification_rules.router, dependencies=[Depends(requires(PERM_FLEET_READ))]
+)

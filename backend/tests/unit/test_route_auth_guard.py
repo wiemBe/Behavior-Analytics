@@ -35,16 +35,11 @@ _OPEN_PATHS = {
 }
 
 # Mutating routes that a read-only principal may call. Add (METHOD, path) here
-# only with a reason.
-#
-# KNOWN GAP, out of T-028's file scope (reported for a follow-up task): these two
-# Phase 3 writes sit behind only the router-level read permission, so any
-# `read:*` principal can edit SOC rule metadata or add a technique mapping. They
-# need their own write permission. Remove the entries when that lands.
-_READONLY_MAY_MUTATE: set[tuple[str, str]] = {
-    ("PATCH", "/api/v1/rules/{rule_id}"),
-    ("POST", "/api/v1/coverage/mappings"),
-}
+# only with a reason. Currently empty: the two Phase 3 writes that sat behind
+# only the router-level read permission now check their own write permission
+# (PATCH /rules/{rule_id} needs rule:write, POST /coverage/mappings needs
+# coverage:write), so the guard test proves 403 for a read-only principal.
+_READONLY_MAY_MUTATE: set[tuple[str, str]] = set()
 
 # Minimal valid bodies. A handler-level permission check runs after body
 # validation, so a mutating route with a required body needs one here to reach
@@ -68,6 +63,20 @@ _BODIES: dict[tuple[str, str], dict] = {
             "USER_AGENT": None,
         },
         "action_value_map": {"BLOCKED": [], "ALLOWED": []},
+    },
+    ("POST", "/api/v1/coverage/mappings"): {
+        "technique_id": "T1059",
+        "rule_id": "00000000-0000-0000-0000-000000000000",
+    },
+    # Phase C. Both routes check their write permission in the handler, after body
+    # validation, so the guard needs a body that passes validation.
+    ("POST", "/api/v1/classification-rules"): {
+        "kind": "NAME_REGEX",
+        "pattern": "^guard-",
+        "target_class": "OTHER",
+    },
+    ("PATCH", "/api/v1/log-sources/{log_source_id}/classification"): {
+        "override_class": None,
     },
 }
 

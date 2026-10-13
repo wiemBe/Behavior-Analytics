@@ -46,6 +46,13 @@ PERM_OFFENSE_READ = "read:offenses"
 PERM_RULE_READ = "read:rules"
 PERM_COVERAGE_READ = "read:coverage"
 PERM_PROVIDER_READ = "read:providers"
+# Editing SOC-owned rule metadata (owner, MITRE mapping, expected firing rate)
+# and recording a detection-coverage mapping. Both are writes, so `read:*` must
+# not grant them: a read-only role can already see ownership and the detection
+# map, and letting it rewrite either would change the evidence the coverage
+# verdict rests on -- a viewer could quietly mark a real gap as covered.
+PERM_RULE_WRITE = "rule:write"
+PERM_COVERAGE_WRITE = "coverage:write"
 # Phase A. Behavioral anomalies expose contributor evidence (source and
 # destination addresses, usernames where the DSM supplies them), so the
 # investigation surface is guarded exactly like offences are.
@@ -70,6 +77,14 @@ PERM_ALERT_READ = "read:alerts"
 # operational control reserved for administrators, matching the WAF pattern.
 PERM_SEARCH_CADENCE_READ = "read:search_cadence"
 PERM_SEARCH_CADENCE_ADMIN = "admin:search_cadence"
+# Phase C. The fleet view maps every monitored source to a class, an owner-facing
+# review state and its volume, so it is guarded at the router like the other
+# inventory surfaces; `read:*` satisfies it. Classification rules decide which
+# policy a source falls under (a rule that matches everything to OTHER would hide
+# a firewall from firewall policy), so writing them is administrative and `read:*`
+# does not grant it. Overrides and reviews reuse `log_source:write`.
+PERM_FLEET_READ = "read:fleet"
+PERM_CLASSIFICATION_ADMIN = "admin:classification"
 
 
 class PermissionDenied(Exception):

@@ -314,3 +314,28 @@ class WafProfileService:
                 "error_class": error_class,
             },
         )
+
+    async def record_validation_source_busy(
+        self,
+        profile: WafSourceProfile,
+        *,
+        actor: str,
+        retry_count: int,
+    ) -> None:
+        """Clear a busy request without changing its previous validation result."""
+        profile.validation_requested_at = None
+        profile.validation_requested_by = None
+        await self.session.flush()
+        await record_audit(
+            self.session,
+            action="waf.profile.validated",
+            actor=actor,
+            object_type=AUDIT_OBJECT,
+            object_id=str(profile.id),
+            outcome="SOURCE_BUSY",
+            detail={
+                "profile_version": profile.profile_version,
+                "status": "SOURCE_BUSY",
+                "retry_count": retry_count,
+            },
+        )

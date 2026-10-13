@@ -48,10 +48,10 @@ TYPE_NAME_RULES: tuple[SeedRule, ...] = (
           r"\b(?:Snort Open Source IDS|Suricata|McAfee Network Security Platform|"
           r"TippingPoint|Firepower IPS)\b",
           SourceClass.IPS, "Well-known intrusion prevention DSMs"),
+    # Multi-role NGFW DSMs are intentionally absent: one DSM carries firewall,
+    # IPS and threat logs alike, so the site's naming convention must decide.
     _rule(3, ClassificationRuleKind.TYPE_NAME_REGEX,
-          r"\b(?:Linux iptables Firewall|Netgate pfSense|Fortinet FortiGate Security Gateway|"
-          r"Palo Alto PA Series|Check Point|Cisco ASA|Cisco Firepower Threat Defense|"
-          r"Juniper SRX)\b",
+          r"\b(?:Linux iptables Firewall|Netgate pfSense|Cisco ASA)\b",
           SourceClass.FIREWALL, "Well-known firewall DSMs"),
     _rule(4, ClassificationRuleKind.TYPE_NAME_REGEX,
           r"\b(?:Squid Web Proxy|Blue Coat|Zscaler)\b",
