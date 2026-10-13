@@ -5,15 +5,16 @@ field references share keyed searches; the tick-wide search budget is shared by
 all dimensions and windows. Raw keyed rows are folded before this module builds
 any database value.
 
-A source bucket is written only when TOTALS is COMPLETE. Other dimensions are
-independent: FAILED, REJECTED and NOT_COLLECTED are persisted as states with
-NULL facts and coverage. Such a bucket advances the watermark, matching WAF's
-optional-breakdown rule, because the missing value remains explicit and can
-never be interpreted as zero.
+A source bucket is written only when TOTALS is COMPLETE and every planned
+dimension was searched. FAILED and REJECTED dimensions are persisted as states
+with NULL facts and coverage; structurally unplanned dimensions are persisted
+as NOT_COLLECTED. Both advance the watermark. A planned dimension that was not
+searched is transient, so its bucket is not written and the watermark holds.
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections import defaultdict
 from collections.abc import Callable, Sequence
@@ -65,6 +66,7 @@ from app.services.search_cadence import SearchCadenceService
 from app.waf.admission import AdmissionPolicy, decide_admission
 
 COLLECTOR_NAME = "ips_collection"
+logger = logging.getLogger("app.collectors.ips_collector")
 ENTITY_DIMENSIONS = (
     IpsDimension.DESTINATION_PORT,
     IpsDimension.DESTINATION_IP,
@@ -91,6 +93,7 @@ class IpsCollectionReport:
     entities_reactivated: int = 0
     entities_retired: int = 0
     watermarks_advanced: int = 0
+    budget_blocked_windows: list[dict[str, object]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -106,6 +109,7 @@ class IpsCollectionReport:
             "entities_reactivated": self.entities_reactivated,
             "entities_retired": self.entities_retired,
             "watermarks_advanced": self.watermarks_advanced,
+            "budget_blocked_windows": self.budget_blocked_windows,
         }
 
 
@@ -137,6 +141,13 @@ class _Candidate:
     @property
     def request_count(self) -> int:
         return self.fact.events
+
+
+@dataclass(frozen=True)
+class _SearchResult:
+    outcomes: dict[tuple[int, datetime, IpsDimension], IpsCellOutcome]
+    budget_blocked_reasons: dict[int, str]
+    budget_blocked_windows: list[dict[str, object]]
 
 
 class _IpsFleetLocks:
@@ -283,17 +294,19 @@ class IpsCollector:
             if report.sources_locked:
                 report.skipped["source locked"] = report.sources_locked
             budget = IpsSearchBudget(self.settings.search_cadence_max_searches_per_tick)
-            outcomes = await self._search(locked, interval, budget)
+            search_result = await self._search(locked, interval, budget)
             report.searches_sent = budget.used
+            report.budget_blocked_windows.extend(search_result.budget_blocked_windows)
             await self._persist(
                 instance,
                 locked,
-                outcomes,
+                search_result.outcomes,
                 watermark_rows,
                 skipped_rows,
                 now,
                 interval,
                 report,
+                search_result.budget_blocked_reasons,
             )
         return report
 
@@ -331,11 +344,13 @@ class IpsCollector:
 
     async def _search(
         self, sources: Sequence[_Source], bucket_seconds: int, budget: IpsSearchBudget
-    ) -> dict[tuple[int, datetime, IpsDimension], IpsCellOutcome]:
+    ) -> _SearchResult:
         by_window: dict[tuple[datetime, datetime], list[_Source]] = defaultdict(list)
         for source in sources:
             by_window[source.window].append(source)
         out: dict[tuple[int, datetime, IpsDimension], IpsCellOutcome] = {}
+        blocked_reasons: dict[int, str] = {}
+        blocked_windows: list[dict[str, object]] = []
         for window in sorted(by_window):
             members = by_window[window]
             mapping_by_id = {
@@ -345,6 +360,37 @@ class IpsCollector:
                 mapping_by_id.items(),
                 max_sources_per_search=self.settings.ips_max_sources_per_search,
             )
+            searches_required = len(plan)
+            if searches_required > budget.remaining:
+                if searches_required > budget.max_searches:
+                    reason = (
+                        f"plan needs {searches_required} searches; per-tick budget is "
+                        f"{budget.max_searches}"
+                    )
+                    logger.warning(
+                        "IPS collection window cannot fit the per-tick search budget: %s; "
+                        "raise search_cadence_max_searches_per_tick to at least %d",
+                        reason,
+                        searches_required,
+                    )
+                    blocked_reasons.update(
+                        (member.log_source.qradar_id, reason) for member in members
+                    )
+                    blocked_windows.append(
+                        {
+                            "window_start": window[0].isoformat(),
+                            "window_end": window[1].isoformat(),
+                            "source_count": len(members),
+                            "searches_required": searches_required,
+                            "per_tick_budget": budget.max_searches,
+                            "reason": reason,
+                            "remedy": (
+                                "raise search_cadence_max_searches_per_tick to at least "
+                                f"{searches_required}"
+                            ),
+                        }
+                    )
+                continue
             for search in plan:
                 cells = await run_dimension(
                     self.provider,
@@ -357,7 +403,7 @@ class IpsCollector:
                 )
                 for cell in cells:
                     out[(cell.qradar_log_source_id, cell.bucket_start, cell.dimension)] = cell
-        return out
+        return _SearchResult(out, blocked_reasons, blocked_windows)
 
     async def _persist(
         self,
@@ -369,6 +415,7 @@ class IpsCollector:
         now: datetime,
         bucket_seconds: int,
         report: IpsCollectionReport,
+        budget_blocked_reasons: dict[int, str],
     ) -> None:
         source_uuids = [item.log_source.id for item in sources]
         existing_rows = (
@@ -406,6 +453,17 @@ class IpsCollector:
             )
             collected = 0
             while cursor < item.window[1]:
+                if any(
+                    outcome is not None
+                    and outcome.state is IpsCellState.NOT_COLLECTED
+                    and outcome.provenance is None
+                    for dimension in IpsDimension
+                    if (
+                        outcome := outcomes.get((source.qradar_id, cursor, dimension))
+                    )
+                    is not None
+                ):
+                    break
                 totals_outcome = outcomes.get(
                     (source.qradar_id, cursor, IpsDimension.TOTALS)
                 )
@@ -450,6 +508,7 @@ class IpsCollector:
                     watermark_at=last_done,
                     intervals_added=collected,
                     searches=report.searches_sent,
+                    budget_blocked_reason=budget_blocked_reasons.get(source.qradar_id),
                 )
             )
 
@@ -819,6 +878,7 @@ class IpsCollector:
         intervals_added: int = 0,
         searches: int = 0,
         skip_reason: str | None = None,
+        budget_blocked_reason: str | None = None,
     ) -> dict[str, object]:
         current = (
             watermark_at
@@ -828,6 +888,11 @@ class IpsCollector:
         metadata = {
             "last_run_searches": searches,
             **({"last_skip_reason": skip_reason} if skip_reason is not None else {}),
+            **(
+                {"budget_blocked_reason": budget_blocked_reason}
+                if budget_blocked_reason is not None
+                else {}
+            ),
         }
         lag = None
         if current is not None:

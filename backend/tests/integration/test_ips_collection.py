@@ -179,12 +179,88 @@ class TestFleetAndStates:
         )
         assert watermark.watermark_at == bucket.bucket_start
 
-    async def test_budget_exhaustion_is_not_zero_and_holds_when_totals_are_unsearched(
+    async def test_budget_exhaustion_after_totals_retries_the_whole_bucket(
+        self, db_session
+    ) -> None:
+        instance = await make_instance(db_session)
+        _, source = await add_source(db_session, instance, 412)
+        boundary = NOW.replace(minute=5, second=0, microsecond=0)
+        original_watermark = boundary - BUCKET * 3
+        watermark = CollectionWatermark(
+            instance_id=instance.id,
+            collector=watermark_collector(source.qradar_id),
+            watermark_at=original_watermark,
+        )
+        db_session.add(watermark)
+        await db_session.flush()
+        provider = MockQRadarProvider(now=NOW)
+        provider.ips_force_truncated = lambda search: (
+            search.dimension is IpsDimension.DESTINATION_PORT
+            and search.window_end - search.window_start > BUCKET
+        )
+        first = await IpsCollector(
+            db_session,
+            provider,
+            settings=cfg(
+                collection_max_backfill_intervals=12,
+                search_cadence_max_searches_per_tick=6,
+            ),
+            clock=lambda: NOW,
+        ).collect(instance)
+
+        assert first.searches_sent == 6
+        assert first.buckets_written == 0
+        assert (await db_session.scalars(select(IpsSourceBucket))).all() == []
+        await db_session.refresh(watermark)
+        assert watermark.watermark_at == original_watermark
+
+        provider.ips_force_truncated = None
+        second = await IpsCollector(
+            db_session,
+            provider,
+            settings=cfg(collection_max_backfill_intervals=12),
+            clock=lambda: NOW,
+        ).collect(instance)
+        buckets = (await db_session.scalars(select(IpsSourceBucket))).all()
+        assert second.buckets_written == 2
+        assert len(buckets) == 2
+        for bucket in buckets:
+            assert bucket.destination_port_measurement == "EXACT"
+            assert bucket.destination_ip_measurement == "EXACT"
+            assert bucket.signature_measurement == "EXACT"
+            assert bucket.source_ip_measurement == "EXACT"
+            assert bucket.port_fanout_measurement == "EXACT"
+            assert bucket.action_measurement == "NOT_COLLECTED"
+        await db_session.refresh(watermark)
+        assert watermark.watermark_at == boundary - BUCKET
+
+    async def test_unmapped_action_is_structural_and_does_not_hold_watermark(
+        self, db_session
+    ) -> None:
+        instance = await make_instance(db_session)
+        _, source = await add_source(db_session, instance, 412)
+
+        report = await IpsCollector(
+            db_session, MockQRadarProvider(now=NOW), settings=cfg(), clock=lambda: NOW
+        ).collect(instance)
+
+        bucket = (await db_session.scalars(select(IpsSourceBucket))).one()
+        assert report.buckets_written == 1
+        assert bucket.action_measurement == IpsCellState.NOT_COLLECTED.value
+        assert bucket.action_coverage_ratio is None
+        watermark = await db_session.scalar(
+            select(CollectionWatermark).where(
+                CollectionWatermark.collector == watermark_collector(source.qradar_id)
+            )
+        )
+        assert watermark.watermark_at == bucket.bucket_start
+
+    async def test_window_plan_that_exceeds_remaining_budget_is_not_started(
         self, db_session
     ) -> None:
         instance = await make_instance(db_session)
         _, first = await add_source(db_session, instance, 412)
-        _, source = await add_source(db_session, instance, 413)
+        _, second = await add_source(db_session, instance, 413)
         boundary = NOW.replace(minute=5, second=0, microsecond=0)
         db_session.add(
             CollectionWatermark(
@@ -195,22 +271,120 @@ class TestFleetAndStates:
         )
         await db_session.flush()
         provider = MockQRadarProvider(now=NOW)
-        await IpsCollector(
+
+        report = await IpsCollector(
             db_session,
             provider,
-            settings=cfg(search_cadence_max_searches_per_tick=1),
+            settings=cfg(
+                collection_max_backfill_intervals=12,
+                search_cadence_max_searches_per_tick=7,
+            ),
             clock=lambda: NOW,
         ).collect(instance)
-        buckets = (await db_session.scalars(select(IpsSourceBucket))).all()
-        assert buckets and all(bucket.log_source_id == first.id for bucket in buckets)
-        assert all(bucket.destination_port_measurement == "NOT_COLLECTED" for bucket in buckets)
-        assert all(bucket.destination_port_coverage_ratio is None for bucket in buckets)
+
+        assert report.searches_sent == 6
+        assert len(provider.ips_searches) == 6
+        assert {search.qradar_log_source_ids for search in provider.ips_searches} == {(412,)}
+        assert {bucket.log_source_id for bucket in await db_session.scalars(
+            select(IpsSourceBucket)
+        )} == {first.id}
+        second_watermark = await db_session.scalar(
+            select(CollectionWatermark).where(
+                CollectionWatermark.collector == watermark_collector(second.qradar_id)
+            )
+        )
+        assert second_watermark.watermark_at is None
+
+    async def test_plan_larger_than_tick_budget_is_visible_and_sends_nothing(
+        self, db_session, caplog
+    ) -> None:
+        instance = await make_instance(db_session)
+        _, source = await add_source(db_session, instance, 412)
+        provider = MockQRadarProvider(now=NOW)
+
+        with caplog.at_level("WARNING", logger="app.collectors.ips_collector"):
+            report = await IpsCollector(
+                db_session,
+                provider,
+                settings=cfg(search_cadence_max_searches_per_tick=5),
+                clock=lambda: NOW,
+            ).collect(instance)
+
+        assert report.searches_sent == 0
+        assert provider.ips_searches == []
+        assert report.budget_blocked_windows == [
+            {
+                "window_start": "2026-10-13T10:00:00+00:00",
+                "window_end": "2026-10-13T10:05:00+00:00",
+                "source_count": 1,
+                "searches_required": 6,
+                "per_tick_budget": 5,
+                "reason": "plan needs 6 searches; per-tick budget is 5",
+                "remedy": "raise search_cadence_max_searches_per_tick to at least 6",
+            }
+        ]
+        assert "plan needs 6 searches; per-tick budget is 5" in caplog.text
         watermark = await db_session.scalar(
             select(CollectionWatermark).where(
                 CollectionWatermark.collector == watermark_collector(source.qradar_id)
             )
         )
         assert watermark.watermark_at is None
+        assert watermark.collection_metadata["budget_blocked_reason"] == (
+            "plan needs 6 searches; per-tick budget is 5"
+        )
+
+    async def test_oversized_old_window_does_not_starve_a_later_fitting_window(
+        self, db_session
+    ) -> None:
+        instance = await make_instance(db_session)
+        _, first = await add_source(db_session, instance, 412)
+        _, second = await add_source(db_session, instance, 413)
+        _, later = await add_source(db_session, instance, 414)
+        boundary = NOW.replace(minute=5, second=0, microsecond=0)
+        original_watermark = boundary - BUCKET * 3
+        old_watermarks = [
+            CollectionWatermark(
+                instance_id=instance.id,
+                collector=watermark_collector(source.qradar_id),
+                watermark_at=original_watermark,
+            )
+            for source in (first, second)
+        ]
+        db_session.add_all(old_watermarks)
+        await db_session.flush()
+        provider = MockQRadarProvider(now=NOW)
+
+        report = await IpsCollector(
+            db_session,
+            provider,
+            settings=cfg(
+                collection_max_backfill_intervals=12,
+                ips_max_sources_per_search=1,
+                search_cadence_max_searches_per_tick=6,
+            ),
+            clock=lambda: NOW,
+        ).collect(instance)
+
+        assert report.searches_sent == 6
+        assert len(provider.ips_searches) == 6
+        assert {search.qradar_log_source_ids for search in provider.ips_searches} == {(414,)}
+        assert report.budget_blocked_windows[0]["searches_required"] == 12
+        assert {bucket.log_source_id for bucket in await db_session.scalars(
+            select(IpsSourceBucket)
+        )} == {later.id}
+        for watermark in old_watermarks:
+            await db_session.refresh(watermark)
+            assert watermark.watermark_at == original_watermark
+            assert watermark.collection_metadata["budget_blocked_reason"] == (
+                "plan needs 12 searches; per-tick budget is 6"
+            )
+        later_watermark = await db_session.scalar(
+            select(CollectionWatermark).where(
+                CollectionWatermark.collector == watermark_collector(later.qradar_id)
+            )
+        )
+        assert later_watermark.watermark_at == boundary - BUCKET
 
     async def test_lower_bound_and_maintenance_propagate(self, db_session) -> None:
         instance = await make_instance(db_session)
