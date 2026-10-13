@@ -24,13 +24,19 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.models.enums import MappingSource, RuleDependencyKind
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
-from app.models.rule import AnalyticsRule, RuleDependency, RuleStateTransition
+from app.models.rule import (
+    AnalyticsRule,
+    RuleCapacitySample,
+    RuleDependency,
+    RuleStateTransition,
+)
 from app.providers.base import ProviderError, QRadarProvider
 from app.providers.dto import AnalyticsRuleDTO
 from app.security.sanitizer import sanitize_text
@@ -39,6 +45,9 @@ from app.services.locks import CollectorAdvisoryLock
 logger = logging.getLogger("app.collectors.rule")
 
 COLLECTOR_NAME = "rule_inventory"
+
+#: Rows per capacity insert: 6 bind parameters each, under asyncpg's 32,767.
+CAPACITY_CHUNK = 5000
 
 #: Columns the SOC owns. Listed explicitly rather than by exclusion so that
 #: adding a QRadar-mirrored column can never silently start clobbering
@@ -64,6 +73,7 @@ class RuleSyncReport:
     building_blocks: int = 0
     dependencies_written: int = 0
     transitions_recorded: int = 0
+    capacity_samples_offered: int = 0
     skipped_locked: bool = False
     partial_failure: bool = False
     error: str | None = None
@@ -124,6 +134,7 @@ class RuleCollector:
             report.rules_seen = len(merged)
 
             existing = await self._existing_by_qradar_id(instance.id)
+            capacity_samples: list[dict] = []
 
             for dto in merged.values():
                 row = existing.get(dto.qradar_id)
@@ -147,6 +158,19 @@ class RuleCollector:
                         report.unchanged += 1
 
                 report.dependencies_written += await self._sync_dependencies(row, dto)
+                if dto.capacity_timestamp is not None:
+                    capacity_samples.append(
+                        {
+                            "rule_id": row.id,
+                            "capacity_timestamp": dto.capacity_timestamp,
+                            "average_capacity": dto.average_capacity,
+                            "base_capacity": dto.base_capacity,
+                            "base_host_id": dto.base_host_id,
+                            "recorded_at": started,
+                        }
+                    )
+
+            report.capacity_samples_offered = await self._record_capacity(capacity_samples)
 
             watermark.last_run_at = started
             watermark.watermark_at = started
@@ -257,6 +281,25 @@ class RuleCollector:
             row.event_contribution_count,
             row.offense_contribution_count,
         )
+
+    async def _record_capacity(self, samples: list[dict]) -> int:
+        """Store the capacity benchmarks that are new, in one statement.
+
+        The key is (rule, `capacity_timestamp`), so a benchmark QRadar has not
+        re-taken conflicts and is dropped: history grows with measurements, not
+        with syncs. A rule without a timestamp was never offered here. The
+        statement is chunked only to stay under the driver's bind-parameter
+        limit, which no real inventory approaches.
+        """
+        for start in range(0, len(samples), CAPACITY_CHUNK):
+            await self.session.execute(
+                pg_insert(RuleCapacitySample)
+                .values(samples[start : start + CAPACITY_CHUNK])
+                .on_conflict_do_nothing(
+                    index_elements=["rule_id", "capacity_timestamp"]
+                )
+            )
+        return len(samples)
 
     # --------------------------------------------------------- dependencies
     async def _sync_dependencies(self, row: AnalyticsRule, dto: AnalyticsRuleDTO) -> int:

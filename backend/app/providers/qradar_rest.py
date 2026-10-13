@@ -1809,6 +1809,14 @@ class QRadarRestProvider(QRadarProvider):
                 and not isinstance(row.get("average_capacity"), bool)
                 else None
             ),
+            base_capacity=(
+                float(row["base_capacity"])
+                if isinstance(row.get("base_capacity"), (int, float))
+                and not isinstance(row.get("base_capacity"), bool)
+                else None
+            ),
+            base_host_id=as_int(row.get("base_host_id")),
+            capacity_timestamp=parse_qradar_time(row.get("capacity_timestamp")),
             categories=as_str_list(row.get("categories"), limit=32),
             # MITRE mapping is SOC-owned; nothing is inferred from a rule
             # payload here. The collector records inferences separately.
