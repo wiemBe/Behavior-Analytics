@@ -24,7 +24,7 @@ import asyncio
 import logging
 import random
 import ssl
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
@@ -34,6 +34,12 @@ from app.collectors.bucketed_metrics import (
     fold_log_source_metric_buckets,
     validate_bucketed_metric_window,
 )
+from app.ips.keyed_rows import (
+    parse_ips_keyed_rows,
+    validate_ips_fields,
+    validate_ips_sources,
+)
+from app.models.enums import IpsDimension
 from app.providers.base import (
     IPS_NORMALIZED_FIELD_ALLOWLIST,
     IPS_PROBE_MAX_WINDOW_SECONDS,
@@ -58,6 +64,7 @@ from app.providers.dto import (
     InstanceInfoDTO,
     IpsFieldProbe,
     IpsFieldProbeRequest,
+    IpsKeyedResult,
     IpsProbeValue,
     IpsSourceProbe,
     LogSourceDTO,
@@ -233,6 +240,7 @@ class QRadarRestProvider(QRadarProvider):
         sleep: Callable[[float], Awaitable[None]] | None = None,
         ariel_stop_pad_seconds: int = 0,
         clock: Callable[[], datetime] | None = None,
+        ips_max_sources_per_search: int = 50,
     ) -> None:
         if not verify_ssl:
             # Hard failure, not a warning. See config._production_hardening.
@@ -250,6 +258,7 @@ class QRadarRestProvider(QRadarProvider):
         self._rng = rng or random.Random()  # noqa: S311 - jitter, not cryptographic
         self._sleep = sleep or asyncio.sleep
         self._ariel_stop_pad_seconds = max(0, int(ariel_stop_pad_seconds))
+        self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
         self._clock = clock or (lambda: datetime.now(UTC))
 
         if client is not None:
@@ -1500,6 +1509,148 @@ class QRadarRestProvider(QRadarProvider):
         if reference.reference_kind == "CUSTOM_PROPERTY":
             return self._quote_property(reference.name)
         raise ValueError("unknown IPS field reference kind")
+
+    def _ips_reference(self, reference: tuple[str, str]) -> tuple[str, str]:
+        """A validated reference as (quoted expression, name for the population filter).
+
+        The name is passed on only for a normalized field: the `qid > 0` filter is
+        about the numeric QID, never about a custom property that happens to be
+        called ``qid``.
+        """
+        kind, name = reference
+        if kind == "NORMALIZED":
+            if name not in IPS_NORMALIZED_FIELD_ALLOWLIST:
+                raise ValueError("normalized field is not in the IPS allowlist")
+            return f'"{name}"', name
+        if kind == "CUSTOM_PROPERTY":
+            return self._quote_property(name), ""
+        raise ValueError("unknown IPS field reference kind")
+
+    def _ips_keyed_query(
+        self,
+        dimension: IpsDimension,
+        fields: dict[str, tuple[str, str]],
+        *,
+        source_ids: Sequence[int],
+        start_ms: int,
+        end_ms: int,
+        bucket_ms: int,
+        limit: int,
+    ) -> str:
+        """The §D.5 AQL of one dimension. Only validated ints and quoted names enter it."""
+        volume = 'SUM(eventcount) AS "events", COUNT(*) AS "records"'
+        key = f'starttime / {bucket_ms} AS "k"'
+        group_key = f"starttime / {bucket_ms}"
+        order = "SUM(eventcount)"
+        conditions: list[str] = []
+        select: list[str] = []
+        group: list[str] = []
+
+        def use(logical: str, alias: str, *, grouped: bool = True) -> str:
+            expression, name = self._ips_reference(fields[logical])
+            conditions.append(self._ips_population_condition(logical, expression, name))
+            if grouped:
+                select.append(f'{expression} AS "{alias}"')
+                group.append(expression)
+            return expression
+
+        if dimension is IpsDimension.DESTINATION_PORT:
+            use("DESTINATION_PORT", "dport")
+            if "PROTOCOL" in fields:
+                # Not filtered: protocol 255 (absent) stays a row, folded to `unknown`.
+                expression, _ = self._ips_reference(fields["PROTOCOL"])
+                select.append(f'{expression} AS "proto"')
+                group.append(expression)
+        elif dimension is IpsDimension.DESTINATION_IP:
+            use("DESTINATION_IP", "dip")
+        elif dimension is IpsDimension.SIGNATURE:
+            is_qid = fields["SIGNATURE"] == ("NORMALIZED", "qid")
+            expression = use("SIGNATURE", "qid" if is_qid else "sig")
+            if is_qid:
+                select.append(f'QIDNAME({expression}) AS "qname"')
+        elif dimension is IpsDimension.SOURCE_IP:
+            use("SOURCE_IP", "sip")
+        elif dimension is IpsDimension.PORT_FANOUT:
+            use("SOURCE_IP", "sip")
+            # The port is filtered and counted, not grouped.
+            port = use("DESTINATION_PORT", "dport", grouped=False)
+            select.append(f'UNIQUECOUNT({port}) AS "distinct_ports"')
+            order = f"UNIQUECOUNT({port})"
+        elif dimension is IpsDimension.ACTION:
+            use("ACTION", "act")
+        elif dimension is not IpsDimension.TOTALS:
+            raise ValueError("unknown IPS dimension")
+
+        ids = ", ".join(str(int(i)) for i in source_ids)
+        where = (
+            f"WHERE logsourceid IN ({ids}) "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms}"
+        )
+        for condition in conditions:
+            where += f" AND {condition}"
+        columns = ['logsourceid AS "log_source_id"', *select, key, volume]
+        group_by = ", ".join(["logsourceid", *group, group_key])
+        return (
+            f"SELECT {', '.join(columns)} FROM events {where} "  # noqa: S608
+            f"GROUP BY {group_by} ORDER BY {order} DESC LIMIT {limit} "
+            f"{self._ariel_scope(start_ms, end_ms)}"
+        )
+
+    async def get_ips_keyed(
+        self,
+        dimension: IpsDimension,
+        *,
+        qradar_log_source_ids: Sequence[int],
+        fields: Mapping[str, tuple[str, str]],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> IpsKeyedResult:
+        """One fleet-wide keyed IPS search (design D.5); see the base class.
+
+        ``LIMIT cap + 1`` with ``cap = _keyed_row_cap(max_rows)``; volume is
+        ``SUM(eventcount)``. Read-only: an Ariel search over ``events``.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        ids = validate_ips_sources(
+            qradar_log_source_ids, max_sources=self._ips_max_sources_per_search
+        )
+        checked = validate_ips_fields(dimension, fields)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        cap = self._keyed_row_cap(max_rows)
+        aql = self._ips_keyed_query(
+            dimension,
+            checked,
+            source_ids=ids,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            bucket_ms=int(bucket_seconds) * 1000,
+            limit=cap + 1,
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_ips_keyed_rows(
+            dimension,
+            raw,
+            source_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=cap,
+            qid_normalized=checked.get("SIGNATURE") == ("NORMALIZED", "qid"),
+        )
+        return IpsKeyedResult(
+            dimension=dimension,
+            qradar_log_source_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
 
     async def probe_ips_fields(
         self,

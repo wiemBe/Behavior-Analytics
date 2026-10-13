@@ -27,7 +27,9 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
 
     match settings.qradar_provider:
         case ProviderKind.MOCK:
-            return MockQRadarProvider()
+            return MockQRadarProvider(
+                ips_max_sources_per_search=settings.ips_max_sources_per_search
+            )
         case ProviderKind.REST:
             return QRadarRestProvider(
                 base_url=settings.qradar_host,
@@ -37,6 +39,7 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
                 ca_bundle=settings.qradar_ca_bundle,
                 tls_allow_missing_aki=settings.qradar_tls_allow_missing_aki,
                 ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
+                ips_max_sources_per_search=settings.ips_max_sources_per_search,
             )
         case ProviderKind.MCP:
             return QRadarMCPProvider(
@@ -70,7 +73,9 @@ def build_provider_for_instance(
 
     match kind:
         case ProviderKind.MOCK:
-            return MockQRadarProvider()
+            return MockQRadarProvider(
+                ips_max_sources_per_search=settings.ips_max_sources_per_search
+            )
         case ProviderKind.REST:
             token = instance.sec_token
             if not token:
@@ -89,6 +94,7 @@ def build_provider_for_instance(
                 retry_base_seconds=settings.ariel_retry_base_seconds,
                 retry_max_seconds=settings.ariel_retry_max_seconds,
                 ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
+                ips_max_sources_per_search=settings.ips_max_sources_per_search,
             )
         case ProviderKind.MCP:
             return QRadarMCPProvider(

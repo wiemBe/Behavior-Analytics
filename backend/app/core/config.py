@@ -146,6 +146,12 @@ class Settings(BaseSettings):
     #: How long the QRadar custom-property catalog is reused per instance.
     qradar_property_catalog_ttl_seconds: int = Field(default=600, ge=60, le=86400)
     ariel_multi_bucket_max_rows: int = Field(default=5000, ge=1, le=100_000)
+    #: IPS collection: sources per keyed search (`logsourceid IN (...)`). A larger
+    #: group is chunked; truncation halves it. Design D.5.
+    ips_max_sources_per_search: int = Field(default=50, ge=1, le=500)
+    #: IPS collection: entities kept per (source, bucket, dimension) after the
+    #: fold's cut. The summed `dimension_events` still covers every row.
+    ips_max_entities_per_bucket: int = Field(default=200, ge=1, le=5000)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention
