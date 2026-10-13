@@ -131,6 +131,8 @@ class WafSourceProfile(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     validated_profile_version: Mapped[int | None] = mapped_column(Integer)
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     validation_report: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    validation_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    validation_requested_by: Mapped[str | None] = mapped_column(String(255))
     updated_by: Mapped[str | None] = mapped_column(String(255))
 
 

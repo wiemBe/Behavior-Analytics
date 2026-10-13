@@ -127,6 +127,10 @@ class Settings(BaseSettings):
     ariel_retry_max_seconds: float = Field(default=60.0, ge=1.0)
     # Global cap across all instances, plus the per-instance cap above.
     ariel_global_max_concurrent_searches: int = Field(default=6, ge=1, le=50)
+    # Pad added to the Ariel STOP bound so late-stored events are not dropped
+    # from the last bucket. The WHERE clause is NOT padded; it remains the
+    # authoritative half-open bound [start, end). Default 60s, 0 disables.
+    ariel_stop_pad_seconds: int = Field(default=60, ge=0, le=300)
 
     # --- Scheduled-search driver --------------------------------------------
     # Most searches dispatched in one scheduler cycle, so a backlog can never
@@ -380,6 +384,12 @@ class Settings(BaseSettings):
     waf_min_admission_requests: int = Field(default=3, ge=1)
     #: Profile validation probes this much recent history (seconds).
     waf_validation_window_seconds: int = Field(default=900, ge=60, le=3600)
+    #: A pending marker older than this may be replaced after a dead worker.
+    waf_validation_pending_timeout_seconds: int = Field(default=900, ge=60)
+    #: Delay before validation retries a source held by the collection pipeline.
+    waf_validation_lock_retry_delay_seconds: int = Field(default=30, ge=5, le=300)
+    #: Lock retries before validation records a fail-closed source-busy outcome.
+    waf_validation_lock_max_retries: int = Field(default=20, ge=0, le=100)
     #: Minimum share for a required field's population and value plausibility.
     waf_validation_min_ratio: float = Field(default=0.90, gt=0.0, le=1.0)
     #: Most frequent values fetched per property during validation.

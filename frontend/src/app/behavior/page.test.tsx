@@ -423,3 +423,18 @@ describe("error states", () => {
     expect(screen.getByRole("row", { name: /LAB Firewall/ })).toBeInTheDocument();
   });
 });
+
+describe("the severity beside an issue has a header", () => {
+  it("names the severity in the column header", async () => {
+    vi.spyOn(api, "behaviorSummary").mockResolvedValue(summary());
+    vi.spyOn(api, "sourceBehaviors").mockResolvedValue([source()]);
+    vi.spyOn(api, "anomalies").mockResolvedValue({
+      items: [anomaly({ severity: "HIGH" })],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    } as Page<AnomalySummary>);
+    render(await BehaviorPage());
+    expect(screen.getByRole("columnheader", { name: "Issue and severity" })).toBeInTheDocument();
+  });
+});

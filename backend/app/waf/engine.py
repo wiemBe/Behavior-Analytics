@@ -63,6 +63,7 @@ from app.models.enums import (
     WafBreakdown,
     WafMeasurement,
 )
+from app.models.fleet import LogSourceClassification
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.waf import (
@@ -983,12 +984,27 @@ class WafAnomalyEngine:
 
         opens = [item for item in actions if isinstance(item, _AlertOpenOrUpdate)]
         instance_name: str | None = None
+        source_class: str | None = None
         if opens:
-            instance = await self.session.get(QRadarInstance, log_source.instance_id)
-            instance_name = instance.name if instance is not None else None
+            # One round trip for everything the alert body needs beyond the log
+            # source itself: the instance name and the Phase C class that class
+            # routing matches on. The class row is optional, hence the outer
+            # join -- a source with no classification simply carries none.
+            row = (
+                await self.session.execute(
+                    select(QRadarInstance.name, LogSourceClassification.source_class)
+                    .outerjoin(
+                        LogSourceClassification,
+                        LogSourceClassification.log_source_id == log_source.id,
+                    )
+                    .where(QRadarInstance.id == log_source.instance_id)
+                )
+            ).one_or_none()
+            if row is not None:
+                instance_name, source_class = row
 
         open_inputs = [
-            self._alert_input(log_source, instance_name, item)
+            self._alert_input(log_source, instance_name, item, source_class)
             for item in opens
         ]
         resolves = [
@@ -1012,10 +1028,26 @@ class WafAnomalyEngine:
         log_source: LogSource,
         instance_name: str | None,
         action: _AlertOpenOrUpdate,
+        source_class: str | None = None,
     ) -> AlertInput:
         endpoint = action.endpoint
         detector_type = action.detector_type
         evidence = action.evidence
+        context = {
+            "log_source": log_source.name,
+            "owner": log_source.owner,
+            "criticality": str(log_source.criticality),
+            "instance": instance_name,
+            "virtual_host": endpoint.virtual_host,
+            "endpoint": endpoint.normalized_endpoint,
+            "method": endpoint.http_method,
+            "detector_type": detector_type.value,
+        }
+        # Added only when known, and never part of the fingerprint: a route
+        # scoped to a class matches, and an unclassified source cannot slip
+        # into it.
+        if source_class is not None:
+            context["source_class"] = str(source_class)
         return AlertInput(
             fingerprint=self._fingerprint(endpoint, detector_type),
             title=(
@@ -1030,16 +1062,7 @@ class WafAnomalyEngine:
             source_anomaly_ids=(
                 [str(action.anomaly_id)] if action.anomaly_id is not None else []
             ),
-            context={
-                "log_source": log_source.name,
-                "owner": log_source.owner,
-                "criticality": str(log_source.criticality),
-                "instance": instance_name,
-                "virtual_host": endpoint.virtual_host,
-                "endpoint": endpoint.normalized_endpoint,
-                "method": endpoint.http_method,
-                "detector_type": detector_type.value,
-            },
+            context=context,
         )
 
     @staticmethod

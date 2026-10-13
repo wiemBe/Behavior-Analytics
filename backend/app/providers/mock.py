@@ -948,6 +948,11 @@ class MockQRadarProvider(QRadarProvider):
                     is_building_block=False,
                     owner="soc-team",
                     average_capacity=cap,
+                    # Disabled rules read zero in QRadar. The benchmark is taken
+                    # on a schedule, so the timestamp is a day old, not "now".
+                    base_capacity=cap,
+                    base_host_id=53,
+                    capacity_timestamp=self._now - timedelta(days=1),
                     categories=["Authentication"] if "T1110" in mitre else [],
                     # QRadar exposes no MITRE mapping; the SOC owns it. The mock
                     # matches that contract and returns none here.

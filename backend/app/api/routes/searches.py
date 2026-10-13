@@ -24,6 +24,7 @@ from app.schemas.search import (
     ScheduledSearchUpdate,
     SearchResultTrendOut,
     SearchVersionOut,
+    ThresholdUnreachableError,
 )
 from app.security.auth import get_principal
 from app.security.rbac import (
@@ -105,7 +106,12 @@ async def update_search(
     if search is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "search not found")
     before_version = search.query_version
-    search = await svc.update(search, payload, actor=principal.subject)
+    try:
+        search = await svc.update(search, payload, actor=principal.subject)
+    except ThresholdUnreachableError as exc:
+        # Same refusal as create: a threshold the search could never breach
+        # would silently never alert, and nothing of this patch is written.
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     await record_audit(
         session, action="search.update", actor=principal.subject,
         object_type="scheduled_search", object_id=search.id,

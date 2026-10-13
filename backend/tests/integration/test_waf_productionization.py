@@ -224,7 +224,7 @@ class TestProfiles:
         assert profile.validation_status == WafProfileValidationStatus.UNVALIDATED
         # Still flagged enabled, but a changed mapping must not collect until revalidated.
         assert await eligible_profile_ids(db_session, settings) == (
-            [], {"profile validation is UNVALIDATED": 1}
+            [], {"profile version 2 has not been validated (last validated: 1)": 1}
         )
 
         actions = [
