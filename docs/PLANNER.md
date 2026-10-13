@@ -15,6 +15,24 @@ step will probably start in a new chat. The agent branches `agent/t050b` (WIP), 
 `t070a` and `t075` are pushed to origin as a backup. **Begin a new chat with step 1 of "Next steps"
 below.** The UI redesign (UI-R0) waits until steps 1–3 are done.
 
+**Branch cleanup (user request, ~22:00).** Before deleting anything, each branch's content was
+verified to be in `feat/phase-ce` or `main`, either as an ancestor or as an equivalent cherry-pick:
+T-022, T-023 and the T-006b WIP were checked commit by commit.
+- 25 merged worktrees were removed.
+- 56 local agent branches were deleted, plus `feat/phase-b2` and
+  `fix/deploy-selinux-and-bootstrap` (both in `main`).
+- 20 remote branches were deleted.
+- The test DBs of those tasks were dropped.
+
+What remains:
+- **local branches:** `main`, `feat/phase-ce`, and `agent/t050b`, `t068`, `t069`, `t070a`, `t070b`;
+- **remote branches:** the same, without `t070b`;
+- **worktrees:** `gate`, `t050b`, `t068`, `t069`, `t070a`, `t070b`;
+- the backup ref `refs/backup/pre-t001-2026-10-10`, which is kept.
+
+**From now on:** once a task is merged, remove its worktree, its branch (local and remote) and its
+DB.
+
 **Two agents are running at save time:**
 - **T-050b round 3:** Codex, session `01a1355d-31e8-74f1-be9f-e1e0016d460a`, in worktree `t050b`.
   Its work up to round 2 is committed as WIP `4951f3d`.
