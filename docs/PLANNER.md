@@ -47,22 +47,31 @@ G3 rule analytics). Every task is scheduled against them.
     carry `source_class`; **T-059** deterministic double-submit tests; **T-045** D-8 docs.
 - The full gate passed and `main` was merged (above). The `gate` worktree is detached again.
 
-**In flight (sixth session, updated ~15:10):**
+**In flight (sixth session, updated ~15:35):**
 
-- **All four Sonnet agents hit the Claude session limit at ~12:30** (reset 14:30) and were resumed
-  by `SendMessage` at 14:55. Codex reset at 14:43.
-- **Merged since the session start:** T-061 (`main` @ `3f9c4fa`, pushed: the `/behavior`
-  regression is fixed on `main`); T-064 README upgrade procedure (`f32e3ba`, free model died
-  before its report; diff checked against the spec).
+- **Merged this session (all on `feat/phase-ce`, pushed):** T-061 (also on `main` @ `3f9c4fa`),
+  T-064 README upgrade, **T-060** WAF analyst UI (`5a9a75c`, two screenshot rounds), **T-049** IPS
+  profile + `/ips` API, migration `0017` (`663fb8b`; Codex → Sonnet; T-065 live smoke found QRadar
+  rejects `LIKE` on IP fields → `INCIDR`; T-066 + follow-up fixed two wall-clock time bombs, one in
+  the WAF test on `main`).
+- **`main` still has the WAF time-bomb test** (`test_validate_pending_timeout_and_enable_disable`
+  fails after 09:15 UTC 2026-10-13); the fix is on `feat/phase-ce` and reaches `main` at the next
+  gate.
+- Designs/specs written: Phase C.2 (PHASE-C §C.7–C.9), D-9 (user), T-050a, T-050b (draft), T-053,
+  T-062 review 1, T-063 report, T-067, T-068.
 
-| Task | Agent | Where | State / what to do when it ends |
+| Task | Agent | Where | When it ends |
 |---|---|---|---|
-| **T-049** IPS profile + `/ips` API, migration `0017` | Codex → Sonnet | worktree `t049`, merge of `feat/phase-ce` uncommitted | Agent done; orchestrator re-ran ruff, mypy 31, unit 2,230, alembic 0016↔0017 clean (fresh DB). **Integration run in progress** (one `F` seen at 18 %; identify it). If green or the known flake: commit the merge, merge into `feat/phase-ce`, then cut T-050a. |
-| **T-065** live smoke of the T-049 probe ([spec](tasks/T-065.md)) | Sonnet (the T-049 agent, resumed) | scratch `…/e16a4489-…/scratchpad/t065/` | Does QRadar accept `NOT LIKE '127.%'` on IP fields and `QIDNAME(qid) LIKE 'Unknown %'`? If rejected: one fix in `_ips_population_condition` (T-050a reuses it). |
-| **T-060** review round 1 ([review](tasks/T-060.review1.md)) | Sonnet (resumed) | worktree `t060` | Review new screenshots; gates; merge (trivial `AnomalyListParams` conflict with T-061). |
-| **T-062** rule statistics UI ([spec](tasks/T-062.md)) | Sonnet died at the limit → **Codex** (`codex exec`, log `…/scratchpad/t062-codex.log`) | worktree `t062`; ports 4762/3762 | Check log for "usage limit"; review screenshots; gates; merge. |
-| **T-063** SIM Generic live research ([spec](tasks/T-063.md)) | Sonnet (resumed) | scratch `…/scratchpad/t063/` | Copy report into `docs/tasks/`; then write the Phase C.2 design. |
-| **T-050a** IPS keyed searches + split driver + folds ([spec](tasks/T-050a.md)) | Sonnet, after T-049 merges | — | Then **T-050b** ([draft spec](tasks/T-050b.md)) to Codex after T-062. |
+| **T-050a** IPS keyed searches, split driver, folds ([spec](tasks/T-050a.md)) | Sonnet | `t050a`, DB `qradar_obs_t050a` | Review; gates; merge; then finalize **T-050b** spec from its report → Codex |
+| **T-053** `/admin/ips-sources` UI ([spec](tasks/T-053.md)) | Sonnet | `t053`, ports 4763/3763 | Screenshot review; gates; merge |
+| **T-062** rule statistics UI, review round 1 ([review](tasks/T-062.review1.md)) | Codex (`exec resume 01a1351e-…`) | `t062`, ports 4762/3762, log `…/scratchpad/t062-r1.log` | Check "usage limit"; screenshots; gates; merge |
+| **T-068** outage alert policy backend, migration `0019` chained to `0017` for now ([spec](tasks/T-068.md)) | opencode `big-pickle` | `t068`, DBs `qradar_obs_t068`, `_mig` | Careful review (Phase A engine hook); re-chain after `0018` at merge |
+| **T-067** audit of wall-clock time bombs in tests (report only) ([spec](tasks/T-067.md)) | opencode `nemotron-3-ultra-free` | main checkout, read-only | Turn BOMB findings into a setup-only fix task |
+
+**Later in this phase:** T-069 catch-all senders backend, T-070 C.2 UI, T-071 C.2 live; T-051 → T-052
+(IPS detectors, alerting); T-054 live; T-055 docs. Contract follow-ups from T-060: `numerator_sum` /
+`denominator_sum` on `WafBaselineCellOut`, `bucket_seconds` on WAF list rows, raw "Robust score
+DEGENERATE" label in the shared detection block.
 
 **Next steps, in order:**
 1. ~~Full gate → `main`~~ done (`dabd744`).
