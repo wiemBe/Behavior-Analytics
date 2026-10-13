@@ -1,0 +1,91 @@
+// Against what normal: the detector's own working for a WAF incident.
+//
+// Projected by the API from the stored evidence by whitelist
+// (`WafDetectionDetailOut`); the UI renders it and never recomputes it. A field
+// the detector did not compute is an em dash, which is not a zero.
+
+import type { WafAnomalyDetail } from "@/lib/api";
+import {
+  formatCount,
+  formatMetric,
+  formatShare,
+  robustScoreMeaning,
+} from "@/lib/behavior";
+
+import { formatPercent, formatRequests, requestsUnit } from "./wafFormat";
+import { isRatioType } from "./wafSummary";
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd className="num">{value}</dd>
+    </div>
+  );
+}
+
+export function WafDetectionBlock({
+  anomaly,
+  bucketSeconds = null,
+}: {
+  anomaly: WafAnomalyDetail;
+  /** Bucket width from the stored buckets, for the unit; null when unknown. */
+  bucketSeconds?: number | null;
+}) {
+  const d = anomaly.detection;
+  if (!d) {
+    return (
+      <div className="notice">
+        No detector working was recorded for this incident, so its expected range and baseline
+        cannot be shown. This is a missing record, not a normal baseline.
+      </div>
+    );
+  }
+
+  const reason = d.reason ?? anomaly.explanation;
+  const ratio = isRatioType(anomaly.anomaly_type);
+  const hasRange = d.expected_low != null && d.expected_high != null;
+  // A range carries its unit; a missing one says it was not recorded rather than
+  // standing as a bare dash.
+  const range = !hasRange ? (
+    <span className="muted">
+      —<span className="sr-only"> not recorded for this incident</span>
+    </span>
+  ) : ratio ? (
+    <>
+      {formatPercent(d.expected_low)} – {formatPercent(d.expected_high)}
+      <span className="muted"> of bucket requests</span>
+    </>
+  ) : (
+    <>
+      {formatRequests(d.expected_low)} – {formatRequests(d.expected_high)}
+      <span className="muted"> {requestsUnit(bucketSeconds)}</span>
+    </>
+  );
+  return (
+    <div className="stack-6">
+      {reason && <p className="waf-reason">{reason}</p>}
+
+      <dl className="dimension-meta">
+        <Row label={ratio ? "Seasonal p05–p95 at detection" : "Expected range at detection"} value={range} />
+        <Row label="Surprise threshold" value={d.threshold != null ? `±${formatMetric(d.threshold)}` : "—"} />
+        <Row label="Baseline samples" value={formatCount(d.baseline_sample_count)} />
+        <Row label="Baseline completeness" value={formatShare(d.baseline_completeness)} />
+        <Row label="Baseline version" value={d.baseline_version != null ? `v${d.baseline_version}` : "—"} />
+        <Row
+          label="Normalizer version"
+          value={d.normalizer_version != null ? `v${d.normalizer_version}` : "—"}
+        />
+        <Row label="Robust z" value={formatMetric(d.robust_z)} />
+        <Row label="Consecutive abnormal buckets" value={formatCount(anomaly.consecutive_buckets)} />
+      </dl>
+
+      {d.robust_score_status && (
+        <p className="subtitle">
+          <strong>Robust score {d.robust_score_status}.</strong>{" "}
+          {robustScoreMeaning(d.robust_score_status)}
+        </p>
+      )}
+    </div>
+  );
+}

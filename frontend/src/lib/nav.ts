@@ -32,6 +32,8 @@ export const NAV: NavGroup[] = [
       // order: /behavior/sources and /behavior/sources/{id} belong to Sources,
       // not to the Overview whose path is their prefix.
       { href: "/behavior/sources", label: "Sources" },
+      // Under /behavior like Sources, so it too wins by longest match.
+      { href: "/behavior/waf", label: "WAF behavior" },
     ],
   },
   {

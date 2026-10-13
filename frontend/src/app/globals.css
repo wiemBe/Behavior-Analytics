@@ -2360,3 +2360,110 @@ th.fm-value-cell .cell-sub {
 .rule-form [aria-invalid="true"] {
   border-color: var(--crit);
 }
+
+/* --- WAF analyst views (T-060) ---------------------------------------------
+   Only what the existing classes do not already say. The endpoint is the
+   subject of every WAF view, so it is set in the monospace face: a path is
+   read character by character and its slashes must not collapse. */
+
+.waf-endpoint {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+.page-title.incident-source.waf-endpoint {
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.waf-subject {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.waf-reason {
+  margin: 0;
+  max-width: 90ch;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.waf-lead {
+  margin: 0;
+  max-width: 90ch;
+  font-size: var(--fs-md);
+  line-height: var(--lh-prose);
+}
+.measure-foot-waf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-6);
+}
+.measure-foot-waf > div {
+  min-width: 0;
+}
+.chart.chart-waf {
+  height: 384px;
+}
+.chart-key-coverage {
+  border-top: 2px solid var(--chart-expected);
+}
+/* The subject cell stacks its facts, one per line. A source name is one line that
+   ellipsizes (its full text is the title), never broken at a hyphen. */
+td.cell-name.cell-subject {
+  min-width: 20ch;
+  max-width: 30ch;
+}
+.subject-endpoint {
+  display: block;
+}
+.subject-source {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subject-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A detector name breaks at its spaces, not at the hyphen inside "Request-rate". */
+td.cell-detector {
+  min-width: 13ch;
+}
+th.col-nowrap {
+  white-space: nowrap;
+}
+.filter-chip {
+  gap: var(--sp-1);
+}
+/* Secondary facts of a list row fold under a primary cell when the width runs
+   out, so the table never scrolls with a column out of reach. The folded copy is
+   hidden at full width and its column hidden when it shows. */
+.cell-fold,
+.cell-sub.cell-fold {
+  display: none;
+}
+@media (max-width: 1280px) {
+  .col-md {
+    display: none;
+  }
+  .cell-fold.fold-md,
+  .cell-sub.cell-fold.fold-md {
+    display: block;
+  }
+}
+@media (max-width: 1100px) {
+  .col-sm {
+    display: none;
+  }
+  .cell-fold.fold-sm,
+  .cell-sub.cell-fold.fold-sm {
+    display: block;
+  }
+}
+.key-buckets {
+  white-space: nowrap;
+}
