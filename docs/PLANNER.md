@@ -10,6 +10,19 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ## ▶ Resume here (saved 2026-10-13 ~00:40, end of the fourth session)
 
+**Fifth session (2026-10-13, from 09:42) — in flight; if this session dies, resume from here:**
+- Test DB container restarted; DBs `qradar_obs_{t042,t046,t024,t047,t056,gate}` recreated.
+- **T-042:** the orchestrator committed Codex's work on `agent/t042` (WIP commit) and started a
+  merge of `feat/phase-ce` into it (one conflict, `test_route_auth_guard.py`). Codex resumed
+  (session `01a131e3…`) with round-1 fixes (a)(b)(c) + the conflict; prompt in the scratchpad.
+  When it ends: review, `git add` the resolved files (never `backend/.venv`), commit the merge.
+- **T-024:** same: WIP committed on `agent/t024`, `feat/phase-ce` merge started (conflicts in
+  `admin/page.tsx`, `nav.ts`, `nav.test.ts`); a Sonnet agent resolves them and finishes tests +
+  screenshots.
+- **T-047** (unreachable search thresholds; opencode `big-pickle`, worktree `t047`) and **T-056**
+  (WAF alerts carry `source_class`; opencode `mimo`, worktree `t056`): specs in `docs/tasks/`.
+- **T-049** spec written (Codex, after T-042 and T-046 merge; migration `0017`).
+
 **The user stopped the session with "hiçbir şey yapma sadece son durumu planner md ye kaydet".
 Nothing is running.** No agent was left mid-task except T-024 (below), which died on the Claude
 session limit.
