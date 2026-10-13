@@ -45,6 +45,7 @@ export const NAV: NavGroup[] = [
       { href: "/fleet/sources", label: "Fleet sources" },
       { href: "/offenses", label: "Offenses" },
       { href: "/rules", label: "Rules" },
+      { href: "/rules/statistics", label: "Rule statistics" },
       { href: "/coverage", label: "Coverage" },
       { href: "/log-sources", label: "Log Sources" },
       { href: "/searches", label: "Searches" },

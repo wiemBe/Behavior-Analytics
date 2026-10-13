@@ -20,6 +20,7 @@ describe("NAV", () => {
       "Fleet sources",
       "Offenses",
       "Rules",
+      "Rule statistics",
       "Coverage",
       "Log Sources",
       "Searches",
@@ -100,6 +101,7 @@ describe("activeNavHref", () => {
   it("activates supporting sections and their detail routes", () => {
     expect(activeNavHref("/offenses")).toBe("/offenses");
     expect(activeNavHref("/rules/42")).toBe("/rules");
+    expect(activeNavHref("/rules/statistics")).toBe("/rules/statistics");
     expect(activeNavHref("/log-sources/abc")).toBe("/log-sources");
     expect(activeNavHref("/")).toBe("/");
   });
