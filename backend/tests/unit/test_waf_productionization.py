@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import random
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -20,6 +21,8 @@ from app.models.enums import (
     WafLogicalField,
     WafProfileValidationStatus,
 )
+from app.models.log_source import LogSource
+from app.models.waf import WafSourceProfile
 from app.providers.dto import WafPropertyProbe, WafPropertyValue, WafSourceProbe
 from app.waf.admission import AdmissionPolicy, decide_admission
 from app.waf.detector import (
@@ -29,7 +32,12 @@ from app.waf.detector import (
     WafThresholds,
     detect_request_rate_spike,
 )
-from app.waf.profile import WafFieldMapping, WafProfileError, validate_property_name
+from app.waf.profile import (
+    WafFieldMapping,
+    WafProfileError,
+    collection_ineligibility,
+    validate_property_name,
+)
 from app.waf.semantics import request_count_semantics, semantics_incompatibility
 from app.waf.validation import evaluate_profile
 from tests.unit.test_qradar_rest_provider import build_provider
@@ -329,6 +337,35 @@ class TestValidation:
         assert "secret-agent" not in report
         # Bounded enumerations are the only values disclosed.
         assert '"DENY"' in report and '"POST"' in report
+
+
+# ------------------------------------------------- collection ineligibility
+def ineligible_reason(*, profile_version: int, validated: int | None) -> str | None:
+    profile = WafSourceProfile(
+        instance_id=uuid.uuid4(),
+        log_source_id=uuid.uuid4(),
+        enabled=True,
+        profile_version=profile_version,
+        validation_status=WafProfileValidationStatus.UNVALIDATED,
+        validated_profile_version=validated,
+    )
+    source = LogSource(
+        instance_id=uuid.uuid4(), qradar_id=7, name="edge-waf", monitoring_enabled=True
+    )
+    settings = Settings(waf_collection_enabled=True)
+    return collection_ineligibility(profile, source, settings)
+
+
+class TestCollectionIneligibility:
+    def test_a_never_validated_profile_says_so_not_last_validated_none(self) -> None:
+        assert ineligible_reason(profile_version=3, validated=None) == (
+            "profile version 3 has never been validated"
+        )
+
+    def test_a_stale_profile_names_the_version_it_was_last_validated_at(self) -> None:
+        assert ineligible_reason(profile_version=2, validated=1) == (
+            "profile version 2 has not been validated (last validated: 1)"
+        )
 
 
 # ---------------------------------------------------------------- REST probe

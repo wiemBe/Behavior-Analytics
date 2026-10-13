@@ -255,6 +255,8 @@ def collection_ineligibility(
     if not log_source.monitoring_enabled:
         return "monitoring is disabled for the log source"
     if profile.validated_profile_version != profile.profile_version:
+        if profile.validated_profile_version is None:
+            return f"profile version {profile.profile_version} has never been validated"
         return (
             f"profile version {profile.profile_version} has not been validated "
             f"(last validated: {profile.validated_profile_version})"

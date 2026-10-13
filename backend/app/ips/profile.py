@@ -281,6 +281,8 @@ def profile_ineligibility(profile: IpsSourceProfile) -> str | None:
     if not profile.enabled:
         return "the profile is disabled"
     if profile.validated_profile_version != profile.profile_version:
+        if profile.validated_profile_version is None:
+            return f"profile version {profile.profile_version} has never been validated"
         return (
             f"profile version {profile.profile_version} has not been validated "
             f"(last validated: {profile.validated_profile_version})"
