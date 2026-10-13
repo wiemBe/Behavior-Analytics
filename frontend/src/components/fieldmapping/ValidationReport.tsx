@@ -6,8 +6,9 @@
 // and never as the field failing.
 
 import { TableScroll } from "@/components/ui/TableScroll";
-import type { MappingSchemaOut, ValidationReportOut } from "@/lib/api";
+import type { FieldValidationOut, MappingSchemaOut, ValidationReportOut } from "@/lib/api";
 import {
+  type FieldStatusInfo,
   MISSING,
   fieldStatusInfo,
   formatClock,
@@ -43,6 +44,11 @@ export function ValidationReport({
   profileVersion,
   pending,
   requiredCoverage,
+  notes = [],
+  hideColumns = [],
+  statusInfo,
+  formatReason,
+  describeReference,
 }: {
   schema: MappingSchemaOut;
   report: ValidationReportOut | null;
@@ -52,7 +58,20 @@ export function ValidationReport({
   pending: { since: string | null } | null;
   /** The share of events a collection field must populate, when known. */
   requiredCoverage: number | null;
+  /** Warnings that are not failures, shown above the table (for example a generic-name share). */
+  notes?: { key: string; text: string }[];
+  /** Columns a domain does not measure; they are left out rather than shown as dashes. */
+  hideColumns?: ("distinct" | "plausible")[];
+  /** A domain's own status words; the default covers the WAF statuses. */
+  statusInfo?: (status: string, ctx: Parameters<typeof fieldStatusInfo>[1]) => FieldStatusInfo;
+  /** A domain's own sentence for a reason; the default covers the WAF reasons. */
+  formatReason?: (reason: string, populatedRatio: (field: string) => number | null) => string;
+  /** What follows the property name in the field cell, for example its reference kind. */
+  describeReference?: (field: FieldValidationOut) => string | null;
 }) {
+  const showDistinct = !hideColumns.includes("distinct");
+  const showPlausible = !hideColumns.includes("plausible");
+  const infoFor = statusInfo ?? fieldStatusInfo;
   const stale = report !== null && report.profile_version !== profileVersion;
   const status = report ? (REPORT_STATUS[report.status] ?? { label: report.status, tone: "" }) : null;
 
@@ -118,11 +137,20 @@ export function ValidationReport({
             <ul className="fm-reasons" aria-label="Reasons for the result">
               {report.reasons.map((r) => (
                 <li key={r}>
-                  {reasonText(r, schema, requiredCoverage, (k) => report.fields.find((x) => x.field === k)?.populated_ratio ?? null)}
+                  {(formatReason ?? ((x, ratio) => reasonText(x, schema, requiredCoverage, ratio)))(
+                    r,
+                    (k) => report.fields.find((x) => x.field === k)?.populated_ratio ?? null,
+                  )}
                 </li>
               ))}
             </ul>
           )}
+
+          {notes.map((n) => (
+            <p key={n.key} className="fm-banner is-warn" role="status">
+              {n.text}
+            </p>
+          ))}
 
           <TableScroll label="Validation result per field">
             <table className="table-dense">
@@ -138,18 +166,22 @@ export function ValidationReport({
                     Populated
                     <span className="cell-sub">% of events</span>
                   </th>
-                  <th scope="col" className="num">
-                    Distinct values
-                  </th>
-                  <th scope="col" className="num">
-                    Plausible
-                    <span className="cell-sub">% of sampled</span>
-                  </th>
+                  {showDistinct && (
+                    <th scope="col" className="num">
+                      Distinct values
+                    </th>
+                  )}
+                  {showPlausible && (
+                    <th scope="col" className="num">
+                      Plausible
+                      <span className="cell-sub">% of sampled</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {report.fields.map((f) => {
-                  const info = fieldStatusInfo(f.status, {
+                  const info = infoFor(f.status, {
                     populatedRatio: f.populated_ratio,
                     plausibleRatio: f.plausible_ratio,
                     requiredCoverage,
@@ -162,6 +194,7 @@ export function ValidationReport({
                         {def?.label ?? f.field}
                         <span className="cell-sub">
                           {f.property_name ? <code>{f.property_name}</code> : "no property mapped"}
+                          {describeReference?.(f) ? ` · ${describeReference(f)}` : ""}
                           {" · "}
                           {f.used_by_collection ? "collection needs it" : "informational"}
                         </span>
@@ -179,15 +212,22 @@ export function ValidationReport({
                           missing={f.populated_ratio == null}
                         />
                       </td>
-                      <td className="num">
-                        <Measure text={formatCount(f.distinct_values)} missing={f.distinct_values == null} />
-                      </td>
-                      <td className="num">
-                        <Measure
-                          text={formatShare(f.plausible_ratio)}
-                          missing={f.plausible_ratio == null}
-                        />
-                      </td>
+                      {showDistinct && (
+                        <td className="num">
+                          <Measure
+                            text={formatCount(f.distinct_values)}
+                            missing={f.distinct_values == null}
+                          />
+                        </td>
+                      )}
+                      {showPlausible && (
+                        <td className="num">
+                          <Measure
+                            text={formatShare(f.plausible_ratio)}
+                            missing={f.plausible_ratio == null}
+                          />
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

@@ -2467,3 +2467,43 @@ th.col-nowrap {
 .key-buckets {
   white-space: nowrap;
 }
+
+/* IPS source administration (T-053): the reference-kind switch and the preset choice. */
+.fm-kind {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0 0 var(--sp-2);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.fm-presets {
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.fm-presets legend {
+  padding: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.fm-presets .fm-note {
+  margin: var(--sp-1) 0 var(--sp-2);
+  max-width: 72ch;
+}
+/* A status word is never broken inside; another column folds instead. */
+td.cell-name.ips-source-cell {
+  overflow-wrap: normal;
+}
+.ips-status {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.fm-preset-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+}

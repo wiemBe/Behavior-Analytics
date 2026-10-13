@@ -20,6 +20,19 @@ export interface CopyOption {
   label: string;
 }
 
+// A field whose schema offers more than one reference kind (IPS: a normalized
+// QRadar field or a custom property) gets a switch. The kind is the owner's
+// state, passed in as `referenceKinds`; a form without it, like the WAF one,
+// renders exactly as before.
+const KIND_LABEL: Record<string, string> = {
+  NORMALIZED: "QRadar field",
+  CUSTOM_PROPERTY: "Custom property",
+};
+
+export function referenceKindLabel(kind: string): string {
+  return KIND_LABEL[kind] ?? kind;
+}
+
 function normalizedFor(field: MappingFieldOut): string[] {
   return field.kinds.includes("NORMALIZED") ? field.normalized_options : [];
 }
@@ -107,6 +120,8 @@ export function FieldMappingForm({
   disabled = false,
   onRefreshCatalog,
   copyFrom,
+  referenceKinds,
+  onKindChange,
 }: {
   schema: MappingSchemaOut;
   draft: MappingDraft;
@@ -122,6 +137,9 @@ export function FieldMappingForm({
   disabled?: boolean;
   onRefreshCatalog?: () => Promise<void>;
   copyFrom?: { options: CopyOption[]; onCopy: (id: string) => Promise<string> };
+  /** The chosen reference kind per field key. With `onKindChange` it turns on the kind switch. */
+  referenceKinds?: Record<string, string>;
+  onKindChange?: (key: string, kind: string) => void;
 }) {
   const uid = useId();
   const [refreshing, setRefreshing] = useState(false);
@@ -182,7 +200,11 @@ export function FieldMappingForm({
           const inputId = `${uid}-${field.key}`;
           const descId = `${inputId}-d`;
           const msgId = `${inputId}-m`;
-          const note = catalogNote(value, catalog, typeName);
+          const switchable = Boolean(referenceKinds && onKindChange) && field.kinds.length > 1;
+          const kind = switchable ? (referenceKinds?.[field.key] ?? field.kinds[0]) : null;
+          const normalizedKind = kind === "NORMALIZED";
+          // A QRadar normalized field is not in the console's property list.
+          const note = normalizedKind ? null : catalogNote(value, catalog, typeName);
           const clientError = errors[field.key];
           const error =
             fieldErrors[field.key] ??
@@ -202,19 +224,61 @@ export function FieldMappingForm({
                 </p>
               </div>
               <div className="fm-control">
+                {switchable && kind && (
+                  <fieldset className="fm-kind">
+                    <legend className="sr-only">{field.label} reference kind</legend>
+                    {field.kinds.map((k) => (
+                      <label key={k} className="fm-radio">
+                        <input
+                          type="radio"
+                          name={`${inputId}-kind`}
+                          checked={k === kind}
+                          disabled={disabled}
+                          onChange={() => onKindChange?.(field.key, k)}
+                        />
+                        {referenceKindLabel(k)}
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
                 <div className="fm-input-line">
-                  <PropertyInput
-                    id={inputId}
-                    label={`${field.label} property`}
-                    value={value}
-                    placeholder={field.required ? "Property name" : "Not mapped"}
-                    suggestions={propertiesFor(field, catalog)}
-                    normalized={normalizedFor(field)}
-                    describedBy={hasMsg ? `${descId} ${msgId}` : descId}
-                    invalid={Boolean(error)}
-                    disabled={disabled}
-                    onChange={(next) => setProperty(field.key, next)}
-                  />
+                  {normalizedKind ? (
+                    <select
+                      id={inputId}
+                      className="select-control"
+                      aria-label={`${field.label} QRadar field`}
+                      aria-describedby={hasMsg ? `${descId} ${msgId}` : descId}
+                      aria-invalid={Boolean(error) || undefined}
+                      value={value}
+                      disabled={disabled}
+                      onChange={(e) => setProperty(field.key, e.target.value)}
+                    >
+                      {(value === "" || !field.required) && (
+                        <option value="">{field.required ? "Choose a field" : "Not mapped"}</option>
+                      )}
+                      {value !== "" && !field.normalized_options.includes(value) && (
+                        <option value={value}>{value} (not an allowed field)</option>
+                      )}
+                      {field.normalized_options.map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <PropertyInput
+                      id={inputId}
+                      label={`${field.label} property`}
+                      value={value}
+                      placeholder={field.required ? "Property name" : "Not mapped"}
+                      suggestions={propertiesFor(field, catalog)}
+                      normalized={switchable ? [] : normalizedFor(field)}
+                      describedBy={hasMsg ? `${descId} ${msgId}` : descId}
+                      invalid={Boolean(error)}
+                      disabled={disabled}
+                      onChange={(next) => setProperty(field.key, next)}
+                    />
+                  )}
                   {!field.required && value !== "" && (
                     <button
                       type="button"
