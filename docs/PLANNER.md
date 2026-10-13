@@ -47,34 +47,31 @@ G3 rule analytics). Every task is scheduled against them.
     carry `source_class`; **T-059** deterministic double-submit tests; **T-045** D-8 docs.
 - The full gate passed and `main` was merged (above). The `gate` worktree is detached again.
 
-**In flight (sixth session, updated ~15:50):**
+**In flight (sixth session, updated ~16:20):**
 
-- **Merged this session (`feat/phase-ce`, pushed):** T-061 (also `main` @ `3f9c4fa`), T-064, **T-060**
-  WAF analyst UI (`5a9a75c`), **T-049** IPS profile + `/ips`, migration `0017` (`663fb8b`), **T-062**
-  rule statistics UI (`e98b5a0`; Sonnet died at the limit → Codex, one review round), T-067 audit (no
-  new time bombs).
-- **Incident (orchestrator error, fixed):** `git add frontend` in the `t062` worktree committed the
-  `frontend/node_modules` **symlink**; merging it replaced the main checkout's real `node_modules`
-  with a self-referencing link (breaking every worktree's symlink). Restored by moving `t060`'s
-  real `node_modules` into the main checkout; the symlink dropped in the merge; `.gitignore` now
-  ignores `.venv` / `node_modules` **without** the trailing slash, so symlinks are ignored too
-  (`6b3402b`). **Always `git add` explicit paths and check `git diff --cached --name-only`.**
-- **Live defect found by T-053:** `/waf/candidates` requires `instance_id` but the "Add WAF source"
-  picker never sends it → 422 live (on `main`). Fix = T-072 (backend: optional, default instance).
-- `main` still has the WAF time-bomb test (fixed on `feat/phase-ce`).
+- **Merged this session (`feat/phase-ce`, pushed; migration head `0017`):** T-061 (also `main` @
+  `3f9c4fa`), T-064, **T-060** WAF analyst UI, **T-049** IPS profile + `/ips` (`0017`), **T-062**
+  rule statistics UI, **T-053** `/admin/ips-sources` UI (`96a24ef`), **T-072** candidates routes
+  accept a missing `instance_id` (live defect: "Add WAF source" got 422), **T-073** never-validated
+  wording, **T-050a** IPS keyed searches + split driver + folds (`4061aae`), T-067 audit.
+- **Incident (orchestrator error, fixed):** a worktree's `frontend/node_modules` symlink was
+  committed by `git add frontend` and its merge replaced the main checkout's `node_modules` with a
+  self-link; restored; `.gitignore` now ignores the symlinks (`6b3402b`). **Add explicit paths;
+  check `git diff --cached --name-only`.**
+- `main` still has the WAF time-bomb test and the 422 picker; both fixed on `feat/phase-ce`.
 
 | Task | Agent | Where | When it ends |
 |---|---|---|---|
-| **T-050a** IPS keyed searches, split driver, folds ([spec](tasks/T-050a.md)) | Sonnet | `t050a`, DB `qradar_obs_t050a` | Review; gates; merge; finalize **T-050b** from its report → Codex |
-| **T-053** `/admin/ips-sources` UI, **review round 1** (mid-word break, duplicate banner, "QRadar field", never-validated fixture string) | Sonnet (resumed) | `t053`, ports 4763/3763 | Screenshots; gates; merge (expect `nav`/`api.ts`/CSS conflicts: keep both blocks) |
-| **T-068** outage alert policy backend, migration `0019` → `0017` for now ([spec](tasks/T-068.md)) | opencode `big-pickle` | `t068`, DBs `qradar_obs_t068`, `_mig` | Careful review (Phase A engine hook); re-chain after `0018` |
-| **T-072** `instance_id` optional on `/waf/candidates`, `/ips/candidates` ([spec](tasks/T-072.md)) | opencode `mimo` | `t072`, DB `qradar_obs_t072` | Review; merge; then **T-073** ([spec](tasks/T-073.md), "never validated" wording) in the same worktree |
+| **T-050b** IPS tables `0018`, entities, admission, collector, `IPS_COLLECTION` ([spec](tasks/T-050b.md)) | Codex (`codex exec`, log `…/scratchpad/t050b.log`) | `t050b`, DBs `qradar_obs_t050b`, `_mig` | Check "usage limit"; review (constant SQL, watermark rule, LOWER_BOUND); gates; merge |
+| **T-074** live smoke of the keyed IPS searches ([spec](tasks/T-074.md)) | Sonnet (the T-050a agent) | scratch `…/t074/` | If a form is rejected: one fix in `_ips_keyed_query` |
+| **T-068** outage policy backend, `0019` → `0017` for now; **review round 1** (no per-source class query) | opencode `big-pickle` | `t068` | Review; gates; re-chain `0019` after `0018`; merge |
+| **T-069** catch-all senders backend, `0020` → `0017` for now ([spec](tasks/T-069.md)) | Sonnet | `t069`, DBs `qradar_obs_t069`, `_mig` | Review; re-chain after `0019`; merge |
 
-**Later in this phase:** T-069 catch-all senders backend, T-070 C.2 UI, T-071 C.2 live; T-051 → T-052
-(IPS detectors, alerting); T-054 live; T-055 docs. Then the full gate → `main`. Contract follow-ups
-from T-060: `numerator_sum`/`denominator_sum` on `WafBaselineCellOut`, `bucket_seconds` on WAF list
-rows, raw "Robust score DEGENERATE" label. From T-053: `/ips/sources` lacks per-field reasons;
-`SOURCE_BUSY` has no status field (UI infers it from history); no `/admin` hub link.
+**Then:** T-070 (C.2 UI: `/admin/outage-policy`, `/fleet/catchall`), T-071 (C.2 live), T-051 →
+T-052 (IPS detectors, alerting), T-054 (IPS live), T-055 (docs); the full gate → `main`.
+Contract follow-ups: T-060 (`numerator_sum`/`denominator_sum` on `WafBaselineCellOut`,
+`bucket_seconds` on WAF list rows, "Robust score DEGENERATE"); T-053 (`/ips/sources` per-field
+reasons; `SOURCE_BUSY` status field; `/admin` hub link).
 
 **Next steps, in order:**
 1. ~~Full gate → `main`~~ done (`dabd744`).
