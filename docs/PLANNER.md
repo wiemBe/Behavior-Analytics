@@ -108,12 +108,27 @@ G3 rule analytics). Every task is scheduled against them.
   check `git diff --cached --name-only`.**
 - `main` still has the WAF time-bomb test and the 422 picker; both fixed on `feat/phase-ce`.
 
+**Seventh session (from 20:12, 2026-10-13).** Collected the sixth session's agents:
+- **T-074 is DONE** ([report](tasks/T-074.report.md)). Every keyed IPS AQL form was **accepted**
+  live. In 6/6 searches, coverage was 1.0 and no result was truncated. Not exercised: skew,
+  truncation, or fan-out above 2 ports.
+- **T-068 round 1 was reviewed and accepted.** The class map is loaded once and only when a CLASS
+  row exists. The orchestrator re-ran the unit suite (2,264 passed, 5 skipped) and the targeted
+  integration tests (53 passed). It is committed on `agent/t068` @ `539b9c2`. It waits for `0018`
+  before the re-chain and merge.
+- Codex T-050b was resumed (`codex exec resume 01a1355d-…`). T-069 was relaunched on Sonnet.
+
 | Task | Agent | Where | When it ends |
 |---|---|---|---|
-| **T-050b** IPS tables `0018`, entities, admission, collector, `IPS_COLLECTION` ([spec](tasks/T-050b.md)) | Codex (`codex exec`, log `…/scratchpad/t050b.log`) | `t050b`, DBs `qradar_obs_t050b`, `_mig` | Check "usage limit"; review (constant SQL, watermark rule, LOWER_BOUND); gates; merge |
-| **T-074** live smoke of the keyed IPS searches ([spec](tasks/T-074.md)) | Sonnet (the T-050a agent) | scratch `…/t074/` | If a form is rejected: one fix in `_ips_keyed_query` |
-| **T-068** outage policy backend, `0019` → `0017` for now; **review round 1** (no per-source class query) | opencode `big-pickle` | `t068` | Review; gates; re-chain `0019` after `0018`; merge |
-| **T-069** catch-all senders backend, `0020` → `0017` for now ([spec](tasks/T-069.md)) | Sonnet | `t069`, DBs `qradar_obs_t069`, `_mig` | Review; re-chain after `0019`; merge |
+| **T-050b** IPS tables `0018`, entities, admission, collector, `IPS_COLLECTION` ([spec](tasks/T-050b.md)) | Codex **resumed** (session `01a1355d-31e8-74f1-be9f-e1e0016d460a`, log `…/718a4478…/scratchpad/t050b-resume.log`) | `t050b`, DBs `qradar_obs_t050b`, `_mig` | Check "usage limit"; review (constant SQL, watermark rule, LOWER_BOUND); gates; merge **first** |
+| **T-068** outage policy backend, `0019` → `0017` for now | DONE on `agent/t068` | `t068` | Re-chain `0019` → `0018`; merge |
+| **T-069** catch-all senders backend, `0020` → `0017` for now ([spec](tasks/T-069.md)) | Sonnet (relaunched, "review what you inherit") | `t069`, DBs `qradar_obs_t069`, `_mig` | Review; re-chain after `0019`; merge |
+| **T-070a** UI `/admin/outage-policy` + `/admin` hub links; small additive backend (`source_name`/`source_class` on SOURCE rows) ([spec](tasks/T-070a.md)) | Sonnet | `t070a` (branched from `feat/phase-ce` + `agent/t068` merged), DB `qradar_obs_t070a`, ports 4770/3770 | Screenshot review; gates; merge after T-068 |
+| **T-075** `numerator_sum`/`denominator_sum` on `WafBaselineCellOut` (T-060 follow-up) ([spec](tasks/T-075.md)) | opencode `big-pickle` (log `…/718a4478…/scratchpad/t075.log`) | `t075`, DB `qradar_obs_t075` | Diff; gates; merge |
+
+The T-060 follow-up "`bucket_seconds` on WAF list rows" was **dropped**: `WafAnomaly` has no
+`bucket_seconds`, so it would need a join in the T-057 `UNION ALL`. The UI constant is correct
+while WAF buckets are fixed at 300 s.
 
 **Then:** T-070 (C.2 UI: `/admin/outage-policy`, `/fleet/catchall`), T-071 (C.2 live), T-051 →
 T-052 (IPS detectors, alerting), T-054 (IPS live), T-055 (docs); the full gate → `main`.
