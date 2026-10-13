@@ -47,31 +47,34 @@ G3 rule analytics). Every task is scheduled against them.
     carry `source_class`; **T-059** deterministic double-submit tests; **T-045** D-8 docs.
 - The full gate passed and `main` was merged (above). The `gate` worktree is detached again.
 
-**In flight (sixth session, updated ~15:35):**
+**In flight (sixth session, updated ~15:50):**
 
-- **Merged this session (all on `feat/phase-ce`, pushed):** T-061 (also on `main` @ `3f9c4fa`),
-  T-064 README upgrade, **T-060** WAF analyst UI (`5a9a75c`, two screenshot rounds), **T-049** IPS
-  profile + `/ips` API, migration `0017` (`663fb8b`; Codex → Sonnet; T-065 live smoke found QRadar
-  rejects `LIKE` on IP fields → `INCIDR`; T-066 + follow-up fixed two wall-clock time bombs, one in
-  the WAF test on `main`).
-- **`main` still has the WAF time-bomb test** (`test_validate_pending_timeout_and_enable_disable`
-  fails after 09:15 UTC 2026-10-13); the fix is on `feat/phase-ce` and reaches `main` at the next
-  gate.
-- Designs/specs written: Phase C.2 (PHASE-C §C.7–C.9), D-9 (user), T-050a, T-050b (draft), T-053,
-  T-062 review 1, T-063 report, T-067, T-068.
+- **Merged this session (`feat/phase-ce`, pushed):** T-061 (also `main` @ `3f9c4fa`), T-064, **T-060**
+  WAF analyst UI (`5a9a75c`), **T-049** IPS profile + `/ips`, migration `0017` (`663fb8b`), **T-062**
+  rule statistics UI (`e98b5a0`; Sonnet died at the limit → Codex, one review round), T-067 audit (no
+  new time bombs).
+- **Incident (orchestrator error, fixed):** `git add frontend` in the `t062` worktree committed the
+  `frontend/node_modules` **symlink**; merging it replaced the main checkout's real `node_modules`
+  with a self-referencing link (breaking every worktree's symlink). Restored by moving `t060`'s
+  real `node_modules` into the main checkout; the symlink dropped in the merge; `.gitignore` now
+  ignores `.venv` / `node_modules` **without** the trailing slash, so symlinks are ignored too
+  (`6b3402b`). **Always `git add` explicit paths and check `git diff --cached --name-only`.**
+- **Live defect found by T-053:** `/waf/candidates` requires `instance_id` but the "Add WAF source"
+  picker never sends it → 422 live (on `main`). Fix = T-072 (backend: optional, default instance).
+- `main` still has the WAF time-bomb test (fixed on `feat/phase-ce`).
 
 | Task | Agent | Where | When it ends |
 |---|---|---|---|
-| **T-050a** IPS keyed searches, split driver, folds ([spec](tasks/T-050a.md)) | Sonnet | `t050a`, DB `qradar_obs_t050a` | Review; gates; merge; then finalize **T-050b** spec from its report → Codex |
-| **T-053** `/admin/ips-sources` UI ([spec](tasks/T-053.md)) | Sonnet | `t053`, ports 4763/3763 | Screenshot review; gates; merge |
-| **T-062** rule statistics UI, review round 1 ([review](tasks/T-062.review1.md)) | Codex (`exec resume 01a1351e-…`) | `t062`, ports 4762/3762, log `…/scratchpad/t062-r1.log` | Check "usage limit"; screenshots; gates; merge |
-| **T-068** outage alert policy backend, migration `0019` chained to `0017` for now ([spec](tasks/T-068.md)) | opencode `big-pickle` | `t068`, DBs `qradar_obs_t068`, `_mig` | Careful review (Phase A engine hook); re-chain after `0018` at merge |
-| **T-067** audit of wall-clock time bombs in tests (report only) ([spec](tasks/T-067.md)) | opencode `nemotron-3-ultra-free` | main checkout, read-only | Turn BOMB findings into a setup-only fix task |
+| **T-050a** IPS keyed searches, split driver, folds ([spec](tasks/T-050a.md)) | Sonnet | `t050a`, DB `qradar_obs_t050a` | Review; gates; merge; finalize **T-050b** from its report → Codex |
+| **T-053** `/admin/ips-sources` UI, **review round 1** (mid-word break, duplicate banner, "QRadar field", never-validated fixture string) | Sonnet (resumed) | `t053`, ports 4763/3763 | Screenshots; gates; merge (expect `nav`/`api.ts`/CSS conflicts: keep both blocks) |
+| **T-068** outage alert policy backend, migration `0019` → `0017` for now ([spec](tasks/T-068.md)) | opencode `big-pickle` | `t068`, DBs `qradar_obs_t068`, `_mig` | Careful review (Phase A engine hook); re-chain after `0018` |
+| **T-072** `instance_id` optional on `/waf/candidates`, `/ips/candidates` ([spec](tasks/T-072.md)) | opencode `mimo` | `t072`, DB `qradar_obs_t072` | Review; merge; then **T-073** ([spec](tasks/T-073.md), "never validated" wording) in the same worktree |
 
 **Later in this phase:** T-069 catch-all senders backend, T-070 C.2 UI, T-071 C.2 live; T-051 → T-052
-(IPS detectors, alerting); T-054 live; T-055 docs. Contract follow-ups from T-060: `numerator_sum` /
-`denominator_sum` on `WafBaselineCellOut`, `bucket_seconds` on WAF list rows, raw "Robust score
-DEGENERATE" label in the shared detection block.
+(IPS detectors, alerting); T-054 live; T-055 docs. Then the full gate → `main`. Contract follow-ups
+from T-060: `numerator_sum`/`denominator_sum` on `WafBaselineCellOut`, `bucket_seconds` on WAF list
+rows, raw "Robust score DEGENERATE" label. From T-053: `/ips/sources` lacks per-field reasons;
+`SOURCE_BUSY` has no status field (UI infers it from history); no `/admin` hub link.
 
 **Next steps, in order:**
 1. ~~Full gate → `main`~~ done (`dabd744`).
