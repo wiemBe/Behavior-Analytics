@@ -169,7 +169,8 @@ export type SearchFamily =
   | "PHASE_A_VOLUME"
   | "WAF_COLLECTION"
   | "ANOMALY_EXPLANATION"
-  | "RULE_MATCH";
+  | "RULE_MATCH"
+  | "IPS_COLLECTION";
 
 // Mirrors SearchCadenceLastRunOut. `searches_sent` is null for a family that
 // does not count its searches yet: that is "not counted", never zero.
