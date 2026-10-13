@@ -283,3 +283,66 @@ async def test_whole_result_keeps_every_operator_decisive(db_session) -> None:
     )
     execution = await executor.execute(search, run_key="lt", instance_key="default")
     assert execution.threshold_breached is True
+
+
+@pytest.mark.parametrize(
+    ("operator", "threshold", "breached"),
+    [
+        # A truncated run reports total_count == max_result_rows; the proven
+        # count is one past the cap (T-047), so GT at the cap breaches.
+        ("GT", 5, True),
+        # ... while GT at cap + 1 is exactly the boundary and does not.
+        ("GT", 6, False),
+        # GE at cap + 1 is proven (>= 6 holds for a proven count of 6).
+        ("GE", 6, True),
+        # For LT, LE and EQ a lower bound proves nothing in either direction.
+        ("LT", 6, False),
+        ("LE", 6, False),
+        ("EQ", 6, False),
+    ],
+)
+async def test_truncated_lower_bound_is_exactly_one_past_the_cap(
+    db_session, operator, threshold, breached
+) -> None:
+    search = await make_search(
+        db_session,
+        threshold_value=threshold, threshold_operator=operator, max_result_rows=5,
+    )
+    executor = SearchExecutor(
+        db_session, _capped_provider(reported=5), _limiter(), sleep=_noop_sleep,
+    )
+    execution = await executor.execute(
+        search, run_key=f"b-{operator}-{threshold}", instance_key="default"
+    )
+    assert execution.truncated is True
+    assert execution.threshold_breached is breached
+
+
+@pytest.mark.parametrize(
+    ("operator", "threshold", "breached"),
+    [
+        # A whole result is decisive even exactly at the cap: the count is the
+        # measurement itself, so GT at max is not breached and GE at max is.
+        ("GT", 5, False),
+        ("GE", 5, True),
+        ("LT", 5, False),
+        ("LE", 5, True),
+        ("EQ", 5, True),
+    ],
+)
+async def test_whole_result_at_cap_is_decisive(
+    db_session, operator, threshold, breached
+) -> None:
+    search = await make_search(
+        db_session,
+        threshold_value=threshold, threshold_operator=operator, max_result_rows=5,
+    )
+    executor = SearchExecutor(
+        db_session, _capped_provider(reported=5, truncated=False), _limiter(),
+        sleep=_noop_sleep,
+    )
+    execution = await executor.execute(
+        search, run_key=f"w-{operator}-{threshold}", instance_key="default"
+    )
+    assert execution.truncated is False
+    assert execution.threshold_breached is breached

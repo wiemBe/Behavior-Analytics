@@ -254,12 +254,16 @@ class SearchExecutor:
         op = search.threshold_operator
         t = search.threshold_value
         if truncated:
-            # `value` is a lower bound on the true count. Only "greater than"
-            # comparisons can be proven from one; for LT, LE and EQ (and any
-            # unknown operator) there is no verdict, recorded as not breached.
-            # The alert evaluator reads `truncated` to keep that from resolving.
+            # `value` is a lower bound on the true count, and an exact one: the
+            # provider capped total_count at max_result_rows and set truncated
+            # only because more than max_result_rows rows existed, so the proven
+            # bound is value + 1. Only "greater than" comparisons can be proven
+            # from it; for LT, LE and EQ (and any unknown operator) there is no
+            # verdict, recorded as not breached. The alert evaluator reads
+            # `truncated` to keep that from resolving.
+            bound = value + 1
             execution.threshold_breached = bool(
-                {"GT": value > t, "GE": value >= t}.get(op, False)
+                {"GT": bound > t, "GE": bound >= t}.get(op, False)
             )
             return
         breached = {
