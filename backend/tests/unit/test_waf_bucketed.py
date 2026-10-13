@@ -330,6 +330,7 @@ def provider_for(ariel: WafAriel) -> QRadarRestProvider:
         sleep=no_sleep,
         page_size=50,
         max_pages=4,
+        ariel_stop_pad_seconds=0,
     )
 
 

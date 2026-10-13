@@ -41,6 +41,7 @@ def _provider(rows: list[dict], captured: list[str]) -> QRadarRestProvider:
         client=client,
         rng=random.Random(1),
         sleep=no_sleep,
+        ariel_stop_pad_seconds=0,
     )
 
 
