@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar, TypedDict
 
+from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import validate_bucketed_metric_window
 from app.ips.keyed_rows import (
     parse_ips_keyed_rows,
@@ -40,6 +41,7 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CatchallKeyedResult,
     CustomPropertyDTO,
     DimensionAggregate,
     DimensionValueCount,
@@ -156,6 +158,23 @@ IpsFault = Callable[[MockIpsSearch], Exception | None]
 #: A truncation hook: True forces the search to read as truncated.
 IpsTruncation = Callable[[MockIpsSearch], bool]
 
+
+@dataclass(frozen=True)
+class MockCatchallSearch:
+    """One catch-all senders search the mock was asked for, kept so tests can read the split."""
+
+    device_type_ids: tuple[int, ...]
+    window_start: datetime
+    window_end: datetime
+
+
+#: A fault hook: given a search, an exception to raise for it, or None.
+CatchallFault = Callable[[MockCatchallSearch], Exception | None]
+#: A truncation hook: True forces the search to read as truncated.
+CatchallTruncation = Callable[[MockCatchallSearch], bool]
+#: A script: the raw rows (`logsourceid`, `sender`, `events`, `records`) of a bucket key.
+CatchallScript = Callable[[int], list[dict]]
+
 _IPS_PORTS = (0, 22, 53, 80, 443, 445, 3389, 5060, 8080, 8443)
 _IPS_PROTOCOLS = (6, 6, 6, 17, 1, 255, 0)
 _IPS_SOURCES = (
@@ -206,6 +225,12 @@ class MockQRadarProvider(QRadarProvider):
         #: naturally whenever a search has more rows than `max_rows`.
         self.ips_fault: IpsFault | None = None
         self.ips_force_truncated: IpsTruncation | None = None
+        #: The same hooks for the catch-all senders search, plus a script that
+        #: replaces the synthetic senders. Rows still pass the real parser.
+        self.catchall_searches: list[MockCatchallSearch] = []
+        self.catchall_fault: CatchallFault | None = None
+        self.catchall_force_truncated: CatchallTruncation | None = None
+        self.catchall_script: CatchallScript | None = None
         self._now = now or datetime.now(UTC)
         self._rng = random.Random(seed)  # noqa: S311 (not cryptographic)
         # Active Ariel searches: search_id -> (aql, created_at)
@@ -1016,6 +1041,91 @@ class MockQRadarProvider(QRadarProvider):
             rows=parsed,
             truncated=truncated,
             query=f"MOCK IPS {dimension.value}",
+        )
+
+    def _catchall_events(self, source_id: int, key: int) -> list[dict]:
+        """The synthetic senders of one catch-all source and bucket: deterministic."""
+        rng = random.Random(f"{self._seed}:catchall:{source_id}:{key}")  # noqa: S311
+        out: list[dict] = []
+        for _ in range(rng.randint(0, 6)):
+            events = rng.randint(1, 400)
+            out.append(
+                {
+                    "logsourceid": source_id,
+                    "sender": f"mock-host-{rng.randint(0, 11):02d}",
+                    "events": events,
+                    "records": rng.randint(1, events),
+                }
+            )
+        return out
+
+    async def get_catchall_senders_keyed(
+        self,
+        *,
+        devicetype_ids: Sequence[int],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> CatchallKeyedResult:
+        """The catch-all result, aggregated here and parsed by the real row parser."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        ids = validate_catchall_type_ids(devicetype_ids)
+        if max_rows < 1:
+            raise ValueError("catch-all row limit must be positive")
+        search = MockCatchallSearch(ids, start, end)
+        self.catchall_searches.append(search)
+        if self.catchall_fault is not None and (fault := self.catchall_fault(search)) is not None:
+            raise fault
+
+        first = int(start.timestamp()) // bucket_seconds
+        last = int(end.timestamp()) // bucket_seconds
+        source_ids = [
+            1000 + index
+            for index, (_name, type_id, _shape, _facts) in enumerate(_SOURCE_TEMPLATES, start=1)
+            if type_id in ids
+        ]
+        groups: dict[tuple[int, str | None, int], dict] = {}
+        for key in range(first, last):
+            if self.catchall_script is not None:
+                events = self.catchall_script(key)
+            else:
+                events = [e for sid in source_ids for e in self._catchall_events(sid, key)]
+            for event in events:
+                group = groups.setdefault(
+                    (event["logsourceid"], event["sender"], key),
+                    {
+                        "logsourceid": event["logsourceid"],
+                        "sender": event["sender"],
+                        "k": key,
+                        "events": 0,
+                        "records": 0,
+                    },
+                )
+                group["events"] += event["events"]
+                group["records"] += event["records"]
+        ordered = sorted(
+            groups.values(),
+            key=lambda g: (-g["events"], g["logsourceid"], str(g["sender"]), g["k"]),
+        )
+        parsed, truncated = parse_catchall_rows(
+            ordered[: max_rows + 1],
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=max_rows,
+        )
+        if self.catchall_force_truncated is not None and self.catchall_force_truncated(search):
+            truncated = True
+        return CatchallKeyedResult(
+            device_type_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=parsed,
+            truncated=truncated,
+            query="MOCK CATCHALL",
         )
 
     async def probe_ips_fields(

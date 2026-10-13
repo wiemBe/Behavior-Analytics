@@ -436,6 +436,38 @@ class IpsKeyedResult(ProviderDTO):
     query: str = ""
 
 
+class CatchallSenderRow(ProviderDTO):
+    """One keyed aggregate row of the catch-all senders search: raw, folded then discarded.
+
+    `sender` is the Ariel field `logsourceidentifier`, as the device sent it. It is
+    attacker-controlled text: only `app.catchall.fold` sanitizes it, and it is
+    persisted only for senders that pass admission. None when the row had none.
+    """
+
+    qradar_log_source_id: int
+    sender: str | None = None
+    bucket_start: datetime
+    #: `SUM(eventcount)`: the volume.
+    events: int
+    #: `COUNT(*)`: provenance only, the coalescing ratio.
+    records: int
+
+
+class CatchallKeyedResult(ProviderDTO):
+    """One catch-all senders search: the rows, whether they are whole, and what was searched."""
+
+    device_type_ids: tuple[int, ...]
+    window_start: datetime
+    window_end: datetime
+    bucket_seconds: int
+    #: Rows returned, at most `max_rows`, in the search's volume order.
+    rows: tuple[CatchallSenderRow, ...] = ()
+    #: More than `max_rows` rows existed: `rows` is the top, the tail is missing.
+    truncated: bool = False
+    #: The query text, for provenance. Holds validated integers only.
+    query: str = ""
+
+
 class WafRejectionObservation(ProviderDTO):
     """What QRadar did with one Ariel query naming one property.
 

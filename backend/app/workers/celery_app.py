@@ -123,6 +123,19 @@ celery_app.conf.beat_schedule = {
         "task": "dispatch_waf_collection",
         "schedule": 60.0,
     },
+    # --- Phase C.2b ----------------------------------------------------------
+    "collect-catchall-senders": {
+        # One read-only keyed Ariel search per cadence tick over the catch-all
+        # device types. Ticks every minute; the CATCHALL_SENDERS cadence gate
+        # decides whether a tick is due. A no-op while
+        # CATCHALL_COLLECTION_ENABLED is false.
+        "task": "collect_catchall_senders",
+        "schedule": 60.0,
+    },
+    "apply-catchall-retention": {
+        "task": "apply_catchall_retention",
+        "schedule": float(settings.catchall_retention_interval_seconds),
+    },
     "apply-waf-retention": {
         "task": "apply_waf_retention",
         "schedule": float(settings.waf_retention_interval_seconds),

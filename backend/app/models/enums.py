@@ -46,6 +46,25 @@ class ClassificationReviewStatus(StrEnum):
     REVIEWED = "REVIEWED"
 
 
+class CatchallReviewStatus(StrEnum):
+    """Review state of a catch-all sender. D-9: NEW goes to a review queue, not a page."""
+
+    NEW = "NEW"
+    REVIEWED = "REVIEWED"
+    DISMISSED = "DISMISSED"
+
+
+class CatchallMeasurement(StrEnum):
+    """What a stored catch-all bucket claims about the true value.
+
+    A bucket that was not measured is not stored at all: there is no FAILED or
+    NOT_COLLECTED row, so absence is never read as a zero.
+    """
+
+    EXACT = "EXACT"
+    LOWER_BOUND = "LOWER_BOUND"
+
+
 class Severity(StrEnum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"
@@ -59,6 +78,7 @@ class SearchFamily(StrEnum):
     WAF_COLLECTION = "WAF_COLLECTION"
     ANOMALY_EXPLANATION = "ANOMALY_EXPLANATION"
     RULE_MATCH = "RULE_MATCH"
+    CATCHALL_SENDERS = "CATCHALL_SENDERS"
 
 
 class SearchCadence(IntEnum):

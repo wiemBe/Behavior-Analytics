@@ -6,6 +6,7 @@ autogenerate and the test fixtures both rely on. Keep this list complete.
 
 from app.models.alert import Alert, AlertNotification
 from app.models.base import Base
+from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.config_change import ConfigurationChange, ConfigurationSnapshot
 from app.models.explanation import (
     EXPLANATION_SCHEMA_VERSION,
@@ -75,6 +76,7 @@ HYPERTABLES: dict[str, str] = {
     "waf_endpoint_metric": "bucket_start",
     "waf_source_bucket": "bucket_start",
     "rule_match_metric": "bucket_start",
+    "catchall_bucket": "bucket_start",
 }
 
 __all__ = [
@@ -90,6 +92,8 @@ __all__ = [
     "AnomalyStateTransition",
     "AuditLog",
     "Base",
+    "CatchallBucket",
+    "CatchallSender",
     "ClassificationRule",
     "CollectionWatermark",
     "ConfigurationChange",
