@@ -1644,3 +1644,194 @@ export const ruleStatisticsApi = {
   statistics: (days: number) => request<RuleStatistics>(`/rules/statistics${qs({ days })}`),
   capacityHistory: (id: string) => request<CapacitySample[]>(`/rules/${id}/capacity-history`),
 };
+
+// --- IPS source administration (docs/FIELD-MAPPING.md §FM.9, T-049's /ips API) ---
+// Guarded by admin:ips, which admin:waf does not grant. A field reference has
+// two kinds: a NORMALIZED QRadar field from the schema's allowlist, or a
+// CUSTOM_PROPERTY. Kept as one block, with its calls in `ipsApi`, so the shared
+// `api` object above stays untouched.
+
+export type IpsReferenceKind = "NORMALIZED" | "CUSTOM_PROPERTY";
+
+export interface IpsFieldReference {
+  kind: IpsReferenceKind;
+  name: string;
+}
+
+export type IpsPresetKey = "CISCO_FTD" | "PALO_ALTO_THREAT";
+
+/** Logical field key to its reference; null = not mapped. */
+export type IpsMapping = Record<string, IpsFieldReference | null>;
+
+export interface IpsMappingFieldOut {
+  key: string;
+  label: string;
+  description: string;
+  required: boolean;
+  used_by_collection: boolean;
+  kinds: IpsReferenceKind[];
+  normalized_options: string[];
+  default: IpsFieldReference | null;
+}
+
+export interface IpsPresetOut {
+  key: IpsPresetKey;
+  label: string;
+  mapping: IpsMapping;
+  action_value_map: ActionValueMap;
+}
+
+export interface IpsMappingSchemaOut {
+  domain: "IPS";
+  property_name_pattern: string;
+  min_coverage_ratio: number;
+  fields: IpsMappingFieldOut[];
+  value_maps: MappingValueMapOut[];
+  presets: IpsPresetOut[];
+}
+
+export interface IpsProfileIn {
+  /** Null only to create; otherwise the version the edit was made against. */
+  expected_profile_version: number | null;
+  product_label: string | null;
+  /** Replaces the stored preset on every save, so an edit sends the current one. */
+  preset: IpsPresetKey | null;
+  mapping: IpsMapping;
+  action_value_map: ActionValueMap;
+}
+
+export interface IpsValidationFieldOut {
+  field: string;
+  reference: IpsFieldReference | null;
+  /** AVAILABLE, NOT_MAPPED, FIELD_REJECTED, UNPOPULATED, INSUFFICIENT_COVERAGE,
+   *  NO_EVENTS or QUERY_FAILED. A status this build does not know is shown as recorded. */
+  status: string;
+  used_by_collection: boolean;
+  populated_events: number | null;
+  populated_ratio: number | null;
+  generic_name_events: number | null;
+  generic_name_ratio: number | null;
+  values_truncated: boolean;
+  discovered_values: DiscoveredValue[];
+  detail: string | null;
+  warnings: string[];
+}
+
+export interface IpsValidationReportOut {
+  status: WafValidationStatus;
+  reasons: string[];
+  warnings: string[];
+  total_events: number | null;
+  window_start: string;
+  window_end: string;
+  profile_version: number;
+  probe_truncated: boolean;
+  ariel_searches: number;
+  fields: IpsValidationFieldOut[];
+}
+
+export interface IpsProfileOut {
+  profile_id: string;
+  instance_id: string;
+  log_source_id: string;
+  qradar_log_source_id: number;
+  log_source_name: string;
+  log_source_type_name: string | null;
+  product_label: string | null;
+  preset: IpsPresetKey | null;
+  profile_version: number;
+  enabled: boolean;
+  mapping: IpsMapping;
+  action_value_map: ActionValueMap;
+  validation_status: WafValidationStatus;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation: IpsValidationReportOut | null;
+  validation_pending: boolean;
+  validation_requested_at: string | null;
+  validation_requested_by: string | null;
+  collection_eligible: boolean;
+  ineligible_reason: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+/** `GET /ips/sources`: no mapping and no per-field results, only the state. */
+export interface IpsSourceStatus {
+  profile_id: string;
+  instance_id: string;
+  log_source_id: string;
+  qradar_log_source_id: number;
+  log_source_name: string;
+  log_source_type_name: string | null;
+  product_label: string | null;
+  preset: IpsPresetKey | null;
+  enabled: boolean;
+  profile_version: number;
+  validation_status: WafValidationStatus;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation_pending: boolean;
+  validation_requested_at: string | null;
+  validation_requested_by: string | null;
+  collection_eligible: boolean;
+  ineligible_reason: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface IpsCandidateOut {
+  instance_id: string;
+  log_source_id: string;
+  qradar_id: number;
+  name: string;
+  type_name: string | null;
+  source_class: string | null;
+}
+
+export interface IpsProfileHistoryEntryOut {
+  at: string;
+  actor: string | null;
+  /** ips.profile.created | mapping_changed | relabelled | validation_requested |
+   *  validated | enabled | disabled. Unknown values are shown as recorded. */
+  action: string;
+  profile_version: number | null;
+  mapping_before: Record<string, unknown> | null;
+  mapping_after: Record<string, unknown> | null;
+  /** SUCCESS, FAILURE, SOURCE_BUSY, ... */
+  outcome: string;
+  reasons: string[] | null;
+}
+
+export const ipsApi = {
+  mappingSchema: () => request<IpsMappingSchemaOut>("/ips/mapping-schema"),
+  sources: () => request<IpsSourceStatus[]>("/ips/sources"),
+  // instance_id is required by the route; there is no instances endpoint.
+  candidates: (params: { instance_id: string; q?: string; limit?: number }) =>
+    request<IpsCandidateOut[]>(`/ips/candidates${qs({ ...params })}`),
+  profile: (logSourceId: string) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile`),
+  saveProfile: (logSourceId: string, body: IpsProfileIn) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  validateProfile: (logSourceId: string) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile/validate`, {
+      method: "POST",
+    }),
+  enableProfile: (logSourceId: string) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile/enable`, {
+      method: "POST",
+    }),
+  disableProfile: (logSourceId: string) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile/disable`, {
+      method: "POST",
+    }),
+  profileHistory: (logSourceId: string) =>
+    request<IpsProfileHistoryEntryOut[]>(`/ips/log-sources/${logSourceId}/profile/history`),
+  propertyCatalog: (logSourceId: string, refresh = false) =>
+    request<PropertyCatalogOut>(
+      `/ips/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined })}`,
+    ),
+};
