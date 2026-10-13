@@ -306,7 +306,8 @@ async def test_pending_enable_disable_report_history_and_candidates(
         mapping=IPS_PRESETS[IpsPreset.CISCO_FTD].mapping_dict(),
         action_value_map={},
         validation_status=IpsProfileValidationStatus.UNVALIDATED,
-        validation_requested_at=NOW,
+        # Pending relative to the API's real clock: fixed timestamps expire after the 900 s timeout.
+        validation_requested_at=datetime.now(UTC),
         validation_requested_by="seed",
         validation_report={
             "status": "INCONCLUSIVE",
@@ -336,10 +337,13 @@ async def test_pending_enable_disable_report_history_and_candidates(
     profile_id = profile.id
     source_id = source.id
     instance_id = instance.id
+    # The API writes audit rows with the real clock; the seeded rows must sort
+    # newer than those whatever time the test runs.
+    history_base = datetime.now(UTC) + timedelta(hours=1)
     for index in range(55):
         db_session.add(
             AuditLog(
-                created_at=NOW + timedelta(seconds=index),
+                created_at=history_base + timedelta(seconds=index),
                 actor=f"actor-{index}",
                 action="ips.profile.relabelled",
                 object_type="ips_source_profile",
@@ -558,6 +562,14 @@ async def test_worker_lock_countdown_exhaustion_and_terminal_guards(
 ) -> None:
     profile = await pending_profile(db_session)
     profile_id = profile.id
+    # A previously VALID, enabled source must keep that state when its own
+    # collection holds the lock past the retries: only the request is cleared.
+    previous_report = {"status": "VALID", "marker": "previous"}
+    profile.validation_status = IpsProfileValidationStatus.VALID
+    profile.validated_profile_version = profile.profile_version
+    profile.validation_report = previous_report
+    profile.enabled = True
+    await db_session.commit()
     maker = async_sessionmaker(
         create_async_engine(db_schema, poolclass=NullPool), expire_on_commit=False
     )
@@ -606,7 +618,10 @@ async def test_worker_lock_countdown_exhaustion_and_terminal_guards(
     db_session.expire_all()
     current = await db_session.get(IpsSourceProfile, profile_id)
     assert current is not None
-    assert current.validation_status == IpsProfileValidationStatus.UNVALIDATED
+    assert current.validation_status == IpsProfileValidationStatus.VALID
+    assert current.validated_profile_version == current.profile_version
+    assert current.validation_report == previous_report
+    assert current.enabled is True
     assert current.validation_requested_at is None
     audit = await db_session.scalar(
         select(AuditLog).where(

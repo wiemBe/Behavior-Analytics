@@ -112,7 +112,7 @@ class TestLogSourceMetrics:
                 return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
             raise AssertionError(f"unexpected request: {request.method} {request.url}")
 
-        provider, _ = build_provider(handler, page_size=10, max_pages=2)
+        provider, _ = build_provider(handler, page_size=10, max_pages=2, ariel_stop_pad_seconds=0)
         start = datetime(2026, 7, 31, 10, 0, tzinfo=UTC)
         end = datetime(2026, 7, 31, 10, 5, tzinfo=UTC)
 
@@ -447,6 +447,7 @@ def build_provider(
     *,
     sleep: RecordingSleep | None = None,
     seed: int = 1337,
+    ariel_stop_pad_seconds: int = 0,
     **kwargs,
 ) -> tuple[QRadarRestProvider, RecordingSleep]:
     """A provider wired to `handler`, with the real header/timeout config kept.
@@ -472,6 +473,7 @@ def build_provider(
         client=client,
         rng=random.Random(seed),
         sleep=recorder,
+        ariel_stop_pad_seconds=ariel_stop_pad_seconds,
         **kwargs,
     )
     return provider, recorder
@@ -1507,7 +1509,7 @@ class TestDimensionAggregates:
                 return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
             raise AssertionError(f"unexpected request: {request.method} {request.url}")
 
-        provider, _ = build_provider(handler, page_size=10, max_pages=2)
+        provider, _ = build_provider(handler, page_size=10, max_pages=2, ariel_stop_pad_seconds=0)
         start = datetime(2026, 8, 2, 13, 8, tzinfo=UTC)
         end = datetime(2026, 8, 2, 13, 12, tzinfo=UTC)
 
@@ -1619,6 +1621,128 @@ class TestDimensionAggregates:
         assert aggregate.distinct_count == 3
         assert aggregate.truncated is False
         assert aggregate.total_count == 9000
+
+
+class TestArielScopeHelper:
+    """Tests for the _ariel_scope helper that pads the STOP bound."""
+
+    def test_pad_zero_gives_exact_text(self) -> None:
+        """pad=0 reproduces today's exact START/STOP text."""
+        provider, _ = build_provider(
+            lambda r: httpx.Response(200), ariel_stop_pad_seconds=0
+        )
+        start_ms = 1_785_500_000_000
+        end_ms = 1_785_500_300_000
+        assert provider._ariel_scope(start_ms, end_ms) == f"START {start_ms} STOP {end_ms}"
+
+    def test_pad_applied_to_stop(self) -> None:
+        """Positive pad widens STOP by the configured seconds."""
+        provider, _ = build_provider(
+            lambda r: httpx.Response(200), ariel_stop_pad_seconds=60
+        )
+        start_ms = 1_785_500_000_000
+        end_ms = 1_785_500_300_000
+        # We can't easily test the cap-at-now without a custom clock, but we
+        # can verify the pad is added when the end is far in the past.
+        # Use a fixed clock that returns a time far after end_ms.
+        fixed_now = datetime.fromtimestamp((end_ms + 10_000_000) / 1000, tz=UTC)
+        provider._clock = lambda: fixed_now
+        scope = provider._ariel_scope(start_ms, end_ms)
+        expected_stop = end_ms + 60_000
+        assert scope == f"START {start_ms} STOP {expected_stop}"
+
+    def test_pad_capped_at_now(self) -> None:
+        """STOP never exceeds the current time from the injected clock."""
+        provider, _ = build_provider(
+            lambda r: httpx.Response(200), ariel_stop_pad_seconds=60
+        )
+        start_ms = 1_785_500_000_000
+        end_ms = 1_785_500_300_000
+        # Clock returns a time *before* end_ms + pad
+        fixed_now = datetime.fromtimestamp((end_ms + 10_000) / 1000, tz=UTC)
+        provider._clock = lambda: fixed_now
+        scope = provider._ariel_scope(start_ms, end_ms)
+        expected_stop = int(fixed_now.timestamp() * 1000)
+        assert scope == f"START {start_ms} STOP {expected_stop}"
+        # The capped stop is less than end_ms + pad
+        assert expected_stop < end_ms + 60_000
+
+    def test_stop_never_shrinks_below_end_ms(self) -> None:
+        """STOP is floored at end_ms: end in future -> STOP == end;
+        end 30s before now with pad 60 -> STOP == now; end long before now -> STOP == end + pad."""
+        provider, _ = build_provider(
+            lambda r: httpx.Response(200), ariel_stop_pad_seconds=60
+        )
+        start_ms = 1_785_500_000_000
+
+        # Case 1: end_ms in the future relative to clock -> STOP equals end_ms exactly
+        end_ms_future = 1_785_500_400_000  # 100s after start
+        fixed_now = datetime.fromtimestamp(
+            (end_ms_future - 10_000) / 1000, tz=UTC
+        )  # 10s before end
+        provider._clock = lambda: fixed_now
+        scope = provider._ariel_scope(start_ms, end_ms_future)
+        assert scope == f"START {start_ms} STOP {end_ms_future}"
+
+        # Case 2: end_ms 30s before now, pad 60s -> STOP equals now
+        end_ms_recent = 1_785_500_300_000  # 300s after start
+        fixed_now = datetime.fromtimestamp(
+            (end_ms_recent + 30_000) / 1000, tz=UTC
+        )  # 30s after end
+        provider._clock = lambda: fixed_now
+        scope = provider._ariel_scope(start_ms, end_ms_recent)
+        expected_stop = int(fixed_now.timestamp() * 1000)
+        assert scope == f"START {start_ms} STOP {expected_stop}"
+        assert expected_stop == end_ms_recent + 30_000
+
+        # Case 3: end_ms long before now -> STOP equals end_ms + pad
+        end_ms_past = 1_785_500_000_000  # same as start
+        fixed_now = datetime.fromtimestamp(
+            (end_ms_past + 1_000_000) / 1000, tz=UTC
+        )  # ~16min after end
+        provider._clock = lambda: fixed_now
+        scope = provider._ariel_scope(start_ms, end_ms_past)
+        expected_stop = end_ms_past + 60_000
+        assert scope == f"START {start_ms} STOP {expected_stop}"
+
+    def test_where_clause_unchanged_in_queries(self) -> None:
+        """The WHERE bound is never padded; only START/STOP gets the pad."""
+        captured: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/ariel/searches"):
+                captured.append(request.url.params["query_expression"])
+                return httpx.Response(201, json={"search_id": "m-1", "status": "WAIT"})
+            if request.url.path.endswith("/ariel/searches/m-1/results"):
+                return httpx.Response(200, json={"events": []})
+            if request.url.path.endswith("/ariel/searches/m-1"):
+                return httpx.Response(200, json={"status": "COMPLETED", "progress": 100})
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        provider, _ = build_provider(
+            handler, page_size=10, max_pages=2, ariel_stop_pad_seconds=60
+        )
+        # Use a clock far in the future so the pad is not capped
+        fixed_now = datetime(2026, 8, 3, 10, 10, tzinfo=UTC)
+        provider._clock = lambda: fixed_now
+
+        import asyncio
+
+        asyncio.run(
+            provider.get_log_source_metrics(
+                datetime(2026, 7, 31, 10, 0, tzinfo=UTC),
+                datetime(2026, 7, 31, 10, 5, tzinfo=UTC),
+            )
+        )
+
+        query = captured[0]
+        start_ms = int(datetime(2026, 7, 31, 10, 0, tzinfo=UTC).timestamp() * 1000)
+        end_ms = int(datetime(2026, 7, 31, 10, 5, tzinfo=UTC).timestamp() * 1000)
+
+        # WHERE clause uses the exact end_ms
+        assert f"starttime >= {start_ms} AND starttime < {end_ms}" in query
+        # STOP is padded
+        assert f"STOP {end_ms + 60_000}" in query
 
 
 # A throwaway self-signed certificate, used only to prove a CA bundle path is

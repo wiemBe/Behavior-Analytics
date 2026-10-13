@@ -132,6 +132,9 @@
   --fw-medium: 500;
   --fw-semibold: 600;
 
+  /* The property picker's list scrolls inside itself past this height. */
+  --picker-list-max-h: min(22rem, 50vh);
+
   /* --- layout -------------------------------------------------------------- */
   --sidebar-w: 232px;
   --page-max: 1360px;

@@ -279,6 +279,83 @@ export function catalogNote(
   return null;
 }
 
+// --- property search -------------------------------------------------------
+
+/** Split on spaces, `_`, `-` and camelCase boundaries; lower-cased, no empties. */
+export function searchTokens(text: string): string[] {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .filter((t) => t !== "")
+    .map((t) => t.toLowerCase());
+}
+
+export interface PropertyMatch {
+  /** Lower is better: the number of query tokens that start inside a word. */
+  score: number;
+  /** Half-open [start, end) character ranges of `name` to emphasise. */
+  ranges: [number, number][];
+}
+
+/**
+ * Whether every token of `query` occurs in `name`, ignoring case and separators.
+ * Matching runs on the name with its separators removed, so `responsecode`,
+ * `resp code` and `waf resp` all find `WAF_ResponseCode`. An empty query matches
+ * everything with nothing to emphasise.
+ */
+export function matchProperty(name: string, query: string): PropertyMatch | null {
+  const tokens = searchTokens(query);
+  if (tokens.length === 0) return { score: 0, ranges: [] };
+
+  const compact: string[] = [];
+  const origin: number[] = []; // compact index -> index in `name`
+  const wordStart = new Set<number>();
+  let prevAlnum = false;
+  let prevLower = false;
+  for (let i = 0; i < name.length; i++) {
+    const ch = name[i];
+    const alnum = /[A-Za-z0-9]/.test(ch);
+    if (alnum) {
+      const upper = /[A-Z]/.test(ch);
+      if (!prevAlnum || (upper && prevLower)) wordStart.add(compact.length);
+      compact.push(ch.toLowerCase());
+      origin.push(i);
+      prevLower = /[a-z0-9]/.test(ch);
+    }
+    prevAlnum = alnum;
+  }
+  const flat = compact.join("");
+
+  let score = 0;
+  const spans: [number, number][] = [];
+  for (const token of tokens) {
+    const first = flat.indexOf(token);
+    if (first < 0) return null;
+    // Prefer an occurrence that starts a word, so `code` marks the word Code.
+    let at = first;
+    for (let i = first; i >= 0; i = flat.indexOf(token, i + 1)) {
+      if (wordStart.has(i)) {
+        at = i;
+        break;
+      }
+    }
+    if (!wordStart.has(at)) score += 1;
+    spans.push([at, at + token.length]);
+  }
+
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const [a, b] of spans) {
+    const last = merged[merged.length - 1];
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else merged.push([a, b]);
+  }
+  // Back to positions in the original name; a run keeps any separator inside it.
+  const ranges = merged.map(([a, b]): [number, number] => [origin[a], origin[b - 1] + 1]);
+  return { score, ranges };
+}
+
 /** The words after a suggestion's name. */
 export function suggestionHint(p: PropertyCatalogOut["properties"][number]): string {
   if (!p.name_allowed) return "not selectable: name not allowed";

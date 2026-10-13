@@ -231,6 +231,8 @@ class QRadarRestProvider(QRadarProvider):
         client: httpx.AsyncClient | None = None,
         rng: random.Random | None = None,
         sleep: Callable[[float], Awaitable[None]] | None = None,
+        ariel_stop_pad_seconds: int = 0,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not verify_ssl:
             # Hard failure, not a warning. See config._production_hardening.
@@ -247,6 +249,8 @@ class QRadarRestProvider(QRadarProvider):
         self._max_pages = max(1, max_pages)
         self._rng = rng or random.Random()  # noqa: S311 - jitter, not cryptographic
         self._sleep = sleep or asyncio.sleep
+        self._ariel_stop_pad_seconds = max(0, int(ariel_stop_pad_seconds))
+        self._clock = clock or (lambda: datetime.now(UTC))
 
         if client is not None:
             self._client = client
@@ -269,6 +273,29 @@ class QRadarRestProvider(QRadarProvider):
             # Bounded on every phase: a stalled read must not pin a worker.
             timeout=httpx.Timeout(timeout, connect=connect_timeout),
         )
+
+    def _ariel_scope(self, start_ms: int, end_ms: int) -> str:
+        """Render the Ariel START/STOP clause with a padded STOP bound.
+
+        The STOP bound is widened by `ariel_stop_pad_seconds` (from the
+        provider factory, which reads the `ariel_stop_pad_seconds` setting;
+        the constructor default of 0 means no pad) so that events stored
+        slightly after the window end but with starttime inside the window
+        are not dropped. The WHERE clause remains the authoritative half-open
+        bound [start_ms, end_ms) and is never padded. The padded STOP is
+        capped at the current time (from the injected clock) so it never
+        reaches into the future, and it is floored at `end_ms` so it never
+        shrinks below the WHERE bound.
+
+        A pad of 0 reproduces the exact text used before this change.
+        """
+        pad_ms = self._ariel_stop_pad_seconds * 1000
+        if pad_ms == 0:
+            stop_ms = end_ms
+        else:
+            now_ms = int(self._clock().timestamp() * 1000)
+            stop_ms = max(end_ms, min(end_ms + pad_ms, now_ms))
+        return f"START {start_ms} STOP {stop_ms}"
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -631,7 +658,7 @@ class QRadarRestProvider(QRadarProvider):
             # the WHERE clause, so any bucket older than the default silently
             # returns zero rows -- indistinguishable from real silence. The
             # WHERE clause stays authoritative for the half-open bucket bound.
-            f"START {start_ms} STOP {end_ms}"
+            f"{self._ariel_scope(start_ms, end_ms)}"
         )
         handle = await self.create_ariel_search(aql)
         status: ArielSearchStatusDTO | None = None
@@ -710,7 +737,7 @@ class QRadarRestProvider(QRadarProvider):
             "FROM events "
             f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
             f"GROUP BY logsourceid, starttime / {bucket_ms} "
-            f"LIMIT {max_rows + 1} START {start_ms} STOP {end_ms}"
+            f"LIMIT {max_rows + 1} {self._ariel_scope(start_ms, end_ms)}"
         )
         handle = await self.create_ariel_search(aql)
         status: ArielSearchStatusDTO | None = None
@@ -857,7 +884,7 @@ class QRadarRestProvider(QRadarProvider):
             # See get_log_source_metrics: without START/STOP the search falls
             # back to a recent default window, so contributor evidence for any
             # past anomaly interval would come back empty rather than absent.
-            f"START {start_ms} STOP {end_ms}"
+            f"{self._ariel_scope(start_ms, end_ms)}"
         )
         try:
             rows = await self._run_bounded_aggregate(aql, max_rows=limit)
@@ -928,7 +955,7 @@ class QRadarRestProvider(QRadarProvider):
             f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
             f"GROUP BY creEventList ORDER BY COUNT(*) DESC LIMIT {limit} "
             # START/STOP scopes the search itself; see get_log_source_metrics.
-            f"START {start_ms} STOP {end_ms}"
+            f"{self._ariel_scope(start_ms, end_ms)}"
         )
         raw = await self._run_bounded_aggregate(aql, max_rows=limit)
         rows, malformed = parse_rule_match_rows(raw)
@@ -983,7 +1010,7 @@ class QRadarRestProvider(QRadarProvider):
             f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
             f"GROUP BY creEventList, starttime / {window_ms} "
             f"ORDER BY COUNT(*) DESC LIMIT {cap + 1} "
-            f"START {start_ms} STOP {end_ms}"
+            f"{self._ariel_scope(start_ms, end_ms)}"
         )
         raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
         truncated = len(raw) > cap
@@ -1070,7 +1097,7 @@ class QRadarRestProvider(QRadarProvider):
             f"GROUP BY {group_cols} ORDER BY SUM(eventcount) DESC LIMIT {limit} "
             # START/STOP scopes the search itself; without it a historical bucket
             # silently returns nothing. See get_log_source_metrics.
-            f"START {start_ms} STOP {end_ms}"
+            f"{self._ariel_scope(start_ms, end_ms)}"
         )
         rows = await self._run_bounded_aggregate(aql, max_rows=limit)
 
@@ -1080,7 +1107,7 @@ class QRadarRestProvider(QRadarProvider):
             'SELECT SUM(eventcount) AS "total_events" FROM events '  # noqa: S608
             f"WHERE logsourceid = {int(qradar_log_source_id)} "
             f"AND starttime >= {start_ms} AND starttime < {end_ms} "
-            f"LIMIT 1 START {start_ms} STOP {end_ms}"
+            f"LIMIT 1 {self._ariel_scope(start_ms, end_ms)}"
         )
         total_rows = await self._run_bounded_aggregate(total_aql, max_rows=1)
         total = as_int(total_rows[0].get("total_events")) if total_rows else 0
@@ -1145,7 +1172,7 @@ class QRadarRestProvider(QRadarProvider):
             f"AND starttime >= {start_ms} AND starttime < {end_ms} "
             f"AND {value} IS NOT NULL "
             f"GROUP BY {group_cols} ORDER BY SUM(eventcount) DESC LIMIT {limit} "
-            f"START {start_ms} STOP {end_ms}"
+            f"{self._ariel_scope(start_ms, end_ms)}"
         )
         rows = await self._run_bounded_aggregate(aql, max_rows=limit)
         groups = [g for g in map(parse_breakdown_row, rows) if g is not None]
@@ -1218,14 +1245,14 @@ class QRadarRestProvider(QRadarProvider):
             'UNIQUECOUNT(sourceip) AS "distinct_clients" FROM events '
             f"{where}"
             f"GROUP BY {group_cols}, starttime / {bucket_ms} LIMIT {cap + 1} "
-            f"START {start_ms} STOP {end_ms}"
+            f"{self._ariel_scope(start_ms, end_ms)}"
         )
         total_aql = (
             f'SELECT starttime / {bucket_ms} AS "k", '  # noqa: S608
             'SUM(eventcount) AS "total_events" FROM events '
             f"{where}"
             f"GROUP BY starttime / {bucket_ms} LIMIT {cap + 1} "
-            f"START {start_ms} STOP {end_ms}"
+            f"{self._ariel_scope(start_ms, end_ms)}"
         )
         group_rows = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
         if len(group_rows) > cap:
@@ -1312,7 +1339,7 @@ class QRadarRestProvider(QRadarProvider):
             f"AND starttime >= {start_ms} AND starttime < {end_ms} "
             f"AND {value} IS NOT NULL "
             f"GROUP BY {group_cols}, starttime / {bucket_ms} LIMIT {cap + 1} "
-            f"START {start_ms} STOP {end_ms}"
+            f"{self._ariel_scope(start_ms, end_ms)}"
         )
         rows = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
         if len(rows) > cap:
@@ -1365,7 +1392,7 @@ class QRadarRestProvider(QRadarProvider):
             f"WHERE logsourceid = {int(qradar_log_source_id)} "
             f"AND starttime >= {start_ms} AND starttime < {end_ms}"
         )
-        bound = f"START {start_ms} STOP {end_ms}"
+        bound = self._ariel_scope(start_ms, end_ms)
         limit = max(1, min(max_values, self._page_size))
 
         total_aql = f'SELECT SUM(eventcount) AS "total_events" FROM events {scope} LIMIT 1 {bound}'  # noqa: S608
@@ -1453,7 +1480,8 @@ class QRadarRestProvider(QRadarProvider):
     def _ips_population_condition(logical_field: str, expression: str, name: str) -> str:
         if logical_field in {"SOURCE_IP", "DESTINATION_IP"}:
             return (
-                f"{expression} IS NOT NULL AND {expression} NOT LIKE '127.%' "
+                # QRadar rejects LIKE on an IP-typed field (T-065); INCIDR is accepted.
+                f"{expression} IS NOT NULL AND NOT INCIDR('127.0.0.0/8', {expression}) "
                 f"AND {expression} != '::1'"
             )
         if logical_field == "DESTINATION_PORT":
@@ -1508,7 +1536,7 @@ class QRadarRestProvider(QRadarProvider):
             f"WHERE logsourceid = {int(qradar_log_source_id)} "
             f"AND starttime >= {start_ms} AND starttime < {end_ms}"
         )
-        bound = f"START {start_ms} STOP {end_ms}"
+        bound = self._ariel_scope(start_ms, end_ms)
         searches = 0
 
         async def run(aql: str, *, max_rows: int) -> list[dict]:
@@ -1663,13 +1691,14 @@ class QRadarRestProvider(QRadarProvider):
         start_ms = int(start.timestamp() * 1000)
         end_ms = int(end.timestamp() * 1000)
         out: list[WafRejectionObservation] = []
+        bound = self._ariel_scope(start_ms, end_ms)
         for name in dict.fromkeys(property_names):
             prop = self._quote_property(name)
             aql = (
                 f'SELECT {prop} AS "v" FROM events '  # noqa: S608
                 f"WHERE logsourceid = {int(qradar_log_source_id)} "
                 f"AND starttime >= {start_ms} AND starttime < {end_ms} "
-                f"LIMIT 1 START {start_ms} STOP {end_ms}"
+                f"LIMIT 1 {bound}"
             )
             try:
                 handle = await self.create_ariel_search(aql)

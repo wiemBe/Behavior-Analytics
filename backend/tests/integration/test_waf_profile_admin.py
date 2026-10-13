@@ -352,7 +352,8 @@ async def test_validate_pending_timeout_and_enable_disable(
         mapping=WafFieldMapping(url="URL", method="HTTP_Method"),
         actor="seed",
     )
-    profile.validation_requested_at = NOW
+    # Pending relative to the API's real clock: fixed timestamps expire after the 900 s timeout.
+    profile.validation_requested_at = datetime.now(UTC)
     profile.validation_requested_by = "seed"
     profile_id = profile.id
     await db_session.commit()

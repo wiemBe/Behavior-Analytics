@@ -63,9 +63,16 @@ describe("AlertActions", () => {
   });
 
   it("does not submit twice when clicked repeatedly", async () => {
+    // The request stays in flight until this test releases it, so the repeated
+    // clicks always land while the guard is up, whatever the machine load is.
+    let release: (v: unknown) => void = () => {};
     const ack = vi
       .spyOn(api, "acknowledgeAlert")
-      .mockImplementation(() => new Promise((res) => setTimeout(() => res({} as never), 50)));
+      .mockReturnValue(
+        new Promise((res) => {
+          release = res;
+        }) as never,
+      );
     const user = userEvent.setup();
     render(<AlertActions alertId="a-1" status="OPEN" />);
 
@@ -73,6 +80,13 @@ describe("AlertActions", () => {
     await user.click(button);
     await user.click(button);
     await user.click(button);
+
+    expect(await screen.findByRole("button", { name: "Acknowledging…" })).toBeDisabled();
+
+    // Settle the request so the component finishes its state updates inside act.
+    await act(async () => {
+      release({});
+    });
 
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeNull());
     // A second acknowledge would write another audit row and enqueue another page.

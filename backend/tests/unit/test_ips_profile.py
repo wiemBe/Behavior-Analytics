@@ -278,7 +278,10 @@ class TestProviderProbe:
             max_action_values=20,
         )
         joined = "\n".join(queries)
-        assert '"sourceip" NOT LIKE \'127.%\'' in joined
+        assert "NOT INCIDR('127.0.0.0/8', \"sourceip\")" in joined
+        assert "NOT INCIDR('127.0.0.0/8', \"destinationip\")" in joined
+        # QRadar rejects LIKE on an IP-typed field (T-065).
+        assert "LIKE '127." not in joined
         assert '"sourceip" != \'::1\'' in joined
         assert '"destinationport" > 0' in joined
         assert '"protocolid" > 0 AND "protocolid" < 255' in joined
@@ -289,6 +292,35 @@ class TestProviderProbe:
         assert result.ariel_searches <= 24
         action = next(field for field in result.fields if field.logical_field == "ACTION")
         assert [value.value for value in action.action_values] == ["BLOCK", "ALLOW"]
+
+    @pytest.mark.asyncio
+    async def test_every_search_carries_the_padded_ariel_scope(self) -> None:
+        handler, queries = _probe_handler()
+        provider, _ = build_provider(
+            handler, page_size=50, max_pages=1, ariel_stop_pad_seconds=60
+        )
+        end = T0 + timedelta(minutes=15)
+        provider._clock = lambda: end + timedelta(hours=1)
+        await provider.probe_ips_fields(
+            qradar_log_source_id=413,
+            window_start=T0,
+            window_end=end,
+            fields=[
+                IpsFieldProbeRequest(
+                    logical_field=logical.value,
+                    reference_kind=reference.kind.value,
+                    name=reference.name,
+                )
+                for logical, reference in MAPPING.mapped().items()
+            ],
+        )
+        start_ms = int(T0.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        assert queries
+        for query in queries:
+            # STOP is padded; the WHERE bound stays exact.
+            assert f"START {start_ms} STOP {end_ms + 60_000}" in query
+            assert f"starttime < {end_ms}" in query
 
     @pytest.mark.asyncio
     async def test_action_value_result_is_bounded_and_marks_truncation(self) -> None:

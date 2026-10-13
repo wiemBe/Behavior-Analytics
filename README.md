@@ -451,11 +451,33 @@ inventory surfaces remain as supporting capabilities.
 | `/` · `/log-sources` · `/log-sources/[id]` | SOC overview and log-source inventory (Phase 1) |
 | `/offenses` · `/rules` · `/coverage` | Offenses, rule health, detection coverage (Phase 3) |
 | `/searches` · `/searches/[id]` · `/alerts` · `/alerts/[id]` | Scheduled searches and alert lifecycle (Phase 2) |
+| `/fleet` · `/fleet/sources` | Log-source fleet by class — volume against expected EPS with its completeness, the review queue of new and conflicting sources, class overrides (Phase C.1) |
+| `/admin/search-cadence` · `/admin/classification-rules` · `/admin/waf-sources` | Administration — search cadence per family (`admin:search_cadence`), classification rules (`admin:classification`), per-source WAF field mappings with validation (`admin:waf`) |
 
 All of these require the `read:anomalies` permission (behavioral routes) or their Phase 2/3
 equivalents. The guard lives on the router, not on individual handlers, so adding an endpoint to a
 guarded module cannot ship it unauthenticated. The browser holds no QRadar credential and never
 contacts QRadar or the MCP service directly.
+
+### WAF field mappings
+
+Each WAF log source has its own profile: which QRadar custom property carries the URL, the HTTP
+method, the virtual host, the action, the response code, the rule id and the user agent, and which
+action values count as blocked or allowed. `/admin/waf-sources` edits it; the design is
+[`docs/FIELD-MAPPING.md`](docs/FIELD-MAPPING.md).
+
+- The property picker lists the console's custom properties — names and types only — with the ones
+  that have a parsing expression for the source's log-source type first, and searches them by name
+  fragments (`resp code` finds `WAF_ResponseCode`). It is a list to choose from, never a gate: any
+  name may be typed, and validation decides.
+- Saving a mapping change bumps the profile version and pauses that source's collection until the
+  new version validates `VALID`. Validation runs in a worker as bounded, read-only Ariel searches
+  that measure how many events carry each property; a result is never stamped onto a newer version
+  than the one it checked.
+- Two administrators cannot overwrite each other: a change names the version it was made against,
+  and a stale one is refused with 409.
+- Every change, validation request and result, enable and disable is an `AuditLog` row. No profile
+  operation writes to QRadar. The CLI (`python -m app.cli.waf profile …`) keeps working.
 
 ### The investigation page
 

@@ -8,28 +8,11 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (saved 2026-10-13 ~00:40, end of the fourth session)
+## ▶ Resume here (saved 2026-10-13 ~11:20, end of the fifth session)
 
-**Fifth session (2026-10-13, from 09:42) — if this session dies, resume from here:**
-- Test DB container restarted; per-task DBs recreated as needed (`createdb -U test …`).
-- **Merged into `feat/phase-ce` this session:** T-047 (`dafe5ae`), T-024 (`400f9d1`), T-056
-  (`e5b75f7`), **T-042** (`a365f15`, migration head now `0015`).
-- **In flight:**
-  - **T-046b** (opencode `big-pickle`, worktree `t046`, merge of `feat/phase-ce` in progress there,
-    no conflicts): re-chain `0016` after `0015`, migration tests, round trip. Then commit + merge.
-  - **T-048** round 1 (opencode `nemotron-3-ultra-free`, worktree `t048`): `STOP` cap fix.
-  - **T-057** WAF analyst API (Sonnet, worktree `t057`).
-- **Next:** T-049 (Codex) once T-046 is merged (migration `0017`); T-045 docs (free model; also fix
-  the stale `expected_eps` comment in `backend/app/schemas/fleet.py`); full gate; merge to `main`.
-- **User question (2026-10-13):** "did you add a way to see the custom properties and say 'in WAF
-  this one is X'?" Answered: yes (T-043 catalog + T-044 editor + T-042 API). **User's decision:
-  no auto-suggestion ("öneri sunmayalım"); instead a search inside the property list ("aşağı
-  kaydır veya ctrl f yapmıyım").** → **T-058** (Sonnet, worktree `t058`): searchable, grouped,
-  uncapped property picker.
-
-**The user stopped the session with "hiçbir şey yapma sadece son durumu planner md ye kaydet".
-Nothing is running.** No agent was left mid-task except T-024 (below), which died on the Claude
-session limit.
+**The user ended the session after the `main` merge ("maine aldıktan sonra duralım", the chat
+context had grown too large).** `main` @ **`dabd744`** now holds everything below. **Two agents
+were still running at the end** (T-049 Codex, T-060 Sonnet) — see "In flight"; check both first.
 
 **Read §0 first.** The user set three product goals (G1 log-source fleet, G2 IPS/WAF behavior,
 G3 rule analytics). Every task is scheduled against them.
@@ -44,61 +27,72 @@ G3 rule analytics). Every task is scheduled against them.
   prefer changing the code if that keeps the old behavior; update a pinned value only when the
   spec changes it on purpose. Every ruling is recorded in the task rows of §3.
 - **The user, on 2026-10-12: "hangisi iyiyse onu kullan bana takılma".** Pick the free models
-  yourself. **The user, on 2026-10-12 (fourth session): "kalan işlere de devam et … ajanlarını
-  kullanmayı unutma"** — run several threads in parallel, always through agents.
+  yourself. **The user, 2026-10-12 and again 2026-10-13: "… ajanlarını kullanmayı unutma"** — run
+  several threads in parallel, always through agents.
+- **Merging an old agent branch:** commit the agent's WIP on its branch, `git merge --no-ff
+  --no-commit feat/phase-ce` into it, and let the agent resolve conflicts and re-gate on the
+  integrated tree. Never `git add` the `backend/.venv` / `frontend/node_modules` symlinks.
 
 **Branches:**
-- **`main` @ `b4539c6`** (2026-10-13): `feat/phase-ce` @ `8e0187e` merged with `--no-ff` after a
-  green full gate on that commit — backend **2,765 passed**, 5 skipped, 0 failed (fresh DB);
-  ruff clean; mypy 31 errors in 18 files (baseline); alembic 0012→0014→0012→0014 clean, no
-  drift; frontend lint, typecheck, build, **796/796** — and T-040's live validation.
-- **`feat/phase-ce` @ `45986cd`** (pushed; the main checkout is on it). On top of `main` it adds
-  T-044 (`4938c9b`, the WAF mapping UI) and docs only (T-030 report, Phase D design, planner).
-  Migration head: **`0014`**. Not gated as a whole since `8e0187e`; T-044 was gated on its own.
-- **Worktrees** (`../QRadar-Dash-wt/`):
-  - **still needed:** `t042` (T-042, review fixes owed), `t046` (T-046, merge owed), `t024`
-    (T-024, partial work, uncommitted);
-  - **merged, removable:** `t022c`, `t023`, `t031`, `t040`, `t043`, `t044`, and `gate` (detached,
-    used for the full gate and the `main` merge). `t021`…`t039` were removed this session.
-- Per-task test DBs on `:5433`: `qradar_obs_t022c`, `t031`, `t040`, `t042`, `t043`, `t023`,
-  `t046`, `gate`, `gate_mig`. The test-DB container is tmpfs; after a restart, recreate the ones
-  still needed (`t042`, `t046`) with `createdb`.
+- **`main` @ `dabd744`** (2026-10-13 ~11:20): `feat/phase-ce` merged `--no-ff` after a green full
+  gate on `921bf7e` (later commits planner-only): ruff clean; mypy 31 in 18 files; backend
+  **2,177 unit + 763 integration passed**, 0 failed (fresh DB); alembic 0014→0016→0014→0016 clean,
+  no drift, single head `0016`; frontend lint, typecheck, **1,095/1,095**, build.
+- **`feat/phase-ce` @ `921bf7e`** (pushed; the main checkout is on it). Migration head **`0016`**.
+  Merged this session, each reviewed and re-gated by the orchestrator:
+  - **T-042** WAF profile admin API + async validation, migration `0015` (`a365f15`);
+  - **T-046** rule statistics + capacity history, migration `0016`, re-chained after `0015`
+    (`46ca49b`);
+  - **T-024** fleet UI (`400f9d1`); **T-058** searchable property picker (`2eda938`);
+  - **T-057** WAF analyst API (`fe5430a`);
+  - **T-047** unreachable search thresholds; **T-048** Ariel `STOP` pad; **T-056** WAF alerts
+    carry `source_class`; **T-059** deterministic double-submit tests; **T-045** D-8 docs.
+- The full gate passed and `main` was merged (above). The `gate` worktree is detached again.
 
-**State by thread (fourth session):**
+**In flight at save time:**
 
-| Thread | State | What the next session does |
-|---|---|---|
-| **D-8 field mappings in the UI** (the user's request this session; design [`FIELD-MAPPING.md`](FIELD-MAPPING.md)) | T-041 research DONE. **T-043** catalog backend MERGED (`dadbe0d`). **T-044** UI MERGED (`4938c9b`) after two screenshot reviews. **T-042** backend (Codex) FINISHED but **not merged**: gates green in its worktree (ruff clean, mypy 31, 2,081 unit, 274 integration, migration `0015` round trip and `alembic check`), worker race handled correctly (`FOR UPDATE` re-read, stale result discarded and re-enqueued). | **1. Resume Codex on T-042** (session `01a131e3-49cc-7e32-8a85-a6975a548d1d`, run from `../QRadar-Dash-wt/t042`, `codex exec resume … < /dev/null`; the updated `FIELD-MAPPING.md` is already copied into the worktree) with these review fixes: **(a)** the §FM.4 "Contract additions" it started before: `min_coverage_ratio` in `MappingSchemaOut`; `validation_pending` / `validation_requested_at` / `validation_requested_by` on `GET /waf/sources` items; `instance_id` on candidates; every 409 `detail` = `{message, current_version, updated_by, pending_since}`; a `WafProfileError` 422 `detail` = `{message}` — T-044's UI already reads these shapes; **(b)** the worker re-enqueues **immediately** when the source's pipeline lock is held → a hot loop of Celery tasks for as long as a collection runs: re-enqueue with a countdown (≈30 s) and a bounded number of lock retries, then record "source busy" and clear pending; test it; **(c)** `app/main.py` CORS `allow_methods` lacks `PUT`, so the dev SPA on :3000 cannot call any PUT cross-origin (also breaks T-038's `/admin/search-cadence` PUT in dev): add `PUT`, with a preflight test. Accepted as is: `collection_ineligibility` now checks the version before the status, and the one pinned reason message in `test_waf_productionization.py` changed accordingly (the spec required the version-specific reason; fail-closed unchanged). **2.** Re-run its gates, merge it (`0015`). **3.** Then **T-046**: re-chain `0016_rule_capacity_sample` `down_revision` from `0014` to `0015`, run 0014→0016→0014→0016 + `alembic check`, merge. **4.** **T-045** docs (opencode free model): README admin section; WAF design §27.2 rule 6 and §27.14 point to `FIELD-MAPPING.md`. |
-| **Phase D — IPS** (G2) | **Designed:** [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) (D-8 IPS profile with normalized-or-custom references and FTD/PAN presets; fleet-wide keyed search per dimension per tick, split by time then source; 7 detectors; task split T-049–T-055). **T-030 DONE:** both lab IPS sources auto-discovered (PAN id 412 type 206, FTD id 413 type 448); IPs, port, protocol 100 % normalized; signature via QID; **no action field on either product**. | **T-049** (IPS profile + `/ips` admin API, Codex) after T-042 merges, since it reuses T-042's async-validation and API patterns. Then T-050 → T-051 → T-052; T-053 UI after T-049. |
-| **T-024** fleet UI + shell fixes (Sonnet) | **Died on the Claude session limit** ("resets 4:30am Europe/Istanbul"), after writing most of the code; its last words were "Now component and page tests". Partial, uncommitted work in `t024`: `app/fleet/**`, `app/admin/classification-rules/**`, `components/fleet/**`, `lib/fleet.ts` (+ tests), edits to `api.ts`, `nav.ts`, `nav.test.ts`, `globals.css`, `admin/page.tsx`, **and to `app/behavior/page.tsx` + `page.test.tsx`** (the overview fixes — check that existing test edit is not a weakening). No report, no screenshots. | Relaunch a Sonnet agent on the same worktree with the [spec](tasks/T-024.md) plus "review what you inherit, finish the tests, capture the screenshots". Then the orchestrator reviews the screenshots (§3a) and merges. Merge after T-044 is already in: expect small additive conflicts in `api.ts`, `nav.ts`, `nav.test.ts`, `globals.css`, `admin/page.tsx`. |
-| T-023 fleet API (Sonnet) | MERGED (`8b27ca9`) after one review round (expected EPS over every spanned cell). | — (open point: WAF anomaly alerts carry no `source_class`). |
-| T-046 rule statistics (Sonnet) | Accepted; **merge owed** (see D-8 row, step 3). | — |
-| T-040, T-022c, T-031 | DONE and merged (see §3). | — |
-| Search cadence (D-7) | On `main`. Live-validated (§SC.10). | **T-048** (low): pad the Ariel `STOP` by the settle delay (T-040 Finding 1). Phase A split-on-failure stays open until a busy console is measured. |
+| Task | Agent | Where | What to do when it ends |
+|---|---|---|---|
+| **T-049** IPS profile, read-only validation, `/ips` admin API, migration `0017` ([spec](tasks/T-049.md)) | Codex (`codex exec` under `nohup`, started ~10:52; it runs on independently of the Claude session; log `t049.log` and last message `t049.out` in the old session scratchpad, which may be gone — the report `docs/tasks/T-049.report.md` in the worktree is what counts). At ~11:10 it had written the model, `0017`, `app/ips/`, routes, services and provider changes; no report yet. | worktree `t049`, DB `qradar_obs_t049` | Check the log for "usage limit". Review the diff: new IPS Ariel queries must use `_ariel_scope` (T-048 merged after T-049 was cut — the merge may need it added); `admin:ips` separate from `admin:waf`; validation fail-closed; `SOURCE_BUSY` keeps the previous state (the T-042 round-2 ruling). Re-gate, alembic 0016↔0017, merge. If Codex died, hand the worktree to Sonnet with the spec + "review what you inherit". |
+| **T-060** WAF analyst UI (§27.15) ([spec](tasks/T-060.md)) | Sonnet | worktree `t060` (uncommitted), screenshots `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/6582a571-4c83-4b06-b9c8-1922d6237bf4/scratchpad/t060/shots/` (30 PNGs; may be gone after a reboot — re-capture with `t060/cap*` there or ask the agent's successor) | **FINISHED at session end, NOT reviewed, NOT merged.** Agent's claims: lint, typecheck, **1,240/1,240** tests, build; 24 break-it checks; no page overflow at 3 viewports. Its report file is short; the essentials are here. **Orchestrator must, next session:** (1) review the screenshots against §3a; (2) **rule on a test conflict:** `app/anomalies/page.test.tsx` pins the first header "Source"; the agent made the header "Subject" only when a WAF row is on the page — prefer authorizing the pin change to an unconditional "Subject" (the spec asks for a Subject column); (3) known leftovers: "Observed → Expected" header wraps; `.table-scroll` scrolls locally on `/anomalies` at 1280/1024 with the Evidence column off-screen at 1280 — fix before accepting (T-024 round-2 standard); a missing space before ✕ in a filter chip; (4) contract questions: no coverage-over-time series, no per-bucket expected band (drawn flat "at detection"), no ratio series, `explanation_package` null for WAF, meaning of `rejected_over_quota` / `below_admission_threshold` (labelled "in range, endpoint keys"); `subjectQuery.ts` duplicates `lib/anomalyQuery.ts` parsing (fold together). |
 
 **Next steps, in order:**
-1. T-042 review fixes (Codex resume), gates, merge; then T-046 re-chain and merge.
-2. Relaunch T-024 (Sonnet, after 04:30 Istanbul), review screenshots, merge.
-3. T-045 docs (free model). Full gate on `feat/phase-ce`; merge to `main`.
-4. Phase D: T-049 (Codex) → T-050 → T-051 → T-052; T-053 (UI); T-054 live; T-055 docs.
-5. Later: T-048; E.3 rule-statistics UI (D-5 still the user's call); the WAF analyst API and UI
-   (with the IPS analyst view, §D.11); Phase C.2 (per-class outage policy, SIM Generic); Phase 4
-   OIDC (**no authenticated route works in production until OIDC lands**).
+1. ~~Full gate → `main`~~ done (`dabd744`).
+2. T-049 review/merge (migration `0017`). Then **T-050** (IPS collection, design §D.5): split into
+   T-050a (provider keyed fleet searches + pure folds; Sonnet) and T-050b (tables `0018`,
+   collector, `IPS_COLLECTION` family and gate, admission; Codex). Write both specs after reading
+   T-049's field-reference types. Then T-051 → T-052; **T-053** `/admin/ips-sources` UI (reuses the
+   T-044/T-058 components) after T-049; T-054 live; T-055 docs.
+3. T-060 review/merge; then the gate again and `main`.
+4. Later: E.3 rule-statistics UI (D-5 still the user's call); Phase C.2 (per-class outage policy,
+   SIM Generic); Phase 4 OIDC (**no authenticated route works in production until OIDC lands**).
+
+**User decisions this session (2026-10-13):**
+- Asked whether the custom properties can be seen and mapped ("WAF'ta bu budur"): yes — T-043
+  catalog + T-044 editor + T-042 API. **No automatic suggestion** ("öneri sunmayalım"); **a search
+  inside the property list instead** ("aşağı kaydır veya ctrl f yapmıyım") → T-058, merged.
+
+**⚠ Regression on `main` (found by T-060, fix first next session):** since T-057 the
+`GET /anomalies` list returns Phase A **and WAF** rows when `subject_kind` is not given. The existing
+pages `frontend/src/app/behavior/page.tsx` and `app/behavior/sources/[id]/page.tsx` call
+`api.anomalies` without it, so on an install with WAF anomalies they render WAF rows with Phase A
+components, in EPS. Fix: pass `subject_kind: "LOG_SOURCE"` there (and audit every other
+`api.anomalies` caller), with tests; small, can ride with the T-060 merge or go alone first.
+Invisible in the lab while no WAF anomaly exists, but wrong on `main`.
 
 **Known open points (small):**
-- **Threshold validation gap (T-033).** A `GT` threshold set above a search's `max_result_rows`
-  can never fire on a truncated run.
 - **"No verdict" storage (T-033).** It is stored as `threshold_breached=False`. The alert evaluator
   tells it apart through `truncated`; a three-state column would need a migration.
-- `RunSearchButton.test.tsx` flaked once under load during T-038. It passed on every re-run.
 - **WAF dispatch counts.** The dispatcher records its runs with `searches_sent = null` ("not
   counted"), because per-source tasks run asynchronously and are not aggregated.
-- **`STOP` edge effect (T-040).** The last bucket of an Ariel span can miss events stored just
-  after `STOP` (5 events in 2.4M, live). Follow-up T-048.
-- **WAF anomaly alerts carry no `source_class`** (T-023), so class routing does not reach them.
-- **Dev CORS lacks `PUT`** (`app/main.py`): PUT calls from the dev SPA on :3000 fail (search
-  cadence, WAF profile). Folded into the T-042 review fixes.
-- `RunSearchButton.test.tsx` flaked again once in a parallel run (T-044); passes alone.
+- `test_waf_ariel_budget.py::TestPermits::test_permits_are_bounded_across_connections` flaked once
+  under load (T-057 run); passed on re-run. Watch it; deflake like T-059 if it recurs.
+- T-056: WAF alert open path now costs `open_cost = 8`, exactly the scale pin's ceiling; any further
+  statement on that path breaks the pin (a deliberate signal, not a bug).
+- T-057: `AnomalyRepository.list_anomalies` is unused since the unified list; left in place.
+- T-058: the "current" item scrolls to the list's bottom edge rather than its middle (cosmetic).
+- Closed this session: the threshold gap (T-047), the `STOP` edge effect (T-048), WAF alerts without
+  `source_class` (T-056), dev CORS `PUT` (T-042), the `RunSearchButton`/`AlertActions` flakes (T-059).
 
 **Environment notes:**
 - The test DB container `qradar-observability-test-test-db-1` runs on `:5433`, on tmpfs. Restart
@@ -110,7 +104,9 @@ G3 rule analytics). Every task is scheduled against them.
   - It hit its usage limit at 19:28 on 2026-10-12, after about three tasks (T-034, its fix, and
     most of T-035). It resets at 23:41.
   - Fourth session: T-042 ran 40 min (≈607k tokens) with no usage-limit hit. Its session id is
-    `01a131e3-49cc-7e32-8a85-a6975a548d1d` (for the review-fix resume).
+    `01a131e3-49cc-7e32-8a85-a6975a548d1d`.
+  - Fifth session: two T-042 review rounds by `codex exec resume` (no limit hit), then T-049 as a
+    fresh `codex exec` at ~10:52.
   - Give it one large piece per window. Check every log for "usage limit".
   - For review fixes, continue the same session with `codex exec resume <session-id> -c sandbox_mode='"workspace-write"' -c sandbox_workspace_write.network_access=true -o <file> "<msg>" < /dev/null`,
     run from the worktree.
@@ -133,7 +129,9 @@ G3 rule analytics). Every task is scheduled against them.
 - GLM credits return on 2026-10-14.
 - **Claude (Sonnet sub-agents) hit the session limit at ~00:35 on 2026-10-13**, resetting at
   04:30 Europe/Istanbul. T-024 died on it mid-task.
-- This session `mimo` (T-022c) and `big-pickle` (T-031) both delivered clean, reviewable work.
+- Free models that delivered clean work: `mimo` (T-022c, T-056, T-059), `big-pickle` (T-031, T-047,
+  T-046b re-chain, T-045 docs), `nemotron-3-ultra-free` (T-048, after one review round: it first
+  ran only a unit subset and had a cap bug).
 
 ---
 
@@ -373,14 +371,17 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | T-044 | **D-8 UI:** `/admin/waf-sources` and the editor, generic `fieldmapping` components (§FM.8) ([spec](tasks/T-044.md)) | Sonnet | DONE (`4938c9b`), after two screenshot reviews by the orchestrator (round 1 fixed: row separators under the first column only; raw `PROPERTY_REJECTED` text; unrealistic fixture; unlisted action value only addable as blocked; disabled primary button). Orchestrator re-ran lint, typecheck and 990/990. Backend side of the reconciled contract is owed by T-042. Earlier: review round 1 sent after the orchestrator read the screenshots (row separators under the first column only; raw `PROPERTY_REJECTED` text; unrealistic fixture; unlisted action value only addable as blocked; disabled primary button). Its 7 contract questions were reconciled in §FM.4 "Contract additions". | §3a; every state tested; screenshots at 3 viewports reviewed by the orchestrator |
 | T-023 | **Phase C.1 (G1):** fleet summary and sources API, classification override and review, classification-rule CRUD, routing by source class ([spec](tasks/T-023.md)) | Sonnet | DONE (`8b27ca9`). Review round 1: expected EPS compared a 7-day mean with the window-end cell only; now the mean over every spanned weekday-hour cell, a source counting only when all are reliable; two `type: ignore` replaced by annotations. The orchestrator checked the weekday convention (`isoweekday`, as the engine), that inventory alerts already carry `source_class`, and re-ran 104 unit and 43+18 integration tests. A router conflict with T-043 resolved by keeping both. Open: WAF anomaly alerts carry no `source_class`. | Completeness never hidden; constant SQL at two fleet sizes; fingerprints unchanged |
 | T-024 | **Phase C.1 UI (G1):** `/fleet`, `/fleet/sources`, `/admin/classification-rules`, plus the T-021 shell leftovers ([spec](tasks/T-024.md)) | Sonnet | DONE (`400f9d1`). Resumed after the session-limit cut; merge with T-044 resolved. Screenshot review round 1: the expected-EPS footnote misstated the API (it averages every spanned weekday-hour cell), overview source names broke at hyphens, a reason repeated in two cells, a heading over only a disclosure. Round 2: the overview table scrolled inside the page at 1024 with the action column hidden; fixed (severity under the issue at ≤1200 px), `color-scheme: dark` added, the capture script now flags any overflowing element. Orchestrator re-ran lint, typecheck, 1,066/1,066, build. Open: `backend/app/schemas/fleet.py` comment on `expected_eps` is stale (→ T-045). | §3a; every state tested; screenshots at 3 viewports reviewed by the orchestrator |
-| T-046 | **Phase E.1b (G3):** rule statistics API, match rate, capacity history (migration `0016`, chained to `0014` until re-chained after T-042's `0015`) ([spec](tasks/T-046.md)) | Sonnet | REVIEW: diff read and accepted; **merge waits for T-042** so `0016` can be re-chained after `0015`. | Silence only where provable; benchmark labelled as such; constant SQL |
+| T-046 | **Phase E.1b (G3):** rule statistics API, match rate, capacity history (migration `0016`) ([spec](tasks/T-046.md)) | Sonnet; re-chain T-046b opencode `big-pickle` | DONE (`46ca49b`). `0016` re-chained after `0015`; the 0015 and 0016 round-trip tests pinned to their own revisions, drift still checked at head. Orchestrator re-ran 2,159 unit and 732 integration tests on the merged tree; single head `0016`. | Silence only where provable; benchmark labelled as such; constant SQL |
 | T-030 | Live: lab IPS sources (PAN THREAT, FTD 430001) through auto-discovery, and what they parse, for Phase D and §FM.9 ([spec](tasks/T-030.md)) | Sonnet (the T-040 agent) | DONE ([report](tasks/T-030.report.md); checked for secrets; generators confirmed stopped). Both auto-discovered within seconds: PAN id 412 (type 206, raw CSV parsed — the T-029 risk did not materialise) and FTD id 413 (type 448). IPs, port and protocol 100 % normalized; signature via QID; **no action anywhere** — it needs an operator-authored custom property (§FM.9). 5/15 searches, 8/60 GETs. | ≤ 5 EPS; ≤ 15 searches; never API-created |
-| T-048 | Follow-up from T-040: pad the Ariel `STOP` (not the `WHERE` bound) by a setting, capped at now ([spec](tasks/T-048.md)) | opencode `nemotron-3-ultra-free` | REVIEW: round 1 sent — the cap `min(end+pad, now)` could shrink `STOP` below the window end; must be `max(end, …)`; the reported unit count (407) was a subset. | Keyed rows equal per-bucket rows in the edge case |
+| T-048 | Pad the Ariel `STOP` (not the `WHERE` bound) ([spec](tasks/T-048.md)) | opencode `nemotron-3-ultra-free` | DONE (`agent/t048` merged). `STOP = max(end, min(end + ariel_stop_pad_seconds, now))`, default 60 s, on every query bounding `starttime` to `[start, end)`. Round 1 fixed a cap that could shrink `STOP` below the window end. Query versions not bumped (rule-match versions key continuity). After the merge no unpadded `STOP` remains; 2,164 unit tests green. | Keyed rows equal per-bucket rows in the edge case |
 | T-049–T-055 | **Phase D (G2, IPS):** designed in [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) §D.13 — profile and `/ips` admin API (D-8 for IPS), fleet-wide keyed collection, detectors, alerting, `/admin/ips-sources`, live validation, docs | see §D.13 | TODO | per task |
 | T-047 | Scheduled searches: refuse a threshold that can never fire; truncation lower bound `value + 1` ([spec](tasks/T-047.md)) | opencode `big-pickle` | DONE (`dafe5ae`). Diff read; all providers cap `total_count` at `max_rows`; update checks the effective post-patch values. Re-ran 2,135 unit and 88 integration tests. | Every guard and exit path |
 | T-056 | WAF anomaly alerts carry `source_class` ([spec](tasks/T-056.md)) | opencode `mimo-v2.6-flash-free` | DONE (`e5b75f7`). Instance name and class in one outer-joined statement, only on runs with opens: +1 statement per such run (the old `session.get` was an identity-map hit), still inside the scale pin (`open_cost` 8 ≤ 8). Re-ran 224 WAF/alert integration tests. | Routing matches; fingerprint unchanged |
-| T-057 | **WAF analyst API (G2):** unified anomaly list/detail with `subject_kind`, WAF behavior read routes (§27.14), IPS-ready subject model ([spec](tasks/T-057.md)) | Sonnet | IN PROGRESS (`agent/t057`) | One `UNION ALL`; constant SQL; whitelist |
-| T-045 | **D-8 docs:** README admin section; WAF design §27.2 rule 6 and §27.14 point to FIELD-MAPPING.md | opencode free model | TODO (after T-042 merges) | Verbatim text from the orchestrator |
+| T-057 | **WAF analyst API (G2):** unified anomaly list/detail with `subject_kind`, WAF behavior read routes (§27.14), IPS-ready subject model ([spec](tasks/T-057.md)) | Sonnet | DONE (`fe5430a`). One `UNION ALL` (2 statements per page at any size); filters that cannot apply to a kind exclude it; whitelisted WAF detection block. Orchestrator re-ran 2,148 unit and 707 integration tests. Open: `test_waf_ariel_budget.py::test_permits_are_bounded_across_connections` flaked once under load. | One `UNION ALL`; constant SQL; whitelist |
+| T-058 | **Searchable property picker** (user request 2026-10-13: no auto-suggestion, a search instead) ([spec](tasks/T-058.md)) | Sonnet | DONE (`2eda938`). Whole list, grouped, token search (`resp code` → `WAF_ResponseCode`), current value marked, Escape restores, live count; screenshots reviewed. | §3a; every state tested |
+| T-059 | Deterministic double-submit tests (`AlertActions`, `RunSearchButton`) — orchestrator ruling to edit two tests | opencode `mimo` | DONE. A pending promise released by the test replaces the 50 ms timer; assertions kept. Frontend 1,095/1,095 three times under load. | Five green runs; mutation proof |
+| T-060 | **WAF analyst UI (G2)** (§27.15) ([spec](tasks/T-060.md)) | Sonnet | IN PROGRESS (`agent/t060`) | §3a; screenshots reviewed by the orchestrator |
+| T-045 | **D-8 docs:** README admin section; WAF design §27.2 rule 6 and §27.14 point to FIELD-MAPPING.md; stale `expected_eps` comment ([spec](tasks/T-045.md)) | opencode `big-pickle` | DONE (verbatim, diff checked) | Verbatim text from the orchestrator |
 | T-028 | **Security fix (DONE, `0e2bf71`):** the `/log-sources` (incl. PATCH and sync) and `/overview` routers were mounted with **no authentication**, and read routes of searches and alerts may be too. Router-level `requires()`, new permissions, an audit record on PATCH, and a guard test walking every route | Sonnet | IN PROGRESS (`agent/t028`) | Every route except the allowlisted health/docs returns 401 without a principal; read-only gets 403 on every mutation |
 
 **Later, not yet scheduled:**
@@ -412,6 +413,29 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 ---
 
 ## 5. Log
+
+### 2026-10-13
+
+- **Fifth session (from 09:42).** The test DB container was restarted. Old agent branches (T-042,
+  T-024, T-046) were brought onto the current integration branch by committing their WIP and
+  merging `feat/phase-ce` into them, so each agent resolved conflicts and re-gated on the
+  integrated tree.
+- **Reviews that changed the code:**
+  - **T-042**, two rounds. Round 1 added the §FM.4 contract shapes, the lock-busy countdown and
+    CORS `PUT`. Round 2 found that lock exhaustion forced `UNVALIDATED`. That would switch off a
+    VALID source just because its own collection held the lock, so exhaustion now keeps the
+    previous state.
+  - **T-024**, two screenshot rounds. The `/fleet` footnote misstated how expected EPS is
+    computed, and the overview table overflowed at 1024 with its action column hidden.
+    `color-scheme: dark` was added.
+  - **T-048**: the `STOP` cap could shrink `STOP` below the window end.
+- **Frontend flakes:** the two double-submit tests used a real 50 ms timer. T-059 made them
+  deterministic. The suite then passed 1,095/1,095 three times under load.
+- **User decision on the property picker:** no auto-suggestion; a search instead (T-058).
+- **Merged:** T-047, T-024, T-056, T-042, T-046 (+T-046b), T-058, T-048, T-057, T-059, T-045.
+- **Launched:** T-049 (Codex) and T-060 (Sonnet).
+- **Full gate on `921bf7e` green; `main` @ `dabd744`.** The user ended the session there because
+  of the context size.
 
 ### 2026-10-12
 

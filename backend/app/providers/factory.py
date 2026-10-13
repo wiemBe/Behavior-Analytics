@@ -36,6 +36,7 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
                 verify_ssl=settings.qradar_verify_ssl,
                 ca_bundle=settings.qradar_ca_bundle,
                 tls_allow_missing_aki=settings.qradar_tls_allow_missing_aki,
+                ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
             )
         case ProviderKind.MCP:
             return QRadarMCPProvider(
@@ -87,6 +88,7 @@ def build_provider_for_instance(
                 max_retries=settings.ariel_max_retries,
                 retry_base_seconds=settings.ariel_retry_base_seconds,
                 retry_max_seconds=settings.ariel_retry_max_seconds,
+                ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
             )
         case ProviderKind.MCP:
             return QRadarMCPProvider(

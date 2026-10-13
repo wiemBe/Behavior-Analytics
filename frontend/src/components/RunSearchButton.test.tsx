@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,9 +52,16 @@ describe("RunSearchButton", () => {
   });
 
   it("disables the button while running so one click buys one Ariel query", async () => {
+    // The Ariel run stays in flight until this test releases it, so the extra
+    // click always lands while the button is disabled, whatever the load is.
+    let release: (v: unknown) => void = () => {};
     const run = vi
       .spyOn(api, "runSearch")
-      .mockImplementation(() => new Promise((res) => setTimeout(() => res(execution()), 50)));
+      .mockReturnValue(
+        new Promise((res) => {
+          release = res;
+        }) as never,
+      );
     const user = userEvent.setup();
     render(<RunSearchButton searchId="s-1" />);
 
@@ -63,6 +70,12 @@ describe("RunSearchButton", () => {
     expect(await screen.findByRole("button", { name: "Running…" })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Running…" }));
+
+    // Settle the request so the component finishes its state updates inside act.
+    await act(async () => {
+      release(execution());
+    });
+
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeNull());
     expect(run).toHaveBeenCalledTimes(1);
   });

@@ -127,6 +127,10 @@ class Settings(BaseSettings):
     ariel_retry_max_seconds: float = Field(default=60.0, ge=1.0)
     # Global cap across all instances, plus the per-instance cap above.
     ariel_global_max_concurrent_searches: int = Field(default=6, ge=1, le=50)
+    # Pad added to the Ariel STOP bound so late-stored events are not dropped
+    # from the last bucket. The WHERE clause is NOT padded; it remains the
+    # authoritative half-open bound [start, end). Default 60s, 0 disables.
+    ariel_stop_pad_seconds: int = Field(default=60, ge=0, le=300)
 
     # --- Scheduled-search driver --------------------------------------------
     # Most searches dispatched in one scheduler cycle, so a backlog can never
