@@ -41,6 +41,7 @@ from app.core.config import get_settings
 from app.core.database import dispose_engine, get_sessionmaker
 from app.models.enums import EvidenceStatus, Severity
 from app.models.instance import QRadarInstance
+from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafSourceProfile
@@ -49,6 +50,8 @@ from app.providers.factory import build_provider, build_provider_for_instance
 from app.repositories.offense import OffenseRepository
 from app.services.concurrency import InMemoryConcurrencyLimiter
 from app.services.detection_coverage import DetectionCoverageEvaluator
+from app.services.ips_pipeline import ips_pipeline_lock_key
+from app.services.ips_profiles import IpsProfileService
 from app.services.locks import CollectorAdvisoryLock
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
@@ -960,6 +963,177 @@ async def validate_waf_profile(
             }
 
 
+async def validate_ips_profile(
+    profile_id: str,
+    lock_retry_count: int = 0,
+    enqueue: Callable[[str, int, int], object] | None = None,
+) -> dict:
+    """Validate one IPS profile without stamping a stale mapping version."""
+    maker = get_sessionmaker()
+    async with maker() as session:
+        profile_uuid = uuid.UUID(profile_id)
+        profile = await session.get(IpsSourceProfile, profile_uuid)
+        if profile is None:
+            return {"status": "not_found", "profile_id": profile_id}
+        if profile.validation_requested_at is None:
+            return {"status": "not_pending", "profile_id": profile_id}
+
+        source = await session.get(LogSource, profile.log_source_id)
+        instance = await session.get(QRadarInstance, profile.instance_id)
+        actor = profile.validation_requested_by or "system"
+        started_version = profile.profile_version
+        settings = get_settings()
+
+        def send(retry_count: int, countdown: int) -> object:
+            if enqueue is not None:
+                return enqueue(profile_id, retry_count, countdown)
+            return validate_ips_profile_task.apply_async(
+                args=[profile_id, retry_count], countdown=countdown
+            )
+
+        async def fail(error_class: str) -> dict:
+            await session.rollback()
+            current = await session.scalar(
+                select(IpsSourceProfile)
+                .where(IpsSourceProfile.id == profile_uuid)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if current is None:
+                await session.commit()
+                return {"status": "not_found", "profile_id": profile_id}
+            if current.profile_version != started_version:
+                await session.commit()
+                if current.validation_requested_at is not None:
+                    send(0, 0)
+                return {
+                    "status": "stale_requeued",
+                    "profile_id": profile_id,
+                    "validated_version": started_version,
+                    "current_version": current.profile_version,
+                }
+            await IpsProfileService(session, settings=settings).record_validation_exception(
+                current, actor=actor, error_class=error_class
+            )
+            await session.commit()
+            return {
+                "status": "failed",
+                "profile_id": profile_id,
+                "error_class": error_class,
+            }
+
+        if source is None or instance is None:
+            return await fail("IpsProfileError")
+
+        async with CollectorAdvisoryLock(
+            session,
+            settings,
+            instance.id,
+            ips_pipeline_lock_key(source.qradar_id),
+        ) as acquired:
+            if not acquired:
+                await session.rollback()
+                if lock_retry_count < settings.ips_validation_lock_max_retries:
+                    next_retry_count = lock_retry_count + 1
+                    send(next_retry_count, settings.ips_validation_lock_retry_delay_seconds)
+                    return {
+                        "status": "locked_requeued",
+                        "profile_id": profile_id,
+                        "lock_retry_count": next_retry_count,
+                    }
+
+                current = await session.scalar(
+                    select(IpsSourceProfile)
+                    .where(IpsSourceProfile.id == profile_uuid)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if current is None:
+                    await session.commit()
+                    return {"status": "not_found", "profile_id": profile_id}
+                if current.profile_version != started_version:
+                    await session.commit()
+                    if current.validation_requested_at is not None:
+                        send(0, 0)
+                    return {
+                        "status": "stale_requeued",
+                        "profile_id": profile_id,
+                        "validated_version": started_version,
+                        "current_version": current.profile_version,
+                    }
+                if current.validation_requested_at is None:
+                    await session.commit()
+                    return {"status": "not_pending", "profile_id": profile_id}
+                await IpsProfileService(
+                    session, settings=settings
+                ).record_validation_source_busy(
+                    current, actor=actor, retry_count=lock_retry_count
+                )
+                await session.commit()
+                logger.warning(
+                    "IPS profile validation exhausted source-lock retries",
+                    extra={
+                        "profile_id": profile_id,
+                        "profile_version": started_version,
+                        "lock_retry_count": lock_retry_count,
+                    },
+                )
+                return {
+                    "status": "source_busy",
+                    "profile_id": profile_id,
+                    "lock_retry_count": lock_retry_count,
+                }
+
+            provider: QRadarProvider | None = None
+            result = None
+            error_class: str | None = None
+            try:
+                provider = build_provider_for_instance(instance, audit_session=session)
+                service = IpsProfileService(session, settings=settings)
+                result = await service.validate(
+                    profile, provider, actor=actor, persist=False
+                )
+            except Exception as exc:
+                error_class = type(exc).__name__
+            finally:
+                if provider is not None:
+                    try:
+                        await provider.aclose()
+                    except Exception as exc:
+                        error_class = error_class or type(exc).__name__
+            if error_class is not None:
+                return await fail(error_class)
+            assert result is not None
+
+            current = await session.scalar(
+                select(IpsSourceProfile)
+                .where(IpsSourceProfile.id == profile_uuid)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if current is None:
+                await session.commit()
+                return {"status": "not_found", "profile_id": profile_id}
+            if current.profile_version != started_version:
+                await session.commit()
+                if current.validation_requested_at is not None:
+                    send(0, 0)
+                return {
+                    "status": "stale_requeued",
+                    "profile_id": profile_id,
+                    "validated_version": started_version,
+                    "current_version": current.profile_version,
+                }
+            await service.store_validation(current, result, actor=actor)
+            await session.commit()
+            return {
+                "status": "ok",
+                "profile_id": profile_id,
+                "profile_version": started_version,
+                "validation_status": result.status.value,
+            }
+
+
 async def apply_waf_retention() -> dict:
     maker = get_sessionmaker()
     async with maker() as session:
@@ -1073,6 +1247,11 @@ def collect_waf_source_task(profile_id: str) -> dict:
 @celery_app.task(name="validate_waf_profile")
 def validate_waf_profile_task(profile_id: str, lock_retry_count: int = 0) -> dict:
     return _run(validate_waf_profile(profile_id, lock_retry_count))
+
+
+@celery_app.task(name="validate_ips_profile")
+def validate_ips_profile_task(profile_id: str, lock_retry_count: int = 0) -> dict:
+    return _run(validate_ips_profile(profile_id, lock_retry_count))
 
 
 @celery_app.task(name="apply_waf_retention")

@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import ClassVar, TypedDict
 
 from app.providers.base import (
+    IPS_NORMALIZED_FIELD_ALLOWLIST,
     PROPERTY_NAME_PATTERN,
     LogSourceTelemetry,
     ProviderCapability,
@@ -34,6 +35,10 @@ from app.providers.dto import (
     DimensionAggregate,
     DimensionValueCount,
     InstanceInfoDTO,
+    IpsFieldProbe,
+    IpsFieldProbeRequest,
+    IpsProbeValue,
+    IpsSourceProbe,
     LogSourceDTO,
     LogSourceGroupDTO,
     LogSourceMetricBucketBatch,
@@ -814,6 +819,75 @@ class MockQRadarProvider(QRadarProvider):
             total_events=self._MOCK_WAF_TOTAL_EVENTS,
             total_query="MOCK PROBE TOTAL",
             properties=probes,
+        )
+
+    async def probe_ips_fields(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        fields: Sequence[IpsFieldProbeRequest],
+        max_action_values: int = 20,
+    ) -> IpsSourceProbe:
+        self.require(ProviderCapability.AQL_EXECUTION)
+        unique = list({field.logical_field: field for field in fields}.values())
+        if len(unique) > 7:
+            raise ValueError("IPS probe exceeds the logical-field bound")
+        limit = max(1, min(int(max_action_values), 20))
+        action_distribution = (("BLOCK", 70), ("ALLOW", 50))
+        probes: list[IpsFieldProbe] = []
+        for field in unique:
+            normalized = (
+                field.reference_kind == "NORMALIZED"
+                and field.name in IPS_NORMALIZED_FIELD_ALLOWLIST
+            )
+            custom = field.reference_kind == "CUSTOM_PROPERTY" and field.name == "IPS_Action"
+            if not (normalized or custom) or not PROPERTY_NAME_PATTERN.fullmatch(field.name):
+                probes.append(
+                    IpsFieldProbe(
+                        logical_field=field.logical_field,
+                        reference_kind=field.reference_kind,
+                        name=field.name,
+                        rejected=True,
+                        error="QRadar rejected the request as invalid",
+                    )
+                )
+                continue
+            values = (
+                [
+                    IpsProbeValue(value=value, events=events)
+                    for value, events in action_distribution[:limit]
+                ]
+                if field.logical_field == "ACTION"
+                else []
+            )
+            probes.append(
+                IpsFieldProbe(
+                    logical_field=field.logical_field,
+                    reference_kind=field.reference_kind,
+                    name=field.name,
+                    populated_events=120,
+                    generic_name_events=(
+                        12
+                        if field.logical_field == "SIGNATURE"
+                        and field.reference_kind == "NORMALIZED"
+                        and field.name == "qid"
+                        else None
+                    ),
+                    action_values=values,
+                    values_truncated=len(action_distribution) > limit,
+                )
+            )
+        truncated = any(probe.values_truncated for probe in probes)
+        return IpsSourceProbe(
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            total_events=120,
+            fields=probes,
+            truncated=truncated,
+            ariel_searches=0,
         )
 
     async def observe_property_rejection(

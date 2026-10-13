@@ -64,6 +64,21 @@ _BODIES: dict[tuple[str, str], dict] = {
         },
         "action_value_map": {"BLOCKED": [], "ALLOWED": []},
     },
+    ("PUT", "/api/v1/ips/log-sources/{log_source_id}/profile"): {
+        "expected_profile_version": None,
+        "product_label": None,
+        "preset": "CISCO_FTD",
+        "mapping": {
+            "SOURCE_IP": {"kind": "NORMALIZED", "name": "sourceip"},
+            "DESTINATION_IP": {"kind": "NORMALIZED", "name": "destinationip"},
+            "DESTINATION_PORT": {"kind": "NORMALIZED", "name": "destinationport"},
+            "PROTOCOL": {"kind": "NORMALIZED", "name": "protocolid"},
+            "SIGNATURE": {"kind": "NORMALIZED", "name": "qid"},
+            "ACTION": None,
+            "SEVERITY": {"kind": "NORMALIZED", "name": "severity"},
+        },
+        "action_value_map": {"BLOCKED": [], "ALLOWED": []},
+    },
     ("POST", "/api/v1/coverage/mappings"): {
         "technique_id": "T1059",
         "rule_id": "00000000-0000-0000-0000-000000000000",

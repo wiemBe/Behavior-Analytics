@@ -21,6 +21,7 @@ from app.models.fleet import (
 )
 from app.models.identity import AuditLog, Role, User, user_role
 from app.models.instance import QRadarInstance
+from app.models.ips import IpsSourceProfile
 from app.models.log_source import (
     AnomalyStateTransition,
     LogSource,
@@ -95,6 +96,7 @@ __all__ = [
     "ConfigurationSnapshot",
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
+    "IpsSourceProfile",
     "LogSource",
     "LogSourceAnomaly",
     "LogSourceBaseline",

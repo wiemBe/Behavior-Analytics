@@ -12,6 +12,7 @@ from app.api.routes import (
     coverage,
     fleet,
     health,
+    ips,
     log_sources,
     offenses,
     overview,
@@ -27,6 +28,7 @@ from app.security.rbac import (
     PERM_ANOMALY_READ,
     PERM_COVERAGE_READ,
     PERM_FLEET_READ,
+    PERM_IPS_ADMIN,
     PERM_LOG_SOURCE_READ,
     PERM_OFFENSE_READ,
     PERM_OVERVIEW_READ,
@@ -88,6 +90,10 @@ api_router.include_router(
 api_router.include_router(waf.router, dependencies=[Depends(requires(PERM_WAF_ADMIN))])
 # The mapping editor's property-name catalog: names only, read-only, same admin:waf guard.
 api_router.include_router(waf_catalog.router, dependencies=[Depends(requires(PERM_WAF_ADMIN))])
+# --- Phase D ---
+# IPS source mappings control future collection semantics and require their own
+# administrative capability; neither read:* nor admin:waf satisfies it.
+api_router.include_router(ips.router, dependencies=[Depends(requires(PERM_IPS_ADMIN))])
 # --- Phase C ---
 # The fleet view and classification rules. Both reads need `read:fleet` (satisfied
 # by `read:*`); rule writes check `admin:classification` in the handler.
