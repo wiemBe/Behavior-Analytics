@@ -129,7 +129,7 @@ G3 rule analytics). Every task is scheduled against them.
 | **T-068** outage policy backend, `0019` → `0017` for now | DONE on `agent/t068` | `t068` | Re-chain `0019` → `0018`; merge |
 | **T-069** catch-all senders backend, `0020` → `0017` for now ([spec](tasks/T-069.md)) | Sonnet (relaunched, "review what you inherit") | `t069`, DBs `qradar_obs_t069`, `_mig` | Review; re-chain after `0019`; merge |
 | **T-070a** UI `/admin/outage-policy` + `/admin` hub links; small additive backend (`source_name`/`source_class` on SOURCE rows) ([spec](tasks/T-070a.md)) | Sonnet | `t070a` (branched from `feat/phase-ce` + `agent/t068` merged), DB `qradar_obs_t070a`, ports 4770/3770 | Screenshot review; gates; merge after T-068 |
-| **T-075** `numerator_sum`/`denominator_sum` on `WafBaselineCellOut` (T-060 follow-up) ([spec](tasks/T-075.md)) | opencode `big-pickle` (log `…/718a4478…/scratchpad/t075.log`) | `t075`, DB `qradar_obs_t075` | Diff; gates; merge |
+| **T-075** `numerator_sum`/`denominator_sum` on `WafBaselineCellOut` ([spec](tasks/T-075.md)) | opencode `big-pickle` | **DONE, merged** (`c56a375`) | It stopped correctly on the pinned key-set test; ruling: add the two keys (the spec changes the contract on purpose). The orchestrator re-ran 83 integration tests. |
 
 The T-060 follow-up "`bucket_seconds` on WAF list rows" was **dropped**: `WafAnomaly` has no
 `bucket_seconds`, so it would need a join in the T-057 `UNION ALL`. The UI constant is correct
