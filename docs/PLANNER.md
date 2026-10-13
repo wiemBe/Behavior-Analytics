@@ -10,6 +10,11 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ## ▶ Resume here (saved 2026-10-13 ~21:45, seventh session — at the user's request)
 
+**The user stopped here, before the UI redesign, at ~21:50.** The chat had grown long, and the next
+step will probably start in a new chat. The agent branches `agent/t050b` (WIP), `t068`, `t069`,
+`t070a` and `t075` are pushed to origin as a backup. **Begin a new chat with step 1 of "Next steps"
+below.** The UI redesign (UI-R0) waits until steps 1–3 are done.
+
 **Two agents are running at save time:**
 - **T-050b round 3:** Codex, session `01a1355d-31e8-74f1-be9f-e1e0016d460a`, in worktree `t050b`.
   Its work up to round 2 is committed as WIP `4951f3d`.
