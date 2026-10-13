@@ -7,13 +7,17 @@ satisfy it, because the policy decides which silences page a human. DB-gated.
 from __future__ import annotations
 
 import os
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import delete, select
 
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.main import create_app
+from app.models.instance import QRadarInstance
+from app.models.log_source import LogSource
 from tests.integration.factories import make_instance, make_log_source
 from tests.integration.test_fleet_api import (
     ADMIN,
@@ -198,3 +202,75 @@ def test_instance_rows_are_separate_and_delete_is_scoped_to_them(db_schema) -> N
     assert [r["instance_id"] for r in admin.get(POLICY).json()] == [None]
     assert admin.delete(f"{POLICY}/classes/FIREWALL").status_code == 204
     assert admin.get(POLICY).json() == []
+
+
+def test_get_names_a_source_row_and_leaves_class_and_gone_rows_null(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        named = await make_log_source(s, inst, qradar_id=1, name="PaSeries @ pa-fw-01")
+        gone = await make_log_source(s, inst, qradar_id=2, name="retired-box")
+        s.add(classification(named, "FIREWALL"))
+        await s.flush()
+        return str(named.id), str(gone.id)
+
+    named_id, gone_id = run(setup)
+    admin = Client(ADMIN)
+    for path, body in (
+        (f"{POLICY}/classes/FIREWALL", {"mode": "RECORD_ONLY"}),
+        (f"{POLICY}/sources/{named_id}", {"mode": "ALERT"}),
+        (f"{POLICY}/sources/{gone_id}", {"mode": "RECORD_ONLY"}),
+    ):
+        assert admin.request("PUT", path, json=body).status_code == 200
+
+    async def drop(s):  # type: ignore[no-untyped-def]
+        await s.execute(delete(LogSource).where(LogSource.id == uuid.UUID(gone_id)))
+
+    run(drop)
+    by_value = {r["scope_value"]: r for r in admin.get(POLICY).json()}
+    assert by_value[named_id]["source_name"] == "PaSeries @ pa-fw-01"
+    assert by_value[named_id]["source_class"] == "FIREWALL"
+    # The source no longer exists: both stay null rather than echoing the id.
+    assert by_value[gone_id]["source_name"] is None
+    assert by_value[gone_id]["source_class"] is None
+    assert by_value["FIREWALL"]["source_name"] is None
+    assert by_value["FIREWALL"]["source_class"] is None
+
+
+def test_get_statement_count_does_not_grow_with_the_rows(db_schema) -> None:
+    counts = []
+    created: list[str] = []
+    for total in (1, 6):
+        async def setup(s, total=total):  # type: ignore[no-untyped-def]
+            inst = await make_instance(s) if not created else None
+            if inst is None:
+                inst = (await s.scalars(select(QRadarInstance))).first()
+            for n in range(len(created), total):
+                src = await make_log_source(s, inst, qradar_id=100 + n, name=f"fw-{n}")
+                s.add(classification(src, "FIREWALL"))
+                await s.flush()
+                created.append(str(src.id))
+
+        run(setup)
+        admin = Client(ADMIN)
+        for source_id in created:
+            admin.request("PUT", f"{POLICY}/sources/{source_id}", json={"mode": "RECORD_ONLY"})
+        resp = admin.get(POLICY)
+        assert resp.status_code == 200 and len(resp.json()) == total
+        counts.append(admin.statements)
+    assert counts[0] == counts[1], counts
+
+
+def test_get_names_the_instance_of_an_instance_scoped_row(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        return str(inst.id), inst.name
+
+    instance_id, instance_name = run(setup)
+    admin = Client(ADMIN)
+    admin.request("PUT", f"{POLICY}/classes/IPS", json={"mode": "RECORD_ONLY"})
+    admin.request(
+        "PUT", f"{POLICY}/classes/IPS", json={"mode": "ALERT", "instance_id": instance_id}
+    )
+    rows = {r["instance_id"]: r for r in admin.get(POLICY).json()}
+    assert rows[instance_id]["instance_name"] == instance_name
+    assert rows[None]["instance_name"] is None

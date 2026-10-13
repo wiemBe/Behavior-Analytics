@@ -64,6 +64,7 @@ async def build_fleet_summary(
     now: datetime,
     bucket_seconds: int,
     outage_default: OutagePolicyMode = OutagePolicyMode.ALERT,
+    default_silence_grace_buckets: int | None = None,
 ) -> FleetSummary:
     window_seconds = WINDOW_SECONDS[window]
     window_start = now - timedelta(seconds=window_seconds)
@@ -289,6 +290,7 @@ async def build_fleet_summary(
                 top_sources=ranked[:TOP_SOURCES],
                 outage_mode=outage_modes[cls],
                 outage_overrides=outage_overrides.get(cls, 0),
+                monitored_sources=monitored_count.get(cls, 0),
             )
         )
 
@@ -306,4 +308,6 @@ async def build_fleet_summary(
         new_sources=new_sources,
         conflict_sources=conflict_sources,
         unclassified_sources=enabled.get(_UNCLASSIFIED, 0) + disabled.get(_UNCLASSIFIED, 0),
+        outage_default=outage_default,
+        default_silence_grace_buckets=default_silence_grace_buckets,
     )

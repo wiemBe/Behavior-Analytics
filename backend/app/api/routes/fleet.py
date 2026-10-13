@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query
-from sqlalchemy import func, literal, select
+from sqlalchemy import func, literal, or_, select
 
 from app.api.deps import SessionDep, SettingsDep
 from app.fleet.summary import build_fleet_summary
@@ -49,6 +49,7 @@ async def fleet_summary(
         now=closed,
         bucket_seconds=bucket_seconds,
         outage_default=settings.outage_alert_default,
+        default_silence_grace_buckets=settings.anomaly_silence_grace_buckets,
     )
 
 
@@ -60,6 +61,7 @@ async def fleet_sources(
     review_status: ClassificationReviewStatus | None = Query(default=None),
     has_conflict: bool | None = Query(default=None),
     basis: ClassificationBasis | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=100),
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ) -> FleetSourcePage:
@@ -81,6 +83,18 @@ async def fleet_sources(
         conditions.append(conflicted.is_(has_conflict))
     if basis is not None:
         conditions.append(basis_col == basis)
+    needle = (q or "").strip()
+    if needle:
+        # A case-insensitive substring of the name or the QRadar type name. The
+        # LIKE wildcards in the input are literal characters, not patterns.
+        escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        conditions.append(
+            or_(
+                LogSource.name.ilike(pattern, escape="\\"),
+                LogSource.type_name.ilike(pattern, escape="\\"),
+            )
+        )
 
     base = select(LogSource, LogSourceClassification).outerjoin(
         LogSourceClassification, LogSourceClassification.log_source_id == LogSource.id

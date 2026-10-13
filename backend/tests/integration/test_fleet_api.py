@@ -825,3 +825,62 @@ def test_expected_eps_averages_every_cell_the_window_spans(db_schema) -> None:
     # 7d needs all 168 cells; nobody has them, so no expectation at all.
     week = by_class(client.get("/api/v1/fleet/summary?window=7d").json())["FIREWALL"]
     assert week["expected_eps"] is None and week["baseline_share"] == 0.0
+
+
+def test_summary_counts_monitored_sources_and_reports_the_defaults(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        on = await make_log_source(s, inst, qradar_id=1, name="fw-on")
+        unmonitored = await make_log_source(
+            s, inst, qradar_id=2, name="fw-unmonitored", monitoring_enabled=False
+        )
+        off = await make_log_source(s, inst, qradar_id=3, name="fw-off", enabled=False)
+        s.add_all(classification(x, "FIREWALL") for x in (on, unmonitored, off))
+        await s.flush()
+
+    run(setup)
+    body = Client(VIEWER).get("/api/v1/fleet/summary?window=1h").json()
+    fw = by_class(body)["FIREWALL"]
+    # Enabled counts two; only the enabled and monitored one is governed by a policy.
+    assert fw["sources"] == {"enabled": 2, "disabled": 1}
+    assert fw["monitored_sources"] == 1
+    assert by_class(body)["DNS"]["monitored_sources"] == 0
+    # The defaults come from settings.
+    assert body["outage_default"] == "ALERT"
+    assert body["default_silence_grace_buckets"] == 1
+
+
+def test_sources_q_matches_name_or_type_case_insensitively_and_sql_is_constant(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        await make_log_source(
+            s, inst, qradar_id=1, name="PaSeries @ pa-fw-01", type_name="Palo Alto PA Series"
+        )
+        await make_log_source(
+            s, inst, qradar_id=2, name="ftd-01", type_name="Cisco Firepower Threat Defense"
+        )
+        await make_log_source(s, inst, qradar_id=3, name="100%_box", type_name=None)
+        await make_log_source(s, inst, qradar_id=4, name="1000xbox", type_name=None)
+
+    run(setup)
+    client = Client(VIEWER)
+
+    def names(query: str) -> list[str]:
+        resp = client.get(f"/api/v1/fleet/sources{query}")
+        assert resp.status_code == 200, resp.text
+        return [i["name"] for i in resp.json()["items"]]
+
+    assert names("?q=PA-FW") == ["PaSeries @ pa-fw-01"]
+    assert names("?q=firepower") == ["ftd-01"]
+    # Wildcards are literal: "%_" must not match every row.
+    assert names("?q=%25_box") == ["100%_box"]
+    assert names("?q=%20%20") == ["100%_box", "1000xbox", "PaSeries @ pa-fw-01", "ftd-01"]
+    assert names("?q=nothing-like-this") == []
+    assert client.get("/api/v1/fleet/sources?q=" + "x" * 101).status_code == 422
+    # Total reflects the match, and the statement count does not depend on it.
+    assert client.get("/api/v1/fleet/sources?q=box").json()["total"] == 2
+    counts = []
+    for query in ("?q=box", "?q=ftd", ""):
+        client.get(f"/api/v1/fleet/sources{query}")
+        counts.append(client.statements)
+    assert len(set(counts)) == 1, counts
