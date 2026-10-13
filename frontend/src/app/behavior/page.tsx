@@ -73,7 +73,11 @@ export default async function BehaviorPage() {
     const [summaryResult, sourcesResult, activeResult] = await Promise.all([
       api.behaviorSummary(),
       api.sourceBehaviors(),
-      api.anomalies({ active_only: true, limit: 50 }).catch(() => null),
+      // subject_kind pins the list to Phase A: an unfiltered call would also
+      // return WAF anomalies, which this worklist renders in Phase A rows.
+      api
+        .anomalies({ active_only: true, limit: 50, subject_kind: "LOG_SOURCE" })
+        .catch(() => null),
     ]);
     summary = summaryResult;
     sources = sourcesResult;

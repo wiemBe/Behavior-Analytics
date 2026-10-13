@@ -424,6 +424,20 @@ describe("error states", () => {
   });
 });
 
+describe("subject filter", () => {
+  it("asks only for Phase A anomalies", async () => {
+    // Since T-057 the backend returns Phase A and WAF anomalies whenever
+    // subject_kind is unset, and this worklist renders every row it gets
+    // through Phase A components. The kind must be pinned.
+    mockApi();
+    await renderPage();
+
+    expect(api.anomalies).toHaveBeenCalledWith(
+      expect.objectContaining({ subject_kind: "LOG_SOURCE" }),
+    );
+  });
+});
+
 describe("the severity beside an issue has a header", () => {
   it("names the severity in the column header", async () => {
     vi.spyOn(api, "behaviorSummary").mockResolvedValue(summary());

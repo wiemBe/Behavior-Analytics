@@ -97,7 +97,9 @@ export default async function SourceBehaviorPage({
     await Promise.allSettled([
       api.logSource(id),
       api.sourceMetrics(id, { since, until, limit: METRIC_LIMIT }),
-      api.anomalies({ log_source_id: id, limit: 20, since, until }),
+      // log_source_id also matches a WAF endpoint's log source, so the kind
+      // must be pinned explicitly to keep this page on Phase A anomalies.
+      api.anomalies({ log_source_id: id, limit: 20, since, until, subject_kind: "LOG_SOURCE" }),
       api.sourceBaselines(id),
     ]);
 

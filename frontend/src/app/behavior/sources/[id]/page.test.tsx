@@ -729,6 +729,19 @@ describe("accessibility", () => {
   });
 });
 
+describe("subject filter", () => {
+  it("asks only for Phase A anomalies", async () => {
+    // log_source_id matches a WAF endpoint's log source too, so filtering by
+    // the source alone would let WAF rows render in the Phase A components
+    // below. The kind must be pinned.
+    await renderPage();
+
+    expect(api.anomalies).toHaveBeenCalledWith(
+      expect.objectContaining({ subject_kind: "LOG_SOURCE" }),
+    );
+  });
+});
+
 describe("error states", () => {
   it("reports a missing source", async () => {
     vi.spyOn(api, "sourceBehavior").mockRejectedValue(new ApiError(404, "nope"));
