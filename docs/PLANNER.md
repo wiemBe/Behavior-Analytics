@@ -22,8 +22,10 @@ If this file disagrees with the code, the code wins. Fix the file.
 - **Next:** T-049 (Codex) once T-046 is merged (migration `0017`); T-045 docs (free model; also fix
   the stale `expected_eps` comment in `backend/app/schemas/fleet.py`); full gate; merge to `main`.
 - **User question (2026-10-13):** "did you add a way to see the custom properties and say 'in WAF
-  this one is X'?" Answered: yes (T-043 catalog + T-044 editor + T-042 API). Offered an optional
-  auto-suggestion (name- and value-based) — awaiting the user's answer.
+  this one is X'?" Answered: yes (T-043 catalog + T-044 editor + T-042 API). **User's decision:
+  no auto-suggestion ("öneri sunmayalım"); instead a search inside the property list ("aşağı
+  kaydır veya ctrl f yapmıyım").** → **T-058** (Sonnet, worktree `t058`): searchable, grouped,
+  uncapped property picker.
 
 **The user stopped the session with "hiçbir şey yapma sadece son durumu planner md ye kaydet".
 Nothing is running.** No agent was left mid-task except T-024 (below), which died on the Claude
