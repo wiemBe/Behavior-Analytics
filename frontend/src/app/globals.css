@@ -61,9 +61,21 @@ a {
   min-height: 100vh;
 }
 
-.sidebar {
+/* The sidebar's panel is painted by `.layout::before`, which spans the whole
+   grid row and so the full height of the page. The sidebar itself is sticky and
+   only as tall as the viewport: given the background, the panel stopped at the
+   fold on any page that scrolled (visible in every full-page capture). */
+.layout::before {
+  content: "";
+  grid-column: 1;
+  grid-row: 1;
   background: var(--surface);
   border-right: 1px solid var(--border);
+}
+
+.sidebar {
+  grid-column: 1;
+  grid-row: 1;
   padding: var(--sp-6) var(--sp-3);
   position: sticky;
   top: 0;
@@ -143,6 +155,8 @@ a {
 }
 
 .main {
+  grid-column: 2;
+  grid-row: 1;
   /* `min-width: 0` is load-bearing: without it a wide table inside this grid
      column widens the column, and the page — rather than scrolling inside its
      own container. It is the fix for horizontal page overflow. */
@@ -290,6 +304,9 @@ td.cell-name {
   display: grid;
   gap: var(--sp-4);
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Every row as tall as the tallest: a card with a note beside one without
+     one otherwise leaves the two folded rows at different heights. */
+  grid-auto-rows: 1fr;
   min-width: 0;
 }
 
@@ -522,8 +539,10 @@ th[aria-sort="descending"] .sort-link {
   min-width: 0;
 }
 .issue-with-severity__label {
-  min-width: 0;
-  overflow-wrap: anywhere;
+  /* A floor, so a squeezed column wraps at words and the table scrolls locally
+     rather than breaking the label letter by letter. */
+  min-width: 12ch;
+  overflow-wrap: break-word;
 }
 
 /* --- tables ----------------------------------------------------------------
@@ -1557,10 +1576,18 @@ pre {
   .layout {
     grid-template-columns: minmax(0, 1fr);
   }
+  .layout::before {
+    display: none;
+  }
+  .sidebar,
+  .main {
+    grid-column: auto;
+    grid-row: auto;
+  }
   .sidebar {
     position: static;
     height: auto;
-    border-right: none;
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
   .nav-list {
@@ -1588,4 +1615,195 @@ pre {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* fleet ------------------------------------------------------------------
+   The Phase C log-source fleet and the classification rules. Built from
+   tokens only. */
+
+.fleet-window {
+  margin: var(--sp-5) 0 var(--sp-3);
+}
+
+/* A class or source name in the first column: a row header, so it reads as the
+   row's subject rather than as a quiet column heading. */
+.fleet-table th[scope="row"] {
+  color: var(--text);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  white-space: normal;
+  overflow-wrap: break-word;
+  border-bottom-color: var(--border);
+}
+.fleet-table tbody tr:last-child th {
+  border-bottom: none;
+}
+.fleet-table th.cell-class {
+  min-width: 15ch;
+}
+.fleet-table th.cell-source,
+.fleet-table th.cell-rule {
+  max-width: 34ch;
+}
+.fleet-table th.cell-source .cell-sub,
+.fleet-table th.cell-rule .cell-sub {
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+}
+.fleet-table td,
+.fleet-table th {
+  font-size: var(--fs-sm);
+}
+.fleet-table thead th {
+  font-size: var(--fs-xs);
+}
+.fleet-table td .cell-sub {
+  max-width: 26ch;
+  white-space: normal;
+}
+.fleet-table td.num .cell-sub {
+  margin-left: auto;
+  text-align: right;
+}
+/* A class with top sources shows them on a second line under its figures, so
+   the figures keep the full width of the row. */
+.fleet-table .fleet-main td,
+.fleet-table .fleet-main th {
+  border-bottom: none;
+}
+.fleet-top td {
+  padding-top: 0;
+}
+.fleet-top-label {
+  margin-right: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.fleet-top-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  vertical-align: top;
+}
+.fleet-top-list li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.unit {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.cell-completeness {
+  min-width: 18ch;
+}
+.cell-completeness .pill {
+  display: flex;
+  width: fit-content;
+  margin-bottom: var(--sp-1);
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+}
+.rule-pattern {
+  overflow-wrap: anywhere;
+  font-size: var(--fs-xs);
+}
+.conflict-text {
+  color: var(--warn-text);
+}
+.conflict-text strong {
+  font-weight: var(--fw-semibold);
+}
+
+.cell-actions {
+  min-width: 16ch;
+}
+.cell-actions .actions {
+  gap: var(--sp-1) var(--sp-2);
+}
+.fleet-table button.action {
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-xs);
+}
+.override-editor {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: start;
+}
+.override-editor label {
+  font-size: var(--fs-xs);
+}
+.cell-actions .change-status {
+  max-width: 26ch;
+}
+
+.rule-off td,
+.rule-off th {
+  color: var(--text-3);
+}
+.rule-off th[scope="row"] {
+  color: var(--text-3);
+}
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+}
+
+.precedence {
+  margin: 0 0 var(--sp-3);
+  padding-left: var(--sp-6);
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+
+.rule-form {
+  display: grid;
+  gap: var(--sp-4);
+  max-width: 72ch;
+}
+.rule-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 14ch) minmax(0, 1fr);
+  gap: var(--sp-3) var(--sp-5);
+  align-items: start;
+}
+.rule-form-grid > label {
+  padding-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.rule-form .field {
+  width: 100%;
+  min-width: 0;
+}
+.rule-form .field-narrow {
+  width: 12ch;
+}
+.field-hint {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.field-error {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--crit-text);
+  overflow-wrap: anywhere;
+}
+.rule-form [aria-invalid="true"] {
+  border-color: var(--crit);
 }

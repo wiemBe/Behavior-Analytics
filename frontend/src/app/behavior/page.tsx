@@ -197,7 +197,7 @@ export default async function BehaviorPage() {
                   <tr>
                     <th scope="col">Source</th>
                     <th scope="col">State</th>
-                    <th scope="col">Issue</th>
+                    <th scope="col">Issue and severity</th>
                     <th scope="col" className="num">
                       Observed / expected (EPS)
                     </th>

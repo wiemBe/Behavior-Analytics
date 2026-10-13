@@ -20,6 +20,10 @@ export default function Page() {
           <a href="/admin/search-cadence">Search cadence</a>
           <span className="cell-sub">How often each search family queries QRadar</span>
         </li>
+        <li>
+          <a href="/admin/classification-rules">Classification rules</a>
+          <span className="cell-sub">Which rules decide a log source&apos;s class, and in what order</span>
+        </li>
       </ul>
     </>
   );
