@@ -37,6 +37,10 @@ export const NAV: NavGroup[] = [
   {
     label: "Platform",
     items: [
+      { href: "/fleet", label: "Fleet" },
+      // Resolved by longest match, like /behavior/sources: a path under
+      // /fleet/sources belongs here, not to Fleet.
+      { href: "/fleet/sources", label: "Fleet sources" },
       { href: "/offenses", label: "Offenses" },
       { href: "/rules", label: "Rules" },
       { href: "/coverage", label: "Coverage" },
@@ -50,6 +54,7 @@ export const NAV: NavGroup[] = [
     label: "Administration",
     items: [
       { href: "/admin/search-cadence", label: "Search cadence" },
+      { href: "/admin/classification-rules", label: "Classification rules" },
       { href: "/admin/waf-sources", label: "WAF sources" },
     ],
   },

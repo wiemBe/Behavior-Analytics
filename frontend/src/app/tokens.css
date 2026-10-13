@@ -18,6 +18,7 @@
  */
 
 :root {
+  color-scheme: dark;
   /* --- background layers -------------------------------------------------
      Four steps, deepest first. `canvas` is the page, `surface` is a panel on
      it, `surface-2` is an inset inside a panel, `surface-3` is a hover. */

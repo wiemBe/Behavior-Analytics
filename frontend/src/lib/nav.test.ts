@@ -15,6 +15,8 @@ describe("NAV", () => {
   it("separates supporting capabilities into their own group", () => {
     expect(NAV[1].label).toBe("Platform");
     expect(NAV[1].items.map((i) => i.label)).toEqual([
+      "Fleet",
+      "Fleet sources",
       "Offenses",
       "Rules",
       "Coverage",
@@ -25,13 +27,15 @@ describe("NAV", () => {
     ]);
   });
 
-  it("lists search cadence and WAF sources under the administration group", () => {
+  it("lists the administration pages under their own group", () => {
     expect(NAV[2].label).toBe("Administration");
     expect(NAV[2].items).toEqual([
       { href: "/admin/search-cadence", label: "Search cadence" },
+      { href: "/admin/classification-rules", label: "Classification rules" },
       { href: "/admin/waf-sources", label: "WAF sources" },
     ]);
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
+    expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");
   });
 
   // A nav entry is a promise that something is on the other side of it.
@@ -78,6 +82,12 @@ describe("activeNavHref", () => {
   it("activates Anomalies on the list and on an investigation", () => {
     expect(activeNavHref("/anomalies")).toBe("/anomalies");
     expect(activeNavHref("/anomalies/abc-123")).toBe("/anomalies");
+  });
+
+  // /fleet is a prefix of /fleet/sources, so ordering alone would light both.
+  it("activates Fleet sources on its own path, and Fleet only on the summary", () => {
+    expect(activeNavHref("/fleet")).toBe("/fleet");
+    expect(activeNavHref("/fleet/sources")).toBe("/fleet/sources");
   });
 
   it("activates supporting sections and their detail routes", () => {
