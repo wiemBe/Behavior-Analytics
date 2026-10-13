@@ -1633,27 +1633,62 @@ pre {
 .fm-input[aria-invalid="true"] {
   border-color: var(--crit-border);
 }
-.fm-suggest {
+.fm-popup {
   position: absolute;
   z-index: 2;
   left: 0;
   right: 0;
   top: 100%;
-  margin: var(--sp-1) 0 0;
-  padding: var(--sp-1);
-  list-style: none;
+  margin-top: var(--sp-1);
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
   box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.fm-count {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.fm-count-n {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.fm-list {
+  position: relative;
+  max-height: var(--picker-list-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.fm-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-3);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--text-2);
+}
+.fm-group-n {
+  font-weight: var(--fw-normal);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
 }
 .fm-option {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  align-items: baseline;
   gap: 0 var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-sm);
+  padding: var(--sp-1) var(--sp-3);
   font-size: var(--fs-sm);
   cursor: pointer;
 }
@@ -1661,14 +1696,33 @@ pre {
 .fm-option:hover {
   background: var(--surface-3);
 }
+.fm-option.is-active {
+  box-shadow: inset 2px 0 0 var(--focus);
+}
 .fm-option.is-disabled {
   color: var(--text-3);
   cursor: not-allowed;
 }
 .fm-option-name {
+  flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: var(--font-mono);
+}
+.fm-hit {
+  background: none;
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.fm-option.is-disabled .fm-hit {
+  color: inherit;
+}
+.fm-option-current {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--info-text);
 }
 .fm-option-hint {
   font-size: var(--fs-xs);
