@@ -1303,3 +1303,110 @@ export const fleetApi = {
   deleteRule: (id: string) =>
     fleetRequest<void>(`/classification-rules/${id}`, { method: "DELETE" }),
 };
+
+// --- rule statistics (T-062) -----------------------------------------------
+// Mirrors backend/app/schemas/rule_statistics.py. A section the platform could
+// not measure is null with a reason beside it, never an empty list.
+export interface RuleCountRow {
+  enabled: boolean;
+  rule_type: string | null;
+  origin: string | null;
+  is_building_block: boolean;
+  count: number;
+}
+
+export interface RuleStatisticsWindow {
+  days: number;
+  span_start: string;
+  span_end: string;
+  span_seconds: number;
+  window_seconds: number;
+  expected_windows: number;
+  complete_windows: number;
+  truncated_windows: number;
+  failed_windows: number;
+  missing_windows: number;
+  measured_seconds: number;
+  complete: boolean;
+  reason: string | null;
+}
+
+export interface SilentRule {
+  rule_id: string;
+  qradar_id: number;
+  name: string;
+  rule_type: string | null;
+  origin: string | null;
+  is_building_block: boolean;
+  first_seen_at: string | null;
+  last_fired_at: string | null;
+}
+
+export interface SilentExclusion {
+  rule_type: string | null;
+  evidence: string;
+  count: number;
+}
+
+export interface SilentSection {
+  items: SilentRule[];
+  total: number;
+  items_truncated: boolean;
+  excluded: SilentExclusion[];
+  excluded_count: number;
+  excluded_reason: string;
+}
+
+export interface MatchRankRow {
+  rule_id: string;
+  qradar_id: number;
+  name: string;
+  enabled: boolean;
+  rule_type: string | null;
+  is_building_block: boolean;
+  match_records: number;
+  matched_events: number;
+  match_rate_per_second: number;
+  lower_bound: boolean;
+}
+
+export interface CostRow {
+  rule_id: string;
+  qradar_id: number;
+  name: string;
+  rule_type: string | null;
+  is_building_block: boolean;
+  average_capacity: number;
+}
+
+export interface CostSection {
+  label: string;
+  unit: string;
+  items: CostRow[];
+  no_benchmark_count: number;
+}
+
+export interface RuleStatistics {
+  instance_id: string;
+  counts: RuleCountRow[];
+  window: RuleStatisticsWindow;
+  silent: SilentSection | null;
+  silent_reason: string | null;
+  top_by_matches: MatchRankRow[] | null;
+  top_by_events: MatchRankRow[] | null;
+  top_reason: string | null;
+  costliest_by_benchmark: CostSection;
+}
+
+export interface CapacitySample {
+  capacity_timestamp: string;
+  average_capacity: number | null;
+  base_capacity: number | null;
+  base_host_id: number | null;
+  recorded_at: string;
+}
+
+export const ruleStatisticsApi = {
+  statistics: (days: number) => request<RuleStatistics>(`/rules/statistics${qs({ days })}`),
+  capacityHistory: (id: string) => request<CapacitySample[]>(`/rules/${id}/capacity-history`),
+};
