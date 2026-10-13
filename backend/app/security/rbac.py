@@ -77,6 +77,14 @@ PERM_ALERT_READ = "read:alerts"
 # operational control reserved for administrators, matching the WAF pattern.
 PERM_SEARCH_CADENCE_READ = "read:search_cadence"
 PERM_SEARCH_CADENCE_ADMIN = "admin:search_cadence"
+# Phase C. The fleet view maps every monitored source to a class, an owner-facing
+# review state and its volume, so it is guarded at the router like the other
+# inventory surfaces; `read:*` satisfies it. Classification rules decide which
+# policy a source falls under (a rule that matches everything to OTHER would hide
+# a firewall from firewall policy), so writing them is administrative and `read:*`
+# does not grant it. Overrides and reviews reuse `log_source:write`.
+PERM_FLEET_READ = "read:fleet"
+PERM_CLASSIFICATION_ADMIN = "admin:classification"
 
 
 class PermissionDenied(Exception):

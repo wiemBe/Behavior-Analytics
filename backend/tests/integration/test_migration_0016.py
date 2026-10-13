@@ -75,7 +75,7 @@ def test_0016_round_trip_and_no_drift(clean_db: str) -> None:
                 "recorded_at": "NO",
             }
 
-        command.downgrade(config, "0014")
+        command.downgrade(config, "0015")
         with engine.connect() as connection:
             assert not _exists(connection, "rule_capacity_sample")
             assert _exists(connection, "anomaly_evaluation_watermark")

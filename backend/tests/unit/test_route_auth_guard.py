@@ -50,9 +50,33 @@ _BODIES: dict[tuple[str, str], dict] = {
         "aql_query": "SELECT sourceip FROM events LAST 1 HOURS",
         "schedule_cron": "*/5 * * * *",
     },
+    ("PUT", "/api/v1/waf/log-sources/{log_source_id}/profile"): {
+        "expected_profile_version": None,
+        "product_label": None,
+        "mapping": {
+            "URL": "URL",
+            "METHOD": "HTTP_Method",
+            "VIRTUAL_HOST": None,
+            "ACTION": None,
+            "RESPONSE_CODE": None,
+            "RULE_ID": None,
+            "USER_AGENT": None,
+        },
+        "action_value_map": {"BLOCKED": [], "ALLOWED": []},
+    },
     ("POST", "/api/v1/coverage/mappings"): {
         "technique_id": "T1059",
         "rule_id": "00000000-0000-0000-0000-000000000000",
+    },
+    # Phase C. Both routes check their write permission in the handler, after body
+    # validation, so the guard needs a body that passes validation.
+    ("POST", "/api/v1/classification-rules"): {
+        "kind": "NAME_REGEX",
+        "pattern": "^guard-",
+        "target_class": "OTHER",
+    },
+    ("PATCH", "/api/v1/log-sources/{log_source_id}/classification"): {
+        "override_class": None,
     },
 }
 

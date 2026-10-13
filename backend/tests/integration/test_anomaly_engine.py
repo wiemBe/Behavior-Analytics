@@ -445,3 +445,35 @@ async def test_synthetic_bucket_runs_the_detectors_the_mock_measures(db_session)
     assert await _detector_state_types(db_session, ls) == (
         {t.value for t in AnomalyType} - unsupported
     )
+
+
+async def test_anomaly_alert_context_carries_source_class_without_moving_fingerprint(
+    db_session,
+) -> None:
+    from app.models.enums import ClassificationReviewStatus, SourceClass
+    from app.models.fleet import LogSourceClassification
+
+    inst = await make_instance(db_session)
+    classified = await make_log_source(db_session, inst, qradar_id=1, name="fw-1")
+    bare = await make_log_source(db_session, inst, qradar_id=2, name="unclassified-1")
+    start = utc(h=10)
+    db_session.add(
+        LogSourceClassification(
+            log_source_id=classified.id, source_class=SourceClass.FIREWALL.value,
+            basis="NAME_REGEX", conflicts=[], classified_at=start,
+            review_status=ClassificationReviewStatus.REVIEWED.value,
+        )
+    )
+    await db_session.flush()
+    engine = AnomalyEngine(db_session, settings=_settings())
+    for ls in (classified, bare):
+        await _reliable_eps_baseline(db_session, ls, weekday=start.isoweekday(), hour=10)
+        await _feed(engine, ls, db_session, start=start, count=3, eps=3.0)
+
+    with_class = await _open_alert(db_session, classified, AnomalyType.VOLUME_DROP)
+    without = await _open_alert(db_session, bare, AnomalyType.VOLUME_DROP)
+    assert with_class is not None and without is not None
+    assert with_class.context["source_class"] == "FIREWALL"
+    assert "source_class" not in without.context
+    # Looked up by the class-free fingerprint: identity is unchanged.
+    assert with_class.dedup_key == anomaly_fingerprint(classified.id, "VOLUME_DROP")

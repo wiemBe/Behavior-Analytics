@@ -5,10 +5,40 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import Severity, VisualizationType
 from app.services.aql_validator import AQLValidationError, validate_aql
+
+
+def unreachable_threshold_reason(
+    operator: str, threshold_value: float | None, max_result_rows: int | None
+) -> str | None:
+    """Why a threshold can never be breached, or None when it can.
+
+    A run returns at most ``max_result_rows`` rows, and a truncated run proves
+    only that the true count is at least ``max_result_rows + 1``. A strict-
+    greater threshold at or above the cap, or a greater-or-equal threshold above
+    the cap-plus-one, is therefore outside anything the search can ever observe.
+    The ``LT``/``LE``/``EQ`` operators and a ``None`` threshold are unaffected.
+    """
+    if threshold_value is None or max_result_rows is None:
+        return None
+    boundary = max_result_rows + 1
+    unreachable = (operator == "GT" and threshold_value >= boundary) or (
+        operator == "GE" and threshold_value > boundary
+    )
+    if not unreachable:
+        return None
+    return (
+        f"threshold {operator} {threshold_value:g} can never be reached: a run counts "
+        f"at most max_result_rows ({max_result_rows}) rows; raise max_result_rows above "
+        f"the threshold or lower the threshold"
+    )
+
+
+class ThresholdUnreachableError(ValueError):
+    """Raised when a create or update would store a never-breachable threshold."""
 
 
 class ScheduledSearchCreate(BaseModel):
@@ -39,6 +69,17 @@ class ScheduledSearchCreate(BaseModel):
         except AQLValidationError as exc:
             raise ValueError(f"unsafe AQL: {exc}") from exc
         return v
+
+    @model_validator(mode="after")
+    def _threshold_must_be_reachable(self) -> ScheduledSearchCreate:
+        # A threshold the search can never breach would silently never alert;
+        # refuse it here so the analyst hears about it while authoring.
+        reason = unreachable_threshold_reason(
+            self.threshold_operator, self.threshold_value, self.max_result_rows
+        )
+        if reason is not None:
+            raise ValueError(reason)
+        return self
 
 
 class ScheduledSearchUpdate(BaseModel):

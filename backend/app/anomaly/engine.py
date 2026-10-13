@@ -52,6 +52,7 @@ from app.models.enums import (
     DetectorSignal,
     EvidenceStatus,
 )
+from app.models.fleet import LogSourceClassification
 from app.models.log_source import (
     AnomalyStateTransition,
     LogSource,
@@ -128,6 +129,7 @@ class AnomalyEngine:
         # Optional object with `async enqueue(alert, transition)`. When set,
         # alert transitions produce notification rows. None in unit tests.
         self._enqueuer = enqueuer
+        self._source_class_cache: dict[uuid.UUID, str | None] = {}
 
     async def evaluate_latest(self, log_source: LogSource) -> EvaluationReport:
         metric = await self.session.scalar(
@@ -612,7 +614,12 @@ class AnomalyEngine:
         if in_maintenance:
             return
         result = await self.alerts.open_or_update(
-            self._alert_input(log_source, evidence, anomaly.id)
+            self._alert_input(
+                log_source,
+                evidence,
+                anomaly.id,
+                await self._source_class(log_source.id),
+            )
         )
         # Enqueue a notification only on a genuine OPEN transition (dedup: an
         # update to an already-open alert has transition=None).
@@ -679,9 +686,36 @@ class AnomalyEngine:
             )
         )
 
+    async def _source_class(self, log_source_id: uuid.UUID) -> str | None:
+        """The source's Phase C class for alert routing; None when unclassified.
+
+        Read per source and cached for the engine's lifetime: a refresh of an
+        open condition happens every bucket, and a class changes only on an
+        operator action or a sync, never within one evaluation pass.
+        """
+        if log_source_id not in self._source_class_cache:
+            self._source_class_cache[log_source_id] = await self.session.scalar(
+                select(LogSourceClassification.source_class).where(
+                    LogSourceClassification.log_source_id == log_source_id
+                )
+            )
+        return self._source_class_cache[log_source_id]
+
     def _alert_input(
-        self, log_source: LogSource, evidence: AnomalyEvidence, anomaly_id: uuid.UUID | None
+        self,
+        log_source: LogSource,
+        evidence: AnomalyEvidence,
+        anomaly_id: uuid.UUID | None,
+        source_class: str | None = None,
     ) -> AlertInput:
+        context = {
+            "log_source": log_source.name,
+            "owner": log_source.owner,
+            "criticality": str(log_source.criticality),
+        }
+        # Added only when known, and never part of the fingerprint.
+        if source_class is not None:
+            context["source_class"] = str(source_class)
         return AlertInput(
             fingerprint=anomaly_fingerprint(log_source.id, evidence.anomaly_type.value),
             title=f"{evidence.anomaly_type.value} on {log_source.name}",
@@ -691,11 +725,7 @@ class AnomalyEngine:
             description=evidence.reason,
             evidence=evidence.to_dict(),
             source_anomaly_ids=[str(anomaly_id)] if anomaly_id is not None else [],
-            context={
-                "log_source": log_source.name,
-                "owner": log_source.owner,
-                "criticality": str(log_source.criticality),
-            },
+            context=context,
         )
 
     async def _refresh(
@@ -716,7 +746,12 @@ class AnomalyEngine:
         if in_maintenance:
             return
         await self.alerts.open_or_update(
-            self._alert_input(log_source, evidence, state.open_anomaly_id)
+            self._alert_input(
+                log_source,
+                evidence,
+                state.open_anomaly_id,
+                await self._source_class(log_source.id),
+            )
         )
 
     async def _resolve(

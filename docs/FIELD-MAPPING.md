@@ -147,6 +147,18 @@ WafProfileHistoryEntryOut
   outcome, reasons | null                          -- for `validated`
 ```
 
+**Contract additions (reconciled 2026-10-13 from T-044's questions; binding on both sides):**
+- `MappingSchemaOut` also carries `min_coverage_ratio` (the `waf_validation_min_ratio` setting,
+  e.g. 0.9), so the UI never hard-codes the threshold.
+- `GET /waf/sources` items (`WafSourceStatusOut`) also carry `validation_pending`,
+  `validation_requested_at` and `validation_requested_by`, so the list can show "Validating v5…".
+- Each `/waf/candidates` item also carries `instance_id`, which the §FM.7 prefill needs.
+- **Every 409 has a structured `detail`:** `{"message": str, "current_version": int | null,
+  "updated_by": str | null, "pending_since": datetime | null}`. `message` is safe to show; the
+  other keys are filled where they apply (stale version; validation already pending).
+- A 422 keeps FastAPI's shape for body validation; a `WafProfileError` 422 has
+  `detail = {"message": str}`.
+
 **PUT semantics.**
 - No profile and `expected_profile_version` is null → create (disabled, `UNVALIDATED`), 201.
 - Profile exists and `expected_profile_version` ≠ its version (or is null) → **409**, body says the
@@ -311,8 +323,35 @@ IPS screens are the same components with the IPS schema.
 
 ## FM.9 IPS (Phase D) — the contract it inherits
 
+**Facts (T-030, lab 7.6, 2026-10-13, [report](tasks/T-030.report.md)).** QRadar auto-discovered both
+vendor-native lab sources within seconds: `PaSeries @ pa-fw-01` (id 412, type 206 "Palo Alto PA
+Series", from raw PAN-OS THREAT CSV) and `CiscoFirepowerThreatDefense @ ftd-01` (id 413, type 448).
+
+| Logical field | Cisco FTD | Palo Alto THREAT | Lab population |
+|---|---|---|---|
+| `SOURCE_IP` | normalized `sourceip` | normalized `sourceip` | 100 % |
+| `DESTINATION_IP` | normalized `destinationip` | normalized `destinationip` | 100 % |
+| `DESTINATION_PORT` | normalized `destinationport` (> 0) | normalized `destinationport` (> 0) | 100 % |
+| `PROTOCOL` | normalized `protocolid` (> 0) | normalized `protocolid` (> 0) | 100 % |
+| `SIGNATURE` | `QIDNAME(qid)`; one generic "Unknown Snort Event" | `QIDNAME(qid)`; several threats collapse onto "URL Filtering" | 100 % |
+| `ACTION` | **absent** | **absent** (no property, QID or severity separates block from allow) | 0 % |
+| `SEVERITY` | normalized `severity`, constant | normalized `severity`, varies by QID | 100 % |
+
+Consequences:
+- **The normalized defaults are right for both products**, so a new IPS profile starts valid for
+  everything except the action.
+- **`ACTION` is exactly the site-specific mapping this design exists for.** Neither DSM exposes it;
+  an operator authors a custom property in QRadar (e.g. extracting the PAN-OS action column or the
+  FTD `AccessControlRuleAction` key) and maps it in the editor. Until then the block-ratio detector
+  is `INSUFFICIENT_DATA`, never "no blocks".
+- `SIGNATURE` by QID is coarse on PAN (several threats per QID). A threat-id custom property, where
+  a site has one, is the finer choice; the editor offers it as a `CUSTOM_PROPERTY` alternative.
+- The PAN type has nine custom properties (zones, application, bytes, URL), all unpopulated on the
+  raw CSV; FTD's type has none.
+- The lab events are deterministic: these numbers show what parses, not how a real fleet behaves.
+
 Phase D is not built (§0 roadmap item 4). When it is, IPS sources get the same administration, with
-these differences, to be confirmed by T-030 (live FTD and PAN THREAT sources) and T-041:
+these differences (T-030 and T-041 confirmed the syntax and the population):
 
 - **Field references have two kinds.** IPS fields are mostly QRadar **normalized** fields, which
   DSMs fill for every product: `sourceip`, `destinationip`, `destinationport`, `protocolid`, `qid`.

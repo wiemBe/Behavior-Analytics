@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 
+from app.alerts.dispatcher import NotificationDispatcher
+from app.alerts.fingerprint import inventory_fingerprint
+from app.alerts.routing import default_policy
+from app.alerts.service import AlertResolution, AlertService
 from app.api.deps import ProviderDep, SessionDep
+from app.fleet.service import reclassify_instance
+from app.models.enums import ClassificationReviewStatus
+from app.models.fleet import LogSourceClassification
 from app.repositories.audit import record_audit
 from app.repositories.log_source import LogSourceRepository
+from app.schemas.fleet import ClassificationOverrideIn, FleetSourceOut, fleet_source_out
 from app.schemas.log_source import (
     AnomalySummary,
     LogSourceDetail,
@@ -134,3 +143,111 @@ async def sync_inventory(
     svc = InventorySyncService(session, provider)
     instance = await svc.ensure_default_instance()
     return await svc.sync(instance)
+
+
+async def _classification(
+    session: SessionDep, log_source_id: uuid.UUID
+) -> LogSourceClassification | None:
+    """The source's classification row, re-read past the identity map.
+
+    The bulk upsert writes the row behind the ORM's back, so a cached instance
+    would show the pre-change class.
+    """
+    return await session.scalar(
+        select(LogSourceClassification)
+        .where(LogSourceClassification.log_source_id == log_source_id)
+        .execution_options(populate_existing=True)
+    )
+
+
+@router.patch("/{log_source_id}/classification", response_model=FleetSourceOut)
+async def set_classification_override(
+    log_source_id: uuid.UUID,
+    payload: ClassificationOverrideIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+) -> FleetSourceOut:
+    """Set or clear (null) the operator's class override for one source.
+
+    The source is re-classified in the same request, so the response shows the
+    class the platform now uses. Audited as {from, to}. Reviewing is a separate,
+    deliberate act: overriding does not mark the source reviewed.
+    """
+    _guard(principal, PERM_LOG_SOURCE_WRITE)
+    ls = await LogSourceRepository(session).get(log_source_id)
+    if ls is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
+    before = await _classification(session, log_source_id)
+    previous = before.override_class if before else None
+    await reclassify_instance(
+        session,
+        ls.instance_id,
+        classified_at=datetime.now(UTC),
+        source_ids=[log_source_id],
+        override_updates={log_source_id: payload.override_class},
+        override_actor=principal.subject,
+    )
+    after = await _classification(session, log_source_id)
+    await record_audit(
+        session, action="log_source.classification_override", actor=principal.subject,
+        object_type="log_source", object_id=str(log_source_id),
+        detail={
+            "from": _jsonable(previous),
+            "to": _jsonable(payload.override_class),
+            "class": _jsonable(after.source_class) if after else None,
+        },
+    )
+    return fleet_source_out(ls, after)
+
+
+@router.post("/{log_source_id}/review", response_model=FleetSourceOut)
+async def mark_reviewed(
+    log_source_id: uuid.UUID, session: SessionDep, principal: PrincipalDep
+) -> FleetSourceOut:
+    """Mark a source reviewed and resolve its new-source alert.
+
+    Idempotent: a source that is already reviewed is returned unchanged, with no
+    second audit row and no alert work. Classifying never resolves the alert;
+    only this deliberate act does.
+    """
+    _guard(principal, PERM_LOG_SOURCE_WRITE)
+    ls = await LogSourceRepository(session).get(log_source_id)
+    if ls is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
+    row = await _classification(session, log_source_id)
+    if row is None:
+        # Created REVIEWED by the bulk path; nothing is left to acknowledge.
+        await reclassify_instance(
+            session, ls.instance_id, classified_at=datetime.now(UTC),
+            source_ids=[log_source_id],
+        )
+        row = await _classification(session, log_source_id)
+    elif row.review_status != ClassificationReviewStatus.REVIEWED:
+        now = datetime.now(UTC)
+        row.review_status = ClassificationReviewStatus.REVIEWED
+        row.reviewed_at = now
+        row.reviewed_by = principal.subject
+        await session.flush()
+        _, resolved = await AlertService(session, clock=lambda: now).apply_bulk(
+            [],
+            [
+                AlertResolution(
+                    fingerprint=inventory_fingerprint(ls.instance_id, ls.qradar_id),
+                    actor=principal.subject,
+                    reason="log source reviewed",
+                )
+            ],
+        )
+        result = resolved[0]
+        if result is not None and result.transition is not None:
+            # Enqueue only: delivery belongs to the dispatch worker, as for the
+            # alert resolve route.
+            await NotificationDispatcher(
+                session, notifiers={}, policy=default_policy()
+            ).enqueue(result.alert, result.transition)
+        await record_audit(
+            session, action="log_source.review", actor=principal.subject,
+            object_type="log_source", object_id=str(log_source_id),
+            detail={"alert_resolved": result is not None},
+        )
+    return fleet_source_out(ls, row)

@@ -2,7 +2,7 @@
 
 A RoutingPolicy decides which channels+targets an alert notification goes to,
 matched on severity, alert type (condition family from the fingerprint),
-log-source owner and instance. This is deliberately data-driven so operators can
+log-source owner, instance and source class. This is deliberately data-driven so operators can
 route "critical anomalies on owner=payments → Teams+PagerDuty webhook" without
 code changes.
 
@@ -40,6 +40,10 @@ class RoutingRule:
     alert_types: frozenset[str] | None = None      # e.g. {"anomaly", "search_threshold"}
     owners: frozenset[str] | None = None
     instances: frozenset[str] | None = None
+    # Phase C: the log-source class (e.g. {"FIREWALL"}) carried in the alert
+    # context. A rule with classes never matches an alert that has none, so an
+    # unclassified or non-source alert cannot slip into a class-scoped route.
+    source_classes: frozenset[str] | None = None
 
     def matches(self, alert: Alert) -> bool:
         if _SEVERITY_RANK[alert.severity] < _SEVERITY_RANK[self.min_severity]:
@@ -55,6 +59,10 @@ class RoutingRule:
         if self.instances is not None:
             instance = (alert.context or {}).get("instance")
             if instance not in self.instances:
+                return False
+        if self.source_classes is not None:
+            source_class = (alert.context or {}).get("source_class")
+            if source_class not in self.source_classes:
                 return False
         return True
 

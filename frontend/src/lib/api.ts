@@ -16,7 +16,16 @@ function baseUrl(): string {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  /**
+   * `detail` is the response's `detail` exactly as sent. Most errors carry a
+   * string, which is also `message`; a conflict may carry an object naming the
+   * current version, which `message` cannot hold.
+   */
+  constructor(
+    public status: number,
+    message: string,
+    public detail?: unknown,
+  ) {
     super(message);
   }
 }
@@ -29,12 +38,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let raw: unknown;
     try {
-      detail = (await res.json()).detail ?? detail;
+      raw = (await res.json()).detail;
+      if (typeof raw === "string") detail = raw;
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, raw);
   }
   return res.json() as Promise<T>;
 }
@@ -106,6 +117,8 @@ export interface LogSourceDetail {
   business_hours_only: boolean;
   expected_interval_seconds: number | null;
   last_event_time: string | null;
+  /** Not on the schema today; read when the backend sends it (T-044 report). */
+  instance_id?: string | null;
 }
 
 // --- Phase 2 types ---------------------------------------------------------
@@ -189,6 +202,167 @@ export interface SearchVersion {
   changed_by: string | null;
   change_note: string | null;
   created_at: string;
+}
+
+// --- WAF source administration (docs/FIELD-MAPPING.md §FM.3, §FM.4, §FM.6) ---
+// These mirror the field-mapping contract. Every measurement the validation
+// report may lack is `| null`: a share that was not measured is not 0 %.
+
+export interface MappingFieldOut {
+  key: string;
+  label: string;
+  description: string;
+  required: boolean;
+  used_by_collection: boolean;
+  kinds: string[];
+  normalized_options: string[];
+  default: string | null;
+}
+
+export interface MappingValueMapOut {
+  field: string;
+  outcomes: string[];
+}
+
+export interface MappingSchemaOut {
+  domain: "WAF" | "IPS";
+  property_name_pattern: string;
+  /** The share of events a collection field must populate (waf_validation_min_ratio). */
+  min_coverage_ratio: number;
+  fields: MappingFieldOut[];
+  value_maps: MappingValueMapOut[];
+}
+
+/** Logical field key to the QRadar property it is read from; null = not mapped. */
+export type FieldMapping = Record<string, string | null>;
+
+/** Outcome (`BLOCKED`, `ALLOWED`) to the raw action values assigned to it. */
+export type ActionValueMap = Record<string, string[]>;
+
+export type WafValidationStatus = "UNVALIDATED" | "VALID" | "INVALID" | "INCONCLUSIVE";
+
+export interface DiscoveredValue {
+  value: string;
+  events: number;
+}
+
+export interface FieldValidationOut {
+  field: string;
+  property_name: string | null;
+  /** AVAILABLE, NOT_MAPPED, PROPERTY_REJECTED, UNPOPULATED, INSUFFICIENT_COVERAGE,
+   *  IMPLAUSIBLE, NO_EVENTS or QUERY_FAILED. Typed as string so a status this
+   *  build does not know is shown as recorded rather than dropped. */
+  status: string;
+  used_by_collection: boolean;
+  populated_events: number | null;
+  populated_ratio: number | null;
+  distinct_values: number | null;
+  plausible_ratio: number | null;
+  sampled_events: number | null;
+  values_truncated: boolean;
+  discovered_values: DiscoveredValue[];
+  detail: string | null;
+}
+
+export interface ValidationReportOut {
+  status: WafValidationStatus;
+  reasons: string[];
+  total_events: number | null;
+  window_start: string;
+  window_end: string;
+  profile_version: number;
+  fields: FieldValidationOut[];
+}
+
+export interface WafProfileIn {
+  /** Null only to create; otherwise the version the edit was made against. */
+  expected_profile_version: number | null;
+  product_label: string | null;
+  mapping: FieldMapping;
+  action_value_map: ActionValueMap;
+}
+
+export interface WafProfileOut {
+  profile_id: string;
+  instance_id: string;
+  log_source_id: string;
+  qradar_log_source_id: number;
+  log_source_name: string;
+  log_source_type_name: string | null;
+  product_label: string | null;
+  profile_version: number;
+  enabled: boolean;
+  mapping: FieldMapping;
+  action_value_map: ActionValueMap;
+  validation_status: WafValidationStatus;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation: ValidationReportOut | null;
+  validation_pending: boolean;
+  validation_requested_at: string | null;
+  validation_requested_by: string | null;
+  collection_eligible: boolean;
+  ineligible_reason: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface WafProfileHistoryEntryOut {
+  at: string;
+  actor: string;
+  /** waf.profile.created | mapping_changed | relabelled | validation_requested |
+   *  validated | enabled | disabled. Unknown values are shown as recorded. */
+  action: string;
+  profile_version: number | null;
+  mapping_before: FieldMapping | null;
+  mapping_after: FieldMapping | null;
+  outcome: string | null;
+  reasons: string[] | null;
+}
+
+export interface WafCandidateOut {
+  log_source_id: string;
+  qradar_id: number;
+  name: string;
+  type_name: string | null;
+  source_class: string | null;
+  instance_id: string;
+}
+
+export interface CatalogProperty {
+  name: string;
+  property_type: string | null;
+  applies_to_source_type: boolean | null;
+  name_allowed: boolean;
+}
+
+export interface PropertyCatalogOut {
+  status: "AVAILABLE" | "UNAVAILABLE";
+  fetched_at: string | null;
+  filtered_by_source_type: boolean;
+  properties: CatalogProperty[];
+  detail: string | null;
+}
+
+// Mirrors the fields of WafSourceStatusOut the administration list reads.
+export interface WafSourceStatus {
+  profile_id: string;
+  instance_id: string;
+  log_source_id: string;
+  qradar_log_source_id: number;
+  log_source_name: string;
+  product_label: string | null;
+  enabled: boolean;
+  profile_version: number;
+  validation_status: WafValidationStatus;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation_fields: { field: string; property_name: string | null; status: string }[];
+  collection_eligible: boolean;
+  ineligible_reason: string | null;
+  validation_pending: boolean;
+  validation_requested_at: string | null;
+  validation_requested_by: string | null;
 }
 
 export interface Alert {
@@ -813,6 +987,39 @@ export const api = {
   sourceBaselines: (id: string, metric = "average_eps") =>
     request<BaselineCell[]>(`/behavior/sources/${id}/baselines${qs({ metric })}`),
 
+  // --- WAF source administration -------------------------------------------
+  // Guarded by admin:waf. Profile writes save the application's database only;
+  // validation is a request that a worker runs, never a wait on this call.
+  wafMappingSchema: () => request<MappingSchemaOut>("/waf/mapping-schema"),
+  wafSources: () => request<WafSourceStatus[]>("/waf/sources"),
+  wafCandidates: (params: { instance_id?: string; q?: string; limit?: number } = {}) =>
+    request<WafCandidateOut[]>(`/waf/candidates${qs({ ...params })}`),
+  wafProfile: (logSourceId: string) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile`),
+  saveWafProfile: (logSourceId: string, body: WafProfileIn) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  validateWafProfile: (logSourceId: string) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile/validate`, {
+      method: "POST",
+    }),
+  enableWafProfile: (logSourceId: string) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile/enable`, {
+      method: "POST",
+    }),
+  disableWafProfile: (logSourceId: string) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile/disable`, {
+      method: "POST",
+    }),
+  wafProfileHistory: (logSourceId: string) =>
+    request<WafProfileHistoryEntryOut[]>(`/waf/log-sources/${logSourceId}/profile/history`),
+  wafPropertyCatalog: (logSourceId: string, refresh = false) =>
+    request<PropertyCatalogOut>(
+      `/waf/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined })}`,
+    ),
+
   acknowledgeAlert: (id: string) =>
     request<Alert>(`/alerts/${id}/acknowledge`, { method: "POST" }),
   resolveAlert: (id: string, reason: string) =>
@@ -863,3 +1070,236 @@ export function sevTone(sev: string): string {
   if (sev === "LOW" || sev === "INFO") return "info";
   return "";
 }
+
+// --- Phase C: log-source fleet ---------------------------------------------
+// Mirrors app/schemas/fleet.py. A volume figure with no complete bucket behind
+// it is `null`, never 0, so every such field is `number | null`.
+
+export type SourceClass =
+  | "WAF"
+  | "IPS"
+  | "FIREWALL"
+  | "PROXY"
+  | "VPN"
+  | "LINUX"
+  | "WINDOWS"
+  | "NETWORK"
+  | "DNS"
+  | "DATABASE"
+  | "EMAIL"
+  | "ENDPOINT"
+  | "CLOUD"
+  | "IDENTITY"
+  | "APPLICATION"
+  | "QRADAR_INTERNAL"
+  | "OTHER"
+  | "UNCLASSIFIED";
+
+export type FleetWindow = "1h" | "24h" | "7d";
+
+export type ClassificationBasis =
+  | "OVERRIDE"
+  | "INTERNAL"
+  | "UNCLASSIFIED"
+  | "GROUP"
+  | "TYPE"
+  | "TYPE_NAME_REGEX"
+  | "NAME_REGEX"
+  | "IDENTIFIER_REGEX";
+
+export type ClassificationReviewStatus = "NEW" | "REVIEWED";
+
+export type ClassificationRuleKind =
+  | "GROUP"
+  | "TYPE"
+  | "TYPE_NAME_REGEX"
+  | "NAME_REGEX"
+  | "IDENTIFIER_REGEX";
+
+export interface FleetSourceCounts {
+  enabled: number;
+  disabled: number;
+}
+
+// `missing` is what is neither complete nor partial; the three add up to
+// `expected` unless a disabled source still reports.
+export interface FleetBucketCounts {
+  expected: number;
+  complete: number;
+  partial: number;
+  missing: number;
+}
+
+export interface FleetTopSource {
+  id: string;
+  name: string;
+  events: number;
+}
+
+export interface FleetClassSummary {
+  source_class: SourceClass;
+  sources: FleetSourceCounts;
+  buckets: FleetBucketCounts;
+  // Null when no complete bucket exists. Complete buckets only.
+  events: number | null;
+  mean_eps: number | null;
+  // Null when no source in the class has a reliable baseline.
+  expected_eps: number | null;
+  baseline_sources: number;
+  baseline_share: number | null;
+  // Phase A anomaly type -> open incident count.
+  open_incidents: Record<string, number>;
+  top_sources: FleetTopSource[];
+}
+
+export interface FleetSummary {
+  window: FleetWindow;
+  window_start: string;
+  window_end: string;
+  bucket_seconds: number;
+  classes: FleetClassSummary[];
+  internal: { sources: FleetSourceCounts };
+  new_sources: number;
+  conflict_sources: number;
+  unclassified_sources: number;
+}
+
+// One entry of `conflicts`: a lower-level candidate whose class differs from
+// the winner, or a tied candidate at the winning level.
+export interface ClassificationConflict {
+  basis: string | null;
+  rule_id: string | null;
+  class: string | null;
+}
+
+export interface FleetSource {
+  id: string;
+  instance_id: string;
+  qradar_id: number;
+  name: string;
+  type_name: string | null;
+  enabled: boolean;
+  // Null when the sync never recorded it: unknown, not "no".
+  auto_discovered: boolean | null;
+  first_seen_at: string;
+  source_class: SourceClass;
+  basis: string;
+  rule_id: string | null;
+  override_class: SourceClass | null;
+  override_by: string | null;
+  override_at: string | null;
+  conflicts: ClassificationConflict[];
+  classified_at: string | null;
+  // Null when the source has no classification row yet.
+  review_status: ClassificationReviewStatus | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+}
+
+export interface FleetSourceParams {
+  class?: SourceClass;
+  review_status?: ClassificationReviewStatus;
+  has_conflict?: boolean;
+  basis?: ClassificationBasis;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ClassificationRule {
+  id: string;
+  instance_id: string | null;
+  kind: ClassificationRuleKind;
+  pattern: string;
+  target_class: SourceClass;
+  priority: number;
+  enabled: boolean;
+  built_in: boolean;
+  description: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClassificationRuleCreate {
+  instance_id?: string | null;
+  kind: ClassificationRuleKind;
+  pattern: string;
+  target_class: SourceClass;
+  priority?: number;
+  enabled?: boolean;
+  description?: string | null;
+}
+
+export interface ClassificationRuleUpdate {
+  pattern?: string;
+  target_class?: SourceClass;
+  priority?: number;
+  enabled?: boolean;
+  description?: string | null;
+}
+
+// The fleet calls differ from `request` in two ways. A 204 has no body to
+// parse. And FastAPI answers a schema-validation failure (rule create) with a
+// list of `{msg}` objects but an HTTPException (rule update) with a string, so
+// the detail is normalised to one sentence before it reaches the DOM.
+function detailText(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) =>
+        d && typeof d === "object" && typeof (d as { msg?: unknown }).msg === "string"
+          ? (d as { msg: string }).msg.replace(/^Value error, /, "")
+          : null,
+      )
+      .filter((m): m is string => m !== null);
+    if (parts.length) return parts.join("; ");
+  }
+  return fallback;
+}
+
+async function fleetRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${baseUrl()}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = detailText((await res.json()).detail, detail);
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export const fleetApi = {
+  summary: (window: FleetWindow) => fleetRequest<FleetSummary>(`/fleet/summary${qs({ window })}`),
+  sources: (params: FleetSourceParams = {}) =>
+    fleetRequest<Page<FleetSource>>(`/fleet/sources${qs({ ...params })}`),
+  // `null` clears the override. The field is required by the API: omitting it
+  // is a 422, so it is always sent.
+  setOverride: (id: string, overrideClass: SourceClass | null) =>
+    fleetRequest<FleetSource>(`/log-sources/${id}/classification`, {
+      method: "PATCH",
+      body: JSON.stringify({ override_class: overrideClass }),
+    }),
+  markReviewed: (id: string) =>
+    fleetRequest<FleetSource>(`/log-sources/${id}/review`, { method: "POST" }),
+  rules: () => fleetRequest<ClassificationRule[]>("/classification-rules"),
+  createRule: (body: ClassificationRuleCreate) =>
+    fleetRequest<ClassificationRule>("/classification-rules", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateRule: (id: string, body: ClassificationRuleUpdate) =>
+    fleetRequest<ClassificationRule>(`/classification-rules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteRule: (id: string) =>
+    fleetRequest<void>(`/classification-rules/${id}`, { method: "DELETE" }),
+};

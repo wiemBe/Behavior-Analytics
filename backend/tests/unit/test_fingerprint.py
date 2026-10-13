@@ -61,3 +61,18 @@ def test_search_failure_is_stable_and_source_scoped() -> None:
     sid = uuid.uuid4()
     assert search_failure_fingerprint(sid) == search_failure_fingerprint(str(sid))
     assert search_failure_fingerprint(sid) != search_failure_fingerprint(uuid.uuid4())
+
+
+def test_anomaly_and_inventory_fingerprints_are_pinned() -> None:
+    """Fingerprints are persisted. Adding `source_class` to alert contexts (Phase C
+    routing) must not move them: they are computed from ids and type only."""
+    from app.alerts.fingerprint import inventory_fingerprint
+
+    assert (
+        anomaly_fingerprint("00000000-0000-0000-0000-000000000001", "VOLUME_DROP")
+        == "anomaly:95fd72d394b56cb17e49e3731c05205d"
+    )
+    assert (
+        inventory_fingerprint("00000000-0000-0000-0000-000000000002", 7)
+        == "inventory:8eb829b4fc36c5d2e2a6b2a2c2eef212"
+    )

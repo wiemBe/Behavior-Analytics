@@ -10,6 +10,7 @@ from sqlalchemy import event, func, select
 
 from app.core.config import Settings
 from app.fleet.seed_rules import TYPE_NAME_RULES
+from app.fleet.service import ensure_seed_rules
 from app.models.alert import Alert
 from app.models.enums import ClassificationReviewStatus, SourceClass
 from app.models.fleet import (
@@ -228,6 +229,36 @@ async def test_seed_sync_updates_builtin_definition_but_preserves_disabled_state
     assert row.priority == expected.priority
     assert row.description == expected.description
     assert row.enabled is False
+
+
+async def test_upgrade_replaces_stale_rule_three_and_the_site_name_decides(
+    db_session,
+) -> None:
+    instance = await make_instance(db_session)
+    provider = FleetProvider([source(1, "pa-ips-01")])
+    provider.type_name = "Palo Alto PA Series"
+    await ensure_seed_rules(db_session)
+    stored = await db_session.get(ClassificationRule, TYPE_NAME_RULES[2].id)
+    # The rule 3 definition an install from before this release still holds.
+    stored.pattern = (
+        r"\b(?:Linux iptables Firewall|Netgate pfSense|Fortinet FortiGate Security Gateway|"
+        r"Palo Alto PA Series|Check Point|Cisco ASA|Cisco Firepower Threat Defense|"
+        r"Juniper SRX)\b"
+    )
+    await db_session.flush()
+
+    await ensure_seed_rules(db_session)
+    await db_session.refresh(stored)
+
+    assert stored.pattern == TYPE_NAME_RULES[2].pattern
+    assert "Palo Alto PA Series" not in stored.pattern
+    assert stored.enabled is True
+
+    await InventorySyncService(db_session, provider, clock=lambda: NOW).sync(instance)
+
+    row = (await classifications(db_session))[0]
+    assert row.source_class == SourceClass.IPS
+    assert row.basis == "NAME_REGEX"
 
 
 async def test_upgrade_sync_reviews_existing_sources_and_alerts_only_genuinely_new_source(

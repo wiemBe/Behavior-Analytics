@@ -61,9 +61,21 @@ a {
   min-height: 100vh;
 }
 
-.sidebar {
+/* The sidebar's panel is painted by `.layout::before`, which spans the whole
+   grid row and so the full height of the page. The sidebar itself is sticky and
+   only as tall as the viewport: given the background, the panel stopped at the
+   fold on any page that scrolled (visible in every full-page capture). */
+.layout::before {
+  content: "";
+  grid-column: 1;
+  grid-row: 1;
   background: var(--surface);
   border-right: 1px solid var(--border);
+}
+
+.sidebar {
+  grid-column: 1;
+  grid-row: 1;
   padding: var(--sp-6) var(--sp-3);
   position: sticky;
   top: 0;
@@ -143,6 +155,8 @@ a {
 }
 
 .main {
+  grid-column: 2;
+  grid-row: 1;
   /* `min-width: 0` is load-bearing: without it a wide table inside this grid
      column widens the column, and the page — rather than scrolling inside its
      own container. It is the fix for horizontal page overflow. */
@@ -258,6 +272,14 @@ td.cell-name {
   overflow-wrap: anywhere;
 }
 
+/* A source name kept on one line: ellipsis and a title carry a long one. */
+td.cell-name.cell-name-single {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
 /* --- panels and cards ------------------------------------------------------ */
 
 /* `.cards` is the name five Phase 3 routes already use for their metric row.
@@ -290,6 +312,9 @@ td.cell-name {
   display: grid;
   gap: var(--sp-4);
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Every row as tall as the tallest: a card with a note beside one without
+     one otherwise leaves the two folded rows at different heights. */
+  grid-auto-rows: 1fr;
   min-width: 0;
 }
 
@@ -517,13 +542,35 @@ th[aria-sort="descending"] .sort-link {
  * intrinsic width via `flex: 0 0 auto` above. */
 .issue-with-severity {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--sp-2);
   min-width: 0;
 }
+@media (max-width: 1200px) {
+  /* A timestamp may fold before its zone rather than widen the table. */
+  td.num.cell-when {
+    white-space: normal;
+  }
+  .nowrap {
+    white-space: nowrap;
+  }
+  .pill.pill-wrap {
+    white-space: normal;
+    text-align: center;
+    line-height: var(--lh-base);
+    padding-block: var(--sp-1);
+  }
+  /* Narrow content: the severity goes under the issue so the column can narrow. */
+  .issue-with-severity {
+    flex-direction: column;
+    gap: var(--sp-1);
+  }
+}
 .issue-with-severity__label {
-  min-width: 0;
-  overflow-wrap: anywhere;
+  /* A floor, so a squeezed column wraps at words and the table scrolls locally
+     rather than breaking the label letter by letter. */
+  min-width: 12ch;
+  overflow-wrap: break-word;
 }
 
 /* --- tables ----------------------------------------------------------------
@@ -1484,6 +1531,442 @@ pre {
   border: 0;
 }
 
+/* --- field-mapping administration -------------------------------------------
+   The generic mapping editor, validation report, value map and history, and the
+   WAF source list. Tokens only; a status is always named in text, so tone
+   reinforces the words and never replaces them. */
+
+.fm-section {
+  min-width: 0;
+}
+.fm-section > h2:first-child {
+  margin-top: var(--sp-7);
+}
+
+.fm-form {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+.fm-toolbar,
+.fm-copy,
+.fm-actions-line,
+.fm-bar,
+.fm-label-row,
+.fm-add-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  min-width: 0;
+}
+.fm-catalog {
+  flex: 1 1 40ch;
+  margin: 0;
+  min-width: 0;
+  max-width: 84ch;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+.fm-copy-label,
+.fm-label-row label,
+.fm-add-value label,
+.fm-picker-search label {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* One field per row: its name and meaning on the left, the property and what
+   is known about it on the right. Hairlines separate rows; nothing is boxed. */
+.fm-rows {
+  display: grid;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+}
+.fm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--sp-2) var(--sp-6);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--border);
+}
+.fm-row > * {
+  min-width: 0;
+}
+.fm-label {
+  font-weight: var(--fw-medium);
+  color: var(--text);
+}
+.fm-req {
+  margin-left: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.fm-req.is-required {
+  color: var(--text-2);
+}
+.fm-desc {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  color: var(--text-3);
+  max-width: 52ch;
+}
+.fm-input-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.field.fm-input {
+  min-width: 0;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 100%;
+}
+.fm-combo {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.fm-input[aria-invalid="true"] {
+  border-color: var(--crit-border);
+}
+.fm-suggest {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin: var(--sp-1) 0 0;
+  padding: var(--sp-1);
+  list-style: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.fm-option {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.fm-option.is-active,
+.fm-option:hover {
+  background: var(--surface-3);
+}
+.fm-option.is-disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+.fm-option-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+}
+.fm-option-hint {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.fm-note {
+  margin: var(--sp-2) 0 0;
+  max-width: 84ch;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.fm-note.is-warn {
+  color: var(--warn-text);
+}
+.fm-note.is-crit {
+  color: var(--crit-text);
+}
+
+/* A stated condition: left-aligned, toned, and always worded. */
+.fm-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+  margin: var(--sp-4) 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--neutral-border);
+  background: var(--neutral-bg);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.fm-banner > span {
+  flex: 1 1 40ch;
+  min-width: 0;
+}
+.fm-banner strong {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+.fm-banner.is-info {
+  border-color: var(--info-border);
+  background: var(--info-bg);
+}
+.fm-banner.is-warn {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+}
+.fm-banner.is-crit {
+  border-color: var(--crit-border);
+  background: var(--crit-bg);
+}
+.fm-banner.is-ok {
+  border-color: var(--ok-border);
+  background: var(--ok-bg);
+}
+
+.fm-empty {
+  margin: var(--sp-3) 0;
+  max-width: 84ch;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+
+.fm-label-row {
+  margin-top: var(--sp-4);
+}
+.fm-label-row .fm-input {
+  flex: 0 1 36ch;
+  width: auto;
+}
+
+.fm-bar {
+  justify-content: space-between;
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.fm-bar-state {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.fm-actions-line {
+  margin: var(--sp-3) 0;
+  font-size: var(--fs-sm);
+}
+.fm-state-line {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-base);
+}
+
+/* The confirmation sits inside its section, set off by a layer and a border. */
+.fm-confirm {
+  margin-top: var(--sp-4);
+  padding: var(--sp-5);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+.fm-confirm h3 {
+  margin: 0 0 var(--sp-3);
+}
+.fm-confirm p {
+  margin: var(--sp-3) 0;
+  max-width: 76ch;
+}
+.fm-count {
+  font-size: var(--fs-xs);
+}
+.fm-changes {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.fm-changes code,
+.fm-field-cell code,
+.fm-value-cell code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.fm-event {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+
+/* Validation report. */
+.fm-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-7);
+  margin: var(--sp-3) 0;
+}
+.fm-facts > div {
+  min-width: 0;
+}
+.fm-facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.fm-facts dd {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.fm-reasons {
+  margin: 0 0 var(--sp-4);
+  padding-left: var(--sp-5);
+  max-width: 84ch;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+/* A row header would draw its rule in the stronger header colour and leave the
+   rest of the row on the lighter one, so the rule looks to stop after column 1. */
+tbody th.fm-field-cell,
+tbody th.fm-value-cell {
+  border-bottom-color: var(--border);
+}
+tbody tr:last-child th.fm-field-cell,
+tbody tr:last-child th.fm-value-cell {
+  border-bottom: none;
+}
+th.fm-field-cell,
+th.fm-value-cell {
+  color: var(--text);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  white-space: normal;
+  min-width: 14ch;
+  overflow-wrap: anywhere;
+}
+th.fm-field-cell .cell-sub,
+th.fm-value-cell .cell-sub {
+  font-weight: var(--fw-normal);
+}
+.fm-result-cell {
+  min-width: 24ch;
+}
+.fm-sentence {
+  max-width: 44ch;
+}
+
+/* A control that cannot be used reads as unavailable, not as a dimmed primary. */
+.fm-section button.action:disabled,
+.fm-section button.action:disabled:hover {
+  background: var(--surface-2);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  opacity: 1;
+}
+
+/* The outcome of a value, as a row of radios. */
+.fm-radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.fm-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.fm-values > * + * {
+  margin-top: var(--sp-3);
+}
+.fm-add-value {
+  margin-top: var(--sp-4);
+}
+.fm-add-value .fm-input {
+  flex: 0 1 28ch;
+  width: auto;
+}
+
+/* The state of a source, as text with a tone. Wraps, unlike a pill. */
+.fm-state {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.fm-state.ok {
+  color: var(--ok-text);
+}
+.fm-state.warn {
+  color: var(--warn-text);
+}
+.fm-state.crit {
+  color: var(--crit-text);
+}
+.fm-state.info {
+  color: var(--info-text);
+}
+
+/* Choosing a log source. */
+.fm-add {
+  display: grid;
+  gap: var(--sp-3);
+  justify-items: start;
+  min-width: 0;
+}
+.fm-picker {
+  width: 100%;
+  min-width: 0;
+}
+.fm-picker-search {
+  display: grid;
+  gap: var(--sp-1);
+  max-width: 48ch;
+}
+.fm-candidates {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.fm-candidates li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.fm-candidates a {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 860px) {
+  .fm-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* --- responsive -------------------------------------------------------------
    Desktop is the target; 1024 px is the floor at which everything must still
    be usable without the page scrolling sideways. */
@@ -1557,10 +2040,18 @@ pre {
   .layout {
     grid-template-columns: minmax(0, 1fr);
   }
+  .layout::before {
+    display: none;
+  }
+  .sidebar,
+  .main {
+    grid-column: auto;
+    grid-row: auto;
+  }
   .sidebar {
     position: static;
     height: auto;
-    border-right: none;
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
   .nav-list {
@@ -1588,4 +2079,230 @@ pre {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* fleet ------------------------------------------------------------------
+   The Phase C log-source fleet and the classification rules. Built from
+   tokens only. */
+
+.fleet-window {
+  margin: var(--sp-5) 0 var(--sp-3);
+}
+
+/* The three rule levels are separate tables; fixed columns keep them aligned. */
+.rules-table {
+  table-layout: fixed;
+}
+.rules-table th:nth-child(1) {
+  width: 5.5rem;
+}
+.rules-table th:nth-child(3) {
+  width: 8rem;
+}
+.rules-table th:nth-child(4) {
+  width: 9rem;
+}
+.rules-table th:nth-child(5) {
+  width: 7rem;
+}
+.rules-table th:nth-child(6) {
+  width: 10rem;
+}
+
+.fleet-table .plain-list li {
+  white-space: nowrap;
+}
+
+.rule-add {
+  margin-top: var(--sp-7);
+}
+
+.fleet-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  list-style: none;
+  padding: 0;
+}
+
+/* A class or source name in the first column: a row header, so it reads as the
+   row's subject rather than as a quiet column heading. */
+.fleet-table th[scope="row"] {
+  color: var(--text);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  white-space: normal;
+  overflow-wrap: break-word;
+  border-bottom-color: var(--border);
+}
+.fleet-table tbody tr:last-child th {
+  border-bottom: none;
+}
+.fleet-table th.cell-class {
+  min-width: 15ch;
+}
+.fleet-table th.cell-source,
+.fleet-table th.cell-rule {
+  max-width: 34ch;
+}
+.fleet-table th.cell-source .cell-sub,
+.fleet-table th.cell-rule .cell-sub {
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+}
+.fleet-table td,
+.fleet-table th {
+  font-size: var(--fs-sm);
+}
+.fleet-table thead th {
+  font-size: var(--fs-xs);
+}
+.fleet-table td .cell-sub {
+  max-width: 26ch;
+  white-space: normal;
+}
+.fleet-table td.num .cell-sub {
+  margin-left: auto;
+  text-align: right;
+}
+/* A class with top sources shows them on a second line under its figures, so
+   the figures keep the full width of the row. */
+.fleet-table .fleet-main td,
+.fleet-table .fleet-main th {
+  border-bottom: none;
+}
+.fleet-top td {
+  padding-top: 0;
+}
+.fleet-top-label {
+  margin-right: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.fleet-top-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  vertical-align: top;
+}
+.fleet-top-list li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.unit {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.cell-completeness {
+  min-width: 18ch;
+}
+.cell-completeness .pill {
+  display: flex;
+  width: fit-content;
+  margin-bottom: var(--sp-1);
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+}
+.rule-pattern {
+  overflow-wrap: anywhere;
+  font-size: var(--fs-xs);
+}
+.conflict-text {
+  color: var(--warn-text);
+}
+.conflict-text strong {
+  font-weight: var(--fw-semibold);
+}
+
+.cell-actions {
+  min-width: 16ch;
+}
+.cell-actions .actions {
+  gap: var(--sp-1) var(--sp-2);
+}
+.fleet-table button.action {
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-xs);
+}
+.override-editor {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: start;
+}
+.override-editor label {
+  font-size: var(--fs-xs);
+}
+.cell-actions .change-status {
+  max-width: 26ch;
+}
+
+.rule-off td,
+.rule-off th {
+  color: var(--text-3);
+}
+.rule-off th[scope="row"] {
+  color: var(--text-3);
+}
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+}
+
+.precedence {
+  margin: 0 0 var(--sp-3);
+  padding-left: var(--sp-6);
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+
+.rule-form {
+  display: grid;
+  gap: var(--sp-4);
+  max-width: 72ch;
+}
+.rule-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 14ch) minmax(0, 1fr);
+  gap: var(--sp-3) var(--sp-5);
+  align-items: start;
+}
+.rule-form-grid > label {
+  padding-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.rule-form .field {
+  width: 100%;
+  min-width: 0;
+}
+.rule-form .field-narrow {
+  width: 12ch;
+}
+.field-hint {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.field-error {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--crit-text);
+  overflow-wrap: anywhere;
+}
+.rule-form [aria-invalid="true"] {
+  border-color: var(--crit);
 }

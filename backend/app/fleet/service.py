@@ -30,6 +30,7 @@ from app.models.fleet import (
     LogSourceGroup,
     LogSourceType,
 )
+from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 
 
@@ -82,8 +83,14 @@ async def classify_sources(
     new_source_ids: set[uuid.UUID],
     bootstrap: bool,
     classified_at: datetime,
+    override_updates: dict[uuid.UUID, SourceClass | None] | None = None,
+    override_actor: str | None = None,
 ) -> dict[uuid.UUID, AppliedClassification]:
-    """Classify and upsert a whole instance with one statement per table."""
+    """Classify and upsert a whole instance with one statement per table.
+
+    `override_updates` sets (or, with None, clears) the operator override of the
+    named sources as part of the same upsert; every other source keeps its override.
+    """
     await ensure_seed_rules(session)
     rule_rows = list(
         (
@@ -139,6 +146,12 @@ async def classify_sources(
             if current and current.override_class
             else None
         )
+        override_by = current.override_by if current else None
+        override_at = current.override_at if current else None
+        if override_updates is not None and source.id in override_updates:
+            override = override_updates[source.id]
+            override_by = override_actor if override else None
+            override_at = classified_at if override else None
         result = classify(
             SourceFacts(
                 name=source.name,
@@ -169,8 +182,8 @@ async def classify_sources(
                 "basis": result.basis,
                 "rule_id": result.rule_id,
                 "override_class": override.value if override else None,
-                "override_by": current.override_by if current else None,
-                "override_at": current.override_at if current else None,
+                "override_by": override_by,
+                "override_at": override_at,
                 "conflicts": list(result.conflicts),
                 "classified_at": classified_at,
                 "review_status": review_status.value,
@@ -182,15 +195,87 @@ async def classify_sources(
 
     if values:
         statement = pg_insert(LogSourceClassification).values(values)
+        updated = {
+            "source_class": statement.excluded.source_class,
+            "basis": statement.excluded.basis,
+            "rule_id": statement.excluded.rule_id,
+            "conflicts": statement.excluded.conflicts,
+            "classified_at": statement.excluded.classified_at,
+        }
+        if override_updates:
+            # Rows keep their stored override unless this call changes it; a
+            # CASE per row would be needless, because the values list already
+            # carries each row's final override.
+            updated.update(
+                override_class=statement.excluded.override_class,
+                override_by=statement.excluded.override_by,
+                override_at=statement.excluded.override_at,
+            )
         statement = statement.on_conflict_do_update(
-            index_elements=[LogSourceClassification.log_source_id],
-            set_={
-                "source_class": statement.excluded.source_class,
-                "basis": statement.excluded.basis,
-                "rule_id": statement.excluded.rule_id,
-                "conflicts": statement.excluded.conflicts,
-                "classified_at": statement.excluded.classified_at,
-            },
+            index_elements=[LogSourceClassification.log_source_id], set_=updated
         )
         await session.execute(statement)
     return applied
+
+
+async def reclassify_instance(
+    session: AsyncSession,
+    instance_id: uuid.UUID,
+    *,
+    classified_at: datetime,
+    source_ids: list[uuid.UUID] | None = None,
+    override_updates: dict[uuid.UUID, SourceClass | None] | None = None,
+    override_actor: str | None = None,
+) -> dict[uuid.UUID, AppliedClassification]:
+    """Re-run classification for an instance (or some of its sources) in bulk.
+
+    A fixed number of statements however many sources there are: one read each
+    for sources, types and groups, then the classify_sources reads and its single
+    upsert. Review state is untouched; a source with no classification row yet
+    gets one marked REVIEWED, because nothing here is a first-seen event.
+    """
+    statement = select(LogSource).where(LogSource.instance_id == instance_id)
+    if source_ids is not None:
+        statement = statement.where(LogSource.id.in_(source_ids))
+    sources = list((await session.scalars(statement)).all())
+    types = list(
+        (
+            await session.scalars(
+                select(LogSourceType).where(LogSourceType.instance_id == instance_id)
+            )
+        ).all()
+    )
+    groups = list(
+        (
+            await session.scalars(
+                select(LogSourceGroup).where(LogSourceGroup.instance_id == instance_id)
+            )
+        ).all()
+    )
+    return await classify_sources(
+        session,
+        instance_id=instance_id,
+        sources=sources,
+        types=types,
+        groups=groups,
+        new_source_ids=set(),
+        bootstrap=True,
+        classified_at=classified_at,
+        override_updates=override_updates,
+        override_actor=override_actor,
+    )
+
+
+async def reclassify_for_rule(
+    session: AsyncSession,
+    instance_id: uuid.UUID | None,
+    *,
+    classified_at: datetime,
+) -> None:
+    """Re-classify what a rule change can affect: its instance, or all for a global rule."""
+    if instance_id is not None:
+        instance_ids = [instance_id]
+    else:
+        instance_ids = list((await session.scalars(select(QRadarInstance.id))).all())
+    for item in instance_ids:
+        await reclassify_instance(session, item, classified_at=classified_at)

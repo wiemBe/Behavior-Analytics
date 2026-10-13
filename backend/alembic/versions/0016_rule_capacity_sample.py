@@ -9,8 +9,7 @@ ADDITIVE. One new table; no existing table or enum is altered.
 
 No backfill: nothing was recorded before this revision.
 
-Chained after 0014 for now (0015 is the WAF migration on another branch); the
-orchestrator re-chains it after 0015 at merge.
+Chained after 0015 (WAF asynchronous profile validation requests).
 """
 from __future__ import annotations
 
@@ -21,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = '0016'
-down_revision: str | None = '0014'
+down_revision: str | None = '0015'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
