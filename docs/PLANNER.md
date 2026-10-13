@@ -47,14 +47,22 @@ G3 rule analytics). Every task is scheduled against them.
     carry `source_class`; **T-059** deterministic double-submit tests; **T-045** D-8 docs.
 - The full gate passed and `main` was merged (above). The `gate` worktree is detached again.
 
-**In flight (sixth session):**
+**In flight (sixth session, updated ~15:10):**
+
+- **All four Sonnet agents hit the Claude session limit at ~12:30** (reset 14:30) and were resumed
+  by `SendMessage` at 14:55. Codex reset at 14:43.
+- **Merged since the session start:** T-061 (`main` @ `3f9c4fa`, pushed: the `/behavior`
+  regression is fixed on `main`); T-064 README upgrade procedure (`f32e3ba`, free model died
+  before its report; diff checked against the spec).
 
 | Task | Agent | Where | State / what to do when it ends |
 |---|---|---|---|
-| **T-049** IPS profile + `/ips` API, migration `0017` ([spec](tasks/T-049.md)) | Codex died on its usage limit at 11:27 (resets **14:43**) → **Sonnet** finishing ("review what you inherit") | worktree `t049`: Codex WIP committed `b09ea08`; `feat/phase-ce` merged in, uncommitted, clean; DBs `qradar_obs_t049`, `qradar_obs_t049_mig` | Orchestrator found: `probe_ips_fields` used an unpadded `START/STOP` (must be `_ariel_scope`). On return: review diff (admin:ips separate; fail closed; lock exhaustion keeps previous state; no query text served), re-gate, alembic 0016↔0017, commit the merge, merge into `feat/phase-ce`. |
-| **T-060** WAF analyst UI, **review round 1** ([review](tasks/T-060.review1.md)) | Sonnet (new agent) | worktree `t060`: first pass committed `83d82c4`; `feat/phase-ce` merged in, uncommitted; scratch `…/e16a4489-…/scratchpad/t060/` (old shots in `shots-r0/`) | 14 points: local table scroll at 1280/1024, units per kind, seasonal band from WAF baseline cells, ratio series from bucket counts, raw enum strings, WAF Evidence section removed, admission-overflow wording, fixture. Rulings R1 (header "Subject" unconditional) and R2 (humanized strings) recorded in the review file. Review the new screenshots myself. |
-| **T-061** Phase A pages pass `subject_kind: "LOG_SOURCE"` (the regression on `main`) ([spec](tasks/T-061.md)) | opencode `mimo-v2.6-flash-free` | worktree `t061` | Review the 5-file diff, re-run frontend gates, merge; then frontend gate on `feat/phase-ce` and merge to `main` (backend unchanged since `dabd744`). T-060 will conflict trivially on `AnomalyListParams`. |
-| **T-062** Rule statistics UI `/rules/statistics` + capacity history (G3, E.1 UI) ([spec](tasks/T-062.md)) | Sonnet | worktree `t062`; ports 4762/3762 | Review screenshots at 3 viewports against §3a; gates; merge. Nav/api/globals edits will meet T-060's in merge. |
+| **T-049** IPS profile + `/ips` API, migration `0017` | Codex → Sonnet | worktree `t049`, merge of `feat/phase-ce` uncommitted | Agent done; orchestrator re-ran ruff, mypy 31, unit 2,230, alembic 0016↔0017 clean (fresh DB). **Integration run in progress** (one `F` seen at 18 %; identify it). If green or the known flake: commit the merge, merge into `feat/phase-ce`, then cut T-050a. |
+| **T-065** live smoke of the T-049 probe ([spec](tasks/T-065.md)) | Sonnet (the T-049 agent, resumed) | scratch `…/e16a4489-…/scratchpad/t065/` | Does QRadar accept `NOT LIKE '127.%'` on IP fields and `QIDNAME(qid) LIKE 'Unknown %'`? If rejected: one fix in `_ips_population_condition` (T-050a reuses it). |
+| **T-060** review round 1 ([review](tasks/T-060.review1.md)) | Sonnet (resumed) | worktree `t060` | Review new screenshots; gates; merge (trivial `AnomalyListParams` conflict with T-061). |
+| **T-062** rule statistics UI ([spec](tasks/T-062.md)) | Sonnet died at the limit → **Codex** (`codex exec`, log `…/scratchpad/t062-codex.log`) | worktree `t062`; ports 4762/3762 | Check log for "usage limit"; review screenshots; gates; merge. |
+| **T-063** SIM Generic live research ([spec](tasks/T-063.md)) | Sonnet (resumed) | scratch `…/scratchpad/t063/` | Copy report into `docs/tasks/`; then write the Phase C.2 design. |
+| **T-050a** IPS keyed searches + split driver + folds ([spec](tasks/T-050a.md)) | Sonnet, after T-049 merges | — | Then **T-050b** ([draft spec](tasks/T-050b.md)) to Codex after T-062. |
 
 **Next steps, in order:**
 1. ~~Full gate → `main`~~ done (`dabd744`).
