@@ -15,6 +15,8 @@ import type { Metadata } from "next";
 import { AnomalyFilters } from "@/components/behavior/AnomalyFilters";
 import { AnomalyRows } from "@/components/behavior/AnomalyRows";
 import { Pagination } from "@/components/Pagination";
+import { parseSubjectQuery } from "@/components/waf/subjectQuery";
+import { isWafRow } from "@/components/waf/wafLabels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
@@ -39,7 +41,13 @@ export default async function AnomaliesPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const q = parseAnomalyQuery(await searchParams);
+  const raw = await searchParams;
+  const q = parseAnomalyQuery(raw);
+  // The subject filters are parsed beside the Phase A query, not in it: a WAF
+  // detector type is a valid `anomaly_type` here and would be dropped by the
+  // Phase A allow-list.
+  const subject = parseSubjectQuery(raw);
+  const anomalyType = q.anomaly_type || subject.waf_anomaly_type;
 
   let page: Page<AnomalySummary> | null = null;
   let sources: SourceBehavior[] = [];
@@ -54,7 +62,8 @@ export default async function AnomaliesPage({
         offset: q.offset,
         log_source_id: q.log_source_id || undefined,
         instance_id: q.instance_id || undefined,
-        anomaly_type: q.anomaly_type || undefined,
+        anomaly_type: anomalyType || undefined,
+        subject_kind: subject.subject_kind || undefined,
         state: q.state || undefined,
         severity: q.severity || undefined,
         evidence_status: q.evidence_status || undefined,
@@ -77,7 +86,8 @@ export default async function AnomaliesPage({
   const filtered = Boolean(
     q.log_source_id ||
       q.instance_id ||
-      q.anomaly_type ||
+      anomalyType ||
+      subject.subject_kind ||
       q.state ||
       q.severity ||
       q.evidence_status ||
@@ -85,6 +95,11 @@ export default async function AnomaliesPage({
       q.until,
   );
   const items = page?.items ?? [];
+  // The first column names what the rows are about. A page of log-source rows
+  // keeps its "Source" heading; once a WAF endpoint is on the page the column
+  // holds subjects of two kinds, and the unit of the observed figures differs
+  // per row, so each cell carries its own unit instead of the heading.
+  const hasWaf = items.some(isWafRow);
 
   return (
     <>
@@ -95,9 +110,10 @@ export default async function AnomaliesPage({
 
       <AnomalyFilters
         values={{
+          subject_kind: subject.subject_kind,
           log_source_id: q.log_source_id,
           instance_id: q.instance_id,
-          anomaly_type: q.anomaly_type,
+          anomaly_type: anomalyType,
           state: q.state,
           severity: q.severity,
           evidence_status: q.evidence_status,
@@ -129,11 +145,11 @@ export default async function AnomaliesPage({
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Source</th>
+                  <th scope="col">{hasWaf ? "Subject" : "Source"}</th>
                   <th scope="col">Detector</th>
                   <th scope="col">State</th>
                   <th scope="col" className="num">
-                    Observed → Expected (EPS)
+                    {hasWaf ? "Observed → Expected" : "Observed → Expected (EPS)"}
                   </th>
                   <th scope="col" className="num">
                     Deviation
@@ -157,7 +173,11 @@ export default async function AnomaliesPage({
             limit={PAGE_SIZE}
             offset={q.offset}
             basePath="/anomalies"
-            params={paginationParams(q)}
+            params={{
+              ...paginationParams(q),
+              anomaly_type: anomalyType || undefined,
+              subject_kind: subject.subject_kind || undefined,
+            }}
           />
         </>
       )}

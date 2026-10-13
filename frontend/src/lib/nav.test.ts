@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import { NAV, activeNavHref, navItemMatches } from "./nav";
 
 describe("NAV", () => {
-  it("leads with the three behavioral destinations", () => {
+  it("leads with the four behavioral destinations", () => {
     expect(NAV[0].label).toBeNull();
     expect(NAV[0].items.map((i) => i.label)).toEqual([
       "Overview",
       "Anomalies",
       "Sources",
+      "WAF behavior",
     ]);
   });
 
@@ -77,6 +78,12 @@ describe("activeNavHref", () => {
   // a prefix of /behavior/sources, so ordering alone would light up Overview.
   it("activates Sources on a source detail route, not Overview", () => {
     expect(activeNavHref("/behavior/sources/abc-123")).toBe("/behavior/sources");
+  });
+
+  // /behavior is a prefix of /behavior/waf, so ordering alone would light up Overview.
+  it("activates WAF behavior on its list and on a WAF source, not Overview", () => {
+    expect(activeNavHref("/behavior/waf")).toBe("/behavior/waf");
+    expect(activeNavHref("/behavior/waf/sources/abc-123")).toBe("/behavior/waf");
   });
 
   it("activates Anomalies on the list and on an investigation", () => {

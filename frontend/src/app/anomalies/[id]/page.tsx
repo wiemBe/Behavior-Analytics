@@ -26,7 +26,16 @@ import { TechnicalDetails } from "@/components/behavior/TechnicalDetails";
 import { TopContributors } from "@/components/behavior/TopContributors";
 import { VolumeChart } from "@/components/behavior/VolumeChart";
 import { AnomalyTabs } from "@/components/behavior/AnomalyTabs";
-import { ApiError, api, type AnomalyDetail, type MetricBucket } from "@/lib/api";
+import { WafInvestigation } from "@/components/waf/WafInvestigation";
+import {
+  ApiError,
+  api,
+  isWafDetail,
+  type AnomalyDetail,
+  type MetricBucket,
+  type WafAnomalyDetail,
+  type WafMetricBucket,
+} from "@/lib/api";
 import { dimensionLabel, hasConfidenceLimitation, stateMeaning } from "@/lib/behavior";
 import { summarizeAnomaly, summarizeTimeline } from "@/lib/summarize";
 import { buildSeries } from "@/lib/timeseries";
@@ -38,6 +47,26 @@ export const metadata: Metadata = {
 /** How much surrounding context the timeline shows around the anomaly. */
 const CONTEXT_HOURS = 6;
 
+/**
+ * The stored buckets around a WAF incident, or null if they could not be loaded.
+ * A failed fetch must not take down the investigation, and null is not an empty
+ * list: the page says "could not be loaded" rather than "nothing was collected".
+ */
+async function wafBuckets(anomaly: WafAnomalyDetail): Promise<WafMetricBucket[] | null> {
+  const anchor = Date.parse(anomaly.anomaly_start ?? anomaly.detected_at);
+  const end = Date.parse(anomaly.anomaly_end ?? anomaly.resolved_at ?? anomaly.detected_at);
+  try {
+    const page = await api.wafEndpointMetrics(anomaly.waf_endpoint.id, {
+      since: new Date(anchor - CONTEXT_HOURS * 3600_000).toISOString(),
+      until: new Date(Math.max(end, anchor) + CONTEXT_HOURS * 3600_000).toISOString(),
+      limit: 2000,
+    });
+    return page.items;
+  } catch {
+    return null;
+  }
+}
+
 export default async function AnomalyDetailPage({
   params,
 }: {
@@ -45,15 +74,15 @@ export default async function AnomalyDetailPage({
 }) {
   const { id } = await params;
 
-  let anomaly: AnomalyDetail | null = null;
+  let loaded: AnomalyDetail | WafAnomalyDetail | null = null;
   let status = 0;
   try {
-    anomaly = await api.anomaly(id);
+    loaded = await api.anomaly(id);
   } catch (err) {
     status = err instanceof ApiError ? err.status : 0;
   }
 
-  if (!anomaly) {
+  if (!loaded) {
     return (
       <>
         <h1 className="page-title">Anomaly investigation</h1>
@@ -69,6 +98,13 @@ export default async function AnomalyDetailPage({
       </>
     );
   }
+
+  // A WAF endpoint is investigated against its own request buckets, in requests
+  // rather than EPS, so it has its own view; the Phase A page below is unchanged.
+  if (isWafDetail(loaded)) {
+    return <WafInvestigation anomaly={loaded} buckets={await wafBuckets(loaded)} />;
+  }
+  const anomaly: AnomalyDetail = loaded;
 
   // The timeline is context around the incident, so the window is anchored to
   // the anomaly rather than to now — an anomaly from last week must still

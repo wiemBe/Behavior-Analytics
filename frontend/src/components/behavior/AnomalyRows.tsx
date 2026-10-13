@@ -18,7 +18,6 @@ import { Fragment, useState } from "react";
 
 import { sevTone, type AnomalySummary } from "@/lib/api";
 import {
-  detectorLabel,
   evidenceTone,
   formatDelta,
   formatDuration,
@@ -27,6 +26,64 @@ import {
   stateTone,
 } from "@/lib/behavior";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { formatPercent, formatRequests } from "@/components/waf/wafFormat";
+import { anomalyTypeLabel, endpointLabel, isWafRow, subjectText } from "@/components/waf/wafLabels";
+import { isRatioType } from "@/components/waf/wafSummary";
+
+import "@/components/ui/controls.css";
+
+/**
+ * The first cell: what the anomaly is about.
+ *
+ * A WAF row reads `GET /portal/login · lab-waf-behavior-01`, with the virtual
+ * host beneath when there is one; a Phase A row is its source name.
+ */
+function SubjectCell({ a }: { a: AnomalySummary }) {
+  const source = a.log_source_name ?? a.log_source_id;
+  if (!isWafRow(a) || !a.waf_endpoint) {
+    return (
+      <td className="cell-name">
+        <a href={`/behavior/sources/${a.log_source_id}`}>{source}</a>
+      </td>
+    );
+  }
+  return (
+    <td className="cell-name cell-subject">
+      <span className="waf-endpoint">{endpointLabel(a.waf_endpoint)}</span>
+      <span className="muted"> · </span>
+      <a href={`/behavior/waf/sources/${a.log_source_id}`}>{source}</a>
+      {a.waf_endpoint.virtual_host && (
+        <span className="cell-sub">Virtual host {a.waf_endpoint.virtual_host}</span>
+      )}
+    </td>
+  );
+}
+
+/** Observed → expected, in the unit of the row's detector. */
+function ObservedCell({ a }: { a: AnomalySummary }) {
+  if (!isWafRow(a)) {
+    return (
+      <>
+        {formatMetric(a.observed_value)}
+        <span className="muted"> → </span>
+        {formatMetric(a.expected_value)}
+      </>
+    );
+  }
+  // A WAF row states its unit in the cell: volume detectors count requests,
+  // ratio detectors measure a share of them.
+  const ratio = isRatioType(a.anomaly_type);
+  return (
+    <>
+      {ratio
+        ? formatPercent(a.observed_value, a.observed_measurement)
+        : formatRequests(a.observed_value, a.observed_measurement)}
+      <span className="muted"> → </span>
+      {ratio ? formatPercent(a.expected_value) : formatRequests(a.expected_value)}
+      {!ratio && <span className="unit"> req</span>}
+    </>
+  );
+}
 
 export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -38,21 +95,15 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
         return (
           <Fragment key={a.id}>
             <tr>
-              <td className="cell-name">
-                <a href={`/behavior/sources/${a.log_source_id}`}>
-                  {a.log_source_name ?? a.log_source_id}
-                </a>
-              </td>
-              <td>{detectorLabel(a.anomaly_type)}</td>
+              <SubjectCell a={a} />
+              <td>{anomalyTypeLabel(a.anomaly_type)}</td>
               <td>
                 <span className={`pill pill-strong ${stateTone(a.state)}`}>
                   {a.state}
                 </span>
               </td>
               <td className="num">
-                {formatMetric(a.observed_value)}
-                <span className="muted"> → </span>
-                {formatMetric(a.expected_value)}
+                <ObservedCell a={a} />
               </td>
               <td className="num">{formatRatio(a.deviation_ratio)}</td>
               <td>
@@ -77,9 +128,9 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                     type="button"
                     className="row-toggle"
                     aria-expanded={open}
-                    aria-label={`${open ? "Hide" : "Show"} technical detail for the ${detectorLabel(
+                    aria-label={`${open ? "Hide" : "Show"} technical detail for the ${anomalyTypeLabel(
                       a.anomaly_type,
-                    ).toLowerCase()} on ${a.log_source_name ?? a.log_source_id}`}
+                    ).toLowerCase()} on ${subjectText(a)}`}
                     onClick={() => setExpanded(open ? null : a.id)}
                   >
                     {open ? "Less" : "More"}
@@ -92,19 +143,25 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
               <tr className="row-detail">
                 <td colSpan={9}>
                   <dl className="dimension-meta">
-                    <div>
-                      <dt>Absolute delta</dt>
-                      <dd className="num">
-                        {a.absolute_delta == null ? (
-                          formatDelta(a.absolute_delta)
-                        ) : (
-                          <>
-                            {formatDelta(a.absolute_delta)}
-                            <span className="muted"> events</span>
-                          </>
-                        )}
-                      </dd>
-                    </div>
+                    {/* A ratio detector's delta is a share, not a count, and the
+                        list does not carry its unit: the investigation page does. */}
+                    {!(isWafRow(a) && isRatioType(a.anomaly_type)) && (
+                      <div>
+                        <dt>Absolute delta</dt>
+                        <dd className="num">
+                          {a.absolute_delta == null ? (
+                            formatDelta(a.absolute_delta)
+                          ) : (
+                            <>
+                              {formatDelta(a.absolute_delta)}
+                              <span className="muted">
+                                {isWafRow(a) ? " requests" : " events"}
+                              </span>
+                            </>
+                          )}
+                        </dd>
+                      </div>
+                    )}
                     <div>
                       <dt>Duration</dt>
                       {/* Null while still running. Not "0s", and not "now

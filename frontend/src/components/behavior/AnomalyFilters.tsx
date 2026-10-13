@@ -15,7 +15,8 @@
 import Link from "next/link";
 
 import type { SourceBehavior } from "@/lib/api";
-import { detectorLabel } from "@/lib/behavior";
+import { subjectKindLabel, SUBJECT_KINDS } from "@/components/waf/subjectQuery";
+import { WAF_TYPES, anomalyTypeLabel } from "@/components/waf/wafLabels";
 import { formatDateTime } from "@/lib/health";
 
 const DETECTOR_TYPES = ["VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS"];
@@ -39,6 +40,8 @@ const EVIDENCE = [
 ];
 
 export interface AnomalyFilterValues {
+  /** What the anomaly is about: LOG_SOURCE, WAF_ENDPOINT or "" for both. */
+  subject_kind?: string;
   log_source_id: string;
   instance_id: string;
   anomaly_type: string;
@@ -56,6 +59,8 @@ export function chipLabel(
   sources: SourceBehavior[],
 ): string {
   switch (key) {
+    case "subject_kind":
+      return `Subject: ${subjectKindLabel(value)}`;
     case "log_source_id": {
       const match = sources.find((s) => s.log_source_id === value);
       return `Source: ${match?.name ?? value}`;
@@ -63,7 +68,7 @@ export function chipLabel(
     case "instance_id":
       return `Instance: ${value}`;
     case "anomaly_type":
-      return `Detector: ${detectorLabel(value)}`;
+      return `Detector: ${anomalyTypeLabel(value)}`;
     case "state":
       return `State: ${value}`;
     case "severity":
@@ -115,12 +120,28 @@ export function AnomalyFilters({
     values.log_source_id || values.instance_id || values.evidence_status,
   );
   const activeChips = (
-    Object.entries(values) as Array<[keyof AnomalyFilterValues, string]>
-  ).filter(([, v]) => Boolean(v));
+    Object.entries(values) as Array<[keyof AnomalyFilterValues, string | undefined]>
+  ).filter((entry): entry is [keyof AnomalyFilterValues, string] => Boolean(entry[1]));
 
   return (
     <>
       <form className="filters" method="get" action="/anomalies">
+        <label className="sr-only" htmlFor="anomaly-subject">
+          Subject kind
+        </label>
+        <select
+          id="anomaly-subject"
+          name="subject_kind"
+          defaultValue={values.subject_kind ?? ""}
+        >
+          <option value="">All subjects</option>
+          {SUBJECT_KINDS.map((k) => (
+            <option key={k.value} value={k.value}>
+              {k.label}
+            </option>
+          ))}
+        </select>
+
         <label className="sr-only" htmlFor="anomaly-state">
           Lifecycle state
         </label>
@@ -142,11 +163,20 @@ export function AnomalyFilters({
           defaultValue={values.anomaly_type}
         >
           <option value="">All detectors</option>
-          {DETECTOR_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {detectorLabel(t)}
-            </option>
-          ))}
+          <optgroup label="Log sources">
+            {DETECTOR_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {anomalyTypeLabel(t)}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="WAF endpoints">
+            {WAF_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {anomalyTypeLabel(t)}
+              </option>
+            ))}
+          </optgroup>
         </select>
 
         <label className="sr-only" htmlFor="anomaly-severity">

@@ -749,6 +749,12 @@ export interface AnomalySummary {
   evidence_status: EvidenceStatus;
   suppressed: boolean;
   explanation: string | null;
+  // The unified list (T-057). Absent on a Phase A row from an older response, so
+  // a missing `subject_kind` is read as LOG_SOURCE.
+  subject_kind?: SubjectKind;
+  waf_endpoint?: WafEndpointRef | null;
+  // WAF only: EXACT, or LOWER_BOUND when observed_value is "at least n".
+  observed_measurement?: MeasurementKind | null;
 }
 
 export interface Contributor {
@@ -883,8 +889,178 @@ export interface AnomalyListParams {
   severity?: string;
   evidence_status?: string;
   active_only?: boolean;
+  subject_kind?: SubjectKind;
+  waf_endpoint_id?: string;
   since?: string;
   until?: string;
+}
+
+// --- Phase B types: WAF endpoint behavior ----------------------------------
+// These mirror app/schemas/anomaly.py (T-057). A missing measurement is `null`,
+// never 0: narrowing one of these to `number` would let it render as a zero.
+
+export type SubjectKind = "LOG_SOURCE" | "WAF_ENDPOINT";
+
+/** EXACT, or LOWER_BOUND when the count is "at least n". */
+export type MeasurementKind = "EXACT" | "LOWER_BOUND";
+
+export type WafAnomalyTypeName =
+  | "WAF_REQUEST_RATE_SPIKE"
+  | "WAF_CLIENT_CONCENTRATION_SPIKE"
+  | "WAF_BLOCK_RATIO_SPIKE"
+  | "WAF_ERROR_RATIO_SPIKE"
+  | "WAF_CLIENT_ERROR_RATIO_SPIKE"
+  | "WAF_NEW_ENDPOINT_ACCESS"
+  | "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE";
+
+export interface WafEndpointRef {
+  id: string;
+  normalized_endpoint: string;
+  http_method: string;
+  // null when the source exposes no virtual host. Never an empty string.
+  virtual_host: string | null;
+  // false: the endpoint may combine traffic of applications sharing a path.
+  virtual_host_available: boolean;
+  normalizer_version: number;
+}
+
+export interface WafDetectionDetail {
+  reason: string | null;
+  expected_low: number | null;
+  expected_high: number | null;
+  threshold: number | null;
+  baseline_sample_count: number | null;
+  baseline_completeness: number | null;
+  baseline_version: number | null;
+  normalizer_version: number | null;
+  observed_requests: number | null;
+  expected_requests: number | null;
+  absolute_delta_requests: number | null;
+  endpoint_coverage_ratio: number | null;
+  request_count_measurement: MeasurementKind | null;
+  observed_proportion: number | null;
+  expected_proportion: number | null;
+  observed_numerator: number | null;
+  observed_denominator: number | null;
+  percentage_point_change: number | null;
+  ratio: number | null;
+  ratio_basis: string | null;
+  robust_score_status: RobustScoreStatus | null;
+  robust_z: number | null;
+  fallback_bound: number | null;
+}
+
+/** A WAF subject's detail. Evidence contributors are not served for WAF
+ *  (`explanation_package` is null), and `detection` is the WAF block. */
+export interface WafAnomalyDetail
+  extends Omit<AnomalyDetail, "detection" | "subject_kind" | "waf_endpoint"> {
+  subject_kind: "WAF_ENDPOINT";
+  waf_endpoint: WafEndpointRef;
+  detection: WafDetectionDetail | null;
+}
+
+export function isWafDetail(a: AnomalyDetail | WafAnomalyDetail): a is WafAnomalyDetail {
+  return a.subject_kind === "WAF_ENDPOINT" && a.waf_endpoint != null;
+}
+
+export interface WafMetricBucket {
+  bucket_start: string;
+  bucket_seconds: number;
+  request_count: number | null;
+  request_count_measurement: MeasurementKind | null;
+  completeness: BucketCompleteness;
+  partial: boolean;
+  endpoint_coverage_ratio: number | null;
+  in_maintenance: boolean | null;
+  normalizer_version: number;
+  distinct_client_count: number | null;
+}
+
+export interface PagedWafMetrics {
+  items: WafMetricBucket[];
+  total: number;
+  limit: number;
+  offset: number;
+  range_start: string;
+  range_end: string;
+}
+
+export interface WafLatestBucket {
+  bucket_start: string;
+  bucket_seconds: number;
+  completeness: string;
+  endpoint_coverage_ratio: number;
+  // LOWER_BOUND when grouping was truncated: the ratio is then itself a floor.
+  coverage_measurement: MeasurementKind;
+  request_count_measurement: MeasurementKind;
+  total_events: number;
+  in_maintenance: boolean;
+  groups_truncated: boolean;
+  admission_truncated: boolean;
+}
+
+export interface WafAdmissionOverflow {
+  buckets_in_range: number;
+  // null when no bucket was collected in range: "nothing refused" is a claim
+  // only a collected bucket can make.
+  buckets_admission_truncated: number | null;
+  rejected_over_quota: number | null;
+  below_admission_threshold: number | null;
+  untracked_requests: number | null;
+}
+
+export interface WafSourceBehavior {
+  log_source_id: string;
+  log_source_name: string;
+  product_label: string | null;
+  enabled: boolean;
+  profile_version: number;
+  validation_status: string;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation_current: boolean;
+  virtual_host_available: boolean;
+  latest_bucket: WafLatestBucket | null;
+  active_endpoints: number;
+  total_endpoints: number;
+  active_endpoint_ceiling: number;
+  admission: WafAdmissionOverflow;
+}
+
+export type WafSourceDetail = WafSourceBehavior;
+
+export interface PagedWafSources {
+  items: WafSourceBehavior[];
+  total: number;
+  limit: number;
+  offset: number;
+  range_start: string;
+  range_end: string;
+}
+
+export interface WafEndpointInventory {
+  id: string;
+  normalized_endpoint: string;
+  http_method: string;
+  virtual_host: string | null;
+  normalizer_version: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  is_active: boolean;
+  retired_at: string | null;
+  tracked_since: string;
+  baseline: { cells_total: number; reliable_cells: number };
+  baseline_rebuilt_at: string | null;
+  // Worst detector state. null = no detector has evaluated it; not NORMAL.
+  state: AnomalyState | null;
+  active_anomaly_count: number;
+}
+
+export interface PagedWafEndpoints {
+  items: WafEndpointInventory[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
@@ -976,7 +1152,7 @@ export const api = {
   // detection, and there is no QRadar call path from the browser.
   anomalies: (params: AnomalyListParams = {}) =>
     request<Page<AnomalySummary>>(`/anomalies${qs({ ...params })}`),
-  anomaly: (id: string) => request<AnomalyDetail>(`/anomalies/${id}`),
+  anomaly: (id: string) => request<AnomalyDetail | WafAnomalyDetail>(`/anomalies/${id}`),
   behaviorSummary: () => request<BehaviorSummary>("/anomalies/summary"),
 
   sourceBehaviors: () => request<SourceBehavior[]>("/behavior/sources"),
@@ -986,6 +1162,21 @@ export const api = {
     request<MetricBucket[]>(`/behavior/sources/${id}/metrics${qs({ ...params })}`),
   sourceBaselines: (id: string, metric = "average_eps") =>
     request<BaselineCell[]>(`/behavior/sources/${id}/baselines${qs({ metric })}`),
+
+  // --- WAF behavior (T-057 read API) ----------------------------------------
+  // Read-only. `{id}` below is the QRadar log source's id, as in the admin routes.
+  wafBehaviorSources: (params: { since?: string; until?: string; limit?: number; offset?: number } = {}) =>
+    request<PagedWafSources>(`/behavior/waf/sources${qs({ ...params })}`),
+  wafBehaviorSource: (id: string, params: { since?: string; until?: string } = {}) =>
+    request<WafSourceDetail>(`/behavior/waf/sources/${id}${qs({ ...params })}`),
+  wafBehaviorEndpoints: (
+    id: string,
+    params: { active_only?: boolean; limit?: number; offset?: number } = {},
+  ) => request<PagedWafEndpoints>(`/behavior/waf/sources/${id}/endpoints${qs({ ...params })}`),
+  wafEndpointMetrics: (
+    id: string,
+    params: { since?: string; until?: string; limit?: number; offset?: number } = {},
+  ) => request<PagedWafMetrics>(`/behavior/waf/endpoints/${id}/metrics${qs({ ...params })}`),
 
   // --- WAF source administration -------------------------------------------
   // Guarded by admin:waf. Profile writes save the application's database only;

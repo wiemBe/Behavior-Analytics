@@ -2360,3 +2360,60 @@ th.fm-value-cell .cell-sub {
 .rule-form [aria-invalid="true"] {
   border-color: var(--crit);
 }
+
+/* --- WAF analyst views (T-060) ---------------------------------------------
+   Only what the existing classes do not already say. The endpoint is the
+   subject of every WAF view, so it is set in the monospace face: a path is
+   read character by character and its slashes must not collapse. */
+
+.waf-endpoint {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+.page-title.incident-source.waf-endpoint {
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.waf-subject {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.waf-reason {
+  margin: 0;
+  max-width: 90ch;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.waf-lead {
+  margin: 0;
+  max-width: 90ch;
+  font-size: var(--fs-md);
+  line-height: var(--lh-prose);
+}
+.measure-foot-waf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-6);
+}
+.measure-foot-waf > div {
+  min-width: 0;
+}
+.chart.chart-waf {
+  height: 384px;
+}
+.chart-key-coverage {
+  border-top: 2px solid var(--chart-expected);
+}
+/* A WAF subject cell holds a path, a source and a host: wider than a name. */
+td.cell-name.cell-subject {
+  /* A floor, so the column keeps a path readable and the table scrolls locally
+     (inside .table-scroll) rather than squeezing the subject into a few
+     characters per line. */
+  min-width: 22ch;
+  max-width: 40ch;
+}
