@@ -8,10 +8,11 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (saved 2026-10-13 ~11:10, fifth session, mid-session at the user's request)
+## ▶ Resume here (saved 2026-10-13 ~11:20, end of the fifth session)
 
-**The user asked to save the state ("planner md ye kaydet son durumu").** At the time of saving,
-**three things are running** (below); everything else is merged and pushed.
+**The user ended the session after the `main` merge ("maine aldıktan sonra duralım", the chat
+context had grown too large).** `main` @ **`dabd744`** now holds everything below. **Two agents
+were still running at the end** (T-049 Codex, T-060 Sonnet) — see "In flight"; check both first.
 
 **Read §0 first.** The user set three product goals (G1 log-source fleet, G2 IPS/WAF behavior,
 G3 rule analytics). Every task is scheduled against them.
@@ -33,7 +34,10 @@ G3 rule analytics). Every task is scheduled against them.
   integrated tree. Never `git add` the `backend/.venv` / `frontend/node_modules` symlinks.
 
 **Branches:**
-- **`main` @ `b4539c6`** — unchanged this session.
+- **`main` @ `dabd744`** (2026-10-13 ~11:20): `feat/phase-ce` merged `--no-ff` after a green full
+  gate on `921bf7e` (later commits planner-only): ruff clean; mypy 31 in 18 files; backend
+  **2,177 unit + 763 integration passed**, 0 failed (fresh DB); alembic 0014→0016→0014→0016 clean,
+  no drift, single head `0016`; frontend lint, typecheck, **1,095/1,095**, build.
 - **`feat/phase-ce` @ `921bf7e`** (pushed; the main checkout is on it). Migration head **`0016`**.
   Merged this session, each reviewed and re-gated by the orchestrator:
   - **T-042** WAF profile admin API + async validation, migration `0015` (`a365f15`);
@@ -43,24 +47,17 @@ G3 rule analytics). Every task is scheduled against them.
   - **T-057** WAF analyst API (`fe5430a`);
   - **T-047** unreachable search thresholds; **T-048** Ariel `STOP` pad; **T-056** WAF alerts
     carry `source_class`; **T-059** deterministic double-submit tests; **T-045** D-8 docs.
-- **Full gate on `921bf7e` — RUNNING at save time** in the `gate` worktree (detached at
-  `921bf7e`, DBs `qradar_obs_gate` / `qradar_obs_gate_mig`). Done so far: ruff clean; mypy 31 in
-  18 files (baseline); unit **2,177 passed**, 5 skipped; frontend lint, typecheck, **1,095/1,095**,
-  build. Still to read: the integration suite and the alembic round trip
-  (upgrade head → downgrade 0014 → upgrade head → check → heads = `0016`). **If all green: merge
-  `feat/phase-ce` into `main` with `--no-ff` and push.** If the session died, re-run the backend
-  part (the command is in §1 "Gates").
+- The full gate passed and `main` was merged (above). The `gate` worktree is detached again.
 
 **In flight at save time:**
 
 | Task | Agent | Where | What to do when it ends |
 |---|---|---|---|
-| **T-049** IPS profile, read-only validation, `/ips` admin API, migration `0017` ([spec](tasks/T-049.md)) | Codex (`codex exec`, started ~10:52, log `t049.log` in the session scratchpad) | worktree `t049`, DB `qradar_obs_t049` | Check the log for "usage limit". Review the diff: new IPS Ariel queries must use `_ariel_scope` (T-048 merged after T-049 was cut — the merge may need it added); `admin:ips` separate from `admin:waf`; validation fail-closed; `SOURCE_BUSY` keeps the previous state (the T-042 round-2 ruling). Re-gate, alembic 0016↔0017, merge. If Codex died, hand the worktree to Sonnet with the spec + "review what you inherit". |
-| **T-060** WAF analyst UI (§27.15) ([spec](tasks/T-060.md)) | Sonnet | worktree `t060`, scratch `…/scratchpad/t060/` | Review the screenshots at 3 viewports against §3a yourself; review rounds as needed; re-run the frontend gates; merge. If the agent died, relaunch with the spec + "review what you inherit". |
-| Full gate | orchestrator | `gate` worktree | See Branches. |
+| **T-049** IPS profile, read-only validation, `/ips` admin API, migration `0017` ([spec](tasks/T-049.md)) | Codex (`codex exec` under `nohup`, started ~10:52; it runs on independently of the Claude session; log `t049.log` and last message `t049.out` in the old session scratchpad, which may be gone — the report `docs/tasks/T-049.report.md` in the worktree is what counts). At ~11:10 it had written the model, `0017`, `app/ips/`, routes, services and provider changes; no report yet. | worktree `t049`, DB `qradar_obs_t049` | Check the log for "usage limit". Review the diff: new IPS Ariel queries must use `_ariel_scope` (T-048 merged after T-049 was cut — the merge may need it added); `admin:ips` separate from `admin:waf`; validation fail-closed; `SOURCE_BUSY` keeps the previous state (the T-042 round-2 ruling). Re-gate, alembic 0016↔0017, merge. If Codex died, hand the worktree to Sonnet with the spec + "review what you inherit". |
+| **T-060** WAF analyst UI (§27.15) ([spec](tasks/T-060.md)) | Sonnet (a sub-agent of the ended session — **it most likely stopped with the session**; its partial work is uncommitted in the worktree) | worktree `t060`, scratch `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/6582a571-…/scratchpad/t060/` (may be gone) | Look for `docs/tasks/T-060.report.md` in the worktree. If absent: relaunch Sonnet on the same worktree with the spec + "review what you inherit, finish the tests, capture the screenshots". Then review the screenshots at 3 viewports against §3a yourself, re-run the frontend gates, merge. |
 
 **Next steps, in order:**
-1. Finish the full gate → merge `feat/phase-ce` to `main`.
+1. ~~Full gate → `main`~~ done (`dabd744`).
 2. T-049 review/merge (migration `0017`). Then **T-050** (IPS collection, design §D.5): split into
    T-050a (provider keyed fleet searches + pure folds; Sonnet) and T-050b (tables `0018`,
    collector, `IPS_COLLECTION` family and gate, admission; Codex). Write both specs after reading
@@ -429,7 +426,8 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 - **User decision on the property picker:** no auto-suggestion; a search instead (T-058).
 - **Merged:** T-047, T-024, T-056, T-042, T-046 (+T-046b), T-058, T-048, T-057, T-059, T-045.
 - **Launched:** T-049 (Codex) and T-060 (Sonnet).
-- **Full gate on `921bf7e`:** running when the state was saved.
+- **Full gate on `921bf7e` green; `main` @ `dabd744`.** The user ended the session there because
+  of the context size.
 
 ### 2026-10-12
 
