@@ -126,9 +126,36 @@ G3 rule analytics). Every task is scheduled against them.
 | Task | Agent | Where | When it ends |
 |---|---|---|---|
 | **T-050b** IPS tables `0018`, entities, admission, collector, `IPS_COLLECTION` ([spec](tasks/T-050b.md)) | Codex **resumed** (session `01a1355d-31e8-74f1-be9f-e1e0016d460a`, log `…/718a4478…/scratchpad/t050b-resume.log`) | `t050b`, DBs `qradar_obs_t050b`, `_mig` | Check "usage limit"; review (constant SQL, watermark rule, LOWER_BOUND); gates; merge **first** |
-| **T-068** outage policy backend, `0019` → `0017` for now | DONE on `agent/t068` | `t068` | Re-chain `0019` → `0018`; merge |
-| **T-069** catch-all senders backend, `0020` → `0017` for now ([spec](tasks/T-069.md)) | Sonnet (relaunched, "review what you inherit") | `t069`, DBs `qradar_obs_t069`, `_mig` | Review; re-chain after `0019`; merge |
-| **T-070a** UI `/admin/outage-policy` + `/admin` hub links; small additive backend (`source_name`/`source_class` on SOURCE rows) ([spec](tasks/T-070a.md)) | Sonnet | `t070a` (branched from `feat/phase-ce` + `agent/t068` merged), DB `qradar_obs_t070a`, ports 4770/3770 | Screenshot review; gates; merge after T-068 |
+| **T-050b round 3** (budget-exhaustion defect, below) | Codex, same session (log `…/718a4478…/scratchpad/t050b-r3.log`) | `t050b`; WIP committed `4951f3d` | Review; gates; merge **first** (`0018`) |
+| **T-068** outage policy backend, `0019` → `0017` for now | DONE on `agent/t068` @ `539b9c2` | `t068` | Re-chain `0019` → `0018`; merge |
+| **T-069** catch-all senders backend, `0020` → `0017` for now ([spec](tasks/T-069.md)) | DONE on `agent/t069` @ `0534a47` (Sonnet; 844 integration passed; the orchestrator re-ran 74 + 225) | `t069` | Re-chain `0020` → `0019`; merge |
+| **T-070a** UI `/admin/outage-policy` ([spec](tasks/T-070a.md)) | DONE on `agent/t070a` @ `25a7bb8` after one screenshot round | `t070a` (contains `agent/t068`) | Merge after T-068's re-chain |
+| **T-070b** UI `/fleet/catchall` + `CATCHALL_SENDERS` cadence label ([spec](tasks/T-070b.md)) | Sonnet | `t070b` (contains `agent/t069`), DB `qradar_obs_t070b`, ports 4771/3771 | Screenshot review; merge after T-069 |
+
+**Rulings this session:**
+- **`test_migration_0013`** (T-050b and T-069): setup-only change. The first upgrade goes to `0013`
+  instead of `head`, and every assertion is kept.
+- **`test_search_cadence_api`** (T-050b): the code changes, not the test. `IPS_COLLECTION` goes to
+  the end of `SearchFamily`. At merge, `CATCHALL_SENDERS` (T-069) also goes at the end, after
+  `IPS_COLLECTION`.
+- **T-075:** the pinned key set gains the two new keys.
+
+**Reviews that changed the code:**
+- **T-050b round 3.** Budget exhaustion advanced the watermark past dimensions that were never
+  searched, because the plan is dimension-major. Unsearched planned dimensions must now hold the
+  watermark. Windows are atomic with respect to the budget. A window larger than the whole budget
+  must show a visible condition.
+- **T-070a round 1** fixed six points:
+  - "Sources covered" mixed monitored and enabled counts;
+  - the default grace and mode were unknown;
+  - the instance badge showed a UUID;
+  - the button words;
+  - the source search was client-side;
+  - the panel order.
+
+**T-069 design note:** an unmeasured bucket has no row, which differs from §C.8's FAILED and
+NOT_COLLECTED values. The watermark holds at the last measured bucket. A catch-all source with no
+rows in a LOWER_BOUND bucket gets no row ("unknown").
 | **T-075** `numerator_sum`/`denominator_sum` on `WafBaselineCellOut` ([spec](tasks/T-075.md)) | opencode `big-pickle` | **DONE, merged** (`c56a375`) | It stopped correctly on the pinned key-set test; ruling: add the two keys (the spec changes the contract on purpose). The orchestrator re-ran 83 integration tests. |
 
 The T-060 follow-up "`bucket_seconds` on WAF list rows" was **dropped**: `WafAnomaly` has no
