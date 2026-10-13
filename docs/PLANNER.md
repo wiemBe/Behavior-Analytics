@@ -19,6 +19,47 @@ head **`0017`**. Before `main`: a full gate (ruff, mypy 31, full unit + integrat
 alembic round trip, frontend lint/typecheck/test/build) — `main` still carries the WAF time-bomb
 test failure and the 422 "Add WAF source" picker, both fixed on `feat/phase-ce`.
 
+**User request, seventh session (2026-10-13, left as a note at the top of
+[`UI_Suggestions/UI_Suggestion.md`](UI_Suggestions/UI_Suggestion.md); moved here at the user's
+request).** Verbatim:
+
+> BU NOT Orchestrator claude için. BU UI Önerileri codex ile birlikte oluşturulmuştur bu renk
+> paleti ve bu dizaynı her yere uygulanmalıdır bu görevi elindeki görevlerden sonra
+> başlayabilirsin home screende widgetler güzel mantık eklenirse tadından yenmez UI home screen
+> ekran görüntüsü UI_Suggestions'ın altındadır bu dökümana refereans verebilirsin ve bu yazdığım
+> notu planner.md ye kaydettikten sonra silebilirsin bu çoğunlukla UI polish herhangi bir işi
+> overhaullama eğer öyle bir şey varsa bana sor dosyanın içerisindeki dosya yolları olmayabilir
+> çok takılma
+
+In English:
+- Apply the palette and design in [`UI_Suggestion.md`](UI_Suggestions/UI_Suggestion.md) and the
+  [home screenshot](UI_Suggestions/QRadar%20Observability%20Security%20Dashboard.png)
+  **everywhere**.
+- Start it **after the tasks in hand**.
+- Home-screen widgets with real logic behind them are very welcome.
+- It is **mostly UI polish**. **Do not overhaul any existing work.** Anything that would be an
+  overhaul goes to the user first.
+- File paths named in the document may not exist. Do not get stuck on them.
+
+**Orchestrator reading (the plan → UI-R0, below):**
+- **Polish, in scope.** The charcoal palette and semantic colours become the values in
+  `tokens.css`, so no literals leave it. Also in scope: typography, the shell and sidebar, the
+  Home layout after the screenshot, and every route restyled.
+- **Overhaul or new capability. Ask the user before building:**
+  1. A customizable widget grid: drag, resize, multiple dashboards and templates, with
+     persistence. That needs a new table, an API and a new dependency (`react-grid-layout`).
+  2. The world map. No geographic aggregate is collected today. It would need a new keyed Ariel
+     search, which costs QRadar searches.
+  3. "Events by category". There is no category data, and the screenshot's donut has six slices
+     (§3a allows at most five).
+  4. Global search, the Live toggle and notifications, where no backend exists.
+- **§3a tension.** The screenshot's KPI row is four cards. They are acceptable only if each one
+  carries real breakdowns and drills down, and is not a vanity number. Record the user's direction
+  in AGENTS.md §3a when the work starts.
+- The document's own execution order holds. Phase 0 is a plan in `docs/UI-REDESIGN-PLAN.md`,
+  then the user approves, then one phase at a time, with screenshots reviewed by the
+  orchestrator.
+
 **Read §0 first.** The user set three product goals (G1 log-source fleet, G2 IPS/WAF behavior,
 G3 rule analytics). Every task is scheduled against them.
 
