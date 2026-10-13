@@ -8,16 +8,30 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (saved 2026-10-13 ~16:10, end of the sixth session — user: "session limit")
+## ▶ Resume here (saved 2026-10-13 ~21:45, seventh session — at the user's request)
 
-**Four agents were still running at save time** (table below). They may have finished or died
-with the session; check each worktree's `git status` and `docs/tasks/T-xxx.report.md`. Nothing of
-theirs is committed. Background runs (`codex exec`, `opencode run`) continue without the Claude
-session; Sonnet sub-agents die with it — relaunch with the spec + "review what you inherit".
-**`main` @ `3f9c4fa`** (T-061 only this session). **`feat/phase-ce` @ `58b1558`** pushed, migration
-head **`0017`**. Before `main`: a full gate (ruff, mypy 31, full unit + integration on a fresh DB,
-alembic round trip, frontend lint/typecheck/test/build) — `main` still carries the WAF time-bomb
-test failure and the 422 "Add WAF source" picker, both fixed on `feat/phase-ce`.
+**Two agents are running at save time:**
+- **T-050b round 3:** Codex, session `01a1355d-31e8-74f1-be9f-e1e0016d460a`, in worktree `t050b`.
+  Its work up to round 2 is committed as WIP `4951f3d`.
+- **T-070b:** Sonnet, in worktree `t070b`.
+
+How to pick them up after a session break:
+- Background `codex exec` runs continue without the Claude session.
+- Sonnet sub-agents die with the session. Relaunch them with the spec plus "review what you
+  inherit".
+- Check each worktree's `git status` and its `docs/tasks/T-xxx.report.md`.
+
+**Branch state:**
+- **`main` @ `3f9c4fa`.**
+- **`feat/phase-ce`** is pushed. It holds T-075 and the docs. Its migration head is still
+  **`0017`**.
+- Finished and committed **on their own agent branches**, waiting for the migration chain:
+  - T-068 (`agent/t068`, `0019`);
+  - T-069 (`agent/t069`, `0020`);
+  - T-070a (`agent/t070a`).
+- The main checkout is on `feat/phase-ce`.
+- Before `main`: a full gate. `main` still carries the WAF time-bomb test failure and the 422
+  "Add WAF source" picker; both are fixed on `feat/phase-ce`.
 
 **User request, seventh session (2026-10-13, left as a note at the top of
 [`UI_Suggestions/UI_Suggestion.md`](UI_Suggestions/UI_Suggestion.md); moved here at the user's
@@ -162,25 +176,44 @@ The T-060 follow-up "`bucket_seconds` on WAF list rows" was **dropped**: `WafAno
 `bucket_seconds`, so it would need a join in the T-057 `UNION ALL`. The UI constant is correct
 while WAF buckets are fixed at 300 s.
 
-**Then:** T-070 (C.2 UI: `/admin/outage-policy`, `/fleet/catchall`), T-071 (C.2 live), T-051 →
-T-052 (IPS detectors, alerting), T-054 (IPS live), T-055 (docs); the full gate → `main`.
-Contract follow-ups: T-060 (`numerator_sum`/`denominator_sum` on `WafBaselineCellOut`,
-`bucket_seconds` on WAF list rows, "Robust score DEGENERATE"); T-053 (`/ips/sources` per-field
-reasons; `SOURCE_BUSY` status field; `/admin` hub link).
+**Contract follow-ups still open:**
+- T-060: "Robust score DEGENERATE". The WAF chart could now draw the pooled expected line from
+  T-075's sums; that belongs in the redesign.
+- T-053: `/ips/sources` per-field reasons, and a `SOURCE_BUSY` status field.
+- T-070a: an instance-scoped class row has no covered count.
 
-**Next steps, in order:**
-1. Collect the four in-flight tasks (table above): T-050b (Codex: check its log for "usage
-   limit"), T-074 (live; if `QIDNAME`/`ORDER BY UNIQUECOUNT` is rejected, fix `_ips_keyed_query`
-   before T-050b relies on it), T-068 round 1 (`big-pickle`), T-069 (Sonnet). **Migrations:**
-   merge `0018` (T-050b) first, then re-chain T-068's `0019` → `0018` and T-069's `0020` → `0019`
-   (pin each round-trip test to its own revision; alembic round trip + `alembic check`).
-2. Full gate on `feat/phase-ce` → merge to `main` (fixes the WAF time bomb and the 422 picker on
-   `main`).
-3. T-070 C.2 UI (`/admin/outage-policy`, `/fleet/catchall`; Sonnet/Codex, screenshots), T-071 C.2
-   live; T-051 → T-052 (IPS detectors, alerting; then the IPS analyst view), T-054 IPS live, T-055
-   docs.
-4. Later: E.3 AI rule analysis (D-5, user's call); Phase 4 OIDC (**no authenticated route works in
-   production until OIDC lands**); contract follow-ups listed above.
+**Next steps, in order (seventh session, updated ~21:45):**
+1. **Collect T-050b round 3** (Codex). Check its log for "usage limit". Review the budget rule,
+   then run the gates, and merge `0018` first. **Then the migration chain:**
+   - re-chain T-068's `0019` → `0018`, then merge `agent/t068` and `agent/t070a`;
+   - re-chain T-069's `0020` → `0019`, then merge `agent/t069`, plus `agent/t070b` once it is
+     reviewed.
+
+   Pin each round-trip test to its own revision, run the alembic round trip and `alembic check`,
+   and confirm a single head `0020`. Give the re-chains to an opencode free model.
+   - At the merge, `SearchFamily` ends `…, RULE_MATCH, IPS_COLLECTION, CATCHALL_SENDERS`.
+   - Both branches carry the same `test_migration_0013` edit.
+2. **Review T-070b's screenshots** (Sonnet, `/fleet/catchall`).
+3. **Full gate on `feat/phase-ce` → merge to `main`**: ruff; mypy at 31; the full unit and
+   integration suites on a fresh DB; the alembic round trip; the frontend gates. This also fixes
+   the WAF time bomb and the 422 picker on `main`.
+4. **UI redesign (the user's request; D-10).** Start once the items above are collected.
+   - Launch **UI-R0** ([spec](tasks/UI-R0.md); Sonnet or Codex). It writes only
+     `docs/UI-REDESIGN-PLAN.md`.
+   - The orchestrator reviews the plan, then **the user approves it before any code.**
+   - Then one phase at a time, with screenshots: foundation (tokens, typography, shell) → home →
+     widget system and persistence → every remaining page → QA. The geo collection runs in
+     parallel: a live AQL `GEO::` validation first, then the collector.
+5. **G1/G2 backlog**, in parallel with the redesign where agents allow:
+   - T-071, C.2 live validation (a sender at ≤ 2 EPS shows up as NEW; a `RECORD_ONLY` class stays
+     silent while the anomaly is recorded);
+   - T-051 → T-052, the IPS detectors and alerting, then the IPS analyst view;
+   - T-054, IPS live validation;
+   - T-055, IPS docs;
+   - README entries for C.2 (`outage_alert_default`, `catchall_*` settings).
+6. **Later:**
+   - E.3, the AI rule analysis (D-5, the user's call);
+   - Phase 4 OIDC. **No authenticated route works in production until OIDC lands.**
 
 **User decisions, sixth session (2026-10-13):** D-9 — outage alerts stay on for every monitored
 source by default (`RECORD_ONLY` per class/source is opt-in); new SIM Generic senders go to a review
