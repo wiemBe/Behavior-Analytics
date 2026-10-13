@@ -686,6 +686,7 @@ def test_waf_baselines_list_cells_with_reliability_and_versions(db_schema) -> No
         "is_reliable", "completeness", "baseline_version", "normalizer_version",
         "excluded_sample_count", "metric_semantics", "window_start", "window_end",
         "computed_at",
+        "numerator_sum", "denominator_sum",
     }
     reliability = {(c["metric_name"], c["hour"]): c["is_reliable"] for c in body["items"]}
     assert reliability == {("request_count", 9): True, ("request_count", 10): False,
@@ -697,6 +698,40 @@ def test_waf_baselines_list_cells_with_reliability_and_versions(db_schema) -> No
     assert only.json()["total"] == 1
     empty = client.get(f"/api/v1/behavior/waf/endpoints/{w['quiet']}/baselines").json()
     assert empty == {"items": [], "total": 0, "limit": 200, "offset": 0}
+
+
+def test_waf_baselines_serve_the_pooled_sums_behind_ratio_cells(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        _inst, _fw, _ws, ep = await world(s, a_rows=0, w_rows=0)
+        s.add_all([
+            # A ratio metric pools its numerator and denominator over the training
+            # buckets, so the detector's expected proportion is their quotient.
+            WafEndpointBaseline(
+                waf_endpoint_id=ep.id, metric_name="block_ratio", weekday=2, hour=9,
+                median=0.05, mad=0.01, sample_count=12, is_reliable=True, baseline_version=1,
+                normalizer_version=1, observations=[], completeness=1.0,
+                excluded_sample_count=0, exclusion_counts={},
+                numerator_sum=12.0, denominator_sum=480.0),
+            # A count metric has no proportion to pool: both sums stay NULL.
+            WafEndpointBaseline(
+                waf_endpoint_id=ep.id, metric_name="request_count", weekday=2, hour=9,
+                median=100.0, mad=10.0, sample_count=12, is_reliable=True, baseline_version=1,
+                normalizer_version=1, observations=[], completeness=1.0,
+                excluded_sample_count=0, exclusion_counts={}),
+        ])
+        await s.flush()
+        return ep.id
+
+    ep_id = run(setup)
+    body = Client(READER).get(f"/api/v1/behavior/waf/endpoints/{ep_id}/baselines").json()
+    assert body["total"] == 2
+    by_metric = {c["metric_name"]: c for c in body["items"]}
+    ratio = by_metric["block_ratio"]
+    assert ratio["numerator_sum"] == 12.0
+    assert ratio["denominator_sum"] == 480.0
+    count = by_metric["request_count"]
+    assert count["numerator_sum"] is None
+    assert count["denominator_sum"] is None
 
 
 # ----------------------------------------------------------- guards on all routes

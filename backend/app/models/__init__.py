@@ -21,7 +21,7 @@ from app.models.fleet import (
 )
 from app.models.identity import AuditLog, Role, User, user_role
 from app.models.instance import QRadarInstance
-from app.models.ips import IpsSourceProfile
+from app.models.ips import IpsEntity, IpsEntityMetric, IpsSourceBucket, IpsSourceProfile
 from app.models.log_source import (
     AnomalyStateTransition,
     LogSource,
@@ -76,6 +76,8 @@ HYPERTABLES: dict[str, str] = {
     "waf_endpoint_metric": "bucket_start",
     "waf_source_bucket": "bucket_start",
     "rule_match_metric": "bucket_start",
+    "ips_source_bucket": "bucket_start",
+    "ips_entity_metric": "bucket_start",
 }
 
 __all__ = [
@@ -97,6 +99,9 @@ __all__ = [
     "ConfigurationSnapshot",
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
+    "IpsEntity",
+    "IpsEntityMetric",
+    "IpsSourceBucket",
     "IpsSourceProfile",
     "LogSource",
     "LogSourceAnomaly",

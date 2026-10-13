@@ -127,4 +127,15 @@ celery_app.conf.beat_schedule = {
         "task": "apply_waf_retention",
         "schedule": float(settings.waf_retention_interval_seconds),
     },
+    # --- Phase D -------------------------------------------------------------
+    "dispatch-ips-collection": {
+        # The task claims IPS_COLLECTION before it builds a provider or plans
+        # the fleet, so a losing/early minute sends nothing to QRadar.
+        "task": "dispatch_ips_collection",
+        "schedule": 60.0,
+    },
+    "apply-ips-retention": {
+        "task": "apply_ips_retention",
+        "schedule": float(settings.ips_retention_interval_seconds),
+    },
 }

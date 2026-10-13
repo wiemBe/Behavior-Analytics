@@ -2,6 +2,7 @@ import { api, type Page, type RuleHealthCount, type RuleSummary } from "@/lib/ap
 import Link from "next/link";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
+import { PageHeader } from "@/components/ui/PageHeader";
 import {
   formatDateTime,
   healthMeaning,
@@ -37,7 +38,10 @@ export default async function RulesPage({
   if (error) {
     return (
       <>
-        <h2>Rule Health</h2>
+        <PageHeader
+          title="Rule health"
+          actions={<Link href="/rules/statistics">Rule statistics</Link>}
+        />
         <div className="notice">
           Backend unreachable. Start the stack, then run{" "}
           <code>python -m app.cli.sync rules</code>.
@@ -53,12 +57,11 @@ export default async function RulesPage({
 
   return (
     <>
-      <h2>Rule Health</h2>
-      <p className="subtitle">
-        Analytics rules collected from QRadar, with a health verdict derived from
-        what has actually been observed. Building blocks are collected but are not
-        listed here.
-      </p>
+      <PageHeader
+        title="Rule health"
+        description="Analytics rules collected from QRadar, with a health verdict derived from what has actually been observed. Building blocks are collected but are not listed here."
+        actions={<Link href="/rules/statistics">Rule statistics</Link>}
+      />
 
       {summary.length > 0 && (
         <div className="cards">

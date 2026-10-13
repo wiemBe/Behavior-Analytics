@@ -2467,3 +2467,173 @@ th.col-nowrap {
 .key-buckets {
   white-space: nowrap;
 }
+
+/* --- rule statistics (T-062) ---------------------------------------------
+   Dense analytical tables, not KPI cards. Secondary classification columns
+   fold into the rule cell when the supported viewport leaves too little room;
+   no table on these routes needs a local horizontal scrollbar. */
+
+.stats-window {
+  margin: 0 0 var(--sp-6);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+.stats-window strong {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+.stats-window.warn strong {
+  color: var(--warn-text);
+}
+.stats-window.neutral strong {
+  color: var(--neutral-text);
+}
+.stats-window-reason {
+  color: var(--text-2);
+}
+.stats-days {
+  justify-content: flex-end;
+}
+
+.stats-table {
+  table-layout: fixed;
+}
+.stats-table th,
+.stats-table td {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.stats-table th[scope="row"] {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  border-bottom-color: var(--border);
+}
+.stats-table tbody:last-child tr:last-child th {
+  border-bottom: none;
+}
+.stats-table .cell-rule {
+  width: 30%;
+}
+.stats-table .cell-rule a {
+  overflow-wrap: anywhere;
+}
+.stats-group th {
+  padding-top: var(--sp-5);
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+.stats-total th,
+.stats-total td {
+  font-weight: var(--fw-semibold);
+  border-top: 1px solid var(--border-strong);
+}
+.cell-sub.stats-narrow-fact {
+  display: none;
+}
+.stats-top td.num,
+.stats-capacity td.num,
+.stats-cost td.num {
+  white-space: normal;
+}
+.stats-silent .cell-rule {
+  width: 32%;
+}
+.stats-capacity th:first-child {
+  width: 31%;
+}
+.stats-capacity th:last-child {
+  width: 14%;
+}
+.table-note {
+  margin: var(--sp-3) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-prose);
+}
+.stats-excluded {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.stats-excluded > p {
+  margin: 0;
+}
+.stats-excluded-detail h3 {
+  margin-top: var(--sp-4);
+}
+.stats-excluded-table th:first-child {
+  width: 22%;
+}
+.stats-excluded-table th:last-child {
+  width: 14%;
+}
+.stats-top-reason {
+  margin-bottom: var(--sp-2);
+}
+
+@media (max-width: 1200px) {
+  .stats-wide-fact {
+    display: none;
+  }
+  .cell-sub.stats-narrow-fact {
+    display: block;
+  }
+  .stats-table .cell-rule {
+    width: 34%;
+  }
+  .stats-top th:not(:first-child),
+  .stats-top td:not(:first-child) {
+    width: 22%;
+  }
+  .stats-silent th:not(:first-child),
+  .stats-silent td:not(:first-child) {
+    width: 33%;
+  }
+}
+
+/* IPS source administration (T-053): the reference-kind switch and the preset choice. */
+.fm-kind {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0 0 var(--sp-2);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.fm-presets {
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.fm-presets legend {
+  padding: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.fm-presets .fm-note {
+  margin: var(--sp-1) 0 var(--sp-2);
+  max-width: 72ch;
+}
+/* A status word is never broken inside; another column folds instead. */
+td.cell-name.ips-source-cell {
+  overflow-wrap: normal;
+}
+.ips-status {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.fm-preset-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+}

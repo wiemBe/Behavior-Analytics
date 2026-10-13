@@ -148,6 +148,27 @@ class Settings(BaseSettings):
     #: How long the QRadar custom-property catalog is reused per instance.
     qradar_property_catalog_ttl_seconds: int = Field(default=600, ge=60, le=86400)
     ariel_multi_bucket_max_rows: int = Field(default=5000, ge=1, le=100_000)
+    #: IPS collection: sources per keyed search (`logsourceid IN (...)`). A larger
+    #: group is chunked; truncation halves it. Design D.5.
+    ips_max_sources_per_search: int = Field(default=50, ge=1, le=500)
+    #: IPS collection: entities kept per (source, bucket, dimension) after the
+    #: fold's cut. The summed `dimension_events` still covers every row.
+    ips_max_entities_per_bucket: int = Field(default=200, ge=1, le=5000)
+    #: IPS fleet collection is opt-in; individual profiles must also be enabled
+    #: and VALID for their current version.
+    ips_collection_enabled: bool = False
+    ips_max_new_entities_per_bucket: int = Field(default=20, ge=0, le=1000)
+    ips_max_active_entities_per_source_dimension: int = Field(
+        default=2000, ge=1, le=50000
+    )
+    ips_min_admission_events: int = Field(default=3, ge=1)
+    ips_entity_active_days: int = Field(default=7, ge=1, le=90)
+    ips_min_coverage: float = Field(default=0.90, ge=0.0, le=1.0)
+    ips_retention_enabled: bool = True
+    ips_metric_retention_days: int = Field(default=35, ge=2)
+    ips_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
+    ips_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    ips_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention

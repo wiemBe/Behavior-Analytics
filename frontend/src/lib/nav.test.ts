@@ -20,6 +20,7 @@ describe("NAV", () => {
       "Fleet sources",
       "Offenses",
       "Rules",
+      "Rule statistics",
       "Coverage",
       "Log Sources",
       "Searches",
@@ -34,6 +35,7 @@ describe("NAV", () => {
       { href: "/admin/search-cadence", label: "Search cadence" },
       { href: "/admin/classification-rules", label: "Classification rules" },
       { href: "/admin/waf-sources", label: "WAF sources" },
+      { href: "/admin/ips-sources", label: "IPS sources" },
     ]);
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
     expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");
@@ -100,6 +102,7 @@ describe("activeNavHref", () => {
   it("activates supporting sections and their detail routes", () => {
     expect(activeNavHref("/offenses")).toBe("/offenses");
     expect(activeNavHref("/rules/42")).toBe("/rules");
+    expect(activeNavHref("/rules/statistics")).toBe("/rules/statistics");
     expect(activeNavHref("/log-sources/abc")).toBe("/log-sources");
     expect(activeNavHref("/")).toBe("/");
   });

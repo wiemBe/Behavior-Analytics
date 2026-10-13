@@ -83,6 +83,7 @@ class SearchFamily(StrEnum):
     WAF_COLLECTION = "WAF_COLLECTION"
     ANOMALY_EXPLANATION = "ANOMALY_EXPLANATION"
     RULE_MATCH = "RULE_MATCH"
+    IPS_COLLECTION = "IPS_COLLECTION"
 
 
 class SearchCadence(IntEnum):
@@ -236,6 +237,46 @@ class IpsProfileValidationStatus(StrEnum):
     VALID = "VALID"
     INVALID = "INVALID"
     INCONCLUSIVE = "INCONCLUSIVE"
+
+
+class IpsDimension(StrEnum):
+    """One fleet-wide keyed search of IPS collection (design D.5).
+
+    IPS-only. It is not persisted by the collection layer in this form until
+    T-050b names a column for it, and it never shares a type with Phase A or WAF.
+    """
+
+    TOTALS = "TOTALS"
+    DESTINATION_PORT = "DESTINATION_PORT"
+    DESTINATION_IP = "DESTINATION_IP"
+    SIGNATURE = "SIGNATURE"
+    SOURCE_IP = "SOURCE_IP"
+    PORT_FANOUT = "PORT_FANOUT"
+    ACTION = "ACTION"
+
+
+class IpsCellState(StrEnum):
+    """How one (source, bucket, dimension) cell was measured.
+
+    Only COMPLETE and LOWER_BOUND carry a measurement. The other three say why
+    there is none, and none of them may ever be read as zero.
+    """
+
+    #: The search that covered the cell was whole; no row means a measured zero.
+    COMPLETE = "COMPLETE"
+    #: One source, one bucket, truncated: the top rows are exact, the tail is missing.
+    LOWER_BOUND = "LOWER_BOUND"
+    FAILED = "FAILED"
+    REJECTED = "REJECTED"
+    #: The tick's search budget ran out before the cell was searched.
+    NOT_COLLECTED = "NOT_COLLECTED"
+
+
+class IpsMeasurement(StrEnum):
+    """What a folded IPS fact claims about the true value."""
+
+    EXACT = "EXACT"
+    LOWER_BOUND = "LOWER_BOUND"
 
 
 class AnomalyState(StrEnum):

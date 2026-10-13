@@ -18,10 +18,16 @@ function Change({ from, to }: { from: string | null; to: string | null }) {
 export function MappingHistory({
   schema,
   entries,
+  actionLabel = historyActionLabel,
+  outcomeNote,
 }: {
   schema: MappingSchemaOut;
   /** Newest first, as served. */
   entries: WafProfileHistoryEntryOut[];
+  /** A domain's words for its audit actions; the default covers `waf.profile.*`. */
+  actionLabel?: (action: string) => string;
+  /** Replaces the plain "Outcome: …" line for an outcome that needs a sentence. */
+  outcomeNote?: (entry: WafProfileHistoryEntryOut) => string | null;
 }) {
   if (entries.length === 0) {
     return (
@@ -54,10 +60,12 @@ export function MappingHistory({
                 </td>
                 <td className="cell-name">{e.actor || MISSING}</td>
                 <td>
-                  <strong className="fm-event">{historyActionLabel(e.action)}</strong>
+                  <strong className="fm-event">{actionLabel(e.action)}</strong>
                   {e.profile_version != null && <span className="muted"> · v{e.profile_version}</span>}
                   {e.outcome && (
-                    <span className="cell-sub">Outcome: {e.outcome.toLowerCase()}</span>
+                    <span className="cell-sub">
+                      {outcomeNote?.(e) ?? `Outcome: ${e.outcome.toLowerCase()}`}
+                    </span>
                   )}
                   {changes.length > 0 && (
                     <ul className="fm-changes" aria-label="Mapping changes">
