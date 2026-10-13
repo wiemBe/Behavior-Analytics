@@ -54,6 +54,7 @@ class WafProfileService:
         mapping: WafFieldMapping,
         actor: str,
         product_label: str | None = None,
+        replace_product_label: bool = False,
     ) -> tuple[WafSourceProfile, bool]:
         """Create the profile, or change its mapping. Returns (profile, changed)."""
         after = mapping.as_dict()
@@ -89,7 +90,9 @@ class WafProfileService:
 
         before = WafFieldMapping.from_profile(profile).as_dict()
         mapping_changed = before != after
-        label_changed = product_label is not None and product_label != profile.product_label
+        label_changed = (
+            replace_product_label or product_label is not None
+        ) and product_label != profile.product_label
         if not mapping_changed and not label_changed:
             return profile, False
 
@@ -101,6 +104,8 @@ class WafProfileService:
             profile.validation_status = WafProfileValidationStatus.UNVALIDATED
             profile.validation_report = {}
             profile.validated_at = None
+            profile.validation_requested_at = None
+            profile.validation_requested_by = None
         if label_changed:
             profile.product_label = product_label
         profile.updated_by = actor
@@ -152,9 +157,19 @@ class WafProfileService:
         return True
 
     async def validate(
-        self, profile: WafSourceProfile, provider: QRadarProvider, *, actor: str
+        self,
+        profile: WafSourceProfile,
+        provider: QRadarProvider,
+        *,
+        actor: str,
+        persist: bool = True,
     ) -> ProfileValidation:
-        """Check the profile against QRadar and record the structured result."""
+        """Check a profile against QRadar and, by default, record the result.
+
+        The worker uses ``persist=False`` while it performs the remote checks,
+        then locks and re-reads the row before calling ``store_validation``.
+        The synchronous CLI keeps the default and therefore behaves unchanged.
+        """
         now = self._clock()
         window_end = now.replace(microsecond=0)
         window_start = window_end - timedelta(seconds=self.settings.waf_validation_window_seconds)
@@ -194,6 +209,20 @@ class WafProfileService:
             min_ratio=self.settings.waf_validation_min_ratio,
             log_source_error=lookup_error,
         )
+        if persist:
+            await self.store_validation(profile, result, actor=actor, validated_at=now)
+        return result
+
+    async def store_validation(
+        self,
+        profile: WafSourceProfile,
+        result: ProfileValidation,
+        *,
+        actor: str,
+        validated_at: datetime | None = None,
+    ) -> None:
+        """Persist a result only after the caller has established its version is current."""
+        now = validated_at or self._clock()
         profile.validation_status = result.status
         profile.validated_profile_version = profile.profile_version
         profile.validated_at = now
@@ -202,6 +231,8 @@ class WafProfileService:
             "profile_version": profile.profile_version,
             "validated_at": now.isoformat(),
         }
+        profile.validation_requested_at = None
+        profile.validation_requested_by = None
         profile.updated_by = actor
         await self.session.flush()
         await record_audit(
@@ -217,4 +248,69 @@ class WafProfileService:
                 "reasons": result.reasons,
             },
         )
-        return result
+
+    async def request_validation(
+        self,
+        profile: WafSourceProfile,
+        *,
+        actor: str,
+        enqueue: Callable[[str], object] | None = None,
+    ) -> None:
+        """Mark validation pending, commit it, then enqueue the independent worker."""
+        now = self._clock()
+        requested_at = profile.validation_requested_at
+        if requested_at is not None:
+            if requested_at.tzinfo is None:
+                requested_at = requested_at.replace(tzinfo=UTC)
+            age = now - requested_at
+            if age < timedelta(
+                seconds=self.settings.waf_validation_pending_timeout_seconds
+            ):
+                raise WafProfileError(
+                    f"validation of version {profile.profile_version} is already running "
+                    f"since {requested_at.isoformat()}"
+                )
+
+        profile.validation_requested_at = now
+        profile.validation_requested_by = actor
+        profile.updated_by = actor
+        await self.session.flush()
+        await record_audit(
+            self.session,
+            action="waf.profile.validation_requested",
+            actor=actor,
+            object_type=AUDIT_OBJECT,
+            object_id=str(profile.id),
+            detail={"profile_version": profile.profile_version},
+        )
+        # The worker must never overtake the pending marker or mapping write.
+        await self.session.commit()
+        if enqueue is None:
+            from app.workers.tasks import validate_waf_profile_task
+
+            enqueue = validate_waf_profile_task.delay
+        enqueue(str(profile.id))
+
+    async def record_validation_exception(
+        self,
+        profile: WafSourceProfile,
+        *,
+        actor: str,
+        error_class: str,
+    ) -> None:
+        """Clear a failed request without changing its previous validation result."""
+        profile.validation_requested_at = None
+        profile.validation_requested_by = None
+        await self.session.flush()
+        await record_audit(
+            self.session,
+            action="waf.profile.validated",
+            actor=actor,
+            object_type=AUDIT_OBJECT,
+            object_id=str(profile.id),
+            outcome="FAILURE",
+            detail={
+                "profile_version": profile.profile_version,
+                "error_class": error_class,
+            },
+        )

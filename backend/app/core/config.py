@@ -378,6 +378,8 @@ class Settings(BaseSettings):
     waf_min_admission_requests: int = Field(default=3, ge=1)
     #: Profile validation probes this much recent history (seconds).
     waf_validation_window_seconds: int = Field(default=900, ge=60, le=3600)
+    #: A pending marker older than this may be replaced after a dead worker.
+    waf_validation_pending_timeout_seconds: int = Field(default=900, ge=60)
     #: Minimum share for a required field's population and value plausibility.
     waf_validation_min_ratio: float = Field(default=0.90, gt=0.0, le=1.0)
     #: Most frequent values fetched per property during validation.

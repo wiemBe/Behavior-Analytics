@@ -55,6 +55,20 @@ _BODIES: dict[tuple[str, str], dict] = {
         "aql_query": "SELECT sourceip FROM events LAST 1 HOURS",
         "schedule_cron": "*/5 * * * *",
     },
+    ("PUT", "/api/v1/waf/log-sources/{log_source_id}/profile"): {
+        "expected_profile_version": None,
+        "product_label": None,
+        "mapping": {
+            "URL": "URL",
+            "METHOD": "HTTP_Method",
+            "VIRTUAL_HOST": None,
+            "ACTION": None,
+            "RESPONSE_CODE": None,
+            "RULE_ID": None,
+            "USER_AGENT": None,
+        },
+        "action_value_map": {"BLOCKED": [], "ALLOWED": []},
+    },
 }
 
 _ID = str(uuid.uuid4())
