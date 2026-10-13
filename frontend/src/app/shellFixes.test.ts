@@ -30,3 +30,17 @@ describe("the stat-card row has even rows", () => {
     expect(rule(".grid-4")).toMatch(/grid-auto-rows:\s*1fr/);
   });
 });
+
+describe("native controls follow the dark theme", () => {
+  it("declares color-scheme: dark where the tokens are defined, so scrollbars are dark", () => {
+    const tokens = readFileSync(resolve(__dirname, "tokens.css"), "utf8");
+    expect(tokens).toMatch(/:root\s*\{[^}]*color-scheme:\s*dark/);
+  });
+});
+
+describe("the needs-attention table fits at narrow widths", () => {
+  it("lets a timestamp fold before its zone and a state pill fold at an underscore", () => {
+    expect(css).toMatch(/td\.num\.cell-when\s*\{\s*white-space:\s*normal/);
+    expect(css).toMatch(/\.pill\.pill-wrap\s*\{[^}]*white-space:\s*normal/);
+  });
+});

@@ -18,6 +18,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Fragment } from "react";
 
 import { HealthDistribution } from "@/components/behavior/HealthDistribution";
 import { StatCard } from "@/components/StatCard";
@@ -47,6 +48,17 @@ export const metadata: Metadata = {
 /** How many rows the worklist and the recent list show before linking on. */
 const ATTENTION_LIMIT = 8;
 const RECENT_LIMIT = 6;
+
+/** "10-13 09:30 UTC": the zone may drop to a second line, the date and time may not. */
+function StartedAt({ value }: { value: string }) {
+  const cut = value.lastIndexOf(" ");
+  if (cut < 0) return <>{value}</>;
+  return (
+    <>
+      <span className="nowrap">{value.slice(0, cut)}</span> {value.slice(cut + 1)}
+    </>
+  );
+}
 
 export default async function BehaviorPage() {
   let summary: BehaviorSummary | null = null;
@@ -215,14 +227,27 @@ export default async function BehaviorPage() {
                 <tbody>
                   {attention.slice(0, ATTENTION_LIMIT).map((row) => (
                     <tr key={row.key}>
-                      <td className="cell-name">
+                      <td className="cell-name cell-name-single" title={row.sourceName}>
                         <a href={`/behavior/sources/${row.sourceId}`}>
                           {row.sourceName}
                         </a>
                       </td>
                       <td>
-                        <span className={`pill ${stateTone(row.state)}`}>
-                          {row.state}
+                        <span className={`pill pill-wrap ${stateTone(row.state)}`}>
+                          {/* A break opportunity after each underscore, so
+                              INSUFFICIENT_DATA can fold in a narrow column. */}
+                          <span>
+                            {row.state.split("_").map((part, i, all) => (
+                              <Fragment key={i}>
+                                {part}
+                                {i < all.length - 1 && (
+                                  <>
+                                    _<wbr />
+                                  </>
+                                )}
+                              </Fragment>
+                            ))}
+                          </span>
                         </span>
                       </td>
                       <td>
@@ -252,7 +277,9 @@ export default async function BehaviorPage() {
                         )}
                       </td>
                       <td className="num">{formatRatio(row.deviation)}</td>
-                      <td className="num">{formatDateTimeCompact(row.at)}</td>
+                      <td className="num cell-when">
+                        <StartedAt value={formatDateTimeCompact(row.at)} />
+                      </td>
                       <td>
                         <a href={row.href}>
                           {row.href.startsWith("/anomalies") ? "Investigate" : "Detail"}

@@ -65,7 +65,7 @@ export default async function FleetSourcesPage({
       />
       <FleetSourceFilters query={query} />
       {filters.length > 0 && (
-        <ul className="filter-chips" aria-label="Active filters">
+        <ul className="filter-chips fleet-filter-chips" aria-label="Active filters">
           {filters.map((f) => (
             <li key={f} className="filter-chip">
               {f}

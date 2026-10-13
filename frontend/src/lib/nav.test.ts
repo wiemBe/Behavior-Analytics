@@ -32,6 +32,7 @@ describe("NAV", () => {
     expect(NAV[2].items).toEqual([
       { href: "/admin/search-cadence", label: "Search cadence" },
       { href: "/admin/classification-rules", label: "Classification rules" },
+      { href: "/admin/waf-sources", label: "WAF sources" },
     ]);
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
     expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");

@@ -113,8 +113,9 @@ export default async function FleetPage({
               row says how many buckets are partial or missing.
             </li>
             <li>
-              Expected EPS is the baseline for the current weekday and hour (UTC), summed over the
-              sources that have one. It compares with the mean most directly in the 1 h window.
+              Expected EPS is the sum, over the sources that have a baseline, of each source&apos;s mean
+              baseline median across every UTC weekday and hour cell the window spans. A source
+              counts only when all of those cells are reliable.
             </li>
           </ul>
 

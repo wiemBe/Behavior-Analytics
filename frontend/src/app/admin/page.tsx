@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -23,6 +24,10 @@ export default function Page() {
         <li>
           <a href="/admin/classification-rules">Classification rules</a>
           <span className="cell-sub">Which rules decide a log source&apos;s class, and in what order</span>
+        </li>
+        <li>
+          <Link href="/admin/waf-sources">WAF sources</Link>
+          <span className="cell-sub">Which QRadar properties each WAF source is read from</span>
         </li>
       </ul>
     </>

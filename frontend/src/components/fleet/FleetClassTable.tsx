@@ -23,12 +23,12 @@ import {
   openIncidentList,
 } from "@/lib/fleet";
 
-function Figure({ value, unit, why }: { value: string | null; unit?: string; why: string }) {
+function Figure({ value, unit, why }: { value: string | null; unit?: string; why: string | null }) {
   if (value === null) {
     return (
       <>
         <span className="muted">{NOT_MEASURED_TEXT}</span>
-        <span className="cell-sub">{why}</span>
+        {why && <span className="cell-sub">{why}</span>}
       </>
     );
   }
@@ -68,7 +68,7 @@ function ClassRows({ c }: { c: FleetClassSummary }) {
           )}
         </td>
         <td className="num">
-          <Figure value={mean} unit="EPS" why={noComplete} />
+          <Figure value={mean} unit="EPS" why={null} />
         </td>
         <td className="num">
           {expected.value === null ? (

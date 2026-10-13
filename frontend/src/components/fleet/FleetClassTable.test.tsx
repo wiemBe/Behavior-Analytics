@@ -55,6 +55,8 @@ describe("FleetClassTable", () => {
     );
     const r = row("Windows");
     expect(within(r).getAllByText("Not measured")).toHaveLength(2);
+    // The reason is stated once, under Events, not repeated under Mean EPS.
+    expect(within(r).getAllByText("No complete bucket in the window.")).toHaveLength(1);
     expect(within(r).queryByText(/^0(\.00)?$/)).toBeNull();
     expect(within(r).getByText("Incomplete")).toBeInTheDocument();
   });

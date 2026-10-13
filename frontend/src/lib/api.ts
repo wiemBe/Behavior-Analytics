@@ -16,7 +16,16 @@ function baseUrl(): string {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  /**
+   * `detail` is the response's `detail` exactly as sent. Most errors carry a
+   * string, which is also `message`; a conflict may carry an object naming the
+   * current version, which `message` cannot hold.
+   */
+  constructor(
+    public status: number,
+    message: string,
+    public detail?: unknown,
+  ) {
     super(message);
   }
 }
@@ -29,12 +38,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let raw: unknown;
     try {
-      detail = (await res.json()).detail ?? detail;
+      raw = (await res.json()).detail;
+      if (typeof raw === "string") detail = raw;
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, raw);
   }
   return res.json() as Promise<T>;
 }
@@ -106,6 +117,8 @@ export interface LogSourceDetail {
   business_hours_only: boolean;
   expected_interval_seconds: number | null;
   last_event_time: string | null;
+  /** Not on the schema today; read when the backend sends it (T-044 report). */
+  instance_id?: string | null;
 }
 
 // --- Phase 2 types ---------------------------------------------------------
@@ -189,6 +202,167 @@ export interface SearchVersion {
   changed_by: string | null;
   change_note: string | null;
   created_at: string;
+}
+
+// --- WAF source administration (docs/FIELD-MAPPING.md §FM.3, §FM.4, §FM.6) ---
+// These mirror the field-mapping contract. Every measurement the validation
+// report may lack is `| null`: a share that was not measured is not 0 %.
+
+export interface MappingFieldOut {
+  key: string;
+  label: string;
+  description: string;
+  required: boolean;
+  used_by_collection: boolean;
+  kinds: string[];
+  normalized_options: string[];
+  default: string | null;
+}
+
+export interface MappingValueMapOut {
+  field: string;
+  outcomes: string[];
+}
+
+export interface MappingSchemaOut {
+  domain: "WAF" | "IPS";
+  property_name_pattern: string;
+  /** The share of events a collection field must populate (waf_validation_min_ratio). */
+  min_coverage_ratio: number;
+  fields: MappingFieldOut[];
+  value_maps: MappingValueMapOut[];
+}
+
+/** Logical field key to the QRadar property it is read from; null = not mapped. */
+export type FieldMapping = Record<string, string | null>;
+
+/** Outcome (`BLOCKED`, `ALLOWED`) to the raw action values assigned to it. */
+export type ActionValueMap = Record<string, string[]>;
+
+export type WafValidationStatus = "UNVALIDATED" | "VALID" | "INVALID" | "INCONCLUSIVE";
+
+export interface DiscoveredValue {
+  value: string;
+  events: number;
+}
+
+export interface FieldValidationOut {
+  field: string;
+  property_name: string | null;
+  /** AVAILABLE, NOT_MAPPED, PROPERTY_REJECTED, UNPOPULATED, INSUFFICIENT_COVERAGE,
+   *  IMPLAUSIBLE, NO_EVENTS or QUERY_FAILED. Typed as string so a status this
+   *  build does not know is shown as recorded rather than dropped. */
+  status: string;
+  used_by_collection: boolean;
+  populated_events: number | null;
+  populated_ratio: number | null;
+  distinct_values: number | null;
+  plausible_ratio: number | null;
+  sampled_events: number | null;
+  values_truncated: boolean;
+  discovered_values: DiscoveredValue[];
+  detail: string | null;
+}
+
+export interface ValidationReportOut {
+  status: WafValidationStatus;
+  reasons: string[];
+  total_events: number | null;
+  window_start: string;
+  window_end: string;
+  profile_version: number;
+  fields: FieldValidationOut[];
+}
+
+export interface WafProfileIn {
+  /** Null only to create; otherwise the version the edit was made against. */
+  expected_profile_version: number | null;
+  product_label: string | null;
+  mapping: FieldMapping;
+  action_value_map: ActionValueMap;
+}
+
+export interface WafProfileOut {
+  profile_id: string;
+  instance_id: string;
+  log_source_id: string;
+  qradar_log_source_id: number;
+  log_source_name: string;
+  log_source_type_name: string | null;
+  product_label: string | null;
+  profile_version: number;
+  enabled: boolean;
+  mapping: FieldMapping;
+  action_value_map: ActionValueMap;
+  validation_status: WafValidationStatus;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation: ValidationReportOut | null;
+  validation_pending: boolean;
+  validation_requested_at: string | null;
+  validation_requested_by: string | null;
+  collection_eligible: boolean;
+  ineligible_reason: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface WafProfileHistoryEntryOut {
+  at: string;
+  actor: string;
+  /** waf.profile.created | mapping_changed | relabelled | validation_requested |
+   *  validated | enabled | disabled. Unknown values are shown as recorded. */
+  action: string;
+  profile_version: number | null;
+  mapping_before: FieldMapping | null;
+  mapping_after: FieldMapping | null;
+  outcome: string | null;
+  reasons: string[] | null;
+}
+
+export interface WafCandidateOut {
+  log_source_id: string;
+  qradar_id: number;
+  name: string;
+  type_name: string | null;
+  source_class: string | null;
+  instance_id: string;
+}
+
+export interface CatalogProperty {
+  name: string;
+  property_type: string | null;
+  applies_to_source_type: boolean | null;
+  name_allowed: boolean;
+}
+
+export interface PropertyCatalogOut {
+  status: "AVAILABLE" | "UNAVAILABLE";
+  fetched_at: string | null;
+  filtered_by_source_type: boolean;
+  properties: CatalogProperty[];
+  detail: string | null;
+}
+
+// Mirrors the fields of WafSourceStatusOut the administration list reads.
+export interface WafSourceStatus {
+  profile_id: string;
+  instance_id: string;
+  log_source_id: string;
+  qradar_log_source_id: number;
+  log_source_name: string;
+  product_label: string | null;
+  enabled: boolean;
+  profile_version: number;
+  validation_status: WafValidationStatus;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation_fields: { field: string; property_name: string | null; status: string }[];
+  collection_eligible: boolean;
+  ineligible_reason: string | null;
+  validation_pending: boolean;
+  validation_requested_at: string | null;
+  validation_requested_by: string | null;
 }
 
 export interface Alert {
@@ -812,6 +986,39 @@ export const api = {
     request<MetricBucket[]>(`/behavior/sources/${id}/metrics${qs({ ...params })}`),
   sourceBaselines: (id: string, metric = "average_eps") =>
     request<BaselineCell[]>(`/behavior/sources/${id}/baselines${qs({ metric })}`),
+
+  // --- WAF source administration -------------------------------------------
+  // Guarded by admin:waf. Profile writes save the application's database only;
+  // validation is a request that a worker runs, never a wait on this call.
+  wafMappingSchema: () => request<MappingSchemaOut>("/waf/mapping-schema"),
+  wafSources: () => request<WafSourceStatus[]>("/waf/sources"),
+  wafCandidates: (params: { instance_id?: string; q?: string; limit?: number } = {}) =>
+    request<WafCandidateOut[]>(`/waf/candidates${qs({ ...params })}`),
+  wafProfile: (logSourceId: string) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile`),
+  saveWafProfile: (logSourceId: string, body: WafProfileIn) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  validateWafProfile: (logSourceId: string) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile/validate`, {
+      method: "POST",
+    }),
+  enableWafProfile: (logSourceId: string) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile/enable`, {
+      method: "POST",
+    }),
+  disableWafProfile: (logSourceId: string) =>
+    request<WafProfileOut>(`/waf/log-sources/${logSourceId}/profile/disable`, {
+      method: "POST",
+    }),
+  wafProfileHistory: (logSourceId: string) =>
+    request<WafProfileHistoryEntryOut[]>(`/waf/log-sources/${logSourceId}/profile/history`),
+  wafPropertyCatalog: (logSourceId: string, refresh = false) =>
+    request<PropertyCatalogOut>(
+      `/waf/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined })}`,
+    ),
 
   acknowledgeAlert: (id: string) =>
     request<Alert>(`/alerts/${id}/acknowledge`, { method: "POST" }),

@@ -449,7 +449,7 @@ export function RulesManager({ initial }: { initial: ClassificationRule[] }) {
               </div>
             ) : (
               <TableScroll label={level.title}>
-                <table className="fleet-table">
+                <table className="fleet-table rules-table">
                   <caption className="sr-only">
                     {level.title}, highest priority first. A rule that is off is skipped.
                   </caption>
@@ -477,10 +477,7 @@ export function RulesManager({ initial }: { initial: ClassificationRule[] }) {
         );
       })}
 
-      <section aria-labelledby="rule-add">
-        <h2 className="section-title" id="rule-add">
-          Custom rules
-        </h2>
+      <section aria-label="Add a custom rule" className="rule-add">
         <Disclosure summary="Add a custom rule" note="Admin only, audited">
           <CreateRule
             onCreated={(rule) => setRules((prev) => sortRules([...prev, rule]))}

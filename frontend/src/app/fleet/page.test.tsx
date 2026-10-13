@@ -51,6 +51,13 @@ describe("FleetPage", () => {
     expect(screen.getByRole("link", { name: "24 h" })).not.toHaveAttribute("aria-current");
   });
 
+  it("states how expected EPS is computed, across every cell the window spans", async () => {
+    vi.spyOn(fleetApi, "summary").mockResolvedValue(summary());
+    await renderPage();
+    expect(screen.getByText(/across every UTC weekday and hour cell the window spans/)).toBeInTheDocument();
+    expect(screen.queryByText(/most directly/)).toBeNull();
+  });
+
   it("links the review-queue counts to the filtered list", async () => {
     vi.spyOn(fleetApi, "summary").mockResolvedValue(summary());
     await renderPage();
