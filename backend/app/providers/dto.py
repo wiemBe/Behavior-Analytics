@@ -353,6 +353,42 @@ class WafSourceProbe(ProviderDTO):
     properties: list[WafPropertyProbe] = Field(default_factory=list)
 
 
+class IpsFieldProbeRequest(ProviderDTO):
+    logical_field: str
+    reference_kind: str
+    name: str
+
+
+class IpsProbeValue(ProviderDTO):
+    value: str
+    events: int
+
+
+class IpsFieldProbe(ProviderDTO):
+    """Aggregate evidence for one IPS logical field; raw values are ACTION-only."""
+
+    logical_field: str
+    reference_kind: str
+    name: str
+    rejected: bool = False
+    error: str | None = None
+    populated_events: int | None = None
+    generic_name_events: int | None = None
+    action_values: list[IpsProbeValue] = Field(default_factory=list)
+    values_truncated: bool = False
+
+
+class IpsSourceProbe(ProviderDTO):
+    qradar_log_source_id: int
+    window_start: datetime
+    window_end: datetime
+    total_events: int | None = None
+    total_error: str | None = None
+    fields: list[IpsFieldProbe] = Field(default_factory=list)
+    truncated: bool = False
+    ariel_searches: int = 0
+
+
 class WafRejectionObservation(ProviderDTO):
     """What QRadar did with one Ariel query naming one property.
 

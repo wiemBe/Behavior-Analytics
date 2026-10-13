@@ -30,6 +30,8 @@ from app.providers.dto import (
     CustomPropertyDTO,
     DimensionAggregate,
     InstanceInfoDTO,
+    IpsFieldProbeRequest,
+    IpsSourceProbe,
     LogSourceDTO,
     LogSourceGroupDTO,
     LogSourceMetricBucketBatch,
@@ -56,6 +58,20 @@ PROPERTY_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ -]{0,63}$")
 #: Upper bound on a WAF property probe window. Validation is a spot check, not a
 #: survey, and a small window keeps it cheap on a loaded appliance.
 WAF_PROBE_MAX_WINDOW_SECONDS = 3600
+
+#: Normalized Ariel identifiers IPS profiles may name. They are quoted only
+#: after exact membership validation; arbitrary frontend text never reaches AQL.
+IPS_NORMALIZED_FIELD_ALLOWLIST = (
+    "sourceip",
+    "destinationip",
+    "destinationport",
+    "sourceport",
+    "protocolid",
+    "qid",
+    "severity",
+    "category",
+)
+IPS_PROBE_MAX_WINDOW_SECONDS = WAF_PROBE_MAX_WINDOW_SECONDS
 
 
 class ProviderCapability(StrEnum):
@@ -425,6 +441,24 @@ class QRadarProvider(ABC):
 
         Returns raw values for the caller to judge and discard. Nothing here may
         be persisted as returned.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def probe_ips_fields(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        fields: Sequence[IpsFieldProbeRequest],
+        max_action_values: int = 20,
+    ) -> IpsSourceProbe:
+        """Bounded read-only population evidence for an IPS field mapping.
+
+        Implementations return aggregate counts only, except for the bounded
+        ACTION value set the operator needs to author its value map. Ariel is
+        required, so MCP fails closed through the capability check.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError

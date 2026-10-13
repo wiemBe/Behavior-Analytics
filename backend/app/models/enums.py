@@ -175,6 +175,45 @@ class WafProfileValidationStatus(StrEnum):
     INCONCLUSIVE = "INCONCLUSIVE"
 
 
+class IpsLogicalField(StrEnum):
+    """A logical IPS field mapped to a normalized or custom QRadar field."""
+
+    SOURCE_IP = "SOURCE_IP"
+    DESTINATION_IP = "DESTINATION_IP"
+    DESTINATION_PORT = "DESTINATION_PORT"
+    PROTOCOL = "PROTOCOL"
+    SIGNATURE = "SIGNATURE"
+    ACTION = "ACTION"
+    SEVERITY = "SEVERITY"
+
+
+class IpsReferenceKind(StrEnum):
+    NORMALIZED = "NORMALIZED"
+    CUSTOM_PROPERTY = "CUSTOM_PROPERTY"
+
+
+class IpsPreset(StrEnum):
+    CISCO_FTD = "CISCO_FTD"
+    PALO_ALTO_THREAT = "PALO_ALTO_THREAT"
+
+
+class IpsFieldStatus(StrEnum):
+    AVAILABLE = "AVAILABLE"
+    NOT_MAPPED = "NOT_MAPPED"
+    FIELD_REJECTED = "FIELD_REJECTED"
+    UNPOPULATED = "UNPOPULATED"
+    INSUFFICIENT_COVERAGE = "INSUFFICIENT_COVERAGE"
+    NO_EVENTS = "NO_EVENTS"
+    QUERY_FAILED = "QUERY_FAILED"
+
+
+class IpsProfileValidationStatus(StrEnum):
+    UNVALIDATED = "UNVALIDATED"
+    VALID = "VALID"
+    INVALID = "INVALID"
+    INCONCLUSIVE = "INCONCLUSIVE"
+
+
 class AnomalyState(StrEnum):
     """Explicit anomaly lifecycle.
 

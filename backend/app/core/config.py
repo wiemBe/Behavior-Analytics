@@ -390,6 +390,14 @@ class Settings(BaseSettings):
     waf_validation_min_ratio: float = Field(default=0.90, gt=0.0, le=1.0)
     #: Most frequent values fetched per property during validation.
     waf_validation_max_values: int = Field(default=50, ge=1, le=200)
+    # --- Phase D: IPS profile validation (collection is introduced later) --
+    ips_validation_window_seconds: int = Field(default=900, ge=60, le=3600)
+    ips_validation_pending_timeout_seconds: int = Field(default=900, ge=60)
+    ips_validation_lock_retry_delay_seconds: int = Field(default=30, ge=5, le=300)
+    ips_validation_lock_max_retries: int = Field(default=20, ge=0, le=100)
+    ips_validation_min_ratio: float = Field(default=0.90, gt=0.0, le=1.0)
+    #: Hard disclosure and Ariel-result bound for discovered ACTION values.
+    ips_validation_max_action_values: int = Field(default=20, ge=1, le=20)
     #: Collected buckets evaluated per source per scheduled run.
     waf_max_evaluation_buckets_per_run: int = Field(default=24, ge=1, le=2016)
     #: Endpoints whose baselines are rebuilt per source per scheduled run,
