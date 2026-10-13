@@ -59,6 +59,7 @@ class SearchFamily(StrEnum):
     WAF_COLLECTION = "WAF_COLLECTION"
     ANOMALY_EXPLANATION = "ANOMALY_EXPLANATION"
     RULE_MATCH = "RULE_MATCH"
+    IPS_COLLECTION = "IPS_COLLECTION"
 
 
 class SearchCadence(IntEnum):
