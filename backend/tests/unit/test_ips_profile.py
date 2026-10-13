@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -15,6 +16,7 @@ from app.ips.profile import (
     IpsFieldMapping,
     IpsFieldReference,
     IpsProfileError,
+    profile_ineligibility,
 )
 from app.ips.validation import evaluate_profile
 from app.models.enums import (
@@ -24,6 +26,7 @@ from app.models.enums import (
     IpsProfileValidationStatus,
     IpsReferenceKind,
 )
+from app.models.ips import IpsSourceProfile
 from app.providers.base import CapabilityNotSupportedError, ProviderCapability
 from app.providers.dto import (
     IpsFieldProbe,
@@ -226,6 +229,31 @@ class TestValidation:
         )
         assert result.status is IpsProfileValidationStatus.INVALID
         assert "does not exist" in result.reasons[0]
+
+
+# --------------------------------------------------------- profile eligibility
+def ineligible_reason(*, profile_version: int, validated: int | None) -> str | None:
+    profile = IpsSourceProfile(
+        instance_id=uuid.uuid4(),
+        log_source_id=uuid.uuid4(),
+        enabled=True,
+        profile_version=profile_version,
+        validation_status=IpsProfileValidationStatus.UNVALIDATED,
+        validated_profile_version=validated,
+    )
+    return profile_ineligibility(profile)
+
+
+class TestProfileIneligibility:
+    def test_a_never_validated_profile_says_so_not_last_validated_none(self) -> None:
+        assert ineligible_reason(profile_version=3, validated=None) == (
+            "profile version 3 has never been validated"
+        )
+
+    def test_a_stale_profile_names_the_version_it_was_last_validated_at(self) -> None:
+        assert ineligible_reason(profile_version=2, validated=1) == (
+            "profile version 2 has not been validated (last validated: 1)"
+        )
 
 
 def _probe_handler():  # type: ignore[no-untyped-def]
