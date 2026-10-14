@@ -122,6 +122,28 @@ def waf_anomaly_fingerprint(
     )
 
 
+def ips_anomaly_fingerprint(
+    *,
+    instance_id: str | uuid.UUID,
+    log_source_id: str | uuid.UUID,
+    detector_type: str,
+    dimension: str | None = None,
+    value_key: str | None = None,
+) -> str:
+    """Identity of one IPS detector condition on its stable subject key."""
+    if (dimension is None) != (value_key is None):
+        raise ValueError("dimension and value_key must both identify an entity, or both be absent")
+    natural_key = [str(instance_id), str(log_source_id)]
+    if dimension is not None and value_key is not None:
+        natural_key.extend((dimension, value_key))
+    return compute_fingerprint(
+        source_type="ips_entity" if dimension is not None else "ips_source",
+        source_id=json.dumps(natural_key, separators=(",", ":")),
+        condition="ips_anomaly",
+        subtype=detector_type,
+    )
+
+
 def search_threshold_fingerprint(search_id: str | uuid.UUID) -> str:
     return compute_fingerprint(
         source_type="scheduled_search",
