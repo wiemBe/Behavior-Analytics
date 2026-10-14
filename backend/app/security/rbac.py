@@ -88,6 +88,10 @@ PERM_SEARCH_CADENCE_ADMIN = "admin:search_cadence"
 # does not grant it. Overrides and reviews reuse `log_source:write`.
 PERM_FLEET_READ = "read:fleet"
 PERM_CLASSIFICATION_ADMIN = "admin:classification"
+# Phase C.2. The outage alert policy decides which silences page a human; that
+# is operational control, so `read:*` does not grant it and a fleet viewer
+# cannot silence a class's outages.
+PERM_OUTAGE_ADMIN = "admin:outage"
 
 
 class PermissionDenied(Exception):

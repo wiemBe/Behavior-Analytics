@@ -44,7 +44,11 @@ async def fleet_summary(
     now = _utcnow()
     closed = datetime.fromtimestamp(now.timestamp() // bucket_seconds * bucket_seconds, UTC)
     return await build_fleet_summary(
-        session, window=window, now=closed, bucket_seconds=bucket_seconds
+        session,
+        window=window,
+        now=closed,
+        bucket_seconds=bucket_seconds,
+        outage_default=settings.outage_alert_default,
     )
 
 
