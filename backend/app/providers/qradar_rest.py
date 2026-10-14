@@ -35,6 +35,7 @@ from app.collectors.bucketed_metrics import (
     fold_log_source_metric_buckets,
     validate_bucketed_metric_window,
 )
+from app.geo.fold import GeoDirection, GeoKeyedResult, parse_geo_rows
 from app.ips.keyed_rows import (
     parse_ips_keyed_rows,
     validate_ips_fields,
@@ -1712,6 +1713,81 @@ class QRadarRestProvider(QRadarProvider):
             device_type_ids=ids,
             window_start=start,
             window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
+
+    #: The only address field a geo search may name; the direction picks it, never a caller.
+    _GEO_FIELDS: ClassVar[dict[GeoDirection, str]] = {
+        GeoDirection.SOURCE: "sourceip",
+        GeoDirection.DESTINATION: "destinationip",
+    }
+
+    @classmethod
+    def _geo_query(
+        cls,
+        direction: GeoDirection,
+        *,
+        start_ms: int,
+        end_ms: int,
+        bucket_ms: int,
+        limit: int,
+    ) -> str:
+        """The D-10 AQL. It selects the lookup string and the bucket, never an address."""
+        lookup = f"GEO::LOOKUP({cls._GEO_FIELDS[direction]}, 'country', 'iso_code')"
+        return (
+            f'SELECT {lookup} AS "geo", '  # noqa: S608
+            f'starttime / {bucket_ms} AS "k", '
+            'SUM(eventcount) AS "events" '
+            f"FROM events WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY {lookup}, starttime / {bucket_ms} "
+            f"ORDER BY SUM(eventcount) DESC LIMIT {limit}"
+        )
+
+    async def get_geo_keyed(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        direction: GeoDirection,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> GeoKeyedResult:
+        """One keyed search of events per country (D-10); see the base class.
+
+        ``LIMIT cap + 1`` with ``cap = _keyed_row_cap(max_rows)``. Read-only: an Ariel
+        search over ``events``.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        window_start, window_end = validate_bucketed_metric_window(start, end, bucket_seconds)
+        checked = GeoDirection(direction)
+        start_ms = int(window_start.timestamp() * 1000)
+        end_ms = int(window_end.timestamp() * 1000)
+        cap = self._keyed_row_cap(max_rows)
+        aql = (
+            self._geo_query(
+                checked,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                bucket_ms=int(bucket_seconds) * 1000,
+                limit=cap + 1,
+            )
+            + f" {self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_geo_rows(
+            raw,
+            window_start=window_start,
+            window_end=window_end,
+            bucket_seconds=bucket_seconds,
+            max_rows=cap,
+        )
+        return GeoKeyedResult(
+            direction=checked,
+            window_start=window_start,
+            window_end=window_end,
             bucket_seconds=bucket_seconds,
             rows=rows,
             truncated=truncated,

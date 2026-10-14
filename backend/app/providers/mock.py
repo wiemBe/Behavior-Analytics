@@ -23,6 +23,7 @@ from typing import ClassVar, TypedDict
 
 from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import validate_bucketed_metric_window
+from app.geo.fold import GeoDirection, GeoKeyedResult, parse_geo_rows
 from app.ips.keyed_rows import (
     parse_ips_keyed_rows,
     validate_ips_fields,
@@ -175,6 +176,42 @@ CatchallTruncation = Callable[[MockCatchallSearch], bool]
 #: A script: the raw rows (`logsourceid`, `sender`, `events`, `records`) of a bucket key.
 CatchallScript = Callable[[int], list[dict]]
 
+@dataclass(frozen=True)
+class MockGeoSearch:
+    """One geo search the mock was asked for, kept so tests can read the split."""
+
+    direction: GeoDirection
+    window_start: datetime
+    window_end: datetime
+
+
+#: A fault hook: given a search, an exception to raise for it, or None.
+GeoFault = Callable[[MockGeoSearch], Exception | None]
+#: A truncation hook: True forces the search to read as truncated.
+GeoTruncation = Callable[[MockGeoSearch], bool]
+#: A script: the raw rows (`geo`, `events`) of a direction and bucket key.
+GeoScript = Callable[[GeoDirection, int], list[dict]]
+
+#: Lookup strings as QRadar returns them: a country, one with a different `confidence`,
+#: and the sentinel for a private or unknown address.
+_GEO_COUNTRIES = (
+    ("US", "United States", 6252001),
+    ("DE", "Germany", 2921044),
+    ("JP", "Japan", 1861060),
+    ("BR", "Brazil", 3469034),
+    ("TR", "Turkey", 298795),
+)
+
+
+def geo_key(code: str, name: str = "Mock", geo_id: int = 1, confidence: int | None = None) -> str:
+    """The lookup string for a country, in QRadar's shape."""
+    shown = "null" if confidence is None else str(confidence)
+    return (
+        f'{{"country":{{"confidence":{shown},"name":"{name}",'
+        f'"iso_code":"{code}","geo_id":{geo_id}}}}}'
+    )
+
+
 _IPS_PORTS = (0, 22, 53, 80, 443, 445, 3389, 5060, 8080, 8443)
 _IPS_PROTOCOLS = (6, 6, 6, 17, 1, 255, 0)
 _IPS_SOURCES = (
@@ -231,6 +268,12 @@ class MockQRadarProvider(QRadarProvider):
         self.catchall_fault: CatchallFault | None = None
         self.catchall_force_truncated: CatchallTruncation | None = None
         self.catchall_script: CatchallScript | None = None
+        #: The same hooks for the geo search, plus a script that replaces the
+        #: synthetic countries. Rows still pass the real parser.
+        self.geo_searches: list[MockGeoSearch] = []
+        self.geo_fault: GeoFault | None = None
+        self.geo_force_truncated: GeoTruncation | None = None
+        self.geo_script: GeoScript | None = None
         self._now = now or datetime.now(UTC)
         self._rng = random.Random(seed)  # noqa: S311 (not cryptographic)
         # Active Ariel searches: search_id -> (aql, created_at)
@@ -1126,6 +1169,72 @@ class MockQRadarProvider(QRadarProvider):
             rows=parsed,
             truncated=truncated,
             query="MOCK CATCHALL",
+        )
+
+    def _geo_events(self, direction: GeoDirection, key: int) -> list[dict]:
+        """The synthetic lookups of one direction and bucket: deterministic."""
+        rng = random.Random(f"{self._seed}:geo:{direction.value}:{key}")  # noqa: S311
+        out = [{"geo": "{}", "events": rng.randint(50, 400)}]
+        for code, name, geo_id in _GEO_COUNTRIES:
+            if rng.random() < 0.7:
+                out.append(
+                    {"geo": geo_key(code, name, geo_id), "events": rng.randint(1, 300)}
+                )
+        return out
+
+    async def get_geo_keyed(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        direction: GeoDirection,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> GeoKeyedResult:
+        """The geo result, aggregated here and parsed by the real row parser."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        window_start, window_end = validate_bucketed_metric_window(start, end, bucket_seconds)
+        checked = GeoDirection(direction)
+        if max_rows < 1:
+            raise ValueError("geo row limit must be positive")
+        search = MockGeoSearch(checked, window_start, window_end)
+        self.geo_searches.append(search)
+        if self.geo_fault is not None and (fault := self.geo_fault(search)) is not None:
+            raise fault
+
+        first = int(window_start.timestamp()) // bucket_seconds
+        last = int(window_end.timestamp()) // bucket_seconds
+        groups: dict[tuple[str | None, int], dict] = {}
+        for key in range(first, last):
+            if self.geo_script is not None:
+                events = self.geo_script(checked, key)
+            else:
+                events = self._geo_events(checked, key)
+            for event in events:
+                group = groups.setdefault(
+                    (event["geo"], key), {"geo": event["geo"], "k": key, "events": 0}
+                )
+                group["events"] += event["events"]
+        ordered = sorted(
+            groups.values(), key=lambda g: (-g["events"], str(g["geo"]), g["k"])
+        )
+        parsed, truncated = parse_geo_rows(
+            ordered[: max_rows + 1],
+            window_start=window_start,
+            window_end=window_end,
+            bucket_seconds=bucket_seconds,
+            max_rows=max_rows,
+        )
+        if self.geo_force_truncated is not None and self.geo_force_truncated(search):
+            truncated = True
+        return GeoKeyedResult(
+            direction=checked,
+            window_start=window_start,
+            window_end=window_end,
+            bucket_seconds=bucket_seconds,
+            rows=parsed,
+            truncated=truncated,
+            query="MOCK GEO",
         )
 
     async def probe_ips_fields(

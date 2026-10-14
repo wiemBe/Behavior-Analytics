@@ -21,6 +21,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from app.models.enums import IpsDimension
 from app.providers.dto import (
@@ -50,6 +51,11 @@ from app.providers.dto import (
     WafSourceProbe,
     WindowedRuleMatches,
 )
+
+if TYPE_CHECKING:
+    # `app.geo.fold` imports this module for `ProviderError`, so the geo types are
+    # annotations here only.
+    from app.geo.fold import GeoDirection, GeoKeyedResult
 
 #: The only shape a site-authored QRadar property name may take before it is
 #: interpolated into AQL. Letters, digits, underscore, space and hyphen; anything
@@ -524,6 +530,30 @@ class QRadarProvider(ABC):
         whole epoch-aligned `bucket_seconds` buckets. More than `max_rows` rows
         set ``truncated`` and only the first `max_rows` are kept. A key outside
         the span or a non-integer key fails the whole search with a ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_geo_keyed(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        direction: GeoDirection,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> GeoKeyedResult:
+        """One fleet-wide keyed search of events per country (D-10).
+
+        Rows are grouped by the geo lookup of the source or destination address and by
+        bucket, and carry ``SUM(eventcount)``, ordered by volume. No address is
+        selected: the only column that reaches the result is the lookup string.
+        The span must be whole epoch-aligned `bucket_seconds` buckets. More than
+        `max_rows` rows set ``truncated`` and only the first `max_rows` are kept. A key
+        outside the span or a non-integer key fails the whole search with a
+        ProviderError.
 
         Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
         """

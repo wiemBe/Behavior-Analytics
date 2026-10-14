@@ -483,6 +483,24 @@ class Settings(BaseSettings):
     catchall_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     catchall_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
+    # --- D-10: geography (events per country, for the home map) --------------
+    #: Kill switch. Two keyed searches per cadence tick (one per direction), so two an
+    #: hour per instance at the 1 h default cadence.
+    geo_collection_enabled: bool = True
+    #: Which address is looked up, each a separate stored series. SOURCE, DESTINATION.
+    geo_directions: list[str] = Field(
+        default_factory=lambda: ["SOURCE", "DESTINATION"], min_length=1, max_length=2
+    )
+    #: Rows kept per keyed search before truncation splits it.
+    geo_max_rows_per_search: int = Field(default=5000, ge=10, le=100_000)
+    #: Countries kept per bucket and direction; the rest is summed into OVER_CAP.
+    geo_max_countries_per_bucket: int = Field(default=64, ge=1, le=300)
+    #: Buckets older than this are deleted.
+    geo_retention_days: int = Field(default=35, ge=2)
+    geo_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    geo_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    geo_retention_interval_seconds: int = Field(default=86400, ge=3600)
+
     # --- Phase B.1.5: Ariel budget and batching ------------------------------
     #: WAF sources that may have an Ariel search in flight at once, across every
     #: worker. Each source collects one bucket per permit; a source that cannot
@@ -662,6 +680,13 @@ class Settings(BaseSettings):
         return bool(self.qradar_api_token_file or self.qradar_sec_token.get_secret_value())
 
     # ----------------------------------------------------------- validation
+    @field_validator("geo_directions")
+    @classmethod
+    def _geo_directions_are_known(cls, value: list[str]) -> list[str]:
+        if any(item not in ("SOURCE", "DESTINATION") for item in value):
+            raise ValueError("GEO_DIRECTIONS holds SOURCE and DESTINATION")
+        return list(dict.fromkeys(value))
+
     @field_validator("catchall_type_ids")
     @classmethod
     def _catchall_type_ids_are_ids(cls, value: list[int]) -> list[int]:
