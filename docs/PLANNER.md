@@ -58,8 +58,16 @@ its usage limit in T-051c round 2 (reset **15:54**).
     evaluated end; a failed or never-evaluated source is skipped alone; no cross-instance rebuild.
     Ruff clean, mypy 31, 2,850 unit, 74 IPS integration. The unscoped `rebuild_due` form is kept
     but has no caller.
-  - The worktrees, branches and DBs of all nine merged tasks were removed (`qradar_obs_t051c` is
-    kept for T-051d).
+  - **UI-2.2** (`2ff5ede`) after round 2: cards 137–221 px (one qualifier line, inline breakdowns,
+    definitions in `title`/accessible description). Screenshots reviewed. The merge had an add/add
+    conflict on `lib/home/format.ts` (UI-2.4's `formatEps`/`formatAgo` and UI-2.2's
+    `signedPercent`), resolved by the orchestrator by keeping both; 1,878 tests green ×3.
+  - **T-080** (`f9c…`, merge "Merge agent/t080"): the 500-property test pastes its query
+    (`{ delay: null }`) with a 15 s per-test budget and a comment; every assertion unchanged.
+  - **T-055b** (`e6dc89a` + `14e27a1`): README and Phase D markers say the engine is built; the
+    orchestrator corrected one wording (per-source training is the design's intent, not a
+    deviation).
+  - The worktrees, branches and DBs of every merged task were removed.
   - Seen in review, for later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines in
     the `/behavior` "Needs attention" table.
 - **Flaky test found:** `PropertyInput.test.tsx` "renders and filters 500 properties without a
@@ -72,16 +80,14 @@ its usage limit in T-051c round 2 (reset **15:54**).
 | Task | Agent | Worktree, DB | Log / how to collect |
 |---|---|---|---|
 | **T-052** IPS alerting behind `ips_alerting_enabled` (default false) ([spec](tasks/T-052.md)) | Sonnet sub-agent (launched 14:30 instead of waiting for Codex, at the user's word) | `t052`, DB `qradar_obs_t052` | Report `docs/tasks/T-052.report.md`. Check: no alert row and no extra statement with the setting off; one bulk apply per bucket; fixed fingerprint; maintenance; the full integration run |
-| **T-055b** docs: the IPS engine is built ([spec](tasks/T-055b.md)) | opencode `nemotron-3-ultra-free`, `--standalone` | `t055b` (no DB) | `scratchpad/t055c.log`; report `docs/tasks/T-055b.report.md` |
-| **UI-2.2** Home KPI row, **round 2** ([spec](tasks/UI-2.2.md)) | Sonnet sub-agent | `ui22`; capture ports 3122/8122 | Round 1 was honest but ~570 px tall cards with paragraphs of explanation: it failed the first-screen rule. Round 2: each card ≤ ~200 px (figure, one qualifier line, one inline breakdown; explanations into `title`/accessible description; no always-on "Received" footer; the anomalies card drops its severity list, which UI-2.3 owns; `formatEpsValue` as on `/fleet`; true minus). Review the new PNGs yourself |
-| **T-080** de-flake the 500-property test ([spec](tasks/T-080.md)) | opencode `mimo-v2.6-flash-free`, `--standalone` | `t080` | `scratchpad/t080.log`; check no assertion changed meaning |
+| **UI-2.3** Home charts ([spec](tasks/UI-2.3.md)) | Sonnet sub-agent (14:40) | `ui23`; capture ports 3123/8123 | Report `docs/tasks/UI-2.3.report.md`; PNGs under `scratchpad/ui23/`. Review the PNGs yourself: compact; gaps not connected; expected line dashed, no band; ≤5 slices |
 
 **Next:**
-1. Collect the agents above (UI-2.2 round 2, T-052, T-055b, T-080).
-2. **UI-2.3** charts ([spec](tasks/UI-2.3.md), written), **after UI-2.2 is merged** (UI-2.2 adds
-   the eps-series types to `api.ts`). Sonnet, or Codex after 15:54.
-3. **UI-2.5** (`/` composition), after UI-2.2 to UI-2.4, carrying the UI-2.4 fix list (a)–(f).
-4. The full gate on `feat/phase-ce` → `main`.
+1. Collect T-052 and UI-2.3.
+2. **UI-2.5** (`/` composition, spec to write), after UI-2.3, carrying the UI-2.4 fix list (a)–(f)
+   plus (g): the Home prints EPS two ways (KPI `formatEpsValue` "1,616.01"; tables
+   `lib/home/format.ts` `formatEps` "2,477"): one formatter on the Home.
+3. The full gate on `feat/phase-ce` → `main`.
 
 ---
 
