@@ -96,6 +96,14 @@ PERM_OUTAGE_ADMIN = "admin:outage"
 # aggregate counts per country, never an address, but it still describes the estate, so the
 # route declares a permission; `read:*` satisfies it.
 PERM_GEO_READ = "read:geo"
+# UI redesign (UR.5.5). Saved dashboards hold only widget ids and geometry, so reading them
+# is `read:*`. Saving a layout is a write: `read:*` does not grant it (a read-only role sees
+# the template and cannot persist changes), like `log_source:write`. Sharing a dashboard with
+# every reader, or taking it back, is administrative and needs `admin:dashboards`
+# (`admin:*` satisfies it).
+PERM_DASHBOARD_READ = "read:dashboards"
+PERM_DASHBOARD_WRITE = "dashboard:write"
+PERM_DASHBOARD_SHARE = "admin:dashboards"
 
 
 class PermissionDenied(Exception):
