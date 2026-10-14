@@ -118,3 +118,37 @@ no longer exists. This amendment replaces that paragraph's first sentence.
 - UI-3.5a is merged. The rule against touching `registry.ts` and `Catalog.tsx` still holds.
 - This worktree already has its own `node_modules` (`npm ci` ran). Run only the dependency
   install.
+
+## Round 2 (orchestrator screenshot review, 2026-10-14 ~21:50)
+
+Accepted, apart from one defect. The dependency choice, the lazy chunk, pointer drag and resize,
+the steppers, the 0.75 px geometry and the 1024 read view are all fine.
+
+**The customize chrome pushes content out of the boxes.** Item 4 of Build forbids exactly this.
+- At **1280×800**, Arrange and Remove share the title row with the title. The four KPI titles
+  wrap to two to four lines ("Open offenses, latest snapshot" takes four). The content is pushed
+  down, every KPI card grows a native scrollbar, and the last line is clipped ("Normal" is cut).
+- In read mode at 1280 the same cards have no scrollbar: see the approved Phase 2 capture
+  `/home/efe/Documents/QRadar-Dash-screens/phase2/ok-1280x800-first.png`.
+- At **1440×900**, in EPS by source class, "Remove" wraps onto its own line under the Partial
+  pill.
+
+**Required:**
+- In customize mode the title row may hold **no more** than read mode's right-hand link occupies.
+  One compact control is the likely answer, for example a single "Arrange" disclosure that holds
+  the Move and Resize steppers **and** Remove. The choice is yours: justify it in the report.
+- If Remove moves into the disclosure, its accessible name keeps the widget title
+  ("Remove Total EPS"), and the existing UI-3.1 tests that press it change only as far as they
+  must open the disclosure first. List each such edit with its reason.
+- The control cluster never splits across lines.
+
+**Measured acceptance.** Extend `verify.mjs` and quote its output:
+- for every widget of the SOC Overview template, at 1440×900 and 1280×800, record:
+  - the title row's height in read mode and in customize mode;
+  - whether the body overflows (`scrollHeight > clientHeight`) in each mode.
+- Assert that customize mode adds **no** overflow anywhere, and makes no title row taller than
+  read mode by more than 1 px.
+
+Re-capture `customize-1440x900.png` and `customize-1280x800.png`, plus one PNG with an open
+Arrange disclosure, and look at them. Re-run all four gates. Append "Round 2" to
+`docs/tasks/UI-3.2.report.md`. Do not commit.
