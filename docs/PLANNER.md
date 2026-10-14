@@ -44,7 +44,16 @@ its usage limit in T-051c round 2 (reset **15:54**).
     unexplained ERROR that a re-run did not reproduce, likely the `test_migrations.py` hypertable
     flake G-2 reported: capture its text next time). The agent's full integration run: 930 passed.
     The import conflict in `tasks.py` was resolved by the orchestrator (both imports kept).
-  - The worktrees, branches and DBs of all seven merged tasks were removed (`qradar_obs_t051c` is
+  - **UI-2.4** (`a3b7458`): top sources, recent anomalies, recent offenses, log-source health.
+    Screenshots reviewed at the three viewports (professional; no overflow; long names
+    ellipsised; null magnitude draws no bar); lint clean, 1,818 tests. **For UI-2.5 to fix:**
+    (a) UI-2.2's `KpiFrame` and UI-2.4's `WidgetParts` duplicate the widget states: unify them into
+    one `WidgetFrame`; (b) `recentOffensesRead` has no abort signal: add `homeReads.recentOffenses`;
+    (c) at 1024 the "· Insufficient data" separator wraps to the start of a line in Top sources;
+    (d) `tables.css` restates the scroll-edge cover with `32px`/`14px` literals: tokenize;
+    (e) the Silent/Exceeding links lack an active-only filter on `/anomalies`; (f) UI-2.4's agent
+    ran `pkill -f next-server` once (forbidden pattern; it may have stopped UI-2.2's server).
+  - The worktrees, branches and DBs of all eight merged tasks were removed (`qradar_obs_t051c` is
     kept for T-051d).
   - Seen in review, for later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines in
     the `/behavior` "Needs attention" table.
@@ -58,8 +67,7 @@ its usage limit in T-051c round 2 (reset **15:54**).
 | Task | Agent | Worktree, DB | Log / how to collect |
 |---|---|---|---|
 | **T-051d** IPS training per source ([spec](tasks/T-051d.md)): the instance-wide `min(ends)` bound lets one stalled source freeze every IPS baseline of its instance; `rebuild_due` is unscoped (cross-instance) | Sonnet sub-agent (the one that finished T-051c, resumed) | `t051d`, DB `qradar_obs_t051c` | Report `docs/tasks/T-051d.report.md`. Check: training statements constant in entities; a stalled source is skipped alone; no cross-instance rebuild |
-| **UI-2.2** Home KPI row with the B-2.1 sparkline ([spec](tasks/UI-2.2.md)) | Sonnet sub-agent | `ui22`; capture ports 3122/8122 | Report `docs/tasks/UI-2.2.report.md`; PNGs under `scratchpad/ui22/`. Review the PNGs yourself; the preview route must be gone from the diff |
-| **UI-2.4** Home tables and health ([spec](tasks/UI-2.4.md)) | Sonnet sub-agent | `ui24`; capture ports 3124/8124 | Report `docs/tasks/UI-2.4.report.md`; PNGs under `scratchpad/ui24/`. Same review |
+| **UI-2.2** Home KPI row, **round 2** ([spec](tasks/UI-2.2.md)) | Sonnet sub-agent | `ui22`; capture ports 3122/8122 | Round 1 was honest but ~570 px tall cards with paragraphs of explanation: it failed the first-screen rule. Round 2: each card ≤ ~200 px (figure, one qualifier line, one inline breakdown; explanations into `title`/accessible description; no always-on "Received" footer; the anomalies card drops its severity list, which UI-2.3 owns; `formatEpsValue` as on `/fleet`; true minus). Review the new PNGs yourself |
 | **T-080** de-flake the 500-property test ([spec](tasks/T-080.md)) | opencode `mimo-v2.6-flash-free`, `--standalone` | `t080` | `scratchpad/t080.log`; check no assertion changed meaning |
 
 **Next:**
