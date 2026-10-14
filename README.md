@@ -35,8 +35,14 @@ and it operates strictly **read-only** against QRadar.
 > each source's collected buckets oldest first, then trains each source's baselines only through that
 > source's own evaluated bucket end. A source that failed or has evaluated nothing is skipped alone.
 > The seven IPS detectors are `OPERATIONAL` when `IPS_COLLECTION_ENABLED` is true and `NOT_ENABLED`
-> otherwise (the default). **No alert is raised yet** (T-052 is not built): IPS incidents are
-> recorded with their lifecycle, and nothing pages. See [the Phase D design](docs/PHASE-D-IPS-BEHAVIOR.md).
+> otherwise (the default). **IPS alerting is built** (T-052): behind `IPS_ALERTING_ENABLED` (default
+> **false**, shadow mode: incidents are recorded with their lifecycle and nothing pages), an OPEN
+> incident opens one alert with the `ips_anomaly` fingerprint (entity incidents keyed on the
+> dimension and the entity's stable value key; source incidents on the source), a still-anomalous
+> OPEN incident refreshes it, RESOLVED resolves it, notifications are enqueued per transition from
+> the scheduled run, the context carries `source_class` when the source is classified (class
+> routing), and nothing opens or refreshes while the source is in maintenance. See [the Phase D
+> design](docs/PHASE-D-IPS-BEHAVIOR.md).
 
 Phase 3.5 adds an opt-in, manual synthetic-telemetry lab without changing the read-only QRadar
 application contract. See [the lab guide](docs/LAB-SYNTHETIC-TELEMETRY.md) and
@@ -698,9 +704,10 @@ Highlights:
   collection setting). Phase D names seven IPS types — `IPS_PORT_RATE_SPIKE`,
   `IPS_DESTINATION_RATE_SPIKE`, `IPS_SIGNATURE_BURST`, `IPS_NEW_DESTINATION_PORT`,
   `IPS_SOURCE_CONCENTRATION_SPIKE`, `IPS_PORT_FANOUT_SPIKE` and `IPS_BLOCK_RATIO_SHIFT` — whose
-  pure detectors exist, but the engine that schedules them is not built, so none runs yet. The
-  engine refuses to run a detector on a bucket that did not measure its inputs, and
-  `GET /api/v1/behavior/detectors` publishes each status with its reason.
+  engine, collect → evaluate → train pipeline and capability status are built (T-051c, T-051d). The
+  seven detectors are `OPERATIONAL` when `IPS_COLLECTION_ENABLED` is true and `NOT_ENABLED`
+  otherwise (the default). The engine refuses to run a detector on a bucket that did not measure its
+  inputs, and `GET /api/v1/behavior/detectors` publishes each status with its reason.
 - **Event counting.** Volume is `SUM(eventcount)`, never `COUNT(*)`: QRadar coalesces identical
   events into one Ariel record, so a row count under-reports by up to ~38x on this appliance.
 - **Alert lifecycle:** `OPEN → ACKNOWLEDGED → RESOLVED`, with a **partial unique index** on
@@ -839,8 +846,7 @@ status are built (T-051c, T-051d). One dispatch per tick collects, then evaluate
 collected buckets oldest first (bounded by `IPS_MAX_EVALUATION_BUCKETS_PER_RUN`), then trains each
 source's baselines only through that source's own evaluated bucket end. A source that failed or
 has evaluated nothing is skipped alone. The seven IPS detectors are `OPERATIONAL` when
-`IPS_COLLECTION_ENABLED` is true and `NOT_ENABLED` otherwise (the default). **No alert is raised
-yet** (T-052 is not built): IPS incidents are recorded with their lifecycle, and nothing pages.
+`IPS_COLLECTION_ENABLED` is true and `NOT_ENABLED` otherwise (the default). **IPS alerting is built** (T-052): behind `IPS_ALERTING_ENABLED` (default **false**, shadow mode: incidents are recorded with their lifecycle and nothing pages), an OPEN incident opens one alert with the `ips_anomaly` fingerprint (entity incidents keyed on the dimension and the entity's stable value key; source incidents on the source), a still-anomalous OPEN incident refreshes it, RESOLVED resolves it, notifications are enqueued per transition from the scheduled run, the context carries `source_class` when the source is classified (class routing), and nothing opens or refreshes while the source is in maintenance.
 
 Every `/api/v1/ips` route needs `admin:ips`, applied at the router mount so reads are guarded
 too: `GET /mapping-schema`, `GET /candidates`, `GET`/`PUT /log-sources/{id}/profile` (201 on
@@ -852,6 +858,7 @@ WAF, there is no IPS CLI; profiles are administered through the API and UI only.
 | Setting | Default | Meaning |
 |---|---|---|
 | `IPS_COLLECTION_ENABLED` | false | Kill switch for fleet collection; each profile must also be enabled and `VALID` |
+| `IPS_ALERTING_ENABLED` | false | IPS alerting opt-in: shadow mode first — incidents are recorded, nothing pages |
 | `IPS_MAX_SOURCES_PER_SEARCH` | 50 | Sources per keyed search (`logsourceid IN (…)`); a larger group is chunked |
 | `IPS_MAX_ENTITIES_PER_BUCKET` | 200 | Entities kept per (source, bucket, dimension) after the fold's cut |
 | `IPS_MAX_NEW_ENTITIES_PER_BUCKET` | 20 | New entities admitted per source per bucket |
