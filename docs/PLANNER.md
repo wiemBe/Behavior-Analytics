@@ -8,12 +8,69 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (eighth session, 2026-10-14, from 10:48)
+## ▶ Resume here (eighth session, 2026-10-14, updated ~12:00)
 
-**Eighth session.** The machine had rebooted: the test DB container (tmpfs) and the old
+**State now:**
+- **`main` @ `8814a47`.** `feat/phase-ce` @ `9597930` was merged after a green full gate:
+  - ruff clean; mypy 31 errors in 18 files (the baseline);
+  - backend **2,598 unit + 895 integration passed**, 0 failed, on a fresh DB;
+  - alembic `0014`→`0020`→`0014`→`0020` clean, no drift, single head `0020`;
+  - frontend lint, typecheck, **1,568/1,568** tests, build.
+  - It carries C.2 (T-068, T-069, T-070a, T-070b), IPS collection (T-050b), and the fixes for
+    the time-bomb test and the 422 picker.
+- **`feat/phase-ce` @ `63e4625`+** (pushed) also holds T-051a, T-078 and T-079 (merged after the
+  gated commit, so they are **not yet on `main`**), the UI plan, and the specs.
+- **Migration chain complete:** `0018` (IPS) → `0019` (outage) → `0020` (catch-all). The next is
+  `0021` (T-051b).
+- **The user approved the UI plan** ([`UI-REDESIGN-PLAN.md`](UI-REDESIGN-PLAN.md)) with
+  decision **D-11** (§4).
+- All the morning's agent tasks were collected and merged: T-076 A/B, T-051a, T-077, T-078,
+  T-079, UI-R0. Their worktrees, branches and DBs were removed.
+
+**In flight (launched ~11:40–12:00):**
+
+| Task | Agent | Where | Log / output |
+|---|---|---|---|
+| **UI-1.1** charcoal tokens + Inter, D-11 ([spec](tasks/UI-1.1.md)) | Sonnet | `ui11` | agent notification; shots in `scratchpad/ui11/` |
+| **B-1.3** `GET /me` ([spec](tasks/B-1.3.md)) | opencode `nemotron-3-ultra-free` (`--standalone`) | `b13`, DB `qradar_obs_b13` | `scratchpad/b13.log` |
+| **B-2.2** constant-cost `/behavior/sources`, `/anomalies/summary` ([spec](tasks/B-2.2.md)) | opencode `mimo-v2.6-flash-free` (`--standalone`) | `b22`, DB `qradar_obs_b22` | `scratchpad/b22.log` |
+| **T-051b** IPS persistence `0021` + baseline builder ([spec](tasks/T-051b.md)) | Codex | `t051b`, DBs `qradar_obs_t051b`, `_mig` | `scratchpad/t051b.log`, `t051b.last.md` |
+
+**Next:**
+1. Collect the four tasks. UI-1.1 needs a screenshot review: every route at 3 viewports.
+2. Write and launch:
+   - **T-051c**: the IPS engine with bulk loaders, the lifecycle, the pipeline step
+     collect → evaluate → train, and the IPS capability status change;
+   - **UI-1.3** (shell) and **UI-1.5** (top bar), after UI-1.1;
+   - **UI-1.4** (shared components);
+   - **B-1.2**;
+   - the geo collector design task (UR.6.4).
+3. **GLM only after 13:00 (the user, 2026-10-14).** Good GLM work:
+   - the README C.2 entries;
+   - amending UR.2.2 and UR.2.8 in the plan to D-11 (`--text-3` `#73757B`, `--border-strong`
+     `#35363A`);
+   - a T-055 docs pass.
+4. Next full gate → `main` once T-051a/T-078/T-079 and this round have landed.
+
+**Lessons this session:**
+- Killing `opencode run` does not stop its session. The background `opencode serve` service
+  keeps executing it: a "stopped" GLM run started a second pytest on a DB the orchestrator was
+  testing. Stop a session with `opencode session export` then `opencode session delete <id>`.
+  Launch background agents with `opencode run --standalone`.
+- `big-pickle` failed once with "HTTP 400 {"model":"big-pickle"}" (provider-side); `mimo` took
+  over T-078.
+- nemotron's T-079 report claimed "287 passed" for the unit suite. The orchestrator's re-run
+  gave 2,597. Always re-run the gates yourself.
+
+---
+
+## Eighth session, morning log (10:48–11:50)
+
+The machine had rebooted: the test DB container (tmpfs) and the old
 scratchpad were gone. The container was restarted and the DBs recreated. The scratchpad is now
 `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/`.
-GLM credits are back (`zai-coding-plan/glm-5.3` answered a probe).
+GLM credits are back (`zai-coding-plan/glm-5.3` answered a probe). **The user: GLM only after
+13:00.** The GLM run on T-076 Part B was stopped; the orchestrator finished its gates.
 - **T-076 Part A was collected.** The diff was exactly the `down_revision` and the three tests. The
   orchestrator re-ran ruff and 22 migration and outage-policy integration tests, with a single head
   `0019`. Committed as `0e5bb8c`. `agent/t068` and then `agent/t070a` were merged into
@@ -617,6 +674,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-8 | **Field mappings editable in the UI. Asked by the user on 2026-10-12:** custom-property names such as the WAF URI differ between environments, so they must be changeable from the UI; the same for IPS. **Design: [`FIELD-MAPPING.md`](FIELD-MAPPING.md).** <br>• The per-source WAF profile (mapping, versioning, validation, audit) already existed but was CLI-only. The design adds the admin API (§FM.4, the "separately reviewed admin API" of WAF design §27.2 rule 6; review in §FM.10), asynchronous validation with a never-stamp-a-stale-version rule (§FM.5, migration 0015), the QRadar property catalog filtered by the source's DSM type (§FM.6, T-041), environment prefill and copy-from (§FM.7), and the UI (§FM.8). <br>• **IPS:** Phase D is not built, so §FM.9 fixes the contract it inherits: normalized *or* custom field references, product presets for FTD and PAN THREAT, the same components. <br>• Orchestrator choices (the user may overrule): per-source profiles stay the unit (an environment is a set of sources); no bulk apply; a mapping change pauses collection until it validates (fail closed). | T-041–T-045; Phase D |
 | D-9 | ~~Outage alert default and new catch-all senders~~ **Resolved 2026-10-13 by the user:** outage (`NO_EVENTS`) alerts stay on for **every monitored source** by default (`ALERT`, today's behaviour); operators switch classes or sources to `RECORD_ONLY` (design §C.7). A new SIM Generic sender goes to a **review queue only**, no alert (`catchall_new_sender_alerts_enabled = false`, §C.8). | T-068, T-069 |
 | D-10 | ~~UI redesign: which overhaul items?~~ **Resolved 2026-10-13 (seventh session) by the user, asked by the orchestrator.** <br>• **Widget dashboard: the full system now.** It covers a widget catalog, drag and drop, resize, and multiple dashboards persisted per user in the DB: a new table, migration and API, plus `react-grid-layout`, the dependency the user explicitly allowed. <br>• **World map: add a new geo collection.** First validate the AQL `GEO::` functions on live QRadar. Then collect a country-level aggregate under the search cadence. No raw IPs are kept (AGENTS.md rule 3). <br>• **"Events by category" becomes "EPS by source class":** the top 4 classes plus "Other", from existing data. <br>• **Top bar: existing APIs only.** Search runs over existing lists (sources, anomalies, rules). "Live" becomes auto-refresh with the last-updated time. The bell shows the open-alert count and links to `/alerts`. | UI redesign (UI-R0 onward) |
+| D-11 | ~~UI plan questions (UR.10)~~ **Resolved 2026-10-14 by the user**, who also approved the plan ("Approved, start"). <br>• `/` becomes the widget Dashboard; `/behavior` stays as the behavioral triage page. <br>• Navigation is **text only**, with no icons. <br>• **Dark only**; no light mode. <br>• **Keep the palette's original values**: muted text `--text-3 = #73757B` and the input edge `--border-strong = #35363A`. The plan's contrast deviations (UR.2.2) are **not** applied, even though `#73757B` is below WCAG AA (3.70:1 on the panel). This is the user's explicit decision and overrides AGENTS.md §3a's §10 accessibility point for these two values only. <br>• **Orchestrator defaults** for the questions not asked: dashboards are built now, keyed on the principal's `subject`, and shared by `local-dev` until OIDC; `GET /me` is added (B-1.3); `/config-changes` is restyled, not removed. <br>• The plan's 17 collision rulings (UR.9) are accepted by the orchestrator, with C11 replaced by this decision. | UI-1.1 onward |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
