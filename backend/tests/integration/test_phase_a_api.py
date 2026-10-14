@@ -634,3 +634,19 @@ class TestNoSecretsLeak:
             path = getattr(route, "path", "")
             if "/anomalies" in path or "/behavior" in path:
                 assert methods <= {"GET", "HEAD", "OPTIONS"}, path
+        # The Phase D analyst routes (T-085) join the same guarantee. Asserted
+        # against the OpenAPI schema, which flattens every included router:
+        # each new path must exist and expose GET only, rather than passing the
+        # loop above merely by never matching a path in it.
+        spec = app.openapi()["paths"]
+        assert {p for p in spec if "/behavior/ips" in p} == {
+            "/api/v1/behavior/ips/sources",
+            "/api/v1/behavior/ips/sources/{log_source_id}/entities",
+            "/api/v1/behavior/ips/sources/{log_source_id}/metrics",
+            "/api/v1/behavior/ips/sources/{log_source_id}/baselines",
+            "/api/v1/behavior/ips/entities/{entity_id}/metrics",
+            "/api/v1/behavior/ips/entities/{entity_id}/baselines",
+        }
+        for path, operations in spec.items():
+            if "/anomalies" in path or "/behavior" in path:
+                assert set(operations) <= {"get"}, path

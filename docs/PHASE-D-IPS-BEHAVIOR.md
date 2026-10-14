@@ -258,8 +258,8 @@ Two ruled differences from WAF:
 
 1. **Profile administration** (§D.3) — **[BUILT]** API and `/admin/ips-sources`, from the D-8
    components (T-049, T-053; per-field status on `/ips/sources` from T-078).
-2. **Analyst view** — **[DESIGN]** with the WAF analyst API and UI (design §27.14–§27.15), one
-   subject model: anomaly list with `subject_kind` `IPS_ENTITY`/`IPS_SOURCE`, investigation
+2. **Analyst view** — API **[BUILT]** (T-085), UI **[DESIGN]**. With the WAF analyst API and UI
+   (design §27.14–§27.15), one subject model: anomaly list with `subject_kind` `IPS_ENTITY`/`IPS_SOURCE`, investigation
    detail with the seasonal band, contributors and every honesty state. Scheduled after the
    profile UI.
 
