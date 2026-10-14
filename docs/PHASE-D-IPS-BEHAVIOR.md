@@ -13,10 +13,11 @@ differs from the design. Status was checked against the code on this branch.
 
 Of §D.13: **built** — T-049 (§D.3 profile, `/ips` admin API), T-050 (§D.5 collection, §D.4
 admission, §D.9 persistence), T-051a (§D.6 pure detectors), T-051b (detection tables `0021`, the
-versioned baseline builder, `ips_anomaly_fingerprint`), T-053 (`/admin/ips-sources` UI), T-078
-(per-field status on `GET /ips/sources`), T-079 (the IPS bucket width on
-`/admin/search-cadence`); **not built** — T-051c (the engine, lifecycle and pipeline step — in
-progress on another branch), T-052 (§D.10 alerting), T-054 (§D.12 live validation).
+versioned baseline builder, `ips_anomaly_fingerprint`), T-051c (the engine, the collect → evaluate
+→ train pipeline, and the capability status — **built**; per-source training bound differs from the
+design's instance-wide bound, from T-051d), T-053 (`/admin/ips-sources` UI), T-078 (per-field
+status on `GET /ips/sources`), T-079 (the IPS bucket width on `/admin/search-cadence`); **not
+built** — T-052 (§D.10 alerting), T-054 (§D.12 live validation).
 
 ## D.0 What the user asked
 
@@ -169,12 +170,14 @@ totals — the same construction as WAF endpoint coverage, so no extra search. W
 search was truncated for that (source, bucket), the coverage is a lower bound. Below
 `ips_min_coverage` the dimension's bucket is `PARTIAL` and excluded from baselines, as WAF.
 
-## D.6 Detectors **[BUILT — pure layer; the engine is not]**
+## D.6 Detectors **[BUILT]**
 
 The pure detectors are built (T-051a: `app/ips/detector.py` for the entity spikes,
 `app/ips/behavior.py` for the source-level types, capability specs in `IPS_DETECTORS` at
-`app/anomaly/capabilities.py`). The engine that feeds them buckets and applies the lifecycle —
-§D.13 T-051c — is not built, so no IPS detector runs yet.
+`app/anomaly/capabilities.py`). The engine that feeds them buckets and applies the lifecycle is
+built (T-051c: `IpsAnomalyEngine` in `app/ips/engine.py`, `IpsInstancePipeline` in
+`app/services/ips_pipeline.py`). The seven detectors are `OPERATIONAL` when
+`IPS_COLLECTION_ENABLED` is true and `NOT_ENABLED` otherwise (the default).
 
 Every detector is pure, has a `DetectorSpec` in `app/anomaly/capabilities.py` declaring its inputs,
 and fails closed (D.8). A new `IpsAnomalyType` (never `AnomalyType` or `WafAnomalyType`, AGENTS.md
@@ -190,12 +193,14 @@ rule 6).
 | `IPS_PORT_FANOUT_SPIKE` | source | one source IP reached more distinct destination ports in a bucket than the source's baseline allows (scan shape) | `ips-port-sweep` |
 | `IPS_BLOCK_RATIO_SHIFT` | source | blocked share above its pooled baseline — **published as blocked** ("no action property mapped") until the profile maps one with a value map | `ips-block-shift` (needs a lab custom property, a manual console step by the user) |
 
-## D.7 Baselines **[BUILT — builder; not yet scheduled]**
+## D.7 Baselines **[BUILT]**
 
 The versioned baseline builder is built (T-051b: `IpsBaselineBuilder` in `app/ips/baseline.py`,
 migration `0021`; entity cells in `ips_entity_baseline`, source-level pooled cells in
-`ips_source_baseline`). No scheduled step invokes it yet — training belongs to the engine
-(T-051c).
+`ips_source_baseline`). The scheduled training step is built (T-051c, T-051d:
+`IpsInstancePipeline._train` in `app/services/ips_pipeline.py`). Each source trains through its
+own evaluated bucket end; a source that failed or has evaluated nothing is skipped alone. The
+per-source bound differs from the design's original instance-wide bound.
 
 Weekday×hour seasonal cells per entity metric, built like WAF (`app/waf/baseline.py`): median and
 MAD over COMPLETE buckets only, `baseline_min_samples`, the lookback, versioned by the profile
@@ -203,10 +208,11 @@ version and the normalizer version. Ratio and share metrics (concentration, bloc
 pooled-sum baselines of WAF §30.3. Fan-out uses a source-level cell of the per-bucket maximum.
 Sparse entities stay `INSUFFICIENT_DATA` (§12.3 of the WAF design).
 
-## D.8 Fail closed **[BUILT — pure layer]**
+## D.8 Fail closed **[BUILT]**
 
 Implemented and tested in the pure detectors (T-051a); the engine-side checks (a profile that is
-not `VALID`, a stale or in-maintenance source) arrive with T-051c.
+not `VALID`, a stale or in-maintenance source) are built (T-051c: `IpsAnomalyEngine.evaluate_bucket`
+in `app/ips/engine.py`, `IpsInstancePipeline._evaluate` in `app/services/ips_pipeline.py`).
 
 `INSUFFICIENT_DATA`, never `NORMAL` and never zero, when: the profile is not `VALID` for its
 current version; the source is stale, disabled or in maintenance; a search was rejected, failed or
@@ -266,7 +272,7 @@ can create; it is skipped until then.
 |---|---|---|
 | T-049 | D.3 profile: model, migration, service (upsert, validate async, enable), the `/ips` admin API, presets, IPS validation semantics — **[BUILT]** | Codex |
 | T-050 | D.5 collection: provider keyed fleet searches (base, REST, mock), folds, the time-then-source split, `IPS_COLLECTION` family and gate, buckets, entities, admission, metrics — **[BUILT]** | Codex or Sonnet |
-| T-051 | D.6–D.7 baselines and detectors, capability specs, engine with bulk loaders, lifecycle — **[BUILT in part]**: T-051a pure detectors, T-051b tables `0021`, baseline builder and fingerprint; T-051c engine, lifecycle and pipeline step in progress | Sonnet |
+| T-051 | D.6–D.7 baselines and detectors, capability specs, engine with bulk loaders, lifecycle — **[BUILT]**: T-051a pure detectors, T-051b tables `0021`, baseline builder and fingerprint, T-051c engine, lifecycle and pipeline step, T-051d per-source training bound | Sonnet |
 | T-052 | D.10 alerting — **[DESIGN]** | Sonnet |
 | T-053 | `/admin/ips-sources` UI from the D-8 components; screenshots — **[BUILT]** | Sonnet |
 | T-054 | D.12 live validation — **[DESIGN]** | Sonnet |
