@@ -17,13 +17,17 @@ actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
   `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/a16a3a57-0bb1-488e-a4d5-dadbc9e16dfd/scratchpad/`.
 - `feat/phase-ce` (pushed at each merge). Merged this session: **T-084** (`befce47`, README WAF and
   search-cadence status lines; three wording corrections by the orchestrator, noted in its report).
+- **Agents:** Codex out until **21:04** (limit hit at 16:39). **The user (~16:40): GLM 5.3 and 5.3
+  Flash may be used** (both probed OK); GLM takes backend and docs, not UI. Sonnet cleared.
 
 | Task | Agent | Where | Status |
 |---|---|---|---|
-| **UI-2.5** round 2 | Codex `exec resume 01a13a83-…` (pid 944403, from 16:28) | `ui25`; log `ui25-r2.log` in this session's scratchpad | Round 1 reviewed (diff and all 30 PNGs): structure right, test edits within the rules; **10 defects** sent back (`ui25-r2.prompt.md`): chart widgets half empty, donut label overflows its hole, severity ticks collide, ragged KPI card heights, line breaks, empty-state duplication and nested box, a sparkline rule in the empty state, two error styles, the anomaly breakdown vs total (345 vs 16), and **`active_only` ignored by `/anomalies`** (the KPI link from UI-2.2 was silently unfiltered) |
-| **T-082** | opencode `mimo-v2.6-flash-free` (pid 895758) | `t082` | running |
+| **UI-2.5** round 2 | Codex (`exec resume 01a13a83-…`) **hit its usage limit at 16:39 (reset 21:04)** after implementing the 10 items and their tests, mid break-it pass; **handed to a Sonnet sub-agent** (~16:45, "review what you inherit"; first check for a live break-it mutation) | `ui25`; Codex log `ui25-r2.log` in this session's scratchpad | Round 1 reviewed (diff and all 30 PNGs): structure right, test edits within the rules; **10 defects** sent back (`ui25-r2.prompt.md`): chart widgets half empty, donut label overflows its hole, severity ticks collide, ragged KPI card heights, line breaks, empty-state duplication and nested box, a sparkline rule in the empty state, two error styles, the anomaly breakdown vs total (345 vs 16), and **`active_only` ignored by `/anomalies`** (the KPI link from UI-2.2 was silently unfiltered) |
+| **T-082** round 2 | opencode `mimo-v2.6-flash-free` (pid 985495) | `t082`; log `t082-r2.log` | Round 1 reviewed: accurate on CORS, `NEXT_PUBLIC_*` build-time inlining, uvicorn 0.51.0 defaults; **one wrong claim sent back**: a host-side proxy reaching the published `127.0.0.1:8000` is *not* seen by uvicorn as `127.0.0.1` (the container is on bridge networks), so the default trust list ignores `X-Forwarded-For` and every client shares one rate-limit bucket |
 | **T-054** | Sonnet sub-agent of the ninth-session chat | old scratch `t054/` | running (baseline run 1 done 16:20); its report lands in `t054/T-054.report.md` |
 | **B-4** dashboard persistence: models, `0023`, API, RBAC, audit ([spec](tasks/B-4.md)) | Sonnet sub-agent, medium (from ~16:45) | `b4`; DB `qradar_obs_b4` | running. Merge **after** `main` (it adds migration `0023`) |
+| **T-085** IPS analyst read API: `/anomalies` third family, detail fallback, `/behavior/ips/...` ([spec](tasks/T-085.md)) | opencode `zai-coding-plan/glm-5.3`, `--standalone` (pid 976247, from 16:39) | `t085`; DB `qradar_obs_t085`; log `t085.log` | running |
+| **B-2.3** `GET /anomalies/histogram` ([spec](tasks/B-2.3.md)) | opencode `zai-coding-plan/glm-5.3-flash`, `--standalone` (pid 976248, from 16:39) | `b23`; DB `qradar_obs_b23`; log `b23.log` | running. Touches `anomalies.py` beside T-085: merge T-085 first, then add the IPS branch to the histogram (one branch) |
 | **T-083** `test_migrations.py` setup-ERROR diagnosis ([spec](tasks/T-083.md)) | a free model | DBs `qradar_obs_t083`, `qradar_obs_t083b` (created) | **queued until T-054 ends**: its load phase stresses the shared Postgres server that T-054's live pipeline uses |
 
 ## ▶ Resume here (end of the ninth session, 2026-10-14 ~16:20; the user is moving to a new chat)
