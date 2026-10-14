@@ -924,6 +924,11 @@ class AnomalyHistogramOut(BaseModel):
     #: The buckets are fixed UTC hours.
     bucket_seconds: int
     #: The anomaly families the totals cover, so a client knows what was counted.
+    #: Ordering: with no `subject_kind`, the list is
+    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]; with
+    #: `subject_kind=IPS_ENTITY` it is ["IPS_ENTITY"]; with
+    #: `subject_kind=IPS_SOURCE` it is ["IPS_SOURCE"]; with `subject_kind=LOG_SOURCE`
+    #: or `WAF_ENDPOINT` it is the single corresponding family.
     families: list[str]
     total: int
     #: Every hour of the range, in order, including the hours with no anomaly.

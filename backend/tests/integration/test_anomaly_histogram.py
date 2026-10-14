@@ -15,7 +15,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.core.config import get_settings
-from app.models.enums import AnomalyState, AnomalyType, EvidenceStatus, Severity, WafAnomalyType
+from app.models.enums import (
+    AnomalyState,
+    AnomalyType,
+    EvidenceStatus,
+    IpsAnomalyType,
+    IpsDimension,
+    Severity,
+    WafAnomalyType,
+)
+from app.models.ips import IpsAnomaly, IpsEntity
 from app.models.log_source import LogSourceAnomaly
 from app.models.waf import WafAnomaly, WafEndpoint
 from app.security.rbac import Principal
@@ -132,7 +141,7 @@ def test_the_hours_carry_their_counts_in_order(db_schema) -> None:  # type: igno
     run(world)
     body = histogram(Client(READER), rng(5))
     assert body["bucket_seconds"] == 3600
-    assert body["families"] == ["LOG_SOURCE", "WAF_ENDPOINT"]
+    assert body["families"] == ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]
     assert body["since"] == _iso(H0) and body["until"] == _iso(at(5))
     assert [hour["start"] for hour in body["hours"]] == [_iso(at(i)) for i in range(5)]
     by_start = {hour["start"]: hour for hour in body["hours"]}
@@ -197,7 +206,7 @@ def test_an_empty_range_is_all_measured_zeros(db_schema) -> None:  # type: ignor
     assert body["total"] == 0
     # The families are the population the zeros are measured over, present even
     # when nothing was counted.
-    assert body["families"] == ["LOG_SOURCE", "WAF_ENDPOINT"]
+    assert body["families"] == ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]
     assert len(body["hours"]) == 4
     assert all(hour["counts"] == {} and hour["total"] == 0 for hour in body["hours"])
 
@@ -304,3 +313,235 @@ def test_the_boundaries_are_half_open_inside_an_hour_for_both_families(db_schema
     assert [hour["start"] for hour in body["hours"]] == [_iso(at(2)), _iso(at(3))]
     assert body["hours"][0]["counts"] == {"MEDIUM": 2}
     assert body["hours"][1]["counts"] == {}
+
+
+# ------------------------------------------------------------------ IPS tests
+def ips_entity_factory(
+    instance_id: uuid.UUID, source_id: uuid.UUID, dimension: IpsDimension, value_key: str, **kw
+) -> IpsEntity:  # type: ignore[no-untyped-def]
+    """Create an IPS entity for seeding."""
+    from app.models.ips import IpsEntity
+    defaults = dict(
+        instance_id=instance_id,
+        log_source_id=source_id,
+        dimension=dimension,
+        value_key=value_key,
+        first_seen_at=at(-24),
+        last_seen_at=at(24),
+        active=True,
+        normalizer_version=1,
+    )
+    defaults.update(kw)
+    return IpsEntity(**defaults)
+
+
+def ips_entity(ips_entity_id, when: datetime, **kw) -> IpsAnomaly:  # type: ignore[no-untyped-def]
+    defaults = dict(
+        ips_entity_id=ips_entity_id,
+        detector_type=IpsAnomalyType.IPS_PORT_RATE_SPIKE,
+        severity=Severity.MEDIUM,
+        state=AnomalyState.OPEN,
+        detected_at=when,
+        subject_kind="IPS_ENTITY",
+        evidence_status=EvidenceStatus.NOT_REQUESTED,
+        fingerprint=f"IPS_PORT_RATE_SPIKE-{uuid.uuid4().hex[:8]}",
+        profile_version=2,
+        normalizer_version=1,
+        observed_measurement="EXACT",
+        details={},
+    )
+    defaults.update(kw)
+    return IpsAnomaly(**defaults)
+
+
+def ips_source(log_source_id, when: datetime, **kw) -> IpsAnomaly:  # type: ignore[no-untyped-def]
+    defaults = dict(
+        log_source_id=log_source_id,
+        detector_type=IpsAnomalyType.IPS_SOURCE_CONCENTRATION_SPIKE,
+        severity=Severity.MEDIUM,
+        state=AnomalyState.OPEN,
+        detected_at=when,
+        subject_kind="IPS_SOURCE",
+        evidence_status=EvidenceStatus.NOT_REQUESTED,
+        fingerprint=f"IPS_SOURCE_CONCENTRATION_SPIKE-{uuid.uuid4().hex[:8]}",
+        profile_version=2,
+        normalizer_version=1,
+        observed_measurement="EXACT",
+        details={},
+    )
+    defaults.update(kw)
+    return IpsAnomaly(**defaults)
+
+
+async def ips_world(s):  # type: ignore[no-untyped-def]
+    """IPS anomalies across hours 0..3 of [H0, H0+5h), mixed with Phase A and WAF.
+    
+    Hour 0: 1 CRITICAL IPS_ENTITY + 1 CRITICAL IPS_SOURCE (same severity from both
+    IPS kinds in one hour). Hour 1: 1 HIGH IPS_ENTITY RESOLVED (every state counts).
+    Hour 2: 1 LOW IPS_SOURCE. Hour 3: 1 MEDIUM IPS_ENTITY.
+    """
+    inst = await make_instance(s)
+    fw = await make_log_source(s, inst, qradar_id=1, name="fw-1")
+    ws = await make_log_source(s, inst, qradar_id=2, name="waf-1")
+    isrc = await make_log_source(s, inst, qradar_id=3, name="ips-1")
+    ep = endpoint(inst.id, ws.id)
+    port = ips_entity_factory(inst.id, isrc.id, IpsDimension.DESTINATION_PORT, "443/tcp")
+    s.add_all([ep, port])
+    await s.flush()
+    s.add_all([
+        # Phase A (same as original world)
+        phase_a(fw.id, at(0), severity=Severity.CRITICAL),
+        phase_a(fw.id, at(0, minutes=30), severity=Severity.CRITICAL),
+        # WAF (same as original world)
+        waf(ep.id, at(0, minutes=45), severity=Severity.CRITICAL),
+        phase_a(fw.id, at(1), severity=Severity.HIGH, state=AnomalyState.RESOLVED),
+        phase_a(fw.id, at(2, minutes=10), severity=Severity.LOW),
+        waf(ep.id, at(3, minutes=5), severity=Severity.MEDIUM),
+        # IPS entities
+        ips_entity(port.id, at(0, minutes=10), severity=Severity.CRITICAL),
+        ips_entity(port.id, at(1, minutes=15), severity=Severity.HIGH, state=AnomalyState.RESOLVED),
+        ips_entity(port.id, at(3, minutes=20), severity=Severity.MEDIUM),
+        # IPS sources
+        ips_source(isrc.id, at(0, minutes=20), severity=Severity.CRITICAL),
+        ips_source(isrc.id, at(2, minutes=30), severity=Severity.LOW),
+    ])
+    return dict(inst=inst.id, fw=fw.id, ws=ws.id, isrc=isrc.id, ep=ep.id, port=port.id)
+
+
+def test_ips_total_equals_list_for_same_range_no_subject_kind(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """Histogram total equals list total for same range, no subject_kind."""
+    run(ips_world)
+    client = Client(READER)
+    listed = client.get("/api/v1/anomalies", params={**rng(5), "limit": 200}).json()
+    body = histogram(client, rng(5))
+    assert listed["total"] == 11  # 6 original (4 Phase A + 2 WAF) + 5 IPS (3 entity + 2 source)
+    assert body["total"] == listed["total"]
+    assert sum(hour["total"] for hour in body["hours"]) == listed["total"]
+    assert body["families"] == ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]
+
+
+def test_ips_total_equals_list_for_ips_entity_subject_kind(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """Histogram total equals list total for subject_kind=IPS_ENTITY."""
+    run(ips_world)
+    client = Client(READER)
+    params = {**rng(5), "subject_kind": "IPS_ENTITY"}
+    listed = client.get("/api/v1/anomalies", params={**params, "limit": 200}).json()
+    body = histogram(client, params)
+    assert listed["total"] == 3  # 3 IPS_ENTITY anomalies in world
+    assert body["total"] == listed["total"]
+    assert body["families"] == ["IPS_ENTITY"]
+    assert sum(hour["total"] for hour in body["hours"]) == listed["total"]
+
+
+def test_ips_total_equals_list_for_ips_source_subject_kind(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """Histogram total equals list total for subject_kind=IPS_SOURCE."""
+    run(ips_world)
+    client = Client(READER)
+    params = {**rng(5), "subject_kind": "IPS_SOURCE"}
+    listed = client.get("/api/v1/anomalies", params={**params, "limit": 200}).json()
+    body = histogram(client, params)
+    assert listed["total"] == 2  # 2 IPS_SOURCE anomalies in world
+    assert body["total"] == listed["total"]
+    assert body["families"] == ["IPS_SOURCE"]
+    assert sum(hour["total"] for hour in body["hours"]) == listed["total"]
+
+
+def test_ips_per_hour_severity_counts_add_up_across_families(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """Per-hour severity counts add up across families in shared hours."""
+    run(ips_world)
+    body = histogram(Client(READER), rng(5))
+    by_start = {hour["start"]: hour for hour in body["hours"]}
+    # Hour 0: 2 Phase A CRITICAL + 1 WAF CRITICAL + 1 IPS_ENTITY CRITICAL
+    # + 1 IPS_SOURCE CRITICAL = 5 CRITICAL
+    assert by_start[_iso(at(0))]["counts"] == {"CRITICAL": 5}
+    assert by_start[_iso(at(0))]["total"] == 5
+    # Hour 1: 1 Phase A HIGH (RESOLVED) + 1 IPS_ENTITY HIGH (RESOLVED) = 2 HIGH
+    assert by_start[_iso(at(1))]["counts"] == {"HIGH": 2}
+    assert by_start[_iso(at(1))]["total"] == 2
+    # Hour 2: 1 Phase A LOW + 1 IPS_SOURCE LOW = 2 LOW
+    assert by_start[_iso(at(2))]["counts"] == {"LOW": 2}
+    assert by_start[_iso(at(2))]["total"] == 2
+    # Hour 3: 1 WAF MEDIUM + 1 IPS_ENTITY MEDIUM = 2 MEDIUM
+    assert by_start[_iso(at(3))]["counts"] == {"MEDIUM": 2}
+    assert by_start[_iso(at(3))]["total"] == 2
+    # Hour 4: empty
+    assert by_start[_iso(at(4))] == {"start": _iso(at(4)), "counts": {}, "total": 0}
+
+
+def test_ips_half_open_boundaries_on_ips_branch(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """IPS branch respects half-open boundaries: detected_at == until excluded,
+    detected_at == since included.
+
+    `until` is mid-hour, so a row exactly at it lands in an hour of the span and
+    an inclusive `until` would count it. On an hour boundary the row would fall
+    outside the span and `fill_hours` would drop it whatever the predicate said.
+    """
+    since, until = at(2), at(3, minutes=30)
+
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        isrc = await make_log_source(s, inst, qradar_id=3, name="ips-bounds")
+        port = ips_entity_factory(inst.id, isrc.id, IpsDimension.DESTINATION_PORT, "443/tcp")
+        s.add(port)
+        await s.flush()
+        s.add_all([
+            ips_entity(port.id, since),  # == since: counted
+            ips_entity(port.id, at(2, minutes=59, seconds=59)),  # last instant of its hour
+            ips_entity(port.id, until),  # == until: excluded, inside an hour of the span
+        ])
+
+    run(setup)
+    body = histogram(Client(READER), {"since": _iso(since), "until": _iso(until)})
+    assert [hour["start"] for hour in body["hours"]] == [_iso(at(2)), _iso(at(3))]
+    assert body["hours"][0]["counts"] == {"MEDIUM": 2}
+    assert body["hours"][1] == {"start": _iso(at(3)), "counts": {}, "total": 0}
+    assert body["total"] == 2
+
+
+def test_ips_every_state_is_counted(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """Every IPS state is counted (RESOLVED included); `active_only` is not a
+    histogram parameter.
+
+    IPS-specific: under `subject_kind=IPS_ENTITY` the only RESOLVED row is the
+    IPS one, so a branch that dropped RESOLVED rows would empty hour 1 and drop
+    the total to the list's active-only count.
+    """
+    run(ips_world)
+    client = Client(READER)
+    params = {**rng(5), "subject_kind": "IPS_ENTITY"}
+    active = client.get(
+        "/api/v1/anomalies", params={**params, "active_only": "true", "limit": 200}
+    ).json()
+    body = histogram(client, params)
+    by_start = {hour["start"]: hour for hour in body["hours"]}
+    # Hour 1 holds the RESOLVED IPS_ENTITY row; `active_only` in the list drops
+    # it, so the histogram is one larger.
+    assert by_start[_iso(at(1))]["counts"] == {"HIGH": 1}
+    assert body["total"] == 3
+    assert active["total"] == 2
+
+
+def test_ips_one_statement_at_two_data_sizes(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """Still one statement at two data sizes with IPS rows present."""
+    ids = run(ips_world)
+    client = Client(READER)
+    assert histogram(client, rng(5))["total"] == 11
+    small = client.statements
+
+    async def grow(s):  # type: ignore[no-untyped-def]
+        port = await s.get(IpsEntity, ids["port"])
+        if port is None:
+            return
+        s.add_all([
+            ips_entity(port.id, at(i % 5, minutes=i % 60)) for i in range(30)
+        ])
+        s.add_all([
+            ips_source(ids["isrc"], at(i % 5, minutes=30)) for i in range(20)
+        ])
+
+    run(grow)
+    listed = client.get("/api/v1/anomalies", params={**rng(5), "limit": 200}).json()
+    body = histogram(client, rng(5))
+    assert listed["total"] == 61  # 11 original + 50 new
+    assert body["total"] == listed["total"]
+    assert client.statements == small == 1

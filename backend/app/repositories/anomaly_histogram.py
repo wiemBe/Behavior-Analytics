@@ -6,9 +6,9 @@ population `GET /anomalies` would list for the same `since`, `until` and
 complete count is what makes an empty hour a measured zero rather than "none
 seen on this page".
 
-Deliberately a separate module from `anomaly.py`: task T-085 is adding an IPS
-branch to `list_unified` in parallel, and this file must not collide with it.
-A new family is one more branch here, nothing else.
+T-085 (the IPS analyst read API) is merged; this module now includes the IPS
+branch alongside Phase A and WAF. A new family is one more branch here,
+nothing else.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSourceAnomaly
 from app.models.waf import WafAnomaly
 from app.repositories.anomaly import AnomalyRepository
@@ -131,6 +132,32 @@ def _waf_branch(since: datetime, until: datetime) -> Select:
     )
 
 
+def _ips_branch(
+    since: datetime, until: datetime, subject_kind: SubjectKind | None = None
+) -> Select:
+    """IPS anomalies grouped by hour and severity, filtered by subject_kind.
+
+    When `subject_kind` is IPS_ENTITY or IPS_SOURCE, filters
+    `IpsAnomaly.subject_kind == subject_kind.value`, matching the list
+    behavior. No joins needed: the histogram only counts rows.
+    """
+    a = IpsAnomaly
+    hour = _hour_of(a.detected_at)
+    conditions = [a.detected_at >= since, a.detected_at < until]
+    if subject_kind in (SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE):
+        conditions.append(a.subject_kind == subject_kind.value)
+    return (
+        select(
+            hour.label("hour"),
+            cast(literal_column("'IPS'"), String).label("family"),
+            a.severity.label("severity"),
+            func.count().label("anomalies"),
+        )
+        .where(*conditions)
+        .group_by(hour, a.severity)
+    )
+
+
 def fill_hours(
     span: list[datetime], counts: dict[datetime, dict[str, int]]
 ) -> list[HourCounts]:
@@ -163,10 +190,10 @@ async def histogram(
     Python. Every state is counted -- the list's default, no `active_only` --
     and the families are the same ones `GET /anomalies` would serve for the
     same `subject_kind`, so `total` equals the list's `total` for the same
-    arguments. Adding IPS (T-085) is one more branch here.
+    arguments.
     """
-    phase_a, waf = AnomalyRepository._applicable_kinds(
-        subject_kind=subject_kind, waf_endpoint_id=None, anomaly_type=None
+    phase_a, waf, ips = AnomalyRepository._applicable_kinds(
+        subject_kind=subject_kind, waf_endpoint_id=None, ips_entity_id=None, anomaly_type=None
     )
     branches: list[Select] = []
     families: list[str] = []
@@ -176,8 +203,15 @@ async def histogram(
     if waf:
         branches.append(_waf_branch(since, until))
         families.append(SubjectKind.WAF_ENDPOINT.value)
+    if ips:
+        branches.append(_ips_branch(since, until, subject_kind))
+        if subject_kind in (SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE):
+            families.append(subject_kind.value)
+        else:
+            families.extend([SubjectKind.IPS_ENTITY.value, SubjectKind.IPS_SOURCE.value])
     span = hour_span(since, until)
-    if not branches:  # Unreachable through the API: SubjectKind has two members.
+    if not branches:
+        # Reachable only if a future SubjectKind is added without a branch here.
         return Histogram(families=[], hours=fill_hours(span, {}), total=0)
 
     rows = (await session.execute(union_all(*branches))).all()
