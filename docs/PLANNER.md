@@ -35,7 +35,10 @@ the repository.
 
   The orchestrator's gate: lint and typecheck clean; 152 files / 2,206 tests; build OK.
   **The same ×100 defect is on `main` for WAF** (`formatPoints` with `percentage_point_change`,
-  which the backend already sends in points): fixed in T-089.
+  which the backend already sends in points). **T-089 fixed it and is merged** (`73dbf8f`): the
+  PNG reads "+29.7 pp"; the orchestrator re-ran 365 tests, plus lint, typecheck and ruff.
+  The same review found the WAF new-endpoint view misstating its unit, its expected value and its
+  threshold, and every WAF threshold drawn as "±". That is **T-090**; land it before `main`.
 - **T-085 + B-2.3b merged** (`agent/t085`). The round-2 test fixes (big-pickle) now pin both
   guards: a mid-hour `until`, and an IPS-only RESOLVED check. Merged-tree gate: ruff clean;
   2,977 unit passed; 187 integration passed (histogram, IPS analyst/alerting/pipeline/scale,
@@ -47,12 +50,12 @@ the repository.
 |---|---|---|---|
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
 | **UI-3.2** ([spec](tasks/UI-3.2.md) + amendment) | Codex. Round 1 is done and reviewed: drag, resize, steppers, lazy chunk and geometry are all fine. **Round 2** (spec §Round 2): the customize chrome crowds the title row, and at 1280 the KPI cards overflow and scroll. Resumed session `01a13ba4-55a9-7470-9b09-6a242be914dd`, pid 111866 | `ui32` (own `node_modules`); ports 3132/8132/9132 | `ui32/codex-r2.log` (grep "hit your usage limit"); `ui32/last-message-r2.md`; PNGs `ui32/png/`; reusable fixture `ui32/fixture/server.py` (Home and catalog routes) |
-| **T-089** WAF pp ×100 on `main` ([spec](tasks/T-089.md)) | Sonnet sub-agent of this chat | `t089`; ports 3189/8189/9189 | `docs/tasks/T-089.report.md` in `t089`; PNG `t089/png/` |
+| **T-090** WAF new-endpoint units, materiality floor, one-sided threshold ([spec](tasks/T-090.md)) | Sonnet sub-agent of this chat | `t090`; ports 3190/8190/9190 | `docs/tasks/T-090.report.md` in `t090`; PNGs `t090/png/` |
 | **T-088** npm audit triage, read-only ([spec](tasks/T-088.md)) | opencode `big-pickle`, `--standalone`, pid 115207 | main checkout, read-only | `t088/T-088.report.md` and `t088/agent.log` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
-1. T-089 (a WAF defect on `main`): merge before `main`.
+1. T-090 (WAF defects on `main`): merge before `main`.
 2. UI-3.2, then UI-3.3 (spec ready), then UI-3.5b.
 3. T-083b; T-054, whose defects become fix tasks.
 4. Full gate, then `feat/phase-ce` → `main`.
