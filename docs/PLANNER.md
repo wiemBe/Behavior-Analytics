@@ -15,14 +15,15 @@ session's chat (`qradar-dash-19`) acknowledged the handover: it takes no git, PL
 actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
 - This session's scratchpad:
   `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/a16a3a57-0bb1-488e-a4d5-dadbc9e16dfd/scratchpad/`.
-- `feat/phase-ce` @ `abc5d8f` (the T-083 and T-084 specs).
+- `feat/phase-ce` (pushed at each merge). Merged this session: **T-084** (`befce47`, README WAF and
+  search-cadence status lines; three wording corrections by the orchestrator, noted in its report).
 
 | Task | Agent | Where | Status |
 |---|---|---|---|
-| **UI-2.5** | Codex (pid 878467) | `ui25` | running; collect as in the table below |
+| **UI-2.5** round 2 | Codex `exec resume 01a13a83-…` (pid 944403, from 16:28) | `ui25`; log `ui25-r2.log` in this session's scratchpad | Round 1 reviewed (diff and all 30 PNGs): structure right, test edits within the rules; **10 defects** sent back (`ui25-r2.prompt.md`): chart widgets half empty, donut label overflows its hole, severity ticks collide, ragged KPI card heights, line breaks, empty-state duplication and nested box, a sparkline rule in the empty state, two error styles, the anomaly breakdown vs total (345 vs 16), and **`active_only` ignored by `/anomalies`** (the KPI link from UI-2.2 was silently unfiltered) |
 | **T-082** | opencode `mimo-v2.6-flash-free` (pid 895758) | `t082` | running |
 | **T-054** | Sonnet sub-agent of the ninth-session chat | old scratch `t054/` | running (baseline run 1 done 16:20); its report lands in `t054/T-054.report.md` |
-| **T-084** README WAF and roadmap status lines ([spec](tasks/T-084.md)) | opencode `nemotron-3-ultra-free`, `--standalone` (pid 935948) | `t084` (no DB) | running; log `t084.log` in this session's scratchpad |
+| **B-4** dashboard persistence: models, `0023`, API, RBAC, audit ([spec](tasks/B-4.md)) | Sonnet sub-agent, medium (from ~16:45) | `b4`; DB `qradar_obs_b4` | running. Merge **after** `main` (it adds migration `0023`) |
 | **T-083** `test_migrations.py` setup-ERROR diagnosis ([spec](tasks/T-083.md)) | a free model | DBs `qradar_obs_t083`, `qradar_obs_t083b` (created) | **queued until T-054 ends**: its load phase stresses the shared Postgres server that T-054's live pipeline uses |
 
 ## ▶ Resume here (end of the ninth session, 2026-10-14 ~16:20; the user is moving to a new chat)
