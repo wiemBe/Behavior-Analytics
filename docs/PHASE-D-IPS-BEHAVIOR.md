@@ -14,8 +14,8 @@ differs from the design. Status was checked against the code on this branch.
 Of §D.13: **built** — T-049 (§D.3 profile, `/ips` admin API), T-050 (§D.5 collection, §D.4
 admission, §D.9 persistence), T-051a (§D.6 pure detectors), T-051b (detection tables `0021`, the
 versioned baseline builder, `ips_anomaly_fingerprint`), T-051c (the engine, the collect → evaluate
-→ train pipeline, and the capability status — **built**; per-source training bound differs from the
-design's instance-wide bound, from T-051d), T-053 (`/admin/ips-sources` UI), T-078 (per-field
+→ train pipeline, and the capability status — **built**; T-051d bounds each source's training by
+that source's own evaluation), T-053 (`/admin/ips-sources` UI), T-078 (per-field
 status on `GET /ips/sources`), T-079 (the IPS bucket width on `/admin/search-cadence`); **not
 built** — T-052 (§D.10 alerting), T-054 (§D.12 live validation).
 
@@ -199,8 +199,8 @@ The versioned baseline builder is built (T-051b: `IpsBaselineBuilder` in `app/ip
 migration `0021`; entity cells in `ips_entity_baseline`, source-level pooled cells in
 `ips_source_baseline`). The scheduled training step is built (T-051c, T-051d:
 `IpsInstancePipeline._train` in `app/services/ips_pipeline.py`). Each source trains through its
-own evaluated bucket end; a source that failed or has evaluated nothing is skipped alone. The
-per-source bound differs from the design's original instance-wide bound.
+own evaluated bucket end; a source that failed or has evaluated nothing is skipped alone, so one
+stalled source never holds back another's training (T-051d).
 
 Weekday×hour seasonal cells per entity metric, built like WAF (`app/waf/baseline.py`): median and
 MAD over COMPLETE buckets only, `baseline_min_samples`, the lookback, versioned by the profile
