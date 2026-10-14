@@ -62,7 +62,7 @@ its usage limit in T-051c round 2 (reset **15:54**).
     definitions in `title`/accessible description). Screenshots reviewed. The merge had an add/add
     conflict on `lib/home/format.ts` (UI-2.4's `formatEps`/`formatAgo` and UI-2.2's
     `signedPercent`), resolved by the orchestrator by keeping both; 1,878 tests green ×3.
-  - **T-080** (`f9c…`, merge "Merge agent/t080"): the 500-property test pastes its query
+  - **T-080** (`a7ce553`): the 500-property test pastes its query
     (`{ delay: null }`) with a 15 s per-test budget and a comment; every assertion unchanged.
   - **T-055b** (`e6dc89a` + `14e27a1`): README and Phase D markers say the engine is built; the
     orchestrator corrected one wording (per-source training is the design's intent, not a
