@@ -15,9 +15,9 @@ Of §D.13: **built** — T-049 (§D.3 profile, `/ips` admin API), T-050 (§D.5 c
 admission, §D.9 persistence), T-051a (§D.6 pure detectors), T-051b (detection tables `0021`, the
 versioned baseline builder, `ips_anomaly_fingerprint`), T-051c (the engine, the collect → evaluate
 → train pipeline, and the capability status — **built**; T-051d bounds each source's training by
-that source's own evaluation), T-053 (`/admin/ips-sources` UI), T-078 (per-field
+that source's own evaluation), T-052 (§D.10 alerting), T-053 (`/admin/ips-sources` UI), T-078 (per-field
 status on `GET /ips/sources`), T-079 (the IPS bucket width on `/admin/search-cadence`); **not
-built** — T-052 (§D.10 alerting), T-054 (§D.12 live validation).
+built** — T-054 (§D.12 live validation).
 
 ## D.0 What the user asked
 
@@ -237,14 +237,22 @@ completeness and coverage, concentration and fan-out facts, contributors ≤ 10,
 Retention follows WAF's settings pattern. Per-run SQL stays constant (bulk loaders, AGENTS.md
 rule 9 applies to IPS as to WAF).
 
-## D.10 Alerting **[DESIGN]**
+## D.10 Alerting **[BUILT]**
 
-Not built (T-052). No `ips_alerting_enabled` setting exists yet, and nothing raises an alert
-from an IPS anomaly.
+Built by T-052. Behind `IPS_ALERTING_ENABLED` (default **false**: shadow mode, as WAF),
+an OPEN incident opens one alert with the `ips_anomaly` fingerprint (entity incidents keyed on the
+dimension and the entity's stable `value_key`; source incidents on the source), a still-anomalous
+OPEN incident refreshes it, RESOLVED resolves it (actor `ips-anomaly-engine`, reason `condition
+recovered`), and notifications are enqueued per transition from the scheduled run. The context
+carries `source_class` when the source is classified (class routing). Nothing opens or refreshes
+while the source is in maintenance.
 
-Through `AlertService` with an `ips_anomaly` fingerprint (fixed at creation, never changed after),
-behind `ips_alerting_enabled` (default **false**: shadow mode first, as WAF). The context carries
-`source_class` (T-023 routing), `owner`, `instance`, the entity and the measured facts.
+Two ruled differences from WAF:
+- Opening an alert costs a few statements per new alert through the shared
+  `AlertService.apply_bulk` (one savepoint per new alert); WAF behaves the same, and this is the
+  accepted exception to "constant per (source, bucket)".
+- A maintenance bucket does not resolve an IPS alert (the evaluation loop skips maintenance
+  buckets entirely); WAF's maintenance path does resolve.
 
 ## D.11 API and UI
 
@@ -273,7 +281,7 @@ can create; it is skipped until then.
 | T-049 | D.3 profile: model, migration, service (upsert, validate async, enable), the `/ips` admin API, presets, IPS validation semantics — **[BUILT]** | Codex |
 | T-050 | D.5 collection: provider keyed fleet searches (base, REST, mock), folds, the time-then-source split, `IPS_COLLECTION` family and gate, buckets, entities, admission, metrics — **[BUILT]** | Codex or Sonnet |
 | T-051 | D.6–D.7 baselines and detectors, capability specs, engine with bulk loaders, lifecycle — **[BUILT]**: T-051a pure detectors, T-051b tables `0021`, baseline builder and fingerprint, T-051c engine, lifecycle and pipeline step, T-051d per-source training bound | Sonnet |
-| T-052 | D.10 alerting — **[DESIGN]** | Sonnet |
+| T-052 | D.10 alerting — **[BUILT]** | Sonnet |
 | T-053 | `/admin/ips-sources` UI from the D-8 components; screenshots — **[BUILT]** | Sonnet |
 | T-054 | D.12 live validation — **[DESIGN]** | Sonnet |
 | T-055 | Docs: README, this design's [BUILT] markers — **[BUILT]** (this revision) | opencode free model |
