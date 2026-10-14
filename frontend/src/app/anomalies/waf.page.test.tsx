@@ -112,6 +112,8 @@ describe("the subject filter", () => {
       "All subjects",
       "Log sources",
       "WAF endpoints",
+      "IPS entities",
+      "IPS sources",
     ]);
     expect(select.name).toBe("subject_kind");
   });
