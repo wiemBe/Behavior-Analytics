@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fleet, fleetClass, behavior } from "./fixtures";
-import { deviationGapText, topSources } from "./topSources";
+import { deviationGapText, epsShares, topSources } from "./topSources";
 
 const ts = (id: string, events: number, name = id) => ({ id, name, events });
 
@@ -116,5 +116,18 @@ describe("topSources", () => {
       expect(r).toMatchObject({ deviation: null, deviationGap: "no_behavior_list", state: null });
       expect(deviationGapText("no_behavior_list")).toBe("Source states unavailable");
     });
+  });
+});
+
+describe("epsShares", () => {
+  const row = (eps: number | null) =>
+    ({ id: "x", name: "x", eps }) as unknown as import("./topSources").TopSourceRow;
+
+  it("scales to the largest EPS and leaves an unmeasured row without a share", () => {
+    expect(epsShares([row(10), row(5), row(null)])).toEqual([1, 0.5, null]);
+  });
+
+  it("gives no share to anyone when nothing is above zero", () => {
+    expect(epsShares([row(0), row(null)])).toEqual([null, null]);
   });
 });
