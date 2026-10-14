@@ -246,3 +246,51 @@ class ClassificationRuleUpdate(BaseModel):
     priority: int | None = Field(default=None, ge=0, le=10_000)
     enabled: bool | None = None
     description: str | None = Field(default=None, max_length=1000)
+
+
+FleetSeriesGroup = Literal["none", "class"]
+
+
+class EpsSeriesPoint(BaseModel):
+    """One step of one series. `events` and `eps` are null unless every expected cell is complete.
+
+    `cells_expected` is monitored, non-internal sources times the collection buckets in the step;
+    `cells_complete` is how many of those cells hold a COMPLETE metric row. A step with a missing
+    cell has no sum at all: a smaller sum would read as a drop.
+    """
+
+    step_start: datetime
+    events: int | None
+    eps: float | None
+    # The sum of per-source expected EPS (reliable `average_eps` medians), not a fleet
+    # band. Null unless every in-scope source has a reliable cell for the step.
+    expected_eps: float | None
+    cells_complete: int
+    cells_expected: int
+    sources_expected: int
+
+
+class EpsSeries(BaseModel):
+    key: str
+    label: str
+    sources_expected: int
+    points: list[EpsSeriesPoint]
+
+
+class EpsCoverage(BaseModel):
+    # Steps with a non-null `eps`, and all steps, each summed across the series.
+    steps_total: int
+    steps_measured: int
+
+
+class FleetEpsSeries(BaseModel):
+    window: FleetWindow
+    group_by: FleetSeriesGroup
+    window_start: datetime
+    # The last closed bucket floored to `step_seconds`, so every step is whole. Up to
+    # one step minus one bucket of the newest data lies after it and is not shown.
+    window_end: datetime
+    bucket_seconds: int
+    step_seconds: int
+    series: list[EpsSeries]
+    coverage: EpsCoverage
