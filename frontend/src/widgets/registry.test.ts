@@ -18,7 +18,7 @@ describe("widget registry", () => {
     for (const type of types) expect(type).toMatch(/^[a-z0-9_.]{1,64}$/);
   });
 
-  it("lists exactly the Phase 2 widgets and the two blocked ones", () => {
+  it("lists exactly the Phase 2 widgets, the catalog widgets and the two blocked ones", () => {
     expect(WIDGETS.filter((w) => w.status === "live").map((w) => w.type)).toEqual([
       "kpi.total_eps",
       "kpi.log_sources",
@@ -31,6 +31,14 @@ describe("widget registry", () => {
       "health.log_sources",
       "table.recent_anomalies",
       "table.recent_offenses",
+      "health.detection",
+      "health.collection",
+      "health.evidence",
+      "table.catchall_senders",
+      "table.fleet_classes",
+      "table.outage_policy",
+      "waf.sources",
+      "table.recent_waf_anomalies",
     ]);
     expect(WIDGETS.filter((w) => w.status === "blocked").map((w) => w.type)).toEqual([
       "map.geography",

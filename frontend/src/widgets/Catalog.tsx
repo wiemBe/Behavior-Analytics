@@ -19,6 +19,9 @@ import type { AnyWidgetDef, WidgetCategory } from "./types";
 
 const CATEGORIES: WidgetCategory[] = ["KPI", "Chart", "Table", "Health", "Admin"];
 
+/** The neutral reason: information, not a warning. */
+export const ALREADY_PLACED = "Already on this dashboard.";
+
 /** Widgets one dashboard may hold (UR.5.5). */
 export const MAX_WIDGETS = 24;
 
@@ -38,7 +41,7 @@ export function unavailableReason(
   }
   // None of today's widgets has configuration, so a second copy would be identical. UI-3.3's
   // configuration makes duplicates meaningful; this guard then goes.
-  if (placedTypes.has(def.type)) return "Already on this dashboard.";
+  if (placedTypes.has(def.type)) return ALREADY_PLACED;
   if (placedCount >= MAX_WIDGETS) {
     return `A dashboard holds at most ${MAX_WIDGETS} widgets.`;
   }
@@ -130,7 +133,10 @@ export function Catalog({
                           </dl>
                         ) : null}
                         {reason ? (
-                          <p className="dg-catalog-reason" id={reasonId}>
+                          <p
+                            className={`dg-catalog-reason${reason === ALREADY_PLACED ? " info" : ""}`}
+                            id={reasonId}
+                          >
                             {reason}
                           </p>
                         ) : null}

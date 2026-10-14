@@ -2118,4 +2118,22 @@ export const homeReads = {
     homeRead<Page<AnomalySummary>>(`/anomalies${qs({ active_only: true, limit })}`),
   anomaliesBetween: (since: string, until: string, limit = 200) =>
     homeRead<Page<AnomalySummary>>(`/anomalies${qs({ since, until, limit })}`),
+  // The catalog widgets (UI-3.5a).
+  coverageSummary: () => homeRead<CoverageSummary>("/coverage/summary"),
+  ruleHealthSummary: () => homeRead<RuleHealthCount[]>("/rules/health-summary"),
+  searchCadence: () => homeRead<SearchCadenceItem[]>("/admin/search-cadence"),
+  // The queue reads NEW first, then busiest; the widget re-orders the page it gets.
+  newCatchallSenders: (limit = 50) =>
+    homeRead<Page<CatchallSender>>(
+      `/fleet/catchall/senders${qs({ review_status: "NEW", limit })}`,
+    ),
+  // The same path as `fleetSummary`, typed with the outage fields the route also returns.
+  outageSummary: (window: FleetWindow) =>
+    homeRead<OutageFleetSummary>(`/fleet/summary${qs({ window })}`),
+  // The API caps a page at 200 sources.
+  wafSources: (limit = 200) => homeRead<PagedWafSources>(`/behavior/waf/sources${qs({ limit })}`),
+  activeWafAnomalies: (limit = 5) =>
+    homeRead<Page<AnomalySummary>>(
+      `/anomalies${qs({ subject_kind: "WAF_ENDPOINT", active_only: true, limit })}`,
+    ),
 };
