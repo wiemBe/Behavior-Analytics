@@ -1,0 +1,159 @@
+/* The Home charts (UI-2.3): fleet EPS, EPS by class, anomalies by severity. They sit in
+   the `.tw` panel of tables.css; this file adds only what a chart needs. Every value is
+   a token. A chart is context for a figure: short, one qualifier, definitions in titles. */
+
+.hc-chart {
+  width: 100%;
+  height: var(--home-chart-h);
+  min-width: 0;
+}
+
+/* --- key and presets --------------------------------------------------------- */
+
+.hc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+}
+.hc-key-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.hc-key-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.hc-swatch {
+  flex: none;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: var(--r-sm);
+}
+.hc-presets {
+  display: flex;
+  gap: var(--sp-1);
+  margin-left: auto;
+}
+.hc-preset {
+  padding: var(--sp-1) var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.hc-preset:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.hc-preset[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+/* --- class donut and list ---------------------------------------------------- */
+
+.hc-class {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-4);
+  min-width: 0;
+}
+.hc-donut {
+  position: relative;
+  flex: none;
+  width: var(--home-donut);
+  height: var(--home-donut);
+}
+.hc-donut-canvas {
+  width: 100%;
+  height: 100%;
+}
+/* The total sits in the hole; the pointer passes through to the slices. */
+.hc-donut-total {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  line-height: var(--lh-tight);
+}
+.hc-donut-num {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.hc-donut-unit {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.hc-list {
+  flex: 1 1 var(--home-list-min);
+  min-width: 0;
+  border-collapse: collapse;
+  /* Fixed, so the class column takes what the figures leave and wraps inside it;
+     an auto table would refuse to shrink below its longest name and push the
+     donut onto its own row. */
+  table-layout: fixed;
+  font-size: var(--fs-sm);
+}
+.hc-list thead th.num {
+  width: var(--home-col-num);
+}
+.hc-list th,
+.hc-list td {
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-3);
+  line-height: var(--lh-tight);
+  text-align: left;
+  font-weight: var(--fw-normal);
+  vertical-align: baseline;
+}
+.hc-list thead th {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.hc-list th:first-child {
+  padding-left: 0;
+}
+.hc-list tbody th {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.hc-list tbody th .hc-swatch {
+  display: inline-block;
+  margin-right: var(--sp-2);
+  vertical-align: baseline;
+}
+.hc-list tbody tr:last-child th,
+.hc-list tbody tr:last-child td {
+  border-bottom: 0;
+}
+.hc-list .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.hc-rest {
+  display: block;
+  margin-left: calc(var(--sp-3) + var(--sp-2));
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}

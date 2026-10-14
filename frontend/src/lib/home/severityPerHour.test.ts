@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { anomaly, page } from "./fixtures";
-import { MAX_HOURS, severityPerHour } from "./severityPerHour";
+import { MAX_HOURS, lastHours, severityPerHour, severityText } from "./severityPerHour";
 
 const range = { since: "2026-10-14T08:00:00Z", until: "2026-10-14T12:00:00Z" };
 const at = (iso: string, severity = "HIGH") => anomaly({ detected_at: iso, severity });
@@ -80,5 +80,33 @@ describe("severityPerHour", () => {
       expect(r.qualifiers.map((q) => q.kind)).toEqual(["INSUFFICIENT_DATA"]);
     }
     expect(MAX_HOURS).toBe(169);
+  });
+});
+
+describe("lastHours", () => {
+  it("ends with the hour that contains now, and keeps its key within the hour", () => {
+    const a = lastHours(Date.parse("2026-10-14T13:05:00Z"), 24);
+    const b = lastHours(Date.parse("2026-10-14T13:59:59Z"), 24);
+    expect(a).toEqual(b);
+    expect(a).toEqual({ since: "2026-10-13T14:00:00.000Z", until: "2026-10-14T14:00:00.000Z" });
+  });
+
+  it("spans exactly the requested number of hour columns", () => {
+    const r = lastHours(Date.parse("2026-10-14T13:05:00Z"), 24);
+    expect(severityPerHour(page([]), r).hours).toHaveLength(24);
+  });
+});
+
+describe("severityText", () => {
+  it("states a lower bound when the list was capped", () => {
+    const items = [at("2026-10-14T09:10:00Z", "HIGH")];
+    const r = severityPerHour({ ...page(items), total: 345 }, range);
+    expect(severityText(r, range)).toMatch(/at least 1/);
+    expect(severityText(r, range)).toMatch(/lower bound/);
+  });
+
+  it("does not claim a lower bound for a complete list", () => {
+    const r = severityPerHour(page([at("2026-10-14T09:10:00Z", "HIGH")]), range);
+    expect(severityText(r, range)).not.toMatch(/lower bound|at least/);
   });
 });
