@@ -11,21 +11,10 @@ import Link from "next/link";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
-import {
-  MAGNITUDE_SEGMENTS,
-  recentOffenses,
-  recentOffensesRead,
-} from "@/lib/home/recentOffenses";
+import { MAGNITUDE_SEGMENTS, RECENT_OFFENSES_LIMIT, recentOffenses } from "@/lib/home/recentOffenses";
 
-import {
-  Gate,
-  QualifierList,
-  secondary,
-  Unmeasured,
-  When,
-  Widget,
-  WidgetLoading,
-} from "./WidgetParts";
+import { secondary, WidgetFrame, WidgetLoading, WidgetQualifiers } from "./WidgetFrame";
+import { Unmeasured, When } from "./WidgetParts";
 
 function MagnitudeBar({ segments }: { segments: number }) {
   return (
@@ -45,19 +34,22 @@ function MagnitudeBar({ segments }: { segments: number }) {
 }
 
 export function RecentOffenses() {
+  const openRead = homeReads.recentOffenses(RECENT_OFFENSES_LIMIT);
   const probeRead = homeReads.offenseProbe();
-  const open = useApiResource(recentOffensesRead.key, recentOffensesRead.fetch);
+  const open = useApiResource(openRead.key, openRead.fetch);
   const probe = useApiResource(probeRead.key, probeRead.fetch);
 
   return (
-    <Widget
+    <WidgetFrame
       id="recent-offenses"
       title="Recent offenses"
       windowText="open, by last update"
-      viewAll={{ href: "/offenses", label: "View all" }}
+      link={{ href: "/offenses", label: "View all" }}
+      state={open}
+      what="the open offenses"
+      permission="read:offenses"
     >
-      <Gate state={open} what="the open offenses" permission="read:offenses">
-        {({ data }) => {
+      {({ data }) => {
           const p = secondary(probe);
           // An empty list needs the probe to say why it is empty.
           if (data.items.length === 0 && p.pending) {
@@ -65,7 +57,7 @@ export function RecentOffenses() {
           }
           const view = recentOffenses(data, p.data);
           if (view.qualifiers.length > 0 && view.rows.length === 0) {
-            return <QualifierList qualifiers={view.qualifiers} />;
+            return <WidgetQualifiers qualifiers={view.qualifiers} />;
           }
           if (view.empty !== null) return <p className="tw-state">{view.empty}</p>;
           return (
@@ -122,8 +114,7 @@ export function RecentOffenses() {
               {view.shown && <p className="tw-note">{view.shown}.</p>}
             </>
           );
-        }}
-      </Gate>
-    </Widget>
+      }}
+    </WidgetFrame>
   );
 }

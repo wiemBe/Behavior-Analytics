@@ -57,8 +57,8 @@ describe("Sparkline", () => {
 
   it("draws no line, not a flat zero, when no step was measured", () => {
     const { container } = render(<Sparkline series={make([null, null], 2)} />);
-    expect(container.querySelector("path")).toBeNull();
-    expect(screen.getByText("24 h, no step measured of 2")).toBeInTheDocument();
+    expect(container.querySelector("svg, path, line")).toBeNull();
+    expect(screen.queryByText(/no step measured/)).toBeNull();
   });
 
   it("uses no inline style", () => {

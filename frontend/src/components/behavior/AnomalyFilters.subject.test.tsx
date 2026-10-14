@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AnomalyFilters, chipLabel, withoutFilter } from "./AnomalyFilters";
 
 const empty = {
+  active_only: false,
   log_source_id: "",
   instance_id: "",
   anomaly_type: "",

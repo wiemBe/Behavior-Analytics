@@ -58,6 +58,7 @@ describe("SeverityChart", () => {
     expect(screen.getByText(/2 in 24 hours \(2 high\)/, { selector: ".sr-only" })).toBeInTheDocument();
     const axis = (setOption.mock.calls[0][0] as { yAxis: { name: string } }).yAxis.name;
     expect(axis).toBe("anomalies per hour");
+    expect(screen.getByRole("img").closest(".tw-body-fill")).not.toBeNull();
   });
 
   it("shows TRUNCATED and does not present the capped stack as the whole", () => {

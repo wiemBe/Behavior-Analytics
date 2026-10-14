@@ -34,8 +34,17 @@ describe("KpiOffenses", () => {
     render(<KpiOffenses />);
     expect(screen.getByRole("heading", { name: "Open offenses, latest snapshot" })).toBeInTheDocument();
     expect(screen.getByText("open offenses")).toBeInTheDocument();
-    expect(screen.getByText("3 critical (\u2265 7) \u00b7 8 below \u00b7 1 unknown")).toBeInTheDocument();
-    expect(screen.getByText("5 unassigned \u00b7 2 over SLA")).toBeInTheDocument();
+    const lines = screen.getAllByText((_, node) => node?.classList.contains("kpi-line") ?? false);
+    expect(
+      Array.from(lines[0].querySelectorAll(".kpi-line-part"), (part) => part.textContent),
+    ).toEqual(["3\u00a0critical (\u2265 7) \u00b7", "8\u00a0below \u00b7", "1\u00a0unknown"]);
+    expect(lines[0].textContent?.replaceAll("\u00a0", " ")).toBe(
+      "3 critical (\u2265 7) \u00b7 8 below \u00b7 1 unknown",
+    );
+    expect(
+      Array.from(lines[1].querySelectorAll(".kpi-line-part"), (part) => part.textContent),
+    ).toEqual(["5\u00a0unassigned \u00b7", "2\u00a0over SLA"]);
+    expect(lines[1].textContent?.replaceAll("\u00a0", " ")).toBe("5 unassigned \u00b7 2 over SLA");
     expect(screen.getByTitle(/magnitude of 7 or more/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View open offenses" })).toHaveAttribute(
       "href",
@@ -91,7 +100,12 @@ describe("KpiOffenses", () => {
     mocks.states[ANALYTICS] = failed(null);
     render(<KpiOffenses />);
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("The offenses could not be loaded. Nothing was changed.");
+    expect(alert.querySelector(".widget-error-title")).toHaveTextContent(
+      "The offenses could not be read.",
+    );
+    expect(alert.querySelector(".widget-error-action")).toHaveTextContent(
+      "The backend did not answer. Nothing was changed. Use Refresh",
+    );
   });
 
   it("keeps the data on a failed refresh", () => {

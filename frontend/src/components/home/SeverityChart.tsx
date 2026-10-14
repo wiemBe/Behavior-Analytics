@@ -29,7 +29,7 @@ import {
 
 import { buildSeverityOption, stackOrder } from "./chartOptions";
 import { useEChart } from "./useEChart";
-import { Gate, Widget } from "./WidgetParts";
+import { WidgetFrame } from "./WidgetFrame";
 
 import "./charts.css";
 
@@ -96,15 +96,18 @@ export function SeverityChart() {
   const model = useMemo(() => (data ? severityPerHour(data, range) : null), [data, range]);
 
   return (
-    <Widget
+    <WidgetFrame
       id="home-severity"
       title="Anomalies by severity"
       windowText="24 h"
       badge={(model && badgeText(model.qualifiers)) || undefined}
-      viewAll={{ href: anomaliesHref(range.since, range.until), label: "Anomalies" }}
+      link={{ href: anomaliesHref(range.since, range.until), label: "Anomalies" }}
+      state={state}
+      what="the anomaly list"
+      permission="read:anomalies"
+      fillBody
     >
-      <Gate state={state} what="the anomaly list" permission="read:anomalies">
-        {(ok) =>
+      {(ok) =>
           model &&
           (ok.data.items.length === 0 && ok.data.total === 0 ? (
             <p className="tw-state">
@@ -113,9 +116,8 @@ export function SeverityChart() {
           ) : (
             <Columns model={model} range={range} />
           ))
-        }
-      </Gate>
-    </Widget>
+      }
+    </WidgetFrame>
   );
 }
 

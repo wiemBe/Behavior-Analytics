@@ -34,6 +34,10 @@ export function Sparkline({ series }: { series: FleetEpsSeries }) {
       ? `${windowText}, no step measured of ${total.toLocaleString("en-US")}`
       : `${windowText}, ${have.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} steps measured, peak ${(g.max as number).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EPS`;
 
+  // With no measured point there is no trend to draw. Even an empty axis rule
+  // would read as a zero line, while the card already explains the missing data.
+  if (g.measured === 0) return null;
+
   return (
     <figure className="kpi-spark" title={text}>
       <svg
@@ -43,7 +47,6 @@ export function Sparkline({ series }: { series: FleetEpsSeries }) {
         aria-hidden="true"
         focusable="false"
       >
-        <line className="kpi-spark-base" x1={0} x2={W} y1={H - 0.5} y2={H - 0.5} />
         {g.path ? <path className="kpi-spark-line" d={g.path} /> : null}
       </svg>
       <figcaption className="sr-only">{text}</figcaption>

@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { homeReads } from "@/lib/api";
 import { offenseRow, page } from "@/lib/home/fixtures";
-import { recentOffensesRead } from "@/lib/home/recentOffenses";
 
 import { failed, forbidden, loading, ok } from "./testkit";
 import { RecentOffenses } from "./RecentOffenses";
@@ -13,7 +12,7 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (key: string | null) => res.byKey[key ?? ""] ?? { status: "loading" },
 }));
 
-const OPEN = recentOffensesRead.key;
+const OPEN = homeReads.recentOffenses().key;
 const PROBE = homeReads.offenseProbe().key;
 
 function setup(open: unknown, probe: unknown = ok(page([offenseRow()], 9))) {

@@ -6,8 +6,9 @@
 // band: a sum of per-source medians is not the median of the sum, and a sum of p05/p95
 // would be a different, much wider range.
 //
-// A title row, the chart, one row for the key and the window presets. What a mark
-// means is in the tooltip, the key's `title` and the accessible description.
+// A title row (title, window, qualifier, the window presets, the drill-down), the chart, and
+// the key. What a mark means is in the tooltip, the key's `title` and the accessible
+// description.
 
 import { LineChart } from "echarts/charts";
 import {
@@ -29,7 +30,7 @@ import { badgeText } from "@/lib/home/qualifiers";
 
 import { buildEpsOption, EXPECTED_NAME } from "./chartOptions";
 import { useEChart } from "./useEChart";
-import { Gate, Widget } from "./WidgetParts";
+import { WidgetFrame } from "./WidgetFrame";
 
 import "./charts.css";
 
@@ -67,6 +68,7 @@ function Chart({ series, model }: { series: FleetEpsSeries; model: EpsChartModel
     <>
       <div ref={ref} className="hc-chart" role="img" aria-label={label} />
       <p className="sr-only">{epsSummaryText(series, model)}</p>
+      <Key model={model} />
     </>
   );
 }
@@ -103,18 +105,12 @@ export function EpsChart() {
   const model = useMemo(() => (data ? epsChartModel(data) : null), [data]);
 
   return (
-    <Widget
+    <WidgetFrame
       id="home-eps"
       title="Fleet EPS"
       windowText={windowText(window)}
       badge={(model && badgeText(model.qualifiers)) || undefined}
-      viewAll={{ href: "/fleet", label: "Fleet" }}
-    >
-      <Gate state={state} what="the fleet EPS series" permission="read:fleet">
-        {(ok) => model && <Chart series={ok.data} model={model} />}
-      </Gate>
-      <div className="hc-foot">
-        {model ? <Key model={model} /> : <span />}
+      controls={
         <div className="hc-presets" role="group" aria-label="Window">
           {FLEET_WINDOWS.map((w) => (
             <button
@@ -128,7 +124,14 @@ export function EpsChart() {
             </button>
           ))}
         </div>
-      </div>
-    </Widget>
+      }
+      link={{ href: "/fleet", label: "Fleet" }}
+      state={state}
+      what="the fleet EPS series"
+      permission="read:fleet"
+      fillBody
+    >
+      {(ok) => model && <Chart series={ok.data} model={model} />}
+    </WidgetFrame>
   );
 }

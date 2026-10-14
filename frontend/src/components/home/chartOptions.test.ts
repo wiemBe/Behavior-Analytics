@@ -159,6 +159,13 @@ describe("buildClassOption", () => {
     expect(s.itemStyle).toEqual({ borderWidth: 2, borderColor: "c-surface" });
   });
 
+  it("uses the token-sized hole that protects the centre value", () => {
+    const pie = seriesOf(buildClassOption(entries(), palette, false))[0] as unknown as {
+      radius: [string, string];
+    };
+    expect(pie.radius).toEqual(["c-donutHoleRadius", "96%"]);
+  });
+
   it("colours the slices with the categorical tokens and the aggregate with the other token", () => {
     const data = seriesOf(buildClassOption(entries(), palette, false))[0].data as Array<{
       itemStyle: { color: string };
@@ -230,6 +237,14 @@ describe("buildSeverityOption", () => {
     const o = buildSeverityOption(model, palette, false) as unknown as { yAxis: { name: string } };
     expect(o.yAxis.name).toBe("anomalies per hour");
     expect(severityTooltip(model, 1)).not.toMatch(/At least/);
+  });
+
+  it("thins the UTC labels and still hides any residual overlap", () => {
+    const o = buildSeverityOption(model, palette, false) as unknown as {
+      xAxis: { name: string; axisLabel: { interval: number; hideOverlap: boolean } };
+    };
+    expect(o.xAxis.name).toBe("UTC");
+    expect(o.xAxis.axisLabel).toMatchObject({ interval: 5, hideOverlap: true });
   });
 
   it("takes every colour from the palette", () => {

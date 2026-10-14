@@ -52,6 +52,7 @@ describe("EpsChart", () => {
     const observed = option().series.find((s) => s.name === "Observed EPS")!;
     expect(observed.data.map((d) => d[1])).toEqual([5, null, 6, 7]);
     expect(screen.getByRole("img", { name: /Fleet EPS/ })).toBeInTheDocument();
+    expect(screen.getByRole("img").closest(".tw-body-fill")).not.toBeNull();
   });
 
   it("says Partial with the count when some steps are null", () => {

@@ -4,7 +4,7 @@
 // submitting resets paging naturally because `offset` is simply absent from
 // the new query string.
 //
-// Four filters are visible and three are behind a disclosure. The split is by
+// The common filters are visible and three are behind a disclosure. The split is by
 // how often each is used from this page rather than by importance — an analyst
 // arriving at the list narrows by state, detector, severity and time; source
 // and instance are usually already chosen by the link that brought them here,
@@ -42,6 +42,7 @@ const EVIDENCE = [
 export interface AnomalyFilterValues {
   /** What the anomaly is about: LOG_SOURCE, WAF_ENDPOINT or "" for both. */
   subject_kind?: string;
+  active_only: boolean;
   log_source_id: string;
   instance_id: string;
   anomaly_type: string;
@@ -55,32 +56,35 @@ export interface AnomalyFilterValues {
 /** Human labels for the active-filter chips. */
 export function chipLabel(
   key: keyof AnomalyFilterValues,
-  value: string,
+  value: string | boolean,
   sources: SourceBehavior[],
 ): string {
+  const text = String(value);
   switch (key) {
+    case "active_only":
+      return "Active only";
     case "subject_kind":
-      return `Subject: ${subjectKindLabel(value)}`;
+      return `Subject: ${subjectKindLabel(text)}`;
     case "log_source_id": {
-      const match = sources.find((s) => s.log_source_id === value);
-      return `Source: ${match?.name ?? value}`;
+      const match = sources.find((s) => s.log_source_id === text);
+      return `Source: ${match?.name ?? text}`;
     }
     case "instance_id":
-      return `Instance: ${value}`;
+      return `Instance: ${text}`;
     case "anomaly_type":
-      return `Detector: ${anomalyTypeLabel(value)}`;
+      return `Detector: ${anomalyTypeLabel(text)}`;
     case "state":
-      return `State: ${value}`;
+      return `State: ${text}`;
     case "severity":
-      return `Severity: ${value}`;
+      return `Severity: ${text}`;
     case "evidence_status":
-      return `Evidence: ${value}`;
+      return `Evidence: ${text}`;
     case "since":
-      return `From: ${formatDateTime(value)}`;
+      return `From: ${formatDateTime(text)}`;
     case "until":
-      return `To: ${formatDateTime(value)}`;
+      return `To: ${formatDateTime(text)}`;
     default:
-      return `${key}: ${value}`;
+      return `${key}: ${text}`;
   }
 }
 
@@ -91,7 +95,7 @@ export function withoutFilter(
 ): string {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(values)) {
-    if (v && k !== drop) qs.set(k, v);
+    if (v && k !== drop) qs.set(k, String(v));
   }
   const s = qs.toString();
   return s ? `/anomalies?${s}` : "/anomalies";
@@ -120,8 +124,14 @@ export function AnomalyFilters({
     values.log_source_id || values.instance_id || values.evidence_status,
   );
   const activeChips = (
-    Object.entries(values) as Array<[keyof AnomalyFilterValues, string | undefined]>
-  ).filter((entry): entry is [keyof AnomalyFilterValues, string] => Boolean(entry[1]));
+    Object.entries(values) as Array<[
+      keyof AnomalyFilterValues,
+      string | boolean | undefined,
+    ]>
+  ).filter(
+    (entry): entry is [keyof AnomalyFilterValues, string | boolean] =>
+      Boolean(entry[1]),
+  );
 
   return (
     <>
@@ -153,6 +163,17 @@ export function AnomalyFilters({
             </option>
           ))}
         </select>
+
+        <label className="filter-field filter-check" htmlFor="anomaly-active-only">
+          <input
+            id="anomaly-active-only"
+            type="checkbox"
+            name="active_only"
+            value="true"
+            defaultChecked={values.active_only}
+          />
+          Active only
+        </label>
 
         <label className="sr-only" htmlFor="anomaly-detector">
           Detector type

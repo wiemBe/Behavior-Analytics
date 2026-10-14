@@ -5,18 +5,19 @@
 .hc-chart {
   width: 100%;
   height: var(--home-chart-h);
+  min-height: var(--home-chart-h);
   min-width: 0;
+}
+.tw-body-fill {
+  flex: 1 1 auto;
+}
+.tw-body-fill .hc-chart {
+  flex: 1 1 var(--home-chart-h);
+  height: auto;
 }
 
 /* --- key and presets --------------------------------------------------------- */
 
-.hc-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--sp-1) var(--sp-3);
-}
 .hc-key-list {
   display: flex;
   flex-wrap: wrap;
@@ -41,8 +42,8 @@
 }
 .hc-presets {
   display: flex;
+  flex: 0 0 auto;
   gap: var(--sp-1);
-  margin-left: auto;
 }
 .hc-preset {
   padding: var(--sp-1) var(--sp-2);
@@ -86,7 +87,11 @@
 /* The total sits in the hole; the pointer passes through to the slices. */
 .hc-donut-total {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--home-donut-hole-radius) + var(--home-donut-hole-radius));
+  height: calc(var(--home-donut-hole-radius) + var(--home-donut-hole-radius));
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -95,7 +100,7 @@
   line-height: var(--lh-tight);
 }
 .hc-donut-num {
-  font-size: var(--fs-md);
+  font-size: var(--home-donut-label-size);
   font-weight: var(--fw-semibold);
   color: var(--text);
   font-variant-numeric: tabular-nums;

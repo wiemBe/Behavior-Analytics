@@ -90,6 +90,10 @@
 
   /* The edge shadow that says a table scrolls. Functional, not decorative. */
   --scroll-shadow: rgba(0, 0, 0, 0.5);
+  /* The widths of the covers and shadows of `.table-scroll` (globals.css states the same
+     two values); a panel restates the covers in its own colour. */
+  --scroll-cover-w: 32px;
+  --scroll-shadow-w: 14px;
 
   /* --- spacing -----------------------------------------------------------
      A 4 px scale. `--sp-5` (16 px) is the default gap inside a panel and
@@ -239,6 +243,9 @@
 :root {
   --home-chart-h: 152px;
   --home-donut: 112px;
+  /* The centre label is bounded by the same radius the canvas uses for its hole. */
+  --home-donut-hole-radius: 42px;
+  --home-donut-label-size: var(--fs-xs);
   --home-list-min: 14rem;
   --home-col-num: 9ch;
 }

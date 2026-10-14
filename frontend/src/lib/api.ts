@@ -2098,6 +2098,11 @@ export const homeReads = {
   offenseAnalytics: () => homeRead<OffenseAnalytics>("/offenses/analytics"),
   // `total` tells "no offenses" from "no snapshot yet" (UR.4.2 card 3).
   offenseProbe: () => homeRead<Page<OffenseSummary>>(`/offenses${qs({ limit: 1 })}`),
+  // The open offenses, latest update first (Home "Recent offenses").
+  recentOffenses: (limit = 5) =>
+    homeRead<Page<OffenseSummary>>(
+      `/offenses${qs({ status: "OPEN", sort: "last_updated_time", limit })}`,
+    ),
   activeAnomalies: (limit = 200) =>
     homeRead<Page<AnomalySummary>>(`/anomalies${qs({ active_only: true, limit })}`),
   anomaliesBetween: (since: string, until: string, limit = 200) =>
