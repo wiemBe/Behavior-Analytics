@@ -37,7 +37,10 @@ export type WidgetVariant = "kpi" | "panel";
  * Set by a dashboard in customize mode around each placed widget. The frame then offers
  * Remove in place of the drill-down link, so a widget keeps its geometry while it is edited.
  */
-export const WidgetEditContext = createContext<{ onRemove: () => void } | null>(null);
+export const WidgetEditContext = createContext<{
+  onRemove: () => void;
+  arrange?: ReactNode;
+} | null>(null);
 
 /** What a widget gets from its primary read once it has settled `ok`. */
 export interface Settled<T> {
@@ -399,23 +402,15 @@ export function WidgetFrame<T>({
       aria-labelledby={headingId}
       aria-describedby={description ? descId : undefined}
     >
-      <header className={kpi ? "kpi-head" : "tw-head"}>
+      <header className={`${kpi ? "kpi-head" : "tw-head"}${edit ? " dg-drag-handle" : ""}`}>
         <h2 className={kpi ? "kpi-title" : "tw-title"} id={headingId}>
           {title}
           {windowText && <span className="tw-window">{windowText}</span>}
         </h2>
         {badge && <span className="pill">{badge}</span>}
         {controls}
-        {edit ? (
-          <button
-            type="button"
-            className={`${kpi ? "kpi-link" : "tw-all"} dg-remove`}
-            aria-label={`Remove ${title}`}
-            onClick={edit.onRemove}
-          >
-            Remove
-          </button>
-        ) : (
+        {edit?.arrange}
+        {!edit ? (
           <Link
             className={kpi ? "kpi-link" : "tw-all"}
             href={link.href}
@@ -423,7 +418,7 @@ export function WidgetFrame<T>({
           >
             {link.label}
           </Link>
-        )}
+        ) : null}
       </header>
       {description ? (
         <p className="sr-only" id={descId}>

@@ -10,10 +10,12 @@
 // Customize mode (UR.5.3) works on a copy in memory: Add from the catalog, Remove. Nothing is
 // saved. Editing is offered only at 12 columns.
 
+import dynamic from "next/dynamic";
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useContext,
   useRef,
   useState,
   type CSSProperties,
@@ -26,6 +28,7 @@ import { WidgetEditContext } from "@/components/home/WidgetFrame";
 import { Catalog, MAX_WIDGETS } from "./Catalog";
 import {
   columnsForWidth,
+  compactLayout,
   deriveLayout,
   firstFreeSpot,
   newWidgetId,
@@ -37,6 +40,15 @@ import type { AnyWidgetDef, DashboardLayout, LayoutWidget } from "./types";
 import "@/components/home/kpi.css";
 import "@/components/home/tables.css";
 import "./dashboard.css";
+
+const EditGrid = dynamic(() => import("./Grid").then((module) => module.EditGrid), {
+  ssr: false,
+  loading: () => (
+    <p className="dg-editor-loading" role="status">
+      Loading dashboard editor…
+    </p>
+  ),
+});
 
 /** The grid's columns, from its own width (the sidebar takes a share of the viewport). */
 function useGridColumns(ref: RefObject<HTMLElement | null>): GridColumns {
@@ -76,12 +88,14 @@ function cell(w: LayoutWidget): CSSProperties {
 
 /** The frame of a widget that cannot show data: a type this version lacks, or a blocked one. */
 function NoticeFrame({ id, title, text }: { id: string; title: string; text: string }) {
+  const edit = useContext(WidgetEditContext);
   return (
     <section className="tw" aria-labelledby={`${id}-title`}>
-      <header className="tw-head">
+      <header className={`tw-head${edit ? " dg-drag-handle" : ""}`}>
         <h2 className="tw-title" id={`${id}-title`}>
           {title}
         </h2>
+        {edit?.arrange}
       </header>
       <div className="tw-body">
         <p className="tw-state" role="status">
@@ -92,7 +106,15 @@ function NoticeFrame({ id, title, text }: { id: string; title: string; text: str
   );
 }
 
-function PlacedWidget({ widget, onRemove }: { widget: LayoutWidget; onRemove: (() => void) | null }) {
+function PlacedWidget({
+  widget,
+  onRemove,
+  arrange,
+}: {
+  widget: LayoutWidget;
+  onRemove: (() => void) | null;
+  arrange?: ReactNode;
+}) {
   const def = widgetDef(widget.type);
   let content: ReactNode;
   if (!def) {
@@ -115,14 +137,10 @@ function PlacedWidget({ widget, onRemove }: { widget: LayoutWidget; onRemove: ((
     const Component = def.Component;
     content = <Component id={widget.id} config={widget.config} range={widget.range} />;
   }
-  return (
-    <div className="dg-item" data-type={widget.type} style={cell(widget)}>
-      {onRemove ? (
-        <WidgetEditContext.Provider value={{ onRemove }}>{content}</WidgetEditContext.Provider>
-      ) : (
-        content
-      )}
-    </div>
+  return onRemove ? (
+    <WidgetEditContext.Provider value={{ onRemove, arrange }}>{content}</WidgetEditContext.Provider>
+  ) : (
+    content
   );
 }
 
@@ -153,7 +171,10 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
   }, [catalogOpen]);
 
   const remove = useCallback((id: string) => {
-    setLayout((l) => ({ ...l, widgets: l.widgets.filter((w) => w.id !== id) }));
+    setLayout((l) => ({
+      ...l,
+      widgets: compactLayout(l.widgets.filter((widget) => widget.id !== id)),
+    }));
     setNotice("Widget removed.");
   }, []);
 
@@ -193,6 +214,10 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
   } else {
     actions = (
       <>
+        <p className="dg-session" role="status">
+          Customizing. Changes last for this session only; saving is not built yet.
+          {notice ? <span className="dg-notice"> {notice}</span> : null}
+        </p>
         <button
           type="button"
           ref={addRef}
@@ -218,20 +243,38 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
   return (
     <>
       {renderHeader(actions)}
-      {editing ? (
-        <p className="dg-session" role="status">
-          Customizing. Changes last for this session only; saving is not built yet.
-          {notice ? <span className="dg-notice"> {notice}</span> : null}
-        </p>
-      ) : null}
-      <div ref={gridRef} className="dg" data-cols={cols} data-editing={editing || undefined}>
-        {placed.map((widget) => (
-          <PlacedWidget
-            key={widget.id}
-            widget={widget}
-            onRemove={editing ? () => remove(widget.id) : null}
+      <div ref={gridRef} className="dg-measure" data-cols={cols} data-editing={editing || undefined}>
+        {editing ? (
+          <EditGrid
+            widgets={layout.widgets}
+            onChange={(widgets) => setLayout((current) => ({ ...current, widgets }))}
+            onRemove={remove}
+            renderWidget={(widget, arrange) => (
+              <PlacedWidget
+                widget={widget}
+                arrange={arrange}
+                onRemove={() => remove(widget.id)}
+              />
+            )}
           />
-        ))}
+        ) : (
+          <div className="dg" data-cols={cols}>
+            {placed.map((widget) => (
+              <div
+                className="dg-item"
+                key={widget.id}
+                data-type={widget.type}
+                data-x={widget.x}
+                data-y={widget.y}
+                data-w={widget.w}
+                data-h={widget.h}
+                style={cell(widget)}
+              >
+                <PlacedWidget widget={widget} onRemove={null} />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       {catalogOpen ? (
         <Catalog

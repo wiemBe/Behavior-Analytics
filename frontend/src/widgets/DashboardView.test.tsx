@@ -73,23 +73,26 @@ const layout: DashboardLayout = {
 };
 
 let width = 1000;
-let observed: ((entries: { contentRect: { width: number } }[]) => void) | null = null;
+let observed: Array<(entries: { contentRect: { width: number } }[]) => void> = [];
 
 beforeEach(() => {
   mocks.me = { status: "loading" };
   width = 1000;
-  observed = null;
+  observed = [];
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     () => ({ width, height: 100, top: 0, left: 0, right: width, bottom: 100, x: 0, y: 0 }) as DOMRect,
   );
   globalThis.ResizeObserver = class {
-    constructor(cb: typeof observed) {
-      observed = cb;
+    constructor(cb: (entries: { contentRect: { width: number } }[]) => void) {
+      observed.push(cb);
     }
     observe() {}
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
+  vi.spyOn(window, "getComputedStyle").mockReturnValue({
+    getPropertyValue: (name: string) => (name === "--dash-row" ? "24px" : "12px"),
+  } as CSSStyleDeclaration);
   // jsdom has no modal dialogs.
   HTMLDialogElement.prototype.showModal = function showModal() {
     this.setAttribute("open", "");
@@ -106,7 +109,7 @@ const view = (l: DashboardLayout = layout) =>
 
 const resize = (w: number) => {
   width = w;
-  act(() => observed?.([{ contentRect: { width: w } }]));
+  act(() => observed.forEach((callback) => callback([{ contentRect: { width: w } }])));
 };
 
 describe("DashboardView", () => {
@@ -154,6 +157,11 @@ describe("DashboardView", () => {
 });
 
 describe("customize mode", () => {
+  async function openArrange(title: string) {
+    const arrange = await screen.findByRole("button", { name: `Arrange ${title}` });
+    fireEvent.click(arrange);
+  }
+
   it("is off until asked: no Remove control, no session line", () => {
     view();
     expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
@@ -164,14 +172,15 @@ describe("customize mode", () => {
   it("says plainly that changes last for this session only", () => {
     view();
     fireEvent.click(screen.getByRole("button", { name: "Customize" }));
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(screen.getByText(/Customizing\. Changes last/)).toHaveTextContent(
       "Customizing. Changes last for this session only; saving is not built yet.",
     );
   });
 
-  it("removes a widget with a control named for it, and Done leaves the mode", () => {
+  it("removes a widget with a control named for it, and Done leaves the mode", async () => {
     view();
     fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    await openArrange("Alpha");
     fireEvent.click(screen.getByRole("button", { name: "Remove Alpha" }));
     expect(screen.queryByRole("heading", { name: "Alpha" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Bravo" })).toBeInTheDocument();
@@ -182,31 +191,57 @@ describe("customize mode", () => {
     expect(screen.queryByRole("heading", { name: "Alpha" })).toBeNull();
   });
 
-  it("adds a widget at the first free spot at its default size", () => {
+  it("adds a widget at the first free spot at its default size", async () => {
     const { container } = view();
     fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    await screen.findByRole("button", { name: "Arrange Alpha" });
     fireEvent.click(screen.getByRole("button", { name: "Add widget" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Charlie" }));
     // The layout holds x 0-8 on row 0 of 4 + 4; a 4-wide widget fits at x 8.
     const added = container.querySelector<HTMLElement>('.dg-item[data-type="c.admin"]')!;
-    expect(added.style.getPropertyValue("--dg-x")).toBe("9");
-    expect(added.style.getPropertyValue("--dg-y")).toBe("1");
-    expect(added.style.getPropertyValue("--dg-w")).toBe("4");
-    expect(added.style.getPropertyValue("--dg-h")).toBe("6");
+    expect(added).toHaveAttribute("data-x", "8");
+    expect(added).toHaveAttribute("data-y", "0");
+    expect(added).toHaveAttribute("data-w", "4");
+    expect(added).toHaveAttribute("data-h", "6");
     expect(screen.getByRole("status")).toHaveTextContent("Added Charlie.");
     // Adding closes the catalog.
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("fills the gap left by a removal when the widget is added back", () => {
+  it("fills the gap left by a removal when the widget is added back", async () => {
     const { container } = view();
     fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    await openArrange("Alpha");
     fireEvent.click(screen.getByRole("button", { name: "Remove Alpha" }));
     fireEvent.click(screen.getByRole("button", { name: "Add widget" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Alpha" }));
     const back = container.querySelector<HTMLElement>('.dg-item[data-type="a.one"]')!;
-    expect(back.style.getPropertyValue("--dg-x")).toBe("1");
-    expect(back.style.getPropertyValue("--dg-y")).toBe("1");
+    expect(back).toHaveAttribute("data-x", "0");
+    expect(back).toHaveAttribute("data-y", "0");
+  });
+
+  it("does not mount the edit grid in read mode or below 12 columns", async () => {
+    const { container } = view();
+    expect(container.querySelector(".dg-edit-shell")).toBeNull();
+    resize(700);
+    expect(screen.getByText("Widen the window to customize")).toBeInTheDocument();
+    expect(container.querySelector(".dg-edit-shell")).toBeNull();
+    resize(1000);
+    fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    await screen.findByRole("button", { name: "Arrange Alpha" });
+    expect(container.querySelector(".dg-edit-shell")).toBeInTheDocument();
+    resize(700);
+    expect(container.querySelector(".dg-edit-shell")).toBeNull();
+  });
+
+  it("Done keeps keyboard layout changes in memory", async () => {
+    const { container } = view();
+    fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    await openArrange("Alpha");
+    fireEvent.click(screen.getByRole("button", { name: "Move Alpha right" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    const alpha = container.querySelector<HTMLElement>('.dg-item[data-type="a.one"]')!;
+    expect(alpha).toHaveAttribute("data-x", "1");
   });
 
   it("offers no customize below 12 columns, and says why", () => {
