@@ -82,3 +82,33 @@ No new dependency. `frontend/node_modules` is a symlink to the main checkout's: 
 From `frontend/`, with `~/.local/node/bin` on `PATH`: `npm run lint`, `npm run typecheck`,
 `npx vitest run --no-cache`, `npm run build`. Copy each summary line verbatim into
 `docs/tasks/UI-3.5a.report.md` (AGENTS.md §6 format), with the PNG list. Do not commit.
+
+## Round 2 (the orchestrator's review, 2026-10-14 ~18:50)
+
+Accepted as built, with these rulings: `table.outage_policy` requires both `read:fleet` and
+`admin:outage` (it reads `/fleet/summary`; a widget whose read would answer 403 is not offered);
+"late by" is due at cadence + settle after the previous run, late beyond a 60 s tolerance, in whole
+minutes; the WAF profile column keeps the WAF pages' own labels (`validationView`). The one
+existing-test edit (the exact live-type list in `registry.test.ts`) is accepted.
+
+Fix, then capture again:
+1. **Scheduled searches: the family name never truncates** at 1440 or 1280 (at 1280 "Anomaly
+   expl…" and "Catch-all send…" were cut). It is the row's key: let it wrap to at most two lines,
+   or give the column the width it needs. Keep the title attribute.
+2. **Detection health headline copy.** "31.8 % of 201 techniques covered (64)" reads badly. Make
+   it the share as the figure and one plain line under or beside it, e.g. "64 of 201 techniques
+   covered". Keep the "not evaluated" honesty state as it is.
+3. **Outage policy: a mode word always precedes "by default".** The empty-state PNG showed
+   "by default" with nothing before it. Find out whether that PNG is stale or the code does it;
+   if `outage_default` is ever missing or unknown, render the unmeasured dash with its reason, not
+   a bare "by default".
+4. **The detection-health title row** wrapped its "Coverage" link onto a second line at 1280 in the
+   old crop; confirm it no longer does (the report says the window text was removed afterwards).
+5. **Fresh screenshots of the final code** (the round-1 crops were taken before the last change):
+   all eight placed at 1440×900, 1280×800 and 1024×768 (full page plus a crop of the eight at
+   1280), every widget empty and every widget in error at 1440, the catalog at 1440. Look at each
+   PNG yourself; list them in the report under a "Round 2" section.
+
+Gates as in round 1; add a test for each fix (the family name not ellipsised is a CSS fact: pin
+what a unit test can, e.g. the class that allows wrapping, and show the rest in the PNGs). Break
+each new guard once and restore it. Append a "Round 2" section to `docs/tasks/UI-3.5a.report.md`.
