@@ -8,6 +8,42 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶ Resume here (eleventh session, 2026-10-14, from ~18:33; chat `qradar-dash-ca`)
+
+The user: "planner.md oku devam et". The tenth-session chat (`qradar-dash-2c`) was still alive with
+its T-054 Sonnet sub-agent; it **acknowledged a handover** (no commits, merges, launches or
+collection from there; its T-054 agent may finish and write its report to its scratch).
+
+**Done this session so far:**
+- **T-085 reviewed and accepted** (three-family `_applicable_kinds`; IPS branch, still two
+  statements; six GET-only `/behavior/ips/...` routes; whitelist detection; contributor lists
+  deferred everywhere; the `test_waf_analyst_schemas.py` edit only extends the tuples). Committed
+  on `agent/t085` (`48cf900`), then `feat/phase-ce` merged into it (`16f024f`; import conflict, both
+  kept). **Not yet on `feat/phase-ce`**: the histogram is broken on `agent/t085` until B-2.3b.
+- **UI-3.5a screenshots reviewed**: accepted with rulings (outage widget needs `read:fleet` +
+  `admin:outage`; the "late by" rule; WAF labels from `validationView`); **round 2** for four small
+  defects plus fresh PNGs ([spec §Round 2](tasks/UI-3.5a.md)).
+- **T-087 written** ([spec](tasks/T-087.md)): after T-085, every `/anomalies` caller without a
+  `subject_kind` receives IPS rows, and an IPS incident falls through to the Phase A page (IPS
+  values drawn as EPS). T-087 gives IPS its own rows and investigation view. **Must land before
+  `feat/phase-ce` → `main`.**
+
+**In flight (this session's scratchpad:
+`/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/27db6cd6-0ae7-4ff3-8508-d61ff41a6712/scratchpad/`):**
+
+| Task | Agent | Where | Collect |
+|---|---|---|---|
+| **B-2.3b** histogram IPS branch ([spec](tasks/B-2.3b.md)) | opencode `nemotron-3-ultra-free`, `--standalone`, pid 1277672 | worktree `t085`; DB `qradar_obs_t085` | log `b23b.log`; report `docs/tasks/B-2.3b.report.md` in `t085`. Then gate `t085` and merge `agent/t085` → `feat/phase-ce` |
+| **UI-3.5a round 2** | Sonnet sub-agent of this chat | worktree `ui35a`; ports 3135/8135/9135; scratch `ui35a-r2/` | "Round 2" section of `docs/tasks/UI-3.5a.report.md`; review the new PNGs yourself, then merge |
+| **UI-3.2** drag/resize ([spec](tasks/UI-3.2.md)) | Codex, via the tenth session's `launch-ui32.sh` (started ~18:45 in this chat; it sleeps until **21:05**, then creates `ui32` from the then-current `feat/phase-ce`) | `ui32`; ports 3132/8132/9132 | log `…/a16a3a57-…/scratchpad/ui32-codex.log`; grep "hit your usage limit" |
+| **T-083** | opencode `mimo-v2.6-flash-free`, pid 1212073 (from the tenth session) | `t083`; loops in `/tmp/t083/` | report `docs/tasks/T-083.report.md` in `t083`; check no loop process is left |
+| **T-054** | Sonnet sub-agent of the **tenth-session chat** | `…/a16a3a57-…/scratchpad/t054/` | its report `T-054.report.md` there; its `driver.sh` waits for T-083 to exit before collection ticks |
+
+**Next:** B-2.3b → merge `t085` (gate: unit + histogram/IPS/phase-A integration); UI-3.5a r2 →
+merge; then T-087 (Sonnet) from the merged head; UI-3.3 and UI-3.5b after UI-3.2.
+
+---
+
 ## ▶ Resume here (end of the tenth session, 2026-10-14 ~18:15; the user said "Stop", save)
 
 **Start the next chat here.** The tenth session (chat `qradar-dash-2c`, from 16:20) stopped at the
