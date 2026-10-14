@@ -172,6 +172,9 @@
   --sidebar-bg: #151618;
   --primary: #e8e8e8;
   --primary-hover: #ffffff;
+  /* `accent-color` of native radios and checkboxes: neutral, never the
+     browser's default blue. */
+  --control-accent: var(--neutral);
   --link: var(--info-text);
   --topbar-h: 56px;
   --widget-pad: var(--sp-5);

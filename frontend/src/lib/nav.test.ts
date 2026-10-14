@@ -3,9 +3,14 @@ import { describe, expect, it } from "vitest";
 import { NAV, activeNavHref, navItemMatches } from "./nav";
 
 describe("NAV", () => {
-  it("leads with the four behavioral destinations", () => {
+  it("leads with an unlabeled group holding the Dashboard", () => {
     expect(NAV[0].label).toBeNull();
-    expect(NAV[0].items.map((i) => i.label)).toEqual([
+    expect(NAV[0].items).toEqual([{ href: "/", label: "Dashboard" }]);
+  });
+
+  it("groups the four behavioral destinations first among the labeled groups", () => {
+    expect(NAV[1].label).toBe("Behavior");
+    expect(NAV[1].items.map((i) => i.label)).toEqual([
       "Overview",
       "Anomalies",
       "Sources",
@@ -13,26 +18,26 @@ describe("NAV", () => {
     ]);
   });
 
-  it("separates supporting capabilities into their own group", () => {
-    expect(NAV[1].label).toBe("Platform");
-    expect(NAV[1].items.map((i) => i.label)).toEqual([
+  it("separates supporting capabilities into their own groups", () => {
+    expect(NAV.slice(2, 5).map((g) => g.label)).toEqual(["Fleet", "Detection", "Operations"]);
+    expect(NAV[2].items.map((i) => i.label)).toEqual([
       "Fleet",
       "Fleet sources",
       "Catch-all senders",
+    ]);
+    expect(NAV[3].items.map((i) => i.label)).toEqual([
       "Offenses",
+      "Alerts",
       "Rules",
       "Rule statistics",
       "Coverage",
-      "Log Sources",
-      "Searches",
-      "Alerts",
-      "SOC Overview",
     ]);
+    expect(NAV[4].items.map((i) => i.label)).toEqual(["Log Sources", "Searches"]);
   });
 
   it("lists the administration pages under their own group", () => {
-    expect(NAV[2].label).toBe("Administration");
-    expect(NAV[2].items).toEqual([
+    expect(NAV[5].label).toBe("Administration");
+    expect(NAV[5].items).toEqual([
       { href: "/admin/search-cadence", label: "Search cadence" },
       { href: "/admin/classification-rules", label: "Classification rules" },
       { href: "/admin/outage-policy", label: "Outage alerts" },
@@ -56,6 +61,7 @@ describe("NAV", () => {
     expect(hrefs).not.toContain("/audit");
     expect(hrefs).not.toContain("/config-changes");
     expect(hrefs).not.toContain("/admin");
+    expect(hrefs).not.toContain("/reports");
   });
 });
 

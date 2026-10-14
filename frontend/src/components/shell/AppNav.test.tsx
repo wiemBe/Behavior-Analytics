@@ -37,15 +37,15 @@ describe("AppNav landmarks and names", () => {
   it("associates the group label with the list it labels", () => {
     const { container } = renderAt("/behavior");
 
-    // The supporting group is announced by name rather than being an
+    // A labeled group is announced by name rather than being an
     // unattached line of text above a list.
-    const list = screen.getByRole("list", { name: "Platform" });
+    const list = screen.getByRole("list", { name: "Behavior" });
     const labelledby = list.getAttribute("aria-labelledby")!;
     expect(labelledby).toBeTruthy();
     // The reference resolves to a real element that carries the text.
     const label = container.querySelector(`#${CSS.escape(labelledby)}`);
     expect(label).not.toBeNull();
-    expect(label).toHaveTextContent("Platform");
+    expect(label).toHaveTextContent("Behavior");
   });
 
   it("uses no heading element in the shell", () => {
@@ -62,6 +62,34 @@ describe("AppNav landmarks and names", () => {
     // Non-vacuous: there is more than one link, and no name repeats.
     expect(names.length).toBeGreaterThan(1);
     expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+describe("AppNav scroll into view", () => {
+  it("scrolls the active link into view inside the sidebar, and only that one", () => {
+    const spy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      renderAt("/anomalies/abc-123");
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith({ block: "nearest" });
+      expect(spy.mock.contexts[0]).toBe(screen.getByRole("link", { name: "Anomalies" }));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("does not scroll, and does not throw, when no entry is current", () => {
+    const spy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      renderAt("/config-changes");
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
   });
 });
 
@@ -97,8 +125,8 @@ describe("AppNav current-page state", () => {
   it("marks a supporting destination from its own detail route", () => {
     renderAt("/offenses/4812");
 
-    const platform = screen.getByRole("list", { name: "Platform" });
-    const current = within(platform)
+    const detection = screen.getByRole("list", { name: "Detection" });
+    const current = within(detection)
       .getAllByRole("link")
       .filter((l) => l.getAttribute("aria-current") === "page");
     expect(current).toHaveLength(1);
@@ -114,7 +142,7 @@ describe("AppNav current-page state", () => {
     // "/" would otherwise claim every path on the site by prefix.
     renderAt("/rules/9001");
 
-    const soc = screen.getByRole("link", { name: "SOC Overview" });
-    expect(soc).not.toHaveAttribute("aria-current");
+    const home = screen.getByRole("link", { name: "Dashboard" });
+    expect(home).not.toHaveAttribute("aria-current");
   });
 });
