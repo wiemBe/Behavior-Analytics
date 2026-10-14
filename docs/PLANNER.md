@@ -67,6 +67,10 @@ its usage limit in T-051c round 2 (reset **15:54**).
   - **T-055b** (`e6dc89a` + `14e27a1`): README and Phase D markers say the engine is built; the
     orchestrator corrected one wording (per-source training is the design's intent, not a
     deviation).
+  - **UI-2.3** (`6b2d54c`): fleet EPS (gaps shaded, never connected; one dashed "sum of
+    per-source expected" line, no band), EPS by class (≤ 5 slices + an accessible list), severity
+    per hour ("at least" when truncated). Screenshots reviewed; 1,958 tests. Two points went to
+    UI-2.5: one EPS format; presets in the title row.
   - The worktrees, branches and DBs of every merged task were removed.
   - Seen in review, for later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines in
     the `/behavior` "Needs attention" table.
@@ -80,13 +84,15 @@ its usage limit in T-051c round 2 (reset **15:54**).
 | Task | Agent | Worktree, DB | Log / how to collect |
 |---|---|---|---|
 | **T-052** IPS alerting behind `ips_alerting_enabled` (default false) ([spec](tasks/T-052.md)) | Sonnet sub-agent (launched 14:30 instead of waiting for Codex, at the user's word) | `t052`, DB `qradar_obs_t052` | Report `docs/tasks/T-052.report.md`. Check: no alert row and no extra statement with the setting off; one bulk apply per bucket; fixed fingerprint; maintenance; the full integration run |
-| **UI-2.3** Home charts ([spec](tasks/UI-2.3.md)) | Sonnet sub-agent (14:40) | `ui23`; capture ports 3123/8123 | Report `docs/tasks/UI-2.3.report.md`; PNGs under `scratchpad/ui23/`. Review the PNGs yourself: compact; gaps not connected; expected line dashed, no band; ≤5 slices |
+| **T-052** round 2: wire the notification enqueuer through `IpsInstancePipeline` and `dispatch_ips_collection` | same Sonnet sub-agent | `t052`, DB `qradar_obs_t052` | Rulings given: 3 statements per new alert is accepted (shared `apply_bulk`, as WAF); a maintenance bucket not resolving alerts is accepted (existing IPS behaviour) |
+| **UI-2.5** the Home at `/` ([spec](tasks/UI-2.5.md)): composition, one `WidgetFrame`, fix list (a)–(h) | Sonnet sub-agent (15:00) | `ui25`; capture ports 3125/8125 | The acceptance screenshots for all of Phase 2: review the first screen at each viewport yourself |
+| **T-081** live smoke of the G-2 geo keyed search ([spec](tasks/T-081.md)); the collector is on by default and the AQL shape never ran live | Sonnet sub-agent (15:05), read-only, ≤ 4 Ariel searches | main checkout, scratch only | `scratchpad/t081/T-081.report.md`. If a form is rejected, a fix task for `qradar_rest.py` follows before `main` |
 
 **Next:**
-1. Collect T-052 and UI-2.3.
-2. **UI-2.5** (`/` composition, spec to write), after UI-2.3, carrying the UI-2.4 fix list (a)–(f)
-   plus (g): the Home prints EPS two ways (KPI `formatEpsValue` "1,616.01"; tables
-   `lib/home/format.ts` `formatEps` "2,477"): one formatter on the Home.
+1. Collect T-052 round 2, UI-2.5, T-081.
+2. **Codex is back at 15:54.** Candidate: T-054 IPS live validation (§D.12), which needs a
+   validation DB, a trained baseline (or a documented shortened lookback) and the lab generator.
+   It needs network access (`-c sandbox_workspace_write.network_access=true`). Write its spec first.
 3. The full gate on `feat/phase-ce` → `main`.
 
 ---
