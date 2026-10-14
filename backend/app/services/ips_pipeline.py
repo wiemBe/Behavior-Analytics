@@ -65,6 +65,11 @@ class IpsSourcePipelineReport:
     opened: int = 0
     resolved: int = 0
     evaluated_through: datetime | None = None
+    baseline_train_through: datetime | None = None
+    baseline_entities_rebuilt: int = 0
+    baseline_sources_rebuilt: int = 0
+    #: Why this source was not trained this tick, or None when it was.
+    baseline_skipped: str | None = None
     status: str = "ok"
     error: str | None = None
 
@@ -81,6 +86,12 @@ class IpsSourcePipelineReport:
             "evaluated_through": (
                 self.evaluated_through.isoformat() if self.evaluated_through else None
             ),
+            "baseline_train_through": (
+                self.baseline_train_through.isoformat() if self.baseline_train_through else None
+            ),
+            "baseline_entities_rebuilt": self.baseline_entities_rebuilt,
+            "baseline_sources_rebuilt": self.baseline_sources_rebuilt,
+            "baseline_skipped": self.baseline_skipped,
         }
 
 
@@ -88,11 +99,6 @@ class IpsSourcePipelineReport:
 class IpsPipelineReport:
     instance_id: uuid.UUID
     sources: list[IpsSourcePipelineReport] = field(default_factory=list)
-    baseline_train_through: datetime | None = None
-    baseline_entities_rebuilt: int = 0
-    baseline_sources_rebuilt: int = 0
-    #: Why training did not run this tick, or None when it ran.
-    baseline_skipped: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -101,12 +107,15 @@ class IpsPipelineReport:
             "opened": sum(item.opened for item in self.sources),
             "resolved": sum(item.resolved for item in self.sources),
             "failed_sources": sum(item.status == "failed" for item in self.sources),
-            "baseline_train_through": (
-                self.baseline_train_through.isoformat() if self.baseline_train_through else None
+            "baseline_entities_rebuilt": sum(
+                item.baseline_entities_rebuilt for item in self.sources
             ),
-            "baseline_entities_rebuilt": self.baseline_entities_rebuilt,
-            "baseline_sources_rebuilt": self.baseline_sources_rebuilt,
-            "baseline_skipped": self.baseline_skipped,
+            "baseline_sources_rebuilt": sum(
+                item.baseline_sources_rebuilt for item in self.sources
+            ),
+            "baseline_skipped_sources": sum(
+                item.baseline_skipped is not None for item in self.sources
+            ),
             "results": [item.as_dict() for item in self.sources],
         }
 
@@ -292,51 +301,48 @@ class IpsInstancePipeline:
         watermarks: dict[str, CollectionWatermark],
         report: IpsPipelineReport,
     ) -> None:
-        """Train once, only through what every source of the instance has evaluated.
+        """Train each source through its own evaluated bucket end, alone.
 
-        ``rebuild_due`` is not scoped to a source, so training through one
-        source's watermark could teach another source's baseline from buckets it
-        has not been judged against yet. The common bound is the earliest
-        evaluated bucket end; a source that has evaluated nothing, or failed this
-        run, holds training back (fail closed) rather than being trained on.
+        ``rebuild_due`` is scoped to one source, so a source that failed or has
+        evaluated nothing is skipped (fail closed) without holding back the
+        others, and no source is trained past what it has been judged on.
         """
-        ends: list[datetime] = []
         for source, source_report in zip(sources, report.sources, strict=True):
             watermark = watermarks[evaluation_collector(source.qradar_id)]
-            if source_report.status != "ok" or watermark.watermark_at is None:
-                report.baseline_skipped = (
-                    f"source {source.qradar_id} has not evaluated its buckets"
-                )
-                return
+            if source_report.status != "ok":
+                source_report.baseline_skipped = "evaluation failed this run"
+                continue
+            if watermark.watermark_at is None:
+                source_report.baseline_skipped = "no bucket has been evaluated"
+                continue
             last = await self.session.get(IpsSourceBucket, (source.id, watermark.watermark_at))
             width = (
                 last.bucket_seconds
                 if last is not None
                 else self.settings.collection_interval_seconds
             )
-            ends.append(watermark.watermark_at + timedelta(seconds=width))
-        train_through = min(ends)
-        try:
-            async with self.session.begin_nested():
-                rebuilt = await self._builder_factory(
-                    self.session, settings=self.settings
-                ).rebuild_due(
-                    train_through=train_through,
-                    limit=self.settings.ips_baseline_rebuild_batch_size,
-                    now=self._clock(),
+            train_through = watermark.watermark_at + timedelta(seconds=width)
+            try:
+                async with self.session.begin_nested():
+                    rebuilt = await self._builder_factory(
+                        self.session, settings=self.settings
+                    ).rebuild_due(
+                        train_through=train_through,
+                        limit=self.settings.ips_baseline_rebuild_batch_size,
+                        now=self._clock(),
+                        log_source_id=source.id,
+                    )
+            except Exception as exc:
+                source_report.baseline_skipped = (
+                    f"baseline rebuild failed: {sanitized_error(exc)}"
                 )
-        except Exception as exc:
-            report.baseline_skipped = f"baseline rebuild failed: {sanitized_error(exc)}"
-            return
-        report.baseline_train_through = train_through
-        report.baseline_entities_rebuilt = len(rebuilt["entities"])
-        report.baseline_sources_rebuilt = len(rebuilt["sources"])
-        now = self._clock().isoformat()
-        for source in sources:
-            watermark = watermarks[evaluation_collector(source.qradar_id)]
+                continue
+            source_report.baseline_train_through = train_through
+            source_report.baseline_entities_rebuilt = len(rebuilt["entities"])
+            source_report.baseline_sources_rebuilt = len(rebuilt["sources"])
             watermark.collection_metadata = {
                 **(watermark.collection_metadata or {}),
-                "baseline_rebuilt_at": now,
+                "baseline_rebuilt_at": self._clock().isoformat(),
                 "baseline_train_through": train_through.isoformat(),
             }
         await self.session.flush()

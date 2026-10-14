@@ -184,3 +184,28 @@ async def test_evaluation_statement_count_is_constant_in_entities(db_session) ->
     assert first[5] == first[200], (first, steady)
     assert steady[5] == steady[200], (first, steady)
     assert steady[200] <= 12, steady
+
+
+async def test_scoped_training_statement_count_is_constant_in_entities(db_session) -> None:
+    from app.ips.baseline import IpsBaselineBuilder
+
+    test_settings = settings(baseline_min_samples=1, ips_baseline_rebuild_batch_size=50)
+    instance = await make_instance(db_session)
+    seeded_sources = {
+        size: await seeded(db_session, instance, qradar_id=qradar_id, n=size)
+        for size, qradar_id in ((5, 412), (40, 413))
+    }
+    counts: dict[int, int] = {}
+    for size, (source, _entities) in seeded_sources.items():
+        builder = IpsBaselineBuilder(db_session, settings=test_settings)
+        with recorded_statements(db_session) as statements:
+            rebuilt = await builder.rebuild_due(
+                train_through=H1 + timedelta(hours=1),
+                now=H1 + timedelta(hours=1),
+                limit=50,
+                log_source_id=source.id,
+            )
+        assert len(rebuilt["entities"]) == size
+        counts[size] = len(statements)
+    # Eight times the entities, the same statements per source.
+    assert counts[5] == counts[40], counts

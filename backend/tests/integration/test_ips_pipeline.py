@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from app.core.config import Settings, get_settings
 from app.ips.engine import IpsAnomalyEngine
@@ -206,8 +206,8 @@ async def test_a_spike_is_judged_before_the_run_trains_its_cell(db_session) -> N
     await db_session.refresh(cell)
     assert cell.sample_count == 4
     assert cell.observations == [100.0, 100.0, 100.0, 100.0]
-    assert report.baseline_entities_rebuilt == 1
-    assert report.baseline_train_through == START + 2 * DAY + timedelta(hours=1)
+    assert source_report.baseline_entities_rebuilt == 1
+    assert source_report.baseline_train_through == START + 2 * DAY + timedelta(hours=1)
 
 
 async def test_the_evaluation_watermark_advances_only_over_evaluated_buckets(
@@ -284,12 +284,13 @@ async def test_one_source_failure_leaves_the_other_sources_evaluated(db_session)
     assert failed_wm.last_error == "RuntimeError"
     assert failed_wm.collection_metadata["last_error_class"] == "RuntimeError"
 
-    # Training is not scoped to a source: while one source has not evaluated its
-    # buckets, nothing is trained, so no baseline learns from an unjudged bucket.
-    assert report.baseline_train_through is None
-    assert report.baseline_skipped is not None
+    # The failed source is skipped alone: it is not trained, the healthy one is.
+    assert failed.baseline_train_through is None
+    assert failed.baseline_skipped is not None
 
     healthy_report = by_id[str(healthy.id)]
+    assert healthy_report.baseline_skipped is None
+    assert healthy_report.baseline_train_through == START + 2 * DAY + timedelta(hours=1)
     assert healthy_report.status == "ok"
     assert healthy_report.evaluated_buckets == [START, START + DAY, START + 2 * DAY]
     healthy_wm = await evaluation_watermark(db_session, instance, healthy.qradar_id)
@@ -312,7 +313,9 @@ async def test_one_source_failure_leaves_the_other_sources_evaluated(db_session)
     assert [i.ips_entity_id for i in incidents] == [entity.id]
 
 
-async def test_training_stops_at_the_least_evaluated_source(db_session) -> None:
+async def test_a_lagging_source_does_not_hold_back_another_sources_training(
+    db_session,
+) -> None:
     instance = await make_instance(db_session)
     await seed_source(db_session, instance, qradar_id=412, spikes=[])
     lagging, _entity, _cell = await seed_source(db_session, instance, qradar_id=413, spikes=[])
@@ -325,5 +328,71 @@ async def test_training_stops_at_the_least_evaluated_source(db_session) -> None:
     report = await pipeline(db_session, instance)
 
     assert [len(item.evaluated_buckets) for item in report.sources] == [3, 1]
-    # rebuild_due trains every source: it may only go as far as the slowest one.
-    assert report.baseline_train_through == START + timedelta(hours=1)
+    # Each source trains through its own evaluated bucket end.
+    assert [item.baseline_train_through for item in report.sources] == [
+        START + 2 * DAY + timedelta(hours=1),
+        START + timedelta(hours=1),
+    ]
+
+
+async def test_a_never_evaluated_source_is_skipped_alone(db_session) -> None:
+    instance = await make_instance(db_session)
+    await seed_source(db_session, instance, qradar_id=412, spikes=[])
+    stalled, _entity, _cell = await seed_source(db_session, instance, qradar_id=413, spikes=[])
+    await db_session.execute(
+        delete(CollectionWatermark).where(
+            CollectionWatermark.collector == collection_collector(stalled.qradar_id)
+        )
+    )
+
+    report = await pipeline(db_session, instance)
+
+    ok, skipped = report.sources
+    assert ok.baseline_train_through is not None and ok.baseline_skipped is None
+    assert skipped.baseline_train_through is None
+    assert skipped.baseline_skipped == "no bucket has been evaluated"
+
+
+async def test_training_one_instance_never_rebuilds_another_instances_cells(
+    db_session,
+) -> None:
+    instance_a = await make_instance(db_session)
+    instance_b = await make_instance(db_session)
+    await seed_source(db_session, instance_a, qradar_id=412, spikes=[])
+    _source_b, _entity_b, cell_b = await seed_source(
+        db_session, instance_b, qradar_id=412, spikes=[]
+    )
+    before = (cell_b.computed_at, cell_b.sample_count)
+
+    report = await pipeline(db_session, instance_a)
+
+    assert report.sources[0].baseline_entities_rebuilt == 1
+    await db_session.refresh(cell_b)
+    assert (cell_b.computed_at, cell_b.sample_count) == before
+
+
+async def test_a_source_that_failed_this_run_is_not_trained_despite_an_older_watermark(
+    db_session,
+) -> None:
+    instance = await make_instance(db_session)
+    failing, _entity, _cell = await seed_source(db_session, instance, qradar_id=412, spikes=[])
+    db_session.add(
+        CollectionWatermark(
+            instance_id=instance.id,
+            collector=evaluation_collector(failing.qradar_id),
+            watermark_at=START,
+        )
+    )
+    await db_session.flush()
+
+    def factory(session, *, settings, clock):  # type: ignore[no-untyped-def]
+        return _FailsForOneSource(
+            session, settings=settings, clock=clock, fail_qradar_id=failing.qradar_id
+        )
+
+    report = await pipeline(db_session, instance, engine_factory=factory)
+
+    only = report.sources[0]
+    assert only.status == "failed"
+    assert only.baseline_train_through is None
+    assert only.baseline_skipped == "evaluation failed this run"

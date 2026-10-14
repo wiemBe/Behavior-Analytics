@@ -292,3 +292,38 @@ async def test_entity_rebuild_statement_count_grows_only_with_chunks(db_session)
     assert len(small) == 5
     assert len(large) == 14
     assert len(large) - len(small) == 3 * 3
+
+
+async def test_rebuild_due_scoped_to_one_source_never_touches_another(db_session) -> None:
+    instance, first, first_profile = await add_source(db_session)
+    second = await make_log_source(db_session, instance, qradar_id=413, name="ips-413")
+    second_profile = IpsSourceProfile(
+        instance_id=instance.id,
+        log_source_id=second.id,
+        enabled=True,
+        profile_version=1,
+        mapping=first_profile.mapping,
+        action_value_map=first_profile.action_value_map,
+        validation_status=IpsProfileValidationStatus.VALID,
+        validated_profile_version=1,
+        validation_report={},
+    )
+    db_session.add(second_profile)
+    await db_session.flush()
+    entities = {}
+    for source in (first, second):
+        await add_bucket(db_session, source.id, START)
+        entities[source.id] = await add_entity(db_session, instance, source)
+    builder = IpsBaselineBuilder(db_session, settings=settings(baseline_min_samples=1))
+    train_through = START + timedelta(hours=1)
+
+    rebuilt = await builder.rebuild_due(
+        train_through=train_through, now=train_through, log_source_id=first.id
+    )
+
+    assert set(rebuilt["entities"]) == {entities[first.id].id}
+    assert set(rebuilt["sources"]) == {first.id}
+    cell_owners = set(await db_session.scalars(select(IpsEntityBaseline.ips_entity_id)))
+    assert cell_owners == {entities[first.id].id}
+    source_owners = set(await db_session.scalars(select(IpsSourceBaseline.log_source_id)))
+    assert source_owners == {first.id}
