@@ -169,7 +169,9 @@ export type SearchFamily =
   | "PHASE_A_VOLUME"
   | "WAF_COLLECTION"
   | "ANOMALY_EXPLANATION"
-  | "RULE_MATCH";
+  | "RULE_MATCH"
+  | "IPS_COLLECTION"
+  | "CATCHALL_SENDERS";
 
 // Mirrors SearchCadenceLastRunOut. `searches_sent` is null for a family that
 // does not count its searches yet: that is "not counted", never zero.
@@ -749,6 +751,12 @@ export interface AnomalySummary {
   evidence_status: EvidenceStatus;
   suppressed: boolean;
   explanation: string | null;
+  // The unified list (T-057). Absent on a Phase A row from an older response, so
+  // a missing `subject_kind` is read as LOG_SOURCE.
+  subject_kind?: SubjectKind;
+  waf_endpoint?: WafEndpointRef | null;
+  // WAF only: EXACT, or LOWER_BOUND when observed_value is "at least n".
+  observed_measurement?: MeasurementKind | null;
 }
 
 export interface Contributor {
@@ -883,11 +891,216 @@ export interface AnomalyListParams {
   severity?: string;
   evidence_status?: string;
   active_only?: boolean;
+  subject_kind?: SubjectKind;
+  waf_endpoint_id?: string;
   since?: string;
   until?: string;
-  // Backend `SubjectKind`. Unset means every detector family; Phase A pages
-  // set "LOG_SOURCE" so WAF anomalies never render in Phase A components.
-  subject_kind?: "LOG_SOURCE" | "WAF_ENDPOINT";
+}
+
+// --- Phase B types: WAF endpoint behavior ----------------------------------
+// These mirror app/schemas/anomaly.py (T-057). A missing measurement is `null`,
+// never 0: narrowing one of these to `number` would let it render as a zero.
+
+export type SubjectKind = "LOG_SOURCE" | "WAF_ENDPOINT";
+
+/** EXACT, or LOWER_BOUND when the count is "at least n". */
+export type MeasurementKind = "EXACT" | "LOWER_BOUND";
+
+export type WafAnomalyTypeName =
+  | "WAF_REQUEST_RATE_SPIKE"
+  | "WAF_CLIENT_CONCENTRATION_SPIKE"
+  | "WAF_BLOCK_RATIO_SPIKE"
+  | "WAF_ERROR_RATIO_SPIKE"
+  | "WAF_CLIENT_ERROR_RATIO_SPIKE"
+  | "WAF_NEW_ENDPOINT_ACCESS"
+  | "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE";
+
+export interface WafEndpointRef {
+  id: string;
+  normalized_endpoint: string;
+  http_method: string;
+  // null when the source exposes no virtual host. Never an empty string.
+  virtual_host: string | null;
+  // false: the endpoint may combine traffic of applications sharing a path.
+  virtual_host_available: boolean;
+  normalizer_version: number;
+}
+
+export interface WafDetectionDetail {
+  reason: string | null;
+  expected_low: number | null;
+  expected_high: number | null;
+  threshold: number | null;
+  baseline_sample_count: number | null;
+  baseline_completeness: number | null;
+  baseline_version: number | null;
+  normalizer_version: number | null;
+  observed_requests: number | null;
+  expected_requests: number | null;
+  absolute_delta_requests: number | null;
+  endpoint_coverage_ratio: number | null;
+  request_count_measurement: MeasurementKind | null;
+  observed_proportion: number | null;
+  expected_proportion: number | null;
+  observed_numerator: number | null;
+  observed_denominator: number | null;
+  percentage_point_change: number | null;
+  ratio: number | null;
+  ratio_basis: string | null;
+  robust_score_status: RobustScoreStatus | null;
+  robust_z: number | null;
+  fallback_bound: number | null;
+}
+
+/** A WAF subject's detail. Evidence contributors are not served for WAF
+ *  (`explanation_package` is null), and `detection` is the WAF block. */
+export interface WafAnomalyDetail
+  extends Omit<AnomalyDetail, "detection" | "subject_kind" | "waf_endpoint"> {
+  subject_kind: "WAF_ENDPOINT";
+  waf_endpoint: WafEndpointRef;
+  detection: WafDetectionDetail | null;
+}
+
+export function isWafDetail(a: AnomalyDetail | WafAnomalyDetail): a is WafAnomalyDetail {
+  return a.subject_kind === "WAF_ENDPOINT" && a.waf_endpoint != null;
+}
+
+export interface WafMetricBucket {
+  bucket_start: string;
+  bucket_seconds: number;
+  request_count: number | null;
+  request_count_measurement: MeasurementKind | null;
+  completeness: BucketCompleteness;
+  partial: boolean;
+  endpoint_coverage_ratio: number | null;
+  in_maintenance: boolean | null;
+  normalizer_version: number;
+  distinct_client_count: number | null;
+  // Each breakdown's own status: EXACT, LOWER_BOUND, NOT_COLLECTED or FAILED. Its
+  // counts below are null unless it was measured. Absent on an older response.
+  action_measurement?: string | null;
+  response_code_measurement?: string | null;
+  client_measurement?: string | null;
+  blocked_count?: number | null;
+  action_events?: number | null;
+  response_code_events?: number | null;
+  client_error_count?: number | null;
+  server_error_count?: number | null;
+  client_events?: number | null;
+  top1_client_requests?: number | null;
+}
+
+export interface PagedWafMetrics {
+  items: WafMetricBucket[];
+  total: number;
+  limit: number;
+  offset: number;
+  range_start: string;
+  range_end: string;
+}
+
+/** One seasonal cell of an endpoint's baseline (`WafBaselineCellOut`). Weekday is
+ *  ISO (1 = Monday) and the hour is UTC, as in Phase A. */
+export interface WafBaselineCell {
+  metric_name: string;
+  weekday: number;
+  hour: number;
+  median: number;
+  mad: number;
+  p05: number | null;
+  p95: number | null;
+  sample_count: number;
+  is_reliable: boolean;
+  completeness: number;
+  baseline_version: number;
+  normalizer_version: number;
+  excluded_sample_count: number;
+  metric_semantics: string | null;
+}
+
+export interface PagedWafBaselines {
+  items: WafBaselineCell[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface WafLatestBucket {
+  bucket_start: string;
+  bucket_seconds: number;
+  completeness: string;
+  endpoint_coverage_ratio: number;
+  // LOWER_BOUND when grouping was truncated: the ratio is then itself a floor.
+  coverage_measurement: MeasurementKind;
+  request_count_measurement: MeasurementKind;
+  total_events: number;
+  in_maintenance: boolean;
+  groups_truncated: boolean;
+  admission_truncated: boolean;
+}
+
+export interface WafAdmissionOverflow {
+  buckets_in_range: number;
+  // null when no bucket was collected in range: "nothing refused" is a claim
+  // only a collected bucket can make.
+  buckets_admission_truncated: number | null;
+  rejected_over_quota: number | null;
+  below_admission_threshold: number | null;
+  untracked_requests: number | null;
+}
+
+export interface WafSourceBehavior {
+  log_source_id: string;
+  log_source_name: string;
+  product_label: string | null;
+  enabled: boolean;
+  profile_version: number;
+  validation_status: string;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation_current: boolean;
+  virtual_host_available: boolean;
+  latest_bucket: WafLatestBucket | null;
+  active_endpoints: number;
+  total_endpoints: number;
+  active_endpoint_ceiling: number;
+  admission: WafAdmissionOverflow;
+}
+
+export type WafSourceDetail = WafSourceBehavior;
+
+export interface PagedWafSources {
+  items: WafSourceBehavior[];
+  total: number;
+  limit: number;
+  offset: number;
+  range_start: string;
+  range_end: string;
+}
+
+export interface WafEndpointInventory {
+  id: string;
+  normalized_endpoint: string;
+  http_method: string;
+  virtual_host: string | null;
+  normalizer_version: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  is_active: boolean;
+  retired_at: string | null;
+  tracked_since: string;
+  baseline: { cells_total: number; reliable_cells: number };
+  baseline_rebuilt_at: string | null;
+  // Worst detector state. null = no detector has evaluated it; not NORMAL.
+  state: AnomalyState | null;
+  active_anomaly_count: number;
+}
+
+export interface PagedWafEndpoints {
+  items: WafEndpointInventory[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
@@ -979,7 +1192,7 @@ export const api = {
   // detection, and there is no QRadar call path from the browser.
   anomalies: (params: AnomalyListParams = {}) =>
     request<Page<AnomalySummary>>(`/anomalies${qs({ ...params })}`),
-  anomaly: (id: string) => request<AnomalyDetail>(`/anomalies/${id}`),
+  anomaly: (id: string) => request<AnomalyDetail | WafAnomalyDetail>(`/anomalies/${id}`),
   behaviorSummary: () => request<BehaviorSummary>("/anomalies/summary"),
 
   sourceBehaviors: () => request<SourceBehavior[]>("/behavior/sources"),
@@ -989,6 +1202,26 @@ export const api = {
     request<MetricBucket[]>(`/behavior/sources/${id}/metrics${qs({ ...params })}`),
   sourceBaselines: (id: string, metric = "average_eps") =>
     request<BaselineCell[]>(`/behavior/sources/${id}/baselines${qs({ metric })}`),
+
+  // --- WAF behavior (T-057 read API) ----------------------------------------
+  // Read-only. `{id}` below is the QRadar log source's id, as in the admin routes.
+  wafBehaviorSources: (params: { since?: string; until?: string; limit?: number; offset?: number } = {}) =>
+    request<PagedWafSources>(`/behavior/waf/sources${qs({ ...params })}`),
+  wafBehaviorSource: (id: string, params: { since?: string; until?: string } = {}) =>
+    request<WafSourceDetail>(`/behavior/waf/sources/${id}${qs({ ...params })}`),
+  wafBehaviorEndpoints: (
+    id: string,
+    params: { active_only?: boolean; limit?: number; offset?: number } = {},
+  ) => request<PagedWafEndpoints>(`/behavior/waf/sources/${id}/endpoints${qs({ ...params })}`),
+  wafEndpointMetrics: (
+    id: string,
+    params: { since?: string; until?: string; limit?: number; offset?: number } = {},
+  ) => request<PagedWafMetrics>(`/behavior/waf/endpoints/${id}/metrics${qs({ ...params })}`),
+
+  wafEndpointBaselines: (
+    id: string,
+    params: { metric?: string; limit?: number; offset?: number } = {},
+  ) => request<PagedWafBaselines>(`/behavior/waf/endpoints/${id}/baselines${qs({ ...params })}`),
 
   // --- WAF source administration -------------------------------------------
   // Guarded by admin:waf. Profile writes save the application's database only;
@@ -1204,6 +1437,8 @@ export interface FleetSourceParams {
   review_status?: ClassificationReviewStatus;
   has_conflict?: boolean;
   basis?: ClassificationBasis;
+  // A case-insensitive substring of the source name or its QRadar type name.
+  q?: string;
   limit?: number;
   offset?: number;
 }
@@ -1305,4 +1540,462 @@ export const fleetApi = {
     }),
   deleteRule: (id: string) =>
     fleetRequest<void>(`/classification-rules/${id}`, { method: "DELETE" }),
+};
+
+// --- catch-all senders (T-069 / T-070b) ------------------------------------
+// Mirrors backend/app/schemas/catchall.py. `events_24h` is a lower bound from the
+// stored top lists and null when no top list named the sender: unknown, not zero.
+// A bucket that was not measured has no row, so a gap in the list is a gap.
+export type CatchallReviewStatus = "NEW" | "REVIEWED" | "DISMISSED";
+export type CatchallMeasurement = "EXACT" | "LOWER_BOUND" | "FAILED" | "NOT_COLLECTED";
+
+export interface CatchallSender {
+  id: string;
+  catchall_log_source_id: string;
+  catchall_log_source_name: string;
+  identifier: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  events_24h: number | null;
+  active: boolean;
+  review_status: CatchallReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+}
+
+export interface CatchallSenderParams {
+  review_status?: CatchallReviewStatus;
+  catchall_log_source_id?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CatchallTopSender {
+  identifier: string;
+  events: number;
+}
+
+export interface CatchallBucket {
+  catchall_log_source_id: string;
+  bucket_start: string;
+  bucket_seconds: number;
+  events: number;
+  records: number;
+  distinct_senders: number;
+  distinct_senders_lower_bound: boolean;
+  measurement: CatchallMeasurement;
+  top_senders: CatchallTopSender[];
+  admitted: number;
+  below_admission_threshold: number;
+  rejected_over_quota: number;
+  untracked_senders: number;
+  untracked_events: number;
+  query_provenance: Record<string, unknown>;
+  collected_at: string;
+}
+
+export interface CatchallBucketList {
+  catchall_log_source_id: string;
+  since: string;
+  until: string;
+  items: CatchallBucket[];
+}
+
+export interface CatchallSource {
+  id: string;
+  name: string;
+  type_name: string | null;
+  latest_bucket_start: string | null;
+  new_sender_count: number;
+}
+
+export interface CatchallSourceList {
+  catchall_type_ids: number[];
+  items: CatchallSource[];
+}
+
+export const catchallApi = {
+  sources: () => fleetRequest<CatchallSourceList>("/fleet/catchall/sources"),
+  senders: (params: CatchallSenderParams = {}) =>
+    fleetRequest<Page<CatchallSender>>(`/fleet/catchall/senders${qs({ ...params })}`),
+  buckets: (sourceId: string, since: string, until: string) =>
+    fleetRequest<CatchallBucketList>(
+      `/fleet/catchall/buckets${qs({ catchall_log_source_id: sourceId, since, until })}`,
+    ),
+  review: (id: string) =>
+    fleetRequest<CatchallSender>(`/fleet/catchall/senders/${id}/review`, { method: "POST" }),
+  dismiss: (id: string) =>
+    fleetRequest<CatchallSender>(`/fleet/catchall/senders/${id}/dismiss`, { method: "POST" }),
+};
+
+// --- outage alert policy (T-070a) ------------------------------------------
+// Mirrors backend/app/schemas/outage.py. Every route needs `admin:outage`,
+// reads included. `source_name` and `source_class` are null on a CLASS row and
+// on a SOURCE row whose source no longer exists.
+export type OutageMode = "ALERT" | "RECORD_ONLY";
+export type OutageScopeKind = "CLASS" | "SOURCE";
+
+export interface OutagePolicyRow {
+  id: string;
+  // Null is a global row; a value scopes the row to one QRadar instance.
+  instance_id: string | null;
+  scope_kind: OutageScopeKind;
+  // A SourceClass for a CLASS row, a log source id for a SOURCE row.
+  scope_value: string;
+  mode: OutageMode;
+  // Null uses the default grace.
+  silence_grace_buckets: number | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  governed_monitored_sources: number | null;
+  source_name: string | null;
+  source_class: SourceClass | null;
+  // The instance's name on an instance-scoped row; null on a global row.
+  instance_name: string | null;
+}
+
+export interface OutagePolicyUpsert {
+  mode: OutageMode;
+  silence_grace_buckets: number | null;
+}
+
+// The two fields T-068 added to each class of GET /fleet/summary.
+export type OutageClassSummary = FleetClassSummary & {
+  outage_mode: OutageMode;
+  outage_overrides: number;
+  // Enabled and monitored sources: the ones an outage policy governs.
+  monitored_sources: number;
+};
+export type OutageFleetSummary = Omit<FleetSummary, "classes"> & {
+  classes: OutageClassSummary[];
+  // From settings: what a class with no row resolves to, and the silence grace
+  // in buckets when no row overrides it.
+  outage_default: OutageMode;
+  default_silence_grace_buckets: number | null;
+};
+
+export const outagePolicyApi = {
+  list: () => fleetRequest<OutagePolicyRow[]>("/outage-policy"),
+  putClass: (sourceClass: string, body: OutagePolicyUpsert) =>
+    fleetRequest<OutagePolicyRow>(`/outage-policy/classes/${encodeURIComponent(sourceClass)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteClass: (sourceClass: string, instanceId?: string | null) =>
+    fleetRequest<void>(
+      `/outage-policy/classes/${encodeURIComponent(sourceClass)}${qs({ instance_id: instanceId ?? undefined })}`,
+      { method: "DELETE" },
+    ),
+  putSource: (logSourceId: string, body: OutagePolicyUpsert) =>
+    fleetRequest<OutagePolicyRow>(`/outage-policy/sources/${encodeURIComponent(logSourceId)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteSource: (logSourceId: string, instanceId?: string | null) =>
+    fleetRequest<void>(
+      `/outage-policy/sources/${encodeURIComponent(logSourceId)}${qs({ instance_id: instanceId ?? undefined })}`,
+      { method: "DELETE" },
+    ),
+  summary: (window: FleetWindow) =>
+    fleetRequest<OutageFleetSummary>(`/fleet/summary${qs({ window })}`),
+};
+
+// --- rule statistics (T-062) -----------------------------------------------
+// Mirrors backend/app/schemas/rule_statistics.py. A section the platform could
+// not measure is null with a reason beside it, never an empty list.
+export interface RuleCountRow {
+  enabled: boolean;
+  rule_type: string | null;
+  origin: string | null;
+  is_building_block: boolean;
+  count: number;
+}
+
+export interface RuleStatisticsWindow {
+  days: number;
+  span_start: string;
+  span_end: string;
+  span_seconds: number;
+  window_seconds: number;
+  expected_windows: number;
+  complete_windows: number;
+  truncated_windows: number;
+  failed_windows: number;
+  missing_windows: number;
+  measured_seconds: number;
+  complete: boolean;
+  reason: string | null;
+}
+
+export interface SilentRule {
+  rule_id: string;
+  qradar_id: number;
+  name: string;
+  rule_type: string | null;
+  origin: string | null;
+  is_building_block: boolean;
+  first_seen_at: string | null;
+  last_fired_at: string | null;
+}
+
+export interface SilentExclusion {
+  rule_type: string | null;
+  evidence: string;
+  count: number;
+}
+
+export interface SilentSection {
+  items: SilentRule[];
+  total: number;
+  items_truncated: boolean;
+  excluded: SilentExclusion[];
+  excluded_count: number;
+  excluded_reason: string;
+}
+
+export interface MatchRankRow {
+  rule_id: string;
+  qradar_id: number;
+  name: string;
+  enabled: boolean;
+  rule_type: string | null;
+  is_building_block: boolean;
+  match_records: number;
+  matched_events: number;
+  match_rate_per_second: number;
+  lower_bound: boolean;
+}
+
+export interface CostRow {
+  rule_id: string;
+  qradar_id: number;
+  name: string;
+  rule_type: string | null;
+  is_building_block: boolean;
+  average_capacity: number;
+}
+
+export interface CostSection {
+  label: string;
+  unit: string;
+  items: CostRow[];
+  no_benchmark_count: number;
+}
+
+export interface RuleStatistics {
+  instance_id: string;
+  counts: RuleCountRow[];
+  window: RuleStatisticsWindow;
+  silent: SilentSection | null;
+  silent_reason: string | null;
+  top_by_matches: MatchRankRow[] | null;
+  top_by_events: MatchRankRow[] | null;
+  top_reason: string | null;
+  costliest_by_benchmark: CostSection;
+}
+
+export interface CapacitySample {
+  capacity_timestamp: string;
+  average_capacity: number | null;
+  base_capacity: number | null;
+  base_host_id: number | null;
+  recorded_at: string;
+}
+
+export const ruleStatisticsApi = {
+  statistics: (days: number) => request<RuleStatistics>(`/rules/statistics${qs({ days })}`),
+  capacityHistory: (id: string) => request<CapacitySample[]>(`/rules/${id}/capacity-history`),
+};
+
+// --- IPS source administration (docs/FIELD-MAPPING.md §FM.9, T-049's /ips API) ---
+// Guarded by admin:ips, which admin:waf does not grant. A field reference has
+// two kinds: a NORMALIZED QRadar field from the schema's allowlist, or a
+// CUSTOM_PROPERTY. Kept as one block, with its calls in `ipsApi`, so the shared
+// `api` object above stays untouched.
+
+export type IpsReferenceKind = "NORMALIZED" | "CUSTOM_PROPERTY";
+
+export interface IpsFieldReference {
+  kind: IpsReferenceKind;
+  name: string;
+}
+
+export type IpsPresetKey = "CISCO_FTD" | "PALO_ALTO_THREAT";
+
+/** Logical field key to its reference; null = not mapped. */
+export type IpsMapping = Record<string, IpsFieldReference | null>;
+
+export interface IpsMappingFieldOut {
+  key: string;
+  label: string;
+  description: string;
+  required: boolean;
+  used_by_collection: boolean;
+  kinds: IpsReferenceKind[];
+  normalized_options: string[];
+  default: IpsFieldReference | null;
+}
+
+export interface IpsPresetOut {
+  key: IpsPresetKey;
+  label: string;
+  mapping: IpsMapping;
+  action_value_map: ActionValueMap;
+}
+
+export interface IpsMappingSchemaOut {
+  domain: "IPS";
+  property_name_pattern: string;
+  min_coverage_ratio: number;
+  fields: IpsMappingFieldOut[];
+  value_maps: MappingValueMapOut[];
+  presets: IpsPresetOut[];
+}
+
+export interface IpsProfileIn {
+  /** Null only to create; otherwise the version the edit was made against. */
+  expected_profile_version: number | null;
+  product_label: string | null;
+  /** Replaces the stored preset on every save, so an edit sends the current one. */
+  preset: IpsPresetKey | null;
+  mapping: IpsMapping;
+  action_value_map: ActionValueMap;
+}
+
+export interface IpsValidationFieldOut {
+  field: string;
+  reference: IpsFieldReference | null;
+  /** AVAILABLE, NOT_MAPPED, FIELD_REJECTED, UNPOPULATED, INSUFFICIENT_COVERAGE,
+   *  NO_EVENTS or QUERY_FAILED. A status this build does not know is shown as recorded. */
+  status: string;
+  used_by_collection: boolean;
+  populated_events: number | null;
+  populated_ratio: number | null;
+  generic_name_events: number | null;
+  generic_name_ratio: number | null;
+  values_truncated: boolean;
+  discovered_values: DiscoveredValue[];
+  detail: string | null;
+  warnings: string[];
+}
+
+export interface IpsValidationReportOut {
+  status: WafValidationStatus;
+  reasons: string[];
+  warnings: string[];
+  total_events: number | null;
+  window_start: string;
+  window_end: string;
+  profile_version: number;
+  probe_truncated: boolean;
+  ariel_searches: number;
+  fields: IpsValidationFieldOut[];
+}
+
+export interface IpsProfileOut {
+  profile_id: string;
+  instance_id: string;
+  log_source_id: string;
+  qradar_log_source_id: number;
+  log_source_name: string;
+  log_source_type_name: string | null;
+  product_label: string | null;
+  preset: IpsPresetKey | null;
+  profile_version: number;
+  enabled: boolean;
+  mapping: IpsMapping;
+  action_value_map: ActionValueMap;
+  validation_status: WafValidationStatus;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation: IpsValidationReportOut | null;
+  validation_pending: boolean;
+  validation_requested_at: string | null;
+  validation_requested_by: string | null;
+  collection_eligible: boolean;
+  ineligible_reason: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+/** `GET /ips/sources`: no mapping and no per-field results, only the state. */
+export interface IpsSourceStatus {
+  profile_id: string;
+  instance_id: string;
+  log_source_id: string;
+  qradar_log_source_id: number;
+  log_source_name: string;
+  log_source_type_name: string | null;
+  product_label: string | null;
+  preset: IpsPresetKey | null;
+  enabled: boolean;
+  profile_version: number;
+  validation_status: WafValidationStatus;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation_pending: boolean;
+  validation_requested_at: string | null;
+  validation_requested_by: string | null;
+  collection_eligible: boolean;
+  ineligible_reason: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface IpsCandidateOut {
+  instance_id: string;
+  log_source_id: string;
+  qradar_id: number;
+  name: string;
+  type_name: string | null;
+  source_class: string | null;
+}
+
+export interface IpsProfileHistoryEntryOut {
+  at: string;
+  actor: string | null;
+  /** ips.profile.created | mapping_changed | relabelled | validation_requested |
+   *  validated | enabled | disabled. Unknown values are shown as recorded. */
+  action: string;
+  profile_version: number | null;
+  mapping_before: Record<string, unknown> | null;
+  mapping_after: Record<string, unknown> | null;
+  /** SUCCESS, FAILURE, SOURCE_BUSY, ... */
+  outcome: string;
+  reasons: string[] | null;
+}
+
+export const ipsApi = {
+  mappingSchema: () => request<IpsMappingSchemaOut>("/ips/mapping-schema"),
+  sources: () => request<IpsSourceStatus[]>("/ips/sources"),
+  // instance_id is required by the route; there is no instances endpoint.
+  candidates: (params: { instance_id: string; q?: string; limit?: number }) =>
+    request<IpsCandidateOut[]>(`/ips/candidates${qs({ ...params })}`),
+  profile: (logSourceId: string) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile`),
+  saveProfile: (logSourceId: string, body: IpsProfileIn) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  validateProfile: (logSourceId: string) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile/validate`, {
+      method: "POST",
+    }),
+  enableProfile: (logSourceId: string) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile/enable`, {
+      method: "POST",
+    }),
+  disableProfile: (logSourceId: string) =>
+    request<IpsProfileOut>(`/ips/log-sources/${logSourceId}/profile/disable`, {
+      method: "POST",
+    }),
+  profileHistory: (logSourceId: string) =>
+    request<IpsProfileHistoryEntryOut[]>(`/ips/log-sources/${logSourceId}/profile/history`),
+  propertyCatalog: (logSourceId: string, refresh = false) =>
+    request<PropertyCatalogOut>(
+      `/ips/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined })}`,
+    ),
 };

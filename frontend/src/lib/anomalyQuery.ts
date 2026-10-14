@@ -6,6 +6,10 @@
 // page or smuggled into the upstream request; timestamps are validated and the
 // range is clamped before it reaches an endpoint that queries a hypertable.
 
+import { isWafType } from "@/components/waf/wafLabels";
+
+import type { SubjectKind } from "./api";
+
 export const PAGE_SIZE = 25;
 
 /** Mirrors the backend's `api_max_range_days` guard, applied before the call
@@ -130,4 +134,35 @@ export function paginationParams(
     since: q.since || undefined,
     until: q.until || undefined,
   };
+}
+
+// --- subject filters -------------------------------------------------------
+// Parsed beside the Phase A query, not inside it: a WAF detector type is a valid
+// `anomaly_type` on the list and the Phase A allow-list above would drop it. The
+// same rule applies, an allow-list, so a crafted value is dropped rather than
+// forwarded upstream or reflected back into the page.
+
+export const SUBJECT_KINDS: Array<{ value: SubjectKind; label: string }> = [
+  { value: "LOG_SOURCE", label: "Log sources" },
+  { value: "WAF_ENDPOINT", label: "WAF endpoints" },
+];
+
+export interface SubjectQuery {
+  /** "" when unset: both kinds are listed. */
+  subject_kind: SubjectKind | "";
+  /** A WAF detector type, or "" (Phase A types are parsed by `parseAnomalyQuery`). */
+  waf_anomaly_type: string;
+}
+
+export function parseSubjectQuery(params: Record<string, string | undefined>): SubjectQuery {
+  const kind = SUBJECT_KINDS.find((k) => k.value === params.subject_kind)?.value ?? "";
+  const type = params.anomaly_type;
+  return {
+    subject_kind: kind,
+    waf_anomaly_type: type && isWafType(type) ? type : "",
+  };
+}
+
+export function subjectKindLabel(value: string): string {
+  return SUBJECT_KINDS.find((k) => k.value === value)?.label ?? value;
 }

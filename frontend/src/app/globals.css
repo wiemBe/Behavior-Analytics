@@ -2360,3 +2360,474 @@ th.fm-value-cell .cell-sub {
 .rule-form [aria-invalid="true"] {
   border-color: var(--crit);
 }
+
+/* --- WAF analyst views (T-060) ---------------------------------------------
+   Only what the existing classes do not already say. The endpoint is the
+   subject of every WAF view, so it is set in the monospace face: a path is
+   read character by character and its slashes must not collapse. */
+
+.waf-endpoint {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+.page-title.incident-source.waf-endpoint {
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.waf-subject {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.waf-reason {
+  margin: 0;
+  max-width: 90ch;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.waf-lead {
+  margin: 0;
+  max-width: 90ch;
+  font-size: var(--fs-md);
+  line-height: var(--lh-prose);
+}
+.measure-foot-waf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-6);
+}
+.measure-foot-waf > div {
+  min-width: 0;
+}
+.chart.chart-waf {
+  height: 384px;
+}
+.chart-key-coverage {
+  border-top: 2px solid var(--chart-expected);
+}
+/* The subject cell stacks its facts, one per line. A source name is one line that
+   ellipsizes (its full text is the title), never broken at a hyphen. */
+td.cell-name.cell-subject {
+  min-width: 20ch;
+  max-width: 30ch;
+}
+.subject-endpoint {
+  display: block;
+}
+.subject-source {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subject-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A detector name breaks at its spaces, not at the hyphen inside "Request-rate". */
+td.cell-detector {
+  min-width: 13ch;
+}
+th.col-nowrap {
+  white-space: nowrap;
+}
+.filter-chip {
+  gap: var(--sp-1);
+}
+/* Secondary facts of a list row fold under a primary cell when the width runs
+   out, so the table never scrolls with a column out of reach. The folded copy is
+   hidden at full width and its column hidden when it shows. */
+.cell-fold,
+.cell-sub.cell-fold {
+  display: none;
+}
+@media (max-width: 1280px) {
+  .col-md {
+    display: none;
+  }
+  .cell-fold.fold-md,
+  .cell-sub.cell-fold.fold-md {
+    display: block;
+  }
+}
+@media (max-width: 1100px) {
+  .col-sm {
+    display: none;
+  }
+  .cell-fold.fold-sm,
+  .cell-sub.cell-fold.fold-sm {
+    display: block;
+  }
+}
+.key-buckets {
+  white-space: nowrap;
+}
+
+/* --- rule statistics (T-062) ---------------------------------------------
+   Dense analytical tables, not KPI cards. Secondary classification columns
+   fold into the rule cell when the supported viewport leaves too little room;
+   no table on these routes needs a local horizontal scrollbar. */
+
+.stats-window {
+  margin: 0 0 var(--sp-6);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+.stats-window strong {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+.stats-window.warn strong {
+  color: var(--warn-text);
+}
+.stats-window.neutral strong {
+  color: var(--neutral-text);
+}
+.stats-window-reason {
+  color: var(--text-2);
+}
+.stats-days {
+  justify-content: flex-end;
+}
+
+.stats-table {
+  table-layout: fixed;
+}
+.stats-table th,
+.stats-table td {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.stats-table th[scope="row"] {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  border-bottom-color: var(--border);
+}
+.stats-table tbody:last-child tr:last-child th {
+  border-bottom: none;
+}
+.stats-table .cell-rule {
+  width: 30%;
+}
+.stats-table .cell-rule a {
+  overflow-wrap: anywhere;
+}
+.stats-group th {
+  padding-top: var(--sp-5);
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+.stats-total th,
+.stats-total td {
+  font-weight: var(--fw-semibold);
+  border-top: 1px solid var(--border-strong);
+}
+.cell-sub.stats-narrow-fact {
+  display: none;
+}
+.stats-top td.num,
+.stats-capacity td.num,
+.stats-cost td.num {
+  white-space: normal;
+}
+.stats-silent .cell-rule {
+  width: 32%;
+}
+.stats-capacity th:first-child {
+  width: 31%;
+}
+.stats-capacity th:last-child {
+  width: 14%;
+}
+.table-note {
+  margin: var(--sp-3) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-prose);
+}
+.stats-excluded {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.stats-excluded > p {
+  margin: 0;
+}
+.stats-excluded-detail h3 {
+  margin-top: var(--sp-4);
+}
+.stats-excluded-table th:first-child {
+  width: 22%;
+}
+.stats-excluded-table th:last-child {
+  width: 14%;
+}
+.stats-top-reason {
+  margin-bottom: var(--sp-2);
+}
+
+@media (max-width: 1200px) {
+  .stats-wide-fact {
+    display: none;
+  }
+  .cell-sub.stats-narrow-fact {
+    display: block;
+  }
+  .stats-table .cell-rule {
+    width: 34%;
+  }
+  .stats-top th:not(:first-child),
+  .stats-top td:not(:first-child) {
+    width: 22%;
+  }
+  .stats-silent th:not(:first-child),
+  .stats-silent td:not(:first-child) {
+    width: 33%;
+  }
+}
+
+/* IPS source administration (T-053): the reference-kind switch and the preset choice. */
+.fm-kind {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0 0 var(--sp-2);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.fm-presets {
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.fm-presets legend {
+  padding: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.fm-presets .fm-note {
+  margin: var(--sp-1) 0 var(--sp-2);
+  max-width: 72ch;
+}
+/* A status word is never broken inside; another column folds instead. */
+td.cell-name.ips-source-cell {
+  overflow-wrap: normal;
+}
+.ips-status {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.fm-preset-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+}
+
+/* --- catch-all senders (T-070b) ----------------------------------------------
+   Tokens only. The queue is a fleet-table; these rules keep a long syslog
+   hostname inside its cell, set the first/last seen pair, and lay out the
+   selected bucket. */
+.catchall-table th.cell-sender {
+  max-width: 30ch;
+  min-width: 14ch;
+}
+.sender-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  /* Breaks after . and - (see SenderId); anywhere only for one unbroken run. */
+  overflow-wrap: anywhere;
+}
+.catchall-table td.cell-source {
+  overflow-wrap: anywhere;
+  max-width: 24ch;
+}
+.catchall-table .seen {
+  display: block;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.catchall-table .seen-label {
+  display: inline-block;
+  min-width: 5ch;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.catchall-table td.num {
+  white-space: nowrap;
+}
+.catchall-table .cell-sub {
+  max-width: 24ch;
+  white-space: normal;
+}
+.queue-count {
+  margin-bottom: var(--sp-2);
+}
+.denied-note {
+  color: var(--warn-text);
+}
+.load-more {
+  margin-top: var(--sp-4);
+}
+.catchall-volume button[aria-pressed="true"] {
+  background: var(--surface-3);
+  border-color: var(--info-border);
+  color: var(--info-text);
+  font-weight: var(--fw-semibold);
+}
+.catchall-volume .range-selector {
+  margin-bottom: 0;
+}
+.collected-up-to {
+  margin-bottom: var(--sp-2);
+}
+.chart-key-bar {
+  height: 10px;
+  background: var(--chart-observed);
+}
+.chart-key-bar-lower {
+  height: 10px;
+  background: var(--warn);
+}
+.bucket-top-table {
+  min-width: 0;
+}
+.bucket-top-table table {
+  width: 100%;
+}
+.bucket-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  margin: var(--sp-4) 0;
+  font-size: var(--fs-xs);
+}
+.bucket-detail {
+  min-width: 0;
+}
+.bucket-detail .bucket-detail-title {
+  margin: 0 0 var(--sp-3);
+}
+.bucket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--sp-5) var(--sp-6);
+  min-width: 0;
+}
+.bucket-grid > * {
+  min-width: 0;
+}
+.bucket-grid h4 {
+  margin-top: 0;
+}
+.bucket-facts {
+  display: grid;
+  gap: var(--sp-3);
+  align-content: start;
+  margin: 0;
+}
+.bucket-facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.bucket-facts dd {
+  margin: 0;
+  font-size: var(--fs-base);
+}
+.bucket-admission li {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+/* The last row of a table with row headers ends without a rule in both cells,
+   so the closing line does not stop at the header cell. */
+.catchall-table tbody tr:last-child th {
+  border-bottom: none;
+}
+
+/* --- Outage alert policy (T-070a) -------------------------------------------
+   Only what the existing classes do not already say: the statement of what a
+   change does, set apart from the form it belongs to, and the spacing of the
+   add-override area. Built from tokens only. */
+
+.outage-note {
+  margin-bottom: var(--sp-4);
+}
+.outage-note p {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.impact {
+  max-width: 72ch;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+.impact.is-unknown {
+  border-color: var(--warn-border);
+}
+.impact-title {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.impact-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.outage-form-title {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.outage-form-label {
+  padding-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.outage-table th.cell-source {
+  min-width: 20ch;
+}
+.outage-add {
+  margin-top: var(--sp-5);
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+}
+.outage-add .panel {
+  width: 100%;
+  min-width: 0;
+}
+.outage-pick {
+  margin-top: var(--sp-4);
+}
+.outage-pick th.cell-end,
+.outage-pick td.cell-end {
+  text-align: right;
+  white-space: nowrap;
+}

@@ -6,6 +6,7 @@ autogenerate and the test fixtures both rely on. Keep this list complete.
 
 from app.models.alert import Alert, AlertNotification
 from app.models.base import Base
+from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.config_change import ConfigurationChange, ConfigurationSnapshot
 from app.models.explanation import (
     EXPLANATION_SCHEMA_VERSION,
@@ -21,6 +22,7 @@ from app.models.fleet import (
 )
 from app.models.identity import AuditLog, Role, User, user_role
 from app.models.instance import QRadarInstance
+from app.models.ips import IpsEntity, IpsEntityMetric, IpsSourceBucket, IpsSourceProfile
 from app.models.log_source import (
     AnomalyStateTransition,
     LogSource,
@@ -31,6 +33,7 @@ from app.models.log_source import (
 )
 from app.models.monitoring import AnomalyEvaluationWatermark, CollectionWatermark
 from app.models.offense import OffenseSnapshot
+from app.models.outage import OutageAlertPolicy
 from app.models.rule import (
     AnalyticsRule,
     DetectionCoverage,
@@ -74,6 +77,9 @@ HYPERTABLES: dict[str, str] = {
     "waf_endpoint_metric": "bucket_start",
     "waf_source_bucket": "bucket_start",
     "rule_match_metric": "bucket_start",
+    "catchall_bucket": "bucket_start",
+    "ips_source_bucket": "bucket_start",
+    "ips_entity_metric": "bucket_start",
 }
 
 __all__ = [
@@ -89,12 +95,18 @@ __all__ = [
     "AnomalyStateTransition",
     "AuditLog",
     "Base",
+    "CatchallBucket",
+    "CatchallSender",
     "ClassificationRule",
     "CollectionWatermark",
     "ConfigurationChange",
     "ConfigurationSnapshot",
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
+    "IpsEntity",
+    "IpsEntityMetric",
+    "IpsSourceBucket",
+    "IpsSourceProfile",
     "LogSource",
     "LogSourceAnomaly",
     "LogSourceBaseline",
@@ -104,6 +116,7 @@ __all__ = [
     "LogSourceMetric",
     "LogSourceType",
     "OffenseSnapshot",
+    "OutageAlertPolicy",
     "QRadarInstance",
     "Role",
     "RuleCapacitySample",

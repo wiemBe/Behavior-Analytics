@@ -8,12 +8,15 @@ from app.api.deps import requires
 from app.api.routes import (
     alerts,
     anomalies,
+    catchall,
     classification_rules,
     coverage,
     fleet,
     health,
+    ips,
     log_sources,
     offenses,
+    outage_policy,
     overview,
     providers,
     rules,
@@ -27,8 +30,10 @@ from app.security.rbac import (
     PERM_ANOMALY_READ,
     PERM_COVERAGE_READ,
     PERM_FLEET_READ,
+    PERM_IPS_ADMIN,
     PERM_LOG_SOURCE_READ,
     PERM_OFFENSE_READ,
+    PERM_OUTAGE_ADMIN,
     PERM_OVERVIEW_READ,
     PERM_PROVIDER_READ,
     PERM_RULE_READ,
@@ -88,10 +93,22 @@ api_router.include_router(
 api_router.include_router(waf.router, dependencies=[Depends(requires(PERM_WAF_ADMIN))])
 # The mapping editor's property-name catalog: names only, read-only, same admin:waf guard.
 api_router.include_router(waf_catalog.router, dependencies=[Depends(requires(PERM_WAF_ADMIN))])
+# --- Phase D ---
+# IPS source mappings control future collection semantics and require their own
+# administrative capability; neither read:* nor admin:waf satisfies it.
+api_router.include_router(ips.router, dependencies=[Depends(requires(PERM_IPS_ADMIN))])
 # --- Phase C ---
 # The fleet view and classification rules. Both reads need `read:fleet` (satisfied
 # by `read:*`); rule writes check `admin:classification` in the handler.
 api_router.include_router(fleet.router, dependencies=[Depends(requires(PERM_FLEET_READ))])
 api_router.include_router(
     classification_rules.router, dependencies=[Depends(requires(PERM_FLEET_READ))]
+)
+# Phase C.2b catch-all senders: read-guarded like /fleet; review writes check
+# `log_source:write` in the handler.
+api_router.include_router(catchall.router, dependencies=[Depends(requires(PERM_FLEET_READ))])
+# The outage alert policy is administrative: it changes what pages a human, so
+# `admin:outage` guards every method, reads included; `read:*` does not satisfy it.
+api_router.include_router(
+    outage_policy.router, dependencies=[Depends(requires(PERM_OUTAGE_ADMIN))]
 )

@@ -106,6 +106,7 @@ export function ValueMapEditor({
   onChange,
   blockedReason,
   discoveredNote,
+  truncatedNote,
   disabled = false,
 }: {
   fieldLabel: string;
@@ -119,6 +120,8 @@ export function ValueMapEditor({
   blockedReason?: string | null;
   /** Where the discovered values came from, when that differs from now. */
   discoveredNote?: string | null;
+  /** Replaces the default truncation banner when a domain has more to say; shown once. */
+  truncatedNote?: string | null;
   disabled?: boolean;
 }) {
   const addId = useId();
@@ -148,8 +151,12 @@ export function ValueMapEditor({
       ) : null}
       {truncated && (
         <p className="fm-banner is-warn" role="status">
-          This list is truncated: only the most frequent {fieldLabel.toLowerCase()} values were
-          returned. Values not listed count as unmapped, never as allowed.
+          {truncatedNote ?? (
+            <>
+              This list is truncated: only the most frequent {fieldLabel.toLowerCase()} values were
+              returned. Values not listed count as unmapped, never as allowed.
+            </>
+          )}
         </p>
       )}
 

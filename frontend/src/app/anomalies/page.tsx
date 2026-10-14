@@ -15,6 +15,7 @@ import type { Metadata } from "next";
 import { AnomalyFilters } from "@/components/behavior/AnomalyFilters";
 import { AnomalyRows } from "@/components/behavior/AnomalyRows";
 import { Pagination } from "@/components/Pagination";
+import { isWafRow } from "@/components/waf/wafLabels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
@@ -28,6 +29,7 @@ import {
   PAGE_SIZE,
   paginationParams,
   parseAnomalyQuery,
+  parseSubjectQuery,
 } from "@/lib/anomalyQuery";
 
 export const metadata: Metadata = {
@@ -39,7 +41,13 @@ export default async function AnomaliesPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const q = parseAnomalyQuery(await searchParams);
+  const raw = await searchParams;
+  const q = parseAnomalyQuery(raw);
+  // The subject filters are parsed beside the Phase A query, not in it: a WAF
+  // detector type is a valid `anomaly_type` here and would be dropped by the
+  // Phase A allow-list.
+  const subject = parseSubjectQuery(raw);
+  const anomalyType = q.anomaly_type || subject.waf_anomaly_type;
 
   let page: Page<AnomalySummary> | null = null;
   let sources: SourceBehavior[] = [];
@@ -54,7 +62,8 @@ export default async function AnomaliesPage({
         offset: q.offset,
         log_source_id: q.log_source_id || undefined,
         instance_id: q.instance_id || undefined,
-        anomaly_type: q.anomaly_type || undefined,
+        anomaly_type: anomalyType || undefined,
+        subject_kind: subject.subject_kind || undefined,
         state: q.state || undefined,
         severity: q.severity || undefined,
         evidence_status: q.evidence_status || undefined,
@@ -77,7 +86,8 @@ export default async function AnomaliesPage({
   const filtered = Boolean(
     q.log_source_id ||
       q.instance_id ||
-      q.anomaly_type ||
+      anomalyType ||
+      subject.subject_kind ||
       q.state ||
       q.severity ||
       q.evidence_status ||
@@ -85,7 +95,10 @@ export default async function AnomaliesPage({
       q.until,
   );
   const items = page?.items ?? [];
-
+  // Every cell of the observed column names its own unit (EPS, req / 5 min or %),
+  // so the heading carries none once a WAF row is on the page. A page of log
+  // sources keeps the "(EPS)" its existing test pins.
+  const hasWaf = items.some(isWafRow);
   return (
     <>
       <PageHeader
@@ -95,9 +108,10 @@ export default async function AnomaliesPage({
 
       <AnomalyFilters
         values={{
+          subject_kind: subject.subject_kind,
           log_source_id: q.log_source_id,
           instance_id: q.instance_id,
-          anomaly_type: q.anomaly_type,
+          anomaly_type: anomalyType,
           state: q.state,
           severity: q.severity,
           evidence_status: q.evidence_status,
@@ -129,20 +143,24 @@ export default async function AnomaliesPage({
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Source</th>
+                  <th scope="col">Subject</th>
                   <th scope="col">Detector</th>
                   <th scope="col">State</th>
-                  <th scope="col" className="num">
-                    Observed → Expected (EPS)
+                  <th scope="col" className="num col-nowrap">
+                    {hasWaf ? "Observed → Expected" : "Observed → Expected (EPS)"}
                   </th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="num col-md">
                     Deviation
                   </th>
-                  <th scope="col">Severity</th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="col-sm">
+                    Severity
+                  </th>
+                  <th scope="col" className="num col-sm">
                     Started
                   </th>
-                  <th scope="col">Evidence</th>
+                  <th scope="col" className="col-md">
+                    Evidence
+                  </th>
                   <th scope="col">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -157,7 +175,11 @@ export default async function AnomaliesPage({
             limit={PAGE_SIZE}
             offset={q.offset}
             basePath="/anomalies"
-            params={paginationParams(q)}
+            params={{
+              ...paginationParams(q),
+              anomaly_type: anomalyType || undefined,
+              subject_kind: subject.subject_kind || undefined,
+            }}
           />
         </>
       )}

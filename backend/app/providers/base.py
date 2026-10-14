@@ -18,18 +18,23 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from enum import StrEnum
 
+from app.models.enums import IpsDimension
 from app.providers.dto import (
     AnalyticsRuleDTO,
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CatchallKeyedResult,
     CustomPropertyDTO,
     DimensionAggregate,
     InstanceInfoDTO,
+    IpsFieldProbeRequest,
+    IpsKeyedResult,
+    IpsSourceProbe,
     LogSourceDTO,
     LogSourceGroupDTO,
     LogSourceMetricBucketBatch,
@@ -56,6 +61,33 @@ PROPERTY_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ -]{0,63}$")
 #: Upper bound on a WAF property probe window. Validation is a spot check, not a
 #: survey, and a small window keeps it cheap on a loaded appliance.
 WAF_PROBE_MAX_WINDOW_SECONDS = 3600
+
+#: Normalized Ariel identifiers IPS profiles may name. They are quoted only
+#: after exact membership validation; arbitrary frontend text never reaches AQL.
+IPS_NORMALIZED_FIELD_ALLOWLIST = (
+    "sourceip",
+    "destinationip",
+    "destinationport",
+    "sourceport",
+    "protocolid",
+    "qid",
+    "severity",
+    "category",
+)
+IPS_PROBE_MAX_WINDOW_SECONDS = WAF_PROBE_MAX_WINDOW_SECONDS
+
+#: The logical fields each keyed IPS search reads: (required, optional). The plan
+#: groups sources by exactly these references, and both providers refuse a search
+#: that lacks a required one. TOTALS reads no field: it counts every event.
+IPS_DIMENSION_FIELDS: dict[IpsDimension, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    IpsDimension.TOTALS: ((), ()),
+    IpsDimension.DESTINATION_PORT: (("DESTINATION_PORT",), ("PROTOCOL",)),
+    IpsDimension.DESTINATION_IP: (("DESTINATION_IP",), ()),
+    IpsDimension.SIGNATURE: (("SIGNATURE",), ()),
+    IpsDimension.SOURCE_IP: (("SOURCE_IP",), ()),
+    IpsDimension.PORT_FANOUT: (("SOURCE_IP", "DESTINATION_PORT"), ()),
+    IpsDimension.ACTION: (("ACTION",), ()),
+}
 
 
 class ProviderCapability(StrEnum):
@@ -425,6 +457,75 @@ class QRadarProvider(ABC):
 
         Returns raw values for the caller to judge and discard. Nothing here may
         be persisted as returned.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def probe_ips_fields(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        fields: Sequence[IpsFieldProbeRequest],
+        max_action_values: int = 20,
+    ) -> IpsSourceProbe:
+        """Bounded read-only population evidence for an IPS field mapping.
+
+        Implementations return aggregate counts only, except for the bounded
+        ACTION value set the operator needs to author its value map. Ariel is
+        required, so MCP fails closed through the capability check.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_ips_keyed(
+        self,
+        dimension: IpsDimension,
+        *,
+        qradar_log_source_ids: Sequence[int],
+        fields: Mapping[str, tuple[str, str]],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> IpsKeyedResult:
+        """One fleet-wide keyed IPS search for a dimension (design D.5).
+
+        `fields` maps a logical field (`IPS_DIMENSION_FIELDS`) to its
+        ``(kind, name)`` reference, and is validated again here before any name
+        is quoted. The span must be whole epoch-aligned `bucket_seconds`
+        buckets; the source count is capped at `ips_max_sources_per_search`.
+        Rows carry the bucket start and volume (`SUM(eventcount)`), ordered by
+        volume; more than `max_rows` rows set ``truncated`` and only the first
+        `max_rows` are kept. A key outside the span, a non-integer key or a
+        log source that was not asked for fails the whole search with a
+        ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_catchall_senders_keyed(
+        self,
+        *,
+        devicetype_ids: Sequence[int],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> CatchallKeyedResult:
+        """One keyed search of who feeds the catch-all device types (design C.8).
+
+        Rows are grouped by log source, sender (`logsourceidentifier`) and
+        bucket, and carry `SUM(eventcount)`, ordered by volume. `devicetype_ids`
+        are integers, validated before they enter the query. The span must be
+        whole epoch-aligned `bucket_seconds` buckets. More than `max_rows` rows
+        set ``truncated`` and only the first `max_rows` are kept. A key outside
+        the span or a non-integer key fails the whole search with a ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError

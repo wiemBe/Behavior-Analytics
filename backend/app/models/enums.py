@@ -46,6 +46,49 @@ class ClassificationReviewStatus(StrEnum):
     REVIEWED = "REVIEWED"
 
 
+class CatchallReviewStatus(StrEnum):
+    """Review state of a catch-all sender. D-9: NEW goes to a review queue, not a page."""
+
+    NEW = "NEW"
+    REVIEWED = "REVIEWED"
+    DISMISSED = "DISMISSED"
+
+
+class CatchallMeasurement(StrEnum):
+    """What a stored catch-all bucket claims about the true value.
+
+    A bucket that was not measured is not stored at all: there is no FAILED or
+    NOT_COLLECTED row, so absence is never read as a zero.
+    """
+
+    EXACT = "EXACT"
+    LOWER_BOUND = "LOWER_BOUND"
+
+
+class OutagePolicyScope(StrEnum):
+    """What an ``outage_alert_policy`` row applies to.
+
+    ``CLASS`` names a :class:`SourceClass`; ``SOURCE`` names one ``log_source``.
+    The scope is part of the row's identity, so a class and a source can never
+    collide even if their values were equal.
+    """
+
+    CLASS = "CLASS"
+    SOURCE = "SOURCE"
+
+
+class OutagePolicyMode(StrEnum):
+    """Whether a source's ``NO_EVENTS`` opens an alert.
+
+    ``RECORD_ONLY`` records the anomaly and its lifecycle exactly as before and
+    only suppresses the alert and its notification. ``ALERT`` keeps Phase A's
+    behaviour, and is the default (D-9), so an upgrade alerts as it did.
+    """
+
+    ALERT = "ALERT"
+    RECORD_ONLY = "RECORD_ONLY"
+
+
 class Severity(StrEnum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"
@@ -59,6 +102,8 @@ class SearchFamily(StrEnum):
     WAF_COLLECTION = "WAF_COLLECTION"
     ANOMALY_EXPLANATION = "ANOMALY_EXPLANATION"
     RULE_MATCH = "RULE_MATCH"
+    IPS_COLLECTION = "IPS_COLLECTION"
+    CATCHALL_SENDERS = "CATCHALL_SENDERS"
 
 
 class SearchCadence(IntEnum):
@@ -173,6 +218,85 @@ class WafProfileValidationStatus(StrEnum):
     INVALID = "INVALID"
     #: Validation could not decide -- no events in the window, or a query failed.
     INCONCLUSIVE = "INCONCLUSIVE"
+
+
+class IpsLogicalField(StrEnum):
+    """A logical IPS field mapped to a normalized or custom QRadar field."""
+
+    SOURCE_IP = "SOURCE_IP"
+    DESTINATION_IP = "DESTINATION_IP"
+    DESTINATION_PORT = "DESTINATION_PORT"
+    PROTOCOL = "PROTOCOL"
+    SIGNATURE = "SIGNATURE"
+    ACTION = "ACTION"
+    SEVERITY = "SEVERITY"
+
+
+class IpsReferenceKind(StrEnum):
+    NORMALIZED = "NORMALIZED"
+    CUSTOM_PROPERTY = "CUSTOM_PROPERTY"
+
+
+class IpsPreset(StrEnum):
+    CISCO_FTD = "CISCO_FTD"
+    PALO_ALTO_THREAT = "PALO_ALTO_THREAT"
+
+
+class IpsFieldStatus(StrEnum):
+    AVAILABLE = "AVAILABLE"
+    NOT_MAPPED = "NOT_MAPPED"
+    FIELD_REJECTED = "FIELD_REJECTED"
+    UNPOPULATED = "UNPOPULATED"
+    INSUFFICIENT_COVERAGE = "INSUFFICIENT_COVERAGE"
+    NO_EVENTS = "NO_EVENTS"
+    QUERY_FAILED = "QUERY_FAILED"
+
+
+class IpsProfileValidationStatus(StrEnum):
+    UNVALIDATED = "UNVALIDATED"
+    VALID = "VALID"
+    INVALID = "INVALID"
+    INCONCLUSIVE = "INCONCLUSIVE"
+
+
+class IpsDimension(StrEnum):
+    """One fleet-wide keyed search of IPS collection (design D.5).
+
+    IPS-only. It is not persisted by the collection layer in this form until
+    T-050b names a column for it, and it never shares a type with Phase A or WAF.
+    """
+
+    TOTALS = "TOTALS"
+    DESTINATION_PORT = "DESTINATION_PORT"
+    DESTINATION_IP = "DESTINATION_IP"
+    SIGNATURE = "SIGNATURE"
+    SOURCE_IP = "SOURCE_IP"
+    PORT_FANOUT = "PORT_FANOUT"
+    ACTION = "ACTION"
+
+
+class IpsCellState(StrEnum):
+    """How one (source, bucket, dimension) cell was measured.
+
+    Only COMPLETE and LOWER_BOUND carry a measurement. The other three say why
+    there is none, and none of them may ever be read as zero.
+    """
+
+    #: The search that covered the cell was whole; no row means a measured zero.
+    COMPLETE = "COMPLETE"
+    #: One source, one bucket, truncated: the top rows are exact, the tail is missing.
+    LOWER_BOUND = "LOWER_BOUND"
+    FAILED = "FAILED"
+    REJECTED = "REJECTED"
+    #: The tick's search budget ran out before the cell was searched.
+    NOT_COLLECTED = "NOT_COLLECTED"
+
+
+class IpsMeasurement(StrEnum):
+    """What a folded IPS fact claims about the true value."""
+
+    EXACT = "EXACT"
+    LOWER_BOUND = "LOWER_BOUND"
 
 
 class AnomalyState(StrEnum):

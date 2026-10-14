@@ -27,10 +27,12 @@ from app.alerts.search_alerts import SearchAlertEvaluator
 from app.alerts.service import AlertInput, AlertService
 from app.anomaly.baseline import BaselineBuilder
 from app.anomaly.engine import EXPLAINABLE_TYPES, AnomalyEngine
+from app.collectors.catchall_collector import CatchallCollector
 from app.collectors.explanation_collector import (
     EXPLANATION_COLLECTOR,
     ExplanationCollector,
 )
+from app.collectors.ips_collector import IpsCollector
 from app.collectors.log_source_collector import LogSourceCollector
 from app.collectors.metric_collector import MetricCollector
 from app.collectors.offense_collector import OffenseCollector
@@ -41,14 +43,19 @@ from app.core.config import get_settings
 from app.core.database import dispose_engine, get_sessionmaker
 from app.models.enums import EvidenceStatus, Severity
 from app.models.instance import QRadarInstance
+from app.models.ips import IpsSourceProfile
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafSourceProfile
 from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider, build_provider_for_instance
 from app.repositories.offense import OffenseRepository
+from app.services.catchall_retention import CatchallRetention
 from app.services.concurrency import InMemoryConcurrencyLimiter
 from app.services.detection_coverage import DetectionCoverageEvaluator
+from app.services.ips_pipeline import ips_pipeline_lock_key
+from app.services.ips_profiles import IpsProfileService
+from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
@@ -386,6 +393,88 @@ async def collect_rule_matches(instance_name: str | None = None) -> dict:
         )
         await cadence_session.commit()
     return result
+
+
+async def collect_catchall_senders(instance_name: str | None = None) -> dict:
+    """Collect who feeds the catch-all sources, one keyed Ariel search per cadence tick.
+
+    A no-op while CATCHALL_COLLECTION_ENABLED is false. The CATCHALL_SENDERS
+    cadence slot is claimed first, in its own committed session, so a tick that
+    is not due builds no provider and sends nothing to QRadar.
+    """
+    settings = get_settings()
+    if not settings.catchall_collection_enabled:
+        return {"status": "disabled"}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.CATCHALL_SENDERS
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed_slot = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        report = await CatchallCollector(session, provider, settings=settings).collect(instance)
+        return {
+            "status": (
+                "skipped_locked"
+                if report.skipped_locked
+                else "unsupported"
+                if report.unsupported
+                else "failed" if report.partial_failure else "ok"
+            ),
+            "buckets_attempted": report.buckets_attempted,
+            "buckets_complete": report.buckets_complete,
+            "buckets_lower_bound": report.buckets_lower_bound,
+            "buckets_failed": report.buckets_failed,
+            "buckets_not_collected": report.buckets_not_collected,
+            "searches_sent": report.searches_sent,
+            "splits": report.splits,
+            "senders_admitted": report.senders_admitted,
+            "alerts_raised": report.alerts_raised,
+            "duration_ms": report.duration_ms,
+            "error": report.error,
+        }
+
+    result = await _for_each_instance(run, instance_name)
+    results = result.get("results", [])
+    outcome = result.get("status")
+    if outcome is None:
+        outcome = (
+            "failed" if any(item.get("status") == "failed" for item in results) else "ok"
+        )
+    # An instance that raised reports no counts, so the totals are unknown, not
+    # a smaller number: record None rather than a count that under-reports.
+    measured = bool(results) and all("searches_sent" in item for item in results)
+    async with maker() as cadence_session:
+        await SearchCadenceService(cadence_session, settings).record_run(
+            family,
+            outcome=outcome,
+            searches=sum(i["searches_sent"] for i in results) if measured else None,
+            buckets=(
+                sum(i["buckets_complete"] + i["buckets_lower_bound"] for i in results)
+                if measured
+                else None
+            ),
+            splits=sum(i["splits"] for i in results) if measured else None,
+        )
+        await cadence_session.commit()
+    return result
+
+
+async def apply_catchall_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await CatchallRetention(session).run()
+        return report.as_dict()
 
 
 async def detect_stale_offense_collection(instance_name: str | None = None) -> dict:
@@ -960,11 +1049,234 @@ async def validate_waf_profile(
             }
 
 
+async def validate_ips_profile(
+    profile_id: str,
+    lock_retry_count: int = 0,
+    enqueue: Callable[[str, int, int], object] | None = None,
+) -> dict:
+    """Validate one IPS profile without stamping a stale mapping version."""
+    maker = get_sessionmaker()
+    async with maker() as session:
+        profile_uuid = uuid.UUID(profile_id)
+        profile = await session.get(IpsSourceProfile, profile_uuid)
+        if profile is None:
+            return {"status": "not_found", "profile_id": profile_id}
+        if profile.validation_requested_at is None:
+            return {"status": "not_pending", "profile_id": profile_id}
+
+        source = await session.get(LogSource, profile.log_source_id)
+        instance = await session.get(QRadarInstance, profile.instance_id)
+        actor = profile.validation_requested_by or "system"
+        started_version = profile.profile_version
+        settings = get_settings()
+
+        def send(retry_count: int, countdown: int) -> object:
+            if enqueue is not None:
+                return enqueue(profile_id, retry_count, countdown)
+            return validate_ips_profile_task.apply_async(
+                args=[profile_id, retry_count], countdown=countdown
+            )
+
+        async def fail(error_class: str) -> dict:
+            await session.rollback()
+            current = await session.scalar(
+                select(IpsSourceProfile)
+                .where(IpsSourceProfile.id == profile_uuid)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if current is None:
+                await session.commit()
+                return {"status": "not_found", "profile_id": profile_id}
+            if current.profile_version != started_version:
+                await session.commit()
+                if current.validation_requested_at is not None:
+                    send(0, 0)
+                return {
+                    "status": "stale_requeued",
+                    "profile_id": profile_id,
+                    "validated_version": started_version,
+                    "current_version": current.profile_version,
+                }
+            await IpsProfileService(session, settings=settings).record_validation_exception(
+                current, actor=actor, error_class=error_class
+            )
+            await session.commit()
+            return {
+                "status": "failed",
+                "profile_id": profile_id,
+                "error_class": error_class,
+            }
+
+        if source is None or instance is None:
+            return await fail("IpsProfileError")
+
+        async with CollectorAdvisoryLock(
+            session,
+            settings,
+            instance.id,
+            ips_pipeline_lock_key(source.qradar_id),
+        ) as acquired:
+            if not acquired:
+                await session.rollback()
+                if lock_retry_count < settings.ips_validation_lock_max_retries:
+                    next_retry_count = lock_retry_count + 1
+                    send(next_retry_count, settings.ips_validation_lock_retry_delay_seconds)
+                    return {
+                        "status": "locked_requeued",
+                        "profile_id": profile_id,
+                        "lock_retry_count": next_retry_count,
+                    }
+
+                current = await session.scalar(
+                    select(IpsSourceProfile)
+                    .where(IpsSourceProfile.id == profile_uuid)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if current is None:
+                    await session.commit()
+                    return {"status": "not_found", "profile_id": profile_id}
+                if current.profile_version != started_version:
+                    await session.commit()
+                    if current.validation_requested_at is not None:
+                        send(0, 0)
+                    return {
+                        "status": "stale_requeued",
+                        "profile_id": profile_id,
+                        "validated_version": started_version,
+                        "current_version": current.profile_version,
+                    }
+                if current.validation_requested_at is None:
+                    await session.commit()
+                    return {"status": "not_pending", "profile_id": profile_id}
+                await IpsProfileService(
+                    session, settings=settings
+                ).record_validation_source_busy(
+                    current, actor=actor, retry_count=lock_retry_count
+                )
+                await session.commit()
+                logger.warning(
+                    "IPS profile validation exhausted source-lock retries",
+                    extra={
+                        "profile_id": profile_id,
+                        "profile_version": started_version,
+                        "lock_retry_count": lock_retry_count,
+                    },
+                )
+                return {
+                    "status": "source_busy",
+                    "profile_id": profile_id,
+                    "lock_retry_count": lock_retry_count,
+                }
+
+            provider: QRadarProvider | None = None
+            result = None
+            error_class: str | None = None
+            try:
+                provider = build_provider_for_instance(instance, audit_session=session)
+                service = IpsProfileService(session, settings=settings)
+                result = await service.validate(
+                    profile, provider, actor=actor, persist=False
+                )
+            except Exception as exc:
+                error_class = type(exc).__name__
+            finally:
+                if provider is not None:
+                    try:
+                        await provider.aclose()
+                    except Exception as exc:
+                        error_class = error_class or type(exc).__name__
+            if error_class is not None:
+                return await fail(error_class)
+            assert result is not None
+
+            current = await session.scalar(
+                select(IpsSourceProfile)
+                .where(IpsSourceProfile.id == profile_uuid)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if current is None:
+                await session.commit()
+                return {"status": "not_found", "profile_id": profile_id}
+            if current.profile_version != started_version:
+                await session.commit()
+                if current.validation_requested_at is not None:
+                    send(0, 0)
+                return {
+                    "status": "stale_requeued",
+                    "profile_id": profile_id,
+                    "validated_version": started_version,
+                    "current_version": current.profile_version,
+                }
+            await service.store_validation(current, result, actor=actor)
+            await session.commit()
+            return {
+                "status": "ok",
+                "profile_id": profile_id,
+                "profile_version": started_version,
+                "validation_status": result.status.value,
+            }
+
+
 async def apply_waf_retention() -> dict:
     maker = get_sessionmaker()
     async with maker() as session:
         report = await WafRetention(session).run()
         return report.as_dict()
+
+
+# ------------------------------------------------------------------ IPS (D.5)
+async def dispatch_ips_collection(instance_name: str | None = None) -> dict:
+    """Run one fleet-wide IPS plan per instance after claiming its cadence slot."""
+    settings = get_settings()
+    if not settings.ips_collection_enabled:
+        return {"status": "disabled", "instances": 0, "results": []}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.IPS_COLLECTION
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed is None:
+        return {"status": "not_due", "family": family.value}
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        collector = IpsCollector(session, provider, settings=settings)
+        return (await collector.collect(instance)).as_dict()
+
+    result = await _for_each_instance(run, instance_name)
+    failed = any(item.get("status") == "failed" for item in result.get("results", []))
+    searches = None if failed else sum(
+        int(item.get("searches_sent", 0)) for item in result.get("results", [])
+    )
+    buckets = None if failed else sum(
+        int(item.get("buckets_written", 0)) for item in result.get("results", [])
+    )
+    async with maker() as cadence_session:
+        await SearchCadenceService(cadence_session, settings).record_run(
+            family,
+            outcome="failed" if failed else "ok",
+            searches=searches,
+            buckets=buckets,
+            splits=None,
+        )
+        await cadence_session.commit()
+    return result
+
+
+async def apply_ips_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await IpsRetention(session).run()).as_dict()
 
 
 # --------------------------------------------------------------- notifications
@@ -1075,6 +1387,31 @@ def validate_waf_profile_task(profile_id: str, lock_retry_count: int = 0) -> dic
     return _run(validate_waf_profile(profile_id, lock_retry_count))
 
 
+@celery_app.task(name="validate_ips_profile")
+def validate_ips_profile_task(profile_id: str, lock_retry_count: int = 0) -> dict:
+    return _run(validate_ips_profile(profile_id, lock_retry_count))
+
+
+@celery_app.task(name="collect_catchall_senders")
+def collect_catchall_senders_task(instance_name: str | None = None) -> dict:
+    return _run(collect_catchall_senders(instance_name))
+
+
+@celery_app.task(name="apply_catchall_retention")
+def apply_catchall_retention_task() -> dict:
+    return _run(apply_catchall_retention())
+
+
 @celery_app.task(name="apply_waf_retention")
 def apply_waf_retention_task() -> dict:
     return _run(apply_waf_retention())
+
+
+@celery_app.task(name="dispatch_ips_collection")
+def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
+    return _run(dispatch_ips_collection(instance_name))
+
+
+@celery_app.task(name="apply_ips_retention")
+def apply_ips_retention_task() -> dict:
+    return _run(apply_ips_retention())

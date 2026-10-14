@@ -14,12 +14,23 @@ and health scoring have something to detect in development.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar, TypedDict
 
+from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
+from app.collectors.bucketed_metrics import validate_bucketed_metric_window
+from app.ips.keyed_rows import (
+    parse_ips_keyed_rows,
+    validate_ips_fields,
+    validate_ips_sources,
+)
+from app.models.enums import IpsDimension
 from app.providers.base import (
+    IPS_NORMALIZED_FIELD_ALLOWLIST,
     PROPERTY_NAME_PATTERN,
     LogSourceTelemetry,
     ProviderCapability,
@@ -30,10 +41,16 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CatchallKeyedResult,
     CustomPropertyDTO,
     DimensionAggregate,
     DimensionValueCount,
     InstanceInfoDTO,
+    IpsFieldProbe,
+    IpsFieldProbeRequest,
+    IpsKeyedResult,
+    IpsProbeValue,
+    IpsSourceProbe,
     LogSourceDTO,
     LogSourceGroupDTO,
     LogSourceMetricBucketBatch,
@@ -126,6 +143,53 @@ _CUSTOM_PROPERTIES: tuple[tuple[int, str, str, str, bool, tuple[int, ...]], ...]
 )
 
 
+@dataclass(frozen=True)
+class MockIpsSearch:
+    """One keyed IPS search the mock was asked for, kept so tests can read the split."""
+
+    dimension: IpsDimension
+    qradar_log_source_ids: tuple[int, ...]
+    window_start: datetime
+    window_end: datetime
+
+
+#: A fault hook: given a search, an exception to raise for it, or None.
+IpsFault = Callable[[MockIpsSearch], Exception | None]
+#: A truncation hook: True forces the search to read as truncated.
+IpsTruncation = Callable[[MockIpsSearch], bool]
+
+
+@dataclass(frozen=True)
+class MockCatchallSearch:
+    """One catch-all senders search the mock was asked for, kept so tests can read the split."""
+
+    device_type_ids: tuple[int, ...]
+    window_start: datetime
+    window_end: datetime
+
+
+#: A fault hook: given a search, an exception to raise for it, or None.
+CatchallFault = Callable[[MockCatchallSearch], Exception | None]
+#: A truncation hook: True forces the search to read as truncated.
+CatchallTruncation = Callable[[MockCatchallSearch], bool]
+#: A script: the raw rows (`logsourceid`, `sender`, `events`, `records`) of a bucket key.
+CatchallScript = Callable[[int], list[dict]]
+
+_IPS_PORTS = (0, 22, 53, 80, 443, 445, 3389, 5060, 8080, 8443)
+_IPS_PROTOCOLS = (6, 6, 6, 17, 1, 255, 0)
+_IPS_SOURCES = (
+    "203.0.113.5",
+    "203.0.113.9",
+    "198.51.100.7",
+    "192.0.2.44",
+    "10.1.1.8",
+    "127.0.0.1",
+    "2001:db8::7",
+)
+_IPS_DESTINATIONS = (*(f"10.10.20.{n}" for n in range(1, 9)), "127.0.0.1")
+_IPS_ACTIONS = ("BLOCK", "ALLOW", "block ", "Alert")
+
+
 class MockQRadarProvider(QRadarProvider):
     capabilities = frozenset(
         {
@@ -145,8 +209,28 @@ class MockQRadarProvider(QRadarProvider):
     }
     event_count_aggregation = "synthetic"
 
-    def __init__(self, *, seed: int = 1337, now: datetime | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        seed: int = 1337,
+        now: datetime | None = None,
+        ips_max_sources_per_search: int = 50,
+    ) -> None:
         self._seed = seed
+        self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
+        #: Every keyed IPS search asked for, in order.
+        self.ips_searches: list[MockIpsSearch] = []
+        #: Test hooks, so the real driver and fold run on a failure or a
+        #: truncation (SEARCH-CADENCE §SC.5 rule 6). Truncation also happens
+        #: naturally whenever a search has more rows than `max_rows`.
+        self.ips_fault: IpsFault | None = None
+        self.ips_force_truncated: IpsTruncation | None = None
+        #: The same hooks for the catch-all senders search, plus a script that
+        #: replaces the synthetic senders. Rows still pass the real parser.
+        self.catchall_searches: list[MockCatchallSearch] = []
+        self.catchall_fault: CatchallFault | None = None
+        self.catchall_force_truncated: CatchallTruncation | None = None
+        self.catchall_script: CatchallScript | None = None
         self._now = now or datetime.now(UTC)
         self._rng = random.Random(seed)  # noqa: S311 (not cryptographic)
         # Active Ariel searches: search_id -> (aql, created_at)
@@ -814,6 +898,303 @@ class MockQRadarProvider(QRadarProvider):
             total_events=self._MOCK_WAF_TOTAL_EVENTS,
             total_query="MOCK PROBE TOTAL",
             properties=probes,
+        )
+
+    def _ips_events(self, source_id: int, key: int) -> list[dict]:
+        """The synthetic events of one source and bucket: deterministic, with the
+        absent values (port 0, protocol 255, loopback) a real IPS carries."""
+        rng = random.Random(f"{self._seed}:ips:{source_id}:{key}")  # noqa: S311
+        count = 0 if rng.random() < 0.1 else rng.randint(1, 24)
+        out: list[dict] = []
+        for _ in range(count):
+            events = rng.randint(1, 500)
+            qid = 5_000_000 + rng.randint(0, 14)
+            out.append(
+                {
+                    "sip": rng.choice(_IPS_SOURCES),
+                    "dip": rng.choice(_IPS_DESTINATIONS),
+                    "dport": rng.choice(_IPS_PORTS),
+                    "proto": rng.choice(_IPS_PROTOCOLS),
+                    "qid": qid,
+                    "qname": "Unknown IPS Event" if qid % 5 == 0 else f"IPS signature {qid}",
+                    "sig": f"SIG-{rng.randint(0, 9)}",
+                    "act": rng.choice(_IPS_ACTIONS),
+                    "events": events,
+                    "records": rng.randint(1, events),
+                }
+            )
+        return out
+
+    @staticmethod
+    def _ips_populated(logical: str, value: object) -> bool:
+        """The mock's reading of `_ips_population_condition` on a raw value."""
+        if value is None:
+            return False
+        if logical in {"SOURCE_IP", "DESTINATION_IP"}:
+            address = ipaddress.ip_address(str(value))
+            return not address.is_loopback
+        if logical == "DESTINATION_PORT":
+            return int(str(value)) > 0
+        return True
+
+    async def get_ips_keyed(
+        self,
+        dimension: IpsDimension,
+        *,
+        qradar_log_source_ids: Sequence[int],
+        fields: Mapping[str, tuple[str, str]],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> IpsKeyedResult:
+        """The keyed IPS result, aggregated here and parsed by the real row parser."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        ids = validate_ips_sources(
+            qradar_log_source_ids, max_sources=self._ips_max_sources_per_search
+        )
+        checked = validate_ips_fields(dimension, fields)
+        if max_rows < 1:
+            raise ValueError("IPS row limit must be positive")
+        search = MockIpsSearch(dimension, ids, start, end)
+        self.ips_searches.append(search)
+        if self.ips_fault is not None and (fault := self.ips_fault(search)) is not None:
+            raise fault
+
+        qid_normalized = checked.get("SIGNATURE") == ("NORMALIZED", "qid")
+        first = int(start.timestamp()) // bucket_seconds
+        last = int(end.timestamp()) // bucket_seconds
+        columns = {
+            IpsDimension.DESTINATION_PORT: (
+                ("dport", "proto") if "PROTOCOL" in checked else ("dport",)
+            ),
+            IpsDimension.DESTINATION_IP: ("dip",),
+            IpsDimension.SIGNATURE: ("qid", "qname") if qid_normalized else ("sig",),
+            IpsDimension.SOURCE_IP: ("sip",),
+            IpsDimension.PORT_FANOUT: ("sip",),
+            IpsDimension.ACTION: ("act",),
+            IpsDimension.TOTALS: (),
+        }[dimension]
+        logical = {
+            "dport": "DESTINATION_PORT",
+            "dip": "DESTINATION_IP",
+            "sip": "SOURCE_IP",
+            "qid": "SIGNATURE",
+            "sig": "SIGNATURE",
+            "act": "ACTION",
+        }
+        filtered = [c for c in columns if c in logical]
+        if dimension is IpsDimension.PORT_FANOUT:
+            filtered.append("dport")
+        groups: dict[tuple, dict] = {}
+        for source_id in ids:
+            for key in range(first, last):
+                for event in self._ips_events(source_id, key):
+                    if not all(self._ips_populated(logical[c], event[c]) for c in filtered):
+                        continue
+                    group_key = (source_id, key, *(event[c] for c in columns))
+                    group = groups.setdefault(
+                        group_key,
+                        {
+                            "log_source_id": source_id,
+                            "k": key,
+                            **{c: event[c] for c in columns},
+                            "events": 0,
+                            "records": 0,
+                            "_ports": set(),
+                        },
+                    )
+                    group["events"] += event["events"]
+                    group["records"] += event["records"]
+                    group["_ports"].add(event["dport"])
+        rows = list(groups.items())
+        if dimension is IpsDimension.PORT_FANOUT:
+            volume = {k: len(g["_ports"]) for k, g in rows}
+        else:
+            volume = {k: g["events"] for k, g in rows}
+        rows.sort(key=lambda item: (-volume[item[0]], str(item[0])))
+        raw: list[dict] = []
+        for _key, group in rows:
+            row = {k: v for k, v in group.items() if k != "_ports"}
+            if dimension is IpsDimension.PORT_FANOUT:
+                row["distinct_ports"] = len(group["_ports"])
+            raw.append(row)
+        parsed, truncated = parse_ips_keyed_rows(
+            dimension,
+            raw[: max_rows + 1],
+            source_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=max_rows,
+            qid_normalized=qid_normalized,
+        )
+        if self.ips_force_truncated is not None and self.ips_force_truncated(search):
+            truncated = True
+        return IpsKeyedResult(
+            dimension=dimension,
+            qradar_log_source_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=parsed,
+            truncated=truncated,
+            query=f"MOCK IPS {dimension.value}",
+        )
+
+    def _catchall_events(self, source_id: int, key: int) -> list[dict]:
+        """The synthetic senders of one catch-all source and bucket: deterministic."""
+        rng = random.Random(f"{self._seed}:catchall:{source_id}:{key}")  # noqa: S311
+        out: list[dict] = []
+        for _ in range(rng.randint(0, 6)):
+            events = rng.randint(1, 400)
+            out.append(
+                {
+                    "logsourceid": source_id,
+                    "sender": f"mock-host-{rng.randint(0, 11):02d}",
+                    "events": events,
+                    "records": rng.randint(1, events),
+                }
+            )
+        return out
+
+    async def get_catchall_senders_keyed(
+        self,
+        *,
+        devicetype_ids: Sequence[int],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> CatchallKeyedResult:
+        """The catch-all result, aggregated here and parsed by the real row parser."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        ids = validate_catchall_type_ids(devicetype_ids)
+        if max_rows < 1:
+            raise ValueError("catch-all row limit must be positive")
+        search = MockCatchallSearch(ids, start, end)
+        self.catchall_searches.append(search)
+        if self.catchall_fault is not None and (fault := self.catchall_fault(search)) is not None:
+            raise fault
+
+        first = int(start.timestamp()) // bucket_seconds
+        last = int(end.timestamp()) // bucket_seconds
+        source_ids = [
+            1000 + index
+            for index, (_name, type_id, _shape, _facts) in enumerate(_SOURCE_TEMPLATES, start=1)
+            if type_id in ids
+        ]
+        groups: dict[tuple[int, str | None, int], dict] = {}
+        for key in range(first, last):
+            if self.catchall_script is not None:
+                events = self.catchall_script(key)
+            else:
+                events = [e for sid in source_ids for e in self._catchall_events(sid, key)]
+            for event in events:
+                group = groups.setdefault(
+                    (event["logsourceid"], event["sender"], key),
+                    {
+                        "logsourceid": event["logsourceid"],
+                        "sender": event["sender"],
+                        "k": key,
+                        "events": 0,
+                        "records": 0,
+                    },
+                )
+                group["events"] += event["events"]
+                group["records"] += event["records"]
+        ordered = sorted(
+            groups.values(),
+            key=lambda g: (-g["events"], g["logsourceid"], str(g["sender"]), g["k"]),
+        )
+        parsed, truncated = parse_catchall_rows(
+            ordered[: max_rows + 1],
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=max_rows,
+        )
+        if self.catchall_force_truncated is not None and self.catchall_force_truncated(search):
+            truncated = True
+        return CatchallKeyedResult(
+            device_type_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=parsed,
+            truncated=truncated,
+            query="MOCK CATCHALL",
+        )
+
+    async def probe_ips_fields(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        fields: Sequence[IpsFieldProbeRequest],
+        max_action_values: int = 20,
+    ) -> IpsSourceProbe:
+        self.require(ProviderCapability.AQL_EXECUTION)
+        unique = list({field.logical_field: field for field in fields}.values())
+        if len(unique) > 7:
+            raise ValueError("IPS probe exceeds the logical-field bound")
+        limit = max(1, min(int(max_action_values), 20))
+        action_distribution = (("BLOCK", 70), ("ALLOW", 50))
+        probes: list[IpsFieldProbe] = []
+        for field in unique:
+            normalized = (
+                field.reference_kind == "NORMALIZED"
+                and field.name in IPS_NORMALIZED_FIELD_ALLOWLIST
+            )
+            custom = field.reference_kind == "CUSTOM_PROPERTY" and field.name == "IPS_Action"
+            if not (normalized or custom) or not PROPERTY_NAME_PATTERN.fullmatch(field.name):
+                probes.append(
+                    IpsFieldProbe(
+                        logical_field=field.logical_field,
+                        reference_kind=field.reference_kind,
+                        name=field.name,
+                        rejected=True,
+                        error="QRadar rejected the request as invalid",
+                    )
+                )
+                continue
+            values = (
+                [
+                    IpsProbeValue(value=value, events=events)
+                    for value, events in action_distribution[:limit]
+                ]
+                if field.logical_field == "ACTION"
+                else []
+            )
+            probes.append(
+                IpsFieldProbe(
+                    logical_field=field.logical_field,
+                    reference_kind=field.reference_kind,
+                    name=field.name,
+                    populated_events=120,
+                    generic_name_events=(
+                        12
+                        if field.logical_field == "SIGNATURE"
+                        and field.reference_kind == "NORMALIZED"
+                        and field.name == "qid"
+                        else None
+                    ),
+                    action_values=values,
+                    values_truncated=len(action_distribution) > limit,
+                )
+            )
+        truncated = any(probe.values_truncated for probe in probes)
+        return IpsSourceProbe(
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=window_start,
+            window_end=window_end,
+            total_events=120,
+            fields=probes,
+            truncated=truncated,
+            ariel_searches=0,
         )
 
     async def observe_property_rejection(

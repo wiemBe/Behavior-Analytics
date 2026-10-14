@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import { NAV, activeNavHref, navItemMatches } from "./nav";
 
 describe("NAV", () => {
-  it("leads with the three behavioral destinations", () => {
+  it("leads with the four behavioral destinations", () => {
     expect(NAV[0].label).toBeNull();
     expect(NAV[0].items.map((i) => i.label)).toEqual([
       "Overview",
       "Anomalies",
       "Sources",
+      "WAF behavior",
     ]);
   });
 
@@ -17,8 +18,10 @@ describe("NAV", () => {
     expect(NAV[1].items.map((i) => i.label)).toEqual([
       "Fleet",
       "Fleet sources",
+      "Catch-all senders",
       "Offenses",
       "Rules",
+      "Rule statistics",
       "Coverage",
       "Log Sources",
       "Searches",
@@ -32,10 +35,18 @@ describe("NAV", () => {
     expect(NAV[2].items).toEqual([
       { href: "/admin/search-cadence", label: "Search cadence" },
       { href: "/admin/classification-rules", label: "Classification rules" },
+      { href: "/admin/outage-policy", label: "Outage alerts" },
       { href: "/admin/waf-sources", label: "WAF sources" },
+      { href: "/admin/ips-sources", label: "IPS sources" },
     ]);
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
     expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");
+    expect(activeNavHref("/admin/outage-policy")).toBe("/admin/outage-policy");
+  });
+
+  it("resolves the catch-all page to its own entry, not to Fleet", () => {
+    expect(activeNavHref("/fleet/catchall")).toBe("/fleet/catchall");
+    expect(activeNavHref("/fleet")).toBe("/fleet");
   });
 
   // A nav entry is a promise that something is on the other side of it.
@@ -79,6 +90,12 @@ describe("activeNavHref", () => {
     expect(activeNavHref("/behavior/sources/abc-123")).toBe("/behavior/sources");
   });
 
+  // /behavior is a prefix of /behavior/waf, so ordering alone would light up Overview.
+  it("activates WAF behavior on its list and on a WAF source, not Overview", () => {
+    expect(activeNavHref("/behavior/waf")).toBe("/behavior/waf");
+    expect(activeNavHref("/behavior/waf/sources/abc-123")).toBe("/behavior/waf");
+  });
+
   it("activates Anomalies on the list and on an investigation", () => {
     expect(activeNavHref("/anomalies")).toBe("/anomalies");
     expect(activeNavHref("/anomalies/abc-123")).toBe("/anomalies");
@@ -93,6 +110,7 @@ describe("activeNavHref", () => {
   it("activates supporting sections and their detail routes", () => {
     expect(activeNavHref("/offenses")).toBe("/offenses");
     expect(activeNavHref("/rules/42")).toBe("/rules");
+    expect(activeNavHref("/rules/statistics")).toBe("/rules/statistics");
     expect(activeNavHref("/log-sources/abc")).toBe("/log-sources");
     expect(activeNavHref("/")).toBe("/");
   });

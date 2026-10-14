@@ -71,6 +71,27 @@ def inventory_fingerprint(
     )
 
 
+def catchall_sender_fingerprint(
+    instance_id: str | uuid.UUID,
+    catchall_log_source_id: str | uuid.UUID,
+    identifier: str,
+) -> str:
+    """Identity of one sender first appearing on one catch-all source (C.8).
+
+    The identifier is hashed separately because `compute_fingerprint` lower-cases
+    its parts, and two senders that differ only by case are two senders.
+    """
+    return compute_fingerprint(
+        source_type="catchall_sender",
+        source_id=(
+            f"{instance_id}:{catchall_log_source_id}:"
+            f"{hashlib.sha256(identifier.encode()).hexdigest()}"
+        ),
+        condition="inventory",
+        subtype="NEW_CATCHALL_SENDER",
+    )
+
+
 def waf_anomaly_fingerprint(
     *,
     instance_id: str | uuid.UUID,

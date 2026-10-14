@@ -60,6 +60,9 @@ PERM_ANOMALY_READ = "read:anomalies"
 # Phase B.1. WAF collection operations: profile validation state, watermarks,
 # failures and admission counts. Administrative, so `read:*` does not grant it.
 PERM_WAF_ADMIN = "admin:waf"
+# Phase D profile administration is intentionally separate: WAF administrators
+# do not implicitly control IPS collection semantics.
+PERM_IPS_ADMIN = "admin:ips"
 # Log-source inventory and the SOC overview. The inventory is a map of every
 # monitored system and its owner; the overview aggregates it. Both were once
 # mounted with no guard at all. `read:*` satisfies the two read capabilities.
@@ -85,6 +88,10 @@ PERM_SEARCH_CADENCE_ADMIN = "admin:search_cadence"
 # does not grant it. Overrides and reviews reuse `log_source:write`.
 PERM_FLEET_READ = "read:fleet"
 PERM_CLASSIFICATION_ADMIN = "admin:classification"
+# Phase C.2. The outage alert policy decides which silences page a human; that
+# is operational control, so `read:*` does not grant it and a fleet viewer
+# cannot silence a class's outages.
+PERM_OUTAGE_ADMIN = "admin:outage"
 
 
 class PermissionDenied(Exception):

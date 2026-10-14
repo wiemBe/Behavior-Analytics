@@ -1,9 +1,12 @@
 import {
   api,
+  type CapacitySample,
   type RuleDetail,
   type RuleHealthSnapshot,
+  ruleStatisticsApi,
 } from "@/lib/api";
 import Link from "next/link";
+import { CapacityHistory } from "@/components/rules/CapacityHistory";
 import { formatDateTime, healthMeaning, healthTone, isUnestablished } from "@/lib/health";
 
 export default async function RuleDetailPage({
@@ -15,13 +18,15 @@ export default async function RuleDetailPage({
 
   let rule: RuleDetail | null = null;
   let history: RuleHealthSnapshot[] = [];
+  let capacityHistory: CapacitySample[] | null = [];
   let missing = false;
   let error = false;
 
   try {
-    [rule, history] = await Promise.all([
+    [rule, history, capacityHistory] = await Promise.all([
       api.rule(id),
       api.ruleHealthHistory(id).catch(() => []),
+      ruleStatisticsApi.capacityHistory(id).catch(() => null),
     ]);
   } catch (e) {
     if (e && typeof e === "object" && "status" in e && e.status === 404) missing = true;
@@ -176,6 +181,8 @@ export default async function RuleDetailPage({
           </tr>
         </tbody>
       </table>
+
+      <CapacityHistory samples={capacityHistory} />
 
       <h3>Health history</h3>
       {history.length === 0 ? (

@@ -32,6 +32,8 @@ export const NAV: NavGroup[] = [
       // order: /behavior/sources and /behavior/sources/{id} belong to Sources,
       // not to the Overview whose path is their prefix.
       { href: "/behavior/sources", label: "Sources" },
+      // Under /behavior like Sources, so it too wins by longest match.
+      { href: "/behavior/waf", label: "WAF behavior" },
     ],
   },
   {
@@ -41,8 +43,10 @@ export const NAV: NavGroup[] = [
       // Resolved by longest match, like /behavior/sources: a path under
       // /fleet/sources belongs here, not to Fleet.
       { href: "/fleet/sources", label: "Fleet sources" },
+      { href: "/fleet/catchall", label: "Catch-all senders" },
       { href: "/offenses", label: "Offenses" },
       { href: "/rules", label: "Rules" },
+      { href: "/rules/statistics", label: "Rule statistics" },
       { href: "/coverage", label: "Coverage" },
       { href: "/log-sources", label: "Log Sources" },
       { href: "/searches", label: "Searches" },
@@ -55,7 +59,9 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/admin/search-cadence", label: "Search cadence" },
       { href: "/admin/classification-rules", label: "Classification rules" },
+      { href: "/admin/outage-policy", label: "Outage alerts" },
       { href: "/admin/waf-sources", label: "WAF sources" },
+      { href: "/admin/ips-sources", label: "IPS sources" },
     ],
   },
 ];

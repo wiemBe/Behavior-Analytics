@@ -87,7 +87,7 @@ describe("default columns", () => {
         .getAllByRole("columnheader")
         .map((h) => h.textContent?.trim());
       expect(headers).toEqual([
-        "Source",
+        "Subject",
         "Detector",
         "State",
         "Observed → Expected (EPS)",
@@ -130,7 +130,7 @@ describe("status priority", () => {
 
     expect(within(row).getByText("OPEN").className).toContain("pill-strong");
     expect(within(row).getByText("HIGH").className).toContain("pill-quiet");
-    expect(within(row).getByText("PARTIAL").className).toContain("pill-quiet");
+    expect(within(row).getByText("Partial").className).toContain("pill-quiet");
   });
 
   it("states each status as text, so none depends on colour", async () => {
@@ -138,7 +138,7 @@ describe("status priority", () => {
     const row = screen.getByRole("row", { name: /LAB Firewall/ });
     expect(within(row).getByText("OPEN")).toBeInTheDocument();
     expect(within(row).getByText("HIGH")).toBeInTheDocument();
-    expect(within(row).getByText("PARTIAL")).toBeInTheDocument();
+    expect(within(row).getByText("Partial")).toBeInTheDocument();
   });
 });
 

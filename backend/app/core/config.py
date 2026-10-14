@@ -21,6 +21,8 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.models.enums import OutagePolicyMode
+
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
@@ -146,6 +148,27 @@ class Settings(BaseSettings):
     #: How long the QRadar custom-property catalog is reused per instance.
     qradar_property_catalog_ttl_seconds: int = Field(default=600, ge=60, le=86400)
     ariel_multi_bucket_max_rows: int = Field(default=5000, ge=1, le=100_000)
+    #: IPS collection: sources per keyed search (`logsourceid IN (...)`). A larger
+    #: group is chunked; truncation halves it. Design D.5.
+    ips_max_sources_per_search: int = Field(default=50, ge=1, le=500)
+    #: IPS collection: entities kept per (source, bucket, dimension) after the
+    #: fold's cut. The summed `dimension_events` still covers every row.
+    ips_max_entities_per_bucket: int = Field(default=200, ge=1, le=5000)
+    #: IPS fleet collection is opt-in; individual profiles must also be enabled
+    #: and VALID for their current version.
+    ips_collection_enabled: bool = False
+    ips_max_new_entities_per_bucket: int = Field(default=20, ge=0, le=1000)
+    ips_max_active_entities_per_source_dimension: int = Field(
+        default=2000, ge=1, le=50000
+    )
+    ips_min_admission_events: int = Field(default=3, ge=1)
+    ips_entity_active_days: int = Field(default=7, ge=1, le=90)
+    ips_min_coverage: float = Field(default=0.90, ge=0.0, le=1.0)
+    ips_retention_enabled: bool = True
+    ips_metric_retention_days: int = Field(default=35, ge=2)
+    ips_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
+    ips_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    ips_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention
@@ -296,6 +319,12 @@ class Settings(BaseSettings):
     anomaly_silence_grace_buckets: int = Field(default=1, ge=0)
     anomaly_max_buckets_per_evaluation: int = Field(default=120, ge=1, le=10_000)
 
+    # --- Phase C.2: outage alert policy -------------------------------------
+    #: What a source's NO_EVENTS does when no `outage_alert_policy` row applies.
+    #: ALERT keeps Phase A's behaviour, so an upgrade alerts exactly as before
+    #: and operators opt sources or classes into RECORD_ONLY (decision D-9).
+    outage_alert_default: OutagePolicyMode = OutagePolicyMode.ALERT
+
     # --- Phase A explanation evidence ---------------------------------------
     explanation_enabled: bool = True
     #: Values retained per dimension. Bounds both the Ariel result and the
@@ -394,6 +423,14 @@ class Settings(BaseSettings):
     waf_validation_min_ratio: float = Field(default=0.90, gt=0.0, le=1.0)
     #: Most frequent values fetched per property during validation.
     waf_validation_max_values: int = Field(default=50, ge=1, le=200)
+    # --- Phase D: IPS profile validation (collection is introduced later) --
+    ips_validation_window_seconds: int = Field(default=900, ge=60, le=3600)
+    ips_validation_pending_timeout_seconds: int = Field(default=900, ge=60)
+    ips_validation_lock_retry_delay_seconds: int = Field(default=30, ge=5, le=300)
+    ips_validation_lock_max_retries: int = Field(default=20, ge=0, le=100)
+    ips_validation_min_ratio: float = Field(default=0.90, gt=0.0, le=1.0)
+    #: Hard disclosure and Ariel-result bound for discovered ACTION values.
+    ips_validation_max_action_values: int = Field(default=20, ge=1, le=20)
     #: Collected buckets evaluated per source per scheduled run.
     waf_max_evaluation_buckets_per_run: int = Field(default=24, ge=1, le=2016)
     #: Endpoints whose baselines are rebuilt per source per scheduled run,
@@ -410,6 +447,37 @@ class Settings(BaseSettings):
     waf_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
     waf_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     waf_retention_interval_seconds: int = Field(default=86400, ge=3600)
+
+    # --- Phase C.2b: catch-all senders (SIM Generic and the Universal DSMs) ---
+    #: Kill switch. The collector sends one keyed search per cadence tick (about
+    #: 4 s on the lab), and the SEARCH_CADENCE gate decides when a tick is due.
+    catchall_collection_enabled: bool = True
+    #: Device types whose events are searched for senders. Sites have their own
+    #: catch-alls. Ints only; each is validated again before it enters a query.
+    catchall_type_ids: list[int] = Field(
+        default_factory=lambda: [67, 39, 212, 367, 4000], max_length=32
+    )
+    #: Rows kept per keyed search before truncation splits it.
+    catchall_max_rows_per_search: int = Field(default=2000, ge=10, le=100_000)
+    #: New senders admitted per catch-all source per bucket. Sender names are
+    #: chosen by whoever sends, so admission bounds what they can create.
+    catchall_max_new_senders_per_bucket: int = Field(default=20, ge=0, le=1000)
+    #: Active senders kept per catch-all source.
+    catchall_max_active_senders_per_source: int = Field(default=2000, ge=1, le=50_000)
+    #: Events in a bucket below which an unseen sender is not admitted.
+    catchall_min_admission_events: int = Field(default=3, ge=1)
+    #: A sender not seen for this long is retired (a later sighting reactivates it).
+    catchall_sender_active_days: int = Field(default=7, ge=1, le=90)
+    #: A newly admitted sender raises a LOW inventory alert. Off by default (D-9):
+    #: the review queue is the default surface.
+    catchall_new_sender_alerts_enabled: bool = False
+    #: Senders kept in a bucket's `top_senders` list.
+    catchall_top_senders: int = Field(default=20, ge=1, le=50)
+    #: Buckets, and senders retired for longer than this, are deleted.
+    catchall_retention_days: int = Field(default=35, ge=2)
+    catchall_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    catchall_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    catchall_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- Phase B.1.5: Ariel budget and batching ------------------------------
     #: WAF sources that may have an Ariel search in flight at once, across every
@@ -590,6 +658,16 @@ class Settings(BaseSettings):
         return bool(self.qradar_api_token_file or self.qradar_sec_token.get_secret_value())
 
     # ----------------------------------------------------------- validation
+    @field_validator("catchall_type_ids")
+    @classmethod
+    def _catchall_type_ids_are_ids(cls, value: list[int]) -> list[int]:
+        if not value:
+            raise ValueError("CATCHALL_TYPE_IDS needs at least one device type")
+        for item in value:
+            if isinstance(item, bool) or not isinstance(item, int) or not 1 <= item <= 100_000:
+                raise ValueError("CATCHALL_TYPE_IDS holds integers from 1 to 100000")
+        return value
+
     @field_validator("qradar_host")
     @classmethod
     def _reject_plaintext_qradar(cls, v: str) -> str:

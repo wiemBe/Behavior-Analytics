@@ -16,6 +16,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.enums import IpsDimension
+
 
 class ProviderDTO(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
@@ -351,6 +353,119 @@ class WafSourceProbe(ProviderDTO):
     total_error: str | None = None
     total_query: str | None = None
     properties: list[WafPropertyProbe] = Field(default_factory=list)
+
+
+class IpsFieldProbeRequest(ProviderDTO):
+    logical_field: str
+    reference_kind: str
+    name: str
+
+
+class IpsProbeValue(ProviderDTO):
+    value: str
+    events: int
+
+
+class IpsFieldProbe(ProviderDTO):
+    """Aggregate evidence for one IPS logical field; raw values are ACTION-only."""
+
+    logical_field: str
+    reference_kind: str
+    name: str
+    rejected: bool = False
+    error: str | None = None
+    populated_events: int | None = None
+    generic_name_events: int | None = None
+    action_values: list[IpsProbeValue] = Field(default_factory=list)
+    values_truncated: bool = False
+
+
+class IpsSourceProbe(ProviderDTO):
+    qradar_log_source_id: int
+    window_start: datetime
+    window_end: datetime
+    total_events: int | None = None
+    total_error: str | None = None
+    fields: list[IpsFieldProbe] = Field(default_factory=list)
+    truncated: bool = False
+    ariel_searches: int = 0
+
+
+class IpsKeyedRow(ProviderDTO):
+    """One keyed aggregate row of an IPS search: raw values, folded then discarded.
+
+    Which value fields are set depends on the dimension: `destination_port` and
+    `protocol_id` for DESTINATION_PORT, `destination_ip`, `qid` and `name` (a
+    normalized signature) or `signature` (a custom property), `source_ip`,
+    `action`, and `distinct_ports` for PORT_FANOUT. A value the search did not
+    return is None, never a default. Nothing here is persisted as it is.
+    """
+
+    qradar_log_source_id: int
+    bucket_start: datetime
+    #: `SUM(eventcount)`: the volume.
+    events: int
+    #: `COUNT(*)`: provenance only, the coalescing ratio.
+    records: int
+    destination_port: int | None = None
+    protocol_id: int | None = None
+    destination_ip: str | None = None
+    source_ip: str | None = None
+    qid: int | None = None
+    #: `QIDNAME(qid)`; display only.
+    name: str | None = None
+    #: A custom-property signature.
+    signature: str | None = None
+    action: str | None = None
+    distinct_ports: int | None = None
+
+
+class IpsKeyedResult(ProviderDTO):
+    """One keyed IPS search: the rows, whether they are whole, and what was searched."""
+
+    dimension: IpsDimension
+    qradar_log_source_ids: tuple[int, ...]
+    window_start: datetime
+    window_end: datetime
+    bucket_seconds: int
+    #: Rows returned, at most `max_rows`, in the search's volume order.
+    rows: tuple[IpsKeyedRow, ...] = ()
+    #: More than `max_rows` rows existed: `rows` is the top, the tail is missing.
+    truncated: bool = False
+    #: The query text, for provenance. Holds validated integers and quoted names only.
+    query: str = ""
+
+
+class CatchallSenderRow(ProviderDTO):
+    """One keyed aggregate row of the catch-all senders search: raw, folded then discarded.
+
+    `sender` is the Ariel field `logsourceidentifier`, as the device sent it. It is
+    attacker-controlled text: only `app.catchall.fold` sanitizes it, and it is
+    persisted only for senders that pass admission. None when the row had none.
+    """
+
+    qradar_log_source_id: int
+    sender: str | None = None
+    bucket_start: datetime
+    #: `SUM(eventcount)`: the volume.
+    events: int
+    #: `COUNT(*)`: provenance only, the coalescing ratio.
+    records: int
+
+
+class CatchallKeyedResult(ProviderDTO):
+    """One catch-all senders search: the rows, whether they are whole, and what was searched."""
+
+    device_type_ids: tuple[int, ...]
+    window_start: datetime
+    window_end: datetime
+    bucket_seconds: int
+    #: Rows returned, at most `max_rows`, in the search's volume order.
+    rows: tuple[CatchallSenderRow, ...] = ()
+    #: More than `max_rows` rows existed: `rows` is the top, the tail is missing.
+    truncated: bool = False
+    #: The query text, for provenance. Holds validated integers only.
+    query: str = ""
 
 
 class WafRejectionObservation(ProviderDTO):

@@ -24,17 +24,26 @@ import asyncio
 import logging
 import random
 import ssl
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 import httpx
 
+from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import (
     fold_log_source_metric_buckets,
     validate_bucketed_metric_window,
 )
+from app.ips.keyed_rows import (
+    parse_ips_keyed_rows,
+    validate_ips_fields,
+    validate_ips_sources,
+)
+from app.models.enums import IpsDimension
 from app.providers.base import (
+    IPS_NORMALIZED_FIELD_ALLOWLIST,
+    IPS_PROBE_MAX_WINDOW_SECONDS,
     PROPERTY_NAME_PATTERN,
     WAF_PROBE_MAX_WINDOW_SECONDS,
     LogSourceTelemetry,
@@ -50,10 +59,16 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CatchallKeyedResult,
     CustomPropertyDTO,
     DimensionAggregate,
     DimensionValueCount,
     InstanceInfoDTO,
+    IpsFieldProbe,
+    IpsFieldProbeRequest,
+    IpsKeyedResult,
+    IpsProbeValue,
+    IpsSourceProbe,
     LogSourceDTO,
     LogSourceGroupDTO,
     LogSourceMetricBucketBatch,
@@ -227,6 +242,7 @@ class QRadarRestProvider(QRadarProvider):
         sleep: Callable[[float], Awaitable[None]] | None = None,
         ariel_stop_pad_seconds: int = 0,
         clock: Callable[[], datetime] | None = None,
+        ips_max_sources_per_search: int = 50,
     ) -> None:
         if not verify_ssl:
             # Hard failure, not a warning. See config._production_hardening.
@@ -244,6 +260,7 @@ class QRadarRestProvider(QRadarProvider):
         self._rng = rng or random.Random()  # noqa: S311 - jitter, not cryptographic
         self._sleep = sleep or asyncio.sleep
         self._ariel_stop_pad_seconds = max(0, int(ariel_stop_pad_seconds))
+        self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
         self._clock = clock or (lambda: datetime.now(UTC))
 
         if client is not None:
@@ -1468,6 +1485,405 @@ class QRadarRestProvider(QRadarProvider):
             values=values,
             values_truncated=len(value_rows) >= limit,
             queries=queries,
+        )
+
+    @staticmethod
+    def _ips_population_condition(logical_field: str, expression: str, name: str) -> str:
+        if logical_field in {"SOURCE_IP", "DESTINATION_IP"}:
+            return (
+                # QRadar rejects LIKE on an IP-typed field (T-065); INCIDR is accepted.
+                f"{expression} IS NOT NULL AND NOT INCIDR('127.0.0.0/8', {expression}) "
+                f"AND {expression} != '::1'"
+            )
+        if logical_field == "DESTINATION_PORT":
+            return f"{expression} > 0"
+        if logical_field == "PROTOCOL":
+            return f"{expression} > 0 AND {expression} < 255"
+        if logical_field == "SIGNATURE" and name == "qid":
+            return f"{expression} > 0"
+        return f"{expression} IS NOT NULL"
+
+    def _ips_expression(self, reference: IpsFieldProbeRequest) -> str:
+        if reference.reference_kind == "NORMALIZED":
+            if reference.name not in IPS_NORMALIZED_FIELD_ALLOWLIST:
+                raise ValueError("normalized field is not in the IPS allowlist")
+            return f'"{reference.name}"'
+        if reference.reference_kind == "CUSTOM_PROPERTY":
+            return self._quote_property(reference.name)
+        raise ValueError("unknown IPS field reference kind")
+
+    def _ips_reference(self, reference: tuple[str, str]) -> tuple[str, str]:
+        """A validated reference as (quoted expression, name for the population filter).
+
+        The name is passed on only for a normalized field: the `qid > 0` filter is
+        about the numeric QID, never about a custom property that happens to be
+        called ``qid``.
+        """
+        kind, name = reference
+        if kind == "NORMALIZED":
+            if name not in IPS_NORMALIZED_FIELD_ALLOWLIST:
+                raise ValueError("normalized field is not in the IPS allowlist")
+            return f'"{name}"', name
+        if kind == "CUSTOM_PROPERTY":
+            return self._quote_property(name), ""
+        raise ValueError("unknown IPS field reference kind")
+
+    def _ips_keyed_query(
+        self,
+        dimension: IpsDimension,
+        fields: dict[str, tuple[str, str]],
+        *,
+        source_ids: Sequence[int],
+        start_ms: int,
+        end_ms: int,
+        bucket_ms: int,
+        limit: int,
+    ) -> str:
+        """The §D.5 AQL of one dimension. Only validated ints and quoted names enter it."""
+        volume = 'SUM(eventcount) AS "events", COUNT(*) AS "records"'
+        key = f'starttime / {bucket_ms} AS "k"'
+        group_key = f"starttime / {bucket_ms}"
+        order = "SUM(eventcount)"
+        conditions: list[str] = []
+        select: list[str] = []
+        group: list[str] = []
+
+        def use(logical: str, alias: str, *, grouped: bool = True) -> str:
+            expression, name = self._ips_reference(fields[logical])
+            conditions.append(self._ips_population_condition(logical, expression, name))
+            if grouped:
+                select.append(f'{expression} AS "{alias}"')
+                group.append(expression)
+            return expression
+
+        if dimension is IpsDimension.DESTINATION_PORT:
+            use("DESTINATION_PORT", "dport")
+            if "PROTOCOL" in fields:
+                # Not filtered: protocol 255 (absent) stays a row, folded to `unknown`.
+                expression, _ = self._ips_reference(fields["PROTOCOL"])
+                select.append(f'{expression} AS "proto"')
+                group.append(expression)
+        elif dimension is IpsDimension.DESTINATION_IP:
+            use("DESTINATION_IP", "dip")
+        elif dimension is IpsDimension.SIGNATURE:
+            is_qid = fields["SIGNATURE"] == ("NORMALIZED", "qid")
+            expression = use("SIGNATURE", "qid" if is_qid else "sig")
+            if is_qid:
+                select.append(f'QIDNAME({expression}) AS "qname"')
+        elif dimension is IpsDimension.SOURCE_IP:
+            use("SOURCE_IP", "sip")
+        elif dimension is IpsDimension.PORT_FANOUT:
+            use("SOURCE_IP", "sip")
+            # The port is filtered and counted, not grouped.
+            port = use("DESTINATION_PORT", "dport", grouped=False)
+            select.append(f'UNIQUECOUNT({port}) AS "distinct_ports"')
+            order = f"UNIQUECOUNT({port})"
+        elif dimension is IpsDimension.ACTION:
+            use("ACTION", "act")
+        elif dimension is not IpsDimension.TOTALS:
+            raise ValueError("unknown IPS dimension")
+
+        ids = ", ".join(str(int(i)) for i in source_ids)
+        where = (
+            f"WHERE logsourceid IN ({ids}) "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms}"
+        )
+        for condition in conditions:
+            where += f" AND {condition}"
+        columns = ['logsourceid AS "log_source_id"', *select, key, volume]
+        group_by = ", ".join(["logsourceid", *group, group_key])
+        return (
+            f"SELECT {', '.join(columns)} FROM events {where} "  # noqa: S608
+            f"GROUP BY {group_by} ORDER BY {order} DESC LIMIT {limit} "
+            f"{self._ariel_scope(start_ms, end_ms)}"
+        )
+
+    async def get_ips_keyed(
+        self,
+        dimension: IpsDimension,
+        *,
+        qradar_log_source_ids: Sequence[int],
+        fields: Mapping[str, tuple[str, str]],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> IpsKeyedResult:
+        """One fleet-wide keyed IPS search (design D.5); see the base class.
+
+        ``LIMIT cap + 1`` with ``cap = _keyed_row_cap(max_rows)``; volume is
+        ``SUM(eventcount)``. Read-only: an Ariel search over ``events``.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        ids = validate_ips_sources(
+            qradar_log_source_ids, max_sources=self._ips_max_sources_per_search
+        )
+        checked = validate_ips_fields(dimension, fields)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        cap = self._keyed_row_cap(max_rows)
+        aql = self._ips_keyed_query(
+            dimension,
+            checked,
+            source_ids=ids,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            bucket_ms=int(bucket_seconds) * 1000,
+            limit=cap + 1,
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_ips_keyed_rows(
+            dimension,
+            raw,
+            source_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=cap,
+            qid_normalized=checked.get("SIGNATURE") == ("NORMALIZED", "qid"),
+        )
+        return IpsKeyedResult(
+            dimension=dimension,
+            qradar_log_source_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
+
+    @staticmethod
+    def _catchall_query(
+        type_ids: Sequence[int], *, start_ms: int, end_ms: int, bucket_ms: int, limit: int
+    ) -> str:
+        """The §C.8 AQL. Only validated ints enter it; the sender is selected, never filtered."""
+        ids = ", ".join(str(int(i)) for i in type_ids)
+        return (
+            'SELECT logsourceid, logsourceidentifier AS "sender", '  # noqa: S608
+            f'starttime / {bucket_ms} AS "k", '
+            'SUM(eventcount) AS "events", COUNT(*) AS "records" '
+            f"FROM events WHERE devicetype IN ({ids}) "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY logsourceid, logsourceidentifier, starttime / {bucket_ms} "
+            f"ORDER BY SUM(eventcount) DESC LIMIT {limit}"
+        )
+
+    async def get_catchall_senders_keyed(
+        self,
+        *,
+        devicetype_ids: Sequence[int],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> CatchallKeyedResult:
+        """One keyed search of the catch-all senders (design C.8); see the base class.
+
+        ``LIMIT cap + 1`` with ``cap = _keyed_row_cap(max_rows)``; volume is
+        ``SUM(eventcount)``. Read-only: an Ariel search over ``events``.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        ids = validate_catchall_type_ids(devicetype_ids)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        cap = self._keyed_row_cap(max_rows)
+        aql = (
+            self._catchall_query(
+                ids,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                bucket_ms=int(bucket_seconds) * 1000,
+                limit=cap + 1,
+            )
+            + f" {self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_catchall_rows(
+            raw,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=cap,
+        )
+        return CatchallKeyedResult(
+            device_type_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
+
+    async def probe_ips_fields(
+        self,
+        *,
+        qradar_log_source_id: int,
+        window_start: datetime,
+        window_end: datetime,
+        fields: Sequence[IpsFieldProbeRequest],
+        max_action_values: int = 20,
+    ) -> IpsSourceProbe:
+        """At most ten bounded searches: total, seven populations and two extras."""
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = self._bounded_window(window_start, window_end)
+        if (end - start).total_seconds() > IPS_PROBE_MAX_WINDOW_SECONDS:
+            raise ValueError("IPS field probe window exceeds the one-hour bound")
+        unique = list({field.logical_field: field for field in fields}.values())
+        known_logical = {
+            "SOURCE_IP",
+            "DESTINATION_IP",
+            "DESTINATION_PORT",
+            "PROTOCOL",
+            "SIGNATURE",
+            "ACTION",
+            "SEVERITY",
+        }
+        if len(unique) > len(known_logical) or any(
+            field.logical_field not in known_logical for field in unique
+        ):
+            raise ValueError("IPS probe contains an unknown or duplicate logical field")
+        action_limit = max(1, min(int(max_action_values), 20, self._page_size))
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        scope = (
+            f"WHERE logsourceid = {int(qradar_log_source_id)} "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms}"
+        )
+        bound = self._ariel_scope(start_ms, end_ms)
+        searches = 0
+
+        async def run(aql: str, *, max_rows: int) -> list[dict]:
+            nonlocal searches
+            searches += 1
+            return await self._run_bounded_aggregate(aql, max_rows=max_rows)
+
+        total_aql = (
+            f'SELECT SUM(eventcount) AS "total_events" FROM events {scope} '  # noqa: S608
+            f"LIMIT 1 {bound}"
+        )
+        total: int | None = None
+        total_error: str | None = None
+        try:
+            rows = await run(total_aql, max_rows=1)
+            total = (as_int(rows[0].get("total_events")) if rows else 0) or 0
+        except (ProviderError, ValueError) as exc:
+            total_error = f"{type(exc).__name__}: {exc}"[:400]
+
+        probes: list[IpsFieldProbe] = []
+        truncated = False
+        for field in unique:
+            try:
+                expression = self._ips_expression(field)
+            except ValueError as exc:
+                probes.append(
+                    IpsFieldProbe(
+                        logical_field=field.logical_field,
+                        reference_kind=field.reference_kind,
+                        name=field.name,
+                        rejected=True,
+                        error=str(exc)[:400],
+                    )
+                )
+                continue
+            condition = self._ips_population_condition(
+                field.logical_field, expression, field.name
+            )
+            population_aql = (
+                f'SELECT SUM(eventcount) AS "populated" FROM events {scope} '  # noqa: S608
+                f"AND {condition} LIMIT 1 {bound}"
+            )
+            try:
+                rows = await run(population_aql, max_rows=1)
+            except ProviderQueryRejectedError as exc:
+                probes.append(
+                    IpsFieldProbe(
+                        logical_field=field.logical_field,
+                        reference_kind=field.reference_kind,
+                        name=field.name,
+                        rejected=True,
+                        error=str(exc)[:400],
+                    )
+                )
+                continue
+            except (ProviderError, ValueError) as exc:
+                probes.append(
+                    IpsFieldProbe(
+                        logical_field=field.logical_field,
+                        reference_kind=field.reference_kind,
+                        name=field.name,
+                        error=f"{type(exc).__name__}: {exc}"[:400],
+                    )
+                )
+                continue
+            populated = (as_int(rows[0].get("populated")) if rows else 0) or 0
+            generic_events: int | None = None
+            values: list[IpsProbeValue] = []
+            field_truncated = False
+            try:
+                if (
+                    field.logical_field == "SIGNATURE"
+                    and field.reference_kind == "NORMALIZED"
+                    and field.name == "qid"
+                ):
+                    generic_aql = (
+                        f'SELECT SUM(eventcount) AS "generic_events" FROM events {scope} '  # noqa: S608
+                        f"AND {condition} AND QIDNAME({expression}) LIKE 'Unknown %' "
+                        f"LIMIT 1 {bound}"
+                    )
+                    generic_rows = await run(generic_aql, max_rows=1)
+                    generic_events = (
+                        (as_int(generic_rows[0].get("generic_events")) if generic_rows else 0)
+                        or 0
+                    )
+                if field.logical_field == "ACTION":
+                    values_aql = (
+                        f'SELECT {expression} AS "value", SUM(eventcount) AS "events" '  # noqa: S608
+                        f"FROM events {scope} AND {condition} GROUP BY {expression} "
+                        f"ORDER BY SUM(eventcount) DESC LIMIT {action_limit + 1} {bound}"
+                    )
+                    value_rows = await run(values_aql, max_rows=action_limit + 1)
+                    field_truncated = len(value_rows) > action_limit
+                    truncated = truncated or field_truncated
+                    for row in value_rows[:action_limit]:
+                        value = as_text(row.get("value"), limit=64)
+                        events = as_int(row.get("events"))
+                        if value is not None and events is not None and events >= 0:
+                            values.append(IpsProbeValue(value=value, events=events))
+            except (ProviderError, ValueError) as exc:
+                probes.append(
+                    IpsFieldProbe(
+                        logical_field=field.logical_field,
+                        reference_kind=field.reference_kind,
+                        name=field.name,
+                        populated_events=populated,
+                        error=f"{type(exc).__name__}: {exc}"[:400],
+                    )
+                )
+                continue
+            probes.append(
+                IpsFieldProbe(
+                    logical_field=field.logical_field,
+                    reference_kind=field.reference_kind,
+                    name=field.name,
+                    populated_events=populated,
+                    generic_name_events=generic_events,
+                    action_values=values,
+                    values_truncated=field_truncated,
+                )
+            )
+        return IpsSourceProbe(
+            qradar_log_source_id=qradar_log_source_id,
+            window_start=start,
+            window_end=end,
+            total_events=total,
+            total_error=total_error,
+            fields=probes,
+            truncated=truncated,
+            ariel_searches=searches,
         )
 
     async def observe_property_rejection(
