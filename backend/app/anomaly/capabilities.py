@@ -22,7 +22,22 @@ from enum import StrEnum
 from typing import Any
 
 from app.anomaly.baseline import BASELINE_METRICS
-from app.models.enums import AnomalyType, WafAnomalyType, WafBreakdown, WafMeasurement
+from app.ips.inputs import (
+    IPS_BLOCK_RATIO_METRIC,
+    IPS_ENTITY_EVENTS_METRIC,
+    IPS_FANOUT_METRIC,
+    IPS_TOP_SOURCE_SHARE_METRIC,
+    IpsInput,
+    IpsObservation,
+)
+from app.ips.inputs import input_measurement as ips_input_measurement
+from app.models.enums import (
+    AnomalyType,
+    IpsAnomalyType,
+    WafAnomalyType,
+    WafBreakdown,
+    WafMeasurement,
+)
 from app.providers.base import LogSourceTelemetry as T
 from app.waf.baseline import (
     BLOCK_RATIO_METRIC,
@@ -44,6 +59,8 @@ from app.waf.observations import EndpointObservation
 class BehaviorDomain(StrEnum):
     LOG_SOURCE = "LOG_SOURCE"
     WAF_ENDPOINT = "WAF_ENDPOINT"
+    IPS_ENTITY = "IPS_ENTITY"
+    IPS_SOURCE = "IPS_SOURCE"
 
 
 class DetectorStatus(StrEnum):
@@ -72,15 +89,26 @@ WAF_BASELINE_METRICS = frozenset(
 )
 
 
+#: Every baseline metric the IPS baseline builder will train (design D.7).
+IPS_BASELINE_METRICS = frozenset(
+    {
+        IPS_ENTITY_EVENTS_METRIC,
+        IPS_TOP_SOURCE_SHARE_METRIC,
+        IPS_FANOUT_METRIC,
+        IPS_BLOCK_RATIO_METRIC,
+    }
+)
+
+
 @dataclass(frozen=True)
 class InputRequirement:
-    """What one measured input of a WAF detector must be for a verdict.
+    """What one measured input of a WAF or IPS detector must be for a verdict.
 
     Declared per input because the mathematics differs per input: a ratio's
     numerator may prove an increase as a lower bound, its denominator may not.
     """
 
-    input: WafInput
+    input: WafInput | IpsInput
     #: The input's role, e.g. "numerator" or "denominator".
     role: str
     requirement: WafMeasurementRequirement
@@ -100,11 +128,11 @@ class DetectorSpec:
     scheduled_task: str | None
     #: What stops it running on live data. None when nothing does.
     limitation: str | None = None
-    #: WAF only: how the detector may use a count that is a lower bound
+    #: WAF/IPS: how the detector may use a count that is a lower bound
     #: (grouping truncated, or coverage below its floor). None for log-source
     #: detectors, whose bucket volume is one ungrouped aggregate.
     measurement: WafMeasurementRequirement | None = None
-    #: WAF only: the requirement on each measured input. A verdict is only as
+    #: WAF/IPS: the requirement on each measured input. A verdict is only as
     #: strong as the narrowest of them.
     inputs: tuple[InputRequirement, ...] = ()
     #: WAF only: optional breakdown searches the detector reads.
@@ -420,7 +448,199 @@ def waf_input_scope(
         return waf_verdict_scope(detector_type, obs.measurement)
     decisions: list[ScopeDecision] = []
     for req in spec.inputs:
+        assert isinstance(req.input, WafInput), req.input
         decision = verdict_scope(req.requirement, input_measurement(req.input, obs, history))
+        if decision.reason is not None:
+            decision = ScopeDecision(decision.scope, f"{req.role}: {decision.reason}")
+        decisions.append(decision)
+    return narrowest(decisions)
+
+
+_IPS_ENTITY_DOMAINS = {
+    IpsAnomalyType.IPS_PORT_RATE_SPIKE,
+    IpsAnomalyType.IPS_DESTINATION_RATE_SPIKE,
+    IpsAnomalyType.IPS_SIGNATURE_BURST,
+}
+_IPS_NO_SCHEDULE = (
+    "IPS detection does not run on a schedule yet: the detector is implemented as a pure "
+    "function, but no engine executes it."
+)
+
+
+def _ips(
+    detector_type: IpsAnomalyType,
+    *,
+    baselines: set[str],
+    inputs: tuple[InputRequirement, ...],
+    activation: str | None = None,
+    measurement: WafMeasurementRequirement | None = None,
+) -> DetectorSpec:
+    return DetectorSpec(
+        domain=(
+            BehaviorDomain.IPS_ENTITY
+            if detector_type in _IPS_ENTITY_DOMAINS
+            else BehaviorDomain.IPS_SOURCE
+        ),
+        detector_type=detector_type.value,
+        telemetry=frozenset(),
+        baseline_metrics=frozenset(baselines),
+        # Nothing runs the IPS detectors until the engine is wired; status must say so.
+        scheduled_task=None,
+        limitation=_IPS_NO_SCHEDULE,
+        measurement=measurement,
+        inputs=inputs,
+        activation=activation,
+    )
+
+
+def _ips_entity_inputs() -> tuple[InputRequirement, ...]:
+    return (
+        InputRequirement(
+            IpsInput.ENTITY_EVENTS,
+            "volume",
+            _INCREASE,
+            "minimum events, ratio, absolute delta, robust z and the degenerate-MAD band are "
+            "all non-decreasing in the entity's event count",
+        ),
+        InputRequirement(
+            IpsInput.DIMENSION_EVENTS,
+            "coverage",
+            _INCREASE,
+            "coverage only has to reach its floor, and a lower bound on coverage that reaches "
+            "it proves the true coverage does",
+        ),
+    )
+
+
+IPS_DETECTORS: dict[IpsAnomalyType, DetectorSpec] = {
+    IpsAnomalyType.IPS_PORT_RATE_SPIKE: _ips(
+        IpsAnomalyType.IPS_PORT_RATE_SPIKE,
+        baselines={IPS_ENTITY_EVENTS_METRIC},
+        inputs=_ips_entity_inputs(),
+        measurement=_INCREASE,
+    ),
+    IpsAnomalyType.IPS_DESTINATION_RATE_SPIKE: _ips(
+        IpsAnomalyType.IPS_DESTINATION_RATE_SPIKE,
+        baselines={IPS_ENTITY_EVENTS_METRIC},
+        inputs=_ips_entity_inputs(),
+        measurement=_INCREASE,
+    ),
+    IpsAnomalyType.IPS_SIGNATURE_BURST: _ips(
+        IpsAnomalyType.IPS_SIGNATURE_BURST,
+        baselines={IPS_ENTITY_EVENTS_METRIC},
+        inputs=_ips_entity_inputs(),
+        measurement=_INCREASE,
+        activation="the signature has a specific QID name; 'Unknown ...' names are refused",
+    ),
+    IpsAnomalyType.IPS_NEW_DESTINATION_PORT: _ips(
+        IpsAnomalyType.IPS_NEW_DESTINATION_PORT,
+        baselines=set(),
+        inputs=(
+            InputRequirement(
+                IpsInput.PORT_HISTORY,
+                "history",
+                _EXACT,
+                "'below the admission threshold throughout the history' is an absence claim: "
+                "every history bucket must be recorded, with an exact port search, coverage at "
+                "its floor, whole admission, the same profile and normalizer, and no maintenance",
+            ),
+            InputRequirement(
+                IpsInput.ENTITY_EVENTS,
+                "materiality",
+                _INCREASE,
+                "minimum events and buckets with traffic are non-decreasing in the counts",
+            ),
+        ),
+    ),
+    IpsAnomalyType.IPS_SOURCE_CONCENTRATION_SPIKE: _ips(
+        IpsAnomalyType.IPS_SOURCE_CONCENTRATION_SPIKE,
+        baselines={IPS_TOP_SOURCE_SHARE_METRIC},
+        inputs=(
+            InputRequirement(
+                IpsInput.SOURCE_IP_TOP1_EVENTS,
+                "largest contributor",
+                _EXACT,
+                "in a truncated source-IP search the largest address may be hidden entirely, so "
+                "no bound on its events exists",
+            ),
+            InputRequirement(
+                IpsInput.SOURCE_IP_EVENTS,
+                "total",
+                _EXACT,
+                "a share over a lower-bound total bounds nothing",
+            ),
+        ),
+    ),
+    IpsAnomalyType.IPS_PORT_FANOUT_SPIKE: _ips(
+        IpsAnomalyType.IPS_PORT_FANOUT_SPIKE,
+        baselines={IPS_FANOUT_METRIC},
+        measurement=_INCREASE,
+        inputs=(
+            InputRequirement(
+                IpsInput.MAX_DISTINCT_PORTS,
+                "largest fan-out",
+                _INCREASE,
+                "the largest distinct-port count of one source IP is non-decreasing in what "
+                "was seen, and every guard is non-decreasing in it, so a lower bound that "
+                "fires proves the true maximum does",
+            ),
+            InputRequirement(
+                IpsInput.DESTINATION_PORT_EVENTS,
+                "destination-port coverage",
+                _INCREASE,
+                "fan-out excludes events without a usable destination port; an exact or "
+                "lower-bound destination-port population at the coverage floor is required",
+            ),
+        ),
+    ),
+    IpsAnomalyType.IPS_BLOCK_RATIO_SHIFT: _ips(
+        IpsAnomalyType.IPS_BLOCK_RATIO_SHIFT,
+        baselines={IPS_BLOCK_RATIO_METRIC},
+        inputs=(
+            InputRequirement(
+                IpsInput.BLOCKED_EVENTS,
+                "numerator",
+                _INCREASE,
+                "an action value the map does not name may have been a block, so blocked "
+                "events are a lower bound while any exist; at a fixed exact denominator the "
+                "proportion and every guard are non-decreasing in the numerator",
+            ),
+            InputRequirement(
+                IpsInput.ACTION_EVENTS,
+                "denominator",
+                _EXACT,
+                "a lower-bound denominator can make a proportion too large or too small, so a "
+                "ratio over one bounds nothing",
+            ),
+        ),
+        activation=(
+            "the source's IPS profile maps an ACTION field and authors an action value map "
+            "naming at least one BLOCKED value"
+        ),
+    ),
+}
+
+
+def ips_input_scope(
+    detector_type: IpsAnomalyType,
+    obs: IpsObservation,
+    history: HistoryFacts | None = None,
+) -> ScopeDecision:
+    """What an IPS detector may conclude, from each declared input's measurement.
+
+    The narrowest declared input decides. A spec that declares no inputs falls
+    back to its single `measurement` requirement over the entity count.
+    """
+    spec = IPS_DETECTORS[detector_type]
+    if not spec.inputs:
+        return verdict_scope(
+            spec.measurement or WafMeasurementRequirement.EXACT,
+            ips_input_measurement(IpsInput.ENTITY_EVENTS, obs, history),
+        )
+    decisions: list[ScopeDecision] = []
+    for req in spec.inputs:
+        assert isinstance(req.input, IpsInput), req.input
+        decision = verdict_scope(req.requirement, ips_input_measurement(req.input, obs, history))
         if decision.reason is not None:
             decision = ScopeDecision(decision.scope, f"{req.role}: {decision.reason}")
         decisions.append(decision)
@@ -469,6 +689,12 @@ def waf_verdict_scope(
 
 def detector_status(spec: DetectorSpec, settings: Any | None = None) -> DetectorStatus:
     """What the code supports, and -- given `settings` -- what this deployment runs."""
+    if spec.domain in (BehaviorDomain.IPS_ENTITY, BehaviorDomain.IPS_SOURCE):
+        if not spec.implemented or not spec.baseline_metrics <= IPS_BASELINE_METRICS:
+            return DetectorStatus.UNSUPPORTED
+        if not spec.scheduled_task:
+            return DetectorStatus.NOT_SCHEDULED
+        return DetectorStatus.OPERATIONAL
     if spec.domain is BehaviorDomain.WAF_ENDPOINT:
         if not spec.implemented or not spec.baseline_metrics <= WAF_BASELINE_METRICS:
             return DetectorStatus.UNSUPPORTED
@@ -493,4 +719,4 @@ def detector_status(spec: DetectorSpec, settings: Any | None = None) -> Detector
 
 
 def all_detectors() -> list[DetectorSpec]:
-    return [*LOG_SOURCE_DETECTORS.values(), *WAF_DETECTORS.values()]
+    return [*LOG_SOURCE_DETECTORS.values(), *WAF_DETECTORS.values(), *IPS_DETECTORS.values()]

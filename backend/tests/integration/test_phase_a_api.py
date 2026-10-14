@@ -27,6 +27,7 @@ from app.models.enums import (
     BucketCompleteness,
     DimensionAvailability,
     EvidenceStatus,
+    IpsAnomalyType,
     Severity,
     WafAnomalyType,
 )
@@ -524,10 +525,15 @@ class TestMeasuredValuesOnly:
 class TestDetectorCapabilities:
     def test_every_named_detector_is_published_with_its_status(self, db_schema) -> None:
         """Under the test app's default settings: the two WAF detectors without an
-        enabling setting run, the four opt-in ones are NOT_ENABLED."""
+        enabling setting run, the four opt-in ones are NOT_ENABLED. IPS detectors are
+        published as NOT_SCHEDULED."""
         body = client_for(READER).get("/api/v1/behavior/detectors").json()
         status = {d["detector_type"]: d["status"] for d in body}
-        assert set(status) == {t.value for t in AnomalyType} | {t.value for t in WafAnomalyType}
+        assert set(status) == (
+            {t.value for t in AnomalyType}
+            | {t.value for t in WafAnomalyType}
+            | {t.value for t in IpsAnomalyType}
+        )
         assert {t for t, s in status.items() if s == "OPERATIONAL"} == {
             "NO_EVENTS",
             "VOLUME_DROP",
@@ -544,6 +550,7 @@ class TestDetectorCapabilities:
         assert status["WAF_CLIENT_ENDPOINT_FANOUT_SPIKE"] == "UNSUPPORTED"
         assert status["CARDINALITY_DROP"] == "UNSUPPORTED"
         assert status["TIMESTAMP_DELAY"] == "SYNTHETIC_ONLY"
+        assert all(status[t.value] == "NOT_SCHEDULED" for t in IpsAnomalyType)
 
     def test_enabled_settings_make_every_b2_detector_operational(self, db_schema) -> None:
         client = client_for(READER)
