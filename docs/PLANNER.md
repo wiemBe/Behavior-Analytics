@@ -11,7 +11,7 @@ If this file disagrees with the code, the code wins. Fix the file.
 ## ▶ Resume here (ninth session, 2026-10-14, from 13:20)
 
 **Start a new chat here.** The user: "GLM can be used; Codex's session tokens ran out." Codex hit
-its usage limit in T-051c round 2 (reset **15:54**), with its work half done in `t051c`.
+its usage limit in T-051c round 2 (reset **15:54**).
 
 **State:**
 - **`main` @ `8814a47`** (unchanged).
@@ -25,22 +25,40 @@ its usage limit in T-051c round 2 (reset **15:54**), with its work half done in 
   - **UI-1.5** (`558be59`), after round 2 (literals into tokens; the brand subtitle is visually
     hidden at ≤1200 px and stays in the accessibility tree). Screenshots reviewed at the three
     viewports; lint clean, 1,666/1,666 tests, build.
-  - Worktrees, branches and DBs of all three were removed.
+  - **G-2b** (`3d1fc55`): `measurement`/`remainders` null on `NOT_COLLECTED`; expected buckets
+    over every enabled instance (the `_for_each_instance` predicate), still two statements.
+    Ruff clean; 55 geo integration.
+  - **B-2.1** (`94e3412`), after round 2 (**ruling:** the window end is floored to the step, so a
+    7 d step is one whole UTC hour and one baseline cell; no weighting across cells). Ruff clean;
+    mypy 31; 2,849 unit; 48 fleet integration; 3 statements at 3 and 40 sources.
+  - **UI-2.1** (`6a110c4`), after round 2 (a failed refresh keeps the last good data with
+    `refreshFailed`; `monitored_sources` required). Lint clean; 1,745 tests.
+  - The worktrees, branches and DBs of all six were removed.
   - Seen in review, for later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines in
     the `/behavior` "Needs attention" table.
+- **Flaky test found:** `PropertyInput.test.tsx` "renders and filters 500 properties without a
+  cap" failed once in about ten full runs under load (pre-existing, T-058) → **T-080**.
+- **GLM hit its 5-hour limit at ~13:40** in both sessions (reset **20:53**). Codex is out until
+  **15:54**. The user (~13:55): "Codex will take a while; give it to GLM or Sonnet."
 
 **In flight:**
 
 | Task | Agent | Worktree, DB | Log / how to collect |
 |---|---|---|---|
-| **T-051c** IPS engine ([spec](tasks/T-051c.md) with Ruling 1) | opencode `zai-coding-plan/glm-5.3`, `--standalone`, handed over with "review what you inherit" (Codex's half-done round 2) | `t051c`, DB `qradar_obs_t051c` | `scratchpad/t051c-glm.log` (the scratchpad is now `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/1f0011eb-9918-4fba-a9e5-8fe15b30a127/scratchpad/`); report `docs/tasks/T-051c.report.md`. Review as listed for T-051c below |
-| **G-2b** geo API fail-closed fixes ([spec](tasks/G-2b.md)): `measurement`/`remainders` null on `NOT_COLLECTED`; `expected_buckets` over every collected instance, not only those with rows | opencode `mimo-v2.6-flash-free`, `--standalone` | `g2b`, DB `qradar_obs_g2b` | `scratchpad/g2b.log`; report `docs/tasks/G-2b.report.md`; re-run the gates yourself |
-| **B-2.1** `GET /fleet/eps-series` ([spec](tasks/B-2.1.md)) | Sonnet sub-agent | `b21`, DB `qradar_obs_b21` | Report `docs/tasks/B-2.1.report.md`. Check: null unless every in-scope cell is COMPLETE; `expected_eps` with no band; constant statements at two sizes |
-| **UI-2.1** Home data layer ([spec](tasks/UI-2.1.md)) | Sonnet sub-agent | `ui21` (no DB) | Report `docs/tasks/UI-2.1.report.md`. Check: dedupe and abort tests; null-not-zero for every derivation; the refresh tick is additive in `AutoRefresh.tsx` |
-| **T-055** docs: README entries (C.2, IPS, geo, `/me`, health stamp), IPS [BUILT] markers, D-11 in UR.2.2/UR.2.8 ([spec](tasks/T-055.md)) | opencode `zai-coding-plan/glm-5.3`, `--standalone` | `t055` (no DB) | `scratchpad/t055.log`; report `docs/tasks/T-055.report.md`. Spot-check defaults against `config.py` |
+| **T-051c** IPS engine ([spec](tasks/T-051c.md) with Ruling 1) | Sonnet sub-agent, third hand ("review what you inherit": Codex, then GLM, both cut off by limits; GLM left one failing test, `test_a_new_port_opens_on_a_verified_history`) | `t051c`, DB `qradar_obs_t051c` | Report `docs/tasks/T-051c.report.md`. Review: constant statements per (source, bucket) (`test_ips_scale.py`); evaluate-before-train; capability edits as ruled; the full integration run |
+| **T-055** docs ([spec](tasks/T-055.md)) | opencode `nemotron-3-ultra-free`, `--standalone`, second hand (GLM was cut off with edits in all three docs and no report) | `t055` (no DB) | `scratchpad/t055b.log`; report `docs/tasks/T-055.report.md`. Spot-check every default against `config.py` |
+| **UI-2.2** Home KPI row with the B-2.1 sparkline ([spec](tasks/UI-2.2.md)) | Sonnet sub-agent | `ui22`; capture ports 3122/8122 | Report `docs/tasks/UI-2.2.report.md`; PNGs under `scratchpad/ui22/`. Review the PNGs yourself; the preview route must be gone from the diff |
+| **UI-2.4** Home tables and health ([spec](tasks/UI-2.4.md)) | Sonnet sub-agent | `ui24`; capture ports 3124/8124 | Report `docs/tasks/UI-2.4.report.md`; PNGs under `scratchpad/ui24/`. Same review |
+| **T-080** de-flake the 500-property test ([spec](tasks/T-080.md)) | opencode `mimo-v2.6-flash-free`, `--standalone` | `t080` | `scratchpad/t080.log`; check no assertion changed meaning |
 
-**Next:** collect these four, then steps 3–5 of the list below (T-052, Phase 2 Home with B-2.1
-first, then the full gate to `main`). Codex is back at 15:54: give it the largest single piece.
+**Next:**
+1. Collect the five above.
+2. **UI-2.3** (charts: fleet EPS chart over B-2.1, EPS by class, severity per hour), spec still to
+   write, **after UI-2.2 is merged** (UI-2.2 adds the eps-series types to `api.ts`). Sonnet, or
+   Codex after 15:54.
+3. **UI-2.5** (`/` composition), after UI-2.2 to UI-2.4.
+4. **T-052** IPS alerting, after T-051c.
+5. The full gate on `feat/phase-ce` → `main`.
 
 ---
 
