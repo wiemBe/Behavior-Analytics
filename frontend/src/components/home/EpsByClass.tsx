@@ -23,6 +23,7 @@ import type { HomePalette } from "@/lib/home/chartPalette";
 import { sliceVar } from "@/lib/home/chartPalette";
 import { epsByClass, REST_KEY, type ClassEps, type EpsByClass as Model } from "@/lib/home/epsByClass";
 import { badgeText } from "@/lib/home/qualifiers";
+import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
 
 import { buildClassOption } from "./chartOptions";
 import { useEChart } from "./useEChart";
@@ -106,8 +107,9 @@ function List({ model }: { model: Model }) {
   );
 }
 
-export function EpsByClass() {
-  const read = homeReads.fleetSummary("24h");
+export function EpsByClass({ range }: RangedProps = {}) {
+  const window = useEffectiveRange(range);
+  const read = homeReads.fleetSummary(window);
   const state = useApiResource(read.key, read.fetch);
   const data = state.status === "ok" ? state.data : null;
   const model = useMemo(() => (data ? epsByClass(data) : null), [data]);
@@ -116,7 +118,7 @@ export function EpsByClass() {
     <WidgetFrame
       id="home-eps-class"
       title="EPS by source class"
-      windowText="24 h"
+      windowText={RANGE_TEXT[window]}
       badge={(model && badgeText(model.qualifiers)) || undefined}
       link={{ href: "/fleet", label: "Fleet" }}
       state={state}

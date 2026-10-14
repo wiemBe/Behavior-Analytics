@@ -38,6 +38,8 @@ export interface WidgetProps<C> {
   config: C;
   /** The per-widget range override; null follows the dashboard. */
   range: WidgetRange | null;
+  /** True inside the expand dialog: the widget may show more of what its read already holds. */
+  expanded: boolean;
 }
 
 export interface WidgetDef<C = Record<string, never>> {
@@ -57,6 +59,8 @@ export interface WidgetDef<C = Record<string, never>> {
   size: WidgetSize;
   /** Per-widget range presets; null follows the dashboard default. */
   range: null | WidgetRange[];
+  /** Charts and tables open in the expand dialog; KPI and health cards do not. */
+  expandable: boolean;
   config: ConfigSchema<C>;
   defaultConfig: C;
   /** Where the widget's title leads, or null. */

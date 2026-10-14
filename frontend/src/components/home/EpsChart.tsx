@@ -6,8 +6,8 @@
 // band: a sum of per-source medians is not the median of the sum, and a sum of p05/p95
 // would be a different, much wider range.
 //
-// A title row (title, window, qualifier, the window presets, the drill-down), the chart, and
-// the key. What a mark means is in the tooltip, the key's `title` and the accessible
+// A title row (title, window, qualifier; the frame adds the window presets, Expand and the
+// drill-down), the chart, and the key. What a mark means is in the tooltip, the key's `title` and the accessible
 // description.
 
 import { LineChart } from "echarts/charts";
@@ -19,14 +19,14 @@ import {
 } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { useApiResource } from "@/hooks/useApiResource";
-import { homeReads, type FleetEpsSeries, type FleetWindow } from "@/lib/api";
-import { FLEET_WINDOWS } from "@/lib/fleet";
+import { homeReads, type FleetEpsSeries } from "@/lib/api";
 import { epsChartModel, epsSummaryText, windowText, type EpsChartModel } from "@/lib/home/epsChart";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import { badgeText } from "@/lib/home/qualifiers";
+import { useEffectiveRange, type RangedProps } from "@/widgets/runtime";
 
 import { buildEpsOption, EXPECTED_NAME } from "./chartOptions";
 import { useEChart } from "./useEChart";
@@ -97,8 +97,8 @@ function Key({ model }: { model: EpsChartModel }) {
   );
 }
 
-export function EpsChart() {
-  const [window, setWindow] = useState<FleetWindow>("24h");
+export function EpsChart({ range }: RangedProps = {}) {
+  const window = useEffectiveRange(range);
   const read = homeReads.epsSeries(window, "none");
   const state = useApiResource(read.key, read.fetch);
   const data = state.status === "ok" ? state.data : null;
@@ -110,21 +110,6 @@ export function EpsChart() {
       title="Fleet EPS"
       windowText={windowText(window)}
       badge={(model && badgeText(model.qualifiers)) || undefined}
-      controls={
-        <div className="hc-presets" role="group" aria-label="Window">
-          {FLEET_WINDOWS.map((w) => (
-            <button
-              key={w.value}
-              type="button"
-              className="hc-preset"
-              aria-pressed={w.value === window}
-              onClick={() => setWindow(w.value)}
-            >
-              {w.label}
-            </button>
-          ))}
-        </div>
-      }
       link={{ href: "/fleet", label: "Fleet" }}
       state={state}
       what="the fleet EPS series"

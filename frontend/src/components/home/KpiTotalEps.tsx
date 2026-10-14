@@ -1,7 +1,7 @@
 "use client";
 
-// KPI card 1 (UR.4.2): total EPS, a mean over 24 h, with its expectation, its
-// largest class and the trend. Drills down to /fleet.
+// KPI card 1 (UR.4.2): total EPS, a mean over the widget's range (24 h by default), with its
+// expectation, its largest class and the trend. Drills down to /fleet.
 //
 // The headline and the breakdown come from /fleet/summary and are the card; the
 // trend comes from /fleet/eps-series and is context, so its failure leaves the
@@ -11,14 +11,13 @@ import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
 import { homeReads, type FleetEpsSeries } from "@/lib/api";
 import { formatEpsValue } from "@/lib/fleet";
 import { totalEps, type TotalEps } from "@/lib/home/totalEps";
+import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
 
 import { signedPercent } from "@/lib/home/format";
 
 import { Figure, Line, n } from "./KpiParts";
 import { WidgetFrame, WidgetQualifiers } from "./WidgetFrame";
 import { Sparkline } from "./Sparkline";
-
-const WINDOW = "24h" as const;
 
 const eps = (v: number) => formatEpsValue(v) as string;
 
@@ -40,7 +39,15 @@ function Trend({ state }: { state: ResourceState<FleetEpsSeries> }) {
   );
 }
 
-function Body({ card, trend }: { card: TotalEps; trend: ResourceState<FleetEpsSeries> }) {
+function Body({
+  card,
+  trend,
+  windowText,
+}: {
+  card: TotalEps;
+  trend: ResourceState<FleetEpsSeries>;
+  windowText: string;
+}) {
   const mean = card.meanEps === null ? null : eps(card.meanEps);
   const insufficient = card.qualifiers.find((q) => q.kind === "INSUFFICIENT_DATA");
   const lostClasses =
@@ -60,7 +67,7 @@ function Body({ card, trend }: { card: TotalEps; trend: ResourceState<FleetEpsSe
         value={mean}
         unit="EPS"
         reason={insufficient?.kind === "INSUFFICIENT_DATA" ? insufficient.reason : undefined}
-        title="Mean over 24 h, complete intervals only."
+        title={`Mean over ${windowText}, complete intervals only.`}
       />
       <WidgetQualifiers
         variant="kpi"
@@ -98,23 +105,25 @@ function Body({ card, trend }: { card: TotalEps; trend: ResourceState<FleetEpsSe
   );
 }
 
-export function KpiTotalEps() {
-  const summary = homeReads.fleetSummary(WINDOW);
-  const series = homeReads.epsSeries(WINDOW, "none");
+export function KpiTotalEps({ range }: RangedProps = {}) {
+  const window = useEffectiveRange(range);
+  const windowText = RANGE_TEXT[window];
+  const summary = homeReads.fleetSummary(window);
+  const series = homeReads.epsSeries(window, "none");
   const state = useApiResource(summary.key, summary.fetch);
   const trend = useApiResource(series.key, series.fetch);
   return (
     <WidgetFrame
       variant="kpi"
       id="kpi-total-eps"
-      title="Total EPS, 24 h"
+      title={`Total EPS, ${windowText}`}
       link={{ href: "/fleet", label: "Fleet", ariaLabel: "View fleet by class" }}
       what="fleet EPS"
       permission="read:fleet"
       state={state}
-      description="Mean EPS over 24 h, summed over source classes, complete intervals only. Expected is the sum of the baselines of the classes that have one."
+      description={`Mean EPS over ${windowText}, summed over source classes, complete intervals only. Expected is the sum of the baselines of the classes that have one.`}
     >
-      {({ data }) => <Body card={totalEps(data)} trend={trend} />}
+      {({ data }) => <Body card={totalEps(data)} trend={trend} windowText={windowText} />}
     </WidgetFrame>
   );
 }

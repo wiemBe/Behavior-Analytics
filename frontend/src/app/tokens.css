@@ -258,6 +258,9 @@
   --dash-gap: var(--widget-gap);
   --dash-drawer-w: 34rem;
   --dash-arrange-w: 22rem;
+  --dash-expand-max-w: 90rem;
+  --dash-expand-inset: var(--sp-6);
+  --dash-select-w: 3.5rem;
   --dash-resize-hit: var(--sp-6);
   --dash-resize-mark: var(--sp-1);
   --dash-resize-stroke: 2px;
