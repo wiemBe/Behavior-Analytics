@@ -1,7 +1,8 @@
 """API schemas for the geography view (D-10).
 
 `share` is over country events only; the remainders sit beside it and are never mixed in.
-A bucket that was not measured has no row, so coverage says how many were.
+A bucket that was not measured has no row, so coverage says how many were. A range with no
+measured bucket at all carries no measurement of any kind.
 """
 
 from __future__ import annotations
@@ -57,8 +58,12 @@ class GeoCountriesOut(BaseModel):
     since: datetime
     until: datetime
     countries: list[GeoCountryOut] = Field(default_factory=list)
-    remainders: GeoRemaindersOut
-    measurement: GeoMeasurement
+    #: The remainder counts of the measured buckets. `None` while `status` is NOT_COLLECTED:
+    #: a range that was never measured has no remainder to report, not a zero for each kind.
+    remainders: GeoRemaindersOut | None
+    #: LOWER_BOUND if any measured bucket in range is, EXACT if every one is. `None` while
+    #: `status` is NOT_COLLECTED: nothing was measured, so nothing is exact either.
+    measurement: GeoMeasurement | None
     coverage: GeoCoverageOut
     status: GeoStatus
     unresolved_note: str = UNRESOLVED_NOTE

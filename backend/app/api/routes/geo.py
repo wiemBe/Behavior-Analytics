@@ -2,7 +2,10 @@
 
 Guarded by `read:geo` at the router (`read:*` satisfies it). The answer is aggregate counts
 per country and never an address. Two statements whatever the range: one aggregate and one
-coverage count.
+coverage count, which also counts the enabled instances that should have been collected —
+the same rows `_for_each_instance` enumerates — so an instance with no row at all still
+raises the expected count. A range with no measured bucket answers NOT_COLLECTED and carries
+no measurement and no zeros.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from sqlalchemy import distinct, func, select, tuple_
 from app.api.deps import SessionDep, SettingsDep
 from app.geo.fold import GeoDirection
 from app.models.geo import GeoCountryBucket
+from app.models.instance import QRadarInstance
 from app.schemas.geo import (
     GeoCountriesOut,
     GeoCountryOut,
@@ -91,6 +95,16 @@ async def get_countries(
             .group_by(GeoCountryBucket.country_code, GeoCountryBucket.remainder_kind)
         )
     ).all()
+    # The second statement counts the settled buckets it saw, and folds in the instances
+    # that should have been collected: the enabled rows `_for_each_instance` enumerates.
+    # An instance with no row at all still raises the expected count, so half an estate
+    # missing cannot read as a complete range.
+    should_collect = (
+        select(func.count())
+        .select_from(QRadarInstance)
+        .where(QRadarInstance.enabled.is_(True))
+        .scalar_subquery()
+    )
     measured, instances = (
         await session.execute(
             select(
@@ -99,7 +113,7 @@ async def get_countries(
                         tuple_(GeoCountryBucket.instance_id, GeoCountryBucket.bucket_start)
                     )
                 ),
-                func.count(distinct(GeoCountryBucket.instance_id)),
+                should_collect,
             ).where(*in_range)
         )
     ).one()
@@ -122,6 +136,9 @@ async def get_countries(
         verdict = GeoStatus.PARTIAL
     else:
         verdict = GeoStatus.OK
+    # Nothing was measured in a NOT_COLLECTED range, so it carries neither an exactness
+    # claim nor a zero for a remainder kind that was never counted.
+    unmeasured = verdict is GeoStatus.NOT_COLLECTED
     return GeoCountriesOut(
         direction=direction,
         since=since,
@@ -130,8 +147,12 @@ async def get_countries(
             GeoCountryOut(country_code=code, events=events, share=events / total)
             for code, events in countries
         ],
-        remainders=remainders,
-        measurement=GeoMeasurement.LOWER_BOUND if lower_bound else GeoMeasurement.EXACT,
+        remainders=None if unmeasured else remainders,
+        measurement=(
+            None
+            if unmeasured
+            else GeoMeasurement.LOWER_BOUND if lower_bound else GeoMeasurement.EXACT
+        ),
         coverage=GeoCoverageOut(measured_buckets=int(measured), expected_buckets=expected),
         status=verdict,
     )
