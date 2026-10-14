@@ -56,15 +56,16 @@ the repository.
 
 | Task | Agent | Where | Collect |
 |---|---|---|---|
+| **Full gate** on `0ecfd7d` (everything above merged) | the orchestrator; detached worktree `gate`, fresh DBs `qradar_obs_gate`, `_gate_mig` | `gate` | `gate/gate.log`: ruff, mypy, unit, alembic `head`→`0022`→`head`, check, heads, full integration, frontend gates. If green, merge `0ecfd7d` → `main` |
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
 | **UI-3.3** ([spec](tasks/UI-3.3.md) + amendment) | Codex hit its usage limit at ~21:54 before writing a file (reset **02:17**). Now a **Sonnet sub-agent of this chat**, starting fresh | `ui33` (own `node_modules`); ports 3133/8133/9133 | `docs/tasks/UI-3.3.report.md` in `ui33`; PNGs `ui33/png/`; fixture `ui33/fixture/` |
 | **T-091** lockfile in the image, patch upgrades ([spec](tasks/T-091.md)) | opencode `big-pickle`, `--standalone`, pid 163664 | `t091` (own `node_modules`) | `t091/agent.log`; `docs/tasks/T-091.report.md` in `t091` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
-2. UI-3.3 and T-091 (both running), then UI-3.5b.
-3. T-083b; T-054, whose defects become fix tasks.
-4. Full gate, then `feat/phase-ce` → `main`.
+1. UI-3.3 and T-091 (both running), then UI-3.5b.
+2. T-083b; T-054, whose defects become fix tasks.
+3. Full gate, then `feat/phase-ce` → `main` (the WAF fixes T-089 and T-090 are defects on `main`).
 
 **T-088 done** ([report](tasks/T-088.report.md), big-pickle): none of the 22 `npm audit` findings is
 reachable in this deployment.
