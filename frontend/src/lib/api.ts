@@ -712,6 +712,10 @@ export interface SourceBehavior {
   baseline_sample_count: number;
   baseline_completeness: number;
   last_bucket_at: string | null;
+  // The completeness of the bucket `observed_eps` came from: COMPLETE, PARTIAL
+  // or MISSING; null when no bucket exists. A client must not rank or present
+  // a non-COMPLETE value as a measurement.
+  last_bucket_completeness?: "COMPLETE" | "PARTIAL" | "MISSING" | null;
   last_event_at: string | null;
   open_anomaly_count: number;
 }

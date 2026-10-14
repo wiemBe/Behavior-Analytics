@@ -7,6 +7,7 @@ and range guards in one place where they cannot be forgotten on a new endpoint.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -23,6 +24,7 @@ from sqlalchemy import (
     null,
     or_,
     select,
+    tuple_,
     union_all,
 )
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
@@ -399,6 +401,27 @@ class AnomalyRepository:
             .limit(1)
         )
 
+    async def latest_buckets(
+        self, log_source_ids: Iterable[uuid.UUID]
+    ) -> dict[uuid.UUID, LogSourceMetric]:
+        """The newest bucket per source, one statement whatever the fleet size.
+
+        A source with no bucket is absent from the dict, so a caller reads
+        absence as "never collected" rather than as a bucket of zeros.
+        """
+        ids = list(log_source_ids)
+        if not ids:
+            return {}
+        m = LogSourceMetric
+        rows = await self.session.scalars(
+            select(m)
+            .where(m.log_source_id.in_(ids))
+            .distinct(m.log_source_id)
+            .order_by(m.log_source_id, m.bucket_start.desc())
+            .options(defer(m.query_provenance))
+        )
+        return {r.log_source_id: r for r in rows.all()}
+
     async def metric_history(
         self,
         log_source_id: uuid.UUID,
@@ -433,6 +456,30 @@ class AnomalyRepository:
                 LogSourceBaseline.metric_name == metric,
             )
         )
+
+    async def baseline_cells(
+        self,
+        keys: Iterable[tuple[uuid.UUID, int, int]],
+        *,
+        metric: str,
+    ) -> dict[tuple[uuid.UUID, int, int], LogSourceBaseline]:
+        """The seasonal cells for the given (source, weekday, hour) keys.
+
+        One row-value `IN` statement whatever the number of keys. A key with no
+        stored cell is absent from the dict, exactly as `baseline_cell` returns
+        None for it, so an unbuilt cell stays distinguishable from a built one.
+        """
+        pairs = list(keys)
+        if not pairs:
+            return {}
+        b = LogSourceBaseline
+        rows = await self.session.scalars(
+            select(b).where(
+                b.metric_name == metric,
+                tuple_(b.log_source_id, b.weekday, b.hour).in_(pairs),
+            )
+        )
+        return {(r.log_source_id, r.weekday, r.hour): r for r in rows.all()}
 
     async def baselines_for(
         self, log_source_id: uuid.UUID, *, metric: str

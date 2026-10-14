@@ -200,14 +200,17 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
     # A source with no adequate baseline is counted separately from a healthy
     # one: "we cannot yet judge this source" is an observability gap, and
     # folding it into the healthy count would hide it.
+    # One clock read and one cell lookup for the whole fleet, whatever its
+    # size: two reads of the clock could straddle a midnight boundary and
+    # judge the weekday against one instant and the hour against another.
+    now = datetime.now(UTC)
+    cells = await repo.baseline_cells(
+        [(src.id, now.isoweekday(), now.hour) for src in sources],
+        metric="average_eps",
+    )
     insufficient = 0
     for src in sources:
-        cell = await repo.baseline_cell(
-            src.id,
-            weekday=datetime.now(UTC).isoweekday(),
-            hour=datetime.now(UTC).hour,
-            metric="average_eps",
-        )
+        cell = cells.get((src.id, now.isoweekday(), now.hour))
         if cell is None or not cell.is_reliable:
             insufficient += 1
 
@@ -332,21 +335,34 @@ def _explanation_out(package) -> ExplanationOut | None:
 # ----------------------------------------------------------------- behavior
 @behavior_router.get("/sources", response_model=list[SourceBehaviorOut])
 async def list_source_behavior(session: SessionDep) -> list[SourceBehaviorOut]:
-    """Observed vs expected volume for every monitored source."""
+    """Observed vs expected volume for every monitored source.
+
+    Two bulk reads for the whole fleet, whatever its size: the Home view calls
+    this on every auto-refresh, and a statement per source would make its cost
+    grow with the fleet.
+    """
     repo = AnomalyRepository(session)
     sources = await repo.monitored_sources()
     active_counts = await repo.active_counts_by_source()
+    buckets = await repo.latest_buckets(src.id for src in sources)
+    cells = await repo.baseline_cells(
+        [
+            (src.id, buckets[src.id].bucket_start.isoweekday(), buckets[src.id].bucket_start.hour)
+            for src in sources
+            if src.id in buckets
+        ],
+        metric="average_eps",
+    )
 
     out: list[SourceBehaviorOut] = []
     for src in sources:
-        bucket = await repo.latest_bucket(src.id)
+        bucket = buckets.get(src.id)
         cell = None
         if bucket is not None:
-            cell = await repo.baseline_cell(
-                src.id,
-                weekday=bucket.bucket_start.isoweekday(),
-                hour=bucket.bucket_start.hour,
-                metric="average_eps",
+            # The cell is the one this source's own latest bucket lands in, so
+            # each row is judged against the season it actually observed.
+            cell = cells.get(
+                (src.id, bucket.bucket_start.isoweekday(), bucket.bucket_start.hour)
             )
         out.append(_source_behavior(src, bucket, cell, active_counts.get(src.id, 0)))
     return out
@@ -382,6 +398,9 @@ def _source_behavior(src, bucket, cell, active_count: int) -> SourceBehaviorOut:
         baseline_sample_count=cell.sample_count if cell is not None else 0,
         baseline_completeness=cell.completeness if cell is not None else 0.0,
         last_bucket_at=bucket.bucket_start if bucket is not None else None,
+        last_bucket_completeness=(
+            str(bucket.completeness) if bucket is not None else None
+        ),
         last_event_at=src.last_event_time,
         open_anomaly_count=active_count,
     )
