@@ -35,12 +35,13 @@ actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
   templates.
 - Also merged: **B-4** (`4fcd21d`, migration head **`0023`**; orchestrator re-ran ruff, mypy 31,
   2,944 unit, 79 integration), **T-082** (`837691d`, round 2 corrected the Docker peer-address
-  claim).
+  claim), **T-086** (`7e01c78`, the redesign plan's UR.5/UR.7 match what is built; mimo after a
+  nemotron run stalled; three cells corrected by the orchestrator).
   Logged for later: at 1024 the EPS-by-class widget has ~100 px spare; the `/anomalies` Evidence
   cell truncates at 1440 (UI-5.2).
 - **Agents:** Codex out until **21:04** (limit hit at 16:39). **The user (~16:40): GLM 5.3 and 5.3
   Flash may be used**; two parallel GLM sessions used the 5-hour window up in ~33 min (out until
-  **02:36**): never run two GLM sessions at once. Sonnet cleared. Free models: mimo on T-086.
+  **02:36**): never run two GLM sessions at once. Sonnet cleared. Free models: idle.
 
 | Task | Agent | Where | Status |
 |---|---|---|---|
@@ -48,7 +49,6 @@ actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
 | **T-085** IPS analyst read API: `/anomalies` third family, detail fallback, `/behavior/ips/...` ([spec](tasks/T-085.md)) | glm-5.3 (16:39) **cut off by GLM's 5-hour limit at 17:12** (reset 02:36) with ~770 lines and partly failing tests; **handed to a Sonnet sub-agent** (~17:15, review what you inherit; it edited `tests/unit/test_waf_analyst_schemas.py`, outside its allowed files: the new hand must justify or revert every existing-test edit) | `t085`; DB `qradar_obs_t085` | running |
 | **B-2.3** `GET /anomalies/histogram` ([spec](tasks/B-2.3.md)) | glm-5.3-flash (16:39) **cut off by the same limit at 17:12**; **handed to a Sonnet sub-agent** (~17:15) | `b23`; DB `qradar_obs_b23` | running. Merge T-085 first, then add the IPS branch to the histogram |
 | **UI-3.1** registry, state union, catalog, Home as `DashboardView` ([spec](tasks/UI-3.1.md)) | Sonnet sub-agent, medium (from ~17:05) | `ui31`; ports 3131/8131/9131; scratch `ui31/` | running |
-| **T-086** docs: redesign plan UR.5/UR.7 in line with what is built ([spec](tasks/T-086.md)) | opencode `mimo-v2.6-flash-free` (opencode pid 1077994; a nemotron run on the same worktree was stopped before it changed anything) | `t086` (no DB) | running |
 | **T-083** `test_migrations.py` setup-ERROR diagnosis ([spec](tasks/T-083.md)) | a free model | DBs `qradar_obs_t083`, `qradar_obs_t083b` (created) | **queued until T-054 ends**: its load phase stresses the shared Postgres server that T-054's live pipeline uses |
 
 ## ▶ Resume here (end of the ninth session, 2026-10-14 ~16:20; the user is moving to a new chat)
