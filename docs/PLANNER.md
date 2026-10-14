@@ -37,6 +37,12 @@ actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
   2,944 unit, 79 integration), **T-082** (`837691d`, round 2 corrected the Docker peer-address
   claim), **T-086** (`7e01c78`, the redesign plan's UR.5/UR.7 match what is built; mimo after a
   nemotron run stalled; three cells corrected by the orchestrator).
+  **B-2.3** (`696b630`, `GET /anomalies/histogram`; GLM flash then Sonnet, which fixed an ignored
+  `subject_kind`; merged tree 2,962 unit). **Follow-up B-2.3b after T-085:** T-085 makes
+  `_applicable_kinds` return three families, so the histogram's unpacking and an IPS branch must
+  change with it. **UI-3.1** (`8168c10`, the registry, state union, catalog, the Home as a
+  `DashboardView`; 2,034 tests; rulings: `--dg-*` numbers are the one inline-style exception; the
+  stale threshold with an unknown cadence is 4 h).
   Logged for later: at 1024 the EPS-by-class widget has ~100 px spare; the `/anomalies` Evidence
   cell truncates at 1440 (UI-5.2).
 - **Agents:** Codex out until **21:04** (limit hit at 16:39). **The user (~16:40): GLM 5.3 and 5.3
@@ -47,8 +53,8 @@ actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
 |---|---|---|---|
 | **T-054** | Sonnet sub-agent of the ninth-session chat | old scratch `t054/` | running (baseline run 1 done 16:20); its report lands in `t054/T-054.report.md` |
 | **T-085** IPS analyst read API: `/anomalies` third family, detail fallback, `/behavior/ips/...` ([spec](tasks/T-085.md)) | glm-5.3 (16:39) **cut off by GLM's 5-hour limit at 17:12** (reset 02:36) with ~770 lines and partly failing tests; **handed to a Sonnet sub-agent** (~17:15, review what you inherit; it edited `tests/unit/test_waf_analyst_schemas.py`, outside its allowed files: the new hand must justify or revert every existing-test edit) | `t085`; DB `qradar_obs_t085` | running |
-| **B-2.3** `GET /anomalies/histogram` ([spec](tasks/B-2.3.md)) | glm-5.3-flash (16:39) **cut off by the same limit at 17:12**; **handed to a Sonnet sub-agent** (~17:15) | `b23`; DB `qradar_obs_b23` | running. Merge T-085 first, then add the IPS branch to the histogram |
-| **UI-3.1** registry, state union, catalog, Home as `DashboardView` ([spec](tasks/UI-3.1.md)) | Sonnet sub-agent, medium (from ~17:05) | `ui31`; ports 3131/8131/9131; scratch `ui31/` | running |
+| **UI-3.5a** the catalog widgets that need no configuration ([spec](tasks/UI-3.5a.md)) | Sonnet sub-agent, medium (~17:45) | `ui35a`; ports 3135/8135/9135 | running |
+| **UI-3.2** drag, resize, keyboard steppers ([spec](tasks/UI-3.2.md)) | **Codex, launched automatically at 21:05** by `launch-ui32.sh` (this session's scratchpad: worktree from the then-current `feat/phase-ce`, its own `npm ci`, prompt `ui32.prompt.md`) | `ui32`; ports 3132/8132/9132; log `ui32-codex.log` | scheduled |
 | **T-083** `test_migrations.py` setup-ERROR diagnosis ([spec](tasks/T-083.md)) | a free model | DBs `qradar_obs_t083`, `qradar_obs_t083b` (created) | **queued until T-054 ends**: its load phase stresses the shared Postgres server that T-054's live pipeline uses |
 
 ## ▶ Resume here (end of the ninth session, 2026-10-14 ~16:20; the user is moving to a new chat)
