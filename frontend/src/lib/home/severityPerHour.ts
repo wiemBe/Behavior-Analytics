@@ -82,3 +82,31 @@ export function severityPerHour(
   };
 }
 
+
+/**
+ * The last `hours` whole UTC hours, ending with the hour that contains `nowMs`. The
+ * range moves only when the hour does, so it can be part of a request's identity
+ * without the key changing on every render.
+ */
+export function lastHours(nowMs: number, hours: number): { since: string; until: string } {
+  const thisHour = Math.floor(nowMs / HOUR_MS) * HOUR_MS;
+  return {
+    since: new Date(thisHour - (hours - 1) * HOUR_MS).toISOString(),
+    until: new Date(thisHour + HOUR_MS).toISOString(),
+  };
+}
+
+/** The stack as prose: the totals the chart cannot give a screen reader. */
+export function severityText(r: SeverityPerHour, range: { since: string; until: string }): string {
+  const n = (v: number) => v.toLocaleString("en-US");
+  const seen = r.hours.reduce((s, h) => s + h.total, 0);
+  const bound = r.lowerBound ? "at least " : "";
+  const bySeverity = r.severities
+    .map((s) => `${n(r.hours.reduce((sum, h) => sum + (h.counts[s] ?? 0), 0))} ${s.toLowerCase()}`)
+    .join(", ");
+  return (
+    `Anomalies per UTC hour from ${range.since} to ${range.until}: ${bound}${n(seen)} in ${n(r.hours.length)} hours` +
+    (bySeverity ? ` (${bySeverity})` : "") +
+    (r.lowerBound ? ". The list was capped, so every count is a lower bound." : ".")
+  );
+}

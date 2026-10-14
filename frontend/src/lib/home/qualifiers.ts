@@ -36,3 +36,19 @@ export function truncated(shown: number, total: number): Qualifier {
 export function hasQualifier(qualifiers: Qualifier[], kind: Qualifier["kind"]): boolean {
   return qualifiers.some((q) => q.kind === kind);
 }
+
+/**
+ * One short phrase for a widget's header pill: the worst caveat, in words. A state that
+ * leaves nothing to draw (not collected, insufficient) outranks one that qualifies what is
+ * drawn (truncated, partial). Null when there is no caveat.
+ */
+export function badgeText(qualifiers: Qualifier[]): string | null {
+  const find = (kind: Qualifier["kind"]) => qualifiers.find((q) => q.kind === kind);
+  if (find("NOT_COLLECTED")) return "Not collected";
+  if (find("INSUFFICIENT_DATA")) return "Insufficient data";
+  const t = find("TRUNCATED");
+  if (t && t.kind === "TRUNCATED") return `Truncated: ${t.text.charAt(0).toLowerCase()}${t.text.slice(1)}`;
+  const p = find("PARTIAL");
+  if (p && p.kind === "PARTIAL") return `Partial: ${p.text}`;
+  return null;
+}

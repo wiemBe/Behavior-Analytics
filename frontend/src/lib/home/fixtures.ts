@@ -4,6 +4,8 @@
 import type {
   AnomalySummary,
   BehaviorSummary,
+  EpsSeriesPoint,
+  FleetEpsSeries,
   FleetClassSummary,
   FleetSummary,
   OffenseAnalytics,
@@ -181,6 +183,45 @@ export function offenseRow(over: Partial<OffenseSummary> = {}): OffenseSummary {
     close_time: null,
     age_seconds: null,
     categories: [],
+    ...over,
+  };
+}
+
+const EPS_T0 = Date.parse("2026-10-14T12:00:00Z");
+
+/** A step of the fleet EPS series; `null` eps is a step that was not fully measured. */
+export function epsPoint(
+  i: number,
+  eps: number | null,
+  expected: number | null = null,
+): EpsSeriesPoint {
+  return {
+    step_start: new Date(EPS_T0 + i * 300_000).toISOString(),
+    events: null,
+    eps,
+    expected_eps: expected,
+    cells_complete: eps === null ? 3 : 4,
+    cells_expected: 4,
+    sources_expected: 4,
+  };
+}
+
+export function epsSeries(
+  points: EpsSeriesPoint[],
+  over: Partial<FleetEpsSeries> = {},
+): FleetEpsSeries {
+  return {
+    window: "1h",
+    group_by: "none",
+    window_start: new Date(EPS_T0).toISOString(),
+    window_end: new Date(EPS_T0 + points.length * 300_000).toISOString(),
+    bucket_seconds: 300,
+    step_seconds: 300,
+    series: [{ key: "all", label: "All", sources_expected: 4, points }],
+    coverage: {
+      steps_total: points.length,
+      steps_measured: points.filter((p) => p.eps !== null).length,
+    },
     ...over,
   };
 }

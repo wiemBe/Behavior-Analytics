@@ -232,3 +232,13 @@
   --bar-seg-fill: var(--text-2);
   --bar-track: var(--surface-3);
 }
+
+/* --- Home charts (UI-2.3) -------------------------------------------------
+   Compact: a chart is context for a figure, not the page. The donut is a fixed
+   small square beside its list. */
+:root {
+  --home-chart-h: 152px;
+  --home-donut: 112px;
+  --home-list-min: 14rem;
+  --home-col-num: 9ch;
+}
