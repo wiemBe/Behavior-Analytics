@@ -99,3 +99,30 @@ No new dependency. Never `pkill -f` or `killall`; stop only the processes you st
 From `frontend/`, with `~/.local/node/bin` on `PATH`: `npm run lint`, `npm run typecheck`,
 `npx vitest run --no-cache`, `npm run build`. Copy each summary line verbatim into
 `docs/tasks/UI-3.3.report.md` (AGENTS.md §6 format), with the PNG list. Do not commit.
+
+## Amendment (2026-10-14 ~22:00): after UI-3.2, fixture, files
+
+- **UI-3.2 is merged.** Customize mode has **one** `Edit` disclosure per widget (accessible name
+  `Arrange [widget]`). It holds the Move and Resize steppers and `Remove widget`, and it replaced
+  the separate Arrange and Remove controls. The reason: two controls crowded the title row, and
+  at 1280 the KPI bodies overflowed. Keep that rule:
+  - in customize mode, **Configure goes inside that disclosure** (or the disclosure opens the
+    drawer), never as a second title-row control;
+  - **re-run UI-3.2's density measurement** (`verify.mjs`: title-row height and body overflow,
+    read vs customize, every template widget, at 1440 and 1280) **with the range presets and
+    Expand added in read mode too**;
+  - quote its output: no added overflow and no taller title row in customize, and in read mode
+    the KPI cards must not overflow at 1280.
+- **Fix while you are there:** UI-3.2's open Edit panel leaves the top edge of the KPI's big number
+  visible above it (`/home/efe/Documents/QRadar-Dash-work/ui32/png/arrange-open-1440x900.png`).
+  Position the panel so it covers the body cleanly.
+- **Fixture:** copy `/home/efe/Documents/QRadar-Dash-work/ui32/fixture/` (Home and catalog
+  routes, pinned clock) to `/home/efe/Documents/QRadar-Dash-work/ui33/fixture/`. Never edit the
+  original. Add `window` handling to the fleet routes so each preset returns distinguishable data.
+- **Ports:** Next 3133, fixture 8133, Chrome debugging 9133.
+- **Everything persistent goes under `/home/efe/Documents/QRadar-Dash-work/ui33/`, never `/tmp`:**
+  scripts, logs, PNGs (`png/`). Start the verification script from
+  `/home/efe/Documents/QRadar-Dash-work/ui32/verify.mjs`.
+- `frontend/src/components/home/WidgetFrame.test.tsx` and `frontend/src/widgets/dashboard.css`
+  are allowed too; existing-test edits are limited as in Tests.
+- This worktree has its own `node_modules` (`npm ci` ran): install nothing.
