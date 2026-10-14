@@ -28,6 +28,7 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CatchallKeyedResult,
     CustomPropertyDTO,
     DimensionAggregate,
     InstanceInfoDTO,
@@ -500,6 +501,29 @@ class QRadarProvider(ABC):
         `max_rows` are kept. A key outside the span, a non-integer key or a
         log source that was not asked for fails the whole search with a
         ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_catchall_senders_keyed(
+        self,
+        *,
+        devicetype_ids: Sequence[int],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> CatchallKeyedResult:
+        """One keyed search of who feeds the catch-all device types (design C.8).
+
+        Rows are grouped by log source, sender (`logsourceidentifier`) and
+        bucket, and carry `SUM(eventcount)`, ordered by volume. `devicetype_ids`
+        are integers, validated before they enter the query. The span must be
+        whole epoch-aligned `bucket_seconds` buckets. More than `max_rows` rows
+        set ``truncated`` and only the first `max_rows` are kept. A key outside
+        the span or a non-integer key fails the whole search with a ProviderError.
 
         Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
         """

@@ -448,6 +448,37 @@ class Settings(BaseSettings):
     waf_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     waf_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
+    # --- Phase C.2b: catch-all senders (SIM Generic and the Universal DSMs) ---
+    #: Kill switch. The collector sends one keyed search per cadence tick (about
+    #: 4 s on the lab), and the SEARCH_CADENCE gate decides when a tick is due.
+    catchall_collection_enabled: bool = True
+    #: Device types whose events are searched for senders. Sites have their own
+    #: catch-alls. Ints only; each is validated again before it enters a query.
+    catchall_type_ids: list[int] = Field(
+        default_factory=lambda: [67, 39, 212, 367, 4000], max_length=32
+    )
+    #: Rows kept per keyed search before truncation splits it.
+    catchall_max_rows_per_search: int = Field(default=2000, ge=10, le=100_000)
+    #: New senders admitted per catch-all source per bucket. Sender names are
+    #: chosen by whoever sends, so admission bounds what they can create.
+    catchall_max_new_senders_per_bucket: int = Field(default=20, ge=0, le=1000)
+    #: Active senders kept per catch-all source.
+    catchall_max_active_senders_per_source: int = Field(default=2000, ge=1, le=50_000)
+    #: Events in a bucket below which an unseen sender is not admitted.
+    catchall_min_admission_events: int = Field(default=3, ge=1)
+    #: A sender not seen for this long is retired (a later sighting reactivates it).
+    catchall_sender_active_days: int = Field(default=7, ge=1, le=90)
+    #: A newly admitted sender raises a LOW inventory alert. Off by default (D-9):
+    #: the review queue is the default surface.
+    catchall_new_sender_alerts_enabled: bool = False
+    #: Senders kept in a bucket's `top_senders` list.
+    catchall_top_senders: int = Field(default=20, ge=1, le=50)
+    #: Buckets, and senders retired for longer than this, are deleted.
+    catchall_retention_days: int = Field(default=35, ge=2)
+    catchall_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    catchall_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    catchall_retention_interval_seconds: int = Field(default=86400, ge=3600)
+
     # --- Phase B.1.5: Ariel budget and batching ------------------------------
     #: WAF sources that may have an Ariel search in flight at once, across every
     #: worker. Each source collects one bucket per permit; a source that cannot
@@ -627,6 +658,16 @@ class Settings(BaseSettings):
         return bool(self.qradar_api_token_file or self.qradar_sec_token.get_secret_value())
 
     # ----------------------------------------------------------- validation
+    @field_validator("catchall_type_ids")
+    @classmethod
+    def _catchall_type_ids_are_ids(cls, value: list[int]) -> list[int]:
+        if not value:
+            raise ValueError("CATCHALL_TYPE_IDS needs at least one device type")
+        for item in value:
+            if isinstance(item, bool) or not isinstance(item, int) or not 1 <= item <= 100_000:
+                raise ValueError("CATCHALL_TYPE_IDS holds integers from 1 to 100000")
+        return value
+
     @field_validator("qradar_host")
     @classmethod
     def _reject_plaintext_qradar(cls, v: str) -> str:

@@ -30,6 +30,7 @@ from typing import Any, ClassVar
 
 import httpx
 
+from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import (
     fold_log_source_metric_buckets,
     validate_bucketed_metric_window,
@@ -58,6 +59,7 @@ from app.providers.dto import (
     ArielSearchHandleDTO,
     ArielSearchResultsDTO,
     ArielSearchStatusDTO,
+    CatchallKeyedResult,
     CustomPropertyDTO,
     DimensionAggregate,
     DimensionValueCount,
@@ -1644,6 +1646,70 @@ class QRadarRestProvider(QRadarProvider):
         return IpsKeyedResult(
             dimension=dimension,
             qradar_log_source_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
+
+    @staticmethod
+    def _catchall_query(
+        type_ids: Sequence[int], *, start_ms: int, end_ms: int, bucket_ms: int, limit: int
+    ) -> str:
+        """The §C.8 AQL. Only validated ints enter it; the sender is selected, never filtered."""
+        ids = ", ".join(str(int(i)) for i in type_ids)
+        return (
+            'SELECT logsourceid, logsourceidentifier AS "sender", '  # noqa: S608
+            f'starttime / {bucket_ms} AS "k", '
+            'SUM(eventcount) AS "events", COUNT(*) AS "records" '
+            f"FROM events WHERE devicetype IN ({ids}) "
+            f"AND starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY logsourceid, logsourceidentifier, starttime / {bucket_ms} "
+            f"ORDER BY SUM(eventcount) DESC LIMIT {limit}"
+        )
+
+    async def get_catchall_senders_keyed(
+        self,
+        *,
+        devicetype_ids: Sequence[int],
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> CatchallKeyedResult:
+        """One keyed search of the catch-all senders (design C.8); see the base class.
+
+        ``LIMIT cap + 1`` with ``cap = _keyed_row_cap(max_rows)``; volume is
+        ``SUM(eventcount)``. Read-only: an Ariel search over ``events``.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        ids = validate_catchall_type_ids(devicetype_ids)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        cap = self._keyed_row_cap(max_rows)
+        aql = (
+            self._catchall_query(
+                ids,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                bucket_ms=int(bucket_seconds) * 1000,
+                limit=cap + 1,
+            )
+            + f" {self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_catchall_rows(
+            raw,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=cap,
+        )
+        return CatchallKeyedResult(
+            device_type_ids=ids,
             window_start=start,
             window_end=end,
             bucket_seconds=bucket_seconds,

@@ -8,6 +8,7 @@ from app.api.deps import requires
 from app.api.routes import (
     alerts,
     anomalies,
+    catchall,
     classification_rules,
     coverage,
     fleet,
@@ -103,6 +104,9 @@ api_router.include_router(fleet.router, dependencies=[Depends(requires(PERM_FLEE
 api_router.include_router(
     classification_rules.router, dependencies=[Depends(requires(PERM_FLEET_READ))]
 )
+# Phase C.2b catch-all senders: read-guarded like /fleet; review writes check
+# `log_source:write` in the handler.
+api_router.include_router(catchall.router, dependencies=[Depends(requires(PERM_FLEET_READ))])
 # The outage alert policy is administrative: it changes what pages a human, so
 # `admin:outage` guards every method, reads included; `read:*` does not satisfy it.
 api_router.include_router(
