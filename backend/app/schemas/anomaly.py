@@ -762,3 +762,38 @@ class PagedWafBaselines(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# ------------------------------------------------------------- histogram
+class AnomalyHistogramHourOut(BaseModel):
+    """One UTC hour of the anomaly histogram.
+
+    `counts` holds an entry only for a severity with a non-zero count in the
+    hour: a severity absent from the mapping counted zero in it, so the chart
+    draws zero without the payload carrying one. The hour is present even when
+    nothing was counted in it -- the population is complete, so an empty hour
+    is a measured zero, never a missing measurement.
+    """
+
+    start: datetime
+    counts: dict[str, int]
+    total: int
+
+
+class AnomalyHistogramOut(BaseModel):
+    """Anomaly counts per UTC hour and severity over a range, uncapped.
+
+    The population is exactly `GET /anomalies`'s for the same `since`, `until`
+    and `subject_kind` -- same families, every state -- so `total` equals the
+    list's `total` for the same arguments and no count here is a lower bound.
+    """
+
+    since: datetime
+    until: datetime
+    #: The buckets are fixed UTC hours.
+    bucket_seconds: int
+    #: The anomaly families the totals cover, so a client knows what was counted.
+    families: list[str]
+    total: int
+    #: Every hour of the range, in order, including the hours with no anomaly.
+    hours: list[AnomalyHistogramHourOut]
