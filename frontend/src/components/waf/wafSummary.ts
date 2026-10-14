@@ -7,7 +7,7 @@
 
 import type { WafAnomalyDetail } from "@/lib/api";
 
-import { formatPercent, formatRequests, requestsUnit } from "./wafFormat";
+import { formatPercent, formatRequests, requestsUnit, SINCE_UNIT } from "./wafFormat";
 import { endpointLabel, isLowerBound } from "./wafLabels";
 
 export interface WafSummary {
@@ -26,6 +26,16 @@ const RATIO_NOUNS: Record<string, string> = {
 
 export function isRatioType(type: string): boolean {
   return type in RATIO_NOUNS;
+}
+
+/**
+ * The new-endpoint detector counts requests since the endpoint first appeared and expects none.
+ * It is judged by a request-count materiality floor (`threshold`), not by a robust z-score
+ * against a seasonal baseline: it has no robust score, no seasonal band and no surprise
+ * threshold, and its count is not a per-bucket rate.
+ */
+export function isNewEndpointType(type: string): boolean {
+  return type === "WAF_NEW_ENDPOINT_ACCESS";
 }
 
 export function summarizeWafAnomaly(
@@ -58,11 +68,11 @@ export function summarizeWafAnomaly(
 
   const observed = d?.observed_requests ?? anomaly.observed_value;
   const unit = requestsUnit(bucketSeconds);
-  if (anomaly.anomaly_type === "WAF_NEW_ENDPOINT_ACCESS") {
+  if (isNewEndpointType(anomaly.anomaly_type)) {
     return {
       text:
-        `${subject} received ${formatRequests(observed, measurement)} ${unit} and is absent ` +
-        `from the verified request history.`,
+        `${subject} received ${formatRequests(observed, measurement)} ${SINCE_UNIT}; none ` +
+        `were expected, as it had no verified request history at the admission threshold.`,
       caveat,
     };
   }

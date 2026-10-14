@@ -9,6 +9,7 @@
 
 import type { WafAnomalyDetail } from "@/lib/api";
 import {
+  NOT_MEASURED,
   formatDelta,
   formatDuration,
   formatMetric,
@@ -16,9 +17,9 @@ import {
   hasConfidenceLimitation,
 } from "@/lib/behavior";
 
-import { formatPercent, formatPoints, formatRequests, requestsUnit } from "./wafFormat";
+import { formatPercent, formatPoints, formatRequests, requestsUnit, SINCE_UNIT } from "./wafFormat";
 import { isLowerBound } from "./wafLabels";
-import { isRatioType } from "./wafSummary";
+import { isNewEndpointType, isRatioType } from "./wafSummary";
 
 export function WafIncidentMetrics({
   anomaly,
@@ -30,12 +31,14 @@ export function WafIncidentMetrics({
 }) {
   const d = anomaly.detection;
   const ratio = isRatioType(anomaly.anomaly_type);
+  const noneExpected = isNewEndpointType(anomaly.anomaly_type);
   const measurement = d?.request_count_measurement ?? anomaly.observed_measurement ?? null;
   const lower = isLowerBound(measurement);
   const running = anomaly.anomaly_end == null;
-  const unit = requestsUnit(bucketSeconds);
+  // A new endpoint's count is cumulative since it first appeared, not per bucket.
+  const unit = noneExpected ? SINCE_UNIT : requestsUnit(bucketSeconds);
   const band =
-    d?.expected_low != null && d.expected_high != null
+    !noneExpected && d?.expected_low != null && d.expected_high != null
       ? `${formatRequests(d.expected_low)} – ${formatRequests(d.expected_high)}`
       : null;
 
@@ -56,7 +59,11 @@ export function WafIncidentMetrics({
             <span className="measure-unit">{ratio ? "of requests" : unit}</span>
           </dd>
           <dd className="measure-note">
-            {lower ? "At least this; the true value may be higher" : "During the anomalous interval"}
+            {lower
+              ? "At least this; the true value may be higher"
+              : noneExpected
+                ? "Cumulative since the endpoint first appeared, not a per-bucket rate"
+                : "During the anomalous interval"}
             {ratio && d?.observed_numerator != null && d.observed_denominator != null && (
               <>
                 {" · "}
@@ -73,16 +80,28 @@ export function WafIncidentMetrics({
         <div className="measure-item">
           <dt>Expected</dt>
           <dd className="measure-value">
-            {expected}
-            <span className="measure-unit">{ratio ? "of requests" : unit}</span>
+            {noneExpected ? (
+              "none"
+            ) : (
+              <>
+                {expected}
+                <span className="measure-unit">{ratio ? "of requests" : unit}</span>
+              </>
+            )}
           </dd>
           <dd className="measure-note">
-            Seasonal baseline, this weekday and hour
-            {band && !ratio && (
+            {noneExpected ? (
+              "The endpoint has no verified history, so no seasonal baseline applies"
+            ) : (
               <>
-                {" · range "}
-                <span className="num">{band}</span>
-                <span className="muted"> {unit}</span>
+                Seasonal baseline, this weekday and hour
+                {band && !ratio && (
+                  <>
+                    {" · range "}
+                    <span className="num">{band}</span>
+                    <span className="muted"> {unit}</span>
+                  </>
+                )}
               </>
             )}
           </dd>
@@ -91,10 +110,16 @@ export function WafIncidentMetrics({
         <div className="measure-item">
           <dt>Deviation</dt>
           <dd className="measure-value">
-            {ratio ? formatPoints(d?.percentage_point_change) : formatRatio(anomaly.deviation_ratio)}
+            {noneExpected
+              ? NOT_MEASURED
+              : ratio
+                ? formatPoints(d?.percentage_point_change)
+                : formatRatio(anomaly.deviation_ratio)}
           </dd>
           <dd className="measure-note">
-            {ratio ? (
+            {noneExpected ? (
+              "Not defined: nothing was expected"
+            ) : ratio ? (
               <>
                 <span className="num">{formatRatio(d?.ratio ?? anomaly.deviation_ratio)}</span>{" "}
                 expected
@@ -124,15 +149,19 @@ export function WafIncidentMetrics({
           <dd className="muted">
             {" "}
             (0 to 1)
-            {hasConfidenceLimitation(d?.robust_score_status) &&
+            {!noneExpected &&
+              hasConfidenceLimitation(d?.robust_score_status) &&
               " · limited because baseline variability is zero"}
           </dd>
         </div>
-        <div>
-          <dt>Endpoint coverage</dt>
-          <dd className="num">{formatPercent(d?.endpoint_coverage_ratio)}</dd>
-          <dd className="muted"> of the source&apos;s events carried a parseable endpoint</dd>
-        </div>
+        {/* The new-endpoint detector does not record coverage; a bare dash would read as a figure. */}
+        {!noneExpected && (
+          <div>
+            <dt>Endpoint coverage</dt>
+            <dd className="num">{formatPercent(d?.endpoint_coverage_ratio)}</dd>
+            <dd className="muted"> of the source&apos;s events carried a parseable endpoint</dd>
+          </div>
+        )}
       </dl>
     </section>
   );

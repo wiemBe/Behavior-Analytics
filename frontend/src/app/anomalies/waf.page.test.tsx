@@ -282,3 +282,23 @@ describe("the filter chip", () => {
     expect(chip.textContent).toBe("Subject: Log sources✕");
   });
 });
+
+describe("a new endpoint row", () => {
+  it("reads the cumulative count with its own unit and none expected, not a per-bucket rate", async () => {
+    await renderPage({}, [
+      wafListItem({
+        anomaly_type: "WAF_NEW_ENDPOINT_ACCESS",
+        observed_value: 320,
+        expected_value: 0,
+        deviation_ratio: null,
+        robust_z: null,
+        absolute_delta: 320,
+      }),
+    ]);
+    const row = screen.getByText("GET /portal/login").closest("tr")!;
+    expect(row).toHaveTextContent("320 → none");
+    expect(row).toHaveTextContent("requests since it first appeared");
+    expect(row).not.toHaveTextContent("req / 5 min");
+    expect(row).not.toHaveTextContent("→ 0");
+  });
+});

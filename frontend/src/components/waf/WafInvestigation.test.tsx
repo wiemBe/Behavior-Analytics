@@ -1,7 +1,14 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { wafBaselineCell, wafBucket, wafDetail, wafDetection } from "./fixtures";
+import {
+  wafBaselineCell,
+  wafBucket,
+  wafDetail,
+  wafDetection,
+  wafNewEndpointDetection,
+  wafRatioDetection,
+} from "./fixtures";
 import { buildBaselineLookup, type BaselineSource } from "./wafBaseline";
 import { NO_VIRTUAL_HOST_SENTENCE } from "./WafIncidentHeader";
 import { WafInvestigation } from "./WafInvestigation";
@@ -333,5 +340,138 @@ describe("WAF investigation: against what normal", () => {
     const row = working().getByText("Seasonal p05–p95 at detection").closest("div")!;
     expect(row).toHaveTextContent("1.0% – 5.0%");
     expect(row).not.toHaveTextContent("requests / 5 min");
+  });
+});
+
+const NEW_ENDPOINT = {
+  anomaly_type: "WAF_NEW_ENDPOINT_ACCESS",
+  observed_value: 320,
+  expected_value: 0,
+  deviation_ratio: null,
+  robust_z: null,
+  absolute_delta: 320,
+  consecutive_buckets: 4,
+  confidence: 0.8,
+  detection: wafNewEndpointDetection(),
+};
+
+describe("WAF investigation: new endpoint access", () => {
+  const measures = () => within(screen.getByRole("region", { name: "Incident measurements" }));
+  const working = () =>
+    within(screen.getByRole("heading", { name: "Against what normal" }).closest("section")!);
+
+  it("reads the observed count as requests since the endpoint first appeared, not per bucket", () => {
+    view(NEW_ENDPOINT);
+    const observed = measures().getByText("Observed").closest("div")!;
+    expect(observed).toHaveTextContent("320requests since it first appeared");
+    expect(observed).toHaveTextContent("not a per-bucket rate");
+    expect(observed).not.toHaveTextContent("/ 5 min");
+    expect(screen.getByText(/received 320 requests since it first appeared/)).toBeInTheDocument();
+  });
+
+  it("reads the expected value as none, never 0", () => {
+    view(NEW_ENDPOINT);
+    const expected = measures().getByText("Expected").closest("div")!;
+    expect(expected).toHaveTextContent("none");
+    expect(expected).not.toHaveTextContent(/\b0\b/);
+    expect(expected).not.toHaveTextContent("requests");
+    expect(expected).toHaveTextContent("no seasonal baseline applies");
+    expect(expected).not.toHaveTextContent("Seasonal baseline, this weekday and hour");
+  });
+
+  it("gives deviation an em dash and says nothing was expected", () => {
+    view(NEW_ENDPOINT);
+    const deviation = measures().getByText("Deviation").closest("div")!;
+    expect(deviation).toHaveTextContent("—");
+    expect(deviation).toHaveTextContent("Not defined: nothing was expected");
+  });
+
+  it("omits endpoint coverage, which this detector does not record", () => {
+    view(NEW_ENDPOINT);
+    expect(measures().queryByText("Endpoint coverage")).not.toBeInTheDocument();
+  });
+
+  it("does not carry the zero-variability confidence note", () => {
+    view({ ...NEW_ENDPOINT, detection: wafNewEndpointDetection({ robust_score_status: "DEGENERATE" }) });
+    expect(measures().queryByText(/limited because baseline variability is zero/)).not.toBeInTheDocument();
+  });
+
+  it("shows the materiality floor and the verified history, and the backend's reason", () => {
+    view(NEW_ENDPOINT);
+    expect(working().getByText(/received 320 requests across 4 buckets/)).toBeInTheDocument();
+    expect(working().getByText("Materiality floor").closest("div")).toHaveTextContent(
+      "material at ≥ 50 requests",
+    );
+    const history = working().getByText("Verified history").closest("div")!;
+    expect(history).toHaveTextContent("288 buckets");
+    expect(history).toHaveTextContent("below the admission threshold");
+  });
+
+  it("has no robust-score line, robust z, surprise threshold or seasonal-baseline items", () => {
+    view({
+      ...NEW_ENDPOINT,
+      // Even if a payload carried them, a detector with no seasonal premise draws none.
+      detection: wafNewEndpointDetection({
+        robust_score_status: "OK",
+        robust_z: 9.1,
+        expected_low: 10,
+        expected_high: 20,
+        baseline_completeness: 0.9,
+        baseline_version: 6,
+      }),
+    });
+    for (const label of [
+      "Robust z",
+      "Robust z threshold",
+      "Surprise threshold",
+      "Expected range at detection",
+      "Baseline samples",
+      "Baseline completeness",
+      "Baseline version",
+    ]) {
+      expect(working().queryByText(label)).not.toBeInTheDocument();
+    }
+    expect(working().queryByText(/Robust score/)).not.toBeInTheDocument();
+    expect(working().queryByText(/±/)).not.toBeInTheDocument();
+  });
+
+  it("says when the floor or the history length was not recorded, rather than a dash alone", () => {
+    view({ ...NEW_ENDPOINT, detection: wafNewEndpointDetection({ threshold: null, baseline_sample_count: null }) });
+    expect(working().getByText("Materiality floor").closest("div")).toHaveTextContent(
+      "no materiality floor was recorded",
+    );
+    expect(working().getByText("Verified history").closest("div")).toHaveTextContent(
+      "no history length was recorded",
+    );
+  });
+
+  it("hands the chart no expected line and no band, and keeps its axis per bucket", () => {
+    view(NEW_ENDPOINT, [wafBucket()], [wafBaselineCell()]);
+    expect(chartProps.last).toMatchObject({ expected: null, expectedLow: null, expectedHigh: null });
+    expect(chartProps.last?.baseline).toBeNull();
+  });
+});
+
+describe("WAF investigation: the surprise threshold is one-sided", () => {
+  const working = () =>
+    within(screen.getByRole("heading", { name: "Against what normal" }).closest("section")!);
+
+  it.each([
+    ["WAF_REQUEST_RATE_SPIKE", wafDetection()],
+    ["WAF_BLOCK_RATIO_SPIKE", wafRatioDetection()],
+    ["WAF_ERROR_RATIO_SPIKE", wafRatioDetection()],
+    ["WAF_CLIENT_ERROR_RATIO_SPIKE", wafRatioDetection()],
+    ["WAF_CLIENT_CONCENTRATION_SPIKE", wafRatioDetection()],
+  ])("%s reads the threshold as +3.50 against the robust z", (type, detection) => {
+    view({ anomaly_type: type, detection });
+    const row = working().getByText("Robust z threshold").closest("div")!;
+    expect(row).toHaveTextContent("+3.50");
+    expect(row).not.toHaveTextContent("±");
+    expect(working().queryByText("Surprise threshold")).not.toBeInTheDocument();
+  });
+
+  it("shows no threshold sign when none was recorded", () => {
+    view({ detection: wafDetection({ threshold: null }) });
+    expect(working().getByText("Robust z threshold").closest("div")).toHaveTextContent("—");
   });
 });

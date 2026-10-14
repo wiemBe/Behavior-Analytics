@@ -13,7 +13,15 @@ import {
 } from "@/lib/behavior";
 
 import { formatPercent, formatRequests, requestsUnit } from "./wafFormat";
-import { isRatioType } from "./wafSummary";
+import { isNewEndpointType, isRatioType } from "./wafSummary";
+
+function Missing({ reason }: { reason: string }) {
+  return (
+    <span className="muted">
+      —<span className="sr-only"> {reason}</span>
+    </span>
+  );
+}
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -62,13 +70,53 @@ export function WafDetectionBlock({
       <span className="muted"> {requestsUnit(bucketSeconds)}</span>
     </>
   );
+  if (isNewEndpointType(anomaly.anomaly_type)) {
+    // Judged by a materiality floor on the cumulative count, not by a robust score against a
+    // seasonal baseline: those items do not exist for this detector, so none is drawn.
+    return (
+      <div className="stack-6">
+        {reason && <p className="waf-reason">{reason}</p>}
+        <dl className="dimension-meta">
+          <Row
+            label="Materiality floor"
+            value={
+              d.threshold != null ? (
+                <>material at ≥ {formatCount(d.threshold)} requests</>
+              ) : (
+                <Missing reason="no materiality floor was recorded" />
+              )
+            }
+          />
+          <Row
+            label="Verified history"
+            value={
+              d.baseline_sample_count != null ? (
+                <>
+                  {formatCount(d.baseline_sample_count)} buckets
+                  <span className="muted"> below the admission threshold</span>
+                </>
+              ) : (
+                <Missing reason="no history length was recorded" />
+              )
+            }
+          />
+          <Row label="Consecutive abnormal buckets" value={formatCount(anomaly.consecutive_buckets)} />
+        </dl>
+      </div>
+    );
+  }
+
   return (
     <div className="stack-6">
       {reason && <p className="waf-reason">{reason}</p>}
 
       <dl className="dimension-meta">
         <Row label={ratio ? "Seasonal p05–p95 at detection" : "Expected range at detection"} value={range} />
-        <Row label="Surprise threshold" value={d.threshold != null ? `±${formatMetric(d.threshold)}` : "—"} />
+        {/* One-sided: the detectors fire on an increase only. */}
+        <Row
+          label="Robust z threshold"
+          value={d.threshold != null ? `+${formatMetric(d.threshold)}` : "—"}
+        />
         <Row label="Baseline samples" value={formatCount(d.baseline_sample_count)} />
         <Row label="Baseline completeness" value={formatShare(d.baseline_completeness)} />
         <Row label="Baseline version" value={d.baseline_version != null ? `v${d.baseline_version}` : "—"} />

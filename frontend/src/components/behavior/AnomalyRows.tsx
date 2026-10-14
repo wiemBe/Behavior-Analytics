@@ -30,14 +30,14 @@ import "@/components/ips/ips.css";
 import { expectsNone, ipsFigures } from "@/components/ips/ipsDetectors";
 import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
-import { formatPercent, formatRequests } from "@/components/waf/wafFormat";
+import { formatPercent, formatRequests, SINCE_UNIT } from "@/components/waf/wafFormat";
 import {
   endpointLabel,
   evidenceLabel,
   isWafRow,
   subjectText,
 } from "@/components/waf/wafLabels";
-import { isRatioType } from "@/components/waf/wafSummary";
+import { isNewEndpointType, isRatioType } from "@/components/waf/wafSummary";
 
 import "@/components/ui/controls.css";
 
@@ -154,6 +154,18 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
   // Volume detectors count requests; ratio detectors measure a share of them,
   // whose unit is the % in the figure itself.
   const ratio = isRatioType(a.anomaly_type);
+  if (isNewEndpointType(a.anomaly_type)) {
+    // Cumulative since the endpoint first appeared, and none expected: not a per-bucket rate.
+    return (
+      <>
+        <span className="ips-figures">
+          {formatRequests(a.observed_value, a.observed_measurement)}
+          <span className="muted"> → </span>none
+        </span>
+        <span className="cell-sub ips-unit">{SINCE_UNIT}</span>
+      </>
+    );
+  }
   return (
     <>
       {ratio
@@ -264,8 +276,10 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                 <td colSpan={9}>
                   <dl className="dimension-meta">
                     {/* A ratio detector's delta is a share, not a count, and the
-                        list does not carry its unit: the investigation page does. */}
-                    {!(isWafRow(a) && isRatioType(a.anomaly_type)) && !ipsDeltaHidden(a) && (
+                        list does not carry its unit: the investigation page does. A
+                        new endpoint expects none, so it has no delta against expected. */}
+                    {!(isWafRow(a) && (isRatioType(a.anomaly_type) || isNewEndpointType(a.anomaly_type))) &&
+                      !ipsDeltaHidden(a) && (
                       <div>
                         <dt>Absolute delta</dt>
                         <dd className="num">
