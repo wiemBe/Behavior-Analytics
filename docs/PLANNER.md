@@ -77,13 +77,11 @@ its usage limit in T-051c round 2 (reset **15:54**).
 | **T-080** de-flake the 500-property test ([spec](tasks/T-080.md)) | opencode `mimo-v2.6-flash-free`, `--standalone` | `t080` | `scratchpad/t080.log`; check no assertion changed meaning |
 
 **Next:**
-1. Collect the five above.
-2. **UI-2.3** (charts: fleet EPS chart over B-2.1, EPS by class, severity per hour), spec still to
-   write, **after UI-2.2 is merged** (UI-2.2 adds the eps-series types to `api.ts`). Sonnet, or
-   Codex after 15:54.
-3. **UI-2.5** (`/` composition), after UI-2.2 to UI-2.4.
-4. **T-052** is in flight (Sonnet).
-5. The full gate on `feat/phase-ce` → `main`.
+1. Collect the agents above (UI-2.2 round 2, T-052, T-055b, T-080).
+2. **UI-2.3** charts ([spec](tasks/UI-2.3.md), written), **after UI-2.2 is merged** (UI-2.2 adds
+   the eps-series types to `api.ts`). Sonnet, or Codex after 15:54.
+3. **UI-2.5** (`/` composition), after UI-2.2 to UI-2.4, carrying the UI-2.4 fix list (a)–(f).
+4. The full gate on `feat/phase-ce` → `main`.
 
 ---
 
