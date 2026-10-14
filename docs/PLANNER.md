@@ -27,6 +27,15 @@ the repository.
   `DROP SCHEMA public CASCADE` and the TimescaleDB Telemetry Reporter. `clean_db` now terminates
   the other sessions on its own DB first: 4 errors in 55 runs before, 0 in 50 after. Re-verified
   here with 12 passed and ruff clean. The same fixture in 11 sibling files is T-083b.
+- **T-087 merged** (`e60f06d`), after two rounds of screenshot review. Round 2 fixed:
+  - the new-port detector: cumulative events and a materiality floor, with no robust score;
+  - the one-sided z threshold;
+  - an IPS percentage-point change multiplied by 100 twice;
+  - clipping at 1024 in `/anomalies`.
+
+  The orchestrator's gate: lint and typecheck clean; 152 files / 2,206 tests; build OK.
+  **The same ×100 defect is on `main` for WAF** (`formatPoints` with `percentage_point_change`,
+  which the backend already sends in points): fixed in T-089.
 - **T-085 + B-2.3b merged** (`agent/t085`). The round-2 test fixes (big-pickle) now pin both
   guards: a mid-hour `until`, and an IPS-only RESOLVED check. Merged-tree gate: ruff clean;
   2,977 unit passed; 187 integration passed (histogram, IPS analyst/alerting/pipeline/scale,
@@ -38,11 +47,12 @@ the repository.
 |---|---|---|---|
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
 | **UI-3.2** ([spec](tasks/UI-3.2.md) + amendment) | Codex. Round 1 is done and reviewed: drag, resize, steppers, lazy chunk and geometry are all fine. **Round 2** (spec §Round 2): the customize chrome crowds the title row, and at 1280 the KPI cards overflow and scroll. Resumed session `01a13ba4-55a9-7470-9b09-6a242be914dd`, pid 111866 | `ui32` (own `node_modules`); ports 3132/8132/9132 | `ui32/codex-r2.log` (grep "hit your usage limit"); `ui32/last-message-r2.md`; PNGs `ui32/png/`; reusable fixture `ui32/fixture/server.py` (Home and catalog routes) |
-| **T-087** ([spec](tasks/T-087.md)) | Sonnet sub-agent of this chat. Round 1 is done (2,201 tests). **Round 2** (spec §Round 2): new-port units and threshold, clipping at 1024 in `/anomalies`, realistic fixture payloads | `t087`; ports 3187/8187/9187 | "Round 2" in `docs/tasks/T-087.report.md` in `t087`; PNGs `t087/png/`; fixture `t087/fixture/fixture_api.py` (anomalies and IPS routes) |
+| **T-089** WAF pp ×100 on `main` ([spec](tasks/T-089.md)) | Sonnet sub-agent of this chat | `t089`; ports 3189/8189/9189 | `docs/tasks/T-089.report.md` in `t089`; PNG `t089/png/` |
+| **T-088** npm audit triage, read-only ([spec](tasks/T-088.md)) | opencode `big-pickle`, `--standalone`, pid 115207 | main checkout, read-only | `t088/T-088.report.md` and `t088/agent.log` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
-1. T-087 on top of the merged T-085.
+1. T-089 (a WAF defect on `main`): merge before `main`.
 2. UI-3.2, then UI-3.3 (spec ready), then UI-3.5b.
 3. T-083b; T-054, whose defects become fix tasks.
 4. Full gate, then `feat/phase-ce` → `main`.
