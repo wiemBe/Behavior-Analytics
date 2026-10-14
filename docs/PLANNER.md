@@ -51,8 +51,7 @@ the repository.
   Audit: production criticals 1 → 0, full tree 22 → 14. What remains is the planned vitest 4 and
   echarts 6 majors, and `braces` (no fix). The agent built the image (`next` 15.5.28 inside) and
   ran the standalone server (200s). The orchestrator re-ran 153 files / 2,237 tests and the build.
-  **After the full gate finishes, run `npm install` in the main checkout's `frontend/`** (its
-  `node_modules` still has `next` 15.5.22; the gate worktree symlinks it).
+  The main checkout's `frontend/node_modules` was refreshed with `npm ci` (`next` 15.5.28).
 - **UI-3.2 merged** (`b9295d1`) after two rounds. Round 2 replaced Arrange and Remove with one
   `Edit` disclosure; the measurement shows no added overflow and no taller title row for all 11
   widgets at 1440 and 1280. The orchestrator's gate: lint and typecheck clean; 144 files / 2,120
@@ -83,13 +82,16 @@ the repository.
 | Task | Agent | Where | Collect |
 |---|---|---|---|
 | **UI-3.3b** expanded tables show more rows; 4-column title rows ([spec](tasks/UI-3.3b.md)) | Sonnet sub-agent of this chat (from ~22:30) | `ui33b` (own `node_modules`); ports 3134/8134/9134 | `docs/tasks/UI-3.3b.report.md` in `ui33b`; PNGs `ui33b/png/` |
-| **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
-| **UI-3.3** ([spec](tasks/UI-3.3.md) + amendment) | Codex hit its usage limit at ~21:54 before writing a file (reset **02:17**). Now a **Sonnet sub-agent of this chat**, starting fresh | `ui33` (own `node_modules`); ports 3133/8133/9133 | `docs/tasks/UI-3.3.report.md` in `ui33`; PNGs `ui33/png/`; fixture `ui33/fixture/` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
-1. UI-3.3b (running), then UI-3.5b (spec to write: the configurable widgets, `waf.endpoint_traffic`
-   and `chart.eps_observed_expected` source mode), then the Phase 3 screenshots for the user.
+1. UI-3.3b (running), then **UI-3.5b** ([spec](tasks/UI-3.5b.md), ready).
+   - It covers options from a read (a cascading WAF source → endpoint picker),
+     `waf.endpoint_traffic`, `chart.eps_observed_expected` in source mode, and
+     `ips.source_anomalies` made live.
+   - Use ports 3136/8136/9136. It conflicts with UI-3.3b in `widgets/*`, so start it after
+     UI-3.3b merges.
+   - Then the Phase 3 screenshots go to the user for approval.
 2. T-054 (running; it settles the fan-out lead after its ~19:38Z tick). Each defect it confirms
    becomes a fix task.
 3. Phase 4 UI (UI-4.1 dashboard API client and switcher, UI-4.2 save/restore/templates, UI-4.3 `/`
@@ -104,8 +106,14 @@ reachable in this deployment.
 
 **It also found a real gap:** `frontend/Dockerfile` ignores the committed lockfile
 (`COPY package.json`, then `npm install`), so the image is not what the gates tested. **T-091**
-([spec](tasks/T-091.md)) fixes both. Start it **after UI-3.2 merges** (both change `package.json`).
-The vitest 4 major and echarts 6 are planned later.
+([spec](tasks/T-091.md)) fixed both and is merged. The vitest 4 major and echarts 6 are planned
+later.
+
+**Small follow-ups (not started):**
+- `WafDetectionDetailOut` lacks the new-endpoint `caveat` (IPS has one); this is a backend
+  whitelist change (T-090 open point).
+- The WAF and IPS rate and ratio blocks show a "Robust z" figure even when `robust_score_status`
+  is DEGENERATE or UNAVAILABLE. The status line explains it; consider the em dash instead.
 
 **Agents:**
 - **Codex is out until 02:17** (limit hit ~21:54, after UI-3.2's two rounds of ~375k tokens and the
