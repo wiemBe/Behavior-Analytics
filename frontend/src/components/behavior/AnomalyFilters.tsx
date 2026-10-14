@@ -16,6 +16,7 @@ import Link from "next/link";
 
 import type { SourceBehavior } from "@/lib/api";
 import { subjectKindLabel, SUBJECT_KINDS } from "@/lib/anomalyQuery";
+import { IPS_TYPES, isIpsType, ipsTypeLabel } from "@/components/ips/ipsLabels";
 import { WAF_TYPES, anomalyTypeLabel } from "@/components/waf/wafLabels";
 import { formatDateTime } from "@/lib/health";
 
@@ -40,8 +41,10 @@ const EVIDENCE = [
 ];
 
 export interface AnomalyFilterValues {
-  /** What the anomaly is about: LOG_SOURCE, WAF_ENDPOINT or "" for both. */
+  /** What the anomaly is about: LOG_SOURCE, WAF_ENDPOINT, IPS_ENTITY, IPS_SOURCE or "" for all. */
   subject_kind?: string;
+  /** One IPS entity, from a link on an entity view. Not editable here; a chip clears it. */
+  ips_entity_id?: string;
   active_only: boolean;
   log_source_id: string;
   instance_id: string;
@@ -65,6 +68,8 @@ export function chipLabel(
       return "Active only";
     case "subject_kind":
       return `Subject: ${subjectKindLabel(text)}`;
+    case "ips_entity_id":
+      return `IPS entity: ${text.slice(0, 8)}…`;
     case "log_source_id": {
       const match = sources.find((s) => s.log_source_id === text);
       return `Source: ${match?.name ?? text}`;
@@ -72,7 +77,7 @@ export function chipLabel(
     case "instance_id":
       return `Instance: ${text}`;
     case "anomaly_type":
-      return `Detector: ${anomalyTypeLabel(text)}`;
+      return `Detector: ${isIpsType(text) ? ipsTypeLabel(text) : anomalyTypeLabel(text)}`;
     case "state":
       return `State: ${text}`;
     case "severity":
@@ -136,6 +141,10 @@ export function AnomalyFilters({
   return (
     <>
       <form className="filters" method="get" action="/anomalies">
+        {/* Carried through a re-filter so the entity link does not silently widen. */}
+        {values.ips_entity_id && (
+          <input type="hidden" name="ips_entity_id" value={values.ips_entity_id} />
+        )}
         <label className="sr-only" htmlFor="anomaly-subject">
           Subject kind
         </label>
@@ -195,6 +204,13 @@ export function AnomalyFilters({
             {WAF_TYPES.map((t) => (
               <option key={t} value={t}>
                 {anomalyTypeLabel(t)}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="IPS entities and sources">
+            {IPS_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {ipsTypeLabel(t)}
               </option>
             ))}
           </optgroup>

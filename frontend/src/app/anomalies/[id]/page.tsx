@@ -26,12 +26,17 @@ import { TechnicalDetails } from "@/components/behavior/TechnicalDetails";
 import { TopContributors } from "@/components/behavior/TopContributors";
 import { VolumeChart } from "@/components/behavior/VolumeChart";
 import { AnomalyTabs } from "@/components/behavior/AnomalyTabs";
+import { detectorSpec } from "@/components/ips/ipsDetectors";
+import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
   api,
+  isIpsDetail,
   isWafDetail,
   type AnomalyDetail,
+  type IpsAnomalyDetail,
+  type IpsBaselineCell,
   type MetricBucket,
   type WafAnomalyDetail,
   type WafBaselineCell,
@@ -95,6 +100,78 @@ async function wafBaselines(anomaly: WafAnomalyDetail): Promise<WafBaselineCell[
   }
 }
 
+/** The window an IPS series is read for: the incident with context either side. */
+function ipsWindow(anomaly: IpsAnomalyDetail): { since: string; until: string } {
+  const anchor = Date.parse(anomaly.anomaly_start ?? anomaly.detected_at);
+  const end = Date.parse(anomaly.anomaly_end ?? anomaly.resolved_at ?? anomaly.detected_at);
+  return {
+    since: new Date(anchor - CONTEXT_HOURS * 3600_000).toISOString(),
+    until: new Date(Math.max(end, anchor) + CONTEXT_HOURS * 3600_000).toISOString(),
+  };
+}
+
+/**
+ * The stored buckets around an IPS incident, or null if they could not be loaded:
+ * the entity's own for an entity incident, the source's for a source incident.
+ * Null is not an empty list: the view says "could not be loaded", not "nothing
+ * was collected".
+ */
+async function ipsSeries(anomaly: IpsAnomalyDetail): Promise<IpsSeriesData | null> {
+  const window = { ...ipsWindow(anomaly), limit: 2000 };
+  try {
+    if (anomaly.subject_kind === "IPS_ENTITY") {
+      if (!anomaly.ips_entity) return { kind: "entity", buckets: [] };
+      const page = await api.ipsEntityMetrics(anomaly.ips_entity.id, window);
+      return { kind: "entity", buckets: page.items };
+    }
+    const page = await api.ipsSourceMetrics(anomaly.log_source_id, window);
+    return { kind: "source", buckets: page.items };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The seasonal cells of the metric this detector reads, or null if they could
+ * not be loaded (or the detector has no seasonal metric). Null is not "no cells":
+ * the view then says it fell back to the range recorded at detection.
+ */
+async function ipsBaselines(anomaly: IpsAnomalyDetail): Promise<IpsBaselineCell[] | null> {
+  const metric = detectorSpec(anomaly.anomaly_type)?.baselineMetric;
+  if (!metric) return null;
+  const subject = anomaly.subject_kind === "IPS_ENTITY" ? anomaly.ips_entity?.id : anomaly.log_source_id;
+  if (!subject) return null;
+  const cells: IpsBaselineCell[] = [];
+  try {
+    // One metric holds at most 168 cells; a few pages are a bound, not a loop over entities.
+    for (let offset = 0; offset < 1000; offset += 200) {
+      const params = { metric, limit: 200, offset };
+      const page =
+        anomaly.subject_kind === "IPS_ENTITY"
+          ? await api.ipsEntityBaselines(subject, params)
+          : await api.ipsSourceBaselines(subject, params);
+      cells.push(...page.items);
+      if (cells.length >= page.total || page.items.length === 0) break;
+    }
+    return cells;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the caller may open the IPS source's administration page (admin:ips).
+ * A failed read of the caller's grants is "no": a link is withheld, never guessed.
+ */
+async function canOpenIpsSource(): Promise<boolean> {
+  try {
+    const me = await api.caller();
+    return me.effective_permissions.includes("admin:ips") || me.permissions.includes("admin:*");
+  } catch {
+    return false;
+  }
+}
+
 export default async function AnomalyDetailPage({
   params,
 }: {
@@ -102,7 +179,7 @@ export default async function AnomalyDetailPage({
 }) {
   const { id } = await params;
 
-  let loaded: AnomalyDetail | WafAnomalyDetail | null = null;
+  let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | null = null;
   let status = 0;
   try {
     loaded = await api.anomaly(id);
@@ -132,6 +209,23 @@ export default async function AnomalyDetailPage({
   if (isWafDetail(loaded)) {
     const [buckets, baselines] = await Promise.all([wafBuckets(loaded), wafBaselines(loaded)]);
     return <WafInvestigation anomaly={loaded} buckets={buckets} baselines={baselines} />;
+  }
+  // An IPS entity or source is investigated against its own event, port or share
+  // series, in that unit and never in EPS, so it has its own view as well.
+  if (isIpsDetail(loaded)) {
+    const [series, baselines, canOpenSource] = await Promise.all([
+      ipsSeries(loaded),
+      ipsBaselines(loaded),
+      canOpenIpsSource(),
+    ]);
+    return (
+      <IpsInvestigation
+        anomaly={loaded}
+        series={series}
+        baselines={baselines}
+        canOpenSource={canOpenSource}
+      />
+    );
   }
   const anomaly: AnomalyDetail = loaded;
 

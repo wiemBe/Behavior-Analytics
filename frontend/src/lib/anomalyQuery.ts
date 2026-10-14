@@ -6,6 +6,7 @@
 // page or smuggled into the upstream request; timestamps are validated and the
 // range is clamped before it reaches an endpoint that queries a hypertable.
 
+import { isIpsType } from "@/components/ips/ipsLabels";
 import { isWafType } from "@/components/waf/wafLabels";
 
 import type { SubjectKind } from "./api";
@@ -148,6 +149,8 @@ export function paginationParams(
 export const SUBJECT_KINDS: Array<{ value: SubjectKind; label: string }> = [
   { value: "LOG_SOURCE", label: "Log sources" },
   { value: "WAF_ENDPOINT", label: "WAF endpoints" },
+  { value: "IPS_ENTITY", label: "IPS entities" },
+  { value: "IPS_SOURCE", label: "IPS sources" },
 ];
 
 export interface SubjectQuery {
@@ -155,6 +158,10 @@ export interface SubjectQuery {
   subject_kind: SubjectKind | "";
   /** A WAF detector type, or "" (Phase A types are parsed by `parseAnomalyQuery`). */
   waf_anomaly_type: string;
+  /** An IPS detector type, or "". */
+  ips_anomaly_type: string;
+  /** An IPS entity id (a link from an entity view), or "" when absent or not a UUID. */
+  ips_entity_id: string;
 }
 
 export function parseSubjectQuery(params: Record<string, string | undefined>): SubjectQuery {
@@ -163,6 +170,8 @@ export function parseSubjectQuery(params: Record<string, string | undefined>): S
   return {
     subject_kind: kind,
     waf_anomaly_type: type && isWafType(type) ? type : "",
+    ips_anomaly_type: type && isIpsType(type) ? type : "",
+    ips_entity_id: uuid(params.ips_entity_id),
   };
 }
 

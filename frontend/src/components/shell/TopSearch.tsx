@@ -23,6 +23,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
 import {
   ApiError,
   shellApi,
@@ -161,13 +162,28 @@ export function TopSearch() {
             const page = await anomalies();
             if (signal.aborted) throw new DOMException("aborted", "AbortError");
             return page.items
-              .filter((a) => (a.log_source_name ?? "").toLowerCase().includes(needle))
-              .map((a) => ({
-                id: `anomaly-${a.id}`,
-                href: `/anomalies/${a.id}`,
-                title: a.log_source_name ?? a.log_source_id,
-                sub: `${a.anomaly_type} · ${a.state}`,
-              }));
+              .filter((a) =>
+                // An IPS row is also found by its subject (the entity), which its source name
+                // does not contain.
+                `${a.log_source_name ?? ""} ${isIpsRow(a) ? ipsSubjectText(a) : ""}`
+                  .toLowerCase()
+                  .includes(needle),
+              )
+              .map((a) =>
+                isIpsRow(a)
+                  ? {
+                      id: `anomaly-${a.id}`,
+                      href: `/anomalies/${a.id}`,
+                      title: ipsSubjectText(a),
+                      sub: `${rowTypeLabel(a)} · ${a.log_source_name ?? a.log_source_id} · ${a.state}`,
+                    }
+                  : {
+                      id: `anomaly-${a.id}`,
+                      href: `/anomalies/${a.id}`,
+                      title: a.log_source_name ?? a.log_source_id,
+                      sub: `${a.anomaly_type} · ${a.state}`,
+                    },
+              );
           }),
         ]);
         if (signal.aborted) return;

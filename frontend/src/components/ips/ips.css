@@ -1,0 +1,46 @@
+/* IPS analyst views (T-087). Only what the existing classes do not already say. */
+
+.chart.chart-ips {
+  height: 320px;
+}
+/* Maintenance buckets are outlined, not filled: the engine does not judge them. */
+.chart-key-maintenance {
+  height: 10px;
+  border: 1px dashed var(--chart-axis);
+}
+.ips-subject {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.ips-reason {
+  margin: 0;
+  max-width: 90ch;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.dimension-meta.ips-times {
+  margin: var(--sp-2) 0 0;
+}
+.ips-times > div {
+  min-width: 0;
+}
+.ips-times dd {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The list's observed cell: the figures stay on one line, the unit sits beneath them and may
+   wrap, so no number, unit or header is cut at the column's edge at any viewport. */
+.ips-figures {
+  white-space: nowrap;
+}
+td.num .ips-unit {
+  display: block;
+  white-space: normal;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
