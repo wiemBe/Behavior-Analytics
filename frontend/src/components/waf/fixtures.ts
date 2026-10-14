@@ -88,6 +88,69 @@ export function wafDetection(over: Partial<WafDetectionDetail> = {}): WafDetecti
   };
 }
 
+/**
+ * The new-endpoint detector's real payload (`detect_new_endpoint_access`): a cumulative count
+ * on the row, `expected_value` 0.0, `threshold` the request-count materiality floor,
+ * `sample_count` the verified history buckets, and no band, robust score, baseline completeness
+ * or version. The projection does not read its nested `observed` block, so the request fields
+ * are null and the row carries the count.
+ */
+export function wafNewEndpointDetection(over: Partial<WafDetectionDetail> = {}): WafDetectionDetail {
+  return {
+    reason:
+      "GET /portal/login received 320 requests across 4 buckets since it first appeared at " +
+      "2026-10-12T08:40:00+00:00; in the verified history it was never requested 20 or more " +
+      "times in one bucket",
+    expected_low: null,
+    expected_high: null,
+    threshold: 50,
+    baseline_sample_count: 288,
+    baseline_completeness: null,
+    baseline_version: null,
+    normalizer_version: 2,
+    observed_requests: null,
+    expected_requests: null,
+    absolute_delta_requests: null,
+    endpoint_coverage_ratio: null,
+    request_count_measurement: null,
+    observed_proportion: null,
+    expected_proportion: null,
+    observed_numerator: null,
+    observed_denominator: null,
+    percentage_point_change: null,
+    ratio: null,
+    ratio_basis: null,
+    robust_score_status: null,
+    robust_z: null,
+    fallback_bound: null,
+    ...over,
+  };
+}
+
+/** A ratio detector's real payload: proportions and counts, a pooled expected share, a band. */
+export function wafRatioDetection(over: Partial<WafDetectionDetail> = {}): WafDetectionDetail {
+  return wafDetection({
+    reason:
+      "318 of 1000 requests carrying a WAF action to GET /portal/login were blocked requests " +
+      "(31.8%), against an expected 2.1% (+29.7 pp, 15.1x); robust z=12.40 (threshold +3.5)",
+    expected_low: 0.004,
+    expected_high: 0.06,
+    observed_requests: null,
+    expected_requests: null,
+    absolute_delta_requests: null,
+    endpoint_coverage_ratio: null,
+    request_count_measurement: null,
+    observed_proportion: 0.318,
+    expected_proportion: 0.021,
+    observed_numerator: 318,
+    observed_denominator: 1000,
+    percentage_point_change: 29.7,
+    ratio: 15.1429,
+    robust_z: 12.4,
+    ...over,
+  });
+}
+
 export function wafDetail(over: Partial<WafAnomalyDetail> = {}): WafAnomalyDetail {
   const { id, ...rest } = wafListItem();
   return {

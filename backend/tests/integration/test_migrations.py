@@ -19,6 +19,8 @@ from datetime import datetime
 import pytest
 from sqlalchemy import create_engine, text
 
+from tests.integration.schema_reset import reset_public_schema
+
 pytestmark = pytest.mark.integration
 
 TEST_DB_URL = os.environ.get("TEST_DATABASE_URL")
@@ -43,11 +45,7 @@ def _alembic_config(sync_url: str):
 def clean_db() -> str:
     """Drop everything (including timescale-managed objects) before each test."""
     sync_url = _sync_url()
-    engine = create_engine(sync_url, future=True)
-    with engine.begin() as conn:
-        conn.execute(text("DROP SCHEMA public CASCADE"))
-        conn.execute(text("CREATE SCHEMA public"))
-    engine.dispose()
+    reset_public_schema(sync_url)
     return sync_url
 
 

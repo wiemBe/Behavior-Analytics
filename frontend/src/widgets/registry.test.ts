@@ -1,0 +1,123 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { KNOWN_PERMISSIONS } from "./permissions";
+import { WIDGETS, widgetDef } from "./registry";
+import { TEMPLATES } from "./templates";
+import { GRID_COLUMNS } from "./types";
+
+const apiSource = readFileSync(resolve(__dirname, "../lib/api.ts"), "utf8");
+const rbacSource = readFileSync(resolve(__dirname, "../../../backend/app/security/rbac.py"), "utf8");
+
+describe("widget registry", () => {
+  it("has unique, well-formed types", () => {
+    const types = WIDGETS.map((w) => w.type);
+    expect(new Set(types).size).toBe(types.length);
+    for (const type of types) expect(type).toMatch(/^[a-z0-9_.]{1,64}$/);
+  });
+
+  it("lists exactly the Phase 2 widgets, the catalog widgets and the two blocked ones", () => {
+    expect(WIDGETS.filter((w) => w.status === "live").map((w) => w.type)).toEqual([
+      "kpi.total_eps",
+      "kpi.log_sources",
+      "kpi.offenses",
+      "kpi.anomalies",
+      "chart.eps_fleet_total",
+      "chart.eps_by_class",
+      "table.top_sources",
+      "chart.anomaly_severity",
+      "health.log_sources",
+      "table.recent_anomalies",
+      "table.recent_offenses",
+      "health.detection",
+      "health.collection",
+      "health.evidence",
+      "table.catchall_senders",
+      "table.fleet_classes",
+      "table.outage_policy",
+      "waf.sources",
+      "table.recent_waf_anomalies",
+    ]);
+    expect(WIDGETS.filter((w) => w.status === "blocked").map((w) => w.type)).toEqual([
+      "map.geography",
+      "ips.source_anomalies",
+    ]);
+  });
+
+  it("reads only routes the frontend client actually calls", () => {
+    for (const def of WIDGETS) {
+      for (const source of def.sources) {
+        // The client builds each path as a string or template literal that starts with it.
+        const called = [`"${source}"`, `"${source}?`, `\`${source}\``, `\`${source}\${`].some((form) =>
+          apiSource.includes(form),
+        );
+        expect(called, `${def.type} reads ${source}`).toBe(true);
+      }
+    }
+  });
+
+  it("requires only permissions the backend defines, and the list cannot drift from rbac.py", () => {
+    const backend = [...rbacSource.matchAll(/^PERM_[A-Z_]+ = "([^"]+)"/gm)].map((m) => m[1]);
+    expect([...KNOWN_PERMISSIONS].sort()).toEqual([...backend].sort());
+    for (const def of WIDGETS) {
+      for (const permission of def.requires) {
+        expect(KNOWN_PERMISSIONS as readonly string[], def.type).toContain(permission);
+      }
+    }
+  });
+
+  it("gives a blocked widget a reason, a live one none, and keeps blocked ones out of templates", () => {
+    for (const def of WIDGETS) {
+      if (def.status === "blocked") {
+        expect(def.blockedBy, def.type).toBeTruthy();
+        expect(def.sources).toEqual([]);
+      } else {
+        expect(def.blockedBy, def.type).toBeUndefined();
+        expect(def.sources.length, def.type).toBeGreaterThan(0);
+        expect(def.requires.length, def.type).toBeGreaterThan(0);
+      }
+    }
+    for (const template of TEMPLATES) {
+      for (const placed of template.layout.widgets) {
+        expect(widgetDef(placed.type)?.status, `${template.key}: ${placed.type}`).toBe("live");
+      }
+    }
+  });
+
+  it("states the blocked reasons the catalog shows", () => {
+    expect(widgetDef("map.geography")?.blockedBy).toBe(
+      "the map widget is not built yet; geo collection is",
+    );
+    expect(widgetDef("ips.source_anomalies")?.blockedBy).toBe("the IPS analyst API is being built");
+  });
+
+  it("keeps every default size inside its own bounds and the grid", () => {
+    for (const { type, size } of WIDGETS) {
+      expect(size.w, type).toBeGreaterThanOrEqual(size.minW);
+      expect(size.h, type).toBeGreaterThanOrEqual(size.minH);
+      expect(size.w, type).toBeLessThanOrEqual(size.maxW ?? GRID_COLUMNS);
+      expect(size.h, type).toBeLessThanOrEqual(24);
+    }
+  });
+
+  it("keeps every template valid: known live types, unique ids, inside the grid, no overlap", () => {
+    for (const template of TEMPLATES) {
+      expect(template.layout.v).toBe(1);
+      const ws = template.layout.widgets;
+      expect(ws.length).toBeLessThanOrEqual(24);
+      expect(new Set(ws.map((w) => w.id)).size).toBe(ws.length);
+      ws.forEach((a, i) => {
+        expect(a.id).toMatch(/^w_[a-z0-9]{4,12}$/);
+        expect(a.x + a.w).toBeLessThanOrEqual(GRID_COLUMNS);
+        expect(widgetDef(a.type)?.status).toBe("live");
+        for (const b of ws.slice(i + 1)) {
+          const apart =
+            a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+          expect(apart, `${a.type} overlaps ${b.type}`).toBe(true);
+        }
+      });
+    }
+  });
+});

@@ -29,6 +29,8 @@ from app.models.enums import (
     BucketCompleteness,
     DimensionAvailability,
     EvidenceStatus,
+    IpsAnomalyType,
+    IpsDimension,
     RobustScoreStatus,
     Severity,
     WafAnomalyType,
@@ -45,6 +47,8 @@ class SubjectKind(StrEnum):
 
     LOG_SOURCE = "LOG_SOURCE"
     WAF_ENDPOINT = "WAF_ENDPOINT"
+    IPS_ENTITY = "IPS_ENTITY"
+    IPS_SOURCE = "IPS_SOURCE"
 
 
 class WafEndpointRefOut(BaseModel):
@@ -59,6 +63,21 @@ class WafEndpointRefOut(BaseModel):
     #: the endpoint may combine traffic of different applications sharing a path.
     virtual_host_available: bool
     normalizer_version: int
+
+
+class IpsEntityRefOut(BaseModel):
+    """The admitted IPS entity an anomaly is about. Identity only, no measurements.
+
+    By design §D.4 the `value_key` is the estate's own port, destination address
+    or signature QID. A source IP is never an entity and never appears here.
+    """
+
+    id: uuid.UUID
+    dimension: IpsDimension
+    value_key: str
+    #: The signature's name when the dimension is SIGNATURE. None when the
+    #: source named nothing; it may change without changing the entity's identity.
+    display_name: str | None = None
 
 
 class MetricBucketOut(BaseModel):
@@ -189,8 +208,11 @@ class AnomalyListItem(BaseModel):
     log_source_name: str | None = None
     #: Set for a WAF_ENDPOINT subject, otherwise None.
     waf_endpoint: WafEndpointRefOut | None = None
-    #: A Phase A type, or for a WAF subject the row's detector type.
-    anomaly_type: AnomalyType | WafAnomalyType
+    #: Set for an IPS_ENTITY subject, otherwise None. An IPS_SOURCE subject has
+    #: none: the anomaly is about the log source itself.
+    ips_entity: IpsEntityRefOut | None = None
+    #: A Phase A type, or for a WAF or IPS subject the row's detector type.
+    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType
     state: AnomalyState
     severity: Severity
     observed_value: float | None = None
@@ -370,7 +392,58 @@ class WafDetectionDetailOut(BaseModel):
     expected_proportion: float | None = None
     observed_numerator: float | None = None
     observed_denominator: float | None = None
+    #: The observed minus the expected share, in percentage points (29.7 means +29.7 pp).
     percentage_point_change: float | None = None
+
+    ratio: float | None = None
+    ratio_basis: str | None = None
+    robust_score_status: RobustScoreStatus | None = None
+    robust_z: float | None = None
+    fallback_bound: float | None = None
+
+
+class IpsDetectionDetailOut(BaseModel):
+    """The IPS detector's working, projected from the stored evidence by whitelist.
+
+    Same rule as the WAF projection: named keys only, from the two known levels
+    of the evidence dict. The evidence also holds the entity block (its identity
+    travels as `ips_entity` instead), the bounded source-IP contributor lists,
+    the window and provenance; none of that is forwarded here. A missing value
+    is None, never 0.
+    """
+
+    reason: str | None = None
+    expected_low: float | None = None
+    expected_high: float | None = None
+    threshold: float | None = None
+    baseline_sample_count: int | None = None
+    baseline_completeness: float | None = None
+    baseline_version: int | None = None
+
+    #: Entity-rate detectors: events in the anomalous bucket, and the baseline
+    #: median they were judged against. The new-port detector reports events
+    #: since first appearance and expects none, so its expected count is None.
+    observed_events: float | None = None
+    expected_events: float | None = None
+    #: Port fan-out: the busiest source IP's distinct destination ports.
+    observed_distinct_ports: float | None = None
+    expected_distinct_ports: float | None = None
+    #: Share detectors (concentration, block ratio): the observed and pooled
+    #: expected proportion, and the counts the observed one was computed from.
+    observed_proportion: float | None = None
+    expected_proportion: float | None = None
+    observed_numerator: float | None = None
+    observed_denominator: float | None = None
+    #: The observed minus the expected share, in percentage points (29.7 means +29.7 pp).
+    percentage_point_change: float | None = None
+
+    #: EXACT, or LOWER_BOUND when the observed value is "at least n".
+    observed_measurement: str | None = None
+    #: The observed minus the expected value, in the metric's own unit: events,
+    #: distinct ports, or a share.
+    absolute_delta: float | None = None
+    #: The detector's fixed interpretive caveat ("volume, not intent").
+    caveat: str | None = None
 
     ratio: float | None = None
     ratio_basis: str | None = None
@@ -387,9 +460,10 @@ class AnomalyDetailOut(AnomalyListItem):
     transitions: list[AnomalyTransitionOut] = Field(default_factory=list)
     #: None when evidence was never requested or has not yet been collected.
     explanation_package: ExplanationOut | None = None
-    #: None when the anomaly recorded no structured detector evidence.
-    #: A WAF subject carries the WAF projection; a log source the Phase A one.
-    detection: WafDetectionDetailOut | DetectionDetailOut | None = None
+    #: None when the anomaly recorded no structured detector evidence. A WAF
+    #: subject carries the WAF projection, an IPS subject the IPS one, and a log
+    #: source the Phase A one.
+    detection: WafDetectionDetailOut | IpsDetectionDetailOut | DetectionDetailOut | None = None
 
 
 class BehaviorSummaryOut(BaseModel):
@@ -541,6 +615,65 @@ def waf_detection_detail(
         observed_numerator=_num(observed, "numerator"),
         observed_denominator=_num(observed, "denominator"),
         percentage_point_change=_num(extra, "percentage_point_change"),
+        ratio=_num(extra, "ratio"),
+        ratio_basis=_text(extra, "ratio_basis"),
+        robust_score_status=(
+            RobustScoreStatus(status) if status in set(RobustScoreStatus) else None
+        ),
+        robust_z=_num(extra, "robust_z"),
+        fallback_bound=_num(extra, "fallback_bound"),
+    )
+
+
+def ips_detection_detail(details: dict[str, Any] | None) -> IpsDetectionDetailOut | None:
+    """Project a stored IPS evidence dict onto the typed IPS detection block.
+
+    Reads named keys only, from `details`, `details["extra"]` and its two known
+    nested sections. The stored `expected["expected"]` is the value the detector
+    judged against, in its metric's own unit; it is exposed under the field
+    matching the detector's own observed shape, never under all of them — a
+    median event count is not an expected share. Contributor lists (source IPs),
+    the entity block and provenance never reach the response.
+    """
+    if not details:
+        return None
+    extra = _section(details, "extra")
+    observed = _section(extra, "observed")
+    expected = _section(extra, "expected")
+
+    sample_count = _num(details, "sample_count")
+    version = _num(expected, "baseline_version")
+    status = _text(extra, "robust_score_status")
+    measurement = _text(extra, "observed_measurement")
+
+    # Which shape the detector's own evidence declares; the others stay None.
+    against = _num(expected, "expected")
+    events = _num(observed, "events")
+    ports = _num(observed, "max_distinct_ports")
+    proportion = _num(observed, "proportion")
+
+    return IpsDetectionDetailOut(
+        reason=_text(details, "reason"),
+        expected_low=_num(details, "baseline_low"),
+        expected_high=_num(details, "baseline_high"),
+        threshold=_num(details, "threshold"),
+        baseline_sample_count=int(sample_count) if sample_count is not None else None,
+        baseline_completeness=_num(expected, "completeness"),
+        baseline_version=int(version) if version is not None else None,
+        observed_events=events,
+        expected_events=against if events is not None else None,
+        observed_distinct_ports=ports,
+        expected_distinct_ports=against if ports is not None else None,
+        observed_proportion=proportion,
+        expected_proportion=against if proportion is not None else None,
+        observed_numerator=_num(observed, "numerator"),
+        observed_denominator=_num(observed, "denominator"),
+        percentage_point_change=_num(extra, "percentage_point_change"),
+        observed_measurement=(
+            measurement if measurement in ("EXACT", "LOWER_BOUND") else None
+        ),
+        absolute_delta=_num(extra, "absolute_delta"),
+        caveat=_text(extra, "caveat"),
         ratio=_num(extra, "ratio"),
         ratio_basis=_text(extra, "ratio_basis"),
         robust_score_status=(
@@ -762,3 +895,43 @@ class PagedWafBaselines(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# ------------------------------------------------------------- histogram
+class AnomalyHistogramHourOut(BaseModel):
+    """One UTC hour of the anomaly histogram.
+
+    `counts` holds an entry only for a severity with a non-zero count in the
+    hour: a severity absent from the mapping counted zero in it, so the chart
+    draws zero without the payload carrying one. The hour is present even when
+    nothing was counted in it -- the population is complete, so an empty hour
+    is a measured zero, never a missing measurement.
+    """
+
+    start: datetime
+    counts: dict[str, int]
+    total: int
+
+
+class AnomalyHistogramOut(BaseModel):
+    """Anomaly counts per UTC hour and severity over a range, uncapped.
+
+    The population is exactly `GET /anomalies`'s for the same `since`, `until`
+    and `subject_kind` -- same families, every state -- so `total` equals the
+    list's `total` for the same arguments and no count here is a lower bound.
+    """
+
+    since: datetime
+    until: datetime
+    #: The buckets are fixed UTC hours.
+    bucket_seconds: int
+    #: The anomaly families the totals cover, so a client knows what was counted.
+    #: Ordering: with no `subject_kind`, the list is
+    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]; with
+    #: `subject_kind=IPS_ENTITY` it is ["IPS_ENTITY"]; with
+    #: `subject_kind=IPS_SOURCE` it is ["IPS_SOURCE"]; with `subject_kind=LOG_SOURCE`
+    #: or `WAF_ENDPOINT` it is the single corresponding family.
+    families: list[str]
+    total: int
+    #: Every hour of the range, in order, including the hours with no anomaly.
+    hours: list[AnomalyHistogramHourOut]

@@ -10,6 +10,7 @@ changed lookup is not an improvement.
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -50,11 +51,47 @@ pytestmark = [
 
 READER = Principal(subject="reader", permissions=frozenset({"read:*"}))
 
-#: The real clock, because `/anomalies/summary` judges every source against the
-#: cell it is in right now; a fixed literal would drift out of its own cell.
-NOW = datetime.now(UTC).replace(microsecond=0)
-#: Two hours earlier: a different (weekday, hour) cell whatever the hour.
-EARLIER = NOW - timedelta(hours=2)
+#: How close to the top of the hour a test may start before it waits for the
+#: hour to turn. The seeded cells and the route's own clock read must land in
+#: the same hour, and no single one of these tests runs for this long.
+_HOUR_GUARD_SECONDS = 60
+
+
+def _utcnow() -> datetime:
+    """The test's own clock read, taken when the test runs.
+
+    `/anomalies/summary` judges every source against the cell of the current
+    hour at request time, and pytest imports this module at collection, minutes
+    before the suite reaches it. A NOW read at import therefore seeds its cells
+    in one hour and lets the route judge them in the next. Reading the clock
+    here, when the test starts, keeps the seeding and the request together.
+    """
+    return datetime.now(UTC)
+
+
+def _now_and_earlier() -> tuple[datetime, datetime]:
+    """`(now, two hours earlier)` from one clock read, across no hour boundary.
+
+    If less than the guard remains before the next UTC hour, wait for it to
+    turn before returning: a seeding that landed at 18:59:59 and a request that
+    reads 19:00:01 would otherwise disagree about the hour. The wait is bounded
+    by the guard, so it can add at most that many seconds.
+    """
+    now = _utcnow()
+    next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    remaining = (next_hour - now).total_seconds()
+    if remaining <= _HOUR_GUARD_SECONDS:
+        time.sleep(remaining + 0.2)
+        now = _utcnow()
+    now = now.replace(microsecond=0)
+    # Two hours earlier: a different (weekday, hour) cell whatever the hour.
+    return now, now - timedelta(hours=2)
+
+
+@pytest.fixture
+def clock() -> tuple[datetime, datetime]:
+    """The `(now, earlier)` pair for one test, read when the test starts."""
+    return _now_and_earlier()
 
 
 def reader_client(db_url: str) -> TestClient:
@@ -136,7 +173,9 @@ async def _add_cell(
     )
 
 
-async def _seed_mixed_fleet(session) -> list[uuid.UUID]:
+async def _seed_mixed_fleet(
+    session, now: datetime, earlier: datetime
+) -> list[uuid.UUID]:
     """Six monitored sources, one per branch the row builder can take.
 
     Returned in `/behavior/sources` order, the order the route promises:
@@ -153,32 +192,32 @@ async def _seed_mixed_fleet(session) -> list[uuid.UUID]:
     # 2. A bucket but no cell, with an older bucket behind the newest: the row
     #    must read the newest bucket, and has no band to read against it.
     bucket_only = await _add_source(session, inst, "bulk-02-bucket-only", 3102)
-    await _add_bucket(session, bucket_only, EARLIER, eps=1.0)
-    await _add_bucket(session, bucket_only, NOW, eps=6.0)
+    await _add_bucket(session, bucket_only, earlier, eps=1.0)
+    await _add_bucket(session, bucket_only, now, eps=6.0)
     # 3. A PARTIAL bucket over an unreliable cell: the value exists, the band
     #    cannot judge it.
     partial = await _add_source(session, inst, "bulk-03-partial", 3103)
     await _add_bucket(
-        session, partial, NOW, eps=6.0, completeness=BucketCompleteness.PARTIAL
+        session, partial, now, eps=6.0, completeness=BucketCompleteness.PARTIAL
     )
-    await _add_cell(session, partial, NOW, median=2.0, reliable=False)
+    await _add_cell(session, partial, now, median=2.0, reliable=False)
     # 4. A reliable cell whose median is zero: no ratio exists against it.
     zero = await _add_source(session, inst, "bulk-04-zero-median", 3104)
-    await _add_bucket(session, zero, NOW, eps=3.0)
-    await _add_cell(session, zero, NOW, median=0.0, reliable=True)
+    await _add_bucket(session, zero, now, eps=3.0)
+    await _add_cell(session, zero, now, median=0.0, reliable=True)
     # 5. An open anomaly: state OPEN whatever the cell says.
     open_src = await _add_source(session, inst, "bulk-05-open", 3105)
-    await _add_bucket(session, open_src, NOW, eps=9.0)
-    await _add_cell(session, open_src, NOW, median=2.0, reliable=True)
+    await _add_bucket(session, open_src, now, eps=9.0)
+    await _add_cell(session, open_src, now, median=2.0, reliable=True)
     session.add(
         LogSourceAnomaly(
             log_source_id=open_src,
             anomaly_type=AnomalyType.VOLUME_SPIKE,
             severity=Severity.HIGH,
             state=AnomalyState.OPEN,
-            detected_at=NOW,
-            opened_at=NOW,
-            anomaly_start=NOW,
+            detected_at=now,
+            opened_at=now,
+            anomaly_start=now,
             observed_value=9.0,
             expected_value=2.0,
             deviation_ratio=4.5,
@@ -189,8 +228,8 @@ async def _seed_mixed_fleet(session) -> list[uuid.UUID]:
     # 6. Its bucket landed in a different cell and only that cell exists, so a
     #    lookup keyed on the wrong hour loses this band.
     other_cell = await _add_source(session, inst, "bulk-06-other-cell", 3106)
-    await _add_bucket(session, other_cell, EARLIER, eps=8.0)
-    await _add_cell(session, other_cell, EARLIER, median=4.0, reliable=True)
+    await _add_bucket(session, other_cell, earlier, eps=8.0)
+    await _add_cell(session, other_cell, earlier, median=4.0, reliable=True)
     await session.commit()
     return [never, bucket_only, partial, zero, open_src, other_cell]
 
@@ -231,9 +270,10 @@ def _per_source_row(src, bucket, cell, active_count: int) -> dict:
 
 
 async def test_rows_match_the_per_source_path_for_a_mixed_fleet(
-    db_session, db_schema
+    db_session, db_schema, clock
 ) -> None:
-    await _seed_mixed_fleet(db_session)
+    now, earlier = clock
+    await _seed_mixed_fleet(db_session, now, earlier)
     rows = reader_client(db_schema).get("/api/v1/behavior/sources").json()
 
     # The pre-bulk lookup: one bucket and one cell query per source.
@@ -286,9 +326,10 @@ async def test_rows_match_the_per_source_path_for_a_mixed_fleet(
 
 
 async def test_last_bucket_completeness_reports_partial_and_absence(
-    db_session, db_schema
+    db_session, db_schema, clock
 ) -> None:
-    await _seed_mixed_fleet(db_session)
+    now, earlier = clock
+    await _seed_mixed_fleet(db_session, now, earlier)
     rows = {
         r["name"]: r
         for r in reader_client(db_schema).get("/api/v1/behavior/sources").json()
@@ -299,9 +340,10 @@ async def test_last_bucket_completeness_reports_partial_and_absence(
 
 
 async def test_summary_counts_reliable_unreliable_and_missing_cells(
-    db_session, db_schema
+    db_session, db_schema, clock
 ) -> None:
-    await _seed_mixed_fleet(db_session)
+    now, earlier = clock
+    await _seed_mixed_fleet(db_session, now, earlier)
     body = reader_client(db_schema).get("/api/v1/anomalies/summary").json()
     assert body["monitored_sources"] == 6
     # Only 04 and 05 hold a reliable cell at the current hour: 03's cell is
@@ -311,9 +353,10 @@ async def test_summary_counts_reliable_unreliable_and_missing_cells(
 
 
 async def test_statement_count_does_not_grow_with_the_fleet(
-    db_session, db_schema
+    db_session, db_schema, clock
 ) -> None:
     """The same statements for 2 monitored sources as for 6."""
+    now, earlier = clock
     inst = QRadarInstance(
         name=f"inst-{uuid.uuid4().hex[:8]}", console_host="mock", provider_kind="mock"
     )
@@ -323,11 +366,11 @@ async def test_statement_count_does_not_grow_with_the_fleet(
     # Two sources, both with a bucket: one over a reliable cell, one over an
     # unreliable cell, so the bucket and the cell paths both run.
     a = await _add_source(db_session, inst, "count-01-reliable", 3201)
-    await _add_bucket(db_session, a, NOW)
-    await _add_cell(db_session, a, NOW, median=2.0, reliable=True)
+    await _add_bucket(db_session, a, now)
+    await _add_cell(db_session, a, now, median=2.0, reliable=True)
     b = await _add_source(db_session, inst, "count-02-unreliable", 3202)
-    await _add_bucket(db_session, b, NOW)
-    await _add_cell(db_session, b, NOW, median=2.0, reliable=False)
+    await _add_bucket(db_session, b, now)
+    await _add_cell(db_session, b, now, median=2.0, reliable=False)
     await db_session.commit()
 
     api = reader_client(db_schema)
@@ -349,13 +392,13 @@ async def test_statement_count_does_not_grow_with_the_fleet(
         # one whose bucket landed in another cell, and a plain healthy one.
         await _add_source(db_session, inst, "count-03-no-bucket", 3203)
         d = await _add_source(db_session, inst, "count-04-no-cell", 3204)
-        await _add_bucket(db_session, d, NOW)
+        await _add_bucket(db_session, d, now)
         e = await _add_source(db_session, inst, "count-05-other-cell", 3205)
-        await _add_bucket(db_session, e, EARLIER)
-        await _add_cell(db_session, e, EARLIER, median=4.0, reliable=True)
+        await _add_bucket(db_session, e, earlier)
+        await _add_cell(db_session, e, earlier, median=4.0, reliable=True)
         f = await _add_source(db_session, inst, "count-06-reliable", 3206)
-        await _add_bucket(db_session, f, NOW)
-        await _add_cell(db_session, f, NOW, median=2.0, reliable=True)
+        await _add_bucket(db_session, f, now)
+        await _add_cell(db_session, f, now, median=2.0, reliable=True)
         await db_session.commit()
 
         with recorded_statements(anchor) as statements:
@@ -370,9 +413,10 @@ async def test_statement_count_does_not_grow_with_the_fleet(
         assert len(statements) == summary_two, (summary_two, statements)
 
 
-async def test_bulk_methods_match_the_single_source_reads(db_session) -> None:
+async def test_bulk_methods_match_the_single_source_reads(db_session, clock) -> None:
     """The dict contents are the single-source results, keyed as promised."""
-    await _seed_mixed_fleet(db_session)
+    now, earlier = clock
+    await _seed_mixed_fleet(db_session, now, earlier)
     repo = AnomalyRepository(db_session)
     sources = await repo.monitored_sources()
     ids = [s.id for s in sources]
@@ -398,8 +442,8 @@ async def test_bulk_methods_match_the_single_source_reads(db_session) -> None:
     # 03, 04 and 05 hold a cell at NOW, 06 one at EARLIER; 02's key has none.
     assert len(cells) == 4
     assert set(cells) <= set(keys)
-    assert (ids[1], NOW.isoweekday(), NOW.hour) not in cells
-    assert (ids[5], EARLIER.isoweekday(), EARLIER.hour) in cells
+    assert (ids[1], now.isoweekday(), now.hour) not in cells
+    assert (ids[5], earlier.isoweekday(), earlier.hour) in cells
     for key, cell in cells.items():
         single = await repo.baseline_cell(
             key[0], weekday=key[1], hour=key[2], metric="average_eps"

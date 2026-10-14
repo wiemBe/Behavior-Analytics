@@ -50,13 +50,17 @@ describe("summarizeWafAnomaly", () => {
     expect(s.text).not.toContain("requests / 5 min");
   });
 
-  it("states a new endpoint as absent from the verified history", () => {
+  // T-090: was "states a new endpoint as absent from the verified history" and pinned
+  // "received 87 requests / 5 min". The count is cumulative since the endpoint first appeared,
+  // not a per-bucket rate, so the per-bucket unit misstated what was measured.
+  it("states a new endpoint's cumulative count since it first appeared, with none expected", () => {
     const s = summarizeWafAnomaly(
       wafDetail({ anomaly_type: "WAF_NEW_ENDPOINT_ACCESS", observed_value: 87, expected_value: 0, detection: null }),
       300,
     );
-    expect(s.text).toContain("received 87 requests / 5 min");
-    expect(s.text).toContain("absent from the verified request history");
+    expect(s.text).toContain("received 87 requests since it first appeared");
+    expect(s.text).toContain("none were expected");
+    expect(s.text).not.toContain("/ 5 min");
   });
 
   it("says 'per bucket' when the bucket width is not known, rather than guessing 5 min", () => {

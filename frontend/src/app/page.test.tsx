@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ResourceState } from "@/hooks/useApiResource";
@@ -171,9 +171,18 @@ beforeEach(() => {
   on.mockClear();
 });
 
+// The widgets load with `next/dynamic` (UR.5.1), so the first assertions wait for every
+// text-only placeholder to be replaced by its widget.
+async function widgetsLoaded(container: HTMLElement) {
+  await waitFor(() => expect(container.querySelectorAll("[aria-busy='true']")).toHaveLength(0), {
+    timeout: 5000,
+  });
+}
+
 describe("Dashboard page", () => {
-  it("has one h1 and the fixed widget hierarchy in order", () => {
-    render(<HomePage />);
+  it("has one h1 and the fixed widget hierarchy in order", async () => {
+    const { container } = render(<HomePage />);
+    await widgetsLoaded(container);
     expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByText(/24 h view of fleet volume/)).toBeInTheDocument();
     expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual([
@@ -195,9 +204,10 @@ describe("Dashboard page", () => {
     expect(mocks.reportAge).toHaveBeenCalledWith("2026-10-14T14:00:00Z");
   });
 
-  it("renders a fresh install as explained empty states, never zero for an absent measurement", () => {
+  it("renders a fresh install as explained empty states, never zero for an absent measurement", async () => {
     mocks.scenario = "empty";
     const { container } = render(<HomePage />);
+    await widgetsLoaded(container);
     expect(screen.getAllByText(/No class has a complete bucket in this window/)).toHaveLength(2);
     expect(screen.getByText(/No monitored log source; there is nothing to judge yet/)).toBeInTheDocument();
     expect(screen.getByText(/The window holds no step\. No line is drawn/)).toBeInTheDocument();
@@ -210,18 +220,20 @@ describe("Dashboard page", () => {
     expect(container.textContent).not.toContain("0.00 EPS");
   });
 
-  it("contains an offenses permission gap while every non-offense widget still renders", () => {
+  it("contains an offenses permission gap while every non-offense widget still renders", async () => {
     mocks.scenario = "partial-permission";
-    render(<HomePage />);
+    const { container } = render(<HomePage />);
+    await widgetsLoaded(container);
     expect(screen.getAllByText(/permission read:offenses/)).toHaveLength(2);
     expect(screen.getByRole("table", { name: /EPS by source class/ })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Recent anomalies" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Fleet EPS/ })).toBeInTheDocument();
   });
 
-  it("contains backend failure in every widget and gives a recovery action", () => {
+  it("contains backend failure in every widget and gives a recovery action", async () => {
     mocks.scenario = "down";
-    render(<HomePage />);
+    const { container } = render(<HomePage />);
+    await widgetsLoaded(container);
     const alerts = screen.getAllByRole("alert");
     expect(alerts).toHaveLength(11);
     for (const alert of alerts) {
@@ -231,9 +243,10 @@ describe("Dashboard page", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
   });
 
-  it("keeps insufficient data neutral and does not draw an absent fleet measurement", () => {
+  it("keeps insufficient data neutral and does not draw an absent fleet measurement", async () => {
     mocks.scenario = "insufficient";
     const { container } = render(<HomePage />);
+    await widgetsLoaded(container);
     expect(screen.getAllByText(/Insufficient data/).length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByText(/No class has a complete bucket/)).toHaveLength(2);
     expect(screen.getAllByText(/No monitored source has a verdict yet/)).toHaveLength(2);

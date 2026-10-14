@@ -6,16 +6,18 @@
 // empty text says how many.
 
 import type { AnomalyState, AnomalySummary, BehaviorSummary, Page } from "@/lib/api";
-import { anomalyTypeLabel, endpointLabel, isWafRow } from "@/components/waf/wafLabels";
+import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
+import { endpointLabel, isWafRow } from "@/components/waf/wafLabels";
 
 export const RECENT_ANOMALIES_LIMIT = 5;
 
 export interface RecentAnomalyRow {
   id: string;
   detectedAt: string;
-  /** What the anomaly is about: the source, or `METHOD /path` for a WAF row. */
+  /** What the anomaly is about: the source, `METHOD /path` for a WAF row, or the entity
+   *  (or "Source-level") for an IPS row. */
   subject: string;
-  /** The source's name, shown beneath a WAF row's endpoint; null otherwise. */
+  /** The source's name, shown beneath a WAF or IPS row's subject; null otherwise. */
   sourceName: string | null;
   sourceHref: string;
   typeLabel: string;
@@ -48,15 +50,24 @@ export function recentAnomalies(
   const rows: RecentAnomalyRow[] = active.items.slice(0, RECENT_ANOMALIES_LIMIT).map((a) => {
     const source = a.log_source_name ?? a.log_source_id;
     const waf = isWafRow(a) && a.waf_endpoint != null;
+    const ips = isIpsRow(a);
     return {
       id: a.id,
       detectedAt: a.detected_at,
-      subject: waf && a.waf_endpoint ? endpointLabel(a.waf_endpoint) : source,
-      sourceName: waf ? source : null,
-      sourceHref: waf
-        ? `/behavior/waf/sources/${a.log_source_id}`
-        : `/behavior/sources/${a.log_source_id}`,
-      typeLabel: anomalyTypeLabel(a.anomaly_type),
+      subject: ips
+        ? ipsSubjectText(a)
+        : waf && a.waf_endpoint
+          ? endpointLabel(a.waf_endpoint)
+          : source,
+      sourceName: waf || ips ? source : null,
+      // No IPS behavior page exists for an analyst yet, and the Phase A source page
+      // charts EPS: an IPS row links to its own investigation.
+      sourceHref: ips
+        ? `/anomalies/${a.id}`
+        : waf
+          ? `/behavior/waf/sources/${a.log_source_id}`
+          : `/behavior/sources/${a.log_source_id}`,
+      typeLabel: rowTypeLabel(a),
       severity: a.severity,
       state: a.state,
       deviation: a.deviation_ratio,

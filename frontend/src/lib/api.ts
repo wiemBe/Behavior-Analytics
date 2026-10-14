@@ -761,7 +761,9 @@ export interface AnomalySummary {
   // a missing `subject_kind` is read as LOG_SOURCE.
   subject_kind?: SubjectKind;
   waf_endpoint?: WafEndpointRef | null;
-  // WAF only: EXACT, or LOWER_BOUND when observed_value is "at least n".
+  // IPS_ENTITY only (T-085): the admitted entity. An IPS_SOURCE row has none.
+  ips_entity?: IpsEntityRef | null;
+  // WAF and IPS: EXACT, or LOWER_BOUND when observed_value is "at least n".
   observed_measurement?: MeasurementKind | null;
 }
 
@@ -899,6 +901,7 @@ export interface AnomalyListParams {
   active_only?: boolean;
   subject_kind?: SubjectKind;
   waf_endpoint_id?: string;
+  ips_entity_id?: string;
   since?: string;
   until?: string;
 }
@@ -907,7 +910,7 @@ export interface AnomalyListParams {
 // These mirror app/schemas/anomaly.py (T-057). A missing measurement is `null`,
 // never 0: narrowing one of these to `number` would let it render as a zero.
 
-export type SubjectKind = "LOG_SOURCE" | "WAF_ENDPOINT";
+export type SubjectKind = "LOG_SOURCE" | "WAF_ENDPOINT" | "IPS_ENTITY" | "IPS_SOURCE";
 
 /** EXACT, or LOWER_BOUND when the count is "at least n". */
 export type MeasurementKind = "EXACT" | "LOWER_BOUND";
@@ -967,7 +970,9 @@ export interface WafAnomalyDetail
   detection: WafDetectionDetail | null;
 }
 
-export function isWafDetail(a: AnomalyDetail | WafAnomalyDetail): a is WafAnomalyDetail {
+export function isWafDetail(
+  a: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail,
+): a is WafAnomalyDetail {
   return a.subject_kind === "WAF_ENDPOINT" && a.waf_endpoint != null;
 }
 
@@ -1109,6 +1114,243 @@ export interface PagedWafEndpoints {
   offset: number;
 }
 
+// --- Phase D types: IPS behavior ---------------------------------------------
+// These mirror app/schemas/anomaly.py and app/schemas/ips_behavior.py (T-085).
+// A missing measurement is `null`, never 0. The API serves no contributor list
+// and no source IP for IPS, by design (docs/PHASE-D-IPS-BEHAVIOR.md §D.4).
+
+export type IpsAnomalyTypeName =
+  | "IPS_PORT_RATE_SPIKE"
+  | "IPS_DESTINATION_RATE_SPIKE"
+  | "IPS_SIGNATURE_BURST"
+  | "IPS_NEW_DESTINATION_PORT"
+  | "IPS_SOURCE_CONCENTRATION_SPIKE"
+  | "IPS_PORT_FANOUT_SPIKE"
+  | "IPS_BLOCK_RATIO_SHIFT";
+
+export type IpsDimensionName =
+  | "TOTALS"
+  | "DESTINATION_PORT"
+  | "DESTINATION_IP"
+  | "SIGNATURE"
+  | "SOURCE_IP"
+  | "PORT_FANOUT"
+  | "ACTION";
+
+export interface IpsEntityRef {
+  id: string;
+  dimension: IpsDimensionName;
+  // `443/tcp`, a destination address, or `qid:5000123`. Never a source IP.
+  value_key: string;
+  // The signature's name when the dimension is SIGNATURE; null when none was named.
+  display_name: string | null;
+}
+
+export interface IpsDetectionDetail {
+  reason: string | null;
+  expected_low: number | null;
+  expected_high: number | null;
+  threshold: number | null;
+  baseline_sample_count: number | null;
+  baseline_completeness: number | null;
+  baseline_version: number | null;
+  // Entity-rate detectors. The new-port detector expects none: expected_events is null.
+  observed_events: number | null;
+  expected_events: number | null;
+  // Port fan-out: the busiest source IP's distinct destination ports.
+  observed_distinct_ports: number | null;
+  expected_distinct_ports: number | null;
+  // Concentration and block ratio, with the counts the proportion came from.
+  observed_proportion: number | null;
+  expected_proportion: number | null;
+  observed_numerator: number | null;
+  observed_denominator: number | null;
+  percentage_point_change: number | null;
+  observed_measurement: MeasurementKind | null;
+  absolute_delta: number | null;
+  caveat: string | null;
+  ratio: number | null;
+  ratio_basis: string | null;
+  robust_score_status: RobustScoreStatus | null;
+  robust_z: number | null;
+  fallback_bound: number | null;
+}
+
+/** An IPS subject's detail. There is no evidence package (`explanation_package`
+ *  is null) and `detection` is the IPS block. An IPS_SOURCE incident has no entity. */
+export interface IpsAnomalyDetail
+  extends Omit<AnomalyDetail, "detection" | "subject_kind" | "ips_entity"> {
+  subject_kind: "IPS_ENTITY" | "IPS_SOURCE";
+  ips_entity: IpsEntityRef | null;
+  detection: IpsDetectionDetail | null;
+}
+
+/** Decided by the subject kind alone: an IPS row whose entity reference is missing
+ *  must still reach the IPS view, never fall through to the EPS page. */
+export function isIpsDetail(
+  a: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail,
+): a is IpsAnomalyDetail {
+  return a.subject_kind === "IPS_ENTITY" || a.subject_kind === "IPS_SOURCE";
+}
+
+export interface IpsDimensionCoverage {
+  dimension: IpsDimensionName;
+  // EXACT or LOWER_BOUND carry numbers; NOT_COLLECTED, FAILED and REJECTED do not.
+  measurement: string;
+  coverage_ratio: number | null;
+  coverage_lower_bound: boolean | null;
+}
+
+export interface IpsEntityMetricBucket {
+  bucket_start: string;
+  bucket_seconds: number;
+  events: number;
+  // null when the source's bucket record is missing: unknown, not exact.
+  measurement: string | null;
+  coverage_ratio: number | null;
+  coverage_lower_bound: boolean | null;
+  admission_truncated: boolean | null;
+  in_maintenance: boolean | null;
+}
+
+export interface IpsSourceMetricBucket {
+  bucket_start: string;
+  bucket_seconds: number;
+  total_events: number;
+  total_records: number;
+  in_maintenance: boolean;
+  dimensions: IpsDimensionCoverage[];
+  source_events: number | null;
+  distinct_sources: number | null;
+  distinct_sources_lower_bound: boolean | null;
+  top1_events: number | null;
+  top5_events: number | null;
+  max_distinct_ports: number | null;
+  blocked_events: number | null;
+  allowed_events: number | null;
+  unmapped_events: number | null;
+}
+
+export interface PagedIpsEntityMetrics {
+  items: IpsEntityMetricBucket[];
+  total: number;
+  limit: number;
+  offset: number;
+  range_start: string;
+  range_end: string;
+}
+
+export interface PagedIpsSourceMetrics {
+  items: IpsSourceMetricBucket[];
+  total: number;
+  limit: number;
+  offset: number;
+  range_start: string;
+  range_end: string;
+}
+
+/** One seasonal cell of an IPS baseline. Weekday is ISO (1 = Monday), the hour UTC. */
+export interface IpsBaselineCell {
+  metric_name: string;
+  weekday: number;
+  hour: number;
+  median: number;
+  mad: number;
+  p05: number | null;
+  p95: number | null;
+  // Ratio and share cells of the source level only: the pooled sums behind the expectation.
+  numerator_sum: number | null;
+  denominator_sum: number | null;
+  sample_count: number;
+  is_reliable: boolean;
+  completeness: number;
+  baseline_version: number;
+  profile_version: number;
+  normalizer_version: number;
+  excluded_sample_count: number;
+  metric_semantics: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  computed_at: string | null;
+}
+
+export interface PagedIpsBaselines {
+  items: IpsBaselineCell[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface IpsAdmission {
+  dimension: IpsDimensionName;
+  admitted: number | null;
+  below_admission_threshold: number | null;
+  rejected_over_quota: number | null;
+  untracked_entities: number | null;
+  untracked_events: number | null;
+  admission_truncated: boolean | null;
+}
+
+export interface IpsLatestBucket {
+  bucket_start: string;
+  bucket_seconds: number;
+  total_events: number;
+  total_records: number;
+  in_maintenance: boolean;
+  dimensions: IpsDimensionCoverage[];
+  admission: IpsAdmission[];
+}
+
+export interface IpsEntityPressure {
+  dimension: IpsDimensionName;
+  active: number;
+  total: number;
+  active_ceiling: number;
+}
+
+export interface IpsSourceBehavior {
+  log_source_id: string;
+  log_source_name: string;
+  product_label: string | null;
+  enabled: boolean;
+  profile_version: number;
+  validation_status: string;
+  validated_profile_version: number | null;
+  validated_at: string | null;
+  validation_current: boolean;
+  latest_bucket: IpsLatestBucket | null;
+  entities: IpsEntityPressure[];
+}
+
+export interface PagedIpsSources {
+  items: IpsSourceBehavior[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface IpsEntityInventory {
+  id: string;
+  dimension: IpsDimensionName;
+  value_key: string;
+  display_name: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  active: boolean;
+  retired_at: string | null;
+  baseline: { cells_total: number; reliable_cells: number };
+  // null when no detector has evaluated the entity: unevaluated is not NORMAL.
+  state: AnomalyState | null;
+  active_anomaly_count: number;
+}
+
+export interface PagedIpsEntities {
+  items: IpsEntityInventory[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 function qs(params: Record<string, string | number | boolean | undefined>): string {
   const parts = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== "")
@@ -1198,7 +1440,10 @@ export const api = {
   // detection, and there is no QRadar call path from the browser.
   anomalies: (params: AnomalyListParams = {}) =>
     request<Page<AnomalySummary>>(`/anomalies${qs({ ...params })}`),
-  anomaly: (id: string) => request<AnomalyDetail | WafAnomalyDetail>(`/anomalies/${id}`),
+  anomaly: (id: string) =>
+    request<AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail>(`/anomalies/${id}`),
+  // The caller's identity and grants, for links the caller may not follow.
+  caller: () => request<CallerInfo>("/me"),
   behaviorSummary: () => request<BehaviorSummary>("/anomalies/summary"),
 
   sourceBehaviors: () => request<SourceBehavior[]>("/behavior/sources"),
@@ -1228,6 +1473,32 @@ export const api = {
     id: string,
     params: { metric?: string; limit?: number; offset?: number } = {},
   ) => request<PagedWafBaselines>(`/behavior/waf/endpoints/${id}/baselines${qs({ ...params })}`),
+
+  // --- IPS behavior (T-085 read API) ----------------------------------------
+  // Read-only. Entity ids come from an anomaly's `ips_entity`; a source id is the
+  // QRadar log source's id. No route serves a contributor list or a source IP.
+  ipsEntityMetrics: (
+    id: string,
+    params: { since?: string; until?: string; limit?: number; offset?: number } = {},
+  ) => request<PagedIpsEntityMetrics>(`/behavior/ips/entities/${id}/metrics${qs({ ...params })}`),
+  ipsEntityBaselines: (
+    id: string,
+    params: { metric?: string; limit?: number; offset?: number } = {},
+  ) => request<PagedIpsBaselines>(`/behavior/ips/entities/${id}/baselines${qs({ ...params })}`),
+  ipsSourceMetrics: (
+    id: string,
+    params: { since?: string; until?: string; limit?: number; offset?: number } = {},
+  ) => request<PagedIpsSourceMetrics>(`/behavior/ips/sources/${id}/metrics${qs({ ...params })}`),
+  ipsSourceBaselines: (
+    id: string,
+    params: { metric?: string; limit?: number; offset?: number } = {},
+  ) => request<PagedIpsBaselines>(`/behavior/ips/sources/${id}/baselines${qs({ ...params })}`),
+  ipsBehaviorSources: (params: { limit?: number; offset?: number } = {}) =>
+    request<PagedIpsSources>(`/behavior/ips/sources${qs({ ...params })}`),
+  ipsBehaviorEntities: (
+    id: string,
+    params: { dimension?: IpsDimensionName; limit?: number; offset?: number } = {},
+  ) => request<PagedIpsEntities>(`/behavior/ips/sources/${id}/entities${qs({ ...params })}`),
 
   // --- WAF source administration -------------------------------------------
   // Guarded by admin:waf. Profile writes save the application's database only;
@@ -2087,7 +2358,18 @@ function homeRead<T>(path: string): HomeRead<T> {
   return { key: path, fetch: (signal) => request<T>(path, { signal }) };
 }
 
+/** `GET /me`: the caller's identity and permissions (the widget catalog, UR.5.6). */
+export interface CallerInfo {
+  subject: string;
+  email: string | null;
+  /** The grants, wildcards included (`read:*`). */
+  permissions: string[];
+  /** Every `PERM_*` capability the caller holds once wildcards are resolved. */
+  effective_permissions: string[];
+}
+
 export const homeReads = {
+  me: () => homeRead<CallerInfo>("/me"),
   fleetSummary: (window: FleetWindow) =>
     homeRead<FleetSummary>(`/fleet/summary${qs({ window })}`),
   epsSeries: (window: FleetWindow, groupBy: FleetSeriesGroup) =>
@@ -2107,4 +2389,22 @@ export const homeReads = {
     homeRead<Page<AnomalySummary>>(`/anomalies${qs({ active_only: true, limit })}`),
   anomaliesBetween: (since: string, until: string, limit = 200) =>
     homeRead<Page<AnomalySummary>>(`/anomalies${qs({ since, until, limit })}`),
+  // The catalog widgets (UI-3.5a).
+  coverageSummary: () => homeRead<CoverageSummary>("/coverage/summary"),
+  ruleHealthSummary: () => homeRead<RuleHealthCount[]>("/rules/health-summary"),
+  searchCadence: () => homeRead<SearchCadenceItem[]>("/admin/search-cadence"),
+  // The queue reads NEW first, then busiest; the widget re-orders the page it gets.
+  newCatchallSenders: (limit = 50) =>
+    homeRead<Page<CatchallSender>>(
+      `/fleet/catchall/senders${qs({ review_status: "NEW", limit })}`,
+    ),
+  // The same path as `fleetSummary`, typed with the outage fields the route also returns.
+  outageSummary: (window: FleetWindow) =>
+    homeRead<OutageFleetSummary>(`/fleet/summary${qs({ window })}`),
+  // The API caps a page at 200 sources.
+  wafSources: (limit = 200) => homeRead<PagedWafSources>(`/behavior/waf/sources${qs({ limit })}`),
+  activeWafAnomalies: (limit = 5) =>
+    homeRead<Page<AnomalySummary>>(
+      `/anomalies${qs({ subject_kind: "WAF_ENDPOINT", active_only: true, limit })}`,
+    ),
 };

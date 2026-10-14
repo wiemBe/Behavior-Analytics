@@ -1,0 +1,540 @@
+/* The dashboard grid (UI-3.1). Every length is a token; a placed widget carries only grid
+   numbers (--dg-x, --dg-y, --dg-w, --dg-h) as custom properties.
+
+   Wide: 12 columns of fixed-height rows; a box is `h x row + (h - 1) x gap` tall. A body that
+   is taller than its box scrolls inside it and is never clipped.
+   Narrow (6 or 1 columns, derived): rows take their content's height and the widgets of a
+   row share it, because that view is read-only and its widgets are narrower than their
+   boxes were sized for. */
+
+.dg {
+  display: grid;
+  gap: var(--dash-gap);
+  min-width: 0;
+}
+.dg-measure,
+.dg-edit-shell {
+  min-width: 0;
+}
+.dg[data-cols="12"] {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: var(--dash-row);
+}
+.dg[data-cols="6"] {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.dg[data-cols="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* An item is only the grid position; the widget in it fills the box. */
+.dg-item {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.dg-item > * {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.dg[data-cols="12"] .dg-item {
+  grid-column: var(--dg-x) / span var(--dg-w);
+  grid-row: var(--dg-y) / span var(--dg-h);
+}
+.dg[data-cols="6"] .dg-item,
+.dg[data-cols="1"] .dg-item {
+  grid-column: span var(--dg-w);
+}
+.dg[data-cols="1"] .dg-item {
+  grid-column: auto;
+}
+
+/* The body takes what the header leaves and scrolls inside the box. */
+.dg[data-cols="12"] .tw-body,
+.dg[data-cols="12"] .kpi-body,
+.dg-edit .tw-body,
+.dg-edit .kpi-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+}
+.dg[data-cols="12"] .tw-body-fill,
+.dg-edit .tw-body-fill {
+  overflow: hidden;
+}
+
+/* --- customize ------------------------------------------------------------- */
+
+.dg-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.dg-session {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + var(--sp-3));
+  transform: translateY(-50%);
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.page-header-actions:has(.dg-session) {
+  position: relative;
+}
+.dg-notice {
+  color: var(--text);
+}
+/* --- drag-and-resize grid --------------------------------------------------- */
+
+.dg-edit {
+  position: relative;
+  min-width: 0;
+  transition: none;
+}
+.dg-edit .react-grid-item {
+  position: absolute;
+  transition: none;
+  z-index: var(--dash-z-item);
+}
+.dg-edit .react-grid-item.cssTransforms {
+  transition: none;
+}
+.dg-edit .react-grid-item.resizing,
+.dg-edit .react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: var(--dash-z-drag);
+}
+.dg-edit .react-grid-item.resizing {
+  will-change: width, height;
+}
+.dg-edit .react-grid-item.react-draggable-dragging {
+  cursor: grabbing;
+  will-change: transform;
+}
+.dg-edit .react-grid-placeholder {
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
+  border-radius: var(--r-lg);
+  transition: none;
+  z-index: var(--dash-z-placeholder);
+  user-select: none;
+}
+.dg-edit .react-grid-item > .react-resizable-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--dash-resize-hit);
+  height: var(--dash-resize-hit);
+  cursor: se-resize;
+}
+.dg-edit .react-grid-item > .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: var(--sp-1);
+  bottom: var(--sp-1);
+  width: var(--dash-resize-mark);
+  height: var(--dash-resize-mark);
+  border-right: var(--dash-resize-stroke) solid var(--text-2);
+  border-bottom: var(--dash-resize-stroke) solid var(--text-2);
+}
+.dg-drag-handle {
+  cursor: grab;
+}
+.dg-editor-loading {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+/* Eight keyboard operations stay behind one title-row disclosure. Its panel overlays the
+   widget body, so exposing it never changes the grid box or steals body height. */
+.dg-arrange {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.dg-arrange-trigger {
+  padding: 0;
+  color: var(--link);
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: var(--dash-resize-stroke);
+  white-space: nowrap;
+}
+.dg-arrange-trigger:focus-visible,
+.dg-step:focus-visible {
+  outline: var(--dash-resize-stroke) solid var(--focus);
+  outline-offset: var(--dash-resize-stroke);
+}
+/* The panel hangs from the bottom edge of the title row, so it begins exactly where the body
+   begins and covers the body's first line instead of leaving its top edge showing. */
+.dg-edit .tw-head,
+.dg-edit .kpi-head {
+  position: relative;
+}
+.dg-arrange-panel {
+  position: absolute;
+  top: 100%;
+  /* Reaches the card's edge, so a narrow card (a KPI at 1280 is about 230 px) gives the four
+     step buttons of a row the room their labels need. */
+  right: calc(var(--sp-4) * -1);
+  z-index: var(--dash-z-arrange);
+  width: min(var(--dash-arrange-w), calc(100% + 2 * var(--sp-4)));
+  margin-top: var(--sp-1);
+  padding: var(--sp-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+.dg-arrange-panel fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dg-arrange-panel fieldset + fieldset {
+  margin-top: var(--sp-3);
+}
+.dg-arrange-panel legend {
+  padding: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+.dg-step-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+}
+.dg-step {
+  min-width: 0;
+  padding: var(--sp-1);
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font: inherit;
+  cursor: pointer;
+}
+.dg-step:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.dg-step:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+.dg-arrange-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--sp-1);
+  margin-top: var(--sp-3);
+}
+.dg-arrange-remove {
+  color: var(--danger);
+}
+
+/* --- catalog drawer ---------------------------------------------------------- */
+
+dialog.dg-catalog {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(var(--dash-drawer-w), 100vw);
+  max-width: 100vw;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  color: var(--text);
+  background: var(--surface);
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+}
+dialog.dg-catalog:not([open]) {
+  display: none;
+}
+dialog.dg-catalog::backdrop {
+  background: var(--scrim);
+}
+.dg-catalog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.dialog .dg-catalog-title,
+.dg-catalog .dg-catalog-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+.dg-catalog-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.dg-catalog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+.dg-catalog .dg-catalog-category {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.dg-catalog-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dg-catalog-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+}
+.dg-catalog-text {
+  min-width: 0;
+}
+.dg-catalog-text > p {
+  margin: 0;
+}
+.dg-catalog-name {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+}
+.dg-catalog-desc {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.dg-catalog-facts {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: var(--lh-prose);
+}
+.dg-catalog-facts > div {
+  display: flex;
+  gap: var(--sp-2);
+}
+.dg-catalog-facts dt {
+  flex: 0 0 5ch;
+}
+.dg-catalog-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dg-catalog-text .dg-catalog-reason {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--warn-text);
+  line-height: var(--lh-prose);
+}
+/* "Already on this dashboard" is neutral information, not a warning. */
+.dg-catalog-text .dg-catalog-reason.info {
+  color: var(--text-3);
+}
+
+/* --- per-widget range, Expand, configure -------------------------------------- */
+
+.wr-presets {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--sp-1);
+}
+.wr-preset {
+  padding: var(--sp-1) var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.wr-preset:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.wr-preset[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+.wr-select-wrap {
+  display: flex;
+  flex: 0 0 auto;
+  /* The select is a little taller than the title's text: its margin box is not. */
+  margin-block: calc(var(--sp-1) * -1);
+}
+/* At KPI density the select must not make the title row taller than its text. */
+.wr-select {
+  width: var(--dash-select-w);
+  padding: 0 var(--sp-1);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+}
+/* A KPI card is two to three columns wide: its title, the select and the link share a row of
+   about 200 px at 1280, so the gaps are the small step. */
+.kpi-head:has(.wr-select-wrap) {
+  column-gap: var(--sp-2);
+}
+/* A panel narrower than the breakpoint swaps the presets for the select. It is a query, so the
+   width cannot be a token. */
+.wr-alt {
+  display: none;
+}
+@container tw (max-width: 28rem) {
+  .tw .wr-presets {
+    display: none;
+  }
+  .tw .wr-alt {
+    display: flex;
+  }
+}
+/* A panel's range, Expand and drill-down travel together: when they do not fit beside the
+   title they drop to the next line as one group, never one by one. */
+.tw-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-left: auto;
+  line-height: var(--lh-tight);
+}
+.tw-tools .tw-all,
+.tw-tools .tw-expand {
+  line-height: 1;
+}
+/* A title row that wraps costs its row gap once more; the small step keeps that line cheap. */
+.tw .tw-head {
+  row-gap: var(--sp-1);
+}
+/* Expand is an action, not a link: it is drawn like a preset so it does not read as part of
+   the drill-down link beside it. */
+.tw-expand {
+  flex: 0 0 auto;
+  padding: 0 var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.tw-expand:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.tw-expand:focus-visible,
+.wr-preset:focus-visible {
+  outline: var(--dash-resize-stroke) solid var(--focus);
+  outline-offset: var(--dash-resize-stroke);
+}
+
+/* The configure drawer is the catalog drawer with a form in it. */
+.dg-configure-body {
+  gap: var(--sp-4);
+}
+.dg-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.dg-field label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+}
+.dg-field select {
+  padding: var(--sp-2);
+  font-size: var(--fs-base);
+}
+.dg-configure-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+/* The expand dialog: the widget in a modal sized to the viewport. */
+dialog.dg-expand {
+  position: fixed;
+  inset: var(--dash-expand-inset);
+  width: calc(100vw - 2 * var(--dash-expand-inset));
+  max-width: var(--dash-expand-max-w);
+  height: calc(100vh - 2 * var(--dash-expand-inset));
+  max-height: calc(100vh - 2 * var(--dash-expand-inset));
+  margin: auto;
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+}
+dialog.dg-expand:not([open]) {
+  display: none;
+}
+dialog.dg-expand::backdrop {
+  background: var(--scrim);
+}
+.dg-expand-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+.dg-expand .dg-expand-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+.dg-expand-body {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.dg-expand-body > .tw {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+}
+.dg-expand-body > .tw > .tw-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+}
+.dg-expand-body > .tw > .tw-body-fill {
+  overflow: hidden;
+}

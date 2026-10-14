@@ -249,3 +249,24 @@
   --home-list-min: 14rem;
   --home-col-num: 9ch;
 }
+
+/* --- Dashboard grid (UI-3.1) ----------------------------------------------
+   A widget box is `h x row + (h - 1) x gap` tall, so the geometry is the same for the
+   fixed grid and for the drag-and-resize grid that replaces it. */
+:root {
+  --dash-row: 24px;
+  --dash-gap: var(--widget-gap);
+  --dash-drawer-w: 34rem;
+  --dash-arrange-w: 22rem;
+  --dash-expand-max-w: 90rem;
+  --dash-expand-inset: var(--sp-6);
+  --dash-select-w: 3.5rem;
+  --dash-resize-hit: var(--sp-6);
+  --dash-resize-mark: var(--sp-1);
+  --dash-resize-stroke: 2px;
+  --dash-z-item: 1;
+  --dash-z-placeholder: 2;
+  --dash-z-drag: 3;
+  --dash-z-arrange: 4;
+  --scrim: rgba(0, 0, 0, 0.55);
+}

@@ -26,15 +26,18 @@ import {
   stateTone,
 } from "@/lib/behavior";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
-import { formatPercent, formatRequests } from "@/components/waf/wafFormat";
+import "@/components/ips/ips.css";
+import { expectsNone, ipsFigures } from "@/components/ips/ipsDetectors";
+import { formatFigure } from "@/components/ips/ipsFormat";
+import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
+import { formatPercent, formatRequests, SINCE_UNIT } from "@/components/waf/wafFormat";
 import {
-  anomalyTypeLabel,
   endpointLabel,
   evidenceLabel,
   isWafRow,
   subjectText,
 } from "@/components/waf/wafLabels";
-import { isRatioType } from "@/components/waf/wafSummary";
+import { isNewEndpointType, isRatioType } from "@/components/waf/wafSummary";
 
 import "@/components/ui/controls.css";
 
@@ -55,6 +58,20 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
       Started {formatDateTimeCompact(a.anomaly_start ?? a.detected_at)}
     </span>
   );
+  if (isIpsRow(a)) {
+    // The entity, or "Source-level", then the IPS source. The source is plain text:
+    // the page that administers it needs a grant the list cannot know the caller has.
+    return (
+      <td className="cell-name cell-subject">
+        <span className="subject-endpoint ips-subject-name">{ipsSubjectText(a)}</span>
+        <span className="sr-only"> · </span>
+        <span className="subject-source" title={source}>
+          {source}
+        </span>
+        {started}
+      </td>
+    );
+  }
   if (!isWafRow(a) || !a.waf_endpoint) {
     return (
       <td className="cell-name cell-subject">
@@ -90,6 +107,40 @@ export const WAF_LIST_UNIT = "req / 5 min";
 
 /** Observed → expected, each cell in the unit of its own row's detector. */
 function ObservedCell({ a }: { a: AnomalySummary }) {
+  if (isIpsRow(a)) {
+    // The unit is the detector's own, from the table of IPS detectors; the list
+    // does not carry the bucket width. A type with no known unit shows no figure
+    // rather than a number under a guessed unit.
+    const f = ipsFigures(a, null);
+    if (f.unit == null) {
+      return (
+        <span className="muted">
+          —<span className="sr-only"> the unit of this detector is not known to this build</span>
+        </span>
+      );
+    }
+    const m = a.observed_measurement;
+    // The figures are one line and the unit sits under them, so no unit is ever cut at the
+    // column's edge. A new port expects none; the column header already says Expected.
+    const unitWords =
+      f.unit === "events"
+        ? "events / bucket"
+        : f.unit === "ports"
+          ? "distinct ports"
+          : f.unit === "since"
+            ? "events since first appeared"
+            : null;
+    return (
+      <>
+        <span className="ips-figures">
+          {formatFigure(f.unit, f.observed, m)}
+          <span className="muted"> → </span>
+          {expectsNone(a.anomaly_type) ? "none" : formatFigure(f.unit, f.expected)}
+        </span>
+        {unitWords && <span className="cell-sub ips-unit">{unitWords}</span>}
+      </>
+    );
+  }
   if (!isWafRow(a)) {
     return (
       <>
@@ -103,6 +154,18 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
   // Volume detectors count requests; ratio detectors measure a share of them,
   // whose unit is the % in the figure itself.
   const ratio = isRatioType(a.anomaly_type);
+  if (isNewEndpointType(a.anomaly_type)) {
+    // Cumulative since the endpoint first appeared, and none expected: not a per-bucket rate.
+    return (
+      <>
+        <span className="ips-figures">
+          {formatRequests(a.observed_value, a.observed_measurement)}
+          <span className="muted"> → </span>none
+        </span>
+        <span className="cell-sub ips-unit">{SINCE_UNIT}</span>
+      </>
+    );
+  }
   return (
     <>
       {ratio
@@ -121,8 +184,8 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
  * so a word there would read as something the analyst could ask for.
  */
 function EvidenceCell({ a }: { a: AnomalySummary }) {
-  if (isWafRow(a)) {
-    const meaning = "Evidence collection does not apply to WAF anomalies";
+  if (isWafRow(a) || isIpsRow(a)) {
+    const meaning = `Evidence collection does not apply to ${isIpsRow(a) ? "IPS" : "WAF"} anomalies`;
     return (
       <span className="muted" title={meaning}>
         —<span className="sr-only"> {meaning}</span>
@@ -134,6 +197,13 @@ function EvidenceCell({ a }: { a: AnomalySummary }) {
       {evidenceLabel(a.evidence_status)}
     </span>
   );
+}
+
+/** An IPS delta has a unit only for the count detectors; a share's change is in points, not here. */
+function ipsDeltaHidden(a: AnomalySummary): boolean {
+  if (!isIpsRow(a)) return false;
+  const unit = ipsFigures(a, null).unit;
+  return unit !== "events" && unit !== "ports";
 }
 
 export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
@@ -148,7 +218,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
             <tr>
               <SubjectCell a={a} />
               <td className="cell-detector">
-                {anomalyTypeLabel(a.anomaly_type)}
+                {rowTypeLabel(a)}
                 {/* Below 1100 px severity folds under the detector. */}
                 <span className="cell-sub cell-fold fold-sm">Severity {a.severity}</span>
               </td>
@@ -157,7 +227,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                   {a.state}
                 </span>
                 {/* Up to 1280 px the Evidence column folds under the state. */}
-                {!isWafRow(a) && (
+                {!isWafRow(a) && !isIpsRow(a) && (
                   <span className="cell-sub cell-fold fold-md">
                     Evidence: {evidenceLabel(a.evidence_status)}
                   </span>
@@ -190,9 +260,9 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                     type="button"
                     className="row-toggle"
                     aria-expanded={open}
-                    aria-label={`${open ? "Hide" : "Show"} technical detail for the ${anomalyTypeLabel(
-                      a.anomaly_type,
-                    ).toLowerCase()} on ${subjectText(a)}`}
+                    aria-label={`${open ? "Hide" : "Show"} technical detail for the ${rowTypeLabel(
+                      a,
+                    ).toLowerCase()} on ${isIpsRow(a) ? `${ipsSubjectText(a)} · ${a.log_source_name ?? a.log_source_id}` : subjectText(a)}`}
                     onClick={() => setExpanded(open ? null : a.id)}
                   >
                     {open ? "Less" : "More"}
@@ -206,8 +276,10 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                 <td colSpan={9}>
                   <dl className="dimension-meta">
                     {/* A ratio detector's delta is a share, not a count, and the
-                        list does not carry its unit: the investigation page does. */}
-                    {!(isWafRow(a) && isRatioType(a.anomaly_type)) && (
+                        list does not carry its unit: the investigation page does. A
+                        new endpoint expects none, so it has no delta against expected. */}
+                    {!(isWafRow(a) && (isRatioType(a.anomaly_type) || isNewEndpointType(a.anomaly_type))) &&
+                      !ipsDeltaHidden(a) && (
                       <div>
                         <dt>Absolute delta</dt>
                         <dd className="num">
@@ -217,7 +289,11 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                             <>
                               {formatDelta(a.absolute_delta)}
                               <span className="muted">
-                                {isWafRow(a) ? " requests" : " events"}
+                                {isWafRow(a)
+                                  ? " requests"
+                                  : isIpsRow(a) && ipsFigures(a, null).unit === "ports"
+                                    ? " ports"
+                                    : " events"}
                               </span>
                             </>
                           )}

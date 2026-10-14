@@ -17,7 +17,7 @@ import { WafRequestChart } from "./WafRequestChart";
 import type { BaselineSource } from "./wafBaseline";
 import { stateLabel } from "./wafLabels";
 import { buildWafRatioSeries, buildWafSeries, ratioSpecFor } from "./wafSeries";
-import { summarizeWafAnomaly } from "./wafSummary";
+import { isNewEndpointType, summarizeWafAnomaly } from "./wafSummary";
 
 /** The chart as prose: what a reader of the canvas would see. */
 export function wafChartSummary(
@@ -83,7 +83,12 @@ export function WafInvestigation({
           normalizerVersion: d?.normalizer_version ?? anomaly.waf_endpoint.normalizer_version,
         }
       : null;
-  const expected = ratio
+  // A new endpoint expects none: the chart draws no expected line, not a line at 0. Its axis
+  // stays per bucket, because the series really is per bucket.
+  const noneExpected = isNewEndpointType(anomaly.anomaly_type);
+  const expected = noneExpected
+    ? null
+    : ratio
     ? (d?.expected_proportion ?? anomaly.expected_value)
     : (d?.expected_requests ?? anomaly.expected_value);
 

@@ -11,7 +11,7 @@ import Link from "next/link";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { stateLabel } from "@/components/waf/wafLabels";
 import { useApiResource } from "@/hooks/useApiResource";
-import { homeReads, sevTone } from "@/lib/api";
+import { homeReads, sevTone, type SubjectKind } from "@/lib/api";
 import { formatRatio, stateTone } from "@/lib/behavior";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import { RECENT_ANOMALIES_LIMIT, recentAnomalies } from "@/lib/home/recentAnomalies";
@@ -19,35 +19,52 @@ import { RECENT_ANOMALIES_LIMIT, recentAnomalies } from "@/lib/home/recentAnomal
 import { secondary, WidgetFrame, WidgetLoading } from "./WidgetFrame";
 import { Unmeasured, When } from "./WidgetParts";
 
-export function RecentAnomalies() {
-  const listRead = homeReads.activeAnomalies(RECENT_ANOMALIES_LIMIT);
+/** Why an empty WAF list is not a clean bill: the sources without a valid profile are not read. */
+export const WAF_EMPTY =
+  "No active WAF endpoint anomalies. WAF sources without a valid profile are not collected, so they are not judged.";
+
+/**
+ * `subject` narrows the list to one kind of subject (the WAF endpoint widget). The default
+ * is the Home's list of every active anomaly. The not-judged count is about log sources, so a
+ * WAF list neither reads it nor quotes it.
+ */
+export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
+  const waf = subject === "WAF_ENDPOINT";
+  const listRead = waf
+    ? homeReads.activeWafAnomalies(RECENT_ANOMALIES_LIMIT)
+    : homeReads.activeAnomalies(RECENT_ANOMALIES_LIMIT);
   const summaryRead = homeReads.anomalySummary();
   const list = useApiResource(listRead.key, listRead.fetch);
-  const summary = useApiResource(summaryRead.key, summaryRead.fetch);
+  const summary = useApiResource(waf ? null : summaryRead.key, summaryRead.fetch);
   const ok = list.status === "ok" ? recentAnomalies(list.data, secondary(summary).data) : null;
 
   return (
     <WidgetFrame
-      id="recent-anomalies"
-      title="Recent anomalies"
+      id={waf ? "recent-waf-anomalies" : "recent-anomalies"}
+      title={waf ? "Recent WAF anomalies" : "Recent anomalies"}
       windowText="active now"
       badge={ok ? ok.badge : undefined}
-      link={{ href: "/anomalies", label: "View all" }}
+      link={
+        waf
+          ? { href: "/anomalies?subject_kind=WAF_ENDPOINT&active_only=true", label: "View all" }
+          : { href: "/anomalies", label: "View all" }
+      }
       state={list}
-      what="the active anomalies"
+      what={waf ? "the active WAF anomalies" : "the active anomalies"}
       permission="read:anomalies"
     >
       {({ data }) => {
           const sum = secondary(summary);
           // The empty state quotes the not-judged count, so wait for it.
-          if (data.items.length === 0 && sum.pending) {
+          if (!waf && data.items.length === 0 && sum.pending) {
             return <WidgetLoading what="the not-judged source count" />;
           }
           const view = recentAnomalies(data, sum.data);
+          if (waf && data.items.length === 0) return <p className="tw-state">{WAF_EMPTY}</p>;
           if (view.empty !== null) return <p className="tw-state">{view.empty}</p>;
           return (
             <>
-              <TableScroll label="Recent anomalies">
+              <TableScroll label={waf ? "Recent WAF anomalies" : "Recent anomalies"}>
                 <table className="tw-table">
                   <colgroup>
                     <col className="tw-col-time tw-unfold" />

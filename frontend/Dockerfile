@@ -1,10 +1,11 @@
 # Multi-stage build for the Next.js SPA.
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json ./
-# No lockfile committed in this scaffold; a real deployment commits one and uses
-# `npm ci`. Kept as `npm install` so the scaffold builds as-is.
-RUN npm install
+COPY package.json package-lock.json ./
+# The lockfile is committed, so install from it. `npm ci` fails on any drift
+# between package.json and package-lock.json and resolves nothing fresh — the
+# image installs exactly the dependency tree the frontend gates tested.
+RUN npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app

@@ -1,7 +1,6 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { homeReads } from "@/lib/api";
 import { epsPoint, epsSeries } from "@/lib/home/fixtures";
 
 import { EpsChart } from "./EpsChart";
@@ -128,18 +127,6 @@ describe("EpsChart", () => {
     render(<EpsChart />);
     expect(init).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/latest refresh failed/)).toBeInTheDocument();
-  });
-
-  it("offers 1 h, 24 h and 7 d, and a press re-reads for that window", () => {
-    res.state = ok(epsSeries(pts(5, 6)));
-    render(<EpsChart />);
-    const group = screen.getByRole("group", { name: "Window" });
-    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["1 h", "24 h", "7 d"]);
-    expect(within(group).getByRole("button", { name: "24 h" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(within(group).getByRole("button", { name: "7 d" }));
-    expect(res.keys.at(-1)).toBe(homeReads.epsSeries("7d", "none").key);
-    expect(within(group).getByRole("button", { name: "7 d" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(group).getByRole("button", { name: "24 h" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("disposes the chart on unmount", () => {

@@ -1,12 +1,13 @@
 "use client";
 
-// The Home (UR.4): the default layout as fixed components, in a 12-column grid.
+// The Home (UR.4): the SOC Overview template rendered through `DashboardView` (UR.5).
 //
 //   KPI row (4)
 //   Fleet EPS (8)                     | EPS by source class (4)
 //   Top sources (4) | Severity (4)    | Log-source health (4)
 //   Recent anomalies (6)              | Recent offenses (6)
 //
+// The widgets, their positions and their sizes are the template's (`widgets/templates.ts`).
 // Every widget reads through `useApiResource`, so the shell's refresh tick refreshes them
 // all, and each renders its own states: one refused or failed read leaves the others
 // standing. The page itself reads nothing but the fleet series' end, which the top bar
@@ -18,14 +19,8 @@ import { useReportDataAge } from "@/components/shell/AutoRefresh";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
 
-import { EpsByClass } from "./EpsByClass";
-import { EpsChart } from "./EpsChart";
-import { KpiRow } from "./KpiRow";
-import { LogSourceHealth } from "./LogSourceHealth";
-import { RecentAnomalies } from "./RecentAnomalies";
-import { RecentOffenses } from "./RecentOffenses";
-import { SeverityChart } from "./SeverityChart";
-import { TopSources } from "./TopSources";
+import { DashboardView } from "@/widgets/DashboardView";
+import { SOC_OVERVIEW } from "@/widgets/templates";
 
 import "./dashboard.css";
 
@@ -36,37 +31,17 @@ export function HomeDashboard() {
   useReportDataAge(state.status === "ok" ? state.data.window_end : null);
 
   return (
-    <>
-      <PageHeader
-        title="Dashboard"
-        description="24 h view of fleet volume, source health, anomalies and offenses. Times are UTC."
+    <div className="home">
+      <DashboardView
+        layout={SOC_OVERVIEW.layout}
+        renderHeader={(actions) => (
+          <PageHeader
+            title="Dashboard"
+            description="24 h view of fleet volume, source health, anomalies and offenses. Times are UTC."
+            actions={actions}
+          />
+        )}
       />
-      <div className="home">
-        <KpiRow />
-        <div className="home-grid">
-          <div className="home-eps">
-            <EpsChart />
-          </div>
-          <div className="home-class">
-            <EpsByClass />
-          </div>
-          <div className="home-top">
-            <TopSources />
-          </div>
-          <div className="home-severity">
-            <SeverityChart />
-          </div>
-          <div className="home-health">
-            <LogSourceHealth />
-          </div>
-          <div className="home-anomalies">
-            <RecentAnomalies />
-          </div>
-          <div className="home-offenses">
-            <RecentOffenses />
-          </div>
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
