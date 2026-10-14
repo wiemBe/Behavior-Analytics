@@ -63,7 +63,8 @@ the repository.
 
 | Task | Agent | Where | Collect |
 |---|---|---|---|
-| **Full gate** on `0ecfd7d` (everything above merged) | the orchestrator; detached worktree `gate`, fresh DBs `qradar_obs_gate`, `_gate_mig` | `gate` | `gate/gate.log`: ruff, mypy, unit, alembic `head`→`0022`→`head`, check, heads, full integration, frontend gates. If green, merge `0ecfd7d` → `main` |
+| **Full gate** on `0ecfd7d` | the orchestrator | `gate` worktree; DBs `qradar_obs_gate`, `_gate_mig` | **Done.** Ruff clean; mypy 31; unit 2,977; alembic `0023`→`0022`→`0023`, no drift, one head; frontend 153 files / 2,253 tests, build OK. Integration: **1,164 passed, 1 failed**: `test_behavior_bulk_reads.py::test_summary_counts_reliable_unreliable_and_missing_cells`. It passes alone (6/6). Cause: a module-level `NOW` set at collection, and the run crossed 19:00 UTC → **T-092**. Before `main`: T-092, then that file plus unit, then the frontend gate on the head (T-091 changed dependencies) |
+| **T-092** deflake across a UTC hour ([spec](tasks/T-092.md)) | opencode `big-pickle`, `--standalone`, pid 252013 | `t092`; DB `qradar_obs_t092` | `t092/agent.log`; `docs/tasks/T-092.report.md` in `t092` |
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
 | **UI-3.3** ([spec](tasks/UI-3.3.md) + amendment) | Codex hit its usage limit at ~21:54 before writing a file (reset **02:17**). Now a **Sonnet sub-agent of this chat**, starting fresh | `ui33` (own `node_modules`); ports 3133/8133/9133 | `docs/tasks/UI-3.3.report.md` in `ui33`; PNGs `ui33/png/`; fixture `ui33/fixture/` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
@@ -71,7 +72,7 @@ the repository.
 **Next:**
 1. UI-3.3 (running), then UI-3.5b.
 2. T-083b; T-054, whose defects become fix tasks.
-3. Full gate, then `feat/phase-ce` → `main` (the WAF fixes T-089 and T-090 are defects on `main`).
+3. T-092, then `feat/phase-ce` → `main` (the WAF fixes T-089 and T-090 are defects on `main`).
 
 **T-088 done** ([report](tasks/T-088.report.md), big-pickle): none of the 22 `npm audit` findings is
 reachable in this deployment.
