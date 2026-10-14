@@ -51,3 +51,6 @@ export function requestsUnit(seconds: number | null | undefined): string {
   const width = bucketWidth(seconds);
   return width ? `requests / ${width}` : "requests / bucket";
 }
+
+/** The unit of the new-endpoint detector's cumulative count: not a per-bucket rate. */
+export const SINCE_UNIT = "requests since it first appeared";
