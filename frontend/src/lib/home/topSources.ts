@@ -92,3 +92,14 @@ export function topSources(
     .sort((a, b) => b.events - a.events || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
     .slice(0, TOP_N);
 }
+
+/**
+ * Each row's EPS as a share of the largest EPS on the list, 0-1, for the
+ * magnitude bar. Null where the row has no EPS (no bar), and for every row when
+ * the largest is not above zero (nothing to scale against; no bar rather than a
+ * full or an empty one).
+ */
+export function epsShares(rows: TopSourceRow[]): (number | null)[] {
+  const max = rows.reduce((m, r) => (r.eps !== null && r.eps > m ? r.eps : m), 0);
+  return rows.map((r) => (r.eps === null || max <= 0 ? null : Math.min(1, r.eps / max)));
+}

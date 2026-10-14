@@ -209,3 +209,21 @@
   --map-3: #58a5b4;
   --map-4: #8edce8;
 }
+
+/* --- Home tables (UI-2.4) ------------------------------------------------
+   Column widths in characters of the table's own text, so a column is as wide as
+   its figure and no wider; the bar is a fixed small mark beside a number. */
+:root {
+  --table-col-time: 15ch;
+  --table-col-eps: 11ch;
+  --table-col-ratio: 11ch;
+  --table-col-badge: 11ch;
+  --table-col-count: 8ch;
+  --table-col-magnitude: 12ch;
+  --table-col-action: 10ch;
+  --bar-w: 56px;
+  --bar-h: 8px;
+  --bar-fill: var(--chart-observed);
+  --bar-seg-fill: var(--text-2);
+  --bar-track: var(--surface-3);
+}
