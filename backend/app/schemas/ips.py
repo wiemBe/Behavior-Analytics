@@ -129,6 +129,12 @@ class IpsProfileOut(BaseModel):
     updated_at: datetime
 
 
+class IpsFieldStatusOut(BaseModel):
+    field: str
+    status: str
+    detail: str | None = None
+
+
 class IpsSourceStatusOut(BaseModel):
     profile_id: uuid.UUID
     instance_id: uuid.UUID
@@ -146,6 +152,10 @@ class IpsSourceStatusOut(BaseModel):
     validation_pending: bool
     validation_requested_at: datetime | None = None
     validation_requested_by: str | None = None
+    #: The stored report's per-field results and top-level reasons, so the list
+    #: can say why a row is INVALID or INCONCLUSIVE and not only that it is.
+    validation_fields: list[IpsFieldStatusOut] = Field(default_factory=list)
+    validation_reasons: list[str] = Field(default_factory=list)
     collection_eligible: bool
     ineligible_reason: str | None = None
     updated_by: str | None = None

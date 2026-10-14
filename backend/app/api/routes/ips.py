@@ -32,6 +32,7 @@ from app.schemas.ips import (
     IpsActionValueMapIn,
     IpsCandidateOut,
     IpsFieldReferenceIn,
+    IpsFieldStatusOut,
     IpsMappingFieldOut,
     IpsMappingIn,
     IpsMappingSchemaOut,
@@ -126,6 +127,11 @@ def _profile_out(
 
 def _source_status(profile: IpsSourceProfile, source: LogSource) -> IpsSourceStatusOut:
     reason = profile_ineligibility(profile)
+    report = profile.validation_report or {}
+    raw_fields = report.get("fields")
+    raw_reasons = report.get("reasons")
+    report_fields = raw_fields if isinstance(raw_fields, list) else []
+    report_reasons = raw_reasons if isinstance(raw_reasons, list) else []
     return IpsSourceStatusOut(
         profile_id=profile.id,
         instance_id=profile.instance_id,
@@ -143,6 +149,18 @@ def _source_status(profile: IpsSourceProfile, source: LogSource) -> IpsSourceSta
         validation_pending=profile.validation_requested_at is not None,
         validation_requested_at=profile.validation_requested_at,
         validation_requested_by=profile.validation_requested_by,
+        # Only these leaf values leave the report: discovered raw values, counts
+        # and references stay behind the per-profile editor view (AGENTS.md rule 3).
+        validation_fields=[
+            IpsFieldStatusOut(
+                field=str(entry.get("field")),
+                status=str(entry.get("status")),
+                detail=entry.get("detail"),
+            )
+            for entry in report_fields
+            if isinstance(entry, dict)
+        ],
+        validation_reasons=[item for item in report_reasons if isinstance(item, str)],
         collection_eligible=reason is None,
         ineligible_reason=reason,
         updated_by=profile.updated_by,

@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.api.routes.ips import _source_status
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.ips.profile import IPS_PRESETS, NORMALIZED_FIELD_ALLOWLIST
@@ -34,6 +35,7 @@ from app.security.rbac import Principal
 from app.services.ips_profiles import IpsProfileService
 from app.services.property_catalog import get_property_catalog_service
 from app.workers import tasks
+from tests.integration.test_rule_match_collection import recorded_statements
 
 pytestmark = pytest.mark.integration
 
@@ -108,7 +110,10 @@ def client(db_url: str, principal: Principal, cfg: Settings | None = None) -> Te
     app.dependency_overrides[get_session] = session_override
     app.dependency_overrides[get_principal] = lambda: principal
     app.dependency_overrides[get_settings] = lambda: cfg or settings()
-    return TestClient(app)
+    api = TestClient(app)
+    # The engine a request runs on, so a test can count the statements it issues.
+    api.engine = engine
+    return api
 
 
 def admin_client(db_url: str) -> TestClient:
@@ -293,6 +298,277 @@ async def test_put_guards_create_update_sources_and_audit(
     assert actor_actions.count("ips.profile.created") == 1
     assert actor_actions.count("ips.profile.mapping_changed") == 1
     assert actor_actions.count("ips.profile.validation_requested") == 2
+
+
+async def stored_profile(  # type: ignore[no-untyped-def]
+    db_session, *, report: dict, name: str, qradar_id: int
+) -> IpsSourceProfile:
+    """A seeded profile whose stored ``validation_report`` is the caller's dict."""
+    instance, source = await seed_source(db_session, name=name, qradar_id=qradar_id)
+    profile = IpsSourceProfile(
+        instance_id=instance.id,
+        log_source_id=source.id,
+        preset=IpsPreset.CISCO_FTD,
+        mapping=IPS_PRESETS[IpsPreset.CISCO_FTD].mapping_dict(),
+        action_value_map={},
+        validation_report=report,
+    )
+    db_session.add(profile)
+    await db_session.flush()
+    return profile
+
+
+async def test_sources_row_carries_the_field_results_and_the_report_reasons(
+    db_session, db_schema
+) -> None:
+    reasons = [
+        "ACTION: MISSING (no QRadar field is mapped to the logical field)",
+        "the bounded validation probe was truncated",
+    ]
+    report = {
+        "status": "INVALID",
+        "reasons": reasons,
+        "warnings": [],
+        "total_events": 4200,
+        "window_start": (NOW - timedelta(minutes=15)).isoformat(),
+        "window_end": NOW.isoformat(),
+        "profile_version": 1,
+        "probe_truncated": True,
+        "ariel_searches": 3,
+        "queries": ["SELECT sourceip FROM events"],
+        "fields": [
+            {
+                "field": "SOURCE_IP",
+                "reference": {"kind": "NORMALIZED", "name": "sourceip"},
+                "status": "AVAILABLE",
+                "used_by_collection": True,
+                "populated_events": 4200,
+                "populated_ratio": 1.0,
+                "values_truncated": False,
+                "discovered_values": [{"value": "10.0.0.7", "events": 42}],
+                "detail": None,
+                "warnings": [],
+            },
+            {
+                "field": "ACTION",
+                "reference": None,
+                "status": "MISSING",
+                "used_by_collection": True,
+                "populated_events": None,
+                "values_truncated": False,
+                "discovered_values": [],
+                "detail": "no QRadar field is mapped to the logical field",
+                "warnings": [],
+            },
+        ],
+    }
+    profile = await stored_profile(
+        db_session, report=report, name="Cisco FTD invalid", qradar_id=413
+    )
+    profile.validation_status = IpsProfileValidationStatus.INVALID
+    profile.validated_profile_version = 1
+    profile.validated_at = NOW
+    # The stored report describes version 1 while the profile has moved on.
+    profile.profile_version = 2
+    await db_session.commit()
+
+    response = admin_client(db_schema).get("/api/v1/ips/sources")
+    assert response.status_code == 200
+    (row,) = response.json()
+    assert row["validation_fields"] == [
+        {"field": "SOURCE_IP", "status": "AVAILABLE", "detail": None},
+        {
+            "field": "ACTION",
+            "status": "MISSING",
+            "detail": "no QRadar field is mapped to the logical field",
+        },
+    ]
+    assert row["validation_reasons"] == reasons
+    # The report is shown as stored; the row's own versions say which profile
+    # version it describes, without the list rewriting anything.
+    assert (row["validated_profile_version"], row["profile_version"]) == (1, 2)
+
+
+async def test_sources_row_without_a_report_has_two_empty_lists(db_session, db_schema) -> None:
+    await stored_profile(db_session, report={}, name="Cisco FTD new", qradar_id=414)
+    await db_session.commit()
+    response = admin_client(db_schema).get("/api/v1/ips/sources")
+    assert response.status_code == 200
+    (row,) = response.json()
+    assert row["validation_fields"] == []
+    assert row["validation_reasons"] == []
+
+
+def test_source_status_without_any_report_has_two_empty_lists() -> None:
+    """The column is NOT NULL today; a missing report must still read as empty."""
+    profile = IpsSourceProfile(
+        id=uuid.uuid4(),
+        instance_id=uuid.uuid4(),
+        log_source_id=uuid.uuid4(),
+        enabled=False,
+        profile_version=1,
+        mapping={},
+        action_value_map={},
+        validation_report=None,
+        updated_at=NOW,
+    )
+    source = LogSource(
+        id=uuid.uuid4(),
+        instance_id=uuid.uuid4(),
+        qradar_id=413,
+        name="Cisco FTD unvalidated",
+        monitoring_enabled=True,
+    )
+    row = _source_status(profile, source)
+    assert row.validation_fields == []
+    assert row.validation_reasons == []
+
+
+async def test_sources_row_skips_report_items_that_are_not_dicts_or_strings(
+    db_session, db_schema
+) -> None:
+    report = {
+        "status": "INCONCLUSIVE",
+        "reasons": ["the bounded validation probe was truncated", 7, None, {"why": True}],
+        "fields": [
+            {
+                "field": "SOURCE_IP",
+                "status": "AVAILABLE",
+                "detail": "values were seen",
+                "discovered_values": [{"value": "10.0.0.7", "events": 42}],
+            },
+            "ACTION: MISSING",
+            11,
+            {"field": "ACTION", "status": "MISSING", "detail": "no mapping"},
+        ],
+    }
+    await stored_profile(
+        db_session, report=report, name="Cisco FTD inconclusive", qradar_id=415
+    )
+    await db_session.commit()
+    response = admin_client(db_schema).get("/api/v1/ips/sources")
+    assert response.status_code == 200
+    (row,) = response.json()
+    assert row["validation_fields"] == [
+        {"field": "SOURCE_IP", "status": "AVAILABLE", "detail": "values were seen"},
+        {"field": "ACTION", "status": "MISSING", "detail": "no mapping"},
+    ]
+    assert row["validation_reasons"] == ["the bounded validation probe was truncated"]
+
+
+async def test_sources_row_carries_no_discovered_values(db_session, db_schema) -> None:
+    discovered = [{"value": "203.0.113.9", "events": 84}]
+    report = {
+        "status": "VALID",
+        "reasons": [],
+        "total_events": 4200,
+        "discovered_values": discovered,
+        "populated_events": 4200,
+        "fields": [
+            {
+                "field": "SOURCE_IP",
+                "reference": {"kind": "NORMALIZED", "name": "sourceip"},
+                "status": "AVAILABLE",
+                "used_by_collection": True,
+                "populated_events": 4200,
+                "values_truncated": False,
+                "discovered_values": discovered,
+                "detail": None,
+                "warnings": [],
+            }
+        ],
+    }
+    profile = await stored_profile(
+        db_session, report=report, name="Cisco FTD valid", qradar_id=416
+    )
+    profile.validation_status = IpsProfileValidationStatus.VALID
+    profile.validated_profile_version = profile.profile_version
+    profile.validated_at = NOW
+    profile.enabled = True
+    await db_session.commit()
+
+    response = admin_client(db_schema).get("/api/v1/ips/sources")
+    assert response.status_code == 200
+    row = response.json()[0]
+    assert "discovered_values" not in response.text
+    assert "203.0.113.9" not in response.text
+    assert set(row) == {
+        "profile_id",
+        "instance_id",
+        "log_source_id",
+        "qradar_log_source_id",
+        "log_source_name",
+        "log_source_type_name",
+        "product_label",
+        "preset",
+        "enabled",
+        "profile_version",
+        "validation_status",
+        "validated_profile_version",
+        "validated_at",
+        "validation_pending",
+        "validation_requested_at",
+        "validation_requested_by",
+        "validation_fields",
+        "validation_reasons",
+        "collection_eligible",
+        "ineligible_reason",
+        "updated_by",
+        "updated_at",
+    }
+    assert row["validation_fields"] == [
+        {"field": "SOURCE_IP", "status": "AVAILABLE", "detail": None}
+    ]
+    assert row["ineligible_reason"] is None
+
+
+async def test_sources_list_statement_count_is_the_same_for_two_and_five(
+    db_session, db_schema
+) -> None:
+    """The row comes from the joined select: no statement per profile."""
+    report = {
+        "status": "INVALID",
+        "reasons": ["ACTION: MISSING"],
+        "fields": [
+            {"field": "SOURCE_IP", "status": "AVAILABLE", "detail": None},
+            {"field": "ACTION", "status": "MISSING", "detail": "no mapping"},
+        ],
+    }
+    for index in range(2):
+        await stored_profile(
+            db_session,
+            report=report,
+            name=f"Cisco FTD {index}",
+            qradar_id=420 + index,
+        )
+    await db_session.commit()
+
+    api = admin_client(db_schema)
+    async with async_sessionmaker(api.engine, expire_on_commit=False)() as anchor:
+        # The anchor session is never used, so it issues nothing; it only names
+        # the engine the client's requests run on.
+        with recorded_statements(anchor) as statements:
+            response = api.get("/api/v1/ips/sources")
+        assert response.status_code == 200
+        assert len(response.json()) == 2
+        two = len(statements)
+
+        for index in range(2, 5):
+            await stored_profile(
+                db_session,
+                report=report,
+                name=f"Cisco FTD {index}",
+                qradar_id=420 + index,
+            )
+        await db_session.commit()
+
+        with recorded_statements(anchor) as statements:
+            response = api.get("/api/v1/ips/sources")
+        assert response.status_code == 200
+        assert len(response.json()) == 5
+        assert len(statements) == two, (two, len(statements), statements)
+        # Measured before this task's change: one joined select, whatever the size.
+        assert two == 1, two
 
 
 async def test_pending_enable_disable_report_history_and_candidates(
