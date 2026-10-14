@@ -8,7 +8,7 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (eighth session, 2026-10-14, updated ~12:00)
+## ▶ Resume here (eighth session, 2026-10-14; saved at the user's request, "planner md ye son durumu kaydet")
 
 **State now:**
 - **`main` @ `8814a47`.** `feat/phase-ce` @ `9597930` was merged after a green full gate:
@@ -18,39 +18,57 @@ If this file disagrees with the code, the code wins. Fix the file.
   - frontend lint, typecheck, **1,568/1,568** tests, build.
   - It carries C.2 (T-068, T-069, T-070a, T-070b), IPS collection (T-050b), and the fixes for
     the time-bomb test and the 422 picker.
-- **`feat/phase-ce` @ `63e4625`+** (pushed) also holds T-051a, T-078 and T-079 (merged after the
-  gated commit, so they are **not yet on `main`**), the UI plan, and the specs.
-- **Migration chain complete:** `0018` (IPS) → `0019` (outage) → `0020` (catch-all). The next is
-  `0021` (T-051b).
+- **`feat/phase-ce` @ `6cec378`** (pushed). **Migration head `0021`.** Merged after the gated
+  commit, so **not yet on `main`**:
+  - **T-051a**: pure IPS detectors;
+  - **T-078**: `/ips/sources` per-field status;
+  - **T-079**: IPS bucket width on the cadence API;
+  - **UI-1.1**: charcoal tokens and self-hosted Inter, with D-11 applied. Screenshots of all 32
+    routes at 3 viewports were reviewed by the orchestrator. Seen and left for later: native
+    radios were blue (fixed in UI-1.3); overlapping anomaly bands stack their alpha
+    (UI-5.1);
+  - **UI-1.3 + UI-1.4**: a grouped text-only sidebar (Dashboard, Behavior, Fleet, Detection,
+    Operations, Administration) and restyled shared controls with `--control-accent`.
+    - Review round 1 fixed the sidebar density: the active item was off screen at 1440×900. Now
+      the whole sidebar fits at 1440, and the active item scrolls into view at smaller heights.
+    - nav and AppNav test edits keep their intent; they are listed in the report;
+  - **T-051b**: IPS detection tables `0021`, the versioned baseline builder, and
+    `ips_anomaly_fingerprint`. The orchestrator re-ran 2,763 unit and 23 targeted integration
+    tests; Codex's full integration run was 906 passed.
+  - Also: the UI plan, the T-077 report, and the specs UI-1.1, UI-1.3, B-1.2, B-1.3, B-2.2,
+    T-051b and G-2.
 - **The user approved the UI plan** ([`UI-REDESIGN-PLAN.md`](UI-REDESIGN-PLAN.md)) with
-  decision **D-11** (§4).
-- All the morning's agent tasks were collected and merged: T-076 A/B, T-051a, T-077, T-078,
-  T-079, UI-R0. Their worktrees, branches and DBs were removed.
+  **D-11** (§4).
 
-**In flight (launched ~11:40–12:00):**
+**In flight or awaiting review (at save):**
 
-| Task | Agent | Where | Log / output |
+| Task | Agent | Where | State |
 |---|---|---|---|
-| **UI-1.1** charcoal tokens + Inter, D-11 ([spec](tasks/UI-1.1.md)) | Sonnet | `ui11` | agent notification; shots in `scratchpad/ui11/` |
-| **B-1.3** `GET /me` ([spec](tasks/B-1.3.md)) | opencode `nemotron-3-ultra-free` (`--standalone`) | `b13`, DB `qradar_obs_b13` | `scratchpad/b13.log` |
-| **B-2.2** constant-cost `/behavior/sources`, `/anomalies/summary` ([spec](tasks/B-2.2.md)) | opencode `mimo-v2.6-flash-free` (`--standalone`) | `b22`, DB `qradar_obs_b22` | `scratchpad/b22.log` |
-| **T-051b** IPS persistence `0021` + baseline builder ([spec](tasks/T-051b.md)) | Codex | `t051b`, DBs `qradar_obs_t051b`, `_mig` | `scratchpad/t051b.log`, `t051b.last.md` |
+| **B-1.3** `GET /me` ([spec](tasks/B-1.3.md)) | opencode `nemotron-3-ultra-free` | `b13`, DB `qradar_obs_b13` | Round 1 running (`scratchpad/b13-r1.log`): exclude wildcard **values** (`:*`), not names; the read-only test must assert **every** `read:` constant. First pass re-run by the orchestrator: 2,746 unit + 5 integration passed |
+| **B-2.2** constant-cost `/behavior/sources`, `/anomalies/summary` ([spec](tasks/B-2.2.md)) | opencode `mimo-v2.6-flash-free` | `b22`, DB `qradar_obs_b22` | **Finished, awaiting the orchestrator's review** (report `docs/tasks/B-2.2.report.md` in `b22`) |
+| **B-1.2** `instance_last_health_check_at` on `/overview` ([spec](tasks/B-1.2.md)) | opencode `ling-3.1-flash-free` | `b12`, DB `qradar_obs_b12` | Running (`scratchpad/b12.log`) |
 
-**Next:**
-1. Collect the four tasks. UI-1.1 needs a screenshot review: every route at 3 viewports.
-2. Write and launch:
-   - **T-051c**: the IPS engine with bulk loaders, the lifecycle, the pipeline step
-     collect → evaluate → train, and the IPS capability status change;
-   - **UI-1.3** (shell) and **UI-1.5** (top bar), after UI-1.1;
-   - **UI-1.4** (shared components);
-   - **B-1.2**;
-   - the geo collector design task (UR.6.4).
+**Next, in order:**
+1. Review B-2.2, collect B-1.3 round 1 and B-1.2, then merge.
+2. Launch:
+   - **G-2**, the geo collection backend, migration `0022` after `0021`
+     ([spec ready](tasks/G-2.md); Sonnet or Codex);
+   - **T-051c**, the IPS engine with bulk loaders, the lifecycle, the collect → evaluate → train
+     pipeline step, and the capability status change from `NOT_SCHEDULED` to
+     operational (spec still to write; Codex). It uses T-051b's tables, the evaluation watermark
+     in `collection_watermark` (T-051b's choice), and `ips_anomaly_fingerprint`;
+   - **UI-1.5**, the top bar (search over existing lists, auto-refresh with data age, the alert
+     bell, connection status), after B-1.2 merges. It adds the top-bar row of UR.3.1 with its
+     contents, so there is never an empty bar.
 3. **GLM only after 13:00 (the user, 2026-10-14).** Good GLM work:
    - the README C.2 entries;
    - amending UR.2.2 and UR.2.8 in the plan to D-11 (`--text-3` `#73757B`, `--border-strong`
      `#35363A`);
    - a T-055 docs pass.
-4. Next full gate → `main` once T-051a/T-078/T-079 and this round have landed.
+4. A full gate on `feat/phase-ce`, then `main`: it carries T-051a/b, T-078, T-079, UI-1.1,
+   UI-1.3 and this round.
+5. Then Phase 2 (Home), as the plan's UR.7 splits it: B-2.1 `/fleet/eps-series`, then UI-2.1 to
+   UI-2.5.
 
 **Lessons this session:**
 - Killing `opencode run` does not stop its session. The background `opencode serve` service
