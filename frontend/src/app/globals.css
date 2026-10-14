@@ -77,7 +77,7 @@ a {
 .sidebar {
   grid-column: 1;
   grid-row: 1;
-  padding: var(--sp-6) var(--sp-3);
+  padding: var(--sp-5) var(--sp-3);
   position: sticky;
   top: 0;
   align-self: start;
@@ -90,7 +90,7 @@ a {
 .brand {
   display: block;
   padding: 0 var(--sp-2);
-  margin-bottom: var(--sp-6);
+  margin-bottom: var(--sp-4);
 }
 .brand-name {
   display: block;
@@ -106,14 +106,17 @@ a {
   color: var(--text-3);
 }
 
+/* The vertical rhythm is tight on purpose: six groups and 21 entries must fit
+   in a 900 px viewport so the current item is never below the fold. */
 .nav-group + .nav-group {
-  margin-top: var(--sp-6);
-  padding-top: var(--sp-5);
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
   border-top: 1px solid var(--border);
 }
 .nav-group-label {
   padding: 0 var(--sp-2);
-  margin: 0 0 var(--sp-2);
+  margin: 0 0 var(--sp-1);
+  line-height: var(--lh-tight);
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
   color: var(--text-3);
@@ -127,7 +130,9 @@ a {
 }
 .nav-link {
   display: block;
-  padding: var(--sp-2) var(--sp-3);
+  /* 4 px over a 13 px / 1.6 line: a target of about 29 px, above the 28 px
+     floor. */
+  padding: var(--sp-1) var(--sp-3);
   border-radius: var(--r-md);
   color: var(--text-2);
   font-size: var(--fs-sm);
@@ -136,23 +141,18 @@ a {
   border-left: 2px solid transparent;
 }
 .nav-link:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-.nav-link[aria-current="page"] {
   background: var(--surface-3);
   color: var(--text);
-  font-weight: var(--fw-medium);
-  border-left-color: var(--info);
 }
-/* Supporting destinations carry less weight than the three primary ones. */
-.nav-group-supporting .nav-link {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
-.nav-group-supporting .nav-link:hover,
-.nav-group-supporting .nav-link[aria-current="page"] {
+/* Selection: a raised charcoal surface and a neutral 2 px rule, never blue.
+   `aria-current` stays the semantic carrier; this only shows it. Every group
+   has the same weight: the group label, not a smaller type size, separates
+   them. */
+.nav-link[aria-current="page"] {
+  background: var(--surface-2);
   color: var(--text);
+  font-weight: var(--fw-medium);
+  border-left-color: var(--neutral);
 }
 
 .main {
@@ -628,13 +628,13 @@ th {
   font-size: var(--fs-xs);
   letter-spacing: 0;
   white-space: nowrap;
-  border-bottom-color: var(--border-strong);
+  border-bottom-color: var(--border);
 }
 tbody tr:last-child td {
   border-bottom: none;
 }
 tbody tr:hover td {
-  background: var(--surface-2);
+  background: var(--surface-3);
 }
 /* Key/value tables used for metadata: no header row, quiet keys. */
 .kv td {
@@ -713,20 +713,50 @@ button.action {
   font-weight: var(--fw-medium);
   font-family: inherit;
 }
-button.action:hover {
+button.action:hover:not(:disabled) {
   background: var(--primary-hover);
 }
+/* Visibly disabled: dimmed and with no pointer affordance. Hover does not
+   apply (see above). */
 button.action:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+button.action:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 button.action.secondary {
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border-strong);
 }
-button.action.secondary:hover {
+button.action.secondary:hover:not(:disabled) {
   background: var(--surface-3);
+}
+
+/* Native form controls share one look wherever they appear. `:where()` keeps
+   the specificity at zero, so a component's own class (a width, a flex basis)
+   still wins. Radios and checkboxes keep their native shape and take a neutral
+   `accent-color` rather than the browser's default blue. */
+:where(input:not([type="radio"], [type="checkbox"], [type="range"], [type="button"], [type="submit"]), select, textarea) {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font-family: inherit;
+}
+:where(input, select, textarea):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+:where(input:disabled, select:disabled, textarea:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: var(--control-accent);
 }
 
 .actions {

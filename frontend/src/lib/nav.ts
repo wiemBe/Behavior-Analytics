@@ -1,10 +1,11 @@
 // The application's navigation model.
 //
-// Two groups, not one flat list. Behavioral analytics is what the platform is
-// for — detecting that a log source changed, and explaining what changed — so
-// those destinations lead and carry full visual weight. Offenses, rules,
-// coverage and inventory are supporting capabilities: reachable, but not
-// competing with the product's purpose for the analyst's attention.
+// Grouped, not one flat list. The Dashboard is the cross-cutting home and sits
+// alone at the top. Behavioral analytics is what the platform is for —
+// detecting that a log source changed, and explaining what changed — so the
+// Behavior group leads the labeled groups and carries full visual weight.
+// Fleet, detection, operations and administration are supporting capabilities:
+// reachable, but not competing with the product's purpose.
 //
 // Only routes that exist appear here. A navigation entry is a promise that
 // something is on the other side of it, and a disabled or placeholder item
@@ -26,6 +27,14 @@ export const NAV: NavGroup[] = [
   {
     label: null,
     items: [
+      // The former "SOC Overview", renamed. The route is unchanged, so
+      // bookmarks keep working.
+      { href: "/", label: "Dashboard" },
+    ],
+  },
+  {
+    label: "Behavior",
+    items: [
       { href: "/behavior", label: "Overview" },
       { href: "/anomalies", label: "Anomalies" },
       // Listed after /behavior, and resolved by longest match rather than by
@@ -37,21 +46,30 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    label: "Platform",
+    label: "Fleet",
     items: [
       { href: "/fleet", label: "Fleet" },
       // Resolved by longest match, like /behavior/sources: a path under
       // /fleet/sources belongs here, not to Fleet.
       { href: "/fleet/sources", label: "Fleet sources" },
       { href: "/fleet/catchall", label: "Catch-all senders" },
+    ],
+  },
+  {
+    label: "Detection",
+    items: [
       { href: "/offenses", label: "Offenses" },
+      { href: "/alerts", label: "Alerts" },
       { href: "/rules", label: "Rules" },
       { href: "/rules/statistics", label: "Rule statistics" },
       { href: "/coverage", label: "Coverage" },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
       { href: "/log-sources", label: "Log Sources" },
       { href: "/searches", label: "Searches" },
-      { href: "/alerts", label: "Alerts" },
-      { href: "/", label: "SOC Overview" },
     ],
   },
   {
