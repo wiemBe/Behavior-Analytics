@@ -225,10 +225,22 @@ describe("WidgetFrame, the UR.5.4 state union", () => {
     }
   });
 
-  it("offers Remove in place of the link while a dashboard is being customized", () => {
+  it("renders the one arrangement disclosure in place of the link while customizing", () => {
     const onRemove = vi.fn();
     render(
-      <WidgetEditContext.Provider value={{ onRemove }}>
+      <WidgetEditContext.Provider
+        value={{
+          onRemove,
+          arrange: (
+            <details>
+              <summary aria-label="Arrange Edited">Edit</summary>
+              <button type="button" aria-label="Remove Edited" onClick={onRemove}>
+                Remove widget
+              </button>
+            </details>
+          ),
+        }}
+      >
         <WidgetFrame
           id="edit"
           title="Edited"
@@ -242,6 +254,7 @@ describe("WidgetFrame, the UR.5.4 state union", () => {
       </WidgetEditContext.Provider>,
     );
     expect(screen.queryByRole("link")).toBeNull();
+    fireEvent.click(screen.getByText("Edit"));
     fireEvent.click(screen.getByRole("button", { name: "Remove Edited" }));
     expect(onRemove).toHaveBeenCalledTimes(1);
   });

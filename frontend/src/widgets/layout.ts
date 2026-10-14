@@ -3,7 +3,7 @@
 // Only the 12-column layout is stored. The 6- and 1-column layouts are derived from it, so a
 // narrow window shows the same dashboard without a second layout to keep in step.
 
-import { GRID_COLUMNS, type LayoutWidget } from "./types";
+import { GRID_COLUMNS, type LayoutWidget, type WidgetSize } from "./types";
 
 export type GridColumns = 12 | 6 | 1;
 
@@ -57,6 +57,104 @@ export function deriveLayout(lg: readonly LayoutWidget[], cols: GridColumns): La
 
 function overlaps(a: LayoutWidget, x: number, y: number, w: number, h: number): boolean {
   return a.x < x + w && x < a.x + a.w && a.y < y + h && y < a.y + a.h;
+}
+
+function widgetsOverlap(a: LayoutWidget, b: LayoutWidget): boolean {
+  return overlaps(a, b.x, b.y, b.w, b.h);
+}
+
+/**
+ * Vertical compaction shared by removal and the keyboard editor. `lockedId` is the item the
+ * analyst just changed: it stays in the requested cell while every other item rises as far as
+ * it can without a collision. This is the keyboard equivalent of the edit grid's vertical
+ * compactor.
+ */
+export function compactLayout(
+  widgets: readonly LayoutWidget[],
+  lockedId: string | null = null,
+): LayoutWidget[] {
+  const copies = widgets.map((widget) => ({ ...widget }));
+  const locked = lockedId ? copies.find((widget) => widget.id === lockedId) : undefined;
+  const ordered = copies.filter((widget) => widget.id !== lockedId).sort(reading);
+  const placed = locked ? [locked] : [];
+
+  for (const widget of ordered) {
+    widget.x = Math.max(0, Math.min(widget.x, GRID_COLUMNS - widget.w));
+    widget.y = Math.max(0, widget.y);
+    while (widget.y > 0 && !placed.some((other) => overlaps(other, widget.x, widget.y - 1, widget.w, widget.h))) {
+      widget.y -= 1;
+    }
+    while (placed.some((other) => widgetsOverlap(other, widget))) {
+      widget.y = Math.max(
+        widget.y + 1,
+        ...placed.filter((other) => widgetsOverlap(other, widget)).map((other) => other.y + other.h),
+      );
+    }
+    placed.push(widget);
+  }
+
+  const byId = new Map(placed.map((widget) => [widget.id, widget]));
+  return widgets.map((widget) => ({ ...byId.get(widget.id)! }));
+}
+
+function settleChange(widgets: LayoutWidget[], changedId: string): LayoutWidget[] {
+  if (!widgets.some((widget) => widget.id === changedId)) return widgets;
+  // The changed item owns its requested cells; the remaining layout compacts around it.
+  return compactLayout(widgets, changedId);
+}
+
+export type MoveDirection = "left" | "right" | "up" | "down";
+export type ResizeDirection = "wider" | "narrower" | "taller" | "shorter";
+
+/** Move one widget by one cell, constrained to the 12-column stored layout. */
+export function moveWidget(
+  widgets: readonly LayoutWidget[],
+  id: string,
+  direction: MoveDirection,
+): LayoutWidget[] {
+  const next = widgets.map((widget) => ({ ...widget }));
+  const widget = next.find((candidate) => candidate.id === id);
+  if (!widget) return next;
+
+  const dx = direction === "left" ? -1 : direction === "right" ? 1 : 0;
+  const dy = direction === "up" ? -1 : direction === "down" ? 1 : 0;
+  const x = Math.max(0, Math.min(widget.x + dx, GRID_COLUMNS - widget.w));
+  const y = Math.max(0, widget.y + dy);
+  if (x === widget.x && y === widget.y) return next;
+  widget.x = x;
+  widget.y = y;
+  return settleChange(next, id);
+}
+
+/** Resize one widget by one cell, respecting its registry bounds and the 12-column edge. */
+export function resizeWidget(
+  widgets: readonly LayoutWidget[],
+  id: string,
+  direction: ResizeDirection,
+  size: WidgetSize,
+): LayoutWidget[] {
+  const next = widgets.map((widget) => ({ ...widget }));
+  const widget = next.find((candidate) => candidate.id === id);
+  if (!widget) return next;
+
+  const maxW = Math.min(size.maxW ?? GRID_COLUMNS, GRID_COLUMNS - widget.x);
+  const maxH = size.maxH ?? Number.POSITIVE_INFINITY;
+  const w =
+    direction === "wider"
+      ? Math.min(widget.w + 1, maxW)
+      : direction === "narrower"
+        ? Math.max(widget.w - 1, size.minW)
+        : widget.w;
+  const h =
+    direction === "taller"
+      ? Math.min(widget.h + 1, maxH)
+      : direction === "shorter"
+        ? Math.max(widget.h - 1, size.minH)
+        : widget.h;
+  if (w === widget.w && h === widget.h) return next;
+  widget.w = w;
+  widget.h = h;
+  return settleChange(next, id);
 }
 
 /**

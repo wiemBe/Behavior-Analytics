@@ -2,14 +2,28 @@ import { describe, expect, it } from "vitest";
 
 import {
   columnsForWidth,
+  compactLayout,
   deriveLayout,
   firstFreeSpot,
+  moveWidget,
   newWidgetId,
+  resizeWidget,
 } from "./layout";
 import { SOC_OVERVIEW } from "./templates";
 import type { LayoutWidget } from "./types";
 
 const lg = SOC_OVERVIEW.layout.widgets;
+
+const box = (id: string, x: number, y: number, w: number, h: number): LayoutWidget => ({
+  id,
+  type: "kpi.total_eps",
+  x,
+  y,
+  w,
+  h,
+  range: null,
+  config: {},
+});
 
 function noOverlap(ws: LayoutWidget[]) {
   ws.forEach((a, i) => {
@@ -78,17 +92,6 @@ describe("deriveLayout", () => {
 });
 
 describe("firstFreeSpot", () => {
-  const box = (id: string, x: number, y: number, w: number, h: number): LayoutWidget => ({
-    id,
-    type: "kpi.total_eps",
-    x,
-    y,
-    w,
-    h,
-    range: null,
-    config: {},
-  });
-
   it("is the origin for an empty dashboard", () => {
     expect(firstFreeSpot([], 3, 4)).toEqual({ x: 0, y: 0 });
   });
@@ -112,6 +115,103 @@ describe("firstFreeSpot", () => {
     const placed = [...lg];
     const spot = firstFreeSpot(placed, 4, 12);
     noOverlap([...placed, { ...box("w_new0", spot.x, spot.y, 4, 12) }]);
+  });
+});
+
+describe("compactLayout", () => {
+  it("closes vertical gaps after a widget is removed", () => {
+    const compacted = compactLayout([
+      box("w_left", 0, 4, 6, 2),
+      box("w_right", 6, 8, 6, 2),
+    ]);
+    expect(compacted.map((widget) => widget.y)).toEqual([0, 0]);
+    noOverlap(compacted);
+  });
+});
+
+describe("moveWidget", () => {
+  it.each([
+    ["left", 1, 2],
+    ["right", 3, 2],
+    ["up", 2, 1],
+    ["down", 2, 3],
+  ] as const)("moves %s by one cell", (direction, x, y) => {
+    const moved = moveWidget([box("w_move", 2, 2, 3, 2)], "w_move", direction);
+    expect(moved[0]).toMatchObject({ x, y });
+  });
+
+  it.each([
+    ["left", box("w_move", 0, 2, 3, 2)],
+    ["right", box("w_move", 9, 2, 3, 2)],
+    ["up", box("w_move", 2, 0, 3, 2)],
+  ] as const)("stops at the %s bound", (direction, widget) => {
+    expect(moveWidget([widget], widget.id, direction)).toEqual([widget]);
+  });
+
+  it("resolves a collision and compacts around the moved widget", () => {
+    const moved = moveWidget(
+      [box("w_move", 0, 0, 3, 2), box("w_other", 3, 0, 3, 2)],
+      "w_move",
+      "right",
+    );
+    expect(moved.find((widget) => widget.id === "w_move")).toMatchObject({ x: 1, y: 0 });
+    expect(moved.find((widget) => widget.id === "w_other")).toMatchObject({ x: 3, y: 2 });
+    noOverlap(moved);
+  });
+
+  it("never crosses the 12-column edge", () => {
+    const moved = moveWidget([box("w_move", 8, 0, 4, 2)], "w_move", "right");
+    expect(moved[0].x + moved[0].w).toBeLessThanOrEqual(12);
+  });
+});
+
+describe("resizeWidget", () => {
+  const size = { w: 4, h: 4, minW: 2, minH: 2, maxW: 6, maxH: 6 };
+
+  it.each([
+    ["wider", 5, 4],
+    ["narrower", 3, 4],
+    ["taller", 4, 5],
+    ["shorter", 4, 3],
+  ] as const)("resizes %s by one cell", (direction, w, h) => {
+    const resized = resizeWidget([box("w_size", 2, 0, 4, 4)], "w_size", direction, size);
+    expect(resized[0]).toMatchObject({ w, h });
+  });
+
+  it.each([
+    ["wider", box("w_size", 2, 0, 6, 4)],
+    ["narrower", box("w_size", 2, 0, 2, 4)],
+    ["taller", box("w_size", 2, 0, 4, 6)],
+    ["shorter", box("w_size", 2, 0, 4, 2)],
+  ] as const)("stops at the %s registry bound", (direction, widget) => {
+    expect(resizeWidget([widget], widget.id, direction, size)).toEqual([widget]);
+  });
+
+  it("stops wider at the grid edge even when maxW has room", () => {
+    const widget = box("w_size", 8, 0, 4, 4);
+    expect(resizeWidget([widget], widget.id, "wider", size)).toEqual([widget]);
+  });
+
+  it("moves a collided neighbor and compacts it below the resized widget", () => {
+    const resized = resizeWidget(
+      [box("w_size", 0, 0, 3, 2), box("w_other", 3, 0, 3, 2)],
+      "w_size",
+      "wider",
+      { ...size, w: 3 },
+    );
+    expect(resized.find((widget) => widget.id === "w_size")).toMatchObject({ w: 4, y: 0 });
+    expect(resized.find((widget) => widget.id === "w_other")).toMatchObject({ y: 2 });
+    noOverlap(resized);
+  });
+
+  it("keeps every resized widget inside 12 columns", () => {
+    for (const direction of ["wider", "narrower", "taller", "shorter"] as const) {
+      const resized = resizeWidget([box("w_size", 7, 0, 5, 4)], "w_size", direction, {
+        ...size,
+        maxW: 12,
+      });
+      expect(resized[0].x + resized[0].w).toBeLessThanOrEqual(12);
+    }
   });
 });
 

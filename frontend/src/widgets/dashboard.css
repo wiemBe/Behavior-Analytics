@@ -12,6 +12,10 @@
   gap: var(--dash-gap);
   min-width: 0;
 }
+.dg-measure,
+.dg-edit-shell {
+  min-width: 0;
+}
 .dg[data-cols="12"] {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   grid-auto-rows: var(--dash-row);
@@ -48,12 +52,15 @@
 
 /* The body takes what the header leaves and scrolls inside the box. */
 .dg[data-cols="12"] .tw-body,
-.dg[data-cols="12"] .kpi-body {
+.dg[data-cols="12"] .kpi-body,
+.dg-edit .tw-body,
+.dg-edit .kpi-body {
   flex: 1 1 0;
   min-height: 0;
   overflow: auto;
 }
-.dg[data-cols="12"] .tw-body-fill {
+.dg[data-cols="12"] .tw-body-fill,
+.dg-edit .tw-body-fill {
   overflow: hidden;
 }
 
@@ -65,33 +72,159 @@
   color: var(--text-3);
 }
 .dg-session {
-  margin: 0 0 var(--dash-gap);
+  position: absolute;
+  top: 50%;
+  right: calc(100% + var(--sp-3));
+  transform: translateY(-50%);
+  margin: 0;
   font-size: var(--fs-sm);
   color: var(--text-2);
+  white-space: nowrap;
+}
+.page-header-actions:has(.dg-session) {
+  position: relative;
 }
 .dg-notice {
   color: var(--text);
 }
-button.dg-remove {
-  padding: 0;
-  font: inherit;
-  font-size: var(--fs-xs);
-  color: var(--link);
-  background: none;
-  border: none;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
+/* --- drag-and-resize grid --------------------------------------------------- */
+
+.dg-edit {
+  position: relative;
+  min-width: 0;
+  transition: none;
 }
-.tw button.dg-remove {
+.dg-edit .react-grid-item {
+  position: absolute;
+  transition: none;
+  z-index: var(--dash-z-item);
+}
+.dg-edit .react-grid-item.cssTransforms {
+  transition: none;
+}
+.dg-edit .react-grid-item.resizing,
+.dg-edit .react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: var(--dash-z-drag);
+}
+.dg-edit .react-grid-item.resizing {
+  will-change: width, height;
+}
+.dg-edit .react-grid-item.react-draggable-dragging {
+  cursor: grabbing;
+  will-change: transform;
+}
+.dg-edit .react-grid-placeholder {
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
+  border-radius: var(--r-lg);
+  transition: none;
+  z-index: var(--dash-z-placeholder);
+  user-select: none;
+}
+.dg-edit .react-grid-item > .react-resizable-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--dash-resize-hit);
+  height: var(--dash-resize-hit);
+  cursor: se-resize;
+}
+.dg-edit .react-grid-item > .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: var(--sp-1);
+  bottom: var(--sp-1);
+  width: var(--dash-resize-mark);
+  height: var(--dash-resize-mark);
+  border-right: var(--dash-resize-stroke) solid var(--text-2);
+  border-bottom: var(--dash-resize-stroke) solid var(--text-2);
+}
+.dg-drag-handle {
+  cursor: grab;
+}
+.dg-editor-loading {
+  margin: 0;
+  color: var(--text-2);
   font-size: var(--fs-sm);
 }
-button.dg-remove:hover {
-  color: var(--text);
+
+/* Eight keyboard operations stay behind one title-row disclosure. Its panel overlays the
+   widget body, so exposing it never changes the grid box or steals body height. */
+.dg-arrange {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
 }
-button.dg-remove:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+.dg-arrange-trigger {
+  padding: 0;
+  color: var(--link);
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: var(--dash-resize-stroke);
+  white-space: nowrap;
+}
+.dg-arrange-trigger:focus-visible,
+.dg-step:focus-visible {
+  outline: var(--dash-resize-stroke) solid var(--focus);
+  outline-offset: var(--dash-resize-stroke);
+}
+.dg-arrange-panel {
+  position: absolute;
+  top: var(--sp-8);
+  right: var(--sp-3);
+  z-index: var(--dash-z-arrange);
+  width: min(var(--dash-arrange-w), calc(100% - var(--sp-6)));
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+.dg-arrange-panel fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dg-arrange-panel fieldset + fieldset {
+  margin-top: var(--sp-3);
+}
+.dg-arrange-panel legend {
+  padding: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+.dg-step-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+}
+.dg-step {
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-2);
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font: inherit;
+  cursor: pointer;
+}
+.dg-step:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.dg-step:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+.dg-arrange-remove {
+  width: 100%;
+  margin-top: var(--sp-3);
+  color: var(--danger);
 }
 
 /* --- catalog drawer ---------------------------------------------------------- */
