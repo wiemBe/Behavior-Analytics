@@ -33,7 +33,19 @@ its usage limit in T-051c round 2 (reset **15:54**).
     mypy 31; 2,849 unit; 48 fleet integration; 3 statements at 3 and 40 sources.
   - **UI-2.1** (`6a110c4`), after round 2 (a failed refresh keeps the last good data with
     `refreshFailed`; `monitored_sources` required). Lint clean; 1,745 tests.
-  - The worktrees, branches and DBs of all six were removed.
+  - **T-055** (`0c44271`): README entries, IPS [BUILT] markers, D-11 in UR.2.2/UR.2.8 (GLM
+    started, nemotron finished; defaults spot-checked against `config.py`). **Its README still
+    says the IPS engine is not built: update it after T-051d.**
+  - **T-051c** (`6f07f41`), third hand (Codex → GLM → Sonnet, the first two cut off by limits).
+    Sonnet found GLM's failing new-port test was wrong (it never set the 1-day history), fixed
+    per-source training that could teach one source from another's unjudged buckets, and fixed a
+    pipeline crash. Gates re-run by the orchestrator: ruff clean, mypy 31, 2,764 unit, 86 IPS
+    integration; on the merged tree 2,850 unit and 150 targeted integration (one run had a single
+    unexplained ERROR that a re-run did not reproduce, likely the `test_migrations.py` hypertable
+    flake G-2 reported: capture its text next time). The agent's full integration run: 930 passed.
+    The import conflict in `tasks.py` was resolved by the orchestrator (both imports kept).
+  - The worktrees, branches and DBs of all seven merged tasks were removed (`qradar_obs_t051c` is
+    kept for T-051d).
   - Seen in review, for later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines in
     the `/behavior` "Needs attention" table.
 - **Flaky test found:** `PropertyInput.test.tsx` "renders and filters 500 properties without a
@@ -45,8 +57,7 @@ its usage limit in T-051c round 2 (reset **15:54**).
 
 | Task | Agent | Worktree, DB | Log / how to collect |
 |---|---|---|---|
-| **T-051c** IPS engine ([spec](tasks/T-051c.md) with Ruling 1) | Sonnet sub-agent, third hand ("review what you inherit": Codex, then GLM, both cut off by limits; GLM left one failing test, `test_a_new_port_opens_on_a_verified_history`) | `t051c`, DB `qradar_obs_t051c` | Report `docs/tasks/T-051c.report.md`. Review: constant statements per (source, bucket) (`test_ips_scale.py`); evaluate-before-train; capability edits as ruled; the full integration run |
-| **T-055** docs ([spec](tasks/T-055.md)) | opencode `nemotron-3-ultra-free`, `--standalone`, second hand (GLM was cut off with edits in all three docs and no report) | `t055` (no DB) | `scratchpad/t055b.log`; report `docs/tasks/T-055.report.md`. Spot-check every default against `config.py` |
+| **T-051d** IPS training per source ([spec](tasks/T-051d.md)): the instance-wide `min(ends)` bound lets one stalled source freeze every IPS baseline of its instance; `rebuild_due` is unscoped (cross-instance) | Sonnet sub-agent (the one that finished T-051c, resumed) | `t051d`, DB `qradar_obs_t051c` | Report `docs/tasks/T-051d.report.md`. Check: training statements constant in entities; a stalled source is skipped alone; no cross-instance rebuild |
 | **UI-2.2** Home KPI row with the B-2.1 sparkline ([spec](tasks/UI-2.2.md)) | Sonnet sub-agent | `ui22`; capture ports 3122/8122 | Report `docs/tasks/UI-2.2.report.md`; PNGs under `scratchpad/ui22/`. Review the PNGs yourself; the preview route must be gone from the diff |
 | **UI-2.4** Home tables and health ([spec](tasks/UI-2.4.md)) | Sonnet sub-agent | `ui24`; capture ports 3124/8124 | Report `docs/tasks/UI-2.4.report.md`; PNGs under `scratchpad/ui24/`. Same review |
 | **T-080** de-flake the 500-property test ([spec](tasks/T-080.md)) | opencode `mimo-v2.6-flash-free`, `--standalone` | `t080` | `scratchpad/t080.log`; check no assertion changed meaning |
