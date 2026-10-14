@@ -123,17 +123,22 @@ def test_worst_state_never_calls_an_unjudged_endpoint_normal() -> None:
 
 def test_filter_applicability_per_kind() -> None:
     applicable = AnomalyRepository._applicable_kinds
-    none = dict(subject_kind=None, waf_endpoint_id=None, anomaly_type=None)
-    assert applicable(**none) == (True, True)
-    assert applicable(**{**none, "subject_kind": SubjectKind.LOG_SOURCE}) == (True, False)
-    assert applicable(**{**none, "subject_kind": SubjectKind.WAF_ENDPOINT}) == (False, True)
-    assert applicable(**{**none, "waf_endpoint_id": uuid.uuid4()}) == (False, True)
-    assert applicable(**{**none, "anomaly_type": "VOLUME_SPIKE"}) == (True, False)
-    assert applicable(**{**none, "anomaly_type": "WAF_BLOCK_RATIO_SPIKE"}) == (False, True)
+    none = dict(
+        subject_kind=None, waf_endpoint_id=None, ips_entity_id=None, anomaly_type=None
+    )
+    # (Phase A, WAF, IPS): an unfiltered list matches every family.
+    assert applicable(**none) == (True, True, True)
+    assert applicable(**{**none, "subject_kind": SubjectKind.LOG_SOURCE}) == (True, False, False)
+    assert applicable(**{**none, "subject_kind": SubjectKind.WAF_ENDPOINT}) == (False, True, False)
+    assert applicable(**{**none, "waf_endpoint_id": uuid.uuid4()}) == (False, True, False)
+    assert applicable(**{**none, "ips_entity_id": uuid.uuid4()}) == (False, False, True)
+    assert applicable(**{**none, "anomaly_type": "VOLUME_SPIKE"}) == (True, False, False)
+    assert applicable(**{**none, "anomaly_type": "WAF_BLOCK_RATIO_SPIKE"}) == (False, True, False)
+    assert applicable(**{**none, "anomaly_type": "IPS_SIGNATURE_BURST"}) == (False, False, True)
     assert applicable(
-        subject_kind=SubjectKind.LOG_SOURCE, waf_endpoint_id=None,
+        subject_kind=SubjectKind.LOG_SOURCE, waf_endpoint_id=None, ips_entity_id=None,
         anomaly_type="WAF_BLOCK_RATIO_SPIKE",
-    ) == (False, False)
+    ) == (False, False, False)
 
 
 def test_every_waf_behavior_route_is_get_only() -> None:

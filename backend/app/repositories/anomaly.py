@@ -36,10 +36,12 @@ from app.models.enums import (
     AnomalyState,
     AnomalyType,
     EvidenceStatus,
+    IpsAnomalyType,
     Severity,
     WafAnomalyType,
 )
 from app.models.explanation import AnomalyExplanation
+from app.models.ips import IpsAnomaly, IpsAnomalyTransition, IpsEntity
 from app.models.log_source import (
     LogSource,
     LogSourceAnomaly,
@@ -61,6 +63,7 @@ from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 
 _PHASE_A_TYPES = frozenset(t.value for t in AnomalyType)
 _WAF_TYPES = frozenset(t.value for t in WafAnomalyType)
+_IPS_TYPES = frozenset(t.value for t in IpsAnomalyType)
 
 
 class AnomalyRepository:
@@ -135,21 +138,31 @@ class AnomalyRepository:
         *,
         subject_kind: SubjectKind | None,
         waf_endpoint_id: uuid.UUID | None,
+        ips_entity_id: uuid.UUID | None,
         anomaly_type: str | None,
-    ) -> tuple[bool, bool]:
-        """Which anomaly families a filter set can match: (Phase A, WAF).
+    ) -> tuple[bool, bool, bool]:
+        """Which anomaly families a filter set can match: (Phase A, WAF, IPS).
 
         A filter that cannot apply to a family excludes it. Ignoring it would
         return rows the caller asked not to see.
         """
         phase_a = subject_kind in (None, SubjectKind.LOG_SOURCE)
         waf = subject_kind in (None, SubjectKind.WAF_ENDPOINT)
+        ips = subject_kind in (None, SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE)
         if waf_endpoint_id is not None:
             phase_a = False
+            ips = False
+        if ips_entity_id is not None:
+            phase_a = False
+            waf = False
+            # An entity id names an entity incident; a source-incident filter
+            # contradicts it.
+            ips = ips and subject_kind is not SubjectKind.IPS_SOURCE
         if anomaly_type is not None:
             phase_a = phase_a and anomaly_type in _PHASE_A_TYPES
             waf = waf and anomaly_type in _WAF_TYPES
-        return phase_a, waf
+            ips = ips and anomaly_type in _IPS_TYPES
+        return phase_a, waf, ips
 
     def _unified_phase_a(self, conditions: list[ColumnElement[bool]]) -> Select:
         a = LogSourceAnomaly
@@ -165,6 +178,10 @@ class AnomalyRepository:
                 cast(null(), String).label("endpoint_virtual_host"),
                 cast(null(), Boolean).label("endpoint_virtual_host_available"),
                 cast(null(), Integer).label("endpoint_normalizer_version"),
+                cast(null(), PgUUID(as_uuid=True)).label("ips_entity_id"),
+                cast(null(), String).label("entity_dimension"),
+                cast(null(), String).label("entity_value_key"),
+                cast(null(), String).label("entity_display_name"),
                 a.anomaly_type.label("anomaly_type"),
                 a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
@@ -200,6 +217,10 @@ class AnomalyRepository:
                 e.virtual_host.label("endpoint_virtual_host"),
                 host_available.label("endpoint_virtual_host_available"),
                 e.normalizer_version.label("endpoint_normalizer_version"),
+                cast(null(), PgUUID(as_uuid=True)).label("ips_entity_id"),
+                cast(null(), String).label("entity_dimension"),
+                cast(null(), String).label("entity_value_key"),
+                cast(null(), String).label("entity_display_name"),
                 w.detector_type.label("anomaly_type"),
                 w.state, w.severity, w.observed_value, w.expected_value, w.deviation_ratio,
                 w.robust_z, w.absolute_delta, w.consecutive_buckets, w.confidence,
@@ -214,6 +235,43 @@ class AnomalyRepository:
             .where(*conditions)
         )
 
+    def _unified_ips(self, conditions: list[ColumnElement[bool]]) -> Select:
+        a = IpsAnomaly
+        e = IpsEntity
+        # An entity incident carries its source on the entity row; a source
+        # incident on the anomaly row. Exactly one is set, so the coalesce is
+        # the subject's log source either way, joined into the branch once.
+        source_id = func.coalesce(a.log_source_id, e.log_source_id)
+        return (
+            select(
+                a.id,
+                a.subject_kind.label("subject_kind"),
+                source_id.label("log_source_id"),
+                LogSource.name.label("log_source_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("waf_endpoint_id"),
+                cast(null(), String).label("endpoint_normalized"),
+                cast(null(), String).label("endpoint_method"),
+                cast(null(), String).label("endpoint_virtual_host"),
+                cast(null(), Boolean).label("endpoint_virtual_host_available"),
+                cast(null(), Integer).label("endpoint_normalizer_version"),
+                e.id.label("ips_entity_id"),
+                e.dimension.label("entity_dimension"),
+                e.value_key.label("entity_value_key"),
+                e.display_name.label("entity_display_name"),
+                a.detector_type.label("anomaly_type"),
+                a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
+                a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
+                a.detected_at, a.opened_at, a.anomaly_start, a.anomaly_end, a.resolved_at,
+                a.evidence_status, a.suppressed,
+                a.observed_measurement.label("observed_measurement"),
+                a.explanation,
+            )
+            .select_from(a)
+            .outerjoin(e, e.id == a.ips_entity_id)
+            .outerjoin(LogSource, LogSource.id == source_id)
+            .where(*conditions)
+        )
+
     async def list_unified(
         self,
         *,
@@ -221,6 +279,7 @@ class AnomalyRepository:
         offset: int,
         subject_kind: SubjectKind | None = None,
         waf_endpoint_id: uuid.UUID | None = None,
+        ips_entity_id: uuid.UUID | None = None,
         log_source_id: uuid.UUID | None = None,
         instance_id: uuid.UUID | None = None,
         anomaly_type: str | None = None,
@@ -231,16 +290,20 @@ class AnomalyRepository:
         since: datetime | None = None,
         until: datetime | None = None,
     ) -> tuple[list[dict], int]:
-        """Phase A and WAF anomalies in one ordering: two statements, any page size.
+        """Phase A, WAF and IPS anomalies in one ordering: two statements, any page size.
 
         One `UNION ALL` of the applicable families, counted once and paged once.
-        Source names and endpoint identity are joined into the branches, so a page
-        costs no resolution query and nothing is merged in Python. Ordered by
-        detection time, newest first, with the id as a tiebreak so a page boundary
-        inside a tie cannot repeat or drop a row.
+        Source names and subject identity (endpoint or IPS entity) are joined
+        into the branches, so a page costs no resolution query and nothing is
+        merged in Python. Ordered by detection time, newest first, with the id
+        as a tiebreak so a page boundary inside a tie cannot repeat or drop a
+        row.
         """
-        phase_a, waf = self._applicable_kinds(
-            subject_kind=subject_kind, waf_endpoint_id=waf_endpoint_id, anomaly_type=anomaly_type
+        phase_a, waf, ips = self._applicable_kinds(
+            subject_kind=subject_kind,
+            waf_endpoint_id=waf_endpoint_id,
+            ips_entity_id=ips_entity_id,
+            anomaly_type=anomaly_type,
         )
         active = [s.value for s in ACTIVE_ANOMALY_STATES]
 
@@ -285,6 +348,29 @@ class AnomalyRepository:
             if anomaly_type is not None:
                 conditions.append(WafAnomaly.detector_type == anomaly_type)
             branches.append(self._unified_waf(conditions))
+        if ips:
+            conditions = common(IpsAnomaly)
+            source_id = func.coalesce(IpsAnomaly.log_source_id, IpsEntity.log_source_id)
+            if log_source_id is not None:
+                conditions.append(source_id == log_source_id)
+            if instance_id is not None:
+                # Source incidents inherit the instance from their source, as
+                # Phase A rows do; entity incidents could read it off the entity
+                # row, but one expression covers both without a second join.
+                conditions.append(
+                    source_id.in_(
+                        select(LogSource.id).where(LogSource.instance_id == instance_id)
+                    )
+                )
+            if ips_entity_id is not None:
+                conditions.append(IpsAnomaly.ips_entity_id == ips_entity_id)
+            if subject_kind is not None:
+                # IPS_ENTITY or IPS_SOURCE: the row's own subject discriminator,
+                # so one narrows to entity incidents and the other to source ones.
+                conditions.append(IpsAnomaly.subject_kind == subject_kind.value)
+            if anomaly_type is not None:
+                conditions.append(IpsAnomaly.detector_type == anomaly_type)
+            branches.append(self._unified_ips(conditions))
         if not branches:
             return [], 0
 
@@ -526,6 +612,36 @@ class AnomalyRepository:
             .where(WafAnomaly.id == anomaly_id)
             .options(selectinload(WafAnomaly.transitions), selectinload(WafAnomaly.endpoint))
         )
+
+    # ------------------------------------------------------------ IPS detail
+    async def get_ips_detail(
+        self, anomaly_id: uuid.UUID
+    ) -> tuple[IpsAnomaly, IpsEntity | None, list[IpsAnomalyTransition]] | None:
+        """One IPS anomaly with its entity and lifecycle history, eager-loaded.
+
+        The IPS models declare no relationships, so the entity is joined into
+        the fetch and the transitions read in their own statement rather than
+        selectin-loaded; the investigation page needs all three either way.
+        """
+        row = (
+            await self.session.execute(
+                select(IpsAnomaly, IpsEntity)
+                .outerjoin(IpsEntity, IpsEntity.id == IpsAnomaly.ips_entity_id)
+                .where(IpsAnomaly.id == anomaly_id)
+            )
+        ).first()
+        if row is None:
+            return None
+        transitions = list(
+            (
+                await self.session.scalars(
+                    select(IpsAnomalyTransition)
+                    .where(IpsAnomalyTransition.ips_anomaly_id == anomaly_id)
+                    .order_by(IpsAnomalyTransition.occurred_at)
+                )
+            ).all()
+        )
+        return row[0], row[1], transitions
 
     async def virtual_host_available(self, log_source_id: uuid.UUID) -> bool:
         """Whether the source's profile maps a virtual host property."""
