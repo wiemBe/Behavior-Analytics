@@ -29,3 +29,9 @@ export function formatAgo(iso: string | null | undefined, nowMs: number): string
   if (hours < 48) return `${hours} h ago`;
   return `${Math.floor(hours / 24)} d ago`;
 }
+
+/** A percentage with a sign and a true minus (U+2212): "+3.2 %", "−3.9 %", "0.0 %". */
+export function signedPercent(value: number): string {
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  return `${sign}${Math.abs(value).toFixed(1)} %`;
+}

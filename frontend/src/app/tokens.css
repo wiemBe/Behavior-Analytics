@@ -208,6 +208,11 @@
   --map-2: #3c7580;
   --map-3: #58a5b4;
   --map-4: #8edce8;
+
+  /* Home KPI cards (UI-2.2). The sparkline is context for the headline figure,
+     not a chart: short, one hairline stroke, no fill. */
+  --kpi-spark-h: 20px;
+  --kpi-spark-stroke: 1.5px;
 }
 
 /* --- Home tables (UI-2.4) ------------------------------------------------

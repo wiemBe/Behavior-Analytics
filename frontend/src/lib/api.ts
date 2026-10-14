@@ -2037,6 +2037,43 @@ export const shellApi = {
     }),
 };
 
+// --- GET /fleet/eps-series (backend/app/schemas/fleet.py, FleetEpsSeries) --------
+export type FleetSeriesGroup = "none" | "class";
+
+/** `events` and `eps` are null unless every expected cell of the step is complete. */
+export interface EpsSeriesPoint {
+  step_start: string;
+  events: number | null;
+  eps: number | null;
+  expected_eps: number | null;
+  cells_complete: number;
+  cells_expected: number;
+  sources_expected: number;
+}
+
+export interface EpsSeries {
+  key: string;
+  label: string;
+  sources_expected: number;
+  points: EpsSeriesPoint[];
+}
+
+export interface EpsCoverage {
+  steps_total: number;
+  steps_measured: number;
+}
+
+export interface FleetEpsSeries {
+  window: FleetWindow;
+  group_by: FleetSeriesGroup;
+  window_start: string;
+  window_end: string;
+  bucket_seconds: number;
+  step_seconds: number;
+  series: EpsSeries[];
+  coverage: EpsCoverage;
+}
+
 // --- Home data layer (UI-2.1) ---------------------------------------------------
 // Each read is a `{ key, fetch }` pair: `key` is the path with its query, which is
 // the request's identity for `useApiResource`'s shared in-flight map, and `fetch`
@@ -2053,6 +2090,8 @@ function homeRead<T>(path: string): HomeRead<T> {
 export const homeReads = {
   fleetSummary: (window: FleetWindow) =>
     homeRead<FleetSummary>(`/fleet/summary${qs({ window })}`),
+  epsSeries: (window: FleetWindow, groupBy: FleetSeriesGroup) =>
+    homeRead<FleetEpsSeries>(`/fleet/eps-series${qs({ window, group_by: groupBy })}`),
   anomalySummary: () => homeRead<BehaviorSummary>("/anomalies/summary"),
   sourceBehaviors: () => homeRead<SourceBehavior[]>("/behavior/sources"),
   overview: () => homeRead<SocOverview>("/overview"),
