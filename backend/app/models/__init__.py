@@ -20,9 +20,20 @@ from app.models.fleet import (
     LogSourceGroup,
     LogSourceType,
 )
+from app.models.geo import GeoCountryBucket
 from app.models.identity import AuditLog, Role, User, user_role
 from app.models.instance import QRadarInstance
-from app.models.ips import IpsEntity, IpsEntityMetric, IpsSourceBucket, IpsSourceProfile
+from app.models.ips import (
+    IpsAnomaly,
+    IpsAnomalyTransition,
+    IpsDetectorState,
+    IpsEntity,
+    IpsEntityBaseline,
+    IpsEntityMetric,
+    IpsSourceBaseline,
+    IpsSourceBucket,
+    IpsSourceProfile,
+)
 from app.models.log_source import (
     AnomalyStateTransition,
     LogSource,
@@ -78,6 +89,7 @@ HYPERTABLES: dict[str, str] = {
     "waf_source_bucket": "bucket_start",
     "rule_match_metric": "bucket_start",
     "catchall_bucket": "bucket_start",
+    "geo_country_bucket": "bucket_start",
     "ips_source_bucket": "bucket_start",
     "ips_entity_metric": "bucket_start",
 }
@@ -103,8 +115,14 @@ __all__ = [
     "ConfigurationSnapshot",
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
+    "GeoCountryBucket",
+    "IpsAnomaly",
+    "IpsAnomalyTransition",
+    "IpsDetectorState",
     "IpsEntity",
+    "IpsEntityBaseline",
     "IpsEntityMetric",
+    "IpsSourceBaseline",
     "IpsSourceBucket",
     "IpsSourceProfile",
     "LogSource",

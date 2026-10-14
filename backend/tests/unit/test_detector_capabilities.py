@@ -16,6 +16,8 @@ import pytest
 
 from app.anomaly.capabilities import (
     ARIEL_AGGREGATE_TELEMETRY,
+    IPS_BASELINE_METRICS,
+    IPS_DETECTORS,
     LOG_SOURCE_DETECTORS,
     SYNTHETIC_TELEMETRY,
     WAF_BASELINE_METRICS,
@@ -41,13 +43,16 @@ from app.models.enums import (
     AnomalyType,
     BucketCompleteness,
     DetectorSignal,
+    IpsAnomalyType,
     WafAnomalyType,
+    WafMeasurement,
 )
 from app.providers.base import LogSourceTelemetry as T
 from app.providers.mock import MockQRadarProvider
 from app.providers.qradar_rest import QRadarRestProvider
 from app.waf.baseline import RATIO_METRICS
 from app.waf.engine import WAF_DETECTOR_FUNCTIONS
+from app.waf.measurement import WafVerdictScope, verdict_scope
 
 EXPECTED_STATUS = {
     "NO_EVENTS": DetectorStatus.OPERATIONAL,
@@ -66,6 +71,13 @@ EXPECTED_STATUS = {
     "WAF_CLIENT_CONCENTRATION_SPIKE": DetectorStatus.OPERATIONAL,
     "WAF_NEW_ENDPOINT_ACCESS": DetectorStatus.OPERATIONAL,
     "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE": DetectorStatus.UNSUPPORTED,
+    "IPS_PORT_RATE_SPIKE": DetectorStatus.OPERATIONAL,
+    "IPS_DESTINATION_RATE_SPIKE": DetectorStatus.OPERATIONAL,
+    "IPS_SIGNATURE_BURST": DetectorStatus.OPERATIONAL,
+    "IPS_NEW_DESTINATION_PORT": DetectorStatus.OPERATIONAL,
+    "IPS_SOURCE_CONCENTRATION_SPIKE": DetectorStatus.OPERATIONAL,
+    "IPS_PORT_FANOUT_SPIKE": DetectorStatus.OPERATIONAL,
+    "IPS_BLOCK_RATIO_SHIFT": DetectorStatus.OPERATIONAL,
 }
 
 
@@ -82,6 +94,50 @@ def test_rest_provider_declares_the_aggregation_it_runs() -> None:
 def test_every_named_detector_has_a_spec() -> None:
     assert set(LOG_SOURCE_DETECTORS) == set(AnomalyType)
     assert set(WAF_DETECTORS) == set(WafAnomalyType)
+    assert set(IPS_DETECTORS) == set(IpsAnomalyType)
+
+
+def test_every_ips_detector_is_implemented_scheduled_and_gated() -> None:
+    disabled = Settings(_env_file=None, ips_collection_enabled=False)
+    for spec in IPS_DETECTORS.values():
+        assert spec.implemented is True
+        assert spec.scheduled_task == "dispatch_ips_collection"
+        assert detector_status(spec) is DetectorStatus.OPERATIONAL
+        assert detector_status(spec, disabled) is DetectorStatus.NOT_ENABLED
+        assert spec.limitation is None
+        assert spec.baseline_metrics <= IPS_BASELINE_METRICS
+
+
+def test_an_ips_spec_with_an_unknown_baseline_is_unsupported() -> None:
+    original = IPS_DETECTORS[IpsAnomalyType.IPS_PORT_RATE_SPIKE]
+    unsupported = DetectorSpec(
+        domain=original.domain,
+        detector_type=original.detector_type,
+        telemetry=original.telemetry,
+        baseline_metrics=frozenset({"not_trained"}),
+        scheduled_task=None,
+        limitation=original.limitation,
+        inputs=original.inputs,
+    )
+    assert detector_status(unsupported) is DetectorStatus.UNSUPPORTED
+
+
+def test_every_declared_ips_input_has_a_requirement_role_and_rationale() -> None:
+    for detector_type, spec in IPS_DETECTORS.items():
+        assert spec.inputs, detector_type
+        for requirement in spec.inputs:
+            assert requirement.role
+            assert requirement.rationale
+            assert verdict_scope(
+                requirement.requirement, WafMeasurement.EXACT
+            ).scope is WafVerdictScope.FULL
+            lower_scope = verdict_scope(
+                requirement.requirement, WafMeasurement.LOWER_BOUND
+            ).scope
+            if requirement.requirement.value == "LOWER_BOUND_PROVES_INCREASE":
+                assert lower_scope is WafVerdictScope.INCREASE_ONLY
+            else:
+                assert lower_scope is WafVerdictScope.NONE
 
 
 @pytest.mark.parametrize("spec", all_detectors(), ids=lambda s: s.detector_type)

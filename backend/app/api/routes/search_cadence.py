@@ -29,7 +29,9 @@ def _bucket_seconds(family: SearchFamily, settings: SettingsDep) -> int | None:
     if family in {
         SearchFamily.PHASE_A_VOLUME,
         SearchFamily.WAF_COLLECTION,
+        SearchFamily.IPS_COLLECTION,
         SearchFamily.CATCHALL_SENDERS,
+        SearchFamily.GEO_COLLECTION,
     }:
         return settings.collection_interval_seconds
     if family == SearchFamily.RULE_MATCH:

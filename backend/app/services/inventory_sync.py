@@ -26,6 +26,7 @@ from app.providers.base import ProviderError, QRadarProvider
 from app.repositories.log_source import LogSourceRepository
 from app.schemas.log_source import SyncResult
 from app.security.sanitizer import sanitize_text
+from app.services.waf_pipeline import sanitized_error
 
 
 class InventorySyncService:
@@ -44,13 +45,28 @@ class InventorySyncService:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def sync(self, instance: QRadarInstance) -> SyncResult:
-        info = await self.provider.get_instance_info()
+        # Read once, so the health stamp and every row written by this pass
+        # carry the same observation time.
+        now = self._clock()
+        try:
+            info = await self.provider.get_instance_info()
+        except ProviderError as exc:
+            # Fail closed: an unreachable console is recorded on the instance
+            # itself, so nothing downstream keeps reading a stale HEALTHY. The
+            # error is re-raised untouched -- the caller owns its failure
+            # handling, report and watermark -- and it is flushed by that
+            # caller's session, so it commits with the watermark update.
+            instance.status = InstanceStatus.UNREACHABLE
+            instance.last_health_check_at = now
+            instance.last_error = sanitized_error(exc)
+            raise
         instance.qradar_version = info.version
         instance.status = (
             InstanceStatus.HEALTHY if info.reachable else InstanceStatus.UNREACHABLE
         )
+        instance.last_health_check_at = now
+        instance.last_error = None
 
-        now = self._clock()
         type_dtos = await self.provider.list_log_source_types()
         type_names = {t.type_id: t.name for t in type_dtos}
         try:

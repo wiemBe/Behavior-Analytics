@@ -157,6 +157,8 @@ class Settings(BaseSettings):
     #: IPS fleet collection is opt-in; individual profiles must also be enabled
     #: and VALID for their current version.
     ips_collection_enabled: bool = False
+    #: IPS alerting is opt-in: in shadow mode incidents are recorded and nothing pages.
+    ips_alerting_enabled: bool = False
     ips_max_new_entities_per_bucket: int = Field(default=20, ge=0, le=1000)
     ips_max_active_entities_per_source_dimension: int = Field(
         default=2000, ge=1, le=50000
@@ -169,6 +171,34 @@ class Settings(BaseSettings):
     ips_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
     ips_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     ips_retention_interval_seconds: int = Field(default=86400, ge=3600)
+    #: Days of version-compatible IPS buckets considered by a baseline rebuild.
+    ips_baseline_lookback_days: int = Field(default=28, ge=1)
+    #: IPS subjects loaded and upserted together during a bounded baseline rebuild.
+    ips_baseline_rebuild_batch_size: int = Field(default=50, ge=1, le=5000)
+    #: Collected IPS buckets evaluated per source per scheduled run.
+    ips_max_evaluation_buckets_per_run: int = Field(default=24, ge=1, le=2016)
+    #: Entity spike minimum multiple, absolute rise and bucket population.
+    ips_spike_ratio: float = Field(default=2.0, gt=1.0)
+    ips_min_absolute_delta_events: float = Field(default=50.0, ge=0.0)
+    ips_min_bucket_events: float = Field(default=20.0, ge=0.0)
+    #: Port fan-out minimum population, multiple and absolute rise.
+    ips_fanout_min_ports: float = Field(default=20.0, ge=1.0)
+    ips_fanout_ratio: float = Field(default=2.0, gt=1.0)
+    ips_fanout_min_delta_ports: float = Field(default=15.0, ge=0.0)
+    #: Block-ratio materiality and change floors.
+    ips_ratio_min_denominator: int = Field(default=50, ge=1)
+    ips_ratio_min_numerator: int = Field(default=10, ge=1)
+    ips_ratio_min_increase: float = Field(default=0.10, gt=0.0, le=1.0)
+    ips_ratio_min_multiple: float = Field(default=2.0, gt=1.0)
+    #: Source-concentration population and share-rise floors.
+    ips_concentration_min_source_events: int = Field(default=50, ge=1)
+    ips_concentration_min_top1_events: int = Field(default=20, ge=1)
+    ips_concentration_min_increase: float = Field(default=0.20, gt=0.0, le=1.0)
+    #: New-port history, novelty window and materiality thresholds.
+    ips_new_port_history_days: int = Field(default=7, ge=1, le=60)
+    ips_new_port_window_buckets: int = Field(default=12, ge=1, le=2016)
+    ips_new_port_min_events: int = Field(default=20, ge=1)
+    ips_new_port_min_buckets: int = Field(default=2, ge=1)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention
@@ -479,6 +509,24 @@ class Settings(BaseSettings):
     catchall_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     catchall_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
+    # --- D-10: geography (events per country, for the home map) --------------
+    #: Kill switch. Two keyed searches per cadence tick (one per direction), so two an
+    #: hour per instance at the 1 h default cadence.
+    geo_collection_enabled: bool = True
+    #: Which address is looked up, each a separate stored series. SOURCE, DESTINATION.
+    geo_directions: list[str] = Field(
+        default_factory=lambda: ["SOURCE", "DESTINATION"], min_length=1, max_length=2
+    )
+    #: Rows kept per keyed search before truncation splits it.
+    geo_max_rows_per_search: int = Field(default=5000, ge=10, le=100_000)
+    #: Countries kept per bucket and direction; the rest is summed into OVER_CAP.
+    geo_max_countries_per_bucket: int = Field(default=64, ge=1, le=300)
+    #: Buckets older than this are deleted.
+    geo_retention_days: int = Field(default=35, ge=2)
+    geo_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    geo_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    geo_retention_interval_seconds: int = Field(default=86400, ge=3600)
+
     # --- Phase B.1.5: Ariel budget and batching ------------------------------
     #: WAF sources that may have an Ariel search in flight at once, across every
     #: worker. Each source collects one bucket per permit; a source that cannot
@@ -658,6 +706,13 @@ class Settings(BaseSettings):
         return bool(self.qradar_api_token_file or self.qradar_sec_token.get_secret_value())
 
     # ----------------------------------------------------------- validation
+    @field_validator("geo_directions")
+    @classmethod
+    def _geo_directions_are_known(cls, value: list[str]) -> list[str]:
+        if any(item not in ("SOURCE", "DESTINATION") for item in value):
+            raise ValueError("GEO_DIRECTIONS holds SOURCE and DESTINATION")
+        return list(dict.fromkeys(value))
+
     @field_validator("catchall_type_ids")
     @classmethod
     def _catchall_type_ids_are_ids(cls, value: list[int]) -> list[int]:

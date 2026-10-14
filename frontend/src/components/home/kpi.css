@@ -1,0 +1,190 @@
+/* The Home KPI row (UI-2.2). Built from tokens only.
+ *
+ * Four cards, four different structures; they share a frame, not a layout.
+ * The row is a container: four across when it has the room, two by two when it
+ * does not. A container query cannot read a custom property, so its width is
+ * the one literal here. */
+
+.kpi-row {
+  container-type: inline-size;
+  min-width: 0;
+}
+.kpi-grid {
+  display: grid;
+  gap: var(--widget-gap);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Borders share the row height; each card's body still lays its content from the top. */
+  align-items: stretch;
+  min-width: 0;
+}
+@container (max-width: 900px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (max-width: 480px) {
+  .kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-4);
+}
+.kpi-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-3);
+}
+/* `.main h2` and `.main h3` set a page-section margin and size; a card's headings
+   are labels, so they are specified at a higher specificity here. */
+.kpi .kpi-title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+  line-height: var(--lh-tight);
+}
+.kpi-link {
+  font-size: var(--fs-xs);
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.kpi-link:hover {
+  color: var(--text);
+}
+.kpi-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.kpi-body > * {
+  margin: 0;
+}
+
+.kpi-figure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-2);
+}
+.kpi-value {
+  font-size: var(--fs-metric);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.kpi-unit {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.kpi-reason {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+  line-height: var(--lh-base);
+}
+.kpi-note,
+.kpi-foot {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: var(--lh-base);
+}
+.kpi-foot {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-refresh-failed {
+  color: var(--warn-text);
+}
+
+/* A state replaces the body; it is prose, as the route states are. */
+.kpi-state {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+.kpi-qualifiers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+}
+.kpi-qualifier {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+}
+.kpi-qualifier-text {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  line-height: var(--lh-base);
+  min-width: 0;
+}
+
+/* A breakdown is one line of parts set off by a middle dot, wrapping if it must. */
+.kpi-line {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.kpi-line-part {
+  white-space: nowrap;
+}
+.kpi-line-label {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* The sparkline: one hairline stroke, no fill, baseline or marker. */
+.kpi-spark {
+  margin: 0;
+}
+.kpi-spark-svg {
+  display: block;
+  width: 100%;
+  height: var(--kpi-spark-h);
+  overflow: visible;
+}
+.kpi-spark-line {
+  fill: none;
+  stroke: var(--chart-expected);
+  stroke-width: var(--kpi-spark-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* HealthDistribution's legend carries a page-section top margin; inside a card the
+   bar and its legend sit close. */
+.kpi .health-legend {
+  margin-top: var(--sp-2);
+  gap: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-xs);
+}
+.kpi-head {
+  flex-wrap: nowrap;
+}
+.kpi .kpi-title {
+  min-width: 0;
+}
+.kpi-link {
+  flex: none;
+}

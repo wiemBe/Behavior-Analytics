@@ -32,6 +32,7 @@ from app.collectors.explanation_collector import (
     EXPLANATION_COLLECTOR,
     ExplanationCollector,
 )
+from app.collectors.geo_collector import GeoCollector
 from app.collectors.ips_collector import IpsCollector
 from app.collectors.log_source_collector import LogSourceCollector
 from app.collectors.metric_collector import MetricCollector
@@ -53,7 +54,8 @@ from app.repositories.offense import OffenseRepository
 from app.services.catchall_retention import CatchallRetention
 from app.services.concurrency import InMemoryConcurrencyLimiter
 from app.services.detection_coverage import DetectionCoverageEvaluator
-from app.services.ips_pipeline import ips_pipeline_lock_key
+from app.services.geo_retention import GeoRetention
+from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
 from app.services.ips_profiles import IpsProfileService
 from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
@@ -474,6 +476,69 @@ async def apply_catchall_retention() -> dict:
     maker = get_sessionmaker()
     async with maker() as session:
         report = await CatchallRetention(session).run()
+        return report.as_dict()
+
+
+async def collect_geo_countries(instance_name: str | None = None) -> dict:
+    """Collect events per country, two keyed Ariel searches per cadence tick (D-10).
+
+    A no-op while GEO_COLLECTION_ENABLED is false. The GEO_COLLECTION cadence slot is
+    claimed first, in its own committed session, so a tick that is not due builds no
+    provider and sends nothing to QRadar.
+    """
+    settings = get_settings()
+    if not settings.geo_collection_enabled:
+        return {"status": "disabled"}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.GEO_COLLECTION
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed_slot = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed_slot is None:
+        return {"status": "not_due", "family": family.value}
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        report = await GeoCollector(session, provider, settings=settings).collect(instance)
+        return report.as_dict()
+
+    result = await _for_each_instance(run, instance_name)
+    results = result.get("results", [])
+    outcome = result.get("status")
+    if outcome is None:
+        outcome = (
+            "failed" if any(item.get("status") == "failed" for item in results) else "ok"
+        )
+    # An instance that raised reports no counts, so the totals are unknown, not
+    # a smaller number: record None rather than a count that under-reports.
+    measured = bool(results) and all("searches_sent" in item for item in results)
+    async with maker() as cadence_session:
+        await SearchCadenceService(cadence_session, settings).record_run(
+            family,
+            outcome=outcome,
+            searches=sum(i["searches_sent"] for i in results) if measured else None,
+            buckets=(
+                sum(i["buckets_complete"] + i["buckets_lower_bound"] for i in results)
+                if measured
+                else None
+            ),
+            splits=sum(i["splits"] for i in results) if measured else None,
+        )
+        await cadence_session.commit()
+    return result
+
+
+async def apply_geo_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await GeoRetention(session).run()
         return report.as_dict()
 
 
@@ -1251,7 +1316,12 @@ async def dispatch_ips_collection(instance_name: str | None = None) -> dict:
     ) -> dict:
         assert provider is not None
         collector = IpsCollector(session, provider, settings=settings)
-        return (await collector.collect(instance)).as_dict()
+        collection = (await collector.collect(instance)).as_dict()
+        enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
+        pipeline = await IpsInstancePipeline(
+            session, settings=settings, enqueuer=enqueuer
+        ).run(instance)
+        return {**collection, "pipeline": pipeline.as_dict()}
 
     result = await _for_each_instance(run, instance_name)
     failed = any(item.get("status") == "failed" for item in result.get("results", []))
@@ -1395,6 +1465,16 @@ def validate_ips_profile_task(profile_id: str, lock_retry_count: int = 0) -> dic
 @celery_app.task(name="collect_catchall_senders")
 def collect_catchall_senders_task(instance_name: str | None = None) -> dict:
     return _run(collect_catchall_senders(instance_name))
+
+
+@celery_app.task(name="collect_geo_countries")
+def collect_geo_countries_task(instance_name: str | None = None) -> dict:
+    return _run(collect_geo_countries(instance_name))
+
+
+@celery_app.task(name="apply_geo_retention")
+def apply_geo_retention_task() -> dict:
+    return _run(apply_geo_retention())
 
 
 @celery_app.task(name="apply_catchall_retention")

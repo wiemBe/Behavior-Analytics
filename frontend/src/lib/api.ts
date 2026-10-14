@@ -54,6 +54,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface SocOverview {
   instance_status: string;
   instance_version: string | null;
+  instance_last_health_check_at?: string | null;
   generated_at: string;
   average_health_score: number | null;
   log_sources: {
@@ -171,7 +172,8 @@ export type SearchFamily =
   | "ANOMALY_EXPLANATION"
   | "RULE_MATCH"
   | "IPS_COLLECTION"
-  | "CATCHALL_SENDERS";
+  | "CATCHALL_SENDERS"
+  | "GEO_COLLECTION";
 
 // Mirrors SearchCadenceLastRunOut. `searches_sent` is null for a family that
 // does not count its searches yet: that is "not counted", never zero.
@@ -712,6 +714,10 @@ export interface SourceBehavior {
   baseline_sample_count: number;
   baseline_completeness: number;
   last_bucket_at: string | null;
+  // The completeness of the bucket `observed_eps` came from: COMPLETE, PARTIAL
+  // or MISSING; null when no bucket exists. A client must not rank or present
+  // a non-COMPLETE value as a measurement.
+  last_bucket_completeness?: "COMPLETE" | "PARTIAL" | "MISSING" | null;
   last_event_at: string | null;
   open_anomaly_count: number;
 }
@@ -1383,6 +1389,8 @@ export interface FleetClassSummary {
   expected_eps: number | null;
   baseline_sources: number;
   baseline_share: number | null;
+  // Enabled and monitored sources: what `baseline_sources` is a share of.
+  monitored_sources: number;
   // Phase A anomaly type -> open incident count.
   open_incidents: Record<string, number>;
   top_sources: FleetTopSource[];
@@ -1998,4 +2006,105 @@ export const ipsApi = {
     request<PropertyCatalogOut>(
       `/ips/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined })}`,
     ),
+};
+
+// --- shell top bar (UI-1.5) -------------------------------------------------
+// Browser reads of existing endpoints. Each takes an AbortSignal so a superseded
+// or unmounted caller can cancel; none writes anything, and none reaches QRadar.
+// A refused read surfaces as an `ApiError` with its status, so the caller can
+// tell "your role cannot read this" (403) from "the read failed".
+export interface HealthReady {
+  status: string;
+  database: string;
+}
+
+export const shellApi = {
+  healthReady: (signal?: AbortSignal) => request<HealthReady>("/health/ready", { signal }),
+  overview: (signal?: AbortSignal) => request<SocOverview>("/overview", { signal }),
+  searchCadence: (signal?: AbortSignal) =>
+    request<SearchCadenceItem[]>("/admin/search-cadence", { signal }),
+  searchSources: (q: string, signal?: AbortSignal) =>
+    request<Page<FleetSource>>(`/fleet/sources${qs({ q, limit: 5 })}`, { signal }),
+  searchRules: (search: string, signal?: AbortSignal) =>
+    request<Page<RuleSummary>>(`/rules${qs({ search, limit: 5 })}`, { signal }),
+  searchOffenses: (search: string, signal?: AbortSignal) =>
+    request<Page<OffenseSummary>>(`/offenses${qs({ search, limit: 5 })}`, { signal }),
+  // The one bounded read the anomaly search filters client-side: the API has no
+  // text search over anomalies.
+  activeAnomalies: (signal?: AbortSignal) =>
+    request<Page<AnomalySummary>>(`/anomalies${qs({ active_only: true, limit: 200 })}`, {
+      signal,
+    }),
+};
+
+// --- GET /fleet/eps-series (backend/app/schemas/fleet.py, FleetEpsSeries) --------
+export type FleetSeriesGroup = "none" | "class";
+
+/** `events` and `eps` are null unless every expected cell of the step is complete. */
+export interface EpsSeriesPoint {
+  step_start: string;
+  events: number | null;
+  eps: number | null;
+  expected_eps: number | null;
+  cells_complete: number;
+  cells_expected: number;
+  sources_expected: number;
+}
+
+export interface EpsSeries {
+  key: string;
+  label: string;
+  sources_expected: number;
+  points: EpsSeriesPoint[];
+}
+
+export interface EpsCoverage {
+  steps_total: number;
+  steps_measured: number;
+}
+
+export interface FleetEpsSeries {
+  window: FleetWindow;
+  group_by: FleetSeriesGroup;
+  window_start: string;
+  window_end: string;
+  bucket_seconds: number;
+  step_seconds: number;
+  series: EpsSeries[];
+  coverage: EpsCoverage;
+}
+
+// --- Home data layer (UI-2.1) ---------------------------------------------------
+// Each read is a `{ key, fetch }` pair: `key` is the path with its query, which is
+// the request's identity for `useApiResource`'s shared in-flight map, and `fetch`
+// requests exactly that path. Existing read endpoints only; nothing writes.
+export interface HomeRead<T> {
+  key: string;
+  fetch: (signal: AbortSignal) => Promise<T>;
+}
+
+function homeRead<T>(path: string): HomeRead<T> {
+  return { key: path, fetch: (signal) => request<T>(path, { signal }) };
+}
+
+export const homeReads = {
+  fleetSummary: (window: FleetWindow) =>
+    homeRead<FleetSummary>(`/fleet/summary${qs({ window })}`),
+  epsSeries: (window: FleetWindow, groupBy: FleetSeriesGroup) =>
+    homeRead<FleetEpsSeries>(`/fleet/eps-series${qs({ window, group_by: groupBy })}`),
+  anomalySummary: () => homeRead<BehaviorSummary>("/anomalies/summary"),
+  sourceBehaviors: () => homeRead<SourceBehavior[]>("/behavior/sources"),
+  overview: () => homeRead<SocOverview>("/overview"),
+  offenseAnalytics: () => homeRead<OffenseAnalytics>("/offenses/analytics"),
+  // `total` tells "no offenses" from "no snapshot yet" (UR.4.2 card 3).
+  offenseProbe: () => homeRead<Page<OffenseSummary>>(`/offenses${qs({ limit: 1 })}`),
+  // The open offenses, latest update first (Home "Recent offenses").
+  recentOffenses: (limit = 5) =>
+    homeRead<Page<OffenseSummary>>(
+      `/offenses${qs({ status: "OPEN", sort: "last_updated_time", limit })}`,
+    ),
+  activeAnomalies: (limit = 200) =>
+    homeRead<Page<AnomalySummary>>(`/anomalies${qs({ active_only: true, limit })}`),
+  anomaliesBetween: (since: string, until: string, limit = 200) =>
+    homeRead<Page<AnomalySummary>>(`/anomalies${qs({ since, until, limit })}`),
 };

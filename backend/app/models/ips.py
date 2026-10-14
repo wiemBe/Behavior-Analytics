@@ -19,14 +19,26 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.enums import IpsDimension, IpsPreset, IpsProfileValidationStatus
+from app.models.enums import (
+    AnomalyState,
+    EvidenceStatus,
+    IpsAnomalyType,
+    IpsDimension,
+    IpsPreset,
+    IpsProfileValidationStatus,
+    Severity,
+    WafMeasurement,
+)
+from app.models.waf import METRIC_SEMANTICS_LENGTH
 
 IPS_NORMALIZER_VERSION = 1
 _MEASUREMENT_CHECK = "('EXACT', 'LOWER_BOUND', 'NOT_COLLECTED', 'FAILED', 'REJECTED')"
@@ -244,3 +256,239 @@ class IpsEntityMetric(Base):
     bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     events: Mapped[int] = mapped_column(BigInteger, nullable=False)
     bucket_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class IpsEntityBaseline(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Seasonal aggregate for one admitted IPS entity and metric cell.
+
+    Holds robust statistics and bounded numeric observations only. It never
+    stores the entity's raw QRadar value or any source address.
+    """
+
+    __tablename__ = "ips_entity_baseline"
+    __table_args__ = (
+        UniqueConstraint(
+            "ips_entity_id",
+            "metric_name",
+            "weekday",
+            "hour",
+            name="uq_ips_entity_baseline_cell",
+        ),
+        CheckConstraint("weekday BETWEEN 1 AND 7", name="weekday_range"),
+        CheckConstraint("hour BETWEEN 0 AND 23", name="hour_range"),
+    )
+
+    ips_entity_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("ips_entity.id", ondelete="CASCADE"), nullable=False
+    )
+    metric_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)
+    hour: Mapped[int] = mapped_column(Integer, nullable=False)
+    median: Mapped[float] = mapped_column(Float, nullable=False)
+    mad: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    p05: Mapped[float | None] = mapped_column(Float)
+    p95: Mapped[float | None] = mapped_column(Float)
+    sample_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_reliable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    completeness: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    observations: Mapped[list[float]] = mapped_column(JSONB, default=list, nullable=False)
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    excluded_sample_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    exclusion_counts: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    metric_semantics: Mapped[str | None] = mapped_column(String(METRIC_SEMANTICS_LENGTH))
+    profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    normalizer_version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class IpsSourceBaseline(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Seasonal aggregate for one IPS source-level metric cell.
+
+    Ratio cells retain pooled aggregate sums, never the raw action values or
+    source IPs from which collection computed them.
+    """
+
+    __tablename__ = "ips_source_baseline"
+    __table_args__ = (
+        UniqueConstraint(
+            "log_source_id",
+            "metric_name",
+            "weekday",
+            "hour",
+            name="uq_ips_source_baseline_cell",
+        ),
+        CheckConstraint("weekday BETWEEN 1 AND 7", name="weekday_range"),
+        CheckConstraint("hour BETWEEN 0 AND 23", name="hour_range"),
+    )
+
+    log_source_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("log_source.id", ondelete="CASCADE"), nullable=False
+    )
+    metric_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)
+    hour: Mapped[int] = mapped_column(Integer, nullable=False)
+    median: Mapped[float] = mapped_column(Float, nullable=False)
+    mad: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    p05: Mapped[float | None] = mapped_column(Float)
+    p95: Mapped[float | None] = mapped_column(Float)
+    sample_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_reliable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    completeness: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    observations: Mapped[list[float]] = mapped_column(JSONB, default=list, nullable=False)
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    baseline_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    excluded_sample_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    exclusion_counts: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    metric_semantics: Mapped[str | None] = mapped_column(String(METRIC_SEMANTICS_LENGTH))
+    profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    normalizer_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    numerator_sum: Mapped[float | None] = mapped_column(Float)
+    denominator_sum: Mapped[float | None] = mapped_column(Float)
+
+
+_IPS_SUBJECT_CHECK = (
+    "(subject_kind = 'IPS_ENTITY' AND ips_entity_id IS NOT NULL "
+    "AND log_source_id IS NULL) OR "
+    "(subject_kind = 'IPS_SOURCE' AND ips_entity_id IS NULL "
+    "AND log_source_id IS NOT NULL)"
+)
+
+
+class IpsDetectorState(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Hysteresis state for exactly one IPS entity or IPS source detector.
+
+    It contains lifecycle counters only, never event values or contributor
+    identities. Partial unique indexes enforce one state per typed subject.
+    """
+
+    __tablename__ = "ips_detector_state"
+    __table_args__ = (
+        CheckConstraint(_IPS_SUBJECT_CHECK, name="subject_matches_kind"),
+        Index(
+            "uq_ips_detector_state_entity",
+            "ips_entity_id",
+            "detector_type",
+            unique=True,
+            postgresql_where=text("subject_kind = 'IPS_ENTITY'"),
+        ),
+        Index(
+            "uq_ips_detector_state_source",
+            "log_source_id",
+            "detector_type",
+            unique=True,
+            postgresql_where=text("subject_kind = 'IPS_SOURCE'"),
+        ),
+    )
+
+    subject_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    ips_entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("ips_entity.id", ondelete="CASCADE")
+    )
+    log_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("log_source.id", ondelete="CASCADE")
+    )
+    detector_type: Mapped[IpsAnomalyType] = mapped_column(String(40), nullable=False)
+    consecutive_anomalous: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    consecutive_healthy: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    state: Mapped[AnomalyState] = mapped_column(
+        String(24), default=AnomalyState.NORMAL, nullable=False
+    )
+    last_interval_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    active_anomaly_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True))
+    open_anomaly_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True))
+
+
+class IpsAnomaly(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """A detected IPS deviation on exactly one entity or source.
+
+    The incident persists aggregate measurements, versions and bounded details.
+    It never persists raw IPS events or unbounded source-IP values.
+    """
+
+    __tablename__ = "ips_anomaly"
+    __table_args__ = (
+        CheckConstraint(_IPS_SUBJECT_CHECK, name="subject_matches_kind"),
+        Index(
+            "ix_ips_anomaly_state",
+            "ips_entity_id",
+            "log_source_id",
+            "detector_type",
+            "state",
+        ),
+        Index("ix_ips_anomaly_detected", "detected_at"),
+    )
+
+    subject_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    ips_entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("ips_entity.id", ondelete="CASCADE")
+    )
+    log_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("log_source.id", ondelete="CASCADE")
+    )
+    detector_type: Mapped[IpsAnomalyType] = mapped_column(String(40), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(255), nullable=False)
+    severity: Mapped[Severity] = mapped_column(String(16), nullable=False)
+    state: Mapped[AnomalyState] = mapped_column(
+        String(24), default=AnomalyState.CANDIDATE, nullable=False
+    )
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    anomaly_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    anomaly_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observed_value: Mapped[float | None] = mapped_column(Float)
+    expected_value: Mapped[float | None] = mapped_column(Float)
+    deviation_score: Mapped[float | None] = mapped_column(Float)
+    deviation_ratio: Mapped[float | None] = mapped_column(Float)
+    robust_z: Mapped[float | None] = mapped_column(Float)
+    absolute_delta: Mapped[float | None] = mapped_column(Float)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    consecutive_buckets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    baseline_version: Mapped[int | None] = mapped_column(Integer)
+    policy_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    normalizer_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    explanation: Mapped[str | None] = mapped_column(Text)
+    details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    evidence_status: Mapped[EvidenceStatus] = mapped_column(
+        String(16), default=EvidenceStatus.NOT_REQUESTED, nullable=False
+    )
+    suppressed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    suppression_reason: Mapped[str | None] = mapped_column(String(255))
+    observed_measurement: Mapped[WafMeasurement] = mapped_column(
+        String(16), default=WafMeasurement.EXACT, nullable=False
+    )
+
+
+class IpsAnomalyTransition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Auditable lifecycle transition for one IPS anomaly.
+
+    It repeats only bounded aggregate measurements needed to explain the state
+    change and never stores a raw IPS event.
+    """
+
+    __tablename__ = "ips_anomaly_transition"
+    __table_args__ = (
+        Index("ix_ips_anomaly_transition", "ips_anomaly_id", "occurred_at"),
+    )
+
+    ips_anomaly_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("ips_anomaly.id", ondelete="CASCADE"), nullable=False
+    )
+    from_state: Mapped[AnomalyState | None] = mapped_column(String(24))
+    to_state: Mapped[AnomalyState] = mapped_column(String(24), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    bucket_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(Text)
+    actor: Mapped[str] = mapped_column(
+        String(64), default="ips-anomaly-engine", nullable=False
+    )
+    observed_value: Mapped[float | None] = mapped_column(Float)
+    expected_value: Mapped[float | None] = mapped_column(Float)
+    observed_measurement: Mapped[WafMeasurement] = mapped_column(
+        String(16), default=WafMeasurement.EXACT, nullable=False
+    )

@@ -14,6 +14,7 @@ function cls(over: Partial<FleetClassSummary> = {}): FleetClassSummary {
     expected_eps: 38.5,
     baseline_sources: 4,
     baseline_share: 1,
+    monitored_sources: 4,
     open_incidents: { VOLUME_SPIKE: 1 },
     top_sources: [{ id: "s1", name: "waf-dmz-01", events: 1800000 }],
     ...over,

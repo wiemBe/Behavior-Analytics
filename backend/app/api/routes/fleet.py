@@ -9,12 +9,15 @@ from fastapi import APIRouter, Query
 from sqlalchemy import func, literal, or_, select
 
 from app.api.deps import SessionDep, SettingsDep
+from app.fleet.series import build_fleet_eps_series
 from app.fleet.summary import build_fleet_summary
 from app.models.enums import ClassificationReviewStatus, SourceClass
 from app.models.fleet import LogSourceClassification
 from app.models.log_source import LogSource
 from app.schemas.fleet import (
     ClassificationBasis,
+    FleetEpsSeries,
+    FleetSeriesGroup,
     FleetSourcePage,
     FleetSummary,
     FleetWindow,
@@ -50,6 +53,32 @@ async def fleet_summary(
         bucket_seconds=bucket_seconds,
         outage_default=settings.outage_alert_default,
         default_silence_grace_buckets=settings.anomaly_silence_grace_buckets,
+    )
+
+
+@router.get("/eps-series", response_model=FleetEpsSeries)
+async def fleet_eps_series(
+    session: SessionDep,
+    settings: SettingsDep,
+    window: FleetWindow = Query(default="24h"),
+    group_by: FleetSeriesGroup = Query(default="none"),
+) -> FleetEpsSeries:
+    """Observed fleet EPS per step, from stored buckets only.
+
+    The window ends at the last closed bucket floored to the step width, so every step
+    is a whole step; up to one step minus one bucket of the newest data is left out.
+    A step with any in-scope source not measured has null events and EPS; expected EPS
+    is a sum of per-source medians, never a band.
+    """
+    bucket_seconds = settings.collection_interval_seconds
+    now = _utcnow()
+    closed = datetime.fromtimestamp(now.timestamp() // bucket_seconds * bucket_seconds, UTC)
+    return await build_fleet_eps_series(
+        session,
+        window=window,
+        group_by=group_by,
+        now=closed,
+        bucket_seconds=bucket_seconds,
     )
 
 

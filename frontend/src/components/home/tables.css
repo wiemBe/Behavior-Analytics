@@ -1,0 +1,311 @@
+/* The Home tables (UI-2.4): Top sources, Recent anomalies, Recent offenses and Log
+   source health. Every value is a token. A widget is one panel; what is inside it
+   (a state, a note, a table) is plain text and rules, never a box in the box. */
+
+.tw {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--widget-gap);
+  padding: var(--widget-pad);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.tw-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+}
+.tw .tw-title {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: var(--fs-md);
+  line-height: var(--lh-tight);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.tw-window {
+  margin-left: var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+}
+.tw-all {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  color: var(--link);
+}
+.tw-all:hover {
+  text-decoration: underline;
+}
+.tw-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--widget-gap);
+}
+
+/* --- states ---------------------------------------------------------------- */
+
+.tw-state {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+.tw-state strong {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+.widget-error p {
+  margin: 0;
+}
+.widget-error-title strong {
+  color: var(--crit-text);
+}
+.widget-error-action {
+  color: var(--text-2);
+}
+.widget-error-title + .widget-error-action {
+  margin-top: var(--sp-1);
+}
+.tw-note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-prose);
+  color: var(--text-3);
+}
+.tw-note.warn {
+  color: var(--warn-text);
+}
+.tw-note + .tw-note {
+  margin-top: calc(var(--sp-1) * -1);
+}
+.tw-qual {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+.tw-qual .kind {
+  font-weight: var(--fw-semibold);
+  color: var(--neutral-text);
+}
+.tw-qual .warn {
+  color: var(--warn-text);
+}
+
+/* --- tables ---------------------------------------------------------------- */
+
+/* The scroll-edge shadows of `.table-scroll` cover with the canvas colour; this
+   panel is a surface, so the covers are restated in that colour. */
+.tw .table-scroll {
+  min-width: 0;
+  background:
+    linear-gradient(to right, var(--surface) 30%, transparent) left center,
+    linear-gradient(to left, var(--surface) 30%, transparent) right center,
+    radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), transparent) right center;
+  background-repeat: no-repeat;
+  background-size:
+    var(--scroll-cover-w) 100%,
+    var(--scroll-cover-w) 100%,
+    var(--scroll-shadow-w) 100%,
+    var(--scroll-shadow-w) 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+.tw-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.tw-table th,
+.tw-table td {
+  padding: var(--sp-2);
+  vertical-align: middle;
+}
+.tw-table th:first-child,
+.tw-table td:first-child {
+  padding-left: 0;
+}
+.tw-table th:last-child,
+.tw-table td:last-child {
+  padding-right: 0;
+}
+.tw-table td.num,
+.tw-table th.num {
+  text-align: right;
+}
+.tw-col-time {
+  width: var(--table-col-time);
+}
+.tw-col-eps {
+  width: var(--table-col-eps);
+}
+.tw-col-ratio {
+  width: var(--table-col-ratio);
+}
+.tw-col-badge {
+  width: var(--table-col-badge);
+}
+.tw-col-count {
+  width: var(--table-col-count);
+}
+.tw-col-magnitude {
+  width: var(--table-col-magnitude);
+}
+.tw-col-action {
+  width: var(--table-col-action);
+}
+
+/* A name: one line, an ellipsis for the rest, the whole name in its `title`.
+   `max-width: 0` is what lets a fixed-layout cell shrink below its text. */
+.tw-table td.tw-name {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tw-name a {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.tw-name a:hover {
+  color: var(--link);
+  text-decoration: underline;
+}
+.tw-sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.tw-when {
+  white-space: nowrap;
+}
+.tw-link {
+  color: var(--link);
+  white-space: nowrap;
+}
+.tw-link:hover {
+  text-decoration: underline;
+}
+
+/* The state of a source, as a word with a tone. */
+.tw-state-word {
+  color: var(--text-2);
+}
+.tw-state-word.ok {
+  color: var(--ok-text);
+}
+.tw-state-word.info {
+  color: var(--info-text);
+}
+.tw-state-word.warn {
+  color: var(--warn-text);
+}
+.tw-state-word.crit {
+  color: var(--crit-text);
+}
+
+/* --- bars ------------------------------------------------------------------- */
+
+.tw-measure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  white-space: nowrap;
+}
+/* The EPS figure over its bar, both right-aligned, so the column stays as narrow as
+   the figure and the source name keeps the width. */
+.tw-measure.stack {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-1);
+}
+.tw-bar {
+  flex: 0 0 auto;
+  width: var(--bar-w);
+  height: var(--bar-h);
+}
+.tw-bar-track {
+  fill: var(--bar-track);
+}
+.tw-bar-fill {
+  fill: var(--bar-fill);
+}
+.tw-seg {
+  fill: var(--bar-track);
+}
+.tw-seg.on {
+  fill: var(--bar-seg-fill);
+}
+
+/* --- log source health -------------------------------------------------------- */
+
+.tw-lead {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.tw-categories th.tw-cat-label,
+.tw-categories td.tw-cat-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* --- narrow and wide widgets -------------------------------------------------
+   The widget decides by its own width, not the viewport's: below the breakpoint
+   the State column folds into the second line of the name cell; above it the
+   column is shown and the fold is hidden. The breakpoint is a query, so it cannot
+   be a token. */
+
+.tw {
+  container-type: inline-size;
+  container-name: tw;
+}
+.tw-unfold {
+  display: none;
+}
+.tw-wrap {
+  white-space: normal;
+}
+.tw-fold-line {
+  display: block;
+}
+.tw-fold {
+  display: block;
+}
+@container tw (min-width: 34rem) {
+  .tw-unfold {
+    display: table-cell;
+  }
+  col.tw-unfold {
+    display: table-column;
+  }
+  .tw-fold,
+  .tw-fold-line {
+    display: none;
+  }
+}
+/* With the Detected column folded away the name column leads the row, so it takes
+   the first column's flush edge. */
+@container tw (max-width: 33.99rem) {
+  .tw-table th.tw-lead-col,
+  .tw-table td.tw-lead-col {
+    padding-left: 0;
+  }
+}

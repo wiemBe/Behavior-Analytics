@@ -123,6 +123,9 @@ class OverviewAlerts(BaseModel):
 class SocOverview(BaseModel):
     instance_status: str
     instance_version: str | None
+    #: When the instance's status was last checked, and None when it was
+    #: never checked or no instance exists.
+    instance_last_health_check_at: datetime | None = None
     generated_at: datetime
     log_sources: OverviewCounts
     offenses: OverviewOffenses

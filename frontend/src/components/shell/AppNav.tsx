@@ -12,15 +12,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 import { NAV, activeNavHref, type NavGroup } from "@/lib/nav";
 
 export function AppNav({ groups = NAV }: { groups?: NavGroup[] }) {
   const pathname = usePathname() ?? "/";
   const active = activeNavHref(pathname, groups);
+  const navRef = useRef<HTMLElement>(null);
+
+  // The sidebar scrolls inside itself on a short viewport, so the current
+  // entry may start off screen. `block: "nearest"` moves only the sidebar's own
+  // scroll position, and only when the entry is not already visible; the page
+  // never scrolls because of it. Guarded because jsdom has no scrollIntoView.
+  useEffect(() => {
+    const link = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (link && typeof link.scrollIntoView === "function") {
+      link.scrollIntoView({ block: "nearest" });
+    }
+  }, [pathname]);
 
   return (
-    <nav aria-label="Primary">
+    <nav aria-label="Primary" ref={navRef}>
       {groups.map((group, i) => (
         <div
           key={group.label ?? `primary-${i}`}

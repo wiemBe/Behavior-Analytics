@@ -8,12 +8,281 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (eighth session, 2026-10-14, from 10:48)
+## ▶ Resume here (tenth session, from 2026-10-14 16:20)
 
-**Eighth session.** The machine had rebooted: the test DB container (tmpfs) and the old
+**Tenth session (chat `qradar-dash-2c`).** Resumed at 16:20 from the block below. The ninth
+session's chat (`qradar-dash-19`) acknowledged the handover: it takes no git, PLANNER or agent
+actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
+- This session's scratchpad:
+  `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/a16a3a57-0bb1-488e-a4d5-dadbc9e16dfd/scratchpad/`.
+- `feat/phase-ce` (pushed at each merge). Merged this session: **T-084** (`befce47`, README WAF and
+  search-cadence status lines; three wording corrections by the orchestrator, noted in its report).
+- **Agents:** Codex out until **21:04** (limit hit at 16:39). **The user (~16:40): GLM 5.3 and 5.3
+  Flash may be used** (both probed OK); GLM takes backend and docs, not UI. Sonnet cleared.
+
+| Task | Agent | Where | Status |
+|---|---|---|---|
+| **UI-2.5** round 2 | Codex (`exec resume 01a13a83-…`) **hit its usage limit at 16:39 (reset 21:04)** after implementing the 10 items and their tests, mid break-it pass; **handed to a Sonnet sub-agent** (~16:45, "review what you inherit"; first check for a live break-it mutation) | `ui25`; Codex log `ui25-r2.log` in this session's scratchpad | Round 1 reviewed (diff and all 30 PNGs): structure right, test edits within the rules; **10 defects** sent back (`ui25-r2.prompt.md`): chart widgets half empty, donut label overflows its hole, severity ticks collide, ragged KPI card heights, line breaks, empty-state duplication and nested box, a sparkline rule in the empty state, two error styles, the anomaly breakdown vs total (345 vs 16), and **`active_only` ignored by `/anomalies`** (the KPI link from UI-2.2 was silently unfiltered) |
+| **T-082** round 2 | opencode `mimo-v2.6-flash-free` (pid 985495) | `t082`; log `t082-r2.log` | Round 1 reviewed: accurate on CORS, `NEXT_PUBLIC_*` build-time inlining, uvicorn 0.51.0 defaults; **one wrong claim sent back**: a host-side proxy reaching the published `127.0.0.1:8000` is *not* seen by uvicorn as `127.0.0.1` (the container is on bridge networks), so the default trust list ignores `X-Forwarded-For` and every client shares one rate-limit bucket |
+| **T-054** | Sonnet sub-agent of the ninth-session chat | old scratch `t054/` | running (baseline run 1 done 16:20); its report lands in `t054/T-054.report.md` |
+| **B-4** dashboard persistence: models, `0023`, API, RBAC, audit ([spec](tasks/B-4.md)) | Sonnet sub-agent, medium (from ~16:45) | `b4`; DB `qradar_obs_b4` | running. Merge **after** `main` (it adds migration `0023`) |
+| **T-085** IPS analyst read API: `/anomalies` third family, detail fallback, `/behavior/ips/...` ([spec](tasks/T-085.md)) | opencode `zai-coding-plan/glm-5.3`, `--standalone` (pid 976247, from 16:39) | `t085`; DB `qradar_obs_t085`; log `t085.log` | running |
+| **B-2.3** `GET /anomalies/histogram` ([spec](tasks/B-2.3.md)) | opencode `zai-coding-plan/glm-5.3-flash`, `--standalone` (pid 976248, from 16:39) | `b23`; DB `qradar_obs_b23`; log `b23.log` | running. Touches `anomalies.py` beside T-085: merge T-085 first, then add the IPS branch to the histogram (one branch) |
+| **T-083** `test_migrations.py` setup-ERROR diagnosis ([spec](tasks/T-083.md)) | a free model | DBs `qradar_obs_t083`, `qradar_obs_t083b` (created) | **queued until T-054 ends**: its load phase stresses the shared Postgres server that T-054's live pipeline uses |
+
+## ▶ Resume here (end of the ninth session, 2026-10-14 ~16:20; the user is moving to a new chat)
+
+The ninth session's log follows this section.
+
+**State:**
+- **`main` @ `8814a47`** (unchanged this session).
+- **`feat/phase-ce` @ `b4312b2`** (pushed). **Migration head `0022`.** Merged this session, each
+  after the orchestrator's diff review and its own gate re-run: B-1.2b, G-2, G-2b, UI-1.5, B-2.1,
+  UI-2.1, UI-2.2, UI-2.3, UI-2.4, T-051c, T-051d, T-052, T-055, T-055b, T-055c, T-080, plus the
+  T-081 live report. **Phase D (IPS) is code-complete**; only the live validation T-054 remains.
+  **Phase 2 (Home)** lacks only UI-2.5, the composition at `/`.
+- **The full backend gate on `a4fdbf6`** (`gate` worktree; everything after it is docs only):
+  ruff clean; mypy 31 errors in 18 files (baseline); **2,850 unit passed**; alembic `head`→`0014`→
+  `head` clean, `alembic check` no drift, single head `0022`; **full integration on a fresh
+  `qradar_obs_gate`: 1,044 passed** (9 min 41 s; log `scratchpad/gate-backend.log`). **The backend
+  gate is green.** Only commits after `a4fdbf6` that touch code need a re-check (so far: none; the
+  later commits are docs only).
+- Scratchpad of this session:
+  `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/1f0011eb-9918-4fba-a9e5-8fe15b30a127/scratchpad/`.
+
+**In flight at save. Check each first.**
+
+| Task | Agent | Where | How to collect |
+|---|---|---|---|
+| **UI-2.5** the Home at `/` ([spec](tasks/UI-2.5.md)): composition, one `WidgetFrame`, fix list (a)–(h) | **Codex** `exec` (pid 878464 at save), second hand after Sonnet hit its session limit | worktree `ui25`; capture ports 3125/8125 | Codex runs outside this chat and keeps going. Log `scratchpad/ui25-codex.log`, final message `scratchpad/ui25-codex.last.md`; grep the log for "hit your usage limit" (exit code lies). Then review the diff (no weakened test; the only allowed test edits are EPS strings changed by fix (f)), re-run the frontend gates, and **review the first screen at 1440×900, 1280×800, 1024×768 yourself** (the Phase 2 acceptance) |
+| **T-082** docs: production needs one origin for the browser's API reads (CORS is `[]` in production; the top bar and Home read from the browser; uvicorn proxy headers and the rate limiter) ([spec](tasks/T-082.md)) | opencode `mimo-v2.6-flash-free`, `--standalone` (pid 895584 at save) | worktree `t082` | Log `scratchpad/t082.log`; report `docs/tasks/T-082.report.md`. Check its uvicorn/Next.js citations and that no config value changed |
+| **T-054** IPS live validation ([spec](tasks/T-054.md)) | **Sonnet sub-agent of this chat** (from ~16:15): it **probably stopped with the chat** | main checkout, scratch `scratchpad/t054/`; DB `qradar_obs_t054` | Look in `scratchpad/t054/` for its scripts and partial report. **First confirm no generator process is left** (`ps aux | grep qradar_lab_loggen`; stop by PID only). Then hand to a new agent with the spec plus "review what you inherit" (Sonnet is cleared by the user for use; Codex needs `-c sandbox_workspace_write.network_access=true`) |
+
+**Next, in order:**
+1. Collect UI-2.5 and T-082 (above).
+2. After UI-2.5 merges, run the **frontend gate** (lint, typecheck, test, build) on the head. The
+   backend gate is already green on `a4fdbf6`; re-run the backend unit suite only if a commit after
+   it touched backend code. If green, **merge `feat/phase-ce` → `main`** and push.
+3. T-054 (above): each defect it finds becomes a fix task before IPS is called validated.
+4. Free-model task ready to write: diagnose the intermittent `tests/integration/test_migrations.py`
+   ERROR (seen twice under concurrent load; capture its text first). Run it only when no gate is
+   using the DB server.
+5. Small doc fix: README ~line 1016 says "UI, evidence and alert routing for WAF incidents are not
+   built"; check against the code (the WAF analyst UI T-060 and WAF alerting exist) and fix.
+6. Needs the user: **G-5** (the first production read-only geo window; until then a real country
+   key is unproven live, see T-081); the **ACTION custom property** on the lab console (the IPS
+   block-ratio scenario); Phase 3 (widget system, `react-grid-layout`) starts after `main`.
+7. Later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines on `/behavior`;
+   overlapping anomaly bands stack their alpha on `/behavior/sources/[id]`.
+
+**Agent availability at save:** Codex in use (reset was 15:54). GLM out until **20:53** (its 5-hour
+window was used up in ~40 minutes by two parallel sessions: give it one large task at a time).
+Sonnet: the user cleared it for use ("bu oturumda sonneti kullanabilirsin"). opencode free models:
+usable at any time (`mimo-v2.6-flash-free` and `nemotron-3-ultra-free` did well today; free models
+take no UI work). The user also reminded: use the free coding agents too.
+
+**Lessons this session:**
+- Every agent family hit a limit today (Codex, GLM, Sonnet). The handover pattern ("review what you
+  inherit" plus the original spec) worked each time: T-051c went Codex → GLM → Sonnet, and the third
+  hand found the second hand's failing test was wrong, not the engine.
+- Parallel UI tasks collided on a shared helper file (`lib/home/format.ts` add/add) and duplicated
+  the widget frame. Name shared helpers' owners in parallel UI specs.
+- A first KPI row passed its tests and failed the design bar (570 px cards). Always look at the
+  first screen yourself.
+- An agent ran `pkill -f next-server`: give every UI agent its own ports and the "PID only" rule.
+- Free models fix the first occurrence of a stale sentence and miss the rest: ask them to grep.
+
+---
+
+## Ninth session log (2026-10-14, 13:20–16:20)
+
+The user: "GLM can be used; Codex's session tokens ran out." Codex hit its usage limit in T-051c
+round 2 (reset **15:54**; back and in use from 16:04).
+
+**Agent limits today:** GLM out until **20:53**; Sonnet sub-agents hit a session limit at ~16:00
+(cutting off T-052 round 2 and UI-2.5), and **the user then cleared Sonnet for this session**
+(~16:15); Codex available from 15:54.
+
+**State:**
+- **`main` @ `8814a47`** (unchanged).
+- **`feat/phase-ce`** (pushed at each merge). **Migration head `0022`.** Merged this session, after
+  the orchestrator's diff review and its own re-run of the gates:
+  - **B-1.2b** (`b4d5017`): ruff clean; 2,766 unit; 58 targeted integration.
+  - **G-2** (`364a77e`): ruff clean; mypy 31; 2,844 unit; alembic `0021`↔`0022` clean, no drift,
+    head `0022`; 66 geo and migration integration; frontend typecheck and 496 tests. The
+    `catchall.test.ts` edit was accepted: it only makes room for `GEO_COLLECTION`. Two
+    fail-open answers in `GET /geo/countries` went to **G-2b**.
+  - **UI-1.5** (`558be59`), after round 2 (literals into tokens; the brand subtitle is visually
+    hidden at ≤1200 px and stays in the accessibility tree). Screenshots reviewed at the three
+    viewports; lint clean, 1,666/1,666 tests, build.
+  - **G-2b** (`3d1fc55`): `measurement`/`remainders` null on `NOT_COLLECTED`; expected buckets
+    over every enabled instance (the `_for_each_instance` predicate), still two statements.
+    Ruff clean; 55 geo integration.
+  - **B-2.1** (`94e3412`), after round 2 (**ruling:** the window end is floored to the step, so a
+    7 d step is one whole UTC hour and one baseline cell; no weighting across cells). Ruff clean;
+    mypy 31; 2,849 unit; 48 fleet integration; 3 statements at 3 and 40 sources.
+  - **UI-2.1** (`6a110c4`), after round 2 (a failed refresh keeps the last good data with
+    `refreshFailed`; `monitored_sources` required). Lint clean; 1,745 tests.
+  - **T-055** (`0c44271`): README entries, IPS [BUILT] markers, D-11 in UR.2.2/UR.2.8 (GLM
+    started, nemotron finished; defaults spot-checked against `config.py`). **Its README still
+    says the IPS engine is not built: update it after T-051d.**
+  - **T-051c** (`6f07f41`), third hand (Codex → GLM → Sonnet, the first two cut off by limits).
+    Sonnet found GLM's failing new-port test was wrong (it never set the 1-day history), fixed
+    per-source training that could teach one source from another's unjudged buckets, and fixed a
+    pipeline crash. Gates re-run by the orchestrator: ruff clean, mypy 31, 2,764 unit, 86 IPS
+    integration; on the merged tree 2,850 unit and 150 targeted integration (one run had a single
+    unexplained ERROR that a re-run did not reproduce, likely the `test_migrations.py` hypertable
+    flake G-2 reported: capture its text next time). The agent's full integration run: 930 passed.
+    The import conflict in `tasks.py` was resolved by the orchestrator (both imports kept).
+  - **UI-2.4** (`a3b7458`): top sources, recent anomalies, recent offenses, log-source health.
+    Screenshots reviewed at the three viewports (professional; no overflow; long names
+    ellipsised; null magnitude draws no bar); lint clean, 1,818 tests. **For UI-2.5 to fix:**
+    (a) UI-2.2's `KpiFrame` and UI-2.4's `WidgetParts` duplicate the widget states: unify them into
+    one `WidgetFrame`; (b) `recentOffensesRead` has no abort signal: add `homeReads.recentOffenses`;
+    (c) at 1024 the "· Insufficient data" separator wraps to the start of a line in Top sources;
+    (d) `tables.css` restates the scroll-edge cover with `32px`/`14px` literals: tokenize;
+    (e) the Silent/Exceeding links lack an active-only filter on `/anomalies`; (f) UI-2.4's agent
+    ran `pkill -f next-server` once (forbidden pattern; it may have stopped UI-2.2's server).
+  - **T-051d** (`2e3bc1d`): `rebuild_due(..., log_source_id=...)`, one call per source (constant
+    statements per call, pinned at 5 and 40 entities); each source trains through its own
+    evaluated end; a failed or never-evaluated source is skipped alone; no cross-instance rebuild.
+    Ruff clean, mypy 31, 2,850 unit, 74 IPS integration. The unscoped `rebuild_due` form is kept
+    but has no caller.
+  - **UI-2.2** (`2ff5ede`) after round 2: cards 137–221 px (one qualifier line, inline breakdowns,
+    definitions in `title`/accessible description). Screenshots reviewed. The merge had an add/add
+    conflict on `lib/home/format.ts` (UI-2.4's `formatEps`/`formatAgo` and UI-2.2's
+    `signedPercent`), resolved by the orchestrator by keeping both; 1,878 tests green ×3.
+  - **T-080** (`a7ce553`): the 500-property test pastes its query
+    (`{ delay: null }`) with a 15 s per-test budget and a comment; every assertion unchanged.
+  - **T-055b** (`e6dc89a` + `14e27a1`): README and Phase D markers say the engine is built; the
+    orchestrator corrected one wording (per-source training is the design's intent, not a
+    deviation).
+  - **UI-2.3** (`6b2d54c`): fleet EPS (gaps shaded, never connected; one dashed "sum of
+    per-source expected" line, no band), EPS by class (≤ 5 slices + an accessible list), severity
+    per hour ("at least" when truncated). Screenshots reviewed; 1,958 tests. Two points went to
+    UI-2.5: one EPS format; presets in the title row.
+  - **T-081** ([report](tasks/T-081.report.md)): the G-2 geo keyed search **runs live** in both
+    directions (accepted, ~1.1 s, 24 buckets, not truncated, the key-in-window check passed; 2 of 4
+    searches). The lab's events carry only private and RFC 5737 addresses, so every key was `{}`
+    (812,682 events `UNRESOLVED`): parsing a real country key, multi-country ordering and
+    truncation stay unproven live until G-5 (the first production read-only window, the user's
+    call). The lab Home map will honestly read `INSUFFICIENT_DATA`.
+  - **T-052** (`a4fdbf6`): IPS alerting behind `ips_alerting_enabled` (default false); one bulk
+    apply per bucket; fixed `ips_anomaly` fingerprint; maintenance respected; round 2 wired the
+    notification enqueuer through `IpsInstancePipeline` and `dispatch_ips_collection`. The agent's
+    full integration run (round 1): 1,042 passed. Round 2 was cut off by Sonnet's session limit
+    after the code and tests and before the report; the orchestrator re-ran the gates (ruff, mypy
+    31, 2,850 unit, 53 alerting/IPS/WAF integration) and wrote the round-2 report section.
+  - The worktrees, branches and DBs of every merged task were removed.
+  - Seen in review, for later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines in
+    the `/behavior` "Needs attention" table.
+- **Flaky test found:** `PropertyInput.test.tsx` "renders and filters 500 properties without a
+  cap" failed once in about ten full runs under load (pre-existing, T-058) → **T-080**.
+- **GLM hit its 5-hour limit at ~13:40** in both sessions (reset **20:53**). Codex is out until
+  **15:54**. The user (~13:55): "Codex will take a while; give it to GLM or Sonnet."
+
+**In flight (superseded by Resume here):**
+
+| Task | Agent | Worktree, DB | Log / how to collect |
+|---|---|---|---|
+| **UI-2.5** the Home at `/` ([spec](tasks/UI-2.5.md)): composition, one `WidgetFrame`, fix list (a)–(h) | **Codex** (16:04), second hand: Sonnet was cut off by its session limit with partial work and no report ("review what you inherit") | `ui25`; capture ports 3125/8125 | Log `scratchpad/ui25-codex.log`, final message `scratchpad/ui25-codex.last.md`; grep the log for "hit your usage limit". The acceptance screenshots for all of Phase 2: review the first screen at each viewport yourself |
+| **T-055c** docs: IPS alerting is built ([spec](tasks/T-055c.md)) | opencode `nemotron-3-ultra-free`, `--standalone` | `t055c` (no DB) | `scratchpad/t055d.log`; report `docs/tasks/T-055c.report.md` |
+| **T-054** IPS live validation ([spec](tasks/T-054.md)) | Sonnet sub-agent (~16:15), live, read-only, ≤ 250 Ariel searches, generator ≤ 5 EPS | main checkout, scratch only; DB `qradar_obs_t054` (kept) | `scratchpad/t054/T-054.report.md`. Check the baseline strategy first; every defect becomes a fix task |
+| **Full backend gate** on `feat/phase-ce` @ `a4fdbf6` | the orchestrator, `gate` worktree, fresh DBs `qradar_obs_gate`, `_gate_mig` | — | `scratchpad/gate-backend.log`: ruff, mypy, unit, alembic `head`→`0014`→`head`, check, heads, full integration |
+
+**Next:**
+1. Collect UI-2.5 (Codex), T-055c, the backend gate.
+2. Then the **frontend gate** (lint, typecheck, test, build) on the head with UI-2.5, and if both
+   gates are green, **merge `feat/phase-ce` → `main`**.
+3. Collect **T-054** (Sonnet); each defect it finds becomes a fix task before IPS is called
+   validated.
+4. Still open, needing the user: **G-5** (the first production read-only geo window); the
+   **ACTION custom property** on the lab console for the block-ratio scenario; Phase 3 (widget
+   system) starts after `main`.
+
+---
+
+## Eighth session's end state (2026-10-14 ~12:00; superseded by the section above)
+
+**State:**
+- **`main` @ `8814a47`.** It was merged after a green full gate on `9597930`:
+  - 2,598 unit + 895 integration passed;
+  - alembic `0014`↔`0020` clean;
+  - frontend 1,568/1,568 tests and build.
+- **`feat/phase-ce` @ `18a4e9d`** (pushed). **Migration head `0021`.** Merged since the gated
+  commit, so **not yet on `main`**:
+  - **T-051a**: pure IPS detectors;
+  - **T-051b**: IPS detection tables `0021`, the versioned baseline builder, and
+    `ips_anomaly_fingerprint`;
+  - **T-078** and **T-079**;
+  - **UI-1.1**: charcoal tokens and self-hosted Inter, with D-11;
+  - **UI-1.3 + UI-1.4**: the grouped text-only sidebar and restyled shared controls;
+  - **B-1.2**: `instance_last_health_check_at` on `/overview`;
+  - **B-1.3**: `GET /me` with `effective_permissions`;
+  - **B-2.2**: constant-cost `/behavior/sources` and `/anomalies/summary`, plus
+    `last_bucket_completeness`.
+  - The orchestrator reviewed each one and re-ran its gates; the UI tasks after a screenshot
+    review.
+- **The user approved the UI plan** ([`UI-REDESIGN-PLAN.md`](UI-REDESIGN-PLAN.md)) with **D-11**
+  (§4).
+
+**In flight at save. Check each worktree first.**
+
+Codex and opencode run as separate processes and keep going without this chat. The two **Sonnet**
+agents were Agent-tool sub-agents of this chat and may have stopped with it. If one stopped, its
+worktree holds partial work: hand it to a new agent with the original spec plus "review what you
+inherit".
+
+| Task | Agent | Worktree, DB | Log / how to collect |
+|---|---|---|---|
+| **T-051c** IPS engine, lifecycle, pipeline step, capability status ([spec](tasks/T-051c.md), **with Ruling 1**) | Codex, **resumed with Ruling 1** (session `01a1399f-80e3-77f3-ae89-ace62bfc533a`, pid 193245 at save) | `t051c`, DB `qradar_obs_t051c` | First run stopped correctly on a test conflict: `test_every_non_operational_detector_states_its_limitation` forbids a limitation on an operational detector. **Ruling 1:** the test stays; every scheduled IPS spec has `limitation=None`, and the block-ratio and signature conditions live in `activation`. Log `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/t051c-r1.log`, final message `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/t051c-r1.last.md`; grep for "hit your usage limit". Review: constant statements per (source, bucket) (`test_ips_scale.py`), evaluate-before-train, pinned capability edits as ruled |
+| **G-2** geo collection backend, migration `0022` ([spec](tasks/G-2.md)) | Sonnet: **finished, awaiting the orchestrator's review** | `g2`, DBs `qradar_obs_g2`, `_g2_mig` | Report `docs/tasks/G-2.report.md`: ruff clean; mypy 31; **2,844 unit** passed; alembic round trip to `0021` clean, no drift, head `0022`; **full integration 967 passed** (re-run); frontend 1,606 tests; 17 break-it checks. **Before accepting:** (1) it edited `frontend/src/app/fleet/catchall/catchall.test.ts`, outside the allowed list, because that test pinned `CATCHALL_SENDERS` as the last family. Accept only if the diff merely makes room for `GEO_COLLECTION` at the end (the pre-ruled "pins the full list" case); (2) the first full run had one setup ERROR in `test_migrations.py::test_timescale_extension_and_hypertables` that the re-run did not reproduce. Watch it in the gate; (3) `measurement=EXACT` is returned with status `NOT_COLLECTED`, so consider `null` there (a small follow-up); (4) uniqueness uses a stored generated column `slot = COALESCE(country_code, remainder_kind)` in the primary key: check it against the CHECKs; (5) the search cap is shared, with SOURCE first; (6) the DTOs and `GeoDirection` live in `app/geo/fold.py` because `dto.py` and `enums.py` were out of scope; (7) the AQL uses the 3-argument `GEO::LOOKUP(...,'country','iso_code')` form proven by T-077, with no live run yet, so a live smoke is due before calling the map accurate (UR.6.4 G-5) |
+| **UI-1.5** top bar (search, auto-refresh, bell, connection status) ([spec](tasks/UI-1.5.md)) | Sonnet: **finished, awaiting the orchestrator's review** | `ui15` (no DB) | Report `docs/tasks/UI-1.5.report.md`: lint, typecheck, **1,666/1,666** tests and build pass; `AppNav`/`shellFixes` unedited; 5 break-it checks; 84 PNGs listed in `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/ui15/pnglist.txt`, every capture without overflow. **Before accepting:** (1) review the PNGs yourself at 3 viewports; (2) **fix the §3a violation**: `globals.css` gained the dimension literals `64px`, `520px` and `44ch` outside `tokens.css`, so they move into tokens; (3) the brand and the top bar are a sticky `<header class="shell-head">` sibling above `.layout` (the agent's choice, so the bar does not scroll away): check the sidebar still paints full height; (4) at 1024 the search placeholder ends in an ellipsis; (5) a never-checked instance is forced neutral whatever its status (intended). **Open point, not this task's:** CORS allows only `localhost:3000` outside production and no origin in production, so browser reads need the app same-origin behind the proxy. Record it for deployment |
+| **B-1.2b** stamp the instance health check and set `UNREACHABLE` on failure ([spec](tasks/B-1.2b.md)) | opencode `mimo-v2.6-flash-free`: **finished, awaiting the orchestrator's review** | `b12b`, DB `qradar_obs_b12b` | Changed `inventory_sync.py` and `tests/integration/test_log_source_collection.py`; report `docs/tasks/B-1.2b.report.md`; log `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/b12b.log`. **Before accepting:** re-run the gates yourself (free-model reports have misstated counts twice); check the new import `inventory_sync → waf_pipeline` (`sanitized_error`) creates no cycle; check that a failed sync persists `UNREACHABLE` plus the timestamp while the watermark does not advance |
+
+**Next, in order:**
+1. Collect the four above: review the diffs, re-run the gates yourself, then merge. Remove each
+   merged worktree, branch and DB. Migration order: `0021` is merged; `0022` comes from G-2.
+2. **GLM is allowed only after 13:00 (the user).** Give it the docs:
+   - the README entries for C.2 (`outage_alert_default`, `catchall_*`), IPS (`ips_*`), geo
+     (`geo_*`) and `GET /me`;
+   - amend `UI-REDESIGN-PLAN.md` UR.2.2 and UR.2.8 to D-11 (`--text-3 #73757B`,
+     `--border-strong #35363A`);
+   - T-055, the IPS docs with the [BUILT] markers.
+3. Write and launch:
+   - **T-052**, IPS alerting behind `ips_alerting_enabled` (default false), after T-051c;
+   - **G-3/G-4**: G-2 already includes the API; the `map.geography` widget comes in Phase 3;
+   - **Phase 2 (Home)**, per UR.7: B-2.1 `GET /fleet/eps-series`, then UI-2.1 to UI-2.5.
+4. **A full gate on `feat/phase-ce` → `main`**, once this round is in: ruff, mypy 31, unit +
+   integration on a fresh DB, the alembic round trip, frontend lint, typecheck, test and build.
+5. Seen in review, to fix later:
+   - overlapping anomaly bands stack their alpha on `/behavior/sources/[id]` (UI-5.1);
+   - in full-page captures the sidebar looks cut at 768 px high: a capture artefact, since the
+     sidebar scrolls itself.
+
+**Lessons this session:**
+- The usage-limit watcher matched an old git log line ("cut off by its usage limit"). Watch
+  for "hit your usage limit" instead.
+- B-1.2's agent found that nothing writes `last_health_check_at` and that the instance status
+  stays `HEALTHY` when QRadar is down → B-1.2b.
+- Killing `opencode run` does not stop its session. The background `opencode serve` service
+  keeps executing it: a "stopped" GLM run started a second pytest on a DB the orchestrator was
+  testing. Stop a session with `opencode session export` then `opencode session delete <id>`.
+  Launch background agents with `opencode run --standalone`.
+- `big-pickle` failed once with "HTTP 400 {"model":"big-pickle"}" (provider-side); `mimo` took
+  over T-078.
+- nemotron's T-079 report claimed "287 passed" for the unit suite. The orchestrator's re-run
+  gave 2,597. Always re-run the gates yourself.
+
+---
+
+## Eighth session, morning log (10:48–11:50)
+
+The machine had rebooted: the test DB container (tmpfs) and the old
 scratchpad were gone. The container was restarted and the DBs recreated. The scratchpad is now
 `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/`.
-GLM credits are back (`zai-coding-plan/glm-5.3` answered a probe).
+GLM credits are back (`zai-coding-plan/glm-5.3` answered a probe). **The user: GLM only after
+13:00.** The GLM run on T-076 Part B was stopped; the orchestrator finished its gates.
 - **T-076 Part A was collected.** The diff was exactly the `down_revision` and the three tests. The
   orchestrator re-ran ruff and 22 migration and outage-policy integration tests, with a single head
   `0019`. Committed as `0e5bb8c`. `agent/t068` and then `agent/t070a` were merged into
@@ -344,6 +613,10 @@ Invisible in the lab while no WAF anomaly exists, but wrong on `main`.
 Every phase and task is scheduled against these three goals. When a piece of work serves none of
 them, question it before starting it.
 
+The "What exists" and "Gap" columns below are as of 2026-10-12 and are **not kept current** (for
+example, WAF incidents now have alerting, an analyst API and a UI). The current state is in
+"▶ Resume here" and the README roadmap.
+
 ### G1 — Log-source fleet monitoring
 
 The user's goal, in summary:
@@ -617,6 +890,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-8 | **Field mappings editable in the UI. Asked by the user on 2026-10-12:** custom-property names such as the WAF URI differ between environments, so they must be changeable from the UI; the same for IPS. **Design: [`FIELD-MAPPING.md`](FIELD-MAPPING.md).** <br>• The per-source WAF profile (mapping, versioning, validation, audit) already existed but was CLI-only. The design adds the admin API (§FM.4, the "separately reviewed admin API" of WAF design §27.2 rule 6; review in §FM.10), asynchronous validation with a never-stamp-a-stale-version rule (§FM.5, migration 0015), the QRadar property catalog filtered by the source's DSM type (§FM.6, T-041), environment prefill and copy-from (§FM.7), and the UI (§FM.8). <br>• **IPS:** Phase D is not built, so §FM.9 fixes the contract it inherits: normalized *or* custom field references, product presets for FTD and PAN THREAT, the same components. <br>• Orchestrator choices (the user may overrule): per-source profiles stay the unit (an environment is a set of sources); no bulk apply; a mapping change pauses collection until it validates (fail closed). | T-041–T-045; Phase D |
 | D-9 | ~~Outage alert default and new catch-all senders~~ **Resolved 2026-10-13 by the user:** outage (`NO_EVENTS`) alerts stay on for **every monitored source** by default (`ALERT`, today's behaviour); operators switch classes or sources to `RECORD_ONLY` (design §C.7). A new SIM Generic sender goes to a **review queue only**, no alert (`catchall_new_sender_alerts_enabled = false`, §C.8). | T-068, T-069 |
 | D-10 | ~~UI redesign: which overhaul items?~~ **Resolved 2026-10-13 (seventh session) by the user, asked by the orchestrator.** <br>• **Widget dashboard: the full system now.** It covers a widget catalog, drag and drop, resize, and multiple dashboards persisted per user in the DB: a new table, migration and API, plus `react-grid-layout`, the dependency the user explicitly allowed. <br>• **World map: add a new geo collection.** First validate the AQL `GEO::` functions on live QRadar. Then collect a country-level aggregate under the search cadence. No raw IPs are kept (AGENTS.md rule 3). <br>• **"Events by category" becomes "EPS by source class":** the top 4 classes plus "Other", from existing data. <br>• **Top bar: existing APIs only.** Search runs over existing lists (sources, anomalies, rules). "Live" becomes auto-refresh with the last-updated time. The bell shows the open-alert count and links to `/alerts`. | UI redesign (UI-R0 onward) |
+| D-11 | ~~UI plan questions (UR.10)~~ **Resolved 2026-10-14 by the user**, who also approved the plan ("Approved, start"). <br>• `/` becomes the widget Dashboard; `/behavior` stays as the behavioral triage page. <br>• Navigation is **text only**, with no icons. <br>• **Dark only**; no light mode. <br>• **Keep the palette's original values**: muted text `--text-3 = #73757B` and the input edge `--border-strong = #35363A`. The plan's contrast deviations (UR.2.2) are **not** applied, even though `#73757B` is below WCAG AA (3.70:1 on the panel). This is the user's explicit decision and overrides AGENTS.md §3a's §10 accessibility point for these two values only. <br>• **Orchestrator defaults** for the questions not asked: dashboards are built now, keyed on the principal's `subject`, and shared by `local-dev` until OIDC; `GET /me` is added (B-1.3); `/config-changes` is restyled, not removed. <br>• The plan's 17 collision rulings (UR.9) are accepted by the orchestrator, with C11 replaced by this decision. | UI-1.1 onward |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---

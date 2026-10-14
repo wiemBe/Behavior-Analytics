@@ -12,13 +12,16 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.collectors.log_source_collector import COLLECTOR_NAME, LogSourceCollector
-from app.models.enums import Criticality
+from app.models.enums import Criticality, InstanceStatus
+from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import (
     ProviderCapability,
+    ProviderError,
     ProviderUnavailableError,
     QRadarProvider,
 )
@@ -34,16 +37,29 @@ NOW = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
 class StubProvider(QRadarProvider):
     capabilities = frozenset({ProviderCapability.INVENTORY})
 
-    def __init__(self, sources: list[LogSourceDTO], *, fail: bool = False) -> None:
+    def __init__(
+        self,
+        sources: list[LogSourceDTO],
+        *,
+        fail: bool = False,
+        reachable: bool = True,
+        info_error: ProviderError | None = None,
+    ) -> None:
         self._sources = sources
         self._fail = fail
+        self._reachable = reachable
+        self._info_error = info_error
         self.calls = 0
 
     async def validate_connection(self) -> InstanceInfoDTO:
         return await self.get_instance_info()
 
     async def get_instance_info(self) -> InstanceInfoDTO:
-        return InstanceInfoDTO(version="7.6.0.0", build="b", reachable=True, raw_about={})
+        if self._info_error is not None:
+            raise self._info_error
+        return InstanceInfoDTO(
+            version="7.6.0.0", build="b", reachable=self._reachable, raw_about={}
+        )
 
     async def list_log_source_types(self) -> list[LogSourceTypeDTO]:
         return [LogSourceTypeDTO(type_id=7, name="Linux OS")]
@@ -273,3 +289,102 @@ class TestAdvisoryLock:
         report = await LogSourceCollector(db_session, StubProvider([dto(1)])).sync(instance)
         assert report.skipped_locked is False
         assert report.created == 1
+
+
+class TestInstanceHealthStamp:
+    """The top bar reports `instance.status` and `instance_last_health_check_at`.
+
+    Nothing used to write either on a failed check, so a console that went dark
+    kept reading HEALTHY with no evidence of when it was last seen — the
+    opposite of failing closed. A pass must stamp the time it checked, and a
+    check that never got an answer must replace the stale verdict rather than
+    leave it standing.
+    """
+
+    async def test_success_stamps_the_clock_and_clears_last_error(self, db_session) -> None:
+        instance = await make_instance(db_session)
+        instance.status = InstanceStatus.UNREACHABLE
+        instance.last_error = "ProviderUnavailableError: upstream down"
+        await db_session.flush()
+
+        collector = LogSourceCollector(db_session, StubProvider([dto(1)]), clock=lambda: NOW)
+        report = await collector.sync(instance)
+
+        assert report.partial_failure is False
+        assert instance.status == InstanceStatus.HEALTHY
+        assert instance.last_health_check_at == NOW
+        assert instance.last_error is None
+
+    async def test_an_unreachable_console_is_recorded_as_unreachable(self, db_session) -> None:
+        instance = await make_instance(db_session)
+
+        collector = LogSourceCollector(
+            db_session, StubProvider([dto(1)], reachable=False), clock=lambda: NOW
+        )
+        report = await collector.sync(instance)
+
+        assert report.partial_failure is False
+        assert instance.status == InstanceStatus.UNREACHABLE
+        assert instance.last_health_check_at == NOW
+        assert instance.last_error is None
+
+    async def test_a_failed_check_records_why_and_when_and_persists(self, db_session) -> None:
+        """The collector keeps its own failure handling; the instance must
+        still carry the reason, and it must survive the collector's commit."""
+        instance = await make_instance(db_session)
+        message = "connection refused" * 64
+        provider = StubProvider([], info_error=ProviderUnavailableError(message))
+
+        report = await LogSourceCollector(db_session, provider, clock=lambda: NOW).sync(instance)
+
+        assert report.partial_failure is True
+        assert instance.status == InstanceStatus.UNREACHABLE
+        assert instance.last_health_check_at == NOW
+        # Class plus message, truncated — the same rule as `sanitized_error`.
+        expected_error = f"ProviderUnavailableError: {message}"[:512]
+        assert instance.last_error == expected_error
+        assert len(instance.last_error) <= 512
+
+        # Already flushed by the collector's failure path, so it rides the same
+        # commit as the watermark update rather than waiting for one.
+        assert db_session.is_modified(instance) is False
+
+        # A failed pass is not an observation: the watermark stays where it was.
+        wm = await _watermark(db_session, instance)
+        assert wm.intervals_collected == 0
+        assert wm.watermark_at is None
+        assert wm.consecutive_failures == 1
+
+        # The collector flushes on the failure path, so the instance change
+        # commits with the watermark; a separate session must see both.
+        await db_session.commit()
+        maker = async_sessionmaker(db_session.bind, expire_on_commit=False)
+        async with maker() as fresh:
+            stored = await fresh.get(QRadarInstance, instance.id)
+            assert stored is not None
+            assert stored.status == InstanceStatus.UNREACHABLE
+            assert stored.last_health_check_at == NOW
+            assert stored.last_error == expected_error
+
+    async def test_a_later_success_restores_healthy_and_clears_last_error(
+        self, db_session
+    ) -> None:
+        instance = await make_instance(db_session)
+        failing = LogSourceCollector(
+            db_session,
+            StubProvider([], info_error=ProviderUnavailableError("upstream down")),
+            clock=lambda: NOW,
+        )
+        await failing.sync(instance)
+        assert instance.status == InstanceStatus.UNREACHABLE
+        assert instance.last_error is not None
+
+        recovered_at = datetime(2026, 7, 20, 12, 5, tzinfo=UTC)
+        report = await LogSourceCollector(
+            db_session, StubProvider([dto(1)]), clock=lambda: recovered_at
+        ).sync(instance)
+
+        assert report.partial_failure is False
+        assert instance.status == InstanceStatus.HEALTHY
+        assert instance.last_health_check_at == recovered_at
+        assert instance.last_error is None

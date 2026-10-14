@@ -154,6 +154,11 @@ class SourceBehaviorOut(BaseModel):
     baseline_sample_count: int = 0
     baseline_completeness: float = 0.0
     last_bucket_at: datetime | None = None
+    #: The completeness of the latest bucket (`COMPLETE`, `PARTIAL` or
+    #: `MISSING`), or None when no bucket exists. `observed_eps` comes from
+    #: this bucket, so a client must not rank or present a non-`COMPLETE`
+    #: value as a measurement.
+    last_bucket_completeness: str | None = None
     last_event_at: datetime | None = None
     open_anomaly_count: int = 0
 

@@ -25,6 +25,7 @@ function cls(over: Partial<FleetClassSummary> = {}): FleetClassSummary {
     expected_eps: 2,
     baseline_sources: 4,
     baseline_share: 1,
+    monitored_sources: 4,
     open_incidents: {},
     top_sources: [],
     ...over,

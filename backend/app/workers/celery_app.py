@@ -136,6 +136,18 @@ celery_app.conf.beat_schedule = {
         "task": "apply_catchall_retention",
         "schedule": float(settings.catchall_retention_interval_seconds),
     },
+    # --- D-10 ----------------------------------------------------------------
+    "collect-geo-countries": {
+        # Two read-only keyed Ariel searches per cadence tick (one per direction).
+        # Ticks every minute; the GEO_COLLECTION cadence gate decides whether a tick
+        # is due. A no-op while GEO_COLLECTION_ENABLED is false.
+        "task": "collect_geo_countries",
+        "schedule": 60.0,
+    },
+    "apply-geo-retention": {
+        "task": "apply_geo_retention",
+        "schedule": float(settings.geo_retention_interval_seconds),
+    },
     "apply-waf-retention": {
         "task": "apply_waf_retention",
         "schedule": float(settings.waf_retention_interval_seconds),

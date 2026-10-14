@@ -40,6 +40,7 @@ const UUID_RE =
 
 export interface AnomalyQuery {
   offset: number;
+  active_only: boolean;
   log_source_id: string;
   instance_id: string;
   anomaly_type: string;
@@ -108,6 +109,7 @@ export function parseAnomalyQuery(
 
   return {
     offset,
+    active_only: params.active_only === "true",
     log_source_id: uuid(params.log_source_id),
     instance_id: uuid(params.instance_id),
     anomaly_type: pick(params.anomaly_type, DETECTOR_TYPES),
@@ -125,6 +127,7 @@ export function paginationParams(
   q: AnomalyQuery,
 ): Record<string, string | undefined> {
   return {
+    active_only: q.active_only ? "true" : undefined,
     log_source_id: q.log_source_id || undefined,
     instance_id: q.instance_id || undefined,
     anomaly_type: q.anomaly_type || undefined,

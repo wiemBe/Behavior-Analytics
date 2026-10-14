@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import requires
+from app.api.deps import get_principal, requires
 from app.api.routes import (
     alerts,
     anomalies,
@@ -12,9 +12,11 @@ from app.api.routes import (
     classification_rules,
     coverage,
     fleet,
+    geo,
     health,
     ips,
     log_sources,
+    me,
     offenses,
     outage_policy,
     overview,
@@ -30,6 +32,7 @@ from app.security.rbac import (
     PERM_ANOMALY_READ,
     PERM_COVERAGE_READ,
     PERM_FLEET_READ,
+    PERM_GEO_READ,
     PERM_IPS_ADMIN,
     PERM_LOG_SOURCE_READ,
     PERM_OFFENSE_READ,
@@ -44,6 +47,9 @@ from app.security.rbac import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+# /me returns only the caller's own identity and grants; it requires
+# authentication but no additional permission.
+api_router.include_router(me.router, dependencies=[Depends(get_principal)])
 # Guarded at the router, like everything below. /health is the only open surface:
 # container probes carry no credentials. Handlers that mutate state keep their own
 # write-permission checks on top of the router's read requirement.
@@ -107,6 +113,8 @@ api_router.include_router(
 # Phase C.2b catch-all senders: read-guarded like /fleet; review writes check
 # `log_source:write` in the handler.
 api_router.include_router(catchall.router, dependencies=[Depends(requires(PERM_FLEET_READ))])
+# D-10 geography: aggregate events per country for the home map; `read:geo` (`read:*`).
+api_router.include_router(geo.router, dependencies=[Depends(requires(PERM_GEO_READ))])
 # The outage alert policy is administrative: it changes what pages a human, so
 # `admin:outage` guards every method, reads included; `read:*` does not satisfy it.
 api_router.include_router(

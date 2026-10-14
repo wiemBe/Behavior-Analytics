@@ -161,6 +161,6 @@ describe("cadence label", () => {
       name: "Catch-all senders",
       scope: "Senders feeding SIM Generic and the Universal DSMs",
     });
-    expect(Object.keys(FAMILY_INFO).at(-1)).toBe("CATCHALL_SENDERS");
+    expect(Object.keys(FAMILY_INFO).slice(-2)).toEqual(["CATCHALL_SENDERS", "GEO_COLLECTION"]);
   });
 });
