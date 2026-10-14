@@ -23,6 +23,25 @@ agent scratch go in `/home/efe/Documents/QRadar-Dash-work/<task>/`, which is per
 the repository.
 
 **Done:**
+- **`main` @ `8573bdf`** (pushed ~22:40): `feat/phase-ce` @ `ad0088a` merged. It brings T-085/B-2.3b,
+  T-087, T-089, T-090, UI-3.1/3.5a/3.2/3.3, B-4 (`0023`), T-091, and T-083/T-083b/T-092.
+  - Evidence: the full backend gate on `0ecfd7d` (ruff, mypy 31, 2,977 unit, alembic
+    `0023`→`0022`→`0023` with no drift and one head, 1,164 integration).
+  - Its one failure was a clock flake, fixed by T-092 (the proof failed the old code and passed
+    the new); the affected files re-ran 31/31, and `backend/app` is unchanged since `0ecfd7d`.
+  - Frontend on the merged head: 159 files / 2,297 tests, build OK.
+- **UI-3.3 merged** (`2cb7a61`; Codex hit its limit before writing, Sonnet built it). It adds the
+  per-widget range on five fleet widgets, the configure drawer and the expand dialog.
+  The orchestrator's gate: 159 files / 2,281 tests, build OK; PNGs reviewed.
+  Not done (UI-3.3b): expanded tables show no extra rows, and the three 4-column panels' headers
+  wrap to a second line.
+- **T-083b merged** (`01725a6`): one `reset_public_schema` for all 12 migration test files, plus a
+  guard test. Its "wait" step cannot be pinned without a flaky timing test (accepted).
+  **Lesson:** the spec's "widen the terminate to every database" break-it ran against the shared
+  test server. No harm was seen (T-054's tick1 ran cleanly), but **never spec a break-it that
+  acts across databases on the shared server.**
+- **T-092 merged** (`ad0088a`): `test_behavior_bulk_reads.py` reads the clock per test and waits
+  out an hour boundary.
 - **T-083 merged** (`fea4273`). The setup ERROR was proven to be a deadlock between the fixture's
   `DROP SCHEMA public CASCADE` and the TimescaleDB Telemetry Reporter. `clean_db` now terminates
   the other sessions on its own DB first: 4 errors in 55 runs before, 0 in 50 after. Re-verified
@@ -63,16 +82,18 @@ the repository.
 
 | Task | Agent | Where | Collect |
 |---|---|---|---|
-| **Full gate** on `0ecfd7d` | the orchestrator | `gate` worktree; DBs `qradar_obs_gate`, `_gate_mig` | **Done.** Ruff clean; mypy 31; unit 2,977; alembic `0023`→`0022`→`0023`, no drift, one head; frontend 153 files / 2,253 tests, build OK. Integration: **1,164 passed, 1 failed**: `test_behavior_bulk_reads.py::test_summary_counts_reliable_unreliable_and_missing_cells`. It passes alone (6/6). Cause: a module-level `NOW` set at collection, and the run crossed 19:00 UTC → **T-092**. Before `main`: T-092, then that file plus unit, then the frontend gate on the head (T-091 changed dependencies) |
-| **T-092** deflake across a UTC hour ([spec](tasks/T-092.md)) | opencode `big-pickle`, `--standalone`, pid 252013 | `t092`; DB `qradar_obs_t092` | `t092/agent.log`; `docs/tasks/T-092.report.md` in `t092` |
+| **UI-3.3b** expanded tables show more rows; 4-column title rows ([spec](tasks/UI-3.3b.md)) | Sonnet sub-agent of this chat (from ~22:30) | `ui33b` (own `node_modules`); ports 3134/8134/9134 | `docs/tasks/UI-3.3b.report.md` in `ui33b`; PNGs `ui33b/png/` |
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
 | **UI-3.3** ([spec](tasks/UI-3.3.md) + amendment) | Codex hit its usage limit at ~21:54 before writing a file (reset **02:17**). Now a **Sonnet sub-agent of this chat**, starting fresh | `ui33` (own `node_modules`); ports 3133/8133/9133 | `docs/tasks/UI-3.3.report.md` in `ui33`; PNGs `ui33/png/`; fixture `ui33/fixture/` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
-1. UI-3.3 (running), then UI-3.5b.
-2. T-083b; T-054, whose defects become fix tasks.
-3. T-092, then `feat/phase-ce` → `main` (the WAF fixes T-089 and T-090 are defects on `main`).
+1. UI-3.3b (running), then UI-3.5b (spec to write: the configurable widgets, `waf.endpoint_traffic`
+   and `chart.eps_observed_expected` source mode), then the Phase 3 screenshots for the user.
+2. T-054 (running; it settles the fan-out lead after its ~19:38Z tick). Each defect it confirms
+   becomes a fix task.
+3. Phase 4 UI (UI-4.1 dashboard API client and switcher, UI-4.2 save/restore/templates, UI-4.3 `/`
+   loads the user's default dashboard).
 
 **T-088 done** ([report](tasks/T-088.report.md), big-pickle): none of the 22 `npm audit` findings is
 reachable in this deployment.
