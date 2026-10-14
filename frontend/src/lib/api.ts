@@ -170,7 +170,8 @@ export type SearchFamily =
   | "WAF_COLLECTION"
   | "ANOMALY_EXPLANATION"
   | "RULE_MATCH"
-  | "IPS_COLLECTION";
+  | "IPS_COLLECTION"
+  | "CATCHALL_SENDERS";
 
 // Mirrors SearchCadenceLastRunOut. `searches_sent` is null for a family that
 // does not count its searches yet: that is "not counted", never zero.
@@ -1539,6 +1540,93 @@ export const fleetApi = {
     }),
   deleteRule: (id: string) =>
     fleetRequest<void>(`/classification-rules/${id}`, { method: "DELETE" }),
+};
+
+// --- catch-all senders (T-069 / T-070b) ------------------------------------
+// Mirrors backend/app/schemas/catchall.py. `events_24h` is a lower bound from the
+// stored top lists and null when no top list named the sender: unknown, not zero.
+// A bucket that was not measured has no row, so a gap in the list is a gap.
+export type CatchallReviewStatus = "NEW" | "REVIEWED" | "DISMISSED";
+export type CatchallMeasurement = "EXACT" | "LOWER_BOUND" | "FAILED" | "NOT_COLLECTED";
+
+export interface CatchallSender {
+  id: string;
+  catchall_log_source_id: string;
+  catchall_log_source_name: string;
+  identifier: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  events_24h: number | null;
+  active: boolean;
+  review_status: CatchallReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+}
+
+export interface CatchallSenderParams {
+  review_status?: CatchallReviewStatus;
+  catchall_log_source_id?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CatchallTopSender {
+  identifier: string;
+  events: number;
+}
+
+export interface CatchallBucket {
+  catchall_log_source_id: string;
+  bucket_start: string;
+  bucket_seconds: number;
+  events: number;
+  records: number;
+  distinct_senders: number;
+  distinct_senders_lower_bound: boolean;
+  measurement: CatchallMeasurement;
+  top_senders: CatchallTopSender[];
+  admitted: number;
+  below_admission_threshold: number;
+  rejected_over_quota: number;
+  untracked_senders: number;
+  untracked_events: number;
+  query_provenance: Record<string, unknown>;
+  collected_at: string;
+}
+
+export interface CatchallBucketList {
+  catchall_log_source_id: string;
+  since: string;
+  until: string;
+  items: CatchallBucket[];
+}
+
+export interface CatchallSource {
+  id: string;
+  name: string;
+  type_name: string | null;
+  latest_bucket_start: string | null;
+  new_sender_count: number;
+}
+
+export interface CatchallSourceList {
+  catchall_type_ids: number[];
+  items: CatchallSource[];
+}
+
+export const catchallApi = {
+  sources: () => fleetRequest<CatchallSourceList>("/fleet/catchall/sources"),
+  senders: (params: CatchallSenderParams = {}) =>
+    fleetRequest<Page<CatchallSender>>(`/fleet/catchall/senders${qs({ ...params })}`),
+  buckets: (sourceId: string, since: string, until: string) =>
+    fleetRequest<CatchallBucketList>(
+      `/fleet/catchall/buckets${qs({ catchall_log_source_id: sourceId, since, until })}`,
+    ),
+  review: (id: string) =>
+    fleetRequest<CatchallSender>(`/fleet/catchall/senders/${id}/review`, { method: "POST" }),
+  dismiss: (id: string) =>
+    fleetRequest<CatchallSender>(`/fleet/catchall/senders/${id}/dismiss`, { method: "POST" }),
 };
 
 // --- outage alert policy (T-070a) ------------------------------------------

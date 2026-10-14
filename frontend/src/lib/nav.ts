@@ -43,6 +43,7 @@ export const NAV: NavGroup[] = [
       // Resolved by longest match, like /behavior/sources: a path under
       // /fleet/sources belongs here, not to Fleet.
       { href: "/fleet/sources", label: "Fleet sources" },
+      { href: "/fleet/catchall", label: "Catch-all senders" },
       { href: "/offenses", label: "Offenses" },
       { href: "/rules", label: "Rules" },
       { href: "/rules/statistics", label: "Rule statistics" },
