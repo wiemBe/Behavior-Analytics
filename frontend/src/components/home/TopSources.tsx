@@ -1,6 +1,7 @@
 "use client";
 
-// Top log sources by EPS (UR.4.3): the five busiest sources of the last 24 h.
+// Top log sources by EPS (UR.4.3): the five busiest sources of the widget's range (24 h by
+// default).
 //
 // Everything is derived in `lib/home/topSources`; this draws it. Three things the
 // derivation knows are said in words rather than left to a glyph: an EPS that is
@@ -16,11 +17,10 @@ import { formatRatio, NOT_MEASURED, stateTone } from "@/lib/behavior";
 import { formatEpsValue } from "@/lib/fleet";
 import { deviationGapText, epsShares, topSources } from "@/lib/home/topSources";
 import { stateLabel } from "@/components/waf/wafLabels";
+import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
 
 import { secondary, WidgetFrame, WidgetLoading } from "./WidgetFrame";
 import { Unmeasured } from "./WidgetParts";
-
-const WINDOW = "24h";
 
 function EpsBar({ share }: { share: number | null }) {
   if (share === null) return null;
@@ -32,8 +32,10 @@ function EpsBar({ share }: { share: number | null }) {
   );
 }
 
-export function TopSources() {
-  const fleetRead = homeReads.fleetSummary(WINDOW);
+export function TopSources({ range }: RangedProps = {}) {
+  const window = useEffectiveRange(range);
+  const windowText = RANGE_TEXT[window];
+  const fleetRead = homeReads.fleetSummary(window);
   const behaviorRead = homeReads.sourceBehaviors();
   const fleet = useApiResource(fleetRead.key, fleetRead.fetch);
   const behaviors = useApiResource(behaviorRead.key, behaviorRead.fetch);
@@ -42,7 +44,7 @@ export function TopSources() {
     <WidgetFrame
       id="top-sources"
       title="Top log sources by EPS"
-      windowText="24 h"
+      windowText={windowText}
       link={{ href: "/behavior/sources", label: "View all" }}
       state={fleet}
       what="the fleet summary"
@@ -55,8 +57,8 @@ export function TopSources() {
           if (rows.length === 0) {
             return (
               <p className="tw-state">
-                No log source has a complete bucket in the last 24 h, so none can be ranked by
-                EPS.
+                No log source has a complete bucket in the last {windowText}, so none can be ranked
+                by EPS.
               </p>
             );
           }
@@ -117,7 +119,7 @@ export function TopSources() {
                           {r.epsIsLowerBound && r.eps !== null && (
                             <span
                               className="tw-sub"
-                              title="The class's 24 h window has missing or partial intervals, so this is a floor."
+                              title={`The class's ${windowText} window has missing or partial intervals, so this is a floor.`}
                             >
                               at least
                             </span>

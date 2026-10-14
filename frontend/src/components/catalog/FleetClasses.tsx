@@ -1,6 +1,6 @@
 "use client";
 
-// Source classes (UR.5.1): how does each class fare? Sources, mean EPS over 24 h and open
+// Source classes (UR.5.1): how does each class fare? Sources, mean EPS over the widget's range and open
 // silence incidents, one row per class that has sources. A class with no complete bucket has
 // no EPS (an em dash), and a class with no monitored source has no silence figure.
 
@@ -8,6 +8,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
 import { formatEpsValue } from "@/lib/fleet";
 import { partial } from "@/lib/home/qualifiers";
+import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
 import { WidgetFrame, WidgetQualifiers } from "@/components/home/WidgetFrame";
 import { Unmeasured } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -16,15 +17,16 @@ import { classRows } from "./derive";
 
 import "./catalog.css";
 
-export function FleetClasses() {
-  const read = homeReads.fleetSummary("24h");
+export function FleetClasses({ range }: RangedProps = {}) {
+  const window = useEffectiveRange(range);
+  const read = homeReads.fleetSummary(window);
   const state = useApiResource(read.key, read.fetch);
 
   return (
     <WidgetFrame
       id="fleet-classes"
       title="Source classes"
-      windowText="24 h"
+      windowText={RANGE_TEXT[window]}
       link={{ href: "/fleet", label: "Fleet" }}
       state={state}
       what="the fleet summary"

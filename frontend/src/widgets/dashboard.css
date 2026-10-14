@@ -172,13 +172,22 @@
   outline: var(--dash-resize-stroke) solid var(--focus);
   outline-offset: var(--dash-resize-stroke);
 }
+/* The panel hangs from the bottom edge of the title row, so it begins exactly where the body
+   begins and covers the body's first line instead of leaving its top edge showing. */
+.dg-edit .tw-head,
+.dg-edit .kpi-head {
+  position: relative;
+}
 .dg-arrange-panel {
   position: absolute;
-  top: var(--sp-8);
-  right: var(--sp-3);
+  top: 100%;
+  /* Reaches the card's edge, so a narrow card (a KPI at 1280 is about 230 px) gives the four
+     step buttons of a row the room their labels need. */
+  right: calc(var(--sp-4) * -1);
   z-index: var(--dash-z-arrange);
-  width: min(var(--dash-arrange-w), calc(100% - var(--sp-6)));
-  padding: var(--sp-3);
+  width: min(var(--dash-arrange-w), calc(100% + 2 * var(--sp-4)));
+  margin-top: var(--sp-1);
+  padding: var(--sp-2);
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
@@ -206,7 +215,7 @@
 }
 .dg-step {
   min-width: 0;
-  padding: var(--sp-1) var(--sp-2);
+  padding: var(--sp-1);
   color: var(--text);
   background: var(--surface-3);
   border: 1px solid var(--border);
@@ -221,9 +230,14 @@
   color: var(--text-3);
   cursor: not-allowed;
 }
-.dg-arrange-remove {
-  width: 100%;
+.dg-arrange-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--sp-1);
   margin-top: var(--sp-3);
+}
+.dg-arrange-remove {
   color: var(--danger);
 }
 
@@ -343,4 +357,184 @@ dialog.dg-catalog::backdrop {
 /* "Already on this dashboard" is neutral information, not a warning. */
 .dg-catalog-text .dg-catalog-reason.info {
   color: var(--text-3);
+}
+
+/* --- per-widget range, Expand, configure -------------------------------------- */
+
+.wr-presets {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--sp-1);
+}
+.wr-preset {
+  padding: var(--sp-1) var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.wr-preset:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.wr-preset[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+.wr-select-wrap {
+  display: flex;
+  flex: 0 0 auto;
+  /* The select is a little taller than the title's text: its margin box is not. */
+  margin-block: calc(var(--sp-1) * -1);
+}
+/* At KPI density the select must not make the title row taller than its text. */
+.wr-select {
+  width: var(--dash-select-w);
+  padding: 0 var(--sp-1);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+}
+/* A KPI card is two to three columns wide: its title, the select and the link share a row of
+   about 200 px at 1280, so the gaps are the small step. */
+.kpi-head:has(.wr-select-wrap) {
+  column-gap: var(--sp-2);
+}
+/* A panel narrower than the breakpoint swaps the presets for the select. It is a query, so the
+   width cannot be a token. */
+.wr-alt {
+  display: none;
+}
+@container tw (max-width: 28rem) {
+  .tw .wr-presets {
+    display: none;
+  }
+  .tw .wr-alt {
+    display: flex;
+  }
+}
+/* A panel's range, Expand and drill-down travel together: when they do not fit beside the
+   title they drop to the next line as one group, never one by one. */
+.tw-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-left: auto;
+  line-height: var(--lh-tight);
+}
+.tw-tools .tw-all,
+.tw-tools .tw-expand {
+  line-height: 1;
+}
+/* A title row that wraps costs its row gap once more; the small step keeps that line cheap. */
+.tw .tw-head {
+  row-gap: var(--sp-1);
+}
+/* Expand is an action, not a link: it is drawn like a preset so it does not read as part of
+   the drill-down link beside it. */
+.tw-expand {
+  flex: 0 0 auto;
+  padding: 0 var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.tw-expand:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.tw-expand:focus-visible,
+.wr-preset:focus-visible {
+  outline: var(--dash-resize-stroke) solid var(--focus);
+  outline-offset: var(--dash-resize-stroke);
+}
+
+/* The configure drawer is the catalog drawer with a form in it. */
+.dg-configure-body {
+  gap: var(--sp-4);
+}
+.dg-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.dg-field label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+}
+.dg-field select {
+  padding: var(--sp-2);
+  font-size: var(--fs-base);
+}
+.dg-configure-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+/* The expand dialog: the widget in a modal sized to the viewport. */
+dialog.dg-expand {
+  position: fixed;
+  inset: var(--dash-expand-inset);
+  width: calc(100vw - 2 * var(--dash-expand-inset));
+  max-width: var(--dash-expand-max-w);
+  height: calc(100vh - 2 * var(--dash-expand-inset));
+  max-height: calc(100vh - 2 * var(--dash-expand-inset));
+  margin: auto;
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+}
+dialog.dg-expand:not([open]) {
+  display: none;
+}
+dialog.dg-expand::backdrop {
+  background: var(--scrim);
+}
+.dg-expand-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+.dg-expand .dg-expand-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+.dg-expand-body {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.dg-expand-body > .tw {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+}
+.dg-expand-body > .tw > .tw-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+}
+.dg-expand-body > .tw > .tw-body-fill {
+  overflow: hidden;
 }

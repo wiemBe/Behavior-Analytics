@@ -16,6 +16,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { hasConfigure } from "./Configure";
 import {
   moveWidget,
   resizeWidget,
@@ -91,10 +92,27 @@ interface ArrangeProps {
   onMove: (direction: MoveDirection) => void;
   onResize: (direction: ResizeDirection) => void;
   onRemove: () => void;
+  /** Opens the configure drawer; null when the widget has nothing to configure. */
+  onConfigure: ((trigger: HTMLElement) => void) | null;
+  /** Opens the expand dialog; null when the widget is not expandable. */
+  onExpand: ((trigger: HTMLElement) => void) | null;
 }
 
-/** Compact on demand: the controls overlay the body instead of changing the widget's geometry. */
-function ArrangeControls({ title, widget, size, onMove, onResize, onRemove }: ArrangeProps) {
+/**
+ * Compact on demand: the controls overlay the body instead of changing the widget's geometry.
+ * The one Edit disclosure holds everything a widget offers in customize mode, so the title row
+ * keeps a single control: Move, Resize, then Configure, Expand and Remove.
+ */
+function ArrangeControls({
+  title,
+  widget,
+  size,
+  onMove,
+  onResize,
+  onRemove,
+  onConfigure,
+  onExpand,
+}: ArrangeProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const atMaxW = widget.w >= (size.maxW ?? GRID_COLUMNS) || widget.x + widget.w >= GRID_COLUMNS;
@@ -160,14 +178,36 @@ function ArrangeControls({ title, widget, size, onMove, onResize, onRemove }: Ar
               ))}
             </div>
           </fieldset>
-          <button
-            type="button"
-            className="dg-step dg-arrange-remove"
-            aria-label={`Remove ${title}`}
-            onClick={onRemove}
-          >
-            Remove widget
-          </button>
+          <div className="dg-arrange-actions">
+            {onConfigure ? (
+              <button
+                type="button"
+                className="dg-step"
+                aria-label={`Configure ${title}`}
+                onClick={(event) => onConfigure(event.currentTarget)}
+              >
+                Configure
+              </button>
+            ) : null}
+            {onExpand ? (
+              <button
+                type="button"
+                className="dg-step"
+                aria-label={`Expand ${title}`}
+                onClick={(event) => onExpand(event.currentTarget)}
+              >
+                Expand
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="dg-step dg-arrange-remove"
+              aria-label={`Remove ${title}`}
+              onClick={onRemove}
+            >
+              Remove widget
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
@@ -178,10 +218,19 @@ export interface EditGridProps {
   widgets: readonly LayoutWidget[];
   onChange: (widgets: LayoutWidget[]) => void;
   onRemove: (id: string) => void;
+  onConfigure?: (id: string, trigger: HTMLElement) => void;
+  onExpand?: (id: string, trigger: HTMLElement) => void;
   renderWidget: (widget: LayoutWidget, arrange: ReactNode) => ReactNode;
 }
 
-export function EditGrid({ widgets, onChange, onRemove, renderWidget }: EditGridProps) {
+export function EditGrid({
+  widgets,
+  onChange,
+  onRemove,
+  onConfigure,
+  onExpand,
+  renderWidget,
+}: EditGridProps) {
   const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
   const [metrics, setMetrics] = useState<GridMetrics | null>(null);
 
@@ -240,6 +289,16 @@ export function EditGrid({ widgets, onChange, onRemove, renderWidget }: EditGrid
                   onChange(resizeWidget(widgets, widget.id, direction, size))
                 }
                 onRemove={() => onRemove(widget.id)}
+                onConfigure={
+                  onConfigure && def?.status === "live" && hasConfigure(def)
+                    ? (trigger) => onConfigure(widget.id, trigger)
+                    : null
+                }
+                onExpand={
+                  onExpand && def?.status === "live" && def.expandable
+                    ? (trigger) => onExpand(widget.id, trigger)
+                    : null
+                }
               />
             );
             return (

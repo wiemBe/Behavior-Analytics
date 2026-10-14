@@ -10,7 +10,13 @@ import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 
 import { placeholderFor } from "./Placeholder";
-import type { AnyWidgetDef, WidgetCategory, WidgetProps, WidgetSize } from "./types";
+import type {
+  AnyWidgetDef,
+  WidgetCategory,
+  WidgetProps,
+  WidgetRange,
+  WidgetSize,
+} from "./types";
 
 type NoConfig = Record<string, never>;
 
@@ -18,7 +24,7 @@ type NoConfig = Record<string, never>;
 function load(
   title: string,
   kpi: boolean,
-  loader: () => Promise<ComponentType>,
+  loader: () => Promise<ComponentType<any>>,
 ): ComponentType<WidgetProps<NoConfig>> {
   return dynamic(loader, {
     ssr: false,
@@ -35,15 +41,22 @@ interface LiveInput {
   sources: string[];
   size: WidgetSize;
   drillDown: string;
-  loader: () => Promise<ComponentType>;
+  /** The presets the widget's reads take as a window; absent when they take none. */
+  range?: WidgetRange[];
+  loader: () => Promise<ComponentType<any>>;
 }
 
+/** Windows `/fleet/summary` and `/fleet/eps-series` accept (`FleetWindow`). */
+const FLEET_RANGES: WidgetRange[] = ["1h", "24h", "7d"];
+
 function live(input: LiveInput): AnyWidgetDef {
-  const { drillDown, loader, ...def } = input;
+  const { drillDown, loader, range, ...def } = input;
   return {
     ...def,
     status: "live",
-    range: null,
+    range: range ?? null,
+    // Charts and tables open larger; KPI and health cards have nothing more to show.
+    expandable: def.category === "Chart" || def.category === "Table",
     config: {},
     defaultConfig: {},
     drillDown: () => drillDown,
@@ -62,6 +75,7 @@ function blocked(
     sources: [],
     status: "blocked",
     range: null,
+    expandable: false,
     config: {},
     defaultConfig: {},
     drillDown: () => null,
@@ -82,11 +96,12 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "kpi.total_eps",
     title: "Total EPS",
-    description: "Fleet events per second over 24 h, against the baselines that exist.",
+    description: "Fleet events per second over the chosen range, against the baselines that exist.",
     category: "KPI",
     requires: ["read:fleet"],
     sources: ["/fleet/summary", "/fleet/eps-series"],
     size: KPI,
+    range: FLEET_RANGES,
     drillDown: "/fleet",
     loader: () => import("@/components/home/KpiTotalEps").then((m) => m.KpiTotalEps),
   }),
@@ -131,28 +146,31 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     requires: ["read:fleet"],
     sources: ["/fleet/eps-series"],
     size: WIDE,
+    range: FLEET_RANGES,
     drillDown: "/fleet",
     loader: () => import("@/components/home/EpsChart").then((m) => m.EpsChart),
   }),
   live({
     type: "chart.eps_by_class",
     title: "EPS by source class",
-    description: "Mean EPS of each source class over 24 h, with its share of the fleet.",
+    description: "Mean EPS of each source class over the chosen range, with its share of the fleet.",
     category: "Chart",
     requires: ["read:fleet"],
     sources: ["/fleet/summary"],
     size: THIRD,
+    range: FLEET_RANGES,
     drillDown: "/fleet",
     loader: () => import("@/components/home/EpsByClass").then((m) => m.EpsByClass),
   }),
   live({
     type: "table.top_sources",
     title: "Top log sources by EPS",
-    description: "The five busiest sources over 24 h with their deviation from expected.",
+    description: "The five busiest sources over the chosen range with their deviation from expected.",
     category: "Table",
     requires: ["read:fleet", "read:anomalies"],
     sources: ["/fleet/summary", "/behavior/sources"],
     size: PANEL,
+    range: FLEET_RANGES,
     drillDown: "/behavior/sources",
     loader: () => import("@/components/home/TopSources").then((m) => m.TopSources),
   }),
@@ -247,11 +265,12 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
   live({
     type: "table.fleet_classes",
     title: "Source classes",
-    description: "Sources, mean EPS over 24 h and open silence per source class.",
+    description: "Sources, mean EPS over the chosen range and open silence per source class.",
     category: "Table",
     requires: ["read:fleet"],
     sources: ["/fleet/summary"],
     size: { w: 6, h: 12, minW: 4, minH: 9 },
+    range: FLEET_RANGES,
     drillDown: "/fleet",
     loader: () => import("@/components/catalog/FleetClasses").then((m) => m.FleetClasses),
   }),

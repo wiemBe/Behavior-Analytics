@@ -26,6 +26,8 @@ import { formatClockUtc } from "@/components/shell/AutoRefresh";
 import type { ResourceState } from "@/hooks/useApiResource";
 import { formatClock } from "@/lib/fieldMapping";
 import type { Qualifier } from "@/lib/home/qualifiers";
+import { RangeControl } from "@/widgets/RangeControl";
+import { effectiveRange, WidgetRuntimeContext } from "@/widgets/runtime";
 import type { WidgetState } from "@/widgets/types";
 
 import "./kpi.css";
@@ -340,11 +342,15 @@ export function WidgetFrame<T>({
   children,
 }: WidgetFrameProps<T>) {
   const kpi = variant === "kpi";
-  const headingId = `${id}-title`;
-  const descId = `${id}-desc`;
+  const edit = useContext(WidgetEditContext);
+  const runtime = useContext(WidgetRuntimeContext);
+  const expanded = runtime?.expanded ?? false;
+  // The expand dialog holds a second copy of the widget: its ids must not repeat the first's.
+  const frameId = expanded ? `${id}-expanded` : id;
+  const headingId = `${frameId}-title`;
+  const descId = `${frameId}-desc`;
   let body: ReactNode;
 
-  const edit = useContext(WidgetEditContext);
   const shown = normalize(state, permission);
 
   switch (shown.kind) {
@@ -396,30 +402,61 @@ export function WidgetFrame<T>({
   }
 
   const Root = kpi ? "article" : "section";
+  // Customize mode keeps one control in the title row (Edit); range, Expand and Configure live
+  // in its panel. In the expand dialog the dialog's own header carries the title and the range.
+  const showRange = !edit && !expanded && runtime?.rangeOptions;
+  const showExpand = !edit && !expanded && runtime?.onExpand;
+  const tools = (
+    <>
+      {showRange && runtime.rangeOptions ? (
+        <RangeControl
+          options={runtime.rangeOptions}
+          value={effectiveRange(runtime.override, runtime.dashboardRange)}
+          onChange={runtime.setRange}
+          compact={kpi}
+          title={title}
+        />
+      ) : null}
+      {showExpand && runtime.onExpand ? (
+        <button
+          type="button"
+          className="tw-expand"
+          aria-label={`Expand ${title}`}
+          onClick={(event) => runtime.onExpand?.(event.currentTarget)}
+        >
+          Expand
+        </button>
+      ) : null}
+      {edit?.arrange}
+      {!edit ? (
+        <Link
+          className={kpi ? "kpi-link" : "tw-all"}
+          href={link.href}
+          aria-label={link.ariaLabel}
+        >
+          {link.label}
+        </Link>
+      ) : null}
+    </>
+  );
   return (
     <Root
-      className={kpi ? "kpi" : "tw"}
-      aria-labelledby={headingId}
+      className={`${kpi ? "kpi" : "tw"}${expanded ? " tw-expanded" : ""}`}
+      aria-labelledby={expanded ? undefined : headingId}
+      aria-label={expanded ? title : undefined}
       aria-describedby={description ? descId : undefined}
     >
-      <header className={`${kpi ? "kpi-head" : "tw-head"}${edit ? " dg-drag-handle" : ""}`}>
-        <h2 className={kpi ? "kpi-title" : "tw-title"} id={headingId}>
-          {title}
-          {windowText && <span className="tw-window">{windowText}</span>}
-        </h2>
-        {badge && <span className="pill">{badge}</span>}
-        {controls}
-        {edit?.arrange}
-        {!edit ? (
-          <Link
-            className={kpi ? "kpi-link" : "tw-all"}
-            href={link.href}
-            aria-label={link.ariaLabel}
-          >
-            {link.label}
-          </Link>
-        ) : null}
-      </header>
+      {expanded ? null : (
+        <header className={`${kpi ? "kpi-head" : "tw-head"}${edit ? " dg-drag-handle" : ""}`}>
+          <h2 className={kpi ? "kpi-title" : "tw-title"} id={headingId}>
+            {title}
+            {windowText && <span className="tw-window">{windowText}</span>}
+          </h2>
+          {badge && <span className="pill">{badge}</span>}
+          {controls}
+          {kpi ? tools : <div className="tw-tools">{tools}</div>}
+        </header>
+      )}
       {description ? (
         <p className="sr-only" id={descId}>
           {description}

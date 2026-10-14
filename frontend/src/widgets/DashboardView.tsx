@@ -7,8 +7,10 @@
 // box; it is never clipped. Below 12 columns rows grow with their content, because that view
 // is read-only and its widgets are narrower than their boxes were sized for.
 //
-// Customize mode (UR.5.3) works on a copy in memory: Add from the catalog, Remove. Nothing is
-// saved. Editing is offered only at 12 columns.
+// Customize mode (UR.5.3) works on a copy in memory: Add from the catalog, Remove, arrange,
+// and configure (the range and the widget's enumerated config). Nothing is saved. Editing is
+// offered only at 12 columns. A widget's range override, the Expand dialog and the Configure
+// drawer are owned here, so the layout in memory is the one source of each.
 
 import dynamic from "next/dynamic";
 import {
@@ -26,6 +28,8 @@ import {
 import { WidgetEditContext } from "@/components/home/WidgetFrame";
 
 import { Catalog, MAX_WIDGETS } from "./Catalog";
+import { ConfigureDrawer, type ConfigChoice } from "./Configure";
+import { ExpandDialog } from "./Expand";
 import {
   columnsForWidth,
   compactLayout,
@@ -35,7 +39,8 @@ import {
   type GridColumns,
 } from "./layout";
 import { widgetDef } from "./registry";
-import type { AnyWidgetDef, DashboardLayout, LayoutWidget } from "./types";
+import { effectiveRange, WidgetRuntimeContext, type WidgetRuntime } from "./runtime";
+import type { AnyWidgetDef, DashboardLayout, LayoutWidget, WidgetRange } from "./types";
 
 import "@/components/home/kpi.css";
 import "@/components/home/tables.css";
@@ -108,12 +113,21 @@ function NoticeFrame({ id, title, text }: { id: string; title: string; text: str
 
 function PlacedWidget({
   widget,
+  dashboardRange,
   onRemove,
   arrange,
+  onRange,
+  onExpand,
+  expanded = false,
 }: {
   widget: LayoutWidget;
+  dashboardRange: WidgetRange;
   onRemove: (() => void) | null;
   arrange?: ReactNode;
+  onRange: (range: WidgetRange) => void;
+  /** Opens the expand dialog; null where Expand is not offered from the frame. */
+  onExpand: ((trigger: HTMLElement) => void) | null;
+  expanded?: boolean;
 }) {
   const def = widgetDef(widget.type);
   let content: ReactNode;
@@ -135,7 +149,24 @@ function PlacedWidget({
     );
   } else {
     const Component = def.Component;
-    content = <Component id={widget.id} config={widget.config} range={widget.range} />;
+    const runtime: WidgetRuntime = {
+      rangeOptions: def.range,
+      override: widget.range,
+      dashboardRange,
+      setRange: onRange,
+      onExpand: def.expandable ? onExpand : null,
+      expanded,
+    };
+    content = (
+      <WidgetRuntimeContext.Provider value={runtime}>
+        <Component
+          id={widget.id}
+          config={widget.config}
+          range={widget.range}
+          expanded={expanded}
+        />
+      </WidgetRuntimeContext.Provider>
+    );
   }
   return onRemove ? (
     <WidgetEditContext.Provider value={{ onRemove, arrange }}>{content}</WidgetEditContext.Provider>
@@ -156,6 +187,10 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
   const [customizing, setCustomizing] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [configureId, setConfigureId] = useState<string | null>(null);
+  // The control that opened the expand dialog or the drawer: focus returns to it on close.
+  const trigger = useRef<HTMLElement | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
@@ -163,6 +198,10 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
   const editable = cols === 12;
   const editing = customizing && editable;
   const placed = deriveLayout(layout.widgets, cols);
+  const expanded = layout.widgets.find((w) => w.id === expandedId) ?? null;
+  const expandedDef = expanded ? widgetDef(expanded.type) : undefined;
+  const configuring = layout.widgets.find((w) => w.id === configureId) ?? null;
+  const configureDef = configuring ? widgetDef(configuring.type) : undefined;
 
   // Focus returns to the trigger once the catalog has closed.
   useEffect(() => {
@@ -177,6 +216,38 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
     }));
     setNotice("Widget removed.");
   }, []);
+
+  const setRange = useCallback((id: string, range: WidgetRange | null) => {
+    setLayout((l) => ({
+      ...l,
+      widgets: l.widgets.map((widget) => (widget.id === id ? { ...widget, range } : widget)),
+    }));
+  }, []);
+
+  const apply = (id: string, choice: ConfigChoice) => {
+    setLayout((l) => ({
+      ...l,
+      widgets: l.widgets.map((widget) =>
+        widget.id === id ? { ...widget, range: choice.range, config: choice.config } : widget,
+      ),
+    }));
+    setNotice("Widget configuration applied.");
+    closeOverlay(setConfigureId);
+  };
+
+  const openOverlay = (set: (id: string | null) => void, id: string, from: HTMLElement) => {
+    trigger.current = from;
+    set(id);
+  };
+
+  /** Closes the expand dialog or the drawer, then returns focus to what opened it. */
+  function closeOverlay(set: (id: string | null) => void) {
+    set(null);
+    const from = trigger.current;
+    trigger.current = null;
+    // After the dialog has unmounted, so the browser's own focus restoration cannot win.
+    queueMicrotask(() => from?.focus());
+  }
 
   const add = (def: AnyWidgetDef) => {
     if (def.status !== "live" || layout.widgets.length >= MAX_WIDGETS) return;
@@ -249,11 +320,16 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
             widgets={layout.widgets}
             onChange={(widgets) => setLayout((current) => ({ ...current, widgets }))}
             onRemove={remove}
+            onConfigure={(id, from) => openOverlay(setConfigureId, id, from)}
+            onExpand={(id, from) => openOverlay(setExpandedId, id, from)}
             renderWidget={(widget, arrange) => (
               <PlacedWidget
                 widget={widget}
+                dashboardRange={layout.range}
                 arrange={arrange}
                 onRemove={() => remove(widget.id)}
+                onRange={(range) => setRange(widget.id, range)}
+                onExpand={null}
               />
             )}
           />
@@ -270,12 +346,45 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
                 data-h={widget.h}
                 style={cell(widget)}
               >
-                <PlacedWidget widget={widget} onRemove={null} />
+                <PlacedWidget
+                  widget={widget}
+                  dashboardRange={layout.range}
+                  onRemove={null}
+                  onRange={(range) => setRange(widget.id, range)}
+                  onExpand={(from) => openOverlay(setExpandedId, widget.id, from)}
+                />
               </div>
             ))}
           </div>
         )}
       </div>
+      {expanded && expandedDef ? (
+        <ExpandDialog
+          title={expandedDef.title}
+          range={effectiveRange(expanded.range, layout.range)}
+          rangeOptions={expandedDef.range}
+          onRange={(range) => setRange(expanded.id, range)}
+          onClose={() => closeOverlay(setExpandedId)}
+        >
+          <PlacedWidget
+            widget={expanded}
+            dashboardRange={layout.range}
+            onRemove={null}
+            onRange={(range) => setRange(expanded.id, range)}
+            onExpand={null}
+            expanded
+          />
+        </ExpandDialog>
+      ) : null}
+      {configuring && configureDef ? (
+        <ConfigureDrawer
+          def={configureDef}
+          widget={configuring}
+          dashboardRange={layout.range}
+          onApply={(choice) => apply(configuring.id, choice)}
+          onClose={() => closeOverlay(setConfigureId)}
+        />
+      ) : null}
       {catalogOpen ? (
         <Catalog
           placedTypes={new Set(layout.widgets.map((w) => w.type))}
