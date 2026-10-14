@@ -11,7 +11,10 @@ If this file disagrees with the code, the code wins. Fix the file.
 ## ▶ Resume here (ninth session, 2026-10-14, from 13:20)
 
 **Start a new chat here.** The user: "GLM can be used; Codex's session tokens ran out." Codex hit
-its usage limit in T-051c round 2 (reset **15:54**).
+its usage limit in T-051c round 2 (reset **15:54**; back and in use from 16:04).
+
+**Agent limits today:** GLM out until **20:53**; **Sonnet sub-agents out until 18:10** (session
+limit hit at ~16:00, cutting off T-052 round 2 and UI-2.5); Codex available from 15:54.
 
 **State:**
 - **`main` @ `8814a47`** (unchanged).
@@ -77,6 +80,12 @@ its usage limit in T-051c round 2 (reset **15:54**).
     (812,682 events `UNRESOLVED`): parsing a real country key, multi-country ordering and
     truncation stay unproven live until G-5 (the first production read-only window, the user's
     call). The lab Home map will honestly read `INSUFFICIENT_DATA`.
+  - **T-052** (`a4fdbf6`): IPS alerting behind `ips_alerting_enabled` (default false); one bulk
+    apply per bucket; fixed `ips_anomaly` fingerprint; maintenance respected; round 2 wired the
+    notification enqueuer through `IpsInstancePipeline` and `dispatch_ips_collection`. The agent's
+    full integration run (round 1): 1,042 passed. Round 2 was cut off by Sonnet's session limit
+    after the code and tests and before the report; the orchestrator re-ran the gates (ruff, mypy
+    31, 2,850 unit, 53 alerting/IPS/WAF integration) and wrote the round-2 report section.
   - The worktrees, branches and DBs of every merged task were removed.
   - Seen in review, for later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines in
     the `/behavior` "Needs attention" table.
@@ -89,16 +98,16 @@ its usage limit in T-051c round 2 (reset **15:54**).
 
 | Task | Agent | Worktree, DB | Log / how to collect |
 |---|---|---|---|
-| **T-052** IPS alerting behind `ips_alerting_enabled` (default false) ([spec](tasks/T-052.md)) | Sonnet sub-agent (launched 14:30 instead of waiting for Codex, at the user's word) | `t052`, DB `qradar_obs_t052` | Report `docs/tasks/T-052.report.md`. Check: no alert row and no extra statement with the setting off; one bulk apply per bucket; fixed fingerprint; maintenance; the full integration run |
-| **T-052** round 2: wire the notification enqueuer through `IpsInstancePipeline` and `dispatch_ips_collection` | same Sonnet sub-agent | `t052`, DB `qradar_obs_t052` | Rulings given: 3 statements per new alert is accepted (shared `apply_bulk`, as WAF); a maintenance bucket not resolving alerts is accepted (existing IPS behaviour) |
-| **UI-2.5** the Home at `/` ([spec](tasks/UI-2.5.md)): composition, one `WidgetFrame`, fix list (a)–(h) | Sonnet sub-agent (15:00) | `ui25`; capture ports 3125/8125 | The acceptance screenshots for all of Phase 2: review the first screen at each viewport yourself |
+| **UI-2.5** the Home at `/` ([spec](tasks/UI-2.5.md)): composition, one `WidgetFrame`, fix list (a)–(h) | **Codex** (16:04), second hand: Sonnet was cut off by its session limit with partial work and no report ("review what you inherit") | `ui25`; capture ports 3125/8125 | Log `scratchpad/ui25-codex.log`, final message `scratchpad/ui25-codex.last.md`; grep the log for "hit your usage limit". The acceptance screenshots for all of Phase 2: review the first screen at each viewport yourself |
+| **T-055c** docs: IPS alerting is built ([spec](tasks/T-055c.md)) | opencode `nemotron-3-ultra-free`, `--standalone` | `t055c` (no DB) | `scratchpad/t055d.log`; report `docs/tasks/T-055c.report.md` |
+| **Full backend gate** on `feat/phase-ce` @ `a4fdbf6` | the orchestrator, `gate` worktree, fresh DBs `qradar_obs_gate`, `_gate_mig` | — | `scratchpad/gate-backend.log`: ruff, mypy, unit, alembic `head`→`0014`→`head`, check, heads, full integration |
 
 **Next:**
-1. Collect T-052 round 2, UI-2.5, T-081.
-2. **Codex is back at 15:54.** Candidate: T-054 IPS live validation (§D.12), which needs a
-   validation DB, a trained baseline (or a documented shortened lookback) and the lab generator.
-   It needs network access (`-c sandbox_workspace_write.network_access=true`). Write its spec first.
-3. The full gate on `feat/phase-ce` → `main`.
+1. Collect UI-2.5 (Codex), T-055c, the backend gate.
+2. Then the **frontend gate** (lint, typecheck, test, build) on the head with UI-2.5, and if both
+   gates are green, **merge `feat/phase-ce` → `main`**.
+3. **T-054** IPS live validation ([spec](tasks/T-054.md), written): the next large piece, for Codex
+   after UI-2.5 (with `-c sandbox_workspace_write.network_access=true`) or Sonnet after 18:10.
 
 ---
 
