@@ -22,9 +22,10 @@ and it operates strictly **read-only** against QRadar.
 > runs — and **resilient at scale** (Phase B.1.5): raw-path floods degrade to explicit lower bounds
 > instead of blinding a source, endpoint storage is sparse, a scheduled run costs a constant number
 > of SQL statements, and WAF Ariel concurrency is globally capped. Collection stays off unless
-> enabled per source; WAF incidents have no analyst API or UI yet, and production WAF onboarding is
-> unvalidated. **Phase B.2** then adds five behavioural detectors — block, 5xx and 4xx ratios,
-> source-IP concentration and new-endpoint access — over opt-in per-endpoint breakdowns, each
+> enabled per source; WAF incidents have an analyst API and UI (`/behavior/waf`), and production
+> WAF onboarding is unvalidated. **Phase B.2** then adds five behavioural detectors — block, 5xx and
+> 4xx ratios, source-IP concentration and new-endpoint access — over opt-in per-endpoint
+> breakdowns, each
 > failing closed to `INSUFFICIENT_DATA` and each stating the exact claim it makes; a default-off
 > shadow-mode switch lets WAF incidents raise alerts. See
 > [Roadmap](#roadmap), [the Phase A design](docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md),
@@ -1002,7 +1003,7 @@ lints and updates this README.
   explicit anomaly lifecycle, bounded Ariel contributor evidence, and the behavioral overview,
   source-behavior, anomaly-list and investigation views. Validated end to end against live QRadar
   telemetry on 2026-08-02.
-- **Phase B (backend vertical slice ✅, API/UI pending)** — WAF endpoint behavior: a versioned
+- **Phase B (backend vertical slice ✅, API/UI ✅)** — WAF endpoint behavior: a versioned
   endpoint normalizer, per-endpoint observation collection with measured completeness, a seasonal
   request-rate baseline, and `WAF_REQUEST_RATE_SPIKE` on the reused Phase A lifecycle. Validated
   end to end against live QRadar telemetry on 2026-08-03 —
@@ -1012,9 +1013,11 @@ lints and updates this README.
   bounded per bucket and per source; maintenance decisions recorded per bucket; metric-semantics
   identities that make incompatible baselines fail closed; bounded WAF retention; per-source
   scheduled collect → evaluate → train runs with failure isolation; and an admin status API. Collection
-  is **off by default** (`WAF_COLLECTION_ENABLED=false`, and per profile). The analyst anomaly API,
-  UI, evidence and alert routing for WAF incidents are not built, and production WAF onboarding
-  remains unvalidated. See [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §28.
+  is **off by default** (`WAF_COLLECTION_ENABLED=false`, and per profile). The analyst anomaly API
+  and UI for WAF incidents are built, and their alerts route behind `WAF_ALERTING_ENABLED` (off by
+  default; Phase B.2). A WAF incident carries no evidence package by design
+  (`explanation_package` is null), and production WAF onboarding remains unvalidated. See
+  [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §28.
 - **Phase B.1.5 ✅ (collection resilience and scale)** — per-dimension completeness with explicit
   exact/lower-bound request counts, so a path flood above the group cap can still prove a spike
   but never a normal verdict; sparse, slim endpoint metric rows (about 2.2× smaller per row, and
@@ -1037,10 +1040,13 @@ lints and updates this README.
   default 1 h) from the admin UI, and every change is audited.
   - One Ariel search per tick, keyed by time, returns every bucket. It is split when truncated.
   - Phase A judges every new bucket in order.
-  - Live validation on the lab is pending.
+  - Validated live on the lab on 2026-10-12 ([T-040](docs/tasks/T-040.report.md)): one Ariel
+    search per family per tick, results equal to the per-bucket path (Phase A exactly; rule
+    matches in 5 of 6 buckets, the sixth lower on the per-bucket side because of a QRadar `STOP`
+    edge effect), and every new bucket judged in order.
 
-Next: the analyst API and UI for WAF incidents, then the goals in
-[the planner](docs/PLANNER.md) §0. Production WAF onboarding still needs a field-availability pass
+Next: the goals in [the planner](docs/PLANNER.md) §0. Production WAF onboarding still needs a
+field-availability pass
 against a real WAF product ([the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §30.14).
 
 ## License
