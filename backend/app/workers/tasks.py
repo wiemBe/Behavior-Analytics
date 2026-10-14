@@ -32,6 +32,7 @@ from app.collectors.explanation_collector import (
     EXPLANATION_COLLECTOR,
     ExplanationCollector,
 )
+from app.collectors.ips_collector import IpsCollector
 from app.collectors.log_source_collector import LogSourceCollector
 from app.collectors.metric_collector import MetricCollector
 from app.collectors.offense_collector import OffenseCollector
@@ -54,6 +55,7 @@ from app.services.concurrency import InMemoryConcurrencyLimiter
 from app.services.detection_coverage import DetectionCoverageEvaluator
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.ips_profiles import IpsProfileService
+from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
@@ -1225,6 +1227,58 @@ async def apply_waf_retention() -> dict:
         return report.as_dict()
 
 
+# ------------------------------------------------------------------ IPS (D.5)
+async def dispatch_ips_collection(instance_name: str | None = None) -> dict:
+    """Run one fleet-wide IPS plan per instance after claiming its cadence slot."""
+    settings = get_settings()
+    if not settings.ips_collection_enabled:
+        return {"status": "disabled", "instances": 0, "results": []}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.IPS_COLLECTION
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed is None:
+        return {"status": "not_due", "family": family.value}
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        collector = IpsCollector(session, provider, settings=settings)
+        return (await collector.collect(instance)).as_dict()
+
+    result = await _for_each_instance(run, instance_name)
+    failed = any(item.get("status") == "failed" for item in result.get("results", []))
+    searches = None if failed else sum(
+        int(item.get("searches_sent", 0)) for item in result.get("results", [])
+    )
+    buckets = None if failed else sum(
+        int(item.get("buckets_written", 0)) for item in result.get("results", [])
+    )
+    async with maker() as cadence_session:
+        await SearchCadenceService(cadence_session, settings).record_run(
+            family,
+            outcome="failed" if failed else "ok",
+            searches=searches,
+            buckets=buckets,
+            splits=None,
+        )
+        await cadence_session.commit()
+    return result
+
+
+async def apply_ips_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await IpsRetention(session).run()).as_dict()
+
+
 # --------------------------------------------------------------- notifications
 async def dispatch_notifications() -> dict:
     maker = get_sessionmaker()
@@ -1351,3 +1405,13 @@ def apply_catchall_retention_task() -> dict:
 @celery_app.task(name="apply_waf_retention")
 def apply_waf_retention_task() -> dict:
     return _run(apply_waf_retention())
+
+
+@celery_app.task(name="dispatch_ips_collection")
+def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
+    return _run(dispatch_ips_collection(instance_name))
+
+
+@celery_app.task(name="apply_ips_retention")
+def apply_ips_retention_task() -> dict:
+    return _run(apply_ips_retention())

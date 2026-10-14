@@ -35,11 +35,13 @@ describe("NAV", () => {
     expect(NAV[2].items).toEqual([
       { href: "/admin/search-cadence", label: "Search cadence" },
       { href: "/admin/classification-rules", label: "Classification rules" },
+      { href: "/admin/outage-policy", label: "Outage alerts" },
       { href: "/admin/waf-sources", label: "WAF sources" },
       { href: "/admin/ips-sources", label: "IPS sources" },
     ]);
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
     expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");
+    expect(activeNavHref("/admin/outage-policy")).toBe("/admin/outage-policy");
   });
 
   it("resolves the catch-all page to its own entry, not to Fleet", () => {

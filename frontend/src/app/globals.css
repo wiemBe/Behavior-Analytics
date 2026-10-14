@@ -2759,3 +2759,75 @@ td.cell-name.ips-source-cell {
 .catchall-table tbody tr:last-child th {
   border-bottom: none;
 }
+
+/* --- Outage alert policy (T-070a) -------------------------------------------
+   Only what the existing classes do not already say: the statement of what a
+   change does, set apart from the form it belongs to, and the spacing of the
+   add-override area. Built from tokens only. */
+
+.outage-note {
+  margin-bottom: var(--sp-4);
+}
+.outage-note p {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.impact {
+  max-width: 72ch;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+.impact.is-unknown {
+  border-color: var(--warn-border);
+}
+.impact-title {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.impact-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.outage-form-title {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.outage-form-label {
+  padding-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.outage-table th.cell-source {
+  min-width: 20ch;
+}
+.outage-add {
+  margin-top: var(--sp-5);
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+}
+.outage-add .panel {
+  width: 100%;
+  min-width: 0;
+}
+.outage-pick {
+  margin-top: var(--sp-4);
+}
+.outage-pick th.cell-end,
+.outage-pick td.cell-end {
+  text-align: right;
+  white-space: nowrap;
+}

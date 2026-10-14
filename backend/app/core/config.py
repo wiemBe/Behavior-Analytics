@@ -21,6 +21,8 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.models.enums import OutagePolicyMode
+
 
 class Environment(StrEnum):
     DEVELOPMENT = "development"
@@ -152,6 +154,21 @@ class Settings(BaseSettings):
     #: IPS collection: entities kept per (source, bucket, dimension) after the
     #: fold's cut. The summed `dimension_events` still covers every row.
     ips_max_entities_per_bucket: int = Field(default=200, ge=1, le=5000)
+    #: IPS fleet collection is opt-in; individual profiles must also be enabled
+    #: and VALID for their current version.
+    ips_collection_enabled: bool = False
+    ips_max_new_entities_per_bucket: int = Field(default=20, ge=0, le=1000)
+    ips_max_active_entities_per_source_dimension: int = Field(
+        default=2000, ge=1, le=50000
+    )
+    ips_min_admission_events: int = Field(default=3, ge=1)
+    ips_entity_active_days: int = Field(default=7, ge=1, le=90)
+    ips_min_coverage: float = Field(default=0.90, ge=0.0, le=1.0)
+    ips_retention_enabled: bool = True
+    ips_metric_retention_days: int = Field(default=35, ge=2)
+    ips_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
+    ips_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    ips_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention
@@ -301,6 +318,12 @@ class Settings(BaseSettings):
     #: Buckets of expected-but-absent traffic tolerated before NO_EVENTS fires.
     anomaly_silence_grace_buckets: int = Field(default=1, ge=0)
     anomaly_max_buckets_per_evaluation: int = Field(default=120, ge=1, le=10_000)
+
+    # --- Phase C.2: outage alert policy -------------------------------------
+    #: What a source's NO_EVENTS does when no `outage_alert_policy` row applies.
+    #: ALERT keeps Phase A's behaviour, so an upgrade alerts exactly as before
+    #: and operators opt sources or classes into RECORD_ONLY (decision D-9).
+    outage_alert_default: OutagePolicyMode = OutagePolicyMode.ALERT
 
     # --- Phase A explanation evidence ---------------------------------------
     explanation_enabled: bool = True

@@ -170,6 +170,7 @@ export type SearchFamily =
   | "WAF_COLLECTION"
   | "ANOMALY_EXPLANATION"
   | "RULE_MATCH"
+  | "IPS_COLLECTION"
   | "CATCHALL_SENDERS";
 
 // Mirrors SearchCadenceLastRunOut. `searches_sent` is null for a family that
@@ -1436,6 +1437,8 @@ export interface FleetSourceParams {
   review_status?: ClassificationReviewStatus;
   has_conflict?: boolean;
   basis?: ClassificationBasis;
+  // A case-insensitive substring of the source name or its QRadar type name.
+  q?: string;
   limit?: number;
   offset?: number;
 }
@@ -1624,6 +1627,79 @@ export const catchallApi = {
     fleetRequest<CatchallSender>(`/fleet/catchall/senders/${id}/review`, { method: "POST" }),
   dismiss: (id: string) =>
     fleetRequest<CatchallSender>(`/fleet/catchall/senders/${id}/dismiss`, { method: "POST" }),
+};
+
+// --- outage alert policy (T-070a) ------------------------------------------
+// Mirrors backend/app/schemas/outage.py. Every route needs `admin:outage`,
+// reads included. `source_name` and `source_class` are null on a CLASS row and
+// on a SOURCE row whose source no longer exists.
+export type OutageMode = "ALERT" | "RECORD_ONLY";
+export type OutageScopeKind = "CLASS" | "SOURCE";
+
+export interface OutagePolicyRow {
+  id: string;
+  // Null is a global row; a value scopes the row to one QRadar instance.
+  instance_id: string | null;
+  scope_kind: OutageScopeKind;
+  // A SourceClass for a CLASS row, a log source id for a SOURCE row.
+  scope_value: string;
+  mode: OutageMode;
+  // Null uses the default grace.
+  silence_grace_buckets: number | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  governed_monitored_sources: number | null;
+  source_name: string | null;
+  source_class: SourceClass | null;
+  // The instance's name on an instance-scoped row; null on a global row.
+  instance_name: string | null;
+}
+
+export interface OutagePolicyUpsert {
+  mode: OutageMode;
+  silence_grace_buckets: number | null;
+}
+
+// The two fields T-068 added to each class of GET /fleet/summary.
+export type OutageClassSummary = FleetClassSummary & {
+  outage_mode: OutageMode;
+  outage_overrides: number;
+  // Enabled and monitored sources: the ones an outage policy governs.
+  monitored_sources: number;
+};
+export type OutageFleetSummary = Omit<FleetSummary, "classes"> & {
+  classes: OutageClassSummary[];
+  // From settings: what a class with no row resolves to, and the silence grace
+  // in buckets when no row overrides it.
+  outage_default: OutageMode;
+  default_silence_grace_buckets: number | null;
+};
+
+export const outagePolicyApi = {
+  list: () => fleetRequest<OutagePolicyRow[]>("/outage-policy"),
+  putClass: (sourceClass: string, body: OutagePolicyUpsert) =>
+    fleetRequest<OutagePolicyRow>(`/outage-policy/classes/${encodeURIComponent(sourceClass)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteClass: (sourceClass: string, instanceId?: string | null) =>
+    fleetRequest<void>(
+      `/outage-policy/classes/${encodeURIComponent(sourceClass)}${qs({ instance_id: instanceId ?? undefined })}`,
+      { method: "DELETE" },
+    ),
+  putSource: (logSourceId: string, body: OutagePolicyUpsert) =>
+    fleetRequest<OutagePolicyRow>(`/outage-policy/sources/${encodeURIComponent(logSourceId)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteSource: (logSourceId: string, instanceId?: string | null) =>
+    fleetRequest<void>(
+      `/outage-policy/sources/${encodeURIComponent(logSourceId)}${qs({ instance_id: instanceId ?? undefined })}`,
+      { method: "DELETE" },
+    ),
+  summary: (window: FleetWindow) =>
+    fleetRequest<OutageFleetSummary>(`/fleet/summary${qs({ window })}`),
 };
 
 // --- rule statistics (T-062) -----------------------------------------------
