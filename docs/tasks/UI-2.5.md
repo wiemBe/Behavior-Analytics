@@ -14,7 +14,7 @@ product, not a template dashboard. **The first screen at 1440×900 answers "what
   page; dark only; the palette's original values.
 
 What is built and merged (read each report): UI-2.1 (`useApiResource`, `lib/home/*`), UI-2.2 (the
-KPI row, `components/home/Kpi*.tsx`), UI-2.3 (the three charts), UI-2.4 (top sources, recent
+KPI row, `components/home/Kpi*.tsx`), UI-2.3 (the three charts, `EpsChart`, `EpsByClass`, `SeverityChart`), UI-2.4 (top sources, recent
 anomalies, recent offenses, log-source health). **This task composes them; it does not redesign
 them.** Fix only what the list below names.
 
@@ -68,6 +68,12 @@ Recent anomalies (6)                         | Recent offenses (6)
     `lib/home/format.ts` ("2,477 EPS"). Use `formatEpsValue` everywhere on the Home (it is what
     `/fleet` prints, so the same source reads the same on both pages) and delete `formatEps` if
     nothing else uses it. Its tests go with it; say so.
+(f2) The same rule covers UI-2.3's charts: "EPS by source class" prints "842", "88.0", "95.2" in
+    one list. Use `formatEpsValue` there too, and in the chart tooltips and the donut centre.
+(h) **A header slot in the frame.** UI-2.3's Fleet EPS presets (1 h / 24 h / 7 d) sit in a row
+    under the chart because the frame had no header slot. With the unified `WidgetFrame`, put them
+    in the title row beside the title, so the chart widget is: title row (title, window, qualifier
+    pill, presets, drill-down), chart, legend.
 (g) Uneven KPI card heights at 1440 (they are `align-items: start`): if the composed row looks
     ragged, align the cards' tops and let the row's height be the tallest card's, **without**
     stretching content or adding filler.
