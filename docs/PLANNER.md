@@ -8,7 +8,78 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (twelfth session, 2026-10-14, from ~21:15)
+## ▶ Resume here (twelfth session, 2026-10-14, from ~21:15; latest state at 22:32)
+
+### State at 22:32 (start here)
+
+**Branches:**
+- `main` @ `8573bdf` (pushed): gated merge of `feat/phase-ce` @ `ad0088a`.
+- `feat/phase-ce` @ `0e70c10` (pushed). Since `main`: docs only (the UI-3.3b and UI-3.5b specs,
+  PLANNER).
+- Migration head `0023`.
+- Worktrees: only `ui33b` (in flight). Test DBs on `:5433`: only `qradar_obs_t054` (T-054). The
+  test-db container was restarted after the reboot.
+
+**Persistent work dir:** `/home/efe/Documents/QRadar-Dash-work/<task>/`: logs, prompts, fixtures,
+PNGs. **Never `/tmp`** (the user's rule after the 21:08 reboot wiped it).
+- The reusable fixture APIs:
+  - `ui33/fixture/`: Home, catalog, fleet `window`;
+  - `t087/fixture/fixture_api.py`: anomalies, IPS;
+  - `t090/fixture/`: WAF details, metrics, baselines.
+- Verification script: `ui33/verify.mjs` (drag, resize, keyboard, density measurement).
+
+**In flight:**
+
+| Task | Agent | Where | Collect / check |
+|---|---|---|---|
+| **UI-3.3b** ([spec](tasks/UI-3.3b.md)) | Sonnet sub-agent of this chat, from ~22:30 | worktree `ui33b` (own `node_modules`); ports 3134/8134/9134; `ui33b/` | `docs/tasks/UI-3.3b.report.md` in the worktree; PNGs `ui33b/png/`. Review the PNGs yourself, run the 4 frontend gates, then merge. **35-minute check ~23:05** |
+| **T-054** IPS live validation ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat, from ~21:30 (clock-driven, so it is checked by evidence, not by the 35-minute rule) | `t054/`; DB `qradar_obs_t054`; generator chain `t054/chain19.sh` | Plan, in UTC: sweep r2 19:20–19:35, **tick2 ~19:38 (22:38 local) decides the fan-out lead**, r3 baseline 19:35–20:00, tick3 ~20:02. At 19:18Z it had used 28/250 searches. Report `t054/T-054.report.md`. Check `pgrep -af qradar_lab_loggen` (stop by PID only). If the chat dies: stop the generator and `chain19.sh` by PID, then hand over with "review what you inherit" |
+
+**Next, in order:**
+1. UI-3.3b: review and merge.
+2. **UI-3.5b** ([spec](tasks/UI-3.5b.md), ready).
+   - It covers options from a read (a cascading WAF source → endpoint picker), widgets
+     `waf.endpoint_traffic`, `chart.eps_observed_expected` in source mode, and
+     `ips.source_anomalies` made live.
+   - Use ports 3136/8136/9136. Start after UI-3.3b, since both change `widgets/*`.
+3. **Phase 3 screenshots to the user for approval** (as with Phase 2). Keep the PNGs under
+   `/home/efe/Documents/QRadar-Dash-screens/phase3/`.
+4. T-054's result. Each confirmed defect becomes a fix task (for example the fan-out coverage
+   floor, if it holds).
+5. Phase 4 UI: UI-4.1 (dashboard API client and switcher; read the 409
+   `{message, current_revision}`), UI-4.2 (save/restore/templates), UI-4.3 (`/` loads the user's
+   default dashboard). The backend for it, B-4, is merged.
+6. Small follow-ups (no spec yet):
+   - the WAF new-endpoint `caveat` in the `WafDetectionDetailOut` whitelist;
+   - "Robust z" shown when the status is DEGENERATE or UNAVAILABLE;
+   - the vitest 4 and echarts 6 majors;
+   - the map widget (G-4).
+7. The user's decisions:
+   - D-12, the project name;
+   - G-5, the first production read-only geo window;
+   - the ACTION custom property on the lab console (needed for the IPS block-ratio scenario).
+
+**Agents:**
+- **Codex** is out until **02:17**: its limit was hit ~21:54, after UI-3.2's two rounds. One large
+  UI task per window.
+- **GLM** is out until **02:36**.
+- **Sonnet**: allowed by the user.
+- **Free models** (`big-pickle` did T-088, T-091, T-092 and B-2.3b r2 well; `mimo` looped on
+  T-083b): usable.
+- **The user's rule (22:15):** an agent past 35 minutes is probably stuck or rate-limited. Check its
+  real progress, stop it by PID and hand over. The exception is clock-driven live validations,
+  checked by evidence.
+
+**Lessons this session:**
+- Look at every PNG: each screenshot round found defects that the tests passed. Examples: the
+  new-port unit, WAF pp ×100 on `main`, the WAF new-endpoint semantics, KPI scrollbars at 1280.
+- A fixture must use the backend's real payloads. Fraction-vs-points errors were hidden by
+  fixtures that used fractions.
+- A break-it must never act across databases on the shared test server (T-083b's "widen the
+  terminate").
+- PLANNER and spec edits: use exact edits. A scripted replace silently did nothing once.
+
+### Earlier in this session
 
 **The machine rebooted at 21:08 and `/tmp` was wiped.** Lost with it:
 - every session scratchpad, with the agent logs, the UI-3.2 launcher and prompt, and the UI-3.5a
