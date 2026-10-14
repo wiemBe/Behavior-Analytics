@@ -22,6 +22,7 @@ function summary(over: Partial<FleetSummary> = {}): FleetSummary {
         expected_eps: 1,
         baseline_sources: 2,
         baseline_share: 1,
+        monitored_sources: 2,
         open_incidents: {},
         top_sources: [],
       },

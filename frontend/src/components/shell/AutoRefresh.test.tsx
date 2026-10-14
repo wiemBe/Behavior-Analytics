@@ -4,7 +4,13 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AutoRefresh, DataAgeProvider, formatClockUtc, useReportDataAge } from "./AutoRefresh";
+import {
+  AutoRefresh,
+  DataAgeProvider,
+  formatClockUtc,
+  useRefreshTick,
+  useReportDataAge,
+} from "./AutoRefresh";
 
 const refresh = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }));
@@ -145,5 +151,43 @@ describe("the times", () => {
       </DataAgeProvider>,
     );
     expect(screen.queryByText(/Data to/)).not.toBeInTheDocument();
+  });
+});
+
+describe("the refresh tick", () => {
+  function Reader() {
+    return <output data-testid="tick">{useRefreshTick()}</output>;
+  }
+
+  it("starts at 0 and moves once per automatic refresh", async () => {
+    render(
+      <DataAgeProvider>
+        <AutoRefresh />
+        <Reader />
+      </DataAgeProvider>,
+    );
+    expect(screen.getByTestId("tick")).toHaveTextContent("0");
+    choose("1");
+    await tick(60_000);
+    expect(screen.getByTestId("tick")).toHaveTextContent("1");
+    await tick(60_000);
+    expect(screen.getByTestId("tick")).toHaveTextContent("2");
+  });
+
+  it("does not move while Off, or while a dialog is open", async () => {
+    render(
+      <DataAgeProvider>
+        <AutoRefresh />
+        <Reader />
+      </DataAgeProvider>,
+    );
+    await tick(10 * 60_000);
+    expect(screen.getByTestId("tick")).toHaveTextContent("0");
+    choose("1");
+    const dialog = document.createElement("div");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.appendChild(dialog);
+    await tick(60_000);
+    expect(screen.getByTestId("tick")).toHaveTextContent("0");
   });
 });
