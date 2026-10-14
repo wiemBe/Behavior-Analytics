@@ -8,9 +8,37 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (end of the eighth session, 2026-10-14 ~12:00; the user is moving to a new chat)
+## ▶ Resume here (ninth session, 2026-10-14, from 13:20)
 
-**Start the new chat here.**
+**Start a new chat here.** The user: "GLM can be used; Codex's session tokens ran out." Codex hit
+its usage limit in T-051c round 2 (reset **15:54**), with its work half done in `t051c`.
+
+**State:**
+- **`main` @ `8814a47`** (unchanged).
+- **`feat/phase-ce`** (pushed at each merge). **Migration head `0022`.** Merged this session, after
+  the orchestrator's diff review and its own re-run of the gates:
+  - **B-1.2b** (`b4d5017`): ruff clean; 2,766 unit; 58 targeted integration.
+  - **G-2** (`364a77e`): ruff clean; mypy 31; 2,844 unit; alembic `0021`↔`0022` clean, no drift,
+    head `0022`; 66 geo and migration integration; frontend typecheck and 496 tests. The
+    `catchall.test.ts` edit was accepted: it only makes room for `GEO_COLLECTION`. Two
+    fail-open answers in `GET /geo/countries` went to **G-2b**.
+  - Worktrees, branches and DBs of both were removed.
+
+**In flight:**
+
+| Task | Agent | Worktree, DB | Log / how to collect |
+|---|---|---|---|
+| **T-051c** IPS engine ([spec](tasks/T-051c.md) with Ruling 1) | opencode `zai-coding-plan/glm-5.3`, `--standalone`, handed over with "review what you inherit" (Codex's half-done round 2) | `t051c`, DB `qradar_obs_t051c` | `scratchpad/t051c-glm.log` (the scratchpad is now `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/1f0011eb-9918-4fba-a9e5-8fe15b30a127/scratchpad/`); report `docs/tasks/T-051c.report.md`. Review as listed for T-051c below |
+| **G-2b** geo API fail-closed fixes ([spec](tasks/G-2b.md)): `measurement`/`remainders` null on `NOT_COLLECTED`; `expected_buckets` over every collected instance, not only those with rows | opencode `mimo-v2.6-flash-free`, `--standalone` | `g2b`, DB `qradar_obs_g2b` | `scratchpad/g2b.log`; report `docs/tasks/G-2b.report.md`; re-run the gates yourself |
+| **UI-1.5** round 2: `64px`/`520px`/`44ch` into tokens; the brand subtitle wraps to 3 lines at 1024 | Sonnet sub-agent | `ui15` | Report appended to `docs/tasks/UI-1.5.report.md`; PNGs under `scratchpad/ui15b/`. Round 1's screenshots were reviewed and are otherwise fine |
+| **T-055** docs: README entries (C.2, IPS, geo, `/me`, health stamp), IPS [BUILT] markers, D-11 in UR.2.2/UR.2.8 ([spec](tasks/T-055.md)) | opencode `zai-coding-plan/glm-5.3`, `--standalone` | `t055` (no DB) | `scratchpad/t055.log`; report `docs/tasks/T-055.report.md`. Spot-check defaults against `config.py` |
+
+**Next:** collect these four, then steps 3–5 of the list below (T-052, Phase 2 Home with B-2.1
+first, then the full gate to `main`). Codex is back at 15:54: give it the largest single piece.
+
+---
+
+## Eighth session's end state (2026-10-14 ~12:00; superseded by the section above)
 
 **State:**
 - **`main` @ `8814a47`.** It was merged after a green full gate on `9597930`:
