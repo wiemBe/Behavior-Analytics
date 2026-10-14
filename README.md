@@ -30,6 +30,13 @@ and it operates strictly **read-only** against QRadar.
 > [Roadmap](#roadmap), [the Phase A design](docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md),
 > [the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) and
 > [the Phase 3 handoff](docs/PHASE3-HANDOFF.md).
+> **Phase D** (IPS traffic behavior): the engine, the collect → evaluate → train pipeline and the
+> capability status are **built** (T-051c, T-051d). One dispatch per tick collects, then evaluates
+> each source's collected buckets oldest first, then trains each source's baselines only through that
+> source's own evaluated bucket end. A source that failed or has evaluated nothing is skipped alone.
+> The seven IPS detectors are `OPERATIONAL` when `IPS_COLLECTION_ENABLED` is true and `NOT_ENABLED`
+> otherwise (the default). **No alert is raised yet** (T-052 is not built): IPS incidents are
+> recorded with their lifecycle, and nothing pages. See [the Phase D design](docs/PHASE-D-IPS-BEHAVIOR.md).
 
 Phase 3.5 adds an opt-in, manual synthetic-telemetry lab without changing the read-only QRadar
 application contract. See [the lab guide](docs/LAB-SYNTHETIC-TELEMETRY.md) and
@@ -827,9 +834,13 @@ coverage, concentration and fan-out facts — and admits entities into `ips_enti
 per-bucket counts in `ips_entity_metric` (both hypertables). Detection (migration `0021`) adds
 seasonal cells per entity and per source (`ips_entity_baseline`, `ips_source_baseline`),
 hysteresis state (`ips_detector_state`) and incidents with transitions (`ips_anomaly`,
-`ips_anomaly_transition`). The pure detectors exist (see [the Phase D
-design](docs/PHASE-D-IPS-BEHAVIOR.md)); the engine that schedules them is not built, so nothing
-is evaluated yet and collection is opt-in (`IPS_COLLECTION_ENABLED`, default false).
+`ips_anomaly_transition`). The engine, the collect → evaluate → train pipeline and the capability
+status are built (T-051c, T-051d). One dispatch per tick collects, then evaluates each source's
+collected buckets oldest first (bounded by `IPS_MAX_EVALUATION_BUCKETS_PER_RUN`), then trains each
+source's baselines only through that source's own evaluated bucket end. A source that failed or
+has evaluated nothing is skipped alone. The seven IPS detectors are `OPERATIONAL` when
+`IPS_COLLECTION_ENABLED` is true and `NOT_ENABLED` otherwise (the default). **No alert is raised
+yet** (T-052 is not built): IPS incidents are recorded with their lifecycle, and nothing pages.
 
 Every `/api/v1/ips` route needs `admin:ips`, applied at the router mount so reads are guarded
 too: `GET /mapping-schema`, `GET /candidates`, `GET`/`PUT /log-sources/{id}/profile` (201 on
@@ -854,6 +865,7 @@ WAF, there is no IPS CLI; profiles are administered through the API and UI only.
 | `IPS_VALIDATION_LOCK_MAX_RETRIES` | 20 | Lock retries before validation records a fail-closed source-busy outcome |
 | `IPS_VALIDATION_MIN_RATIO` | 0.90 | Minimum population share for a required field |
 | `IPS_VALIDATION_MAX_ACTION_VALUES` | 20 | Hard disclosure and Ariel-result bound for discovered ACTION values |
+| `IPS_MAX_EVALUATION_BUCKETS_PER_RUN` | 24 | Collected buckets evaluated per source per scheduled run |
 | `IPS_BASELINE_LOOKBACK_DAYS` | 28 | Days of version-compatible buckets a baseline rebuild considers |
 | `IPS_BASELINE_REBUILD_BATCH_SIZE` | 50 | Subjects loaded and upserted together during a bounded rebuild |
 | `IPS_RETENTION_ENABLED` | true | Whether the bounded retention task runs |
