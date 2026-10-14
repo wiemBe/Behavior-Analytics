@@ -70,7 +70,10 @@ describe("LogSourceHealth", () => {
     setup();
     render(<LogSourceHealth />);
     expect(screen.getByRole("link", { name: "Newly discovered" })).toHaveAttribute("href", "/fleet/sources?review_status=NEW");
-    expect(screen.getByRole("link", { name: "Silent" })).toHaveAttribute("href", "/anomalies?anomaly_type=NO_EVENTS");
+    expect(screen.getByRole("link", { name: "Silent" })).toHaveAttribute(
+      "href",
+      "/anomalies?anomaly_type=NO_EVENTS&active_only=true",
+    );
     expect(screen.queryByRole("link", { name: "In maintenance" })).toBeNull();
     expect(screen.getByRole("link", { name: "View all" })).toHaveAttribute("href", "/behavior/sources");
   });

@@ -18,7 +18,8 @@ import { healthDistribution, healthSummaryText } from "@/lib/behaviorOverview";
 import { healthCategories } from "@/lib/home/healthCategories";
 import { logSources } from "@/lib/home/logSources";
 
-import { Gate, QualifierList, secondary, Unmeasured, Widget, WidgetLoading } from "./WidgetParts";
+import { secondary, WidgetFrame, WidgetLoading, WidgetQualifiers } from "./WidgetFrame";
+import { Unmeasured } from "./WidgetParts";
 
 export function LogSourceHealth() {
   const behaviorRead = homeReads.sourceBehaviors();
@@ -31,14 +32,16 @@ export function LogSourceHealth() {
   const overview = useApiResource(overviewRead.key, overviewRead.fetch);
 
   return (
-    <Widget
+    <WidgetFrame
       id="log-source-health"
       title="Log source health"
       windowText="latest state"
-      viewAll={{ href: "/behavior/sources", label: "View all" }}
+      link={{ href: "/behavior/sources", label: "View all" }}
+      state={behaviors}
+      what="the source states"
+      permission="read:anomalies"
     >
-      <Gate state={behaviors} what="the source states" permission="read:anomalies">
-        {({ data: sources }) => {
+      {({ data: sources }) => {
           const sum = secondary(summary);
           const fl = secondary(fleet);
           const ov = secondary(overview);
@@ -79,7 +82,9 @@ export function LogSourceHealth() {
                   )}
                 />
               )}
-              {card && sources.length > 0 && <QualifierList qualifiers={card.qualifiers} />}
+              {card && sources.length > 0 && (
+                <WidgetQualifiers qualifiers={card.qualifiers} />
+              )}
               {sum.data === null && (
                 <p className="tw-note">
                   How many sources are judged normal is unavailable: the anomaly summary is not
@@ -122,8 +127,7 @@ export function LogSourceHealth() {
               </TableScroll>
             </>
           );
-        }}
-      </Gate>
-    </Widget>
+      }}
+    </WidgetFrame>
   );
 }

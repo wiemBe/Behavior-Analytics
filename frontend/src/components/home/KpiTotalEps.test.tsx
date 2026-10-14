@@ -115,8 +115,8 @@ describe("KpiTotalEps", () => {
     );
     render(<KpiTotalEps />);
     expect(
-      screen.getByText("expected 100.00 EPS \u00b7 \u221210.0 %"),
-    ).toBeInTheDocument();
+      screen.getByTitle("Compared on baselined classes only: observed 90.00 EPS."),
+    ).toHaveTextContent("expected 100.00 EPS · \u221210.0 %");
     expect(screen.getByText(/baselines 1 of 2 sources/)).toBeInTheDocument();
     // The "compared on those classes only" caveat is in the tooltip.
     expect(
@@ -169,8 +169,12 @@ describe("KpiTotalEps", () => {
     mocks.states[SUMMARY] = failed(502);
     render(<KpiTotalEps />);
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("The fleet EPS could not be loaded (HTTP 502)");
-    expect(alert).toHaveTextContent("Use Refresh in the top bar");
+    expect(alert.querySelector(".widget-error-title")).toHaveTextContent(
+      "The fleet EPS could not be read.",
+    );
+    expect(alert.querySelector(".widget-error-action")).toHaveTextContent(
+      "HTTP 502. Nothing was changed. Use Refresh in the top bar",
+    );
   });
 
   it("keeps the old data and says the refresh failed", () => {

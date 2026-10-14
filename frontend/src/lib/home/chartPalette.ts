@@ -12,6 +12,7 @@ export const HOME_TOKENS = {
   cat3: "--chart-cat-3",
   cat4: "--chart-cat-4",
   other: "--chart-other",
+  donutHoleRadius: "--home-donut-hole-radius",
   surface: "--surface",
   text: "--text",
   critical: "--sev-critical",

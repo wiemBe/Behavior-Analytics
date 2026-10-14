@@ -13,9 +13,8 @@
   display: grid;
   gap: var(--widget-gap);
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  /* Each card is as tall as its own content: a glance, not a row stretched to
-     the tallest card. */
-  align-items: start;
+  /* Borders share the row height; each card's body still lays its content from the top. */
+  align-items: stretch;
   min-width: 0;
 }
 @container (max-width: 900px) {
@@ -120,10 +119,6 @@
   line-height: var(--lh-prose);
   color: var(--text-2);
 }
-.kpi-state-error {
-  color: var(--crit-text);
-}
-
 .kpi-qualifiers {
   display: flex;
   flex-wrap: wrap;
@@ -150,8 +145,15 @@
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
+.kpi-line-part {
+  white-space: nowrap;
+}
+.kpi-line-label {
+  color: var(--text-3);
+  white-space: nowrap;
+}
 
-/* The sparkline: one hairline stroke over a baseline rule; no fill, no marker. */
+/* The sparkline: one hairline stroke, no fill, baseline or marker. */
 .kpi-spark {
   margin: 0;
 }
@@ -160,11 +162,6 @@
   width: 100%;
   height: var(--kpi-spark-h);
   overflow: visible;
-}
-.kpi-spark-base {
-  stroke: var(--chart-axis);
-  stroke-width: 1px;
-  vector-effect: non-scaling-stroke;
 }
 .kpi-spark-line {
   fill: none;

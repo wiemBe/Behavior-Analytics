@@ -30,17 +30,22 @@ describe("KpiAnomalies", () => {
         spikes: 1,
         drops: 1,
         silent_sources: 1,
-        candidates: 2,
-        recovering: 3,
+        candidates: 1,
+        recovering: 1,
         insufficient_data_sources: 4,
       }),
     );
     render(<KpiAnomalies />);
     expect(screen.getByRole("heading", { name: "Active anomalies, now" })).toBeInTheDocument();
     expect(screen.getByText("active anomalies")).toBeInTheDocument();
+    const detector = screen.getByText(/By detector/).closest("p")!;
     expect(
-      screen.getByText("1 spikes · 1 drops · 1 silent · 2 candidates · 3 recovering"),
-    ).toBeInTheDocument();
+      Array.from(detector.querySelectorAll(".kpi-line-part"), (part) => part.textContent),
+    ).toEqual(["1\u00a0spikes \u00b7", "1\u00a0drops \u00b7", "1\u00a0silent"]);
+    const lifecycle = screen.getByText(/Lifecycle/).closest("p")!;
+    expect(
+      Array.from(lifecycle.querySelectorAll(".kpi-line-part"), (part) => part.textContent),
+    ).toEqual(["1\u00a0open \u00b7", "1\u00a0candidates \u00b7", "1\u00a0recovering"]);
     expect(screen.getByText(/4 sources not judged; they are not in these counts/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View active anomalies" })).toHaveAttribute(
       "href",
@@ -64,6 +69,15 @@ describe("KpiAnomalies", () => {
     expect(screen.getByText(/1 source not judged; it is not in these counts/)).toBeInTheDocument();
   });
 
+  it("does not present a fresh install with no monitored source as a measured zero", () => {
+    mocks.states[SUMMARY] = ok(summary());
+    render(<KpiAnomalies />);
+    expect(screen.getByText("—", { selector: ".kpi-value" })).toBeInTheDocument();
+    expect(screen.getByText("Insufficient data")).toBeInTheDocument();
+    expect(screen.getByText(/nothing to judge yet/)).toBeInTheDocument();
+    expect(screen.queryByText("0", { selector: ".kpi-value" })).toBeNull();
+  });
+
   it("is a polite status while loading", () => {
     render(<KpiAnomalies />);
     const s = screen.getByRole("status");
@@ -82,7 +96,13 @@ describe("KpiAnomalies", () => {
   it("says what failed without exception text", () => {
     mocks.states[SUMMARY] = failed(503);
     render(<KpiAnomalies />);
-    expect(screen.getByRole("alert")).toHaveTextContent("The anomalies could not be loaded (HTTP 503)");
+    const alert = screen.getByRole("alert");
+    expect(alert.querySelector(".widget-error-title")).toHaveTextContent(
+      "The anomalies could not be read.",
+    );
+    expect(alert.querySelector(".widget-error-action")).toHaveTextContent(
+      "HTTP 503. Nothing was changed. Use Refresh",
+    );
   });
 
   it("keeps the data on a failed refresh", () => {

@@ -49,7 +49,7 @@ describe("TopSources", () => {
     setup();
     render(<TopSources />);
     const row = screen.getByRole("link", { name: "Core Firewall" }).closest("tr")!;
-    expect(within(row).getByText("1,000")).toBeInTheDocument();
+    expect(within(row).getByText("1,000.00")).toBeInTheDocument();
     expect(within(row).getAllByText(/EPS/).length).toBeGreaterThan(0);
     expect(within(row).getByText("3.40x")).toBeInTheDocument();
     expect(within(row).getAllByText("Open").length).toBeGreaterThan(0);
@@ -106,6 +106,9 @@ describe("TopSources", () => {
     render(<TopSources />);
     expect(screen.getByText(/state are unavailable/i)).toBeInTheDocument();
     expect(screen.getAllByText("State unavailable").length).toBeGreaterThan(0);
+    for (const state of screen.getAllByText("State unavailable")) {
+      expect(state.textContent?.trim()).not.toMatch(/^·/);
+    }
   });
 
   it("is loading text in a polite live region, with no spinner", () => {

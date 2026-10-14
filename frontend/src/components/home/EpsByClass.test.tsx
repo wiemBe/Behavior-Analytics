@@ -47,9 +47,9 @@ describe("EpsByClass", () => {
     render(<EpsByClass />);
     const table = screen.getByRole("table", { name: /EPS by source class/ });
     const row = within(table).getByRole("link", { name: "Firewall" }).closest("tr")!;
-    expect(within(row).getByText("750")).toBeInTheDocument();
+    expect(within(row).getByText("750.00")).toBeInTheDocument();
     expect(within(row).getByText("75 %")).toBeInTheDocument();
-    expect(table).toHaveAccessibleName(/Total 1,000 EPS/);
+    expect(table).toHaveAccessibleName(/Total 1,000.00 EPS/);
     expect(within(table).getByRole("columnheader", { name: "EPS" })).toBeInTheDocument();
   });
 

@@ -1,8 +1,9 @@
 // KPI card 4 (UR.4.2): active anomalies.
 //
-// The breakdown by type comes from the summary and is complete. The breakdown by
-// severity is counted client-side from the active list, which is capped; when the
-// list's `total` exceeds what came back, the counts are lower bounds and say so.
+// The summary supplies two dimensions of the active total, each a partition of it: the
+// detector that raised the anomaly (spikes, drops, silent, and every other detector as
+// one remainder) and its lifecycle state (open, candidate, recovering). Severity is
+// retained for the chart model and is a lower bound when the active list is capped.
 
 import type { AnomalySummary, BehaviorSummary, Page } from "@/lib/api";
 
@@ -11,7 +12,7 @@ import { truncated, type Qualifier } from "./qualifiers";
 export const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] as const;
 
 export interface TypeCount {
-  key: "spikes" | "drops" | "silent" | "candidates" | "recovering";
+  key: "spikes" | "drops" | "silent" | "other" | "open" | "candidates" | "recovering";
   label: string;
   count: number;
 }
@@ -23,7 +24,10 @@ export interface SeverityCount {
 
 export interface AnomaliesCard {
   open: number;
-  byType: TypeCount[];
+  /** Active anomalies by detector; the remainder is "other", so the parts sum to `open`. */
+  byDetector: TypeCount[];
+  /** Active anomalies by lifecycle state; these also sum to `open`. */
+  byLifecycle: TypeCount[];
   severity: { entries: SeverityCount[]; qualifiers: Qualifier[] };
   /** Sources without a baseline: unjudged, so absent from every count above. */
   notJudged: number;
@@ -52,12 +56,23 @@ export function anomaliesCard(
     qualifiers.push(truncated(active.items.length, active.total));
   }
   const n = summary.insufficient_data_sources;
+  const otherDetectors = Math.max(
+    0,
+    summary.open_anomalies - summary.spikes - summary.drops - summary.silent_sources,
+  );
+  const openState = Math.max(0, summary.open_anomalies - summary.candidates - summary.recovering);
   return {
     open: summary.open_anomalies,
-    byType: [
+    byDetector: [
       { key: "spikes", label: "Spikes", count: summary.spikes },
       { key: "drops", label: "Drops", count: summary.drops },
       { key: "silent", label: "Silent sources", count: summary.silent_sources },
+      ...(otherDetectors > 0
+        ? [{ key: "other" as const, label: "Other detectors", count: otherDetectors }]
+        : []),
+    ],
+    byLifecycle: [
+      { key: "open", label: "Open", count: openState },
       { key: "candidates", label: "Candidates", count: summary.candidates },
       { key: "recovering", label: "Recovering", count: summary.recovering },
     ],

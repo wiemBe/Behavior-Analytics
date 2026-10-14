@@ -1,21 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatAgo, formatEps, signedPercent } from "./format";
-
-describe("formatEps", () => {
-  it("is an em dash for an unmeasured value and a real figure for a measured zero", () => {
-    expect(formatEps(null)).toBe("—");
-    expect(formatEps(undefined)).toBe("—");
-    expect(formatEps(Number.NaN)).toBe("—");
-    expect(formatEps(0)).toBe("0.00");
-  });
-
-  it("keeps the digits that carry meaning at each size", () => {
-    expect(formatEps(0.0412)).toBe("0.04");
-    expect(formatEps(12.345)).toBe("12.3");
-    expect(formatEps(1240.6)).toBe("1,241");
-  });
-});
+import { formatAgo, signedPercent } from "./format";
 
 describe("formatAgo", () => {
   const now = Date.parse("2026-10-14T14:00:00Z");

@@ -68,6 +68,20 @@ describe("KpiLogSources", () => {
     expect(screen.queryByText(/0 of 0/)).toBeNull();
   });
 
+  it("uses one action-led empty statement and no nested health box", () => {
+    mocks.states[SUMMARY] = ok(summary({ monitored_sources: 0 }));
+    mocks.states[SOURCES] = ok([]);
+    mocks.states[OVERVIEW] = ok(overview(3));
+    const { container } = render(<KpiLogSources />);
+    expect(
+      screen.getByText(
+        "No monitored log source. Enable monitoring on a source to start collecting its volume baseline.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/No monitored log source/)).toHaveLength(1);
+    expect(container.querySelector(".kpi-health")).toBeNull();
+  });
+
   it("keeps the card when the overview is refused, and says why the total is missing", () => {
     mocks.states[SUMMARY] = ok(summary({ monitored_sources: 4 }));
     mocks.states[SOURCES] = ok(sources);
@@ -102,7 +116,13 @@ describe("KpiLogSources", () => {
     mocks.states[SUMMARY] = failed(500);
     mocks.states[SOURCES] = ok(sources);
     render(<KpiLogSources />);
-    expect(screen.getByRole("alert")).toHaveTextContent("could not be loaded (HTTP 500)");
+    const alert = screen.getByRole("alert");
+    expect(alert.querySelector(".widget-error-title")).toHaveTextContent(
+      "The log source health could not be read.",
+    );
+    expect(alert.querySelector(".widget-error-action")).toHaveTextContent(
+      "HTTP 500. Nothing was changed. Use Refresh",
+    );
   });
 
   it("keeps the data on a failed refresh and says when it was received", () => {

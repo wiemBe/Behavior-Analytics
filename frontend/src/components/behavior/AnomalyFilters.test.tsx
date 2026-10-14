@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AnomalyFilters, chipLabel, toInputValue } from "./AnomalyFilters";
 
 const empty = {
+  active_only: false,
   log_source_id: "",
   instance_id: "",
   anomaly_type: "",
@@ -51,6 +52,22 @@ describe("filter chips", () => {
     expect(chipLabel("anomaly_type", "VOLUME_DROP", [])).toBe("Detector: Volume drop");
     expect(chipLabel("since", "2026-10-12T09:15:00.000Z", [])).toBe(
       "From: 2026-10-12 09:15:00 UTC",
+    );
+  });
+
+  it("shows active only as a visible clearable control", () => {
+    const first = render(<AnomalyFilters values={empty} sources={[]} />);
+    expect(screen.getByLabelText("Active only")).not.toBeChecked();
+    expect(screen.getByText("Active only", { selector: "label" })).toBeVisible();
+    first.unmount();
+
+    render(
+      <AnomalyFilters values={{ ...empty, active_only: true }} sources={[]} />,
+    );
+    expect(screen.getByLabelText("Active only")).toBeChecked();
+    expect(screen.getByRole("link", { name: /Remove filter Active only/ })).toHaveAttribute(
+      "href",
+      "/anomalies",
     );
   });
 });

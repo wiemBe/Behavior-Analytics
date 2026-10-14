@@ -36,7 +36,7 @@ export function healthCategories(inputs: HealthCategoryInputs): HealthCategory[]
       label: "Silent",
       count: summary ? summary.silent_sources : null,
       gap: summary ? null : noSummary,
-      href: "/anomalies?anomaly_type=NO_EVENTS",
+      href: "/anomalies?anomaly_type=NO_EVENTS&active_only=true",
       definition: "The detector saw no events where some were expected (NO_EVENTS anomaly).",
     },
     {
@@ -44,7 +44,7 @@ export function healthCategories(inputs: HealthCategoryInputs): HealthCategory[]
       label: "Exceeding expected volume",
       count: summary ? summary.spikes : null,
       gap: summary ? null : noSummary,
-      href: "/anomalies?anomaly_type=VOLUME_SPIKE",
+      href: "/anomalies?anomaly_type=VOLUME_SPIKE&active_only=true",
       definition: "Active volume spikes: observed above the expected range.",
     },
     {

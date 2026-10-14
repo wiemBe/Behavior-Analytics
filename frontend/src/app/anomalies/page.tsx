@@ -60,6 +60,7 @@ export default async function AnomaliesPage({
       api.anomalies({
         limit: PAGE_SIZE,
         offset: q.offset,
+        active_only: q.active_only || undefined,
         log_source_id: q.log_source_id || undefined,
         instance_id: q.instance_id || undefined,
         anomaly_type: anomalyType || undefined,
@@ -84,7 +85,8 @@ export default async function AnomaliesPage({
   }
 
   const filtered = Boolean(
-    q.log_source_id ||
+    q.active_only ||
+      q.log_source_id ||
       q.instance_id ||
       anomalyType ||
       subject.subject_kind ||
@@ -109,6 +111,7 @@ export default async function AnomaliesPage({
       <AnomalyFilters
         values={{
           subject_kind: subject.subject_kind,
+          active_only: q.active_only,
           log_source_id: q.log_source_id,
           instance_id: q.instance_id,
           anomaly_type: anomalyType,

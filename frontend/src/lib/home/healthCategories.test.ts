@@ -45,7 +45,12 @@ describe("healthCategories", () => {
     const rows = healthCategories({ summary: summary(), fleet: fleet([]), overview });
     const by = Object.fromEntries(rows.map((r) => [r.key, r.href]));
     expect(by.new).toBe("/fleet/sources?review_status=NEW");
-    expect(by.silent).toBe("/anomalies?anomaly_type=NO_EVENTS");
+    expect(by.silent).toBe(
+      "/anomalies?anomaly_type=NO_EVENTS&active_only=true",
+    );
+    expect(by.exceeding).toBe(
+      "/anomalies?anomaly_type=VOLUME_SPIKE&active_only=true",
+    );
     expect(by.maintenance).toBeNull();
   });
 });
