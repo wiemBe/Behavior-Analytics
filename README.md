@@ -681,9 +681,9 @@ codebase uses a compact hand-formatted style throughout.
 
 ## Data model
 
-62 tables across bounded contexts (`instance`, `log_source`, `explanation`, `search`,
+64 tables across bounded contexts (`instance`, `log_source`, `explanation`, `search`,
 `search_cadence`, `offense`, `rule`, `config_change`, `alert`, `identity`, `monitoring`, `fleet`,
-`outage`, `waf`, `catchall`, `ips`, `geo`). Thirteen are **TimescaleDB hypertables**:
+`outage`, `waf`, `catchall`, `ips`, `geo`, `dashboard`). Thirteen are **TimescaleDB hypertables**:
 `log_source_metric`, `search_result_metric`, `rule_metric`, `rule_match_metric`,
 `offense_snapshot`, `rule_health_snapshot`, `detection_coverage_snapshot`, `waf_endpoint_metric`,
 `waf_source_bucket`, `ips_source_bucket`, `ips_entity_metric`, `catchall_bucket` and
@@ -915,6 +915,26 @@ cannot be told apart.
 | `GEO_RETENTION_BATCH_SIZE` | 5000 | Rows deleted per retention batch |
 | `GEO_RETENTION_MAX_BATCHES` | 20 | Batches per retention run |
 | `GEO_RETENTION_INTERVAL_SECONDS` | 86400 | One retention run per day |
+
+### Saved dashboards
+
+The dashboards API (UI redesign, migration `0023`) stores a user's widget layout and their default
+dashboard: `dashboard` and `user_dashboard_pref`. It stores structure only — widget ids, types,
+geometry and an opaque `config` — and the server never interprets or runs anything from a layout.
+A layout is version 1 JSON with at most 24 widgets, a 4 KB `config` per widget and 64 KB in all;
+a layout version the server does not know is refused with `422`, and a widget `type` it does not
+know is stored as is. An owner has at most 20 dashboards, and names are unique per owner.
+
+Routes under `/api/v1/dashboards`: `GET` (list, paged), `POST`, `GET /{id}`, `PUT /{id}`,
+`PATCH /{id}`, `DELETE /{id}`, `POST /{id}/duplicate` and `PUT /default`. Reads need
+`read:dashboards` (satisfied by `read:*`); every write needs `dashboard:write`, which `read:*`
+does **not** grant, and `PUT`, `PATCH` and `DELETE` also need ownership or `admin:*`. Changing a
+dashboard's `visibility` between `PRIVATE` and `SHARED` needs `admin:dashboards`. A caller sees
+their own dashboards and every shared one; another owner's private dashboard answers `404`.
+`PUT` carries `expected_revision` and answers `409` with the current revision when it is stale.
+Every write is audited (`dashboard.create`, `.update`, `.rename`, `.share`, `.delete`,
+`.duplicate`, `.set_default`) with the name, revision and widget count, never the layout. Until
+OIDC lands every dev caller has the subject `local-dev`, so all dashboards share one owner.
 
 ### Scheduled-search dispatch
 

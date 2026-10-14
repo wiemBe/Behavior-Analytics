@@ -8,6 +8,7 @@ from app.models.alert import Alert, AlertNotification
 from app.models.base import Base
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.config_change import ConfigurationChange, ConfigurationSnapshot
+from app.models.dashboard import Dashboard, UserDashboardPref
 from app.models.explanation import (
     EXPLANATION_SCHEMA_VERSION,
     AnomalyExplanation,
@@ -113,6 +114,7 @@ __all__ = [
     "CollectionWatermark",
     "ConfigurationChange",
     "ConfigurationSnapshot",
+    "Dashboard",
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
     "GeoCountryBucket",
@@ -151,6 +153,7 @@ __all__ = [
     "SearchResultMetric",
     "TechniqueMapping",
     "User",
+    "UserDashboardPref",
     "WafAnomaly",
     "WafAnomalyTransition",
     "WafDetectorState",

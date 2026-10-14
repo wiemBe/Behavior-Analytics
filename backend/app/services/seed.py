@@ -25,9 +25,10 @@ _ROLES = {
     # Every read route is guarded, so an analyst needs `read:*` to see anything.
     # The write permissions cover the SOC-owned metadata the analyst curates:
     # rule ownership/MITRE mapping and the technique mappings coverage rests on.
+    # An analyst also saves their own dashboards; sharing one needs `admin:dashboards`.
     "analyst": [
         "read:*", "search:execute", "alert:ack", "alert:resolve", "log_source:write",
-        "rule:write", "coverage:write",
+        "rule:write", "coverage:write", "dashboard:write",
     ],
     "viewer": ["read:*"],
 }

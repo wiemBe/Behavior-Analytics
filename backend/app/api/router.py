@@ -11,6 +11,7 @@ from app.api.routes import (
     catchall,
     classification_rules,
     coverage,
+    dashboards,
     fleet,
     geo,
     health,
@@ -31,6 +32,7 @@ from app.security.rbac import (
     PERM_ALERT_READ,
     PERM_ANOMALY_READ,
     PERM_COVERAGE_READ,
+    PERM_DASHBOARD_READ,
     PERM_FLEET_READ,
     PERM_GEO_READ,
     PERM_IPS_ADMIN,
@@ -119,4 +121,9 @@ api_router.include_router(geo.router, dependencies=[Depends(requires(PERM_GEO_RE
 # `admin:outage` guards every method, reads included; `read:*` does not satisfy it.
 api_router.include_router(
     outage_policy.router, dependencies=[Depends(requires(PERM_OUTAGE_ADMIN))]
+)
+# UI redesign (UR.5.5) saved dashboards: read-guarded; every write handler checks
+# `dashboard:write` itself, and ownership and `admin:dashboards` where they apply.
+api_router.include_router(
+    dashboards.router, dependencies=[Depends(requires(PERM_DASHBOARD_READ))]
 )

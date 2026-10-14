@@ -97,6 +97,15 @@ _BODIES: dict[tuple[str, str], dict] = {
     # supply a valid body so a body-first failure cannot mask a missing guard.
     ("PUT", "/api/v1/outage-policy/classes/{source_class}"): {"mode": "ALERT"},
     ("PUT", "/api/v1/outage-policy/sources/{log_source_id}"): {"mode": "ALERT"},
+    # UI redesign dashboards: writes check `dashboard:write` in the handler, after validation.
+    ("POST", "/api/v1/dashboards"): {
+        "name": "g", "layout": {"v": 1, "range": "24h", "widgets": []},
+    },
+    ("PUT", "/api/v1/dashboards/default"): {"dashboard_id": None},
+    ("PUT", "/api/v1/dashboards/{dashboard_id}"): {
+        "name": "g", "layout": {"v": 1, "range": "24h", "widgets": []}, "expected_revision": 1,
+    },
+    ("PATCH", "/api/v1/dashboards/{dashboard_id}"): {"name": "g"},
 }
 
 _ID = str(uuid.uuid4())
