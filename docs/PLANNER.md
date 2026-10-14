@@ -8,9 +8,26 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶ Resume here (tenth session, from 2026-10-14 16:20)
+
+**Tenth session (chat `qradar-dash-2c`).** Resumed at 16:20 from the block below. The ninth
+session's chat (`qradar-dash-19`) acknowledged the handover: it takes no git, PLANNER or agent
+actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
+- This session's scratchpad:
+  `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/a16a3a57-0bb1-488e-a4d5-dadbc9e16dfd/scratchpad/`.
+- `feat/phase-ce` @ `abc5d8f` (the T-083 and T-084 specs).
+
+| Task | Agent | Where | Status |
+|---|---|---|---|
+| **UI-2.5** | Codex (pid 878467) | `ui25` | running; collect as in the table below |
+| **T-082** | opencode `mimo-v2.6-flash-free` (pid 895758) | `t082` | running |
+| **T-054** | Sonnet sub-agent of the ninth-session chat | old scratch `t054/` | running (baseline run 1 done 16:20); its report lands in `t054/T-054.report.md` |
+| **T-084** README WAF and roadmap status lines ([spec](tasks/T-084.md)) | opencode `nemotron-3-ultra-free`, `--standalone` (pid 935948) | `t084` (no DB) | running; log `t084.log` in this session's scratchpad |
+| **T-083** `test_migrations.py` setup-ERROR diagnosis ([spec](tasks/T-083.md)) | a free model | DBs `qradar_obs_t083`, `qradar_obs_t083b` (created) | **queued until T-054 ends**: its load phase stresses the shared Postgres server that T-054's live pipeline uses |
+
 ## ▶ Resume here (end of the ninth session, 2026-10-14 ~16:20; the user is moving to a new chat)
 
-**Start the new chat here.** The ninth session's log follows this section.
+The ninth session's log follows this section.
 
 **State:**
 - **`main` @ `8814a47`** (unchanged this session).
@@ -590,6 +607,10 @@ Invisible in the lab while no WAF anomaly exists, but wrong on `main`.
 
 Every phase and task is scheduled against these three goals. When a piece of work serves none of
 them, question it before starting it.
+
+The "What exists" and "Gap" columns below are as of 2026-10-12 and are **not kept current** (for
+example, WAF incidents now have alerting, an analyst API and a UI). The current state is in
+"▶ Resume here" and the README roadmap.
 
 ### G1 — Log-source fleet monitoring
 
