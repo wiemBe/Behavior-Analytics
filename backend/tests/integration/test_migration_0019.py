@@ -1,9 +1,7 @@
 """Migration 0019: additive outage alert policy, round trip and no drift.
 
 Pinned to its own revision so a later migration on top of it cannot change what
-this test asserts. `0019`'s `down_revision` is `0017` for now, because a
-parallel task (T-050b) adds `0018` on the same parent and the orchestrator
-re-chains at merge.
+this test asserts. `0019`'s `down_revision` is `0018`, the IPS collection.
 """
 
 from __future__ import annotations
@@ -166,7 +164,7 @@ def test_0019_round_trip_constraints_and_no_drift(clean_db: str) -> None:
             with pytest.raises(IntegrityError), engine.begin() as connection:
                 _insert(connection, **bad)
 
-        command.downgrade(config, "0017")
+        command.downgrade(config, "0018")
         with engine.connect() as connection:
             assert not _exists(connection, "outage_alert_policy")
 

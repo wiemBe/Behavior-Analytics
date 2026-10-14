@@ -4,9 +4,7 @@ ADDITIVE. One new table; no existing table or enum is altered (AGENTS.md
 rule 7). A row says whether a class or a single source opens a `NO_EVENTS`
 alert, and optionally overrides the silence grace for that scope.
 
-Chained after 0017 for now. A parallel task (T-050b) adds 0018 on the same
-parent; the orchestrator re-chains at merge. 0019 therefore sits at 0017 until
-then, and `alembic heads` is a single head either way.
+Chained after 0018, the IPS collection.
 """
 from __future__ import annotations
 
@@ -17,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0019"
-down_revision: str | None = "0017"
+down_revision: str | None = "0018"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
