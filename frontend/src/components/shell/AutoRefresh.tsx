@@ -12,10 +12,15 @@
 // current route without losing client state. The timer is paused while the tab
 // is hidden and while a dialog is open, so an unattended tab does not poll and
 // a refresh never lands under an open modal.
+//
+// `router.refresh()` does not reach client hooks, so every automatic refresh
+// also bumps a tick that `useRefreshTick()` exposes; `useApiResource` re-reads
+// when it moves. The tick lives beside the data age in the same provider.
 
 import { useRouter } from "next/navigation";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -40,10 +45,31 @@ interface DataAgeValue {
 
 const DataAgeContext = createContext<DataAgeValue>({ dataTo: null, setDataTo: () => {} });
 
+// --- refresh tick: how client-side data learns the bar refreshed ------------
+
+interface RefreshTickValue {
+  tick: number;
+  bump: () => void;
+}
+
+const RefreshTickContext = createContext<RefreshTickValue>({ tick: 0, bump: () => {} });
+
+/** Incremented on every automatic refresh; 0 until the first one. */
+export function useRefreshTick(): number {
+  return useContext(RefreshTickContext).tick;
+}
+
 export function DataAgeProvider({ children }: { children: ReactNode }) {
   const [dataTo, setDataTo] = useState<string | null>(null);
   const value = useMemo(() => ({ dataTo, setDataTo }), [dataTo]);
-  return <DataAgeContext.Provider value={value}>{children}</DataAgeContext.Provider>;
+  const [tick, setTick] = useState(0);
+  const bump = useCallback(() => setTick((n) => n + 1), []);
+  const tickValue = useMemo(() => ({ tick, bump }), [tick, bump]);
+  return (
+    <DataAgeContext.Provider value={value}>
+      <RefreshTickContext.Provider value={tickValue}>{children}</RefreshTickContext.Provider>
+    </DataAgeContext.Provider>
+  );
 }
 
 /**
@@ -74,6 +100,7 @@ export function AutoRefresh({ onRefresh }: { onRefresh?: () => void }) {
   const router = useRouter();
   const selectId = useId();
   const { dataTo } = useContext(DataAgeContext);
+  const { bump } = useContext(RefreshTickContext);
   const [choice, setChoice] = useState<RefreshChoice>("off");
   const [visible, setVisible] = useState(true);
   // Null until mounted: the clock is the browser's, so the server cannot render
@@ -93,11 +120,12 @@ export function AutoRefresh({ onRefresh }: { onRefresh?: () => void }) {
     const timer = setInterval(() => {
       if (dialogOpen()) return;
       router.refresh();
+      bump();
       onRefresh?.();
       setLast(new Date());
     }, PERIOD_MS[choice]);
     return () => clearInterval(timer);
-  }, [choice, visible, router, onRefresh]);
+  }, [choice, visible, router, onRefresh, bump]);
 
   return (
     <div className="topbar-refresh">

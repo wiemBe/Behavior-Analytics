@@ -1389,6 +1389,8 @@ export interface FleetClassSummary {
   expected_eps: number | null;
   baseline_sources: number;
   baseline_share: number | null;
+  // Enabled and monitored sources: what `baseline_sources` is a share of.
+  monitored_sources: number;
   // Phase A anomaly type -> open incident count.
   open_incidents: Record<string, number>;
   top_sources: FleetTopSource[];
@@ -2033,4 +2035,32 @@ export const shellApi = {
     request<Page<AnomalySummary>>(`/anomalies${qs({ active_only: true, limit: 200 })}`, {
       signal,
     }),
+};
+
+// --- Home data layer (UI-2.1) ---------------------------------------------------
+// Each read is a `{ key, fetch }` pair: `key` is the path with its query, which is
+// the request's identity for `useApiResource`'s shared in-flight map, and `fetch`
+// requests exactly that path. Existing read endpoints only; nothing writes.
+export interface HomeRead<T> {
+  key: string;
+  fetch: (signal: AbortSignal) => Promise<T>;
+}
+
+function homeRead<T>(path: string): HomeRead<T> {
+  return { key: path, fetch: (signal) => request<T>(path, { signal }) };
+}
+
+export const homeReads = {
+  fleetSummary: (window: FleetWindow) =>
+    homeRead<FleetSummary>(`/fleet/summary${qs({ window })}`),
+  anomalySummary: () => homeRead<BehaviorSummary>("/anomalies/summary"),
+  sourceBehaviors: () => homeRead<SourceBehavior[]>("/behavior/sources"),
+  overview: () => homeRead<SocOverview>("/overview"),
+  offenseAnalytics: () => homeRead<OffenseAnalytics>("/offenses/analytics"),
+  // `total` tells "no offenses" from "no snapshot yet" (UR.4.2 card 3).
+  offenseProbe: () => homeRead<Page<OffenseSummary>>(`/offenses${qs({ limit: 1 })}`),
+  activeAnomalies: (limit = 200) =>
+    homeRead<Page<AnomalySummary>>(`/anomalies${qs({ active_only: true, limit })}`),
+  anomaliesBetween: (since: string, until: string, limit = 200) =>
+    homeRead<Page<AnomalySummary>>(`/anomalies${qs({ since, until, limit })}`),
 };
