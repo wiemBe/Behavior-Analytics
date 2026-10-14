@@ -13,8 +13,9 @@ If this file disagrees with the code, the code wins. Fix the file.
 **Start a new chat here.** The user: "GLM can be used; Codex's session tokens ran out." Codex hit
 its usage limit in T-051c round 2 (reset **15:54**; back and in use from 16:04).
 
-**Agent limits today:** GLM out until **20:53**; **Sonnet sub-agents out until 18:10** (session
-limit hit at ~16:00, cutting off T-052 round 2 and UI-2.5); Codex available from 15:54.
+**Agent limits today:** GLM out until **20:53**; Sonnet sub-agents hit a session limit at ~16:00
+(cutting off T-052 round 2 and UI-2.5), and **the user then cleared Sonnet for this session**
+(~16:15); Codex available from 15:54.
 
 **State:**
 - **`main` @ `8814a47`** (unchanged).
@@ -100,14 +101,18 @@ limit hit at ~16:00, cutting off T-052 round 2 and UI-2.5); Codex available from
 |---|---|---|---|
 | **UI-2.5** the Home at `/` ([spec](tasks/UI-2.5.md)): composition, one `WidgetFrame`, fix list (a)–(h) | **Codex** (16:04), second hand: Sonnet was cut off by its session limit with partial work and no report ("review what you inherit") | `ui25`; capture ports 3125/8125 | Log `scratchpad/ui25-codex.log`, final message `scratchpad/ui25-codex.last.md`; grep the log for "hit your usage limit". The acceptance screenshots for all of Phase 2: review the first screen at each viewport yourself |
 | **T-055c** docs: IPS alerting is built ([spec](tasks/T-055c.md)) | opencode `nemotron-3-ultra-free`, `--standalone` | `t055c` (no DB) | `scratchpad/t055d.log`; report `docs/tasks/T-055c.report.md` |
+| **T-054** IPS live validation ([spec](tasks/T-054.md)) | Sonnet sub-agent (~16:15), live, read-only, ≤ 250 Ariel searches, generator ≤ 5 EPS | main checkout, scratch only; DB `qradar_obs_t054` (kept) | `scratchpad/t054/T-054.report.md`. Check the baseline strategy first; every defect becomes a fix task |
 | **Full backend gate** on `feat/phase-ce` @ `a4fdbf6` | the orchestrator, `gate` worktree, fresh DBs `qradar_obs_gate`, `_gate_mig` | — | `scratchpad/gate-backend.log`: ruff, mypy, unit, alembic `head`→`0014`→`head`, check, heads, full integration |
 
 **Next:**
 1. Collect UI-2.5 (Codex), T-055c, the backend gate.
 2. Then the **frontend gate** (lint, typecheck, test, build) on the head with UI-2.5, and if both
    gates are green, **merge `feat/phase-ce` → `main`**.
-3. **T-054** IPS live validation ([spec](tasks/T-054.md), written): the next large piece, for Codex
-   after UI-2.5 (with `-c sandbox_workspace_write.network_access=true`) or Sonnet after 18:10.
+3. Collect **T-054** (Sonnet); each defect it finds becomes a fix task before IPS is called
+   validated.
+4. Still open, needing the user: **G-5** (the first production read-only geo window); the
+   **ACTION custom property** on the lab console for the block-ratio scenario; Phase 3 (widget
+   system) starts after `main`.
 
 ---
 
