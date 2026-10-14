@@ -146,6 +146,13 @@
   --sidebar-w: 232px;
   --page-max: 1360px;
   --header-h: 72px;
+  /* The top bar's search field: its widest extent, and the room its right-hand
+     padding keeps clear for the Ctrl K hint. */
+  --topsearch-max-w: 520px;
+  --topsearch-hint-room: 64px;
+  --topsearch-hint-pad-y: 1px;
+  /* The connection-status popover's width, in characters of its own text. */
+  --status-popover-w: 44ch;
 
   /* --- chart --------------------------------------------------------------
      Consumed by the ECharts option builder so the chart shares the page's

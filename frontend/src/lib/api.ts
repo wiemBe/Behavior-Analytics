@@ -2005,3 +2005,32 @@ export const ipsApi = {
       `/ips/log-sources/${logSourceId}/property-catalog${qs({ refresh: refresh || undefined })}`,
     ),
 };
+
+// --- shell top bar (UI-1.5) -------------------------------------------------
+// Browser reads of existing endpoints. Each takes an AbortSignal so a superseded
+// or unmounted caller can cancel; none writes anything, and none reaches QRadar.
+// A refused read surfaces as an `ApiError` with its status, so the caller can
+// tell "your role cannot read this" (403) from "the read failed".
+export interface HealthReady {
+  status: string;
+  database: string;
+}
+
+export const shellApi = {
+  healthReady: (signal?: AbortSignal) => request<HealthReady>("/health/ready", { signal }),
+  overview: (signal?: AbortSignal) => request<SocOverview>("/overview", { signal }),
+  searchCadence: (signal?: AbortSignal) =>
+    request<SearchCadenceItem[]>("/admin/search-cadence", { signal }),
+  searchSources: (q: string, signal?: AbortSignal) =>
+    request<Page<FleetSource>>(`/fleet/sources${qs({ q, limit: 5 })}`, { signal }),
+  searchRules: (search: string, signal?: AbortSignal) =>
+    request<Page<RuleSummary>>(`/rules${qs({ search, limit: 5 })}`, { signal }),
+  searchOffenses: (search: string, signal?: AbortSignal) =>
+    request<Page<OffenseSummary>>(`/offenses${qs({ search, limit: 5 })}`, { signal }),
+  // The one bounded read the anomaly search filters client-side: the API has no
+  // text search over anomalies.
+  activeAnomalies: (signal?: AbortSignal) =>
+    request<Page<AnomalySummary>>(`/anomalies${qs({ active_only: true, limit: 200 })}`, {
+      signal,
+    }),
+};

@@ -56,10 +56,24 @@ a {
 
 /* --- application shell ----------------------------------------------------- */
 
+/* The first row: the brand over the sidebar column, the top bar to its right.
+   It is a sibling above `.layout`, not a row of it, so that it can stay at the
+   top of the viewport: a sticky grid item is bounded by its own grid area. */
+.shell-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  height: var(--topbar-h);
+  background: var(--canvas);
+  border-bottom: 1px solid var(--border);
+}
+
 .layout {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  min-height: 100vh;
+  min-height: calc(100vh - var(--topbar-h));
 }
 
 /* The sidebar's panel is painted by `.layout::before`, which spans the whole
@@ -77,20 +91,24 @@ a {
 .sidebar {
   grid-column: 1;
   grid-row: 1;
-  padding: var(--sp-5) var(--sp-3);
+  padding: var(--sp-3);
   position: sticky;
-  top: 0;
+  top: var(--topbar-h);
   align-self: start;
-  height: 100vh;
+  height: calc(100vh - var(--topbar-h));
   overflow-y: auto;
 }
 
 /* Product identity. Not an <h1>: the page's own title is the document's first
    heading, so the shell must not consume that level. */
 .brand {
-  display: block;
-  padding: 0 var(--sp-2);
-  margin-bottom: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 var(--sp-5);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
 }
 .brand-name {
   display: block;
@@ -102,6 +120,7 @@ a {
 .brand-sub {
   display: block;
   margin-top: 2px;
+  line-height: var(--lh-tight);
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
@@ -167,6 +186,200 @@ a {
 .page {
   max-width: var(--page-max);
   margin: 0 auto;
+}
+
+/* --- top bar -----------------------------------------------------------------
+   Search, refresh, the open-alert count and the connection status. The search
+   track is the only flexible one (`minmax(0, 1fr)`), so it gives up width
+   before a control is pushed off the page; the controls keep their content
+   width. */
+
+.topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--sp-5);
+  min-width: 0;
+  padding: 0 var(--sp-6);
+}
+.topbar-label {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.topsearch {
+  position: relative;
+  justify-self: center;
+  width: 100%;
+  max-width: var(--topsearch-max-w);
+  min-width: 0;
+}
+.topsearch-input {
+  width: 100%;
+  padding: var(--sp-2) var(--topsearch-hint-room) var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  /* A placeholder longer than the field ends in an ellipsis, not mid-word. */
+  text-overflow: ellipsis;
+}
+.topsearch-hint {
+  position: absolute;
+  right: var(--sp-2);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: var(--topsearch-hint-pad-y) var(--sp-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  pointer-events: none;
+}
+.topsearch-panel {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  left: 0;
+  right: 0;
+  max-height: calc(100vh - var(--topbar-h) - var(--sp-6));
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.topsearch-group {
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.topsearch-option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.topsearch-option:hover,
+.topsearch-option.is-active {
+  background: var(--surface-3);
+}
+.topsearch-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topsearch-sub {
+  flex: 0 1 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.topsearch-status,
+.topsearch-note,
+.topsearch-footer {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  color: var(--text-2);
+}
+.topsearch-footer {
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+}
+
+.topbar-refresh {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.topbar-select {
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-sm);
+}
+/* "Refreshed" is when this browser last asked; "Data to" is how far the data
+   reaches. Two lines, because they are two different times. */
+.topbar-times {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.topbar-bell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.topbar-bell:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.topbar-status {
+  position: relative;
+}
+.topbar-status-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  list-style: none;
+}
+.topbar-status-summary::-webkit-details-marker {
+  display: none;
+}
+.topbar-status-summary:hover {
+  background: var(--surface-3);
+}
+.topbar-status-list {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  width: var(--status-popover-w);
+  max-width: calc(100vw - var(--sp-6));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.topbar-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-1) var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.topbar-status-row + .topbar-status-row {
+  border-top: 1px solid var(--border);
+}
+.topbar-status-detail {
+  grid-column: 1 / -1;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- page header -----------------------------------------------------------
@@ -2063,6 +2276,28 @@ th.fm-value-cell .cell-sub {
   .main {
     padding: var(--sp-6);
   }
+  /* The brand column narrows with the sidebar and no longer holds the subtitle
+     on one line. It stays for assistive tech (clipped, as `.sr-only`) rather
+     than wrapping to a third line or ending mid-word in an ellipsis. */
+  .brand-sub {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .topbar {
+    gap: var(--sp-3);
+    padding: 0 var(--sp-5);
+  }
+  .topsearch-hint {
+    display: none;
+  }
+  .topsearch-input {
+    padding-right: var(--sp-3);
+  }
   /* Tighter cells rather than smaller text: the type scale has a floor, and
      dropping below it to win horizontal space trades one usability problem
      for a worse one. */
@@ -2122,6 +2357,19 @@ th.fm-value-cell .cell-sub {
 @media (max-width: 860px) {
   /* Below the supported floor the sidebar stops being a column and becomes a
      band above the content, so it never overlays the page. */
+  .shell-head {
+    position: static;
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .brand {
+    padding: var(--sp-3) var(--sp-5);
+    border-right: none;
+  }
+  .topbar {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--sp-3) var(--sp-5);
+  }
   .layout {
     grid-template-columns: minmax(0, 1fr);
   }
