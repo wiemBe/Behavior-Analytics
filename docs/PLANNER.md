@@ -8,69 +8,71 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (eighth session, 2026-10-14; saved at the user's request, "planner md ye son durumu kaydet")
+## ▶ Resume here (end of the eighth session, 2026-10-14 ~12:00; the user is moving to a new chat)
 
-**State now:**
-- **`main` @ `8814a47`.** `feat/phase-ce` @ `9597930` was merged after a green full gate:
-  - ruff clean; mypy 31 errors in 18 files (the baseline);
-  - backend **2,598 unit + 895 integration passed**, 0 failed, on a fresh DB;
-  - alembic `0014`→`0020`→`0014`→`0020` clean, no drift, single head `0020`;
-  - frontend lint, typecheck, **1,568/1,568** tests, build.
-  - It carries C.2 (T-068, T-069, T-070a, T-070b), IPS collection (T-050b), and the fixes for
-    the time-bomb test and the 422 picker.
-- **`feat/phase-ce` @ `6cec378`** (pushed). **Migration head `0021`.** Merged after the gated
+**Start the new chat here.**
+
+**State:**
+- **`main` @ `8814a47`.** It was merged after a green full gate on `9597930`:
+  - 2,598 unit + 895 integration passed;
+  - alembic `0014`↔`0020` clean;
+  - frontend 1,568/1,568 tests and build.
+- **`feat/phase-ce` @ `18a4e9d`** (pushed). **Migration head `0021`.** Merged since the gated
   commit, so **not yet on `main`**:
   - **T-051a**: pure IPS detectors;
-  - **T-078**: `/ips/sources` per-field status;
-  - **T-079**: IPS bucket width on the cadence API;
-  - **UI-1.1**: charcoal tokens and self-hosted Inter, with D-11 applied. Screenshots of all 32
-    routes at 3 viewports were reviewed by the orchestrator. Seen and left for later: native
-    radios were blue (fixed in UI-1.3); overlapping anomaly bands stack their alpha
-    (UI-5.1);
-  - **UI-1.3 + UI-1.4**: a grouped text-only sidebar (Dashboard, Behavior, Fleet, Detection,
-    Operations, Administration) and restyled shared controls with `--control-accent`.
-    - Review round 1 fixed the sidebar density: the active item was off screen at 1440×900. Now
-      the whole sidebar fits at 1440, and the active item scrolls into view at smaller heights.
-    - nav and AppNav test edits keep their intent; they are listed in the report;
   - **T-051b**: IPS detection tables `0021`, the versioned baseline builder, and
-    `ips_anomaly_fingerprint`. The orchestrator re-ran 2,763 unit and 23 targeted integration
-    tests; Codex's full integration run was 906 passed.
-  - Also: the UI plan, the T-077 report, and the specs UI-1.1, UI-1.3, B-1.2, B-1.3, B-2.2,
-    T-051b and G-2.
-- **The user approved the UI plan** ([`UI-REDESIGN-PLAN.md`](UI-REDESIGN-PLAN.md)) with
-  **D-11** (§4).
+    `ips_anomaly_fingerprint`;
+  - **T-078** and **T-079**;
+  - **UI-1.1**: charcoal tokens and self-hosted Inter, with D-11;
+  - **UI-1.3 + UI-1.4**: the grouped text-only sidebar and restyled shared controls;
+  - **B-1.2**: `instance_last_health_check_at` on `/overview`;
+  - **B-1.3**: `GET /me` with `effective_permissions`;
+  - **B-2.2**: constant-cost `/behavior/sources` and `/anomalies/summary`, plus
+    `last_bucket_completeness`.
+  - The orchestrator reviewed each one and re-ran its gates; the UI tasks after a screenshot
+    review.
+- **The user approved the UI plan** ([`UI-REDESIGN-PLAN.md`](UI-REDESIGN-PLAN.md)) with **D-11**
+  (§4).
 
-**In flight or awaiting review (at save):**
+**In flight at save. Check each worktree first.**
 
-| Task | Agent | Where | State |
+Codex and opencode run as separate processes and keep going without this chat. The two **Sonnet**
+agents were Agent-tool sub-agents of this chat and may have stopped with it. If one stopped, its
+worktree holds partial work: hand it to a new agent with the original spec plus "review what you
+inherit".
+
+| Task | Agent | Worktree, DB | Log / how to collect |
 |---|---|---|---|
-| **B-1.3** `GET /me` ([spec](tasks/B-1.3.md)) | opencode `nemotron-3-ultra-free` | `b13`, DB `qradar_obs_b13` | Round 1 running (`scratchpad/b13-r1.log`): exclude wildcard **values** (`:*`), not names; the read-only test must assert **every** `read:` constant. First pass re-run by the orchestrator: 2,746 unit + 5 integration passed |
-| **B-2.2** constant-cost `/behavior/sources`, `/anomalies/summary` ([spec](tasks/B-2.2.md)) | opencode `mimo-v2.6-flash-free` | `b22`, DB `qradar_obs_b22` | **Finished, awaiting the orchestrator's review** (report `docs/tasks/B-2.2.report.md` in `b22`) |
-| **B-1.2** `instance_last_health_check_at` on `/overview` ([spec](tasks/B-1.2.md)) | opencode `ling-3.1-flash-free` | `b12`, DB `qradar_obs_b12` | Running (`scratchpad/b12.log`) |
+| **T-051c** IPS engine, lifecycle, pipeline step, capability status ([spec](tasks/T-051c.md)) | Codex (pid 180824 at save) | `t051c`, DB `qradar_obs_t051c` | `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/t051c.log`, final message `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/t051c.last.md`, report `docs/tasks/T-051c.report.md` in the worktree. Grep the log for **"hit your usage limit"**: plain "usage limit" also matches an old git log line. Review: constant statements per (source, bucket) (`test_ips_scale.py`), evaluate-before-train, pinned capability edits as ruled |
+| **G-2** geo collection backend, migration `0022` ([spec](tasks/G-2.md)) | Sonnet sub-agent (may have stopped) | `g2`, DBs `qradar_obs_g2`, `_g2_mig` | report `docs/tasks/G-2.report.md` in the worktree. Review: no IP selected or logged, `{}` handling, the 64-country cap, fail-closed statuses, `GEO_COLLECTION` at the end and in `_bucket_seconds` |
+| **UI-1.5** top bar (search, auto-refresh, bell, connection status) ([spec](tasks/UI-1.5.md)) | Sonnet sub-agent (may have stopped) | `ui15` (no DB) | report `docs/tasks/UI-1.5.report.md`; screenshots in `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/ui15/png/`. **Review the PNGs yourself** at 3 viewports |
+| **B-1.2b** stamp the instance health check and set `UNREACHABLE` on failure ([spec](tasks/B-1.2b.md)) | opencode `mimo-v2.6-flash-free` `--standalone` (pid 185662) | `b12b`, DB `qradar_obs_b12b` | `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/b12b.log`, report `docs/tasks/B-1.2b.report.md` |
 
 **Next, in order:**
-1. Review B-2.2, collect B-1.3 round 1 and B-1.2, then merge.
-2. Launch:
-   - **G-2**, the geo collection backend, migration `0022` after `0021`
-     ([spec ready](tasks/G-2.md); Sonnet or Codex);
-   - **T-051c**, the IPS engine with bulk loaders, the lifecycle, the collect → evaluate → train
-     pipeline step, and the capability status change from `NOT_SCHEDULED` to
-     operational (spec still to write; Codex). It uses T-051b's tables, the evaluation watermark
-     in `collection_watermark` (T-051b's choice), and `ips_anomaly_fingerprint`;
-   - **UI-1.5**, the top bar (search over existing lists, auto-refresh with data age, the alert
-     bell, connection status), after B-1.2 merges. It adds the top-bar row of UR.3.1 with its
-     contents, so there is never an empty bar.
-3. **GLM only after 13:00 (the user, 2026-10-14).** Good GLM work:
-   - the README C.2 entries;
-   - amending UR.2.2 and UR.2.8 in the plan to D-11 (`--text-3` `#73757B`, `--border-strong`
-     `#35363A`);
-   - a T-055 docs pass.
-4. A full gate on `feat/phase-ce`, then `main`: it carries T-051a/b, T-078, T-079, UI-1.1,
-   UI-1.3 and this round.
-5. Then Phase 2 (Home), as the plan's UR.7 splits it: B-2.1 `/fleet/eps-series`, then UI-2.1 to
-   UI-2.5.
+1. Collect the four above: review the diffs, re-run the gates yourself, then merge. Remove each
+   merged worktree, branch and DB. Migration order: `0021` is merged; `0022` comes from G-2.
+2. **GLM is allowed only after 13:00 (the user).** Give it the docs:
+   - the README entries for C.2 (`outage_alert_default`, `catchall_*`), IPS (`ips_*`), geo
+     (`geo_*`) and `GET /me`;
+   - amend `UI-REDESIGN-PLAN.md` UR.2.2 and UR.2.8 to D-11 (`--text-3 #73757B`,
+     `--border-strong #35363A`);
+   - T-055, the IPS docs with the [BUILT] markers.
+3. Write and launch:
+   - **T-052**, IPS alerting behind `ips_alerting_enabled` (default false), after T-051c;
+   - **G-3/G-4**: G-2 already includes the API; the `map.geography` widget comes in Phase 3;
+   - **Phase 2 (Home)**, per UR.7: B-2.1 `GET /fleet/eps-series`, then UI-2.1 to UI-2.5.
+4. **A full gate on `feat/phase-ce` → `main`**, once this round is in: ruff, mypy 31, unit +
+   integration on a fresh DB, the alembic round trip, frontend lint, typecheck, test and build.
+5. Seen in review, to fix later:
+   - overlapping anomaly bands stack their alpha on `/behavior/sources/[id]` (UI-5.1);
+   - in full-page captures the sidebar looks cut at 768 px high: a capture artefact, since the
+     sidebar scrolls itself.
 
 **Lessons this session:**
+- The usage-limit watcher matched an old git log line ("cut off by its usage limit"). Watch
+  for "hit your usage limit" instead.
+- B-1.2's agent found that nothing writes `last_health_check_at` and that the instance status
+  stays `HEALTHY` when QRadar is down → B-1.2b.
 - Killing `opencode run` does not stop its session. The background `opencode serve` service
   keeps executing it: a "stopped" GLM run started a second pytest on a DB the orchestrator was
   testing. Stop a session with `opencode session export` then `opencode session delete <id>`.
