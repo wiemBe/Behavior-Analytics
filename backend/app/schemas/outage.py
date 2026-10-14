@@ -12,7 +12,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import OutagePolicyMode, OutagePolicyScope
+from app.models.enums import OutagePolicyMode, OutagePolicyScope, SourceClass
 
 
 class OutagePolicyOut(BaseModel):
@@ -30,6 +30,12 @@ class OutagePolicyOut(BaseModel):
     #: For a CLASS row, monitored sources the row currently governs; None for a
     #: SOURCE row, where the answer is the one source itself.
     governed_monitored_sources: int | None = None
+    #: For a SOURCE row, the source's name and effective class, so a client never
+    #: shows a bare id. Null for a CLASS row and for a source that no longer exists.
+    source_name: str | None = None
+    source_class: SourceClass | None = None
+    #: For an instance-scoped row, the instance's name; null for a global row.
+    instance_name: str | None = None
 
 
 class OutagePolicyUpsert(BaseModel):

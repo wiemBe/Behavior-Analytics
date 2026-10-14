@@ -16,7 +16,7 @@ from collections import defaultdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import String, and_, cast, func, select
 
 from app.api.deps import SessionDep, SettingsDep
 from app.fleet.outage_policy import resolve
@@ -107,21 +107,49 @@ async def list_policy(
     A class row's count excludes sources a SOURCE row already governs: it is how
     many monitored sources this class's mode actually decides.
     """
-    rows = list(
-        (
-            await session.scalars(
-                select(OutageAlertPolicy).order_by(
-                    OutageAlertPolicy.scope_kind,
-                    OutageAlertPolicy.scope_value,
-                    OutageAlertPolicy.instance_id,
-                )
+    # One outer join names every SOURCE row's source, so the statement count
+    # does not grow with the number of rows. The id is compared as text: a CLASS
+    # row's scope value is not a UUID and must not be cast to one.
+    result = (
+        await session.execute(
+            select(
+                OutageAlertPolicy,
+                LogSource.name,
+                func.coalesce(
+                    LogSourceClassification.source_class, SourceClass.UNCLASSIFIED.value
+                ),
+                QRadarInstance.name,
             )
-        ).all()
-    )
+            .select_from(OutageAlertPolicy)
+            .outerjoin(QRadarInstance, QRadarInstance.id == OutageAlertPolicy.instance_id)
+            .outerjoin(
+                LogSource,
+                and_(
+                    OutageAlertPolicy.scope_kind == OutagePolicyScope.SOURCE.value,
+                    cast(LogSource.id, String) == OutageAlertPolicy.scope_value,
+                ),
+            )
+            .outerjoin(
+                LogSourceClassification,
+                LogSourceClassification.log_source_id == LogSource.id,
+            )
+            .order_by(
+                OutageAlertPolicy.scope_kind,
+                OutageAlertPolicy.scope_value,
+                OutageAlertPolicy.instance_id,
+            )
+        )
+    ).all()
+    rows = [row for row, _, _, _ in result]
     counts = await _governed_counts(session, rows, settings.outage_alert_default)
     out: list[OutagePolicyOut] = []
-    for row in rows:
+    for row, source_name, source_class, instance_name in result:
         item = OutagePolicyOut.model_validate(row)
+        item.instance_name = instance_name
+        if source_name is not None:
+            # A source that no longer exists leaves both null, never a guess.
+            item.source_name = source_name
+            item.source_class = SourceClass(source_class)
         if row.scope_kind == OutagePolicyScope.CLASS.value:
             item.governed_monitored_sources = counts.get(row.scope_value, 0)
         out.append(item)

@@ -85,6 +85,10 @@ class ClassSummary(BaseModel):
     # class row or the default), and how many source rows override it.
     outage_mode: OutagePolicyMode
     outage_overrides: int
+    # Sources that are enabled and monitored: the ones an outage policy governs.
+    # A sibling of `sources` rather than a field of it, so `sources` keeps its
+    # two-key shape.
+    monitored_sources: int = 0
 
 
 class InternalSummary(BaseModel):
@@ -101,6 +105,10 @@ class FleetSummary(BaseModel):
     new_sources: int
     conflict_sources: int
     unclassified_sources: int
+    # From settings, not the database: what a class with no policy row resolves
+    # to, and the silence grace (in buckets) when no row overrides it.
+    outage_default: OutagePolicyMode = OutagePolicyMode.ALERT
+    default_silence_grace_buckets: int | None = None
 
 
 class FleetSourceOut(BaseModel):
