@@ -277,14 +277,30 @@ describe("PropertyInput", () => {
     ]);
   });
 
-  it("renders and filters 500 properties without a cap", async () => {
-    const user = userEvent.setup();
-    render(<Harness suggestions={many(500)} />);
-    await user.click(box());
-    expect(names()).toHaveLength(500);
-    expect(screen.getByRole("status")).toHaveTextContent("500 properties");
-    await user.type(box(), "prop 499 field");
-    expect(names()).toEqual(["Prop_499_Field"]);
-    expect(screen.getByRole("status")).toHaveTextContent("1 of 500 properties match");
-  });
+  it(
+    "renders and filters 500 properties without a cap",
+    async () => {
+      // The 500 options re-render on every keystroke, so typing the whole query
+      // character by character (315-374 ms of this test) is work it is not about;
+      // pasting the same query takes 12-14 ms. PropertyInput filters in the
+      // input's onChange, which a paste fires exactly as a typed character does,
+      // so the filtering path and every assertion below are unchanged. delay: null
+      // drops user-event's per-event timer waits, which are wall-clock too.
+      const user = userEvent.setup({ delay: null });
+      render(<Harness suggestions={many(500)} />);
+      await user.click(box());
+      expect(names()).toHaveLength(500);
+      expect(screen.getByRole("status")).toHaveTextContent("500 properties");
+      await user.paste("prop 499 field");
+      expect(names()).toEqual(["Prop_499_Field"]);
+      expect(screen.getByRole("status")).toHaveTextContent("1 of 500 properties match");
+    },
+    // Wall-clock budget only; no assertion depends on it. Opening and then
+    // querying all 500 options costs about 180 ms alone, but this file runs
+    // alongside 110 others, where it has measured 3869 ms of Vitest's 5000 ms
+    // default and still timed out at 6898 ms under a heavier load. What the test
+    // must assert fixes that work, so give it room rather than raising the global
+    // testTimeout.
+    15_000,
+  );
 });
