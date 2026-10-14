@@ -15,6 +15,13 @@
  *      hues are calibrated for 2 px marks and chart strokes; used as small
  *      text on a panel they sit near the contrast floor, so text uses the
  *      lighter tint and the base stays for the mark beside it.
+ *
+ * Palette: charcoal, from docs/UI_Suggestions/UI_Suggestion.md (redesign plan
+ * UR.2). Decision D-11 (the user, 2026-10-14): the palette's values are kept
+ * exactly. Muted text `--text-3` is the palette's #73757B and is BELOW WCAG AA
+ * (4.5:1) on every surface; that is accepted by the user's decision, not an
+ * oversight. `--border-strong` is the palette's only border value, #35363A.
+ * There is no `--text-disabled`; disabled text uses `--text-3`.
  */
 
 :root {
@@ -22,23 +29,23 @@
   /* --- background layers -------------------------------------------------
      Four steps, deepest first. `canvas` is the page, `surface` is a panel on
      it, `surface-2` is an inset inside a panel, `surface-3` is a hover. */
-  --canvas: #0a0e17;
-  --surface: #111726;
-  --surface-2: #182034;
-  --surface-3: #1e2740;
+  --canvas: #111214;
+  --surface: #1b1c1f;
+  --surface-2: #252629;
+  --surface-3: #2d2e32;
 
   /* --- borders -----------------------------------------------------------
      `border` is the default hairline; `border-strong` is for a boundary that
      must survive next to a filled surface, such as a focused input. */
-  --border: #232c42;
-  --border-strong: #33405e;
+  --border: #35363a;
+  --border-strong: #35363a;
 
   /* --- text hierarchy ----------------------------------------------------
      Three levels only. A fourth invites unreadable text: `text-3` is already
      the floor at which 12 px stays legible on `--surface`. */
-  --text: #e8eef8;
-  --text-2: #a8b4c9;
-  --text-3: #7c8aa3;
+  --text: #e8e8e8;
+  --text-2: #96989d;
+  --text-3: #73757b;
 
   /* --- status ------------------------------------------------------------
      Semantics, fixed across the product:
@@ -48,38 +55,38 @@
        info    informational accent, the observed series, links
        neutral unavailable, insufficient data, not requested — states that are
                neither good nor bad news and must never be coloured as either. */
-  --crit: #f85149;
-  --crit-text: #ff9d97;
-  --crit-bg: rgba(248, 81, 73, 0.12);
-  --crit-border: rgba(248, 81, 73, 0.34);
+  --crit: #e36565;
+  --crit-text: #f08f8f;
+  --crit-bg: rgba(227, 101, 101, 0.12);
+  --crit-border: rgba(227, 101, 101, 0.34);
 
-  --warn: #d29922;
-  --warn-text: #e3b341;
-  --warn-bg: rgba(210, 153, 34, 0.12);
-  --warn-border: rgba(210, 153, 34, 0.34);
+  --warn: #e5ad56;
+  --warn-text: #edc27e;
+  --warn-bg: rgba(229, 173, 86, 0.12);
+  --warn-border: rgba(229, 173, 86, 0.34);
 
-  --ok: #3fb950;
-  --ok-text: #56d364;
-  --ok-bg: rgba(63, 185, 80, 0.12);
-  --ok-border: rgba(63, 185, 80, 0.32);
+  --ok: #3fbf91;
+  --ok-text: #6bd6af;
+  --ok-bg: rgba(63, 191, 145, 0.12);
+  --ok-border: rgba(63, 191, 145, 0.32);
 
-  --info: #4f8cff;
-  --info-text: #79a8ff;
-  --info-bg: rgba(79, 140, 255, 0.12);
-  --info-border: rgba(79, 140, 255, 0.34);
+  --info: #6fd0e0;
+  --info-text: #8edce8;
+  --info-bg: rgba(111, 208, 224, 0.12);
+  --info-border: rgba(111, 208, 224, 0.34);
 
-  --neutral: #8b98b0;
-  --neutral-text: #a8b4c9;
-  --neutral-bg: rgba(139, 152, 176, 0.1);
-  --neutral-border: rgba(139, 152, 176, 0.28);
+  --neutral: #b6b8bd;
+  --neutral-text: #b6b8bd;
+  --neutral-bg: rgba(182, 184, 189, 0.1);
+  --neutral-border: rgba(182, 184, 189, 0.28);
 
   /* --- focus -------------------------------------------------------------
      Deliberately not an accent tint: the focus ring must be visible on top of
      an accent-coloured control as well as on the canvas. */
-  --focus: #8ab4ff;
+  --focus: #e8e8e8;
 
-  /* Text on a solid `--info` fill (the primary action button). */
-  --on-accent: #06101f;
+  /* Text on a solid status fill and on the primary button. */
+  --on-accent: #111214;
 
   /* The edge shadow that says a table scrolls. Functional, not decorative. */
   --scroll-shadow: rgba(0, 0, 0, 0.5);
@@ -97,9 +104,9 @@
   --sp-8: 48px;
 
   /* --- radii -------------------------------------------------------------- */
-  --r-sm: 6px;
-  --r-md: 8px;
-  --r-lg: 12px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
   --r-pill: 999px;
 
   /* --- elevation ----------------------------------------------------------
@@ -109,7 +116,7 @@
 
   /* --- typography ---------------------------------------------------------
      No size below 12 px is defined, so none can be used by accident. */
-  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+  --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
@@ -143,9 +150,9 @@
   /* --- chart --------------------------------------------------------------
      Consumed by the ECharts option builder so the chart shares the page's
      palette rather than carrying its own hard-coded one. */
-  --chart-grid: #1a2336;
-  --chart-axis: #2a3350;
-  --chart-label: #8b98b0;
+  --chart-grid: #2a2b2f;
+  --chart-axis: #3a3b40;
+  --chart-label: var(--text-3);
 
   /* The series, by role. The observed line is the one saturated mark on the
      chart. The expected range is neutral, not green: green is a status colour
@@ -153,11 +160,42 @@
      reuse the warn and crit fills because they ARE those statuses. */
   --chart-observed: var(--info);
   --chart-expected: var(--neutral-text);
-  --chart-band: rgba(139, 152, 176, 0.16);
+  --chart-band: rgba(182, 184, 189, 0.14);
   --chart-gap: var(--warn-bg);
   --chart-anomaly: var(--crit-bg);
   --chart-marker: var(--neutral);
   --chart-tooltip-bg: var(--surface-2);
-  --chart-tooltip-border: var(--border-strong);
+  --chart-tooltip-border: var(--border);
   --chart-tooltip-text: var(--text);
+
+  /* --- redesign additions (UR.2.3) ---------------------------------------- */
+  --sidebar-bg: #151618;
+  --primary: #e8e8e8;
+  --primary-hover: #ffffff;
+  --link: var(--info-text);
+  --topbar-h: 56px;
+  --widget-pad: var(--sp-5);
+  --widget-gap: var(--sp-3);
+
+  /* Categorical series (UR.2.6). Never a status hue. */
+  --chart-cat-1: #6fd0e0;
+  --chart-cat-2: #b59a7a;
+  --chart-cat-3: #e6e1d3;
+  --chart-cat-4: #7c93d1;
+  --chart-cat-5: #e08cb8;
+  --chart-other: #73757b;
+
+  /* Severity scale: charts only (UR.2.4). */
+  --sev-critical: #e36565;
+  --sev-high: #a64b4b;
+  --sev-medium: #e5ad56;
+  --sev-low: #6fd0e0;
+  --sev-info: #8c8e94;
+
+  /* World-map ramp (UR.2.7). */
+  --map-0: #2a2b2f;
+  --map-1: #2f4a50;
+  --map-2: #3c7580;
+  --map-3: #58a5b4;
+  --map-4: #8edce8;
 }
