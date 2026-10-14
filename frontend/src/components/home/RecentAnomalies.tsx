@@ -16,7 +16,8 @@ import { formatRatio, stateTone } from "@/lib/behavior";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import { RECENT_ANOMALIES_LIMIT, recentAnomalies } from "@/lib/home/recentAnomalies";
 
-import { Gate, secondary, Unmeasured, When, Widget, WidgetLoading } from "./WidgetParts";
+import { secondary, WidgetFrame, WidgetLoading } from "./WidgetFrame";
+import { Unmeasured, When } from "./WidgetParts";
 
 export function RecentAnomalies() {
   const listRead = homeReads.activeAnomalies(RECENT_ANOMALIES_LIMIT);
@@ -26,15 +27,17 @@ export function RecentAnomalies() {
   const ok = list.status === "ok" ? recentAnomalies(list.data, secondary(summary).data) : null;
 
   return (
-    <Widget
+    <WidgetFrame
       id="recent-anomalies"
       title="Recent anomalies"
       windowText="active now"
       badge={ok ? ok.badge : undefined}
-      viewAll={{ href: "/anomalies", label: "View all" }}
+      link={{ href: "/anomalies", label: "View all" }}
+      state={list}
+      what="the active anomalies"
+      permission="read:anomalies"
     >
-      <Gate state={list} what="the active anomalies" permission="read:anomalies">
-        {({ data }) => {
+      {({ data }) => {
           const sum = secondary(summary);
           // The empty state quotes the not-judged count, so wait for it.
           if (data.items.length === 0 && sum.pending) {
@@ -133,8 +136,7 @@ export function RecentAnomalies() {
               {view.shown && <p className="tw-note">{view.shown}.</p>}
             </>
           );
-        }}
-      </Gate>
-    </Widget>
+      }}
+    </WidgetFrame>
   );
 }

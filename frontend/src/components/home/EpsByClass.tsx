@@ -18,15 +18,15 @@ import { useMemo } from "react";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
 import { NOT_MEASURED } from "@/lib/behavior";
+import { formatEpsValue } from "@/lib/fleet";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import { sliceVar } from "@/lib/home/chartPalette";
 import { epsByClass, REST_KEY, type ClassEps, type EpsByClass as Model } from "@/lib/home/epsByClass";
-import { formatEps } from "@/lib/home/format";
 import { badgeText } from "@/lib/home/qualifiers";
 
 import { buildClassOption } from "./chartOptions";
 import { useEChart } from "./useEChart";
-import { Gate, Widget } from "./WidgetParts";
+import { WidgetFrame } from "./WidgetFrame";
 
 import "./charts.css";
 
@@ -38,6 +38,7 @@ export function classHref(e: Pick<ClassEps, "key">): string {
 }
 
 const share = (v: number | null) => (v === null ? NOT_MEASURED : `${(v * 100).toFixed(0)} %`);
+const eps = (v: number | null | undefined) => formatEpsValue(v) ?? NOT_MEASURED;
 
 function reasonOf(model: Model): string {
   const q = model.qualifiers.find((x) => x.kind === "INSUFFICIENT_DATA");
@@ -58,7 +59,7 @@ function Donut({ model }: { model: Model }) {
     <div className="hc-donut" aria-hidden="true">
       <div ref={ref} className="hc-donut-canvas" />
       <div className="hc-donut-total">
-        <span className="hc-donut-num">{formatEps(model.totalEps)}</span>
+        <span className="hc-donut-num">{eps(model.totalEps)}</span>
         <span className="hc-donut-unit">EPS</span>
       </div>
     </div>
@@ -69,7 +70,7 @@ function List({ model }: { model: Model }) {
   return (
     <table className="hc-list">
       <caption className="sr-only">
-        Mean EPS by source class, complete intervals only. Total {formatEps(model.totalEps)} EPS.
+        Mean EPS by source class, complete intervals only. Total {eps(model.totalEps)} EPS.
       </caption>
       <thead>
         <tr>
@@ -96,7 +97,7 @@ function List({ model }: { model: Model }) {
                 </span>
               )}
             </th>
-            <td className="num">{formatEps(e.eps)}</td>
+            <td className="num">{eps(e.eps)}</td>
             <td className="num">{share(e.share)}</td>
           </tr>
         ))}
@@ -112,15 +113,17 @@ export function EpsByClass() {
   const model = useMemo(() => (data ? epsByClass(data) : null), [data]);
 
   return (
-    <Widget
+    <WidgetFrame
       id="home-eps-class"
       title="EPS by source class"
       windowText="24 h"
       badge={(model && badgeText(model.qualifiers)) || undefined}
-      viewAll={{ href: "/fleet", label: "Fleet" }}
+      link={{ href: "/fleet", label: "Fleet" }}
+      state={state}
+      what="EPS by class"
+      permission="read:fleet"
     >
-      <Gate state={state} what="EPS by class" permission="read:fleet">
-        {() =>
+      {() =>
           model && (
             <>
               {model.entries.length === 0 ? (
@@ -140,8 +143,7 @@ export function EpsByClass() {
               )}
             </>
           )
-        }
-      </Gate>
-    </Widget>
+      }
+    </WidgetFrame>
   );
 }

@@ -11,16 +11,15 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
 import { offensesCard, type OffensesCard } from "@/lib/home/offenses";
 
-import { Figure, KpiFrame, Line, Qualifiers, n } from "./KpiFrame";
-
-const count = (v: number | null) => (v === null ? "\u2014" : n(v));
+import { countNoun, Figure, Line, n } from "./KpiParts";
+import { WidgetFrame, WidgetQualifiers } from "./WidgetFrame";
 
 function Body({ card }: { card: OffensesCard }) {
   if (card.open === null) {
     return (
       <>
         <Figure value={null} unit="open offenses" />
-        <Qualifiers items={card.qualifiers} />
+        <WidgetQualifiers variant="kpi" qualifiers={card.qualifiers} />
       </>
     );
   }
@@ -31,13 +30,16 @@ function Body({ card }: { card: OffensesCard }) {
       <Line
         title={`Critical means magnitude of ${card.criticalMagnitude} or more, the product's own threshold.`}
         parts={[
-          `${count(card.critical)} critical (\u2265 ${card.criticalMagnitude})`,
-          `${b ? count(b.below) : "\u2014"} below`,
-          b && b.unknown > 0 && `${n(b.unknown)} unknown`,
+          `${card.critical === null ? "\u2014" : countNoun(card.critical, "critical")} (\u2265 ${card.criticalMagnitude})`,
+          b && b.below !== null ? countNoun(b.below, "below") : "\u2014\u00a0below",
+          b && b.unknown !== null && b.unknown > 0 && countNoun(b.unknown, "unknown"),
         ]}
       />
       <Line
-        parts={[`${count(card.unassigned)} unassigned`, `${count(card.exceedingSla)} over SLA`]}
+        parts={[
+          card.unassigned === null ? "\u2014\u00a0unassigned" : countNoun(card.unassigned, "unassigned"),
+          card.exceedingSla === null ? "\u2014\u00a0over SLA" : countNoun(card.exceedingSla, "over SLA"),
+        ]}
       />
     </>
   );
@@ -53,18 +55,21 @@ export function KpiOffenses() {
   // Do not decide NOT_COLLECTED from a probe that is still on its way.
   const probePending = probe.status === "idle" || probe.status === "loading";
   return (
-    <KpiFrame
-      id="offenses"
+    <WidgetFrame
+      variant="kpi"
+      id="kpi-offenses"
       title="Open offenses, latest snapshot"
-      href="/offenses?status=OPEN"
-      linkLabel="View open offenses"
-      linkText="Offenses"
+      link={{
+        href: "/offenses?status=OPEN",
+        label: "Offenses",
+        ariaLabel: "View open offenses",
+      }}
       what="offenses"
       permission="read:offenses"
       description="Offenses open in the latest collected snapshot. Critical is magnitude at or above the product's threshold; unknown is an offense with no magnitude."
       state={probePending && state.status === "ok" ? { status: "loading" } : state}
     >
-      {(data) => <Body card={offensesCard(data, probeData)} />}
-    </KpiFrame>
+      {({ data }) => <Body card={offensesCard(data, probeData)} />}
+    </WidgetFrame>
   );
 }

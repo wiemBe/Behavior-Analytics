@@ -49,10 +49,17 @@ describe("filter parsing", () => {
 
   it("defaults every filter to empty", () => {
     const q = parseAnomalyQuery({});
+    expect(q.active_only).toBe(false);
     expect(q.state).toBe("");
     expect(q.since).toBe("");
     expect(q.offset).toBe(0);
     expect(q.rangeNote).toBeNull();
+  });
+
+  it("accepts only an explicit true active-only flag", () => {
+    expect(parseAnomalyQuery({ active_only: "true" }).active_only).toBe(true);
+    expect(parseAnomalyQuery({ active_only: "false" }).active_only).toBe(false);
+    expect(parseAnomalyQuery({ active_only: "1" }).active_only).toBe(false);
   });
 });
 
@@ -121,6 +128,7 @@ describe("paginationParams", () => {
       severity: "HIGH",
       evidence_status: "FAILED",
       anomaly_type: "VOLUME_DROP",
+      active_only: "true",
       offset: "25",
     });
     expect(paginationParams(q)).toMatchObject({
@@ -129,6 +137,7 @@ describe("paginationParams", () => {
       severity: "HIGH",
       evidence_status: "FAILED",
       anomaly_type: "VOLUME_DROP",
+      active_only: "true",
     });
   });
 

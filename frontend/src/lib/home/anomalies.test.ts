@@ -4,7 +4,7 @@ import { anomaliesCard, countBySeverity } from "./anomalies";
 import { anomaly, page, summary } from "./fixtures";
 
 describe("anomaliesCard", () => {
-  it("reports open, the type breakdown and the not-judged companion", () => {
+  it("reports exact detector and lifecycle partitions plus the not-judged companion", () => {
     const r = anomaliesCard(
       summary({
         open_anomalies: 9,
@@ -18,13 +18,19 @@ describe("anomaliesCard", () => {
       page([anomaly({ severity: "HIGH" })]),
     );
     expect(r.open).toBe(9);
-    expect(r.byType.map((t) => [t.key, t.count])).toEqual([
+    expect(r.byDetector.map((t) => [t.key, t.count])).toEqual([
       ["spikes", 4],
       ["drops", 2],
       ["silent", 1],
+      ["other", 2],
+    ]);
+    expect(r.byLifecycle.map((t) => [t.key, t.count])).toEqual([
+      ["open", 5],
       ["candidates", 3],
       ["recovering", 1],
     ]);
+    expect(r.byDetector.reduce((sum, item) => sum + item.count, 0)).toBe(r.open);
+    expect(r.byLifecycle.reduce((sum, item) => sum + item.count, 0)).toBe(r.open);
     expect(r.notJudged).toBe(7);
     expect(r.notJudgedText).toBe("7 sources not judged");
   });

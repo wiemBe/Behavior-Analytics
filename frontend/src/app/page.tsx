@@ -1,57 +1,18 @@
-import { api } from "@/lib/api";
-import { StatCard } from "@/components/StatCard";
+// The Home: the dashboard at `/`.
+//
+// The question: what needs me now? The first screen is the key figures and the top of the
+// fleet charts. This is only the shell; the widgets are client components that read their
+// own data, so the top bar's refresh reaches every one of them and a refused or failed
+// read stays inside the widget that made it.
 
-// Server component: fetches on the server so the browser never needs API creds.
-export default async function OverviewPage() {
-  let data;
-  try {
-    data = await api.overview();
-  } catch {
-    return (
-      <>
-        <h2>SOC Overview</h2>
-        <p className="subtitle">
-          Backend unreachable. Start the stack with <code>docker compose up</code> and run an
-          inventory sync from the Log Sources page.
-        </p>
-      </>
-    );
-  }
+import type { Metadata } from "next";
 
-  const ls = data.log_sources;
-  const off = data.offenses;
-  return (
-    <>
-      <h2>SOC Overview</h2>
-      <p className="subtitle">
-        Instance {data.instance_status}
-        {data.instance_version ? ` · QRadar ${data.instance_version}` : ""} · generated{" "}
-        {new Date(data.generated_at).toLocaleTimeString()}
-      </p>
+import { HomeDashboard } from "@/components/home/HomeDashboard";
 
-      <div className="grid">
-        <StatCard
-          label="Avg Health"
-          value={data.average_health_score ?? "—"}
-          tone={
-            data.average_health_score == null
-              ? undefined
-              : data.average_health_score >= 70
-                ? "ok"
-                : data.average_health_score >= 40
-                  ? "warn"
-                  : "crit"
-          }
-        />
-        <StatCard label="Monitored Sources" value={ls.monitored_log_sources} />
-        <StatCard label="Silent Sources" value={ls.silent_log_sources} tone={ls.silent_log_sources ? "crit" : "ok"} />
-        <StatCard label="Anomalous Sources" value={ls.anomalous_log_sources} tone={ls.anomalous_log_sources ? "warn" : "ok"} />
-        <StatCard label="In Maintenance" value={ls.in_maintenance} />
-        <StatCard label="Active Offenses" value={off.active} />
-        <StatCard label="Critical Offenses" value={off.critical} tone={off.critical ? "crit" : "ok"} />
-        <StatCard label="Unassigned Offenses" value={off.unassigned} tone={off.unassigned ? "warn" : "ok"} />
-        <StatCard label="Open Alerts" value={data.alerts.open} tone={data.alerts.open ? "warn" : "ok"} />
-      </div>
-    </>
-  );
+export const metadata: Metadata = {
+  title: "Dashboard",
+};
+
+export default function HomePage() {
+  return <HomeDashboard />;
 }

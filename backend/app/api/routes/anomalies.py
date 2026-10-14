@@ -50,9 +50,12 @@ from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
+from app.repositories.anomaly_histogram import BUCKET_SECONDS, check_range, histogram
 from app.repositories.ips_behavior import IpsBehaviorRepository
 from app.schemas.anomaly import (
     AnomalyDetailOut,
+    AnomalyHistogramHourOut,
+    AnomalyHistogramOut,
     AnomalyListItem,
     AnomalyTransitionOut,
     BaselineCellOut,
@@ -267,6 +270,44 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
         evidence_failed=evidence.get(EvidenceStatus.FAILED.value, 0),
         recently_resolved=await _list_items(repo, await repo.recently_resolved()),
         highest_deviation=await _list_items(repo, await repo.highest_deviation()),
+    )
+
+
+@router.get("/histogram", response_model=AnomalyHistogramOut)
+async def anomaly_histogram(
+    session: SessionDep,
+    settings: SettingsDep,
+    # Declared before /{anomaly_id}: a route after it would parse "histogram"
+    # as an id and answer every histogram call with a uuid parse error.
+    since: datetime = Query(...),
+    until: datetime = Query(...),
+    subject_kind: SubjectKind | None = Query(default=None),
+) -> AnomalyHistogramOut:
+    """Anomaly counts per UTC hour and severity: the Home chart's own read.
+
+    The population is exactly the list's -- the same families for the same
+    range and `subject_kind`, every state -- but uncapped, so an hour with no
+    anomaly is a measured zero and no total is a lower bound. One statement
+    per request, whatever the range holds.
+    """
+    start, end = _validate_range(since, until, settings.api_max_range_days)
+    try:
+        check_range(start, end)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    result = await histogram(session, since=start, until=end, subject_kind=subject_kind)
+    return AnomalyHistogramOut(
+        since=start,
+        until=end,
+        bucket_seconds=BUCKET_SECONDS,
+        families=result.families,
+        total=result.total,
+        hours=[
+            AnomalyHistogramHourOut(
+                start=hour.start, counts=hour.counts, total=hour.total
+            )
+            for hour in result.hours
+        ],
     )
 
 

@@ -1,0 +1,6 @@
+/* The Home page wrapper (UI-3.1). The grid itself, its columns and its box heights moved to
+   `src/widgets/dashboard.css` with the dashboard view that renders every layout. */
+
+.home {
+  min-width: 0;
+}

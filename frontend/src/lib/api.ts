@@ -2087,7 +2087,18 @@ function homeRead<T>(path: string): HomeRead<T> {
   return { key: path, fetch: (signal) => request<T>(path, { signal }) };
 }
 
+/** `GET /me`: the caller's identity and permissions (the widget catalog, UR.5.6). */
+export interface CallerInfo {
+  subject: string;
+  email: string | null;
+  /** The grants, wildcards included (`read:*`). */
+  permissions: string[];
+  /** Every `PERM_*` capability the caller holds once wildcards are resolved. */
+  effective_permissions: string[];
+}
+
 export const homeReads = {
+  me: () => homeRead<CallerInfo>("/me"),
   fleetSummary: (window: FleetWindow) =>
     homeRead<FleetSummary>(`/fleet/summary${qs({ window })}`),
   epsSeries: (window: FleetWindow, groupBy: FleetSeriesGroup) =>
@@ -2098,6 +2109,11 @@ export const homeReads = {
   offenseAnalytics: () => homeRead<OffenseAnalytics>("/offenses/analytics"),
   // `total` tells "no offenses" from "no snapshot yet" (UR.4.2 card 3).
   offenseProbe: () => homeRead<Page<OffenseSummary>>(`/offenses${qs({ limit: 1 })}`),
+  // The open offenses, latest update first (Home "Recent offenses").
+  recentOffenses: (limit = 5) =>
+    homeRead<Page<OffenseSummary>>(
+      `/offenses${qs({ status: "OPEN", sort: "last_updated_time", limit })}`,
+    ),
   activeAnomalies: (limit = 200) =>
     homeRead<Page<AnomalySummary>>(`/anomalies${qs({ active_only: true, limit })}`),
   anomaliesBetween: (since: string, until: string, limit = 200) =>

@@ -1,17 +1,4 @@
-// Small formatters the Home tables share. A figure that was not measured is an em
-// dash (`NOT_MEASURED`), never a zero; a time carries its zone and its age.
-
-import { NOT_MEASURED } from "@/lib/behavior";
-
-/**
- * Events per second, with the digits that mean something at that size: a source
- * at 0.04 EPS must not read as 0, and one at 1 240 EPS has no use for decimals.
- */
-export function formatEps(eps: number | null | undefined): string {
-  if (eps == null || !Number.isFinite(eps)) return NOT_MEASURED;
-  const digits = eps >= 100 ? 0 : eps >= 10 ? 1 : 2;
-  return eps.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-}
+// Small formatters the Home tables share. A time carries its zone and its age.
 
 /**
  * "12 min ago". Null when the instant is unusable or lies in the future, so a

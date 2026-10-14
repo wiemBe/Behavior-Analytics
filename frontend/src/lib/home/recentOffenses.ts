@@ -7,28 +7,12 @@
 // Fail closed: an empty open list with no probe answer is "could not confirm", not
 // "no open offenses".
 
-import { api, type HomeRead, type OffenseSummary, type Page } from "@/lib/api";
+import type { OffenseSummary, Page } from "@/lib/api";
 
 import { notCollected, type Qualifier } from "./qualifiers";
 
 export const RECENT_OFFENSES_LIMIT = 5;
 export const MAGNITUDE_SEGMENTS = 10;
-
-const OPEN_PARAMS = {
-  status: "OPEN",
-  sort: "last_updated_time",
-  limit: RECENT_OFFENSES_LIMIT,
-} as const;
-
-/**
- * The open-offenses read. `api.offenses` takes no signal, so this read is not
- * aborted on unmount; its result is simply dropped by the hook. The key is the
- * request's identity, as for `homeReads`.
- */
-export const recentOffensesRead: HomeRead<Page<OffenseSummary>> = {
-  key: "/offenses?status=OPEN&sort=last_updated_time&limit=5",
-  fetch: () => api.offenses({ ...OPEN_PARAMS }),
-};
 
 export interface RecentOffenseRow {
   id: number;

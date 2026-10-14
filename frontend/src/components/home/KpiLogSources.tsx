@@ -14,10 +14,23 @@ import { healthSummaryText } from "@/lib/behaviorOverview";
 import { combine2 } from "@/lib/home/combine";
 import { logSources, type LogSourcesCard } from "@/lib/home/logSources";
 
-import { Figure, KpiFrame, Line, Qualifiers, n } from "./KpiFrame";
+import { countNoun, Figure, Line, n } from "./KpiParts";
+import { WidgetFrame, WidgetQualifiers } from "./WidgetFrame";
 
 function Body({ card, totalNote }: { card: LogSourcesCard; totalNote: string | null }) {
   const total = card.total === null ? null : n(card.total);
+  if (card.monitored === 0) {
+    return (
+      <>
+        <Figure value={n(card.monitored)} unit={total ? `of ${total} monitored` : "monitored"} />
+        <p className="kpi-note">
+          No monitored log source. Enable monitoring on a source to start collecting its volume
+          baseline.
+        </p>
+        {totalNote ? <p className="kpi-note">{totalNote}</p> : null}
+      </>
+    );
+  }
   return (
     <>
       <Figure
@@ -25,12 +38,12 @@ function Body({ card, totalNote }: { card: LogSourcesCard; totalNote: string | n
         unit={total ? `of ${total} monitored` : "monitored"}
         title={total ? `Monitored log sources, of ${total} that QRadar knows.` : undefined}
       />
-      <Qualifiers items={card.qualifiers} />
+      <WidgetQualifiers variant="kpi" qualifiers={card.qualifiers} />
       <Line
         title={card.silentDefinition}
         parts={[
           card.judgedText ?? "\u2014 judged normal (no source is judged yet)",
-          `${n(card.silent)} silent`,
+          countNoun(card.silent, "silent"),
         ]}
       />
       {totalNote ? <p className="kpi-note">{totalNote}</p> : null}
@@ -63,18 +76,17 @@ export function KpiLogSources() {
   }
 
   return (
-    <KpiFrame
-      id="log-sources"
+    <WidgetFrame
+      variant="kpi"
+      id="kpi-log-sources"
       title="Log sources, now"
-      href="/behavior/sources"
-      linkLabel="View log sources"
-      linkText="Sources"
+      link={{ href: "/behavior/sources", label: "Sources", ariaLabel: "View log sources" }}
       what="log source health"
       permission="read:anomalies"
       state={state}
       description="Monitored log sources and how many have a verdict. Judged excludes sources with insufficient data. Silent means the detector saw no events where some were expected (NO_EVENTS anomaly)."
     >
-      {([s, list]) => <Body card={logSources(s, list, total)} totalNote={totalNote} />}
-    </KpiFrame>
+      {({ data: [s, list] }) => <Body card={logSources(s, list, total)} totalNote={totalNote} />}
+    </WidgetFrame>
   );
 }

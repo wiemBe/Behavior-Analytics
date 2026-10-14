@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -26,5 +29,11 @@ describe("KpiRow", () => {
     render(<KpiRow />);
     expect(screen.getByText(/permission read:offenses/)).toBeInTheDocument();
     expect(screen.getAllByText(/^Loading /)).toHaveLength(3);
+  });
+
+  it("stretches every card border to the height of its grid row", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/components/home/kpi.css"), "utf8");
+    expect(css).toMatch(/\.kpi-grid\s*\{[^}]*align-items:\s*stretch/s);
+    expect(css).not.toMatch(/\.kpi-grid\s*\{[^}]*align-items:\s*start/s);
   });
 });

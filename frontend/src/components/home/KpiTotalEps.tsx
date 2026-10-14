@@ -14,7 +14,8 @@ import { totalEps, type TotalEps } from "@/lib/home/totalEps";
 
 import { signedPercent } from "@/lib/home/format";
 
-import { Figure, KpiFrame, Line, Qualifiers, n } from "./KpiFrame";
+import { Figure, Line, n } from "./KpiParts";
+import { WidgetFrame, WidgetQualifiers } from "./WidgetFrame";
 import { Sparkline } from "./Sparkline";
 
 const WINDOW = "24h" as const;
@@ -61,8 +62,9 @@ function Body({ card, trend }: { card: TotalEps; trend: ResourceState<FleetEpsSe
         reason={insufficient?.kind === "INSUFFICIENT_DATA" ? insufficient.reason : undefined}
         title="Mean over 24 h, complete intervals only."
       />
-      <Qualifiers
-        items={card.qualifiers.filter((q) => q.kind !== "INSUFFICIENT_DATA")}
+      <WidgetQualifiers
+        variant="kpi"
+        qualifiers={card.qualifiers.filter((q) => q.kind !== "INSUFFICIENT_DATA")}
         extra={lostClasses}
       />
       <Line
@@ -102,18 +104,17 @@ export function KpiTotalEps() {
   const state = useApiResource(summary.key, summary.fetch);
   const trend = useApiResource(series.key, series.fetch);
   return (
-    <KpiFrame
-      id="total-eps"
+    <WidgetFrame
+      variant="kpi"
+      id="kpi-total-eps"
       title="Total EPS, 24 h"
-      href="/fleet"
-      linkLabel="View fleet by class"
-      linkText="Fleet"
+      link={{ href: "/fleet", label: "Fleet", ariaLabel: "View fleet by class" }}
       what="fleet EPS"
       permission="read:fleet"
       state={state}
       description="Mean EPS over 24 h, summed over source classes, complete intervals only. Expected is the sum of the baselines of the classes that have one."
     >
-      {(data) => <Body card={totalEps(data)} trend={trend} />}
-    </KpiFrame>
+      {({ data }) => <Body card={totalEps(data)} trend={trend} />}
+    </WidgetFrame>
   );
 }

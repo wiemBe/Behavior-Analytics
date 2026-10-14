@@ -187,6 +187,7 @@ describe("filters", () => {
     expect(screen.getByLabelText("Severity")).toBeInTheDocument();
     expect(screen.getByLabelText("Start time (UTC)")).toBeInTheDocument();
     expect(screen.getByLabelText("End time (UTC)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Active only")).toBeInTheDocument();
   });
 
   it("keeps source, instance and evidence behind a disclosure", async () => {
@@ -214,6 +215,7 @@ describe("filters", () => {
       "Severity",
       "Start time (UTC)",
       "End time (UTC)",
+      "Active only",
       "Log source",
       "QRadar instance",
       "Evidence status",
@@ -282,6 +284,17 @@ describe("pagination", () => {
     const next = screen.getByRole("link", { name: "Next" });
     expect(next.getAttribute("href")).toContain("state=OPEN");
     expect(next.getAttribute("href")).toContain("offset=25");
+  });
+
+  it("passes active only through to the API and keeps it in paging links", async () => {
+    await renderPage({ active_only: "true" }, [anomaly()], 60);
+    expect(api.anomalies).toHaveBeenCalledWith(
+      expect.objectContaining({ active_only: true }),
+    );
+    expect(screen.getByRole("link", { name: "Next" }).getAttribute("href")).toContain(
+      "active_only=true",
+    );
+    expect(screen.getByLabelText("Active only")).toBeChecked();
   });
 });
 

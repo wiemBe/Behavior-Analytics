@@ -60,6 +60,18 @@
   color: var(--text);
   font-weight: var(--fw-semibold);
 }
+.widget-error p {
+  margin: 0;
+}
+.widget-error-title strong {
+  color: var(--crit-text);
+}
+.widget-error-action {
+  color: var(--text-2);
+}
+.widget-error-title + .widget-error-action {
+  margin-top: var(--sp-1);
+}
 .tw-note {
   margin: 0;
   font-size: var(--fs-xs);
@@ -104,10 +116,10 @@
     radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), transparent) right center;
   background-repeat: no-repeat;
   background-size:
-    32px 100%,
-    32px 100%,
-    14px 100%,
-    14px 100%;
+    var(--scroll-cover-w) 100%,
+    var(--scroll-cover-w) 100%,
+    var(--scroll-shadow-w) 100%,
+    var(--scroll-shadow-w) 100%;
   background-attachment: local, local, scroll, scroll;
 }
 .tw-table {
@@ -275,9 +287,7 @@
   display: block;
 }
 .tw-fold {
-  display: inline-block;
-  margin-left: var(--sp-1);
-  white-space: nowrap;
+  display: block;
 }
 @container tw (min-width: 34rem) {
   .tw-unfold {

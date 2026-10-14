@@ -129,8 +129,8 @@ Read from the code. Each is cited so it can be re-checked.
 
 ## UR.1 Page inventory
 
-Thirty-two routes: the 31 on `feat/phase-ce`, plus `/fleet/catchall` (T-070b, finished, in
-worktree `t070b`, not merged). `/admin/outage-policy` (T-070a) is merged and is in the 31.
+Thirty-two routes: the 31 on `feat/phase-ce` when this plan was written, plus `/fleet/catchall`
+(T-070b, merged since). `/admin/outage-policy` (T-070a) is merged and is in the 31.
 
 **Columns used in each entry.**
 - **Question:** the one question the route answers.
@@ -963,7 +963,7 @@ Rules:
 | `kpi.log_sources` | `/anomalies/summary`, `/behavior/sources`, `/overview` | `read:anomalies`, `read:overview` | live |
 | `kpi.offenses` | `/offenses/analytics` | `read:offenses` | live |
 | `kpi.anomalies` | `/anomalies/summary`, `/anomalies` | `read:anomalies` | live |
-| `chart.eps_observed_expected` | per-source metrics, baselines, anomalies (fleet: B-2.1) | `read:anomalies` | live (source mode); fleet mode blocked on B-2.1 |
+| `chart.eps_observed_expected` | per-source metrics, baselines, anomalies | `read:anomalies` | live (source mode, built in UI-3.5); fleet mode is `chart.eps_fleet_total` |
 | `chart.eps_by_class` | `/fleet/summary` | `read:fleet` | live |
 | `chart.anomaly_severity` | `/anomalies` | `read:anomalies` | live (capped at 200, TRUNCATED) |
 | `table.top_sources` | `/fleet/summary`, `/behavior/sources` | `read:fleet`, `read:anomalies` | live |
@@ -973,15 +973,15 @@ Rules:
 | `health.detection` | `/coverage/summary`, `/rules/health-summary` | `read:coverage`, `read:rules` | live |
 | `health.collection` | `/admin/search-cadence` | `read:search_cadence` | live |
 | `health.evidence` | `/anomalies/summary` (`evidence_pending/failed`) | `read:anomalies` | live |
-| `table.catchall_senders` | `/fleet/catchall/senders?review_status=NEW` | `read:fleet` | live after T-070b merges |
+| `table.catchall_senders` | `/fleet/catchall/senders?review_status=NEW` | `read:fleet` | live (built in UI-3.5) |
 | `table.fleet_classes` | `/fleet/summary` | `read:fleet` | live |
 | `table.outage_policy` | `/fleet/summary` (`outage_mode`, `outage_overrides`) | `admin:outage` | live (admin) |
 | `waf.sources` | `/behavior/waf/sources` | `read:anomalies` | live |
 | `waf.endpoint_traffic` | `/behavior/waf/endpoints/{id}/metrics` (+ `/baselines`) | `read:anomalies` | live; config: endpoint |
 | `table.recent_waf_anomalies` | `/anomalies?subject_kind=WAF_ENDPOINT` | `read:anomalies` | live |
-| `ips.source_anomalies` | none | — | **blocked**: no IPS behavior read API exists (`/ips/*` is admin config) |
-| `map.geography` | none | — | **blocked**: geo collection (UR.6) |
-| `chart.eps_fleet_total` | B-2.1 | `read:fleet` | **blocked** until B-2.1 |
+| `ips.source_anomalies` | none | — | **blocked** until the IPS analyst API (T-085) and its UI |
+| `map.geography` | none | — | **blocked**: the widget is task G-4 (geo collection, G-2, is built) |
+| `chart.eps_fleet_total` | `/fleet/eps-series` (B-2.1) | `read:fleet` | live |
 
 ### UR.5.2 `react-grid-layout`: version, React 19, SSR
 
@@ -1040,8 +1040,8 @@ SSR and hydration:
 | Restore defaults | Re-applies the dashboard's `template_key` layout (the frontend's template at its current version) after a confirm. A dashboard with no template key has no "restore": it offers "Reset to empty". |
 | Navigate | The title and the drill-down link of each widget. |
 
-Responsive: the grid uses 12 columns when its **container** is at least 1,100 px wide, 6 columns
-from 700 to 1,099 px, 1 column below. At 1024×768 the main column is about 760 px, so it is the
+Responsive: the grid uses 12 columns when its **container** is at least 900 px wide, 6 columns
+from 600 to 899 px, 1 column below. At 1024×768 the main column is about 760 px, so it is the
 6-column layout. Only the 12-column layout is stored; the others are **derived** by a pure,
 tested function (`deriveLayout(lg, cols)`). **Editing is available only at the 12-column width**;
 below it the page shows the layout and a line, "Widen the window to customize". The requirement at
@@ -1209,7 +1209,7 @@ object `{key, version, name, layout}` in `frontend/src/widgets/templates.ts`.
 
 | Template | Widgets | Left out until data exists |
 |---|---|---|
-| **SOC Overview** (the Home default) | `kpi.total_eps`, `kpi.log_sources`, `kpi.offenses`, `kpi.anomalies`, `chart.eps_observed_expected` (source mode), `chart.eps_by_class`, `table.top_sources`, `chart.anomaly_severity`, `health.log_sources`, `table.recent_anomalies`, `table.recent_offenses` | `map.geography` (geo), fleet-total chart (B-2.1) |
+| **SOC Overview** (the Home default) | `kpi.total_eps`, `kpi.log_sources`, `kpi.offenses`, `kpi.anomalies`, `chart.eps_fleet_total`, `chart.eps_by_class`, `table.top_sources`, `chart.anomaly_severity`, `health.log_sources`, `table.recent_anomalies`, `table.recent_offenses` | `map.geography` (geo) |
 | **QRadar Administration** | `health.collection`, `table.catchall_senders`, `table.fleet_classes`, `table.outage_policy`, `health.detection`, `health.evidence` | none |
 | **Behavioral Analytics** | `kpi.anomalies`, `chart.eps_observed_expected`, `table.recent_anomalies`, `health.log_sources`, `health.evidence`, `chart.anomaly_severity` | |
 | **Log Source Monitoring** | `health.log_sources`, `table.top_sources`, `chart.eps_by_class`, `table.fleet_classes`, `table.catchall_senders` | |
@@ -1379,10 +1379,15 @@ Screens (every Phase 2 UI task, final one required): `/` at the 3 viewports with
 
 | ID | Task | Allowed files | Acceptance | Screens |
 |---|---|---|---|---|
-| UI-3.1 (UI) | Registry, `WidgetFrame`, state union, catalog drawer | `src/widgets/*` (+ tests) | Registry test (sources exist, permissions known, no live widget on a data gap); every `WidgetState` kind rendered and tested; Phase 2 components wrapped, not rewritten | Catalog drawer, one of each state |
-| UI-3.2 (UI) | `react-grid-layout@2.2.4` | `package.json` (+ lockfile), `src/widgets/Grid.tsx`, `grid.css`, `lib/deriveLayout.ts` (+ tests) | **Drag, resize and the keyboard stepper verified in headless Chrome**; 12/6/1 column derivation tested; SSR guard (`ssr: false`, `measureBeforeMount`); client bundle cost measured and reported; no animation outside drag | Edit mode at 1440 and 1280; read mode at 1024 |
+| UI-3.1 (UI) | Registry, `WidgetFrame`, state union, catalog drawer, `deriveLayout`, Home as `DashboardView` over the template (in memory) | `src/widgets/*` (+ tests), `app/page.tsx` (+ tests) | Registry test (sources exist, permissions known, no live widget on a data gap); every `WidgetState` kind rendered and tested; Phase 2 components wrapped, not rewritten; 12/6/1 column derivation tested; same visual result as Phase 2; add and remove work in the session, **nothing is saved** | Catalog drawer, one of each state, `/` default and customized |
+| UI-3.2 (UI) | `react-grid-layout@2.2.4` | `package.json` (+ lockfile), `src/widgets/Grid.tsx`, `grid.css` (+ tests) | **Drag, resize and the keyboard stepper verified in headless Chrome**; SSR guard (`ssr: false`, `measureBeforeMount`); client bundle cost measured and reported; no animation outside drag | Edit mode at 1440 and 1280; read mode at 1024 |
 | UI-3.3 (UI) | Configure drawer, expand dialog, per-widget range | `src/widgets/*` | Config enumerated only; `<dialog>` focus return; range label on the title | Each of the three, at 3 viewports |
-| UI-3.4 (UI) | Home as `DashboardView` over the template (in memory) | `app/page.tsx`, `src/widgets/DashboardView.tsx`, `templates.ts` | Same visual result as Phase 2; add, remove, rearrange work in the session; **nothing is saved** | `/` default and customized |
+| UI-3.5 (UI) | The remaining catalog widgets of UR.5.1 that UI-3.1 does not register | `src/widgets/*` (+ tests) | Each registered `live` with its real `sources` and `requires`; every state tested; no widget added on a data gap | Each new widget, 3 viewports |
+
+The split was changed on 2026-10-14 (the orchestrator's ruling in
+[`tasks/UI-3.1.md`](tasks/UI-3.1.md)): UI-3.1 and UI-3.4 became one task because neither can be
+seen in a browser without the other, `deriveLayout` moved to UI-3.1 with them, and the catalog
+widgets UI-3.1 does not register became UI-3.5.
 
 ### Phase 4 — Persistence
 
@@ -1512,7 +1517,7 @@ rules; the user's approval of this plan covers the rulings the orchestrator acce
 - The top bar at 1024 px: the search shrinks (`minmax(0, 1fr)`), the status collapses to a
   coloured word + a button, the refresh select keeps its width (guidelines §9: intrinsic controls
   are not stretched).
-- The edit mode is unavailable below 1,100 px of container width (UR.5.3).
+- The edit mode is unavailable below 900 px of container width (UR.5.3).
 - Verified at the three viewports in every task's screenshots and measured in UI-6.1.
 - `overflow-x: hidden` on any container remains prohibited (guidelines §9).
 

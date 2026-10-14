@@ -11,14 +11,14 @@ import Link from "next/link";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import { useApiResource } from "@/hooks/useApiResource";
-import { stateTone } from "@/lib/behavior";
-import { formatRatio } from "@/lib/behavior";
 import { homeReads } from "@/lib/api";
-import { formatEps } from "@/lib/home/format";
+import { formatRatio, NOT_MEASURED, stateTone } from "@/lib/behavior";
+import { formatEpsValue } from "@/lib/fleet";
 import { deviationGapText, epsShares, topSources } from "@/lib/home/topSources";
 import { stateLabel } from "@/components/waf/wafLabels";
 
-import { Gate, secondary, Unmeasured, Widget, WidgetLoading } from "./WidgetParts";
+import { secondary, WidgetFrame, WidgetLoading } from "./WidgetFrame";
+import { Unmeasured } from "./WidgetParts";
 
 const WINDOW = "24h";
 
@@ -39,14 +39,16 @@ export function TopSources() {
   const behaviors = useApiResource(behaviorRead.key, behaviorRead.fetch);
 
   return (
-    <Widget
+    <WidgetFrame
       id="top-sources"
       title="Top log sources by EPS"
       windowText="24 h"
-      viewAll={{ href: "/behavior/sources", label: "View all" }}
+      link={{ href: "/behavior/sources", label: "View all" }}
+      state={fleet}
+      what="the fleet summary"
+      permission="read:fleet"
     >
-      <Gate state={fleet} what="the fleet summary" permission="read:fleet">
-        {({ data }) => {
+      {({ data }) => {
           const beh = secondary(behaviors);
           if (beh.pending) return <WidgetLoading what="source states" />;
           const rows = topSources(data, beh.data);
@@ -94,7 +96,6 @@ export function TopSources() {
                           <span className="tw-sub tw-wrap">
                             {r.classLabel}
                             <span className="tw-fold">
-                              {"· "}
                               {r.state === null ? (
                                 "State unavailable"
                               ) : (
@@ -108,7 +109,7 @@ export function TopSources() {
                         <td className="num">
                           <span className="tw-measure stack">
                             <span>
-                              {formatEps(r.eps)}
+                              {formatEpsValue(r.eps) ?? NOT_MEASURED}
                               <span className="unit"> EPS</span>
                             </span>
                             <EpsBar share={shares[i]} />
@@ -151,8 +152,7 @@ export function TopSources() {
               )}
             </>
           );
-        }}
-      </Gate>
-    </Widget>
+      }}
+    </WidgetFrame>
   );
 }

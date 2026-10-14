@@ -9,13 +9,14 @@
 //   * Class donut: at most five slices, a 2 px gap cut in the surface colour.
 //   * Severity columns: one stacked series per severity, in the fixed rank order.
 
-import { formatEps } from "@/lib/home/format";
 import { SEVERITY_ORDER } from "@/lib/home/anomalies";
 import { SEVERITY_TOKEN, sliceColors, type HomePalette } from "@/lib/home/chartPalette";
 import { gapText, type EpsChartModel } from "@/lib/home/epsChart";
 import type { ClassEps } from "@/lib/home/epsByClass";
 import type { SeverityPerHour } from "@/lib/home/severityPerHour";
 import { formatDateTime } from "@/lib/health";
+import { NOT_MEASURED } from "@/lib/behavior";
+import { formatEpsValue } from "@/lib/fleet";
 
 import type { EChartsOption } from "echarts";
 
@@ -43,6 +44,7 @@ function tooltipBase(p: HomePalette) {
 }
 
 const n = (v: number) => v.toLocaleString("en-US");
+const eps = (v: number | null | undefined) => formatEpsValue(v) ?? NOT_MEASURED;
 
 // --- fleet EPS line -----------------------------------------------------------
 
@@ -53,10 +55,10 @@ export function epsTooltip(model: EpsChartModel, index: number): string {
   const lines = [formatDateTime(new Date(s.t).toISOString())];
   lines.push(
     s.eps !== null
-      ? `Observed: ${formatEps(s.eps)} EPS`
+      ? `Observed: ${eps(s.eps)} EPS`
       : `Observed: not measured (${gapText(s)})`,
   );
-  if (s.expected !== null) lines.push(`${EXPECTED_NAME}: ${formatEps(s.expected)} EPS`);
+  if (s.expected !== null) lines.push(`${EXPECTED_NAME}: ${eps(s.expected)} EPS`);
   return lines.join("<br/>");
 }
 
@@ -181,13 +183,13 @@ export function buildClassOption(
       formatter: (params: unknown) => {
         const d = params as { name?: string; value?: number; percent?: number };
         const share = d.percent != null ? ` (${d.percent.toFixed(0)} %)` : "";
-        return `${d.name}: ${formatEps(d.value)} EPS${share}`;
+        return `${d.name}: ${eps(d.value)} EPS${share}`;
       },
     },
     series: [
       {
         type: "pie",
-        radius: ["60%", "96%"],
+        radius: [p.donutHoleRadius, "96%"],
         center: ["50%", "50%"],
         startAngle: 90,
         label: { show: false },
@@ -258,7 +260,8 @@ export function buildSeverityOption(
       data: r.hours.map((h) => `${h.start.slice(11, 13)}:00`),
       axisTick: { show: false },
       axisLine: { lineStyle: { color: p.axis } },
-      axisLabel: { ...text, interval: 2 },
+      // Four labels across 24 hours remain legible in the narrowest Home column.
+      axisLabel: { ...text, interval: 5, hideOverlap: true },
     },
     yAxis: {
       type: "value",
