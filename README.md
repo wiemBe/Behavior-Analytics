@@ -539,6 +539,133 @@ If `docker compose up` fails with `network id ... not found` for `qradar-vmnet`,
 macvlan is stale — typically after a Docker daemon restart. Remove and recreate it:
 `docker network rm qradar-vmnet && bash deploy/create-vmnet.sh`.
 
+### Production: one origin for UI and API
+
+**Why.** `frontend/src/lib/api.ts` sends every request to `NEXT_PUBLIC_API_BASE_URL`
+(`PUBLIC_BASE`, `baseUrl()`) whenever `window` exists, so every call a client component makes is
+made **by the browser, across origins**: the top bar's health, overview, cadence and search reads
+plus its alert bell (`components/shell/`), the administration reads and edits (WAF and IPS
+profiles, outage policy, search cadence), and every operator action — acknowledge, resolve, run a
+search, create or edit a classification rule, override a class. The `components/home/*` widgets
+are built to fetch the same way (`hooks/useApiResource.ts`), so the browser-side share grows
+rather than shrinks. Server Components are the exception: they run inside the frontend container
+and use `INTERNAL_API_BASE_URL`, so they never leave the Docker network. Production CORS allows
+**no** origin — `backend/app/main.py` installs `CORSMiddleware` with `allow_origins=[]` once
+`settings.is_production`, so no response ever carries `Access-Control-Allow-Origin` — and the
+browser refuses every one of those calls. Until a proxy puts them on one host, `127.0.0.1:3000`
+and `127.0.0.1:8000` are two origins. Production therefore needs **one origin for the UI and the
+API**, and nothing else about the stack changes.
+
+**What.** A TLS reverse proxy serves the UI at `/` and the API at `/api/` on that one origin,
+and the frontend is built with a relative API base:
+
+```ini
+NEXT_PUBLIC_API_BASE_URL=/api/v1   # at build time — see below
+```
+
+Next.js inlines `NEXT_PUBLIC_*` **at build time**: the docs say the value is inlined "at build
+time, into the js bundle that is delivered to the client, replacing all references to
+`process.env.[variable]` with a hard-coded value", and that "after being built, your app will no
+longer respond to changes to these environment variables" — a single image built once has them
+"frozen with the value evaluated at build time" (Next.js docs, *How to use environment variables
+→ Bundling Environment Variables for the Browser*). Two consequences:
+
+- **The image must be rebuilt whenever this value changes.** `docker-compose.yml` passes it to
+  the *running* container (`environment:`), which cannot change what the browser already
+  executes; `frontend/Dockerfile` has no build-time value for it either, so set it before
+  `RUN npm run build` (an `ARG`/`ENV` in the builder stage, or an `.env` in the build context).
+  `frontend/next.config.mjs` already copies the variable into the build.
+- **If it is missing at build time**, `frontend/src/lib/api.ts` falls back to the hard-coded
+  `http://localhost:8000/api/v1`, which is cross-origin from every production origin and fails.
+
+**Example (nginx).** Adapt the name, ports and upstreams; **TLS is yours to configure** — no
+certificates are shown here. The example adds no response header of its own:
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and
+`Cache-Control: no-store` come from the backend's middleware in `backend/app/main.py`, and the
+proxy must neither override nor hide them (`add_header`, `proxy_hide_header`).
+
+```nginx
+# EXAMPLE ONLY — server name, upstreams and TLS are yours to supply.
+server {
+    listen 443 ssl;
+    server_name soc.example.internal;   # whatever your certificate names
+    # ssl_certificate / ssl_certificate_key: yours to supply.
+
+    # The API. No URI after the upstream: the request path travels unchanged,
+    # so /api/v1/... reaches the backend's own API prefix. (The frontend's own
+    # /api/health probe is called from inside its container, not through here.)
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # The UI: everything else is the Next.js server.
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**Proxy headers and the rate limiter.** The limiter keys on the client address:
+`backend/app/core/rate_limit.py` uses slowapi's `get_remote_address`, i.e. `request.client.host`,
+scoped per request path, and `RATE_LIMIT_DEFAULT` (120/minute) is applied by
+`SlowAPIMiddleware` to every route that declares no limit of its own. What that address *is*
+behind a proxy is uvicorn's decision — the compose backend runs `uvicorn app.main:app
+--host 0.0.0.0 --port 8000 --proxy-headers` (`docker-compose.yml`). From the uvicorn
+documentation, *Settings → HTTP*: `--proxy-headers` enables `X-Forwarded-Proto` and
+`X-Forwarded-For` "to populate remote address info", "restricted to only trusting connecting IPs
+in the `forwarded-allow-ips` configuration", and `--forwarded-allow-ips` is a "comma separated
+list of IP Addresses, IP Networks, or literals (e.g. UNIX Socket path) to trust with proxy
+headers": it defaults to the `$FORWARDED_ALLOW_IPS` environment variable if set, otherwise
+`'127.0.0.1'`; "The literal `'*'` means trust everything". *Deployment → Proxies and
+Forwarded Headers* says which headers are honoured and warns "Only trust clients you can
+actually trust!". So the headers are honoured only when **the peer that opened the TCP
+connection** is in that list, and the default list is `127.0.0.1`:
+
+- **Behind this stack's published port the peer is a Docker bridge address, not `127.0.0.1`.**
+  Uvicorn runs inside the `backend` container, which joins the `internal` and `edge` bridge
+  networks and publishes `127.0.0.1:8000:8000`, so a proxy on this host that dials
+  `127.0.0.1:8000` reaches the container through Docker's port publishing, not over loopback:
+  Docker relays the connection in — the `dockerd` reference describes `--userland-proxy` as
+  "Use userland proxy for loopback traffic (default true)" — and the peer uvicorn sees is an
+  address on that bridge network, normally its gateway. The default trust list therefore trusts
+  nothing useful here: uvicorn ignores the proxy's `X-Forwarded-For`, `request.client.host` stays
+  the bridge address for every request, and all clients share one bucket, so one analyst can
+  spend `RATE_LIMIT_DEFAULT` for everyone. Any other source outside the list — a second host, a
+  container on another network — behaves the same way.
+- **Find the address to trust.** Docker's documentation never states which source address the
+  container ends up seeing; it says only that a published port is "mapped to host IP addresses",
+  done with firewall rules that "perform Network Address Translation (NAT), Port Address
+  Translation (PAT), and masquerading" (*Port publishing and mapping*), so measure it. Uvicorn's
+  default access-log format prints the client address of each request, for example
+  `INFO: 172.18.0.1:41052 - "GET /api/v1/health/live HTTP/1.1" 200 OK` — the direct read-out. This
+  backend, though, clears that logger's handlers at startup (`backend/app/core/logging.py`,
+  "uvicorn access logs are noisy and duplicate our request logging"), so the line is absent as
+  shipped; re-enable that one logger if you want it. The fallback is
+  `docker network inspect <network>`: Docker's own bridge example says "This shows the network's
+  gateway (for example, `172.18.0.1`)", and that gateway is normally the address uvicorn sees for
+  proxied traffic.
+- **Set exactly that address.** Put it in `FORWARDED_ALLOW_IPS` in `.env` (uvicorn reads the
+  variable itself, and the `backend` service loads `.env` wholesale through `env_file`, so no
+  change to `docker-compose.yml` is needed) — or add `--forwarded-allow-ips` to the backend
+  command — and restart the backend. Never `*`: anyone who can reach the backend from a trusted
+  address with a forged `X-Forwarded-For` would then choose their own rate-limit key.
+- **Confirm it afterwards.** With that logger readable, send a request through the proxy: it
+  must show the real client address — the browser's — rather than the bridge address. If it
+  still shows the bridge address, uvicorn is ignoring the header and every analyst is still
+  sharing one `RATE_LIMIT_DEFAULT` bucket.
+
+**Development is unchanged.** Outside production the list stays `["http://localhost:3000"]`
+(`backend/app/main.py`), so `npm run dev` on `:3000` reading the API on `:8000` behaves exactly
+as it does today, and so does the compose stack with `.env.example` as it ships
+(`ENVIRONMENT=development`, UI on `:3000`, API on `:8000`). The relative base above belongs to a
+production build.
+
 ### Upgrading
 
 Stop every writer before migrating. Migrations add `NOT NULL` columns whose backfill default is
