@@ -21,9 +21,10 @@ If this file disagrees with the code, the code wins. Fix the file.
   **Phase 2 (Home)** lacks only UI-2.5, the composition at `/`.
 - **The full backend gate on `a4fdbf6`** (`gate` worktree; everything after it is docs only):
   ruff clean; mypy 31 errors in 18 files (baseline); **2,850 unit passed**; alembic `head`→`0014`→
-  `head` clean, `alembic check` no drift, single head `0022`. **The full integration step was still
-  running at save** (a background job of this chat, so it probably died with it): **re-run it** on
-  a fresh `qradar_obs_gate` (log `scratchpad/gate-backend.log`, scratchpad below).
+  `head` clean, `alembic check` no drift, single head `0022`; **full integration on a fresh
+  `qradar_obs_gate`: 1,044 passed** (9 min 41 s; log `scratchpad/gate-backend.log`). **The backend
+  gate is green.** Only commits after `a4fdbf6` that touch code need a re-check (so far: none; the
+  later commits are docs only).
 - Scratchpad of this session:
   `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/1f0011eb-9918-4fba-a9e5-8fe15b30a127/scratchpad/`.
 
@@ -37,8 +38,9 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 **Next, in order:**
 1. Collect UI-2.5 and T-082 (above).
-2. Re-run the **full backend integration** and the **frontend gate** (lint, typecheck, test, build)
-   on the head with UI-2.5. If both are green, **merge `feat/phase-ce` → `main`** and push.
+2. After UI-2.5 merges, run the **frontend gate** (lint, typecheck, test, build) on the head. The
+   backend gate is already green on `a4fdbf6`; re-run the backend unit suite only if a commit after
+   it touched backend code. If green, **merge `feat/phase-ce` → `main`** and push.
 3. T-054 (above): each defect it finds becomes a fix task before IPS is called validated.
 4. Free-model task ready to write: diagnose the intermittent `tests/integration/test_migrations.py`
    ERROR (seen twice under concurrent load; capture its text first). Run it only when no gate is
