@@ -28,11 +28,14 @@ export function formatPercent(
   return isLowerBound(measurement) ? `≥ ${text}` : text;
 }
 
-/** A change in percentage points, signed so a drop is visibly a drop. */
+/**
+ * A change in percentage points, signed so a drop is visibly a drop. The API already sends
+ * points (`29.7` is 29.7 pp), unlike the proportions, which are fractions: no `* 100` here.
+ */
 export function formatPoints(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
   const sign = value > 0 ? "+" : "";
-  return `${sign}${(value * 100).toFixed(1)} pp`;
+  return `${sign}${value.toFixed(1)} pp`;
 }
 
 /** "5 min" for a 300 s bucket; null when the width is not known. */

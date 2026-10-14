@@ -34,8 +34,8 @@ describe("formatPercent and formatPoints", () => {
   });
 
   it("signs a change in points so a drop is visibly a drop", () => {
-    expect(formatPoints(0.297)).toBe("+29.7 pp");
-    expect(formatPoints(-0.05)).toBe("-5.0 pp");
+    expect(formatPoints(29.7)).toBe("+29.7 pp");
+    expect(formatPoints(-5)).toBe("-5.0 pp");
     expect(formatPoints(null)).toBe("—");
   });
 });
