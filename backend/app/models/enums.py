@@ -168,6 +168,32 @@ class WafAnomalyType(StrEnum):
     WAF_CLIENT_ENDPOINT_FANOUT_SPIKE = "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE"
 
 
+class IpsAnomalyType(StrEnum):
+    """Phase D IPS detector taxonomy (design D.6).
+
+    Separate from `AnomalyType` and `WafAnomalyType` for the same reason the WAF
+    one is: those enums are persisted in rows and alert fingerprints, and an IPS
+    value in either would be a value none of their detectors can produce. Each
+    member has a spec in `app.anomaly.capabilities.IPS_DETECTORS`.
+    """
+
+    #: A destination-port entity's events above its seasonal band.
+    IPS_PORT_RATE_SPIKE = "IPS_PORT_RATE_SPIKE"
+    #: A destination-IP entity's events above its seasonal band.
+    IPS_DESTINATION_RATE_SPIKE = "IPS_DESTINATION_RATE_SPIKE"
+    #: A signature entity's events above its seasonal band.
+    IPS_SIGNATURE_BURST = "IPS_SIGNATURE_BURST"
+    #: A destination port below the admission threshold throughout a verified
+    #: history window now carries traffic above a floor.
+    IPS_NEW_DESTINATION_PORT = "IPS_NEW_DESTINATION_PORT"
+    #: The top-1 source IP's share of source-IP events rose.
+    IPS_SOURCE_CONCENTRATION_SPIKE = "IPS_SOURCE_CONCENTRATION_SPIKE"
+    #: One source IP reached more distinct destination ports than the baseline allows.
+    IPS_PORT_FANOUT_SPIKE = "IPS_PORT_FANOUT_SPIKE"
+    #: The blocked share of action events rose, judged through the profile's action map.
+    IPS_BLOCK_RATIO_SHIFT = "IPS_BLOCK_RATIO_SHIFT"
+
+
 class WafLogicalField(StrEnum):
     """A logical WAF field a source profile maps onto a site-authored property.
 
