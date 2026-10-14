@@ -71,13 +71,13 @@ EXPECTED_STATUS = {
     "WAF_CLIENT_CONCENTRATION_SPIKE": DetectorStatus.OPERATIONAL,
     "WAF_NEW_ENDPOINT_ACCESS": DetectorStatus.OPERATIONAL,
     "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE": DetectorStatus.UNSUPPORTED,
-    "IPS_PORT_RATE_SPIKE": DetectorStatus.NOT_SCHEDULED,
-    "IPS_DESTINATION_RATE_SPIKE": DetectorStatus.NOT_SCHEDULED,
-    "IPS_SIGNATURE_BURST": DetectorStatus.NOT_SCHEDULED,
-    "IPS_NEW_DESTINATION_PORT": DetectorStatus.NOT_SCHEDULED,
-    "IPS_SOURCE_CONCENTRATION_SPIKE": DetectorStatus.NOT_SCHEDULED,
-    "IPS_PORT_FANOUT_SPIKE": DetectorStatus.NOT_SCHEDULED,
-    "IPS_BLOCK_RATIO_SHIFT": DetectorStatus.NOT_SCHEDULED,
+    "IPS_PORT_RATE_SPIKE": DetectorStatus.OPERATIONAL,
+    "IPS_DESTINATION_RATE_SPIKE": DetectorStatus.OPERATIONAL,
+    "IPS_SIGNATURE_BURST": DetectorStatus.OPERATIONAL,
+    "IPS_NEW_DESTINATION_PORT": DetectorStatus.OPERATIONAL,
+    "IPS_SOURCE_CONCENTRATION_SPIKE": DetectorStatus.OPERATIONAL,
+    "IPS_PORT_FANOUT_SPIKE": DetectorStatus.OPERATIONAL,
+    "IPS_BLOCK_RATIO_SHIFT": DetectorStatus.OPERATIONAL,
 }
 
 
@@ -97,15 +97,14 @@ def test_every_named_detector_has_a_spec() -> None:
     assert set(IPS_DETECTORS) == set(IpsAnomalyType)
 
 
-def test_every_ips_detector_is_implemented_but_explicitly_not_scheduled() -> None:
+def test_every_ips_detector_is_implemented_scheduled_and_gated() -> None:
+    disabled = Settings(_env_file=None, ips_collection_enabled=False)
     for spec in IPS_DETECTORS.values():
         assert spec.implemented is True
-        assert spec.scheduled_task is None
-        assert detector_status(spec) is DetectorStatus.NOT_SCHEDULED
-        assert spec.limitation == (
-            "IPS detection does not run on a schedule yet: the detector is implemented as a "
-            "pure function, but no engine executes it."
-        )
+        assert spec.scheduled_task == "dispatch_ips_collection"
+        assert detector_status(spec) is DetectorStatus.OPERATIONAL
+        assert detector_status(spec, disabled) is DetectorStatus.NOT_ENABLED
+        assert spec.limitation is None
         assert spec.baseline_metrics <= IPS_BASELINE_METRICS
 
 

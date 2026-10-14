@@ -173,6 +173,30 @@ class Settings(BaseSettings):
     ips_baseline_lookback_days: int = Field(default=28, ge=1)
     #: IPS subjects loaded and upserted together during a bounded baseline rebuild.
     ips_baseline_rebuild_batch_size: int = Field(default=50, ge=1, le=5000)
+    #: Collected IPS buckets evaluated per source per scheduled run.
+    ips_max_evaluation_buckets_per_run: int = Field(default=24, ge=1, le=2016)
+    #: Entity spike minimum multiple, absolute rise and bucket population.
+    ips_spike_ratio: float = Field(default=2.0, gt=1.0)
+    ips_min_absolute_delta_events: float = Field(default=50.0, ge=0.0)
+    ips_min_bucket_events: float = Field(default=20.0, ge=0.0)
+    #: Port fan-out minimum population, multiple and absolute rise.
+    ips_fanout_min_ports: float = Field(default=20.0, ge=1.0)
+    ips_fanout_ratio: float = Field(default=2.0, gt=1.0)
+    ips_fanout_min_delta_ports: float = Field(default=15.0, ge=0.0)
+    #: Block-ratio materiality and change floors.
+    ips_ratio_min_denominator: int = Field(default=50, ge=1)
+    ips_ratio_min_numerator: int = Field(default=10, ge=1)
+    ips_ratio_min_increase: float = Field(default=0.10, gt=0.0, le=1.0)
+    ips_ratio_min_multiple: float = Field(default=2.0, gt=1.0)
+    #: Source-concentration population and share-rise floors.
+    ips_concentration_min_source_events: int = Field(default=50, ge=1)
+    ips_concentration_min_top1_events: int = Field(default=20, ge=1)
+    ips_concentration_min_increase: float = Field(default=0.20, gt=0.0, le=1.0)
+    #: New-port history, novelty window and materiality thresholds.
+    ips_new_port_history_days: int = Field(default=7, ge=1, le=60)
+    ips_new_port_window_buckets: int = Field(default=12, ge=1, le=2016)
+    ips_new_port_min_events: int = Field(default=20, ge=1)
+    ips_new_port_min_buckets: int = Field(default=2, ge=1)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention
