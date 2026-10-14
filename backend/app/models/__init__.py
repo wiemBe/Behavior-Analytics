@@ -22,7 +22,17 @@ from app.models.fleet import (
 )
 from app.models.identity import AuditLog, Role, User, user_role
 from app.models.instance import QRadarInstance
-from app.models.ips import IpsEntity, IpsEntityMetric, IpsSourceBucket, IpsSourceProfile
+from app.models.ips import (
+    IpsAnomaly,
+    IpsAnomalyTransition,
+    IpsDetectorState,
+    IpsEntity,
+    IpsEntityBaseline,
+    IpsEntityMetric,
+    IpsSourceBaseline,
+    IpsSourceBucket,
+    IpsSourceProfile,
+)
 from app.models.log_source import (
     AnomalyStateTransition,
     LogSource,
@@ -103,8 +113,13 @@ __all__ = [
     "ConfigurationSnapshot",
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
+    "IpsAnomaly",
+    "IpsAnomalyTransition",
+    "IpsDetectorState",
     "IpsEntity",
+    "IpsEntityBaseline",
     "IpsEntityMetric",
+    "IpsSourceBaseline",
     "IpsSourceBucket",
     "IpsSourceProfile",
     "LogSource",

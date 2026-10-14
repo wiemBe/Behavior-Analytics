@@ -169,6 +169,10 @@ class Settings(BaseSettings):
     ips_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
     ips_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     ips_retention_interval_seconds: int = Field(default=86400, ge=3600)
+    #: Days of version-compatible IPS buckets considered by a baseline rebuild.
+    ips_baseline_lookback_days: int = Field(default=28, ge=1)
+    #: IPS subjects loaded and upserted together during a bounded baseline rebuild.
+    ips_baseline_rebuild_batch_size: int = Field(default=50, ge=1, le=5000)
 
     # --- Retention (TimescaleDB) --------------------------------------------
     # NEVER hardcode destructive retention. All default to None = retention
