@@ -23,7 +23,13 @@ lists, though, and an endpoint or a source is an id from a read.
 
 1. **Options from a read.** Extend `ConfigSchema` so a key's options come either from a static list
    (as today) or from **one existing GET read**. The read returns the candidate ids with their
-   labels, for example `/behavior/waf/endpoints` or `/behavior/sources` (monitored sources).
+   labels: `/behavior/sources` (monitored log sources), `/behavior/waf/sources` (WAF sources), or
+   `/behavior/waf/sources/{log_source_id}/endpoints` (one WAF source's endpoints, paged).
+   - **There is no fleet-wide endpoint list.** So a key's read may depend on another key: a
+     cascade. The endpoint picker reads the endpoints of the WAF source chosen above it, and
+     changing the source clears the endpoint.
+   - Before typing each route, check its real path, parameters, paging and response shape in
+     `backend/app/api/routes/anomalies.py` and `backend/app/schemas/*`.
    - The drawer loads it through `useApiResource`, the same way widgets read.
    - It renders a labelled select over the returned ids. When the list is long, a **client-side**
      filter input above it narrows the options. That text never leaves the browser: it is not a
@@ -33,7 +39,8 @@ lists, though, and an endpoint or a source is an id from a read.
    - The stored config holds the **id only**. A widget whose configured id no longer exists says
      so and offers Configure; it never draws another subject's data.
 2. **`waf.endpoint_traffic`** (Chart):
-   - config: `endpoint`; range: `1h | 24h | 7d`, mapped to the route's `since`/`until` within
+   - config: `waf_source`, then `endpoint` (the cascade above); range: `1h | 24h | 7d`, mapped to
+     the route's `since`/`until` within
      its validated ceiling;
    - reads `/behavior/waf/endpoints/{id}/metrics` and `/baselines`;
    - reuse the WAF request chart and its band rendering (`components/waf/*`) rather than copying
