@@ -8,10 +8,37 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (saved 2026-10-13 ~22:40, end of the seventh session; the user is moving to a new chat)
+## ▶ Resume here (eighth session, 2026-10-14, from 10:48)
 
-**Start the new chat here.** The UI redesign (UI-R0) waits until steps 1–3 of "Next steps" below
-are done.
+**Eighth session.** The machine had rebooted: the test DB container (tmpfs) and the old
+scratchpad were gone. The container was restarted and the DBs recreated. The scratchpad is now
+`/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/0f3426b2-30b6-429b-8bf0-ec2479e06def/scratchpad/`.
+GLM credits are back (`zai-coding-plan/glm-5.3` answered a probe).
+- **T-076 Part A was collected.** The diff was exactly the `down_revision` and the three tests. The
+  orchestrator re-ran ruff and 22 migration and outage-policy integration tests, with a single head
+  `0019`. Committed as `0e5bb8c`. `agent/t068` and then `agent/t070a` were merged into
+  `feat/phase-ce` (`268f062`, pushed), and their worktrees and branches were removed.
+- **Found:** `t051a` held the previous session's T-051a start: 1,386 lines, no tests, no report,
+  cut off at 21:42 by an unknown agent. It was handed to Codex with "review what you inherit".
+- The user, again: "ajanları kullanmayı unutma". Five threads in parallel:
+
+| Task | Agent | Where | Log / output |
+|---|---|---|---|
+| **T-076 Part B** (merge, re-chain `0020` → `0019`) | opencode `glm-5.3` | `t069`, merge left uncommitted; DBs `qradar_obs_t069`, `_mig` | `scratchpad/t076b.log`; report appended to `docs/tasks/T-076.report.md` |
+| **T-051a** IPS detectors, pure layer ([spec](tasks/T-051a.md)) | Codex | `t051a`, DB `qradar_obs_t051a` | `scratchpad/t051a.log`, `t051a.last.md` |
+| **UI-R0** redesign plan ([spec](tasks/UI-R0.md)); docs only, launched early at the user's push for parallel agents | Sonnet | main checkout, writes only `docs/UI-REDESIGN-PLAN.md` | agent notification |
+| **T-077** live, read-only `GEO::` AQL check (D-10) ([spec](tasks/T-077.md)) | Sonnet | scratch only | `scratchpad/t077/T-077.report.md` |
+| **T-078** `/ips/sources` per-field status and reasons (T-053 open point 2) ([spec](tasks/T-078.md)) | opencode `big-pickle` | `t078`, DB `qradar_obs_t078` | `scratchpad/t078.log` |
+
+Next, in order: collect T-076 Part B → merge `agent/t069`, then `agent/t070b` → full gate → `main`.
+Then UI-R0 goes to the user for approval. T-053 open point 3 (`SOURCE_BUSY` as a status field)
+was deliberately left out of T-078: it would need an audit query per list.
+
+---
+
+## Seventh session's state (saved 2026-10-13 ~22:40)
+
+The UI redesign (UI-R0) was to wait until steps 1–3 of "Next steps" below were done.
 
 **State at save:**
 - **T-050b is DONE and merged** into `feat/phase-ce` (`64152e3`, migration `0018`), after four
