@@ -18,7 +18,9 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.alerts.dispatcher import AlertEnqueuer
 from app.alerts.fingerprint import ips_anomaly_fingerprint
+from app.alerts.service import AlertInput, AlertResolution, AlertService
 from app.anomaly.capabilities import IPS_DETECTORS
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import LifecycleDecision, LifecycleInput, advance_counters, next_state
@@ -39,6 +41,8 @@ from app.models.enums import (
     IpsDimension,
     WafMeasurement,
 )
+from app.models.fleet import LogSourceClassification
+from app.models.instance import QRadarInstance
 from app.models.ips import (
     IpsAnomaly,
     IpsAnomalyTransition,
@@ -124,6 +128,32 @@ class _Subject:
     observation: IpsObservation
 
 
+@dataclass(frozen=True)
+class _AlertOpenOrUpdate:
+    entity: IpsEntity | None
+    source_id: uuid.UUID
+    detector_type: IpsAnomalyType
+    evidence: AnomalyEvidence
+    anomaly_id: uuid.UUID | None
+
+
+@dataclass(frozen=True)
+class _AlertResolve:
+    entity: IpsEntity | None
+    source_id: uuid.UUID
+    detector_type: IpsAnomalyType
+
+
+type _AlertAction = _AlertOpenOrUpdate | _AlertResolve
+
+#: The subject of an entity incident in words, for the alert title.
+_DIMENSION_WORDS = {
+    IpsDimension.DESTINATION_PORT: "destination port",
+    IpsDimension.DESTINATION_IP: "destination IP",
+    IpsDimension.SIGNATURE: "signature",
+}
+
+
 def _chunks(ids: Sequence[uuid.UUID]) -> Iterable[Sequence[uuid.UUID]]:
     for i in range(0, len(ids), _ID_CHUNK):
         yield ids[i : i + _ID_CHUNK]
@@ -141,11 +171,14 @@ class IpsAnomalyEngine:
         detectors: dict[
             IpsAnomalyType, Callable[[IpsDetectionContext], IpsVerdict]
         ] | None = None,
+        enqueuer: AlertEnqueuer | None = None,
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
         self._clock = clock or (lambda: datetime.now(UTC))
         self.detectors = detectors if detectors is not None else IPS_DETECTOR_FUNCTIONS
+        self.alerts = AlertService(session, clock=self._clock)
+        self._enqueuer = enqueuer
 
     def _thresholds(self) -> IpsThresholds:
         settings = self.settings
@@ -285,6 +318,7 @@ class IpsAnomalyEngine:
 
         reports: list[IpsEvaluationReport] = []
         modified: list[IpsDetectorState] = []
+        alert_actions: list[_AlertAction] = []
         for subject in subjects:
             report = IpsEvaluationReport(
                 subject.kind, subject.subject_id, subject.observation.bucket.bucket_start
@@ -322,12 +356,15 @@ class IpsAnomalyEngine:
                     anomalies,
                     report,
                     thresholds,
+                    alert_actions,
                 ):
                     modified.append(state)
             reports.append(report)
         self._uniform_updates(modified, anomalies.values())
-        # T-052 raises or resolves alerts here, behind ips_alerting_enabled.
-        await self.session.flush()
+        if alert_actions:
+            await self._apply_alert_actions(source, alert_actions)
+        else:
+            await self.session.flush()
         return reports
 
     def _types_for(self, subject: _Subject) -> list[IpsAnomalyType]:
@@ -637,6 +674,7 @@ class IpsAnomalyEngine:
         anomalies: dict[uuid.UUID, IpsAnomaly],
         report: IpsEvaluationReport,
         thresholds: IpsThresholds,
+        alert_actions: list[_AlertAction],
     ) -> bool:
         bucket = subject.observation.bucket
         if (
@@ -661,7 +699,8 @@ class IpsAnomalyEngine:
             )
         )
         self._apply_transition(
-            source, subject, detector_type, evidence, state, decision, anomalies, report
+            source, subject, detector_type, evidence, state, decision, anomalies, report,
+            alert_actions,
         )
         return True
 
@@ -675,13 +714,29 @@ class IpsAnomalyEngine:
         decision: LifecycleDecision,
         anomalies: dict[uuid.UUID, IpsAnomaly],
         report: IpsEvaluationReport,
+        alert_actions: list[_AlertAction],
     ) -> None:
         previous = AnomalyState(state.state)
         target = decision.state
         report.states[detector_type.value] = target.value
+        # An alert is raised only behind its own setting, and never for a bucket
+        # recorded in maintenance (which the evaluation loop skips before this).
+        alerting = (
+            self.settings.ips_alerting_enabled and not subject.observation.bucket.in_maintenance
+        )
         if target is previous:
             if previous is AnomalyState.OPEN:
                 self._touch(state, subject.observation, evidence, anomalies)
+                if alerting and evidence.is_anomalous:
+                    alert_actions.append(
+                        _AlertOpenOrUpdate(
+                            subject.entity,
+                            source.id,
+                            detector_type,
+                            evidence,
+                            state.open_anomaly_id,
+                        )
+                    )
             return
         state.state = target
         if target is AnomalyState.CANDIDATE:
@@ -705,6 +760,12 @@ class IpsAnomalyEngine:
             self._touch(state, subject.observation, evidence, anomalies)
             self._record_transition(incident, previous, target, subject, decision.reason, evidence)
             report.opened.append(detector_type.value)
+            if alerting:
+                alert_actions.append(
+                    _AlertOpenOrUpdate(
+                        subject.entity, source.id, detector_type, evidence, incident.id
+                    )
+                )
             return
         if anomaly is not None:
             self._record_transition(anomaly, previous, target, subject, decision.reason, evidence)
@@ -720,6 +781,8 @@ class IpsAnomalyEngine:
             state.active_anomaly_id = None
             state.open_anomaly_id = None
             report.resolved.append(detector_type.value)
+            if self.settings.ips_alerting_enabled:
+                alert_actions.append(_AlertResolve(subject.entity, source.id, detector_type))
             return
         if target is AnomalyState.SUPPRESSED:
             if anomaly is not None:
@@ -732,6 +795,117 @@ class IpsAnomalyEngine:
             anomaly.anomaly_end = subject.observation.bucket.bucket_start
         state.active_anomaly_id = None
         state.open_anomaly_id = None
+
+    async def _apply_alert_actions(
+        self, source: LogSource, actions: Sequence[_AlertAction]
+    ) -> None:
+        """Apply the synchronous fold's alert side effects in one async batch."""
+        opens = [item for item in actions if isinstance(item, _AlertOpenOrUpdate)]
+        instance_name: str | None = None
+        source_class: str | None = None
+        if opens:
+            # One round trip for the instance name and the Phase C class that
+            # class routing matches on; a source with no classification carries none.
+            row = (
+                await self.session.execute(
+                    select(QRadarInstance.name, LogSourceClassification.source_class)
+                    .outerjoin(
+                        LogSourceClassification,
+                        LogSourceClassification.log_source_id == source.id,
+                    )
+                    .where(QRadarInstance.id == source.instance_id)
+                )
+            ).one_or_none()
+            if row is not None:
+                instance_name, source_class = row
+        open_inputs = [
+            self._alert_input(source, instance_name, item, source_class) for item in opens
+        ]
+        resolves = [
+            AlertResolution(
+                fingerprint=self._fingerprint(
+                    source.instance_id, item.source_id, item.entity, item.detector_type
+                ),
+                actor="ips-anomaly-engine",
+                reason="condition recovered",
+            )
+            for item in actions
+            if isinstance(item, _AlertResolve)
+        ]
+        opened_or_updated, resolved = await self.alerts.apply_bulk(open_inputs, resolves)
+        if self._enqueuer is None:
+            return
+        for result in [*opened_or_updated, *resolved]:
+            if result is not None and result.transition is not None:
+                await self._enqueuer.enqueue(result.alert, result.transition)
+
+    def _alert_input(
+        self,
+        source: LogSource,
+        instance_name: str | None,
+        action: _AlertOpenOrUpdate,
+        source_class: str | None = None,
+    ) -> AlertInput:
+        entity = action.entity
+        evidence = action.evidence
+        detector_type = action.detector_type
+        facts = evidence.extra or {}
+        context: dict[str, object] = {
+            "log_source": source.name,
+            "owner": source.owner,
+            "criticality": str(source.criticality),
+            "instance": instance_name,
+            "detector_type": detector_type.value,
+        }
+        title = f"{detector_type.value} on {source.name}"
+        if entity is not None:
+            # The stored identity of an admitted entity, never a raw event value.
+            display = entity.display_name or entity.value_key
+            dimension = IpsDimension(str(entity.dimension))
+            context["dimension"] = dimension.value
+            context["entity"] = display
+            title = f"{title}: {_DIMENSION_WORDS[dimension]} {display}"
+        for key, value in (
+            ("observed", evidence.observed_value),
+            ("expected", evidence.expected_value),
+            ("ratio", _as_float(facts.get("ratio"))),
+        ):
+            if value is not None:
+                context[key] = value
+        # Added only when known, and never part of the fingerprint: a route
+        # scoped to a class matches, and an unclassified source cannot slip in.
+        if source_class is not None:
+            context["source_class"] = str(source_class)
+        return AlertInput(
+            fingerprint=self._fingerprint(
+                source.instance_id, action.source_id, entity, detector_type
+            ),
+            title=title,
+            severity=evidence.severity,
+            source_type="ips_entity" if entity is not None else "ips_source",
+            source_id=entity.id if entity is not None else action.source_id,
+            description=evidence.reason,
+            evidence=evidence.to_dict(),
+            source_anomaly_ids=(
+                [str(action.anomaly_id)] if action.anomaly_id is not None else []
+            ),
+            context=context,
+        )
+
+    @staticmethod
+    def _fingerprint(
+        instance_id: uuid.UUID,
+        log_source_id: uuid.UUID,
+        entity: IpsEntity | None,
+        detector_type: IpsAnomalyType,
+    ) -> str:
+        return ips_anomaly_fingerprint(
+            instance_id=instance_id,
+            log_source_id=log_source_id,
+            detector_type=detector_type.value,
+            dimension=str(entity.dimension) if entity is not None else None,
+            value_key=entity.value_key if entity is not None else None,
+        )
 
     def _create_incident(
         self,
@@ -750,13 +924,7 @@ class IpsAnomalyEngine:
             ips_entity_id=entity.id if entity is not None else None,
             log_source_id=None if entity is not None else source.id,
             detector_type=detector_type,
-            fingerprint=ips_anomaly_fingerprint(
-                instance_id=source.instance_id,
-                log_source_id=source.id,
-                detector_type=detector_type.value,
-                dimension=str(entity.dimension) if entity is not None else None,
-                value_key=entity.value_key if entity is not None else None,
-            ),
+            fingerprint=self._fingerprint(source.instance_id, source.id, entity, detector_type),
             severity=evidence.severity,
             state=AnomalyState.CANDIDATE,
             detected_at=bucket.bucket_start,
