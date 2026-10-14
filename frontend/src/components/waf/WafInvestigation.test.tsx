@@ -99,7 +99,7 @@ describe("WAF investigation: measurements", () => {
         expected_proportion: 0.021,
         observed_numerator: 318,
         observed_denominator: 1000,
-        percentage_point_change: 0.297,
+        percentage_point_change: 29.7,
         ratio: 15.1,
       }),
     });
@@ -108,6 +108,27 @@ describe("WAF investigation: measurements", () => {
     expect(m.getByText("2.1%")).toBeInTheDocument();
     expect(m.getByText("+29.7 pp")).toBeInTheDocument();
     expect(m.getByText(/318 of 1,000/)).toBeInTheDocument();
+  });
+
+  it("renders the backend's percentage points as sent, never 100 times larger", () => {
+    // Shape from `app/waf/behavior.py`: observed 0.397 against 0.10 is `rise` 0.297, sent as
+    // `absolute_deviation: 0.297` (a fraction) and `percentage_point_change: 29.7` (points).
+    view({
+      anomaly_type: "WAF_BLOCK_RATIO_SPIKE",
+      observed_value: 0.397,
+      expected_value: 0.1,
+      detection: wafDetection({
+        observed_proportion: 0.397,
+        expected_proportion: 0.1,
+        observed_numerator: 397,
+        observed_denominator: 1000,
+        percentage_point_change: 29.7,
+        ratio: 3.97,
+      }),
+    });
+    const m = within(screen.getByLabelText("Incident measurements"));
+    expect(m.getByText("+29.7 pp")).toBeInTheDocument();
+    expect(m.queryByText(/2970/)).not.toBeInTheDocument();
   });
 
   it("renders missing detector figures as em dashes, not zeros", () => {

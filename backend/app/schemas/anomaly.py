@@ -392,6 +392,7 @@ class WafDetectionDetailOut(BaseModel):
     expected_proportion: float | None = None
     observed_numerator: float | None = None
     observed_denominator: float | None = None
+    #: The observed minus the expected share, in percentage points (29.7 means +29.7 pp).
     percentage_point_change: float | None = None
 
     ratio: float | None = None
@@ -433,6 +434,7 @@ class IpsDetectionDetailOut(BaseModel):
     expected_proportion: float | None = None
     observed_numerator: float | None = None
     observed_denominator: float | None = None
+    #: The observed minus the expected share, in percentage points (29.7 means +29.7 pp).
     percentage_point_change: float | None = None
 
     #: EXACT, or LOWER_BOUND when the observed value is "at least n".
