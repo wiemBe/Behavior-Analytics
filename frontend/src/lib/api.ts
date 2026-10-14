@@ -54,6 +54,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface SocOverview {
   instance_status: string;
   instance_version: string | null;
+  instance_last_health_check_at?: string | null;
   generated_at: string;
   average_health_score: number | null;
   log_sources: {

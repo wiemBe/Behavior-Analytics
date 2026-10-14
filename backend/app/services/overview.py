@@ -36,6 +36,9 @@ class OverviewService:
         return SocOverview(
             instance_status=str(instance.status) if instance else "UNKNOWN",
             instance_version=instance.qradar_version if instance else None,
+            instance_last_health_check_at=(
+                instance.last_health_check_at if instance else None
+            ),
             generated_at=datetime.now(UTC),
             average_health_score=counts["avg_health"],
             log_sources=OverviewCounts(
