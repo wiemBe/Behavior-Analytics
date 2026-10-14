@@ -145,6 +145,27 @@ class TestStatus:
         assert body["coverage"] == {"measured_buckets": 18, "expected_buckets": 24}
         assert body["status"] == "PARTIAL"
 
+    def test_an_instance_with_no_row_at_all_still_raises_the_expected_buckets(
+        self, db_schema
+    ) -> None:
+        seed(full_hour)
+        seed(lambda inst: [])
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["coverage"] == {"measured_buckets": 12, "expected_buckets": 24}
+        assert body["status"] == "PARTIAL"
+
+    def test_a_disabled_instance_does_not_raise_the_expected_buckets(self, db_schema) -> None:
+        seed(full_hour)
+
+        def disabled_rows(inst):  # type: ignore[no-untyped-def]
+            inst.enabled = False
+            return [row(inst, index, "US", 1) for index in range(12)]
+
+        seed(disabled_rows)
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["coverage"] == {"measured_buckets": 24, "expected_buckets": 12}
+        assert body["status"] == "OK"
+
     def test_a_bucket_that_has_not_settled_is_not_expected(self, db_schema) -> None:
         now = datetime.now(UTC)
         top = now.replace(minute=now.minute // 5 * 5, second=0, microsecond=0)
@@ -219,6 +240,27 @@ class TestContent:
         client = Client(VIEWER)
         assert client.get(URL, params=params()).status_code == 200
         assert client.statements == 2
+
+    def test_two_statements_when_nothing_is_collected(self, db_schema) -> None:
+        client = Client(VIEWER)
+        assert client.get(URL, params=params()).status_code == 200
+        assert client.statements == 2
+
+    def test_not_collected_carries_no_measurement_and_no_remainder_zeros(self, db_schema) -> None:
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["status"] == "NOT_COLLECTED"
+        assert body["countries"] == []
+        assert body["measurement"] is None
+        assert body["remainders"] is None
+
+    def test_a_measured_range_reports_a_measurement_and_true_zero_remainders(
+        self, db_schema
+    ) -> None:
+        seed(lambda inst: [row(inst, 0, "US", 10), row(inst, 0, None, 2, kind="UNRESOLVED")])
+        body = Client(VIEWER).get(URL, params=params()).json()
+        assert body["status"] == "PARTIAL"
+        assert body["measurement"] == "EXACT"
+        assert body["remainders"] == {"UNRESOLVED": 2, "OVER_CAP": 0, "UNPARSEABLE": 0}
 
 
 class TestRange:
