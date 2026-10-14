@@ -183,7 +183,10 @@ Read-only, defence-in-depth, secrets never in code or browser.
   the browser, and never sent to an LLM.
 - **Structured JSON logging** with a redaction filter that strips token-like values.
 - **RBAC + audit.** Role/permission model plus an append-only `AuditLog` for administrative and
-  search actions.
+  search actions. `GET /api/v1/me` returns the caller's own subject, email, granted permissions
+  and the derived `effective_permissions` (every non-wildcard permission the principal holds,
+  wildcard grants included). It needs an authenticated caller and no further permission, and it
+  exposes nothing but the caller's own identity.
 - **Output sanitization.** All QRadar-sourced text (offense descriptions, usernames, source names)
   is sanitized before display to prevent stored XSS.
 - **Rate limiting** on the API (`slowapi`), with a tighter limit on search execution.
@@ -448,11 +451,12 @@ inventory surfaces remain as supporting capabilities.
 | `/behavior/sources/[id]` | One source's observed volume against its seasonal baseline, with anomaly overlay |
 | `/anomalies` | Filterable, server-paginated anomaly list |
 | `/anomalies/[id]` | **Anomaly investigation** — what changed during the anomalous interval |
-| `/` · `/log-sources` · `/log-sources/[id]` | SOC overview and log-source inventory (Phase 1) |
+| `/` · `/log-sources` · `/log-sources/[id]` | SOC overview and log-source inventory (Phase 1). The overview carries `instance_last_health_check_at`, which the inventory sync stamps on every pass; a console that cannot be reached is recorded `UNREACHABLE` with a sanitized reason, so nothing downstream keeps reading a stale `HEALTHY` |
 | `/offenses` · `/rules` · `/coverage` | Offenses, rule health, detection coverage (Phase 3) |
 | `/searches` · `/searches/[id]` · `/alerts` · `/alerts/[id]` | Scheduled searches and alert lifecycle (Phase 2) |
 | `/fleet` · `/fleet/sources` | Log-source fleet by class — volume against expected EPS with its completeness, the review queue of new and conflicting sources, class overrides (Phase C.1) |
-| `/admin/search-cadence` · `/admin/classification-rules` · `/admin/waf-sources` | Administration — search cadence per family (`admin:search_cadence`), classification rules (`admin:classification`), per-source WAF field mappings with validation (`admin:waf`) |
+| `/fleet/catchall` | Catch-all senders (Phase C.2b) — who feeds SIM Generic and the Universal DSMs: the new-sender review queue, each sender's 24 h events, per-bucket totals |
+| `/admin/search-cadence` · `/admin/classification-rules` · `/admin/waf-sources` · `/admin/ips-sources` · `/admin/outage-policy` | Administration — search cadence per family (`admin:search_cadence`), classification rules (`admin:classification`), per-source WAF field mappings with validation (`admin:waf`), per-source IPS field mappings with validation (`admin:ips`), the outage alert policy (`admin:outage`) |
 
 All of these require the `read:anomalies` permission (behavioral routes) or their Phase 2/3
 equivalents. The guard lives on the router, not on individual handlers, so adding an endpoint to a
@@ -571,13 +575,16 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
 **Scheduling:** Celery + Redis is the default. Every background job is an `async` function in
 `app/workers/tasks.py` with a thin Celery shim around it, so the same orchestration runs unchanged
 under APScheduler — the documented MVP fallback for teams not running Celery. Celery Beat drives
-16 configurable jobs: log-source metrics/inventory, offense collection/staleness/aggregates,
-rule inventory/metrics/health, detection coverage, anomaly evaluation, anomaly explanation
+23 configurable jobs: log-source metrics/inventory, offense collection/staleness/aggregates,
+rule inventory/metrics/matches/health, detection coverage, anomaly evaluation, anomaly explanation
 collection, scheduled searches, notification dispatch, baseline rebuilds, WAF collection dispatch
-and WAF retention. WAF dispatch enqueues one `collect_waf_source` task per enabled, validated WAF
-profile, and each run collects, evaluates and then trains that source under its own lock; it is a
-no-op while `WAF_COLLECTION_ENABLED=false`. Building blocks are collected in the same locked
-inventory pass as analytics rules.
+and WAF retention, catch-all sender collection and retention, geography collection and retention,
+and IPS collection dispatch and retention. WAF dispatch enqueues one `collect_waf_source` task per
+enabled, validated WAF profile, and each run collects, evaluates and then trains that source under
+its own lock; it is a no-op while `WAF_COLLECTION_ENABLED=false`. IPS dispatch instead claims the
+instance's cadence slot and runs one fleet-wide plan per tick; it is a no-op while
+`IPS_COLLECTION_ENABLED=false`. Building blocks are collected in the same locked inventory pass
+as analytics rules.
 
 WAF sources are administered with `python -m app.cli.waf` (`set`, `validate`, `enable`, `disable`,
 `status`, and `probe-rejection` to verify how the appliance refuses an unknown property) and
@@ -660,11 +667,13 @@ codebase uses a compact hand-formatted style throughout.
 
 ## Data model
 
-40 tables across bounded contexts (`instance`, `log_source`, `explanation`, `search`, `offense`,
-`rule`, `config_change`, `alert`, `identity`, `monitoring`, `waf`). Eight are **TimescaleDB
-hypertables**: `log_source_metric`, `search_result_metric`, `rule_metric`, `offense_snapshot`,
-`rule_health_snapshot`, `detection_coverage_snapshot`, `waf_endpoint_metric` and
-`waf_source_bucket`.
+62 tables across bounded contexts (`instance`, `log_source`, `explanation`, `search`,
+`search_cadence`, `offense`, `rule`, `config_change`, `alert`, `identity`, `monitoring`, `fleet`,
+`outage`, `waf`, `catchall`, `ips`, `geo`). Thirteen are **TimescaleDB hypertables**:
+`log_source_metric`, `search_result_metric`, `rule_metric`, `rule_match_metric`,
+`offense_snapshot`, `rule_health_snapshot`, `detection_coverage_snapshot`, `waf_endpoint_metric`,
+`waf_source_bucket`, `ips_source_bucket`, `ips_entity_metric`, `catchall_bucket` and
+`geo_country_bucket`.
 
 Highlights:
 
@@ -679,8 +688,11 @@ Highlights:
   `COLLECTION_ERROR`. Phase B: `WAF_REQUEST_RATE_SPIKE`, plus the B.2 types `WAF_BLOCK_RATIO_SPIKE`,
   `WAF_ERROR_RATIO_SPIKE`, `WAF_CLIENT_ERROR_RATIO_SPIKE`, `WAF_CLIENT_CONCENTRATION_SPIKE` and
   `WAF_NEW_ENDPOINT_ACCESS`, scheduled for enabled WAF profiles (the first four need their
-  collection setting). The engine
-  refuses to run a detector on a bucket that did not measure its inputs, and
+  collection setting). Phase D names seven IPS types — `IPS_PORT_RATE_SPIKE`,
+  `IPS_DESTINATION_RATE_SPIKE`, `IPS_SIGNATURE_BURST`, `IPS_NEW_DESTINATION_PORT`,
+  `IPS_SOURCE_CONCENTRATION_SPIKE`, `IPS_PORT_FANOUT_SPIKE` and `IPS_BLOCK_RATIO_SHIFT` — whose
+  pure detectors exist, but the engine that schedules them is not built, so none runs yet. The
+  engine refuses to run a detector on a bucket that did not measure its inputs, and
   `GET /api/v1/behavior/detectors` publishes each status with its reason.
 - **Event counting.** Volume is `SUM(eventcount)`, never `COUNT(*)`: QRadar coalesces identical
   events into one Ariel record, so a row count under-reports by up to ~38x on this appliance.
@@ -704,6 +716,9 @@ own cadence: how often it searches.
 | `WAF_COLLECTION` | Endpoint volume and breakdowns, per WAF source | `COLLECTION_INTERVAL_SECONDS` |
 | `ANOMALY_EXPLANATION` | Evidence for open anomalies | — |
 | `RULE_MATCH` | Events matched per rule (`creEventList`) | `RULE_MATCH_WINDOW_SECONDS` (1 h) |
+| `IPS_COLLECTION` | IPS dimension facts — ports, destinations, signatures, source IPs, fan-out, action — per enabled, validated IPS source | `COLLECTION_INTERVAL_SECONDS` |
+| `CATCHALL_SENDERS` | Sender names per catch-all log source (SIM Generic, Universal DSMs) | `COLLECTION_INTERVAL_SECONDS` |
+| `GEO_COLLECTION` | Events per country, by source and destination address | `COLLECTION_INTERVAL_SECONDS` |
 
 **The cadence decides when a family searches, not how finely it measures.**
 - At each tick, a family runs **one** Ariel search covering every complete bucket since its last
@@ -735,8 +750,151 @@ presets.
 **Upgrading.** Migration `0013` seeds every family at 1 h. Before it, Phase A and WAF searched
 every 5 minutes. So after the upgrade, an outage (`NO_EVENTS`) alert can arrive about an hour
 later than before. If that latency matters more than the search load, set the family back to
-5 min on the admin page. The design is in
-[`docs/SEARCH-CADENCE.md`](docs/SEARCH-CADENCE.md).
+5 min on the admin page. The families added later are seeded at 1 h by their own migrations
+(`IPS_COLLECTION` by `0018`, `CATCHALL_SENDERS` by `0020`, `GEO_COLLECTION` by `0022`). The
+design is in [`docs/SEARCH-CADENCE.md`](docs/SEARCH-CADENCE.md).
+
+### Outage alert policy
+
+A source's `NO_EVENTS` does not have to page a human. An `outage_alert_policy` row (migration
+`0019`) says whether the class or the single source it names opens an alert (`ALERT`) or records
+the anomaly and its lifecycle without the alert and its notification (`RECORD_ONLY`), and may
+override the silence grace for its scope. Rows are scoped to a `SourceClass` or one log source,
+optionally to one instance; a source row beats its class row. Where no row applies,
+`OUTAGE_ALERT_DEFAULT` decides, and its default `ALERT` keeps Phase A's behaviour, so an upgrade
+alerts exactly as before (decision D-9).
+
+Administration is `GET /api/v1/outage-policy` plus `PUT`/`DELETE` on
+`/api/v1/outage-policy/classes/{source_class}` and on
+`/api/v1/outage-policy/sources/{log_source_id}`, all guarded by `admin:outage` at the router —
+`read:*` does not satisfy it, because the policy decides which silences page a human. Every
+mutation is audited with the before and after values. The UI is `/admin/outage-policy`.
+
+### Catch-all senders
+
+Phase A judges a catch-all source's total volume; Phase C.2b adds **who is behind it**. The
+`CATCHALL_SENDERS` family runs one keyed search per instance per cadence tick over the device
+types in `CATCHALL_TYPE_IDS` (SIM Generic and the Universal DSMs by default), folds sender names
+out of the raw rows, and stores only what passed admission: sender names are chosen by whoever
+sends, so a per-bucket quota and an active ceiling bound what a new name can create, and a
+refused name is counted in the bucket but never stored. A newly admitted sender can raise a LOW
+inventory alert, but that is off by default (D-9): the review queue is the default surface.
+
+Two tables (migration `0020`): `catchall_sender` — an admitted sender with its review state
+(`NEW` → `REVIEWED`/`DISMISSED`) and a 24 h event count that is a lower bound, NULL meaning
+unknown — and `catchall_bucket`, a hypertable holding one row per measured (source, bucket) with
+events, records, distinct senders and a bounded `top_senders` list. A bucket that was not
+measured has no row, so a gap is unknown, not zero; a truncated search makes the row's counts
+lower bounds.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `CATCHALL_COLLECTION_ENABLED` | true | Kill switch for the family's searches |
+| `CATCHALL_TYPE_IDS` | 67, 39, 212, 367, 4000 | Device types whose events are searched for senders; each id is re-validated before it enters a query |
+| `CATCHALL_MAX_ROWS_PER_SEARCH` | 2000 | Rows kept per keyed search before truncation splits it |
+| `CATCHALL_MAX_NEW_SENDERS_PER_BUCKET` | 20 | New senders admitted per catch-all source per bucket |
+| `CATCHALL_MAX_ACTIVE_SENDERS_PER_SOURCE` | 2000 | Active senders kept per catch-all source |
+| `CATCHALL_MIN_ADMISSION_EVENTS` | 3 | Events in a bucket below which an unseen sender is not admitted |
+| `CATCHALL_SENDER_ACTIVE_DAYS` | 7 | Days without a sighting before a sender is retired; a later sighting reactivates it |
+| `CATCHALL_NEW_SENDER_ALERTS_ENABLED` | false | Whether a newly admitted sender also raises a LOW inventory alert |
+| `CATCHALL_TOP_SENDERS` | 20 | Senders kept in a bucket's `top_senders` list |
+| `CATCHALL_RETENTION_DAYS` | 35 | Buckets, and senders retired for longer than this, are deleted |
+| `CATCHALL_RETENTION_BATCH_SIZE` | 5000 | Rows deleted per retention batch |
+| `CATCHALL_RETENTION_MAX_BATCHES` | 20 | Batches per retention run |
+| `CATCHALL_RETENTION_INTERVAL_SECONDS` | 86400 | One retention run per day |
+
+Reads are `GET /api/v1/fleet/catchall/sources`, `/senders` and `/buckets` (router-guarded by
+`read:fleet`); reviewing or dismissing a sender — `POST …/senders/{id}/review` or `/dismiss` —
+needs `log_source:write`, is audited, is idempotent, and resolves the sender's open new-sender
+alert. The UI is `/fleet/catchall`.
+
+### IPS sources
+
+Phase D baselines what the IPS normally sees: destination ports, destination IPs and signatures
+are entities with their own metrics and seasonal cells; source IPs and the block action are
+judged at source level; raw values never leave the pure folds except as bounded contributor
+lists (at most ten source IPs per source and bucket). Each IPS log source needs a profile
+(`ips_source_profile`, migration `0017`): a versioned mapping of logical fields — source and
+destination IP, destination port, protocol, signature, action, severity — onto normalized
+fields or custom properties, plus the action value map. A mapping change bumps the profile
+version and resets validation; collection uses a profile only when its current version is
+enabled and `VALID`. Presets exist for Cisco FTD and Palo Alto THREAT.
+
+Collection (migration `0018`) runs one keyed search per dimension per tick for the whole fleet
+(`IPS_COLLECTION`; see the family table above), split time-first then by sources when truncated.
+Per source and bucket it stores `ips_source_bucket` — totals, per-dimension completeness and
+coverage, concentration and fan-out facts — and admits entities into `ips_entity` with sparse
+per-bucket counts in `ips_entity_metric` (both hypertables). Detection (migration `0021`) adds
+seasonal cells per entity and per source (`ips_entity_baseline`, `ips_source_baseline`),
+hysteresis state (`ips_detector_state`) and incidents with transitions (`ips_anomaly`,
+`ips_anomaly_transition`). The pure detectors exist (see [the Phase D
+design](docs/PHASE-D-IPS-BEHAVIOR.md)); the engine that schedules them is not built, so nothing
+is evaluated yet and collection is opt-in (`IPS_COLLECTION_ENABLED`, default false).
+
+Every `/api/v1/ips` route needs `admin:ips`, applied at the router mount so reads are guarded
+too: `GET /mapping-schema`, `GET /candidates`, `GET`/`PUT /log-sources/{id}/profile` (201 on
+create, 409 on a version conflict), `POST …/profile/validate` (202), `POST …/profile/enable` and
+`…/disable`, `GET …/profile/history`, `GET …/property-catalog` and `GET /sources`, which carries
+each profile's per-field validation status and reasons. The UI is `/admin/ips-sources`. Unlike
+WAF, there is no IPS CLI; profiles are administered through the API and UI only.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `IPS_COLLECTION_ENABLED` | false | Kill switch for fleet collection; each profile must also be enabled and `VALID` |
+| `IPS_MAX_SOURCES_PER_SEARCH` | 50 | Sources per keyed search (`logsourceid IN (…)`); a larger group is chunked |
+| `IPS_MAX_ENTITIES_PER_BUCKET` | 200 | Entities kept per (source, bucket, dimension) after the fold's cut |
+| `IPS_MAX_NEW_ENTITIES_PER_BUCKET` | 20 | New entities admitted per source per bucket |
+| `IPS_MAX_ACTIVE_ENTITIES_PER_SOURCE_DIMENSION` | 2000 | Active entities kept per source and dimension |
+| `IPS_MIN_ADMISSION_EVENTS` | 3 | Events in a bucket below which an unseen entity is not admitted |
+| `IPS_ENTITY_ACTIVE_DAYS` | 7 | Days without an observation before an entity is retired |
+| `IPS_MIN_COVERAGE` | 0.90 | Dimension coverage below which a bucket is `PARTIAL` and excluded from baselines |
+| `IPS_VALIDATION_WINDOW_SECONDS` | 900 | Recent history a validation probes |
+| `IPS_VALIDATION_PENDING_TIMEOUT_SECONDS` | 900 | A pending marker older than this may be replaced after a dead worker |
+| `IPS_VALIDATION_LOCK_RETRY_DELAY_SECONDS` | 30 | Delay before validation retries a source held by the collection pipeline |
+| `IPS_VALIDATION_LOCK_MAX_RETRIES` | 20 | Lock retries before validation records a fail-closed source-busy outcome |
+| `IPS_VALIDATION_MIN_RATIO` | 0.90 | Minimum population share for a required field |
+| `IPS_VALIDATION_MAX_ACTION_VALUES` | 20 | Hard disclosure and Ariel-result bound for discovered ACTION values |
+| `IPS_BASELINE_LOOKBACK_DAYS` | 28 | Days of version-compatible buckets a baseline rebuild considers |
+| `IPS_BASELINE_REBUILD_BATCH_SIZE` | 50 | Subjects loaded and upserted together during a bounded rebuild |
+| `IPS_RETENTION_ENABLED` | true | Whether the bounded retention task runs |
+| `IPS_METRIC_RETENTION_DAYS` | 35 | Age at which buckets and entity metrics are deleted |
+| `IPS_RETENTION_BATCH_SIZE` | 5000 | Rows deleted per retention batch |
+| `IPS_RETENTION_MAX_BATCHES` | 20 | Batches per retention run |
+| `IPS_RETENTION_INTERVAL_SECONDS` | 86400 | One retention run per day |
+
+### Geography
+
+`GEO_COLLECTION` (D-10) answers one question for the home map: how many events per country, by
+source or destination address. Each cadence tick sends two keyed searches per instance — one per
+direction in `GEO_DIRECTIONS` — so at the 1 h default cadence it is two searches an hour per
+instance. The QRadar `GEO::` lookup resolves the address to an ISO country code inside the
+search; no IP address is ever selected or stored, and the raw lookup string is parsed in the
+fold and dropped. One row per (instance, bucket, direction, country or remainder) lives in the
+`geo_country_bucket` hypertable (migration `0022`); countries beyond the per-bucket cap are
+summed into `OVER_CAP`, and a bucket that was not measured has no row.
+
+`GET /api/v1/geo/countries` needs `read:geo` (satisfied by `read:*`). Its query parameters are
+`since` and `until` — both required, timezone-aware, ordered and at most `API_MAX_RANGE_DAYS`
+wide — and `direction` (`SOURCE` or `DESTINATION`). The response carries the `countries` list
+(each with `country_code`, `events` and its `share` of country events), the `remainders`
+(`UNRESOLVED`, `OVER_CAP`, `UNPARSEABLE`), the `measurement` (`EXACT` or `LOWER_BOUND` when a
+search was truncated), a `coverage` object (`measured_buckets` / `expected_buckets`) and a
+`status`: `NOT_COLLECTED` when no bucket in the range was collected, `INSUFFICIENT_DATA` when
+buckets were collected but no address resolved to a country, `PARTIAL` when some buckets of the
+range are missing, and `OK` otherwise. `UNRESOLVED` counts events whose address is private,
+internal or unknown to GeoIP — the lookup returns the same empty result for all three, so they
+cannot be told apart.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `GEO_COLLECTION_ENABLED` | true | Kill switch for the family's searches |
+| `GEO_DIRECTIONS` | SOURCE, DESTINATION | Which address is looked up; each direction is a separate stored series |
+| `GEO_MAX_ROWS_PER_SEARCH` | 5000 | Rows kept per keyed search before truncation splits it |
+| `GEO_MAX_COUNTRIES_PER_BUCKET` | 64 | Countries kept per bucket and direction; the rest is summed into `OVER_CAP` |
+| `GEO_RETENTION_DAYS` | 35 | Buckets older than this are deleted |
+| `GEO_RETENTION_BATCH_SIZE` | 5000 | Rows deleted per retention batch |
+| `GEO_RETENTION_MAX_BATCHES` | 20 | Batches per retention run |
+| `GEO_RETENTION_INTERVAL_SECONDS` | 86400 | One retention run per day |
 
 ### Scheduled-search dispatch
 

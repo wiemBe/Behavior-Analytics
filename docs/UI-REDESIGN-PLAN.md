@@ -45,7 +45,7 @@ wins. Nothing here weakens the palette or the home layout.
 | "Use existing persistence; do not add a new database" | Same PostgreSQL, two new tables (UR.5.5). | D-10 already decided a table and a migration. |
 | Reuse the charting stack | Keep ECharts, modular imports. | Three chart components already do it (`VolumeChart`, `WafRequestChart`, `ResultTrend`/`BucketChart`). |
 | "Animations" limited | None, except what the browser does natively. | `AGENTS.md` §3a. |
-| Muted text `#73757B` | Raised to `#8C8E94`; `#73757B` kept for disabled text only (UR.2.2). | `#73757B` fails WCAG AA on every surface (3.70:1 on `--surface`). |
+| Muted text `#73757B` | Raised to `#8C8E94`; `#73757B` kept for disabled text only (UR.2.2). *Superseded by D-11: `--text-3` shipped as `#73757B`, below AA by the user's decision — see UR.2.2.* | `#73757B` fails WCAG AA on every surface (3.70:1 on `--surface`). |
 
 ### UR.0.3 Facts about the repository that shape this plan
 
@@ -359,10 +359,10 @@ lines assert class names that `globals.css` ties to them. Values change. New tok
 | `--surface-2` | `#182034` | `#252629` | Elevated surface |
 | `--surface-3` | `#1e2740` | `#2D2E32` | Hover surface |
 | `--border` | `#232c42` | `#35363A` | Hairline |
-| `--border-strong` | `#33405e` | `#6E7077` | Input edge; see UR.2.2 (3:1 rule) |
+| `--border-strong` | `#33405e` | `#6E7077` | Input edge; see UR.2.2 (3:1 rule). *Superseded by D-11: shipped `#35363A`* |
 | `--text` | `#e8eef8` | `#E8E8E8` | |
 | `--text-2` | `#a8b4c9` | `#96989D` | |
-| `--text-3` | `#7c8aa3` | `#8C8E94` | **Not** the suggestion's `#73757B` (fails AA) |
+| `--text-3` | `#7c8aa3` | `#8C8E94` | **Not** the suggestion's `#73757B` (fails AA). *Superseded by D-11: shipped `#73757B` (UR.2.2)* |
 | `--crit` | `#f85149` | `#E36565` | |
 | `--crit-text` | `#ff9d97` | `#F08F8F` | |
 | `--crit-bg` / `-border` | `rgba(248,81,73,.12/.34)` | `rgba(227,101,101,.12/.34)` | |
@@ -393,7 +393,7 @@ lines assert class names that `globals.css` ties to them. Values change. New tok
 | `--header-h` | 72px | unchanged | Used by `.page-header`; the top bar gets its own token |
 | `--chart-grid` | `#1a2336` | `#2A2B2F` | |
 | `--chart-axis` | `#2a3350` | `#3A3B40` | |
-| `--chart-label` | `#8b98b0` | `#8C8E94` | 5.20:1 on `--surface` |
+| `--chart-label` | `#8b98b0` | `#8C8E94` | 5.20:1 on `--surface`. *Superseded by D-11: shipped `var(--text-3)`* |
 | `--chart-observed` | `var(--info)` | `var(--info)` | Cyan line, the one saturated mark |
 | `--chart-expected` | `var(--neutral-text)` | unchanged | Neutral, dashed |
 | `--chart-band` | `rgba(139,152,176,.16)` | `rgba(182,184,189,.14)` | |
@@ -402,25 +402,34 @@ lines assert class names that `globals.css` ties to them. Values change. New tok
 
 ### UR.2.2 Two deviations from the suggestion's table
 
+**Superseded by D-11 (2026-10-14).** The user decided to keep the palette's original values:
+`--text-3 = #73757B` and `--border-strong = #35363A` are what shipped, and `#73757B` being
+below WCAG AA is accepted by that decision, not an oversight. There is no `--text-disabled`
+token; disabled text uses `--text-3`. The reasoning below is kept as the record of what was
+proposed and why — it is no longer the plan's intent. `tokens.css` and `lib/contrast.test.ts`
+pin the shipped values: the test asserts AA for `--text`, `--text-2` and `--neutral-text`, and
+deliberately not for `--text-3`.
+
 The suggestion's table is binding except where it breaks WCAG AA. The ratios are WCAG 2.x
 relative luminance, computed with a script kept outside the repository.
 
-**Muted text.** `#73757B` on the five surfaces: 4.07 (canvas), 3.93 (sidebar), **3.70**
-(surface), 3.29 (elevated), 2.94 (hover). It fails 4.5:1 on all of them. Ruling proposed:
-`--text-3 = #8C8E94` (5.72, 5.53, 5.20, 4.62, 4.14), and `#73757B` survives as the new
-`--text-disabled`, used only for disabled controls (WCAG exempts them). `--text-3` is not used on
-`--surface-3` (4.14); text on a hover row uses `--text-2` (4.70).
+**Muted text** *(proposed — superseded by D-11)*. `#73757B` on the five surfaces: 4.07 (canvas),
+3.93 (sidebar), **3.70** (surface), 3.29 (elevated), 2.94 (hover). It fails 4.5:1 on all of
+them. Ruling proposed: `--text-3 = #8C8E94` (5.72, 5.53, 5.20, 4.62, 4.14), and `#73757B`
+survives as the new `--text-disabled`, used only for disabled controls (WCAG exempts them).
+`--text-3` is not used on `--surface-3` (4.14); text on a hover row uses `--text-2` (4.70).
 
-**Input edge.** `#35363A` on `--surface` is 1.41:1. WCAG 1.4.11 wants 3:1 for the boundary of an
-input. `--border` stays the hairline between panels (decorative); `--border-strong = #6E7077`
-(3.45 on surface, 3.79 on canvas, 3.06 on elevated) is the input and button edge.
+**Input edge** *(proposed — superseded by D-11)*. `#35363A` on `--surface` is 1.41:1. WCAG
+1.4.11 wants 3:1 for the boundary of an input. `--border` stays the hairline between panels
+(decorative); `--border-strong = #6E7077` (3.45 on surface, 3.79 on canvas, 3.06 on elevated)
+is the input and button edge.
 
 ### UR.2.3 New tokens
 
 | Token | Value | Use |
 |---|---|---|
 | `--sidebar-bg` | `#151618` | Sidebar panel. `shellFixes.test.ts` pins `.layout::before` to `var(--surface)`; UR.7 edits that one assertion |
-| `--text-disabled` | `#73757B` | Disabled text only |
+| `--text-disabled` | `#73757B` | Disabled text only. *Never added — superseded by D-11 (UR.2.2); disabled text uses `--text-3`* |
 | `--primary` / `--primary-hover` | `#E8E8E8` / `#FFFFFF` | Primary button fill: neutral light, text `--on-accent` (15.30:1) |
 | `--link` | `var(--info-text)` | Links in page content (was the blue) |
 | `--topbar-h` | `56px` | The top bar |
@@ -520,9 +529,13 @@ Text on backgrounds (ratio; `✓` ≥ 4.5):
 |---|---|---|---|---|---|
 | `--text` `#E8E8E8` | 15.30 ✓ | 14.78 ✓ | 13.91 ✓ | 12.35 ✓ | 11.07 ✓ |
 | `--text-2` `#96989D` | 6.49 ✓ | 6.27 ✓ | 5.90 ✓ | 5.24 ✓ | 4.70 ✓ |
-| `--text-3` `#8C8E94` | 5.72 ✓ | 5.53 ✓ | 5.20 ✓ | 4.62 ✓ | **4.14** ✗ |
-| `--text-disabled` `#73757B` | 4.07 ✗ | 3.93 ✗ | 3.70 ✗ | 3.29 ✗ | 2.94 ✗ (exempt: disabled) |
+| `--text-3` `#73757B` (shipped, D-11) | **4.07** ✗ | **3.93** ✗ | **3.70** ✗ | **3.29** ✗ | **2.94** ✗ |
+| `--text-disabled` — never added (D-11) | — | — | — | — | — |
 | `--neutral-text` `#B6B8BD` | 9.44 ✓ | 9.12 ✓ | 8.58 ✓ | 7.62 ✓ | 6.83 ✓ |
+
+`--text-3` is the palette's own `#73757B`, kept by D-11 (2026-10-14) although it is below AA on
+every surface. That is the user's explicit decision, recorded in UR.2.2; the shipped
+`lib/contrast.test.ts` therefore pins the value instead of asserting 4.5:1 for it.
 
 Status text on its own 12 % tint over `--surface` (the pill) and over `--surface-3` (a hovered row):
 
@@ -546,13 +559,15 @@ Fills and controls:
 | `--on-accent` on `--ok` / `--warn` / `--crit` / `--info` / `--neutral` solid | 8.10 / 9.32 / 5.64 / 10.51 / 9.44 |
 | Selected nav: `--text` on `--surface-2` | 12.35 |
 | Selection marker `--neutral` `#B6B8BD` on `--surface-2` | 7.62 (3:1 needed) |
-| `--border-strong` `#6E7077` on canvas / surface / elevated | 3.79 / 3.45 / 3.06 (3:1 needed) |
+| `--border-strong` `#35363A` (shipped, D-11) on canvas / surface / elevated | 1.55 / 1.41 / 1.25 (3:1 not met; kept by the user's decision — UR.2.2) |
 | `--focus` `#E8E8E8` on canvas / surface / elevated | 15.30 / 13.91 / 12.35 |
 | Pill border at 34 % alpha over surface | about 1.7 to 2.3 (decorative: the pill text is the carrier) |
 
 The first Phase 1 task adds a unit test that reads these pairs from `tokens.css` and asserts the
 thresholds, so a later edit cannot quietly break them. The test checks the invariant (ratio ≥
-threshold for a named pair), not the production code.
+threshold for a named pair), not the production code. (As shipped after D-11, the test asserts
+the thresholds for every pair above except `--text-3` and `--border-strong`, whose values it
+pins instead.)
 
 ---
 
@@ -1558,7 +1573,7 @@ The orchestrator decides. "Request" means the user's own words or D-10.
 | C8 | **Icons**: the sidebar glyphs, KPI icons, and source-type brand icons (the Windows, firewall and Office logos in the tables) | §3a "emoji or decorative icons" | No icons in the nav, KPI cards or tables. Source type is its **name**. (UR.10 Q2 asks whether a small set of functional glyphs is acceptable in the nav.) |
 | C9 | **Global time range** in the top bar | Guidelines §3 (each route has one job), the pinned page-local selectors (`RangeSelector`, `WindowSwitch`, `WafRangeSelector`) | The top-bar range is the **default for dashboard widgets only** and appears only on routes that register support (UR.3.4). It does not rewrite other pages. |
 | C10 | **Gradient fills** under the sparklines and the EPS area; glow-like soft shadows | §3a "gradients, glows, glassmorphism, decorative shadows" | Solid fills with alpha only (`--chart-band`); one shadow token. |
-| C11 | **Muted text `#73757B` and the border `#35363A`** from the binding palette | WCAG AA (4.5:1 text, 3:1 non-text); `tokens.css` (text-3 "is already the floor at which 12 px stays legible") | UR.2.2: `--text-3 = #8C8E94`, `#73757B` becomes `--text-disabled`; `--border-strong = #6E7077` for input edges; `--border` stays `#35363A` as a hairline. This **changes two binding hex values**; the user should confirm (UR.10 Q7). |
+| C11 | **Muted text `#73757B` and the border `#35363A`** from the binding palette | WCAG AA (4.5:1 text, 3:1 non-text); `tokens.css` (text-3 "is already the floor at which 12 px stays legible") | UR.2.2: `--text-3 = #8C8E94`, `#73757B` becomes `--text-disabled`; `--border-strong = #6E7077` for input edges; `--border` stays `#35363A` as a hairline. This **changes two binding hex values**; the user should confirm (UR.10 Q7). **Superseded by D-11 (2026-10-14): the user kept both palette values — `--text-3 = #73757B`, `--border-strong = #35363A` — accepting that `#73757B` is below AA; see UR.2.2.** |
 | C12 | **Blue as the data accent**: today `--info` blue is the observed line, the link, the primary button and the focus ring | Suggestion ("avoid blue as the dominant visual identity"; "neutral gray for … standard buttons") | `--info` becomes cyan `#6FD0E0`, used for the observed series, links and the `LOW` pill; the primary button is neutral light; the focus ring is neutral. The word "info" and the class names are unchanged. |
 | C13 | **Severity hues**: the screenshot distinguishes Critical (red) from High (orange) | `sevTone()` pinned: `CRITICAL` and `HIGH` both `crit` (guidelines §10); no orange token | Pills keep one `crit` tone and the word. Charts use `--sev-critical` and a darker `--sev-high`, each labelled. No orange. |
 | C14 | **A Top-N "Δ (24h)"**, **"97.4 % healthy"**, **"↑ 12 %"** | `AGENTS.md` rule 8, §3a ("placeholder, random or invented data"; "a zero drawn where the measurement is missing") | None has a data source or an honest definition. Replaced (deviation from baseline; "n of m judged normal") or dropped (UR.4). |
@@ -1595,7 +1610,8 @@ Few, and only real ones. Each has the default this plan will use if the user say
 6. **Light mode.** The plan keeps one dark theme (UR.8.5). **Default: no light mode.**
 7. **Two binding hex values change for contrast** (UR.2.2): muted text `#73757B` → `#8C8E94`
    (the original fails AA at 3.70:1 on the panel), and a stronger input border `#6E7077`. The
-   original `#73757B` survives for disabled text. **Default: apply both.**
+   original `#73757B` survives for disabled text. **Default: apply both.** *Resolved by D-11
+   (2026-10-14): neither deviation is applied — the palette's values shipped (UR.2.2).*
 
 Not questions (decided by D-10 or by the code): the map is built behind the geo collection; EPS by
 class replaces categories; the top bar uses existing APIs; `react-grid-layout` is allowed.
