@@ -1,63 +1,6 @@
-/* The Home grid (UI-2.5): 12 fixed columns from tokens. The grid decides by its own width,
-   not the viewport's, because the sidebar takes a share of it. A container query cannot read
-   a custom property, so the two widths are the literals here.
-
-   Wide (900 px and up): 8 + 4, 4 + 4 + 4, 6 + 6. The content column is about
-   984 px at the required 1280 viewport and about 728 px at 1024, so this keeps
-   the 12-column composition at 1280 and reflows it at 1024.
-   Narrow: the chart takes the row, the pairs share a row, and the two tables that need
-   about 480 px each (Recent anomalies, Recent offenses) take a row of their own. */
+/* The Home page wrapper (UI-3.1). The grid itself, its columns and its box heights moved to
+   `src/widgets/dashboard.css` with the dashboard view that renders every layout. */
 
 .home {
-  container-type: inline-size;
-  display: flex;
-  flex-direction: column;
-  gap: var(--widget-gap);
   min-width: 0;
-}
-.home-grid {
-  display: grid;
-  gap: var(--widget-gap);
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  align-items: stretch;
-  min-width: 0;
-}
-/* A cell is only the grid position; the widget in it fills the cell. */
-.home-grid > * {
-  display: flex;
-  min-width: 0;
-}
-.home-grid > * > * {
-  flex: 1 1 auto;
-}
-
-/* Narrow first: the chart and the two tables take a row, the rest share one. */
-.home-eps,
-.home-anomalies,
-.home-offenses {
-  grid-column: span 12;
-}
-.home-class,
-.home-top,
-.home-severity,
-.home-health {
-  grid-column: span 6;
-}
-
-@container (min-width: 900px) {
-  .home-eps {
-    grid-column: span 8;
-  }
-  .home-class {
-    grid-column: span 4;
-  }
-  .home-top,
-  .home-severity,
-  .home-health {
-    grid-column: span 4;
-  }
-  .home-anomalies,
-  .home-offenses {
-    grid-column: span 6;
-  }
 }

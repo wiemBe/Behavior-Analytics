@@ -2087,7 +2087,18 @@ function homeRead<T>(path: string): HomeRead<T> {
   return { key: path, fetch: (signal) => request<T>(path, { signal }) };
 }
 
+/** `GET /me`: the caller's identity and permissions (the widget catalog, UR.5.6). */
+export interface CallerInfo {
+  subject: string;
+  email: string | null;
+  /** The grants, wildcards included (`read:*`). */
+  permissions: string[];
+  /** Every `PERM_*` capability the caller holds once wildcards are resolved. */
+  effective_permissions: string[];
+}
+
 export const homeReads = {
+  me: () => homeRead<CallerInfo>("/me"),
   fleetSummary: (window: FleetWindow) =>
     homeRead<FleetSummary>(`/fleet/summary${qs({ window })}`),
   epsSeries: (window: FleetWindow, groupBy: FleetSeriesGroup) =>

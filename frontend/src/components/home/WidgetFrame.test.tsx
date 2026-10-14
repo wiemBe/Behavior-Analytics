@@ -1,10 +1,12 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ResourceState } from "@/hooks/useApiResource";
 import type { Qualifier } from "@/lib/home/qualifiers";
 
-import { WidgetFrame, WidgetQualifiers } from "./WidgetFrame";
+import type { WidgetState } from "@/widgets/types";
+
+import { WidgetEditContext, WidgetFrame, WidgetQualifiers } from "./WidgetFrame";
 
 const ok = (
   over: Partial<Extract<ResourceState<string>, { status: "ok" }>> = {},
@@ -137,5 +139,110 @@ describe("WidgetFrame", () => {
     render(<WidgetQualifiers variant="kpi" qualifiers={qualifiers} />);
     expect(screen.getByText("4 of 6 intervals")).toBeInTheDocument();
     expect(screen.getByText("First 200 of 345")).toBeInTheDocument();
+  });
+});
+
+describe("WidgetFrame, the UR.5.4 state union", () => {
+  const view = (state: WidgetState<string>, variant: "kpi" | "panel" = "panel") =>
+    render(
+      <WidgetFrame
+        id="union"
+        title="Union"
+        link={{ href: "/x", label: "Open" }}
+        what="the union data"
+        permission="read:fleet"
+        variant={variant}
+        state={state}
+      >
+        {({ data }) => <p>{data}</p>}
+      </WidgetFrame>,
+    );
+
+  it("renders loading as polite text", () => {
+    view({ kind: "loading" });
+    expect(screen.getByRole("status")).toHaveTextContent("Loading the union data…");
+  });
+
+  it("renders ok with its data and no caveat", () => {
+    view({ kind: "ok", data: "answer", asOf: "2026-10-14T13:58:00Z" });
+    expect(screen.getByText("answer")).toBeInTheDocument();
+    expect(screen.queryByText(/Stale/)).toBeNull();
+  });
+
+  it("renders empty as its reason", () => {
+    view({ kind: "empty", reason: "Nothing is open." });
+    expect(screen.getByRole("status")).toHaveTextContent("Nothing is open.");
+    expect(screen.queryByText("answer")).toBeNull();
+  });
+
+  it("renders no_data as a lack of measurement, never as data", () => {
+    view({ kind: "no_data", reason: "No complete bucket in the window." });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No data. No complete bucket in the window.",
+    );
+    expect(screen.queryByText("answer")).toBeNull();
+  });
+
+  it("renders not_collected with its reason", () => {
+    view({ kind: "not_collected", reason: "Collection has not run yet." });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Not collected. Collection has not run yet.",
+    );
+  });
+
+  it("renders stale with the data and how old it is", () => {
+    view({ kind: "stale", data: "old answer", asOf: "2026-10-14T09:00:00Z", ageSeconds: 10_800 });
+    expect(screen.getByText("old answer")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/Stale: the latest data is from .*3 h old/);
+  });
+
+  it("renders error with the widget's own action and no exception text", () => {
+    view({ kind: "error", action: "Check the collector, then refresh." });
+    expect(screen.getByRole("alert")).toHaveTextContent("The union data could not be read.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Check the collector, then refresh.");
+  });
+
+  it("renders forbidden with the permission and no data", () => {
+    view({ kind: "forbidden", permission: "read:offenses" });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Your role cannot read the union data (permission read:offenses). Nothing was changed.",
+    );
+  });
+
+  it("renders every kind in the compact KPI variant too", () => {
+    const states: WidgetState<string>[] = [
+      { kind: "loading" },
+      { kind: "empty", reason: "e" },
+      { kind: "no_data", reason: "n" },
+      { kind: "not_collected", reason: "c" },
+      { kind: "error", action: "a" },
+      { kind: "forbidden", permission: "p" },
+    ];
+    for (const state of states) {
+      const { container, unmount } = view(state, "kpi");
+      expect(container.querySelector(".kpi-state")).not.toBeNull();
+      unmount();
+    }
+  });
+
+  it("offers Remove in place of the link while a dashboard is being customized", () => {
+    const onRemove = vi.fn();
+    render(
+      <WidgetEditContext.Provider value={{ onRemove }}>
+        <WidgetFrame
+          id="edit"
+          title="Edited"
+          link={{ href: "/x", label: "Open" }}
+          what="x"
+          permission="read:fleet"
+          state={{ kind: "ok", data: "d", asOf: null }}
+        >
+          {({ data }) => <p>{data}</p>}
+        </WidgetFrame>
+      </WidgetEditContext.Provider>,
+    );
+    expect(screen.queryByRole("link")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Remove Edited" }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
   });
 });
