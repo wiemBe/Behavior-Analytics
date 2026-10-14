@@ -97,3 +97,24 @@ started, by PID.
 From `frontend/`, with `~/.local/node/bin` on `PATH`: `npm run lint`, `npm run typecheck`,
 `npm test`, `npm run build`. Copy each summary line verbatim into `docs/tasks/UI-3.2.report.md`
 (AGENTS.md §6 format), with the PNG list and the verification script's output. Do not commit.
+
+## Amendment (2026-10-14 ~21:35): the fixture API and where files go
+
+The machine rebooted at 21:08 and `/tmp` was wiped. The UI-3.1 fixture named under "Screenshots"
+no longer exists. This amendment replaces that paragraph's first sentence.
+
+- **Build a deterministic fixture API** at `/home/efe/Documents/QRadar-Dash-work/ui32/fixture/`,
+  outside the repository, as `docs/UI-WORKSTREAM-COMPLETION.md` §4 describes:
+  - a pinned clock;
+  - the backend's real response shapes, taken from `backend/app/schemas/*`;
+  - every route the Home (`/`) and its catalog widgets read, including the UI-3.5a widgets;
+  - the top bar's reads.
+
+  Make it one self-contained script with a short README: later UI tasks will reuse it. Serve it
+  on **8132**.
+- **Everything persistent goes under `/home/efe/Documents/QRadar-Dash-work/ui32/`, never `/tmp`:**
+  the capture and verification scripts, their logs, the PNGs (`png/`) and the fixture.
+- The other ports are unchanged: Next 3132, Chrome debugging 9132.
+- UI-3.5a is merged. The rule against touching `registry.ts` and `Catalog.tsx` still holds.
+- This worktree already has its own `node_modules` (`npm ci` ran). Run only the dependency
+  install.
