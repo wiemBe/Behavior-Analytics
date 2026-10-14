@@ -30,8 +30,8 @@ the repository.
 - **UI-3.2 merged** (`b9295d1`) after two rounds. Round 2 replaced Arrange and Remove with one
   `Edit` disclosure; the measurement shows no added overflow and no taller title row for all 11
   widgets at 1440 and 1280. The orchestrator's gate: lint and typecheck clean; 144 files / 2,120
-  tests; build OK. **The main checkout's `frontend/node_modules` lacks `react-grid-layout`**: run
-  `npm install` there once T-090 (which symlinks it) is done.
+  tests; build OK. The main checkout's `frontend/node_modules` was brought up to date with `npm install`
+  (6 packages).
 - **T-087 merged** (`e60f06d`), after two rounds of screenshot review. Round 2 fixed:
   - the new-port detector: cumulative events and a materiality floor, with no robust score;
   - the one-sided z threshold;
@@ -43,7 +43,10 @@ the repository.
   which the backend already sends in points). **T-089 fixed it and is merged** (`73dbf8f`): the
   PNG reads "+29.7 pp"; the orchestrator re-ran 365 tests, plus lint, typecheck and ruff.
   The same review found the WAF new-endpoint view misstating its unit, its expected value and its
-  threshold, and every WAF threshold drawn as "±". That is **T-090**; land it before `main`.
+  threshold, and every WAF threshold drawn as "±". **T-090 fixed it and is merged** (`635c625`).
+  The orchestrator's gate: lint and typecheck clean; 152 files / 2,223 tests; build OK; PNGs
+  reviewed. It found the new-endpoint `caveat` missing from the `WafDetectionDetailOut` whitelist
+  (IPS has one); that is a small backend follow-up if wanted.
 - **T-085 + B-2.3b merged** (`agent/t085`). The round-2 test fixes (big-pickle) now pin both
   guards: a mid-hour `until`, and an IPS-only RESOLVED check. Merged-tree gate: ruff clean;
   2,977 unit passed; 187 integration passed (histogram, IPS analyst/alerting/pipeline/scale,
@@ -56,11 +59,9 @@ the repository.
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
 | **UI-3.3** ([spec](tasks/UI-3.3.md) + amendment) | Codex hit its usage limit at ~21:54 before writing a file (reset **02:17**). Now a **Sonnet sub-agent of this chat**, starting fresh | `ui33` (own `node_modules`); ports 3133/8133/9133 | `docs/tasks/UI-3.3.report.md` in `ui33`; PNGs `ui33/png/`; fixture `ui33/fixture/` |
 | **T-091** lockfile in the image, patch upgrades ([spec](tasks/T-091.md)) | opencode `big-pickle`, `--standalone`, pid 163664 | `t091` (own `node_modules`) | `t091/agent.log`; `docs/tasks/T-091.report.md` in `t091` |
-| **T-090** WAF new-endpoint units, materiality floor, one-sided threshold ([spec](tasks/T-090.md)) | Sonnet sub-agent of this chat | `t090`; ports 3190/8190/9190 | `docs/tasks/T-090.report.md` in `t090`; PNGs `t090/png/` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
-1. T-090 (WAF defects on `main`): merge before `main`.
 2. UI-3.3 and T-091 (both running), then UI-3.5b.
 3. T-083b; T-054, whose defects become fix tasks.
 4. Full gate, then `feat/phase-ce` → `main`.
