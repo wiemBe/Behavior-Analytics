@@ -1,8 +1,8 @@
 """Fleet summary: per-class volume, expectation and incidents in a fixed number of queries.
 
-Four grouped statements -- sources, metrics, baselines, incidents -- however many
-sources or classes exist. Per-source figures are folded in Python from the one
-metric statement, so there is no query per class and none per source.
+Five grouped statements -- sources, metrics, baselines, incidents, outage policy
+-- however many sources or classes exist. Per-source figures are folded in Python
+from the one metric statement, so there is no query per class and none per source.
 
 Honesty rules (AGENTS.md rule 8): only COMPLETE buckets contribute to events and
 EPS; a class with no complete bucket reports null, not zero; expected, complete
@@ -14,13 +14,17 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from sqlalchemy import ColumnElement, func, literal, select, tuple_
+from sqlalchemy import ColumnElement, case, cast, func, literal, select, tuple_
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.fleet.outage_policy import resolve
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     BucketCompleteness,
     ClassificationReviewStatus,
+    OutagePolicyMode,
+    OutagePolicyScope,
     SourceClass,
 )
 from app.models.fleet import LogSourceClassification
@@ -30,6 +34,7 @@ from app.models.log_source import (
     LogSourceBaseline,
     LogSourceMetric,
 )
+from app.models.outage import OutageAlertPolicy
 from app.schemas.fleet import (
     WINDOW_SECONDS,
     BucketCounts,
@@ -58,6 +63,8 @@ async def build_fleet_summary(
     window: FleetWindow,
     now: datetime,
     bucket_seconds: int,
+    outage_default: OutagePolicyMode = OutagePolicyMode.ALERT,
+    default_silence_grace_buckets: int | None = None,
 ) -> FleetSummary:
     window_seconds = WINDOW_SECONDS[window]
     window_start = now - timedelta(seconds=window_seconds)
@@ -206,6 +213,50 @@ async def build_fleet_summary(
     for cls, anomaly_type, n in incident_rows:
         incidents[cls][str(anomaly_type)] = n
 
+    # 5. Outage policy. One statement loads every row and, for a SOURCE row, the
+    #    effective class of the source it names -- a CASE casts the scope value
+    #    to a UUID only for SOURCE rows, so a class value never reaches the cast.
+    #    The class mode ignores source overrides (log_source_id=None): it is what
+    #    the class row or the configured default says for the class as a whole.
+    source_scope_uuid = case(
+        (
+            OutageAlertPolicy.scope_kind == OutagePolicyScope.SOURCE.value,
+            cast(OutageAlertPolicy.scope_value, PgUUID(as_uuid=True)),
+        ),
+        else_=None,
+    )
+    policy_rows = (
+        await session.execute(
+            select(
+                OutageAlertPolicy,
+                LogSource.id,
+                LogSourceClassification.source_class,
+            )
+            .outerjoin(LogSource, LogSource.id == source_scope_uuid)
+            .outerjoin(
+                LogSourceClassification,
+                LogSourceClassification.log_source_id == LogSource.id,
+            )
+        )
+    ).all()
+    policies: list[OutageAlertPolicy] = []
+    outage_overrides: dict[str, int] = defaultdict(int)
+    for row, src_id, src_class in policy_rows:
+        policies.append(row)
+        # A SOURCE row whose source is gone no longer overrides anything.
+        if row.scope_kind == OutagePolicyScope.SOURCE.value and src_id is not None:
+            outage_overrides[src_class or _UNCLASSIFIED] += 1
+    outage_modes = {
+        member.value: resolve(
+            policies,
+            log_source_id=None,
+            source_class=member.value,
+            instance_id=None,
+            default=outage_default,
+        ).mode
+        for member in SourceClass
+    }
+
     classes: list[ClassSummary] = []
     for member in SourceClass:
         cls = member.value
@@ -237,6 +288,9 @@ async def build_fleet_summary(
                 ),
                 open_incidents=dict(sorted(incidents.get(cls, {}).items())),
                 top_sources=ranked[:TOP_SOURCES],
+                outage_mode=outage_modes[cls],
+                outage_overrides=outage_overrides.get(cls, 0),
+                monitored_sources=monitored_count.get(cls, 0),
             )
         )
 
@@ -254,4 +308,6 @@ async def build_fleet_summary(
         new_sources=new_sources,
         conflict_sources=conflict_sources,
         unclassified_sources=enabled.get(_UNCLASSIFIED, 0) + disabled.get(_UNCLASSIFIED, 0),
+        outage_default=outage_default,
+        default_silence_grace_buckets=default_silence_grace_buckets,
     )

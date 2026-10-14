@@ -4,8 +4,7 @@ ADDITIVE. Creates `catchall_sender` and the `catchall_bucket` hypertable, and se
 the cadence row of the new search family (1 h). Phase A, WAF and IPS tables and
 enums are unchanged.
 
-Revision id 0020 on the head at the time of writing (0017): the orchestrator
-re-chains it at merge.
+Revision id 0020, chained after 0019, the outage alert policy.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "0020"
-down_revision: str | None = "0017"
+down_revision: str | None = "0019"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

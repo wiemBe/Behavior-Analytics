@@ -131,7 +131,7 @@ def test_0020_round_trip_constraints_and_no_drift(clean_db: str) -> None:
             ).scalar_one()
             assert hypertable == 1
 
-        command.downgrade(config, "0017")
+        command.downgrade(config, "0019")
         with engine.connect() as connection:
             assert not _exists(connection, "catchall_sender")
             assert not _exists(connection, "catchall_bucket")

@@ -8,9 +8,96 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (sixth session, 2026-10-13, from ~11:28)
+## ▶ Resume here (saved 2026-10-13 ~22:40, end of the seventh session; the user is moving to a new chat)
 
-**Sixth session in progress.** State at the last save is in "In flight" below; `main` @ `dabd744`.
+**Start the new chat here.** The UI redesign (UI-R0) waits until steps 1–3 of "Next steps" below
+are done.
+
+**State at save:**
+- **T-050b is DONE and merged** into `feat/phase-ce` (`64152e3`, migration `0018`), after four
+  review rounds. Its worktree, branch and DBs were removed.
+- **Finished and committed on their agent branches, all pushed to origin**, waiting for the
+  migration chain:
+  - **T-068**: `agent/t068`, `0019`; `feat/phase-ce` is already merged into it (`a24f055`);
+  - **T-069**: `agent/t069` @ `0534a47`, `0020`;
+  - **T-070a**: `agent/t070a` @ `25a7bb8`, which contains `agent/t068`;
+  - **T-070b**: `agent/t070b` @ `7438958`, which contains `agent/t069`. It was accepted after one
+    screenshot round: gap shading at every width, no dual axis, hostnames break only at `.` or `-`.
+- **In flight: T-076 Part A** ([spec](tasks/T-076.md)). opencode `big-pickle` runs in the `t068`
+  worktree:
+  - log: `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/718a4478-8643-430e-9cee-227f95f48d16/scratchpad/t076a.log`;
+  - it re-chains `0019` → `0018`, and moves the drift checks of `test_migration_0018` and `_0019`
+    to `head`;
+  - at save, the alembic sequence was green (single head `0019`, no drift), and the full
+    integration suite on `qradar_obs_t068` was running;
+  - it runs in the background and continues without this chat.
+
+**Branch cleanup (user request, ~22:00):**
+- Every branch's content was verified to be in `feat/phase-ce` or `main` first.
+- 25 worktrees, 58 local and 20 remote branches, and their test DBs were removed.
+- **Remaining:** `main`, `feat/phase-ce`, and `agent/t068`, `t069`, `t070a`, `t070b` (local and
+  origin); the worktrees `gate`, `t068`, `t069`, `t070a`, `t070b`; and
+  `refs/backup/pre-t001-2026-10-10`.
+- **Rule from now on:** once a task is merged, remove its worktree, its branch (local and remote)
+  and its DB.
+
+**Branch state:**
+- **`main` @ `3f9c4fa`.**
+- **`feat/phase-ce` @ `64152e3`** is pushed. It holds T-075 and T-050b. Its migration head is
+  **`0018`**.
+- Finished and committed **on their own agent branches**, waiting for the migration chain:
+  - T-068 (`agent/t068`, `0019`);
+  - T-069 (`agent/t069`, `0020`);
+  - T-070a (`agent/t070a`).
+- The main checkout is on `feat/phase-ce`.
+- Before `main`: a full gate. `main` still carries the WAF time-bomb test failure and the 422
+  "Add WAF source" picker; both are fixed on `feat/phase-ce`.
+
+**User request, seventh session (2026-10-13, left as a note at the top of
+[`UI_Suggestions/UI_Suggestion.md`](UI_Suggestions/UI_Suggestion.md); moved here at the user's
+request).** Verbatim:
+
+> BU NOT Orchestrator claude için. BU UI Önerileri codex ile birlikte oluşturulmuştur bu renk
+> paleti ve bu dizaynı her yere uygulanmalıdır bu görevi elindeki görevlerden sonra
+> başlayabilirsin home screende widgetler güzel mantık eklenirse tadından yenmez UI home screen
+> ekran görüntüsü UI_Suggestions'ın altındadır bu dökümana refereans verebilirsin ve bu yazdığım
+> notu planner.md ye kaydettikten sonra silebilirsin bu çoğunlukla UI polish herhangi bir işi
+> overhaullama eğer öyle bir şey varsa bana sor dosyanın içerisindeki dosya yolları olmayabilir
+> çok takılma
+
+In English:
+- Apply the palette and design in [`UI_Suggestion.md`](UI_Suggestions/UI_Suggestion.md) and the
+  [home screenshot](UI_Suggestions/QRadar%20Observability%20Security%20Dashboard.png)
+  **everywhere**.
+- Start it **after the tasks in hand**.
+- Home-screen widgets with real logic behind them are very welcome.
+- It is **mostly UI polish**. **Do not overhaul any existing work.** Anything that would be an
+  overhaul goes to the user first.
+- File paths named in the document may not exist. Do not get stuck on them.
+
+**Orchestrator reading (the plan → UI-R0, below):**
+- **Polish, in scope.** The charcoal palette and semantic colours become the values in
+  `tokens.css`, so no literals leave it. Also in scope: typography, the shell and sidebar, the
+  Home layout after the screenshot, and every route restyled.
+- **Overhaul or new capability. Ask the user before building:**
+  1. A customizable widget grid: drag, resize, multiple dashboards and templates, with
+     persistence. That needs a new table, an API and a new dependency (`react-grid-layout`).
+  2. The world map. No geographic aggregate is collected today. It would need a new keyed Ariel
+     search, which costs QRadar searches.
+  3. "Events by category". There is no category data, and the screenshot's donut has six slices
+     (§3a allows at most five).
+  4. Global search, the Live toggle and notifications, where no backend exists.
+- **§3a tension.** The screenshot's KPI row is four cards. They are acceptable only if each one
+  carries real breakdowns and drills down, and is not a vanity number. Record the user's direction
+  in AGENTS.md §3a when the work starts.
+- The document's own execution order holds. Phase 0 is a plan in `docs/UI-REDESIGN-PLAN.md`,
+  then the user approves, then one phase at a time, with screenshots reviewed by the
+  orchestrator.
+- **The user answered the four overhaul questions the same evening: decision D-10 (§4).**
+  - The full widget system now.
+  - A geo collection for the map, live-validated first.
+  - EPS by source class in place of categories.
+  - The top bar on existing APIs only.
 
 **Read §0 first.** The user set three product goals (G1 log-source fleet, G2 IPS/WAF behavior,
 G3 rule analytics). Every task is scheduled against them.
@@ -47,47 +134,117 @@ G3 rule analytics). Every task is scheduled against them.
     carry `source_class`; **T-059** deterministic double-submit tests; **T-045** D-8 docs.
 - The full gate passed and `main` was merged (above). The `gate` worktree is detached again.
 
-**In flight (sixth session, updated ~15:50):**
+**In flight at save time (sixth session, ~16:10):**
 
-- **Merged this session (`feat/phase-ce`, pushed):** T-061 (also `main` @ `3f9c4fa`), T-064, **T-060**
-  WAF analyst UI (`5a9a75c`), **T-049** IPS profile + `/ips`, migration `0017` (`663fb8b`), **T-062**
-  rule statistics UI (`e98b5a0`; Sonnet died at the limit → Codex, one review round), T-067 audit (no
-  new time bombs).
-- **Incident (orchestrator error, fixed):** `git add frontend` in the `t062` worktree committed the
-  `frontend/node_modules` **symlink**; merging it replaced the main checkout's real `node_modules`
-  with a self-referencing link (breaking every worktree's symlink). Restored by moving `t060`'s
-  real `node_modules` into the main checkout; the symlink dropped in the merge; `.gitignore` now
-  ignores `.venv` / `node_modules` **without** the trailing slash, so symlinks are ignored too
-  (`6b3402b`). **Always `git add` explicit paths and check `git diff --cached --name-only`.**
-- **Live defect found by T-053:** `/waf/candidates` requires `instance_id` but the "Add WAF source"
-  picker never sends it → 422 live (on `main`). Fix = T-072 (backend: optional, default instance).
-- `main` still has the WAF time-bomb test (fixed on `feat/phase-ce`).
+- **Merged this session (`feat/phase-ce`, pushed; migration head `0017`):** T-061 (also `main` @
+  `3f9c4fa`), T-064, **T-060** WAF analyst UI, **T-049** IPS profile + `/ips` (`0017`), **T-062**
+  rule statistics UI, **T-053** `/admin/ips-sources` UI (`96a24ef`), **T-072** candidates routes
+  accept a missing `instance_id` (live defect: "Add WAF source" got 422), **T-073** never-validated
+  wording, **T-050a** IPS keyed searches + split driver + folds (`4061aae`), T-067 audit.
+- **Incident (orchestrator error, fixed):** a worktree's `frontend/node_modules` symlink was
+  committed by `git add frontend` and its merge replaced the main checkout's `node_modules` with a
+  self-link; restored; `.gitignore` now ignores the symlinks (`6b3402b`). **Add explicit paths;
+  check `git diff --cached --name-only`.**
+- `main` still has the WAF time-bomb test and the 422 picker; both fixed on `feat/phase-ce`.
+
+**Seventh session (from 20:12, 2026-10-13).** Collected the sixth session's agents:
+- **T-074 is DONE** ([report](tasks/T-074.report.md)). Every keyed IPS AQL form was **accepted**
+  live. In 6/6 searches, coverage was 1.0 and no result was truncated. Not exercised: skew,
+  truncation, or fan-out above 2 ports.
+- **T-068 round 1 was reviewed and accepted.** The class map is loaded once and only when a CLASS
+  row exists. The orchestrator re-ran the unit suite (2,264 passed, 5 skipped) and the targeted
+  integration tests (53 passed). It is committed on `agent/t068` @ `539b9c2`. It waits for `0018`
+  before the re-chain and merge.
+- Codex T-050b was resumed (`codex exec resume 01a1355d-…`). T-069 was relaunched on Sonnet.
 
 | Task | Agent | Where | When it ends |
 |---|---|---|---|
-| **T-050a** IPS keyed searches, split driver, folds ([spec](tasks/T-050a.md)) | Sonnet | `t050a`, DB `qradar_obs_t050a` | Review; gates; merge; finalize **T-050b** from its report → Codex |
-| **T-053** `/admin/ips-sources` UI, **review round 1** (mid-word break, duplicate banner, "QRadar field", never-validated fixture string) | Sonnet (resumed) | `t053`, ports 4763/3763 | Screenshots; gates; merge (expect `nav`/`api.ts`/CSS conflicts: keep both blocks) |
-| **T-068** outage alert policy backend, migration `0019` → `0017` for now ([spec](tasks/T-068.md)) | opencode `big-pickle` | `t068`, DBs `qradar_obs_t068`, `_mig` | Careful review (Phase A engine hook); re-chain after `0018` |
-| **T-072** `instance_id` optional on `/waf/candidates`, `/ips/candidates` ([spec](tasks/T-072.md)) | opencode `mimo` | `t072`, DB `qradar_obs_t072` | Review; merge; then **T-073** ([spec](tasks/T-073.md), "never validated" wording) in the same worktree |
+| **T-050b** IPS tables `0018`, entities, admission, collector, `IPS_COLLECTION` ([spec](tasks/T-050b.md)) | Codex **resumed** (session `01a1355d-31e8-74f1-be9f-e1e0016d460a`, log `…/718a4478…/scratchpad/t050b-resume.log`) | `t050b`, DBs `qradar_obs_t050b`, `_mig` | Check "usage limit"; review (constant SQL, watermark rule, LOWER_BOUND); gates; merge **first** |
+| **T-050b round 3** (budget-exhaustion defect, below) | Codex, same session (log `…/718a4478…/scratchpad/t050b-r3.log`) | `t050b`; WIP committed `4951f3d` | Review; gates; merge **first** (`0018`) |
+| **T-068** outage policy backend, `0019` → `0017` for now | DONE on `agent/t068` @ `539b9c2` | `t068` | Re-chain `0019` → `0018`; merge |
+| **T-069** catch-all senders backend, `0020` → `0017` for now ([spec](tasks/T-069.md)) | DONE on `agent/t069` @ `0534a47` (Sonnet; 844 integration passed; the orchestrator re-ran 74 + 225) | `t069` | Re-chain `0020` → `0019`; merge |
+| **T-070a** UI `/admin/outage-policy` ([spec](tasks/T-070a.md)) | DONE on `agent/t070a` @ `25a7bb8` after one screenshot round | `t070a` (contains `agent/t068`) | Merge after T-068's re-chain |
+| **T-070b** UI `/fleet/catchall` + `CATCHALL_SENDERS` cadence label ([spec](tasks/T-070b.md)) | Sonnet | `t070b` (contains `agent/t069`), DB `qradar_obs_t070b`, ports 4771/3771 | Screenshot review; merge after T-069 |
 
-**Later in this phase:** T-069 catch-all senders backend, T-070 C.2 UI, T-071 C.2 live; T-051 → T-052
-(IPS detectors, alerting); T-054 live; T-055 docs. Then the full gate → `main`. Contract follow-ups
-from T-060: `numerator_sum`/`denominator_sum` on `WafBaselineCellOut`, `bucket_seconds` on WAF list
-rows, raw "Robust score DEGENERATE" label. From T-053: `/ips/sources` lacks per-field reasons;
-`SOURCE_BUSY` has no status field (UI infers it from history); no `/admin` hub link.
+**Rulings this session:**
+- **`test_migration_0013`** (T-050b and T-069): setup-only change. The first upgrade goes to `0013`
+  instead of `head`, and every assertion is kept.
+- **`test_search_cadence_api`** (T-050b): the code changes, not the test. `IPS_COLLECTION` goes to
+  the end of `SearchFamily`. At merge, `CATCHALL_SENDERS` (T-069) also goes at the end, after
+  `IPS_COLLECTION`.
+- **T-075:** the pinned key set gains the two new keys.
 
-**Next steps, in order:**
-1. ~~Full gate → `main`~~ done (`dabd744`).
-2. T-049 review/merge (migration `0017`). Then **T-050** (IPS collection, design §D.5): split into
-   T-050a (provider keyed fleet searches + pure folds; Sonnet) and T-050b (tables `0018`,
-   collector, `IPS_COLLECTION` family and gate, admission; Codex). Write both specs after reading
-   T-049's field-reference types. Then T-051 → T-052; **T-053** `/admin/ips-sources` UI (reuses the
-   T-044/T-058 components) after T-049; T-054 live; T-055 docs.
-3. T-060 review/merge; then the gate again and `main`.
-4. Later: E.3 rule-statistics UI (D-5 still the user's call); Phase C.2 (per-class outage policy,
-   SIM Generic); Phase 4 OIDC (**no authenticated route works in production until OIDC lands**).
+**Reviews that changed the code:**
+- **T-050b round 3.** Budget exhaustion advanced the watermark past dimensions that were never
+  searched, because the plan is dimension-major. Unsearched planned dimensions must now hold the
+  watermark. Windows are atomic with respect to the budget. A window larger than the whole budget
+  must show a visible condition.
+- **T-070a round 1** fixed six points:
+  - "Sources covered" mixed monitored and enabled counts;
+  - the default grace and mode were unknown;
+  - the instance badge showed a UUID;
+  - the button words;
+  - the source search was client-side;
+  - the panel order.
 
-**User decisions this session (2026-10-13):**
+**T-069 design note:** an unmeasured bucket has no row, which differs from §C.8's FAILED and
+NOT_COLLECTED values. The watermark holds at the last measured bucket. A catch-all source with no
+rows in a LOWER_BOUND bucket gets no row ("unknown").
+| **T-075** `numerator_sum`/`denominator_sum` on `WafBaselineCellOut` ([spec](tasks/T-075.md)) | opencode `big-pickle` | **DONE, merged** (`c56a375`) | It stopped correctly on the pinned key-set test; ruling: add the two keys (the spec changes the contract on purpose). The orchestrator re-ran 83 integration tests. |
+
+The T-060 follow-up "`bucket_seconds` on WAF list rows" was **dropped**: `WafAnomaly` has no
+`bucket_seconds`, so it would need a join in the T-057 `UNION ALL`. The UI constant is correct
+while WAF buckets are fixed at 300 s.
+
+**Contract follow-ups still open:**
+- T-060: "Robust score DEGENERATE". The WAF chart could now draw the pooled expected line from
+  T-075's sums; that belongs in the redesign.
+- T-053: `/ips/sources` per-field reasons, and a `SOURCE_BUSY` status field.
+- T-070a: an instance-scoped class row has no covered count.
+
+**Next steps, in order (updated ~22:40, end of the seventh session):**
+1. **Finish the migration chain.** T-050b and `0018` are already merged.
+   - **Collect T-076 Part A** from `t068`: read `docs/tasks/T-076.report.md` and the log tail, and
+     review the diff, which should change only the down_revision and the three tests. Commit it on
+     `agent/t068`. Then merge `agent/t068`, followed by `agent/t070a` (which contains `t068`),
+     into `feat/phase-ce`.
+   - **T-076 Part B, still to write and run.** In `t069`, merge `feat/phase-ce` in first. Then
+     re-chain `0020` → `0019` and change the final drift check of `test_migration_0019` to `head`,
+     as in Part A. Gates: a single head `0020`, and the full integration suite. Then merge
+     `agent/t069`, followed by `agent/t070b`.
+   - **Expect a conflict when T-069 merges:**
+     - In `SearchFamily`, keep `…, RULE_MATCH, IPS_COLLECTION, CATCHALL_SENDERS`.
+     - In `frontend/src/lib/api.ts` and `searchCadence.ts`, keep both entries, in the same order.
+     - Both branches carry the same `test_migration_0013` edit.
+     - Let the agent resolve it.
+   - After each merge, remove the merged worktree, branch and DB.
+2. ~~Review T-070b's screenshots~~: done and accepted.
+3. **Full gate on `feat/phase-ce` → merge to `main`**: ruff; mypy at 31; the full unit and
+   integration suites on a fresh DB; the alembic round trip; the frontend gates. This also fixes
+   the WAF time bomb and the 422 picker on `main`.
+4. **UI redesign (the user's request; D-10).** Start once the items above are collected.
+   - Launch **UI-R0** ([spec](tasks/UI-R0.md); Sonnet or Codex). It writes only
+     `docs/UI-REDESIGN-PLAN.md`.
+   - The orchestrator reviews the plan, then **the user approves it before any code.**
+   - Then one phase at a time, with screenshots: foundation (tokens, typography, shell) → home →
+     widget system and persistence → every remaining page → QA. The geo collection runs in
+     parallel: a live AQL `GEO::` validation first, then the collector.
+5. **G1/G2 backlog**, in parallel with the redesign where agents allow:
+   - T-071, C.2 live validation (a sender at ≤ 2 EPS shows up as NEW; a `RECORD_ONLY` class stays
+     silent while the anomaly is recorded);
+   - T-051 → T-052, the IPS detectors and alerting, then the IPS analyst view;
+   - T-054, IPS live validation;
+   - T-055, IPS docs;
+   - README entries for C.2 (`outage_alert_default`, `catchall_*` settings).
+6. **Later:**
+   - E.3, the AI rule analysis (D-5, the user's call);
+   - Phase 4 OIDC. **No authenticated route works in production until OIDC lands.**
+
+**User decisions, sixth session (2026-10-13):** D-9 — outage alerts stay on for every monitored
+source by default (`RECORD_ONLY` per class/source is opt-in); new SIM Generic senders go to a review
+queue only, no alert.
+
+**User decisions, fifth session (2026-10-13):**
 - Asked whether the custom properties can be seen and mapped ("WAF'ta bu budur"): yes — T-043
   catalog + T-044 editor + T-042 API. **No automatic suggestion** ("öneri sunmayalım"); **a search
   inside the property list instead** ("aşağı kaydır veya ctrl f yapmıyım") → T-058, merged.
@@ -432,11 +589,24 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-7 | **Search cadence. Decided by the user on 2026-10-12; the design is pending T-032.** The user's note: let operators set how often the searches run, or QRadar drowns in searches. Options are 5 min, 15 min, 30 min, 1 h, 2 h, 4 h and 8 h; the default is 1 h. The user's answers: <br>• **Scope:** every search family, each set separately: Phase A volume, WAF collection, anomaly explanations, rule matches (`creEventList`) and operator scheduled searches. <br>• **Where:** set in the UI, stored in the DB, audited, with no restart. <br>• **Default 1 h everywhere, Phase A included.** The user accepted that an outage (`NO_EVENTS`) alert then arrives 1–2 h late. <br>**Orchestrator constraint:** the cadence must **not** change the bucket width. With 1 h buckets, Phase A gets at most 4 samples per weekday×hour cell in 28 days, against `baseline_min_samples=8`, so it would never train. The 100-event delta floor is also tuned for 5 min. The design is therefore one search per cadence tick returning every 5-minute bucket (time-keyed `GROUP BY`), each bucket judged as today. A further finding: the Phase A baseline builder groups by weekday×hour **without** filtering on `bucket_seconds`, so a width change on a live install would mix widths in one cell. | Search cadence build |
 | D-8 | **Field mappings editable in the UI. Asked by the user on 2026-10-12:** custom-property names such as the WAF URI differ between environments, so they must be changeable from the UI; the same for IPS. **Design: [`FIELD-MAPPING.md`](FIELD-MAPPING.md).** <br>• The per-source WAF profile (mapping, versioning, validation, audit) already existed but was CLI-only. The design adds the admin API (§FM.4, the "separately reviewed admin API" of WAF design §27.2 rule 6; review in §FM.10), asynchronous validation with a never-stamp-a-stale-version rule (§FM.5, migration 0015), the QRadar property catalog filtered by the source's DSM type (§FM.6, T-041), environment prefill and copy-from (§FM.7), and the UI (§FM.8). <br>• **IPS:** Phase D is not built, so §FM.9 fixes the contract it inherits: normalized *or* custom field references, product presets for FTD and PAN THREAT, the same components. <br>• Orchestrator choices (the user may overrule): per-source profiles stay the unit (an environment is a set of sources); no bulk apply; a mapping change pauses collection until it validates (fail closed). | T-041–T-045; Phase D |
 | D-9 | ~~Outage alert default and new catch-all senders~~ **Resolved 2026-10-13 by the user:** outage (`NO_EVENTS`) alerts stay on for **every monitored source** by default (`ALERT`, today's behaviour); operators switch classes or sources to `RECORD_ONLY` (design §C.7). A new SIM Generic sender goes to a **review queue only**, no alert (`catchall_new_sender_alerts_enabled = false`, §C.8). | T-068, T-069 |
+| D-10 | ~~UI redesign: which overhaul items?~~ **Resolved 2026-10-13 (seventh session) by the user, asked by the orchestrator.** <br>• **Widget dashboard: the full system now.** It covers a widget catalog, drag and drop, resize, and multiple dashboards persisted per user in the DB: a new table, migration and API, plus `react-grid-layout`, the dependency the user explicitly allowed. <br>• **World map: add a new geo collection.** First validate the AQL `GEO::` functions on live QRadar. Then collect a country-level aggregate under the search cadence. No raw IPs are kept (AGENTS.md rule 3). <br>• **"Events by category" becomes "EPS by source class":** the top 4 classes plus "Other", from existing data. <br>• **Top bar: existing APIs only.** Search runs over existing lists (sources, anomalies, rules). "Live" becomes auto-refresh with the last-updated time. The bell shows the open-alert count and links to `/alerts`. | UI redesign (UI-R0 onward) |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
 
 ## 5. Log
+
+### 2026-10-13 (sixth session, 11:28–16:10)
+
+- Codex died on T-049 (usage limit 11:27); Sonnet finished it. All four Sonnet agents hit the
+  Claude session limit ~12:30 (reset 14:30) and were resumed with `SendMessage`.
+- **Merged:** T-061, T-064, T-060, T-049, T-062, T-053, T-072, T-073, T-050a; T-061 also to `main`.
+- **Live checks paid off:** T-065 found QRadar rejects `LIKE` on IP fields (→ `INCIDR`) before any
+  IPS profile could validate; T-063 found the SIM Generic sender field (`logsourceidentifier`).
+- **Defects found:** two wall-clock time bombs in the profile-admin tests (one on `main`); the
+  "Add WAF source" picker 422 (missing `instance_id`, on `main`); "(last validated: None)".
+- **Orchestrator error:** committed a worktree `node_modules` symlink; fixed (see Resume here).
+- Designs: Phase C.2 (PHASE-C §C.7–§C.9); D-9 decided by the user.
 
 ### 2026-10-13
 

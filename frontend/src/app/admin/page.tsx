@@ -26,8 +26,16 @@ export default function Page() {
           <span className="cell-sub">Which rules decide a log source&apos;s class, and in what order</span>
         </li>
         <li>
+          <Link href="/admin/outage-policy">Outage alerts</Link>
+          <span className="cell-sub">Which silent sources raise an alert, and which are only recorded</span>
+        </li>
+        <li>
           <Link href="/admin/waf-sources">WAF sources</Link>
           <span className="cell-sub">Which QRadar properties each WAF source is read from</span>
+        </li>
+        <li>
+          <Link href="/admin/ips-sources">IPS sources</Link>
+          <span className="cell-sub">Which QRadar properties each IPS source is read from</span>
         </li>
       </ul>
     </>

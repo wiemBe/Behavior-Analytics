@@ -735,6 +735,10 @@ class WafBaselineCellOut(BaseModel):
     mad: float
     p05: float | None = None
     p95: float | None = None
+    #: Ratio and share metrics only: the pooled sums the detector divides
+    #: (expected proportion = numerator_sum / denominator_sum). None for count metrics.
+    numerator_sum: float | None = None
+    denominator_sum: float | None = None
     sample_count: int
     #: False means too few samples to drive a verdict: "still learning".
     is_reliable: bool

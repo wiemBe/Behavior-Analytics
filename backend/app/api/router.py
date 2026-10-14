@@ -16,6 +16,7 @@ from app.api.routes import (
     ips,
     log_sources,
     offenses,
+    outage_policy,
     overview,
     providers,
     rules,
@@ -32,6 +33,7 @@ from app.security.rbac import (
     PERM_IPS_ADMIN,
     PERM_LOG_SOURCE_READ,
     PERM_OFFENSE_READ,
+    PERM_OUTAGE_ADMIN,
     PERM_OVERVIEW_READ,
     PERM_PROVIDER_READ,
     PERM_RULE_READ,
@@ -105,3 +107,8 @@ api_router.include_router(
 # Phase C.2b catch-all senders: read-guarded like /fleet; review writes check
 # `log_source:write` in the handler.
 api_router.include_router(catchall.router, dependencies=[Depends(requires(PERM_FLEET_READ))])
+# The outage alert policy is administrative: it changes what pages a human, so
+# `admin:outage` guards every method, reads included; `read:*` does not satisfy it.
+api_router.include_router(
+    outage_policy.router, dependencies=[Depends(requires(PERM_OUTAGE_ADMIN))]
+)
