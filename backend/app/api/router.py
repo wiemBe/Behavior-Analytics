@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import requires
+from app.api.deps import get_principal, requires
 from app.api.routes import (
     alerts,
     anomalies,
@@ -15,6 +15,7 @@ from app.api.routes import (
     health,
     ips,
     log_sources,
+    me,
     offenses,
     outage_policy,
     overview,
@@ -44,6 +45,9 @@ from app.security.rbac import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+# /me returns only the caller's own identity and grants; it requires
+# authentication but no additional permission.
+api_router.include_router(me.router, dependencies=[Depends(get_principal)])
 # Guarded at the router, like everything below. /health is the only open surface:
 # container probes carry no credentials. Handlers that mutate state keep their own
 # write-permission checks on top of the router's read requirement.
