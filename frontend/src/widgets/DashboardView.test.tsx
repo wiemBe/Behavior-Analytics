@@ -250,6 +250,16 @@ describe("catalog drawer", () => {
     expect(within(dialog).getByRole("button", { name: "Add Charlie" })).toBeEnabled();
   });
 
+  it("shows 'Already on this dashboard' as neutral information, and a blocked reason as a warning", () => {
+    const { dialog } = open();
+    for (const el of within(dialog).getAllByText("Already on this dashboard.")) {
+      expect(el).toHaveClass("dg-catalog-reason", "info");
+    }
+    const blocked = within(dialog).getByText("Not available: its data is not collected yet.");
+    expect(blocked).toHaveClass("dg-catalog-reason");
+    expect(blocked).not.toHaveClass("info");
+  });
+
   it("disables a blocked widget and gives the reason", () => {
     const { dialog } = open();
     expect(within(dialog).getByRole("button", { name: "Add Delta" })).toBeDisabled();

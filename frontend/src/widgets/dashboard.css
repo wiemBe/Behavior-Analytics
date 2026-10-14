@@ -207,3 +207,7 @@ dialog.dg-catalog::backdrop {
   color: var(--warn-text);
   line-height: var(--lh-prose);
 }
+/* "Already on this dashboard" is neutral information, not a warning. */
+.dg-catalog-text .dg-catalog-reason.info {
+  color: var(--text-3);
+}

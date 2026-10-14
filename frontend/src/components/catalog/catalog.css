@@ -1,0 +1,36 @@
+/* The catalog widgets (UI-3.5a). They reuse the Home table styles (`tables.css`); this adds
+   the one figure style they share. Every value is a token. */
+
+.cw-figure {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-tight);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.cw-figure .cw-unit {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-normal);
+  color: var(--text-2);
+}
+.cw-table th.cw-th-sub {
+  font-weight: var(--fw-normal);
+}
+.cw-table td.cw-nowrap,
+.cw-table th.cw-nowrap {
+  white-space: nowrap;
+}
+.cw-group + .cw-group {
+  margin-top: var(--sp-1);
+}
+
+/* A name that is the row's key never truncates: it wraps, at most two lines in practice. */
+.tw-table td.tw-name.cw-wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
