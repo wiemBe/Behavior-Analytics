@@ -8,10 +8,72 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (ninth session, 2026-10-14, from 13:20)
+## ▶ Resume here (end of the ninth session, 2026-10-14 ~16:20; the user is moving to a new chat)
 
-**Start a new chat here.** The user: "GLM can be used; Codex's session tokens ran out." Codex hit
-its usage limit in T-051c round 2 (reset **15:54**; back and in use from 16:04).
+**Start the new chat here.** The ninth session's log follows this section.
+
+**State:**
+- **`main` @ `8814a47`** (unchanged this session).
+- **`feat/phase-ce` @ `b4312b2`** (pushed). **Migration head `0022`.** Merged this session, each
+  after the orchestrator's diff review and its own gate re-run: B-1.2b, G-2, G-2b, UI-1.5, B-2.1,
+  UI-2.1, UI-2.2, UI-2.3, UI-2.4, T-051c, T-051d, T-052, T-055, T-055b, T-055c, T-080, plus the
+  T-081 live report. **Phase D (IPS) is code-complete**; only the live validation T-054 remains.
+  **Phase 2 (Home)** lacks only UI-2.5, the composition at `/`.
+- **The full backend gate on `a4fdbf6`** (`gate` worktree; everything after it is docs only):
+  ruff clean; mypy 31 errors in 18 files (baseline); **2,850 unit passed**; alembic `head`→`0014`→
+  `head` clean, `alembic check` no drift, single head `0022`. **The full integration step was still
+  running at save** (a background job of this chat, so it probably died with it): **re-run it** on
+  a fresh `qradar_obs_gate` (log `scratchpad/gate-backend.log`, scratchpad below).
+- Scratchpad of this session:
+  `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/1f0011eb-9918-4fba-a9e5-8fe15b30a127/scratchpad/`.
+
+**In flight at save. Check each first.**
+
+| Task | Agent | Where | How to collect |
+|---|---|---|---|
+| **UI-2.5** the Home at `/` ([spec](tasks/UI-2.5.md)): composition, one `WidgetFrame`, fix list (a)–(h) | **Codex** `exec` (pid 878464 at save), second hand after Sonnet hit its session limit | worktree `ui25`; capture ports 3125/8125 | Codex runs outside this chat and keeps going. Log `scratchpad/ui25-codex.log`, final message `scratchpad/ui25-codex.last.md`; grep the log for "hit your usage limit" (exit code lies). Then review the diff (no weakened test; the only allowed test edits are EPS strings changed by fix (f)), re-run the frontend gates, and **review the first screen at 1440×900, 1280×800, 1024×768 yourself** (the Phase 2 acceptance) |
+| **T-082** docs: production needs one origin for the browser's API reads (CORS is `[]` in production; the top bar and Home read from the browser; uvicorn proxy headers and the rate limiter) ([spec](tasks/T-082.md)) | opencode `mimo-v2.6-flash-free`, `--standalone` (pid 895584 at save) | worktree `t082` | Log `scratchpad/t082.log`; report `docs/tasks/T-082.report.md`. Check its uvicorn/Next.js citations and that no config value changed |
+| **T-054** IPS live validation ([spec](tasks/T-054.md)) | **Sonnet sub-agent of this chat** (from ~16:15): it **probably stopped with the chat** | main checkout, scratch `scratchpad/t054/`; DB `qradar_obs_t054` | Look in `scratchpad/t054/` for its scripts and partial report. **First confirm no generator process is left** (`ps aux | grep qradar_lab_loggen`; stop by PID only). Then hand to a new agent with the spec plus "review what you inherit" (Sonnet is cleared by the user for use; Codex needs `-c sandbox_workspace_write.network_access=true`) |
+
+**Next, in order:**
+1. Collect UI-2.5 and T-082 (above).
+2. Re-run the **full backend integration** and the **frontend gate** (lint, typecheck, test, build)
+   on the head with UI-2.5. If both are green, **merge `feat/phase-ce` → `main`** and push.
+3. T-054 (above): each defect it finds becomes a fix task before IPS is called validated.
+4. Free-model task ready to write: diagnose the intermittent `tests/integration/test_migrations.py`
+   ERROR (seen twice under concurrent load; capture its text first). Run it only when no gate is
+   using the DB server.
+5. Small doc fix: README ~line 1016 says "UI, evidence and alert routing for WAF incidents are not
+   built"; check against the code (the WAF analyst UI T-060 and WAF alerting exist) and fix.
+6. Needs the user: **G-5** (the first production read-only geo window; until then a real country
+   key is unproven live, see T-081); the **ACTION custom property** on the lab console (the IPS
+   block-ratio scenario); Phase 3 (widget system, `react-grid-layout`) starts after `main`.
+7. Later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines on `/behavior`;
+   overlapping anomaly bands stack their alpha on `/behavior/sources/[id]`.
+
+**Agent availability at save:** Codex in use (reset was 15:54). GLM out until **20:53** (its 5-hour
+window was used up in ~40 minutes by two parallel sessions: give it one large task at a time).
+Sonnet: the user cleared it for use ("bu oturumda sonneti kullanabilirsin"). opencode free models:
+usable at any time (`mimo-v2.6-flash-free` and `nemotron-3-ultra-free` did well today; free models
+take no UI work). The user also reminded: use the free coding agents too.
+
+**Lessons this session:**
+- Every agent family hit a limit today (Codex, GLM, Sonnet). The handover pattern ("review what you
+  inherit" plus the original spec) worked each time: T-051c went Codex → GLM → Sonnet, and the third
+  hand found the second hand's failing test was wrong, not the engine.
+- Parallel UI tasks collided on a shared helper file (`lib/home/format.ts` add/add) and duplicated
+  the widget frame. Name shared helpers' owners in parallel UI specs.
+- A first KPI row passed its tests and failed the design bar (570 px cards). Always look at the
+  first screen yourself.
+- An agent ran `pkill -f next-server`: give every UI agent its own ports and the "PID only" rule.
+- Free models fix the first occurrence of a stale sentence and miss the rest: ask them to grep.
+
+---
+
+## Ninth session log (2026-10-14, 13:20–16:20)
+
+The user: "GLM can be used; Codex's session tokens ran out." Codex hit its usage limit in T-051c
+round 2 (reset **15:54**; back and in use from 16:04).
 
 **Agent limits today:** GLM out until **20:53**; Sonnet sub-agents hit a session limit at ~16:00
 (cutting off T-052 round 2 and UI-2.5), and **the user then cleared Sonnet for this session**
@@ -95,7 +157,7 @@ its usage limit in T-051c round 2 (reset **15:54**; back and in use from 16:04).
 - **GLM hit its 5-hour limit at ~13:40** in both sessions (reset **20:53**). Codex is out until
   **15:54**. The user (~13:55): "Codex will take a while; give it to GLM or Sonnet."
 
-**In flight:**
+**In flight (superseded by Resume here):**
 
 | Task | Agent | Worktree, DB | Log / how to collect |
 |---|---|---|---|
