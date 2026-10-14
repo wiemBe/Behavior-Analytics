@@ -24,8 +24,18 @@ actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
   search-cadence status lines; three wording corrections by the orchestrator, noted in its report);
   **UI-2.5** (`bdb8d1d`; round 1 Codex, round 2 Codex then Sonnet; the orchestrator reviewed the
   PNGs, every removed test assertion and re-ran the gates). **Phase 2 (Home) is complete.**
-- **Phase 3 waits for the user's approval of the Phase 2 screenshots** (UR.11). PNGs:
-  `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/1f0011eb-9918-4fba-a9e5-8fe15b30a127/scratchpad/ui25/png/`.
+- **The user approved the Phase 2 screenshots (~17:00, "ok you have a go"). Phase 3 started.**
+  PNGs kept at `/home/efe/Documents/QRadar-Dash-screens/phase2/` (copied out of `/tmp`).
+- **Phase 3 re-split (orchestrator ruling):** the plan's UI-3.1 and UI-3.4 cannot be seen in a
+  browser apart, so **UI-3.1** = registry, state union, catalog, deriveLayout and the Home as an
+  in-memory `DashboardView` with session-only add/remove (fixed row heights, so the grid drops in);
+  **UI-3.2** = `react-grid-layout` drag, resize, keyboard steppers (Codex after 21:04 is a good
+  fit); **UI-3.3** = configure, expand, per-widget range; **UI-3.5** (new) = the remaining UR.5.1
+  catalog widgets (health.*, admin tables, waf.*, source-mode EPS chart), needed by the Phase 4
+  templates.
+- Also merged: **B-4** (`4fcd21d`, migration head **`0023`**; orchestrator re-ran ruff, mypy 31,
+  2,944 unit, 79 integration), **T-082** (`837691d`, round 2 corrected the Docker peer-address
+  claim).
   Logged for later: at 1024 the EPS-by-class widget has ~100 px spare; the `/anomalies` Evidence
   cell truncates at 1440 (UI-5.2).
 - **Agents:** Codex out until **21:04** (limit hit at 16:39). **The user (~16:40): GLM 5.3 and 5.3
@@ -33,11 +43,10 @@ actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
 
 | Task | Agent | Where | Status |
 |---|---|---|---|
-| **T-082** round 2 | opencode `mimo-v2.6-flash-free` (pid 985495) | `t082`; log `t082-r2.log` | Round 1 reviewed: accurate on CORS, `NEXT_PUBLIC_*` build-time inlining, uvicorn 0.51.0 defaults; **one wrong claim sent back**: a host-side proxy reaching the published `127.0.0.1:8000` is *not* seen by uvicorn as `127.0.0.1` (the container is on bridge networks), so the default trust list ignores `X-Forwarded-For` and every client shares one rate-limit bucket |
 | **T-054** | Sonnet sub-agent of the ninth-session chat | old scratch `t054/` | running (baseline run 1 done 16:20); its report lands in `t054/T-054.report.md` |
-| **B-4** dashboard persistence: models, `0023`, API, RBAC, audit ([spec](tasks/B-4.md)) | Sonnet sub-agent, medium (from ~16:45) | `b4`; DB `qradar_obs_b4` | Round 1 reviewed (gates green except 4 `test_route_auth_guard` cases: the test's empty body meets 422 before the 403 guard). **Rulings:** the seeded `analyst` role gets `dashboard:write` (`viewer` stays read-only); an admin gets 404 on another owner's PRIVATE dashboard; the 409 `detail` is an object `{message, current_revision}` (note for UI-4.1). Round 2 (same agent): the four `_BODIES` entries, the analyst grant, audit `dashboard.update` on every PUT plus `.rename`, README data-model count. `main` is merged, so B-4 can land after its round 2 |
 | **T-085** IPS analyst read API: `/anomalies` third family, detail fallback, `/behavior/ips/...` ([spec](tasks/T-085.md)) | opencode `zai-coding-plan/glm-5.3`, `--standalone` (pid 976247, from 16:39) | `t085`; DB `qradar_obs_t085`; log `t085.log` | running |
 | **B-2.3** `GET /anomalies/histogram` ([spec](tasks/B-2.3.md)) | opencode `zai-coding-plan/glm-5.3-flash`, `--standalone` (pid 976248, from 16:39) | `b23`; DB `qradar_obs_b23`; log `b23.log` | running. Touches `anomalies.py` beside T-085: merge T-085 first, then add the IPS branch to the histogram (one branch) |
+| **UI-3.1** registry, state union, catalog, Home as `DashboardView` ([spec](tasks/UI-3.1.md)) | Sonnet sub-agent, medium (from ~17:05) | `ui31`; ports 3131/8131/9131; scratch `ui31/` | running |
 | **T-083** `test_migrations.py` setup-ERROR diagnosis ([spec](tasks/T-083.md)) | a free model | DBs `qradar_obs_t083`, `qradar_obs_t083b` (created) | **queued until T-054 ends**: its load phase stresses the shared Postgres server that T-054's live pipeline uses |
 
 ## ▶ Resume here (end of the ninth session, 2026-10-14 ~16:20; the user is moving to a new chat)
