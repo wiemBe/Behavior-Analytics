@@ -8,54 +8,84 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (tenth session, from 2026-10-14 16:20)
+## ▶ Resume here (end of the tenth session, 2026-10-14 ~18:15; the user said "Stop", save)
 
-**Tenth session (chat `qradar-dash-2c`).** Resumed at 16:20 from the block below. The ninth
-session's chat (`qradar-dash-19`) acknowledged the handover: it takes no git, PLANNER or agent
-actions and only lets its T-054 sub-agent finish into its scratch `t054/`.
-- This session's scratchpad:
+**Start the next chat here.** The tenth session (chat `qradar-dash-2c`, from 16:20) stopped at the
+user's request. No new work was started after "Stop"; the agents below were already running.
+
+**State:**
+- **`main` @ `55a5e37`** (pushed ~17:20): Phase D IPS detection and alerting, geo collection, the
+  Phase 2 Home, top bar. Backend gate on `a4fdbf6`: 2,850 unit, 1,044 integration, alembic clean;
+  frontend gate on `bdb8d1d`: 137 files / 1,981 tests, build compiled.
+- **`feat/phase-ce` @ `c630c52`** (pushed). **Migration head `0023`.** Merged after `main`, each after
+  the orchestrator's review and its own gate re-run: **B-4** (`4fcd21d`, saved dashboards: models,
+  `0023`, API, RBAC, audit; 2,944 unit, 79 integration), **T-082** (`837691d`, production needs one
+  origin; round 2 corrected the Docker peer-address claim), **T-086** (`7e01c78`, the redesign plan's
+  UR.5/UR.7 match what is built), **B-2.3** (`696b630`, `GET /anomalies/histogram`; merged-tree
+  2,962 unit), **UI-3.1** (`8168c10`, the widget registry, state union, catalog, the Home as an
+  in-memory `DashboardView`; 2,034 tests). Before this session's end the earlier merges were T-084
+  and UI-2.5 (both on `main`).
+- **The user approved the Phase 2 screenshots** (~17:00). PNGs kept at
+  `/home/efe/Documents/QRadar-Dash-screens/phase2/`. **Phase 3 is under way**, re-split by the
+  orchestrator (recorded in UR.7 by T-086): UI-3.1 (merged), UI-3.2 drag/resize, UI-3.3 configure/
+  expand/range, UI-3.5 the remaining catalog widgets (UI-3.5a now: the ones without configuration).
+- **Rulings this session:** the seeded `analyst` role gets `dashboard:write` (`viewer` read-only);
+  an admin gets 404 on another owner's PRIVATE dashboard; the 409 `detail` is
+  `{message, current_revision}` (UI-4.1 must read it); the `--dg-*` grid numbers are the one accepted
+  inline-style exception; the stale threshold with an unknown cadence is 4 h (UR.5.4); `active_only`
+  is now honoured on `/anomalies` (UI-2.5).
+- This session's scratchpad (logs, prompts, launcher):
   `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/a16a3a57-0bb1-488e-a4d5-dadbc9e16dfd/scratchpad/`.
-- **`main` @ `55a5e37`** (pushed 2026-10-14 ~17:20): `feat/phase-ce` @ `bdb8d1d` merged with
-  `--no-ff` in a temporary worktree (the main checkout stays on `feat/phase-ce`; T-054 runs from
-  it). Backend gate on `a4fdbf6` (no backend file changed since): 2,850 unit, 1,044 integration,
-  alembic clean, head `0022`. **Frontend gate on `bdb8d1d`:** lint clean, typecheck clean, 137
-  files / 1,981 tests, build compiled (`gate-frontend.log` in this session's scratchpad).
-- `feat/phase-ce` (pushed at each merge). Merged this session: **T-084** (`befce47`, README WAF and
-  search-cadence status lines; three wording corrections by the orchestrator, noted in its report);
-  **UI-2.5** (`bdb8d1d`; round 1 Codex, round 2 Codex then Sonnet; the orchestrator reviewed the
-  PNGs, every removed test assertion and re-ran the gates). **Phase 2 (Home) is complete.**
-- **The user approved the Phase 2 screenshots (~17:00, "ok you have a go"). Phase 3 started.**
-  PNGs kept at `/home/efe/Documents/QRadar-Dash-screens/phase2/` (copied out of `/tmp`).
-- **Phase 3 re-split (orchestrator ruling):** the plan's UI-3.1 and UI-3.4 cannot be seen in a
-  browser apart, so **UI-3.1** = registry, state union, catalog, deriveLayout and the Home as an
-  in-memory `DashboardView` with session-only add/remove (fixed row heights, so the grid drops in);
-  **UI-3.2** = `react-grid-layout` drag, resize, keyboard steppers (Codex after 21:04 is a good
-  fit); **UI-3.3** = configure, expand, per-widget range; **UI-3.5** (new) = the remaining UR.5.1
-  catalog widgets (health.*, admin tables, waf.*, source-mode EPS chart), needed by the Phase 4
-  templates.
-- Also merged: **B-4** (`4fcd21d`, migration head **`0023`**; orchestrator re-ran ruff, mypy 31,
-  2,944 unit, 79 integration), **T-082** (`837691d`, round 2 corrected the Docker peer-address
-  claim), **T-086** (`7e01c78`, the redesign plan's UR.5/UR.7 match what is built; mimo after a
-  nemotron run stalled; three cells corrected by the orchestrator).
-  **B-2.3** (`696b630`, `GET /anomalies/histogram`; GLM flash then Sonnet, which fixed an ignored
-  `subject_kind`; merged tree 2,962 unit). **Follow-up B-2.3b after T-085:** T-085 makes
-  `_applicable_kinds` return three families, so the histogram's unpacking and an IPS branch must
-  change with it. **UI-3.1** (`8168c10`, the registry, state union, catalog, the Home as a
-  `DashboardView`; 2,034 tests; rulings: `--dg-*` numbers are the one inline-style exception; the
-  stale threshold with an unknown cadence is 4 h).
-  Logged for later: at 1024 the EPS-by-class widget has ~100 px spare; the `/anomalies` Evidence
-  cell truncates at 1440 (UI-5.2).
-- **Agents:** Codex out until **21:04** (limit hit at 16:39). **The user (~16:40): GLM 5.3 and 5.3
-  Flash may be used**; two parallel GLM sessions used the 5-hour window up in ~33 min (out until
-  **02:36**): never run two GLM sessions at once. Sonnet cleared. Free models: idle.
 
-| Task | Agent | Where | Status |
+**Open decision for the user — D-12, the project's name** (the user's note, 2026-10-14: rename
+`qradar-dash` to "Secops Metrics Dashboard", or another name?). The orchestrator's view, given to the
+user in chat: "Metrics Dashboard" undersells it (it detects and investigates behaviour, not only
+metrics; "Dashboard" is one page of it) and the UI already brands itself "Behavior Analytics";
+a rename touches the repository and folder name, the worktrees, the agents' memory path, the
+compose project and the UI brand, so it is one deliberate task at a quiet moment, after the user
+picks the name. **Not started.**
+
+**In flight at save. Check each first.**
+
+| Task | Agent | Where | How to collect |
 |---|---|---|---|
-| **T-054** | Sonnet sub-agent of the ninth-session chat | old scratch `t054/` | running (baseline run 1 done 16:20); its report lands in `t054/T-054.report.md` |
-| **T-085** IPS analyst read API: `/anomalies` third family, detail fallback, `/behavior/ips/...` ([spec](tasks/T-085.md)) | glm-5.3 (16:39) **cut off by GLM's 5-hour limit at 17:12** (reset 02:36) with ~770 lines and partly failing tests; **handed to a Sonnet sub-agent** (~17:15, review what you inherit; it edited `tests/unit/test_waf_analyst_schemas.py`, outside its allowed files: the new hand must justify or revert every existing-test edit) | `t085`; DB `qradar_obs_t085` | running |
-| **UI-3.5a** the catalog widgets that need no configuration ([spec](tasks/UI-3.5a.md)) | Sonnet sub-agent, medium (~17:45) | `ui35a`; ports 3135/8135/9135 | running |
-| **UI-3.2** drag, resize, keyboard steppers ([spec](tasks/UI-3.2.md)) | **Codex, launched automatically at 21:05** by `launch-ui32.sh` (this session's scratchpad: worktree from the then-current `feat/phase-ce`, its own `npm ci`, prompt `ui32.prompt.md`) | `ui32`; ports 3132/8132/9132; log `ui32-codex.log` | scheduled |
-| **T-083** `test_migrations.py` setup-ERROR diagnosis ([spec](tasks/T-083.md)) | a free model | DBs `qradar_obs_t083`, `qradar_obs_t083b` (created) | **queued until T-054 ends**: its load phase stresses the shared Postgres server that T-054's live pipeline uses |
+| **T-085** IPS analyst read API ([spec](tasks/T-085.md)) | GLM (cut off) → Sonnet: **finished**, report written, **not yet reviewed or merged** | worktree `t085`; DB `qradar_obs_t085` | Its report: gates green (2,865 unit, 396 integration); it found and removed a "BREAK" mutation GLM left in `_applicable_kinds`; one edit to `tests/unit/test_waf_analyst_schemas.py` (outside its files; justified as forced by the new 3-tuple; review it). **Merging it breaks B-2.3's histogram:** `_applicable_kinds` now takes a required `ips_entity_id` and returns `(phase_a, waf, ips)`; adapt `histogram()` (pass `ips_entity_id=None`, unpack three, add the IPS branch: task **B-2.3b**) in the same merge round, then run the histogram tests |
+| **UI-3.5a** catalog widgets without configuration ([spec](tasks/UI-3.5a.md)) | Sonnet sub-agent (cut off by the Sonnet limit ~17:40, resumed ~18:12) | `ui35a`; ports 3135/8135/9135; scratch `ui35a/` | Report `docs/tasks/UI-3.5a.report.md`; review the PNGs yourself; the carried fix ("Already on this dashboard" muted) is in it |
+| **T-054** IPS live validation ([spec](tasks/T-054.md)) | ninth-session Sonnet (cut off ~17:48, no report) → **new Sonnet sub-agent of this chat** (~18:20) | old scratch (read only) `…/1f0011eb-…/scratchpad/t054/`; new scratch and report `…/a16a3a57-…/scratchpad/t054/T-054.report.md`; DB `qradar_obs_t054` | First hand: baselines trained, one scenario (`ips-port-sweep`) sent, 54 of 250 Ariel searches. **Candidate defect:** during the sweep `IPS_PORT_FANOUT_SPIKE` reads `INSUFFICIENT_DATA` ("destination-port coverage below the 90% floor"), so the fan-out detector may never fire on a sweep. The new hand settles that first, then runs the remaining scenarios; it waits for T-083 to finish before any collection tick. **If the chat closed, it probably stopped: check `pgrep -af qradar_lab_loggen` (stop by PID only) and its scratch, then hand over again** |
+| **T-083** `test_migrations.py` setup-ERROR diagnosis ([spec](tasks/T-083.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, **opencode pid 1212073** (a duplicate run was stopped) | worktree `t083`; DBs `qradar_obs_t083`, `qradar_obs_t083b`; loops in `/tmp/t083/` | Report `docs/tasks/T-083.report.md`; the log `t083.log` is interleaved with a stopped duplicate (use the report). Check that no loop process is left (`pgrep -af t083`) |
+| **UI-3.2** drag, resize, keyboard steppers ([spec](tasks/UI-3.2.md)) | **Not started.** A background timer was to launch Codex at 21:05; **the user stopped it** (~18:15, with "Stop") | spec and prompt ready: `ui32.prompt.md`; launcher `launch-ui32.sh` in the scratchpad (creates worktree `ui32` from the current `feat/phase-ce`, runs its own `npm ci`, starts `codex exec`; ports 3132/8132/9132) | Start it only when the user resumes: `bash launch-ui32.sh` (it waits until 21:05 if run earlier; edit the time or run its steps by hand). Grep its log for "hit your usage limit" |
+
+**Next, in order:**
+1. Collect T-085 → merge with B-2.3b (the histogram's IPS branch) → gate (unit, the anomaly and IPS
+   integration files).
+2. Collect UI-3.5a (screenshots yourself); start UI-3.2 (Codex) when the user resumes; then UI-3.3 (configure, expand,
+   per-widget range) and UI-3.5b (the configurable widgets: `waf.endpoint_traffic`,
+   `chart.eps_observed_expected` source mode).
+3. Collect T-054; each defect it confirms becomes a fix task before IPS is called validated.
+4. Collect T-083.
+5. Phase 4 UI (UI-4.1 dashboard API client and switcher, UI-4.2 save/restore/templates, UI-4.3 `/`
+   loads the user's default) after Phase 3; the backend (B-4) is already merged.
+6. Merge `feat/phase-ce` → `main` after the next green full gate (backend unit + full integration,
+   frontend gate).
+7. The user's: D-12 (name); G-5 (first production read-only geo window); the ACTION custom property
+   on the lab console (IPS block-ratio scenario).
+
+**Agents at save:** Codex out until **21:04**. GLM out until **02:36**; **never two GLM sessions at
+once** (two parallel sessions emptied the 5-hour window in ~33 min, twice today). Sonnet: the user
+cleared it again (~18:10) after its session limit (~17:40). Free models: usable; they sometimes end a
+run early with a plan instead of tool calls (tell them to work until the report exists). **Watch PIDs
+carefully**: twice today a wrapper PID was mistaken for the agent's and a relaunch put two agents on
+one worktree; take the PID from `pgrep -af <title>` (the line that starts with the opencode binary).
+
+**Lessons this session:**
+- Every premium agent family hit a limit today; the handover pattern (same spec + "review what you
+  inherit") worked each time, and two second hands found real defects the first hand left (B-2.3's
+  ignored `subject_kind`; T-085's leftover break-it mutation in `_applicable_kinds`).
+- Look at every screenshot yourself: UI-2.5 round 1 passed its tests with ten visible defects.
+- A plan's task split can be unbuildable (UI-3.1 and UI-3.4 could not be seen apart): re-split, record
+  the ruling in the spec, and bring the plan document in line (T-086).
+
+---
 
 ## ▶ Resume here (end of the ninth session, 2026-10-14 ~16:20; the user is moving to a new chat)
 
