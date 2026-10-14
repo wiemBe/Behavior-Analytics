@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.alerts.dispatcher import AlertEnqueuer
 from app.core.config import Settings, get_settings
 from app.ips.baseline import IpsBaselineBuilder
 from app.ips.engine import IpsAnomalyEngine
@@ -131,12 +132,14 @@ class IpsInstancePipeline:
         clock: Callable[[], datetime] | None = None,
         engine_factory: Callable[..., IpsAnomalyEngine] | None = None,
         builder_factory: Callable[..., IpsBaselineBuilder] | None = None,
+        enqueuer: AlertEnqueuer | None = None,
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._engine_factory = engine_factory or IpsAnomalyEngine
         self._builder_factory = builder_factory or IpsBaselineBuilder
+        self._enqueuer = enqueuer
 
     async def run(self, instance: QRadarInstance) -> IpsPipelineReport:
         report = IpsPipelineReport(instance.id)
@@ -267,9 +270,16 @@ class IpsInstancePipeline:
                 )
             ).all()
         )
-        engine = self._engine_factory(
-            self.session, settings=self.settings, clock=self._clock
-        )
+        # Only handed over when there is one, so a narrower factory keeps working.
+        if self._enqueuer is None:
+            engine = self._engine_factory(self.session, settings=self.settings, clock=self._clock)
+        else:
+            engine = self._engine_factory(
+                self.session,
+                settings=self.settings,
+                clock=self._clock,
+                enqueuer=self._enqueuer,
+            )
         for bucket in buckets:
             result = await engine.evaluate_bucket(source, bucket)
             report.subjects_evaluated += len(result.subject_reports)

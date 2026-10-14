@@ -11,11 +11,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import func, select
 
 from app.ips.baseline import IPS_SOURCE_METRIC_SEMANTICS
 from app.ips.behavior import IPS_DETECTOR_FUNCTIONS
 from app.ips.engine import IpsAnomalyEngine
-from app.models.enums import IpsDimension, IpsProfileValidationStatus
+from app.models.alert import Alert
+from app.models.enums import AlertStatus, IpsDimension, IpsProfileValidationStatus
 from app.models.ips import (
     IpsEntity,
     IpsEntityBaseline,
@@ -209,3 +211,69 @@ async def test_scoped_training_statement_count_is_constant_in_entities(db_sessio
         counts[size] = len(statements)
     # Eight times the entities, the same statements per source.
     assert counts[5] == counts[40], counts
+
+
+async def _alerting_cost(db_session, second_bucket_events: int) -> dict[int, tuple[int, int]]:
+    """(open cost, second cost) per entity count, every entity spiking at H0.
+
+    With 100 as the second value every incident resolves at H1; with 600 each
+    alert is refreshed instead.
+    """
+    test_settings = settings(
+        ips_alerting_enabled=True,
+        anomaly_open_after_intervals=1,
+        anomaly_resolve_after_intervals=1,
+    )
+    instance = await make_instance(db_session)
+    costs: dict[int, tuple[int, int]] = {}
+    for size, qradar_id in ((5, 412), (200, 413)):
+        source, entities = await seeded(db_session, instance, qradar_id=qradar_id, n=size)
+        ids = [entity.id for entity in entities]
+        for at, events in ((H0, 600), (H1, second_bucket_events)):
+            rows = await db_session.scalars(
+                select(IpsEntityMetric).where(
+                    IpsEntityMetric.ips_entity_id.in_(ids), IpsEntityMetric.bucket_start == at
+                )
+            )
+            for row in rows:
+                row.events = events
+        await db_session.flush()
+        _result, first = await evaluate(db_session, source, H0, test_settings)
+        opened = int(
+            await db_session.scalar(
+                select(func.count()).select_from(Alert).where(Alert.source_id.in_(ids))
+            )
+            or 0
+        )
+        _result, second = await evaluate(db_session, source, H1, test_settings)
+        assert opened == size
+        assert int(
+            await db_session.scalar(
+                select(func.count()).select_from(Alert).where(
+                    Alert.source_id.in_(ids), Alert.status == AlertStatus.RESOLVED
+                )
+            )
+            or 0
+        ) == (size if second_bucket_events == 100 else 0)
+        costs[size] = (first, second)
+    return costs
+
+
+async def test_refreshing_alerts_is_constant_cost_in_alerting_subjects(db_session) -> None:
+    costs = await _alerting_cost(db_session, 600)
+    assert costs[5][1] == costs[200][1], costs
+
+
+async def test_resolving_alerts_is_constant_cost_in_alerting_subjects(db_session) -> None:
+    costs = await _alerting_cost(db_session, 100)
+    assert costs[5][1] == costs[200][1], costs
+
+
+async def test_opening_alerts_costs_a_fixed_number_of_statements_per_new_alert(
+    db_session,
+) -> None:
+    """AlertService.apply_bulk inserts each new alert inside its own savepoint (to keep
+    the partial unique index's concurrency protection), so a first open is linear in
+    the *new* alerts: exactly savepoint, insert, release each. Nothing else scales."""
+    costs = await _alerting_cost(db_session, 600)
+    assert costs[200][0] - costs[5][0] == 3 * (200 - 5), costs

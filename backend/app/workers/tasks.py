@@ -1317,7 +1317,10 @@ async def dispatch_ips_collection(instance_name: str | None = None) -> dict:
         assert provider is not None
         collector = IpsCollector(session, provider, settings=settings)
         collection = (await collector.collect(instance)).as_dict()
-        pipeline = await IpsInstancePipeline(session, settings=settings).run(instance)
+        enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
+        pipeline = await IpsInstancePipeline(
+            session, settings=settings, enqueuer=enqueuer
+        ).run(instance)
         return {**collection, "pipeline": pipeline.as_dict()}
 
     result = await _for_each_instance(run, instance_name)

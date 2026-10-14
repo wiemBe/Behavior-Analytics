@@ -157,6 +157,8 @@ class Settings(BaseSettings):
     #: IPS fleet collection is opt-in; individual profiles must also be enabled
     #: and VALID for their current version.
     ips_collection_enabled: bool = False
+    #: IPS alerting is opt-in: in shadow mode incidents are recorded and nothing pages.
+    ips_alerting_enabled: bool = False
     ips_max_new_entities_per_bucket: int = Field(default=20, ge=0, le=1000)
     ips_max_active_entities_per_source_dimension: int = Field(
         default=2000, ge=1, le=50000
