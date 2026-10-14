@@ -76,6 +76,10 @@ export const FAMILY_INFO: Record<SearchFamily, { name: string; scope: string }> 
     name: "Catch-all senders",
     scope: "Senders feeding SIM Generic and the Universal DSMs",
   },
+  GEO_COLLECTION: {
+    name: "Geography",
+    scope: "Events per country, by source and destination address",
+  },
 };
 
 /** Name and scope for a family. An unknown family keeps its raw key. */

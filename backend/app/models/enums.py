@@ -104,6 +104,7 @@ class SearchFamily(StrEnum):
     RULE_MATCH = "RULE_MATCH"
     IPS_COLLECTION = "IPS_COLLECTION"
     CATCHALL_SENDERS = "CATCHALL_SENDERS"
+    GEO_COLLECTION = "GEO_COLLECTION"
 
 
 class SearchCadence(IntEnum):

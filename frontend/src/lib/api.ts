@@ -172,7 +172,8 @@ export type SearchFamily =
   | "ANOMALY_EXPLANATION"
   | "RULE_MATCH"
   | "IPS_COLLECTION"
-  | "CATCHALL_SENDERS";
+  | "CATCHALL_SENDERS"
+  | "GEO_COLLECTION";
 
 // Mirrors SearchCadenceLastRunOut. `searches_sent` is null for a family that
 // does not count its searches yet: that is "not counted", never zero.

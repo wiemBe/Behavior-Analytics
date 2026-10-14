@@ -12,6 +12,7 @@ from app.api.routes import (
     classification_rules,
     coverage,
     fleet,
+    geo,
     health,
     ips,
     log_sources,
@@ -30,6 +31,7 @@ from app.security.rbac import (
     PERM_ANOMALY_READ,
     PERM_COVERAGE_READ,
     PERM_FLEET_READ,
+    PERM_GEO_READ,
     PERM_IPS_ADMIN,
     PERM_LOG_SOURCE_READ,
     PERM_OFFENSE_READ,
@@ -107,6 +109,8 @@ api_router.include_router(
 # Phase C.2b catch-all senders: read-guarded like /fleet; review writes check
 # `log_source:write` in the handler.
 api_router.include_router(catchall.router, dependencies=[Depends(requires(PERM_FLEET_READ))])
+# D-10 geography: aggregate events per country for the home map; `read:geo` (`read:*`).
+api_router.include_router(geo.router, dependencies=[Depends(requires(PERM_GEO_READ))])
 # The outage alert policy is administrative: it changes what pages a human, so
 # `admin:outage` guards every method, reads included; `read:*` does not satisfy it.
 api_router.include_router(

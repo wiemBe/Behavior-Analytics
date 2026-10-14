@@ -92,6 +92,10 @@ PERM_CLASSIFICATION_ADMIN = "admin:classification"
 # is operational control, so `read:*` does not grant it and a fleet viewer
 # cannot silence a class's outages.
 PERM_OUTAGE_ADMIN = "admin:outage"
+# D-10. The country map shows where the monitored traffic comes from and goes to. That is
+# aggregate counts per country, never an address, but it still describes the estate, so the
+# route declares a permission; `read:*` satisfies it.
+PERM_GEO_READ = "read:geo"
 
 
 class PermissionDenied(Exception):
