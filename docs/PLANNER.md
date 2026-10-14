@@ -37,8 +37,8 @@ the repository.
 | Task | Agent | Where | Collect |
 |---|---|---|---|
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
-| **UI-3.2** ([spec](tasks/UI-3.2.md) + amendment) | Codex, pid 19894 (started ~21:37) | `ui32` (own `node_modules`); ports 3132/8132/9132 | `ui32/codex.log` (grep "hit your usage limit"); `ui32/last-message.md`; PNGs `ui32/png/`; fixture `ui32/fixture/` |
-| **T-087** handover ([spec](tasks/T-087.md)) | Sonnet sub-agent of this chat ("review what you inherit"; the first hand stopped at 18:51 with code only) | `t087`; ports 3187/8187/9187 | `docs/tasks/T-087.report.md` in `t087`; PNGs `t087/png/` |
+| **UI-3.2** ([spec](tasks/UI-3.2.md) + amendment) | Codex. Round 1 is done and reviewed: drag, resize, steppers, lazy chunk and geometry are all fine. **Round 2** (spec §Round 2): the customize chrome crowds the title row, and at 1280 the KPI cards overflow and scroll. Resumed session `01a13ba4-55a9-7470-9b09-6a242be914dd`, pid 111866 | `ui32` (own `node_modules`); ports 3132/8132/9132 | `ui32/codex-r2.log` (grep "hit your usage limit"); `ui32/last-message-r2.md`; PNGs `ui32/png/`; reusable fixture `ui32/fixture/server.py` (Home and catalog routes) |
+| **T-087** ([spec](tasks/T-087.md)) | Sonnet sub-agent of this chat. Round 1 is done (2,201 tests). **Round 2** (spec §Round 2): new-port units and threshold, clipping at 1024 in `/anomalies`, realistic fixture payloads | `t087`; ports 3187/8187/9187 | "Round 2" in `docs/tasks/T-087.report.md` in `t087`; PNGs `t087/png/`; fixture `t087/fixture/fixture_api.py` (anomalies and IPS routes) |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
@@ -46,6 +46,10 @@ the repository.
 2. UI-3.2, then UI-3.3 (spec ready), then UI-3.5b.
 3. T-083b; T-054, whose defects become fix tasks.
 4. Full gate, then `feat/phase-ce` → `main`.
+
+**Open point:** `npm audit` in `frontend/` reports 22 findings (6 moderate, 13 high, 3 critical),
+the same on `main` and with UI-3.2. These predate this session. Triage them as their own task
+(read-only first: which packages, runtime or dev-only, which fix versions).
 
 **Agents:**
 - Codex is back (its limit reset at 21:04).
