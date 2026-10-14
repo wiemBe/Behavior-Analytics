@@ -55,7 +55,7 @@ from app.services.catchall_retention import CatchallRetention
 from app.services.concurrency import InMemoryConcurrencyLimiter
 from app.services.detection_coverage import DetectionCoverageEvaluator
 from app.services.geo_retention import GeoRetention
-from app.services.ips_pipeline import ips_pipeline_lock_key
+from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
 from app.services.ips_profiles import IpsProfileService
 from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
@@ -1316,7 +1316,9 @@ async def dispatch_ips_collection(instance_name: str | None = None) -> dict:
     ) -> dict:
         assert provider is not None
         collector = IpsCollector(session, provider, settings=settings)
-        return (await collector.collect(instance)).as_dict()
+        collection = (await collector.collect(instance)).as_dict()
+        pipeline = await IpsInstancePipeline(session, settings=settings).run(instance)
+        return {**collection, "pipeline": pipeline.as_dict()}
 
     result = await _for_each_instance(run, instance_name)
     failed = any(item.get("status") == "failed" for item in result.get("results", []))

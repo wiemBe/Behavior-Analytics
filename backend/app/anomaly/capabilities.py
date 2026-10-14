@@ -461,10 +461,7 @@ _IPS_ENTITY_DOMAINS = {
     IpsAnomalyType.IPS_DESTINATION_RATE_SPIKE,
     IpsAnomalyType.IPS_SIGNATURE_BURST,
 }
-_IPS_NO_SCHEDULE = (
-    "IPS detection does not run on a schedule yet: the detector is implemented as a pure "
-    "function, but no engine executes it."
-)
+_IPS_TASK = "dispatch_ips_collection"
 
 
 def _ips(
@@ -484,9 +481,9 @@ def _ips(
         detector_type=detector_type.value,
         telemetry=frozenset(),
         baseline_metrics=frozenset(baselines),
-        # Nothing runs the IPS detectors until the engine is wired; status must say so.
-        scheduled_task=None,
-        limitation=_IPS_NO_SCHEDULE,
+        # Fleet collection evaluates every source before bounded baseline training.
+        scheduled_task=_IPS_TASK,
+        enabling_setting="ips_collection_enabled",
         measurement=measurement,
         inputs=inputs,
         activation=activation,
@@ -694,6 +691,12 @@ def detector_status(spec: DetectorSpec, settings: Any | None = None) -> Detector
             return DetectorStatus.UNSUPPORTED
         if not spec.scheduled_task:
             return DetectorStatus.NOT_SCHEDULED
+        if (
+            settings is not None
+            and spec.enabling_setting is not None
+            and not getattr(settings, spec.enabling_setting)
+        ):
+            return DetectorStatus.NOT_ENABLED
         return DetectorStatus.OPERATIONAL
     if spec.domain is BehaviorDomain.WAF_ENDPOINT:
         if not spec.implemented or not spec.baseline_metrics <= WAF_BASELINE_METRICS:
