@@ -22,7 +22,12 @@ its usage limit in T-051c round 2 (reset **15:54**), with its work half done in 
     head `0022`; 66 geo and migration integration; frontend typecheck and 496 tests. The
     `catchall.test.ts` edit was accepted: it only makes room for `GEO_COLLECTION`. Two
     fail-open answers in `GET /geo/countries` went to **G-2b**.
-  - Worktrees, branches and DBs of both were removed.
+  - **UI-1.5** (`558be59`), after round 2 (literals into tokens; the brand subtitle is visually
+    hidden at ≤1200 px and stays in the accessibility tree). Screenshots reviewed at the three
+    viewports; lint clean, 1,666/1,666 tests, build.
+  - Worktrees, branches and DBs of all three were removed.
+  - Seen in review, for later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines in
+    the `/behavior` "Needs attention" table.
 
 **In flight:**
 
@@ -30,7 +35,8 @@ its usage limit in T-051c round 2 (reset **15:54**), with its work half done in 
 |---|---|---|---|
 | **T-051c** IPS engine ([spec](tasks/T-051c.md) with Ruling 1) | opencode `zai-coding-plan/glm-5.3`, `--standalone`, handed over with "review what you inherit" (Codex's half-done round 2) | `t051c`, DB `qradar_obs_t051c` | `scratchpad/t051c-glm.log` (the scratchpad is now `/tmp/claude-1000/-home-efe-Documents-QRadar-Dash/1f0011eb-9918-4fba-a9e5-8fe15b30a127/scratchpad/`); report `docs/tasks/T-051c.report.md`. Review as listed for T-051c below |
 | **G-2b** geo API fail-closed fixes ([spec](tasks/G-2b.md)): `measurement`/`remainders` null on `NOT_COLLECTED`; `expected_buckets` over every collected instance, not only those with rows | opencode `mimo-v2.6-flash-free`, `--standalone` | `g2b`, DB `qradar_obs_g2b` | `scratchpad/g2b.log`; report `docs/tasks/G-2b.report.md`; re-run the gates yourself |
-| **UI-1.5** round 2: `64px`/`520px`/`44ch` into tokens; the brand subtitle wraps to 3 lines at 1024 | Sonnet sub-agent | `ui15` | Report appended to `docs/tasks/UI-1.5.report.md`; PNGs under `scratchpad/ui15b/`. Round 1's screenshots were reviewed and are otherwise fine |
+| **B-2.1** `GET /fleet/eps-series` ([spec](tasks/B-2.1.md)) | Sonnet sub-agent | `b21`, DB `qradar_obs_b21` | Report `docs/tasks/B-2.1.report.md`. Check: null unless every in-scope cell is COMPLETE; `expected_eps` with no band; constant statements at two sizes |
+| **UI-2.1** Home data layer ([spec](tasks/UI-2.1.md)) | Sonnet sub-agent | `ui21` (no DB) | Report `docs/tasks/UI-2.1.report.md`. Check: dedupe and abort tests; null-not-zero for every derivation; the refresh tick is additive in `AutoRefresh.tsx` |
 | **T-055** docs: README entries (C.2, IPS, geo, `/me`, health stamp), IPS [BUILT] markers, D-11 in UR.2.2/UR.2.8 ([spec](tasks/T-055.md)) | opencode `zai-coding-plan/glm-5.3`, `--standalone` | `t055` (no DB) | `scratchpad/t055.log`; report `docs/tasks/T-055.report.md`. Spot-check defaults against `config.py` |
 
 **Next:** collect these four, then steps 3–5 of the list below (T-052, Phase 2 Home with B-2.1
