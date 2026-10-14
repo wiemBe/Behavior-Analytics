@@ -51,18 +51,27 @@ the repository.
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
 | **UI-3.2** ([spec](tasks/UI-3.2.md) + amendment) | Codex. Round 1 is done and reviewed: drag, resize, steppers, lazy chunk and geometry are all fine. **Round 2** (spec §Round 2): the customize chrome crowds the title row, and at 1280 the KPI cards overflow and scroll. Resumed session `01a13ba4-55a9-7470-9b09-6a242be914dd`, pid 111866 | `ui32` (own `node_modules`); ports 3132/8132/9132 | `ui32/codex-r2.log` (grep "hit your usage limit"); `ui32/last-message-r2.md`; PNGs `ui32/png/`; reusable fixture `ui32/fixture/server.py` (Home and catalog routes) |
 | **T-090** WAF new-endpoint units, materiality floor, one-sided threshold ([spec](tasks/T-090.md)) | Sonnet sub-agent of this chat | `t090`; ports 3190/8190/9190 | `docs/tasks/T-090.report.md` in `t090`; PNGs `t090/png/` |
-| **T-088** npm audit triage, read-only ([spec](tasks/T-088.md)) | opencode `big-pickle`, `--standalone`, pid 115207 | main checkout, read-only | `t088/T-088.report.md` and `t088/agent.log` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
 1. T-090 (WAF defects on `main`): merge before `main`.
-2. UI-3.2, then UI-3.3 (spec ready), then UI-3.5b.
+2. UI-3.2 (round 2 reviewed: one `Edit` disclosure, no added overflow at 1440 or 1280; merge after
+   the gate), then T-091, UI-3.3 (spec ready; also fix the open Edit panel letting the KPI number's
+   top edge show above it), then UI-3.5b.
 3. T-083b; T-054, whose defects become fix tasks.
 4. Full gate, then `feat/phase-ce` → `main`.
 
-**Open point:** `npm audit` in `frontend/` reports 22 findings (6 moderate, 13 high, 3 critical),
-the same on `main` and with UI-3.2. These predate this session. Triage them as their own task
-(read-only first: which packages, runtime or dev-only, which fix versions).
+**T-088 done** ([report](tasks/T-088.report.md), big-pickle): none of the 22 `npm audit` findings is
+reachable in this deployment.
+- The two Next.js criticals need Windows hosting or `next/image`.
+- The vitest criticals are dev-only.
+- A patch round (`next` 15.5.28, `echarts-for-react` 3.0.6, `sharp`, `npm update` in range)
+  clears the criticals.
+
+**It also found a real gap:** `frontend/Dockerfile` ignores the committed lockfile
+(`COPY package.json`, then `npm install`), so the image is not what the gates tested. **T-091**
+([spec](tasks/T-091.md)) fixes both. Start it **after UI-3.2 merges** (both change `package.json`).
+The vitest 4 major and echarts 6 are planned later.
 
 **Agents:**
 - Codex is back (its limit reset at 21:04).
