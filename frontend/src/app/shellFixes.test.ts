@@ -15,7 +15,7 @@ function rule(selector: string): string {
 
 describe("sidebar runs the full page height", () => {
   it("paints the panel on a grid-row-spanning pseudo-element, not on the sticky sidebar", () => {
-    expect(rule(".layout::before")).toMatch(/background:\s*var\(--surface\)/);
+    expect(rule(".layout::before")).toMatch(/background:\s*var\(--sidebar-bg\)/);
     expect(rule(".sidebar")).not.toMatch(/background/);
   });
   it("keeps the sidebar and the panel in the same cell", () => {

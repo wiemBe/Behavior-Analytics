@@ -11,6 +11,7 @@
  */
 
 @import "./tokens.css";
+@import "./fonts.css";
 
 *,
 *::before,
@@ -36,7 +37,7 @@ a {
 /* Links inside page content are the accent colour; links used as whole rows or
    nav items opt out via their own rules. */
 .main a:not(.plain) {
-  color: var(--info-text);
+  color: var(--link);
   border-radius: var(--r-sm);
 }
 .main a:not(.plain):hover {
@@ -69,7 +70,7 @@ a {
   content: "";
   grid-column: 1;
   grid-row: 1;
-  background: var(--surface);
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
 }
 
@@ -702,7 +703,7 @@ tbody tr:hover td {
 /* --- controls -------------------------------------------------------------- */
 
 button.action {
-  background: var(--info);
+  background: var(--primary);
   color: var(--on-accent);
   border: none;
   border-radius: var(--r-md);
@@ -713,7 +714,7 @@ button.action {
   font-family: inherit;
 }
 button.action:hover {
-  background: var(--info-text);
+  background: var(--primary-hover);
 }
 button.action:disabled {
   opacity: 0.55;
@@ -778,7 +779,7 @@ button.action.secondary:hover {
   max-width: 100%;
 }
 .filters button {
-  background: var(--info);
+  background: var(--primary);
   color: var(--on-accent);
   border: none;
   border-radius: var(--r-md);
