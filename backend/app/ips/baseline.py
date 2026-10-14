@@ -427,8 +427,15 @@ class IpsBaselineBuilder:
         train_through: datetime,
         limit: int | None = None,
         now: datetime | None = None,
+        log_source_id: uuid.UUID | None = None,
     ) -> dict[str, dict[uuid.UUID, int]]:
-        """Rebuild the least recently computed active entities and valid sources."""
+        """Rebuild the least recently computed active entities and valid sources.
+
+        With ``log_source_id`` only that source's subjects (its entities and its
+        own cells) are rebuilt, so ``train_through`` is that source's evaluation
+        bound and never reaches another source's data. The cost is the same
+        constant set of statements per call, whatever the entity count.
+        """
         limit = limit or self.settings.ips_baseline_rebuild_batch_size
         entity_last = (
             select(
@@ -443,7 +450,14 @@ class IpsBaselineBuilder:
                 await self.session.scalars(
                     select(IpsEntity)
                     .outerjoin(entity_last, entity_last.c.subject_id == IpsEntity.id)
-                    .where(IpsEntity.active.is_(True))
+                    .where(
+                        IpsEntity.active.is_(True),
+                        *(
+                            [IpsEntity.log_source_id == log_source_id]
+                            if log_source_id is not None
+                            else []
+                        ),
+                    )
                     .order_by(entity_last.c.rebuilt_at.asc().nulls_first(), IpsEntity.id)
                     .limit(limit)
                 )
@@ -467,6 +481,11 @@ class IpsBaselineBuilder:
                     )
                     .where(
                         IpsSourceProfile.enabled.is_(True),
+                        *(
+                            [IpsSourceProfile.log_source_id == log_source_id]
+                            if log_source_id is not None
+                            else []
+                        ),
                         IpsSourceProfile.validation_status == IpsProfileValidationStatus.VALID,
                         IpsSourceProfile.validated_profile_version
                         == IpsSourceProfile.profile_version,
