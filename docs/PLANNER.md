@@ -27,22 +27,22 @@ the repository.
   `DROP SCHEMA public CASCADE` and the TimescaleDB Telemetry Reporter. `clean_db` now terminates
   the other sessions on its own DB first: 4 errors in 55 runs before, 0 in 50 after. Re-verified
   here with 12 passed and ruff clean. The same fixture in 11 sibling files is T-083b.
-- **B-2.3b round 1 reviewed.** The code is accepted. Two tests do not pin their guard: the
-  half-open `until` sits on an hour boundary, and the RESOLVED check is masked by a Phase A row.
-  Round 2 is in the spec.
+- **T-085 + B-2.3b merged** (`agent/t085`). The round-2 test fixes (big-pickle) now pin both
+  guards: a mid-hour `until`, and an IPS-only RESOLVED check. Merged-tree gate: ruff clean;
+  2,977 unit passed; 187 integration passed (histogram, IPS analyst/alerting/pipeline/scale,
+  Phase A API/lifecycle, WAF analyst, migrations). Worktree, branch and DB removed.
 
 **In flight** (work dir `/home/efe/Documents/QRadar-Dash-work/`):
 
 | Task | Agent | Where | Collect |
 |---|---|---|---|
-| **B-2.3b r2** | opencode `big-pickle`, `--standalone`, pid 18282 | `t085`; DB `qradar_obs_t085` | `b23b/agent.log`; "Round 2" in `docs/tasks/B-2.3b.report.md`. Then gate and merge `agent/t085` |
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
 | **UI-3.2** ([spec](tasks/UI-3.2.md) + amendment) | Codex, pid 19894 (started ~21:37) | `ui32` (own `node_modules`); ports 3132/8132/9132 | `ui32/codex.log` (grep "hit your usage limit"); `ui32/last-message.md`; PNGs `ui32/png/`; fixture `ui32/fixture/` |
 | **T-087** handover ([spec](tasks/T-087.md)) | Sonnet sub-agent of this chat ("review what you inherit"; the first hand stopped at 18:51 with code only) | `t087`; ports 3187/8187/9187 | `docs/tasks/T-087.report.md` in `t087`; PNGs `t087/png/` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
-1. B-2.3b r2, then merge `t085`, then T-087 on top.
+1. T-087 on top of the merged T-085.
 2. UI-3.2, then UI-3.3 (spec ready), then UI-3.5b.
 3. T-083b; T-054, whose defects become fix tasks.
 4. Full gate, then `feat/phase-ce` → `main`.
