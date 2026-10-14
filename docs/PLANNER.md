@@ -71,6 +71,12 @@ its usage limit in T-051c round 2 (reset **15:54**).
     per-source expected" line, no band), EPS by class (≤ 5 slices + an accessible list), severity
     per hour ("at least" when truncated). Screenshots reviewed; 1,958 tests. Two points went to
     UI-2.5: one EPS format; presets in the title row.
+  - **T-081** ([report](tasks/T-081.report.md)): the G-2 geo keyed search **runs live** in both
+    directions (accepted, ~1.1 s, 24 buckets, not truncated, the key-in-window check passed; 2 of 4
+    searches). The lab's events carry only private and RFC 5737 addresses, so every key was `{}`
+    (812,682 events `UNRESOLVED`): parsing a real country key, multi-country ordering and
+    truncation stay unproven live until G-5 (the first production read-only window, the user's
+    call). The lab Home map will honestly read `INSUFFICIENT_DATA`.
   - The worktrees, branches and DBs of every merged task were removed.
   - Seen in review, for later (UI-5.x): at 1024 the `INSUFFICIENT_DATA` pill wraps to two lines in
     the `/behavior` "Needs attention" table.
@@ -86,7 +92,6 @@ its usage limit in T-051c round 2 (reset **15:54**).
 | **T-052** IPS alerting behind `ips_alerting_enabled` (default false) ([spec](tasks/T-052.md)) | Sonnet sub-agent (launched 14:30 instead of waiting for Codex, at the user's word) | `t052`, DB `qradar_obs_t052` | Report `docs/tasks/T-052.report.md`. Check: no alert row and no extra statement with the setting off; one bulk apply per bucket; fixed fingerprint; maintenance; the full integration run |
 | **T-052** round 2: wire the notification enqueuer through `IpsInstancePipeline` and `dispatch_ips_collection` | same Sonnet sub-agent | `t052`, DB `qradar_obs_t052` | Rulings given: 3 statements per new alert is accepted (shared `apply_bulk`, as WAF); a maintenance bucket not resolving alerts is accepted (existing IPS behaviour) |
 | **UI-2.5** the Home at `/` ([spec](tasks/UI-2.5.md)): composition, one `WidgetFrame`, fix list (a)–(h) | Sonnet sub-agent (15:00) | `ui25`; capture ports 3125/8125 | The acceptance screenshots for all of Phase 2: review the first screen at each viewport yourself |
-| **T-081** live smoke of the G-2 geo keyed search ([spec](tasks/T-081.md)); the collector is on by default and the AQL shape never ran live | Sonnet sub-agent (15:05), read-only, ≤ 4 Ariel searches | main checkout, scratch only | `scratchpad/t081/T-081.report.md`. If a form is rejected, a fix task for `qradar_rest.py` follows before `main` |
 
 **Next:**
 1. Collect T-052 round 2, UI-2.5, T-081.
