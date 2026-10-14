@@ -27,6 +27,11 @@ the repository.
   `DROP SCHEMA public CASCADE` and the TimescaleDB Telemetry Reporter. `clean_db` now terminates
   the other sessions on its own DB first: 4 errors in 55 runs before, 0 in 50 after. Re-verified
   here with 12 passed and ruff clean. The same fixture in 11 sibling files is T-083b.
+- **UI-3.2 merged** (`b9295d1`) after two rounds. Round 2 replaced Arrange and Remove with one
+  `Edit` disclosure; the measurement shows no added overflow and no taller title row for all 11
+  widgets at 1440 and 1280. The orchestrator's gate: lint and typecheck clean; 144 files / 2,120
+  tests; build OK. **The main checkout's `frontend/node_modules` lacks `react-grid-layout`**: run
+  `npm install` there once T-090 (which symlinks it) is done.
 - **T-087 merged** (`e60f06d`), after two rounds of screenshot review. Round 2 fixed:
   - the new-port detector: cumulative events and a materiality floor, with no robust score;
   - the one-sided z threshold;
@@ -49,15 +54,14 @@ the repository.
 | Task | Agent | Where | Collect |
 |---|---|---|---|
 | **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
-| **UI-3.2** ([spec](tasks/UI-3.2.md) + amendment) | Codex. Round 1 is done and reviewed: drag, resize, steppers, lazy chunk and geometry are all fine. **Round 2** (spec §Round 2): the customize chrome crowds the title row, and at 1280 the KPI cards overflow and scroll. Resumed session `01a13ba4-55a9-7470-9b09-6a242be914dd`, pid 111866 | `ui32` (own `node_modules`); ports 3132/8132/9132 | `ui32/codex-r2.log` (grep "hit your usage limit"); `ui32/last-message-r2.md`; PNGs `ui32/png/`; reusable fixture `ui32/fixture/server.py` (Home and catalog routes) |
+| **UI-3.3** ([spec](tasks/UI-3.3.md) + amendment) | Codex, pid 162662 | `ui33` (own `node_modules`); ports 3133/8133/9133 | `ui33/codex.log` (grep "hit your usage limit"); `ui33/last-message.md`; PNGs `ui33/png/` |
+| **T-091** lockfile in the image, patch upgrades ([spec](tasks/T-091.md)) | opencode `big-pickle`, `--standalone`, pid 163664 | `t091` (own `node_modules`) | `t091/agent.log`; `docs/tasks/T-091.report.md` in `t091` |
 | **T-090** WAF new-endpoint units, materiality floor, one-sided threshold ([spec](tasks/T-090.md)) | Sonnet sub-agent of this chat | `t090`; ports 3190/8190/9190 | `docs/tasks/T-090.report.md` in `t090`; PNGs `t090/png/` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
 1. T-090 (WAF defects on `main`): merge before `main`.
-2. UI-3.2 (round 2 reviewed: one `Edit` disclosure, no added overflow at 1440 or 1280; merge after
-   the gate), then T-091, UI-3.3 (spec ready; also fix the open Edit panel letting the KPI number's
-   top edge show above it), then UI-3.5b.
+2. UI-3.3 and T-091 (both running), then UI-3.5b.
 3. T-083b; T-054, whose defects become fix tasks.
 4. Full gate, then `feat/phase-ce` → `main`.
 
