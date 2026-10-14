@@ -709,6 +709,13 @@ Highlights:
   seven detectors are `OPERATIONAL` when `IPS_COLLECTION_ENABLED` is true and `NOT_ENABLED`
   otherwise (the default). The engine refuses to run a detector on a bucket that did not measure its
   inputs, and `GET /api/v1/behavior/detectors` publishes each status with its reason.
+- **IPS analyst API (read-only, `read:anomalies`).** `GET /api/v1/anomalies` and
+  `/anomalies/{id}` also serve IPS incidents (`subject_kind` `IPS_ENTITY` or `IPS_SOURCE`, filter
+  `ips_entity_id`); `GET /api/v1/behavior/ips/sources`, `.../sources/{id}/entities`,
+  `.../sources/{id}/metrics`, `.../sources/{id}/baselines`, `.../entities/{id}/metrics` and
+  `.../entities/{id}/baselines` serve the profile state, entity inventory, buckets and baseline
+  cells. An unmeasured bucket is `null`, never `0`; no source IP is served outside a stored,
+  bounded contributor list, and these routes do not serve those lists.
 - **Event counting.** Volume is `SUM(eventcount)`, never `COUNT(*)`: QRadar coalesces identical
   events into one Ariel record, so a row count under-reports by up to ~38x on this appliance.
 - **Alert lifecycle:** `OPEN → ACKNOWLEDGED → RESOLVED`, with a **partial unique index** on

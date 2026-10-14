@@ -32,14 +32,25 @@ from app.models.enums import (
     AnomalyType,
     BucketCompleteness,
     EvidenceStatus,
+    IpsAnomalyType,
+    IpsDimension,
+    IpsProfileValidationStatus,
     Severity,
     WafAnomalyType,
     WafProfileValidationStatus,
+)
+from app.models.ips import (
+    IpsAnomaly,
+    IpsAnomalyTransition,
+    IpsEntity,
+    IpsSourceBucket,
+    IpsSourceProfile,
 )
 from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
+from app.repositories.ips_behavior import IpsBehaviorRepository
 from app.schemas.anomaly import (
     AnomalyDetailOut,
     AnomalyListItem,
@@ -51,6 +62,7 @@ from app.schemas.anomaly import (
     ExplanationDimensionOut,
     ExplanationOut,
     InputRequirementOut,
+    IpsEntityRefOut,
     MetricBucketOut,
     PagedAnomalies,
     PagedWafBaselines,
@@ -71,7 +83,24 @@ from app.schemas.anomaly import (
     WafValidationFieldOut,
     WafValidationReportOut,
     detection_detail,
+    ips_detection_detail,
     waf_detection_detail,
+)
+from app.schemas.ips_behavior import (
+    IpsAdmissionOut,
+    IpsBaselineAdequacyOut,
+    IpsBaselineCellOut,
+    IpsDimensionCoverageOut,
+    IpsEntityInventoryOut,
+    IpsEntityMetricBucketOut,
+    IpsEntityPressureOut,
+    IpsLatestBucketOut,
+    IpsSourceBehaviorOut,
+    IpsSourceMetricBucketOut,
+    PagedIpsBaselines,
+    PagedIpsEntities,
+    PagedIpsMetrics,
+    PagedIpsSources,
 )
 
 router = APIRouter(prefix="/anomalies", tags=["anomalies"])
@@ -112,9 +141,10 @@ async def list_anomalies(
     settings: SettingsDep,
     log_source_id: uuid.UUID | None = Query(default=None),
     instance_id: uuid.UUID | None = Query(default=None),
-    anomaly_type: AnomalyType | WafAnomalyType | None = Query(default=None),
+    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType | None = Query(default=None),
     subject_kind: SubjectKind | None = Query(default=None),
     waf_endpoint_id: uuid.UUID | None = Query(default=None),
+    ips_entity_id: uuid.UUID | None = Query(default=None),
     state: AnomalyState | None = Query(default=None),
     severity: Severity | None = Query(default=None),
     evidence_status: EvidenceStatus | None = Query(default=None),
@@ -131,6 +161,7 @@ async def list_anomalies(
         offset=offset,
         subject_kind=subject_kind,
         waf_endpoint_id=waf_endpoint_id,
+        ips_entity_id=ips_entity_id,
         log_source_id=log_source_id,
         instance_id=instance_id,
         anomaly_type=anomaly_type.value if anomaly_type is not None else None,
@@ -161,12 +192,21 @@ def _unified_item(row: dict) -> AnomalyListItem:
             virtual_host_available=bool(row["endpoint_virtual_host_available"]),
             normalizer_version=row["endpoint_normalizer_version"],
         )
+    ips_entity = None
+    if row["ips_entity_id"] is not None:
+        ips_entity = IpsEntityRefOut(
+            id=row["ips_entity_id"],
+            dimension=row["entity_dimension"],
+            value_key=row["entity_value_key"],
+            display_name=row["entity_display_name"],
+        )
     fields = {
         k: v
         for k, v in row.items()
-        if not k.startswith("endpoint_") and k != "waf_endpoint_id"
+        if not k.startswith(("endpoint_", "entity_"))
+        and k not in ("waf_endpoint_id", "ips_entity_id")
     }
-    return AnomalyListItem(**fields, waf_endpoint=waf_endpoint)
+    return AnomalyListItem(**fields, waf_endpoint=waf_endpoint, ips_entity=ips_entity)
 
 
 async def _list_items(
@@ -236,9 +276,13 @@ async def get_anomaly(anomaly_id: uuid.UUID, session: SessionDep) -> AnomalyDeta
     anomaly = await repo.get_detail(anomaly_id)
     if anomaly is None:
         waf_anomaly = await repo.get_waf_detail(anomaly_id)
-        if waf_anomaly is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
-        return await _waf_detail(repo, session, waf_anomaly)
+        if waf_anomaly is not None:
+            return await _waf_detail(repo, session, waf_anomaly)
+        ips = await repo.get_ips_detail(anomaly_id)
+        if ips is not None:
+            anomaly_row, entity, transitions = ips
+            return await _ips_detail(session, anomaly_row, entity, transitions)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
 
     detail = AnomalyDetailOut.model_validate(anomaly)
     source = await session.get(LogSource, anomaly.log_source_id)
@@ -303,6 +347,65 @@ async def _waf_detail(
         detection=waf_detection_detail(
             anomaly.details, normalizer_version=anomaly.normalizer_version
         ),
+    )
+
+
+async def _ips_detail(
+    session: AsyncSession,
+    anomaly: IpsAnomaly,
+    entity: IpsEntity | None,
+    transitions: list[IpsAnomalyTransition],
+) -> AnomalyDetailOut:
+    """An IPS incident as the shared detail shape.
+
+    `explanation_package` is None: an IPS incident has no evidence package, and
+    a fabricated one would claim evidence nobody collected. Source addresses
+    exist only inside the stored, bounded contributor lists, which the
+    detection projection does not forward.
+    """
+    source_id = entity.log_source_id if entity is not None else anomaly.log_source_id
+    # The subject constraint guarantees exactly one of the two ids is set.
+    assert source_id is not None, "an IPS subject always names a log source"
+    source = await session.get(LogSource, source_id)
+    return AnomalyDetailOut(
+        id=anomaly.id,
+        subject_kind=SubjectKind(anomaly.subject_kind),
+        log_source_id=source_id,
+        log_source_name=source.name if source else None,
+        ips_entity=(
+            IpsEntityRefOut(
+                id=entity.id,
+                dimension=entity.dimension,
+                value_key=entity.value_key,
+                display_name=entity.display_name,
+            )
+            if entity is not None
+            else None
+        ),
+        anomaly_type=IpsAnomalyType(anomaly.detector_type),
+        state=anomaly.state,
+        severity=anomaly.severity,
+        observed_value=anomaly.observed_value,
+        expected_value=anomaly.expected_value,
+        deviation_ratio=anomaly.deviation_ratio,
+        robust_z=anomaly.robust_z,
+        absolute_delta=anomaly.absolute_delta,
+        consecutive_buckets=anomaly.consecutive_buckets,
+        confidence=anomaly.confidence,
+        detected_at=anomaly.detected_at,
+        opened_at=anomaly.opened_at,
+        anomaly_start=anomaly.anomaly_start,
+        anomaly_end=anomaly.anomaly_end,
+        resolved_at=anomaly.resolved_at,
+        evidence_status=anomaly.evidence_status,
+        suppressed=anomaly.suppressed,
+        observed_measurement=str(anomaly.observed_measurement),
+        explanation=anomaly.explanation,
+        baseline_version=anomaly.baseline_version,
+        policy_version=anomaly.policy_version,
+        transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
+        explanation_package=None,
+        detection=ips_detection_detail(anomaly.details),
     )
 
 
@@ -864,6 +967,380 @@ async def waf_endpoint_baselines(
     )
     return PagedWafBaselines(
         items=[WafBaselineCellOut.model_validate(r, from_attributes=True) for r in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+# ------------------------------------------------------------- IPS behavior
+#: (dimension, its column prefix on `ips_source_bucket`, whether a coverage was
+#: measured for it). Port fan-out counts ports, not events, so it has no ratio.
+_DIMENSION_COLUMNS = (
+    (IpsDimension.DESTINATION_PORT, "destination_port", True),
+    (IpsDimension.DESTINATION_IP, "destination_ip", True),
+    (IpsDimension.SIGNATURE, "signature", True),
+    (IpsDimension.SOURCE_IP, "source_ip", True),
+    (IpsDimension.PORT_FANOUT, "port_fanout", False),
+    (IpsDimension.ACTION, "action", True),
+)
+
+_ENTITY_DIMENSIONS = (
+    IpsDimension.DESTINATION_PORT,
+    IpsDimension.DESTINATION_IP,
+    IpsDimension.SIGNATURE,
+)
+
+
+def _dimension_coverage(
+    bucket: IpsSourceBucket, dimension: IpsDimension
+) -> IpsDimensionCoverageOut:
+    """One search dimension's measurement as stored on the bucket row."""
+    # The column arrives as its persisted string; normalize once so the table
+    # lookup below compares enum against enum.
+    dimension = IpsDimension(str(dimension))
+    prefix, covered = next((p, c) for d, p, c in _DIMENSION_COLUMNS if d is dimension)
+    return IpsDimensionCoverageOut(
+        dimension=dimension,
+        measurement=str(getattr(bucket, f"{prefix}_measurement")),
+        coverage_ratio=getattr(bucket, f"{prefix}_coverage_ratio") if covered else None,
+        coverage_lower_bound=(
+            getattr(bucket, f"{prefix}_coverage_lower_bound") if covered else None
+        ),
+    )
+
+
+def _bucket_dimensions(bucket: IpsSourceBucket) -> list[IpsDimensionCoverageOut]:
+    return [_dimension_coverage(bucket, d) for d, _p, _c in _DIMENSION_COLUMNS]
+
+
+def _bucket_admission(bucket: IpsSourceBucket) -> list[IpsAdmissionOut]:
+    """The bucket's admission outcome per entity dimension, as stored.
+
+    The JSONB columns are keyed by dimension name; a missing key means that
+    dimension had no measurement and stays None, never 0.
+    """
+
+    def count(mapping: dict, key: str) -> int | None:
+        value = mapping.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+    def flag(value: object) -> bool | None:
+        return value if isinstance(value, bool) else None
+
+    return [
+        IpsAdmissionOut(
+            dimension=dimension,
+            admitted=count(bucket.admitted, dimension.value),
+            below_admission_threshold=count(
+                bucket.below_admission_threshold, dimension.value
+            ),
+            rejected_over_quota=count(bucket.rejected_over_quota, dimension.value),
+            untracked_entities=count(bucket.untracked_entities, dimension.value),
+            untracked_events=count(bucket.untracked_events, dimension.value),
+            admission_truncated=flag(bucket.admission_truncated.get(dimension.value)),
+        )
+        for dimension in _ENTITY_DIMENSIONS
+    ]
+
+
+def _ips_source_row(
+    profile: IpsSourceProfile,
+    source: LogSource,
+    bucket: IpsSourceBucket | None,
+    counts: dict[str, tuple[int, int]],
+    settings: Settings,
+) -> IpsSourceBehaviorOut:
+    return IpsSourceBehaviorOut(
+        log_source_id=source.id,
+        log_source_name=source.name,
+        product_label=profile.product_label,
+        enabled=profile.enabled,
+        profile_version=profile.profile_version,
+        validation_status=str(profile.validation_status),
+        validated_profile_version=profile.validated_profile_version,
+        validated_at=profile.validated_at,
+        validation_current=profile.validated_profile_version == profile.profile_version
+        and str(profile.validation_status) == IpsProfileValidationStatus.VALID.value,
+        latest_bucket=(
+            IpsLatestBucketOut(
+                bucket_start=bucket.bucket_start,
+                bucket_seconds=bucket.bucket_seconds,
+                total_events=bucket.total_events,
+                total_records=bucket.total_records,
+                in_maintenance=bucket.in_maintenance,
+                dimensions=_bucket_dimensions(bucket),
+                admission=_bucket_admission(bucket),
+            )
+            if bucket is not None
+            else None
+        ),
+        entities=[
+            IpsEntityPressureOut(
+                dimension=dimension,
+                active=counts.get(dimension.value, (0, 0))[0],
+                total=counts.get(dimension.value, (0, 0))[1],
+                active_ceiling=settings.ips_max_active_entities_per_source_dimension,
+            )
+            for dimension in _ENTITY_DIMENSIONS
+        ],
+    )
+
+
+@behavior_router.get("/ips/sources", response_model=PagedIpsSources)
+async def list_ips_sources(
+    session: SessionDep,
+    settings: SettingsDep,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> PagedIpsSources:
+    """Every IPS source's profile status, latest coverage and entity pressure.
+
+    Current state only, so unlike the metrics routes this takes no range: the
+    latest bucket is the newest collected, not the newest inside a window, so a
+    stale source is reported as stale rather than vanishing behind a filter.
+    """
+    limit = min(limit, settings.api_max_page_size)
+    repo = IpsBehaviorRepository(session)
+    pairs, total = await repo.sources_page(limit=limit, offset=offset)
+    latest = await repo.latest_buckets([ls.id for _, ls in pairs])
+    counts = await repo.entity_counts([ls.id for _, ls in pairs])
+    return PagedIpsSources(
+        items=[
+            _ips_source_row(p, ls, latest.get(ls.id), counts.get(ls.id, {}), settings)
+            for p, ls in pairs
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@behavior_router.get(
+    "/ips/sources/{log_source_id}/entities", response_model=PagedIpsEntities
+)
+async def list_ips_entities(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    dimension: IpsDimension | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> PagedIpsEntities:
+    """The admitted-entity inventory of one IPS source.
+
+    Value keys are the estate's own ports, destination addresses and signature
+    QIDs (design §D.4). A dimension narrows to one kind of entity; retired
+    entities stay listed so the inventory explains what stopped being seen.
+    """
+    limit = min(limit, settings.api_max_page_size)
+    repo = IpsBehaviorRepository(session)
+    if await repo.source(log_source_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "IPS source not found")
+    entities, total = await repo.entities_page(
+        log_source_id, dimension=dimension, limit=limit, offset=offset
+    )
+    ids = [e.id for e in entities]
+    adequacy = await repo.entity_baseline_adequacy(ids)
+    states = await repo.entity_detector_states(ids)
+    active = await repo.entity_active_anomaly_counts(ids)
+    return PagedIpsEntities(
+        items=[
+            IpsEntityInventoryOut(
+                id=e.id,
+                dimension=e.dimension,
+                value_key=e.value_key,
+                display_name=e.display_name,
+                first_seen_at=e.first_seen_at,
+                last_seen_at=e.last_seen_at,
+                active=e.active,
+                retired_at=e.retired_at,
+                baseline=IpsBaselineAdequacyOut(
+                    cells_total=adequacy.get(e.id, (0, 0))[0],
+                    reliable_cells=adequacy.get(e.id, (0, 0))[1],
+                ),
+                state=_worst_state(states.get(e.id, [])),
+                active_anomaly_count=active.get(e.id, 0),
+            )
+            for e in entities
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@behavior_router.get(
+    "/ips/entities/{entity_id}/metrics", response_model=PagedIpsMetrics
+)
+async def ips_entity_metrics(
+    entity_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
+) -> PagedIpsMetrics:
+    """Stored buckets of one entity with the completeness of its dimension.
+
+    Only buckets that have a row appear. A bucket with no row is not a zero:
+    whether absence means zero is the detectors' own reasoning, and the UI must
+    not reconstruct it. What the source's bucket record would have said about a
+    row whose record is missing is None, never a guess.
+    """
+    start, end = _validate_range(since, until, settings.api_max_range_days)
+    limit = min(limit, settings.api_max_page_size)
+    entity = await session.get(IpsEntity, entity_id)
+    if entity is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "IPS entity not found")
+    # The dimension column arrives as its persisted string; one normalization,
+    # then every lookup below works on the enum.
+    dimension = IpsDimension(str(entity.dimension))
+    repo = IpsBehaviorRepository(session)
+    rows, total = await repo.entity_metrics_page(
+        entity, since=start, until=end, limit=limit, offset=offset
+    )
+    items: list[IpsEntityMetricBucketOut] = []
+    for metric, bucket in rows:
+        coverage = (
+            _dimension_coverage(bucket, dimension) if bucket is not None else None
+        )
+        truncated = (
+            bucket.admission_truncated.get(dimension.value) if bucket is not None else None
+        )
+        items.append(
+            IpsEntityMetricBucketOut(
+                bucket_start=metric.bucket_start,
+                bucket_seconds=metric.bucket_seconds,
+                events=metric.events,
+                measurement=coverage.measurement if coverage is not None else None,
+                coverage_ratio=coverage.coverage_ratio if coverage is not None else None,
+                coverage_lower_bound=(
+                    coverage.coverage_lower_bound if coverage is not None else None
+                ),
+                admission_truncated=(
+                    truncated if isinstance(truncated, bool) else None
+                ),
+                in_maintenance=bucket.in_maintenance if bucket is not None else None,
+            )
+        )
+    return PagedIpsMetrics(
+        items=items, total=total, limit=limit, offset=offset, range_start=start, range_end=end
+    )
+
+
+@behavior_router.get(
+    "/ips/entities/{entity_id}/baselines", response_model=PagedIpsBaselines
+)
+async def ips_entity_baselines(
+    entity_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    metric: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> PagedIpsBaselines:
+    """Seasonal cells of one entity, with reliability and the versions that
+    built them.
+
+    Raw training observations are not served; a cell reports its sample count
+    and whether it is reliable enough to drive a verdict. Cells are keyed by
+    weekday and hour, so there is no range to bound.
+    """
+    limit = min(limit, settings.api_max_page_size)
+    if await session.get(IpsEntity, entity_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "IPS entity not found")
+    repo = IpsBehaviorRepository(session)
+    rows, total = await repo.entity_baselines_page(
+        entity_id, metric=metric, limit=limit, offset=offset
+    )
+    return PagedIpsBaselines(
+        items=[IpsBaselineCellOut.model_validate(r, from_attributes=True) for r in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@behavior_router.get(
+    "/ips/sources/{log_source_id}/metrics", response_model=PagedIpsMetrics
+)
+async def ips_source_metrics(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
+) -> PagedIpsMetrics:
+    """The source-level series the IPS_SOURCE detectors judge, per bucket.
+
+    Concentration, fan-out and action facts are None whenever their search did
+    not measure them, never 0. The bounded source-IP contributor lists the
+    bucket also holds are not served by this route.
+    """
+    start, end = _validate_range(since, until, settings.api_max_range_days)
+    limit = min(limit, settings.api_max_page_size)
+    repo = IpsBehaviorRepository(session)
+    if await repo.source(log_source_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "IPS source not found")
+    rows, total = await repo.source_metrics_page(
+        log_source_id, since=start, until=end, limit=limit, offset=offset
+    )
+    items: list[IpsSourceMetricBucketOut] = [
+        IpsSourceMetricBucketOut(
+            bucket_start=b.bucket_start,
+            bucket_seconds=b.bucket_seconds,
+            total_events=b.total_events,
+            total_records=b.total_records,
+            in_maintenance=b.in_maintenance,
+            dimensions=_bucket_dimensions(b),
+            source_events=b.source_events,
+            distinct_sources=b.distinct_sources,
+            distinct_sources_lower_bound=b.distinct_sources_lower_bound,
+            top1_events=b.top1_events,
+            top5_events=b.top5_events,
+            max_distinct_ports=b.max_distinct_ports,
+            blocked_events=b.blocked_events,
+            allowed_events=b.allowed_events,
+            unmapped_events=b.unmapped_events,
+        )
+        for b in rows
+    ]
+    return PagedIpsMetrics(
+        items=items, total=total, limit=limit, offset=offset, range_start=start, range_end=end
+    )
+
+
+@behavior_router.get(
+    "/ips/sources/{log_source_id}/baselines", response_model=PagedIpsBaselines
+)
+async def ips_source_baselines(
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    metric: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> PagedIpsBaselines:
+    """The source-level seasonal cells (`ips_source_baseline`) behind the
+    concentration, fan-out and block-ratio detectors.
+
+    Ratio cells carry the pooled sums their expected value divides; count cells
+    leave them None. As with entity cells, there is no range to bound and no
+    raw observation is served.
+    """
+    limit = min(limit, settings.api_max_page_size)
+    repo = IpsBehaviorRepository(session)
+    if await repo.source(log_source_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "IPS source not found")
+    rows, total = await repo.source_baselines_page(
+        log_source_id, metric=metric, limit=limit, offset=offset
+    )
+    return PagedIpsBaselines(
+        items=[IpsBaselineCellOut.model_validate(r, from_attributes=True) for r in rows],
         total=total,
         limit=limit,
         offset=offset,
