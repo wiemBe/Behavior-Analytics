@@ -889,7 +889,14 @@ class EventGenerator:
             )
             profile = profiles[index % len(profiles)]
             local_index = index // len(profiles)
-            return self._ips_event(profile, now, local_index, scenario)
+            # Each profile sends only its round-robin share of the run, so the
+            # change phase is half of that share -- not half of the whole run.
+            # Floor division gives the smallest share, so the transition lands
+            # inside every profile's own run even when the total is not divisible.
+            per_profile_planned = self._planned_events() // len(profiles)
+            return self._ips_event(
+                profile, now, local_index, scenario, planned=per_profile_planned
+            )
         stable_src = self.options.fixed_source_ip or "198.51.100.44"
         stable_user = self.options.fixed_username or "compromised.user"
         if scenario == "brute-force":
@@ -978,11 +985,30 @@ class EventGenerator:
             return replace(event, vendor_message=self._linux_firewall_vendor(event))
         raise ValueError(f"unsupported scenario: {scenario}")
 
-    def _ips_event(self, profile: str, now: datetime, index: int, scenario: str) -> Event:
-        """Build one bounded vendor IPS event with a deterministic scenario shape."""
+    def _planned_events(self) -> int:
+        """Return the whole-run event count: ``--count``, else ``--duration x --eps``."""
         planned = self.options.count
         if planned == 0 and self.options.duration is not None:
             planned = int(self.options.duration * self.options.eps)
+        return planned
+
+    def _ips_event(
+        self,
+        profile: str,
+        now: datetime,
+        index: int,
+        scenario: str,
+        *,
+        planned: int | None = None,
+    ) -> Event:
+        """Build one bounded vendor IPS event with a deterministic scenario shape.
+
+        ``planned`` is the number of events this call's profile expects to send.
+        A round-robin run divides it between the profiles, so the change phase
+        is half of the per-profile count; ``None`` means the whole run.
+        """
+        if planned is None:
+            planned = self._planned_events()
         transition = max(1, planned // 2) if planned else 1_000
         anomaly = index >= transition
 
