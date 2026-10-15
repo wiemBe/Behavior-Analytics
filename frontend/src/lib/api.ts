@@ -954,6 +954,7 @@ export interface WafDetectionDetail {
   observed_numerator: number | null;
   observed_denominator: number | null;
   percentage_point_change: number | null;
+  caveat?: string | null;
   ratio: number | null;
   ratio_basis: string | null;
   robust_score_status: RobustScoreStatus | null;

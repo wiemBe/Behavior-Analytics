@@ -256,6 +256,27 @@ describe("IPS investigation: new destination port", () => {
 });
 
 describe("IPS investigation: what was judged, per detector", () => {
+  const working = () =>
+    within(screen.getByRole("heading", { name: "What was judged" }).closest("section")!);
+
+  it.each([
+    ["OK", "18.20"],
+    [null, "18.20"],
+  ] as const)("shows the robust z figure when status is %s", (status, figure) => {
+    view(ipsDetail({ detection: ipsDetection({ robust_score_status: status, robust_z: 18.2 }) }));
+    expect(working().getByText("Robust z").closest("div")).toHaveTextContent(figure);
+  });
+
+  it.each([
+    ["DEGENERATE", "not used: MAD was zero"],
+    ["UNAVAILABLE", "not computed"],
+  ] as const)("withholds the stored robust z when status is %s", (status, reason) => {
+    view(ipsDetail({ detection: ipsDetection({ robust_score_status: status, robust_z: 18.2 }) }));
+    const row = working().getByText("Robust z").closest("div")!;
+    expect(row).toHaveTextContent(reason);
+    expect(row).not.toHaveTextContent("18.20");
+  });
+
   it("a rate detector's threshold is one-sided robust z, never a plus-or-minus", () => {
     const { container } = view();
     expect(screen.getByText("Robust z threshold")).toBeInTheDocument();

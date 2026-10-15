@@ -52,6 +52,14 @@ export function WafDetectionBlock({
 
   const reason = d.reason ?? anomaly.explanation;
   const ratio = isRatioType(anomaly.anomaly_type);
+  const robustZ =
+    d.robust_score_status === "DEGENERATE" ? (
+      <Missing reason="not used: MAD was zero" />
+    ) : d.robust_score_status === "UNAVAILABLE" ? (
+      <Missing reason="not computed" />
+    ) : (
+      formatMetric(d.robust_z)
+    );
   const hasRange = d.expected_low != null && d.expected_high != null;
   // A range carries its unit; a missing one says it was not recorded rather than
   // standing as a bare dash.
@@ -102,6 +110,7 @@ export function WafDetectionBlock({
           />
           <Row label="Consecutive abnormal buckets" value={formatCount(anomaly.consecutive_buckets)} />
         </dl>
+        {d.caveat && <p className="subtitle">{d.caveat}</p>}
       </div>
     );
   }
@@ -124,7 +133,7 @@ export function WafDetectionBlock({
           label="Normalizer version"
           value={d.normalizer_version != null ? `v${d.normalizer_version}` : "—"}
         />
-        <Row label="Robust z" value={formatMetric(d.robust_z)} />
+        <Row label="Robust z" value={robustZ} />
         <Row label="Consecutive abnormal buckets" value={formatCount(anomaly.consecutive_buckets)} />
       </dl>
 
@@ -134,6 +143,7 @@ export function WafDetectionBlock({
           {robustScoreMeaning(d.robust_score_status)}
         </p>
       )}
+      {d.caveat && <p className="subtitle">{d.caveat}</p>}
     </div>
   );
 }

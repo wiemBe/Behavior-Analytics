@@ -319,6 +319,44 @@ describe("WAF investigation: against what normal", () => {
   const working = () =>
     within(screen.getByRole("heading", { name: "Against what normal" }).closest("section")!);
 
+  it.each([
+    ["OK", "21.40"],
+    [null, "21.40"],
+  ] as const)("shows the robust z figure when status is %s", (status, figure) => {
+    view({ detection: wafDetection({ robust_score_status: status, robust_z: 21.4 }) });
+    expect(working().getByText("Robust z").closest("div")).toHaveTextContent(figure);
+  });
+
+  it.each([
+    ["DEGENERATE", "not used: MAD was zero"],
+    ["UNAVAILABLE", "not computed"],
+  ] as const)("withholds the stored robust z when status is %s", (status, reason) => {
+    view({ detection: wafDetection({ robust_score_status: status, robust_z: 21.4 }) });
+    const row = working().getByText("Robust z").closest("div")!;
+    expect(row).toHaveTextContent(reason);
+    expect(row).not.toHaveTextContent("21.40");
+  });
+
+  it.each([
+    ["seasonal", "WAF_REQUEST_RATE_SPIKE", wafDetection],
+    ["new endpoint", "WAF_NEW_ENDPOINT_ACCESS", wafNewEndpointDetection],
+  ] as const)("renders and omits the detector caveat in the %s branch", (_name, type, detection) => {
+    const caveat = "This detector records a change in traffic, not its cause.";
+    const first = view({ anomaly_type: type, detection: detection({ caveat }) });
+    expect(working().getByText(caveat)).toBeInTheDocument();
+    first.unmount();
+
+    view({ anomaly_type: type, detection: detection({ caveat: null }) });
+    expect(working().queryByText(caveat)).not.toBeInTheDocument();
+  });
+
+  it("omits a caveat that is absent from an older WAF payload", () => {
+    view({ detection: wafDetection() });
+    expect(
+      working().queryByText("This detector records a change in traffic, not its cause."),
+    ).not.toBeInTheDocument();
+  });
+
   it("gives the expected range its unit", () => {
     view();
     expect(working().getByText("Expected range at detection").closest("div")).toHaveTextContent(
