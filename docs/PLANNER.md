@@ -24,7 +24,7 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
 
 | Task | Agent | Where | Collect / check |
 |---|---|---|---|
-| **UI-3.5b** ([spec](tasks/UI-3.5b.md)) | Sonnet sub-agent, from ~09:40 | worktree `ui35b` (own `node_modules`); ports 3136/8136/9136; `QRadar-Dash-work/ui35b/` | `docs/tasks/UI-3.5b.report.md`; PNGs `ui35b/png/`. Check progress by file times ~10:15 |
+| **UI-4.1** ([spec](tasks/UI-4.1.md)) | Sonnet sub-agent, from ~10:17 | worktree `ui41` (own `node_modules`); ports 3140/8140/9140; fixture from `ui35b/` | `docs/tasks/UI-4.1.report.md`; PNGs `QRadar-Dash-work/ui41/png/` |
 | **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
 | **UI-5.4** fleet pages reviewed and fixed ([spec](tasks/UI-5.4.md)) | Codex hit its limit at 09:59 (reset **14:16**) after the before-captures and the catch-all CSS move; **Sonnet handover from ~10:02**, "review what you inherit" | worktree `ui54` (own `node_modules`); ports 3146/8146/9146 | `docs/tasks/UI-5.4.report.md`; PNGs `QRadar-Dash-work/ui54/png/{before,after}/` |
 
@@ -69,6 +69,22 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
   tested (22 tests; it corrected the orchestrator's list: 4 dropped as already tested, 3 added).
   No §3a defect found. Orchestrator re-ran the affected folders (37 files / 572 tests), lint,
   typecheck.
+- **UI-3.5b merged** (`4432b65`, Sonnet, ~35 min): options from a read with a WAF source →
+  endpoint cascade (client-side filter, ids only in config), `waf.endpoint_traffic`,
+  `chart.eps_observed_expected` (source mode), `ips.source_anomalies` live. The orchestrator
+  confirmed the `registryRange.test.ts` list edit (two new ranged widgets). PNGs reviewed.
+  Merged-head gate: lint, typecheck clean; **188 files / 2,497 tests + 8 todo**; build OK.
+  **Phase 3 is complete.**
+- **Phase 3 screenshots for the user:** `/home/efe/Documents/QRadar-Dash-screens/phase3/` (33 PNGs
+  + `README.md` with the open question about the 1280 third row).
+- **Follow-up T-098 (spec to write; after UI-4.1 merges, it shares `widgets/dashboard.css`):**
+  `WidgetFrame` polish: (1) the status pill moves to the body's first line whenever the title row
+  would wrap, not only in panels < 28 rem (a 6-column subject widget's header reads three lines
+  at 1440); (2) Expand's hit target is 60×14 px, below WCAG 2.5.8's 24 px; (3) the subject charts
+  label midnight "15" while the Fleet EPS chart says "14 Oct"; (4) an unconfigured widget's
+  drill-down link is underlined, the others are not.
+- **UI-5.4** (fleet): Sonnet handover done; round 2 sent (~10:12) for the 1024 sender-hostname
+  wrap (six lines) and the catch-all range control matching the Home's.
 
 **Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
 allows, else Sonnet); Phase 3 screenshots to the user; **UI-4.1** ([spec](tasks/UI-4.1.md),
