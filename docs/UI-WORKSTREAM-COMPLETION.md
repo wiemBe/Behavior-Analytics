@@ -158,28 +158,47 @@ container at every viewport.
 
 ## 7. Screenshot index
 
-Eleven screenshots in [`screenshots/ui/`](screenshots/ui/). Each is a
+Recaptured on 2026-10-15 after the UI redesign (T-111); the August captures are in git history.
+
+Twenty-seven screenshots in [`screenshots/ui/`](screenshots/ui/). Each is a
 viewport-sized capture with no browser chrome, so its pixel dimensions match its
-filename.
+filename. All come from deterministic fixture APIs (no live QRadar data). The top-bar
+"Status Unknown/Problem" pill and the "Refreshed" clock are fixture state, not a measurement.
 
 ### Desktop reference — 1440×900
 
 | Screenshot | What it shows |
 |---|---|
-| [behavior-1440x900.png](screenshots/ui/behavior-1440x900.png) | Four decision counters, worklist, no source inventory on the overview |
-| [behavior-sources-1440x900.png](screenshots/ui/behavior-sources-1440x900.png) | Inventory with filter row on one line and the table unscrolled |
-| [behavior-source-detail-1440x900.png](screenshots/ui/behavior-source-detail-1440x900.png) | Compact header, exactly four metrics, dominant timeline; measured zero as `0.00` and the uncollected span drawn as a gap |
-| [anomalies-1440x900.png](screenshots/ui/anomalies-1440x900.png) | Triage table with detector label and severity badge separated, statuses in text |
-| [anomaly-detail-1440x900.png](screenshots/ui/anomaly-detail-1440x900.png) | Deterministic summary, four metrics, one contributor table, technical detail behind tabs |
+| [dashboard-1440x900.png](screenshots/ui/dashboard-1440x900.png) | `/` as the SOC Overview template in read mode ("Template, not saved", no `dashboard:write`): four summary widgets (total EPS with a `Partial` badge, log-source health bar, open offenses, active anomalies), then the Fleet EPS band chart and the EPS-by-class donut |
+| [behavior-1440x900.png](screenshots/ui/behavior-1440x900.png) | Behavioral overview: four counters, a lifecycle strip, the `INSUFFICIENT_DATA` notice (a zero is not a clean bill of health), and the "Needs attention" table with open and candidate anomalies |
+| [behavior-sources-1440x900.png](screenshots/ui/behavior-sources-1440x900.png) | Source inventory: filter row on one line, state badges, observed against expected EPS and deviation right-aligned, and a long source name wrapping in its cell |
+| [behavior-source-detail-1440x900.png](screenshots/ui/behavior-source-detail-1440x900.png) | An open source: four metrics, "Collection partial", and the 12-hour volume chart with the expected range as a band; intervals not fully collected are gaps and shaded, not zeros |
+| [anomalies-1440x900.png](screenshots/ui/anomalies-1440x900.png) | Anomalies triage table across Phase A, WAF and IPS subjects; evidence status per row (Complete, Unavailable, Failed, Partial, Not requested) beside state and severity |
+| [anomaly-detail-1440x900.png](screenshots/ui/anomaly-detail-1440x900.png) | A still-running volume spike: generated summary, four metrics with units (duration shows an em dash, not `0s`), detector confidence, and the timeline with the anomalous interval and lifecycle markers |
+| [ips-incident-1440x900.png](screenshots/ui/ips-incident-1440x900.png) | An IPS entity incident (destination port 445/tcp rate spike): entity and source identity, detected/opened/resolved times, metrics in events / 5 min, and the timeline with a not-collected span |
+| [waf-overview-1440x900.png](screenshots/ui/waf-overview-1440x900.png) | `/behavior/waf`: two WAF sources, each with profile, validation, endpoint coverage, active endpoints against the ceiling, and the admission-overflow counts |
+| [waf-endpoint-incident-1440x900.png](screenshots/ui/waf-endpoint-incident-1440x900.png) | A WAF endpoint request-rate spike (`POST /api/auth/login`): metrics in requests / 5 min, endpoint coverage, and the request chart with expected band, coverage panel and midnight-crossing time axis |
+| [fleet-1440x900.png](screenshots/ui/fleet-1440x900.png) | `/fleet`: review-queue banner, then per-class volume rows with expected EPS, window completeness shown as `Incomplete` with its partial-bucket counts, open incidents and top sources |
+| [rules-statistics-1440x900.png](screenshots/ui/rules-statistics-1440x900.png) | `/rules/statistics` in a `PARTIAL` state (160 of 168 windows complete; 3 missing, 3 truncated, 2 failed): rule composition table and the Most matched table repeating the partial notice |
+| [log-sources-1440x900.png](screenshots/ui/log-sources-1440x900.png) | `/log-sources`: six sources with criticality, status, health score and anomaly count; an unknown source shows "unknown", a dash and "never" rather than zeros, and a source in maintenance is marked |
+| [admin-1440x900.png](screenshots/ui/admin-1440x900.png) | `/admin` hub: five settings areas, each with a one-line description of what it controls |
 
 ### Responsive proof — 1024×768
 
 | Screenshot | What it proves |
 |---|---|
-| [behavior-sources-1024x768.png](screenshots/ui/behavior-sources-1024x768.png) | Filter row wraps rather than pushing the button off; long source name wraps in its cell; table scrolls locally while the page does not; `INSUFFICIENT_DATA` neutral beside a green `NORMAL` |
-| [behavior-source-detail-1024x768.png](screenshots/ui/behavior-source-detail-1024x768.png) | Four-metric grid reflows and the chart stays inside its container at the narrowest supported width |
-| [anomalies-1024x768.png](screenshots/ui/anomalies-1024x768.png) | Nine-column triage table scrolls locally; all four severity badges stay content-sized and unclipped |
-| [anomaly-detail-1024x768.png](screenshots/ui/anomaly-detail-1024x768.png) | Metrics reflow to two columns; a still-running incident shows an em-dash duration, never `0s` |
+| [dashboard-1024x768.png](screenshots/ui/dashboard-1024x768.png) | Summary widgets reflow to two columns, the header actions stay on one row beside "Widen the window to customize", and nothing overflows horizontally |
+| [behavior-sources-1024x768.png](screenshots/ui/behavior-sources-1024x768.png) | Filter row stays on one line; the long source name wraps over seven lines without pushing columns out; the table holds its columns at the narrowest supported width |
+| [behavior-source-detail-1024x768.png](screenshots/ui/behavior-source-detail-1024x768.png) | The four metrics reflow to a 2×2 grid and the chart stays inside its container |
+| [anomalies-1024x768.png](screenshots/ui/anomalies-1024x768.png) | The triage table switches to a compact two-line row (started time and severity under the subject and detector); filters wrap |
+| [anomaly-detail-1024x768.png](screenshots/ui/anomaly-detail-1024x768.png) | Metrics reflow to one wide cell plus three; a still-running incident keeps the em-dash duration |
+| [ips-incident-1024x768.png](screenshots/ui/ips-incident-1024x768.png) | Header facts wrap onto their own lines and the metric block reflows without clipping |
+| [waf-overview-1024x768.png](screenshots/ui/waf-overview-1024x768.png) | Source table wraps its cells (profile, overflow counts) instead of scrolling the page |
+| [waf-endpoint-incident-1024x768.png](screenshots/ui/waf-endpoint-incident-1024x768.png) | Endpoint identity, summary and the reflowed metric block fit; coverage text stays in the metrics footer |
+| [fleet-1024x768.png](screenshots/ui/fleet-1024x768.png) | Class rows wrap their sub-lines and the top-sources lists run onto a second line |
+| [rules-statistics-1024x768.png](screenshots/ui/rules-statistics-1024x768.png) | The window selector moves below the subtitle; the `PARTIAL` notice and composition table hold their layout |
+| [log-sources-1024x768.png](screenshots/ui/log-sources-1024x768.png) | Type column wraps; the status, health and anomaly badges stay content-sized |
+| [admin-1024x768.png](screenshots/ui/admin-1024x768.png) | The hub list keeps its readable column width |
 
 ### Intermediate width — 1280×800
 
