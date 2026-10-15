@@ -24,9 +24,9 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
 
 | Task | Agent | Where | Collect / check |
 |---|---|---|---|
-| **UI-3.3b** handover ([spec](tasks/UI-3.3b.md)) | Sonnet sub-agent, "review what you inherit" | worktree `ui33b`; ports 3134/8134/9134; `QRadar-Dash-work/ui33b/` | `docs/tasks/UI-3.3b.report.md`; PNGs `ui33b/png/`. Inherited PNGs: the three 4-column panels still put range + Expand on a second row (told to fix) |
+| **UI-3.5b** ([spec](tasks/UI-3.5b.md)) | Sonnet sub-agent, from ~09:40 | worktree `ui35b` (own `node_modules`); ports 3136/8136/9136; `QRadar-Dash-work/ui35b/` | `docs/tasks/UI-3.5b.report.md`; PNGs `ui35b/png/`. Check progress by file times ~10:15 |
+| **T-096** characterization tests, ten routes ([spec](tasks/T-096.md)) | big-pickle, `--standalone`, PID 121866, 09:40 | worktree `t096` (own `node_modules`) | `docs/tasks/T-096.report.md`; log `QRadar-Dash-work/t096/opencode.log` |
 | **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
-| **T-095** vitest 2 → 4 ([spec](tasks/T-095.md)) | big-pickle, `--standalone`, PID 57274, 09:23 | worktree `t095` (own `node_modules`) | `docs/tasks/T-095.report.md`; log `QRadar-Dash-work/t095/opencode.log` |
 | **UI-5.7** admin pages reviewed and fixed ([spec](tasks/UI-5.7.md)) | Codex, PID 92141, 09:32 | worktree `ui57` (own `node_modules`); ports 3144/8144/9144 | `docs/tasks/UI-5.7.report.md`; PNGs `QRadar-Dash-work/ui57/png/{before,after}/`; log `ui57/logs/codex.log` |
 
 **Done this session:**
@@ -41,7 +41,15 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
   wraps as one unit; the pill stays on the first body line. Round 2 sent (~09:30). **Ask the user
   at the Phase 3 review** whether the third row should get wider panels at 1280.
 - Specs written: UI-4.2, UI-5.7 (Phase 5's admin pages, started early on Codex because it
-  overlaps no in-flight file).
+  overlaps no in-flight file), T-096 (Phase 5's characterization pre-work).
+- **UI-3.3b merged** (`eaa83ca`) after round 2: no squeeze; the controls group wraps as one unit.
+  Header heights: `eps_by_class` one line at 1440 and 1024, two at 1280; `top_sources` and
+  `anomaly_severity` two lines at all widths. Expand's hit target is 60×14 px, below WCAG 2.5.8's
+  24 px: a follow-up for `WidgetFrame`/shared controls. Crops reviewed by the orchestrator.
+- **T-095 merged** (`afa6b27`, big-pickle): vitest 4.1.11, plugin-react 5.2.0, `vite` pinned
+  6.4.4 (keeps `@types/node`); no test edits; audit full tree 14 → 8, criticals 2 → 0, production
+  3 → 3. **Merged-head frontend gate** (main checkout, after `npm ci`): lint, typecheck clean;
+  162 files / 2,326 tests; build OK.
 
 **Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
 allows, else Sonnet); Phase 3 screenshots to the user; **UI-4.1** ([spec](tasks/UI-4.1.md),
