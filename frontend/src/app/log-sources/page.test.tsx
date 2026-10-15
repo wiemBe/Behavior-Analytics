@@ -192,3 +192,22 @@ describe("log source list layout", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Backend unreachable");
   });
 });
+
+describe("QRadar status tones", () => {
+  it.each([
+    ["SUCCESS", "ok"],
+    ["WARNING", "warn"],
+    ["ERROR", "crit"],
+  ])("tones %s as %s", async (status, tone) => {
+    vi.spyOn(api, "logSources").mockResolvedValue([source({ qradar_status: status })]);
+    await renderPage();
+    expect(screen.getByText(status, { selector: ".pill" })).toHaveClass(tone);
+  });
+
+  it.each(["DISABLED", "NA"])("keeps %s neutral and labels it as QRadar reported it", async (status) => {
+    vi.spyOn(api, "logSources").mockResolvedValue([source({ qradar_status: status })]);
+    await renderPage();
+    const pill = screen.getByText(status, { selector: ".pill" });
+    for (const t of ["ok", "warn", "crit"]) expect(pill).not.toHaveClass(t);
+  });
+});

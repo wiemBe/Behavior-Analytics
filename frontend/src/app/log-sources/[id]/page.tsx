@@ -2,6 +2,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
 
+import { qradarStatusLabel, qradarStatusTone } from "../qradarStatus";
+
 import "./log-source-detail.css";
 
 export default async function LogSourceDetailPage({
@@ -31,15 +33,14 @@ export default async function LogSourceDetailPage({
 
   return (
     <>
-      {/* An h2: the page test pins this heading at level 2. See the report's open points. */}
-      <header className="page-header detail-header">
-        <div>
-          <h2 className="page-title">{d.name}</h2>
-          <p className="page-desc">
+      <PageHeader
+        title={d.name}
+        description={
+          <>
             {d.type_name ?? "unknown type"} · criticality {d.criticality} · owner {d.owner ?? "—"}
-          </p>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {hb ? (
         <div className="grid">
@@ -78,14 +79,22 @@ export default async function LogSourceDetailPage({
         <div className="k">Configuration</div>
         <p>Description: {d.description ?? "—"}</p>
         <p>Business hours only: {d.business_hours_only ? "yes" : "no"}</p>
-        <p>Expected interval: {d.expected_interval_seconds ?? "—"} s</p>
+        <p>
+          Expected interval:{" "}
+          {d.expected_interval_seconds == null ? "—" : `${d.expected_interval_seconds} s`}
+        </p>
         <p>Last event: {d.last_event_time ? formatDateTime(d.last_event_time) : "never"}</p>
-        <p>QRadar status: {d.qradar_status ?? "unknown"}</p>
+        <p>
+          QRadar status:{" "}
+          <span className={`pill ${qradarStatusTone(d.qradar_status)}`}>
+            {qradarStatusLabel(d.qradar_status)}
+          </span>
+        </p>
       </div>
 
       <p className="subtitle detail-note">
-        EPS trend, anomaly timeline and baseline overlay charts (Apache ECharts) arrive in Phase 2
-        once metric collection is populating the time-series tables.
+        EPS trend, anomaly timeline and baseline overlay:{" "}
+        <a href={`/behavior/sources/${d.id}`}>source behavior</a>.
       </p>
     </>
   );

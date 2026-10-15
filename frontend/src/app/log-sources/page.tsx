@@ -4,13 +4,7 @@ import { api, type LogSourceSummary } from "@/lib/api";
 import { formatDateTimeCompact } from "@/lib/health";
 
 import "./log-sources.css";
-
-/** SUCCESS is healthy, any other reported status is a problem, and a status QRadar never
- *  reported is unknown, which is not a problem. */
-function statusTone(status: string | null): string {
-  if (status == null) return "";
-  return status === "SUCCESS" ? "ok" : "crit";
-}
+import { qradarStatusLabel, qradarStatusTone } from "./qradarStatus";
 
 function healthTone(score: number | null): "ok" | "warn" | "crit" | undefined {
   if (score == null) return undefined;
@@ -73,8 +67,8 @@ export default async function LogSourcesPage() {
                   <td>{s.type_name ?? "—"}</td>
                   <td>{s.criticality}</td>
                   <td>
-                    <span className={`pill ${statusTone(s.qradar_status)}`}>
-                      {s.qradar_status ?? "unknown"}
+                    <span className={`pill ${qradarStatusTone(s.qradar_status)}`}>
+                      {qradarStatusLabel(s.qradar_status)}
                     </span>
                   </td>
                   <td className="num">

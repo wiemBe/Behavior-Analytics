@@ -91,8 +91,8 @@ export function trendRows(points: ResultMetricPoint[], truncatedAt: string[]): T
   return rows;
 }
 
-/** An x-axis label. The axis title carries the zone, so the label drops it. */
-export function axisTimeLabel(iso: string): string {
+/** A time whose zone is stated once elsewhere (an axis title, a column header): no "UTC". */
+export function axisTimeLabel(iso: string | null): string {
   return formatDateTimeCompact(iso).replace(/ UTC$/, "");
 }
 

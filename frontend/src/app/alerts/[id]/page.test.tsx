@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -90,7 +93,7 @@ describe("alert detail states", () => {
 describe("alert detail contents", () => {
   it("names the alert and its lifecycle at a glance", async () => {
     await renderPage();
-    expect(screen.getByRole("heading", { name: "Event volume spike on Core Firewall", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Event volume spike on Core Firewall", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("HIGH")).toHaveClass("crit");
     expect(screen.getByText("OPEN")).toBeInTheDocument();
     expect(screen.getByText(/seen 4×/)).toBeInTheDocument();
@@ -155,8 +158,8 @@ describe("notification delivery history", () => {
       "Transition",
       "Status",
       "Attempts",
-      "Sent",
-      "Next attempt",
+      "Sent (UTC)",
+      "Next attempt (UTC)",
       "Error",
     ]) {
       expect(within(table).getByRole("columnheader", { name: header })).toBeInTheDocument();
@@ -197,8 +200,10 @@ describe("alert detail honesty", () => {
     const lifecycle = screen.getByText("Lifecycle", { selector: ".k" }).closest(".card") as HTMLElement;
     expect(lifecycle).toHaveTextContent("Opened: 2026-10-15 07:00:00 UTC");
     const row = within(screen.getAllByRole("table")[1]).getAllByRole("row")[1];
-    expect(row).toHaveTextContent("10-15 07:00 UTC");
-    expect(row).toHaveTextContent("10-15 07:10 UTC");
+    // The headers say (UTC); the cells do not repeat it.
+    expect(row).toHaveTextContent("10-15 07:00");
+    expect(row).toHaveTextContent("10-15 07:10");
+    expect(row).not.toHaveTextContent("UTC");
   });
 
   it("scrolls the delivery table in a labelled region and right-aligns the attempts", async () => {
@@ -222,5 +227,35 @@ describe("alert detail honesty", () => {
     await renderPage("a-9");
     expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
     expect(screen.getByRole("heading", { name: "Alert Detail", level: 1 })).toBeInTheDocument();
+  });
+
+  it("never wraps a delivery time", async () => {
+    vi.spyOn(api, "alertNotifications").mockResolvedValue([
+      notification({ sent_at: "2026-10-15T07:00:05Z", next_attempt_at: "2026-10-15T07:10:00Z" }),
+    ]);
+    await renderPage();
+    const row = within(screen.getAllByRole("table")[1]).getAllByRole("row")[1];
+    expect(within(row).getByText("10-15 07:00")).toHaveClass("nowrap");
+    expect(within(row).getByText("10-15 07:10")).toHaveClass("nowrap");
+  });
+
+  it("has one h1, the alert title, and no h2 imitating it", async () => {
+    await renderPage();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+  });
+
+  it("keeps the error column readable: 12ch floor, may break only a token longer than the column", async () => {
+    vi.spyOn(api, "alertNotifications").mockResolvedValue([
+      notification({ status: "DEAD_LETTER", error_message: "channel_not_found: no longer exists" }),
+    ]);
+    await renderPage();
+    const cell = screen.getByText("channel_not_found: no longer exists");
+    expect(cell).toHaveClass("cell-error");
+    const css = readFileSync(join(__dirname, "alert-detail.css"), "utf8");
+    const rule = css.match(/td\.cell-error\s*{([^}]*)}/)?.[1] ?? "";
+    expect(rule).toMatch(/min-width:\s*12ch/);
+    expect(rule).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule).not.toMatch(/break-all|break-word/);
   });
 });

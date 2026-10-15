@@ -8,8 +8,8 @@ import { CodePanel } from "@/components/ui/CodePanel";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type SearchExecution } from "@/lib/api";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
-import { truncatedRunTimes } from "@/lib/searchRuns";
+import { formatDateTime } from "@/lib/health";
+import { axisTimeLabel, truncatedRunTimes } from "@/lib/searchRuns";
 
 import "./search-detail.css";
 
@@ -109,7 +109,7 @@ export default async function SearchDetailPage({
                     <td>v{v.version}</td>
                     <td>{v.changed_by ?? "—"}</td>
                     <td>{v.change_note ?? "—"}</td>
-                    <td>{formatDateTimeCompact(v.created_at)}</td>
+                    <td className="nowrap">{axisTimeLabel(v.created_at)}</td>
                   </tr>
                 ))}
               </tbody>

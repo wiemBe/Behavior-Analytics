@@ -58,7 +58,7 @@ describe("log source detail states", () => {
   it("shows the header line with type, criticality and owner", async () => {
     vi.spyOn(api, "logSource").mockResolvedValue(detail());
     await renderPage();
-    expect(screen.getByRole("heading", { name: "Core Firewall", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Core Firewall", level: 1 })).toBeInTheDocument();
     expect(
       screen.getByText("Check Point Firewall · criticality HIGH · owner SOC"),
     ).toBeInTheDocument();
@@ -88,9 +88,13 @@ describe("log source detail contents", () => {
     expect(config).toHaveTextContent("QRadar status: SUCCESS");
   });
 
-  it("states what the detail page does not yet show", async () => {
+  it("links to the charts instead of promising them", async () => {
     await renderPage();
-    expect(screen.getByText(/EPS trend, anomaly timeline and baseline overlay charts/)).toBeInTheDocument();
+    expect(screen.queryByText(/arrive in Phase 2/)).toBeNull();
+    expect(screen.getByRole("link", { name: "source behavior" })).toHaveAttribute(
+      "href",
+      "/behavior/sources/s-1",
+    );
   });
 
   it("omits the health breakdown when the source has none", async () => {
@@ -117,7 +121,7 @@ describe("log source detail contents", () => {
     const config = screen.getByText("Configuration", { selector: ".k" }).closest(".card")!;
     expect(config).toHaveTextContent("Description: —");
     expect(config).toHaveTextContent("Business hours only: yes");
-    expect(config).toHaveTextContent("Expected interval: — s");
+    expect(config).toHaveTextContent(/Expected interval: —Last event/);
     expect(config).toHaveTextContent("Last event: never");
     expect(config).toHaveTextContent("QRadar status: unknown");
   });
@@ -151,5 +155,30 @@ describe("log source detail honesty", () => {
     await renderPage("s-9");
     expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
     expect(screen.getByRole("heading", { name: "Log Source Detail", level: 1 })).toBeInTheDocument();
+  });
+
+  it("gives a missing expected interval no unit", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail({ expected_interval_seconds: null }));
+    await renderPage();
+    const config = screen.getByText("Configuration", { selector: ".k" }).closest(".card")!;
+    expect(config.textContent).toContain("Expected interval: —");
+    expect(config.textContent).not.toMatch(/—\s*s/);
+  });
+
+  it.each([
+    ["SUCCESS", "ok"],
+    ["WARNING", "warn"],
+    ["ERROR", "crit"],
+  ])("tones the QRadar status %s as %s", async (status, tone) => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail({ qradar_status: status }));
+    await renderPage();
+    expect(screen.getByText(status, { selector: ".pill" })).toHaveClass(tone);
+  });
+
+  it.each(["DISABLED", "NA", null])("keeps the status %s neutral", async (status) => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail({ qradar_status: status }));
+    await renderPage();
+    const pill = screen.getByText(status ?? "unknown", { selector: ".pill" });
+    for (const t of ["ok", "warn", "crit"]) expect(pill).not.toHaveClass(t);
   });
 });
