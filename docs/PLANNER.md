@@ -8,6 +8,33 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶ Resume here (thirteenth session, 2026-10-15, from ~09:10)
+
+The user: "planner.md yi oku devam et ama glm yi kullanma şuanlık" — **no GLM for now** (until the
+user says otherwise).
+
+**The machine rebooted again ~09:07.** The tmpfs test DB was empty; the orchestrator restarted it
+(`docker compose -f docker-compose.test.yml up -d test-db`). No leftover generator or agent
+process was found. Persistent work under `/home/efe/Documents/QRadar-Dash-work/` survived.
+
+**Branches:** `main` @ `8573bdf`; `feat/phase-ce` @ `633f0a6` (docs only since `main`: specs
+T-093, T-094, T-054 amendment 2). Migration head `0023`.
+
+**In flight (from ~09:15):**
+
+| Task | Agent | Where | Collect / check |
+|---|---|---|---|
+| **UI-3.3b** handover ([spec](tasks/UI-3.3b.md)) | Sonnet sub-agent, "review what you inherit" | worktree `ui33b`; ports 3134/8134/9134; `QRadar-Dash-work/ui33b/` | `docs/tasks/UI-3.3b.report.md`; PNGs `ui33b/png/`. Inherited PNGs: the three 4-column panels still put range + Expand on a second row (told to fix) |
+| **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
+| **T-093** WAF `caveat` in `WafDetectionDetailOut` ([spec](tasks/T-093.md)) | big-pickle, `--standalone`, PID 22730, 09:16 | worktree `t093` | `docs/tasks/T-093.report.md` in the worktree |
+| **T-094** WAF caveat line; Robust z when DEGENERATE/UNAVAILABLE ([spec](tasks/T-094.md)) | Codex, PID 22008, 09:16 | worktree `t094` (own `node_modules`); ports 3138/8138/9138 | `docs/tasks/T-094.report.md`; PNGs `QRadar-Dash-work/t094/png/`; log `t094/logs/codex.log` |
+
+**Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
+allows, else Sonnet); Phase 3 screenshots to the user; Phase 4 UI specs (UI-4.1 → 4.3); the
+user's open decisions (D-12 name, G-5 geo window, the lab ACTION property).
+
+---
+
 ## ▶ Resume here (twelfth session, 2026-10-14, from ~21:15; latest state at 22:32)
 
 ### State at 22:32 (start here)
