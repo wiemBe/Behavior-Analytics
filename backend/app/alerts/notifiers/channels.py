@@ -77,7 +77,7 @@ class SlackNotifier(_HttpNotifier):
     channel = NotificationChannel.SLACK
 
     async def send(self, target: str, message: NotificationMessage) -> None:
-        blocks = [
+        blocks: list[dict[str, object]] = [
             {"type": "header",
              "text": {"type": "plain_text", "text": message.summary_line()[:150]}},
             {"type": "section", "text": {"type": "mrkdwn", "text": message.body[:2900]}},

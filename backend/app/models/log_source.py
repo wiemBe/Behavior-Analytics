@@ -35,9 +35,11 @@ from app.models.enums import (
 
 if TYPE_CHECKING:
     # Runtime import would be circular: explanation.py maps back to
-    # LogSourceAnomaly. SQLAlchemy resolves the relationship by class name from
-    # the registry, so the annotation alone is enough.
+    # LogSourceAnomaly, and instance.py maps back to LogSource. SQLAlchemy
+    # resolves each relationship by class name from the registry, so the
+    # annotation alone is enough.
     from app.models.explanation import AnomalyExplanation
+    from app.models.instance import QRadarInstance
 
 
 class LogSource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -107,7 +109,7 @@ class LogSource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     health_score: Mapped[float | None] = mapped_column(Float)
     health_computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    instance: Mapped[QRadarInstance] = relationship(back_populates="log_sources")  # noqa: F821
+    instance: Mapped[QRadarInstance] = relationship(back_populates="log_sources")
     metrics: Mapped[list[LogSourceMetric]] = relationship(
         back_populates="log_source", cascade="all, delete-orphan"
     )

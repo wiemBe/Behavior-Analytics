@@ -17,6 +17,7 @@ from app.api.deps import ProviderDep, SessionDep
 from app.fleet.service import reclassify_instance
 from app.models.enums import ClassificationReviewStatus
 from app.models.fleet import LogSourceClassification
+from app.models.log_source import LogSource
 from app.repositories.audit import record_audit
 from app.repositories.log_source import LogSourceRepository
 from app.schemas.fleet import ClassificationOverrideIn, FleetSourceOut, fleet_source_out
@@ -56,7 +57,7 @@ def _jsonable(value: object) -> object:
     return getattr(value, "value", value)
 
 
-def _to_summary(ls, anomaly_counts: dict[uuid.UUID, int]) -> LogSourceSummary:
+def _to_summary(ls: LogSource, anomaly_counts: dict[uuid.UUID, int]) -> LogSourceSummary:
     s = LogSourceSummary.model_validate(ls)
     s.open_anomaly_count = anomaly_counts.get(ls.id, 0)
     return s

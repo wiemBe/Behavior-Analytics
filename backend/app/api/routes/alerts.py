@@ -97,7 +97,7 @@ async def acknowledge_alert(
     await _enqueue_transition(session, result)
     await record_audit(
         session, action="alert.acknowledge", actor=principal.subject,
-        object_type="alert", object_id=alert_id,
+        object_type="alert", object_id=str(alert_id),
     )
     return AlertOut.model_validate(result.alert)
 
@@ -116,6 +116,6 @@ async def resolve_alert(
     await _enqueue_transition(session, result)
     await record_audit(
         session, action="alert.resolve", actor=principal.subject,
-        object_type="alert", object_id=alert_id, detail={"reason": payload.reason},
+        object_type="alert", object_id=str(alert_id), detail={"reason": payload.reason},
     )
     return AlertOut.model_validate(result.alert)

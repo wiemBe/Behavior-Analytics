@@ -39,6 +39,7 @@ from app.models.enums import (
     WafAnomalyType,
     WafProfileValidationStatus,
 )
+from app.models.explanation import AnomalyExplanation
 from app.models.ips import (
     IpsAnomaly,
     IpsAnomalyTransition,
@@ -46,7 +47,7 @@ from app.models.ips import (
     IpsSourceBucket,
     IpsSourceProfile,
 )
-from app.models.log_source import LogSource, LogSourceAnomaly
+from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
@@ -450,7 +451,7 @@ async def _ips_detail(
     )
 
 
-def _explanation_out(package) -> ExplanationOut | None:
+def _explanation_out(package: AnomalyExplanation | None) -> ExplanationOut | None:
     """Assemble the evidence package, grouping contributors under dimensions.
 
     Contributors are stored flat and joined here rather than nested in storage,
@@ -512,7 +513,12 @@ async def list_source_behavior(session: SessionDep) -> list[SourceBehaviorOut]:
     return out
 
 
-def _source_behavior(src, bucket, cell, active_count: int) -> SourceBehaviorOut:
+def _source_behavior(
+    src: LogSource,
+    bucket: LogSourceMetric | None,
+    cell: LogSourceBaseline | None,
+    active_count: int,
+) -> SourceBehaviorOut:
     observed = bucket.average_eps if bucket is not None else None
     expected = cell.median if (cell is not None and cell.is_reliable) else None
     # A ratio against a zero expectation does not exist. Reporting one would

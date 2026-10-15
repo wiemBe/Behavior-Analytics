@@ -15,6 +15,10 @@ import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 
 class ConcurrencyLimitReached(RuntimeError):
@@ -73,7 +77,7 @@ class RedisConcurrencyLimiter(ConcurrencyLimiter):
     """
 
     def __init__(
-        self, redis, per_instance: int, global_limit: int, ttl_seconds: int = 1800
+        self, redis: Redis, per_instance: int, global_limit: int, ttl_seconds: int = 1800
     ) -> None:
         self._redis = redis
         self._per_instance = per_instance

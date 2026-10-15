@@ -16,6 +16,7 @@ Guarantees:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -80,7 +81,7 @@ class MetricCollector:
         provider: QRadarProvider,
         *,
         settings: Settings | None = None,
-        clock=None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.session = session
         self.provider = provider
@@ -495,7 +496,7 @@ class MetricCollector:
                 LogSource.instance_id == instance_id
             )
         )
-        return dict(rows.all())
+        return {row[0]: row[1] for row in rows.all()}
 
     async def _get_or_create_watermark(self, instance: QRadarInstance) -> CollectionWatermark:
         wm = await self.session.scalar(

@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,6 +69,11 @@ from app.models.log_source import (
 from app.models.monitoring import AnomalyEvaluationWatermark
 from app.models.outage import OutageAlertPolicy
 from app.providers.base import LogSourceTelemetry
+
+if TYPE_CHECKING:
+    # Annotations only: the engine depends on delivery structurally, never on
+    # the dispatcher's module, so there is no need to import it at runtime.
+    from app.alerts.dispatcher import AlertEnqueuer
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +129,8 @@ class AnomalyEngine:
         session: AsyncSession,
         *,
         settings: Settings | None = None,
-        clock=None,
-        enqueuer=None,
+        clock: Callable[[], datetime] | None = None,
+        enqueuer: AlertEnqueuer | None = None,
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
@@ -384,7 +391,9 @@ class AnomalyEngine:
                 )
             ).all()
         )
-        return list(reversed(rows))  # oldest -> newest
+        # The query excludes NULL signatures; the guard restates that guarantee
+        # in the return type so it does not depend on the reader knowing the SQL.
+        return [s for s in reversed(rows) if s is not None]  # oldest -> newest
 
     def _run_detectors(
         self,
