@@ -42,6 +42,7 @@ context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-fla
 | **T-105** T-054 part 3 analysis | GLM 5.3, `--standalone --title t105-glm` (PID 1311139) | worktree `t105` (no repo change); report `QRadar-Dash-work/t054/T-054.report.md` | log `QRadar-Dash-work/t105/opencode.log`; then copy the report to `docs/tasks/T-054.report.md` |
 | **T-106** ([spec](tasks/T-106.md)) caveat key in the WAF/IPS integration tests | DeepSeek, `--title t106-ds` (PID 1311140) | worktree `t106`; DB `qradar_obs_t106` | report in worktree; log `QRadar-Dash-work/t106/opencode.log` |
 | **T-098** ([spec](tasks/T-098.md), parts A+B) | Sonnet sub-agent (dies with the chat) | worktree `t098`; ports 3150/8150/9150 | report in worktree; PNGs `QRadar-Dash-work/t098/png/` |
+| **T-107 Part 1** ([spec](tasks/T-107.md)), lab ACTION property (QRadar side) | Sonnet sub-agent from 21:35 (dies with the chat) | worktree `t107`; scratch `QRadar-Dash-work/t107/` | report in worktree. **If the chat died:** check `pgrep -af qradar_lab_loggen` and stop any leftover by PID; read the report's POST log before re-running anything (add-only, never twice) |
 
 **Next:** collect the four; UI-5.9 after UI-5.8; full gate → `main`; Phase 6 (UI-6.1, UI-6.2).
 
