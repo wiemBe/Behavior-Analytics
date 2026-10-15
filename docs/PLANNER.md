@@ -64,6 +64,14 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
 - **T-054 finding so far:** `IPS_NEW_DESTINATION_PORT` needs ≥ 24 h of continuous EXACT history
   (`ips_new_port_history_days` has `ge=1`), so it cannot be validated in a several-hour run
   (fail-closed by design; the report will say so).
+- **T-054: the fan-out lead is NOT reproduced** (pilot sweep 06:40–06:55Z, hour-06 cell trained
+  with 4 samples): `IPS_PORT_FANOUT_SPIKE` ANOMALOUS in all three sweep buckets on both sources
+  (749–750 distinct ports against a median of 2), destination-port coverage 1.000, EXACT. Fan-out
+  and concentration incidents opened on both sources and are recovering. Hour 07 runs
+  signature-burst with alerting on. Searches 56/250 at 07:23Z.
+- **UI-4.1** done by Sonnet (gates green, 192 files / 2,575 tests); round 2 sent (~10:44) for the
+  rename input styling, a stray "·" at 1024 and server refusal text capitalisation.
+- Spec written: T-098 (widget frame polish), to start after UI-4.1 merges.
 - Specs: UI-5.6 (ready), T-097.
 - **T-097 merged** (`5982b2a`, big-pickle, 3 min): 11 untested `error`/`loading` boundaries now
   tested (22 tests; it corrected the orchestrator's list: 4 dropped as already tested, 3 added).
