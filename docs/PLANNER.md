@@ -8,7 +8,61 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (fifteenth session, 2026-10-15, from ~21:15) (start here)
+## ▶ RESUME HERE — STATE AT 22:55, 2026-10-15 (the machine may shut down; the session limit is near)
+
+The user (22:52): the machine may be shut down, around 00:30 at the latest; act so that nothing
+is lost. **After a reboot the tmpfs test DB is empty and every agent is dead.** Worktrees and
+`QRadar-Dash-work/` are on disk and survive.
+
+**Branches:** `feat/phase-ce` @ the commit after `35eda6a` (pushed); `main` @ `8573bdf`.
+Migration head on `feat/phase-ce` is `0023`; `agent/f1` will add `0024`.
+
+**First steps after a reboot:**
+1. `docker compose -f docker-compose.test.yml up -d test-db`
+2. `pgrep -af "opencode|codex|qradar_lab_loggen|hour_tick[s]|hour_chai[n]|until \["` should show
+   nothing left. Stop any leftover by PID only.
+3. Collect each row below.
+
+| Task | State at 22:55 | Where | After a reboot |
+|---|---|---|---|
+| **UI-5.8** | Sonnet sub-agent handover (from 22:47) after Codex hit its limit at 22:45. Codex had rewritten the boundaries per the ruling (`PageHeader` + `RouteState`, no skeleton) and captured 237 PNGs | worktree `ui58`; ruling `QRadar-Dash-work/ui58/ruling.md` | If `docs/tasks/UI-5.8.report.md` is newer than 22:47 and complete: review it (gates, PNGs) and merge. Otherwise hand over again (Codex after 02:18, or Sonnet) with the spec, the ruling and "review what you inherit" |
+| **F-1** ([spec](tasks/F-1.md)) Phase F core, migration `0024` | GLM 5.3 from 22:50, `--title f1-glm` | worktree `f1` (branch `agent/f1`); DBs `qradar_obs_f1`, `_f1_mig` (**recreate them** with `createdb` after a reboot) | Read `docs/tasks/F-1.report.md` and `QRadar-Dash-work/f1/opencode.log`. If it is unfinished, hand over with "review what you inherit". **Do not merge before Phase 5 is on `main`** |
+| **T-112** ([spec](tasks/T-112.md)) saving tests under load | DeepSeek, `--title t112-ds` | worktree `t112` | report in worktree; review, then merge |
+| **T-054 part 4** (block-shift, hour 20Z = 23:00 local) | detached chains 1445211/1445212; ticks 23:22:30, 23:47:30, **00:02:30** local; alerting on | `QRadar-Dash-work/t054/` | — |
+| **T-110** ([spec](tasks/T-110.md)) part 4 analysis | **detached launcher PID 1584343**, independent of the chat: it waits for 21:04Z and the end of the chains, then `pg_dump`s `qradar_obs_t054` to `QRadar-Dash-work/t054/db/qradar_obs_t054.dump` (mode 600) and starts DeepSeek `--title t110-ds` in worktree `t110` | log `QRadar-Dash-work/t110/launcher.log`, `t110/opencode.log`; report section "Part 4 analysis" in `QRadar-Dash-work/t054/T-054.report.md` | If the section is complete: check it, then copy the report to `docs/tasks/T-054.report.md`. If it is not: restore the dump and run T-110 again (see below) |
+
+**DB dumps** (`QRadar-Dash-work/t054/db/`, mode 600; they hold the lab instance row with its
+token encrypted under the public test key, so **delete them once T-054 is closed**):
+- `qradar_obs_t054-pre-part4.dump` (22:53): part 3 and the T-107 profile mappings;
+- `qradar_obs_t054.dump`: written by the launcher after part 4's last tick.
+
+Restoring TimescaleDB: `createdb qradar_obs_t054`, then `CREATE EXTENSION timescaledb;`, then
+`SELECT timescaledb_pre_restore();`, then `pg_restore -d qradar_obs_t054 <dump>`, then
+`SELECT timescaledb_post_restore();`. Run these inside the test-db container, with the dump
+copied in via `docker cp`.
+
+**Done this session:** T-104, UI-4.2, T-106, T-105 (T-054 part 3 closed), T-107 (lab ACTION
+property: Parts 1 and 2), T-098, T-108 (Phase F design), T-111 (docs screenshots), T-109. The
+backend full gate on `0bdc334` was green (integration 1,168 passed).
+
+**Then, in order:**
+1. UI-5.9 (spec ready, after UI-5.8).
+2. Re-run the T-111 capture script (`QRadar-Dash-work/t111/README.md`).
+3. The full gate (backend on the head, because T-109 changed it; frontend, with T-112's fix) →
+   `main`.
+4. Phase 6: UI-6.1 to UI-6.4 (specs ready); UI-6.5 is the orchestrator's.
+5. Phase F: F-1 merged after `main`, then F-2 to F-8. **The user still has to answer the five
+   questions in `PHASE-F-CUSTOM-DETECTIONS.md` §F.16.**
+
+**Agents:**
+- Codex: reset at 02:18.
+- GLM: its 5 h window started at ~21:18; T-105, T-108 and F-1 used it.
+- DeepSeek, `opencode/deepseek-v4.1-flash-free`: free and good.
+- `opencode/step-5-preview-free` did T-109's amendment correctly.
+
+---
+
+## ▶ Resume here (fifteenth session, 2026-10-15, from ~21:15)
 
 The user: "planner.md oku devam et ve glm codex kullan ayrıca opencode deepseek flash v4 200k
 context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-flash-free`.
