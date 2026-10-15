@@ -30,7 +30,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * One request through the backend. Exported for the saved-dashboards client. A `204` has no body,
+ * so it resolves to `undefined` instead of failing in `res.json()`; no existing route answers 204.
+ */
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${baseUrl()}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
@@ -47,6 +51,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(res.status, detail, raw);
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 

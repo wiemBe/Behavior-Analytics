@@ -290,5 +290,10 @@
   --dash-z-placeholder: 2;
   --dash-z-drag: 3;
   --dash-z-arrange: 4;
+  --dash-z-pop: 5;
+  --dash-pop-w: 22rem;
+  --dash-menu-w: 16rem;
+  --dash-modal-w: 30rem;
+  --dash-field-h: 38px;
   --scrim: rgba(0, 0, 0, 0.55);
 }
