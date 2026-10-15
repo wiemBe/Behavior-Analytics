@@ -34,17 +34,39 @@ context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-fla
     under an unsaved template's title.
   - **UI-5.9 point 9:** `HealthDetection` mixes "SILENT"/"UNCOVERED" with title case.
 
-**In flight (from ~21:20):**
+**Merged later (~21:30–22:05):**
+- **T-106** (`779ee3c`, DeepSeek): the orchestrator re-ran the two integration files
+  (67 passed) and ruff (clean).
+- **T-105 / T-054 closed** (GLM; final report `docs/tasks/T-054.report.md`):
+  - signature-burst, with alerting on, passes live;
+  - source-concentration passes;
+  - two `ips_anomaly` alerts opened at 14:47Z and resolved at 15:02Z, and all 10 incidents are
+    RESOLVED (the orchestrator checked both in the DB);
+  - no enqueued notification, because no `NOTIFY_*` channel is set (L-6);
+  - no application defect.
+- **T-107** (`9d098fd`), lab ACTION property:
+  - Part 1 added `IPS_Action` expressions 783 (PAN, type 206) and 784 (FTD, type 448). Values
+    are 100 % populated. **The app's token is write-capable** (the POSTs returned 201).
+  - Part 2 mapped ACTION on the lab profiles: PAN v2, and FTD v3 with **`Would block` allowed**
+    (orchestrator ruling). Otherwise every FTD bucket would lose its training sample.
+  - Block-shift now waits for its baseline.
+  - Profile versions checked by the orchestrator in the DB.
+- **UI-5.8 ruling:** Codex stopped on a real conflict: the spec asked for a skeleton, and
+  guidelines §8 say plain text with no skeleton. The guidelines win (ruling in the spec), and
+  Codex was resumed.
+
+**In flight (from ~22:05):**
 
 | Task | Agent | Where | Collect / check |
 |---|---|---|---|
-| **UI-5.8** handover ("review what you inherit") | Codex, session `01a140c9-a3e8-7931-93ed-8ce66cf3c123` (PID 1312407) | worktree `ui58`; ports 3158/8158/9158 | `docs/tasks/UI-5.8.report.md`; log `QRadar-Dash-work/ui58/logs/codex.log` (grep "usage limit") |
-| **T-105** T-054 part 3 analysis | GLM 5.3, `--standalone --title t105-glm` (PID 1311139) | worktree `t105` (no repo change); report `QRadar-Dash-work/t054/T-054.report.md` | log `QRadar-Dash-work/t105/opencode.log`; then copy the report to `docs/tasks/T-054.report.md` |
-| **T-106** ([spec](tasks/T-106.md)) caveat key in the WAF/IPS integration tests | DeepSeek, `--title t106-ds` (PID 1311140) | worktree `t106`; DB `qradar_obs_t106` | report in worktree; log `QRadar-Dash-work/t106/opencode.log` |
+| **UI-5.8** after the ruling | Codex, `codex exec resume 01a140c9-…` (PID 1386362) | worktree `ui58`; ports 3158/8158/9158 | report in the worktree; log `QRadar-Dash-work/ui58/logs/codex2.log` (grep "usage limit") |
 | **T-098** ([spec](tasks/T-098.md), parts A+B) | Sonnet sub-agent (dies with the chat) | worktree `t098`; ports 3150/8150/9150 | report in worktree; PNGs `QRadar-Dash-work/t098/png/` |
-| **T-107 Part 1** ([spec](tasks/T-107.md)), lab ACTION property (QRadar side) | Sonnet sub-agent from 21:35 (dies with the chat) | worktree `t107`; scratch `QRadar-Dash-work/t107/` | report in worktree. **If the chat died:** check `pgrep -af qradar_lab_loggen` and stop any leftover by PID; read the report's POST log before re-running anything (add-only, never twice) |
+| **T-108** ([spec](tasks/T-108.md)), Phase F design (D-15) | GLM 5.3, `--title t108-glm` (PID 1391890) | worktree `t108` | `docs/PHASE-F-CUSTOM-DETECTIONS.md` + report; log `QRadar-Dash-work/t108/opencode.log` |
+| **T-109** ([spec](tasks/T-109.md)), deprecated 422 constant | DeepSeek, `--title t109-ds` (PID 1395174) | worktree `t109` | report in worktree; log `QRadar-Dash-work/t109/opencode.log`; orchestrator runs integration |
+| **T-054 part 4** ([amendment 4](tasks/T-054.md)), block-shift at 20Z (23:00 local), alerting on | Sonnet sub-agent sets up detached chains | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` | Part 4 section in `t054/T-054.report.md`; **last tick 21:02:30Z (00:02:30 local)**; then a hand (GLM/DeepSeek) analyses |
+| Backend full gate on `0bdc334` | orchestrator (background) | worktree `gate` (detached); DBs `qradar_obs_gate`, `_gate_mig` | `QRadar-Dash-work/gate/0bdc334/backend.log` |
 
-**Next:** collect the four; UI-5.9 after UI-5.8; full gate → `main`; Phase 6 (UI-6.1, UI-6.2).
+**Next:** collect the above; UI-5.9 after UI-5.8; full gate → `main`; Phase 6 (UI-6.1, UI-6.2).
 
 **The user's decisions (~21:40; recorded in §4):**
 - D-12: no rename.
