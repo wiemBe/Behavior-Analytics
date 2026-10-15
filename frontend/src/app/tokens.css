@@ -225,6 +225,8 @@
 :root {
   --table-col-time: 15ch;
   --table-col-eps: 11ch;
+  /* Observed → expected in a detector's unit: "62.0% → 18.0%", or "1,480 → 310" over its unit. */
+  --table-col-figures: 17ch;
   --table-col-ratio: 11ch;
   --table-col-badge: 11ch;
   --table-col-count: 8ch;
@@ -242,6 +244,8 @@
    small square beside its list. */
 :root {
   --home-chart-h: 152px;
+  /* A subject chart is the widget's content, not context for a figure: it keeps more height. */
+  --cw-chart-h: 224px;
   --home-donut: 112px;
   /* The centre label is bounded by the same radius the canvas uses for its hole. */
   --home-donut-hole-radius: 42px;

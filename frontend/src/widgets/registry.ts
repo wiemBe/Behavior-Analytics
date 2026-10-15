@@ -9,14 +9,19 @@
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 
+import { MONITORED_SOURCES, WAF_SOURCES, WAF_SOURCE_ENDPOINTS } from "./optionSources";
 import { placeholderFor } from "./Placeholder";
 import type {
   AnyWidgetDef,
+  ConfigSchema,
   WidgetCategory,
   WidgetProps,
   WidgetRange,
   WidgetSize,
 } from "./types";
+
+import type { SourceEpsConfig } from "@/components/catalog/SourceEps";
+import type { WafTrafficConfig } from "@/components/catalog/WafEndpointTraffic";
 
 type NoConfig = Record<string, never>;
 
@@ -32,7 +37,7 @@ function load(
   }) as unknown as ComponentType<WidgetProps<NoConfig>>;
 }
 
-interface LiveInput {
+interface LiveInput<C = NoConfig> {
   type: string;
   title: string;
   description: string;
@@ -40,26 +45,29 @@ interface LiveInput {
   requires: string[];
   sources: string[];
   size: WidgetSize;
-  drillDown: string;
+  drillDown: string | ((cfg: C) => string | null);
   /** The presets the widget's reads take as a window; absent when they take none. */
   range?: WidgetRange[];
+  /** What the widget lets the analyst choose (UI-3.5b); absent for a widget without config. */
+  config?: ConfigSchema<C>;
+  defaultConfig?: C;
   loader: () => Promise<ComponentType<any>>;
 }
 
 /** Windows `/fleet/summary` and `/fleet/eps-series` accept (`FleetWindow`). */
 const FLEET_RANGES: WidgetRange[] = ["1h", "24h", "7d"];
 
-function live(input: LiveInput): AnyWidgetDef {
-  const { drillDown, loader, range, ...def } = input;
+function live<C = NoConfig>(input: LiveInput<C>): AnyWidgetDef {
+  const { drillDown, loader, range, config, defaultConfig, ...def } = input;
   return {
     ...def,
     status: "live",
     range: range ?? null,
     // Charts and tables open larger; KPI and health cards have nothing more to show.
     expandable: def.category === "Chart" || def.category === "Table",
-    config: {},
-    defaultConfig: {},
-    drillDown: () => drillDown,
+    config: config ?? {},
+    defaultConfig: defaultConfig ?? {},
+    drillDown: typeof drillDown === "string" ? () => drillDown : drillDown,
     Component: load(def.title, def.category === "KPI", loader),
   };
 }
@@ -308,6 +316,62 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     loader: () =>
       import("@/components/catalog/RecentWafAnomalies").then((m) => m.RecentWafAnomalies),
   }),
+  live<WafTrafficConfig>({
+    type: "waf.endpoint_traffic",
+    title: "WAF endpoint traffic",
+    description:
+      "One WAF endpoint's requests per bucket against its seasonal expected range. You choose the endpoint.",
+    category: "Chart",
+    requires: ["read:anomalies"],
+    sources: [
+      "/behavior/waf/sources",
+      "/behavior/waf/sources/${id}/endpoints",
+      "/behavior/waf/endpoints/${id}/metrics",
+      "/behavior/waf/endpoints/${id}/baselines",
+    ],
+    size: { w: 6, h: 14, minW: 4, minH: 11 },
+    range: FLEET_RANGES,
+    config: {
+      waf_source: { label: "WAF source", from: WAF_SOURCES },
+      endpoint: { label: "Endpoint", from: WAF_SOURCE_ENDPOINTS },
+    },
+    defaultConfig: { waf_source: null, endpoint: null },
+    drillDown: (cfg) =>
+      cfg.waf_source ? `/behavior/waf/sources/${cfg.waf_source}` : "/behavior/waf",
+    loader: () => import("@/components/catalog/WafEndpointTraffic").then((m) => m.WafEndpointTraffic),
+  }),
+  live<SourceEpsConfig>({
+    type: "chart.eps_observed_expected",
+    title: "Log source EPS",
+    description:
+      "One log source's EPS against its seasonal expected range. You choose the source; the fleet total is Fleet EPS.",
+    category: "Chart",
+    requires: ["read:anomalies"],
+    sources: [
+      "/behavior/sources",
+      "/behavior/sources/${id}/metrics",
+      "/behavior/sources/${id}/baselines",
+    ],
+    size: { w: 6, h: 14, minW: 4, minH: 11 },
+    range: FLEET_RANGES,
+    config: { source: { label: "Log source", from: MONITORED_SOURCES } },
+    defaultConfig: { source: null },
+    drillDown: (cfg) => (cfg.source ? `/behavior/sources/${cfg.source}` : "/behavior/sources"),
+    loader: () => import("@/components/catalog/SourceEps").then((m) => m.SourceEps),
+  }),
+  live({
+    type: "ips.source_anomalies",
+    title: "Recent IPS anomalies",
+    description:
+      "The latest active anomalies of IPS entities and IPS sources, in each detector's own unit.",
+    category: "Table",
+    requires: ["read:anomalies"],
+    sources: ["/anomalies"],
+    size: { w: 6, h: 17, minW: 4, minH: 11 },
+    drillDown: "/anomalies?subject_kind=IPS_ENTITY&active_only=true",
+    loader: () =>
+      import("@/components/catalog/RecentIpsAnomalies").then((m) => m.RecentIpsAnomalies),
+  }),
   blocked({
     type: "map.geography",
     title: "Geography",
@@ -315,14 +379,6 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     category: "Chart",
     size: { w: 6, h: 15, minW: 4, minH: 11 },
     blockedBy: "the map widget is not built yet; geo collection is",
-  }),
-  blocked({
-    type: "ips.source_anomalies",
-    title: "IPS source anomalies",
-    description: "Behavioral anomalies of IPS log sources.",
-    category: "Table",
-    size: { w: 6, h: 15, minW: 4, minH: 11 },
-    blockedBy: "the IPS analyst API is being built",
   }),
 ];
 

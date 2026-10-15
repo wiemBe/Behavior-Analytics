@@ -14,13 +14,62 @@ export type WidgetRange = "1h" | "24h" | "7d";
 /** The 12-column grid every stored layout uses (UR.5.3). */
 export const GRID_COLUMNS = 12;
 
+/** One candidate of an option read: the id the layout stores, and what the analyst reads. */
+export interface ConfigOption {
+  id: string;
+  label: string;
+}
+
+/** What an option read returns: the candidates, and how many exist (may exceed the page). */
+export interface ConfigOptionList {
+  options: ConfigOption[];
+  total: number;
+}
+
 /**
- * Enumerated options only (UR.5.1): each option is a pick from a fixed list, never a text
- * field that could reach the server as a query.
+ * One existing GET read, in the shape `useApiResource` takes. It returns the read's own payload,
+ * so the request is shared with the widgets that read the same path; `options` maps it.
  */
+export interface OptionsRead<T = any> {
+  key: string;
+  fetch: (signal: AbortSignal) => Promise<T>;
+  options: (payload: T) => ConfigOptionList;
+}
+
+/**
+ * Options that come from a read (UI-3.5b): the candidate ids with their labels. A source may
+ * depend on another key (a cascade): `read` receives that key's chosen id, and returns null
+ * while none is chosen. Changing the parent clears this key.
+ */
+export interface OptionsSource {
+  /** What the options are, plural, for the field's states: "WAF sources". */
+  what: string;
+  /** Why the read may legitimately return nothing; shown when it does. */
+  emptyReason: string;
+  /** The config key whose value this read needs, if any. */
+  dependsOn?: string;
+  /** The text shown while `dependsOn` has no value. */
+  needs?: string;
+  read: (parent: string | null) => OptionsRead | null;
+}
+
+/**
+ * A config key is one of two kinds. Static: a pick from a fixed list. From a read: a pick of an
+ * id from one existing GET read. Either way the control is a select; the only text field is the
+ * client-side filter over a long read, and its text is never stored or sent (AGENTS.md rule 4).
+ */
+export type ConfigField<V> =
+  | { label: string; options: ReadonlyArray<V> }
+  | { label: string; from: OptionsSource };
+
 export type ConfigSchema<C> = {
-  [K in keyof C]: { label: string; options: ReadonlyArray<C[K]> };
+  [K in keyof C]: ConfigField<C[K]>;
 };
+
+/** True for a field whose options come from a read. */
+export function isReadField(field: ConfigField<unknown>): field is { label: string; from: OptionsSource } {
+  return "from" in field;
+}
 
 export interface WidgetSize {
   w: number;

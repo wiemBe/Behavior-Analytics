@@ -2369,6 +2369,43 @@ export interface CallerInfo {
   effective_permissions: string[];
 }
 
+// The configurable catalog widgets (UI-3.5b). A window is a preset the widget's range names;
+// `since`/`until` are computed when the read runs, not when the widget renders, so a refresh
+// reads the window that ends now. The read's `key` names the preset instead of the instants:
+// two instants would be a new identity on every refresh, and the previous answer would leave
+// the screen while the new one loads.
+const WINDOW_MS: Record<FleetWindow, number> = {
+  "1h": 3_600_000,
+  "24h": 86_400_000,
+  "7d": 604_800_000,
+};
+
+/** The instants a window covers, ending at `now` rounded down to the minute. */
+export function windowBounds(window: FleetWindow, now: number = Date.now()) {
+  const until = Math.floor(now / 60_000) * 60_000;
+  return {
+    since: new Date(until - WINDOW_MS[window]).toISOString(),
+    until: new Date(until).toISOString(),
+  };
+}
+
+/** The API caps a metrics page at `api_max_page_size` (200 by default). */
+const WAF_METRICS_PAGE = 200;
+/** 12 pages hold 7 d of five-minute buckets (2 016); a longer series is flagged truncated. */
+const WAF_METRICS_MAX_PAGES = 12;
+/** The source metrics route takes up to 5 000 rows in one page. */
+const SOURCE_METRICS_LIMIT = 5000;
+/** One metric holds at most 168 cells per normalizer version; a few pages are a bound. */
+const WAF_BASELINE_MAX_PAGES = 5;
+
+/** The stored buckets of a window, and whether the read stopped before the window's end. */
+export interface BucketSeries<B> {
+  buckets: B[];
+  /** The number the route says exist in the window (the row count when it does not say). */
+  total: number;
+  truncated: boolean;
+}
+
 export const homeReads = {
   me: () => homeRead<CallerInfo>("/me"),
   fleetSummary: (window: FleetWindow) =>
@@ -2408,4 +2445,72 @@ export const homeReads = {
     homeRead<Page<AnomalySummary>>(
       `/anomalies${qs({ subject_kind: "WAF_ENDPOINT", active_only: true, limit })}`,
     ),
+  // The latest active anomalies of one IPS subject kind (UI-3.5b); the widget merges the two.
+  activeIpsAnomalies: (kind: "IPS_ENTITY" | "IPS_SOURCE", limit = 5) =>
+    homeRead<Page<AnomalySummary>>(
+      `/anomalies${qs({ subject_kind: kind, active_only: true, limit })}`,
+    ),
+  // One WAF source's endpoints (the API caps a page at 200; `total` says if more exist).
+  wafEndpointsOf: (logSourceId: string, limit = 200) =>
+    homeRead<PagedWafEndpoints>(`/behavior/waf/sources/${logSourceId}/endpoints${qs({ limit })}`),
+  wafEndpointSeries: (endpointId: string, window: FleetWindow): HomeRead<BucketSeries<WafMetricBucket>> => ({
+    key: `/behavior/waf/endpoints/${endpointId}/metrics?window=${window}`,
+    fetch: async (signal) => {
+      const { since, until } = windowBounds(window);
+      const buckets: WafMetricBucket[] = [];
+      let total = 0;
+      for (let page = 0; page < WAF_METRICS_MAX_PAGES; page += 1) {
+        const got = await request<PagedWafMetrics>(
+          `/behavior/waf/endpoints/${endpointId}/metrics${qs({
+            since,
+            until,
+            limit: WAF_METRICS_PAGE,
+            offset: buckets.length,
+          })}`,
+          { signal },
+        );
+        total = got.total;
+        buckets.push(...got.items);
+        if (got.items.length === 0 || buckets.length >= total) break;
+      }
+      return { buckets, total, truncated: buckets.length < total };
+    },
+  }),
+  wafEndpointCells: (endpointId: string): HomeRead<WafBaselineCell[]> => ({
+    key: `/behavior/waf/endpoints/${endpointId}/baselines?metric=request_count`,
+    fetch: async (signal) => {
+      const cells: WafBaselineCell[] = [];
+      for (let page = 0; page < WAF_BASELINE_MAX_PAGES; page += 1) {
+        const got = await request<PagedWafBaselines>(
+          `/behavior/waf/endpoints/${endpointId}/baselines${qs({
+            metric: "request_count",
+            limit: 200,
+            offset: cells.length,
+          })}`,
+          { signal },
+        );
+        cells.push(...got.items);
+        if (got.items.length === 0 || cells.length >= got.total) break;
+      }
+      return cells;
+    },
+  }),
+  sourceSeries: (sourceId: string, window: FleetWindow): HomeRead<BucketSeries<MetricBucket>> => ({
+    key: `/behavior/sources/${sourceId}/metrics?window=${window}`,
+    fetch: async (signal) => {
+      const { since, until } = windowBounds(window);
+      const buckets = await request<MetricBucket[]>(
+        `/behavior/sources/${sourceId}/metrics${qs({ since, until, limit: SOURCE_METRICS_LIMIT })}`,
+        { signal },
+      );
+      // The route reports no total: a full page may have more behind it.
+      return {
+        buckets,
+        total: buckets.length,
+        truncated: buckets.length >= SOURCE_METRICS_LIMIT,
+      };
+    },
+  }),
+  sourceCells: (sourceId: string) =>
+    homeRead<BaselineCell[]>(`/behavior/sources/${sourceId}/baselines${qs({ metric: "average_eps" })}`),
 };
