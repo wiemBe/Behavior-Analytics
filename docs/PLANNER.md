@@ -74,7 +74,8 @@ context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-fla
 | **T-109** amendment (`starlette>=0.48.0`) | `opencode/step-5-preview-free`, `--title t109b-step` | worktree `t109` | then the orchestrator merges T-109; first pass done by DeepSeek, gates re-run by the orchestrator (ruff, mypy 0, unit 3,224) |
 | **T-111** ([spec](tasks/T-111.md)): refresh `docs/screenshots/ui/` (user request) | Sonnet sub-agent (dies with the chat) | worktree `t111`; ports 3111/8111/9111 | report; capture script `QRadar-Dash-work/t111/capture.mjs`, **re-run after UI-5.8/5.9** |
 | **T-112** ([spec](tasks/T-112.md)): saving tests robust under load | DeepSeek, `--title t112-ds` (PID 1482205) | worktree `t112` | report; log `t112/opencode.log` |
-| **T-054 part 4** (block-shift, 20Z) | detached chains, PIDs 1445211/1445212 | `QRadar-Dash-work/t054/` | last tick 21:02:30Z (00:02:30 local) → **T-110** ([spec](tasks/T-110.md)) analysis (GLM or DeepSeek) |
+| **T-054 part 4** (block-shift, 20Z) | detached chains, PIDs 1445211/1445212 | `QRadar-Dash-work/t054/` | last tick 21:02:30Z (00:02:30 local) → **T-110** ([spec](tasks/T-110.md)) analysis on **DeepSeek** (GLM is on F-1) |
+| **F-1** ([spec](tasks/F-1.md)) Phase F core, migration `0024` | GLM 5.3, `--title f1-glm` (PID 1577613), from 22:50 | worktree `f1` (branch `agent/f1`, **not merged until Phase 5 is on `main`**); DBs `qradar_obs_f1`, `_f1_mig` | report in worktree; log `QRadar-Dash-work/f1/opencode.log` (grep "Usage limit"); the GLM 5 h window started ~21:18 |
 | Backend full gate on `0bdc334` | orchestrator | worktree `gate` | **Green:** ruff clean; mypy 0; alembic up/down/up, head `0023`, no drift; unit 3,009 passed; **integration 1,168 passed** on a fresh DB (20 min). T-109 changed the backend afterwards, so the final gate before `main` re-runs on the head |
 
 **Next:** collect the above; UI-5.9 after UI-5.8; full gate → `main`; Phase 6 (UI-6.1, UI-6.2).
