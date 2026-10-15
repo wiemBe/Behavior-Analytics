@@ -15,8 +15,8 @@ import { ApiError, api, type Alert, type Notification } from "@/lib/api";
 //  - honesty: null lifecycle fields and null delivery fields are em dashes.
 // The severity, status and notification-status pills carry a tone class the page uses
 // as meaning (sevTone; notification SENT -> ok, DEAD_LETTER -> crit, FAILED -> warn),
-// so those are asserted. One honesty gap is recorded as `it.todo`: the lifecycle and
-// delivery times are locale-formatted with no timezone.
+// so those are asserted. The last block asserts the honesty gap T-096 recorded (the
+// lifecycle and delivery times' timezone).
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 
@@ -182,7 +182,45 @@ describe("notification delivery history", () => {
   });
 });
 
-describe("alert detail honesty defects", () => {
-  // `toLocaleString()` renders the lifecycle and delivery times with no timezone.
-  it.todo("render the opened and delivery times with their timezone");
+describe("alert detail honesty", () => {
+  // `toLocaleString()` rendered the lifecycle and delivery times with no timezone.
+  it("renders the opened and delivery times with their timezone", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(alert({ opened_at: "2026-10-15T07:00:00Z" }));
+    vi.spyOn(api, "alertNotifications").mockResolvedValue([
+      notification({
+        status: "FAILED",
+        sent_at: "2026-10-15T07:00:05Z",
+        next_attempt_at: "2026-10-15T07:10:00Z",
+      }),
+    ]);
+    await renderPage();
+    const lifecycle = screen.getByText("Lifecycle", { selector: ".k" }).closest(".card") as HTMLElement;
+    expect(lifecycle).toHaveTextContent("Opened: 2026-10-15 07:00:00 UTC");
+    const row = within(screen.getAllByRole("table")[1]).getAllByRole("row")[1];
+    expect(row).toHaveTextContent("10-15 07:00 UTC");
+    expect(row).toHaveTextContent("10-15 07:10 UTC");
+  });
+
+  it("scrolls the delivery table in a labelled region and right-aligns the attempts", async () => {
+    await renderPage();
+    const region = screen.getByRole("region", { name: "Notification delivery history" });
+    const row = within(region).getAllByRole("row")[1];
+    expect(within(row).getByText("1/3")).toHaveClass("num");
+  });
+
+  it("carries no inline style, including in the operator actions", async () => {
+    const { container } = await renderPage();
+    // `Evidence` (shared, outside this task's files) still styles inline; everything else is clean.
+    const styled = [...container.querySelectorAll("[style]")].filter(
+      (el) => !el.closest(".alert-evidence"),
+    );
+    expect(styled).toEqual([]);
+  });
+
+  it("says what failed and what to do as an alert", async () => {
+    vi.spyOn(api, "alert").mockRejectedValue(new ApiError(404, "secret"));
+    await renderPage("a-9");
+    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+    expect(screen.getByRole("heading", { name: "Alert Detail", level: 1 })).toBeInTheDocument();
+  });
 });

@@ -12,8 +12,8 @@ import { ApiError, api, type Alert } from "@/lib/api";
 //  - honesty: an alert that has never been seen again shows an em dash for "Last seen".
 // The severity and status pills carry a tone class the page uses as meaning
 // (sevTone for severity; OPEN -> crit, ACKNOWLEDGED -> warn, else ok), so those are
-// asserted. One honesty gap is recorded as `it.todo`: the seen times are
-// locale-formatted with no timezone.
+// asserted. The last block asserts the honesty gap T-096 recorded (the seen times'
+// timezone).
 
 function alert(over: Partial<Alert> = {}): Alert {
   return {
@@ -104,7 +104,34 @@ describe("alert list contents", () => {
   });
 });
 
-describe("alert list honesty defects", () => {
-  // `toLocaleString()` renders the seen times in the viewer's zone with no zone name.
-  it.todo("render the first- and last-seen times with their timezone");
+describe("alert list honesty", () => {
+  // `toLocaleString()` rendered the seen times in the viewer's zone with no zone name.
+  it("renders the first- and last-seen times with their timezone", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue([
+      alert({ first_seen_at: "2026-10-15T07:00:00Z", last_seen_at: "2026-10-15T08:30:00Z" }),
+    ]);
+    await renderPage();
+    expect(screen.getByText("10-15 07:00 UTC")).toBeInTheDocument();
+    expect(screen.getByText("10-15 08:30 UTC")).toBeInTheDocument();
+  });
+
+  it("names the page with the one h1, states the zone, and scrolls the table in a region", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue([alert()]);
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Alerts", level: 1 })).toBeInTheDocument();
+    expect(screen.getByText(/Times are UTC\./)).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Alerts" })).getByRole("table")).toBeInTheDocument();
+  });
+
+  it("right-aligns the occurrence count", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue([alert()]);
+    await renderPage();
+    expect(screen.getByText("4")).toHaveClass("num");
+  });
+
+  it("says what failed as an alert and what to do", async () => {
+    vi.spyOn(api, "alerts").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage();
+    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+  });
 });

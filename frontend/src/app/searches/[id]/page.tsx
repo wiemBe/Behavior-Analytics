@@ -4,11 +4,14 @@ import { ResultTrend } from "@/components/ResultTrend";
 import { RunSearchButton } from "@/components/RunSearchButton";
 import { ExecutionsTable } from "@/components/searches/ExecutionsTable";
 import { ScheduleControl } from "@/components/searches/ScheduleControl";
+import { CodePanel } from "@/components/ui/CodePanel";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type SearchExecution } from "@/lib/api";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import { truncatedRunTimes } from "@/lib/searchRuns";
+
+import "./search-detail.css";
 
 export const metadata: Metadata = {
   title: "Search",
@@ -69,9 +72,7 @@ export default async function SearchDetailPage({
           <h2 id="aql-title" className="section-title">
             Current AQL (v{search.query_version})
           </h2>
-          <div className="card">
-            <pre>{search.aql_query}</pre>
-          </div>
+          <CodePanel label={`Stored query, v${search.query_version}`} code={search.aql_query} meta="read-only" />
         </section>
 
         <section aria-labelledby="exec-title">
@@ -93,7 +94,7 @@ export default async function SearchDetailPage({
             Query version history
           </h2>
           <TableScroll label="Query version history">
-            <table>
+            <table className="table-dense">
               <thead>
                 <tr>
                   <th scope="col">Version</th>

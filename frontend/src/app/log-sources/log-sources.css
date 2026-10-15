@@ -1,0 +1,10 @@
+/* The log-source inventory: a source name that wraps keeps its maintenance marker apart. */
+.log-source-maint {
+  margin-inline-start: var(--sp-2);
+}
+
+/* A long source name keeps a readable measure: without a floor the type and time columns
+   take the width at 1024 px and the name breaks into a word per line. */
+.log-sources-table td.cell-name {
+  min-width: 22ch;
+}

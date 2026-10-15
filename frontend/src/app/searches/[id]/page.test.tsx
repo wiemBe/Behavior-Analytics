@@ -190,3 +190,16 @@ describe("search execution history", () => {
     expect(notes).toHaveTextContent(/may still be above it/);
   });
 });
+
+describe("search detail stored query", () => {
+  it("shows the stored AQL only inside the code panel, as read-only text", async () => {
+    const { container } = await renderPage();
+    const panel = container.querySelector("details.code-panel") as HTMLElement;
+    expect(panel).not.toBeNull();
+    expect(within(panel).getByText("SELECT count(*) FROM events WHERE username IS NOT NULL")).toBeInTheDocument();
+    // The query is text in a code block: no input or textarea can edit or submit it.
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(container.querySelectorAll("pre")).toHaveLength(1);
+    expect(panel.querySelector("pre")).not.toBeNull();
+  });
+});
