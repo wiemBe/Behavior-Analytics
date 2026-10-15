@@ -36,16 +36,23 @@ end to end; hours 07–09 were voided by **D-1**, a lab-generator defect (two pr
 `transition` computed on the total count, so the change phase never runs) → **T-101**. No
 application defect. Alerting stays unexercised live until a re-run after T-101.
 
-**In flight (from ~15:30):**
+**Merged later (~15:30–15:45):** T-101 (`b59052a`, DeepSeek; generator D-1 fixed, 200 generator
+tests pass), UI-5.6b after four rounds (`4760e02`; the delivery table fits 765/765 at 1024 with
+`min-width: 12ch; overflow-wrap: anywhere` on the Error column). **Codex hit its limit at 15:20**
+(UI-4.2 half done; reset 19:34) → handed to Sonnet. The shared `.nowrap` defect (defined only
+under `max-width: 1200px` in `globals.css`) is folded into UI-5.8 Part 3 (no T-103).
+
+**In flight (from ~15:45):**
 
 | Task | Agent | Where | Collect / check |
 |---|---|---|---|
-| UI-4.2 ([spec](tasks/UI-4.2.md)) | Codex (PID 763008, from 15:05) | worktree `ui42`; ports 3142/8142/9142 | log `QRadar-Dash-work/ui42/logs/codex.log`, `-o …/logs/last.md`; report in worktree |
-| T-101 ([spec](tasks/T-101.md)) | DeepSeek, `--title t101-ds` (PID 787589) | worktree `t101` | report in worktree; log `QRadar-Dash-work/t101/opencode.log` |
-| UI-5.6b round 3 (Error column 12ch, headers wrap) | Sonnet sub-agent | worktree `ui56b` | "## Round 3" in its report |
+| UI-4.2 handover ("review what you inherit" from Codex) | Sonnet sub-agent | worktree `ui42`; ports 3142/8142/9142 | report in worktree (section "Inherited from Codex") |
 | UI-5.5 round 2 (fit at 1024, no orphan card, h1, history alert) | Sonnet sub-agent | worktree `ui55` | "## Round 2" in its report |
 | UI-5.1 ([spec](tasks/UI-5.1.md)) | Sonnet sub-agent | worktree `ui51`; ports 3151/8151/9151 | report in worktree |
 | UI-5.2 ([spec](tasks/UI-5.2.md)) | Sonnet sub-agent | worktree `ui52`; ports 3152/8152/9152 | report in worktree |
+| T-054 part 3 setup ([amendment 3](tasks/T-054.md)) | Sonnet sub-agent | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` | schedules hour 14Z signature-burst (alerting on) and 15Z concentration; **last tick 16:02:30Z**; then a later hand analyses. `pgrep -af "qradar_lab_loggen\|hour_chain\|hour_ticks"` |
+| T-102 ([spec](tasks/T-102.md)) README roadmap + routes | GLM 5.3, `--title t102-glm` (PID 801525) | worktree `t102` | report in worktree; log `QRadar-Dash-work/t102/opencode.log` |
+| T-104 ([spec](tasks/T-104.md)) mypy baseline | DeepSeek, `--title t104-ds` (PID 848148) | worktree `t104`; DB `qradar_obs_t104` | report in worktree; log `QRadar-Dash-work/t104/opencode.log` |
 
 **Next:** T-098 after UI-4.2 (both edit `widgets/dashboard.css`); UI-5.8 ([spec](tasks/UI-5.8.md),
 after UI-5.5 and UI-5.6b merge); T-054 part 3 after T-101 (re-run signature-burst with alerting
