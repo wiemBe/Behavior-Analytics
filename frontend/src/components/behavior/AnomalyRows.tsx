@@ -54,7 +54,7 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
   const source = a.log_source_name ?? a.log_source_id;
   // Below 1100 px the Started column folds under the subject.
   const started = (
-    <span className="cell-sub cell-fold fold-sm">
+    <span className="cell-sub cell-fold fold-sm fold-started">
       Started {formatDateTimeCompact(a.anomaly_start ?? a.detected_at)}
     </span>
   );
@@ -235,17 +235,17 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
               </td>
               <td className="num">
                 <ObservedCell a={a} />
-                <span className="cell-sub cell-fold fold-md">
+                <span className="cell-sub cell-fold fold-md fold-dev">
                   Deviation {formatRatio(a.deviation_ratio)}
                 </span>
               </td>
-              <td className="num col-md">{formatRatio(a.deviation_ratio)}</td>
+              <td className="num col-md col-dev">{formatRatio(a.deviation_ratio)}</td>
               <td className="col-sm">
                 <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
                   {a.severity}
                 </span>
               </td>
-              <td className="num col-sm">
+              <td className="num col-sm col-started">
                 {formatDateTimeCompact(a.anomaly_start ?? a.detected_at)}
               </td>
               <td className="col-md">

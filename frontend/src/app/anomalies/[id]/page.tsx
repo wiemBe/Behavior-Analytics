@@ -16,6 +16,7 @@
 // the three strongest contributors, and everything else behind three tabs.
 
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { EvidenceBanner } from "@/components/behavior/EvidenceBanner";
 import { DimensionExplorer } from "@/components/behavior/DimensionExplorer";
@@ -28,6 +29,7 @@ import { VolumeChart } from "@/components/behavior/VolumeChart";
 import { AnomalyTabs } from "@/components/behavior/AnomalyTabs";
 import { detectorSpec } from "@/components/ips/ipsDetectors";
 import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
@@ -46,6 +48,8 @@ import { ratioSpecFor } from "@/components/waf/wafSeries";
 import { dimensionLabel, hasConfidenceLimitation, stateMeaning } from "@/lib/behavior";
 import { summarizeAnomaly, summarizeTimeline } from "@/lib/summarize";
 import { buildSeries } from "@/lib/timeseries";
+
+import "./incident.css";
 
 export const metadata: Metadata = {
   title: "Anomaly investigation",
@@ -190,15 +194,20 @@ export default async function AnomalyDetailPage({
   if (!loaded) {
     return (
       <>
-        <h1 className="page-title">Anomaly investigation</h1>
+        <PageHeader title="Anomaly investigation" />
         <div className="notice" role="alert">
-          {status === 404
-            ? "This anomaly does not exist."
-            : status === 403
-              ? "You do not have permission to view anomaly evidence."
-              : status === 401
-                ? "Your session has expired. Sign in again to continue."
-                : "Could not load this anomaly. The backend may be unreachable."}
+          <p>
+            {status === 404
+              ? "This anomaly does not exist. It may have been removed, or the link may be wrong."
+              : status === 403
+                ? "You do not have permission to view anomaly evidence. Ask an administrator for the read:anomalies grant."
+                : status === 401
+                  ? "Your session has expired. Sign in again to continue."
+                  : "Could not load this anomaly. The backend may be unreachable; reload the page to try again."}
+          </p>
+          <p className="incident-error-link">
+            <Link href="/anomalies">Back to all anomalies</Link>
+          </p>
         </div>
       </>
     );
