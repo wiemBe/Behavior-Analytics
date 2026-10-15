@@ -1,11 +1,3 @@
-/* The log-source detail. The title is an h2 here, so it takes the page header's
-   scale rather than the section scale `.main h2` would give it. */
-.main .detail-header .page-title {
-  margin: 0;
-  font-size: var(--fs-xl);
-  letter-spacing: -0.015em;
-}
-
 .detail-card {
   margin-top: var(--sp-5);
 }

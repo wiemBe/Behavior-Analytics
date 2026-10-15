@@ -32,6 +32,7 @@ describe("AlertActions", () => {
 
     await user.type(screen.getByLabelText("Resolution reason"), "  log source restored  ");
     await user.click(screen.getByRole("button", { name: "Resolve" }));
+    await user.click(screen.getByRole("button", { name: "Resolve alert" }));
 
     await waitFor(() =>
       expect(resolve).toHaveBeenCalledWith("a-1", "log source restored"),
@@ -133,5 +134,45 @@ describe("AlertActions", () => {
     render(<AlertActions alertId="a-1" status="RESOLVED" />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText(/no further action is available/i)).toBeInTheDocument();
+  });
+
+  describe("confirming a resolve", () => {
+    it("asks first and calls nothing until confirmed", async () => {
+      const resolve = vi.spyOn(api, "resolveAlert").mockResolvedValue({} as never);
+      const user = userEvent.setup();
+      render(<AlertActions alertId="a-1" status="OPEN" />);
+
+      expect(screen.queryByText(/cannot be reopened/)).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Resolve" }));
+
+      expect(screen.getByText("Resolve this alert? A resolved alert cannot be reopened.")).toBeVisible();
+      expect(resolve).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: "Resolve alert" }));
+      await waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.queryByText(/cannot be reopened/)).toBeNull());
+    });
+
+    it("moves focus into the confirmation and back to Resolve on Cancel", async () => {
+      const resolve = vi.spyOn(api, "resolveAlert").mockResolvedValue({} as never);
+      const user = userEvent.setup();
+      render(<AlertActions alertId="a-1" status="OPEN" />);
+
+      await user.click(screen.getByRole("button", { name: "Resolve" }));
+      expect(screen.getByRole("button", { name: "Resolve alert" })).toHaveFocus();
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByText(/cannot be reopened/)).toBeNull();
+      expect(screen.getByRole("button", { name: "Resolve" })).toHaveFocus();
+      expect(resolve).not.toHaveBeenCalled();
+    });
+
+    it("leaves Acknowledge a single click", async () => {
+      const ack = vi.spyOn(api, "acknowledgeAlert").mockResolvedValue({} as never);
+      const user = userEvent.setup();
+      render(<AlertActions alertId="a-1" status="OPEN" />);
+      await user.click(screen.getByRole("button", { name: "Acknowledge" }));
+      await waitFor(() => expect(ack).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText(/cannot be reopened/)).toBeNull();
+    });
   });
 });

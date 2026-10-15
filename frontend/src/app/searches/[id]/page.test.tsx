@@ -153,14 +153,16 @@ describe("search detail contents", () => {
     expect(screen.getByText("Every 4 h", { selector: "strong" })).toBeInTheDocument();
   });
 
-  it("lists the query versions with compact UTC times", async () => {
+  it("lists the query versions with compact times under a UTC header", async () => {
     await renderPage();
     // Only the version table exists: the execution history is empty in this test.
     const table = screen.getByRole("table");
     const row = within(table).getAllByRole("row")[1];
     expect(row).toHaveTextContent("v1");
     expect(within(row).getAllByText("—")).toHaveLength(2);
-    expect(row).toHaveTextContent("10-15 04:00 UTC");
+    expect(row).toHaveTextContent("10-15 04:00");
+    // The header says "(UTC)": the cells do not repeat it.
+    expect(row).not.toHaveTextContent("UTC");
   });
 
   it("omits the next run and names an uncategorised search", async () => {
@@ -179,7 +181,8 @@ describe("search execution history", () => {
     expect(within(table).getByRole("columnheader", { name: "Started (UTC)" })).toBeInTheDocument();
     expect(within(table).getByText(/Times are UTC/)).toBeInTheDocument();
     const row = within(table).getAllByRole("row")[1];
-    expect(row).toHaveTextContent("10-15 04:00 UTC");
+    expect(row).toHaveTextContent("10-15 04:00");
+    expect(row).not.toHaveTextContent("UTC");
     expect(row).toHaveTextContent("41.2 s");
     expect(within(row).getByText(/at least/)).toBeInTheDocument();
     expect(row).toHaveTextContent("500");

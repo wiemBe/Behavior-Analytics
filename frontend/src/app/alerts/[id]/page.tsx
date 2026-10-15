@@ -3,7 +3,8 @@ import { Evidence } from "@/components/Evidence";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type Notification } from "@/lib/api";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { formatDateTime } from "@/lib/health";
+import { axisTimeLabel } from "@/lib/searchRuns";
 
 import "./alert-detail.css";
 
@@ -43,17 +44,16 @@ export default async function AlertDetailPage({
 
   return (
     <>
-      {/* An h2: the page test pins this heading at level 2. See the report's open points. */}
-      <header className="page-header detail-header">
-        <div>
-          <h2 className="page-title">{alert.title}</h2>
-      <p className="page-desc">
-        <span className={`pill ${sevTone(alert.severity)}`}>{alert.severity}</span>{" "}
-        <span className="pill">{alert.status}</span> · seen {alert.occurrence_count}× ·
-        fingerprint <code>{alert.fingerprint}</code>
-      </p>
-        </div>
-      </header>
+      <PageHeader
+        title={alert.title}
+        description={
+          <>
+            <span className={`pill ${sevTone(alert.severity)}`}>{alert.severity}</span>{" "}
+            <span className="pill">{alert.status}</span> · seen {alert.occurrence_count}× ·
+            fingerprint <code>{alert.fingerprint}</code>
+          </>
+        }
+      />
 
       <div className="card">
         <div className="k">Evidence</div>
@@ -78,15 +78,15 @@ export default async function AlertDetailPage({
         <div className="notice">No notifications for this alert.</div>
       ) : (
         <TableScroll label="Notification delivery history">
-          <table className="table-dense">
+          <table className="table-dense delivery-table">
             <thead>
               <tr>
                 <th>Channel</th>
                 <th>Transition</th>
                 <th>Status</th>
                 <th className="num">Attempts</th>
-                <th>Sent</th>
-                <th>Next attempt</th>
+                <th>Sent (UTC)</th>
+                <th>Next attempt (UTC)</th>
                 <th>Error</th>
               </tr>
             </thead>
@@ -97,8 +97,8 @@ export default async function AlertDetailPage({
                   <td>{n.transition}</td>
                   <td><span className={`pill ${notifTone(n.status)}`}>{n.status}</span></td>
                   <td className="num">{n.attempts}/{n.max_attempts}</td>
-                  <td>{formatDateTimeCompact(n.sent_at)}</td>
-                  <td>{formatDateTimeCompact(n.next_attempt_at)}</td>
+                  <td className="nowrap">{axisTimeLabel(n.sent_at)}</td>
+                  <td className="nowrap">{axisTimeLabel(n.next_attempt_at)}</td>
                   <td className="cell-error">{n.error_message ?? "—"}</td>
                 </tr>
               ))}
