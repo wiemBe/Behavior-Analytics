@@ -15,6 +15,8 @@ from app.schemas.anomaly import (
     WafMetricBucketOut,
     waf_detection_detail,
 )
+from app.waf.behavior import BLOCK_RATIO
+from tests.unit.test_waf_behavior import ratio_ctx, run
 
 VOLUME = {
     "reason": "812 requests above median",
@@ -62,6 +64,30 @@ def test_ratio_evidence_reads_nested_sections_by_key() -> None:
     assert out.baseline_version == 2 and out.baseline_completeness == 0.8
     assert out.percentage_point_change == 35.0
     assert "198.51.100.2" not in out.model_dump_json()
+
+
+NEW_ENDPOINT_CAVEAT = "A newly requested endpoint may be a deployment as easily as a probe."
+
+
+def test_caveat_is_forwarded_from_the_evidence() -> None:
+    out = waf_detection_detail({"extra": {"caveat": NEW_ENDPOINT_CAVEAT}})
+    assert out is not None
+    assert out.caveat == NEW_ENDPOINT_CAVEAT
+
+
+def test_caveat_is_none_when_absent_and_when_malformed() -> None:
+    absent = waf_detection_detail({"extra": {"ratio": 2.0}})
+    assert absent is not None and absent.caveat is None
+    malformed = waf_detection_detail({"extra": {"caveat": 3}})
+    assert malformed is not None and malformed.caveat is None
+
+
+def test_a_real_detectors_evidence_projects_its_own_caveat() -> None:
+    verdict = run("block", ratio_ctx("block", 40))
+    assert verdict.is_anomalous
+    out = waf_detection_detail(verdict.evidence.to_dict())
+    assert out is not None
+    assert out.caveat == BLOCK_RATIO.caveat
 
 
 def test_missing_and_malformed_values_are_none_never_zero() -> None:

@@ -394,6 +394,8 @@ class WafDetectionDetailOut(BaseModel):
     observed_denominator: float | None = None
     #: The observed minus the expected share, in percentage points (29.7 means +29.7 pp).
     percentage_point_change: float | None = None
+    #: The detector's fixed interpretive caveat ("a change in traffic, not intent").
+    caveat: str | None = None
 
     ratio: float | None = None
     ratio_basis: str | None = None
@@ -615,6 +617,7 @@ def waf_detection_detail(
         observed_numerator=_num(observed, "numerator"),
         observed_denominator=_num(observed, "denominator"),
         percentage_point_change=_num(extra, "percentage_point_change"),
+        caveat=_text(extra, "caveat"),
         ratio=_num(extra, "ratio"),
         ratio_basis=_text(extra, "ratio_basis"),
         robust_score_status=(
