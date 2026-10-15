@@ -158,6 +158,12 @@
   /* The connection-status popover's width, in characters of its own text. */
   --status-popover-w: 44ch;
 
+  /* Administration pages: a settings form and its operational notices stay
+     within one readable scan line; the hub index is narrower because it is
+     only a destination name with one supporting sentence. */
+  --admin-form-max: 96ch;
+  --admin-hub-max: 72ch;
+
   /* --- chart --------------------------------------------------------------
      Consumed by the ECharts option builder so the chart shares the page's
      palette rather than carrying its own hard-coded one. */
