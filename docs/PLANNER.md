@@ -27,11 +27,21 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
 | **UI-3.3b** handover ([spec](tasks/UI-3.3b.md)) | Sonnet sub-agent, "review what you inherit" | worktree `ui33b`; ports 3134/8134/9134; `QRadar-Dash-work/ui33b/` | `docs/tasks/UI-3.3b.report.md`; PNGs `ui33b/png/`. Inherited PNGs: the three 4-column panels still put range + Expand on a second row (told to fix) |
 | **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
 | **T-095** vitest 2 → 4 ([spec](tasks/T-095.md)) | big-pickle, `--standalone`, PID 57274, 09:23 | worktree `t095` (own `node_modules`) | `docs/tasks/T-095.report.md`; log `QRadar-Dash-work/t095/opencode.log` |
-| **T-094** WAF caveat line; Robust z when DEGENERATE/UNAVAILABLE ([spec](tasks/T-094.md)) | Codex, PID 22008, 09:16 | worktree `t094` (own `node_modules`); ports 3138/8138/9138 | `docs/tasks/T-094.report.md`; PNGs `QRadar-Dash-work/t094/png/`; log `t094/logs/codex.log` |
+| **UI-5.7** admin pages reviewed and fixed ([spec](tasks/UI-5.7.md)) | Codex, PID 92141, 09:32 | worktree `ui57` (own `node_modules`); ports 3144/8144/9144 | `docs/tasks/UI-5.7.report.md`; PNGs `QRadar-Dash-work/ui57/png/{before,after}/`; log `ui57/logs/codex.log` |
 
 **Done this session:**
 - **T-093 merged** (`7f59821`, big-pickle, 3 min): `WafDetectionDetailOut.caveat`. The
   orchestrator re-ran ruff (clean) and the unit suite (exit 0); break-it reported.
+- **T-094 merged** (`c389061`, Codex, 11 min): the WAF caveat line; "Robust z" shows a reasoned
+  em dash when DEGENERATE/UNAVAILABLE (WAF, IPS, Phase A). PNGs reviewed; the orchestrator's gate:
+  lint, typecheck clean; 160 files / 2,312 tests; build OK.
+- **UI-3.3b round 1 rejected** (Sonnet handover): to fit one line at 1440 it squeezed the select
+  (the "h" of "24 h" ran into the chevron) and the Expand/link spacing. One line cannot fit at
+  1280 (281 px inner) without truncating titles. **Ruling:** no squeezing; the controls group
+  wraps as one unit; the pill stays on the first body line. Round 2 sent (~09:30). **Ask the user
+  at the Phase 3 review** whether the third row should get wider panels at 1280.
+- Specs written: UI-4.2, UI-5.7 (Phase 5's admin pages, started early on Codex because it
+  overlaps no in-flight file).
 
 **Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
 allows, else Sonnet); Phase 3 screenshots to the user; **UI-4.1** ([spec](tasks/UI-4.1.md),
