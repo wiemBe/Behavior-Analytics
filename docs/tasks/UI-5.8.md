@@ -47,6 +47,23 @@ There are 32 boundary files today (`find frontend/src/app -name loading.tsx -o -
 3. Fix the existing ones within the allowed files. **The existing boundary tests stay green
    unedited**; if a fix needs an edit to one, it is the wrong fix: stop and report it.
 
+## Part 3: `.nowrap` above 1200 px (found in UI-5.6b's round 3)
+
+`globals.css` defines `.nowrap { white-space: nowrap }` only inside `@media (max-width: 1200px)`;
+the only unconditional definition is in `components/ui/controls.css`, which not every page
+imports. Above 1200 px a `td.nowrap` time therefore wraps on pages that do not load
+`controls.css` (UI-5.6b saw "10-14 / 12:59" at 1280 on `/alerts/[id]`). About 16 files use the
+class.
+
+- Define `.nowrap` unconditionally in `globals.css` (one rule, outside every media query), and
+  keep the media query's intent: inside it, `td.num.cell-when` may still fold unless it carries
+  `.nowrap`. Remove nothing else.
+- Pin it in the CSS contract test (`frontend/src/app/shellFixes.test.ts` style: a new test, no
+  edit to existing ones).
+- Measure every route that uses `.nowrap` (grep for it) at 1440×900 and 1280×800: report table
+  width vs container before and after. A table that newly overflows its container is a defect to
+  report, not to hide.
+
 ## Tests
 
 New tests for every new boundary and for markup you add. **Break-it** each new test: confirm it
@@ -70,9 +87,12 @@ fails, then restore.
 - one new shared stylesheet or component for the boundaries if you need one, under
   `frontend/src/components/boundary/` (new directory), with tests
 - `frontend/src/app/tokens.css` (new tokens only, each justified in the report)
+- `frontend/src/app/globals.css`: **only** the `.nowrap` rule of Part 3
+- a new CSS contract test for Part 3
 - `docs/tasks/UI-5.8.report.md` (new)
 
-Not `globals.css`, not `components/ui/*`, not any `page.tsx` other than `/config-changes`.
+Not the rest of `globals.css`, not `components/ui/*`, not any `page.tsx` other than
+`/config-changes`.
 
 ## Gates
 
