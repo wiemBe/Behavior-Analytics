@@ -52,6 +52,14 @@ on every page. Start only after UI-5.8 is merged (it owns the boundaries and `.n
    other `components/catalog/*` widgets for the same mix. (Add `components/catalog/*` and their
    tests to the allowed files for this point.)
 
+10. **The template line runs into its note** (seen in the T-111 review,
+    `docs/screenshots/ui/dashboard-1440x900.png`): on an unsaved template the header reads
+    "Template, not saved 24 h view of fleet volume, …" on one line, two sentences with no
+    separator. Make "Template, not saved" a distinct element (the existing badge style, or its
+    own muted line), so the description reads as its own sentence. Applies to
+    `components/home/HomeDashboard.tsx` and `widgets/dashboard.css` (add both to the allowed
+    files for this point). Check 1440, 1280 and 1024, where the line may wrap.
+
 ## Not in this task
 
 Long single-word source names (a 92-character name wraps to 6 lines at 1024): accepted.
