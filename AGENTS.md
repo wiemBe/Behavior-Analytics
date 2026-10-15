@@ -47,7 +47,7 @@ The project is an on-premises IBM QRadar behavioral-analytics platform. It is st
 - Match the surrounding code: its docstring density, naming, idioms and comment voice.
 - `ruff check app tests` must be clean. The line length is 100.
 - **Never run `ruff format`.** It is not part of this toolchain and would restyle unrelated files.
-- `mypy app` is advisory. The baseline is 31 errors in 18 files; do not add any.
+- `mypy app` must stay clean: the baseline is 0 errors since T-104 (2026-10-15). Do not add any.
 
 ## 3a. Frontend quality bar
 
