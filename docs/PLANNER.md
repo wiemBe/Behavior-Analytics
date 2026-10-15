@@ -8,6 +8,50 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶▶ RESUME HERE — STATE AT 23:25, 2026-10-15 (supersedes 22:55 below; the orchestrator session was at 90 %)
+
+**After a reboot:**
+1. `docker compose -f docker-compose.test.yml up -d test-db`. The tmpfs DB is empty; recreate
+   the agent DBs `qradar_obs_f1`, `_f1_mig` and `qradar_obs_f4` with `createdb`.
+2. Check for leftovers: `pgrep -af "opencode|codex|grok -p|qradar_lab_loggen|hour_tick[s]"`, and
+   `systemctl --user status t110-launcher`.
+
+**Merged since 22:55:** UI-5.8 (`dde1ee6`), T-112, T-109, T-111, T-108 and T-098.
+- Merged-head frontend gate on `dde1ee6`: lint and typecheck clean, **2,826 tests passed**,
+  build OK.
+- Backend full gate on `0bdc334`: green (integration 1,168 passed). Re-run it on the head
+  before `main`, because T-109 changed the backend.
+
+**In flight (collect each; if cut off, hand over with "review what you inherit"):**
+
+| Task | Agent | Where |
+|---|---|---|
+| **UI-5.9** (the last Phase 5 task, points 1–10) | Sonnet sub-agent | worktree `ui59`; the report is updated point by point |
+| **F-1** Phase F core, migration `0024` | GLM (`f1-glm`) | worktree `f1`; **merge only after Phase 5 is on `main`** |
+| **F-4** F.2 backend guards | **Grok** (`grok -p`) | worktree `f4`; same merge rule |
+| **T-113** README refresh | **Grok** | worktree `t113` |
+| **OPS-0** operability design (D-16) | **Grok** | worktree `ops0` → `docs/OPERATIONS-DESIGN.md`, for the user's approval |
+| **T-054 part 4 / T-110** | block-shift chains (last tick 00:02:30 local); then the systemd unit `t110-launcher` dumps the DB to `QRadar-Dash-work/t054/db/` and runs **Grok**, with step-5 as the fallback | report section "Part 4 analysis" in `QRadar-Dash-work/t054/T-054.report.md` → copy to `docs/tasks/T-054.report.md` |
+
+Grok's progress shows in `~/.grok/logs/unified.jsonl` (filter by pid). Its plain log stays flat
+while it works.
+
+**The user (23:00–23:25):**
+- Grok 4.7 is to take most of the work.
+- D-16: the production host has no AI. The user wants a painless install (`./qradar-dash
+  install`), prebuilt GHCR images, upgrade with automatic backup and rollback, `doctor`, a
+  support bundle and a symptom-indexed runbook.
+- **Open questions for the user:**
+  - the runbook's language (TR, EN or both);
+  - who operates production;
+  - the five Phase F questions in §F.16.
+
+**Next:** collect the above; Phase 5 → full gate → `main`; re-run the T-111 screenshot capture;
+Phase 6 (UI-6.1 to UI-6.4); Phase F build (F-2, F-3, F-5…); OPS-1… after the user approves
+OPS-0.
+
+---
+
 ## ▶ RESUME HERE — STATE AT 22:55, 2026-10-15 (the machine may shut down; the session limit is near)
 
 The user (22:52): the machine may be shut down, around 00:30 at the latest; act so that nothing
