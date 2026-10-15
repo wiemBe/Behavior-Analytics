@@ -127,7 +127,7 @@ export function BucketChart({
         },
         yAxis: {
           type: "value",
-          name: `Events (${unit})`,
+          name: `Volume (${unit})`,
           nameTextStyle: { ...text, align: "left" },
           min: 0,
           max: yMax,

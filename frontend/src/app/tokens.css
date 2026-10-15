@@ -164,6 +164,18 @@
   --admin-form-max: 96ch;
   --admin-hub-max: 72ch;
 
+  /* Catch-all senders: the sender hostname's floor (32ch of the monospace face: a
+     50-character name in two lines), the source column's floor and cap, and the bucket detail grid's column floor so
+     it stays useful at every supported viewport. */
+  --catchall-sender-min: 32ch;
+  --catchall-source-min: 17ch;
+  --catchall-source-max: 17ch;
+  --catchall-source-narrow: 12ch;
+  --catchall-note-narrow: 14ch;
+  --catchall-seen-label-w: 5ch;
+  --catchall-bucket-col-min: 15rem;
+  --catchall-top-max: 44rem;
+
   /* --- chart --------------------------------------------------------------
      Consumed by the ECharts option builder so the chart shares the page's
      palette rather than carrying its own hard-coded one. */

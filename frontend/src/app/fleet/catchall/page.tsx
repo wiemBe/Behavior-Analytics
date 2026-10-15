@@ -18,6 +18,8 @@ import {
 import { SendersQueue } from "./SendersQueue";
 import { SourceVolume } from "./SourceVolume";
 
+import "./catchall.css";
+
 export const metadata: Metadata = {
   title: "Catch-all senders",
 };
