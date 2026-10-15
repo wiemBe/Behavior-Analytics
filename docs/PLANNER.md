@@ -75,7 +75,7 @@ context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-fla
 | **T-111** ([spec](tasks/T-111.md)): refresh `docs/screenshots/ui/` (user request) | Sonnet sub-agent (dies with the chat) | worktree `t111`; ports 3111/8111/9111 | report; capture script `QRadar-Dash-work/t111/capture.mjs`, **re-run after UI-5.8/5.9** |
 | **T-112** ([spec](tasks/T-112.md)): saving tests robust under load | DeepSeek, `--title t112-ds` (PID 1482205) | worktree `t112` | report; log `t112/opencode.log` |
 | **T-054 part 4** (block-shift, 20Z) | detached chains, PIDs 1445211/1445212 | `QRadar-Dash-work/t054/` | last tick 21:02:30Z (00:02:30 local) → **T-110** ([spec](tasks/T-110.md)) analysis (GLM or DeepSeek) |
-| Backend full gate on `0bdc334` | orchestrator | worktree `gate` | ruff, mypy 0 and alembic (head `0023`, no drift) OK; unit 3,009 rc 0; integration re-running (`gate/0bdc334/backend-rc.log`) |
+| Backend full gate on `0bdc334` | orchestrator | worktree `gate` | **Green:** ruff clean; mypy 0; alembic up/down/up, head `0023`, no drift; unit 3,009 passed; **integration 1,168 passed** on a fresh DB (20 min). T-109 changed the backend afterwards, so the final gate before `main` re-runs on the head |
 
 **Next:** collect the above; UI-5.9 after UI-5.8; full gate → `main`; Phase 6 (UI-6.1, UI-6.2).
 
