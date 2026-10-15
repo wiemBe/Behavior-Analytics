@@ -39,8 +39,10 @@ free (T-099, T-100, T-101 done well). Sonnet sub-agents die with the chat.
 1. Collect UI-4.2, UI-5.8, T-104 (above). Gate the head.
 2. **T-098** (widget frame polish, [spec](tasks/T-098.md)) after UI-4.2 merges (both edit
    `widgets/dashboard.css`) — a good Codex task after 19:34.
-3. T-054 part 3 analysis after 19:02 local.
-4. "UI-5.9" consistency task from the list below (spec to write).
+3. T-054 part 3 analysis after 19:02 local: **[T-105](tasks/T-105.md)** (spec ready; GLM).
+4. **[UI-5.9](tasks/UI-5.9.md)** cross-page consistency (spec ready; after UI-5.8).
+   Phase 6 specs ready: **[UI-6.1](tasks/UI-6.1.md)** viewport matrix and overflow measurement,
+   **[UI-6.2](tasks/UI-6.2.md)** accessibility pass (both after Phase 5 is merged).
 5. Full gate (backend: ruff, mypy, unit, integration on a fresh DB, alembic round trip; frontend:
    four gates) → `feat/phase-ce` → `main` → Phase 5 screenshots to the user.
 6. Phase 6 (UI-6.1 viewport matrix, 6.2 accessibility, 6.3 performance, 6.4 cleanup, 6.5 docs).
