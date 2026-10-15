@@ -125,6 +125,7 @@ export function SilentRules({
               </p>
               <div className="stats-excluded-detail">
                 <h3>Not judged, by type</h3>
+                <TableScroll label="Not judged, by type">
                 <table className="stats-table stats-excluded-table">
                   <caption className="sr-only">Enabled rules that were not judged, by type.</caption>
                   <thead>
@@ -148,6 +149,7 @@ export function SilentRules({
                     ))}
                   </tbody>
                 </table>
+                </TableScroll>
               </div>
             </div>
           )}
@@ -157,6 +159,11 @@ export function SilentRules({
   );
 }
 
+// Lower-cases the first letter so the reason reads on after "because", but leaves an
+// initialism alone: "FLOW rules ..." must not become "fLOW rules ...".
 function lowerFirst(s: string): string {
-  return s.length > 0 ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+  if (s.length === 0 || (s.length > 1 && s.charAt(1) === s.charAt(1).toUpperCase() && /[A-Za-z]/.test(s.charAt(1)))) {
+    return s;
+  }
+  return s.charAt(0).toLowerCase() + s.slice(1);
 }

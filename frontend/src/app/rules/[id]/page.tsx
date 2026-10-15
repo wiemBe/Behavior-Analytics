@@ -7,7 +7,12 @@ import {
 } from "@/lib/api";
 import Link from "next/link";
 import { CapacityHistory } from "@/components/rules/CapacityHistory";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { formatDateTime, healthMeaning, healthTone, isUnestablished } from "@/lib/health";
+
+import "@/components/ui/controls.css";
+import "../rules.css";
 
 export default async function RuleDetailPage({
   params,
@@ -17,7 +22,7 @@ export default async function RuleDetailPage({
   const { id } = await params;
 
   let rule: RuleDetail | null = null;
-  let history: RuleHealthSnapshot[] = [];
+  let history: RuleHealthSnapshot[] | null = [];
   let capacityHistory: CapacitySample[] | null = [];
   let missing = false;
   let error = false;
@@ -25,7 +30,7 @@ export default async function RuleDetailPage({
   try {
     [rule, history, capacityHistory] = await Promise.all([
       api.rule(id),
-      api.ruleHealthHistory(id).catch(() => []),
+      api.ruleHealthHistory(id).catch(() => null),
       ruleStatisticsApi.capacityHistory(id).catch(() => null),
     ]);
   } catch (e) {
@@ -36,11 +41,13 @@ export default async function RuleDetailPage({
   if (missing || error || !rule) {
     return (
       <>
-        <h2>Rule</h2>
-        <div className="notice">
-          {missing
-            ? "This rule has not been collected."
-            : "Could not load this rule. Try again shortly."}
+        <PageHeader title="Rule" />
+        <div className="notice" role={missing ? "status" : "alert"}>
+          <p>
+            {missing
+              ? "This rule has not been collected."
+              : "Could not load this rule. Try again shortly."}
+          </p>
         </div>
         <p>
           <Link href="/rules">Back to rules</Link>
@@ -50,7 +57,7 @@ export default async function RuleDetailPage({
   }
 
   const r = rule;
-  const latest = history[0] ?? null;
+  const latest = history?.[0] ?? null;
   const buildingBlocks = r.dependencies.filter((d) => d.kind === "BUILDING_BLOCK");
   const telemetry = r.dependencies.filter((d) => d.kind !== "BUILDING_BLOCK");
 
@@ -59,13 +66,12 @@ export default async function RuleDetailPage({
       <p className="muted">
         <Link href="/rules">← Rule Health</Link>
       </p>
-      <h2>{r.name}</h2>
-      <p className="subtitle">
-        QRadar rule {r.qradar_id}
-        {r.is_building_block ? " · building block" : ""}
-      </p>
+      <PageHeader
+        title={r.name}
+        description={`QRadar rule ${r.qradar_id}${r.is_building_block ? " · building block" : ""}`}
+      />
 
-      <div className="cards">
+      <div className="cards rule-cards rule-cards-2">
         <div className="card">
           <div className="k">Health</div>
           <div className={`v ${healthTone(r.health_status)}`}>
@@ -131,7 +137,8 @@ export default async function RuleDetailPage({
       </div>
 
       <h3>Metadata</h3>
-      <table>
+      <TableScroll label="Rule metadata">
+      <table className="kv-table">
         <tbody>
           <tr>
             <th>Rule type</th>
@@ -181,37 +188,50 @@ export default async function RuleDetailPage({
           </tr>
         </tbody>
       </table>
+      </TableScroll>
 
       <CapacityHistory samples={capacityHistory} />
 
       <h3>Health history</h3>
-      {history.length === 0 ? (
+      {history === null ? (
+        <div className="notice" role="alert">
+          <p>
+            <strong>The health history could not be loaded.</strong>
+          </p>
+          <p>
+            Nothing was changed, and this does not mean no evaluation was stored. Reload the
+            page; if it keeps failing, check that the backend is reachable.
+          </p>
+        </div>
+      ) : history.length === 0 ? (
         <div className="notice">No rule-health evaluation has been stored yet.</div>
       ) : (
-        <table>
+        <TableScroll label="Rule health history">
+        <table className="rules-history table-dense">
           <thead>
             <tr>
               <th>Evaluated</th>
               <th>Status</th>
-              <th>Confidence</th>
-              <th>Triggers</th>
-              <th>Offenses</th>
+              <th className="num">Confidence</th>
+              <th className="num">Triggers</th>
+              <th className="num">Offenses</th>
               <th>Reason</th>
             </tr>
           </thead>
           <tbody>
             {history.map((h) => (
               <tr key={h.evaluated_at}>
-                <td>{formatDateTime(h.evaluated_at)}</td>
+                <td className="nowrap">{formatDateTime(h.evaluated_at)}</td>
                 <td><span className={`pill ${healthTone(h.status)}`}>{h.status.replace(/_/g, " ")}</span></td>
-                <td>{Math.round(h.confidence * 100)}%</td>
-                <td>{h.trigger_count}</td>
-                <td>{h.offense_contribution_count}</td>
-                <td className="muted">{h.reason ?? "—"}</td>
+                <td className="num">{Math.round(h.confidence * 100)}%</td>
+                <td className="num">{h.trigger_count}</td>
+                <td className="num">{h.offense_contribution_count}</td>
+                <td className="muted cell-reason">{h.reason ?? "—"}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
     </>
   );

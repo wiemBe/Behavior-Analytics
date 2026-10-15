@@ -1,0 +1,66 @@
+/* Rule list and rule detail. */
+.rule-list-table td.cell-rule-name {
+  min-width: 20ch;
+}
+.rule-list-table td.cell-meaning {
+  min-width: 9ch;
+}
+
+/* Metadata table: quiet key column of a fixed measure, value beside it. */
+.kv-table th {
+  width: 22ch;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* The reason a verdict was reached keeps a readable measure beside the figures. */
+.rules-history td.cell-reason {
+  min-width: 20ch;
+}
+
+/* A metric group sits in one row at wide widths and in at most two balanced rows at 1024 px;
+   the column count comes from the group's size (`rules-cards-N`), never a lone card on a row. */
+.cards.rules-cards {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.cards.rules-cards .card {
+  padding: var(--sp-3) var(--sp-4);
+}
+@media (max-width: 1100px) {
+  .cards.rules-cards-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cards.rules-cards-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .cards.rules-cards-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .cards.rules-cards-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* A metric group sits in one row at wide widths and in at most two balanced rows at 1024 px;
+   the column count comes from the group's size (`rule-cards-N`), never a lone card on a row. */
+.cards.rule-cards {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.cards.rule-cards .card {
+  padding: var(--sp-3) var(--sp-4);
+}
+@media (max-width: 1100px) {
+  .cards.rule-cards-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* A time column's header names the zone and may wrap onto two lines, so the column is as
+   narrow as its times, which never wrap. */
+.rule-list-table th.col-time {
+  white-space: normal;
+}
