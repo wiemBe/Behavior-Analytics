@@ -47,6 +47,26 @@ There are 32 boundary files today (`find frontend/src/app -name loading.tsx -o -
 3. Fix the existing ones within the allowed files. **The existing boundary tests stay green
    unedited**; if a fix needs an edit to one, it is the wrong fix: stop and report it.
 
+### Ruling (orchestrator, 2026-10-15 ~21:55): the guidelines win, no skeleton
+
+Codex found a conflict in this spec. Part 2's "mirror the first block's shape" and "one
+skeleton style" contradict `docs/PRODUCT-UX-GUIDELINES.md` §8 (`LoadingState` / `ErrorState`).
+§8 is normative: every boundary is built from `components/ui/RouteState.tsx`, in plain text,
+with no spinner and no skeleton. The ruling:
+- **No skeleton shapes, no shimmer, no grey placeholder blocks.** A loading boundary is the
+  route's real `PageHeader` (the same `h1` text, with no data-dependent parts) followed by
+  `LoadingState`, placed where the first block starts. An error boundary is `PageHeader` plus
+  `ErrorState`. A shared wrapper under `components/boundary/` may compose `PageHeader` and
+  `RouteState`. `components/ui/*` stays unedited.
+- **Layout stability comes from structure, not shapes.** Measure the `h1` top and the first
+  block's top in the loading and loaded states. The `h1` must not move, and the `LoadingState`
+  line must start within 4 px of the loaded first block's top. Report both numbers per boundary.
+- Every other Part 2 check stands: what failed and what to do, `role="alert"`, a working
+  `reset`, tokens only, and one look across all boundaries.
+
+`config-changes/page.test.tsx`: keep only the authorised assertion changes. Restore every renamed
+test title and edited comment. A new test added below the existing ones is allowed.
+
 ## Part 3: `.nowrap` above 1200 px (found in UI-5.6b's round 3)
 
 `globals.css` defines `.nowrap { white-space: nowrap }` only inside `@media (max-width: 1200px)`;
