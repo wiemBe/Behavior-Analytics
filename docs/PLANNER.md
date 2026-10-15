@@ -25,7 +25,7 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
 | Task | Agent | Where | Collect / check |
 |---|---|---|---|
 | **UI-3.5b** ([spec](tasks/UI-3.5b.md)) | Sonnet sub-agent, from ~09:40 | worktree `ui35b` (own `node_modules`); ports 3136/8136/9136; `QRadar-Dash-work/ui35b/` | `docs/tasks/UI-3.5b.report.md`; PNGs `ui35b/png/`. Check progress by file times ~10:15 |
-| **T-096** characterization tests, ten routes ([spec](tasks/T-096.md)) | big-pickle, `--standalone`, PID 121866, 09:40 | worktree `t096` (own `node_modules`) | `docs/tasks/T-096.report.md`; log `QRadar-Dash-work/t096/opencode.log` |
+| **T-097** characterization tests, untested `loading`/`error` ([spec](tasks/T-097.md)) | big-pickle, `--standalone`, PID 161948, 09:54 | worktree `t097` (own `node_modules`) | `docs/tasks/T-097.report.md`; log `QRadar-Dash-work/t097/opencode.log` |
 | **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
 | **UI-5.4** fleet pages reviewed and fixed ([spec](tasks/UI-5.4.md)) | Codex, PID 148879, 09:49 | worktree `ui54` (own `node_modules`); ports 3146/8146/9146 | `docs/tasks/UI-5.4.report.md`; PNGs `QRadar-Dash-work/ui54/png/{before,after}/`; log `ui54/logs/codex.log` |
 
@@ -55,6 +55,17 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
   Its review was shallow (five measure/spacing defects); UI-5.4's spec asks for a harder look.
   Left as small points: the cadence table repeats "UTC" in its header and its cells. Merged-head
   gate: lint, typecheck clean; 162 files / 2,326 tests; build OK.
+- **T-096 merged** (`6d44fd5`, big-pickle, 12 min): page tests for the ten untested routes
+  (76 tests) and **8 defects recorded as `it.todo`**: offense detail draws unmeasured
+  Events/Flows and Sources/Destinations as 0; `/log-sources` says "0 sources" on a failed read
+  and tones an unknown status as critical; times without a timezone on `/log-sources`,
+  `/log-sources/[id]`, `/alerts`, `/alerts/[id]`; `/log-sources/[id]` uses inline styles.
+  UI-5.6's spec carries the log-sources and alerts ones; the offense ones go to UI-5.5.
+  Orchestrator re-ran the ten files (76 passed, 8 todo), lint, typecheck.
+- **T-054 finding so far:** `IPS_NEW_DESTINATION_PORT` needs ≥ 24 h of continuous EXACT history
+  (`ips_new_port_history_days` has `ge=1`), so it cannot be validated in a several-hour run
+  (fail-closed by design; the report will say so).
+- Specs: UI-5.6 (ready), T-097.
 
 **Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
 allows, else Sonnet); Phase 3 screenshots to the user; **UI-4.1** ([spec](tasks/UI-4.1.md),
