@@ -28,12 +28,15 @@ export function SourceAdvanced({
   buckets,
   cells,
   cellsFailed,
+  bucketsFailed = false,
 }: {
   behavior: SourceBehavior;
   meta: LogSourceDetail | null;
   buckets: MetricBucket[];
   cells: BaselineCell[];
   cellsFailed: boolean;
+  /** The metric read failed: the bucket table is not "empty", it is unread. */
+  bucketsFailed?: boolean;
 }) {
   const recent = [...buckets]
     .sort((a, b) => Date.parse(b.bucket_start) - Date.parse(a.bucket_start))
@@ -41,7 +44,7 @@ export function SourceAdvanced({
 
   return (
     <div className="stack-6">
-      <Disclosure summary="Baseline history" note={`${cells.length} cells`}>
+      <Disclosure summary="Baseline history" note={cellsFailed ? "not loaded" : `${cells.length} cells`}>
         {cellsFailed ? (
           <div className="notice" role="alert">
             Baseline history could not be loaded. This is a failed request, not
@@ -117,9 +120,16 @@ export function SourceAdvanced({
 
       <Disclosure
         summary="Metric buckets"
-        note={`${Math.min(recent.length, BUCKET_ROWS)} most recent`}
+        note={
+          bucketsFailed ? "not loaded" : `${Math.min(recent.length, BUCKET_ROWS)} most recent`
+        }
       >
-        {recent.length === 0 ? (
+        {bucketsFailed ? (
+          <div className="notice">
+            Metric history could not be loaded (see the alert above). This is a
+            failed request, not an absence of collection.
+          </div>
+        ) : recent.length === 0 ? (
           <div className="notice">
             No metric buckets were collected in this window. This is an absence
             of collection, not an observation of zero traffic.

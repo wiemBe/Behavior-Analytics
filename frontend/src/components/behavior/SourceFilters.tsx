@@ -25,7 +25,7 @@ const STATES = [
 
 export function SourceFilters({ query }: { query: SourceQuery }) {
   return (
-    <form className="filters" method="get" action="/behavior/sources">
+    <form className="filters source-filters" method="get" action="/behavior/sources">
       <label className="sr-only" htmlFor="source-q">
         Search by source name
       </label>

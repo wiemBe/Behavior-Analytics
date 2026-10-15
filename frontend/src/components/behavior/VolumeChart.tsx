@@ -76,6 +76,29 @@ export interface TransitionMarker {
 /** The unit every value on this chart is in. */
 const UNIT = "EPS";
 
+/**
+ * Union of overlapping or touching `[start, end]` intervals, in epoch ms.
+ *
+ * Each mark area is painted with the same translucent fill, so two incidents
+ * over one stretch of time would stack their alpha and read as a stronger
+ * signal there. Merged, every instant is covered by exactly one band.
+ */
+export function mergeIntervals(
+  spans: Array<{ start: number; end: number }>,
+): Array<{ start: number; end: number }> {
+  const sorted = spans
+    .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end))
+    .map((s) => ({ start: Math.min(s.start, s.end), end: Math.max(s.start, s.end) }))
+    .sort((a, b) => a.start - b.start);
+  const out: Array<{ start: number; end: number }> = [];
+  for (const s of sorted) {
+    const last = out[out.length - 1];
+    if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
+    else out.push({ ...s });
+  }
+  return out;
+}
+
 export function VolumeChart({
   buckets,
   expected,
@@ -124,17 +147,19 @@ export function VolumeChart({
             { xAxis: u.end },
           ],
         ),
-        ...anomalies.map(
-          (a): MarkAreaPair => [
-            {
-              xAxis: Date.parse(a.start),
-              itemStyle: { color: c.anomaly },
-              name: a.label ?? "anomaly",
-            },
-            // An anomaly with no end is still running; the shading therefore
-            // extends to the last observed point rather than stopping short and
-            // implying the incident closed.
-            { xAxis: a.end ? Date.parse(a.end) : points[points.length - 1].t },
+        // An anomaly with no end is still running; the shading therefore
+        // extends to the last observed point rather than stopping short and
+        // implying the incident closed. Overlapping incidents are merged so
+        // the band keeps one intensity (see `mergeIntervals`).
+        ...mergeIntervals(
+          anomalies.map((a) => ({
+            start: Date.parse(a.start),
+            end: a.end ? Date.parse(a.end) : points[points.length - 1].t,
+          })),
+        ).map(
+          (m): MarkAreaPair => [
+            { xAxis: m.start, itemStyle: { color: c.anomaly }, name: "Anomalous interval" },
+            { xAxis: m.end },
           ],
         ),
       ];

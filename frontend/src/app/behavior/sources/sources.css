@@ -1,0 +1,34 @@
+/* Source inventory and source detail. */
+
+/* A long source name keeps a readable measure at 1024 px: without a floor the
+   time and count columns take the width and the name breaks into a word per
+   line. */
+.source-inventory td.cell-name {
+  min-width: 16ch;
+}
+
+/* The search field gives the row back to the filter button instead of leaving
+   it alone on a second line. */
+.source-filters input[type="search"] {
+  flex-basis: 9rem;
+}
+
+/* A panel heading is the first thing in its panel: the section margin that
+   separates headings in running content only pushes it away from the top edge. */
+.quality-grid .dimension-panel-head h3 {
+  margin: 0;
+}
+
+/* A time never wraps; at this size the zone fits beside it in a quarter-width card. */
+.card .v.metric-timestamp {
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+/* Below 1200 px the Detail link repeats the source name's own link (same target)
+   and the width it takes is what the name and the figures need. */
+@media (max-width: 1200px) {
+  .source-inventory .col-detail {
+    display: none;
+  }
+}

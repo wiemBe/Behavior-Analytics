@@ -32,6 +32,8 @@ import {
   sourceQueryParams,
 } from "@/lib/sourceInventory";
 
+import "./sources.css";
+
 export const metadata: Metadata = {
   title: "Sources",
 };
@@ -78,7 +80,7 @@ export default async function SourcesIndexPage({
         ? "You do not have permission to view behavioral analytics."
         : err instanceof ApiError && err.status === 401
           ? "Your session has expired. Sign in again to continue."
-          : "Source behavior could not be loaded. The backend may be unreachable.";
+          : "Source behavior could not be loaded. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health.";
   }
 
   const matched = sortSources(
@@ -115,7 +117,7 @@ export default async function SourcesIndexPage({
       ) : (
         <>
           <TableScroll label="Monitored log sources">
-            <table>
+            <table className="source-inventory">
               <caption className="sr-only">
                 Monitored log sources with observed and expected events per
                 second, deviation from baseline, and active anomaly count.
@@ -135,7 +137,7 @@ export default async function SourcesIndexPage({
                   <th scope="col" className="num">
                     Anomalies
                   </th>
-                  <th scope="col">
+                  <th scope="col" className="col-detail">
                     <span className="sr-only">Detail</span>
                   </th>
                 </tr>
@@ -173,7 +175,7 @@ export default async function SourcesIndexPage({
                         <span className="muted">0</span>
                       )}
                     </td>
-                    <td>
+                    <td className="col-detail">
                       <a href={`/behavior/sources/${s.log_source_id}`}>Detail</a>
                     </td>
                   </tr>
