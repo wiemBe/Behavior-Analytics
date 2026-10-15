@@ -26,12 +26,17 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
 |---|---|---|---|
 | **UI-3.3b** handover ([spec](tasks/UI-3.3b.md)) | Sonnet sub-agent, "review what you inherit" | worktree `ui33b`; ports 3134/8134/9134; `QRadar-Dash-work/ui33b/` | `docs/tasks/UI-3.3b.report.md`; PNGs `ui33b/png/`. Inherited PNGs: the three 4-column panels still put range + Expand on a second row (told to fix) |
 | **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
-| **T-093** WAF `caveat` in `WafDetectionDetailOut` ([spec](tasks/T-093.md)) | big-pickle, `--standalone`, PID 22730, 09:16 | worktree `t093` | `docs/tasks/T-093.report.md` in the worktree |
+| **T-095** vitest 2 → 4 ([spec](tasks/T-095.md)) | big-pickle, `--standalone`, PID 57274, 09:23 | worktree `t095` (own `node_modules`) | `docs/tasks/T-095.report.md`; log `QRadar-Dash-work/t095/opencode.log` |
 | **T-094** WAF caveat line; Robust z when DEGENERATE/UNAVAILABLE ([spec](tasks/T-094.md)) | Codex, PID 22008, 09:16 | worktree `t094` (own `node_modules`); ports 3138/8138/9138 | `docs/tasks/T-094.report.md`; PNGs `QRadar-Dash-work/t094/png/`; log `t094/logs/codex.log` |
 
+**Done this session:**
+- **T-093 merged** (`7f59821`, big-pickle, 3 min): `WafDetectionDetailOut.caveat`. The
+  orchestrator re-ran ruff (clean) and the unit suite (exit 0); break-it reported.
+
 **Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
-allows, else Sonnet); Phase 3 screenshots to the user; Phase 4 UI specs (UI-4.1 → 4.3); the
-user's open decisions (D-12 name, G-5 geo window, the lab ACTION property).
+allows, else Sonnet); Phase 3 screenshots to the user; **UI-4.1** ([spec](tasks/UI-4.1.md),
+ready; UI-4.3 folded in; ports 3140/8140/9140; after UI-3.5b, both touch `widgets/*`); then the
+UI-4.2 spec; the user's open decisions (D-12 name, G-5 geo window, the lab ACTION property).
 
 ---
 
