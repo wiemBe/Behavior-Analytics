@@ -26,7 +26,7 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 | Task | Agent | Where |
 |---|---|---|
-| **UI-5.9** (the last Phase 5 task, points 1–10) | Sonnet sub-agent | worktree `ui59`; the report is updated point by point |
+| **UI-5.9** (the last Phase 5 task, points 1–10) | Sonnet did all ten points to 23:27, then was **stopped at the user's request** ("Sonnet eats your limit, give it to Grok") → **Grok** handover from 23:29 | worktree `ui59`; log `QRadar-Dash-work/ui59/grok.log` |
 | **F-1** Phase F core, migration `0024` | GLM (`f1-glm`) | worktree `f1`; **merge only after Phase 5 is on `main`** |
 | **F-4** F.2 backend guards | **Grok** (`grok -p`) | worktree `f4`; same merge rule |
 | **T-113** README refresh | **Grok** | worktree `t113` |
