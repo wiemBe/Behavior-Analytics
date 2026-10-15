@@ -28,7 +28,7 @@ import {
 import { WidgetEditContext } from "@/components/home/WidgetFrame";
 
 import { Catalog, MAX_WIDGETS } from "./Catalog";
-import { ConfigureDrawer, type ConfigChoice } from "./Configure";
+import { ConfigureDrawer, hasConfigure, type ConfigChoice } from "./Configure";
 import { ExpandDialog } from "./Expand";
 import {
   columnsForWidth,
@@ -118,6 +118,7 @@ function PlacedWidget({
   arrange,
   onRange,
   onExpand,
+  onConfigure = null,
   expanded = false,
 }: {
   widget: LayoutWidget;
@@ -127,6 +128,8 @@ function PlacedWidget({
   onRange: (range: WidgetRange) => void;
   /** Opens the expand dialog; null where Expand is not offered from the frame. */
   onExpand: ((trigger: HTMLElement) => void) | null;
+  /** Opens the configure drawer; set in customize mode only. */
+  onConfigure?: ((trigger: HTMLElement) => void) | null;
   expanded?: boolean;
 }) {
   const def = widgetDef(widget.type);
@@ -156,6 +159,7 @@ function PlacedWidget({
       setRange: onRange,
       onExpand: def.expandable ? onExpand : null,
       expanded,
+      onConfigure: hasConfigure(def) ? onConfigure : null,
     };
     content = (
       <WidgetRuntimeContext.Provider value={runtime}>
@@ -330,6 +334,7 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
                 onRemove={() => remove(widget.id)}
                 onRange={(range) => setRange(widget.id, range)}
                 onExpand={null}
+                onConfigure={(from) => openOverlay(setConfigureId, widget.id, from)}
               />
             )}
           />

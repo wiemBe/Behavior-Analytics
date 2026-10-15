@@ -24,6 +24,11 @@ export interface WidgetRuntime {
   onExpand: ((trigger: HTMLElement) => void) | null;
   /** True inside the expand dialog. */
   expanded: boolean;
+  /**
+   * Opens the configure drawer from this trigger; set only while customizing. A widget whose
+   * subject is not chosen, or no longer exists, offers it; in read mode it only says so.
+   */
+  onConfigure?: ((trigger: HTMLElement) => void) | null;
 }
 
 export const WidgetRuntimeContext = createContext<WidgetRuntime | null>(null);

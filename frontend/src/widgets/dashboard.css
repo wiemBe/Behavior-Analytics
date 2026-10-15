@@ -480,9 +480,31 @@ dialog.dg-catalog::backdrop {
   font-weight: var(--fw-medium);
   color: var(--text-2);
 }
-.dg-field select {
+.dg-field select,
+.dg-field input[type="search"] {
   padding: var(--sp-2);
   font-size: var(--fs-base);
+}
+/* The filter over a long option list: a text field that looks like the selects it sits above. */
+.dg-field input[type="search"] {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font-family: inherit;
+}
+/* The states of a field whose options come from a read: text, never a spinner. */
+.dg-field-state,
+.dg-field-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.dg-field-state {
+  padding: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
 }
 .dg-configure-foot {
   display: flex;

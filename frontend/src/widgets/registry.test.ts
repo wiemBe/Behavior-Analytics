@@ -18,7 +18,7 @@ describe("widget registry", () => {
     for (const type of types) expect(type).toMatch(/^[a-z0-9_.]{1,64}$/);
   });
 
-  it("lists exactly the Phase 2 widgets, the catalog widgets and the two blocked ones", () => {
+  it("lists exactly the Phase 2 widgets, the catalog widgets and the one blocked one", () => {
     expect(WIDGETS.filter((w) => w.status === "live").map((w) => w.type)).toEqual([
       "kpi.total_eps",
       "kpi.log_sources",
@@ -39,10 +39,12 @@ describe("widget registry", () => {
       "table.outage_policy",
       "waf.sources",
       "table.recent_waf_anomalies",
+      "waf.endpoint_traffic",
+      "chart.eps_observed_expected",
+      "ips.source_anomalies",
     ]);
     expect(WIDGETS.filter((w) => w.status === "blocked").map((w) => w.type)).toEqual([
       "map.geography",
-      "ips.source_anomalies",
     ]);
   });
 
@@ -90,7 +92,9 @@ describe("widget registry", () => {
     expect(widgetDef("map.geography")?.blockedBy).toBe(
       "the map widget is not built yet; geo collection is",
     );
-    expect(widgetDef("ips.source_anomalies")?.blockedBy).toBe("the IPS analyst API is being built");
+    // UI-3.5b: the IPS analyst API and its UI exist, so the IPS widget is no longer blocked.
+    expect(widgetDef("ips.source_anomalies")?.status).toBe("live");
+    expect(widgetDef("ips.source_anomalies")?.blockedBy).toBeUndefined();
   });
 
   it("keeps every default size inside its own bounds and the grid", () => {
