@@ -17,7 +17,7 @@ import { formatRatio, NOT_MEASURED, stateTone } from "@/lib/behavior";
 import { formatEpsValue } from "@/lib/fleet";
 import { deviationGapText, epsShares, topSources } from "@/lib/home/topSources";
 import { stateLabel } from "@/components/waf/wafLabels";
-import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
+import { RANGE_TEXT, useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 
 import { secondary, WidgetFrame, WidgetLoading } from "./WidgetFrame";
 import { Unmeasured } from "./WidgetParts";
@@ -32,7 +32,8 @@ function EpsBar({ share }: { share: number | null }) {
   );
 }
 
-export function TopSources({ range }: RangedProps = {}) {
+export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) {
+  const expanded = useExpanded(expandedProp);
   const window = useEffectiveRange(range);
   const windowText = RANGE_TEXT[window];
   const fleetRead = homeReads.fleetSummary(window);
@@ -53,7 +54,7 @@ export function TopSources({ range }: RangedProps = {}) {
       {({ data }) => {
           const beh = secondary(behaviors);
           if (beh.pending) return <WidgetLoading what="source states" />;
-          const rows = topSources(data, beh.data);
+          const rows = topSources(data, beh.data, expanded ? Infinity : undefined);
           if (rows.length === 0) {
             return (
               <p className="tw-state">
@@ -146,6 +147,13 @@ export function TopSources({ range }: RangedProps = {}) {
                   </tbody>
                 </table>
               </TableScroll>
+              {expanded && (
+                <p className="tw-note">
+                  Showing {rows.length.toLocaleString("en-US")} of{" "}
+                  {rows.length.toLocaleString("en-US")} sources: the fleet summary lists the top
+                  five of each class.
+                </p>
+              )}
               {beh.data === null && (
                 <p className="tw-note">
                   Deviation and state are unavailable: the source behavior list is not readable

@@ -20,7 +20,14 @@
 // of the KPI row (one terse paragraph per state), `panel` is the larger widget.
 
 import Link from "next/link";
-import { createContext, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { formatClockUtc } from "@/components/shell/AutoRefresh";
 import type { ResourceState } from "@/hooks/useApiResource";
@@ -34,6 +41,30 @@ import "./kpi.css";
 import "./tables.css";
 
 export type WidgetVariant = "kpi" | "panel";
+
+/** Below this panel width (28 rem, the same breakpoint as the range select) the status pill does
+ *  not fit beside the title: it takes the first line of the body. */
+const NARROW_REM = 28;
+
+/** True while the element is narrower than `NARROW_REM`. False until it is measured. */
+function useNarrow(ref: { current: HTMLElement | null }, enabled: boolean): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled) return;
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const measure = () => {
+      const width = el.clientWidth;
+      if (width > 0) setNarrow(width < NARROW_REM * rem);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref, enabled]);
+  return enabled && narrow;
+}
 
 /**
  * Set by a dashboard in customize mode around each placed widget. The frame then offers
@@ -345,6 +376,8 @@ export function WidgetFrame<T>({
   const edit = useContext(WidgetEditContext);
   const runtime = useContext(WidgetRuntimeContext);
   const expanded = runtime?.expanded ?? false;
+  const rootRef = useRef<HTMLElement>(null);
+  const narrow = useNarrow(rootRef, !kpi && !expanded);
   // The expand dialog holds a second copy of the widget: its ids must not repeat the first's.
   const frameId = expanded ? `${id}-expanded` : id;
   const headingId = `${frameId}-title`;
@@ -406,7 +439,12 @@ export function WidgetFrame<T>({
   // in its panel. In the expand dialog the dialog's own header carries the title and the range.
   const showRange = !edit && !expanded && runtime?.rangeOptions;
   const showExpand = !edit && !expanded && runtime?.onExpand;
-  const tools = (
+  const linkNode = !edit ? (
+    <Link className={kpi ? "kpi-link" : "tw-all"} href={link.href} aria-label={link.ariaLabel}>
+      {link.label}
+    </Link>
+  ) : null;
+  const controlsNode = (
     <>
       {showRange && runtime.rangeOptions ? (
         <RangeControl
@@ -427,20 +465,21 @@ export function WidgetFrame<T>({
           Expand
         </button>
       ) : null}
+    </>
+  );
+  // A narrow panel keeps the title, the range, Expand and the drill-down link in the title row;
+  // only its pill (a sentence, not a word) moves to the first line of the body.
+  const strip = narrow && Boolean(badge);
+  const tools = (
+    <>
+      {controlsNode}
       {edit?.arrange}
-      {!edit ? (
-        <Link
-          className={kpi ? "kpi-link" : "tw-all"}
-          href={link.href}
-          aria-label={link.ariaLabel}
-        >
-          {link.label}
-        </Link>
-      ) : null}
+      {linkNode}
     </>
   );
   return (
     <Root
+      ref={rootRef as never}
       className={`${kpi ? "kpi" : "tw"}${expanded ? " tw-expanded" : ""}`}
       aria-labelledby={expanded ? undefined : headingId}
       aria-label={expanded ? title : undefined}
@@ -452,7 +491,7 @@ export function WidgetFrame<T>({
             {title}
             {windowText && <span className="tw-window">{windowText}</span>}
           </h2>
-          {badge && <span className="pill">{badge}</span>}
+          {badge && !strip && <span className="pill">{badge}</span>}
           {controls}
           {kpi ? tools : <div className="tw-tools">{tools}</div>}
         </header>
@@ -463,6 +502,7 @@ export function WidgetFrame<T>({
         </p>
       ) : null}
       <div className={kpi ? "kpi-body" : `tw-body${fillBody ? " tw-body-fill" : ""}`}>
+        {strip ? <span className="pill tw-pill">{badge}</span> : null}
         {body}
       </div>
     </Root>

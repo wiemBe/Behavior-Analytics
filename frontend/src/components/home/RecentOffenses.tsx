@@ -13,6 +13,8 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
 import { MAGNITUDE_SEGMENTS, RECENT_OFFENSES_LIMIT, recentOffenses } from "@/lib/home/recentOffenses";
 
+import { useExpanded } from "@/widgets/runtime";
+
 import { secondary, WidgetFrame, WidgetLoading, WidgetQualifiers } from "./WidgetFrame";
 import { Unmeasured, When } from "./WidgetParts";
 
@@ -34,6 +36,7 @@ function MagnitudeBar({ segments }: { segments: number }) {
 }
 
 export function RecentOffenses() {
+  const expanded = useExpanded();
   const openRead = homeReads.recentOffenses(RECENT_OFFENSES_LIMIT);
   const probeRead = homeReads.offenseProbe();
   const open = useApiResource(openRead.key, openRead.fetch);
@@ -111,7 +114,13 @@ export function RecentOffenses() {
                   </tbody>
                 </table>
               </TableScroll>
-              {view.shown && <p className="tw-note">{view.shown}.</p>}
+              {view.shown && (
+                <p className="tw-note">
+                  {expanded
+                    ? `${view.shown.replace("the latest ", "")}. The widget reads the latest ${RECENT_OFFENSES_LIMIT}; the Offenses page lists the rest.`
+                    : `${view.shown}.`}
+                </p>
+              )}
             </>
           );
       }}
