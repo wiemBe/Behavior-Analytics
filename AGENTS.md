@@ -25,6 +25,10 @@ The project is an on-premises IBM QRadar behavioral-analytics platform. It is st
 
 1. **Read-only against QRadar.** The provider interface (`app/providers/base.py`) has no create,
    update or delete methods. Do not add any.
+   - One exception, approved by the user on 2026-10-15: on the **lab** console only, a task that
+     names it may **add** custom event properties and property expressions through the QRadar
+     API, with a throwaway script kept outside the repository. Never through the application's
+     code, never on a production console, and never update or delete an existing QRadar object.
 2. **AQL runs only on the direct REST/Ariel provider** (`QRadarRestProvider`), never through MCP.
    Never enable MCP `POST`/`DELETE`. Never modify the pinned `qradar-mcp/` gitlink.
 3. **Never persist raw events; persist aggregates only.** Raw WAF values (paths, action values,

@@ -45,6 +45,14 @@ context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-fla
 
 **Next:** collect the four; UI-5.9 after UI-5.8; full gate → `main`; Phase 6 (UI-6.1, UI-6.2).
 
+**The user's decisions (~21:40; recorded in §4):**
+- D-12: no rename.
+- G-5: deferred.
+- D-13: the lab ACTION property may be created through the API → **T-107** ([spec](tasks/T-107.md)).
+  Part 1 is the QRadar side. Part 2, the profile mapping in `qradar_obs_t054`, waits for T-105.
+  The block-shift live run then becomes a T-054 amendment.
+- D-14: AI rule analysis is v3/v4. The user does the production field-availability pass.
+
 ---
 
 ## ▶ Resume here (fourteenth session, 2026-10-15, from ~14:30) — STATE AT 15:50
@@ -1423,6 +1431,10 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-9 | ~~Outage alert default and new catch-all senders~~ **Resolved 2026-10-13 by the user:** outage (`NO_EVENTS`) alerts stay on for **every monitored source** by default (`ALERT`, today's behaviour); operators switch classes or sources to `RECORD_ONLY` (design §C.7). A new SIM Generic sender goes to a **review queue only**, no alert (`catchall_new_sender_alerts_enabled = false`, §C.8). | T-068, T-069 |
 | D-10 | ~~UI redesign: which overhaul items?~~ **Resolved 2026-10-13 (seventh session) by the user, asked by the orchestrator.** <br>• **Widget dashboard: the full system now.** It covers a widget catalog, drag and drop, resize, and multiple dashboards persisted per user in the DB: a new table, migration and API, plus `react-grid-layout`, the dependency the user explicitly allowed. <br>• **World map: add a new geo collection.** First validate the AQL `GEO::` functions on live QRadar. Then collect a country-level aggregate under the search cadence. No raw IPs are kept (AGENTS.md rule 3). <br>• **"Events by category" becomes "EPS by source class":** the top 4 classes plus "Other", from existing data. <br>• **Top bar: existing APIs only.** Search runs over existing lists (sources, anomalies, rules). "Live" becomes auto-refresh with the last-updated time. The bell shows the open-alert count and links to `/alerts`. | UI redesign (UI-R0 onward) |
 | D-11 | ~~UI plan questions (UR.10)~~ **Resolved 2026-10-14 by the user**, who also approved the plan ("Approved, start"). <br>• `/` becomes the widget Dashboard; `/behavior` stays as the behavioral triage page. <br>• Navigation is **text only**, with no icons. <br>• **Dark only**; no light mode. <br>• **Keep the palette's original values**: muted text `--text-3 = #73757B` and the input edge `--border-strong = #35363A`. The plan's contrast deviations (UR.2.2) are **not** applied, even though `#73757B` is below WCAG AA (3.70:1 on the panel). This is the user's explicit decision and overrides AGENTS.md §3a's §10 accessibility point for these two values only. <br>• **Orchestrator defaults** for the questions not asked: dashboards are built now, keyed on the principal's `subject`, and shared by `local-dev` until OIDC; `GET /me` is added (B-1.3); `/config-changes` is restyled, not removed. <br>• The plan's 17 collision rulings (UR.9) are accepted by the orchestrator, with C11 replaced by this decision. | UI-1.1 onward |
+| D-12 | ~~Rename the project?~~ **Resolved 2026-10-15 by the user: no rename.** The current "Behavior Analytics" title stays, with QRadar in the subline. | — |
+| G-5 | **Deferred by the user (2026-10-15).** The production read-only geo window is to be thought about later. The user is considering two options: pull the WAF property through groups, or write a geo AQL for QRadar. `map.geography` stays `blocked`. | Map widget, geo production validation |
+| D-13 | **Lab ACTION property: authorised by the user on 2026-10-15** ("action propertyi sen oluşturup api ile ekleyebilirsin izin var"). It is created through the QRadar API, on the lab console only, by a throwaway script outside the application, add-only. AGENTS.md §2 rule 1 carries the exception. → **T-107**. | IPS block-shift validation |
+| D-14 | **Scope (user, 2026-10-15):** the AI rule analysis (Phase E.3, and with it D-5) is **out of the current scope**; it comes in v3 or v4. The user will do the production field-availability pass for WAF and IPS (FTD, PAN THREAT) themselves. | — |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
