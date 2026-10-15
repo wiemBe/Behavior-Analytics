@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import builtins
 import uuid
+from typing import TypedDict
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,17 @@ from app.models.log_source import LogSource, LogSourceAnomaly
 # opened, so it is never resolved and keeps resolved_at NULL forever -- counting
 # that as active would report a live incident that no longer exists.
 _ACTIVE_STATES = [s.value for s in ACTIVE_ANOMALY_STATES]
+
+
+class OverviewCounts(TypedDict):
+    """Shape of `LogSourceRepository.overview_counts`: four integer counts plus
+    the average health score, which is a float (or absent), not a count."""
+
+    total: int
+    monitored: int
+    maintenance: int
+    healthy: int
+    avg_health: float | None
 
 
 class LogSourceRepository:
@@ -67,7 +80,7 @@ class LogSourceRepository:
 
     async def open_anomalies_for(
         self, log_source_id: uuid.UUID
-    ) -> list[LogSourceAnomaly]:
+    ) -> builtins.list[LogSourceAnomaly]:
         stmt = (
             select(LogSourceAnomaly)
             .where(
@@ -79,7 +92,7 @@ class LogSourceRepository:
         return list((await self.session.scalars(stmt)).all())
 
     # -- aggregate counts for the SOC overview ------------------------------
-    async def overview_counts(self) -> dict[str, int]:
+    async def overview_counts(self) -> OverviewCounts:
         total = await self.session.scalar(select(func.count()).select_from(LogSource)) or 0
         monitored = (
             await self.session.scalar(

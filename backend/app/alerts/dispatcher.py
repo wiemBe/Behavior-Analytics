@@ -20,6 +20,7 @@ MockNotifiers and no real notification is ever sent under test.
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
@@ -54,7 +55,7 @@ class NotificationDispatcher:
         policy: RoutingPolicy,
         *,
         settings: Settings | None = None,
-        clock=None,
+        clock: Callable[[], datetime] | None = None,
         rng: random.Random | None = None,
     ) -> None:
         self.session = session

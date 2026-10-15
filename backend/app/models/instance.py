@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, EncryptedString, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.enums import InstanceStatus
+
+if TYPE_CHECKING:
+    # Runtime import would be circular: log_source.py maps back to
+    # QRadarInstance. SQLAlchemy resolves the relationship by class name from the
+    # registry, so the annotation alone is enough.
+    from app.models.log_source import LogSource
 
 
 class QRadarInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -41,7 +48,7 @@ class QRadarInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    log_sources: Mapped[list[LogSource]] = relationship(  # noqa: F821
+    log_sources: Mapped[list[LogSource]] = relationship(
         back_populates="instance", cascade="all, delete-orphan"
     )
 

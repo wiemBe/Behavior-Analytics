@@ -79,7 +79,7 @@ async def create_search(
     search = await svc.create(payload, actor=principal.subject)
     await record_audit(
         session, action="search.create", actor=principal.subject,
-        object_type="scheduled_search", object_id=search.id,
+        object_type="scheduled_search", object_id=str(search.id),
         detail={"name": search.name},
     )
     return ScheduledSearchOut.model_validate(search)
@@ -114,7 +114,7 @@ async def update_search(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     await record_audit(
         session, action="search.update", actor=principal.subject,
-        object_type="scheduled_search", object_id=search.id,
+        object_type="scheduled_search", object_id=str(search.id),
         detail={"version_before": before_version, "version_after": search.query_version},
     )
     return ScheduledSearchOut.model_validate(search)
@@ -260,7 +260,7 @@ async def run_search(
     )
     await record_audit(
         session, action="search.execute", actor=principal.subject,
-        object_type="scheduled_search", object_id=search.id,
+        object_type="scheduled_search", object_id=str(search.id),
         detail={"run_key": run_key, "status": str(execution.status)},
     )
     return ExecutionOut.model_validate(execution)

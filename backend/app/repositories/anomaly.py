@@ -115,7 +115,7 @@ class AnomalyRepository:
         return stmt
 
     async def list_anomalies(
-        self, *, limit: int, offset: int, **filters
+        self, *, limit: int, offset: int, **filters: Any
     ) -> tuple[list[LogSourceAnomaly], int]:
         stmt = self._filtered(**filters)
         total = await self.session.scalar(
