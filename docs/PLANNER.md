@@ -8,7 +8,46 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (fourteenth session, 2026-10-15, from ~14:30) — STATE AT 15:50 (start here)
+## ▶ Resume here (fifteenth session, 2026-10-15, from ~21:15) (start here)
+
+The user: "planner.md oku devam et ve glm codex kullan ayrıca opencode deepseek flash v4 200k
+context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-flash-free`.
+
+**Found at start (21:16):** the fourteenth session's Sonnet sub-agents had died with its chat.
+- UI-4.2: finished, report written (16:01), unreviewed.
+- UI-5.8: work done to the "after" capture (~16:00), **no report**. Its fixture (PID 892474)
+  and Chrome (893610) were still running; stopped by PID.
+- T-104: finished (report 16:13).
+- T-054 part 3: all chains and ticks finished (last 19:02 local); no generator left.
+
+**Merged:**
+- **T-104** (`8b71fa6`, DeepSeek). The orchestrator re-ran mypy ("no issues found in 213
+  source files"), ruff (clean) and the unit suite (pass); the diff is annotations only.
+  AGENTS.md §3 now says the mypy baseline is 0. T-104's integration run found **one failure
+  that pre-dates it**: `test_waf_detail_carries_the_projection_and_transitions` does not list
+  T-093's `caveat` key → **T-106**.
+- **UI-4.2** (`0a73b49`). Orchestrator's gates in the worktree: lint and typecheck clean;
+  194 files / 2,643 tests + 2 todo; build OK. The test edits are the authorised removal of
+  UI-4.1's interim copy. PNGs reviewed.
+  - Follow-ups → **T-098 part B**: the Administration template's Source classes table scrolls
+    and clips "Silent"; the conflict and discard dialogs restate their headings; ~60 px empty
+    under an unsaved template's title.
+  - **UI-5.9 point 9:** `HealthDetection` mixes "SILENT"/"UNCOVERED" with title case.
+
+**In flight (from ~21:20):**
+
+| Task | Agent | Where | Collect / check |
+|---|---|---|---|
+| **UI-5.8** handover ("review what you inherit") | Codex, session `01a140c9-a3e8-7931-93ed-8ce66cf3c123` (PID 1312407) | worktree `ui58`; ports 3158/8158/9158 | `docs/tasks/UI-5.8.report.md`; log `QRadar-Dash-work/ui58/logs/codex.log` (grep "usage limit") |
+| **T-105** T-054 part 3 analysis | GLM 5.3, `--standalone --title t105-glm` (PID 1311139) | worktree `t105` (no repo change); report `QRadar-Dash-work/t054/T-054.report.md` | log `QRadar-Dash-work/t105/opencode.log`; then copy the report to `docs/tasks/T-054.report.md` |
+| **T-106** ([spec](tasks/T-106.md)) caveat key in the WAF/IPS integration tests | DeepSeek, `--title t106-ds` (PID 1311140) | worktree `t106`; DB `qradar_obs_t106` | report in worktree; log `QRadar-Dash-work/t106/opencode.log` |
+| **T-098** ([spec](tasks/T-098.md), parts A+B) | Sonnet sub-agent (dies with the chat) | worktree `t098`; ports 3150/8150/9150 | report in worktree; PNGs `QRadar-Dash-work/t098/png/` |
+
+**Next:** collect the four; UI-5.9 after UI-5.8; full gate → `main`; Phase 6 (UI-6.1, UI-6.2).
+
+---
+
+## ▶ Resume here (fourteenth session, 2026-10-15, from ~14:30) — STATE AT 15:50
 
 **Saved at 15:50 local (12:50Z) at the user's request: the session limit is running low.**
 
