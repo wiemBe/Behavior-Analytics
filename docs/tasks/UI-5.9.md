@@ -44,6 +44,14 @@ on every page. Start only after UI-5.8 is merged (it owns the boundaries and `.n
    without scrolling, tighten the group spacing using tokens (no new literal) until it fits at
    1024×768 and 1280×800; text-only navigation stays (D-11).
 
+9. **Status words in mixed case inside one widget** (seen in the UI-4.2 review,
+   `QRadar-Dash-work/ui42/png/template-admin-1440x900.png`): `HealthDetection`
+   (`components/catalog/HealthDetection.tsx`) lists rule verdicts as "Healthy", "Degraded",
+   "SILENT", and its note reads "Other statuses: UNCOVERED 9 · Degraded 5". One case per kind of
+   word, matching point 1's rule for states and the coverage page's words for verdicts. Check the
+   other `components/catalog/*` widgets for the same mix. (Add `components/catalog/*` and their
+   tests to the allowed files for this point.)
+
 ## Not in this task
 
 Long single-word source names (a 92-character name wraps to 6 lines at 1024): accepted.
