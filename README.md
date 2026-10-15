@@ -510,9 +510,11 @@ action values count as blocked or allowed. `/admin/waf-sources` edits it; the de
 a deterministic incident summary and four primary metrics, then the timeline, then what changed; the
 lifecycle history, query provenance and detector internals sit behind the investigation tabs, and the
 AQL is collapsed inside them. The UX contract for this page and every other behavioral route is
-[docs/PRODUCT-UX-GUIDELINES.md](docs/PRODUCT-UX-GUIDELINES.md); the verification record, including
-the viewport matrix and screenshots, is
-[docs/UI-WORKSTREAM-COMPLETION.md](docs/UI-WORKSTREAM-COMPLETION.md).
+[docs/PRODUCT-UX-GUIDELINES.md](docs/PRODUCT-UX-GUIDELINES.md). The verification record, including
+the viewport matrix, is
+[docs/UI-WORKSTREAM-COMPLETION.md](docs/UI-WORKSTREAM-COMPLETION.md). The screenshot gallery,
+recaptured on 2026-10-15 (T-111), is [`docs/screenshots/ui/`](docs/screenshots/ui/), and its index
+is [docs/UI-WORKSTREAM-COMPLETION.md](docs/UI-WORKSTREAM-COMPLETION.md) §7.
 
 Two behaviors there are load-bearing and are covered by tests:
 
@@ -1250,14 +1252,19 @@ lints and updates this README.
   the analyst API and UI — IPS incidents in the unified `/anomalies` list and the investigation
   view, plus the `GET /api/v1/behavior/ips/*` reads (T-085, T-087). Collection is off by default
   (`IPS_COLLECTION_ENABLED=false`, and per profile). Live validation on the lab console
-  (2026-10-15, [T-054](docs/tasks/T-054.report.md)): the port-sweep scenario **passed end to
-  end** — `IPS_PORT_FANOUT_SPIKE` opened on both sources, sibling fires were true statements
-  about that traffic or failed closed with their reason, and all six incidents walked
-  `CANDIDATE → OPEN → RECOVERING → RESOLVED`. The other scenarios were **voided by a
-  lab-generator defect** (with two profiles the change phase never ran) and are **not yet
-  validated**; the new-port detector needs 24 h of collected history before it can judge a first
-  appearance; and block-shift needs an ACTION property mapped, which only the operator can create
-  on the lab console — so the alerting path, too, is unexercised live. See
+  (2026-10-15, [T-054](docs/tasks/T-054.report.md)): port-sweep **passed** —
+  `IPS_PORT_FANOUT_SPIKE` opened on both sources, sibling fires were true statements about that
+  traffic or failed closed with their reason, and the six pilot incidents walked
+  `CANDIDATE → OPEN → RECOVERING → RESOLVED`. Signature-burst, with alerting on, **passed**:
+  `IPS_SIGNATURE_BURST` opened on both sources, and two `ips_anomaly` alerts opened and resolved.
+  No notification row was stored, because no channel is configured (L-6). Source-concentration
+  **passed**. A morning run of those two was voided by generator defect D-1; T-101 fixed the
+  generator, and the part-3 re-run is what passed. New-port is still limited by its 24 h history
+  rule (L-1) and was not re-run. Block-shift: **run, analysis pending** — it ran at 20Z after
+  T-107, and the T-054 report has no "Part 4 analysis" section (T-110), so no result is stated
+  here. T-107, on the lab console only, added `IPS_Action` expressions for PAN and FTD through
+  the API under the lab-only exception. The application stays read-only. The lab profiles map
+  ACTION, and FTD `Would block` counts as allowed. See
   [the Phase D design](docs/PHASE-D-IPS-BEHAVIOR.md).
 - **Geography ✅ (backend; D-10)** — the `GEO_COLLECTION` family: two keyed searches per instance
   per tick, one per direction in `GEO_DIRECTIONS`, with the QRadar `GEO::` lookup resolving the
@@ -1290,28 +1297,32 @@ lints and updates this README.
     set, drag/resize with keyboard steppers (`react-grid-layout`), per-widget range, configure
     drawer and expand dialog, and the catalog widgets including WAF endpoint traffic, a source's
     EPS against its band and recent IPS anomalies (UI-3.1–UI-3.3b, UI-3.5a/b).
-  - **Phase 4 (API and switcher ✅, save/templates in progress)** — saved dashboards: models,
-    migration `0023`, the `/api/v1/dashboards` API with its own permissions, revision conflicts
-    and audit, never interpreting or executing a layout (B-4); the switcher and management UI,
-    with `/` loading the chosen, default or template dashboard (UI-4.1, UI-4.3). UI-4.2 — save on
-    "Done", restore defaults, the five templates — is **in progress, not merged**.
-  - **Phase 5 (in progress)** — page restyles: merged for the WAF behavior pages, the fleet
-    pages, log sources/searches/alerts and the admin pages (UI-5.3, UI-5.4, UI-5.6, UI-5.7); in
-    flight for the behavior pages, the anomaly list and investigation, offenses/rules/coverage,
-    and `/config-changes` with every loading/error boundary (UI-5.1, UI-5.2, UI-5.5, UI-5.6b,
-    UI-5.8).
+  - **Phase 4 ✅** — saved dashboards: models, migration `0023`, the `/api/v1/dashboards` API
+    with its own permissions, revision conflicts and audit, never interpreting or executing a
+    layout (B-4); the switcher and management UI, with `/` loading the chosen, default or
+    template dashboard (UI-4.1, UI-4.3). Saving is merged (UI-4.2): "Done" writes with
+    `expected_revision`, a conflict dialog, an unsaved-changes guard, restore defaults, and four
+    more templates (QRadar Administration, Behavioral Analytics, Log Source Monitoring, WAF / IPS
+    Monitoring). Widget-frame polish is merged (T-098).
+  - **Phase 5 (nearly done)** — page restyles merged for the behavior pages (UI-5.1), the
+    anomaly list and investigation (UI-5.2), the WAF behavior pages (UI-5.3), the fleet pages
+    (UI-5.4), offenses, rules and coverage (UI-5.5), log sources, searches and alerts (UI-5.6,
+    UI-5.6b) and the admin pages (UI-5.7). UI-5.8: every loading and error boundary is plain
+    text on the route's real page header, and `/config-changes` says configuration changes are
+    not collected. UI-5.9 (cross-page consistency) is in flight.
   - **Phase 6 (QA, not merged)** — the full viewport matrix, accessibility pass, performance
     measurement and cleanup (UI-6.1–UI-6.5). Its groundwork merged: characterization page tests
     for the untested routes and boundaries (T-096, T-097) and the unused `echarts-for-react`
     dropped (T-099, a UI-6.4 item).
+- **Phase F (designed; build in progress)** — custom detections (D-15, T-108): threshold rules
+  run on collected aggregates, and custom AQL gets an editor and result charts. The build is on
+  unmerged branches (F-1, F-4) and lands after Phase 5 reaches `main`. See
+  [the Phase F design](docs/PHASE-F-CUSTOM-DETECTIONS.md).
 
-Next: the goals in [the planner](docs/PLANNER.md) §0 — finish the UI redesign (UI-4.2, the
-remaining Phase 5 restyles, Phase 6 QA), fix the lab generator (T-101) and re-run the voided
-[T-054](docs/tasks/T-054.report.md) scenarios (signature-burst with alerting on, and
-source-concentration; new-port stays limited by its 24 h history rule), then the full gate and
-`feat/phase-ce` → `main`. Production WAF onboarding still needs a field-availability pass against
-a real WAF product ([the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §30.14), and geography's
-production validation still needs the read-only window above.
+Next: UI-5.9, then the full gate and `feat/phase-ce` → `main`; Phase 6 QA (UI-6.1–UI-6.4); the
+Phase F build; the deferred production geo window (G-5); and the 24 h new-port validation
+([T-054](docs/tasks/T-054.report.md), L-1). The order is the one in
+[the planner](docs/PLANNER.md).
 
 ## License
 
