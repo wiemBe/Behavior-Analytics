@@ -415,6 +415,11 @@ dialog.dg-catalog::backdrop {
   .tw .wr-alt {
     display: flex;
   }
+  /* The select already states the range, so the title's own "24 h" is dropped. When title and
+     controls do not fit, the controls (.tw-tools) wrap as one group. */
+  .tw-head:has(.wr-alt) .tw-window {
+    display: none;
+  }
 }
 /* A panel's range, Expand and drill-down travel together: when they do not fit beside the
    title they drop to the next line as one group, never one by one. */
@@ -429,6 +434,9 @@ dialog.dg-catalog::backdrop {
 .tw-tools .tw-all,
 .tw-tools .tw-expand {
   line-height: 1;
+}
+.tw-pill {
+  align-self: flex-start;
 }
 /* A title row that wraps costs its row gap once more; the small step keeps that line cheap. */
 .tw .tw-head {

@@ -16,6 +16,8 @@ import { formatRatio, stateTone } from "@/lib/behavior";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import { RECENT_ANOMALIES_LIMIT, recentAnomalies } from "@/lib/home/recentAnomalies";
 
+import { useExpanded } from "@/widgets/runtime";
+
 import { secondary, WidgetFrame, WidgetLoading } from "./WidgetFrame";
 import { Unmeasured, When } from "./WidgetParts";
 
@@ -30,6 +32,7 @@ export const WAF_EMPTY =
  */
 export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
   const waf = subject === "WAF_ENDPOINT";
+  const expanded = useExpanded();
   const listRead = waf
     ? homeReads.activeWafAnomalies(RECENT_ANOMALIES_LIMIT)
     : homeReads.activeAnomalies(RECENT_ANOMALIES_LIMIT);
@@ -150,7 +153,13 @@ export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
                   </tbody>
                 </table>
               </TableScroll>
-              {view.shown && <p className="tw-note">{view.shown}.</p>}
+              {view.shown && (
+                <p className="tw-note">
+                  {expanded
+                    ? `${view.shown.replace("the latest ", "")}. The widget reads the latest ${RECENT_ANOMALIES_LIMIT}; the Anomalies page lists the rest.`
+                    : `${view.shown}.`}
+                </p>
+              )}
             </>
           );
       }}

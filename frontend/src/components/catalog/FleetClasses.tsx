@@ -8,7 +8,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
 import { formatEpsValue } from "@/lib/fleet";
 import { partial } from "@/lib/home/qualifiers";
-import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
+import { RANGE_TEXT, useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 import { WidgetFrame, WidgetQualifiers } from "@/components/home/WidgetFrame";
 import { Unmeasured } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -17,7 +17,8 @@ import { classRows } from "./derive";
 
 import "./catalog.css";
 
-export function FleetClasses({ range }: RangedProps = {}) {
+export function FleetClasses({ range, expanded: expandedProp }: RangedProps = {}) {
+  const expanded = useExpanded(expandedProp);
   const window = useEffectiveRange(range);
   const read = homeReads.fleetSummary(window);
   const state = useApiResource(read.key, read.fetch);
@@ -33,7 +34,7 @@ export function FleetClasses({ range }: RangedProps = {}) {
       permission="read:fleet"
     >
       {({ data }) => {
-        const { rows, hidden, incomplete } = classRows(data);
+        const { rows, hidden, incomplete } = classRows(data, expanded ? Infinity : undefined);
         if (rows.length === 0) {
           return (
             <p className="tw-state">
@@ -96,7 +97,12 @@ export function FleetClasses({ range }: RangedProps = {}) {
             {incomplete ? (
               <WidgetQualifiers qualifiers={[partial(complete, expected, "intervals")]} />
             ) : null}
-            {hidden > 0 ? (
+            {expanded ? (
+              <p className="tw-note">
+                Showing {rows.length} of {rows.length + hidden} classes.
+              </p>
+            ) : null}
+            {!expanded && hidden > 0 ? (
               <p className="tw-note">
                 Showing the {rows.length} busiest of {rows.length + hidden} classes.
               </p>

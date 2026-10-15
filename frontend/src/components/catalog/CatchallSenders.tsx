@@ -11,6 +11,8 @@ import { When } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { EVENTS_24H_NOTE, formatEvents24h } from "@/app/fleet/catchall/catchall";
 
+import { useExpanded } from "@/widgets/runtime";
+
 import { newestSenders } from "./derive";
 
 import "./catalog.css";
@@ -18,6 +20,7 @@ import "./catalog.css";
 const SENDERS_READ = 200;
 
 export function CatchallSenders() {
+  const expanded = useExpanded();
   const read = homeReads.newCatchallSenders(SENDERS_READ);
   const state = useApiResource(read.key, read.fetch);
   const badge = state.status === "ok" ? `${state.data.total.toLocaleString("en-US")} new` : undefined;
@@ -42,7 +45,7 @@ export function CatchallSenders() {
             </p>
           );
         }
-        const { rows, qualifiers } = newestSenders(data.items, data.total);
+        const { rows, qualifiers } = newestSenders(data.items, data.total, expanded ? Infinity : undefined);
         return (
           <>
             <TableScroll label="Newest unreviewed catch-all senders">
@@ -88,7 +91,7 @@ export function CatchallSenders() {
               </table>
             </TableScroll>
             <WidgetQualifiers qualifiers={qualifiers} />
-            {data.total > rows.length ? (
+            {expanded || data.total > rows.length ? (
               <p className="tw-note">
                 Showing the newest {rows.length} of {data.total.toLocaleString("en-US")}.
               </p>
