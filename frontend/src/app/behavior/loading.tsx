@@ -1,5 +1,11 @@
-import { LoadingState } from "@/components/ui/RouteState";
+import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return <LoadingState what="behavioral analytics" />;
+  return (
+    <BoundaryLoading
+      title="Behavioral overview"
+      what="behavioral analytics"
+      offset="small"
+    />
+  );
 }

@@ -13,13 +13,12 @@ describe("configuration changes scaffold", () => {
   it("renders the heading, the phase and the scaffold explanation", () => {
     render(<ConfigChangesPage />);
     expect(
-      screen.getByRole("heading", { name: "Configuration Changes", level: 2 }),
+      screen.getByRole("heading", { name: "Configuration changes", level: 1 }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Planned for Phase 3.")).toBeInTheDocument();
+    expect(screen.getByText("Configuration changes are not collected.")).toBeInTheDocument();
     expect(
-      screen.getByText(/This section is scaffolded\. Its data model and API exist \(or arrive\) in Phase 3;/),
+      screen.getByText(/no collector or API fills it, so this page has nothing to show\./),
     ).toBeInTheDocument();
-    expect(screen.getByText(/the view is implemented in that phase per the development order\./)).toBeInTheDocument();
   });
 
   it("names no data and offers no action", () => {
@@ -28,5 +27,10 @@ describe("configuration changes scaffold", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("promises nothing and names no phase", () => {
+    const { container } = render(<ConfigChangesPage />);
+    expect(container).not.toHaveTextContent(/phase|planned|arrive|scaffold/i);
   });
 });

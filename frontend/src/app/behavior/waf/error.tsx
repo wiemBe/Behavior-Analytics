@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function WafBehaviorError({
   error,
@@ -9,5 +9,5 @@ export default function WafBehaviorError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="WAF behavior" digest={error.digest} onRetry={reset} />;
+  return <BoundaryError title="WAF behavior" what="WAF behavior" digest={error.digest} onRetry={reset} />;
 }

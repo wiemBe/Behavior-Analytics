@@ -1,10 +1,20 @@
 "use client";
 
-export default function DashboardError() {
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
+
+export default function DashboardError({
+  error,
+  reset,
+}: {
+  error?: Error & { digest?: string };
+  reset?: () => void;
+}) {
   return (
-    <p role="alert">
-      Dashboard could not be opened. Use Refresh in the top bar; if it still fails, check that the
-      backend is reachable.
-    </p>
+    <BoundaryError
+      title="SOC Overview"
+      what="Dashboard could not be opened. The page"
+      digest={error?.digest}
+      onRetry={reset ?? (() => window.location.reload())}
+    />
   );
 }

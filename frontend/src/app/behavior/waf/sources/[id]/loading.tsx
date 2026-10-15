@@ -1,5 +1,11 @@
-import { LoadingState } from "@/components/ui/RouteState";
+import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return <LoadingState what="WAF source endpoints" />;
+  return (
+    <BoundaryLoading
+      title="WAF source endpoints"
+      what="WAF source endpoints"
+      offset="large"
+    />
+  );
 }

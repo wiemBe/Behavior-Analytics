@@ -1,0 +1,18 @@
+/* Route loading text starts where the loaded route's first block starts. The variants account
+   only for leading space owned by that real block; they never draw placeholder geometry. */
+
+.boundary-state > .notice {
+  margin: 0;
+}
+
+.boundary-state-small {
+  padding-top: var(--sp-2);
+}
+
+.boundary-state-medium {
+  padding-top: var(--sp-5);
+}
+
+.boundary-state-large {
+  padding-top: var(--sp-6);
+}

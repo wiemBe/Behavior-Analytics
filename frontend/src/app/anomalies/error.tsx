@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function AnomaliesError({
   error,
@@ -9,5 +9,5 @@ export default function AnomaliesError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="Anomalies" digest={error.digest} onRetry={reset} />;
+  return <BoundaryError title="Anomalies" what="Anomalies" digest={error.digest} onRetry={reset} />;
 }

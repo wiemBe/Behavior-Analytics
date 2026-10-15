@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function BehaviorError({
   error,
@@ -9,5 +9,12 @@ export default function BehaviorError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="Behavioral analytics" digest={error.digest} onRetry={reset} />;
+  return (
+    <BoundaryError
+      title="Behavioral overview"
+      what="Behavioral analytics"
+      digest={error.digest}
+      onRetry={reset}
+    />
+  );
 }

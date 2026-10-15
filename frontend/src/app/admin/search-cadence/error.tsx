@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function SearchCadenceError({
   error,
@@ -9,5 +9,5 @@ export default function SearchCadenceError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="Search cadence" digest={error.digest} onRetry={reset} />;
+  return <BoundaryError title="Search cadence" what="Search cadence" digest={error.digest} onRetry={reset} />;
 }

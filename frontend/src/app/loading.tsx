@@ -1,7 +1,5 @@
+import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
+
 export default function DashboardLoading() {
-  return (
-    <p role="status" aria-live="polite">
-      Loading dashboard…
-    </p>
-  );
+  return <BoundaryLoading title="SOC Overview" what="dashboard" offset="medium" />;
 }
