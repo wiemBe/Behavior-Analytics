@@ -70,7 +70,7 @@ context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-fla
 
 | Task | Agent | Where | Collect / check |
 |---|---|---|---|
-| **UI-5.8** after the ruling | Codex resume (PID 1386362) | worktree `ui58` | report; log `ui58/logs/codex2.log` |
+| **UI-5.8** after the ruling | Codex resume 21:47–22:45 (rewrote the boundaries per the ruling, captured PNGs), **usage limit at 22:45** (reset 02:18) → **Sonnet handover** from 22:47 (dies with the chat) | worktree `ui58` | report in the worktree; if the chat died, hand over again with "review what you inherit" |
 | **T-109** amendment (`starlette>=0.48.0`) | `opencode/step-5-preview-free`, `--title t109b-step` | worktree `t109` | then the orchestrator merges T-109; first pass done by DeepSeek, gates re-run by the orchestrator (ruff, mypy 0, unit 3,224) |
 | **T-111** ([spec](tasks/T-111.md)): refresh `docs/screenshots/ui/` (user request) | Sonnet sub-agent (dies with the chat) | worktree `t111`; ports 3111/8111/9111 | report; capture script `QRadar-Dash-work/t111/capture.mjs`, **re-run after UI-5.8/5.9** |
 | **T-112** ([spec](tasks/T-112.md)): saving tests robust under load | DeepSeek, `--title t112-ds` (PID 1482205) | worktree `t112` | report; log `t112/opencode.log` |
