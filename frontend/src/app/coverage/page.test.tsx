@@ -276,3 +276,48 @@ describe("coverage honesty", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("coverage layout", () => {
+  it("has one h1 and every table in its own scroll region", async () => {
+    const { container } = await renderPage();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    for (const name of ["Techniques", "Coverage by rule", "Coverage by data source"]) {
+      expect(screen.getByRole("region", { name })).toBeInTheDocument();
+    }
+    expect(container.querySelector("[style]")).toBeNull();
+  });
+
+  it("right-aligns the rule count and the score, header and cell", async () => {
+    await renderPage();
+    const region = screen.getByRole("region", { name: "Techniques" });
+    expect(within(region).getByRole("columnheader", { name: "Rules" })).toHaveClass("num");
+    expect(within(region).getByRole("columnheader", { name: "Score" })).toHaveClass("num");
+    expect(region.querySelectorAll("td.num")).toHaveLength(2);
+  });
+
+  it("counts a status the page has no fixed card for, so the cards add up", async () => {
+    vi.spyOn(api, "coverageSummary").mockResolvedValue(
+      summary({
+        by_status: { COVERED: 6, INSUFFICIENT_DATA: 4 },
+        total_techniques: 10,
+      }),
+    );
+    await renderPage();
+    const card = screen.getByText("INSUFFICIENT DATA", { selector: ".k" }).closest(".card")!;
+    expect(within(card as HTMLElement).getByText("4")).toBeInTheDocument();
+  });
+
+  it("says in an alert what failed and what to do", async () => {
+    vi.spyOn(api, "coverageSummary").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage();
+    expect(screen.getByRole("alert")).toHaveTextContent("Nothing was changed");
+  });
+});
+
+describe("coverage metric group", () => {
+  it("sizes the group from the number of status cards", async () => {
+    const { container } = await renderPage();
+    expect(container.querySelectorAll(".cards .card")).toHaveLength(5);
+    expect(container.querySelector(".cards")).toHaveClass("coverage-cards-3");
+  });
+});

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import RuleDetailPage from "./page";
 import { CAPACITY_UNIT } from "@/components/rules/CapacityHistory";
 import {
+  ApiError,
   api,
   ruleStatisticsApi,
   type CapacitySample,
@@ -106,5 +107,78 @@ describe("rule capacity history", () => {
     expect(alert).toHaveTextContent("capacity history could not be loaded");
     expect(alert).toHaveTextContent(/reload the page/i);
     expect(alert).not.toHaveTextContent("down");
+  });
+});
+
+describe("rule detail layout and honesty", () => {
+  it("titles the page with the single h1", async () => {
+    await renderPage();
+    expect(
+      screen.getByRole("heading", { name: rule().name, level: 1 }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("does not call a failed health-history read an empty history", async () => {
+    vi.spyOn(api, "ruleHealthHistory").mockRejectedValue(new Error("down"));
+    vi.spyOn(ruleStatisticsApi, "capacityHistory").mockResolvedValue([]);
+    await renderPage();
+    expect(screen.getByRole("alert")).toHaveTextContent("The health history could not be loaded.");
+    expect(screen.queryByText(/has been stored yet/)).toBeNull();
+  });
+
+  it("still says an empty history is empty", async () => {
+    vi.spyOn(ruleStatisticsApi, "capacityHistory").mockResolvedValue([]);
+    await renderPage();
+    expect(screen.getByText("No rule-health evaluation has been stored yet.")).toBeInTheDocument();
+  });
+
+  it("right-aligns the history figures inside a scroll region", async () => {
+    vi.spyOn(ruleStatisticsApi, "capacityHistory").mockResolvedValue([]);
+    vi.spyOn(api, "ruleHealthHistory").mockResolvedValue([
+      {
+        evaluated_at: "2026-10-13T09:00:00Z",
+        status: "HEALTHY",
+        logic_version: 1,
+        confidence: 0.8,
+        reason: null,
+        window_start: null,
+        window_end: null,
+        last_triggered_at: null,
+        trigger_count: 14,
+        offense_contribution_count: 3,
+        enabled: true,
+        building_blocks_healthy: null,
+        required_log_sources_healthy: null,
+        missing_dependencies: [],
+        evidence: {},
+      },
+    ]);
+    await renderPage();
+    const region = screen.getByRole("region", { name: "Rule health history" });
+    expect(region.querySelectorAll("th.num")).toHaveLength(3);
+    expect(region.querySelectorAll("td.num")).toHaveLength(3);
+    expect(screen.getByRole("region", { name: "Rule metadata" })).toBeInTheDocument();
+  });
+
+  it("gives a rule that was not collected a status role", async () => {
+    vi.spyOn(api, "rule").mockRejectedValue(new ApiError(404, "missing"));
+    await renderPage();
+    expect(screen.getByRole("status")).toHaveTextContent("has not been collected");
+  });
+
+  it("gives a failed rule read an alert role", async () => {
+    vi.spyOn(api, "rule").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage();
+    expect(screen.getByRole("alert")).toHaveTextContent("Try again shortly.");
+  });
+});
+
+describe("rule detail metric group", () => {
+  it("folds the four cards to 2 + 2", async () => {
+    vi.spyOn(ruleStatisticsApi, "capacityHistory").mockResolvedValue([]);
+    const { container } = await renderPage();
+    expect(container.querySelectorAll(".cards .card")).toHaveLength(4);
+    expect(container.querySelector(".cards")).toHaveClass("rule-cards-2");
   });
 });

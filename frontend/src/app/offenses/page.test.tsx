@@ -146,7 +146,7 @@ describe("offense list contents", () => {
       "Status",
       "Assigned",
       "Events",
-      "Started",
+      "Started (UTC)",
       "Age",
     ]) {
       expect(within(table).getByRole("columnheader", { name: header })).toBeInTheDocument();
@@ -156,8 +156,9 @@ describe("offense list contents", () => {
     expect(row).toHaveTextContent("Repeated authentication failures");
     expect(row).toHaveTextContent("analyst@example.com");
     expect(row).toHaveTextContent("11h 0m");
-    // Times are UTC and say so.
-    expect(row).toHaveTextContent("2026-10-14 22:10:00 UTC");
+    // The header says (UTC); the cell does not repeat the zone.
+    expect(row).toHaveTextContent("10-14 22:10");
+    expect(row).not.toHaveTextContent("UTC");
   });
 
   it("tones the status and magnitude as the page means them", async () => {
@@ -216,5 +217,58 @@ describe("offense paging and filters", () => {
     expect(screen.getByRole("searchbox", { name: "Search offenses" })).toHaveValue("scan");
     expect(screen.getByLabelText("Filter by status")).toHaveValue("OPEN");
     expect(screen.getByRole("link", { name: "Clear" })).toHaveAttribute("href", "/offenses");
+  });
+});
+
+describe("offense list layout", () => {
+  beforeEach(() => {
+    vi.spyOn(api, "offenses").mockResolvedValue(page([offense()]));
+    vi.spyOn(api, "offenseAggregates").mockResolvedValue(aggregates());
+  });
+
+  it("has one h1 and a table in a labelled scroll region", async () => {
+    const { container } = await renderPage();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("region", { name: "Offenses" })).toContainElement(
+      screen.getByRole("table"),
+    );
+    expect(container.querySelector("[style]")).toBeNull();
+  });
+
+  it("right-aligns severity, events and age, header and cell", async () => {
+    await renderPage();
+    const table = screen.getByRole("table");
+    for (const name of ["Sev", "Events", "Age"]) {
+      expect(within(table).getByRole("columnheader", { name })).toHaveClass("num");
+    }
+    const row = within(table).getAllByRole("row")[1];
+    expect(row.querySelectorAll("td.num")).toHaveLength(3);
+    expect(row).toHaveTextContent("1,280");
+  });
+
+  it("draws the magnitude as a bar with the number beside it, none when unmeasured", async () => {
+    const { container, unmount } = await renderPage();
+    expect(container.querySelector("td .mag-bar.crit.mag-w-8")).not.toBeNull();
+    expect(screen.getByText("8", { selector: ".pill" })).toBeInTheDocument();
+    unmount();
+    vi.spyOn(api, "offenses").mockResolvedValue(page([offense({ magnitude: null })]));
+    const again = await renderPage();
+    expect(again.container.querySelector(".mag-bar")).toBeNull();
+  });
+
+  it("says in an alert what failed and what to do", async () => {
+    vi.spyOn(api, "offenses").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage();
+    expect(screen.getByRole("alert")).toHaveTextContent("Nothing was changed");
+  });
+});
+
+describe("offense list metric group", () => {
+  it("holds the six counters in a group that folds to 3 + 3", async () => {
+    vi.spyOn(api, "offenses").mockResolvedValue(page([offense()]));
+    vi.spyOn(api, "offenseAggregates").mockResolvedValue(aggregates());
+    const { container } = await renderPage();
+    expect(container.querySelectorAll(".cards .card")).toHaveLength(6);
+    expect(container.querySelector(".cards")).toHaveClass("offenses-cards-3");
   });
 });

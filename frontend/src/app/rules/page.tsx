@@ -3,12 +3,16 @@ import Link from "next/link";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { TableScroll } from "@/components/ui/TableScroll";
 import {
-  formatDateTime,
   healthMeaning,
   healthTone,
   isUnestablished,
 } from "@/lib/health";
+import { axisTimeLabel } from "@/lib/searchRuns";
+
+import "@/components/ui/controls.css";
+import "./rules.css";
 
 const PAGE_SIZE = 25;
 
@@ -42,9 +46,12 @@ export default async function RulesPage({
           title="Rule health"
           actions={<Link href="/rules/statistics">Rule statistics</Link>}
         />
-        <div className="notice">
-          Backend unreachable. Start the stack, then run{" "}
-          <code>python -m app.cli.sync rules</code>.
+        <div className="notice" role="alert">
+          <p>
+            Backend unreachable. Start the stack, then run{" "}
+            <code>python -m app.cli.sync rules</code>. Nothing was changed; reload once the
+            backend answers.
+          </p>
         </div>
       </>
     );
@@ -64,7 +71,7 @@ export default async function RulesPage({
       />
 
       {summary.length > 0 && (
-        <div className="cards">
+        <div className={`cards rules-cards rules-cards-${Math.ceil(summary.length / 2)}`}>
           {summary.map((s) => (
             <StatCard
               key={s.status}
@@ -118,7 +125,8 @@ export default async function RulesPage({
         </div>
       ) : (
         <>
-          <table>
+          <TableScroll label="Rules">
+          <table className="rule-list-table table-dense">
             <thead>
               <tr>
                 <th>Rule</th>
@@ -126,14 +134,14 @@ export default async function RulesPage({
                 <th>Enabled</th>
                 <th>Health</th>
                 <th>Meaning</th>
-                <th>Last fired</th>
-                <th>Offenses</th>
+                <th className="col-time">Last fired (UTC)</th>
+                <th className="num">Offenses</th>
               </tr>
             </thead>
             <tbody>
               {items.map((r) => (
                 <tr key={r.id}>
-                  <td>
+                  <td className="cell-rule-name">
                     <a href={`/rules/${r.id}`}>{r.name}</a>
                   </td>
                   <td>{r.rule_type ?? "—"}</td>
@@ -147,19 +155,20 @@ export default async function RulesPage({
                       {r.health_status?.replace(/_/g, " ") ?? "—"}
                     </span>
                   </td>
-                  <td className="muted">{healthMeaning(r.health_status)}</td>
-                  <td>
+                  <td className="muted cell-meaning">{healthMeaning(r.health_status)}</td>
+                  <td className="nowrap">
                     {r.last_fired_at ? (
-                      formatDateTime(r.last_fired_at)
+                      axisTimeLabel(r.last_fired_at)
                     ) : (
                       <span className="muted">not observed</span>
                     )}
                   </td>
-                  <td>{r.offense_contribution_count}</td>
+                  <td className="num">{r.offense_contribution_count}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </TableScroll>
 
           <Pagination
             total={page?.total ?? 0}

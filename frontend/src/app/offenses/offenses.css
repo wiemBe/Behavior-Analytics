@@ -1,0 +1,87 @@
+/* The offense list: a magnitude is its number (the pill) with a bar beside it. The fill is a
+   tenth-of-the-track step per class, so no width is written inline. */
+.offenses-table td.cell-description {
+  min-width: 20ch;
+}
+.offenses-table td.cell-magnitude {
+  white-space: nowrap;
+}
+.mag-bar {
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+  margin-inline-start: var(--sp-2);
+  width: var(--sp-6);
+  height: var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+.mag-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text-3);
+}
+.mag-bar.crit::after {
+  background: var(--crit);
+}
+.mag-bar.warn::after {
+  background: var(--warn);
+}
+.mag-bar.ok::after {
+  background: var(--ok);
+}
+.mag-bar.mag-w-0::after {
+  width: 0%;
+}
+.mag-bar.mag-w-1::after {
+  width: 10%;
+}
+.mag-bar.mag-w-2::after {
+  width: 20%;
+}
+.mag-bar.mag-w-3::after {
+  width: 30%;
+}
+.mag-bar.mag-w-4::after {
+  width: 40%;
+}
+.mag-bar.mag-w-5::after {
+  width: 50%;
+}
+.mag-bar.mag-w-6::after {
+  width: 60%;
+}
+.mag-bar.mag-w-7::after {
+  width: 70%;
+}
+.mag-bar.mag-w-8::after {
+  width: 80%;
+}
+.mag-bar.mag-w-9::after {
+  width: 90%;
+}
+.mag-bar.mag-w-10::after {
+  width: 100%;
+}
+/* Figures here are short and must stay whole ("3d 4h"). */
+.offenses-table.table-dense td.num {
+  white-space: nowrap;
+}
+
+/* A metric group sits in one row at wide widths and in at most two balanced rows at 1024 px;
+   the column count comes from the group's size (`offenses-cards-N`), never a lone card on a row. */
+.cards.offenses-cards {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.cards.offenses-cards .card {
+  padding: var(--sp-3) var(--sp-4);
+}
+@media (max-width: 1100px) {
+  .cards.offenses-cards-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

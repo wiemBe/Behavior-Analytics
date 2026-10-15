@@ -1,10 +1,22 @@
 import { api, type OffenseAggregates, type OffenseSummary, type Page } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
-import { formatAge, formatDateTime, magnitudeTone } from "@/lib/health";
+import { formatAge, magnitudeTone } from "@/lib/health";
+import { axisTimeLabel } from "@/lib/searchRuns";
 import { Pagination } from "@/components/Pagination";
 import { OffenseFilters } from "@/components/OffenseFilters";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TableScroll } from "@/components/ui/TableScroll";
+
+import "@/components/ui/controls.css";
+
+import "./offenses.css";
 
 const PAGE_SIZE = 25;
+
+/** Magnitude is 0 to 10; the bar is drawn in whole tenths of the track. */
+function magnitudeStep(magnitude: number): number {
+  return Math.min(10, Math.max(0, Math.round(magnitude)));
+}
 
 export default async function OffensesPage({
   searchParams,
@@ -34,10 +46,13 @@ export default async function OffensesPage({
   if (error) {
     return (
       <>
-        <h2>Offenses</h2>
-        <div className="notice">
-          Backend unreachable. Start the stack, then run{" "}
-          <code>python -m app.cli.sync offenses</code>.
+        <PageHeader title="Offenses" />
+        <div className="notice" role="alert">
+          <p>
+            Backend unreachable. Start the stack, then run{" "}
+            <code>python -m app.cli.sync offenses</code>. Nothing was changed; reload once the
+            backend answers.
+          </p>
         </div>
       </>
     );
@@ -47,14 +62,13 @@ export default async function OffensesPage({
 
   return (
     <>
-      <h2>Offenses</h2>
-      <p className="subtitle">
-        Read-only view of offenses collected from QRadar. This page issues no writes:
-        offenses are triaged in QRadar, not here.
-      </p>
+      <PageHeader
+        title="Offenses"
+        description="Read-only view of offenses collected from QRadar. This page issues no writes: offenses are triaged in QRadar, not here."
+      />
 
       {aggregates && (
-        <div className="cards">
+        <div className="cards offenses-cards offenses-cards-3">
           <StatCard label="Total" value={page?.total ?? 0} />
           <StatCard label="Active" value={aggregates.active} />
           <StatCard
@@ -86,18 +100,21 @@ export default async function OffensesPage({
         </div>
       ) : (
         <>
-          <table>
+          <TableScroll label="Offenses">
+          <table className="offenses-table table-dense">
             <thead>
               <tr>
                 <th>ID</th>
                 <th>Description</th>
-                <th>Mag</th>
-                <th>Sev</th>
+                <th title="Magnitude, 0 to 10">Mag</th>
+                <th className="num" title="Severity, 0 to 10">
+                  Sev
+                </th>
                 <th>Status</th>
                 <th>Assigned</th>
-                <th>Events</th>
-                <th>Started</th>
-                <th>Age</th>
+                <th className="num">Events</th>
+                <th>Started (UTC)</th>
+                <th className="num">Age</th>
               </tr>
             </thead>
             <tbody>
@@ -108,26 +125,35 @@ export default async function OffensesPage({
                   </td>
                   {/* Rendered as text, never as markup: this string comes from
                       QRadar. The backend sanitizes it; React escapes it again. */}
-                  <td>{o.description?.trim() || "—"}</td>
-                  <td>
+                  <td className="cell-description">{o.description?.trim() || "—"}</td>
+                  <td className="cell-magnitude">
                     <span className={`pill ${magnitudeTone(o.magnitude)}`}>
                       {o.magnitude ?? "—"}
                     </span>
+                    {o.magnitude != null && (
+                      <span
+                        className={`mag-bar ${magnitudeTone(o.magnitude)} mag-w-${magnitudeStep(o.magnitude)}`}
+                        aria-hidden="true"
+                      />
+                    )}
                   </td>
-                  <td>{o.severity ?? "—"}</td>
+                  <td className="num">{o.severity ?? "—"}</td>
                   <td>
                     <span className={`pill ${o.status === "OPEN" ? "warn" : "ok"}`}>
                       {o.status}
                     </span>
                   </td>
                   <td>{o.assigned_to ?? <span className="muted">unassigned</span>}</td>
-                  <td>{o.event_count ?? "—"}</td>
-                  <td>{formatDateTime(o.start_time)}</td>
-                  <td>{formatAge(o.age_seconds)}</td>
+                  <td className="num">
+                    {o.event_count == null ? "—" : o.event_count.toLocaleString("en-US")}
+                  </td>
+                  <td className="nowrap">{o.start_time ? axisTimeLabel(o.start_time) : "—"}</td>
+                  <td className="num">{formatAge(o.age_seconds)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </TableScroll>
 
           <Pagination
             total={page?.total ?? 0}

@@ -115,9 +115,19 @@ describe("offense detail states", () => {
     vi.spyOn(api, "offenseHistory").mockRejectedValue(new Error("down"));
     await renderPage();
     expect(
-      screen.getByRole("heading", { name: "Offense 42", level: 2 }),
+      screen.getByRole("heading", { name: "Offense 42", level: 1 }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("The history could not be loaded.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Reload the page");
+    expect(screen.queryByText(/No history yet\./)).toBeNull();
+  });
+
+  it("still says a successful read with no rows has no history yet", async () => {
+    vi.spyOn(api, "offense").mockResolvedValue(offense());
+    vi.spyOn(api, "offenseHistory").mockResolvedValue([]);
+    await renderPage();
     expect(screen.getByText(/No history yet\./)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
@@ -126,7 +136,7 @@ describe("offense detail contents", () => {
 
   it("names the offense and its description under a back link", async () => {
     await renderPage();
-    expect(screen.getByRole("heading", { name: "Offense 42", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Offense 42", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("Repeated authentication failures")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Offenses/ })).toHaveAttribute("href", "/offenses");
   });
@@ -151,7 +161,7 @@ describe("offense detail contents", () => {
     expect(row("Offense type")).toHaveTextContent("Source IP");
     expect(row("Offense source")).toHaveTextContent("10.0.0.5");
     expect(row("Source network")).toHaveTextContent("Internal");
-    expect(row("Events / Flows")).toHaveTextContent("1280 / 12");
+    expect(row("Events / Flows")).toHaveTextContent("1,280 / 12");
     expect(row("Sources / Destinations")).toHaveTextContent("3 / 9");
     expect(row("Started")).toHaveTextContent("2026-10-14 22:10:00 UTC");
     expect(row("Last updated")).toHaveTextContent("2026-10-15 08:55:00 UTC");
@@ -175,7 +185,7 @@ describe("offense detail contents", () => {
     const table = screen.getAllByRole("table")[1];
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("2026-10-15 09:00:00 UTC");
-    expect(rows[0]).toHaveTextContent("1280");
+    expect(rows[0]).toHaveTextContent("1,280");
     expect(rows[0]).toHaveTextContent("analyst@example.com");
     expect(rows[1]).toHaveTextContent("2026-10-14 22:20:00 UTC");
     expect(rows[1]).toHaveTextContent("unassigned");
@@ -223,6 +233,96 @@ describe("offense detail honesty defects", () => {
   // Event/Flow and Source/Destination counts when the value is missing, which the
   // guideline forbids. The correct behaviour cannot be asserted against today's
   // code, so it is recorded here for the restyle.
-  it.todo("draw an unmeasured Events / Flows count as an em dash, not zero");
-  it.todo("draw an unmeasured Sources / Destinations count as an em dash, not zero");
+  it("draws an unmeasured Events / Flows count as an em dash, not zero", async () => {
+    vi.spyOn(api, "offense").mockResolvedValue(offense({ event_count: null, flow_count: null }));
+    await renderPage();
+    const row = screen.getByText("Events / Flows", { selector: "th" }).closest("tr") as HTMLElement;
+    expect(row).toHaveTextContent("— / —");
+    expect(row).not.toHaveTextContent("0");
+  });
+
+  it("draws an unmeasured Sources / Destinations count as an em dash, not zero", async () => {
+    vi.spyOn(api, "offense").mockResolvedValue(
+      offense({ source_count: null, destination_count: null }),
+    );
+    await renderPage();
+    const row = screen
+      .getByText("Sources / Destinations", { selector: "th" })
+      .closest("tr") as HTMLElement;
+    expect(row).toHaveTextContent("— / —");
+    expect(row).not.toHaveTextContent("0");
+  });
+
+  it("keeps a measured zero as a zero", async () => {
+    vi.spyOn(api, "offense").mockResolvedValue(offense({ event_count: 0, flow_count: 0 }));
+    await renderPage();
+    const row = screen.getByText("Events / Flows", { selector: "th" }).closest("tr") as HTMLElement;
+    expect(row).toHaveTextContent("0 / 0");
+  });
+});
+
+describe("offense detail layout", () => {
+  beforeEach(() => vi.spyOn(api, "offense").mockResolvedValue(offense()));
+
+  it("puts the tables in scroll regions and right-aligns the history figures", async () => {
+    const { container } = await renderPage();
+    expect(screen.getByRole("region", { name: "Offense attributes" })).toBeInTheDocument();
+    const region = screen.getByRole("region", { name: "Offense history" });
+    expect(region.querySelectorAll("th.num")).toHaveLength(3);
+    expect(region.querySelectorAll("td.num").length).toBeGreaterThan(0);
+    expect(container.querySelector("[style]")).toBeNull();
+  });
+
+  it("shows the magnitude as a bar beside its number, and no bar without a magnitude", async () => {
+    const { container, unmount } = await renderPage();
+    expect(container.querySelector(".card .mag-bar.crit.mag-w-8")).not.toBeNull();
+    unmount();
+    vi.spyOn(api, "offense").mockResolvedValue(offense({ magnitude: null }));
+    const again = await renderPage();
+    expect(again.container.querySelector(".mag-bar")).toBeNull();
+  });
+
+});
+
+describe("offense detail failure roles", () => {
+  it("gives an offense that was not collected a status role", async () => {
+    vi.spyOn(api, "offense").mockRejectedValue(new ApiError(404, "missing"));
+    await renderPage("99");
+    expect(screen.getByRole("status")).toHaveTextContent("not been collected");
+  });
+
+  it("gives any other read failure an alert role", async () => {
+    vi.spyOn(api, "offense").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage("42");
+    expect(screen.getByRole("alert")).toHaveTextContent("Try again shortly.");
+  });
+
+  it("gives a non-numeric id a recovery line and a way back", async () => {
+    await renderPage("abc");
+    expect(screen.getByRole("alert")).toHaveTextContent("Open the offense from the list.");
+    expect(screen.getByRole("link", { name: "Back to offenses" })).toHaveAttribute(
+      "href",
+      "/offenses",
+    );
+  });
+});
+
+describe("offense detail figures and metric group", () => {
+  it("writes thousands separators in the counts and the history", async () => {
+    vi.spyOn(api, "offense").mockResolvedValue(
+      offense({ event_count: 54760, flow_count: 1200000, source_count: 4000, destination_count: 12 }),
+    );
+    await renderPage();
+    const row = (label: string) =>
+      screen.getByText(label, { selector: "th" }).closest("tr") as HTMLElement;
+    expect(row("Events / Flows")).toHaveTextContent("54,760 / 1,200,000");
+    expect(row("Sources / Destinations")).toHaveTextContent("4,000 / 12");
+  });
+
+  it("folds the six summary cards to 3 + 3", async () => {
+    vi.spyOn(api, "offense").mockResolvedValue(offense());
+    const { container } = await renderPage();
+    expect(container.querySelectorAll(".cards .card")).toHaveLength(6);
+    expect(container.querySelector(".cards")).toHaveClass("offense-cards-3");
+  });
 });

@@ -378,3 +378,12 @@ describe("statistics sections", () => {
     );
   });
 });
+
+describe("excluded reason", () => {
+  it("keeps an initialism intact after 'because'", async () => {
+    vi.spyOn(ruleStatisticsApi, "statistics").mockResolvedValue(statistics());
+    await renderPage();
+    expect(screen.getByText(/because FLOW rules are not searched/)).toBeInTheDocument();
+    expect(screen.queryByText(/fLOW/)).toBeNull();
+  });
+});

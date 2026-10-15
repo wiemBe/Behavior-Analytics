@@ -1,6 +1,16 @@
 import { api, type OffenseDetail, type OffenseHistoryPoint } from "@/lib/api";
 import Link from "next/link";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { formatAge, formatDateTime, magnitudeTone } from "@/lib/health";
+
+import "../offenses.css";
+import "./offense-detail.css";
+
+/** A count that was not measured is a dash, never a zero. */
+function count(n: number | null | undefined): string {
+  return n == null ? "—" : n.toLocaleString("en-US");
+}
 
 function List({ label, values }: { label: string; values: (string | number)[] }) {
   return (
@@ -34,21 +44,27 @@ export default async function OffenseDetailPage({
   if (!Number.isFinite(offenseId)) {
     return (
       <>
-        <h2>Offense</h2>
-        <div className="notice">Not a valid offense id.</div>
+        <PageHeader title="Offense" />
+        <div className="notice" role="alert">
+          <p>Not a valid offense id.</p>
+          <p>Offense ids are numbers. Open the offense from the list.</p>
+        </div>
+        <p>
+          <Link href="/offenses">Back to offenses</Link>
+        </p>
       </>
     );
   }
 
   let offense: OffenseDetail | null = null;
-  let history: OffenseHistoryPoint[] = [];
+  let history: OffenseHistoryPoint[] | null = [];
   let missing = false;
   let error = false;
 
   try {
     offense = await api.offense(offenseId);
     // A missing history is not a missing offense — degrade rather than 404.
-    history = await api.offenseHistory(offenseId).catch(() => []);
+    history = await api.offenseHistory(offenseId).catch(() => null);
   } catch (e) {
     if (e && typeof e === "object" && "status" in e && e.status === 404) missing = true;
     else error = true;
@@ -57,11 +73,13 @@ export default async function OffenseDetailPage({
   if (missing || error) {
     return (
       <>
-        <h2>Offense {offenseId}</h2>
-        <div className="notice">
-          {missing
-            ? "This offense has not been collected. It may be outside the collection window."
-            : "Could not load this offense. Try again shortly."}
+        <PageHeader title={`Offense ${offenseId}`} />
+        <div className="notice" role={missing ? "status" : "alert"}>
+          <p>
+            {missing
+              ? "This offense has not been collected. It may be outside the collection window."
+              : "Could not load this offense. Try again shortly."}
+          </p>
         </div>
         <p>
           <Link href="/offenses">Back to offenses</Link>
@@ -77,14 +95,22 @@ export default async function OffenseDetailPage({
       <p className="muted">
         <Link href="/offenses">← Offenses</Link>
       </p>
-      <h2>Offense {o.qradar_offense_id}</h2>
       {/* Text only. QRadar-sourced, sanitized server-side, escaped by React. */}
-      <p className="subtitle">{o.description?.trim() || "No description."}</p>
+      <PageHeader
+        title={`Offense ${o.qradar_offense_id}`}
+        description={o.description?.trim() || "No description."}
+      />
 
-      <div className="cards">
+      <div className="cards offense-cards offense-cards-3">
         <div className="card">
           <div className="k">Magnitude</div>
           <div className={`v ${magnitudeTone(o.magnitude)}`}>{o.magnitude ?? "—"}</div>
+          {o.magnitude != null && (
+            <span
+              className={`mag-bar ${magnitudeTone(o.magnitude)} mag-w-${Math.min(10, Math.max(0, Math.round(o.magnitude)))}`}
+              aria-hidden="true"
+            />
+          )}
         </div>
         <div className="card">
           <div className="k">Status</div>
@@ -109,7 +135,8 @@ export default async function OffenseDetailPage({
       </div>
 
       <h3>Attributes</h3>
-      <table>
+      <TableScroll label="Offense attributes">
+      <table className="kv-table">
         <tbody>
           <tr>
             <th>Assigned to</th>
@@ -130,13 +157,13 @@ export default async function OffenseDetailPage({
           <tr>
             <th>Events / Flows</th>
             <td>
-              {o.event_count ?? 0} / {o.flow_count ?? 0}
+              {count(o.event_count)} / {count(o.flow_count)}
             </td>
           </tr>
           <tr>
             <th>Sources / Destinations</th>
             <td>
-              {o.source_count ?? 0} / {o.destination_count ?? 0}
+              {count(o.source_count)} / {count(o.destination_count)}
             </td>
           </tr>
           <tr>
@@ -157,6 +184,7 @@ export default async function OffenseDetailPage({
           </tr>
         </tbody>
       </table>
+      </TableScroll>
 
       <h3>Entities</h3>
       <div className="detail-grid">
@@ -169,36 +197,48 @@ export default async function OffenseDetailPage({
       </div>
 
       <h3>History</h3>
-      {history.length === 0 ? (
+      {history === null ? (
+        <div className="notice" role="alert">
+          <p>
+            <strong>The history could not be loaded.</strong>
+          </p>
+          <p>
+            Nothing was changed, and this does not mean the offense has no history. Reload the
+            page; if it keeps failing, check that the backend is reachable.
+          </p>
+        </div>
+      ) : history.length === 0 ? (
         <div className="notice">
           No history yet. A second snapshot is written only when the offense
           changes, so a stable offense has a single entry.
         </div>
       ) : (
+        <TableScroll label="Offense history">
         <table>
           <thead>
             <tr>
               <th>Captured</th>
               <th>Status</th>
-              <th>Magnitude</th>
-              <th>Severity</th>
-              <th>Events</th>
+              <th className="num">Magnitude</th>
+              <th className="num">Severity</th>
+              <th className="num">Events</th>
               <th>Assigned</th>
             </tr>
           </thead>
           <tbody>
             {history.map((h) => (
               <tr key={h.captured_at}>
-                <td>{formatDateTime(h.captured_at)}</td>
+                <td className="nowrap">{formatDateTime(h.captured_at)}</td>
                 <td>{h.status}</td>
-                <td>{h.magnitude ?? "—"}</td>
-                <td>{h.severity ?? "—"}</td>
-                <td>{h.event_count ?? "—"}</td>
+                <td className="num">{h.magnitude ?? "—"}</td>
+                <td className="num">{h.severity ?? "—"}</td>
+                <td className="num">{count(h.event_count)}</td>
                 <td>{h.assigned_to ?? <span className="muted">unassigned</span>}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
     </>
   );
