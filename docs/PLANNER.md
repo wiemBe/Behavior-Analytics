@@ -25,7 +25,6 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
 | Task | Agent | Where | Collect / check |
 |---|---|---|---|
 | **UI-3.5b** ([spec](tasks/UI-3.5b.md)) | Sonnet sub-agent, from ~09:40 | worktree `ui35b` (own `node_modules`); ports 3136/8136/9136; `QRadar-Dash-work/ui35b/` | `docs/tasks/UI-3.5b.report.md`; PNGs `ui35b/png/`. Check progress by file times ~10:15 |
-| **T-097** characterization tests, untested `loading`/`error` ([spec](tasks/T-097.md)) | big-pickle, `--standalone`, PID 161948, 09:54 | worktree `t097` (own `node_modules`) | `docs/tasks/T-097.report.md`; log `QRadar-Dash-work/t097/opencode.log` |
 | **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
 | **UI-5.4** fleet pages reviewed and fixed ([spec](tasks/UI-5.4.md)) | Codex, PID 148879, 09:49 | worktree `ui54` (own `node_modules`); ports 3146/8146/9146 | `docs/tasks/UI-5.4.report.md`; PNGs `QRadar-Dash-work/ui54/png/{before,after}/`; log `ui54/logs/codex.log` |
 
@@ -66,6 +65,10 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
   (`ips_new_port_history_days` has `ge=1`), so it cannot be validated in a several-hour run
   (fail-closed by design; the report will say so).
 - Specs: UI-5.6 (ready), T-097.
+- **T-097 merged** (`5982b2a`, big-pickle, 3 min): 11 untested `error`/`loading` boundaries now
+  tested (22 tests; it corrected the orchestrator's list: 4 dropped as already tested, 3 added).
+  No §3a defect found. Orchestrator re-ran the affected folders (37 files / 572 tests), lint,
+  typecheck.
 
 **Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
 allows, else Sonnet); Phase 3 screenshots to the user; **UI-4.1** ([spec](tasks/UI-4.1.md),
