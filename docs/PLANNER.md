@@ -26,7 +26,7 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
 |---|---|---|---|
 | **UI-4.1** ([spec](tasks/UI-4.1.md)) | Sonnet sub-agent, from ~10:17 | worktree `ui41` (own `node_modules`); ports 3140/8140/9140; fixture from `ui35b/` | `docs/tasks/UI-4.1.report.md`; PNGs `QRadar-Dash-work/ui41/png/` |
 | **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
-| **UI-5.4** fleet pages reviewed and fixed ([spec](tasks/UI-5.4.md)) | Codex hit its limit at 09:59 (reset **14:16**) after the before-captures and the catch-all CSS move; **Sonnet handover from ~10:02**, "review what you inherit" | worktree `ui54` (own `node_modules`); ports 3146/8146/9146 | `docs/tasks/UI-5.4.report.md`; PNGs `QRadar-Dash-work/ui54/png/{before,after}/` |
+| **UI-5.6** log sources, searches, alerts ([spec](tasks/UI-5.6.md)) | Sonnet sub-agent, from ~10:37 | worktree `ui56` (own `node_modules`); ports 3148/8148/9148 | `docs/tasks/UI-5.6.report.md`; PNGs `QRadar-Dash-work/ui56/png/{before,after}/` |
 
 **Done this session:**
 - **T-093 merged** (`7f59821`, big-pickle, 3 min): `WafDetectionDetailOut.caveat`. The
@@ -83,8 +83,14 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
   at 1440); (2) Expand's hit target is 60×14 px, below WCAG 2.5.8's 24 px; (3) the subject charts
   label midnight "15" while the Fleet EPS chart says "14 Oct"; (4) an unconfigured widget's
   drill-down link is underlined, the others are not.
-- **UI-5.4** (fleet): Sonnet handover done; round 2 sent (~10:12) for the 1024 sender-hostname
-  wrap (six lines) and the catch-all range control matching the Home's.
+- **UI-5.4 merged** (`4cac607`; Codex 10 min, then a Sonnet handover and a round 2): the
+  catch-all CSS moved out of `globals.css` and re-tokenised; an inherited `min-width: 60rem` that
+  scrolled the whole page was removed; sender hostnames 2 lines at 1024 (were 6-7), 1 line at
+  1440; the range control matches the Home's presets (wording kept: a test pins "6 hours").
+  No change needed on `/fleet` and `/fleet/sources`. Open points (shared code): `PageHeader`
+  drops the window switch under the description at 1024; `formatDateTimeCompact` has no year;
+  the not-measured shading shares the warn tint with LOWER_BOUND. Merged-head gate: 188 files /
+  2,497 tests + 8 todo; build OK.
 
 **Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
 allows, else Sonnet); Phase 3 screenshots to the user; **UI-4.1** ([spec](tasks/UI-4.1.md),
