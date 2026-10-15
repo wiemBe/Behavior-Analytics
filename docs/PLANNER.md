@@ -25,7 +25,7 @@ Migration head on `feat/phase-ce` is `0023`; `agent/f1` will add `0024`.
 
 | Task | State at 22:55 | Where | After a reboot |
 |---|---|---|---|
-| **UI-5.8** | Sonnet sub-agent handover (from 22:47) after Codex hit its limit at 22:45. Codex had rewritten the boundaries per the ruling (`PageHeader` + `RouteState`, no skeleton) and captured 237 PNGs | worktree `ui58`; ruling `QRadar-Dash-work/ui58/ruling.md` | If `docs/tasks/UI-5.8.report.md` is newer than 22:47 and complete: review it (gates, PNGs) and merge. Otherwise hand over again (Codex after 02:18, or Sonnet) with the spec, the ruling and "review what you inherit" |
+| **UI-5.8** | **Merged** (`dde1ee6`): boundaries are `PageHeader` + `RouteState`, 11 routes gained boundaries, `.nowrap` unconditional; 221 files / 2,720 tests in its worktree. Frontend gate on the merged head: `QRadar-Dash-work/gate/dde1ee6/summary.txt` | — | Next: **UI-5.9** (spec ready, points 1–10) |
 | **F-1** ([spec](tasks/F-1.md)) Phase F core, migration `0024` | GLM 5.3 from 22:50, `--title f1-glm` | worktree `f1` (branch `agent/f1`); DBs `qradar_obs_f1`, `_f1_mig` (**recreate them** with `createdb` after a reboot) | Read `docs/tasks/F-1.report.md` and `QRadar-Dash-work/f1/opencode.log`. If it is unfinished, hand over with "review what you inherit". **Do not merge before Phase 5 is on `main`** |
 | **T-112** | **Merged** (`HomeDashboard.test.tsx` lazy waits at 15 s; 0 failures in 6 loaded full runs). DeepSeek hit a free-model **rate limit** at 22:28 before writing its report | — | — |
 | **T-054 part 4** (block-shift, hour 20Z = 23:00 local) | detached chains 1445211/1445212; ticks 23:22:30, 23:47:30, **00:02:30** local; alerting on | `QRadar-Dash-work/t054/` | — |
