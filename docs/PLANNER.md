@@ -8,7 +8,54 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (fourteenth session, 2026-10-15, from ~14:30)
+## ▶ Resume here (fourteenth session, 2026-10-15, from ~14:30) — STATE AT 15:50 (start here)
+
+**Saved at 15:50 local (12:50Z) at the user's request: the session limit is running low.**
+
+**Branches:** `main` @ `8573bdf` (unchanged this session). `feat/phase-ce` @ the commit after
+`6efafc9` (pushed). Migration head `0023` (no backend migration this session).
+
+**Merged into `feat/phase-ce` this session (all reviewed by the orchestrator, PNGs looked at):**
+UI-5.6, T-099, UI-4.1 (+r2, Codex), T-100, UI-5.3 (+r2), T-101 (generator D-1 fix), UI-5.6b
+(4 rounds), T-102 (README), UI-5.5 (+r2), UI-5.2, **UI-5.1** (`6efafc9`; overlapping bands merged,
+a failed metric read makes no collection claim, worklist fits at 1024). Merged-head frontend gate
+on `566c3c4` (before UI-5.1): lint, typecheck clean; **199 files / 2,687 tests, 0 todo**; build OK.
+**Re-run the frontend gate on the head** (UI-5.1 added 4 test files) before `main`.
+
+**Still in flight at save — check each first:**
+
+| Task | Agent | Survives the chat? | Where / how to collect |
+|---|---|---|---|
+| **UI-4.2** (handover from Codex, "review what you inherit") | Sonnet sub-agent | **No** | worktree `QRadar-Dash-wt/ui42`; if no `docs/tasks/UI-4.2.report.md` there, hand the worktree to a new agent with the spec + "review what you inherit" (Codex is back **19:34**) |
+| **UI-5.8** ([spec](tasks/UI-5.8.md): `/config-changes`, every loading/error boundary, global `.nowrap`) | Sonnet sub-agent (from ~15:38) | **No** | worktree `ui58`; ports 3158/8158/9158; same rule as above |
+| **T-104** ([spec](tasks/T-104.md), mypy 31 → 0 without behaviour change) | DeepSeek, `opencode run --standalone --title t104-ds` (PID 848148) | Yes (own process) | worktree `t104`; DB `qradar_obs_t104`; log `QRadar-Dash-work/t104/opencode.log`; review the per-error table, re-run mypy/ruff/unit/integration (only on `qradar_obs_t104`), then merge |
+| **T-054 part 3** (live, clock-driven) | detached chains (no agent) | Yes | PIDs 847474/847476 (hour chains 14Z signature-burst, 15Z concentration), 847475/847477 (ticks; hour 14 alerting **on**), 853311 (catch-up `c-tick1` at 13:50Z). **Last tick 16:02:30Z = 19:02:30 local.** Then a hand (GLM did the last analysis very well) analyses: Part 3 section of `QRadar-Dash-work/t054/T-054.report.md`, `analysis/db2.py`; check `alert`/`alert_notification` for the IPS fingerprint; copy the final report to `docs/tasks/T-054.report.md`. If stopping early: kill these PIDs (and their `at.sh`/`gen.sh` children) by PID only |
+
+**Agents:** Codex out until **19:34** (hit the limit 15:20). GLM 5.3 used ~1 h of its window today
+(T-054 analysis, T-102), no limit hit. DeepSeek `opencode/deepseek-v4.1-flash-free` is good and
+free (T-099, T-100, T-101 done well). Sonnet sub-agents die with the chat.
+
+**Next, in order:**
+1. Collect UI-4.2, UI-5.8, T-104 (above). Gate the head.
+2. **T-098** (widget frame polish, [spec](tasks/T-098.md)) after UI-4.2 merges (both edit
+   `widgets/dashboard.css`) — a good Codex task after 19:34.
+3. T-054 part 3 analysis after 19:02 local.
+4. "UI-5.9" consistency task from the list below (spec to write).
+5. Full gate (backend: ruff, mypy, unit, integration on a fresh DB, alembic round trip; frontend:
+   four gates) → `feat/phase-ce` → `main` → Phase 5 screenshots to the user.
+6. Phase 6 (UI-6.1 viewport matrix, 6.2 accessibility, 6.3 performance, 6.4 cleanup, 6.5 docs).
+7. The user's open decisions: D-12 (project name), G-5 (production geo window), the lab ACTION
+   property (IPS block-shift).
+
+**UI-5.1 open points to fold into "UI-5.9":** `stateMeaning` in `lib/behavior.ts` says "within the
+expected band" for 0.00 EPS against 31–48 (inconsistent data only); `.sticky-actions` draws a
+vertical rule on anomaly tables (`globals.css`); 2×2 primary cards leave empty space at 1024
+(`StatCard` `grid-auto-rows: 1fr`); search placeholder clipped at 1024; a 92-character source
+name takes 6 lines on `/behavior/sources` at 1024.
+
+---
+
+## (fourteenth session, earlier notes)
 
 The user: "planner.mdye devam et glm codex falan hepsini kullan … opencode da deepseek v4 flash
 200k context ücretsizmiş onu da kullan". **GLM is allowed again**; use every agent. The free
