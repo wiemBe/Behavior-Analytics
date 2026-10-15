@@ -18,6 +18,7 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useMemo } from "react";
 
+import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import { useEChart } from "@/components/home/useEChart";
 import type { MetricBucket } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
@@ -73,6 +74,10 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const text = { color: c.label, fontFamily: c.font };
   const axisCommon = { axisLine: { lineStyle: { color: c.axis } }, axisLabel: text };
+  const timeAxisCommon = {
+    ...axisCommon,
+    axisLabel: { ...text, formatter: TIME_AXIS_FORMATTER },
+  };
   const perBucket = (pick: (v: SeasonalValue) => number | null) =>
     points.map((p, i) => {
       const cell = cells[i];
@@ -129,7 +134,7 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
       nameLocation: "middle",
       nameGap: 24,
       nameTextStyle: text,
-      ...axisCommon,
+      ...timeAxisCommon,
     },
     yAxis: {
       type: "value",

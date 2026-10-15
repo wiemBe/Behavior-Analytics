@@ -238,7 +238,7 @@
   margin-top: var(--sp-3);
 }
 .dg-arrange-remove {
-  color: var(--danger);
+  color: var(--crit-text);
 }
 
 /* --- catalog drawer ---------------------------------------------------------- */
@@ -388,8 +388,6 @@ dialog.dg-catalog::backdrop {
 .wr-select-wrap {
   display: flex;
   flex: 0 0 auto;
-  /* The select is a little taller than the title's text: its margin box is not. */
-  margin-block: calc(var(--sp-1) * -1);
 }
 /* At KPI density the select must not make the title row taller than its text. */
 .wr-select {
@@ -421,12 +419,50 @@ dialog.dg-catalog::backdrop {
     display: none;
   }
 }
+/* Hit targets (WCAG 2.5.8): every control in a widget's title row is at least --target-min
+   high and wide. The type stays at its size; the target grows through the box around it, and
+   the text is centred in it. */
+.wr-preset,
+.tw-expand,
+.wr-select,
+.tw-all,
+.kpi-link,
+.dg-arrange-trigger {
+  box-sizing: border-box;
+  min-height: var(--target-min);
+  min-width: var(--target-min);
+}
+.wr-preset,
+.tw-expand,
+.tw-all,
+.kpi-link,
+.dg-arrange-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.wr-select {
+  padding-block: 0;
+}
+/* One style for every drill-down link in the widget chrome: underlined, so it is told apart
+   without colour (WCAG 1.4.1); hover only changes its colour. */
+.tw .tw-all,
+.kpi .kpi-link {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tw .tw-all:hover,
+.kpi .kpi-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
 /* A panel's range, Expand and drill-down travel together: when they do not fit beside the
    title they drop to the next line as one group, never one by one. */
 .tw-tools {
   display: flex;
   flex: 0 0 auto;
-  align-items: baseline;
+  align-items: center;
   gap: var(--sp-2);
   margin-left: auto;
   line-height: var(--lh-tight);
@@ -437,6 +473,18 @@ dialog.dg-catalog::backdrop {
 }
 .tw-pill {
   align-self: flex-start;
+}
+/* The frame measures whether title, pill and controls fit one line: for that moment the head
+   does not wrap and the title keeps its natural width. It is undone before the next paint. */
+.tw.tw-measuring .tw-head {
+  flex-wrap: nowrap;
+}
+.tw.tw-measuring .tw-title {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.tw.tw-measuring .pill {
+  white-space: nowrap;
 }
 /* A title row that wraps costs its row gap once more; the small step keeps that line cheap. */
 .tw .tw-head {
@@ -756,6 +804,35 @@ dialog.dg-modal::backdrop {
   font-size: var(--fs-sm);
   color: var(--text-2);
   line-height: var(--lh-prose);
+}
+.page-meta:has(.dg-template-desc) {
+  /* A Default or Shared badge keeps its place beside the line; the line gives way, not the row. */
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.dg-template-desc {
+  /* The line fills the row the header already reserves under the title: two lines at most, so
+     it never moves the grid below it. The full text stays in the page for a screen reader. */
+  min-width: 0;
+  max-width: 76ch;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+  color: var(--text-3);
+}
+.dg-modal-choices {
+  margin: 0;
+  padding-left: var(--sp-5);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.dg-modal-choices strong {
+  color: var(--text);
+  font-weight: var(--fw-medium);
 }
 .dg-modal-error {
   margin: 0;

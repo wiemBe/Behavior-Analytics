@@ -62,6 +62,18 @@ export function epsTooltip(model: EpsChartModel, index: number): string {
   return lines.join("<br/>");
 }
 
+/** The one tick convention of every time axis: a day boundary reads "14 Oct", other ticks
+ *  `HH:MM` (UTC; the charts set `useUTC`). ECharts picks the level from the tick's own time. */
+export const TIME_AXIS_FORMATTER = {
+  year: "{yyyy}",
+  month: "{MMM}",
+  day: "{d} {MMM}",
+  hour: "{HH}:{mm}",
+  minute: "{HH}:{mm}",
+  second: "{HH}:{mm}:{ss}",
+  millisecond: "{HH}:{mm}:{ss}",
+} as const;
+
 export function buildEpsOption(
   model: EpsChartModel,
   p: HomePalette,
@@ -91,18 +103,7 @@ export function buildEpsOption(
       nameTextStyle: { ...text, align: "left", verticalAlign: "top", padding: [10, 0, 0, 0] },
       axisLine: { lineStyle: { color: p.axis } },
       // A day boundary reads "14 Oct", not a bare "14".
-      axisLabel: {
-        ...text,
-        formatter: {
-          year: "{yyyy}",
-          month: "{MMM}",
-          day: "{d} {MMM}",
-          hour: "{HH}:{mm}",
-          minute: "{HH}:{mm}",
-          second: "{HH}:{mm}:{ss}",
-          millisecond: "{HH}:{mm}:{ss}",
-        },
-      },
+      axisLabel: { ...text, formatter: TIME_AXIS_FORMATTER },
     },
     yAxis: {
       type: "value",

@@ -42,28 +42,47 @@ import "./tables.css";
 
 export type WidgetVariant = "kpi" | "panel";
 
-/** Below this panel width (28 rem, the same breakpoint as the range select) the status pill does
- *  not fit beside the title: it takes the first line of the body. */
-const NARROW_REM = 28;
-
-/** True while the element is narrower than `NARROW_REM`. False until it is measured. */
-function useNarrow(ref: { current: HTMLElement | null }, enabled: boolean): boolean {
-  const [narrow, setNarrow] = useState(false);
+/**
+ * True when the title row cannot hold the title, the pill and the controls on one line: the
+ * pill then takes the first line of the body, so the row costs two lines at most. It is decided
+ * by fit, not by a width: short titles keep the pill beside them in a narrow panel.
+ *
+ * The frame measures the row with wrapping off and the title at its natural width (the
+ * `tw-measuring` class, set and removed before paint) and adds up what it holds: its children,
+ * the pill too when it is already in the body, and the column gaps. The sum is the same whichever
+ * side the pill is on, so a resize across the threshold flips the pill once and cannot flip it
+ * back and forth.
+ */
+function usePillStrip(
+  rootRef: { current: HTMLElement | null },
+  headRef: { current: HTMLElement | null },
+  enabled: boolean,
+  key: string,
+): boolean {
+  const [strip, setStrip] = useState(false);
   useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || !enabled) return;
-    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const root = rootRef.current;
+    const head = headRef.current;
+    if (!root || !head || !enabled) return;
     const measure = () => {
-      const width = el.clientWidth;
-      if (width > 0) setNarrow(width < NARROW_REM * rem);
+      const bodyPill = root.querySelector<HTMLElement>(".tw-pill");
+      root.classList.add("tw-measuring");
+      const available = head.clientWidth;
+      const gap = parseFloat(getComputedStyle(head).columnGap) || 0;
+      const widths = Array.from(head.children, (el) => (el as HTMLElement).offsetWidth);
+      if (bodyPill) widths.push(bodyPill.offsetWidth);
+      const needed = widths.reduce((sum, w) => sum + w, 0) + gap * Math.max(0, widths.length - 1);
+      root.classList.remove("tw-measuring");
+      if (available > 0) setStrip(needed > available);
     };
     measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref, enabled]);
-  return enabled && narrow;
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(head);
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    void fonts?.ready.then(measure);
+    return () => observer?.disconnect();
+  }, [rootRef, headRef, enabled, key]);
+  return enabled && strip;
 }
 
 /**
@@ -377,7 +396,13 @@ export function WidgetFrame<T>({
   const runtime = useContext(WidgetRuntimeContext);
   const expanded = runtime?.expanded ?? false;
   const rootRef = useRef<HTMLElement>(null);
-  const narrow = useNarrow(rootRef, !kpi && !expanded);
+  const headRef = useRef<HTMLElement>(null);
+  const stripped = usePillStrip(
+    rootRef,
+    headRef,
+    !kpi && !expanded && Boolean(badge),
+    `${title}|${windowText ?? ""}|${badge ?? ""}`,
+  );
   // The expand dialog holds a second copy of the widget: its ids must not repeat the first's.
   const frameId = expanded ? `${id}-expanded` : id;
   const headingId = `${frameId}-title`;
@@ -467,9 +492,9 @@ export function WidgetFrame<T>({
       ) : null}
     </>
   );
-  // A narrow panel keeps the title, the range, Expand and the drill-down link in the title row;
-  // only its pill (a sentence, not a word) moves to the first line of the body.
-  const strip = narrow && Boolean(badge);
+  // When the row cannot hold everything on one line, the title, the range, Expand and the
+  // drill-down link stay in it and only the pill (a sentence, not a word) moves to the body.
+  const strip = stripped && Boolean(badge);
   const tools = (
     <>
       {controlsNode}
@@ -486,7 +511,10 @@ export function WidgetFrame<T>({
       aria-describedby={description ? descId : undefined}
     >
       {expanded ? null : (
-        <header className={`${kpi ? "kpi-head" : "tw-head"}${edit ? " dg-drag-handle" : ""}`}>
+        <header
+          ref={headRef}
+          className={`${kpi ? "kpi-head" : "tw-head"}${edit ? " dg-drag-handle" : ""}`}
+        >
           <h2 className={kpi ? "kpi-title" : "tw-title"} id={headingId}>
             {title}
             {windowText && <span className="tw-window">{windowText}</span>}

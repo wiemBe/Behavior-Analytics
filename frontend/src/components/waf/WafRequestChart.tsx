@@ -30,6 +30,7 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef } from "react";
 
+import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { WafMetricBucket } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
 import { formatDateTime } from "@/lib/health";
@@ -193,6 +194,10 @@ export function WafRequestChart({
       const lone = isolatedPoints(points);
       const text = { color: c.label, fontFamily: c.font };
       const axisCommon = { axisLine: { lineStyle: { color: c.axis } }, axisLabel: text };
+      const timeAxisCommon = {
+        ...axisCommon,
+        axisLabel: { ...text, formatter: TIME_AXIS_FORMATTER },
+      };
       const quiet = { silent: true, label: { show: false } };
 
       return {
@@ -280,7 +285,7 @@ export function WafRequestChart({
                 nameLocation: "middle",
                 nameGap: 24,
                 nameTextStyle: text,
-                ...axisCommon,
+                ...timeAxisCommon,
               },
             ]
           : [
@@ -297,7 +302,7 @@ export function WafRequestChart({
                 nameLocation: "middle",
                 nameGap: 30,
                 nameTextStyle: text,
-                ...axisCommon,
+                ...timeAxisCommon,
               },
             ],
         yAxis: [

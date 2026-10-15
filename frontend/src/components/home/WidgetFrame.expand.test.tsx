@@ -102,7 +102,12 @@ describe("WidgetFrame range and Expand chrome", () => {
 
 describe("WidgetFrame narrow panel title row", () => {
   afterEach(() => vi.restoreAllMocks());
-  const width = (px: number) => vi.spyOn(Element.prototype, "clientWidth", "get").mockReturnValue(px);
+  // The pill moves by fit (T-098), not by a width: `child` is what each child of the title row
+  // measures, so a row of three children needs three times that.
+  const width = (px: number, child = 0) => {
+    vi.spyOn(Element.prototype, "clientWidth", "get").mockReturnValue(px);
+    if (child > 0) vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(child);
+  };
   const badged = (rt: WidgetRuntime) =>
     render(
       <WidgetRuntimeContext.Provider value={rt}>
@@ -122,7 +127,7 @@ describe("WidgetFrame narrow panel title row", () => {
     );
 
   it("moves only the pill to the first body line; range, Expand and link stay in the title row", () => {
-    width(366);
+    width(366, 200);
     badged(runtime());
     const head = screen.getByRole("heading", { level: 2 }).closest("header")!;
     const pill = screen.getByText("Partial: 21 of 24 intervals");
@@ -135,7 +140,7 @@ describe("WidgetFrame narrow panel title row", () => {
   });
 
   it("keeps the select, Expand and the drill-down link in one wrapper, so they wrap as one unit", () => {
-    width(366);
+    width(366, 200);
     badged(runtime());
     const group = screen.getByRole("link", { name: /Fleet/ }).closest(".tw-tools")!;
     expect(group.querySelector(".wr-select")).not.toBeNull();
