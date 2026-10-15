@@ -27,6 +27,32 @@ function Unmeasured({ meaning }: { meaning: string }) {
   );
 }
 
+/** A count line. An unmeasured count is a bare dash: no unit or label follows a missing value. */
+function CountLine({ value, label }: { value: number | null; label: React.ReactNode }) {
+  if (value == null) {
+    return (
+      <span className="cell-sub muted">
+        {NOT_MEASURED}
+        <span className="sr-only"> not measured</span>
+      </span>
+    );
+  }
+  return (
+    <span className="cell-sub">
+      {formatCount(value)} {label}
+    </span>
+  );
+}
+
+function KeyBuckets() {
+  return (
+    <span className="muted key-buckets" title={KEY_BUCKETS_MEANING}>
+      {" "}
+      (key-buckets)
+    </span>
+  );
+}
+
 function CoverageCell({ s }: { s: WafSourceBehavior }) {
   const b = s.latest_bucket;
   if (!b) {
@@ -68,24 +94,36 @@ function OverflowCell({ s }: { s: WafSourceBehavior }) {
         <span>None</span>
       )}
       <span className="cell-sub">
-        {truncated == null ? NOT_MEASURED : formatCount(truncated)} of {formatCount(a.buckets_in_range)}{" "}
-        buckets truncated
+        {truncated == null ? (
+          <>
+            {NOT_MEASURED}
+            <span className="sr-only"> truncated buckets not measured</span>
+          </>
+        ) : (
+          <>
+            {formatCount(truncated)} of {formatCount(a.buckets_in_range)} buckets truncated
+          </>
+        )}
       </span>
-      <span className="cell-sub">
-        {formatCount(a.rejected_over_quota)} refused over quota
-        <span className="muted key-buckets" title={KEY_BUCKETS_MEANING}>
-          {" "}
-          (key-buckets)
-        </span>
-      </span>
-      <span className="cell-sub">
-        {formatCount(a.below_admission_threshold)} below admission threshold
-        <span className="muted key-buckets" title={KEY_BUCKETS_MEANING}>
-          {" "}
-          (key-buckets)
-        </span>
-      </span>
-      <span className="cell-sub">{formatCount(a.untracked_requests)} untracked requests</span>
+      <CountLine
+        value={a.rejected_over_quota}
+        label={
+          <>
+            refused over quota
+            <KeyBuckets />
+          </>
+        }
+      />
+      <CountLine
+        value={a.below_admission_threshold}
+        label={
+          <>
+            below admission threshold
+            <KeyBuckets />
+          </>
+        }
+      />
+      <CountLine value={a.untracked_requests} label="untracked requests" />
     </>
   );
 }

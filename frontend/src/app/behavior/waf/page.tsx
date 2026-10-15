@@ -16,6 +16,8 @@ import { parseWafRange } from "@/components/waf/wafRange";
 import { ApiError, api, type PagedWafSources } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
 
+import "./waf.css";
+
 export const metadata: Metadata = {
   title: "WAF behavior",
 };
@@ -55,6 +57,11 @@ export default async function WafBehaviorPage({
 
   const items = page?.items ?? [];
   const judged = items.filter(isJudged).length;
+  // The judged count is taken over the rows on this page, so it is only a share of the whole
+  // list when the list fits on one page.
+  const total = page?.total ?? items.length;
+  const listed = items.length;
+  const paginated = total > listed;
 
   return (
     <>
@@ -85,26 +92,31 @@ export default async function WafBehaviorPage({
         <div className="stack-6">
           <p className="waf-lead">
             <strong className="num">
-              {judged} of {page?.total ?? items.length}
+              {judged} of {listed}
             </strong>{" "}
-            {(page?.total ?? items.length) === 1 ? "source is" : "sources are"} collected and
-            judged: profile enabled and valid for its current version. The others produce no
-            verdicts.
+            {listed === 1 ? "source is" : "sources are"}
+            {paginated ? " listed on this page and" : ""} collected and judged: profile enabled and
+            valid for its current version. The others produce no verdicts.
+            {paginated && ` The list has ${total} sources in all; the other pages are not counted here.`}
           </p>
 
-          <WafRangeSelector active={range.key} />
-          {page && (
-            <p className="subtitle">
-              Admission overflow covers{" "}
-              <time dateTime={page.range_start}>{formatDateTime(page.range_start)}</time> to{" "}
-              <time dateTime={page.range_end}>{formatDateTime(page.range_end)}</time>.
-            </p>
-          )}
+          <div className="waf-range">
+            <WafRangeSelector active={range.key} />
+            {page && (
+              <p className="subtitle">
+                Admission overflow covers{" "}
+                <time dateTime={page.range_start}>{formatDateTime(page.range_start)}</time> to{" "}
+                <time dateTime={page.range_end}>{formatDateTime(page.range_end)}</time>.
+              </p>
+            )}
+          </div>
 
-          <WafSourcesTable sources={items} />
+          <div className="waf-sources">
+            <WafSourcesTable sources={items} />
+          </div>
 
           <Pagination
-            total={page?.total ?? 0}
+            total={total}
             limit={PAGE_SIZE}
             offset={offset}
             basePath="/behavior/waf"

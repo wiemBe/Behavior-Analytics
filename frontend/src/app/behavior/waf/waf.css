@@ -1,0 +1,52 @@
+/* WAF behavior pages: layout only. Class names the shared components own are not renamed. */
+
+/* The range control and the span it sets belong together, on one line where there is room. */
+.waf-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-6);
+}
+.waf-range .subtitle {
+  margin: 0;
+}
+
+/* A source name keeps a readable measure: without a floor the five figure columns take the
+   width at 1024 px and a host name breaks mid-word. */
+.waf-sources td.cell-name {
+  min-width: 16ch;
+}
+/* A time under a figure never wraps its zone onto a line of its own. */
+.waf-sources .cell-sub > span[title] {
+  white-space: nowrap;
+}
+/* The ceiling figure ("200 / 200") stays whole; its notes wrap under it. */
+.waf-sources td.num:nth-child(5) {
+  min-width: 14ch;
+}
+
+/* An endpoint path is read character by character: the column is wide enough for a
+   long path to break in few lines, and no wider than that. */
+.waf-endpoints td.cell-name {
+  min-width: 26ch;
+  max-width: 44ch;
+}
+/* A left-aligned column that follows a right-aligned figure needs air, or the two read as one. */
+.waf-endpoints td.num + td:not(.num),
+.waf-endpoints th.num + th:not(.num) {
+  padding-inline-start: var(--sp-5);
+}
+
+/* The endpoint filter sits above the table with the same gap the list page uses. */
+.waf-filter {
+  margin-bottom: var(--sp-6);
+}
+
+/* One left edge per status column: a status word is plain text at the column's edge, whether
+   or not the shared markup wraps it in a (transparent) pill. Same size as its neighbours. */
+.waf-sources .pill,
+.waf-endpoints .pill {
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}

@@ -16,6 +16,8 @@ import {
 import { formatCount } from "@/lib/behavior";
 import Link from "next/link";
 
+import "../../waf.css";
+
 export const metadata: Metadata = {
   title: "WAF source endpoints",
 };
@@ -138,7 +140,7 @@ export default async function WafSourceEndpointsPage({
         </p>
       )}
 
-      <nav className="range-selector" aria-label="Endpoint filter">
+      <nav className="range-selector waf-filter" aria-label="Endpoint filter">
         <span className="muted">Show</span>
         <Link
           href={`/behavior/waf/sources/${id}`}
@@ -171,7 +173,9 @@ export default async function WafSourceEndpointsPage({
         </div>
       ) : (
         <div className="stack-6">
-          <WafEndpointsTable endpoints={endpoints.items} />
+          <div className="waf-endpoints">
+            <WafEndpointsTable endpoints={endpoints.items} />
+          </div>
           <Pagination
             total={endpoints.total}
             limit={PAGE_SIZE}
