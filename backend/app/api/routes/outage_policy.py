@@ -60,7 +60,7 @@ def _query(kind: OutagePolicyScope, value: str, instance_id: uuid.UUID | None): 
 async def _check_instance(session: SessionDep, instance_id: uuid.UUID | None) -> None:
     """An instance-scoped row must name a real instance; NULL is global."""
     if instance_id is not None and await session.get(QRadarInstance, instance_id) is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown instance_id")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "unknown instance_id")
 
 
 async def _upsert(
@@ -203,7 +203,7 @@ async def put_class_policy(
         klass = SourceClass(source_class)
     except ValueError as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"unknown source class: {source_class}"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"unknown source class: {source_class}"
         ) from exc
     return await _upsert(
         session,
@@ -225,7 +225,7 @@ async def delete_class_policy(
         klass = SourceClass(source_class)
     except ValueError as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"unknown source class: {source_class}"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"unknown source class: {source_class}"
         ) from exc
     return await _delete(
         session,

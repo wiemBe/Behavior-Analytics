@@ -105,7 +105,7 @@ async def list_rules(
 ) -> RulePage:
     if sort not in SORTABLE:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"sort must be one of: {', '.join(sorted(SORTABLE))}",
         )
     filters = RuleFilters(

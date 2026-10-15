@@ -188,12 +188,14 @@ async def list_buckets(
     A bucket that was not measured has no row: a gap is unknown, not zero.
     """
     if since.tzinfo is None or until.tzinfo is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "since and until need a timezone")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "since and until need a timezone"
+        )
     if until <= since:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "until must be after since")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "until must be after since")
     if until - since > MAX_BUCKET_RANGE:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"the range is at most {MAX_BUCKET_RANGE.days} days",
         )
     if await session.get(LogSource, catchall_log_source_id) is None:
