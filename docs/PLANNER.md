@@ -26,21 +26,31 @@ The thirteenth session's three sub-agents died with its chat. Found at start:
   searches, 8/60 GETs; no generator left). Report stops at 07:23Z → GLM finalises it from the
   recorded data (no more live traffic).
 
-**In flight (from ~14:35):**
+**Merged this session (~14:40–15:30):** UI-5.6 (`337e530`), T-099 (`65cad96`, DeepSeek: unused
+`echarts-for-react` dropped, `/admin` page test), UI-4.1 + round 2 (Codex), T-100 (DeepSeek:
+`testTimeout: 15000`; the slowest test took 5.5 s under load 32), UI-5.3 + round 2 (`903c4c6`).
+Merged-head frontend gate after UI-4.1 (before T-100/UI-5.3): lint, typecheck clean; first run
+1 failed | 2,605 passed (not identified), re-run with JSON report **0 failed of 2,608**; build OK.
+**T-054 is closed** (report `docs/tasks/T-054.report.md`, GLM analysis): the port sweep passes
+end to end; hours 07–09 were voided by **D-1**, a lab-generator defect (two profiles →
+`transition` computed on the total count, so the change phase never runs) → **T-101**. No
+application defect. Alerting stays unexercised live until a re-run after T-101.
+
+**In flight (from ~15:30):**
 
 | Task | Agent | Where | Collect / check |
 |---|---|---|---|
-| UI-4.1 round 2 | Codex (PID 642683) | worktree `ui41`; prompt `QRadar-Dash-work/ui41/round2-prompt.md` | log `ui41/logs/round2-codex.log`, `-o ui41/logs/round2-last.md`; report "## Round 2" |
-| T-054 report | GLM 5.3, `--standalone --title t054-final` (PID 644719) | main checkout, writes only `QRadar-Dash-work/t054/` | `t054/T-054.report.md`; log `t054/logs/finalize-glm.log` |
-| T-099 ([spec](tasks/T-099.md)) | DeepSeek v4.1 flash free, `--title t099-ds` (PID 655681) | worktree `t099` | `docs/tasks/T-099.report.md`; log `QRadar-Dash-work/t099/opencode.log` |
-| UI-5.6b ([spec](tasks/UI-5.6b.md)) | Sonnet sub-agent | worktree `ui56b`; ports 3149/8149/9149 | report in worktree; PNGs `QRadar-Dash-work/ui56b/png/` |
-| UI-5.5 ([spec](tasks/UI-5.5.md)) | Sonnet sub-agent | worktree `ui55`; ports 3155/8155/9155 | report in worktree; PNGs `QRadar-Dash-work/ui55/png/{before,after}/` |
-| UI-5.3 ([spec](tasks/UI-5.3.md)) | Sonnet sub-agent | worktree `ui53`; ports 3153/8153/9153 | report in worktree; PNGs `QRadar-Dash-work/ui53/png/{before,after}/` |
+| UI-4.2 ([spec](tasks/UI-4.2.md)) | Codex (PID 763008, from 15:05) | worktree `ui42`; ports 3142/8142/9142 | log `QRadar-Dash-work/ui42/logs/codex.log`, `-o …/logs/last.md`; report in worktree |
+| T-101 ([spec](tasks/T-101.md)) | DeepSeek, `--title t101-ds` (PID 787589) | worktree `t101` | report in worktree; log `QRadar-Dash-work/t101/opencode.log` |
+| UI-5.6b round 3 (Error column 12ch, headers wrap) | Sonnet sub-agent | worktree `ui56b` | "## Round 3" in its report |
+| UI-5.5 round 2 (fit at 1024, no orphan card, h1, history alert) | Sonnet sub-agent | worktree `ui55` | "## Round 2" in its report |
+| UI-5.1 ([spec](tasks/UI-5.1.md)) | Sonnet sub-agent | worktree `ui51`; ports 3151/8151/9151 | report in worktree |
+| UI-5.2 ([spec](tasks/UI-5.2.md)) | Sonnet sub-agent | worktree `ui52`; ports 3152/8152/9152 | report in worktree |
 
-**Next:** UI-4.1 merge → UI-4.2 (Codex) and T-098 (after UI-4.1; shares `widgets/dashboard.css`);
-UI-5.1 and UI-5.2 (specs ready; ports 3151, 3152); UI-5.8 (spec to write: `/config-changes`
-still says "Planned for Phase 3", plus every `loading.tsx`/`error.tsx`); T-054's defects → fix
-tasks; then the full gate and `feat/phase-ce` → `main`.
+**Next:** T-098 after UI-4.2 (both edit `widgets/dashboard.css`); UI-5.8 ([spec](tasks/UI-5.8.md),
+after UI-5.5 and UI-5.6b merge); T-054 part 3 after T-101 (re-run signature-burst with alerting
+on, and source-concentration; new-port stays limited by the 24 h history rule); then the full
+gate and `feat/phase-ce` → `main`.
 
 ---
 
