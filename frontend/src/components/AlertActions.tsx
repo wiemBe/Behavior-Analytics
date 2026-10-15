@@ -47,9 +47,9 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
 
   if (status === "RESOLVED") {
     return (
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="card alert-actions">
         <div className="k">Operator Actions</div>
-        <p className="subtitle" style={{ margin: "8px 0 0" }}>
+        <p className="subtitle alert-actions-closed">
           This alert is resolved. No further action is available.
         </p>
       </div>
@@ -57,10 +57,10 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
   }
 
   return (
-    <div className="card" style={{ marginTop: 16 }}>
+    <div className="card alert-actions">
       <div className="k">Operator Actions</div>
 
-      <div className="actions" style={{ marginTop: 10 }}>
+      <div className="actions alert-actions-row">
         {status === "OPEN" && (
           <button
             type="button"
@@ -100,12 +100,12 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
       </div>
 
       {done && (
-        <p role="status" className="pill ok" style={{ display: "inline-block", marginTop: 10 }}>
+        <p role="status" className="pill ok alert-actions-result">
           {done}
         </p>
       )}
       {error && (
-        <p role="alert" className="pill crit" style={{ display: "inline-block", marginTop: 10 }}>
+        <p role="alert" className="pill crit alert-actions-result">
           {error}
         </p>
       )}

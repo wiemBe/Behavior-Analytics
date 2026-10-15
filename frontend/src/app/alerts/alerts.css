@@ -1,0 +1,6 @@
+/* A long alert title keeps a readable measure at 1024 px instead of breaking into a word
+   per line once the time columns take their width. */
+td.alert-title {
+  min-width: 18ch;
+  overflow-wrap: anywhere;
+}

@@ -289,7 +289,7 @@ export function ResultTrend({
   return (
     <>
       <div ref={containerRef} className="chart" role="img" aria-label="Search result trend" />
-      <p className="subtitle" style={{ marginTop: 8 }}>
+      <p className="subtitle trend-note">
         {trend.count} point{trend.count === 1 ? "" : "s"} · metric <code>{trend.metric_key}</code>
         {trend.threshold_value != null
           ? ` · threshold ${trend.threshold_operator} ${trend.threshold_value}`

@@ -111,3 +111,17 @@ describe("search catalog contents", () => {
     expect(within(row).getAllByText("—")).toHaveLength(2);
   });
 });
+
+describe("search catalog layout", () => {
+  it("names the page with the one h1", async () => {
+    vi.spyOn(api, "searches").mockResolvedValue([search()]);
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Search Catalog", level: 1 })).toBeInTheDocument();
+  });
+
+  it("says what failed as an alert and what to do", async () => {
+    vi.spyOn(api, "searches").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage();
+    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+  });
+});

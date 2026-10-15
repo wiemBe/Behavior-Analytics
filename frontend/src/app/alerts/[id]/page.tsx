@@ -1,6 +1,11 @@
 import { AlertActions } from "@/components/AlertActions";
 import { Evidence } from "@/components/Evidence";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type Notification } from "@/lib/api";
+import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+
+import "./alert-detail.css";
 
 function notifTone(status: string): string {
   if (status === "SENT") return "ok";
@@ -22,31 +27,44 @@ export default async function AlertDetailPage({
   } catch {
     return (
       <>
-        <h2>Alert Detail</h2>
-        <div className="notice">Could not load alert {id}.</div>
+        <PageHeader title="Alert Detail" />
+        <div className="notice" role="alert">
+          <p>
+            <strong>Could not load alert {id}.</strong>
+          </p>
+          <p>
+            It may not exist, or the backend may be unreachable. Check the Alerts list, or reload
+            the page to try again.
+          </p>
+        </div>
       </>
     );
   }
 
   return (
     <>
-      <h2>{alert.title}</h2>
-      <p className="subtitle">
+      {/* An h2: the page test pins this heading at level 2. See the report's open points. */}
+      <header className="page-header detail-header">
+        <div>
+          <h2 className="page-title">{alert.title}</h2>
+      <p className="page-desc">
         <span className={`pill ${sevTone(alert.severity)}`}>{alert.severity}</span>{" "}
         <span className="pill">{alert.status}</span> · seen {alert.occurrence_count}× ·
         fingerprint <code>{alert.fingerprint}</code>
       </p>
+        </div>
+      </header>
 
       <div className="card">
         <div className="k">Evidence</div>
-        <div style={{ marginTop: 8 }}>
+        <div className="alert-evidence">
           <Evidence data={alert.evidence_snapshot} />
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="card alert-lifecycle">
         <div className="k">Lifecycle</div>
-        <p>Opened: {new Date(alert.opened_at).toLocaleString()}</p>
+        <p>Opened: {formatDateTime(alert.opened_at)}</p>
         <p>Acknowledged by: {alert.acknowledged_by ?? "—"}</p>
         <p>Resolved by: {alert.resolved_by ?? "—"}</p>
         <p>Resolution: {alert.resolution_reason ?? "—"}</p>
@@ -55,36 +73,38 @@ export default async function AlertDetailPage({
 
       <AlertActions alertId={alert.id} status={alert.status} />
 
-      <h3 style={{ marginTop: 24 }}>Notification Delivery History</h3>
+      <h3>Notification Delivery History</h3>
       {notifications.length === 0 ? (
         <div className="notice">No notifications for this alert.</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Channel</th>
-              <th>Transition</th>
-              <th>Status</th>
-              <th>Attempts</th>
-              <th>Sent</th>
-              <th>Next attempt</th>
-              <th>Error</th>
-            </tr>
-          </thead>
-          <tbody>
-            {notifications.map((n) => (
-              <tr key={n.id}>
-                <td>{n.channel}</td>
-                <td>{n.transition}</td>
-                <td><span className={`pill ${notifTone(n.status)}`}>{n.status}</span></td>
-                <td>{n.attempts}/{n.max_attempts}</td>
-                <td>{n.sent_at ? new Date(n.sent_at).toLocaleString() : "—"}</td>
-                <td>{n.next_attempt_at ? new Date(n.next_attempt_at).toLocaleString() : "—"}</td>
-                <td>{n.error_message ?? "—"}</td>
+        <TableScroll label="Notification delivery history">
+          <table className="table-dense">
+            <thead>
+              <tr>
+                <th>Channel</th>
+                <th>Transition</th>
+                <th>Status</th>
+                <th className="num">Attempts</th>
+                <th>Sent</th>
+                <th>Next attempt</th>
+                <th>Error</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {notifications.map((n) => (
+                <tr key={n.id}>
+                  <td>{n.channel}</td>
+                  <td>{n.transition}</td>
+                  <td><span className={`pill ${notifTone(n.status)}`}>{n.status}</span></td>
+                  <td className="num">{n.attempts}/{n.max_attempts}</td>
+                  <td>{formatDateTimeCompact(n.sent_at)}</td>
+                  <td>{formatDateTimeCompact(n.next_attempt_at)}</td>
+                  <td className="cell-error">{n.error_message ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
     </>
   );

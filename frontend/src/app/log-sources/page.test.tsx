@@ -14,8 +14,7 @@ import { ApiError, api, type LogSourceSummary } from "@/lib/api";
 //    source that has never sent an event says "never".
 // The status, health and maintenance pills carry a tone class the page uses as
 // meaning (SUCCESS -> ok, otherwise crit; health >= 70 ok, >= 40 warn, else crit),
-// so those are asserted. Two honesty gaps the current page does not meet are recorded
-// as `it.todo` at the end.
+// so those are asserted. The honesty gaps T-096 recorded are asserted in the last block.
 
 function source(over: Partial<LogSourceSummary> = {}): LogSourceSummary {
   return {
@@ -130,12 +129,66 @@ describe("log source list contents", () => {
   });
 });
 
-describe("log source list honesty defects", () => {
-  // The subtitle counts the array the page happened to hold, so a failed read still
-  // reads "0 sources". A count the page could not measure must not be drawn as zero.
-  it.todo("do not render '0 sources' in the subtitle when the read failed");
-  // A null QRadar status is drawn in the alarm ("crit") tone although it is unknown.
-  it.todo("tone an unknown QRadar status neutrally, not as critical");
-  // The last-event time is locale-formatted with no timezone.
-  it.todo("render the last-event time with its timezone like the rest of the app");
+describe("log source list honesty", () => {
+  // The subtitle used to count the array the page happened to hold, so a failed read
+  // read "0 sources". A count the page could not measure must not be drawn as zero.
+  it("does not render '0 sources' in the subtitle when the read failed", async () => {
+    vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage();
+    expect(screen.queryByText(/\d+ sources/)).toBeNull();
+    expect(screen.getByText(/QRadar-owned fields refresh on sync/)).toBeInTheDocument();
+  });
+
+  // A null QRadar status used to be drawn in the alarm ("crit") tone although it is unknown.
+  it("tones an unknown QRadar status neutrally, not as critical", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue([source({ qradar_status: null })]);
+    await renderPage();
+    const pill = screen.getByText("unknown");
+    expect(pill).toHaveClass("pill");
+    expect(pill).not.toHaveClass("crit");
+    expect(pill).not.toHaveClass("ok");
+    expect(pill).not.toHaveClass("warn");
+  });
+
+  it("still tones a reported non-SUCCESS status as a problem", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue([source({ qradar_status: "ERROR" })]);
+    await renderPage();
+    expect(screen.getByText("ERROR")).toHaveClass("crit");
+  });
+
+  // The last-event time used to be locale-formatted with no timezone.
+  it("renders the last-event time with its timezone like the rest of the app", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue([
+      source({ last_event_time: "2026-10-15T08:59:00Z" }),
+    ]);
+    await renderPage();
+    expect(screen.getByText("10-15 08:59 UTC")).toBeInTheDocument();
+  });
+});
+
+describe("log source list layout", () => {
+  it("names the page with the one h1 and keeps the table inside a scroll region", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue([source()]);
+    await renderPage();
+    expect(screen.getByRole("heading", { name: "Log Sources", level: 1 })).toBeInTheDocument();
+    const region = screen.getByRole("region", { name: "Log sources" });
+    expect(within(region).getByRole("table")).toBeInTheDocument();
+  });
+
+  it("right-aligns the health and anomaly figures", async () => {
+    vi.spyOn(api, "logSources").mockResolvedValue([source()]);
+    await renderPage();
+    const row = within(screen.getByRole("table")).getAllByRole("row")[1];
+    const cells = within(row).getAllByRole("cell");
+    expect(cells[4]).toHaveClass("num");
+    expect(cells[5]).toHaveClass("num");
+    expect(screen.getByRole("columnheader", { name: "Health" })).toHaveClass("num");
+    expect(screen.getByRole("columnheader", { name: "Anomalies" })).toHaveClass("num");
+  });
+
+  it("says what failed as an alert", async () => {
+    vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(500, "secret"));
+    await renderPage();
+    expect(screen.getByRole("alert")).toHaveTextContent("Backend unreachable");
+  });
 });

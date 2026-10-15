@@ -13,8 +13,7 @@ import { ApiError, api, type LogSourceDetail } from "@/lib/api";
 //  - honesty: a missing type reads "unknown type", a missing owner / description /
 //    expected interval is an em dash, a source that has never sent an event says
 //    "never", and a missing QRadar status reads "unknown".
-// One honesty gap is recorded as `it.todo` at the end: the last-event time uses
-// `toLocaleString`, which carries no timezone.
+// The last block asserts the honesty gaps T-096 recorded (the last-event timezone).
 
 function detail(over: Partial<LogSourceDetail> = {}): LogSourceDetail {
   return {
@@ -124,7 +123,33 @@ describe("log source detail contents", () => {
   });
 });
 
-describe("log source detail honesty defects", () => {
-  // `new Date(...).toLocaleString()` renders in the viewer's zone with no zone name.
-  it.todo("render the last-event time with its timezone");
+describe("log source detail honesty", () => {
+  // `toLocaleString()` rendered the viewer's zone with no zone name.
+  it("renders the last-event time with its timezone", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(
+      detail({ last_event_time: "2026-10-15T08:59:00Z" }),
+    );
+    await renderPage();
+    const config = screen.getByText("Configuration", { selector: ".k" }).closest(".card")!;
+    expect(config).toHaveTextContent("Last event: 2026-10-15 08:59:00 UTC");
+  });
+
+  it("says why there is no health breakdown instead of showing nothing", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail({ health_breakdown: null }));
+    await renderPage();
+    expect(screen.getByRole("status")).toHaveTextContent("No health score yet");
+  });
+
+  it("carries no inline style (the page moved them to a stylesheet)", async () => {
+    vi.spyOn(api, "logSource").mockResolvedValue(detail());
+    const { container } = await renderPage();
+    expect(container.querySelector("[style]")).toBeNull();
+  });
+
+  it("says what failed and what to do as an alert", async () => {
+    vi.spyOn(api, "logSource").mockRejectedValue(new ApiError(404, "secret"));
+    await renderPage("s-9");
+    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+    expect(screen.getByRole("heading", { name: "Log Source Detail", level: 1 })).toBeInTheDocument();
+  });
 });

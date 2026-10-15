@@ -1,0 +1,39 @@
+/* The alert detail. The title is an h2 here, so it takes the page header's scale
+   rather than the section scale `.main h2` would give it. */
+.main .detail-header .page-title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  letter-spacing: -0.015em;
+}
+
+.alert-evidence {
+  margin-top: var(--sp-2);
+}
+.alert-lifecycle {
+  margin-top: var(--sp-5);
+}
+.alert-lifecycle p {
+  margin: var(--sp-2) 0 0;
+}
+
+/* A delivery error is prose of unbounded length: it wraps in its own column rather than
+   stretching the table. */
+td.cell-error {
+  min-width: 12ch;
+  overflow-wrap: anywhere;
+}
+
+/* Operator actions (AlertActions renders inside this page). */
+.alert-actions {
+  margin-top: var(--sp-5);
+}
+.alert-actions-closed {
+  margin: var(--sp-2) 0 0;
+}
+.alert-actions-row {
+  margin-top: var(--sp-3);
+}
+.alert-actions-result {
+  display: inline-block;
+  margin: var(--sp-3) 0 0;
+}
