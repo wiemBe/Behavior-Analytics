@@ -1,0 +1,239 @@
+/* Catch-all senders page.
+ *
+ * The queue shares the fleet table, but it carries long syslog hostnames. The
+ * sender column keeps a floor so a hostname wraps to four lines at most; the
+ * table scrolls inside its own container if the row still does not fit. All
+ * values come from the design tokens. */
+
+.catchall-table th.cell-sender {
+  /* The hostname column takes whatever the other columns leave. */
+  width: 100%;
+}
+
+.sender-id {
+  display: block;
+  /* The hostname is the row's identity: never truncated, so its column keeps
+     a floor (in the monospace face's own ch) that fits a 50-character name in
+     two lines. Wide enough, it takes one line. */
+  min-width: var(--catchall-sender-min);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  /* Breaks after . and - (see SenderId); anywhere only for one unbroken run. */
+  overflow-wrap: anywhere;
+}
+
+.catchall-table td.cell-source {
+  min-width: var(--catchall-source-min);
+  overflow-wrap: anywhere;
+  max-width: var(--catchall-source-max);
+}
+
+.catchall-table .seen {
+  display: block;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.catchall-table .seen-label {
+  display: inline-block;
+  min-width: var(--catchall-seen-label-w);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.catchall-table td.num {
+  white-space: nowrap;
+}
+
+.catchall-table .cell-sub {
+  max-width: var(--catchall-source-max);
+  white-space: normal;
+}
+
+.queue-count {
+  margin-bottom: var(--sp-2);
+}
+
+.denied-note {
+  color: var(--warn-text);
+}
+
+.load-more {
+  margin-top: var(--sp-4);
+}
+
+/* Below a wide viewport the secondary columns give width to the hostname: the
+   First/Last labels sit above their times, the source and review notes wrap
+   narrower, the unit drops under the event count and the two actions stack. */
+@media (max-width: 1280px) {
+  .catchall-table .seen {
+    margin-bottom: var(--sp-1);
+  }
+
+  .catchall-table .seen-label {
+    display: block;
+    min-width: 0;
+  }
+
+  .catchall-table .cell-sub {
+    max-width: var(--catchall-note-narrow);
+  }
+
+  .catchall-table thead th {
+    white-space: normal;
+  }
+
+  .catchall-table .cell-sub .nowrap {
+    white-space: normal;
+  }
+
+  /* The unit drops under the event count. */
+  .catchall-table td.num .unit {
+    display: block;
+  }
+
+  /* Review and Dismiss stack: one column of buttons is narrower than two. */
+  .catchall-table .cell-actions {
+    min-width: 0;
+  }
+
+  .catchall-table .cell-actions .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* At 1024 the source column (secondary) gives up the most. */
+@media (max-width: 1100px) {
+  .catchall-table td.cell-source {
+    min-width: var(--catchall-source-narrow);
+    max-width: var(--catchall-source-narrow);
+  }
+}
+
+/* The range control is Home's `.wr-preset` (widgets/dashboard.css): quiet text
+   presets, the neutral selection on a raised surface. Selection is UI state,
+   not data or status, so the cyan chart accent does not carry it. The buttons
+   keep their `action secondary` classes and their wording ("24 hours"); only the
+   look is matched. */
+.catchall-volume .range-selector {
+  gap: var(--sp-1);
+}
+
+.catchall-volume .range-selector button {
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+}
+
+.catchall-volume .range-selector button:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.catchall-volume .range-selector button[aria-pressed="true"] {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.catchall-volume .range-selector {
+  margin-bottom: 0;
+}
+
+.collected-up-to {
+  margin-bottom: var(--sp-2);
+}
+
+.chart-key-bar {
+  height: var(--bar-h);
+  background: var(--chart-observed);
+}
+
+.chart-key-bar-lower {
+  height: var(--bar-h);
+  background: var(--warn);
+}
+
+.bucket-top-table {
+  min-width: 0;
+  max-width: var(--catchall-top-max);
+}
+
+/* The top senders take a full row of the detail grid, so a hostname keeps the
+   width it needs instead of breaking at a dot in a third-width column. */
+.bucket-grid > .bucket-top {
+  grid-column: 1 / -1;
+}
+
+.bucket-top-table table {
+  width: 100%;
+}
+
+.bucket-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  margin: var(--sp-4) 0;
+  font-size: var(--fs-xs);
+}
+
+.bucket-detail {
+  min-width: 0;
+}
+
+.bucket-detail .bucket-detail-title {
+  margin: 0 0 var(--sp-3);
+}
+
+.bucket-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, var(--catchall-bucket-col-min)), 1fr)
+  );
+  gap: var(--sp-5) var(--sp-6);
+  min-width: 0;
+}
+
+.bucket-grid > * {
+  min-width: 0;
+}
+
+.bucket-grid h4 {
+  margin-top: 0;
+}
+
+.bucket-facts {
+  display: grid;
+  gap: var(--sp-3);
+  align-content: start;
+  margin: 0;
+}
+
+.bucket-facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.bucket-facts dd {
+  margin: 0;
+  font-size: var(--fs-base);
+}
+
+.bucket-admission li {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* The last row of a table with row headers ends without a rule in both cells,
+   so the closing line does not stop at the header cell. */
+.catchall-table tbody tr:last-child th {
+  border-bottom: none;
+}
