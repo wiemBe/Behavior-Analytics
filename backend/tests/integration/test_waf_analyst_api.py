@@ -310,6 +310,8 @@ def test_unified_list_statement_count_is_constant(db_schema) -> None:
 
 
 # ---------------------------------------------------------------------- detail
+#: The detector's fixed interpretive caveat, as the evidence stores it (T-093).
+WAF_CAVEAT = "A request-rate rise describes traffic volume, not intent."
 WAF_DETAILS = {
     "reason": "812 requests is above the baseline median 100.0",
     "baseline_low": 80.0,
@@ -327,6 +329,7 @@ WAF_DETAILS = {
         "baseline_version": 4,
         "request_count_measurement": "EXACT",
         "distinct_client_count": 7,
+        "caveat": WAF_CAVEAT,
         "ratio": 8.12,
         "robust_score_status": "OK",
         "robust_z": 21.4,
@@ -339,7 +342,7 @@ WAF_DETECTION_KEYS = {
     "baseline_completeness", "baseline_version", "normalizer_version", "observed_requests",
     "expected_requests", "absolute_delta_requests", "endpoint_coverage_ratio",
     "request_count_measurement", "observed_proportion", "expected_proportion",
-    "observed_numerator", "observed_denominator", "percentage_point_change", "ratio",
+    "observed_numerator", "observed_denominator", "percentage_point_change", "caveat", "ratio",
     "ratio_basis", "robust_score_status", "robust_z", "fallback_bound",
 }
 
@@ -391,12 +394,33 @@ def test_waf_detail_carries_the_projection_and_transitions(db_schema) -> None:
     assert detection["normalizer_version"] == 1
     assert detection["baseline_version"] == 4
     assert detection["request_count_measurement"] == "EXACT"
+    assert detection["caveat"] == WAF_CAVEAT
     assert detection["ratio_basis"] is None and detection["fallback_bound"] is None
     # Nothing outside the whitelist leaks: no queries, no contributor IPs, no paths.
     text = resp.text
     for forbidden in ("queries", "SELECT secret", "203.0.113.77", "/secret/raw/path",
                       "contributors", "distinct_client_count"):
         assert forbidden not in text, forbidden
+
+
+def seed_waf_incident_without_a_caveat():  # type: ignore[no-untyped-def]
+    """The same incident, whose evidence recorded no caveat at all."""
+
+    async def setup(s):  # type: ignore[no-untyped-def]
+        _inst, _fw, _ws, ep = await world(s, a_rows=0, w_rows=0)
+        extra = {k: v for k, v in WAF_DETAILS["extra"].items() if k != "caveat"}
+        a = waf(ep.id, 5, details={**WAF_DETAILS, "extra": extra})
+        s.add(a)
+        await s.flush()
+        return a.id
+
+    return run(setup)
+
+
+def test_waf_detail_has_no_caveat_when_the_evidence_recorded_none(db_schema) -> None:
+    """An absent caveat is null, never an empty string and never an invented sentence."""
+    body = Client(READER).get(f"/api/v1/anomalies/{seed_waf_incident_without_a_caveat()}").json()
+    assert body["detection"]["caveat"] is None
 
 
 def test_phase_a_detail_is_unchanged_by_the_unification(db_schema) -> None:
