@@ -14,7 +14,7 @@ export default function Page() {
     <>
       <PageHeader
         title="Administration"
-        description="Settings that change how the platform runs. Further sections arrive in Phase 4."
+        description="Settings that control collection, source classification and outage alerting."
       />
       <ul className="admin-links" aria-label="Administration sections">
         <li>
