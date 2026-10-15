@@ -623,6 +623,22 @@ def test_source_incident_detail_names_the_log_source_and_no_entity(db_schema) ->
     assert CONTRIBUTOR_IP not in resp.text
 
 
+def test_entity_incident_detail_has_no_caveat_when_the_evidence_recorded_none(db_schema) -> None:
+    """An absent caveat is null, never an empty string and never an invented sentence."""
+
+    async def setup(s):  # type: ignore[no-untyped-def]
+        w = await ips_world(s)
+        extra = {k: v for k, v in SPIKE_DETAILS["extra"].items() if k != "caveat"}
+        a = ips_incident("IPS_ENTITY", 8, IpsAnomalyType.IPS_PORT_RATE_SPIKE,
+                         entity_id=w["port"], details={**SPIKE_DETAILS, "extra": extra})
+        s.add(a)
+        await s.flush()
+        return a.id
+
+    body = Client(READER).get(f"/api/v1/anomalies/{run(setup)}").json()
+    assert body["detection"]["caveat"] is None
+
+
 def test_detail_fallback_still_reaches_phase_a_and_waf(db_schema) -> None:
     world()
     client = Client(READER)
