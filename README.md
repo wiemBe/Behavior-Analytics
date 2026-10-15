@@ -476,8 +476,8 @@ inventory surfaces remain as supporting capabilities.
 | `/fleet/catchall` | Catch-all senders (Phase C.2b) — who feeds SIM Generic and the Universal DSMs: the new-sender review queue, each sender's 24 h events, per-bucket totals |
 | `/admin` · `/admin/search-cadence` · `/admin/classification-rules` · `/admin/waf-sources` · `/admin/ips-sources` · `/admin/outage-policy` | Administration — the hub plus search cadence per family (`admin:search_cadence`), classification rules (`admin:classification`), per-source WAF field mappings with validation (`admin:waf`), per-source IPS field mappings with validation (`admin:ips`), the outage alert policy (`admin:outage`); the profile editors are `/admin/waf-sources/[logSourceId]` and `/admin/ips-sources/[logSourceId]` |
 
-`/config-changes` is deliberately unlisted: it is a placeholder outside the navigation ("Planned
-for Phase 3") with no API behind it, kept until the user decides otherwise.
+`/config-changes` is deliberately unlisted: it is a placeholder outside the navigation with no
+API behind it (configuration changes are not collected), kept by decision D-11.
 
 All of these require the `read:anomalies` permission (behavioral routes) or their Phase 2/3
 equivalents. The guard lives on the router, not on individual handlers, so adding an endpoint to a
