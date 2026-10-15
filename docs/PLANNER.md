@@ -27,11 +27,11 @@ If this file disagrees with the code, the code wins. Fix the file.
 | Task | Agent | Where |
 |---|---|---|
 | **UI-5.9** (the last Phase 5 task, points 1–10) | Sonnet did all ten points to 23:27, then was **stopped at the user's request** ("Sonnet eats your limit, give it to Grok") → **Grok** handover from 23:29 | worktree `ui59`; log `QRadar-Dash-work/ui59/grok.log` |
-| **F-1** Phase F core, migration `0024` | GLM (`f1-glm`) | worktree `f1`; **merge only after Phase 5 is on `main`** |
-| **F-4** F.2 backend guards | **Grok** (`grok -p`) | worktree `f4`; same merge rule |
-| **T-113** README refresh | **Merged** (Grok's first finished task; accurate). Block-shift is "analysis pending" in the README until T-110 lands | — |
+| **F-1** Phase F core, migration `0024` | GLM hit its 5 h limit ~00:00 (reset 07:18) → **Grok handover from 00:25** | worktree `f1`; **merge only after Phase 5 is on `main`** |
+| **F-4** F.2 backend guards | **Grok finished 00:15**; the orchestrator's review is owed (diff, ruff, mypy, unit, integration on `qradar_obs_f4`) | worktree `f4`; same merge rule |
+| **T-113** README refresh | **Merged**. The README's block-shift line still says "analysis pending" and needs a one-line update to **pass** (T-110) | — |
 | ~~OPS-0~~ operability design (D-16) | **Deferred by the user (23:27): "note it, don't do it now, we'll do it later."** The Grok run was stopped by PID before it wrote anything, and the worktree was removed | spec `docs/tasks/OPS-0.md` is ready; start it only when the user says so |
-| **T-054 part 4 / T-110** | block-shift chains (last tick 00:02:30 local); then the systemd unit `t110-launcher` dumps the DB to `QRadar-Dash-work/t054/db/` and runs **Grok**, with step-5 as the fallback | report section "Part 4 analysis" in `QRadar-Dash-work/t054/T-054.report.md` → copy to `docs/tasks/T-054.report.md` |
+| **T-054 / T-110** | **CLOSED.** Block-shift passes live: `IPS_BLOCK_RATIO_SHIFT` 0.60 against 0.10 on both sources, alerts opened 20:47Z and resolved 21:02Z (`31bdd47`, Grok). DB dumps deleted. A duplicate step-5 analysis from a surviving old launcher was stopped before it wrote | — |
 
 Grok's progress shows in `~/.grok/logs/unified.jsonl` (filter by pid). Its plain log stays flat
 while it works.
