@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function RuleStatisticsError({
   error,
@@ -9,5 +9,12 @@ export default function RuleStatisticsError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="Rule statistics" digest={error.digest} onRetry={reset} />;
+  return (
+    <BoundaryError
+      title="Rule statistics"
+      what="Rule statistics"
+      digest={error.digest}
+      onRetry={reset}
+    />
+  );
 }

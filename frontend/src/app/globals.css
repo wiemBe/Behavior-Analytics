@@ -760,12 +760,18 @@ th[aria-sort="descending"] .sort-link {
   gap: var(--sp-2);
   min-width: 0;
 }
+/* A figure that must stay whole (a time) never wraps, at any width. Defined here as well as in
+   controls.css because not every page loads that stylesheet. */
+.nowrap {
+  white-space: nowrap;
+}
 @media (max-width: 1200px) {
-  /* A timestamp may fold before its zone rather than widen the table. */
+  /* A timestamp may fold before its zone rather than widen the table, unless it carries
+     `.nowrap`. */
   td.num.cell-when {
     white-space: normal;
   }
-  .nowrap {
+  td.num.cell-when.nowrap {
     white-space: nowrap;
   }
   .pill.pill-wrap {

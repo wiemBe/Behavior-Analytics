@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function OutagePolicyError({
   error,
@@ -9,5 +9,12 @@ export default function OutagePolicyError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="The outage alert policy" digest={error.digest} onRetry={reset} />;
+  return (
+    <BoundaryError
+      title="Outage alerts"
+      what="The outage alert policy"
+      digest={error.digest}
+      onRetry={reset}
+    />
+  );
 }

@@ -1,5 +1,5 @@
-import { LoadingState } from "@/components/ui/RouteState";
+import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return <LoadingState what="anomalies" />;
+  return <BoundaryLoading title="Anomalies" what="anomalies" />;
 }

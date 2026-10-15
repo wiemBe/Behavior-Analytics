@@ -1,5 +1,5 @@
-import { LoadingState } from "@/components/ui/RouteState";
+import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return <LoadingState what="this IPS source" />;
+  return <BoundaryLoading title="IPS source" what="this IPS source" offset="small" />;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function IpsSourceError({
   error,
@@ -9,5 +9,5 @@ export default function IpsSourceError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="This IPS source" digest={error.digest} onRetry={reset} />;
+  return <BoundaryError title="IPS source" what="This IPS source" digest={error.digest} onRetry={reset} />;
 }

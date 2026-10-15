@@ -1,11 +1,19 @@
+import { PageHeader } from "@/components/ui/PageHeader";
+
+// Not in the navigation (decision D-11). The model exists in the backend, but no collector or
+// API fills it, so the route says so rather than draw an empty table.
 export default function Page() {
   return (
     <>
-      <h2>Configuration Changes</h2>
-      <p className="subtitle">Planned for Phase 3.</p>
+      <PageHeader title="Configuration changes" />
       <div className="notice">
-        This section is scaffolded. Its data model and API exist (or arrive) in Phase 3;
-        the view is implemented in that phase per the development order.
+        <p>
+          <strong>Configuration changes are not collected.</strong>
+        </p>
+        <p>
+          A data model for them exists, but no collector or API fills it, so this page has
+          nothing to show.
+        </p>
       </div>
     </>
   );

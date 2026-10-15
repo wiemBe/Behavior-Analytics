@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function CatchallError({
   error,
@@ -9,5 +9,12 @@ export default function CatchallError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="The catch-all senders page" digest={error.digest} onRetry={reset} />;
+  return (
+    <BoundaryError
+      title="Catch-all senders"
+      what="The catch-all senders page"
+      digest={error.digest}
+      onRetry={reset}
+    />
+  );
 }
