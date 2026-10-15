@@ -55,16 +55,27 @@ context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-fla
   guidelines §8 say plain text with no skeleton. The guidelines win (ruling in the spec), and
   Codex was resumed.
 
-**In flight (from ~22:05):**
+**Merged ~22:10–22:20:**
+- **T-098** (`0e797c3`, Sonnet): pill by fit, 24 px targets, one time-axis convention, part B
+  (templates fit, dialogs say what each choice does, template line). The orchestrator's gates:
+  lint, typecheck and build OK.
+  - **Vitest flake (pre-existing, from UI-4.2's tests):** under load 32–46, `HomeDashboard.test.tsx`
+    "layout saving" fails on **head without T-098 too** (2 failures; T-098 had 1). Both trees
+    pass the file alone, 3 of 3 runs. → **T-112**.
+- **T-108** (`79fdec9`, GLM): `docs/PHASE-F-CUSTOM-DETECTIONS.md`. The orchestrator spot-checked
+  the citations and renumbered the task split to **F-1…F-8**. **Five open questions for the
+  user** are in §F.16.
+
+**In flight (from ~22:20):**
 
 | Task | Agent | Where | Collect / check |
 |---|---|---|---|
-| **UI-5.8** after the ruling | Codex, `codex exec resume 01a140c9-…` (PID 1386362) | worktree `ui58`; ports 3158/8158/9158 | report in the worktree; log `QRadar-Dash-work/ui58/logs/codex2.log` (grep "usage limit") |
-| **T-098** ([spec](tasks/T-098.md), parts A+B) | Sonnet sub-agent (dies with the chat) | worktree `t098`; ports 3150/8150/9150 | report in worktree; PNGs `QRadar-Dash-work/t098/png/` |
-| **T-108** ([spec](tasks/T-108.md)), Phase F design (D-15) | GLM 5.3, `--title t108-glm` (PID 1391890) | worktree `t108` | `docs/PHASE-F-CUSTOM-DETECTIONS.md` + report; log `QRadar-Dash-work/t108/opencode.log` |
-| **T-109** ([spec](tasks/T-109.md)), deprecated 422 constant | DeepSeek, `--title t109-ds` (PID 1395174) | worktree `t109` | report in worktree; log `QRadar-Dash-work/t109/opencode.log`; orchestrator runs integration |
-| **T-054 part 4** ([amendment 4](tasks/T-054.md)), block-shift at 20Z (23:00 local), alerting on | Sonnet sub-agent sets up detached chains | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` | Part 4 section in `t054/T-054.report.md`; **last tick 21:02:30Z (00:02:30 local)**; then a hand (GLM/DeepSeek) analyses |
-| Backend full gate on `0bdc334` | orchestrator (background) | worktree `gate` (detached); DBs `qradar_obs_gate`, `_gate_mig` | `QRadar-Dash-work/gate/0bdc334/backend.log` |
+| **UI-5.8** after the ruling | Codex resume (PID 1386362) | worktree `ui58` | report; log `ui58/logs/codex2.log` |
+| **T-109** amendment (`starlette>=0.48.0`) | `opencode/step-5-preview-free`, `--title t109b-step` | worktree `t109` | then the orchestrator merges T-109; first pass done by DeepSeek, gates re-run by the orchestrator (ruff, mypy 0, unit 3,224) |
+| **T-111** ([spec](tasks/T-111.md)): refresh `docs/screenshots/ui/` (user request) | Sonnet sub-agent (dies with the chat) | worktree `t111`; ports 3111/8111/9111 | report; capture script `QRadar-Dash-work/t111/capture.mjs`, **re-run after UI-5.8/5.9** |
+| **T-112** ([spec](tasks/T-112.md)): saving tests robust under load | DeepSeek, `--title t112-ds` (PID 1482205) | worktree `t112` | report; log `t112/opencode.log` |
+| **T-054 part 4** (block-shift, 20Z) | detached chains, PIDs 1445211/1445212 | `QRadar-Dash-work/t054/` | last tick 21:02:30Z (00:02:30 local) → **T-110** ([spec](tasks/T-110.md)) analysis (GLM or DeepSeek) |
+| Backend full gate on `0bdc334` | orchestrator | worktree `gate` | ruff, mypy 0 and alembic (head `0023`, no drift) OK; unit 3,009 rc 0; integration re-running (`gate/0bdc334/backend-rc.log`) |
 
 **Next:** collect the above; UI-5.9 after UI-5.8; full gate → `main`; Phase 6 (UI-6.1, UI-6.2).
 
