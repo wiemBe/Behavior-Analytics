@@ -56,6 +56,7 @@ interface Row {
   isDefault: boolean;
   layout: unknown;
   description?: string | null;
+  templateKey?: string | null;
 }
 
 const rowsInit = (): Row[] => [
@@ -85,7 +86,7 @@ const out = (r: Row) => ({
   description: r.description ?? null,
   owner_subject: r.owner,
   visibility: r.visibility,
-  template_key: null,
+  template_key: r.templateKey ?? null,
   template_version: null,
   schema_version: 1,
   layout: r.layout,
@@ -148,7 +149,7 @@ beforeEach(() => {
             name: r.name,
             owner_subject: r.owner,
             visibility: r.visibility,
-            template_key: null,
+            template_key: r.templateKey ?? null,
             updated_at: "2026-10-14T10:00:00Z",
             widget_count: (r.layout as { widgets?: unknown[] }).widgets?.length ?? 0,
             is_default: r.isDefault,
@@ -538,7 +539,11 @@ describe("layout saving", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "This dashboard changed since you opened it",
     });
-    expect(dialog).toHaveTextContent("dashboard revision is stale");
+    // The body says what each choice does; it does not repeat the server's sentence.
+    expect(dialog).toHaveTextContent("Reload discards your changes and shows the saved version.");
+    expect(dialog).toHaveTextContent("Save as a copy keeps your changes under the name below.");
+    expect(dialog).toHaveTextContent("Keep editing leaves both as they are.");
+    expect(dialog).not.toHaveTextContent("dashboard revision is stale");
     await userEvent.click(within(dialog).getByRole("button", { name: "Save as a copy" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/?dashboard=copy1"));
     const copy = calls.find((call) => call.method === "POST" && call.path === "/dashboards");
@@ -726,5 +731,34 @@ describe("template first save and navigation guard", () => {
     await userEvent.click(screen.getByRole("button", { name: /Night shift/ }));
     expect(screen.queryByRole("dialog", { name: /Discard unsaved/ })).toBeNull();
     expect(mocks.push).toHaveBeenCalledWith("/?dashboard=d1");
+  });
+
+  describe("the line under the title of a dashboard made from a template (T-098)", () => {
+    const admin = "Search cadence, source classification, outage policy and detection evidence health.";
+
+    it("says what the template holds when the dashboard has no description of its own", async () => {
+      rows[0].templateKey = "qradar_administration";
+      mocks.search = "dashboard=d1";
+      const { container } = render(<HomeDashboard />);
+      await screen.findByRole("heading", { name: "Night shift" });
+      expect(await screen.findByText(admin)).toBeInTheDocument();
+      expect(container.querySelector(".page-meta .dg-template-desc")).not.toBeNull();
+    });
+
+    it("leaves the dashboard's own description alone, and a plain dashboard without a line", async () => {
+      rows[0].templateKey = "qradar_administration";
+      rows[0].description = "What the night team watches.";
+      mocks.search = "dashboard=d1";
+      const own = render(<HomeDashboard />);
+      expect(await screen.findByText("What the night team watches.")).toBeInTheDocument();
+      expect(screen.queryByText(admin)).toBeNull();
+      own.unmount();
+
+      rows[0].templateKey = null;
+      rows[0].description = null;
+      const plain = render(<HomeDashboard />);
+      await screen.findByRole("heading", { name: "Night shift" });
+      expect(plain.container.querySelector(".page-desc")).toBeNull();
+    });
   });
 });

@@ -52,7 +52,7 @@ import {
   UnsavedChangesDialog,
 } from "@/widgets/DashboardSaveDialogs";
 import { columnsForWidth, type GridColumns } from "@/widgets/layout";
-import { SOC_OVERVIEW } from "@/widgets/templates";
+import { SOC_OVERVIEW, templateByKey } from "@/widgets/templates";
 import {
   useDashboard,
   type DashboardEditorSource,
@@ -205,6 +205,13 @@ function DashboardSession({
       ? currentSource.template.name
       : currentSource.dashboard.name;
   const templateShown = currentSource.kind === "template";
+  // A dashboard made from a template, with no description of its own, says what the template
+  // holds and which widget was left out. The line takes the row the header reserves for its
+  // qualifiers, so nothing below it moves.
+  const templateText =
+    currentSource.kind === "saved" && !description
+      ? templateByKey(currentSource.dashboard.template_key)?.description
+      : undefined;
 
   const requestNavigation = useCallback(
     (action: () => void) => {
@@ -291,6 +298,7 @@ function DashboardSession({
         <span className="badge">Shared</span>
       ) : null}
       {access.note ? <span className="dg-qualifier">{access.note}</span> : null}
+      {templateText ? <span className="dg-template-desc">{templateText}</span> : null}
     </>
   );
 
@@ -340,7 +348,6 @@ function DashboardSession({
       {conflictOpen && currentSource.kind === "saved" ? (
         <ConflictDialog
           dashboardName={currentSource.dashboard.name}
-          message={state.message ?? "Reload the server copy or save your layout as a new dashboard."}
           busy={state.saveState === "saving"}
           onClose={() => setConflictOpen(false)}
           onReload={async () => {

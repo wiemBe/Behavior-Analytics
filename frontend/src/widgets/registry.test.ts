@@ -156,3 +156,26 @@ describe("widget registry", () => {
     }
   });
 });
+
+// T-098: at 1440 and 1280 the 13-row "Source classes" table overflowed its panel by 16-17 px
+// and scrolled inside it, so the scrollbar covered its last column header. One more grid row
+// is 36 px (24 px row, 12 px gap); the templates give the tables the room they measured.
+describe("templates give their tables the rows they measured", () => {
+  const sized = (template: { layout: { widgets: Array<{ type: string; h: number }> } }, type: string) =>
+    template.layout.widgets.find((w) => w.type === type)?.h ?? 0;
+
+  it("QRadar Administration: Source classes is 14 rows or more, and nothing below it overlaps", () => {
+    expect(sized(QRADAR_ADMINISTRATION, "table.fleet_classes")).toBeGreaterThanOrEqual(14);
+    const classes = QRADAR_ADMINISTRATION.layout.widgets.find((w) => w.type === "table.fleet_classes")!;
+    const policy = QRADAR_ADMINISTRATION.layout.widgets.find((w) => w.type === "table.outage_policy")!;
+    expect(policy.y).toBeGreaterThanOrEqual(classes.y + classes.h);
+  });
+
+  it("Log Source Monitoring: Source classes is 14 rows or more and Top sources 16 or more", () => {
+    expect(sized(LOG_SOURCE_MONITORING, "table.fleet_classes")).toBeGreaterThanOrEqual(14);
+    expect(sized(LOG_SOURCE_MONITORING, "table.top_sources")).toBeGreaterThanOrEqual(16);
+    const top = LOG_SOURCE_MONITORING.layout.widgets.filter((w) => w.y === 0);
+    const lower = LOG_SOURCE_MONITORING.layout.widgets.filter((w) => w.y > 0);
+    for (const upper of top) for (const w of lower) expect(w.y).toBeGreaterThanOrEqual(upper.h);
+  });
+});

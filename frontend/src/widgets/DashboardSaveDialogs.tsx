@@ -131,14 +131,12 @@ export function NameTakenDialog({
 
 export function ConflictDialog({
   dashboardName,
-  message,
   busy,
   onReload,
   onSaveCopy,
   onClose,
 }: {
   dashboardName: string;
-  message: string;
   busy: boolean;
   onReload: () => Promise<void>;
   onSaveCopy: (name: string) => Promise<string | null>;
@@ -155,7 +153,17 @@ export function ConflictDialog({
   return (
     <Modal title="This dashboard changed since you opened it" onClose={onClose}>
       <div className="dg-modal-form">
-        <p className="dg-modal-text">{message}</p>
+        <ul className="dg-modal-choices">
+          <li>
+            <strong>Reload</strong> discards your changes and shows the saved version.
+          </li>
+          <li>
+            <strong>Save as a copy</strong> keeps your changes under the name below.
+          </li>
+          <li>
+            <strong>Keep editing</strong> leaves both as they are.
+          </li>
+        </ul>
         <DashboardNameField value={name} label="Copy name" error={error} onChange={setName} />
         {error ? (
           <p className="dg-modal-error" role="alert">
@@ -192,7 +200,14 @@ export function UnsavedChangesDialog({
   return (
     <Modal title={`Discard unsaved changes to ${dashboardName}?`} onClose={onKeep}>
       <div className="dg-modal-form">
-        <p className="dg-modal-text">The current layout changes have not been saved.</p>
+        <ul className="dg-modal-choices">
+          <li>
+            <strong>Discard</strong> drops your changes and shows the saved layout.
+          </li>
+          <li>
+            <strong>Keep editing</strong> leaves the dashboard as it is.
+          </li>
+        </ul>
         <div className="dg-modal-actions">
           <button ref={keep} type="button" className="action secondary" onClick={onKeep}>
             Keep editing
