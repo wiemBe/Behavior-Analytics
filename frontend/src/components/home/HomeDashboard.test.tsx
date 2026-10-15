@@ -190,8 +190,14 @@ const rangedLayout = () => ({
   ],
 });
 
+// The ranged widget is loaded with `next/dynamic` (UR.5.1), so its Window control only
+// appears once the lazy module resolves. On a loaded machine that can take longer than
+// Testing Library's 1 s default, so these two waits use the project's 15 s budget
+// (`testTimeout` in vitest.config.ts). Everything else here renders synchronously.
+const LAZY_WIDGET_TIMEOUT = 15000;
+
 async function makeRangeDirty() {
-  const group = await screen.findByRole("group", { name: "Window" });
+  const group = await screen.findByRole("group", { name: "Window" }, { timeout: LAZY_WIDGET_TIMEOUT });
   await userEvent.click(within(group).getByRole("button", { name: "1 h" }));
   expect(screen.getByText(/Unsaved changes/)).toBeInTheDocument();
 }
@@ -659,7 +665,7 @@ describe("save refusals and the guard", () => {
         <HomeDashboard />
       </>,
     );
-    await screen.findByRole("group", { name: "Window" });
+    await screen.findByRole("group", { name: "Window" }, { timeout: LAZY_WIDGET_TIMEOUT });
     await userEvent.click(screen.getByRole("link", { name: "Rules" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     await makeRangeDirty();
