@@ -27,7 +27,7 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
 | **UI-3.5b** ([spec](tasks/UI-3.5b.md)) | Sonnet sub-agent, from ~09:40 | worktree `ui35b` (own `node_modules`); ports 3136/8136/9136; `QRadar-Dash-work/ui35b/` | `docs/tasks/UI-3.5b.report.md`; PNGs `ui35b/png/`. Check progress by file times ~10:15 |
 | **T-096** characterization tests, ten routes ([spec](tasks/T-096.md)) | big-pickle, `--standalone`, PID 121866, 09:40 | worktree `t096` (own `node_modules`) | `docs/tasks/T-096.report.md`; log `QRadar-Dash-work/t096/opencode.log` |
 | **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
-| **UI-5.7** admin pages reviewed and fixed ([spec](tasks/UI-5.7.md)) | Codex, PID 92141, 09:32 | worktree `ui57` (own `node_modules`); ports 3144/8144/9144 | `docs/tasks/UI-5.7.report.md`; PNGs `QRadar-Dash-work/ui57/png/{before,after}/`; log `ui57/logs/codex.log` |
+| **UI-5.4** fleet pages reviewed and fixed ([spec](tasks/UI-5.4.md)) | Codex, PID 148879, 09:49 | worktree `ui54` (own `node_modules`); ports 3146/8146/9146 | `docs/tasks/UI-5.4.report.md`; PNGs `QRadar-Dash-work/ui54/png/{before,after}/`; log `ui54/logs/codex.log` |
 
 **Done this session:**
 - **T-093 merged** (`7f59821`, big-pickle, 3 min): `WafDetectionDetailOut.caveat`. The
@@ -50,6 +50,11 @@ T-093, T-094, T-054 amendment 2). Migration head `0023`.
   6.4.4 (keeps `@types/node`); no test edits; audit full tree 14 → 8, criticals 2 → 0, production
   3 → 3. **Merged-head frontend gate** (main checkout, after `npm ci`): lint, typecheck clean;
   162 files / 2,326 tests; build OK.
+- **UI-5.7 merged** (`6ef3065`, Codex, 14 min): admin hub as a divided index, stale "Phase 4"
+  copy fixed, settings forms bounded (`--admin-form-max`, `--admin-hub-max`), section hairlines.
+  Its review was shallow (five measure/spacing defects); UI-5.4's spec asks for a harder look.
+  Left as small points: the cadence table repeats "UTC" in its header and its cells. Merged-head
+  gate: lint, typecheck clean; 162 files / 2,326 tests; build OK.
 
 **Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
 allows, else Sonnet); Phase 3 screenshots to the user; **UI-4.1** ([spec](tasks/UI-4.1.md),
