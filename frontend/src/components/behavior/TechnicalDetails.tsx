@@ -34,6 +34,14 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function Missing({ reason }: { reason: string }) {
+  return (
+    <span className="muted">
+      —<span className="sr-only"> {reason}</span>
+    </span>
+  );
+}
+
 export function TechnicalDetails({
   anomaly,
   packaged,
@@ -43,6 +51,14 @@ export function TechnicalDetails({
 }) {
   const d = anomaly.detection;
   const degenerate = hasConfidenceLimitation(d?.robust_score_status);
+  const robustZ =
+    d?.robust_score_status === "DEGENERATE" ? (
+      <Missing reason="not used: MAD was zero" />
+    ) : d?.robust_score_status === "UNAVAILABLE" ? (
+      <Missing reason="not computed" />
+    ) : (
+      formatMetric(d?.robust_z ?? anomaly.robust_z)
+    );
   const provenance = packaged?.query_provenance ?? {};
   const queries = Array.isArray(provenance.queries) ? provenance.queries : [];
 
@@ -103,7 +119,7 @@ export function TechnicalDetails({
         {d ? (
           <>
             <dl className="dimension-meta">
-              <Row label="Robust z observed" value={formatMetric(d.robust_z ?? anomaly.robust_z)} />
+              <Row label="Robust z observed" value={robustZ} />
               <Row label="MAD status" value={d.robust_score_status ?? "NOT RECORDED"} />
               <Row label="Confidence" value={formatMetric(anomaly.confidence)} />
               <Row label="Baseline samples" value={formatCount(d.baseline_sample_count)} />
