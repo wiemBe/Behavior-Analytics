@@ -54,8 +54,21 @@ under `max-width: 1200px` in `globals.css`) is folded into UI-5.8 Part 3 (no T-1
 | T-102 ([spec](tasks/T-102.md)) README roadmap + routes | GLM 5.3, `--title t102-glm` (PID 801525) | worktree `t102` | report in worktree; log `QRadar-Dash-work/t102/opencode.log` |
 | T-104 ([spec](tasks/T-104.md)) mypy baseline | DeepSeek, `--title t104-ds` (PID 848148) | worktree `t104`; DB `qradar_obs_t104` | report in worktree; log `QRadar-Dash-work/t104/opencode.log` |
 
-**Next:** T-098 after UI-4.2 (both edit `widgets/dashboard.css`); UI-5.8 ([spec](tasks/UI-5.8.md),
-after UI-5.5 and UI-5.6b merge); T-054 part 3 after T-101 (re-run signature-burst with alerting
+**Merged ~15:35–15:40:** T-102 (GLM, README roadmap + routes), UI-5.5 + round 2 (`8d3a6f4`),
+UI-5.2 (`566c3c4`; Evidence units per detector, list fits). UI-5.8 launched (Sonnet, `ui58`).
+Gate worktree `QRadar-Dash-wt/gate566` (detached @ `566c3c4`) runs the frontend gate; remove it
+after.
+
+**Cross-page consistency follow-ups (collected for one task, "UI-5.9", after Phase 5):**
+- WAF and IPS investigation pages show the state pill in title case ("Open"), the log-source page
+  in upper case ("OPEN") (`components/waf`, `components/ips`);
+- a FAILED evidence collection is stated three times on `/anomalies/[id]` (the "What changed"
+  notice, `EvidenceBanner`, the Evidence tab), wording pinned by tests;
+- the sidebar scrolls at 1024×768 (shell);
+- `/rules` Meaning sentences wrap 4–5 lines at 1024; `/offenses` fits with 0 px slack;
+- `MostMatched` renders "≥ < 0.01".
+
+**Next:** T-098 after UI-4.2 (both edit `widgets/dashboard.css`); T-054 part 3 after T-101 (re-run signature-burst with alerting
 on, and source-concentration; new-port stays limited by the 24 h history rule); then the full
 gate and `feat/phase-ce` → `main`.
 
