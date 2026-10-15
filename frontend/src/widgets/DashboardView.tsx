@@ -184,9 +184,22 @@ export interface DashboardViewProps {
   layout: DashboardLayout;
   /** The page header, given the customize controls for its actions. */
   renderHeader: (actions: ReactNode) => ReactNode;
+  /** True for a saved dashboard: customizing says plainly that its changes are not saved. */
+  saved?: boolean;
+  /**
+   * Header controls that lead the actions (the dashboard switcher and menu). They are left out
+   * while customizing: the session line takes their room, and switching away would drop the
+   * changes in memory.
+   */
+  leading?: ReactNode;
 }
 
-export function DashboardView({ layout: initial, renderHeader }: DashboardViewProps) {
+export function DashboardView({
+  layout: initial,
+  renderHeader,
+  saved = false,
+  leading = null,
+}: DashboardViewProps) {
   const [layout, setLayout] = useState(initial);
   const [customizing, setCustomizing] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -279,18 +292,28 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
 
   let actions: ReactNode;
   if (!editable) {
-    actions = <p className="dg-hint">Widen the window to customize</p>;
+    actions = (
+      <>
+        {leading}
+        <p className="dg-hint">Widen the window to customize</p>
+      </>
+    );
   } else if (!editing) {
     actions = (
-      <button type="button" className="action secondary" onClick={() => setCustomizing(true)}>
-        Customize
-      </button>
+      <>
+        {leading}
+        <button type="button" className="action secondary" onClick={() => setCustomizing(true)}>
+          Customize
+        </button>
+      </>
     );
   } else {
     actions = (
       <>
         <p className="dg-session" role="status">
-          Customizing. Changes last for this session only; saving is not built yet.
+          {saved
+            ? "Customizing. Changes are not saved."
+            : "Customizing. Changes last for this session only; saving is not built yet."}
           {notice ? <span className="dg-notice"> {notice}</span> : null}
         </p>
         <button
