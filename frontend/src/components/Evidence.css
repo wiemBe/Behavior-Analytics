@@ -1,0 +1,27 @@
+/* Alert evidence: a label, a right-aligned figure and its unit, one row per fact. */
+.evidence-reason {
+  margin: 0 0 var(--sp-3);
+}
+.evidence-table {
+  width: auto;
+  max-width: 30rem;
+}
+.evidence-table td {
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) 0;
+  border: none;
+  vertical-align: baseline;
+}
+.evidence-label {
+  color: var(--text-3);
+  width: 10rem;
+}
+.evidence-table td.evidence-value {
+  min-width: 6rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.evidence-unit {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}

@@ -1,0 +1,15 @@
+/* The investigation page. */
+
+/* The three headline contributors share one row from 900 px up. The shared rule
+   (globals.css) stacks them at 1080 px, which at 1024 x 768 pushed the evidence tabs
+   a full screen down for three cards that each fit in 250 px. */
+@media (min-width: 900px) and (max-width: 1080px) {
+  .main .contributor-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* A failed or refused read states what the analyst can do next. */
+.incident-error-link {
+  margin: var(--sp-3) 0 0;
+}
