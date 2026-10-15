@@ -128,11 +128,11 @@ def _validate_range(
         end = end.replace(tzinfo=UTC)
     if end <= start:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "range end must be after its start"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "range end must be after its start"
         )
     if (end - start) > timedelta(days=max_days):
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"range exceeds the maximum of {max_days} days",
         )
     return start, end
@@ -295,7 +295,7 @@ async def anomaly_histogram(
     try:
         check_range(start, end)
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     result = await histogram(session, since=start, until=end, subject_kind=subject_kind)
     return AnomalyHistogramOut(
         since=start,

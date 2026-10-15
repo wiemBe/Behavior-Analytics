@@ -109,7 +109,7 @@ async def create_rule(
     if payload.instance_id is not None and (
         await session.get(QRadarInstance, payload.instance_id) is None
     ):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown instance_id")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "unknown instance_id")
     rule = ClassificationRule(
         instance_id=payload.instance_id,
         kind=payload.kind.value,
@@ -154,16 +154,16 @@ async def update_rule(
     for name in ("enabled", "priority", "pattern"):
         if name in changes and changes[name] is None:
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY, f"{name} cannot be null"
+                status.HTTP_422_UNPROCESSABLE_CONTENT, f"{name} cannot be null"
             )
     if "pattern" in changes:
         try:
             check_pattern(ClassificationRuleKind(rule.kind), changes["pattern"])
         except ValueError as exc:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     if changes.get("target_class") is not None and changes["target_class"].value == "UNCLASSIFIED":
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "a rule cannot target UNCLASSIFIED"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "a rule cannot target UNCLASSIFIED"
         )
 
     before = _snapshot(rule)

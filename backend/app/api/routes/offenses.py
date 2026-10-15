@@ -78,7 +78,7 @@ async def list_offenses(
         # Reject rather than silently substituting: a caller sorting by an
         # unknown column has a bug, and a quiet fallback hides it.
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"sort must be one of: {', '.join(sorted(SORTABLE))}",
         )
 
