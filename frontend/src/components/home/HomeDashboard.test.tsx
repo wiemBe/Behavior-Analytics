@@ -30,7 +30,7 @@ vi.mock("@/widgets/DashboardView", async (importOriginal) => {
         <>
           {props.renderHeader(
             <>
-              {props.leading}
+              {typeof props.leading === "function" ? props.leading(false) : props.leading}
               <button type="button">Customize</button>
             </>,
           )}
@@ -68,6 +68,8 @@ let rows: Row[];
 let me: { status: number; body: unknown };
 let listStatus: number;
 let writeResponse: { status: number; body: unknown } | null;
+let writeResponses: Array<{ status: number; body: unknown }>;
+let networkPutFailure: boolean;
 let calls: Array<{ method: string; path: string; body?: unknown }>;
 
 const WRITER = {
@@ -103,6 +105,8 @@ beforeEach(() => {
   me = { status: 200, body: WRITER };
   listStatus = 200;
   writeResponse = null;
+  writeResponses = [];
+  networkPutFailure = false;
   calls = [];
   mocks.search = "";
   mocks.realView = false;
@@ -120,14 +124,19 @@ beforeEach(() => {
       const method = init?.method ?? "GET";
       calls.push({ method, path, body: init?.body ? JSON.parse(init.body as string) : undefined });
       if (path === "/me") return json(me.status, me.body);
-      if (method !== "GET" && writeResponse) {
-        const response = writeResponse;
+      if (method === "PUT" && /^\/dashboards\/[^/]+$/.test(path) && networkPutFailure) {
+        throw new TypeError("network unavailable");
+      }
+      const queued = method !== "GET" ? writeResponses.shift() : null;
+      if (method !== "GET" && (queued || writeResponse)) {
+        const response = queued ?? writeResponse!;
         if (response.status < 300) {
           // a write that the fake server accepted: apply the one change these tests make
           const id = path.split("/")[2];
           const row = rows.find((r) => r.id === id);
           const body = init?.body ? JSON.parse(init.body as string) : {};
           if (method === "PATCH" && row && body.name) row.name = body.name;
+          if (method === "PUT" && row && body.layout) row.layout = body.layout;
         }
         return json(response.status, response.body);
       }
@@ -162,6 +171,29 @@ beforeEach(() => {
 const listReads = () => calls.filter((c) => c.method === "GET" && c.path.startsWith("/dashboards?"));
 const view = () => screen.findByTestId("view");
 const h1 = () => screen.getByRole("heading", { level: 1 });
+
+const rangedLayout = () => ({
+  v: 1,
+  range: "24h",
+  widgets: [
+    {
+      id: "w_chart",
+      type: "chart.eps_fleet_total",
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 12,
+      range: null,
+      config: {},
+    },
+  ],
+});
+
+async function makeRangeDirty() {
+  const group = await screen.findByRole("group", { name: "Window" });
+  await userEvent.click(within(group).getByRole("button", { name: "1 h" }));
+  expect(screen.getByText(/Unsaved changes/)).toBeInTheDocument();
+}
 
 describe("which dashboard `/` shows", () => {
   it("shows the dashboard marked default, with its name, description and layout", async () => {
@@ -291,23 +323,18 @@ describe("which dashboard `/` shows", () => {
     expect(screen.getByText(/widget of type future\.widget that this version does not know/)).toBeInTheDocument();
   });
 
-  it("says plainly that changes are not saved while customizing a saved dashboard, and keeps the template's own copy", async () => {
+  it("keeps dashboard navigation available while customizing and removes the interim no-save copy", async () => {
     mocks.realView = true;
     rows[1].layout = { v: 1, range: "24h", widgets: [] };
     const { unmount } = render(<HomeDashboard />);
     await userEvent.click(await screen.findByRole("button", { name: "Customize" }));
-    expect(screen.getByText("Customizing. Changes are not saved.")).toBeInTheDocument();
-    // switching away would drop the changes in memory, and the session line needs the room
-    expect(screen.queryByRole("button", { name: "Dashboards" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
+    expect(screen.queryByText(/Changes are not saved|saving is not built/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Dashboards" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.getByRole("button", { name: "Dashboards" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage" })).toBeInTheDocument();
     unmount();
-    rows = [];
-    render(<HomeDashboard />);
-    await userEvent.click(await screen.findByRole("button", { name: "Customize" }));
-    expect(screen.getByText(/Changes last for this session only/)).toBeInTheDocument();
   });
 
   it("shows the header and an empty grid while the dashboards are read, then the dashboard", async () => {
@@ -446,5 +473,258 @@ describe("writes re-read the list", () => {
     await userEvent.click(screen.getByRole("button", { name: "Delete dashboard" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/"));
     expect(calls.find((c) => c.method === "DELETE")?.path).toBe("/dashboards/d2");
+  });
+});
+
+describe("layout saving", () => {
+  beforeEach(() => {
+    mocks.realView = true;
+    rows[1].layout = rangedLayout();
+  });
+
+  it("saves an outside-Customize range change with expected_revision and keeps the new revision", async () => {
+    writeResponse = { status: 200, body: { ...out(rows[1]), revision: 2 } };
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Saved"));
+    const write = calls.find((call) => call.method === "PUT" && call.path === "/dashboards/d2");
+    expect(write?.body).toMatchObject({
+      name: "Day shift",
+      description: "What the day team watches.",
+      expected_revision: 1,
+      layout: { widgets: [{ id: "w_chart", range: "1h" }] },
+    });
+  });
+
+  it("Discard outside Customize restores the last saved layout without a write", async () => {
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(screen.queryByText("Unsaved changes")).toBeNull();
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
+    expect(within(screen.getByRole("group", { name: "Window" })).getByRole("button", { name: "24 h" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("keeps the layout and Save control after a network failure", async () => {
+    networkPutFailure = true;
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Saving failed; your changes are still here.",
+    );
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Window" })).getByRole("button", { name: "1 h" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("opens the two-writer dialog and Save as a copy posts the current layout", async () => {
+    writeResponses = [
+      {
+        status: 409,
+        body: { detail: { message: "dashboard revision is stale", current_revision: 2 } },
+      },
+      { status: 201, body: { ...out(rows[1]), id: "copy1", name: "Copy of Day shift" } },
+    ];
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "This dashboard changed since you opened it",
+    });
+    expect(dialog).toHaveTextContent("dashboard revision is stale");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save as a copy" }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/?dashboard=copy1"));
+    const copy = calls.find((call) => call.method === "POST" && call.path === "/dashboards");
+    expect(copy?.body).toMatchObject({
+      name: "Copy of Day shift",
+      layout: { widgets: [{ id: "w_chart", range: "1h" }] },
+    });
+  });
+
+  it("a 403 hides Save without dropping the session layout", async () => {
+    writeResponse = { status: 403, body: { detail: "only the owner can change this dashboard" } };
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Save" })).toBeNull());
+    expect(screen.getAllByText(/server refused the change: Only the owner/).length).toBeGreaterThan(0);
+    expect(within(screen.getByRole("group", { name: "Window" })).getByRole("button", { name: "1 h" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("never offers or sends Save without dashboard:write", async () => {
+    me = { status: 200, body: { ...WRITER, effective_permissions: ["read:dashboards"] } };
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
+  });
+});
+
+describe("save refusals and the guard", () => {
+  beforeEach(() => {
+    mocks.realView = true;
+    rows[1].layout = rangedLayout();
+  });
+  const stillOneHour = () =>
+    expect(
+      within(screen.getByRole("group", { name: "Window" })).getByRole("button", { name: "1 h" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+  it("shows a 422 detail in the header and keeps the changes and Save", async () => {
+    writeResponse = { status: 422, body: { detail: "layout has too many widgets" } };
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Layout has too many widgets.");
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    stillOneHour();
+  });
+
+  it("shows a 409 limit text on a saved dashboard in the header, not as a conflict", async () => {
+    writeResponse = { status: 409, body: { detail: "dashboard limit reached" } };
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Dashboard limit reached.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    stillOneHour();
+  });
+
+  it("Reload in the conflict dialog discards local changes and re-reads the dashboard", async () => {
+    writeResponses = [
+      { status: 409, body: { detail: { message: "stale", current_revision: 2 } } },
+    ];
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "This dashboard changed since you opened it",
+    });
+    const reads = () => calls.filter((c) => c.method === "GET" && c.path === "/dashboards/d2").length;
+    const before = reads();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(reads()).toBeGreaterThan(before));
+    await waitFor(() => expect(screen.queryByText(/Unsaved changes/)).toBeNull());
+  });
+
+  it("sends no write for a shared dashboard the caller does not own", async () => {
+    mocks.search = "dashboard=d3";
+    rows[2].layout = rangedLayout();
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+    expect(calls.some((c) => c.method !== "GET")).toBe(false);
+  });
+
+  it("sends no write after /me failed", async () => {
+    me = { status: 500, body: { detail: "boom" } };
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(calls.some((c) => c.method !== "GET")).toBe(false);
+  });
+
+  it("asks before a menu navigation (New dashboard) when dirty", async () => {
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("button", { name: "Manage" }));
+    await userEvent.click(screen.getByRole("button", { name: /New dashboard/ }));
+    expect(screen.getByRole("dialog", { name: "Discard unsaved changes to Day shift?" })).toBeInTheDocument();
+  });
+
+  it("guards a same-tab link outside the page while dirty, and not when clean", async () => {
+    render(
+      <>
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- stands in for a sidebar link */}
+        <a href="/rules" onClick={(event) => event.preventDefault()}>
+          Rules
+        </a>
+        <HomeDashboard />
+      </>,
+    );
+    await screen.findByRole("group", { name: "Window" });
+    await userEvent.click(screen.getByRole("link", { name: "Rules" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("link", { name: "Rules" }));
+    expect(screen.getByRole("dialog", { name: "Discard unsaved changes to Day shift?" })).toBeInTheDocument();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("template first save and navigation guard", () => {
+  it("Done on the unsaved template creates it, sets the first default and switches to it", async () => {
+    rows = [];
+    mocks.realView = true;
+    writeResponses = [
+      { status: 201, body: { ...out(rowsInit()[0]), id: "new1", name: "SOC Overview" } },
+      { status: 200, body: { dashboard_id: "new1" } },
+    ];
+    render(<HomeDashboard />);
+    await userEvent.click(await screen.findByRole("button", { name: "Customize" }));
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/?dashboard=new1"));
+    expect(calls.filter((call) => call.method !== "GET").map((call) => call.path)).toEqual([
+      "/dashboards",
+      "/dashboards/default",
+    ]);
+  });
+
+  it("a taken template name asks for another name and shows the server's text", async () => {
+    rows = [];
+    mocks.realView = true;
+    writeResponse = {
+      status: 409,
+      body: { detail: "you already have a dashboard named 'SOC Overview'" },
+    };
+    render(<HomeDashboard />);
+    await userEvent.click(await screen.findByRole("button", { name: "Customize" }));
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose another dashboard name" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "You already have a dashboard named 'SOC Overview'.",
+    );
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("SOC Overview");
+  });
+
+  it("switching while dirty asks first; Keep editing returns focus and Discard navigates", async () => {
+    mocks.realView = true;
+    rows[1].layout = rangedLayout();
+    render(<HomeDashboard />);
+    await makeRangeDirty();
+    const switcher = screen.getByRole("button", { name: "Dashboards" });
+    await userEvent.click(switcher);
+    await userEvent.click(screen.getByRole("button", { name: /Night shift/ }));
+    const guard = screen.getByRole("dialog", { name: "Discard unsaved changes to Day shift?" });
+    expect(mocks.push).not.toHaveBeenCalled();
+    await userEvent.click(within(guard).getByRole("button", { name: "Keep editing" }));
+    await waitFor(() => expect(switcher).toHaveFocus());
+
+    await userEvent.click(switcher);
+    await userEvent.click(screen.getByRole("button", { name: /Night shift/ }));
+    const again = screen.getByRole("dialog", { name: "Discard unsaved changes to Day shift?" });
+    await userEvent.click(within(again).getByRole("button", { name: "Discard" }));
+    expect(mocks.push).toHaveBeenCalledWith("/?dashboard=d1");
+  });
+
+  it("clean switching does not ask", async () => {
+    render(<HomeDashboard />);
+    await view();
+    await userEvent.click(screen.getByRole("button", { name: "Dashboards" }));
+    await userEvent.click(screen.getByRole("button", { name: /Night shift/ }));
+    expect(screen.queryByRole("dialog", { name: /Discard unsaved/ })).toBeNull();
+    expect(mocks.push).toHaveBeenCalledWith("/?dashboard=d1");
   });
 });

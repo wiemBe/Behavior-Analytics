@@ -23,7 +23,8 @@ import {
 } from "@/lib/dashboardApi";
 
 import { usePopover, type DashboardTarget } from "./DashboardSwitcher";
-import { TEMPLATES } from "./templates";
+import { TEMPLATES, templateByKey } from "./templates";
+import type { DashboardLayout } from "./types";
 
 import "./dashboard.css";
 
@@ -43,6 +44,7 @@ export type CurrentDashboard =
       ownerSubject: string;
       visibility: DashboardVisibility;
       isDefault: boolean;
+      templateKey?: string | null;
     };
 
 /** What `GET /me` said. `loading` and `failed` both grant nothing. */
@@ -314,9 +316,22 @@ export interface DashboardMenuProps {
   onChanged: (change: DashboardChange) => void;
   /** The server answered 403 to a write: the page hides the controls and says why. */
   onRefused: (detail: string) => void;
+  /** Customize-only restore/reset changes the in-memory layout; Done performs the write. */
+  customizing?: boolean;
+  onResetLayout?: (layout: DashboardLayout) => void;
+  /** New, duplicate and delete navigate; the page may interpose its unsaved-changes guard. */
+  onRequestNavigation?: (action: () => void) => void;
 }
 
-export function DashboardMenu({ current, access, onChanged, onRefused }: DashboardMenuProps) {
+export function DashboardMenu({
+  current,
+  access,
+  onChanged,
+  onRefused,
+  customizing = false,
+  onResetLayout,
+  onRequestNavigation,
+}: DashboardMenuProps) {
   const { open, setOpen, root, trigger } = usePopover();
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -325,6 +340,14 @@ export function DashboardMenu({ current, access, onChanged, onRefused }: Dashboa
   if (access.actions.length === 0) return null;
   const saved = current.kind === "saved" ? current : null;
   const offers = (action: MenuAction) => access.actions.includes(action);
+  const restoreTemplate = saved ? templateByKey(saved.templateKey ?? null) : undefined;
+  const unknownTemplate = saved?.templateKey && !restoreTemplate ? saved.templateKey : null;
+  const navigate = (action: () => void) => {
+    setOpen(false);
+    trigger.current?.focus();
+    if (onRequestNavigation) onRequestNavigation(action);
+    else action();
+  };
 
   const close = () => {
     setDialog(null);
@@ -361,15 +384,21 @@ export function DashboardMenu({ current, access, onChanged, onRefused }: Dashboa
 
   const choose = (action: MenuAction) => {
     if (action === "new" || action === "rename" || action === "delete") {
-      setOpen(false);
-      setDialog({ kind: action });
+      const show = () => setDialog({ kind: action });
+      if (action === "new" || action === "delete") navigate(show);
+      else {
+        setOpen(false);
+        show();
+      }
       return;
     }
     if (!saved) return;
     if (action === "duplicate") {
-      void direct(`"${saved.name}" could not be duplicated`, async () => {
-        const copy = await duplicateDashboard(saved.id);
-        return { go: { kind: "saved", id: copy.id } };
+      navigate(() => {
+        void direct(`"${saved.name}" could not be duplicated`, async () => {
+          const copy = await duplicateDashboard(saved.id);
+          return { go: { kind: "saved", id: copy.id } };
+        });
       });
     } else if (action === "default") {
       void direct(
@@ -439,7 +468,39 @@ export function DashboardMenu({ current, access, onChanged, onRefused }: Dashboa
                 </button>
               </li>
             ))}
+            {customizing && saved && offers("rename") ? (
+              <li>
+                {restoreTemplate ? (
+                  <button
+                    type="button"
+                    className="dg-pop-item dg-menu-item"
+                    onClick={() => {
+                      setOpen(false);
+                      setDialog({ kind: "failed", title: "restore", text: "" });
+                    }}
+                  >
+                    Restore defaults…
+                  </button>
+                ) : saved.templateKey === null || saved.templateKey === undefined ? (
+                  <button
+                    type="button"
+                    className="dg-pop-item dg-menu-item"
+                    onClick={() => {
+                      setOpen(false);
+                      setDialog({ kind: "failed", title: "reset", text: "" });
+                    }}
+                  >
+                    Reset to empty…
+                  </button>
+                ) : null}
+              </li>
+            ) : null}
           </ul>
+          {customizing && unknownTemplate ? (
+            <p className="dg-pop-note">
+              Defaults cannot be restored because this client does not know template {unknownTemplate}.
+            </p>
+          ) : null}
         </div>
       ) : null}
       {dialog?.kind === "new" ? (
@@ -491,7 +552,56 @@ export function DashboardMenu({ current, access, onChanged, onRefused }: Dashboa
           }
         />
       ) : null}
-      {dialog?.kind === "failed" ? (
+      {dialog?.kind === "failed" && dialog.title === "restore" && saved && restoreTemplate ? (
+        <Modal title={`Restore ${restoreTemplate.name} defaults?`} onClose={close}>
+          <div className="dg-modal-form">
+            <p className="dg-modal-text">
+              Replace the current layout with {restoreTemplate.name} version {restoreTemplate.version}.
+              Nothing is saved until you choose Done.
+            </p>
+            <div className="dg-modal-actions">
+              <button type="button" className="action secondary" onClick={close}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="action"
+                onClick={() => {
+                  onResetLayout?.(restoreTemplate.layout);
+                  close();
+                }}
+              >
+                Restore defaults
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+      {dialog?.kind === "failed" && dialog.title === "reset" && saved ? (
+        <Modal title={`Reset "${saved.name}" to empty?`} onClose={close}>
+          <div className="dg-modal-form">
+            <p className="dg-modal-text">
+              Remove every widget from the current layout. Nothing is saved until you choose Done.
+            </p>
+            <div className="dg-modal-actions">
+              <button type="button" className="action secondary" onClick={close}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="action"
+                onClick={() => {
+                  onResetLayout?.({ v: 1, range: "24h", widgets: [] });
+                  close();
+                }}
+              >
+                Reset to empty
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+      {dialog?.kind === "failed" && dialog.title !== "restore" && dialog.title !== "reset" ? (
         <Modal title={dialog.title} onClose={close}>
           <div className="dg-modal-form">
             <p className="dg-modal-error" role="alert">

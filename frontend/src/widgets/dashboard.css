@@ -803,6 +803,13 @@ dialog.dg-modal::backdrop {
   border: 1px solid var(--neutral-border);
   border-radius: var(--r-md);
 }
+/* The save line under the header: one quiet sentence, not a box, so an edit does not add a card. */
+.dg-save-status {
+  padding: 0;
+  margin: 0 0 var(--sp-3);
+  background: none;
+  border: 0;
+}
 .dg-status a {
   color: var(--link);
 }
