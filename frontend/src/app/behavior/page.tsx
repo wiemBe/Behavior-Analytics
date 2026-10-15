@@ -41,6 +41,8 @@ import {
 import { detectorLabel, formatMetric, formatRatio, stateTone } from "@/lib/behavior";
 import { formatDateTimeCompact } from "@/lib/health";
 
+import "./overview.css";
+
 export const metadata: Metadata = {
   title: "Overview",
 };
@@ -88,7 +90,7 @@ export default async function BehaviorPage() {
         ? "You do not have permission to view behavioral analytics."
         : err instanceof ApiError && err.status === 401
           ? "Your session has expired. Sign in again to continue."
-          : "Behavioral analytics could not be loaded. The backend may be unreachable.";
+          : "Behavioral analytics could not be loaded. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health.";
   }
 
   if (error || !summary) {
@@ -112,7 +114,12 @@ export default async function BehaviorPage() {
     <>
       <PageHeader
         title="Behavioral overview"
-        description={`${summary.monitored_sources} monitored sources, each compared with its own baseline for this weekday and hour. Times are UTC.`}
+        description={
+          <>
+            {summary.monitored_sources} monitored sources, each compared with its own
+            baseline for this weekday and hour. <span className="when-utc">Times are UTC.</span>
+          </>
+        }
       />
 
       {/* --- level 1: the four counters that decide whether to keep reading -- */}
@@ -204,7 +211,7 @@ export default async function BehaviorPage() {
         ) : (
           <>
             <TableScroll label="Sources needing attention">
-              <table>
+              <table className="attention-table">
                 <caption className="sr-only">
                   Sources needing attention, ordered by lifecycle state, then
                   severity, then deviation, then recency.
@@ -270,14 +277,21 @@ export default async function BehaviorPage() {
                         </span>
                       </td>
                       <td className="num">
-                        {formatMetric(row.observed)}
-                        {" / "}
-                        {/* An unbaselined source has no expectation; an em
-                            dash says so rather than inventing a zero. */}
-                        {row.expected == null ? (
+                        {/* Neither value measured: one dash, not "— / —". An
+                            unbaselined source has no expectation; an em dash
+                            says so rather than inventing a zero. */}
+                        {row.observed == null && row.expected == null ? (
                           <span className="muted">—</span>
                         ) : (
-                          formatMetric(row.expected)
+                          <>
+                            {formatMetric(row.observed)}
+                            {" / "}
+                            {row.expected == null ? (
+                              <span className="muted">—</span>
+                            ) : (
+                              formatMetric(row.expected)
+                            )}
+                          </>
                         )}
                       </td>
                       <td className="num">{formatRatio(row.deviation)}</td>

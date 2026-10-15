@@ -28,6 +28,7 @@ function lagText(seconds: number | null): string {
 export function SourceQuality({
   baseline,
   collection,
+  collectionUnknown = false,
   expectedLow,
   expectedHigh,
   lastBucketAt,
@@ -35,6 +36,8 @@ export function SourceQuality({
 }: {
   baseline: BaselineQuality;
   collection: CollectionHealth;
+  /** The metric history could not be read, so collection cannot be judged. */
+  collectionUnknown?: boolean;
   expectedLow: number | null;
   expectedHigh: number | null;
   lastBucketAt: string | null;
@@ -93,9 +96,17 @@ export function SourceQuality({
       <section className="panel">
         <div className="row dimension-panel-head">
           <h3>Collection health</h3>
-          <span className={`pill ${collection.tone}`}>{collection.label}</span>
+          {collectionUnknown ? (
+            <span className="pill">Unknown</span>
+          ) : (
+            <span className={`pill ${collection.tone}`}>{collection.label}</span>
+          )}
         </div>
-        <p className="subtitle">{collection.explanation}</p>
+        <p className="subtitle">
+          {collectionUnknown
+            ? "The metric history could not be loaded, so collection cannot be judged. This is a failed request, not a statement about the source or its collector."
+            : collection.explanation}
+        </p>
 
         <dl className="dimension-meta">
           <div>
@@ -108,17 +119,39 @@ export function SourceQuality({
               )}
             </dd>
           </div>
-          <div>
-            <dt>Collection lag</dt>
-            <dd className="num">{lagText(collection.lagSeconds)}</dd>
-          </div>
-          <div>
-            <dt>Intervals in window</dt>
-            <dd className="num">
-              {collection.total - collection.incomplete} of {collection.expected} fully
-              observed
-            </dd>
-          </div>
+          {collectionUnknown ? (
+            <>
+              <div>
+                <dt>Collection lag</dt>
+                <dd className="num">
+                  <span className="muted">—</span>
+                </dd>
+              </div>
+              <div>
+                <dt>Intervals in window</dt>
+                <dd className="num">
+                  <span className="muted">—</span>
+                </dd>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <dt>Collection lag</dt>
+                <dd className="num">{lagText(collection.lagSeconds)}</dd>
+              </div>
+              <div>
+                <dt>Intervals in window</dt>
+                {/* The window's edges can both hold a bucket, so the count of
+                    stored buckets may exceed the nominal count; the
+                    denominator never reads lower than the numerator. */}
+                <dd className="num">
+                  {collection.total - collection.incomplete} of{" "}
+                  {Math.max(collection.expected, collection.total)} fully observed
+                </dd>
+              </div>
+            </>
+          )}
           <div>
             <dt>QRadar log source status</dt>
             {/* Reported by QRadar about the log source. Not a statement about
