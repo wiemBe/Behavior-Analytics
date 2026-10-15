@@ -23,7 +23,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useReportDataAge } from "@/components/shell/AutoRefresh";
@@ -39,14 +39,26 @@ import {
 import {
   DashboardMenu,
   dashboardAccess,
+  PERM_WRITE,
   type Caller,
   type CurrentDashboard,
   type DashboardChange,
 } from "@/widgets/DashboardMenu";
 import { DashboardSwitcher, type DashboardTarget } from "@/widgets/DashboardSwitcher";
 import { DashboardView } from "@/widgets/DashboardView";
+import {
+  ConflictDialog,
+  NameTakenDialog,
+  UnsavedChangesDialog,
+} from "@/widgets/DashboardSaveDialogs";
 import { columnsForWidth, type GridColumns } from "@/widgets/layout";
 import { SOC_OVERVIEW } from "@/widgets/templates";
+import {
+  useDashboard,
+  type DashboardEditorSource,
+  type SaveOutcome,
+} from "@/widgets/useDashboard";
+import type { DashboardLayout } from "@/widgets/types";
 
 import "./dashboard.css";
 
@@ -113,6 +125,255 @@ function Problem({ children }: { children: ReactNode }) {
     <div className="notice dg-problem" role="alert">
       {children}
     </div>
+  );
+}
+
+interface DashboardSessionProps {
+  source: DashboardEditorSource;
+  layout: DashboardLayout;
+  caller: Caller;
+  items: readonly DashboardListItem[] | null;
+  listLoading: boolean;
+  listFailure: string | null;
+  defaultItem: DashboardListItem | null;
+  refused: string | null;
+  description: string | null;
+  notice?: ReactNode;
+  onChanged: (change: DashboardChange) => void;
+  onRefused: (detail: string) => void;
+}
+
+/** A loaded dashboard: one reducer owns its saved layout, current layout and every save path. */
+function DashboardSession({
+  source,
+  layout,
+  caller,
+  items,
+  listLoading,
+  listFailure,
+  defaultItem,
+  refused,
+  description,
+  notice = null,
+  onChanged,
+  onRefused,
+}: DashboardSessionProps) {
+  const router = useRouter();
+  const [nameRefusal, setNameRefusal] = useState<string | null>(null);
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const [guarded, setGuarded] = useState<{
+    action: () => void;
+    focus: HTMLElement | null;
+  } | null>(null);
+  const editor = useDashboard(source, layout, {
+    setDefaultOnCreate: defaultItem === null,
+    onCreated: (dashboard) => {
+      onChanged({ go: { kind: "saved", id: dashboard.id } });
+    },
+    onSaved: () => onChanged({ go: null }),
+  });
+  const state = editor.state;
+  const syncMetadata = editor.syncMetadata;
+  const currentSource = state.source;
+  const listed =
+    currentSource.kind === "saved"
+      ? items?.find((item) => item.id === currentSource.dashboard.id) ?? null
+      : null;
+  useEffect(() => {
+    if (listed) syncMetadata(listed);
+  }, [listed, syncMetadata]);
+  const current: CurrentDashboard =
+    currentSource.kind === "template"
+      ? { kind: "template" }
+      : {
+          kind: "saved",
+          id: currentSource.dashboard.id,
+          name: currentSource.dashboard.name,
+          ownerSubject: currentSource.dashboard.owner_subject,
+          visibility: currentSource.dashboard.visibility,
+          isDefault: currentSource.dashboard.is_default,
+          templateKey: currentSource.dashboard.template_key,
+        };
+  const access = dashboardAccess(current, caller, refused);
+  const mayWrite =
+    refused === null &&
+    caller.status === "ok" &&
+    caller.permissions.has(PERM_WRITE) &&
+    (current.kind === "template" || current.ownerSubject === caller.subject);
+  const name =
+    currentSource.kind === "template"
+      ? currentSource.template.name
+      : currentSource.dashboard.name;
+  const templateShown = currentSource.kind === "template";
+
+  const requestNavigation = useCallback(
+    (action: () => void) => {
+      if (!state.dirty) return action();
+      setGuarded({ action, focus: document.activeElement as HTMLElement | null });
+    },
+    [state.dirty],
+  );
+
+  // The shell is outside the allowed files. A capture listener on this page guards same-tab
+  // sidebar links without modifying it; dashboard links remain owned by their own controls.
+  useEffect(() => {
+    if (!state.dirty) return;
+    const capture = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!(target instanceof HTMLAnchorElement) || target.closest(".home") || target.target === "_blank") {
+        return;
+      }
+      const url = new URL(target.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestNavigation(() => router.push(`${url.pathname}${url.search}${url.hash}`));
+    };
+    document.addEventListener("click", capture, true);
+    return () => document.removeEventListener("click", capture, true);
+  }, [requestNavigation, router, state.dirty]);
+
+  const handleSave = async (nameOverride?: string): Promise<boolean> => {
+    const outcome: SaveOutcome = await editor.save(nameOverride);
+    if (outcome.kind === "saved") {
+      setNameRefusal(null);
+      return true;
+    }
+    if (outcome.kind === "conflict") setConflictOpen(true);
+    if (outcome.kind === "name") setNameRefusal(outcome.message);
+    if (outcome.kind === "forbidden") onRefused(outcome.message);
+    return false;
+  };
+
+  const switcher = (
+    <DashboardSwitcher
+      items={items}
+      loading={listLoading}
+      failure={listFailure}
+      subject={caller.status === "ok" ? caller.subject : null}
+      current={
+        currentSource.kind === "saved"
+          ? { kind: "saved", id: currentSource.dashboard.id }
+          : { kind: "template" }
+      }
+      onSelect={(target) =>
+        requestNavigation(() => router.push(dashboardHref(target, defaultItem !== null)))
+      }
+    />
+  );
+  const leading = (customizing: boolean) => (
+    <>
+      {switcher}
+      <DashboardMenu
+        current={current}
+        access={access}
+        customizing={customizing}
+        onResetLayout={editor.changeLayout}
+        onRequestNavigation={requestNavigation}
+        onChanged={onChanged}
+        onRefused={onRefused}
+      />
+    </>
+  );
+  const meta = (
+    <>
+      {templateShown ? (
+        <>
+          <span className="dg-qualifier">Template, not saved</span>
+          <span className="dg-qualifier">{TEMPLATE_DESCRIPTION}</span>
+        </>
+      ) : null}
+      {current.kind === "saved" && current.isDefault ? <span className="badge">Default</span> : null}
+      {current.kind === "saved" && current.visibility === "SHARED" ? (
+        <span className="badge">Shared</span>
+      ) : null}
+      {access.note ? <span className="dg-qualifier">{access.note}</span> : null}
+    </>
+  );
+
+  return (
+    <>
+      <DashboardView
+        layout={state.currentLayout}
+        onLayoutChange={editor.changeLayout}
+        saved={!templateShown}
+        dirty={state.dirty}
+        canSave={mayWrite}
+        saveOnDone={templateShown}
+        saving={state.saveState === "saving"}
+        saveMessage={state.saveState === "saved" || state.saveState === "error" ? state.message : null}
+        onSave={() => handleSave()}
+        onDiscard={editor.discard}
+        leading={leading}
+        renderHeader={(actions) => (
+          <>
+            <PageHeader
+              title={name}
+              description={templateShown ? undefined : description ?? undefined}
+              meta={meta}
+              actions={actions}
+            />
+            {notice}
+          </>
+        )}
+      />
+      {nameRefusal ? (
+        <NameTakenDialog
+          initialName={name}
+          serverMessage={nameRefusal}
+          busy={state.saveState === "saving"}
+          onClose={() => setNameRefusal(null)}
+          onSave={async (nextName) => {
+            const outcome = await editor.save(nextName);
+            if (outcome.kind === "saved") {
+              setNameRefusal(null);
+              return null;
+            }
+            if (outcome.kind === "forbidden") onRefused(outcome.message);
+            return "message" in outcome ? outcome.message : "The dashboard could not be saved.";
+          }}
+        />
+      ) : null}
+      {conflictOpen && currentSource.kind === "saved" ? (
+        <ConflictDialog
+          dashboardName={currentSource.dashboard.name}
+          message={state.message ?? "Reload the server copy or save your layout as a new dashboard."}
+          busy={state.saveState === "saving"}
+          onClose={() => setConflictOpen(false)}
+          onReload={async () => {
+            if (await editor.reload()) setConflictOpen(false);
+          }}
+          onSaveCopy={async (copyName) => {
+            const outcome = await editor.saveAsCopy(copyName);
+            if (outcome.kind === "saved") {
+              setConflictOpen(false);
+              return null;
+            }
+            if (outcome.kind === "forbidden") onRefused(outcome.message);
+            return "message" in outcome ? outcome.message : "The copy could not be saved.";
+          }}
+        />
+      ) : null}
+      {guarded ? (
+        <UnsavedChangesDialog
+          dashboardName={name}
+          onKeep={() => {
+            const focus = guarded.focus;
+            setGuarded(null);
+            queueMicrotask(() => focus?.focus());
+          }}
+          onDiscard={() => {
+            const action = guarded.action;
+            editor.discard();
+            setGuarded(null);
+            action();
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -260,40 +521,39 @@ export function HomeDashboard() {
         </p>
       ) : null;
     body = (
-      <DashboardView
+      <DashboardSession
         key="template"
+        source={{ kind: "template", template: SOC_OVERVIEW }}
         layout={SOC_OVERVIEW.layout}
-        leading={
-          <>
-            {switcher}
-            {menu}
-          </>
-        }
-        renderHeader={(actions) => (
-          <>
-            {header(actions, null, false, false)}
-            {notice}
-          </>
-        )}
+        caller={caller}
+        items={items}
+        listLoading={!items && !listFailed}
+        listFailure={listFailed ? readFailure(list) : null}
+        defaultItem={defaultItem}
+        refused={refused}
+        description={null}
+        notice={notice}
+        onChanged={changed}
+        onRefused={setRefused}
       />
     );
   } else if (savedId && detail.status === "ok") {
     const read = readLayout(detail.data.layout);
     if (read.ok) {
       body = (
-        <DashboardView
+        <DashboardSession
           key={savedId}
+          source={{ kind: "saved", dashboard: detail.data }}
           layout={read.layout}
-          saved
-          leading={
-            <>
-              {switcher}
-              {menu}
-            </>
-          }
-          renderHeader={(actions) =>
-            header(actions, detail.data.description, false, false)
-          }
+          caller={caller}
+          items={items}
+          listLoading={!items && !listFailed}
+          listFailure={listFailed ? readFailure(list) : null}
+          defaultItem={defaultItem}
+          refused={refused}
+          description={detail.data.description}
+          onChanged={changed}
+          onRefused={setRefused}
         />
       );
     } else {

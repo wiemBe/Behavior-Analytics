@@ -169,12 +169,10 @@ describe("customize mode", () => {
     expect(screen.getAllByRole("link", { name: "Open" })).toHaveLength(2);
   });
 
-  it("says plainly that changes last for this session only", () => {
+  it("removes the interim unsaved-session copy now that saving is available", () => {
     view();
     fireEvent.click(screen.getByRole("button", { name: "Customize" }));
-    expect(screen.getByText(/Customizing\. Changes last/)).toHaveTextContent(
-      "Customizing. Changes last for this session only; saving is not built yet.",
-    );
+    expect(screen.queryByText(/saving is not built|Changes are not saved/)).toBeNull();
   });
 
   it("removes a widget with a control named for it, and Done leaves the mode", async () => {
@@ -253,6 +251,99 @@ describe("customize mode", () => {
     expect(screen.getByText("Widen the window to customize")).toBeInTheDocument();
     resize(1000);
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+  });
+
+  it("Done leaves Customize without a write when the layout is clean", async () => {
+    const onSave = vi.fn().mockResolvedValue(true);
+    render(
+      <DashboardView
+        layout={layout}
+        renderHeader={(actions) => <div>{actions}</div>}
+        canSave
+        onSave={onSave}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Customize" })).toBeInTheDocument();
+  });
+
+  it("Done saves a dirty layout and stays in Customize when the write fails", async () => {
+    const onSave = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    render(
+      <DashboardView
+        layout={layout}
+        renderHeader={(actions) => <div>{actions}</div>}
+        dirty
+        canSave
+        onSave={onSave}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(await screen.findByRole("button", { name: "Done" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(await screen.findByRole("button", { name: "Customize" })).toBeInTheDocument();
+    expect(onSave).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers Save and Discard outside Customize only when dirty and writable", () => {
+    const onSave = vi.fn().mockResolvedValue(true);
+    const onDiscard = vi.fn();
+    const first = render(
+      <DashboardView
+        layout={layout}
+        renderHeader={(actions) => <div>{actions}</div>}
+        dirty
+        canSave
+        onSave={onSave}
+        onDiscard={onDiscard}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onDiscard).toHaveBeenCalledOnce();
+    first.unmount();
+
+    render(
+      <DashboardView
+        layout={layout}
+        renderHeader={(actions) => <div>{actions}</div>}
+        dirty
+        canSave={false}
+        onDiscard={onDiscard}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Unsaved changes. They last for this session only.",
+    );
+  });
+});
+
+describe("narrow viewport", () => {
+  it("still offers Save and Discard for a per-widget change below 12 columns", () => {
+    const onSave = vi.fn().mockResolvedValue(true);
+    const onDiscard = vi.fn();
+    resize(800);
+    render(
+      <DashboardView
+        layout={layout}
+        renderHeader={(actions) => <div>{actions}</div>}
+        dirty
+        canSave
+        onSave={onSave}
+        onDiscard={onDiscard}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Customize" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onDiscard).toHaveBeenCalledOnce();
   });
 });
 

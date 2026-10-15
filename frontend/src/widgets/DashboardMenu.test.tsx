@@ -144,7 +144,12 @@ describe("dashboard dialog fields", () => {
   });
 });
 
-function setup(current: CurrentDashboard, caller: Caller = WRITE, refused: string | null = null) {
+function setup(
+  current: CurrentDashboard,
+  caller: Caller = WRITE,
+  refused: string | null = null,
+  extra: Partial<Parameters<typeof DashboardMenu>[0]> = {},
+) {
   const onChanged = vi.fn<(change: DashboardChange) => void>();
   const onRefused = vi.fn<(detail: string) => void>();
   const view = render(
@@ -153,6 +158,7 @@ function setup(current: CurrentDashboard, caller: Caller = WRITE, refused: strin
       access={dashboardAccess(current, caller, refused)}
       onChanged={onChanged}
       onRefused={onRefused}
+      {...extra}
     />,
   );
   return { onChanged, onRefused, ...view };
@@ -213,6 +219,39 @@ describe("DashboardMenu controls", () => {
       "Manage",
       "New dashboard from template…",
     ]);
+  });
+
+  it("restores a known template's current version only after confirmation", async () => {
+    const onResetLayout = vi.fn();
+    setup(mine({ templateKey: "soc_overview" }), WRITE, null, {
+      customizing: true,
+      onResetLayout,
+    });
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Restore defaults…" }));
+    expect(screen.getByRole("dialog", { name: "Restore SOC Overview defaults?" })).toHaveTextContent(
+      "SOC Overview version 1",
+    );
+    expect(onResetLayout).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Restore defaults" }));
+    expect(onResetLayout).toHaveBeenCalledWith(SOC_OVERVIEW.layout);
+  });
+
+  it("resets a dashboard without a template to empty only after confirmation", async () => {
+    const onResetLayout = vi.fn();
+    setup(mine({ templateKey: null }), WRITE, null, { customizing: true, onResetLayout });
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Reset to empty…" }));
+    expect(screen.getByRole("dialog", { name: 'Reset "Night shift" to empty?' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Reset to empty" }));
+    expect(onResetLayout).toHaveBeenCalledWith({ v: 1, range: "24h", widgets: [] });
+  });
+
+  it("offers neither reset action for an unknown template key and says why", async () => {
+    setup(mine({ templateKey: "future_template" }), WRITE, null, { customizing: true });
+    await open();
+    expect(screen.queryByRole("button", { name: /Restore defaults|Reset to empty/ })).toBeNull();
+    expect(screen.getByText(/does not know template future_template/)).toBeInTheDocument();
   });
 });
 

@@ -5,8 +5,15 @@ import { describe, expect, it } from "vitest";
 
 import { KNOWN_PERMISSIONS } from "./permissions";
 import { WIDGETS, widgetDef } from "./registry";
-import { TEMPLATES } from "./templates";
+import {
+  BEHAVIORAL_ANALYTICS,
+  LOG_SOURCE_MONITORING,
+  QRADAR_ADMINISTRATION,
+  TEMPLATES,
+  WAF_IPS_MONITORING,
+} from "./templates";
 import { GRID_COLUMNS } from "./types";
+import { deriveLayout, type GridColumns } from "./layout";
 
 const apiSource = readFileSync(resolve(__dirname, "../lib/api.ts"), "utf8");
 const rbacSource = readFileSync(resolve(__dirname, "../../../backend/app/security/rbac.py"), "utf8");
@@ -120,6 +127,30 @@ describe("widget registry", () => {
           const apart =
             a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
           expect(apart, `${a.type} overlaps ${b.type}`).toBe(true);
+        }
+      });
+    }
+  });
+
+  it.each([
+    [QRADAR_ADMINISTRATION.name, QRADAR_ADMINISTRATION],
+    [BEHAVIORAL_ANALYTICS.name, BEHAVIORAL_ANALYTICS],
+    [LOG_SOURCE_MONITORING.name, LOG_SOURCE_MONITORING],
+    [WAF_IPS_MONITORING.name, WAF_IPS_MONITORING],
+  ])("derives %s at 6 and 1 columns without overlap", (_name, template) => {
+    for (const columns of [6, 1] as GridColumns[]) {
+      const widgets = deriveLayout(template.layout.widgets, columns);
+      widgets.forEach((widget, index) => {
+        expect(widget.x + widget.w).toBeLessThanOrEqual(columns);
+        for (const other of widgets.slice(index + 1)) {
+          const apart =
+            widget.x + widget.w <= other.x ||
+            other.x + other.w <= widget.x ||
+            widget.y + widget.h <= other.y ||
+            other.y + other.h <= widget.y;
+          expect(apart, `${template.key}/${columns}: ${widget.type} overlaps ${other.type}`).toBe(
+            true,
+          );
         }
       });
     }
