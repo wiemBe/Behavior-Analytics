@@ -25,7 +25,7 @@ Migration head on `feat/phase-ce` is `0023`; `agent/f1` will add `0024`.
 
 | Task | State at 22:55 | Where | After a reboot |
 |---|---|---|---|
-| **UI-5.8** | **Merged** (`dde1ee6`): boundaries are `PageHeader` + `RouteState`, 11 routes gained boundaries, `.nowrap` unconditional; 221 files / 2,720 tests in its worktree. Frontend gate on the merged head: `QRadar-Dash-work/gate/dde1ee6/summary.txt` | — | Next: **UI-5.9** (spec ready, points 1–10) |
+| **UI-5.8** | **Merged** (`dde1ee6`): boundaries are `PageHeader` + `RouteState`, 11 routes gained boundaries, `.nowrap` unconditional; 221 files / 2,720 tests in its worktree. **Merged-head frontend gate (`dde1ee6`, after `npm ci`): lint and typecheck clean; 232 files / 2,826 tests passed, 0 failed; build OK** | — | Next: **UI-5.9** (spec ready, points 1–10) |
 | **UI-5.9** ([spec](tasks/UI-5.9.md), points 1–10) | Sonnet sub-agent from ~23:05 (dies with the chat) | worktree `ui59`; ports 3159/8159/9159; scratch `QRadar-Dash-work/ui59/` | report written point by point; if cut off, hand over with "review what you inherit" (Codex after 02:18) |
 | **F-1** ([spec](tasks/F-1.md)) Phase F core, migration `0024` | GLM 5.3 from 22:50, `--title f1-glm` | worktree `f1` (branch `agent/f1`); DBs `qradar_obs_f1`, `_f1_mig` (**recreate them** with `createdb` after a reboot) | Read `docs/tasks/F-1.report.md` and `QRadar-Dash-work/f1/opencode.log`. If it is unfinished, hand over with "review what you inherit". **Do not merge before Phase 5 is on `main`** |
 | **T-112** | **Merged** (`HomeDashboard.test.tsx` lazy waits at 15 s; 0 failures in 6 loaded full runs). DeepSeek hit a free-model **rate limit** at 22:28 before writing its report | — | — |
