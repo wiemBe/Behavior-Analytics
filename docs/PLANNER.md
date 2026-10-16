@@ -8,9 +8,49 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶ RESUME HERE — STATE AT 20:20, 2026-10-16 (eighteenth session, from 18:58)
+## ▶▶▶▶▶▶ RESUME HERE — STATE AT 21:35, 2026-10-16 (eighteenth session, from 18:58)
 
-The 18:25 section below is the background. Where they differ, this section wins.
+**At 21:35, `main` @ `924d95c` (pushed).** `feat/phase-ce` @ `c745405` was merged after a green
+gate, and the trees are identical. `main` now holds:
+- OPS-1, OPS-2, OPS-3, OPS-4, OPS-5a, OPS-7, OPS-7b, OPS-8 and the OPS-9 draft;
+- T-120 to T-124.
+
+**The gate on `c745405`, in the Python 3.12.15 lock container with SQLAlchemy 2.1.4:**
+- ruff clean;
+- mypy 0 in 244 files;
+- unit 3,562;
+- alembic up, check, down base, up and check, clean at `0025`;
+- **integration 1,302 passed, 0 skipped, 0 errors**;
+- log in `QRadar-Dash-work/gate312d/gate-c745405.log`.
+
+The frontend gate ran on `dc2f510`, and no frontend file has changed since: `npm ci`, lint,
+typecheck, 290 files / 3,193 tests, and the build.
+
+**After 20:20:**
+- **T-123** (Sonnet): the TimescaleDB policy fixture creates the extension, which
+  `test_migrations`' `clean_db` drops; the T-122 build tests now stub `curl` and `openssl`
+  (python:3.12-slim has neither).
+- **T-124** (Sonnet): once those tests ran, they deadlocked at teardown (3/3) with the
+  background worker of the job they had just created. `run_task` now unschedules the jobs,
+  waits on `job_stats`, and deletes them. Five repro runs had 0 errors.
+- **Lesson:** a gate is not green until its skip count has been read. These 11 tests had never
+  run in any full suite, CI included.
+
+**How to gate from now on:**
+- Use the 3.12 lock container, as in the `gate312d` command of this session (`git archive` into
+  a dedicated scratch dir, `:Z` on that dir only, fresh DBs, `-rfEs`).
+- The host venv (3.14) is a quick check only.
+
+**Cleaned up:** every agent worktree, branch and DB of this session. What remains: `gate`
+(detached, for the frontend gate), and the DBs `qradar_obs_gate`, `qradar_obs_gate_mig` and
+`qradar_obs_test`.
+
+**Next:** OPS-5, OPS-6, OPS-9 round 2 (OPS-R41), OPS-10, and the backlog in the 20:20 section
+below. The user's rule for tonight still holds: nothing runs past 00:00.
+
+---
+
+**State at 20:20 (kept for the log).** The 18:25 section further down is the background.
 
 **The user, ~20:15: "saat 00 sonrası için plan yapma bugün".** Plan nothing and start nothing
 that runs past 00:00 tonight.
