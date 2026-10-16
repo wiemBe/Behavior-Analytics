@@ -23,7 +23,7 @@ the sandboxing rules (still binding). The 14:35 section below is superseded wher
 
 **Branches.**
 - `main` @ `e26c683` (Phase 5 and everything before it). Unchanged this session.
-- `feat/phase-ce` @ `99610cb` (pushed). Since `main` it holds:
+- `feat/phase-ce` @ `0117c32` (pushed). Since `main` it holds:
   - UI-6.1 to UI-6.8: **Phase 6 is closed**;
   - T-114 to T-117;
   - F-1 to F-8 (Phase F built);
@@ -43,8 +43,8 @@ the sandboxing rules (still binding). The 14:35 section below is superseded wher
 
 | Task | Agent / unit | Worktree / DB | How to check, and what is left for the orchestrator |
 |---|---|---|---|
-| **T-119** ([spec](tasks/T-119.md)) README and design after F-6 ("in progress" lines, [BUILDING] → [BUILT]); "Would have fired 1 times" plural | **Grok**, `t119-grok`, from 16:48 | `t119` | review, merge, then the frontend gate |
-| **Gate for `main`** | orchestrator, from 16:49 on `99610cb` (`gate` worktree): ruff, mypy, alembic up/check/down base/up/check, unit, full integration on `qradar_obs_gate` | log `QRadar-Dash-work/gate-main/backend.log` | then the frontend gate after T-119, then merge to `main` once T-118 has reported |
+| ~~T-119~~ | **Merged** (`0117c32`, Grok, 9 min): README and the design after F-6 (routes, the catalog body, [BUILT] markers, as-built notes); "fired 1 time" with a 0/1/2 test | — | — |
+| **Gate for `main`** | orchestrator. **Frontend on `0117c32`: `npm ci`, lint, typecheck, 288 files / 3,186 tests, build 33/33: green.** Backend on `99610cb` (no backend change since): ruff clean, mypy 0 (240), alembic upgrade → check → downgrade base → upgrade → check clean at `0025`, unit 3,443; full integration running (`qradar_obs_gate`) | logs `QRadar-Dash-work/gate-main/` | merge to `main` once integration is green and T-118 has reported |
 | **T-118** ([spec](tasks/T-118.md)) Phase F.1 **live validation**: shadow mode, then alerting on, one fail-closed gap; ≤ 10 EPS, ≤ 60 Ariel searches | **Sonnet sub-agent of this chat**, driven by the clock (~75–90 min), from ~15:25 | worktree `t118` detached at `038380b`; DB `qradar_obs_t118`; report `QRadar-Dash-work/t118/T-118.report.md` (written as it goes) | **It dies with the chat.** If the chat closed: stop any `qradar_lab_loggen` process by PID (`pgrep -af qradar_lab_loggen`; never `pkill -f`). Read the report, then hand over with "review what you inherit"; it needs a Sonnet sub-agent again, because of the token. Every defect it finds becomes a fix task |
 
 Watchers, liveness and logs:
