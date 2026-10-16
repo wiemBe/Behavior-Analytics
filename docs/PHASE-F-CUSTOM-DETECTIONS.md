@@ -703,6 +703,16 @@ scheduled with the Phase D/F validation batch, not part of this split.
 
 ## F.16 Open questions for the user
 
+**Answered by the user on 2026-10-16 (PLANNER D-17); these answers are binding and override the
+text below where they differ:**
+1. Shadow mode first: `CUSTOM_RULES_ALERTING_ENABLED`, default false, beside
+   `CUSTOM_RULES_ENABLED`. Breaches are recorded; nothing pages until it is turned on.
+2. The proposed caps and retentions stand as the setting defaults.
+3. A new **detection-engineer** role between analyst and admin holds `custom_rule:write` and
+   `search:write`, but none of the admin settings.
+4. The F.2 preview is a real bounded Ariel run of the stored draft.
+5. Breaches stay out of `/anomalies` (§F.4.3).
+
 1. **F.1 alerting switch.** The design gates all evaluation behind `CUSTOM_RULES_ENABLED`
    (default false, the WAF/IPS pattern) and then alerts for every *enabled* rule — creating a
    rule is the opt-in. The alternative is the IPS-style shadow mode (`CUSTOM_RULES_ALERTING_ENABLED`

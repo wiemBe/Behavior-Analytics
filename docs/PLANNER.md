@@ -54,8 +54,12 @@ backend gate; then F-1 and F-4 onto `feat/phase-ce`; Phase F build (F-2, F-3, F-
 **Follow-up seen in the UI-5.9 PNGs:** a saved dashboard ("Night shift", 1024×768) has ~60 px of
 empty space between its title and its description. Give it to UI-6.1's findings or a small task.
 
-**Still open for the user:** the five Phase F questions (§F.16); OPS-0 stays deferred (D-16);
-the runbook language and who operates production.
+**Phase F questions answered (D-17, 10:25):** shadow mode first (`CUSTOM_RULES_ALERTING_ENABLED`
+default false); a new detection-engineer role writes rules and searches; the F.2 preview is a
+real bounded run; breaches stay out of `/anomalies`. Caps keep the proposed defaults.
+
+**Still open for the user:** OPS-0 stays deferred (D-16); the runbook language and who operates
+production.
 
 ---
 
@@ -1625,6 +1629,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-14 | **Scope (user, 2026-10-15):** the AI rule analysis (Phase E.3, and with it D-5) is **out of the current scope**; it comes in v3 or v4. The user will do the production field-availability pass for WAF and IPS (FTD, PAN THREAT) themselves. | — |
 | D-15 | **Custom detections and custom AQL (user request, 2026-10-15; the "how" was left to the orchestrator).** Two tools share one alert pipeline. **F.1 threshold rules** on aggregates that are already collected. Examples: a source's EPS above X; a WAF endpoint's requests above N. They cost no extra Ariel search and fail closed (LOWER_BOUND proves only "above"). **F.2 custom AQL** for anything not collected, on the existing stored, validated and versioned scheduled searches with their threshold alerts. F.2 adds the editor UI and a result-chart widget, and the browser never runs AQL (rule 4). Design → **T-108**, `docs/PHASE-F-CUSTOM-DETECTIONS.md`. Build after Phase 5 merges to `main`. | Phase F |
 | D-16 | **Operability without AI (user, 2026-10-15 ~23:25).** The production host has no access to any AI: AI sites are blocked, while Docker registries and git are reachable. Installation must be painless, with as few commands as possible, and a few minutes of downtime per upgrade is acceptable. **Orchestrator direction:**<br>• versioned prebuilt images on GHCR (production pulls, it does not build), with a local build as the fallback;<br>• one `qradar-dash` operator script: `install` (preflight, `.env` wizard, pull, migrate, seed, start, health), `upgrade <v>` (automatic TimescaleDB-aware backup first), `rollback` (the previous tags plus a restore, because a downgrade drops data), `backup`/`restore`, `doctor`, a redacted `support-bundle`, `status`, `logs`;<br>• a visible app version;<br>• a symptom-indexed runbook `docs/OPERATIONS.md`.<br>Design → **OPS-0** (spec ready). **Deferred by the user on 2026-10-15 at 23:27 ("note it, do it later").** **Open:** the runbook's language and who operates production. | Production readiness |
+| D-17 | **Phase F open questions (§F.16), answered by the user on 2026-10-16 ~10:25.** <br>1. **Alerting: shadow mode first.** Add `CUSTOM_RULES_ALERTING_ENABLED` (default false) beside `CUSTOM_RULES_ENABLED`: breaches are recorded, nothing pages, until a live validation turns it on (the IPS pattern). → F-2. <br>2. Caps and retentions were not asked again: the proposed defaults stand as settings (100 enabled rules, 25 enabled searches, 90 days of search results, 180 days of resolved breaches). <br>3. **A new detection-engineer role** between analyst and admin: it may write custom rules and custom searches (`custom_rule:write`, `search:write`) but not the admin settings. → F-3 (and the role map in `app/security/rbac.py`). <br>4. **The F.2 preview is a real bounded Ariel run** of the stored draft. → F-5. <br>5. **Breaches stay out of `/anomalies`**: they show in `/alerts` and on the rule's page (§F.4.3 as designed). → F-6. | F-2, F-3, F-5, F-6 |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
