@@ -8,6 +8,62 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶▶▶ RESUME HERE — STATE AT 14:35, 2026-10-16 (end of the sixteenth session; the user moved to a new chat because the context was long)
+
+**Read first:** this section, then D-17, D-18, D-19 in §4, then the 10:30 section below for the
+sandboxing rules (still binding).
+
+**Branches.** `main` @ `e26c683` (Phase 5 and everything before it). `feat/phase-ce` @
+`a3eaf1a` (pushed): since `main` it holds UI-6.1, 6.2, 6.3, 6.4, 6.6, 6.7, T-114, T-115, F-1,
+F-2, F-4, F-5, F-7, AUTH-1. Migration head **`0025`** (`0024` custom rules, `0025` auth sessions).
+Last measured gates on `feat/phase-ce`: frontend **263 files / 2,994 tests**, lint, typecheck,
+build (after UI-6.7, at ~14:30); backend unit 3,407 and integration **1,262 passed, 1 failed** on
+`b5e667f` (the failure is a machine-bound AUTH-1 test, being fixed by T-116).
+
+**In flight — all Grok 4.7, sandboxed (`--sandbox qradar-agent`), as systemd user units that
+survive the chat.** Check each with `systemctl --user is-active <unit>`; its log is in
+`QRadar-Dash-work/<task>/`; resume a session with
+`grok --resume <session> --prompt-file <file> --cwd <worktree> --sandbox qradar-agent --always-approve --output-format plain`.
+
+| Task | Unit | Worktree / DB | Grok session | What is left for the orchestrator |
+|---|---|---|---|---|
+| **F-3** round 1 (custom-rule API) | `f3-grok-r1` | `f3` (branch already contains `feat/phase-ce` @ `b5e667f` merged in, conflicts resolved); DB `qradar_obs_f3` | `01a14435-ce73-7a32-a2f5-63a4e790cf56` | review "Review round 1" in `docs/tasks/F-3.report.md` (frontend `KNOWN_PERMISSIONS` gains `read:custom_rules`, `custom_rule:write`; full integration on the merged tree) → commit → merge into `feat/phase-ce` (expect `seed.py`/`rbac.py` already resolved) |
+| **AUTH-2** (login page, session in the shell, users/roles admin, LDAP settings with Test connection) | `auth2-grok` | `auth2`; DB `qradar_obs_auth2`; ports 3102/8102/9102 | `01a14463-f1a8-7663-96c5-7f05eec20ae5` | review the PNGs (`QRadar-Dash-work/auth2/`) and gates; it may add `GET /api/v1/users/roles` |
+| **T-116** (AUTH-1 tests: no hard-coded `/home/` path or agent DB; `sys.executable`, URL-derived env, `tmp_path`) | `t116-grok` | `t116`; DB `qradar_obs_t116` | `01a14470-4ef9-7842-980a-b7405d32da5a` | check the break-glass test passes on a foreign DB name; merge; re-run the merged-head integration |
+| **UI-6.8** (severity widget empty state; "Other classes" line clipping) | `ui68-grok` | `ui68`; ports 3168/8168/9168 | `01a1447c-3edc-7b32-b55e-154d79a3bf4e` | review PNGs and gates; merge |
+
+**Agents now.** Codex: usage limit hit 11:11, **reset 15:16** → give it **F-6** (custom-rules UI,
+spec still to write; depends on F-3 merged). DeepSeek free and GLM 5.3 Flash free: both hit
+"Rate limit exceeded" (13:41 and ~13:57); probe before use. Z.AI GLM: **not to be used** (user,
+10:05). Sonnet sub-agents: avoid (they eat the orchestrator's limit).
+
+**Next, in order (D-18 plan; the user: "finish what we have first", OPS-0 waits):**
+1. Collect the four above; merge; merged-head backend integration + frontend gate.
+2. **UI-6.5** (orchestrator): write the UR.9 rulings and D-11 into `PRODUCT-UX-GUIDELINES.md`
+   (delegate the text) and AGENTS.md §3a (orchestrator). Then Phase 6 is closed.
+3. **F-6** (custom-rules UI: `/custom-rules`, editor with subject/metric pickers and the live
+   preview chart, rule detail with breaches, the latency statement, `STALE`/shadow-mode honesty)
+   → Codex at 15:16, spec from §F.12. Then **F-8** (docs, a free model) and the **Phase F lab
+   validation** (generator EPS spike → a rule breaches in shadow mode → alerting on → alert
+   opens and resolves).
+4. Full gate → `feat/phase-ce` → `main`.
+5. **OPS-0** (design; spec ready, the user's answers in it: Turkish runbook, efe operates,
+   GHCR reachable, repo likely private, LDAP from the UI), then OPS-1… (GHCR release, the
+   `./qradar-dash` operator script, backup/rollback, doctor, support bundle, fresh-VM rehearsal).
+6. npm advisories (8, 6 high), a `v1.0.0` tag. The orchestrator's estimate: ~8–10 working days.
+
+**Facts learned this session (also in memory):**
+- Headless Grok can stop right after an auto-compaction mid-task: check the report reads as
+  final; resume the same session (a sandboxed session resumes only under the same sandbox).
+- `opencode` runs under `QRadar-Dash-work/opencode-bwrap.sh`; `--session <id>` continues one.
+- Merging several branches that all add to `rbac.py`, `seed.py`, `celery_app.py`, `tasks.py`,
+  `test_route_auth_guard.py` conflicts additively: keep both sides. The frontend contract test
+  `widgets/registry.test.ts` fails whenever `rbac.py` gains a permission that
+  `widgets/permissions.ts` lacks.
+- The user wants: LDAP entered from the UI with LDAPS; roles assigned in the app; no AD groups.
+
+---
+
 ## ▶▶ RESUME HERE — STATE AT 10:30, 2026-10-16 (sixteenth session, from 10:05)
 
 The machine shut down at 00:39 and rebooted at 10:03; every agent had died. The test DB was
