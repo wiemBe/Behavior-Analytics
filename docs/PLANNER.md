@@ -45,7 +45,9 @@ the sandboxing rules (still binding). The 14:35 section below is superseded wher
 |---|---|---|---|
 | ~~T-119~~ | **Merged** (`0117c32`, Grok, 9 min): README and the design after F-6 (routes, the catalog body, [BUILT] markers, as-built notes); "fired 1 time" with a 0/1/2 test | — | — |
 | ~~Gate for `main`~~ | **Merged to `main`** (`4169592`). Frontend on `0117c32`: `npm ci`, lint, typecheck, 288 / 3,186, build 33/33. Backend on `99610cb`: ruff, mypy 0, alembic up/check/down base/up/check at `0025`, unit 3,443, integration 1,286/0. Only docs changed after the gated commits | — | worktrees `t118`, `gate-fe` and DB `qradar_obs_t118` removed |
-| **OPS-0** ([spec](tasks/OPS-0.md)) operability design: versioning, GHCR release, `./qradar-dash install/upgrade/rollback/backup/restore/doctor/support-bundle`, Turkish runbook outline, OPS-1… split for ~2026-10-30 | **Grok**, `ops0-grok`, from 17:05 (D-18: starts once the in-flight work is collected) | `ops0`; deliverable `docs/OPERATIONS-DESIGN.md` | review against the spec's 11 points; the user reviews the task split |
+| **OPS-1** ([spec](tasks/OPS-1.md)) `VERSION` 0.1.0, the CI equality check, `GET /api/v1/version`, the version line in the account menu and on sign-in, `version` on the frontend probe | **Grok**, `ops1-grok`, from 17:35 | `ops1`; DB `qradar_obs_ops1`; ports 3121/8121/9121 | review PNGs and gates; merge. Both OPS tasks touch `ci.yml`: expect a small conflict |
+| **OPS-2** ([spec](tasks/OPS-2.md)) hashed pip-tools locks resolved **for Python 3.12** (the host venv is 3.14), image installs `--require-hashes` then `--no-deps .`, CI from the locks, mypy failure no longer hidden | **Grok**, `ops2-grok`, from 17:35 | `ops2` | the orchestrator builds the backend image if the sandbox cannot (`docker build`), and checks the lock targets 3.12 |
+| ~~OPS-0~~ | **Merged** (`66dc330`, Grok, 28 min): `docs/OPERATIONS-DESIGN.md` (1,562 lines): versioning, GHCR release, the `./qradar-dash` commands, TimescaleDB-aware backup, rollback by restore (never an Alembic downgrade), `doctor` checks, redacted support bundle, 42-symptom runbook outline, sizing (min 4 vCPU / 8 GiB / 80 GiB; rec. 8 / 16 / 400 + 400 backups), **OPS-1…10 safety cut, 10-17 → 10-30**. **Verified finding:** `apply_policies` is never called and no migration adds a TimescaleDB policy, so retention and compression on `log_source_metric`, `rule_metric`, `search_result_metric` and `offense_snapshot` have never run; OPS-5 wires it. The installer must not call `app.services.seed` (it inserts a mock instance). Open questions answered as D-20 | — | — |
 | ~~T-118~~ | **Passed** ([report](tasks/T-118.report.md); Sonnet sub-agent, 15:24–17:31 local, 19 of 60 Ariel searches, two generator runs at 1/8/1 EPS, none left). Shadow: breach OPEN after the 2nd spike bucket, no alert or notification, RECOVERING, RESOLVED; stored preview = the same interval. Alerting: **one** deduplicated `custom_rule_breach` alert (`occurrence_count` 2), evidence value/measurement/threshold/bucket bounds, resolved by `custom-rule-evaluator` "condition recovered". Fail-closed gap: the uncollected bucket counted neither way (`unmeasured_buckets` 1, under 1 not 2, alert still open), preview drew it `NOT_MEASURED`; collected late, it was not re-judged (idempotent). Harness gap: the OPEN notification was not observed (no channel configured at that moment); the resolve notification was. Low-severity notes: `last_status` NULL after the seed run; `consecutive_under` counts up while OK and is exposed; after a late bucket the preview and the live breach end one bucket apart (by design) | — | no fix task needed; the notes go to the backlog |
 
 Watchers, liveness and logs:
@@ -67,25 +69,16 @@ Watchers, liveness and logs:
 - **Sonnet sub-agents:** only for live validations that need the lab token (the user's choice).
   They draw on the orchestrator's limit.
 
-**Next, in order (D-18: finish what we have, then OPS-0):**
-1. **Collect the four tasks.**
-   - Merge F-8, AUTH-2 and F-6.
-   - After F-6: finish the "(in progress)" lines in the README and the [BUILDING] markers in
-     the design. This is a small docs task, for GLM after 00:38, or Grok.
-   - T-118's defects become fix tasks.
-2. **Full gate on the head**, then `feat/phase-ce` → **`main`**.
-   - Backend: ruff, mypy, unit, the full integration suite, and alembic
-     upgrade → check → downgrade → upgrade → check at `0025`.
-   - Frontend: `npm ci`, lint, typecheck, vitest, build.
-3. **OPS-0.** The spec is ready, with the user's answers in it. Then OPS-1 and the rest: the
-   GHCR release, the `./qradar-dash` operator script, backup and rollback, doctor, the support
-   bundle, and a fresh-VM rehearsal.
-4. **Later, and deliberate:**
-   - echarts 6 (the Lines-series XSS is unreachable today);
-   - the `map.geography` widget (still `blocked`; the backend and the colour ramp exist);
-   - locking the enabled-count caps (F-3 and F-4: two concurrent enables can both pass);
-   - a public subject-column helper in place of the private `_SUBJECT_COLUMNS` import;
-   - a `v1.0.0` tag.
+**Next, in order (D-18, D-20):**
+1. OPS-1 and OPS-2 (in flight), then OPS-3 (release workflow, GHCR), OPS-4 (`./qradar-dash`
+   install), OPS-5 (backup, restore, disk guard, **the `apply_policies` task**), OPS-6 (upgrade,
+   rollback), OPS-7 (`doctor`), OPS-8 (support bundle), OPS-9 (Turkish runbook), OPS-10
+   (fresh-VM install test, orchestrator). The order and acceptance are in
+   `docs/OPERATIONS-DESIGN.md` §10. The orchestrator reviews OPS-4, OPS-5 and OPS-6 closely: a
+   bug there destroys a database.
+2. Backlog, deliberate: echarts 6; `map.geography`; locking the enabled-count caps; a public
+   subject-column helper; T-118's low-severity notes (`last_status` NULL after the seed run,
+   `consecutive_under` counting while OK).
 
 **Facts learned this session:**
 - When a fix lands that an in-flight branch's full-suite run needs, merge it into that branch
