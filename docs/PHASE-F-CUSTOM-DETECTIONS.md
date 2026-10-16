@@ -1,10 +1,8 @@
 # Phase F — custom detections and custom AQL (D-15)
 
-Status: **built, 2026-10-16** (designed 2026-10-15 by T-108). F-1 through F-5 and F-7 are built and
-their sections are marked **[BUILT]**. §F.12's custom-rules half (F-6) and the catalog route
-(`GET /custom-rules/catalog`, F-6a, in progress) are **[BUILDING]** and are not on this branch.
-§F.15 records that split. An "As built" note under a section marks where the code differs from
-the design text. It follows the shape of
+Status: **built, 2026-10-16** (designed 2026-10-15 by T-108). F-1 through F-7 and F-6a are built
+and their sections are marked **[BUILT]**. An "As built" note under a section marks where the
+code differs from the design text. It follows the shape of
 [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and rests
 on [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (D-7), [`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md)
 §29 (measurement semantics, admission, bulk loaders), [`UI-REDESIGN-PLAN.md`](UI-REDESIGN-PLAN.md)
@@ -272,8 +270,10 @@ alert stays readable after an entity is retired or deleted.
 > `evaluate.py::stale_bound_seconds`). A disabled, retired or family-off rule keeps its own
 > status and does not take `STALE`. §F.4.4 adds the same terms up to "about 1 h 13 min".
 > One hour plus a 5-minute bucket, a 2-minute settle and at most one minute is 68 minutes.
-> The README's cadence line is that sum without the evaluation beat, about 1 h 7 min. The
-> plain sentence §F.12 asks the custom-rules pages to show is quoted in the README once.
+> The README's cadence line is that sum without the evaluation beat, about 1 h 7 min.
+> `/custom-rules` and `/custom-rules/new` show §F.12's sentence with "seconds-level" in place
+> of "real-time" (`frontend/src/components/customrules/authoring.ts`). The README quotes that
+> sentence.
 
 ### F.4.1 Where it runs
 
@@ -661,7 +661,7 @@ convention, `README.md` lines 683-699, needs no writer stop beyond it).
 
 ---
 
-## F.11 Permissions, audit and API (question 10) **[BUILT]**; catalog row **[BUILDING]**
+## F.11 Permissions, audit and API (question 10) **[BUILT]**
 
 > **As built** (`backend/app/api/routes/custom_rules.py`, `backend/app/security/rbac.py`,
 > `backend/app/services/seed.py`): `custom_rule` has no integer version — a patch carries
@@ -675,9 +675,14 @@ convention, `README.md` lines 683-699, needs no writer stop beyond it).
 > changed, and a rule created already enabled stays `custom_rule.create`. Previews are not
 > audited. The `detection_engineer` role (D-17 answer 3) is the analyst list plus
 > `search:write` and `custom_rule:write`; `admin` keeps `admin:*`, which already satisfies the
-> write, so the admin role does not list the string. The catalog row below is **[BUILDING]**
-> (F-6a, in progress) and is not on this branch. Do not read fields into it beyond
-> `docs/tasks/F-6a.md`.
+> write, so the admin role does not list the string. `GET /custom-rules/catalog` is registered
+> before `/{rule_id}` (`backend/app/api/routes/custom_rules.py`). The body is
+> `CustomRuleCatalogOut` (`backend/app/schemas/custom_rule.py`): `metrics` (`metric`,
+> `subject_kind`, `unit`, `is_ratio`, `measurement` as `EXACT_ONLY` or
+> `LOWER_BOUND_PROVES_INCREASE`, `note` — not `reads` or `bulk_loader`), `subject_kinds`
+> (`subject_kind` and the one `column`), `source_classes`, `operators`, `evaluation_enabled`,
+> `alerting_mode` (`shadow` or `alerting`), `max_enabled`, `enabled_count`,
+> `preview_hours_min` (1) and `preview_hours_max` (168).
 
 **Permissions** (`app/security/rbac.py`, following the dashboard pattern at lines 104-106):
 
@@ -707,21 +712,43 @@ are reads and are not audited, as for other list endpoints; "Run now" already is
 | `POST /custom-rules/preview` | Draft replay (§F.7); nothing persisted | `read:custom_rules` |
 | `GET /custom-rules/{id}/preview` | Stored-rule replay (§F.7) | `read:custom_rules` |
 | `GET /custom-rules/{id}/breaches` | Bounded breach history with values and measurements | `read:custom_rules` |
-| `GET /custom-rules/catalog` | (F-6a, in progress) **[BUILDING]** | `read:custom_rules` |
+| `GET /custom-rules/catalog` | Metric catalog, subject pairing and the editor's switches (`CustomRuleCatalogOut`) **[BUILT]** | `read:custom_rules` |
 | `GET /searches` · `POST /searches` · `PATCH /searches/{id}` · `POST /searches/{id}/run` | Existing; the editor and the enable-cap use them | as today |
 
 ---
 
-## F.12 UI (question 11) **[BUILT — the F.2 half, the AQL editor (F-5); BUILDING — the F.1 half, `/custom-rules` (F-6)]**
+## F.12 UI (question 11) **[BUILT — the AQL editor (F-5) and `/custom-rules` (F-6)]**
 
 > **As built**: the AQL editor (`frontend/src/app/searches/new/page.tsx` and the edit flow on
 > `/searches/[id]`, `frontend/src/components/searches/SearchEditor.tsx`) creates disabled,
 > keeps a Custom cron verbatim, lists 422 reasons inline, enables from the detail page, and
 > says the search latency sentence of F-5 review round 1 rather than the custom-rules
-> statement below. The custom-rules pages this section names (`/custom-rules`,
-> `/custom-rules/new`, `/custom-rules/[id]`, the Detection navigation group) are F-6 and are
-> **[BUILDING]**; `frontend/src/app/custom-rules` is not on this branch. The statement below
-> is the sentence the design gives those pages. It is not rendered anywhere yet.
+> statement below. The custom-rules pages are `frontend/src/app/custom-rules/page.tsx`,
+> `frontend/src/app/custom-rules/new/page.tsx` and
+> `frontend/src/app/custom-rules/[id]/page.tsx`. The Detection entry is
+> `frontend/src/lib/nav.ts`. Edit reuses the editor inside a disclosure on the rule page.
+>
+> The list's columns, which this section does not name, are Name, Status and reason, Subject,
+> Condition, Severity, Enabled, Last evaluated (UTC). Status is second. Pills use words, not
+> the tokens below: a null status is "Never evaluated", and `statusLabel` in
+> `frontend/src/components/customrules/authoring.ts` maps `OPEN` to "Open", `RECOVERING` to
+> "Recovering", `NO_VERDICT` to "No verdict", `STALE` to "Stale", `NOT_COLLECTED` to "Not
+> collected", `SUBJECT_RETIRED` to "Subject retired", `DISABLED` to "Disabled" and
+> `NOT_ENABLED` to "Not enabled". `OK` stays "OK". The engine's reason is shown beside the
+> pill, unchanged. `INSUFFICIENT_DATA` is not a rule-status word; unmeasured buckets are gaps
+> on the preview.
+>
+> This section's editor does not name an hours control. The draft preview
+> (`frontend/src/components/customrules/CustomRuleEditor.tsx`) and the stored preview
+> (`frontend/src/components/customrules/StoredRulePreview.tsx`) each take a Window in hours,
+> from the catalog's `preview_hours_min` to `preview_hours_max`, starting at 24. Changing the
+> window of a complete draft reloads that preview. The stored preview applies a new window
+> only when the analyst presses Apply window; the rule page's first request is 24 hours.
+>
+> The sentence the list and the new-rule page show (`CUSTOM_RULE_LATENCY` in `authoring.ts`)
+> uses "seconds-level" where the statement below says "real-time". The edit disclosure does
+> not repeat it. `editorSummary` recovers with the complement of the operator ("at or below"
+> after a greater-than) and names the catalog unit, not "EPS".
 
 `docs/PRODUCT-UX-GUIDELINES.md` and `frontend/src/app/tokens.css` are normative; no new colour,
 spacing or type literal; existing components only.
@@ -803,11 +830,12 @@ screenshots at 1440×900, 1280×800 and 1024×768 (AGENTS.md §3a).
 > `backend/tests/unit/test_cron_floor.py` (F-4),
 > `backend/tests/integration/test_search_groups_api.py` (F-7), and the F-5/F-7 Vitest files
 > under `frontend/src/app/searches/`, `frontend/src/components/` and
-> `frontend/src/widgets/`. The custom-rules view
-> tests this section lists are F-6 and are not on this branch. One difference from the
-> integration paragraph below: "preview equals evaluation" is pinned by hand-built agreement
-> cases per metric family in `backend/tests/integration/test_custom_rules_api.py`, not by a
-> property test over randomized bucket streams.
+> `frontend/src/widgets/`. The custom-rules view tests are under
+> `frontend/src/app/custom-rules/` and `frontend/src/components/customrules/` (F-6).
+> One difference from the integration paragraph below: "preview equals evaluation" is pinned
+> by hand-built agreement cases per metric family in
+> `backend/tests/integration/test_custom_rules_api.py`, not by a property test over
+> randomized bucket streams.
 
 **Backend unit.** Catalog guard: every metric declares kind, unit, reader, measurement rule and
 bulk loader; every kind has ≥ 1 metric; no metric reads a column outside §F.1.1. Validation:
@@ -835,14 +863,14 @@ Every new test is checked by breaking the code on purpose (AGENTS.md §4).
 
 ---
 
-## F.15 Task split (question 12) **[BUILT — F-1 through F-5 and F-7]**; F-6 and F-6a **[BUILDING]**
+## F.15 Task split (question 12) **[BUILT — F-1 through F-7 and F-6a]**
 
-> **As built**: F-1 through F-5 and F-7 are on this branch. Review changed the cron floor
-> (§F.8) and replaced the search editor's latency sentence (§F.12). F-6 (the `/custom-rules`
-> UI) and F-6a (`GET /custom-rules/catalog`) are in progress and are not on this branch. F-8
-> is this documentation pass. Breach retention shipped in F-1, not under F-2 as the table
-> below splits it (§F.10's note). The live lab validation remains the follow-up this section
-> describes.
+> **As built**: F-1 through F-7 and F-6a are on this branch. Review changed the cron floor
+> (§F.8) and replaced the search editor's latency sentence (§F.12). F-6 is the
+> `/custom-rules` UI; F-6a is `GET /custom-rules/catalog`. F-8 wrote these markers while those
+> two were still open; the placeholders are closed. Breach retention shipped in F-1, not under
+> F-2 as the table below splits it (§F.10's note). The live lab validation remains the
+> follow-up this section describes.
 
 In the PLANNER's style (`docs/PLANNER.md` §3). Phase F tasks are numbered F-1 to F-8 (F-1 to F-4 went to other work on 2026-10-15).
 

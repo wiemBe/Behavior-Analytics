@@ -36,7 +36,7 @@ describe("custom-rule preview honesty", () => {
 
   it("states lower bounds and maintenance in the text alternative", () => {
     const text = previewText(preview(), "edge-web-01");
-    expect(text).toContain("Would have fired 1 times");
+    expect(text).toContain("Would have fired 1 time.");
     expect(text).toContain("1 lower-bound bucket reads as at least");
     expect(text).toContain("1 maintenance bucket");
   });
@@ -54,6 +54,16 @@ describe("custom-rule preview honesty", () => {
     render(<PreviewSummary preview={allMissing} />);
     expect(screen.getByText(/Most buckets.*not measured/)).toBeInTheDocument();
     expect(screen.getByText(/Every bucket is unmeasured/)).toBeInTheDocument();
+  });
+
+  it("says 1 time and keeps 0 and 2 in the plural", () => {
+    for (const count of [0, 1, 2]) {
+      const phrase = `Would have fired ${count} ${count === 1 ? "time" : "times"}`;
+      expect(previewText(preview({ fired_count: count }), "edge-web-01")).toContain(`${phrase}.`);
+      const view = render(<PreviewSummary preview={preview({ fired_count: count })} />);
+      expect(screen.getByText(phrase)).toBeInTheDocument();
+      view.unmount();
+    }
   });
 
   it("labels lower-bound and maintenance buckets beside the chart", () => {

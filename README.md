@@ -479,7 +479,7 @@ inventory surfaces remain as supporting capabilities.
 | `/fleet` · `/fleet/sources` | Log-source fleet by class — volume against expected EPS with its completeness, the review queue of new and conflicting sources, class overrides (Phase C.1) |
 | `/fleet/catchall` | Catch-all senders (Phase C.2b) — who feeds SIM Generic and the Universal DSMs: the new-sender review queue, each sender's 24 h events, per-bucket totals |
 | `/admin` · `/admin/search-cadence` · `/admin/classification-rules` · `/admin/waf-sources` · `/admin/ips-sources` · `/admin/outage-policy` | Administration — the hub plus search cadence per family (`admin:search_cadence`), classification rules (`admin:classification`), per-source WAF field mappings with validation (`admin:waf`), per-source IPS field mappings with validation (`admin:ips`), the outage alert policy (`admin:outage`); the profile editors are `/admin/waf-sources/[logSourceId]` and `/admin/ips-sources/[logSourceId]` |
-| `/custom-rules` | Custom threshold rules (Phase F) (F-6, in progress) |
+| `/custom-rules` · `/custom-rules/new` · `/custom-rules/[id]` | Custom threshold rules (Phase F), in the Detection group. The list names each rule, its status in words with the engine's reason, its subject, its condition, its severity, whether it is enabled and when it was last evaluated (UTC). `/custom-rules/new` is the editor: metrics, subject kinds and the preview bounds come from `GET /api/v1/custom-rules/catalog`, and a live draft preview (`POST /custom-rules/preview`) sits beside the form. The same editor edits a stored rule. `/custom-rules/[id]` shows the stored preview (`GET /{id}/preview`) and the breach history. Creating, editing, enabling, disabling and deleting need `custom_rule:write` |
 
 `/config-changes` is deliberately unlisted: it is a placeholder outside the navigation with no
 API behind it (configuration changes are not collected), kept by decision D-11.
@@ -896,10 +896,10 @@ own cadence: how often it searches.
 1 h 7 min at the defaults. The admin page shows this for each family.
 
 Custom rules inherit exactly this delay — they judge the same collected buckets — plus at most
-one 60-second evaluation beat. The Phase F design (§F.12) states that trade once, for the
-custom-rules pages: "Rules are judged on collected 5-minute buckets, up to about an hour after
-the events arrive. This is not a real-time correlation engine — for alerting within seconds,
-use QRadar's own rules."
+one 60-second evaluation beat. `/custom-rules` and `/custom-rules/new` state that trade once:
+"Rules are judged on collected 5-minute buckets, up to about an hour after the events arrive.
+This is not a seconds-level correlation engine — for alerting within seconds, use QRadar's own
+rules."
 
 Operator-defined scheduled searches keep their own cron. Their schedule control offers the same
 presets.
@@ -1124,7 +1124,8 @@ bounded to one live row per rule):
   breach per rule is structural (partial unique index `uq_custom_rule_breach_active`, where
   `state <> 'RESOLVED'`). The breach states are `OPEN`, `RECOVERING` and `RESOLVED` (the anomaly
   states, reused, with no join to the incident lifecycle). Breaches stay out of `/anomalies`
-  (D-17) and surface in `/alerts`. The rule page is F-6, in progress.
+  (D-17) and surface in `/alerts`. `/custom-rules/[id]` shows the active breach, the breach
+  history and a stored preview of what the rule read.
 - **`custom_rule_watermark`** — one row per subject kind: how far that kind has been judged.
 
 Fail-closed, as the detectors: an unmeasured bucket (no row, a `PARTIAL` Phase A row, a
@@ -1156,8 +1157,15 @@ including a gap still inside the staleness bound, keeps the previous status.
 `read:*` satisfies, and every write also needs `custom_rule:write`): `GET` (list), `POST`,
 `GET /{id}`, `PATCH /{id}`, `DELETE /{id}` (resolve the open alert as the deleting principal,
 then delete, 204), `POST /preview` (a draft replay), `GET /{id}/preview` (a stored-rule replay)
-and `GET /{id}/breaches`. `GET /custom-rules/catalog` (F-6a, in progress) is not on this branch.
-Both previews run the evaluator's own fold over one bulk read of stored buckets — nothing is
+and `GET /{id}/breaches`. `GET /catalog` is registered before `/{id}`, so `catalog` is not read
+as a rule id. Its body is `CustomRuleCatalogOut`: `metrics` (each entry's `metric`,
+`subject_kind`, `unit`, `is_ratio`, `measurement` — `EXACT_ONLY` or
+`LOWER_BOUND_PROVES_INCREASE` — and `note`; `reads` and `bulk_loader` stay in the catalog
+module), `subject_kinds` (a kind and the one `column` a rule of that kind must set),
+`source_classes`, `operators`, `evaluation_enabled` (`CUSTOM_RULES_ENABLED`), `alerting_mode`
+(`shadow` or `alerting`, the same value a rule carries), `max_enabled`, `enabled_count`
+(enabled rules already holding a slot) and `preview_hours_min` / `preview_hours_max` (1 and
+168). Both previews run the evaluator's own fold over one bulk read of stored buckets — nothing is
 persisted, alerted or audited — and `hours` is 1–168, default 24. The replay starts from a clean
 counter and ignores the operational halts (the rule disabled, the subject retired, the family
 or the platform off, a stale kind), so a draft still answers the historical question.
@@ -1455,19 +1463,19 @@ lints and updates this README.
     measurement and cleanup (UI-6.1–UI-6.5). Its groundwork merged: characterization page tests
     for the untested routes and boundaries (T-096, T-097) and the unused `echarts-for-react`
     dropped (T-099, a UI-6.4 item).
-- **Phase F (backend, API and the F.2 UI built; F-6 in progress)** — custom detections (D-15,
-  T-108): threshold rules on collected aggregates — F-1 (model, migration `0024`, metric
-  catalog, DB-only evaluator, breach retention), F-2 (shadow-mode alerting behind
-  `CUSTOM_RULES_ALERTING_ENABLED`), F-3 (the custom-rules API, previews, the
-  `detection_engineer` role) — and custom AQL — F-4 (enabled-search cap, cron floor, 422
-  `reasons[]`, enable/disable audit split, result retention), F-5 (the `/searches/new` editor)
-  and F-7 (the `chart.search_results` widget). F-6 (the `/custom-rules` UI) and F-6a (the
-  catalog endpoint) are in progress and are not on this branch; live validation on the lab is
-  the follow-up the design schedules. See
-  [the Phase F design](docs/PHASE-F-CUSTOM-DETECTIONS.md).
+- **Phase F (built)** — custom detections (D-15, T-108): threshold rules on collected
+  aggregates — F-1 (model, migration `0024`, metric catalog, DB-only evaluator, breach
+  retention), F-2 (shadow-mode alerting behind `CUSTOM_RULES_ALERTING_ENABLED`), F-3 (the
+  custom-rules API, previews, the `detection_engineer` role), F-6a
+  (`GET /api/v1/custom-rules/catalog`) and F-6 (the `/custom-rules` list, `/custom-rules/new`
+  with its live draft preview, and `/custom-rules/[id]` with the stored preview and breach
+  history) — and custom AQL — F-4 (enabled-search cap, cron floor, 422 `reasons[]`,
+  enable/disable audit split, result retention), F-5 (the `/searches/new` editor) and F-7
+  (the `chart.search_results` widget). Live validation on the lab is the follow-up the design
+  schedules. See [the Phase F design](docs/PHASE-F-CUSTOM-DETECTIONS.md).
 
 Next: UI-5.9, then the full gate and `feat/phase-ce` → `main`; Phase 6 QA (UI-6.1–UI-6.4);
-F-6 and F-6a; the deferred production geo window (G-5); and the 24 h new-port validation
+the deferred production geo window (G-5); and the 24 h new-port validation
 ([T-054](docs/tasks/T-054.report.md), L-1). The order is the one in
 [the planner](docs/PLANNER.md).
 
