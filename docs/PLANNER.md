@@ -36,17 +36,22 @@ Codex and Grok.
 `feat/phase-ce`.** Merged-head frontend gate on `1cd92e6`: `npm ci`, lint and typecheck clean,
 237 files / 2,848 tests passed, build OK.
 
+**`main` @ `e26c683` (~10:50): `feat/phase-ce` @ `edcc725` merged.** Backend full gate on
+`1cd92e6` (only docs changed after it): ruff clean; mypy 0; alembic up/check/down/up/check at
+`0023`; unit 3,224 passed; **integration 1,168 passed** (11 min). Frontend gate as above.
+**Phase F branches (F-1, F-4) may now merge into `feat/phase-ce` once reviewed.**
+T-114 merged (`edcc725`, GLM 5.3 Flash free): 27 PNGs recaptured, README block-shift sentence.
+
 **In flight:**
 
 | Task | Agent (unit) | Where | Notes |
 |---|---|---|---|
-| Backend full gate on `1cd92e6` | orchestrator | worktree `gate`; DBs `qradar_obs_gate`, `_gate_mig`; log `QRadar-Dash-work/gate-1016/backend.log` | then `feat/phase-ce` → `main` |
 | **F-1** handover 2 ("review what you inherit": GLM's models, migration, catalog, validation) | Grok (`f1-grok2`), from 10:11 | worktree `f1`; DBs `qradar_obs_f1`, `_f1_mig`; log `QRadar-Dash-work/f1/grok2.log` | the first Grok handover (00:22) wrote nothing before the shutdown. Merge only after `main` |
 | **F-4** review round 1 | Grok (`f4-grok-r1b`), from 10:15 | worktree `f4`; DB `qradar_obs_f4`; review `QRadar-Dash-work/f4/review1.md` | (1) the cron floor walks 105,408 fires in 1.61 s on the event loop for `*/5`: must be exact and < 50 ms; (2) `body: dict` dropped the OpenAPI request schema: restore and pin it. Cap, audit split, 422 object and retention accepted |
 | **UI-6.1** viewport matrix | Grok (`ui61-grok`), from 10:22 | worktree `ui61`; ports 3161/8161/9161 | measures; one-line route CSS fixes only |
 | **UI-6.2** accessibility | Codex (`ui62-codex`), from 10:21 | worktree `ui62`; ports 3162/8162/9162 | Codex reset was 02:18 |
 | **UI-6.3** dashboard performance | DeepSeek free (`ui63-ds`), from 10:25 | worktree `ui63`; ports 3163/8163/9163 | measures |
-| **T-114** ([spec](tasks/T-114.md)) docs screenshots after Phase 5 + README block-shift result | GLM 5.3 Flash free (`t114-glmf`), from 10:28 | worktree `t114`; ports 3114/8114/9114 | — |
+
 
 **Next:** UI-6.4 after UI-6.1 and UI-6.2 merge (it touches every stylesheet); `main` after the
 backend gate; then F-1 and F-4 onto `feat/phase-ce`; Phase F build (F-2, F-3, F-5…).
