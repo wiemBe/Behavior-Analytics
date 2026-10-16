@@ -8,11 +8,80 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶ RESUME HERE — STATE AT 20:00, 2026-10-16 (eighteenth session, from 18:58)
+## ▶▶▶▶▶▶ RESUME HERE — STATE AT 20:20, 2026-10-16 (eighteenth session, from 18:58)
 
 The 18:25 section below is the background. Where they differ, this section wins.
 
-**Update at 20:00.** It supersedes the 19:20 branch and in-flight lists that follow.
+**The user, ~20:15: "saat 00 sonrası için plan yapma bugün".** Plan nothing and start nothing
+that runs past 00:00 tonight.
+- Do not use Codex (back 22:54) or GLM (back 00:38) tonight.
+- No timers. Checked: no project timer and no agent unit exists.
+
+**Branches at 20:20.**
+- `main` @ `4169592`, unchanged.
+- **`feat/phase-ce` @ `dc2f510` (pushed).** It holds every OPS task merged so far:
+
+| Task | Merge | Agent | What it brought, and what review fixed |
+|---|---|---|---|
+| OPS-1 | `f755a7c` | Sonnet | `VERSION` 0.1.0; `GET /api/v1/version`; the version line in the account menu and on sign-in (PNGs reviewed) |
+| OPS-7 | `34bfc9d` | Codex r0–1 | The in-container `doctor`. Review fixed: `celery_workers` always WARNing; `qradar_clock` moved to the host; 10 s per check; the heartbeat wording |
+| OPS-5a | `bb7f49c` | Sonnet r0–1 | The daily `apply_timescale_policies` task. A test pins the re-run on compressed chunks |
+| OPS-7b | `ffdbbbb` | Codex r0–1 | `./qradar-dash doctor`, the host half: `disk_docker`, `disk_backup`, `qradar_clock`, `selinux`, `containers` |
+| OPS-2 + T-121 | `827c5c6` | Sonnet | The hashed 3.12 locks and greenlet; explicit TLS verify flags on every interpreter; mypy 0 on 3.12 and 3.14; the editable image install |
+| OPS-9 draft | `9f8a40b` | Sonnet | `docs/OPERATIONS.md` in Turkish, OPS-R1 to OPS-R42. The orchestrator checked five commands |
+| OPS-8 | `e9c651f` | Codex, cut off at 19:38, then a Sonnet handover and r1 | `./qradar-dash support-bundle`. Review fixed: the PEM pass was never applied; `export`, spaced and commented `.env` secrets were kept; the keys inside `ENCRYPTION_KEYS_JSON` |
+| OPS-3 | `d1e8fbf` | Sonnet | `release.yml`; five images with `VERSION`, `GIT_SHA` and labels; the frontend at `/api/v1`; Redis by digest; CI runs `npm ci`, lint and vitest. The orchestrator checked three action SHAs against `git ls-remote` |
+| T-122 | `dc2f510` | Sonnet | `COMPOSE_FILE` in `.env`, so the runbook's bare `docker compose` gets the prod overlay; `--build` exports `GIT_SHA` |
+
+**The final gate on `dc2f510`.**
+- **Frontend: green.** `npm ci`, lint and typecheck clean; 290 files / 3,193 tests; the build
+  is complete; the bundle has no `localhost:8000` URL.
+- **Backend on Python 3.12** (log `QRadar-Dash-work/gate312b/gate-dc2f510.log`):
+  - ruff clean;
+  - mypy 0 in 244 files;
+  - alembic upgrade, check, downgrade base, upgrade, check: clean at `0025`;
+  - integration **1,291 passed, 11 skipped**;
+  - unit **6 failed**, 3,556 passed.
+- **Two blockers before `main`:**
+  1. **Six T-122 installer tests fail in the 3.12 container** and pass on the host. A host
+     assumption in the test harness is suspected.
+  2. **The 11 skips are every OPS-5a TimescaleDB policy test.** `test_migrations.py`'s
+     `clean_db` resets `public`, which drops the extension, and the policy file runs later. In
+     every full run, CI included, these tests never execute. This is round 0's silent-skip
+     lesson, confirmed.
+
+**In flight:**
+
+| Task | Agent | Worktree / DB | Next |
+|---|---|---|---|
+| **T-123**: both blockers | Sonnet sub-agent (dies with the chat) | `t123` from `dc2f510`; DB `qradar_obs_t123` | Fix 1: the policy fixture runs `CREATE EXTENSION IF NOT EXISTS` when the extension is available, and skips only when the image lacks it. Fix 2: diagnose in a 3.12 container and make the six tests hermetic. Then repeat the 3.12 gate on the merged head (scratch via `git archive`, `:Z` on that dedicated dir only, fresh DBs); require **0 policy-file skips**; then merge `feat/phase-ce` to `main`. |
+
+**Agents:**
+- Grok: out for the week.
+- Codex and GLM: not tonight (see the user's 20:15 rule above).
+- opencode free: rate-limited. The user: hand the task to Sonnet instead of waiting.
+
+**Next (tomorrow, 2026-10-17, unless T-123 and `main` finish early tonight):**
+1. OPS-5: backup, restore, verified restore, backup retention, disk guard, the systemd timer.
+   Review it closely: it can destroy a database.
+2. OPS-6: upgrade, rollback, the state file.
+3. OPS-9 round 2:
+   - OPS-R41 describes OPS-7's original plan (a filtered ping, then WARN). As built,
+     `celery_workers` PASSes on any pong. Fix its confirm command, which is a bare
+     `docker inspect`.
+   - Remove the "henüz yayımlanmadı" lines once their commands land.
+4. OPS-10: the fresh-VM install test (orchestrator).
+5. Backlog from this session:
+   - deploy Dockerfiles without version labels for a `--build`, covering postgres and proxy;
+   - the tag push runs CI twice (`on: push` matches tags);
+   - support-bundle never run against a real image; do that in OPS-10;
+   - the T-122 tests skip on hosts with less than 7.5 GiB RAM (preflight reads
+     `/proc/meminfo`).
+
+---
+
+**Update at 20:00 (kept for the log).** It superseded the 19:20 branch and in-flight lists that
+follow.
 
 **Merged since 19:20:**
 - **OPS-7b** (`ffdbbbb`, Codex, rounds 0–1): the host half of `./qradar-dash doctor`.
