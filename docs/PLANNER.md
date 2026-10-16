@@ -53,8 +53,10 @@ T-114 merged (`edcc725`, GLM 5.3 Flash free): 27 PNGs recaptured, README block-s
 | **UI-6.3** dashboard performance | DeepSeek free (`ui63-ds`), from 10:25 | worktree `ui63`; ports 3163/8163/9163 | measures |
 
 
-**Next:** UI-6.4 after UI-6.1 and UI-6.2 merge (it touches every stylesheet); `main` after the
-backend gate; then F-1 and F-4 onto `feat/phase-ce`; Phase F build (F-2, F-3, F-5…).
+| **UI-6.4** dead CSS, dead exports, literals | GLM 5.3 Flash free (`ui64-glmf`), from 10:53 | worktree `ui64` (from `28fbb9d`); ports 3164/8164/9164 | started before UI-6.1 finished; UI-6.1 may only touch route stylesheets one line at a time, so a conflict is small |
+
+**Next:** F-1 and F-4 onto `feat/phase-ce` after review; Phase F build (F-2, F-3, F-5…); a
+follow-up UI task from the UI-6.1 and UI-6.2 findings.
 
 **Follow-up seen in the UI-5.9 PNGs:** a saved dashboard ("Night shift", 1024×768) has ~60 px of
 empty space between its title and its description. Give it to UI-6.1's findings or a small task.
