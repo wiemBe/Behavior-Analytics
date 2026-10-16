@@ -2,8 +2,9 @@
 
 Downgrade drops the three new tables, and the rows in them, by design. Phase A
 data is what the round trip has to carry: a log source inserted beside the
-rules is still there after downgrade and the following upgrade. `alembic check`
-is the authority for model drift.
+rules is still there after downgrade and the following upgrade. The data
+round trip is pinned to revision 0024, so a later revision does not break it.
+`alembic check` still runs at head and is the authority for model drift.
 """
 
 from __future__ import annotations
@@ -76,11 +77,10 @@ def test_0024_round_trip_carries_phase_a_data_and_has_no_drift(clean_db: str) ->
     revision = script.get_revision("0024")
     assert revision is not None
     assert revision.down_revision == "0023"
-    assert script.get_current_head() == "0024"
 
     engine = create_engine(clean_db, future=True)
     try:
-        command.upgrade(config, "head")
+        command.upgrade(config, "0024")
         with engine.connect() as connection:
             context = MigrationContext.configure(connection)
             assert context.get_current_revision() == "0024"

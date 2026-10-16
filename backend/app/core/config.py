@@ -10,6 +10,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     AliasChoices,
@@ -633,15 +634,32 @@ class Settings(BaseSettings):
     mcp_timeout_seconds: int = 60
 
     # --- auth ---------------------------------------------------------------
-    auth_provider: Literal["local", "oidc"] = "local"
+    # "local" is the development convenience (a local-dev principal, no cookie).
+    # "session" reads the server-side session cookie. Production always reads
+    # the cookie, whichever of those two is set. "oidc" is refused at startup
+    # in production; outside production its behaviour is unchanged.
+    auth_provider: Literal["local", "oidc", "session"] = "local"
     oidc_issuer: str = ""
     oidc_client_id: str = ""
     oidc_client_secret: SecretStr = SecretStr("")
     oidc_redirect_uri: str = ""
+    # Idle is measured from last_seen_at. Absolute is measured from created_at
+    # and is also stored on the row as expires_at.
+    session_idle_minutes: int = Field(default=480, ge=1, le=10080)
+    session_max_hours: int = Field(default=12, ge=1, le=720)
+    # Consecutive failures of one username. The per-IP limit on the login route
+    # is separate and does not reset this counter.
+    login_lockout_threshold: int = Field(default=5, ge=1, le=50)
+    login_lockout_minutes: int = Field(default=15, ge=1, le=1440)
+    # Browser origin of the UI. CORS and the CSRF check both use it.
+    public_origin: str = "http://localhost:3000"
+    # How many expired session rows one login may delete.
+    session_cleanup_batch: int = Field(default=500, ge=1, le=5000)
 
     # --- rate limiting ------------------------------------------------------
     rate_limit_default: str = "120/minute"
     rate_limit_search_execution: str = "10/minute"
+    rate_limit_login: str = "300/minute"
 
     # --- LLM (interface only) ----------------------------------------------
     llm_enabled: bool = False
@@ -671,6 +689,15 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment is Environment.PRODUCTION
+
+    def session_cookies_enforced(self) -> bool:
+        """True when a request must carry the session cookie.
+
+        Production never falls back to the development principal. Outside
+        production, only ``auth_provider=session`` does, so the existing suite
+        keeps working on the local provider.
+        """
+        return self.is_production or self.auth_provider == "session"
 
     def encryption_keyring(self) -> dict[int, str]:
         """All known Fernet keys by version, active version included.
@@ -827,6 +854,11 @@ class Settings(BaseSettings):
             )
         return self
 
+    @field_validator("public_origin")
+    @classmethod
+    def _normalise_public_origin(cls, value: str) -> str:
+        return value.strip().rstrip("/")
+
     @model_validator(mode="after")
     def _production_hardening(self) -> Settings:
         """Refuse to boot a production deployment with a development posture.
@@ -857,6 +889,25 @@ class Settings(BaseSettings):
         if self.llm_allow_autonomous_actions:
             problems.append(
                 "LLM_ALLOW_AUTONOMOUS_ACTIONS must be false; autonomous response is not implemented"
+            )
+        origin = urlsplit(self.public_origin)
+        if (
+            origin.scheme != "https"
+            or not origin.hostname
+            or origin.username
+            or origin.password
+            or origin.path not in ("", "/")
+            or origin.query
+            or origin.fragment
+            or "*" in self.public_origin
+        ):
+            problems.append(
+                "PUBLIC_ORIGIN must be an https origin with a host and no path, query, or wildcard"
+            )
+        if self.auth_provider == "oidc":
+            problems.append(
+                "AUTH_PROVIDER=oidc is not available; OIDC is out of scope. "
+                "Set AUTH_PROVIDER=session"
             )
 
         if problems:
