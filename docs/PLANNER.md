@@ -21,6 +21,8 @@ at-a-time rule for its 5-hour window still holds.
 | **UI-6.5** ([spec](tasks/UI-6.5.md)) guidelines brought up to the shipped redesign (UR.9, D-11, `/` Dashboard, tokens, new components); docs only | `ui65-glm` (Z.AI GLM 5.3, bwrap), 14:38 | `ui65` | its report proposes the AGENTS.md §3a text; the orchestrator applies it |
 | **F-6a** ([spec](tasks/F-6a.md)) `GET /custom-rules/catalog` (metrics with unit and note, subject kinds, classes, operators, switches, cap, preview bounds) | `f6a-grok`, 14:40 | `f6a` from `agent/f3` @ `baed97a`; DB `qradar_obs_f6a` | merge after F-3 |
 | **F-6** ([spec](tasks/F-6.md)) custom-rules UI | Codex at 15:16, from `agent/f6a` once accepted | `f6`; ports 3106/8106/9106 | — |
+| **T-117** ([spec](tasks/T-117.md)) npm advisories: reachability per advisory, only fixes that cross no major | `t117-grok`, 14:47 | `t117` | every `npm audit` fix is a major (`echarts` 6, `next` 16, `eslint-config-next`); the `echarts` XSS matters if attacker-shaped strings reach a formatter |
+| ~~T-116~~ | **Merged** (`4ad5010`, Grok): `sys.executable`, `POSTGRES_*` from the test's URL, certificates under `tmp_path`. Orchestrator: ruff clean; auth + TLS integration on a foreign DB (`qradar_obs_gate`) 23 passed; no `/home/` or agent DB left in `backend/tests/`. Grok's full integration: 1,263 passed | — | DBs of merged tasks dropped (`f1`, `f2`, `f4`, `f7`, `auth1`, `t116`) |
 
 ---
 
