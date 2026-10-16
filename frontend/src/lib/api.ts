@@ -1554,6 +1554,129 @@ export interface PagedIpsEntities {
   offset: number;
 }
 
+// --- Phase F: custom threshold rules ---------------------------------------
+
+export type CustomRuleSubjectKind =
+  | "LOG_SOURCE"
+  | "FLEET_CLASS"
+  | "WAF_ENDPOINT"
+  | "IPS_ENTITY"
+  | "IPS_SOURCE";
+
+export interface CustomRuleBreach {
+  id: string;
+  rule_id: string;
+  state: string;
+  first_bucket_start: string;
+  last_bucket_start: string;
+  opened_at: string;
+  recovering_at: string | null;
+  resolved_at: string | null;
+  worst_value: number | null;
+  worst_measurement: string | null;
+  last_value: number | null;
+  last_measurement: string | null;
+  unmeasured_buckets: number;
+  subject_label: string;
+  details: Record<string, unknown>;
+}
+
+export interface CustomRule {
+  id: string;
+  name: string;
+  description: string | null;
+  subject_kind: CustomRuleSubjectKind;
+  log_source_id: string | null;
+  source_class: string | null;
+  waf_endpoint_id: string | null;
+  ips_entity_id: string | null;
+  metric: string;
+  operator: string;
+  threshold_value: number;
+  threshold_unit: string | null;
+  sustain_buckets: number;
+  recovery_buckets: number;
+  severity: string;
+  enabled: boolean;
+  consecutive_breaching: number;
+  consecutive_under: number;
+  last_evaluated_bucket_start: string | null;
+  last_evaluated_at: string | null;
+  last_status: string | null;
+  last_status_reason: string | null;
+  active_breach: CustomRuleBreach | null;
+  alerting_mode: "shadow" | "alerting";
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export interface CustomRuleDraft {
+  subject_kind: CustomRuleSubjectKind;
+  log_source_id: string | null;
+  source_class: string | null;
+  waf_endpoint_id: string | null;
+  ips_entity_id: string | null;
+  metric: string;
+  operator: string;
+  threshold_value: number;
+  sustain_buckets: number;
+  recovery_buckets: number;
+  severity: string;
+  enabled: boolean;
+}
+
+export interface CustomRuleCreate extends CustomRuleDraft {
+  name: string;
+  description: string | null;
+}
+
+export type CustomRuleUpdate = Partial<CustomRuleCreate> & {
+  expected_updated_at: string;
+};
+
+export interface CustomRulePreviewBucket {
+  bucket_start: string;
+  value: number | null;
+  measurement: "EXACT" | "LOWER_BOUND" | "NOT_MEASURED";
+  completeness: string | null;
+  in_maintenance: boolean;
+}
+
+export interface CustomRulePreview {
+  threshold_value: number;
+  unit: string;
+  operator: string;
+  fired_count: number;
+  measured_count: number;
+  unmeasured_count: number;
+  buckets: CustomRulePreviewBucket[];
+  breach_intervals: Array<{ start: string; end: string | null }>;
+}
+
+export interface CustomRuleCatalogMetric {
+  metric: string;
+  subject_kind: CustomRuleSubjectKind;
+  unit: string;
+  is_ratio: boolean;
+  measurement: "EXACT_ONLY" | "LOWER_BOUND_PROVES_INCREASE";
+  note: string;
+}
+
+export interface CustomRuleCatalog {
+  metrics: CustomRuleCatalogMetric[];
+  subject_kinds: Array<{ subject_kind: CustomRuleSubjectKind; column: string }>;
+  source_classes: string[];
+  operators: string[];
+  evaluation_enabled: boolean;
+  alerting_mode: "shadow" | "alerting";
+  max_enabled: number;
+  enabled_count: number;
+  preview_hours_min: number;
+  preview_hours_max: number;
+}
+
 function qs(params: Record<string, string | number | boolean | undefined>): string {
   const parts = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== "")
@@ -1683,6 +1806,31 @@ export const api = {
     request<AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail>(`/anomalies/${id}`),
   // The caller's identity and grants, for links the caller may not follow.
   caller: () => request<CallerInfo>("/me"),
+  customRules: () => request<CustomRule[]>("/custom-rules"),
+  customRule: (id: string) => request<CustomRule>(`/custom-rules/${id}`),
+  customRuleCatalog: () => request<CustomRuleCatalog>("/custom-rules/catalog"),
+  customRuleBreaches: (id: string) =>
+    request<CustomRuleBreach[]>(`/custom-rules/${id}/breaches`),
+  customRulePreview: (id: string, hours = 24, signal?: AbortSignal) =>
+    request<CustomRulePreview>(`/custom-rules/${id}/preview${qs({ hours })}`, { signal }),
+  previewCustomRule: (definition: CustomRuleDraft, hours = 24, signal?: AbortSignal) =>
+    request<CustomRulePreview>(`/custom-rules/preview${qs({ hours })}`, {
+      method: "POST",
+      body: JSON.stringify(definition),
+      signal,
+    }),
+  createCustomRule: (definition: CustomRuleCreate) =>
+    request<CustomRule>("/custom-rules", {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
+  updateCustomRule: (id: string, definition: CustomRuleUpdate) =>
+    request<CustomRule>(`/custom-rules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(definition),
+    }),
+  deleteCustomRule: (id: string) =>
+    request<void>(`/custom-rules/${id}`, { method: "DELETE" }),
   behaviorSummary: () => request<BehaviorSummary>("/anomalies/summary"),
 
   sourceBehaviors: () => request<SourceBehavior[]>("/behavior/sources"),
