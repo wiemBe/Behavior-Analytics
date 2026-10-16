@@ -32,19 +32,39 @@ OIDC stays out of scope (it remains refused in production, with a clear startup 
    - An admin may pre-create an LDAP user by username (no password), so roles exist before the
      first login. The first successful LDAP bind of an unknown username creates the user
      (just-in-time), with no role, and audits `user.provision`.
-2. **LDAP** (`ldap3`, already installed in the venv; add `ldap3>=2.9.1` to `pyproject.toml`):
-   - settings: `ldap_enabled` (false), `ldap_url` (`ldaps://…` required; `ldap://` only with
-     `ldap_start_tls=true`), `ldap_ca_file` (path under `.secrets/`, loaded the way the QRadar CA
-     is), `ldap_bind_template` (e.g. `{username}@corp.example`, the AD UPN form, or a DN template),
-     `ldap_timeout_seconds`, optional `ldap_user_search_base` for reading the user's own
-     `displayName`/`mail` after the bind.
+2. **LDAP** (`ldap3`, already installed in the venv; add `ldap3>=2.9.1` to `pyproject.toml`).
+   **The user wants the LDAP connection entered and changed from the UI (2026-10-16 ~11:33),
+   not from environment variables, and LDAPS supported.** So:
+   - the configuration lives in the **database**, one row (a new `ldap_config` table in the same
+     migration): `enabled` (false), `url` (`ldaps://host:636`, or `ldap://host:389` only with
+     `start_tls=true`; several URLs allowed, tried in order, for redundant domain controllers),
+     `start_tls`, `ca_pem` (the CA certificate chain as PEM text: public material, not a secret;
+     validated on save: parses as X.509, not expired, and say what you check),
+     `bind_template` (e.g. `{username}@corp.example`, the AD UPN form, or a DN template with
+     `{username}`), `timeout_seconds` (default 5, 1–30), optional `user_search_base` for reading
+     the user's own `displayName`/`mail` after the bind, `version` for optimistic concurrency,
+     `updated_by`, `updated_at`.
+   - **No password is stored**: authentication binds as the user. If a service account is ever
+     needed, that is a later task; do not add one.
+   - API (permission `admin:auth`, satisfied by `admin:*`; not by `read:*`):
+     `GET /api/v1/auth/ldap-config`, `PUT /api/v1/auth/ldap-config` (carries `version`; 409 on a
+     stale version; 422 lists every reason), and `POST /api/v1/auth/ldap-config/test` which takes
+     a draft config **plus a test username and password typed by the admin**, performs the TLS
+     handshake and a bind, and answers `{tls: ok|failed + reason, certificate: subject, issuer,
+     not_after, bind: ok|invalid_credentials|failed + reason, latency_ms}`. The test password is
+     never stored, logged or echoed. Every config change is audited (`auth.ldap_config.update`,
+     before/after without any credential).
+   - TLS verification is always on (the project's rule): the server certificate must chain to
+     `ca_pem` (or to the system trust store when `ca_pem` is empty, saying so in the test
+     result) and match the host name. `ldap://` without StartTLS is refused at save time in
+     every environment.
+   - `ldap_enabled=false` (the default) means LDAP logins are refused with a clear reason, and
+     local logins work.
    - authenticate by **binding as the user** with the password they typed. **Never read
      `memberOf` or any group.** Reading the user's own `displayName` and `mail` after a
      successful bind is allowed.
    - escape the username for the DN/UPN (RFC 4514) and refuse empty passwords (an empty
      password is an anonymous bind on many servers: it must never authenticate).
-   - TLS verification is mandatory (the project's rule); production refuses to boot with LDAP
-     enabled and no CA or an `ldap://` URL without StartTLS.
    - the LDAP call is blocking: run it off the event loop.
 3. **Sessions**: server-side, in a new `auth_session` table: a random 256-bit token, **stored
    only as its SHA-256 hash**, `user_id`, `created_at`, `last_seen_at`, `expires_at`, idle
@@ -91,7 +111,12 @@ OIDC stays out of scope (it remains refused in production, with a clear startup 
 
 - Unit: bcrypt hashing and verify; the lockout counter; the username escaping (DN and UPN with
   `*`, `(`, `\`, `,`, NUL); the empty-password refusal; the session token hashing; the CSRF
-  origin check; the settings validators (production + LDAP without CA refused).
+  origin check; the LDAP config validators (`ldap://` without StartTLS refused, a bad or
+  expired PEM refused, the template must contain `{username}`).
+- Integration for the LDAP config API: read, update with version (409 on stale), 422 reasons,
+  403 without `admin:auth`, the test endpoint with a fake server (TLS failure, certificate
+  details, invalid credentials, success), the test password absent from every log line and
+  response, the audit row.
 - Integration (your DB): login local OK/wrong password/unknown user (same message, same status);
   lockout after 5 and unlock after the window; session cookie flags; expired and idle sessions
   401; logout; disabled user 401 on the next request; role change effective on the next request;
