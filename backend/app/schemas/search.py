@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
+from typing import Any, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -39,6 +41,124 @@ def unreachable_threshold_reason(
 
 class ThresholdUnreachableError(ValueError):
     """Raised when a create or update would store a never-breachable threshold."""
+
+
+class AuthoringDetail(TypedDict):
+    """422 `detail` for an unsafe query or an unreachable threshold.
+
+    `reasons` is every problem, unparaphrased: `AQLValidationError.reasons` in
+    the validator's order, then the threshold-reachability sentence when it
+    applies. `message` is the compatibility string — the same text the schema
+    validators already raise (`unsafe AQL: ` plus those reasons joined by
+    `"; "`, and the threshold sentence).
+    """
+
+    message: str
+    reasons: list[str]
+
+
+_THRESHOLD_OPERATORS = frozenset({"GT", "GE", "LT", "LE", "EQ"})
+
+
+def _compat_message(aql_reasons: list[str], threshold_reason: str | None) -> str:
+    """The string the API already returned, kept beside the reasons list."""
+    parts: list[str] = []
+    if aql_reasons:
+        # `str(AQLValidationError)` is the reasons joined by "; ". The schema
+        # validators raise `ValueError(f"unsafe AQL: {exc}")`, so this is that
+        # same string.
+        parts.append("unsafe AQL: " + "; ".join(aql_reasons))
+    if threshold_reason is not None:
+        parts.append(threshold_reason)
+    return "; ".join(parts)
+
+
+def _aql_reasons(body: Mapping[str, Any], *, check_aql: bool) -> list[str]:
+    if not check_aql or "aql_query" not in body:
+        return []
+    aql = body["aql_query"]
+    if not isinstance(aql, str):
+        return []
+    try:
+        validate_aql(aql)
+    except AQLValidationError as exc:
+        return list(exc.reasons)
+    return []
+
+
+def _resolved_threshold(
+    body: Mapping[str, Any],
+    *,
+    current_operator: str,
+    current_threshold: float | None,
+    current_max_rows: int,
+) -> tuple[str, float | None, int] | None:
+    """Effective threshold inputs, or None when a field is the wrong JSON type.
+
+    A wrong type is the schema's 422, not an authoring reason. Skipping it here
+    lets that error surface unchanged.
+    """
+    operator = body.get("threshold_operator", current_operator)
+    if not isinstance(operator, str) or operator not in _THRESHOLD_OPERATORS:
+        return None
+
+    if "threshold_value" in body:
+        raw_threshold = body["threshold_value"]
+        if raw_threshold is None:
+            threshold: float | None = None
+        elif isinstance(raw_threshold, bool) or not isinstance(raw_threshold, (int, float)):
+            return None
+        else:
+            threshold = float(raw_threshold)
+    else:
+        threshold = current_threshold
+
+    if "max_result_rows" in body:
+        raw_rows = body["max_result_rows"]
+        if isinstance(raw_rows, bool) or not isinstance(raw_rows, int):
+            return None
+        max_rows = raw_rows
+    else:
+        max_rows = current_max_rows
+    return operator, threshold, max_rows
+
+
+def authoring_detail_for_body(
+    body: Mapping[str, Any],
+    *,
+    current_operator: str = "GT",
+    current_threshold: float | None = None,
+    current_max_rows: int = 10_000,
+    check_aql: bool = True,
+    check_threshold: bool = True,
+) -> AuthoringDetail | None:
+    """Build the 422 detail, or None when these checks pass.
+
+    Create calls this with the schema defaults (`GT`, no threshold, 10_000
+    rows) so an omitted cap is the cap the row would store. Update calls it
+    with the stored values, and passes `check_aql=False` once the query text
+    has already been accepted. Reasons are copied off the validator; they are
+    not rewritten.
+    """
+    aql_reasons = _aql_reasons(body, check_aql=check_aql)
+    threshold_reason: str | None = None
+    if check_threshold:
+        resolved = _resolved_threshold(
+            body,
+            current_operator=current_operator,
+            current_threshold=current_threshold,
+            current_max_rows=current_max_rows,
+        )
+        if resolved is not None:
+            threshold_reason = unreachable_threshold_reason(*resolved)
+    if not aql_reasons and threshold_reason is None:
+        return None
+    reasons = list(aql_reasons)
+    if threshold_reason is not None:
+        reasons.append(threshold_reason)
+    return AuthoringDetail(
+        message=_compat_message(aql_reasons, threshold_reason), reasons=reasons
+    )
 
 
 class ScheduledSearchCreate(BaseModel):

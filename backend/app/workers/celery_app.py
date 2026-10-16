@@ -163,4 +163,12 @@ celery_app.conf.beat_schedule = {
         "task": "apply_ips_retention",
         "schedule": float(settings.ips_retention_interval_seconds),
     },
+    # --- Phase F.2 -----------------------------------------------------------
+    "apply-search-result-retention": {
+        # Bounded delete of search_result_metric rows by bucket_start. Daily,
+        # like the other retention tasks. Not the optional Timescale chunk
+        # policy (that stays behind RETENTION_ENABLED).
+        "task": "apply_search_result_retention",
+        "schedule": float(settings.search_result_retention_interval_seconds),
+    },
 }
