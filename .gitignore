@@ -43,3 +43,7 @@ lab-runs/
 
 # Host-specific compose overlay (libvirt/macvlan layout of one machine).
 docker-compose.override.yml
+
+# Installer: the answers file and the generated edge/backup state
+install.answers
+.install-tmp/
