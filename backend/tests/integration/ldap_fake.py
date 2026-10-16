@@ -1,7 +1,7 @@
 """A one-connection LDAPS stand-in for the directory probe.
 
 It speaks just enough BER to answer a bind. It does not log the password.
-Certificate files live under the task scratch directory, never /tmp.
+Certificate files are written only into the directory the caller passes.
 """
 
 from __future__ import annotations
@@ -20,8 +20,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from ldap3.protocol.rfc4511 import LDAPMessage
 from pyasn1.codec.ber import decoder, encoder
-
-SCRATCH = Path("/home/efe/Documents/QRadar-Dash-work/auth1/certs")
 
 
 def write_server_material(directory: Path) -> tuple[Path, Path, str]:

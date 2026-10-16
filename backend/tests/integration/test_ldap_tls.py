@@ -37,7 +37,6 @@ from app.services.seed import ensure_default_roles
 
 pytestmark = pytest.mark.integration
 
-SCRATCH = Path("/home/efe/Documents/QRadar-Dash-work/auth1/certs/tls-proof")
 ORIGIN = "http://localhost:3000"
 PASSWORD = "Correct-Horse-Battery-99!"
 _CA_NAME = "auth1-trusted-ca"
@@ -143,10 +142,10 @@ def _pem(cert: x509.Certificate) -> str:
 class _TlsListener:
     """Completes one TLS handshake and then closes. It does not speak LDAP."""
 
-    def __init__(self, cert: x509.Certificate, key: RSAPrivateKey) -> None:
-        SCRATCH.mkdir(parents=True, exist_ok=True)
-        self._cert_path = SCRATCH / "server.crt"
-        self._key_path = SCRATCH / "server.key"
+    def __init__(self, cert: x509.Certificate, key: RSAPrivateKey, directory: Path) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        self._cert_path = directory / "server.crt"
+        self._key_path = directory / "server.key"
         self._cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
         self._key_path.write_bytes(
             key.private_bytes(
@@ -204,8 +203,8 @@ class _TlsListener:
 
 
 @contextmanager
-def _serving(cert: x509.Certificate, key: RSAPrivateKey) -> Iterator[int]:
-    listener = _TlsListener(cert, key)
+def _serving(cert: x509.Certificate, key: RSAPrivateKey, directory: Path) -> Iterator[int]:
+    listener = _TlsListener(cert, key, directory)
     try:
         yield listener.port
     finally:
@@ -232,14 +231,14 @@ def _trusted_pair(now: datetime):
     return _ca(_CA_NAME, now)
 
 
-def test_untrusted_ca_is_refused() -> None:
+def test_untrusted_ca_is_refused(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     _trusted_key, trusted, _ski = _trusted_pair(now)
     other_key, other, other_ski = _ca("auth1-other-ca", now)
     key, cert = _leaf(
         other_key, other, other_ski, "localhost", now - timedelta(days=1), now + timedelta(days=2)
     )
-    with _serving(cert, key) as port:
+    with _serving(cert, key, tmp_path) as port:
         report = _probe(_pem(trusted), port)
     assert report.tls_status == "failed"
     assert report.tls_reason is not None
@@ -249,7 +248,7 @@ def test_untrusted_ca_is_refused() -> None:
     assert PASSWORD not in (report.tls_reason or "")
 
 
-def test_wrong_hostname_is_refused() -> None:
+def test_wrong_hostname_is_refused(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     ca_key, trusted, ski = _trusted_pair(now)
     key, cert = _leaf(
@@ -260,7 +259,7 @@ def test_wrong_hostname_is_refused() -> None:
         now - timedelta(days=1),
         now + timedelta(days=2),
     )
-    with _serving(cert, key) as port:
+    with _serving(cert, key, tmp_path) as port:
         report = _probe(_pem(trusted), port)
     assert report.tls_status == "failed"
     reason = report.tls_reason or ""
@@ -272,13 +271,13 @@ def test_wrong_hostname_is_refused() -> None:
     assert PASSWORD not in reason
 
 
-def test_matching_hostname_is_tls_ok_and_bind_failed() -> None:
+def test_matching_hostname_is_tls_ok_and_bind_failed(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     ca_key, trusted, ski = _trusted_pair(now)
     key, cert = _leaf(
         ca_key, trusted, ski, "localhost", now - timedelta(days=1), now + timedelta(days=2)
     )
-    with _serving(cert, key) as port:
+    with _serving(cert, key, tmp_path) as port:
         report = _probe(_pem(trusted), port)
     assert report.tls_status == "ok"
     assert report.tls_reason is None
@@ -293,13 +292,13 @@ def test_matching_hostname_is_tls_ok_and_bind_failed() -> None:
     assert PASSWORD not in blob
 
 
-def test_expired_certificate_is_refused() -> None:
+def test_expired_certificate_is_refused(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     ca_key, trusted, ski = _trusted_pair(now)
     key, cert = _leaf(
         ca_key, trusted, ski, "localhost", now - timedelta(days=10), now - timedelta(days=1)
     )
-    with _serving(cert, key) as port:
+    with _serving(cert, key, tmp_path) as port:
         report = _probe(_pem(trusted), port)
     assert report.tls_status == "failed"
     assert report.tls_reason is not None
@@ -335,7 +334,7 @@ def api(db_schema: str):
         engine.sync_engine.dispose()
 
 
-async def test_matching_hostname_probe_returns_the_certificate(api) -> None:
+async def test_matching_hostname_probe_returns_the_certificate(api, tmp_path: Path) -> None:
     from sqlalchemy import select
 
     from app.models.identity import Role, User
@@ -367,7 +366,7 @@ async def test_matching_hostname_probe_returns_the_certificate(api) -> None:
     key, cert = _leaf(
         ca_key, trusted, ski, "localhost", now - timedelta(days=1), now + timedelta(days=2)
     )
-    with _serving(cert, key) as port:
+    with _serving(cert, key, tmp_path) as port:
         response = client.post(
             "/api/v1/auth/ldap-config/test",
             json={
