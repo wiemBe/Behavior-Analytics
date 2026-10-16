@@ -22,7 +22,7 @@ the sandboxing rules (still binding). The 14:35 section below is superseded wher
   that could read the token.
 
 **Branches.**
-- `main` @ `e26c683` (Phase 5 and everything before it). Unchanged this session.
+- **`main` @ `4169592` (17:33, pushed): `feat/phase-ce` @ `e90fba1` merged** after a green gate (backend ruff, mypy 0, alembic round trip at `0025`, unit 3,443, integration 1,286/0; frontend 288 files / 3,186 tests, build) and T-118 passing. Phase 6, Phase F (live-validated) and AUTH-1/AUTH-2 are on `main`.
 - `feat/phase-ce` @ `0117c32` (pushed). Since `main` it holds:
   - UI-6.1 to UI-6.8: **Phase 6 is closed**;
   - T-114 to T-117;
@@ -44,7 +44,7 @@ the sandboxing rules (still binding). The 14:35 section below is superseded wher
 | Task | Agent / unit | Worktree / DB | How to check, and what is left for the orchestrator |
 |---|---|---|---|
 | ~~T-119~~ | **Merged** (`0117c32`, Grok, 9 min): README and the design after F-6 (routes, the catalog body, [BUILT] markers, as-built notes); "fired 1 time" with a 0/1/2 test | — | — |
-| **Gate for `main`: GREEN** | Frontend on `0117c32`: `npm ci`, lint, typecheck, 288 files / 3,186 tests, build 33/33. Backend on `99610cb` (no backend change since): ruff, mypy 0, alembic up/check/down base/up/check at `0025`, unit 3,443, **full integration 1,286 passed, 0 failed** (15.5 min) | logs `QRadar-Dash-work/gate-main/` | **merge `feat/phase-ce` → `main` when T-118 reports** (part 2 ends ~17:30 local) |
+| ~~Gate for `main`~~ | **Merged to `main`** (`4169592`). Frontend on `0117c32`: `npm ci`, lint, typecheck, 288 / 3,186, build 33/33. Backend on `99610cb`: ruff, mypy 0, alembic up/check/down base/up/check at `0025`, unit 3,443, integration 1,286/0. Only docs changed after the gated commits | — | worktrees `t118`, `gate-fe` and DB `qradar_obs_t118` removed |
 | **OPS-0** ([spec](tasks/OPS-0.md)) operability design: versioning, GHCR release, `./qradar-dash install/upgrade/rollback/backup/restore/doctor/support-bundle`, Turkish runbook outline, OPS-1… split for ~2026-10-30 | **Grok**, `ops0-grok`, from 17:05 (D-18: starts once the in-flight work is collected) | `ops0`; deliverable `docs/OPERATIONS-DESIGN.md` | review against the spec's 11 points; the user reviews the task split |
 | ~~T-118~~ | **Passed** ([report](tasks/T-118.report.md); Sonnet sub-agent, 15:24–17:31 local, 19 of 60 Ariel searches, two generator runs at 1/8/1 EPS, none left). Shadow: breach OPEN after the 2nd spike bucket, no alert or notification, RECOVERING, RESOLVED; stored preview = the same interval. Alerting: **one** deduplicated `custom_rule_breach` alert (`occurrence_count` 2), evidence value/measurement/threshold/bucket bounds, resolved by `custom-rule-evaluator` "condition recovered". Fail-closed gap: the uncollected bucket counted neither way (`unmeasured_buckets` 1, under 1 not 2, alert still open), preview drew it `NOT_MEASURED`; collected late, it was not re-judged (idempotent). Harness gap: the OPEN notification was not observed (no channel configured at that moment); the resolve notification was. Low-severity notes: `last_status` NULL after the seed run; `consecutive_under` counts up while OK and is exposed; after a late bucket the preview and the live breach end one bucket apart (by design) | — | no fix task needed; the notes go to the backlog |
 
