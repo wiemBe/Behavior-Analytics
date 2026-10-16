@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 export function NoRole({ me }: { me: CallerInfo }) {
   const name = signedInName(me);
   return (
-    <div className={styles.panel}>
+    <div className={styles.column}>
       <PageHeader title="No role assigned" actions={<SignOutButton />} />
       <div className="notice" role="status">
         <p>

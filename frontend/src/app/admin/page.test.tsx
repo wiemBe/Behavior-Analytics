@@ -1,14 +1,14 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import AdminPage from "./page";
+import { StaticSession, type SessionValue } from "@/components/auth/session";
+import type { CallerInfo } from "@/lib/api";
 
-// States this route renders, from `page.tsx`: one state only. The hub is a
-// static index with no data read, so there is no loading, empty or error state
-// and no query parameter. The tests pin what a restyle must not silently change:
-// the single h1 and its one-line description, the five destinations in their
-// order with their href and their one-line description, and the absence of the
-// stale "Phase N" wording the section copy used to carry.
+// The hub is an index. With no session it fails closed and lists the five
+// ungated destinations. Users and Directory appear only for a ready session
+// that holds admin:users or admin:auth. The tests pin the heading, the
+// description, the order, and the absence of the stale "Phase N" wording.
 
 const SECTIONS = [
   {
@@ -42,6 +42,35 @@ function adminSections() {
   return screen.getByRole("list", { name: "Administration sections" });
 }
 
+function caller(permissions: string[]): CallerInfo {
+  return {
+    subject: "ada",
+    email: "ada@example.com",
+    permissions,
+    effective_permissions: permissions,
+    username: "ada",
+    auth_source: "LOCAL",
+    must_change_password: false,
+    roles: ["admin"],
+  };
+}
+
+function ready(permissions: string[]): SessionValue {
+  return {
+    status: "ready",
+    me: caller(permissions),
+    error: null,
+    reload: vi.fn(),
+    signOut: vi.fn(),
+  };
+}
+
+function names(): string[] {
+  return within(adminSections())
+    .getAllByRole("link")
+    .map((link) => link.textContent ?? "");
+}
+
 describe("administration hub", () => {
   it("has exactly one h1, named Administration, and states what the page controls", () => {
     render(<AdminPage />);
@@ -55,7 +84,7 @@ describe("administration hub", () => {
     ).toBeInTheDocument();
   });
 
-  it("lists exactly five sections, in order, each a link", () => {
+  it("lists exactly five sections while the session is unknown, in order, each a link", () => {
     render(<AdminPage />);
     const links = within(adminSections()).getAllByRole("link");
     expect(links).toHaveLength(5);
@@ -80,5 +109,51 @@ describe("administration hub", () => {
   it("carries no stale phase wording", () => {
     render(<AdminPage />);
     expect(document.body.textContent ?? "").not.toMatch(/Phase \d/);
+  });
+
+  it("adds Users only for admin:users", () => {
+    render(
+      <StaticSession value={ready(["admin:users"])}>
+        <AdminPage />
+      </StaticSession>,
+    );
+    expect(names()).toEqual([...SECTIONS.map((section) => section.name), "Users"]);
+    expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute("href", "/admin/users");
+    expect(
+      screen.getByText("Who can sign in, and the roles an administrator assigned"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Directory" })).not.toBeInTheDocument();
+  });
+
+  it("adds Directory only for admin:auth", () => {
+    render(
+      <StaticSession value={ready(["admin:auth"])}>
+        <AdminPage />
+      </StaticSession>,
+    );
+    expect(names()).toEqual([...SECTIONS.map((section) => section.name), "Directory"]);
+    expect(screen.getByRole("link", { name: "Directory" })).toHaveAttribute("href", "/admin/directory");
+    expect(
+      screen.getByText("Where directory accounts bind, and a connection test that stores nothing"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
+  });
+
+  it("adds both when the caller holds admin:*", () => {
+    render(
+      <StaticSession value={ready(["admin:*"])}>
+        <AdminPage />
+      </StaticSession>,
+    );
+    expect(names()).toEqual([...SECTIONS.map((section) => section.name), "Users", "Directory"]);
+  });
+
+  it("adds neither for a read permission", () => {
+    render(
+      <StaticSession value={ready(["read:offenses"])}>
+        <AdminPage />
+      </StaticSession>,
+    );
+    expect(names()).toEqual(SECTIONS.map((section) => section.name));
   });
 });

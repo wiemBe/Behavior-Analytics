@@ -15,7 +15,7 @@ import styles from "@/components/auth/auth.module.css";
 import { ApiError, destinationAfterLogin } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 
-type Problem = { heading?: string; lines: string[] };
+type Problem = { heading?: string; lines: string[]; alert?: boolean };
 
 export function LoginForm() {
   const session = useSession();
@@ -49,8 +49,11 @@ export function LoginForm() {
     router.replace(destinationAfterLogin(params.get("next"), result.must_change_password));
   }
 
+  const refused = problem != null && problem.alert;
+
   return (
-    <div className={styles.panel}>
+    <div className={styles.column}>
+      <p className={styles.product}>Behavior Analytics</p>
       <PageHeader title="Sign in" description="A local account or a directory account." />
       <form
         className={styles.form}
@@ -83,20 +86,25 @@ export function LoginForm() {
             required
           />
         </label>
-        <div className={styles.actions}>
-          <button type="submit" className="action" disabled={pending}>
-            {pending ? "Signing in" : "Sign in"}
-          </button>
-        </div>
+        {refused ? (
+          <p className="banner crit" role="alert">
+            {problem.lines.join(" ")}
+          </p>
+        ) : null}
+        <button type="submit" className={`action ${styles.submit}`} disabled={pending}>
+          {pending ? "Signing in" : "Sign in"}
+        </button>
+        {problem && !refused ? (
+          <ReasonList tone="warn" heading={problem.heading} lines={problem.lines} />
+        ) : null}
       </form>
-      {problem ? <ReasonList tone="warn" heading={problem.heading} lines={problem.lines} /> : null}
     </div>
   );
 }
 
 function loginProblem(err: unknown): Problem {
   const lines = errorTexts(err);
-  if (err instanceof ApiError && err.status === 401) return { lines };
+  if (err instanceof ApiError && err.status === 401) return { lines, alert: true };
   if (err instanceof ApiError && err.status === 503) {
     return {
       heading: "The directory could not be reached. Local accounts still work.",

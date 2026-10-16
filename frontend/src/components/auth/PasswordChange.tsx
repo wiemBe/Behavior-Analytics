@@ -61,7 +61,7 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
   }
 
   return (
-    <div className={styles.panel}>
+    <div className={styles.column}>
       <PageHeader
         title="Change password"
         description={
@@ -114,7 +114,7 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
           />
         </label>
         <div className={styles.actions}>
-          <button type="submit" className="action" disabled={pending}>
+          <button type="submit" className={`action ${styles.submit}`} disabled={pending}>
             {pending ? "Changing password" : "Change password"}
           </button>
         </div>

@@ -300,7 +300,7 @@ export function UsersPage() {
             </div>
           ) : (
             <TableScroll label="Accounts">
-              <table className="table-dense">
+              <table className={`table-dense ${styles.accounts}`}>
                 <caption className="sr-only">
                   Accounts with source, display name, roles, status and last login. Times are UTC.
                 </caption>
@@ -333,11 +333,12 @@ export function UsersPage() {
                         <td>
                           <button
                             type="button"
-                            className="action secondary"
+                            className={`action secondary ${styles.manage}`}
+                            aria-label={`Manage ${name}`}
                             aria-pressed={selectedId === user.id}
                             onClick={() => openActions(user)}
                           >
-                            Actions for {name}
+                            Manage
                           </button>
                         </td>
                       </tr>

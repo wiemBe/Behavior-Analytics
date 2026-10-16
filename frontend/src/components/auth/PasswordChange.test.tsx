@@ -72,6 +72,7 @@ describe("PasswordChange", () => {
     await fill("old-password-1", "new-password-1", "new-password-2");
     expect(client.changePassword).not.toHaveBeenCalled();
     const alert = await screen.findByRole("alert");
+    expect(alert).toHaveClass("banner", "warn");
     expect(alert).toHaveTextContent("The password was not changed.");
     expect(alert).toHaveTextContent("The new password and the confirmation do not match.");
   });

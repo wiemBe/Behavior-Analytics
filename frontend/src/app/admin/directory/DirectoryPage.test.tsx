@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -5,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DirectoryPage, buildDirectorySave, formFrom } from "./DirectoryPage";
 import Loading from "./loading";
 import DirectoryError from "./error";
+import styles from "@/components/auth/auth.module.css";
 import type { DirectoryConfig, DirectorySave } from "@/components/auth/client";
 import { ApiError } from "@/lib/api";
 
@@ -177,8 +180,16 @@ describe("DirectoryPage", () => {
     await user.type(within(test).getByLabelText("Test username"), "ada");
     await user.type(within(test).getByLabelText("Test password"), "Test-Secret-99");
     await user.click(within(test).getByRole("button", { name: "Test connection" }));
-    expect(await screen.findByText("certificate verify failed")).toBeInTheDocument();
-    expect(screen.getByText("failed")).toBeInTheDocument();
+    expect(await screen.findByText("Connection failed at TLS.")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toHaveClass("pill", "crit");
+    expect(screen.getByText(/certificate verify failed/)).toBeInTheDocument();
+    expect(screen.getByText("Not attempted")).toHaveClass("pill");
+    expect(screen.getByText("Not attempted")).not.toHaveClass("ok");
+    expect(screen.getByText(/TLS failed/)).toBeInTheDocument();
+    expect(screen.getByText("System trust store")).toBeInTheDocument();
+    expect(screen.queryByText("failed")).not.toBeInTheDocument();
+    expect(screen.queryByText("not_attempted")).not.toBeInTheDocument();
+    expect(screen.queryByText("system")).not.toBeInTheDocument();
     expect(screen.getByText("No certificate was returned.")).toBeInTheDocument();
     expect(screen.getByText("12 ms")).toBeInTheDocument();
     expect(within(test).getByLabelText("Test password")).toHaveValue("");
@@ -199,11 +210,15 @@ describe("DirectoryPage", () => {
     await user.type(within(test).getByLabelText("Test username"), "ada");
     await user.type(within(test).getByLabelText("Test password"), "Test-Secret-99");
     await user.click(within(test).getByRole("button", { name: "Test connection" }));
-    expect(await screen.findByText("invalid credentials")).toBeInTheDocument();
+    expect(await screen.findByText("TLS succeeded. The bind did not.")).toBeInTheDocument();
+    expect(screen.getByText("Refused")).toHaveClass("pill", "crit");
+    expect(screen.getByText(/invalid credentials/)).toBeInTheDocument();
+    expect(screen.getByText("OK")).toHaveClass("pill", "ok");
     expect(screen.getByText("CN=dc1")).toBeInTheDocument();
     expect(screen.getByText("CN=lab-ca")).toBeInTheDocument();
     expect(screen.getByText("2027-01-02 03:04:05 UTC")).toBeInTheDocument();
-    expect(screen.getByText("ca_pem")).toBeInTheDocument();
+    expect(screen.getByText("Uploaded CA certificate")).toBeInTheDocument();
+    expect(screen.queryByText("ca_pem")).not.toBeInTheDocument();
     expect(screen.getByText("40 ms")).toBeInTheDocument();
     expect(within(test).getByLabelText("Test password")).toHaveValue("");
   });
@@ -221,8 +236,10 @@ describe("DirectoryPage", () => {
     await user.type(within(test).getByLabelText("Test username"), "ada");
     await user.type(within(test).getByLabelText("Test password"), "Test-Secret-99");
     await user.click(within(test).getByRole("button", { name: "Test connection" }));
+    expect(await screen.findByText("Connected and bound as ada.")).toBeInTheDocument();
+    expect(screen.getAllByText("OK")).toHaveLength(2);
+    expect(screen.getByText("System trust store")).toBeInTheDocument();
     expect(await screen.findByText("7 ms")).toBeInTheDocument();
-    expect(screen.getAllByText("ok").length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toContain("Test-Secret-99");
 
     api.testDirectory.mockResolvedValueOnce({
@@ -249,6 +266,33 @@ describe("DirectoryPage", () => {
     expect(alert).toHaveTextContent("The connection test failed.");
     expect(alert).toHaveTextContent("the test needs a directory URL");
     expect(within(test).getByLabelText("Test password")).toHaveValue("");
+  });
+
+  it("keeps a short field at content width and describes it with the hint", async () => {
+    render(<DirectoryPage />);
+    const form = await screen.findByRole("form", { name: "Directory configuration" });
+    const timeout = within(form).getByLabelText("Timeout (seconds)");
+    const url = within(form).getByLabelText("URL 1");
+    expect(timeout.className.split(" ")).toContain(styles.controlNum);
+    expect(url.className.split(" ")).not.toContain(styles.controlNum);
+    const base = within(form).getByLabelText("User search base");
+    const hint = document.getElementById(base.getAttribute("aria-describedby") ?? "");
+    expect(hint).not.toBeNull();
+    expect(hint).toHaveTextContent("Optional. Empty sends no search base.");
+    expect(hint?.className.split(" ")).toContain(styles.hint);
+    expect(hint?.className.split(" ")).not.toContain(styles.sectionNote);
+  });
+
+  it("separates the test description from the first field", async () => {
+    render(<DirectoryPage />);
+    const note = await screen.findByText(/sent with the form above/);
+    expect(note.className.split(" ")).toContain(styles.hint);
+    expect(note.className.split(" ")).toContain(styles.sectionNote);
+    // The page header leaves --sp-6 under its description. This note does the same.
+    const css = readFileSync(resolve(__dirname, "../../../components/auth/auth.module.css"), "utf8");
+    const block = /\.sectionNote\s*\{([^}]*)\}/.exec(css);
+    expect(block, ".sectionNote").not.toBeNull();
+    expect(block?.[1]).toMatch(/margin-bottom:\s*var\(--sp-6\)/);
   });
 
   it("says when the caller cannot change the directory", async () => {

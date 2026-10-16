@@ -228,7 +228,7 @@ describe("UsersPage", () => {
     const user = userEvent.setup();
     render(<UsersPage />);
     await screen.findByRole("table");
-    await user.click(screen.getByRole("button", { name: "Actions for eve" }));
+    await user.click(screen.getByRole("button", { name: "Manage eve" }));
     const actions = screen.getByRole("region", { name: "Actions for eve" });
     expect(within(actions).getByRole("checkbox", { name: "retired" })).toBeChecked();
     expect(within(actions).getByRole("checkbox", { name: "detection_engineer" })).not.toBeChecked();
@@ -246,7 +246,7 @@ describe("UsersPage", () => {
     const user = userEvent.setup();
     render(<UsersPage />);
     await screen.findByRole("table");
-    await user.click(screen.getByRole("button", { name: "Actions for ada" }));
+    await user.click(screen.getByRole("button", { name: "Manage ada" }));
     await user.click(screen.getByRole("button", { name: "Disable ada" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("The account was not changed.");
@@ -259,10 +259,10 @@ describe("UsersPage", () => {
     const user = userEvent.setup();
     render(<UsersPage />);
     await screen.findByRole("table");
-    await user.click(screen.getByRole("button", { name: "Actions for cy" }));
+    await user.click(screen.getByRole("button", { name: "Manage cy" }));
     await user.click(screen.getByRole("button", { name: "Enable cy" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Enabled cy.");
-    await user.click(screen.getByRole("button", { name: "Actions for dee" }));
+    await user.click(screen.getByRole("button", { name: "Manage dee" }));
     await user.click(screen.getByRole("button", { name: "Unlock dee" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Unlocked dee.");
   });
@@ -272,12 +272,12 @@ describe("UsersPage", () => {
     const user = userEvent.setup();
     render(<UsersPage />);
     await screen.findByRole("table");
-    await user.click(screen.getByRole("button", { name: "Actions for bea" }));
+    await user.click(screen.getByRole("button", { name: "Manage bea" }));
     expect(screen.getByRole("region", { name: "Actions for bea" })).toHaveTextContent(
       "An LDAP account has no password here.",
     );
     expect(screen.queryByRole("form", { name: "Reset password" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Actions for ada" }));
+    await user.click(screen.getByRole("button", { name: "Manage ada" }));
     const reset = screen.getByRole("form", { name: "Reset password" });
     await user.type(within(reset).getByLabelText("New password"), "one-password");
     await user.type(within(reset).getByLabelText("Confirm new password"), "other-password");
@@ -302,7 +302,7 @@ describe("UsersPage", () => {
     const user = userEvent.setup();
     render(<UsersPage />);
     await screen.findByRole("table");
-    await user.click(screen.getByRole("button", { name: "Actions for ada" }));
+    await user.click(screen.getByRole("button", { name: "Manage ada" }));
     const reset = screen.getByRole("form", { name: "Reset password" });
     await user.type(within(reset).getByLabelText("New password"), "Correct-Horse-1");
     await user.type(within(reset).getByLabelText("Confirm new password"), "Correct-Horse-1");

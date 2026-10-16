@@ -53,6 +53,7 @@ describe("LoginForm", () => {
   it("is idle with one heading and one submit", () => {
     renderForm();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByText("Behavior Analytics")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -74,6 +75,9 @@ describe("LoginForm", () => {
     await submit();
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Invalid username or password");
+    expect(alert.tagName).toBe("P");
+    expect(alert).toHaveClass("banner", "crit");
+    expect(alert.querySelector("li")).toBeNull();
     expect(alert).not.toHaveTextContent(/unknown user|wrong password|which/i);
   });
 

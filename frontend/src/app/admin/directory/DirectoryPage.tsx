@@ -16,6 +16,13 @@ import {
   type DirectoryProbe,
   type DirectorySave,
 } from "@/components/auth/client";
+import {
+  bindOutcome,
+  probeHeadline,
+  tlsOutcome,
+  trustWords,
+  type OutcomeWord,
+} from "@/components/auth/probeCopy";
 import { ReasonList } from "@/components/auth/ReasonList";
 import { errorTexts } from "@/components/auth/reasons";
 import styles from "@/components/auth/auth.module.css";
@@ -40,7 +47,9 @@ interface FormState {
 }
 
 type Outcome = { tone: "ok" | "warn"; heading?: string; lines: string[]; reload?: boolean };
-type ProbeView = { kind: "done"; result: DirectoryProbe } | { kind: "failed"; lines: string[] };
+type ProbeView =
+  | { kind: "done"; result: DirectoryProbe; username: string }
+  | { kind: "failed"; lines: string[] };
 
 export function DirectoryPage() {
   const [load, setLoad] = useState<"loading" | "ready" | "error" | "forbidden">("loading");
@@ -133,6 +142,7 @@ export function DirectoryPage() {
     event.preventDefault();
     if (!form) return;
     const draft = buildDirectorySave(form);
+    const username = testUser;
     setPending("test");
     setProbe(null);
     try {
@@ -144,10 +154,10 @@ export function DirectoryPage() {
         bind_template: draft.bind_template,
         timeout_seconds: draft.timeout_seconds,
         user_search_base: draft.user_search_base,
-        username: testUser,
+        username,
         password: testPassword,
       });
-      setProbe({ kind: "done", result });
+      setProbe({ kind: "done", result, username });
     } catch (err) {
       setProbe({ kind: "failed", lines: errorTexts(err) });
     } finally {
@@ -215,7 +225,11 @@ export function DirectoryPage() {
               </button>
             </p>
           ) : null}
-          <form className={styles.form} aria-label="Directory configuration" onSubmit={(event) => void onSave(event)}>
+          <form
+            className={`${styles.form} ${styles.section}`}
+            aria-label="Directory configuration"
+            onSubmit={(event) => void onSave(event)}
+          >
             <label className={styles.check}>
               <input
                 type="checkbox"
@@ -282,7 +296,7 @@ export function DirectoryPage() {
                 aria-describedby="ca-pem-hint"
                 onChange={(event) => patch({ caPem: event.target.value })}
               />
-              <p id="ca-pem-hint" className="cell-sub">
+              <p id="ca-pem-hint" className={styles.hint}>
                 Empty uses the system trust store.
               </p>
             </div>
@@ -310,7 +324,7 @@ export function DirectoryPage() {
             <label className={styles.field}>
               <span className={styles.label}>Timeout (seconds)</span>
               <input
-                className={styles.control}
+                className={`${styles.control} ${styles.controlNum}`}
                 inputMode="numeric"
                 value={form.timeout}
                 onChange={(event) => patch({ timeout: event.target.value })}
@@ -328,7 +342,7 @@ export function DirectoryPage() {
                 aria-describedby="search-base-hint"
                 onChange={(event) => patch({ searchBase: event.target.value })}
               />
-              <p id="search-base-hint" className="cell-sub">
+              <p id="search-base-hint" className={styles.hint}>
                 Optional. Empty sends no search base.
               </p>
             </div>
@@ -341,7 +355,7 @@ export function DirectoryPage() {
 
           <section className={styles.section} aria-labelledby="test-connection">
             <h2 id="test-connection">Test connection</h2>
-            <p className="cell-sub">
+            <p className={`${styles.hint} ${styles.sectionNote}`}>
               The username and password are sent with the form above and then cleared. They are
               not saved.
             </p>
@@ -381,7 +395,9 @@ export function DirectoryPage() {
             {probe?.kind === "failed" ? (
               <ReasonList tone="warn" heading="The connection test failed." lines={probe.lines} />
             ) : null}
-            {probe?.kind === "done" ? <ProbeResult result={probe.result} /> : null}
+            {probe?.kind === "done" ? (
+              <ProbeResult result={probe.result} username={probe.username} />
+            ) : null}
           </section>
         </>
       ) : null}
@@ -389,37 +405,52 @@ export function DirectoryPage() {
   );
 }
 
-function ProbeResult({ result }: { result: DirectoryProbe }) {
+function Outcome({ word }: { word: OutcomeWord }) {
+  const tone = word.tone === "neutral" ? "" : word.tone;
   return (
-    <dl className={styles.defs}>
-      <dt>TLS</dt>
-      <dd>{result.tls.status}</dd>
-      <dt>TLS reason</dt>
-      <dd>{textOrDash(result.tls.reason)}</dd>
-      <dt>Trust</dt>
-      <dd>{result.tls.trust}</dd>
-      {result.certificate ? (
-        <>
-          <dt>Certificate subject</dt>
-          <dd>{result.certificate.subject}</dd>
-          <dt>Certificate issuer</dt>
-          <dd>{result.certificate.issuer}</dd>
-          <dt>Certificate expiry (UTC)</dt>
-          <dd>{certificateExpiry(result.certificate.not_after)}</dd>
-        </>
-      ) : (
-        <>
-          <dt>Certificate</dt>
-          <dd>No certificate was returned.</dd>
-        </>
-      )}
-      <dt>Bind</dt>
-      <dd>{result.bind.status}</dd>
-      <dt>Bind reason</dt>
-      <dd>{textOrDash(result.bind.reason)}</dd>
-      <dt>Latency</dt>
-      <dd className="num">{result.latency_ms} ms</dd>
-    </dl>
+    <span className={styles.outcome}>
+      <span className={`pill ${tone}`.trim()}>{word.label}</span>
+      {word.detail ? <span>— {word.detail}</span> : null}
+    </span>
+  );
+}
+
+function ProbeResult({ result, username }: { result: DirectoryProbe; username: string }) {
+  return (
+    <>
+      <p className={styles.resultLine}>
+        <strong>{probeHeadline(result.tls.status, result.bind.status, username)}</strong>
+      </p>
+      <dl className={styles.defs}>
+        <dt>TLS</dt>
+        <dd>
+          <Outcome word={tlsOutcome(result.tls.status, result.tls.reason)} />
+        </dd>
+        <dt>Trust</dt>
+        <dd>{trustWords(result.tls.trust)}</dd>
+        {result.certificate ? (
+          <>
+            <dt>Certificate subject</dt>
+            <dd>{result.certificate.subject}</dd>
+            <dt>Certificate issuer</dt>
+            <dd>{result.certificate.issuer}</dd>
+            <dt>Certificate expiry (UTC)</dt>
+            <dd>{certificateExpiry(result.certificate.not_after)}</dd>
+          </>
+        ) : (
+          <>
+            <dt>Certificate</dt>
+            <dd>No certificate was returned.</dd>
+          </>
+        )}
+        <dt>Bind</dt>
+        <dd>
+          <Outcome word={bindOutcome(result.bind.status, result.bind.reason)} />
+        </dd>
+        <dt>Latency</dt>
+        <dd className="num">{result.latency_ms} ms</dd>
+      </dl>
+    </>
   );
 }
 
@@ -460,7 +491,3 @@ function certificateExpiry(value: string): string {
   return value.trim() === "" ? "—" : value;
 }
 
-function textOrDash(value: string | null): string {
-  if (value == null || value.trim() === "") return "—";
-  return value;
-}

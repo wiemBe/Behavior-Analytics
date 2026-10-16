@@ -31,38 +31,85 @@ function session(over: Partial<SessionValue> = {}): SessionValue {
   };
 }
 
+function summary(container: HTMLElement): HTMLElement {
+  const trigger = container.querySelector("summary");
+  if (!trigger) throw new Error("missing account summary");
+  return trigger;
+}
+
 describe("Account", () => {
-  it("shows the username and signs out", async () => {
+  it("shows the username and signs out from the menu", async () => {
     const value = session();
-    render(
+    const { container } = render(
       <StaticSession value={value}>
         <Account />
       </StaticSession>,
     );
-    expect(screen.getByText("Signed in as ada")).toBeInTheDocument();
+    const trigger = summary(container);
+    expect(trigger).toHaveAttribute("aria-label", "Account: ada");
+    expect(trigger).toHaveTextContent("ada");
+    await userEvent.click(trigger);
+    expect(screen.getByText("Signed in as ada")).toBeVisible();
+    expect(screen.getByText("Source: LOCAL")).toBeVisible();
+    expect(screen.getByText("Roles: admin")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Change password" })).toHaveAttribute("href", "/account");
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(value.signOut).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a development principal and no Sign out", () => {
-    render(
-      <StaticSession value={session({ me: me({ username: "local-dev", subject: "local-dev", auth_source: null }) })}>
+  it("closes on Escape and returns focus to the account control", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <StaticSession value={session()}>
         <Account />
       </StaticSession>,
     );
-    expect(screen.getByText("Signed in as local-dev")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+    const trigger = summary(container);
+    const details = container.querySelector("details");
+    await user.click(trigger);
+    expect(details?.open).toBe(true);
+    expect(screen.getByText("Signed in as ada")).toBeVisible();
+    trigger.focus();
+    await user.keyboard("{Escape}");
+    expect(details?.open).toBe(false);
+    expect(trigger).toHaveFocus();
+    expect(screen.getByText("Signed in as ada")).not.toBeVisible();
   });
 
-  it("still offers Sign out when a local account is named local-dev", () => {
-    render(
+  it("shows a development principal and no Sign out", async () => {
+    const { container } = render(
+      <StaticSession value={session({ me: me({ username: "local-dev", subject: "local-dev", auth_source: null, roles: [] }) })}>
+        <Account />
+      </StaticSession>,
+    );
+    await userEvent.click(summary(container));
+    expect(screen.getByText("Signed in as local-dev")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Change password" })).not.toBeInTheDocument();
+  });
+
+  it("still offers Sign out when a local account is named local-dev", async () => {
+    const { container } = render(
       <StaticSession
         value={session({ me: me({ username: "local-dev", subject: "local-dev", auth_source: "LOCAL" }) })}
       >
         <Account />
       </StaticSession>,
     );
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    await userEvent.click(summary(container));
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeVisible();
+  });
+
+  it("offers no password change for a directory account", async () => {
+    const { container } = render(
+      <StaticSession value={session({ me: me({ auth_source: "LDAP", roles: ["analyst"] }) })}>
+        <Account />
+      </StaticSession>,
+    );
+    await userEvent.click(summary(container));
+    expect(screen.getByText("Source: LDAP")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Change password" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeVisible();
   });
 
   it("renders nothing while the session is loading", () => {
@@ -77,11 +124,12 @@ describe("Account", () => {
 
   it("shows the reason sign-out did not finish", async () => {
     const value = session({ signOut: vi.fn().mockResolvedValue("directory down") });
-    render(
+    const { container } = render(
       <StaticSession value={value}>
         <Account />
       </StaticSession>,
     );
+    await userEvent.click(summary(container));
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("directory down");
   });

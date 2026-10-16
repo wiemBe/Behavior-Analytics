@@ -199,3 +199,200 @@ Processes started for screenshots were stopped by PID: fixture `802212`, `next s
 - The sidebar gained Users and Directory. At 1024×768, Directory sits at the end of the sidebar scroll.
 - Break-it was one mutation per new test file, not every assertion.
 - No commit.
+
+## Review round 1
+
+The account control is one button, the username, with accessible name `Account: ada`. It opens a disclosure: Signed in as, source, roles, Change password for a local account (`/account`), and Sign out. Escape closes it and returns focus. Below 1100px the clock sits under the refresh control and the header grows with it, so the clock is not clipped. The sign-in, password, and no-role screens share a 24rem centred column. A 401 is one sentence in `role="alert"` with the error tone, above the button. Directory results use words and the status pill; the reason text stays as sent. Timeout uses a content width. Hints are the small muted style and stay tied with `aria-describedby`. Usernames use the normal text tone. The row action reads Manage, with accessible name `Manage {username}`. The last-row row-header border is gone. `/admin` lists Users (`admin:users`) and Directory (`admin:auth`) after the session is known.
+
+Fetch paths added for auth (`client.ts`: login, logout, password, users, roles, disable, enable, unlock, reset, directory get/save/test) all go through `request()`. A bodyless POST sends no `Content-Type`. That rule is already pinned in `apiHeaders.test.ts`.
+
+### Files changed
+
+- `frontend/src/app/tokens.css` — `--auth-column` (24rem) and `--control-num-w` (8ch).
+- `frontend/src/components/auth/auth.module.css` — centred column, account menu, hint, numeric control, username tone, last-row border, refresh stack below 1100px. The clock clip is gone.
+- `frontend/src/components/shell/Account.tsx` — disclosure menu.
+- `frontend/src/components/shell/Account.test.tsx` — menu contents, Escape and focus return, local-dev, LDAP.
+- `frontend/src/app/login/LoginForm.tsx` — product name, narrow column, 401 alert.
+- `frontend/src/app/login/LoginForm.test.tsx` — the alert is one paragraph in the error tone, not a list.
+- `frontend/src/components/auth/PasswordChange.tsx`, `NoRole.tsx` — the same column. The password button fills it.
+- `frontend/src/components/auth/probeCopy.ts`, `probeCopy.test.ts` — TLS, bind, trust, and the one-sentence result.
+- `frontend/src/app/admin/directory/DirectoryPage.tsx` — those words, shared form width, numeric timeout, hint class.
+- `frontend/src/app/admin/directory/DirectoryPage.test.tsx` — words, pills, headline, hint association.
+- `frontend/src/app/admin/users/UsersPage.tsx` — username tone, Manage, last-row border.
+- `frontend/src/app/admin/users/UsersPage.test.tsx` — the button name is `Manage {username}`.
+- `frontend/src/app/admin/page.tsx`, `AdminIndex.tsx`, `page.test.tsx` — Users and Directory, gated. The five-section case stays for an unknown session.
+- `frontend/src/app/account/page.tsx`, `AccountHome.tsx`, `AccountHome.test.tsx` — local password change; an LDAP account is told to use the directory.
+
+### What the PNGs show
+
+30 captures, every one `scrollWidth === clientWidth`, and no top-bar text element with `scrollWidth > clientWidth`. `captures 30 overflow 0`. Shell pages are 15px under the viewport because of the vertical scrollbar.
+
+- Login, idle, 1440: "Behavior Analytics" above "Sign in", a narrow centred column, the button the width of that column. No shell.
+- Login, 401, 1024: the same column. One sentence, "Invalid username or password", in a dark red alert above the button. Not a bullet.
+- Must-change, 1440, and no-role, 1024: the same narrow centred column. No navigation. The required sentences are unchanged.
+- Shell, account menu open, 1024: search shows "Search sources, rules, anomalies" in full. Under Refresh, "Refreshed 12:37:13 UTC" is complete. The button reads "ada". The menu reads "Signed in as ada", "Source: LOCAL", "Roles: admin", "Change password", "Sign out".
+- Shell, account menu open, 1280 and 1440: the clock is one line beside the refresh control, "Refreshed 12:37:13 UTC", unclipped. Search shows the placeholder and Ctrl+K. The same menu.
+- These admin pages do not publish a data-to time, so "Data to" is absent. The clock line that is present is the longer of the two ("Refreshed …") and it fits.
+- Users, 1024: ada, bea, cy, dee in the normal text tone. Each action is "Manage" on one line. No hairline under only the username after dee.
+- Directory, saved: URL, bind template and search base share one readable width. Timeout is a short field holding 5. "Optional. Empty sends no search base." is smaller and dimmer than its label.
+- Directory, TLS failed: "Connection failed at TLS." TLS pill "Failed" then "certificate verify failed". Trust "System trust store". Bind pill "Not attempted" then "TLS failed". Latency "18 ms". No raw `failed`, `not_attempted`, or `system`.
+- Directory, success: "Connected and bound as ada." TLS and bind pills "OK". Trust "Uploaded CA certificate". Subject, issuer, expiry `2027-01-02 03:04:05 UTC`, latency "24 ms".
+- Administration, 1024: after IPS sources, Users and Directory, each with its one-line description.
+
+### Break-it
+
+Each mutation failed (exit 1), then the original text was restored.
+
+- `LoginForm.tsx` — dropping `alert: true` failed "shows a 401" (`alert.tagName` was not `P`).
+- `Account.tsx` — leaving the menu open failed "closes on Escape".
+- `probeCopy.ts` — label `failed` failed "names a TLS failure".
+- `DirectoryPage.tsx` — removing `aria-describedby` failed "describes it with the hint".
+
+### Gates
+
+From `frontend/`, `~/.local/node/bin` on `PATH`. Backend was not touched.
+
+```
+added 470 packages, and audited 471 packages in 4s
+```
+
+```
+> qradar-observability-frontend@0.1.0 lint
+> next lint
+✔ No ESLint warnings or errors
+```
+
+```
+> qradar-observability-frontend@0.1.0 typecheck
+> tsc --noEmit
+```
+
+Exit 0. An earlier run failed `TS2322` on `link.textContent` in `page.test.tsx`; the map now uses `?? ""`, and typecheck was run again.
+
+```
+ Test Files  278 passed (278)
+      Tests  3129 passed (3129)
+   Duration  54.67s (transform 39.92s, setup 216.08s, import 101.18s, tests 337.52s, environment 434.46s)
+```
+
+`src/app/admin/page.test.tsx` again after the type fix:
+
+```
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+```
+
+```
+> qradar-observability-frontend@0.1.0 build
+> next build
+✓ Compiled successfully in 6.6s
+✓ Generating static pages (31/31)
+```
+
+Exit 0. This build has `NEXT_PUBLIC_API_BASE_URL` unset. `.next` does not contain `127.0.0.1:8102`. The screenshot build before it compiled in 26.3s with the fixture base and also generated 31 pages.
+
+Processes stopped by PID: fixture `859467`, `next start` `859468`, `next-server` `859492`. Capture Chrome `860224` was sent SIGTERM by the script. Nothing of this task is listening on 3102, 8102, or 9102.
+
+No commit.
+
+## Review round 2
+
+A tinted banner now uses the text colour paired with that tint. `.banner.crit`, `.banner.warn` and `.banner.ok` set `--crit-text`, `--warn-text` and `--ok-text`. The base `.banner` colour stays the muted text, and a `.banner strong` heading stays the primary text. The test-connection description uses the same gap the page header leaves under its description, `--sp-6`. A hint under a field keeps only the small top margin.
+
+### Files changed
+
+- `frontend/src/app/globals.css` — each banner tone sets its paired text colour.
+- `frontend/src/lib/contrast.test.ts` — `.banner.crit`, `.banner.warn` and `.banner.ok` must set `color: var(--<tone>-text)`.
+- `frontend/src/components/auth/auth.module.css` — `.sectionNote` is `margin-bottom: var(--sp-6)`.
+- `frontend/src/app/admin/directory/DirectoryPage.tsx` — the test-connection description uses that class. The search-base hint does not.
+- `frontend/src/app/admin/directory/DirectoryPage.test.tsx` — the description carries both classes, the rule is `--sp-6`, and the field hint does not.
+- `frontend/src/app/login/LoginForm.test.tsx` — the 401 alert is a `p` with classes `banner` and `crit`.
+- `frontend/src/components/auth/PasswordChange.test.tsx` — a mismatched confirmation is `banner warn`.
+
+### What the PNGs show
+
+15 captures, every one `scrollWidth === clientWidth`. `captures 15 overflow 0`. The directory pages are 15px under the viewport because of the vertical scrollbar (1425/1425, 1265/1265, 1009/1009). Login, must-change and no-role match the viewport.
+
+`/home/efe/Documents/QRadar-Dash-work/auth2/screenshots/` — `login-401`, `must-change`, `no-role`, `directory-tls-failed`, `directory-success`, each at `1440x900`, `1280x800` and `1024x768`.
+
+- Login, 401, all three viewports: "Invalid username or password" is the pink error text on the dark red fill, the same pairing as the Failed pill. The glyphs sit on `--crit-text`, not the muted text.
+- Must-change, all three: the required sentence and the three fields. This screen has no alert until a change fails. A failure is `banner warn` and a success is `banner ok`, so both use the paired text. The heading inside the banner stays the primary text.
+- No-role, all three: a surface notice, not a tinted fill. "The account norole exists and has no role." is the primary text. The following sentence is the muted text on the surface, which the contrast suite already pins at 4.5:1.
+- Directory, TLS failed and success, all three: under "Test connection", "The username and password are sent…" has a clear gap above "Test username". On the 1280 TLS shot the description ink ends near y=378 and the label starts near y=412. The field hint under the search base stays tight to its field.
+
+### Break-it
+
+Each mutation failed (exit 1), then the original text was restored.
+
+- `globals.css` — dropping the three `color` lines failed "pairs each banner tone" (the crit block had no colour).
+- `DirectoryPage.tsx` — dropping `sectionNote` from the test description failed "separates the test description".
+- `auth.module.css` — `margin-bottom: 0` on `.sectionNote` failed the same test.
+- `DirectoryPage.tsx` — putting `sectionNote` on the search-base hint failed "keeps a short field".
+
+### Gates
+
+From `frontend/`, `~/.local/node/bin` on `PATH`. Backend was not touched.
+
+```
+> qradar-observability-frontend@0.1.0 lint
+> next lint
+✔ No ESLint warnings or errors
+```
+
+```
+> qradar-observability-frontend@0.1.0 typecheck
+> tsc --noEmit
+```
+
+Exit 0.
+
+```
+ Test Files  278 passed (278)
+      Tests  3131 passed (3131)
+   Duration  29.64s (transform 27.53s, setup 112.94s, import 61.11s, tests 169.16s, environment 243.14s)
+```
+
+```
+> qradar-observability-frontend@0.1.0 build
+> next build
+✓ Compiled successfully in 8.9s
+✓ Generating static pages (31/31)
+```
+
+Exit 0. This build has `NEXT_PUBLIC_API_BASE_URL` unset. `.next` does not contain `127.0.0.1:8102`. The screenshot build before it compiled in 6.8s with the fixture base and also generated 31 pages. A first official rebuild still had that URL in `.next/cache` from the screenshot build, and nowhere else. `.next` was removed and the build was run again.
+
+Processes stopped by PID: fixture `892781`, `next start` `891829`, `next-server` `891846`. Capture Chrome `893081` was sent SIGTERM by the script and was already gone. Nothing of this task is listening on 3102, 8102, or 9102.
+
+No commit.
+
+## Review round 3
+
+`GET /users/roles` is still name and permissions only, sorted by name. The expected names and permission lists now come from `_ROLES` in `app/services/seed.py`, so `detection_engineer` is included and a later seeded role is too.
+
+### Files changed
+
+- `backend/tests/integration/test_user_roles_api.py` — the role names are `sorted(_ROLES)`, and each row's permissions equal that role's seed list. The response keys stay `name` and `permissions`. The route was not changed.
+
+### Break-it
+
+`get_roles` returned every role except the last. The test failed (exit 1): the body was `admin`, `analyst`, `detection_engineer`, and `viewer` was missing. The route was restored. `git diff` on `backend/app/api/routes/users.py` is empty.
+
+### Gates
+
+From `backend/`, `PYTHONPATH=.`, venv `/home/efe/Documents/QRadar-Dash/backend/.venv`. `TEST_DATABASE_URL=postgresql+asyncpg://test:test@localhost:5433/qradar_obs_auth2`.
+
+```
+All checks passed!
+```
+
+`ruff check app tests`. Exit 0.
+
+```
+Success: no issues found in 240 source files
+```
+
+`mypy app`. Exit 0.
+
+`pytest -q tests/integration/test_user_roles_api.py tests/integration/test_auth_api.py` printed 19 dots and exited 0. `-q` hides the passed footer. `--collect-only` reports 18 tests in `test_auth_api.py` and 1 in `test_user_roles_api.py`.
+
+No commit.

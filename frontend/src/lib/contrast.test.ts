@@ -90,6 +90,20 @@ describe("status text pairs", () => {
   }
 });
 
+describe("banner tone text", () => {
+  // A tinted banner must use the text colour paired with that tint. The base
+  // `.banner` colour is the muted text, which fails on the error fill.
+  const css = readFileSync(path.join(appDir, "globals.css"), "utf8");
+
+  it("pairs each banner tone with its text token", () => {
+    for (const tone of ["crit", "warn", "ok"]) {
+      const block = new RegExp(`\\.banner\\.${tone}\\s*\\{([^}]*)\\}`).exec(css);
+      expect(block, `.banner.${tone}`).not.toBeNull();
+      expect(block?.[1]).toMatch(new RegExp(`color:\\s*var\\(--${tone}-text\\)`));
+    }
+  });
+});
+
 describe("controls", () => {
   it("--on-accent on --primary is at least 4.5:1", () => {
     expect(ratio(col("--on-accent"), col("--primary"))).toBeGreaterThanOrEqual(4.5);

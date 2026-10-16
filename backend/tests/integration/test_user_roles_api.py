@@ -17,7 +17,7 @@ from app.main import create_app
 from app.models.enums import AuthSource
 from app.models.identity import Role, User
 from app.security.passwords import hash_password
-from app.services.seed import ensure_default_roles
+from app.services.seed import _ROLES, ensure_default_roles
 
 pytestmark = pytest.mark.integration
 
@@ -83,12 +83,13 @@ async def test_roles_list_is_name_and_permissions_only(api) -> None:
     listed = client.get("/api/v1/users/roles")
     assert listed.status_code == 200, listed.text
     body = listed.json()
-    assert [row["name"] for row in body] == ["admin", "analyst", "viewer"]
+    # Names and permissions come from the seed, in name order. A new seeded
+    # role is then expected, and the response still carries nothing else.
+    assert [row["name"] for row in body] == sorted(_ROLES)
     for row in body:
         assert set(row) == {"name", "permissions"}
         assert isinstance(row["permissions"], list)
         assert all(isinstance(item, str) for item in row["permissions"])
-    admin_row = body[0]
-    assert "admin:*" in admin_row["permissions"]
+        assert row["permissions"] == list(_ROLES[row["name"]])
     assert PASSWORD not in listed.text
     assert "hashed_password" not in listed.text
