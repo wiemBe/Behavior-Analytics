@@ -298,9 +298,20 @@ function DashboardSession({
         <span className="badge">Shared</span>
       ) : null}
       {access.note ? <span className="dg-qualifier">{access.note}</span> : null}
-      {templateText ? <span className="dg-template-desc">{templateText}</span> : null}
+      {templateText ? (
+        <span className="dg-template-desc" title={templateText}>
+          {templateText}
+        </span>
+      ) : null}
     </>
   );
+  // A meta row that renders empty still occupies its min-height and separates the title from
+  // the dashboard's description, so state here what it can hold instead of passing it blindly.
+  const hasMeta =
+    templateShown ||
+    (current.kind === "saved" && (current.isDefault || current.visibility === "SHARED")) ||
+    access.note !== null ||
+    templateText !== undefined;
 
   return (
     <>
@@ -321,7 +332,7 @@ function DashboardSession({
             <PageHeader
               title={name}
               description={templateShown ? undefined : description ?? undefined}
-              meta={meta}
+              meta={hasMeta ? meta : undefined}
               actions={actions}
             />
             {notice}
@@ -493,7 +504,10 @@ export function HomeDashboard() {
       {access.note ? <span className="dg-qualifier">{access.note}</span> : null}
     </>
   );
-  const hasMeta = showTemplate || access.note !== null || current?.kind === "saved";
+  const hasMeta =
+    showTemplate ||
+    (current?.kind === "saved" && (current.isDefault || current.visibility === "SHARED")) ||
+    access.note !== null;
 
   // `reserve` keeps the qualifier row while the dashboard is read, so the grid below does not
   // move when it arrives. A saved dashboard's own description, when it has one, is its own line.

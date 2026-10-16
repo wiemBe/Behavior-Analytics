@@ -1,8 +1,13 @@
 """Seed data for development.
 
-Creates the default RBAC roles, an admin user, the default QRadar instance, and
-runs one inventory sync via the configured provider (mock by default). Idempotent
-— safe to run repeatedly.
+Creates the default RBAC roles, the default QRadar instance, and runs one
+inventory sync via the configured provider (mock by default). Idempotent —
+safe to run repeatedly.
+
+The passwordless seed administrator is not created. A row with no password
+would be an administrator that nobody can sign in as, and a production
+migration must not leave one behind. The first administrator is created with
+`python -m app.cli.users create-admin`, which prints a one-time password.
 """
 
 from __future__ import annotations
@@ -10,9 +15,10 @@ from __future__ import annotations
 import asyncio
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_sessionmaker
-from app.models.identity import Role, User
+from app.models.identity import Role
 from app.providers.factory import build_provider
 from app.services.inventory_sync import InventorySyncService
 
@@ -43,31 +49,27 @@ _ROLES["detection_engineer"] = [
 ]
 
 
+async def ensure_default_roles(session: AsyncSession) -> None:
+    """Create the default roles, or add any permission they are missing.
+
+    Additive only: a permission an operator granted is never removed. The
+    break-glass command depends on the admin role containing ``admin:*``.
+    """
+    for name, perms in _ROLES.items():
+        existing = await session.scalar(select(Role).where(Role.name == name))
+        if existing is None:
+            session.add(Role(name=name, permissions=perms))
+        else:
+            missing = [p for p in perms if p not in existing.permissions]
+            if missing:
+                existing.permissions = [*existing.permissions, *missing]
+    await session.flush()
+
+
 async def seed() -> None:
     maker = get_sessionmaker()
     async with maker() as session:
-        for name, perms in _ROLES.items():
-            existing = await session.scalar(select(Role).where(Role.name == name))
-            if existing is None:
-                session.add(Role(name=name, permissions=perms))
-            else:
-                # Additive only: roles seeded before a permission existed gain it,
-                # and nothing an operator granted is ever removed.
-                missing = [p for p in perms if p not in existing.permissions]
-                if missing:
-                    existing.permissions = [*existing.permissions, *missing]
-        await session.flush()
-
-        admin_role = await session.scalar(select(Role).where(Role.name == "admin"))
-        admin = await session.scalar(select(User).where(User.email == "admin@example.internal"))
-        if admin is None and admin_role is not None:
-            session.add(
-                User(
-                    email="admin@example.internal",
-                    display_name="Seed Admin",
-                    roles=[admin_role],
-                )
-            )
+        await ensure_default_roles(session)
 
         provider = build_provider()
         try:

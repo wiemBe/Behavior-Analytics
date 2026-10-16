@@ -9,7 +9,7 @@ vi.mock("echarts/core", () => ({
   init: () => ({ setOption, resize: vi.fn(), dispose: vi.fn() }),
   use: vi.fn(),
 }));
-vi.mock("echarts/charts", () => ({ LineChart: {} }));
+vi.mock("echarts/charts", () => ({ LineChart: {}, BarChart: {} }));
 vi.mock("echarts/components", () => ({
   GridComponent: {},
   MarkLineComponent: {},
@@ -50,6 +50,10 @@ beforeEach(() => {
   setOption.mockClear();
   vi.stubGlobal("ResizeObserver", TestResizeObserver);
   vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+  vi.spyOn(api, "searchMetricKeys").mockResolvedValue({
+    search_id: "search-1", total: 1, count: 1,
+    keys: [{ metric_key: "total", point_count: 1, last_bucket_start: "2026-10-16T06:00:00Z" }],
+  });
 });
 
 it("turns off the canvas animation when reduced motion is requested", async () => {

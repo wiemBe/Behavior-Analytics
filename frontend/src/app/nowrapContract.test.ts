@@ -39,4 +39,12 @@ describe(".nowrap is unconditional", () => {
     expect(css).toMatch(/td\.num\.cell-when\s*\{\s*white-space:\s*normal/);
     expect(css).toMatch(/td\.num\.cell-when\.nowrap\s*\{\s*white-space:\s*nowrap/);
   });
+
+  it("beats the fleet-table sub-cell rule by matching it at the same specificity, after it", () => {
+    // Found in UI-6.6: `.fleet-table td .cell-sub` (0,2,1) set `white-space: normal` and
+    // outranked `.nowrap` (0,1,0), so an override's change time wrapped to two lines.
+    expect(css).toMatch(
+      /\.fleet-table td \.cell-sub\s*\{[^}]*\}[^{}]*\.fleet-table td \.nowrap\s*\{[^}]*white-space:\s*nowrap/,
+    );
+  });
 });

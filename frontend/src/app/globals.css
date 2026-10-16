@@ -1050,6 +1050,10 @@ input[type="checkbox"] {
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
+/* the checkbox label is clickable and its own hit target */
+label.filter-field.filter-check {
+  min-height: var(--target-min);
+}
 
 .pagination {
   display: flex;
@@ -1063,6 +1067,12 @@ input[type="checkbox"] {
 .pagination-links {
   display: flex;
   gap: var(--sp-5);
+}
+/* each paging link is its own hit target */
+.pagination-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
 }
 
 .chips {
@@ -1433,6 +1443,9 @@ a.action.secondary:hover {
   font-size: var(--fs-xs);
   padding: 2px var(--sp-2);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
 }
 .row-toggle:hover {
   color: var(--text);
@@ -2218,6 +2231,7 @@ th.fm-value-cell .cell-sub {
   font-size: var(--fs-sm);
   color: var(--text-2);
   white-space: nowrap;
+  min-height: var(--target-min);
 }
 .fm-values > * + * {
   margin-top: var(--sp-3);
@@ -2521,6 +2535,12 @@ th.fm-value-cell .cell-sub {
   max-width: 26ch;
   white-space: normal;
 }
+/* The `.fleet-table td .cell-sub` rule above has a higher specificity than `.nowrap`, so a
+   time kept whole there would wrap anyway. Re-state it at the same specificity. */
+.fleet-table td .nowrap {
+  white-space: nowrap;
+}
+
 .fleet-table td.num .cell-sub {
   margin-left: auto;
   text-align: right;
@@ -2619,6 +2639,7 @@ th.fm-value-cell .cell-sub {
   align-items: center;
   gap: var(--sp-2);
   cursor: pointer;
+  min-height: var(--target-min);
 }
 
 .precedence {

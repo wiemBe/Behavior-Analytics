@@ -8,16 +8,27 @@ declare *what* they require, not *how* it is evaluated.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
 class Principal:
-    """The authenticated caller, resolved from the auth layer (local or OIDC)."""
+    """The authenticated caller, resolved from the auth layer.
+
+    `username`, `auth_source`, `must_change_password`, `roles` and `user_id`
+    are populated for a session. The development principals leave them empty.
+    Defaults keep every existing `Principal(...)` call valid.
+    """
 
     subject: str
     email: str | None = None
     permissions: frozenset[str] = field(default_factory=frozenset)
+    username: str | None = None
+    auth_source: str | None = None
+    must_change_password: bool = False
+    roles: tuple[str, ...] = ()
+    user_id: uuid.UUID | None = None
 
     def has(self, permission: str) -> bool:
         if permission in self.permissions:
@@ -112,6 +123,11 @@ PERM_DASHBOARD_SHARE = "admin:dashboards"
 # admin role therefore does not list the string.
 PERM_CUSTOM_RULE_READ = "read:custom_rules"
 PERM_CUSTOM_RULE_WRITE = "custom_rule:write"
+# Accounts and directory configuration. `admin:*` satisfies both. `read:*`
+# does not: a viewer can see the estate and cannot create a sign-in or point
+# the application at a directory.
+PERM_USER_ADMIN = "admin:users"
+PERM_AUTH_ADMIN = "admin:auth"
 
 
 class PermissionDenied(Exception):

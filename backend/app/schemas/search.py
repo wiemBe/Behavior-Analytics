@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -332,3 +332,53 @@ class SearchResultTrendOut(BaseModel):
     threshold_operator: str
     count: int
     points: list[ResultMetricPoint]
+
+
+class MetricKeyStat(BaseModel):
+    """One stored metric key: how many points it has, and when the latest was."""
+
+    metric_key: str
+    point_count: int
+    last_bucket_start: datetime
+
+
+class MetricKeyListOut(BaseModel):
+    """Distinct metric keys of one search, newest bucket first, `total` leading.
+
+    `total` is the number of distinct keys. `count` is how many this response
+    holds after the limit. An unknown search is 404, not an empty list.
+    """
+
+    search_id: uuid.UUID
+    total: int
+    count: int
+    keys: list[MetricKeyStat]
+
+
+class LatestGroupRow(BaseModel):
+    """One stored aggregate of the latest execution that stored any row."""
+
+    metric_key: str
+    dimensions: dict[str, Any] = Field(default_factory=dict)
+    value: float
+
+
+class LatestGroupsOut(BaseModel):
+    """Grouped rows of the latest execution that stored a metric row.
+
+    Ordered by value, descending. `empty` says why `rows` is empty:
+    `no_execution` when the search has no execution, `no_rows` when every
+    execution stored nothing. Both are 200. An unknown search is 404.
+    `values_are_lower_bounds` is true when that execution was truncated: each
+    value is a floor, so the UI shows "≥ n" and does not treat it as measured.
+    """
+
+    search_id: uuid.UUID
+    execution_id: uuid.UUID | None = None
+    started_at: datetime | None = None
+    status: str | None = None
+    truncated: bool = False
+    values_are_lower_bounds: bool = False
+    empty: Literal["no_execution", "no_rows"] | None = None
+    total: int = 0
+    rows: list[LatestGroupRow] = Field(default_factory=list)

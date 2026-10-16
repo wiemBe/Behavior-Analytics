@@ -659,3 +659,15 @@ class InstanceStatus(StrEnum):
     DEGRADED = "DEGRADED"
     UNREACHABLE = "UNREACHABLE"
     UNKNOWN = "UNKNOWN"
+
+
+class AuthSource(StrEnum):
+    """Where an account's password is checked.
+
+    LOCAL is a bcrypt hash stored here. LDAP binds as the user against the
+    directory; this database never stores that password. Roles are not read
+    from the directory.
+    """
+
+    LOCAL = "LOCAL"
+    LDAP = "LDAP"
