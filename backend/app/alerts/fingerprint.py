@@ -152,6 +152,22 @@ def search_threshold_fingerprint(search_id: str | uuid.UUID) -> str:
     )
 
 
+def custom_rule_breach_fingerprint(rule_id: str | uuid.UUID) -> str:
+    """Identity of one custom rule's threshold condition (design §F.6).
+
+    ``source_type`` and ``condition`` are a new kind, not a member of the
+    anomaly, WAF, IPS or search families, so a rule cannot deduplicate into
+    one of those alerts. The condition string is ``custom_rule_breach`` — not
+    ``custom_rule`` — so the fingerprint prefix cannot collide with a future
+    custom-rule condition that is not a breach.
+    """
+    return compute_fingerprint(
+        source_type="custom_rule",
+        source_id=rule_id,
+        condition="custom_rule_breach",
+    )
+
+
 def search_failure_fingerprint(search_id: str | uuid.UUID) -> str:
     """Identity of "this scheduled search keeps failing to run".
 

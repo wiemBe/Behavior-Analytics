@@ -542,6 +542,10 @@ class Settings(BaseSettings):
     #: Kill switch. The evaluator is DB-only and sends no Ariel search. Nothing
     #: runs until this is set, so an upgrade changes no behaviour.
     custom_rules_enabled: bool = False
+    #: Shadow mode (D-17). Breaches and rule state are written either way.
+    #: Nothing opens, refreshes or resolves an alert, and nothing is enqueued,
+    #: until this is set. It sits beside ``custom_rules_enabled``.
+    custom_rules_alerting_enabled: bool = False
     #: Enabled rules. Creating or enabling beyond this is refused (409 at the API).
     custom_rules_max_enabled: int = Field(default=100, ge=1, le=10_000)
     #: Closed buckets judged per subject kind per run. 288 is a day of 5-minute buckets.

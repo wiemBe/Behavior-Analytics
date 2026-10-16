@@ -1306,7 +1306,10 @@ async def evaluate_custom_rules() -> dict:
         return {"status": "disabled"}
     maker = get_sessionmaker()
     async with maker() as session:
-        report = await CustomRuleEngine(session, settings).run()
+        # Enqueue only. Delivery stays on the notification beat, as for IPS.
+        # The engine drops this when shadow mode is on and writes no alert row.
+        enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
+        report = await CustomRuleEngine(session, settings, enqueuer=enqueuer).run()
         await session.commit()
         return report.as_dict()
 
