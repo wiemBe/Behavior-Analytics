@@ -1260,9 +1260,11 @@ lints and updates this README.
   No notification row was stored, because no channel is configured (L-6). Source-concentration
   **passed**. A morning run of those two was voided by generator defect D-1; T-101 fixed the
   generator, and the part-3 re-run is what passed. New-port is still limited by its 24 h history
-  rule (L-1) and was not re-run. Block-shift: **run, analysis pending** — it ran at 20Z after
-  T-107, and the T-054 report has no "Part 4 analysis" section (T-110), so no result is stated
-  here. T-107, on the lab console only, added `IPS_Action` expressions for PAN and FTD through
+  rule (L-1) and was not re-run. Block-shift, with alerting on, **passed**:
+  `IPS_BLOCK_RATIO_SHIFT` observed 0.60 against expected 0.10 on both lab sources in the change
+  buckets, its two alerts opened 20:47:33Z and resolved "condition recovered" at 21:02:32Z; the
+  analysis is in [T-054](docs/tasks/T-054.report.md) "Part 4 analysis" (T-110). T-107, on the
+  lab console only, added `IPS_Action` expressions for PAN and FTD through
   the API under the lab-only exception. The application stays read-only. The lab profiles map
   ACTION, and FTD `Would block` counts as allowed. See
   [the Phase D design](docs/PHASE-D-IPS-BEHAVIOR.md).
