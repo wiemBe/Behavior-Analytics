@@ -9,7 +9,7 @@
 // rendering an empty table.
 
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
-import { stateLabel } from "@/components/waf/wafLabels";
+import { stateLabel, statePillText } from "@/components/waf/wafLabels";
 import type {
   IpsAnomalyDetail,
   IpsBaselineCell,
@@ -268,7 +268,7 @@ export function IpsInvestigation({
         <LifecycleTimeline
           transitions={anomaly.transitions}
           policyVersion={anomaly.policy_version}
-          stateLabel={stateLabel}
+          stateLabel={statePillText}
         />
       </section>
     </>

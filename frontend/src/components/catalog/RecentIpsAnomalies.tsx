@@ -10,7 +10,7 @@ import Link from "next/link";
 import { WidgetFrame } from "@/components/home/WidgetFrame";
 import { Unmeasured, When } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { stateLabel } from "@/components/waf/wafLabels";
+import { statePillText } from "@/components/waf/wafLabels";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads, sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
@@ -102,7 +102,7 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
                           </span>
                           {" · "}
                           <span className={`tw-state-word ${stateTone(r.state)}`}>
-                            {stateLabel(r.state)}
+                            {statePillText(r.state)}
                           </span>
                           {" · "}
                           <time dateTime={r.detectedAt} title={formatDateTime(r.detectedAt)}>
@@ -113,7 +113,7 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
                       <td className="tw-unfold">
                         <span className={`pill ${sevTone(r.severity)}`}>{r.severity}</span>
                         <span className={`tw-sub tw-wrap tw-state-word ${stateTone(r.state)}`}>
-                          {stateLabel(r.state)}
+                          {statePillText(r.state)}
                         </span>
                       </td>
                       <td className="num">

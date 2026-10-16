@@ -350,7 +350,12 @@ export default async function AnomalyDetailPage({
       <section id="evidence">
         <h2 className="section-title">Investigation detail</h2>
         <AnomalyTabs
-          evidence={<DimensionExplorer dimensions={pkg?.dimensions ?? []} />}
+          evidence={(
+            <DimensionExplorer
+              dimensions={pkg?.dimensions ?? []}
+              evidenceStatus={anomaly.evidence_status}
+            />
+          )}
           lifecycle={
             <LifecycleTimeline
               transitions={anomaly.transitions}

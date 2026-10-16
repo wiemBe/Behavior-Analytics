@@ -159,6 +159,12 @@ describe("default selection", () => {
     render(<DimensionExplorer dimensions={[]} />);
     expect(screen.getByText(/No dimension analysis is stored/i)).toBeInTheDocument();
   });
+
+  it("refers a failed collection to the banner instead of restating it", () => {
+    render(<DimensionExplorer dimensions={[]} evidenceStatus="FAILED" />);
+    expect(screen.getByText(/Evidence collection failed; see the notice above/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No dimension analysis is stored/i)).toBeNull();
+  });
 });
 
 describe("switching dimensions", () => {

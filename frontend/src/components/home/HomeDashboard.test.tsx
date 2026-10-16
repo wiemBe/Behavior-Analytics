@@ -240,6 +240,15 @@ describe("which dashboard `/` shows", () => {
     expect(screen.queryByRole("button", { name: "Rename…" })).toBeNull();
   });
 
+  it("sets 'Template, not saved' apart from its description as a badge", async () => {
+    rows = [];
+    render(<HomeDashboard />);
+    await view();
+    expect(screen.getByText("Template, not saved")).toHaveClass("badge");
+    expect(screen.getByText("Template, not saved")).not.toHaveClass("dg-qualifier");
+    expect(screen.getByText(/24 h view of fleet volume/)).not.toHaveClass("badge");
+  });
+
   it("shows the SOC Overview template, unsaved, when there are no dashboards", async () => {
     rows = [];
     render(<HomeDashboard />);

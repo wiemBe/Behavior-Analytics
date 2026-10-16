@@ -285,7 +285,7 @@ export function AnomalyFilters({
                 type="search"
                 name="instance_id"
                 defaultValue={values.instance_id}
-                placeholder="QRadar instance…"
+                placeholder="Instance…"
               />
 
               <label className="sr-only" htmlFor="anomaly-evidence">

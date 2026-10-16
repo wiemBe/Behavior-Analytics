@@ -69,7 +69,7 @@ describe("WAF investigation: identity", () => {
   it("gives the lifecycle state the strong badge and severity a quiet one", () => {
     const { container } = view({ state: "OPEN" });
     const header = within(container.querySelector("header") as HTMLElement);
-    expect(header.getByText("Open").className).toContain("pill-strong");
+    expect(header.getByText("OPEN").className).toContain("pill-strong");
     expect(header.getByText("HIGH").className).toContain("pill-quiet");
   });
 
@@ -218,7 +218,7 @@ describe("WAF investigation: working, evidence and lifecycle", () => {
   it("states INSUFFICIENT_DATA as not judged, never as healthy", () => {
     view({ state: "INSUFFICIENT_DATA", detection: null });
     expect(screen.getByText(/not being judged, which is not the same as being healthy/)).toBeInTheDocument();
-    expect(screen.getByText("Insufficient data").className).not.toMatch(/\bok\b/);
+    expect(screen.getByText("INSUFFICIENT_DATA").className).not.toMatch(/\bok\b/);
   });
 
   it("has no Evidence section: WAF anomalies are never given an evidence request", () => {
@@ -240,21 +240,21 @@ describe("WAF investigation: working, evidence and lifecycle", () => {
   it("lists every transition in order", () => {
     view();
     const list = screen.getByRole("list");
-    expect(within(list).getAllByText("Candidate").length).toBeGreaterThan(0);
+    expect(within(list).getAllByText("CANDIDATE").length).toBeGreaterThan(0);
     expect(screen.getByText("first abnormal bucket")).toBeInTheDocument();
     expect(screen.getByText("3 consecutive abnormal buckets")).toBeInTheDocument();
   });
 
-  it("words both ends of every lifecycle transition, never as an enum with an underscore", () => {
+  it("shows both ends of a lifecycle transition as the backend names them", () => {
     const base = wafDetail().transitions[0];
     view({
       transitions: [{ ...base, from_state: "INSUFFICIENT_DATA", to_state: "NORMAL" }],
     });
     const lifecycle = within(screen.getByRole("heading", { name: "Lifecycle" }).closest("section")!);
-    expect(lifecycle.getByText("Insufficient data")).toBeInTheDocument();
-    expect(lifecycle.getByText("Normal")).toBeInTheDocument();
-    expect(lifecycle.queryByText("INSUFFICIENT_DATA")).not.toBeInTheDocument();
-    expect(lifecycle.queryByText("NORMAL")).not.toBeInTheDocument();
+    expect(lifecycle.getByText("INSUFFICIENT_DATA")).toBeInTheDocument();
+    expect(lifecycle.getByText("NORMAL")).toBeInTheDocument();
+    expect(lifecycle.queryByText("Insufficient data")).not.toBeInTheDocument();
+    expect(lifecycle.queryByText("Normal")).not.toBeInTheDocument();
   });
 
   it("uses no causal language in its summary", () => {
