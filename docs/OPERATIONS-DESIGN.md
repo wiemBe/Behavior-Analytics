@@ -367,7 +367,7 @@ What actually bounds the disk:
 
 | Data | Bound in the code | Default retention |
 |---|---|---|
-| Phase A volume, one row per source per 300 s bucket | `collection_interval_seconds` default 300 (`backend/app/core/config.py:235`). 288 buckets/day. | **None.** `retention_enabled` defaults false (`backend/app/core/config.py:219-223`). `apply_policies` is defined at `backend/app/services/timescale.py:49` and is not called by the running process. The only call site in the tree is a test (`backend/tests/integration/test_db_constraints.py:105-108`). Search-result retention's docstring names the policy as optional and off (`backend/app/services/search_result_retention.py:10-16`). |
+| Phase A volume, one row per source per 300 s bucket | `collection_interval_seconds` default 300 (`backend/app/core/config.py:235`). 288 buckets/day. | **None.** `retention_enabled` defaults false (`backend/app/core/config.py:219-223`). The beat task `apply_timescale_policies` calls `apply_policies` (`backend/app/services/timescale.py`) once a day, so the policies exist as soon as the setting is on. Search-result retention's docstring names the policy as optional and off (`backend/app/services/search_result_retention.py:10-16`). |
 | WAF endpoint rows | Bucket width is the same 300 s (`backend/app/collectors/waf_endpoint_collector.py:367`). Cap 2,000 active endpoints per source (`backend/app/core/config.py:453`). | 35 days (`backend/app/core/config.py:486`), and only while `waf_retention_enabled` is true (default true, `:484`). Collection itself defaults **off** (`:410`). |
 | IPS entity rows | Cap 2,000 active entities per source per dimension (`backend/app/core/config.py:175-177`). | 35 days (`:182`). Collection defaults **off** (`:171`). |
 | Catch-all, geo | Cadence row inserted at 3,600 s (`backend/alembic/versions/0020_catchall_senders.py:135-137`, `0022_geo_collection.py:86-89`). | 35 days (`config.py:519`, `:537`). |
@@ -393,10 +393,16 @@ Worked examples at the 1 KiB constant:
 - Recommended, 1,000 sources kept 400 days, five WAF sources at 1,000 endpoints
   for 35 days: Phase A ≈ 110 GiB, WAF ≈ 48 GiB, before WAL and backups.
 
-`apply_policies` has to be called or the 90-day and 400-day numbers are fiction.
-OPS-5 adds a daily Celery task that calls the existing function. Until that task
-has run, disk use is unbounded for `log_source_metric`, `rule_metric` and
-`offense_snapshot`.
+`apply_policies` has to run or the 90-day and 400-day numbers are fiction.
+The beat task `apply_timescale_policies` runs it every
+`TIMESCALE_POLICY_INTERVAL_SECONDS` (default 86400, minimum 3600), and once when
+beat starts, so a changed setting does not wait a day. It reconciles: a policy
+whose interval differs from the setting is removed and added again, an unchanged
+one keeps its job id, and a table with no setting loses its policy. Turning
+`RETENTION_ENABLED` off removes the retention jobs; it does not leave them
+running. Each table is reconciled in its own savepoint, so one failure does not
+stop the others. Until the task has run, disk use is unbounded for
+`log_source_metric`, `rule_metric` and `offense_snapshot`.
 
 **Minimum host:** 4 vCPU, 8 GiB RAM, 80 GiB disk. The worker is started with
 `--concurrency=4` (`docker-compose.yml:153`). Fewer than four CPUs still runs,
@@ -1225,8 +1231,8 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
     the toggles have been baked into an image (deferred, §10).
 
 14. **OPS-R14. Postgres errors with `No space left on device`, or `doctor` disk is FAIL.**
-    Cause: `retention_enabled` was false, or it was true and `apply_policies`
-    never ran (§3.1). Docker json logs are capped at 20 MB × 5
+    Cause: `retention_enabled` was false, or it was true and the
+    `apply_timescale_policies` task never ran (§3.1). Docker json logs are capped at 20 MB × 5
     (`docker-compose.yml:12-16`) and are not the thing that filled the disk.
     Confirm: `disk` FAIL and `pg_database_size`. Fix: free space, then confirm
     a retention policy exists (`retention_policy` PASS). Deleting the Docker
