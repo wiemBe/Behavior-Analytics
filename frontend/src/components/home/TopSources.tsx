@@ -16,7 +16,7 @@ import { homeReads } from "@/lib/api";
 import { formatRatio, NOT_MEASURED, stateTone } from "@/lib/behavior";
 import { formatEpsValue } from "@/lib/fleet";
 import { deviationGapText, epsShares, topSources } from "@/lib/home/topSources";
-import { stateLabel } from "@/components/waf/wafLabels";
+import { statePillText } from "@/components/waf/wafLabels";
 import { RANGE_TEXT, useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 
 import { secondary, WidgetFrame, WidgetLoading } from "./WidgetFrame";
@@ -103,7 +103,7 @@ export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) 
                                 "State unavailable"
                               ) : (
                                 <span className={`tw-state-word ${stateTone(r.state)}`}>
-                                  {stateLabel(r.state)}
+                                  {statePillText(r.state)}
                                 </span>
                               )}
                             </span>
@@ -138,7 +138,7 @@ export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) 
                             <Unmeasured reason="State unavailable" />
                           ) : (
                             <span className={`tw-state-word ${stateTone(r.state)}`}>
-                              {stateLabel(r.state)}
+                              {statePillText(r.state)}
                             </span>
                           )}
                         </td>

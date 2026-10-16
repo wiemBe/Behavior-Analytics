@@ -37,7 +37,7 @@ export default async function OutagePolicyPage() {
   } else {
     summaryNote =
       fleet.reason instanceof ApiError && fleet.reason.status === 403
-        ? "The source counts are not shown: your role cannot read the fleet summary (permission read:fleet). The policy below is complete."
+        ? "Monitored sources covered and Source overrides in the class table come from the fleet summary, which your role cannot read (permission read:fleet); those two columns are left blank. The policy below is complete."
         : "The source counts are not shown: the fleet summary could not be loaded. The policy below is complete; grace is given in buckets only.";
   }
 

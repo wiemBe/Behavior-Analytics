@@ -60,7 +60,7 @@ describe("RecentAnomalies", () => {
     setup(ok(page([anomaly({ severity: "CRITICAL", state: "RECOVERING" })])));
     render(<RecentAnomalies />);
     expect(screen.getAllByText("CRITICAL").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Recovering").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("RECOVERING").length).toBeGreaterThan(0);
   });
 
   it("names how many sources are not judged when there is nothing active", () => {
