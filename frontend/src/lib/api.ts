@@ -37,7 +37,13 @@ export class ApiError extends Error {
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${baseUrl()}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    // A bodyless read is a simple request. `Content-Type: application/json` is not a CORS-safelisted
+    // value, so sending it on a `GET` turns every cross-origin read into a preflighted one; it goes
+    // out only when there is a body. A caller's own header still wins.
+    headers:
+      init?.body === undefined
+        ? init?.headers
+        : { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
   });
   if (!res.ok) {
@@ -1783,7 +1789,11 @@ function detailText(detail: unknown, fallback: string): string {
 async function fleetRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${baseUrl()}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    // As `request`: only a request with a body carries `Content-Type`.
+    headers:
+      init?.body === undefined
+        ? init?.headers
+        : { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
   });
   if (!res.ok) {
