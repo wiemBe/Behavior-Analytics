@@ -12,9 +12,20 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# NEXT_PUBLIC_* is inlined at `next build`, so these are build args and not
+# runtime settings. The default is the relative API base, which is same-origin
+# behind the bundled proxy; a development build passes the split-port URL.
+ARG NEXT_PUBLIC_API_BASE_URL=/api/v1
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ARG APP_VERSION
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 RUN npm run build
 
 FROM node:22-alpine AS runner
+ARG APP_VERSION
+ARG GIT_SHA
+LABEL org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.revision=$GIT_SHA
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 # The standalone server binds to $HOSTNAME, which Docker sets to the container
