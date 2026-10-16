@@ -22,7 +22,7 @@ from app.models.fleet import (
     LogSourceType,
 )
 from app.models.geo import GeoCountryBucket
-from app.models.identity import AuditLog, Role, User, user_role
+from app.models.identity import AuditLog, AuthSession, LdapConfig, Role, User, user_role
 from app.models.instance import QRadarInstance
 from app.models.ips import (
     IpsAnomaly,
@@ -107,6 +107,7 @@ __all__ = [
     "AnomalyExplanationDimension",
     "AnomalyStateTransition",
     "AuditLog",
+    "AuthSession",
     "Base",
     "CatchallBucket",
     "CatchallSender",
@@ -127,6 +128,7 @@ __all__ = [
     "IpsSourceBaseline",
     "IpsSourceBucket",
     "IpsSourceProfile",
+    "LdapConfig",
     "LogSource",
     "LogSourceAnomaly",
     "LogSourceBaseline",

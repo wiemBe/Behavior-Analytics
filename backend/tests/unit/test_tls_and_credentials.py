@@ -147,6 +147,7 @@ class TestTokenFile:
             qradar_provider=ProviderKind.REST,
             qradar_host="https://qradar.example",
             qradar_api_token_file=str(tmp_path / "t.sec"),
+            public_origin="https://soc.example",
         )
         assert s.is_production
 

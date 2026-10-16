@@ -17,6 +17,7 @@ def _prod(**overrides: object) -> dict[str, object]:
         "qradar_provider": ProviderKind.REST,
         "qradar_sec_token": "a-real-token",
         "qradar_host": "https://qradar.example",
+        "public_origin": "https://soc.example",
     }
     base.update(overrides)
     return base
