@@ -773,7 +773,8 @@ def test_break_glass_admin_prints_the_password_once(db_schema: str) -> None:
 def test_session_mode_refuses_every_route_without_a_cookie(api) -> None:
     client, maker = api
     schema = client.app.openapi()
-    open_paths = {"/api/v1/health/live", "/api/v1/health/ready", "/api/v1/auth/login"}
+    open_paths = {"/api/v1/health/live", "/api/v1/health/ready", "/api/v1/auth/login",
+                 "/api/v1/version"}
     checked = 0
     for path, operations in schema["paths"].items():
         if path in open_paths:

@@ -7,6 +7,7 @@
 import { useEffect, useRef } from "react";
 
 import { isDevPrincipal, signedInName } from "@/components/auth/access";
+import { ApiVersionLine } from "@/components/auth/ApiVersionLine";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { useSession } from "@/components/auth/session";
 import styles from "@/components/auth/auth.module.css";
@@ -57,6 +58,7 @@ export function Account() {
             Change password
           </a>
         ) : null}
+        <ApiVersionLine className={styles.accountMeta} />
         {isDevPrincipal(me) ? null : <SignOutButton />}
       </div>
     </details>

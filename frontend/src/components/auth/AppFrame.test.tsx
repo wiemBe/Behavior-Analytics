@@ -25,6 +25,7 @@ vi.mock("@/lib/api", async (orig) => {
         alerts: { open: 0, acknowledged: 0, by_severity: {} },
       }),
       searchCadence: vi.fn().mockResolvedValue([]),
+      version: vi.fn().mockResolvedValue({ version: "0.1.0", git_sha: null, migration_head: null }),
     },
   };
 });

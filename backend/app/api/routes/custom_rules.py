@@ -84,6 +84,7 @@ PREVIEW_HOURS_MAX = 168
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
 _NAME_CONSTRAINT = "uq_custom_rule_name"
+_ENABLED_CAP_LOCK_KEY = 5_214_200_001
 _NULLABLE_PATCH = frozenset(
     {"description", "log_source_id", "source_class", "waf_endpoint_id", "ips_entity_id"}
 )
@@ -399,6 +400,13 @@ async def _enabled_count(session: AsyncSession) -> int:
     return int(count or 0)
 
 
+async def _lock_enabled_cap(session: AsyncSession) -> None:
+    """Serialize transactions that may consume one enabled-rule slot."""
+    # No row lock can protect a not-yet-created slot. This transaction lock
+    # keeps the single count and the subsequent write atomic at READ COMMITTED.
+    await session.execute(select(func.pg_advisory_xact_lock(_ENABLED_CAP_LOCK_KEY)))
+
+
 def _catalog_metrics() -> list[CatalogMetricOut]:
     """One row per catalog entry, in catalog order. Internals stay off the wire."""
     return [
@@ -596,6 +604,8 @@ async def create_rule(
 ) -> CustomRuleOut:
     _guard(principal)
     draft = _draft_from_create(body)
+    if body.enabled:
+        await _lock_enabled_cap(session)
     await _check_draft(session, draft, settings, previously_enabled=False)
     if await _name_taken(session, body.name, None):
         raise HTTPException(
@@ -723,6 +733,8 @@ async def update_rule(
     if nulls:
         _reject(nulls)
     draft = _draft_from_patch(rule, payload)
+    if draft.enabled and not rule.enabled:
+        await _lock_enabled_cap(session)
     await _check_draft(session, draft, settings, previously_enabled=bool(rule.enabled))
     before = _snapshot(rule)
     after = _merged(rule, payload)

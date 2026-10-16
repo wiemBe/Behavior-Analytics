@@ -28,6 +28,7 @@ from app.api.routes import (
     search_cadence,
     searches,
     users,
+    version,
     waf,
     waf_catalog,
 )
@@ -55,6 +56,8 @@ from app.security.rbac import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+# Build identity: open like health, and it carries no data beyond version, SHA and head.
+api_router.include_router(version.router)
 # Login is unauthenticated. Logout and password change need a principal.
 # Directory configuration needs admin:auth, on its own router.
 api_router.include_router(auth.public_router)

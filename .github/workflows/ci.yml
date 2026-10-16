@@ -40,6 +40,14 @@ jobs:
           pip install --require-hashes -r requirements.txt -r requirements-dev.txt
           pip install --no-deps -e .
 
+      - name: Version equality (VERSION, pyproject, package.json)
+        run: |
+          v="$(cat VERSION)"
+          p="$(python -c "import tomllib;print(tomllib.load(open('backend/pyproject.toml','rb'))['project']['version'])")"
+          f="$(python -c "import json;print(json.load(open('frontend/package.json'))['version'])")"
+          echo "VERSION=$v pyproject=$p package.json=$f"
+          [ "$v" = "$p" ] && [ "$v" = "$f" ]
+
       - name: Lint
         working-directory: backend
         run: ruff check app tests

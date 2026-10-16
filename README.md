@@ -229,6 +229,29 @@ sets. This is enforced by the read-only architecture, not merely by prompt.
 - (For a real deployment) a QRadar **read-only authorized service token** and, if QRadar uses an
   internal CA, the CA bundle.
 
+### Production install (one command)
+
+On a Linux x86_64 host with Docker Engine, the Compose v2 plugin (2.24 or newer), `git`, `openssl`
+and `curl`, a TLS certificate and key for the public name, a QRadar SEC token file and the QRadar
+CA bundle:
+
+```bash
+git clone --recurse-submodules https://github.com/wiemBe/QRadar-Dashboard.git
+cd QRadar-Dashboard
+./qradar-dash install                      # the wizard asks the questions
+./qradar-dash install --non-interactive .secrets/install.answers   # the same, from a file
+```
+
+The wizard checks the host, generates `SECRET_KEY`, `ENCRYPTION_KEY` and the database password
+into `.env` (mode 0600), loads the QRadar and TLS files into Docker volumes (no bind mount of the
+checkout, SELinux stays enforcing), migrates, creates one break-glass admin and **prints its
+password once**, registers the QRadar console, starts the stack behind the bundled TLS proxy and
+prints a summary. Running it again keeps every generated key and does not touch the admin.
+LDAP is configured in the UI afterwards. Options: `--build` (build the images from this checkout
+instead of pulling them), `--offline BUNDLE`, `--external-proxy` (you run the TLS proxy),
+`--reconfigure`, `--dry-run` (checks only), `--skip-qradar-check`. Then `./qradar-dash status` and
+`./qradar-dash logs`. The design is [docs/OPERATIONS-DESIGN.md](docs/OPERATIONS-DESIGN.md) section 3.
+
 ### Cloning (the qradar-mcp submodule)
 
 `qradar-mcp/` is a **git submodule** pinned to commit `b8f6a4a3fe901eac4f55e4ca5d146d952f55db51`
