@@ -15,11 +15,15 @@ vi.mock("echarts/core", async () => {
 describe("custom-rule preview honesty", () => {
   it("leaves NOT_MEASURED as null, never bridges it, and labels the threshold", () => {
     const option = buildPreviewOption(preview(), "edge-web-01", palette) as {
-      series: Array<{ connectNulls: boolean; data: Array<[number, number | null]>; markLine: { label: { formatter: string } } }>;
+      grid: { top: number };
+      graphic: { top: number; style: { text: string } };
+      series: Array<{ connectNulls: boolean; data: Array<[number, number | null]>; markLine: { label: { show: boolean } } }>;
     };
     expect(option.series[0].connectNulls).toBe(false);
     expect(option.series[0].data[1][1]).toBeNull();
-    expect(option.series[0].markLine.label.formatter).toBe("Threshold 10 events/s");
+    expect(option.series[0].markLine.label.show).toBe(false);
+    expect(option.graphic.style.text).toBe("Threshold 10 events/s");
+    expect(option.graphic.top).toBeLessThan(option.grid.top);
   });
 
   it("encodes a QRadar-sourced subject before returning tooltip HTML", () => {

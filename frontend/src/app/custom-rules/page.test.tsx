@@ -57,26 +57,26 @@ describe("custom-rule list honesty", () => {
     expect(screen.getAllByText(CUSTOM_RULE_LATENCY)).toHaveLength(1);
   });
 
-  it("renders every evaluator status with its reason, including never evaluated", async () => {
-    const statuses: Array<string | null> = [
-      "OK",
-      "OPEN",
-      "RECOVERING",
-      "NO_VERDICT",
-      "STALE",
-      "NOT_COLLECTED",
-      "SUBJECT_RETIRED",
-      "DISABLED",
-      "NOT_ENABLED",
-      null,
+  it("renders every evaluator status in words, with its recorded reason", async () => {
+    const cases: Array<{ status: string | null; label: string; tone: string }> = [
+      { status: "OK", label: "OK", tone: "ok" },
+      { status: "OPEN", label: "Open", tone: "crit" },
+      { status: "RECOVERING", label: "Recovering", tone: "warn" },
+      { status: "NO_VERDICT", label: "No verdict", tone: "" },
+      { status: "STALE", label: "Stale", tone: "warn" },
+      { status: "NOT_COLLECTED", label: "Not collected", tone: "" },
+      { status: "SUBJECT_RETIRED", label: "Subject retired", tone: "" },
+      { status: "DISABLED", label: "Disabled", tone: "" },
+      { status: "NOT_ENABLED", label: "Not enabled", tone: "" },
+      { status: null, label: "Never evaluated", tone: "" },
     ];
-    const rows = statuses.map((status, index) =>
+    const rows = cases.map((item, index) =>
       rule({
         id: `rule-${index}`,
         name: `Rule ${index}`,
-        last_status: status,
-        last_status_reason: status === null ? null : `Reason for ${status}`,
-        last_evaluated_at: status === null ? null : "2026-10-16T07:20:00Z",
+        last_status: item.status,
+        last_status_reason: item.status === null ? null : `Reason for ${item.status}`,
+        last_evaluated_at: item.status === null ? null : "2026-10-16T07:20:00Z",
       }),
     );
     vi.spyOn(api, "customRules").mockResolvedValue(rows);
@@ -85,13 +85,51 @@ describe("custom-rule list honesty", () => {
     );
     render(await CustomRulesPage());
     const table = screen.getByRole("table", { name: "Custom rules" });
-    for (const status of statuses.filter((value): value is string => value !== null)) {
-      expect(within(table).getByText(status)).toBeInTheDocument();
+    for (const item of cases) {
+      const pill = within(table).getByText(item.label, { selector: ".cr-status .pill" });
+      expect(pill.textContent).not.toMatch(/_/);
+      if (item.tone === "ok") expect(pill).toHaveClass("ok");
+      else expect(pill.className.split(/\s+/).filter(Boolean)).not.toContain("ok");
+      if (item.tone && item.tone !== "ok") expect(pill).toHaveClass(item.tone);
+    }
+    for (const status of cases.map((item) => item.status).filter((value): value is string => value !== null)) {
       expect(within(table).getByText(`Reason for ${status}`)).toBeInTheDocument();
     }
-    expect(within(table).getByText("NEVER_EVALUATED")).toBeInTheDocument();
-    expect(within(table).getByText("No bucket has been judged yet.")).toBeInTheDocument();
-    expect(within(table).getByText("Never evaluated")).toBeInTheDocument();
+    expect(within(table).queryByText("No bucket has been judged yet.")).toBeNull();
+    expect(within(table).getAllByText("Never evaluated").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("omits the reason line when the engine recorded none", async () => {
+    const rows = [
+      rule({ id: "open", name: "Open rule", last_status: "OPEN", last_status_reason: null }),
+      rule({ id: "ok", name: "Ok rule", last_status: "OK", last_status_reason: null }),
+      rule({ id: "recovering", name: "Recovering rule", last_status: "RECOVERING", last_status_reason: null }),
+      rule({ id: "fresh", name: "Fresh rule", last_status: null, last_status_reason: null, last_evaluated_at: null }),
+    ];
+    vi.spyOn(api, "customRules").mockResolvedValue(rows);
+    vi.mocked(resolveRuleSubjects).mockResolvedValue(new Map());
+    render(await CustomRulesPage());
+    const table = screen.getByRole("table", { name: "Custom rules" });
+    for (const name of ["Open rule", "Ok rule", "Recovering rule", "Fresh rule"]) {
+      const row = within(table).getByRole("row", { name: new RegExp(name) });
+      const status = row.querySelector(".cr-status");
+      expect(status?.querySelectorAll(":scope > span")).toHaveLength(1);
+    }
+  });
+
+  it("puts status immediately after the name", async () => {
+    vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
+    render(await CustomRulesPage());
+    const table = screen.getByRole("table", { name: "Custom rules" });
+    expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Name",
+      "Status and reason",
+      "Subject",
+      "Condition",
+      "Severity",
+      "Enabled",
+      "Last evaluated (UTC)",
+    ]);
   });
 
   it("shows subject kind and label, condition unit, severity and UTC time", async () => {

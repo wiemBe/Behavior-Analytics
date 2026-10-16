@@ -1,5 +1,17 @@
 /* Custom rules: compact authoring beside an evidence-honest replay. Tokens only. */
 
+/* These routes put their fact line in the body. The shared header's reserved
+   description height would otherwise sit empty under the title. */
+.page > .page-header {
+  min-height: 0;
+}
+
+/* A banner on these routes is one sentence, sometimes with a time. The shared
+   banner is a flex row, which splits that time into its own chip. */
+.page .banner {
+  display: block;
+}
+
 .cr-page-notices {
   display: grid;
   gap: var(--sp-3);
@@ -18,19 +30,26 @@
   min-width: 100%;
 }
 
-.cr-rule-table th:nth-child(1) {
+/* Name and status stay on the first screen at 1024. Later columns keep a floor
+   and scroll inside the table. */
+.cr-rule-table th:nth-child(1),
+.cr-rule-table td:nth-child(1) {
+  width: var(--home-list-min);
   min-width: var(--home-list-min);
 }
 
-.cr-rule-table th:nth-child(2) {
-  min-width: var(--catchall-source-min);
+.cr-rule-table td.cell-name {
+  overflow-wrap: break-word;
 }
 
-.cr-rule-table th:nth-child(3) {
+.cr-rule-table th:nth-child(2),
+.cr-rule-table td:nth-child(2) {
+  width: var(--catchall-bucket-col-min);
   min-width: var(--catchall-bucket-col-min);
 }
 
-.cr-rule-table th:nth-child(6) {
+.cr-rule-table th:nth-child(3),
+.cr-rule-table th:nth-child(4) {
   min-width: var(--home-list-min);
 }
 
@@ -49,7 +68,8 @@
   justify-items: start;
   gap: var(--sp-1);
   min-width: 0;
-  max-width: var(--admin-hub-max);
+  max-width: var(--catchall-bucket-col-min);
+  overflow-wrap: break-word;
   color: var(--text-2);
   font-size: var(--fs-xs);
   line-height: var(--lh-base);
@@ -180,10 +200,19 @@
 
 .cr-preview-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--sp-4);
   margin-bottom: var(--sp-4);
+  min-width: 0;
+}
+
+.cr-preview-head > div,
+.cr-preview-head > p {
+  flex: 1 1 var(--home-list-min);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .cr-preview-head h2 {
@@ -200,12 +229,20 @@
 .cr-preview-head label {
   display: grid;
   gap: var(--sp-1);
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cr-preview-head .cr-input-unit {
+  max-width: 100%;
 }
 
 .cr-preview-head .cr-input-unit .field {
-  flex: 0 0 var(--home-col-num);
-  width: var(--home-col-num);
+  flex: 1 1 var(--home-col-num);
+  width: auto;
+  min-width: 0;
+  max-width: var(--home-col-num);
 }
 
 .cr-chart {

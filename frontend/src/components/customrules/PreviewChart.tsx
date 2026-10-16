@@ -2,6 +2,7 @@
 
 import { LineChart } from "echarts/charts";
 import {
+  GraphicComponent,
   GridComponent,
   MarkAreaComponent,
   MarkLineComponent,
@@ -20,6 +21,7 @@ import type { EChartsOption } from "echarts";
 
 echarts.use([
   LineChart,
+  GraphicComponent,
   GridComponent,
   TooltipComponent,
   MarkAreaComponent,
@@ -101,10 +103,21 @@ export function buildPreviewOption(
       ),
   ];
   const text = { color: palette.label, fontFamily: palette.font };
+  const thresholdText = `Threshold ${preview.threshold_value} ${preview.unit}`;
   return {
     animation: false,
     useUTC: true,
-    grid: { left: 68, right: 24, top: 28, bottom: 52 },
+    graphic: {
+      type: "text",
+      top: 4,
+      right: 8,
+      style: {
+        text: thresholdText,
+        fill: palette.expected,
+        fontFamily: palette.font,
+      },
+    },
+    grid: { left: 68, right: 24, top: 32, bottom: 52 },
     textStyle: text,
     tooltip: {
       trigger: "axis",
@@ -151,12 +164,7 @@ export function buildPreviewOption(
         markLine: {
           silent: true,
           symbol: "none",
-          label: {
-            show: true,
-            position: "insideEndTop",
-            formatter: `Threshold ${preview.threshold_value} ${preview.unit}`,
-            color: palette.tooltipText,
-          },
+          label: { show: false },
           lineStyle: { color: palette.expected, type: "dashed" },
           data: [{ yAxis: preview.threshold_value }],
         },

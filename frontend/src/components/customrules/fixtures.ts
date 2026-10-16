@@ -135,7 +135,7 @@ export function rule(overrides: Partial<CustomRule> = {}): CustomRule {
     last_evaluated_bucket_start: "2026-10-16T07:15:00Z",
     last_evaluated_at: "2026-10-16T07:20:00Z",
     last_status: "OPEN",
-    last_status_reason: "Two consecutive buckets exceeded the threshold.",
+    last_status_reason: null,
     active_breach: breach(),
     alerting_mode: "shadow",
     created_at: "2026-10-15T08:00:00Z",

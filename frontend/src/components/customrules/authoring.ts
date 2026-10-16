@@ -33,6 +33,12 @@ export const SUBJECT_KIND_LABELS: Record<CustomRuleSubjectKind, string> = {
   IPS_SOURCE: "IPS source",
 };
 
+/** A kind label inside a sentence. Acronyms stay uppercase; other labels take a lowercase first word. */
+export function subjectKindInSentence(kind: CustomRuleSubjectKind): string {
+  const label = SUBJECT_KIND_LABELS[kind];
+  return /^[A-Z]{2,}\b/.test(label) ? label : `${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+}
+
 const METRIC_LABELS: Record<string, string> = {
   EVENT_COUNT: "event count",
   AVERAGE_EPS: "average EPS",
@@ -178,7 +184,7 @@ export function draftReason(draft: EditorDraft, metric: CustomRuleCatalogMetric 
         : draft.subjectKind === "IPS_ENTITY"
           ? draft.ipsEntityId
           : draft.logSourceId;
-  if (!selected) return `Choose a ${SUBJECT_KIND_LABELS[draft.subjectKind].toLowerCase()}.`;
+  if (!selected) return `Choose a ${subjectKindInSentence(draft.subjectKind)}.`;
   if (!metric || metric.subject_kind !== draft.subjectKind) return "Choose a metric for this subject kind.";
   const threshold = Number(draft.threshold);
   if (draft.threshold.trim() === "" || !Number.isFinite(threshold) || threshold < 0) {
@@ -252,6 +258,20 @@ export function classifySaveError(error: unknown): SaveRefusal {
   return { kind: "error", detail: typeof error.detail === "string" ? error.detail : "The rule could not be saved. Try again." };
 }
 
+/** Words an analyst reads. Only a recorded OK verdict takes the positive tone. */
+const STATUS_WORDS: Record<string, string> = {
+  OK: "OK",
+  OPEN: "Open",
+  RECOVERING: "Recovering",
+  RESOLVED: "Resolved",
+  NO_VERDICT: "No verdict",
+  STALE: "Stale",
+  NOT_COLLECTED: "Not collected",
+  SUBJECT_RETIRED: "Subject retired",
+  DISABLED: "Disabled",
+  NOT_ENABLED: "Not enabled",
+};
+
 export function statusTone(status: string | null): string {
   if (status === "OPEN") return "crit";
   if (status === "OK") return "ok";
@@ -260,22 +280,12 @@ export function statusTone(status: string | null): string {
 }
 
 export function statusLabel(status: string | null): string {
-  return status ?? "NEVER_EVALUATED";
+  if (status === null) return "Never evaluated";
+  return STATUS_WORDS[status] ?? status.replaceAll("_", " ").toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
-export function statusReason(status: string | null, reason: string | null): string {
-  if (reason) return reason;
-  if (status === null) return "No bucket has been judged yet.";
-  const defaults: Record<string, string> = {
-    OK: "The latest judged bucket did not sustain a breach.",
-    OPEN: "The condition is firing.",
-    RECOVERING: "Measured buckets are moving back across the recovery boundary.",
-    NO_VERDICT: "The latest bucket could not support a verdict.",
-    STALE: "Collection has not produced a recent bucket.",
-    NOT_COLLECTED: "This subject family is not being collected.",
-    SUBJECT_RETIRED: "The selected subject is no longer tracked.",
-    DISABLED: "This rule is disabled.",
-    NOT_ENABLED: "CUSTOM_RULES_ENABLED is off.",
-  };
-  return defaults[status] ?? "The evaluator recorded this state.";
+/** The engine's reason, unchanged. Null means the engine recorded none, so the UI shows none. */
+export function statusReason(_status: string | null, reason: string | null): string | null {
+  const text = reason?.trim() ?? "";
+  return text === "" ? null : text;
 }

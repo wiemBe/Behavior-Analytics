@@ -59,8 +59,11 @@ describe("custom-rule detail states", () => {
       new Map([["rule-1", { label: "GET /retired", href: "/behavior/waf/sources/source-1", retiredAt: "2026-10-15T06:00:00Z" }]]),
     );
     await renderPage();
-    expect(screen.getByText("SUBJECT_RETIRED")).toBeInTheDocument();
-    expect(screen.getByText(/stopped being tracked/)).toHaveTextContent("2026-10-15 06:00:00 UTC");
+    expect(screen.getByText("Subject retired")).toBeInTheDocument();
+    expect(screen.queryByText("SUBJECT_RETIRED")).toBeNull();
+    expect(screen.getByText(/stopped being tracked/)).toHaveTextContent(
+      "This subject stopped being tracked at 2026-10-15 06:00:00 UTC. The rule draws no verdict from later buckets.",
+    );
   });
 });
 
@@ -68,9 +71,14 @@ describe("custom-rule detail evidence", () => {
   it("answers whether the rule is firing and what it read in shadow mode", async () => {
     await renderPage();
     expect(screen.getByRole("heading", { name: "Sustained edge traffic", level: 1 })).toBeInTheDocument();
-    expect(screen.getByText("Two consecutive buckets exceeded the threshold.")).toBeInTheDocument();
+    const state = screen.getByRole("heading", { name: "Current state" }).parentElement!;
+    expect(within(state).getByText("Open")).toHaveClass("crit");
+    expect(within(state).queryByText("Two consecutive buckets exceeded the threshold.")).toBeNull();
+    expect(state.querySelector(".cr-status")?.querySelectorAll(":scope > span")).toHaveLength(1);
     expect(screen.getByLabelText("stored preview")).toHaveTextContent("edge-web-01");
     const active = screen.getByRole("heading", { name: "Active breach" }).parentElement!;
+    expect(within(active).getByText("Open")).toHaveClass("crit");
+    expect(within(active).queryByText("OPEN")).toBeNull();
     expect(within(active).getByText("at least 19 events/s")).toBeInTheDocument();
     expect(within(active).getByText("14 events/s")).toBeInTheDocument();
     expect(within(active).getByText("2 buckets")).toBeInTheDocument();
@@ -86,6 +94,8 @@ describe("custom-rule detail evidence", () => {
   it("renders breach history with measurements, units and UTC times", async () => {
     await renderPage();
     const table = screen.getByRole("table", { name: "Breach history" });
+    expect(within(table).getByText("Open")).toBeInTheDocument();
+    expect(within(table).queryByText("OPEN")).toBeNull();
     expect(within(table).getByRole("columnheader", { name: "Worst (events/s)" })).toBeInTheDocument();
     expect(within(table).getByText("at least 19 events/s")).toBeInTheDocument();
     expect(within(table).getByText("2026-10-16 07:05:00 UTC")).toBeInTheDocument();

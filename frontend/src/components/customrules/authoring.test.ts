@@ -9,6 +9,8 @@ import {
   emptyDraft,
   statusLabel,
   statusReason,
+  statusTone,
+  subjectKindInSentence,
 } from "./authoring";
 import { catalog, reader, rule, writer } from "./fixtures";
 import { ApiError } from "@/lib/api";
@@ -28,8 +30,59 @@ describe("custom-rule authoring semantics", () => {
   });
 
   it("treats a never-evaluated rule as its own state", () => {
-    expect(statusLabel(null)).toBe("NEVER_EVALUATED");
-    expect(statusReason(null, null)).toBe("No bucket has been judged yet.");
+    expect(statusLabel(null)).toBe("Never evaluated");
+    expect(statusReason(null, null)).toBeNull();
+  });
+
+  it("names each status in words and lets only OK take the positive tone", () => {
+    const words: Record<string, string> = {
+      OK: "OK",
+      OPEN: "Open",
+      RECOVERING: "Recovering",
+      RESOLVED: "Resolved",
+      NO_VERDICT: "No verdict",
+      STALE: "Stale",
+      NOT_COLLECTED: "Not collected",
+      SUBJECT_RETIRED: "Subject retired",
+      DISABLED: "Disabled",
+      NOT_ENABLED: "Not enabled",
+    };
+    for (const [status, label] of Object.entries(words)) {
+      expect(statusLabel(status)).toBe(label);
+      expect(label).not.toMatch(/_/);
+    }
+    expect(statusTone("OK")).toBe("ok");
+    for (const status of ["NOT_ENABLED", "STALE", "NOT_COLLECTED", "NO_VERDICT", "SUBJECT_RETIRED", "DISABLED", "OPEN", "RECOVERING", "RESOLVED", null]) {
+      expect(statusTone(status)).not.toBe("ok");
+    }
+    expect(statusTone("OPEN")).toBe("crit");
+    expect(statusTone("STALE")).toBe("warn");
+    expect(statusTone("RECOVERING")).toBe("warn");
+    expect(statusTone("NOT_ENABLED")).toBe("");
+    expect(statusTone("NOT_COLLECTED")).toBe("");
+    expect(statusTone("NO_VERDICT")).toBe("");
+  });
+
+  it("shows an engine reason only when one was recorded", () => {
+    expect(statusReason("OPEN", null)).toBeNull();
+    expect(statusReason("OK", null)).toBeNull();
+    expect(statusReason("RECOVERING", "  ")).toBeNull();
+    expect(statusReason("NOT_ENABLED", " CUSTOM_RULES_ENABLED is off ")).toBe("CUSTOM_RULES_ENABLED is off");
+    expect(statusReason("DISABLED", "the rule is disabled")).toBe("the rule is disabled");
+  });
+
+  it("keeps acronyms in kind labels used in a sentence", () => {
+    expect(subjectKindInSentence("WAF_ENDPOINT")).toBe("WAF endpoint");
+    expect(subjectKindInSentence("IPS_ENTITY")).toBe("IPS entity");
+    expect(subjectKindInSentence("IPS_SOURCE")).toBe("IPS source");
+    expect(subjectKindInSentence("LOG_SOURCE")).toBe("log source");
+    expect(subjectKindInSentence("FLEET_CLASS")).toBe("fleet class");
+    const draft = emptyDraft(catalog());
+    expect(draftReason({ ...draft, name: "Named" }, catalog().metrics[0])).toBe("Choose a log source.");
+    const waf = catalog().metrics.find((metric) => metric.metric === "REQUEST_COUNT")!;
+    expect(draftReason({ ...draft, name: "Named", subjectKind: "WAF_ENDPOINT", metric: "REQUEST_COUNT" }, waf)).toBe(
+      "Choose a WAF endpoint.",
+    );
   });
 
   it("guards ratio, subject, sustain and recovery inputs", () => {

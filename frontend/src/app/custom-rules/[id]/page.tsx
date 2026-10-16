@@ -10,6 +10,8 @@ import {
   conditionText,
   customRuleAccessFrom,
   formatValue,
+  statusLabel,
+  statusTone,
   type CustomRuleAccess,
 } from "@/components/customrules/authoring";
 import { resolveRuleSubjects, type RuleSubject } from "@/components/customrules/subjects";
@@ -109,7 +111,11 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
         </dl>
         {rule.last_status === "SUBJECT_RETIRED" && (
           <div className="banner">
-            This subject stopped being tracked{subject.retiredAt ? <> at <time dateTime={subject.retiredAt}>{formatDateTime(subject.retiredAt)}</time></> : ""}. The rule draws no verdict from later buckets.
+            {subject.retiredAt ? (
+              <>This subject stopped being tracked at <time dateTime={subject.retiredAt}>{formatDateTime(subject.retiredAt)}</time>. The rule draws no verdict from later buckets.</>
+            ) : (
+              "This subject stopped being tracked. The rule draws no verdict from later buckets."
+            )}
           </div>
         )}
       </section>
@@ -126,7 +132,7 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
         ) : (
           <div className="panel cr-active-breach">
             <dl className="cr-definition">
-              <div><dt>State</dt><dd><span className="pill crit">{active.state}</span></dd></div>
+              <div><dt>State</dt><dd><span className={`pill ${statusTone(active.state)}`}>{statusLabel(active.state)}</span></dd></div>
               <div><dt>Worst reading</dt><dd className="num">{measuredValue(active.worst_value, active.worst_measurement, unit)}</dd></div>
               <div><dt>Last reading</dt><dd className="num">{measuredValue(active.last_value, active.last_measurement, unit)}</dd></div>
               <div><dt>Unmeasured</dt><dd className="num">{active.unmeasured_buckets} buckets</dd></div>
@@ -153,7 +159,7 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
               <tbody>
                 {breaches.map((breach) => (
                   <tr key={breach.id}>
-                    <td><span className={`pill ${breach.state === "OPEN" ? "crit" : breach.state === "RECOVERING" ? "warn" : ""}`}>{breach.state}</span></td>
+                    <td><span className={`pill ${statusTone(breach.state)}`}>{statusLabel(breach.state)}</span></td>
                     <td><time dateTime={breach.opened_at}>{formatDateTime(breach.opened_at)}</time></td>
                     <td>{breach.resolved_at ? <time dateTime={breach.resolved_at}>{formatDateTime(breach.resolved_at)}</time> : "—"}</td>
                     <td className="num">{measuredValue(breach.worst_value, breach.worst_measurement, unit)}</td>

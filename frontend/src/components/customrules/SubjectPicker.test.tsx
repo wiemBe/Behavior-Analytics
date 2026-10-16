@@ -42,6 +42,7 @@ describe("custom-rule subject picker", () => {
         onLabel={vi.fn()}
       />,
     );
+    expect(screen.getByRole("searchbox", { name: "Find WAF endpoint" })).toBeInTheDocument();
     const source = await screen.findByRole("combobox", { name: "WAF source" });
     fireEvent.change(source, { target: { value: "waf-1" } });
     await waitFor(() => expect(screen.getByText(/No admitted endpoints are available/)).toBeInTheDocument());
@@ -61,6 +62,7 @@ describe("custom-rule subject picker", () => {
         onLabel={vi.fn()}
       />,
     );
+    expect(screen.getByRole("searchbox", { name: "Find log source" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toHaveTextContent("Check the backend");
   });
 });

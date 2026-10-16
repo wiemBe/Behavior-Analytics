@@ -86,11 +86,11 @@ export default async function CustomRulesPage() {
                 <thead>
                   <tr>
                     <th scope="col">Name</th>
+                    <th scope="col">Status and reason</th>
                     <th scope="col">Subject</th>
                     <th scope="col">Condition</th>
                     <th scope="col">Severity</th>
                     <th scope="col">Enabled</th>
-                    <th scope="col">Status and reason</th>
                     <th scope="col">Last evaluated (UTC)</th>
                   </tr>
                 </thead>
@@ -100,6 +100,7 @@ export default async function CustomRulesPage() {
                     return (
                       <tr key={rule.id}>
                         <td className="cell-name"><Link href={`/custom-rules/${rule.id}`}>{rule.name}</Link></td>
+                        <td><RuleStatus status={rule.last_status} reason={rule.last_status_reason} /></td>
                         <td className="cell-name">
                           <span className="cr-cell-kicker">{SUBJECT_KIND_LABELS[rule.subject_kind]}</span>
                           {subject ? <Link href={subject.href}>{subject.label}</Link> : "—"}
@@ -107,7 +108,6 @@ export default async function CustomRulesPage() {
                         <td>{conditionText(rule)}</td>
                         <td><span className={`pill ${sevTone(rule.severity)}`}>{rule.severity}</span></td>
                         <td>{rule.enabled ? "Yes" : "No"}</td>
-                        <td><RuleStatus status={rule.last_status} reason={rule.last_status_reason} /></td>
                         <td className="num cell-when">
                           {rule.last_evaluated_at ? <time dateTime={rule.last_evaluated_at}>{formatDateTime(rule.last_evaluated_at)}</time> : "Never evaluated"}
                         </td>

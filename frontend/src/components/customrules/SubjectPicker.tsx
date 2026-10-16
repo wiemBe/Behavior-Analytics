@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
 
-import { SUBJECT_KIND_LABELS } from "@/components/customrules/authoring";
+import { SUBJECT_KIND_LABELS, subjectKindInSentence } from "@/components/customrules/authoring";
 import {
   loadIpsEntities,
   loadIpsSources,
@@ -173,7 +173,7 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
         </div>
       ) : (
         <div className="cr-field">
-          <label htmlFor={searchId}>Find {SUBJECT_KIND_LABELS[kind].toLowerCase()}</label>
+          <label htmlFor={searchId}>Find {subjectKindInSentence(kind)}</label>
           <input
             id={searchId}
             className="field"
