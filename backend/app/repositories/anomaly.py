@@ -420,7 +420,7 @@ class AnomalyRepository:
         rows = await self.session.execute(
             select(LogSource.id, LogSource.name).where(LogSource.id.in_(ids))
         )
-        return dict(rows.all())  # type: ignore[arg-type]
+        return {row[0]: row[1] for row in rows.all()}
 
     # --------------------------------------------------------------- summary
     async def evidence_counts(self) -> dict[str, int]:

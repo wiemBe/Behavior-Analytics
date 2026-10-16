@@ -270,8 +270,10 @@ OPS-2 commits:
   production lock.
 
 The image installs `pip install --require-hashes -r requirements.txt` and then
-`pip install --no-deps .` (not `-e`, so the image does not depend on a writable
-source tree; the Dockerfile already drops privileges at
+`pip install --no-deps -e .`, so there is exactly one copy of `app` (at `/app`)
+and `VERSION` (`/app/VERSION`) and `alembic.ini` resolve next to it. An editable
+install writes nothing into the tree at runtime, and the tree stays root-owned
+except for what the Dockerfile chowns (the Dockerfile drops privileges at
 `backend/Dockerfile:21-23`). CI installs the same lock plus the dev lock, then
 `pip install --no-deps -e .` so tests import this tree.
 
@@ -280,7 +282,8 @@ regenerate both lock files, run the gates. The release workflow never upgrades
 dependencies. It installs the lock that was tested. No bot in this cut.
 
 `python:3.12-slim` stays the base (`backend/Dockerfile:1`) until a release notes
-entry says otherwise. Moving to 3.13 changes TLS behaviour (§8, symptom 3).
+entry says otherwise. The TLS posture does not depend on the interpreter: the app
+sets strict RFC 5280 itself (§8, symptom 3).
 
 ### 2.5 Registry authentication
 
@@ -475,9 +478,9 @@ Asked, in this order:
    has to contain the root and the intermediate (`README.md:293-296`,
    `backend/app/providers/tls.py:25-28`).
 9. `QRADAR_TLS_ALLOW_MISSING_AKI`, default false. The wizard asks only as a
-   yes/no after explaining symptom 3. The shipped image is Python 3.12
-   (`backend/Dockerfile:1`), which does not turn on `VERIFY_X509_STRICT`. The
-   flag stays available (`backend/app/core/config.py:116-119`).
+   yes/no after explaining symptom 3. The app sets `VERIFY_X509_STRICT` itself
+   on every interpreter, so an appliance certificate without an AKI fails until
+   it is reissued or this flag is set. The flag stays available (`backend/app/core/config.py:116-119`).
 10. Instance name. Default `qradar`. Passed to `qradar add --name`.
 11. Backup directory.
 12. GHCR username and the path of the `read:packages` token. Skipped for
@@ -1133,11 +1136,10 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
    in §3.2 fails the same way. Fix: concatenate root then intermediate into
    `.secrets/qradar-ca.pem` and re-run `load-secrets.sh` and `qradar add`.
 
-3. **OPS-R3. `Missing Authority Key Identifier`.** Cause: a Python 3.13+ runtime
-   enabling `VERIFY_X509_STRICT` against a QRadar certificate that has an SKI
-   and no AKI (`tls.py:38-44`). The image we ship is Python 3.12
-   (`backend/Dockerfile:1`), so this appears when the base image moves or when
-   someone runs the backend outside the image. Confirm: the exception text,
+3. **OPS-R3. `Missing Authority Key Identifier`.** Cause: the app sets
+   `VERIFY_X509_STRICT` itself on every interpreter, including the 3.12 of the
+   image (`backend/Dockerfile:1`), and the QRadar certificate has an SKI and no
+   AKI (`tls.py`). Confirm: the exception text,
    while `openssl s_client` with the same CA succeeds (`README.md:332-341`).
    Fix: reissue the console certificate. Until then
    `QRADAR_TLS_ALLOW_MISSING_AKI=true`, which does not turn verification off

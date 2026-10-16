@@ -48,3 +48,42 @@ Note: pytest addopts has `-q`; I passed `-o addopts=--strict-markers -q -rfE` to
 2. The image is 890MB.
 3. Scratch note: `/home/efe/Documents/QRadar-Dash-work/ops2/src` holds root-owned files from the container and cannot be removed by my user (`src2`, `run3`, `lock3` are chowned to uid 1000).
 4. pip-tools header in the locks shows `--no-strip-extras` (the lock keeps `sqlalchemy[asyncio]==`). `pip --require-hashes` accepts that.
+
+## Round 1 (T-121)
+
+### Files changed
+
+- `backend/app/providers/tls.py`: `VERIFY_X509_STRICT | VERIFY_X509_PARTIAL_CHAIN` set unconditionally after `create_default_context`; comments say the posture no longer depends on the interpreter. `allow_missing_aki` still clears only STRICT, warning kept.
+- `backend/tests/unit/test_tls_and_credentials.py`: one test added (`test_verify_flags_do_not_depend_on_the_interpreter`); existing tests untouched.
+- `backend/app/repositories/anomaly.py`: `source_names` returns `{row[0]: row[1] for row in rows.all()}` instead of `dict(...)  # type: ignore`.
+- `backend/app/custom_rules/loaders.py`: the 14-column row is turned into `tuple[Any, ...]` before unpacking (adds `from typing import Any`).
+- `backend/app/custom_rules/engine.py`: new variable `breach_row: CustomRuleBreach | None`; behaviour unchanged.
+- `backend/Dockerfile`: back to `pip install --no-deps -e .`, comment fixed.
+- `README.md`, `docs/OPERATIONS-DESIGN.md`: TLS sentences (README ~355; design symptom 3, wizard item 9, the 3.13 note in 2.4) and the 2.4 install sentence (orchestrator addendum).
+
+### Gates (verbatim summaries)
+
+Environment A, `python:3.12-slim` from the locks (SQLAlchemy 2.1.4, mypy 2.3.1), `--network host`:
+```
+No broken requirements found.
+ruff check app tests: All checks passed!
+mypy app: Success: no issues found in 242 source files
+pytest -m "not integration": 3488 passed, 10 skipped, 1290 deselected, 4 warnings in 52.61s
+pytest -m integration (qradar_obs_ops2): 1290 passed, 3498 deselected, 1862 warnings in 729.69s (0:12:09)
+```
+Environment B, host venv (3.14, SQLAlchemy 2.0.51, mypy 2.3.0):
+```
+ruff check app tests: All checks passed!
+mypy app: Success: no issues found in 242 source files
+pytest -m "not integration": 3488 passed, 10 skipped, 1290 deselected, 5 warnings in 52.41s
+```
+The two TLS tests (`test_strict_rfc5280_is_on_by_default`, `test_allow_missing_aki_clears_only_strict`) pass on 3.12 unedited. Mutation: deleting the new `verify_flags |=` line makes the new test fail (on 3.14 the old tests still pass there); restored.
+
+Image: `docker build -t qradar-backend:t121 backend` succeeded; `pip list` shows the package at `/app`, no copy of `app` in site-packages; `import greenlet, sqlalchemy; import app.workers.tasks` prints `2.1.4`. The task's exact smoke command (with `import app.main`) FAILS in the image: `create_app()` runs at import and `read_version()` raises `VersionError: VERSION file not found; looked in: /app/VERSION, /VERSION`. As the spec predicted, OPS-3 must copy `VERSION` into the image. With `VERSION` bind-mounted, `import app.main` prints ok. Image removed; no containers left.
+
+### Open points
+
+1. Smoke command fails only for the missing `VERSION` (OPS-3).
+2. Gate A needs, besides `backend/` and `VERSION`, `tools/` (lab loggen unit tests) and the tracked non-frontend files plus `frontend/package.json` (installer and version tests). The first A run without them reported collection errors; the numbers above are from complete scratch trees (integration run on `backend/`+`VERSION`+`tools/`; unit rerun on a tracked-files copy). Scratch: `/home/efe/Documents/QRadar-Dash-work/t121/` (chowned to uid 1000).
+3. AGENTS.md deviation, mine: for the image check I bind-mounted the worktree's `VERSION` with `:Z`, which relabelled that one file `container_file_t:c889,c926`. I restored it by rewriting the file with identical content (`0.1.0`, label back to `user_home_t`); no chcon/restorecon used; git shows no change to it.
+4. Pre-existing: the lock install uses `pip install -e .` in `run.sh` of round 0 unchanged; the `ls` of the other containers shows many old exited ones, not mine.

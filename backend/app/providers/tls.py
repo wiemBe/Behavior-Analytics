@@ -31,14 +31,18 @@ def build_ssl_context(
     setting it.
     """
     # `create_default_context` gives CERT_REQUIRED, check_hostname=True, a
-    # modern cipher suite and the system trust store. We only ever subtract
-    # from it in the one documented way below.
+    # modern cipher suite and the system trust store. Python 3.13+ also sets
+    # VERIFY_X509_STRICT and VERIFY_X509_PARTIAL_CHAIN there; 3.12 does not.
+    # Set both explicitly so the posture is the same on every interpreter
+    # (the image runs 3.12, dev and the lab validations ran newer). After that
+    # we only ever subtract from it in the one documented way below.
     context = ssl.create_default_context(cafile=ca_bundle)
+    context.verify_flags |= ssl.VERIFY_X509_STRICT | ssl.VERIFY_X509_PARTIAL_CHAIN
 
     if allow_missing_aki:
-        # Python 3.13+ enables VERIFY_X509_STRICT in create_default_context,
-        # which enforces RFC 5280 §4.2.1.1: every non-self-signed certificate
-        # must carry an Authority Key Identifier. QRadar's self-generated
+        # VERIFY_X509_STRICT, set above on every interpreter, enforces RFC 5280
+        # §4.2.1.1: every non-self-signed certificate must carry an Authority
+        # Key Identifier. QRadar's self-generated
         # console certificate ships a Subject Key Identifier but no AKI, so
         # strict mode rejects a chain that OpenSSL's own CLI accepts. The
         # failure surfaces as "Missing Authority Key Identifier".

@@ -352,8 +352,8 @@ QRADAR_VERIFY_SSL=true
 QRADAR_CA_BUNDLE=/run/secrets/qradar_ca.pem
 ```
 
-> **If TLS fails only from Python.** Python 3.13+ enables `VERIFY_X509_STRICT`
-> by default. QRadar's self-generated console certificate carries a Subject Key
+> **If TLS fails only from Python.** The app sets `VERIFY_X509_STRICT` itself on
+> every interpreter (3.12, 3.13 and later alike). QRadar's self-generated console certificate carries a Subject Key
 > Identifier but no Authority Key Identifier, which RFC 5280 §4.2.1.1 requires,
 > so strict mode rejects a chain the `openssl` CLI accepts. The symptom is
 > `SSLCertVerificationError: Missing Authority Key Identifier` while the

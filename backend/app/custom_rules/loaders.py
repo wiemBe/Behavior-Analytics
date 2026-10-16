@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import and_, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -221,22 +222,26 @@ async def load_waf_endpoints(
         )
     ).all()
     built: list[tuple[str, datetime, BucketFacts]] = []
-    for (
-        endpoint_id,
-        bucket_start,
-        request_count,
-        blocked_count,
-        action_events,
-        unmapped_action_count,
-        server_error_count,
-        client_error_count,
-        response_code_events,
-        unclassified_response_count,
-        request_count_measurement,
-        action_measurement,
-        response_code_measurement,
-        in_maintenance,
-    ) in rows:
+    for row in rows:
+        # A plain tuple: the typed Row of a 14-column select is variadic on
+        # SQLAlchemy 2.1, and mypy refuses to unpack that without a star target.
+        values: tuple[Any, ...] = tuple(row)
+        (
+            endpoint_id,
+            bucket_start,
+            request_count,
+            blocked_count,
+            action_events,
+            unmapped_action_count,
+            server_error_count,
+            client_error_count,
+            response_code_events,
+            unclassified_response_count,
+            request_count_measurement,
+            action_measurement,
+            response_code_measurement,
+            in_maintenance,
+        ) = values
         built.append(
             (
                 str(endpoint_id),
