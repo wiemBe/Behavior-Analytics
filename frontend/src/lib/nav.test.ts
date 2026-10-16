@@ -30,6 +30,7 @@ describe("NAV", () => {
       "Alerts",
       "Rules",
       "Rule statistics",
+      "Custom rules",
       "Coverage",
     ]);
     expect(NAV[4].items.map((i) => i.label)).toEqual(["Log Sources", "Searches"]);
@@ -117,6 +118,7 @@ describe("activeNavHref", () => {
     expect(activeNavHref("/offenses")).toBe("/offenses");
     expect(activeNavHref("/rules/42")).toBe("/rules");
     expect(activeNavHref("/rules/statistics")).toBe("/rules/statistics");
+    expect(activeNavHref("/custom-rules/new")).toBe("/custom-rules");
     expect(activeNavHref("/log-sources/abc")).toBe("/log-sources");
     expect(activeNavHref("/")).toBe("/");
   });

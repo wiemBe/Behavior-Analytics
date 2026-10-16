@@ -62,6 +62,7 @@ export const NAV: NavGroup[] = [
       { href: "/alerts", label: "Alerts" },
       { href: "/rules", label: "Rules" },
       { href: "/rules/statistics", label: "Rule statistics" },
+      { href: "/custom-rules", label: "Custom rules" },
       { href: "/coverage", label: "Coverage" },
     ],
   },
