@@ -15,6 +15,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.rate_limit import limiter
+from app.core.version import read_version
 from app.security.csrf import request_refusal
 
 logger = logging.getLogger("app")
@@ -60,7 +61,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="qradar-observability",
-        version="0.1.0",
+        version=read_version(),
         # No interactive docs in production — do not advertise the API surface.
         docs_url=None if settings.is_production else "/docs",
         redoc_url=None,

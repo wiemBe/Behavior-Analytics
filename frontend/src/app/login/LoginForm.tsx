@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { login } from "@/components/auth/client";
+import { ApiVersionLine } from "@/components/auth/ApiVersionLine";
 import { ReasonList } from "@/components/auth/ReasonList";
 import { errorTexts } from "@/components/auth/reasons";
 import { useSession } from "@/components/auth/session";
@@ -98,6 +99,7 @@ export function LoginForm() {
           <ReasonList tone="warn" heading={problem.heading} lines={problem.lines} />
         ) : null}
       </form>
+      <ApiVersionLine className={styles.hint} />
     </div>
   );
 }

@@ -26,6 +26,9 @@ _OPEN_PATHS = {
     # beyond "ok"/"ready".
     "/api/v1/health/live",
     "/api/v1/health/ready",
+    # Build identity: version, git SHA and migration head only. An operator who cannot sign in
+    # must still read which build is running.
+    "/api/v1/version",
     # FastAPI's own schema and docs routes. create_app() mounts them only outside
     # production (docs_url/openapi_url are None there) precisely to avoid
     # advertising the surface; they expose no platform data.
