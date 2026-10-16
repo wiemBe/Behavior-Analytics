@@ -171,4 +171,15 @@ celery_app.conf.beat_schedule = {
         "task": "apply_search_result_retention",
         "schedule": float(settings.search_result_retention_interval_seconds),
     },
+    # --- Phase F -------------------------------------------------------------
+    "evaluate-custom-rules": {
+        # DB-only. A no-op while CUSTOM_RULES_ENABLED is false, which is the
+        # default, so the beat itself changes no behaviour on upgrade.
+        "task": "evaluate_custom_rules",
+        "schedule": 60.0,
+    },
+    "apply-custom-rule-retention": {
+        "task": "apply_custom_rule_retention",
+        "schedule": float(settings.custom_rules_retention_interval_seconds),
+    },
 }

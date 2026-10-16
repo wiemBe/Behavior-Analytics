@@ -1,15 +1,29 @@
+import Link from "next/link";
+
 import { ScheduleLabel } from "@/components/searches/ScheduleLabel";
+import { searchAccessFrom, type SearchAccess } from "@/components/searches/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type ScheduledSearch } from "@/lib/api";
 
 export default async function SearchCatalogPage() {
   let searches: ScheduledSearch[] = [];
-  let error = false;
+  let failed = false;
+  let access: SearchAccess = "unknown";
   try {
-    searches = await api.searches();
+    const [rows, caller] = await Promise.all([
+      api.searches(),
+      api.caller().then(searchAccessFrom).catch(() => "unknown" as const),
+    ]);
+    searches = rows;
+    access = caller;
   } catch {
-    error = true;
+    failed = true;
+    try {
+      access = searchAccessFrom(await api.caller());
+    } catch {
+      access = "unknown";
+    }
   }
 
   return (
@@ -17,15 +31,32 @@ export default async function SearchCatalogPage() {
       <PageHeader
         title="Search Catalog"
         description="Stored, validated AQL searches. Only persisted definitions are scheduled or executed — the frontend never runs ad-hoc AQL."
+        actions={
+          access === "writer" ? (
+            <Link className="action secondary" href="/searches/new">
+              New search
+            </Link>
+          ) : null
+        }
       />
 
-      {error ? (
+      {failed ? (
         <div className="notice" role="alert">
           <p>Backend unreachable.</p>
           <p>The search catalog could not be loaded. Check that the stack is running, then reload the page.</p>
         </div>
       ) : searches.length === 0 ? (
-        <div className="notice">No scheduled searches defined yet.</div>
+        <div className="notice">
+          <p>No scheduled searches defined yet.</p>
+          {access === "writer" ? (
+            <p>Use New search to store a disabled definition, then run the stored query before enabling it.</p>
+          ) : (
+            <p>
+              Creating a search needs <code>search:write</code>. An admin or the{" "}
+              <code>detection_engineer</code> role can grant it.
+            </p>
+          )}
+        </div>
       ) : (
         <TableScroll label="Scheduled searches">
           <table className="table-dense" aria-label="Scheduled searches">

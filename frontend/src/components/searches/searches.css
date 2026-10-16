@@ -1,0 +1,119 @@
+/* The AQL editor. Tokens only; the form reuses .rule-form from the global sheet. */
+
+.latest-run {
+  margin: 0 0 var(--sp-4);
+}
+
+.search-editor {
+  min-width: 0;
+}
+
+.search-editor .rule-form-grid > span {
+  padding-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.search-editor textarea.aql-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 10rem;
+  margin-top: var(--sp-2);
+  padding: var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  resize: vertical;
+  overflow: auto;
+}
+
+.search-reasons {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-5);
+  display: grid;
+  gap: var(--sp-1);
+  color: var(--crit-text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  overflow-wrap: anywhere;
+}
+
+.search-guard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.search-guard label {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.search-guard input {
+  width: 100%;
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.search-latency {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
+
+.search-enable {
+  display: grid;
+  gap: var(--sp-3);
+  justify-items: start;
+  min-width: 0;
+  margin-bottom: var(--sp-4);
+}
+
+.search-enable .banner {
+  width: 100%;
+  min-width: 0;
+}
+
+.search-cron,
+.search-editor .cron {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.search-run-bar {
+  margin-top: calc(-1 * var(--sp-2));
+  margin-bottom: var(--sp-5);
+  min-width: 0;
+}
+
+.search-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.search-run .latest-run {
+  flex: 1 1 20rem;
+  margin: 0;
+  min-width: min(100%, 18rem);
+}
+
+.search-run-note {
+  flex: 1 1 20rem;
+  min-width: min(100%, 18rem);
+  overflow-wrap: anywhere;
+}

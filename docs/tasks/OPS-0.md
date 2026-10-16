@@ -44,6 +44,20 @@ This is a **design task. Write no code.** The deliverable is `docs/OPERATIONS-DE
   (into `.secrets/`); and create the break-glass local admin with
   `python -m app.cli.users create-admin --username <u>` (AUTH-1), showing the one-time password
   once. Read `docs/tasks/AUTH-1.md` for the settings.
+- **Registry (user, 2026-10-16 ~11:40):** the production host **can reach `ghcr.io`**. The
+  repository `wiemBe/QRadar-Dashboard` is **public today and will probably be made private**
+  (the orchestrator recommended it before any production detail enters the repository). Design
+  for private: a read-only token (`read:packages`) stored under `.secrets/` and used by
+  `docker login ghcr.io` in `install`/`upgrade`; keep the offline fallback (`docker save` /
+  `docker load` of a release bundle) and the local `--build` fallback.
+- **LDAP is configured from the UI** (AUTH-1, amended): the installer does not need to ask for the
+  LDAP URL, template or CA; it only creates the break-glass local admin. The runbook covers the
+  LDAP test button and the common LDAPS failures (CA chain, host name, port 636 blocked).
+- **Production host, as the orchestrator listed it to the user:** Linux x86_64 (RHEL/Rocky/Alma 9
+  or Ubuntu 22.04/24.04), Docker Engine + Compose v2, HTTPS 443 in, QRadar 443 and AD 636 out,
+  `ghcr.io` and GitHub out, NTP, a DNS name and a TLS certificate for the app, the QRadar CA and
+  the AD LDAPS CA, a read-only QRadar token, a backup directory. Size it in the design (CPU, RAM,
+  disk from the retention settings) and say what the minimum and the recommendation are.
 - So the "open questions" of points 8 and 11 about the language and the operator are answered;
   keep §11 for anything else you find.
 
