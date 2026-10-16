@@ -37,7 +37,8 @@ jobs:
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+          pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+          pip install --no-deps -e .
 
       - name: Version equality (VERSION, pyproject, package.json)
         run: |
@@ -53,7 +54,7 @@ jobs:
 
       - name: Type check
         working-directory: backend
-        run: mypy app || true   # advisory until fully annotated
+        run: mypy app
 
       - name: Prepare migration-check database
         env:

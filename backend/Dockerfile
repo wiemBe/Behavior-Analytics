@@ -10,12 +10,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
-# Install deps from the project metadata before copying source, so a code change
-# does not invalidate the dependency layer.
-RUN pip install --upgrade pip && pip install .
+COPY requirements.txt ./
+# Install the hashed production lock before copying source, so a code change
+# does not invalidate the dependency layer. Nothing newer than the lock is resolved.
+RUN pip install --upgrade pip && pip install --require-hashes -r requirements.txt
 
 COPY . .
+# Editable: /app stays the one copy of `app`, so VERSION and alembic.ini resolve
+# next to it. A regular install would add a second copy in site-packages that
+# finds neither. An editable install never writes to the tree.
 RUN pip install --no-deps -e .
 
 # Non-root. The app never needs to write to its own source tree.

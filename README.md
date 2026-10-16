@@ -352,8 +352,8 @@ QRADAR_VERIFY_SSL=true
 QRADAR_CA_BUNDLE=/run/secrets/qradar_ca.pem
 ```
 
-> **If TLS fails only from Python.** Python 3.13+ enables `VERIFY_X509_STRICT`
-> by default. QRadar's self-generated console certificate carries a Subject Key
+> **If TLS fails only from Python.** The app sets `VERIFY_X509_STRICT` itself on
+> every interpreter (3.12, 3.13 and later alike). QRadar's self-generated console certificate carries a Subject Key
 > Identifier but no Authority Key Identifier, which RFC 5280 §4.2.1.1 requires,
 > so strict mode rejects a chain the `openssl` CLI accepts. The symptom is
 > `SSLCertVerificationError: Missing Authority Key Identifier` while the
@@ -735,10 +735,32 @@ Backend, without Docker:
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev]'
+pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+pip install --no-deps -e .
 export ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 export QRADAR_PROVIDER=mock
 uvicorn app.main:app --reload
+```
+
+**Dependency locks and updates:** `backend/requirements.txt` (production) and
+`backend/requirements-dev.txt` (the `dev` extra, constrained by the production lock) are hashed
+pip-tools locks resolved for Python 3.12, the interpreter in the image and in CI. The image and CI
+install them with `--require-hashes`, so a release installs exactly what was tested. A dependency
+change is its own commit, with no bot: edit `backend/pyproject.toml`, regenerate both locks, run the
+gates (`ruff check app tests`, `mypy app`, `pytest -q -m "not integration"`), then commit. Regenerate both together
+from a dedicated, secret-free scratch directory (it gets the private `:Z` label, so never mount the
+repository or `backend/` itself):
+
+```bash
+S=$(mktemp -d)   # an empty directory with no secrets in it
+cp backend/pyproject.toml "$S"/
+printf 'ruff<0.16\nmypy<2.4\n' > "$S"/constraints.txt   # dev-lock pins, see the lock header
+docker run --rm -v "$S:/w:Z" -w /w python:3.12-slim sh -c \
+  'pip install pip-tools && \
+   pip-compile --no-strip-extras --generate-hashes --output-file=requirements.txt pyproject.toml && \
+   pip-compile --no-strip-extras --constraint=requirements.txt --constraint=constraints.txt \
+     --extra=dev --generate-hashes --output-file=requirements-dev.txt pyproject.toml'
+cp "$S"/requirements.txt "$S"/requirements-dev.txt backend/
 ```
 
 Frontend:
