@@ -252,6 +252,17 @@ instead of pulling them), `--offline BUNDLE`, `--external-proxy` (you run the TL
 `--reconfigure`, `--dry-run` (checks only), `--skip-qradar-check`. Then `./qradar-dash status` and
 `./qradar-dash logs`. The design is [docs/OPERATIONS-DESIGN.md](docs/OPERATIONS-DESIGN.md) section 3.
 
+### Cutting a release
+
+A release is a tag. Set `VERSION`, `backend/pyproject.toml` and `frontend/package.json` to the same
+number, add `docs/releases/<version>.md` (front matter `version:` and `min_from:`), merge, then push
+the tag `v<version>`. `.github/workflows/release.yml` checks the tag against `VERSION` and the
+`qradar-mcp` pin, runs the CI gates, builds the bundle check and then pushes the backend, frontend,
+postgres, qradar-mcp and proxy images to GHCR as `<version>` and `sha-<12 hex>`, and writes the
+GitHub Release. The backend image reads `VERSION` and `docs/releases/` from the repository root
+through a named build context, so a hand build needs it too:
+`docker buildx build --build-context repo=. --build-arg APP_VERSION=<version> backend`.
+
 ### Cloning (the qradar-mcp submodule)
 
 `qradar-mcp/` is a **git submodule** pinned to commit `b8f6a4a3fe901eac4f55e4ca5d146d952f55db51`

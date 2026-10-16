@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  # The release workflow runs these same gates before it builds any image.
+  workflow_call:
 
 jobs:
   backend:
@@ -28,8 +30,8 @@ jobs:
       TEST_DATABASE_URL: postgresql+asyncpg://test:test@localhost:5433/qradar_obs_test
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -84,18 +86,25 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
       - name: Install
         working-directory: frontend
-        run: npm install
+        run: npm ci
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
       - name: Type check
         working-directory: frontend
         run: npm run typecheck
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
       - name: Build
         working-directory: frontend
         env:
-          NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+          # The production base. The release workflow builds the images with the same value.
+          NEXT_PUBLIC_API_BASE_URL: /api/v1
         run: npm run build
