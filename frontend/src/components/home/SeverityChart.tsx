@@ -7,6 +7,11 @@
 // header says "Truncated: first 200 of n", the axis says "at least" and the tooltip says
 // "at least", so a capped stack is never read as the whole. A column links to the
 // anomalies list for that hour and severity.
+//
+// A complete list with nothing in the window is an empty window: one sentence, no plot.
+// That is the backend's empty page (items and total both 0) and a complete page whose
+// rows all fall outside the window. A capped list that happens to show nothing in the
+// window is not that sentence, and a failed read never reaches this body.
 
 import { BarChart } from "echarts/charts";
 import { GridComponent, TooltipComponent } from "echarts/components";
@@ -37,6 +42,8 @@ echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 const HOURS = 24;
 const HOUR_MS = 3_600_000;
+/** The header and the empty sentence share this, taken from the hour span the chart reads. */
+const WINDOW_LABEL = `${HOURS} h`;
 
 /** The anomalies list for a range, and for one severity within it. */
 export function anomaliesHref(since: string, until: string, severity?: string): string {
@@ -85,6 +92,24 @@ function Columns({
   );
 }
 
+/**
+ * What the body says when the window has no column to draw. A complete read with
+ * nothing counted is an empty window. A capped read is not: zero rows seen is not
+ * "no anomaly". A total that contradicts the rows is not a count either.
+ */
+function emptyWindow(
+  model: SeverityPerHour,
+  total: number,
+  itemCount: number,
+): "empty" | "capped" | "uncounted" | null {
+  const counted = model.hours.reduce((sum, hour) => sum + hour.total, 0);
+  // No hours means the range was rejected. That is not an empty window.
+  if (counted > 0 || model.hours.length === 0) return null;
+  if (model.lowerBound) return "capped";
+  if (total === itemCount) return "empty";
+  return "uncounted";
+}
+
 export function SeverityChart() {
   const tick = useRefreshTick();
   // The range moves with the hour, not with the render, so the request's key is stable.
@@ -99,7 +124,7 @@ export function SeverityChart() {
     <WidgetFrame
       id="home-severity"
       title="Anomalies by severity"
-      windowText="24 h"
+      windowText={WINDOW_LABEL}
       badge={(model && badgeText(model.qualifiers)) || undefined}
       link={{ href: anomaliesHref(range.since, range.until), label: "Anomalies" }}
       state={state}
@@ -107,16 +132,29 @@ export function SeverityChart() {
       permission="read:anomalies"
       fillBody
     >
-      {(ok) =>
-          model &&
-          (ok.data.items.length === 0 && ok.data.total === 0 ? (
+      {(ok) => {
+        if (!model) return null;
+        const kind = emptyWindow(model, ok.data.total, ok.data.items.length);
+        if (kind === "empty") {
+          return <p className="tw-state">No anomaly opened in the last {WINDOW_LABEL}.</p>;
+        }
+        if (kind === "capped") {
+          return (
             <p className="tw-state">
-              No anomaly was detected in the last 24 hours. The list was read in full.
+              None of the returned anomalies fall in this window. The list was capped, so this is
+              not a measured zero.
             </p>
-          ) : (
-            <Columns model={model} range={range} />
-          ))
-      }
+          );
+        }
+        if (kind === "uncounted") {
+          return (
+            <p className="tw-state">
+              The list&apos;s total does not match the rows returned, so this window is not counted.
+            </p>
+          );
+        }
+        return <Columns model={model} range={range} />;
+      }}
     </WidgetFrame>
   );
 }

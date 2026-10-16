@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -73,6 +76,28 @@ describe("EpsByClass", () => {
     render(<EpsByClass />);
     const row = screen.getByRole("link", { name: "Other classes" }).closest("tr")!;
     expect(row).toHaveTextContent(/Windows, DNS, Unclassified/);
+  });
+
+  it("wraps the folded-class line and keeps the full list on its title", () => {
+    res.state = ok(sevenFleet());
+    render(<EpsByClass />);
+    const rest = screen.getByText("Windows, DNS, Unclassified");
+    expect(rest).toHaveClass("hc-rest");
+    expect(rest).toHaveAttribute("title", "Other classes: Windows, DNS, Unclassified");
+    // `th` in globals is nowrap. The line's own rule has to win, or the names clip.
+    const css = readFileSync(join(__dirname, "charts.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const body = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].find(
+      ([, selectors]) => selectors.split(",").some((s) => s.trim() === ".hc-rest"),
+    )?.[2];
+    expect(body).toBeDefined();
+    expect(body).toContain("white-space: normal");
+    expect(body).toContain("overflow-wrap: anywhere");
+    expect(body).toContain("max-width: 100%");
+    const cell = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].find(
+      ([, selectors]) => selectors.split(",").some((s) => s.trim() === ".hc-list tbody th"),
+    )?.[2];
+    expect(cell).toContain("white-space: normal");
+    expect(cell).toContain("overflow-wrap: anywhere");
   });
 
   it("links a class to the sources filtered by it and the aggregate to the fleet table", () => {
