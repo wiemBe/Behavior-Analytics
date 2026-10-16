@@ -8,6 +8,22 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶▶▶▶ SEVENTEENTH SESSION (2026-10-16 from 14:37): updates on top of the 14:35 state below
+
+**The user (14:37):** "planner.md oku devam et opencode da ki z.ai aboneliğindeki glm yi de
+kullanabilirsin". **Z.AI GLM (`zai-coding-plan/glm-5.3`) is allowed again.** The one-session-
+at-a-time rule for its 5-hour window still holds.
+
+**Started this session (in addition to the four Grok units below):**
+
+| Task | Unit | Worktree / DB | Notes |
+|---|---|---|---|
+| **UI-6.5** ([spec](tasks/UI-6.5.md)) guidelines brought up to the shipped redesign (UR.9, D-11, `/` Dashboard, tokens, new components); docs only | `ui65-glm` (Z.AI GLM 5.3, bwrap), 14:38 | `ui65` | its report proposes the AGENTS.md §3a text; the orchestrator applies it |
+| **F-6a** ([spec](tasks/F-6a.md)) `GET /custom-rules/catalog` (metrics with unit and note, subject kinds, classes, operators, switches, cap, preview bounds) | `f6a-grok`, 14:40 | `f6a` from `agent/f3` @ `baed97a`; DB `qradar_obs_f6a` | merge after F-3 |
+| **F-6** ([spec](tasks/F-6.md)) custom-rules UI | Codex at 15:16, from `agent/f6a` once accepted | `f6`; ports 3106/8106/9106 | — |
+
+---
+
 ## ▶▶▶ RESUME HERE — STATE AT 14:35, 2026-10-16 (end of the sixteenth session; the user moved to a new chat because the context was long)
 
 **Read first:** this section, then D-17, D-18, D-19 in §4, then the 10:30 section below for the
