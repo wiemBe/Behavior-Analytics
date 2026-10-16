@@ -196,11 +196,15 @@ Read-only, defence-in-depth, secrets never in code or browser.
   `EncryptedString` column type. QRadar tokens are never returned in an API response, never sent to
   the browser, and never sent to an LLM.
 - **Structured JSON logging** with a redaction filter that strips token-like values.
-- **RBAC + audit.** Role/permission model plus an append-only `AuditLog` for administrative and
-  search actions. `GET /api/v1/me` returns the caller's own subject, email, granted permissions
-  and the derived `effective_permissions` (every non-wildcard permission the principal holds,
-  wildcard grants included). It needs an authenticated caller and no further permission, and it
-  exposes nothing but the caller's own identity.
+- **RBAC + audit.** Role/permission model plus an append-only `AuditLog` for administrative,
+  search and custom-rule actions. The seeded roles are `admin`, `analyst` and `viewer`, plus
+  `detection_engineer` (Phase F, D-17): every analyst permission plus `search:write` and
+  `custom_rule:write`, and no `admin:*` permission. `read:custom_rules` is satisfied by `read:*`;
+  `custom_rule:write` is not, though `admin:*` grants it, so the admin role does not list the
+  string. `GET /api/v1/me` returns the caller's own subject, email,
+  granted permissions and the derived `effective_permissions` (every non-wildcard permission
+  the principal holds, wildcard grants included). It needs an authenticated caller and no
+  further permission, and it exposes nothing but the caller's own identity.
 - **Output sanitization.** All QRadar-sourced text (offense descriptions, usernames, source names)
   is sanitized before display to prevent stored XSS.
 - **Rate limiting** on the API (`slowapi`), with a tighter limit on search execution.
@@ -471,10 +475,11 @@ inventory surfaces remain as supporting capabilities.
 | `/offenses` · `/offenses/[id]` | Offenses, and one offense's attributes, entities and history (Phase 3) |
 | `/rules` · `/rules/[id]` · `/rules/statistics` | Rule health; one rule's health and capacity history; rule-set statistics — most matched, costliest, composition, silent rules |
 | `/coverage` | Detection coverage (Phase 3) |
-| `/searches` · `/searches/[id]` · `/alerts` · `/alerts/[id]` | Scheduled searches and alert lifecycle (Phase 2) |
+| `/searches` · `/searches/new` · `/searches/[id]` · `/alerts` · `/alerts/[id]` | Scheduled searches and alert lifecycle (Phase 2), plus the AQL editor (Phase F): `/searches/new` stores a **disabled** definition — only stored, validated, versioned AQL ever runs — a writer edits it, previews with Run now and enables it on the detail page. The editor states its own latency sentence (one Ariel run on its cron). The `chart.search_results` dashboard widget (F-7) draws a search's stored results as a line, bars, a single value or the latest run's top rows; a stored pie or heatmap is that table, with a note that the shape is not drawn |
 | `/fleet` · `/fleet/sources` | Log-source fleet by class — volume against expected EPS with its completeness, the review queue of new and conflicting sources, class overrides (Phase C.1) |
 | `/fleet/catchall` | Catch-all senders (Phase C.2b) — who feeds SIM Generic and the Universal DSMs: the new-sender review queue, each sender's 24 h events, per-bucket totals |
 | `/admin` · `/admin/search-cadence` · `/admin/classification-rules` · `/admin/waf-sources` · `/admin/ips-sources` · `/admin/outage-policy` | Administration — the hub plus search cadence per family (`admin:search_cadence`), classification rules (`admin:classification`), per-source WAF field mappings with validation (`admin:waf`), per-source IPS field mappings with validation (`admin:ips`), the outage alert policy (`admin:outage`); the profile editors are `/admin/waf-sources/[logSourceId]` and `/admin/ips-sources/[logSourceId]` |
+| `/custom-rules` | Custom threshold rules (Phase F) (F-6, in progress) |
 
 `/config-changes` is deliberately unlisted: it is a placeholder outside the navigation with no
 API behind it (configuration changes are not collected), kept by decision D-11.
@@ -817,9 +822,10 @@ codebase uses a compact hand-formatted style throughout.
 
 ## Data model
 
-64 tables across bounded contexts (`instance`, `log_source`, `explanation`, `search`,
+69 tables across bounded contexts (`instance`, `log_source`, `explanation`, `search`,
 `search_cadence`, `offense`, `rule`, `config_change`, `alert`, `identity`, `monitoring`, `fleet`,
-`outage`, `waf`, `catchall`, `ips`, `geo`, `dashboard`). Thirteen are **TimescaleDB hypertables**:
+`outage`, `waf`, `catchall`, `ips`, `geo`, `dashboard`, `custom_rule`). Thirteen are
+**TimescaleDB hypertables**:
 `log_source_metric`, `search_result_metric`, `rule_metric`, `rule_match_metric`,
 `offense_snapshot`, `rule_health_snapshot`, `detection_coverage_snapshot`, `waf_endpoint_metric`,
 `waf_source_bucket`, `ips_source_bucket`, `ips_entity_metric`, `catchall_bucket` and
@@ -888,6 +894,12 @@ own cadence: how often it searches.
 
 **The cost is latency.** A detection can arrive up to *cadence + bucket + settle* late: about
 1 h 7 min at the defaults. The admin page shows this for each family.
+
+Custom rules inherit exactly this delay — they judge the same collected buckets — plus at most
+one 60-second evaluation beat. The Phase F design (§F.12) states that trade once, for the
+custom-rules pages: "Rules are judged on collected 5-minute buckets, up to about an hour after
+the events arrive. This is not a real-time correlation engine — for alerting within seconds,
+use QRadar's own rules."
 
 Operator-defined scheduled searches keep their own cron. Their schedule control offers the same
 presets.
@@ -1079,7 +1091,119 @@ Every write is audited (`dashboard.create`, `.update`, `.rename`, `.share`, `.de
 `.duplicate`, `.set_default`) with the name, revision and widget count, never the layout. Until
 OIDC lands every dev caller has the subject `local-dev`, so all dashboards share one owner.
 
+### Custom rules
+
+Phase F (D-15): operator-authored threshold rules over aggregates the platform **already
+collects**. Evaluation is DB-only — no new Ariel search, ever — and nothing raw is stored: rules
+read buckets that already exist, and a breach row carries counts, shares and a bounded subject
+label only. A rule names one subject. A log source, an IPS source, a WAF endpoint or an IPS
+entity is a pinned row id; a fleet class is a `SourceClass` value. The rule never names free
+text. It names one metric from the ten-entry catalog (`app/custom_rules/catalog.py`: `event_count` and
+`average_eps` per log source, fleet-class `eps`, a WAF endpoint's `request_count` and its three
+ratios `block_ratio`, `server_error_ratio` and `client_error_ratio`, an IPS entity's `events`,
+an IPS source's `total_events` and `blocked_share`), an operator (`GT`/`GE`/`LT`/`LE`/`EQ`), a
+threshold, a sustain and a recovery in buckets, and a severity.
+
+A 60-second Celery beat (`evaluate_custom_rules`, schedule key `evaluate-custom-rules`) is a
+no-op that opens no session while `CUSTOM_RULES_ENABLED` is false, the default. When it runs, a
+subject kind is judged only if it has an evaluable rule: enabled, not retired, and its family
+collected. The first such run seeds that kind's watermark at the latest closed bucket and judges
+nothing, so an upgrade never replays history. Later runs walk collected buckets after the
+watermark, at most `CUSTOM_RULES_MAX_BUCKETS_PER_RUN` per kind. That metric read is one statement
+per such kind. The tick's statement count is pinned equal at 10 rules and at 100. A tick that
+opens alerts inserts one row per new alert, and that cost is outside the pin.
+
+Three tables (migration `0024`, additive, no hypertable — rules are capped and breaches are
+bounded to one live row per rule):
+
+- **`custom_rule`** — the rule, its hysteresis counters (`consecutive_breaching` opens after
+  `sustain_buckets`, `consecutive_under` resolves after `recovery_buckets`) and its last status.
+- **`custom_rule_breach`** — the observation trail: bucket bounds, the worst and last value
+  each with its `EXACT`/`LOWER_BOUND` measurement, the unmeasured-bucket count, and a
+  `subject_label` snapshot that keeps the trail readable after the subject retires. One live
+  breach per rule is structural (partial unique index `uq_custom_rule_breach_active`, where
+  `state <> 'RESOLVED'`). The breach states are `OPEN`, `RECOVERING` and `RESOLVED` (the anomaly
+  states, reused, with no join to the incident lifecycle). Breaches stay out of `/anomalies`
+  (D-17) and surface in `/alerts`. The rule page is F-6, in progress.
+- **`custom_rule_watermark`** — one row per subject kind: how far that kind has been judged.
+
+Fail-closed, as the detectors: an unmeasured bucket (no row, a `PARTIAL` Phase A row, a
+breakdown that did not run) is not a zero and not an "under". It pauses both counters. It is
+counted on `unmeasured_buckets` only while a breach is already open. A maintenance bucket pauses
+the same way and is not counted as unmeasured. What a `LOWER_BOUND` proves comes from the
+catalog entry. `event_count`, `average_eps` and `total_events` are exact-only, so a lower bound
+proves nothing either way. The other seven metrics may prove `GT`/`GE` from a lower bound and
+never `LT`, `LE` or `EQ`. Recovery counts only consecutive exact unders.
+
+Each rule's `last_status` says why it is not being judged, never silence:
+
+| Status | Meaning |
+|---|---|
+| `NOT_ENABLED` | The fold's answer when `CUSTOM_RULES_ENABLED` is off. The beat does not write it: it returns before opening a session, and each rule keeps the status it already had |
+| `DISABLED` | The rule's own switch is off. Counters and any live breach are kept |
+| `SUBJECT_RETIRED` | The subject is missing (`the subject no longer exists`) or an endpoint or entity is no longer tracked (the reason names the retirement time when one is stored). A fleet class is never retired. A missing log source or IPS source is retired the same way |
+| `NOT_COLLECTED` | WAF or IPS collection is off. The reason is `waf_collection_enabled is off` or `ips_collection_enabled is off`. A log-source or fleet-class rule is not halted this way |
+| `STALE` | No bucket stored for that kind for longer than cadence + bucket + settle + 60 s. Every evaluable rule of the kind takes this status, including one whose breach row stays open; counters and the watermark stay, and the backlog is judged when rows return. A disabled, retired or family-off rule keeps its own status |
+| `OPEN` | A live breach that is not recovering |
+| `RECOVERING` | A live breach after an exact under that has not yet reached `recovery_buckets`. The bucket that meets `recovery_buckets` resolves it |
+| `OK` | No live breach, and the last judged bucket was measured. A streak that has not reached `sustain_buckets` is still `OK` |
+| `NO_VERDICT` | No live breach, and the last judged bucket proved nothing (unmeasured, or the source was in maintenance) |
+
+A rule that has never been evaluated has a null status, which is not `OK`. An idle tick,
+including a gap still inside the staleness bound, keeps the previous status.
+
+**The API** (`/api/v1/custom-rules`; the router is guarded by `read:custom_rules`, which
+`read:*` satisfies, and every write also needs `custom_rule:write`): `GET` (list), `POST`,
+`GET /{id}`, `PATCH /{id}`, `DELETE /{id}` (resolve the open alert as the deleting principal,
+then delete, 204), `POST /preview` (a draft replay), `GET /{id}/preview` (a stored-rule replay)
+and `GET /{id}/breaches`. `GET /custom-rules/catalog` (F-6a, in progress) is not on this branch.
+Both previews run the evaluator's own fold over one bulk read of stored buckets — nothing is
+persisted, alerted or audited — and `hours` is 1–168, default 24. The replay starts from a clean
+counter and ignores the operational halts (the rule disabled, the subject retired, the family
+or the platform off, a stale kind), so a draft still answers the historical question.
+Maintenance is applied the same way the evaluator applies it. Domain validation returns every
+reason at once (the body is `{"detail": {"message", "reasons"}}`). When the only reason is the
+enabled cap, the response is 409 and the detail is that sentence. A duplicate name is also 409.
+A patch requires `expected_updated_at` — the row's `updated_at` is the version token, there is
+no integer version — and a mismatch is 409 with `current_version` and `updated_by`. The
+enabled-count read is one unlocked `SELECT`, so two concurrent creates can both pass the cap.
+Every write is audited (`custom_rule.create|update|delete|enable|disable`, with before/after
+snapshots). Enable and disable are used only when `enabled` is the only field that changed.
+Previews are not audited.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `CUSTOM_RULES_ENABLED` | false | Kill switch for the evaluator; the beat opens no session until it is set |
+| `CUSTOM_RULES_ALERTING_ENABLED` | false | Shadow mode (D-17). While evaluation is on, breaches and rule state are written either way. The evaluator opens, refreshes, resolves and enqueues nothing until this is on |
+| `CUSTOM_RULES_MAX_ENABLED` | 100 | Enabled rules; creating or enabling past the cap is 409 |
+| `CUSTOM_RULES_MAX_BUCKETS_PER_RUN` | 288 | Closed buckets judged per subject kind per run (a day of 5-minute buckets) |
+| `CUSTOM_RULE_BREACH_RETENTION_DAYS` | 180 | Resolved breaches older than this are deleted. A live breach, and a row a rule still points at, are kept |
+| `CUSTOM_RULES_RETENTION_BATCH_SIZE` | 5000 | Breach rows deleted per retention batch |
+| `CUSTOM_RULES_RETENTION_MAX_BATCHES` | 20 | Batches per retention run |
+| `CUSTOM_RULES_RETENTION_INTERVAL_SECONDS` | 86400 | One breach-retention run per day |
+
 ### Scheduled-search dispatch
+
+Phase F (F-4) adds authoring guards on the same stored searches. At most
+`SCHEDULED_SEARCHES_MAX_ENABLED` (default 25) may be enabled — creating or enabling past the
+cap is 409 naming the limit, and a disabled search is not counted. A new or changed cron must
+fire at least 300 s apart (`CRON_FLOOR_SECONDS` in `app/services/search_scheduler.py`).
+`check_cron_floor` derives the gaps from the UTC schedule and falls back to walking
+`CronTrigger` fires; the check runs off the event loop. An expression this request does not
+change, including one faster than the floor, is kept verbatim. AQL and threshold refusals
+return every reason at once (the body is `{"detail": {"message", "reasons"}}`). A cron-floor
+refusal is 422 with a string detail. A patch whose only counted field is `enabled`
+(`change_note` does not count) is audited as `search.enable` / `search.disable`. Stored results
+are retained by a daily batch task. The optional Timescale chunk policy
+(`retention_search_result_metric_days`) stays off unless `RETENTION_ENABLED` is set.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `SCHEDULED_SEARCHES_MAX_ENABLED` | 25 | Enabled scheduled searches; creating or enabling past the cap is 409 |
+| `SEARCH_RESULT_METRIC_RETENTION_DAYS` | 90 | `search_result_metric` rows older than this (by `bucket_start`) are deleted daily |
+| `SEARCH_RESULT_RETENTION_BATCH_SIZE` | 5000 | Rows deleted per retention batch |
+| `SEARCH_RESULT_RETENTION_MAX_BATCHES` | 20 | Batches per retention run |
+| `SEARCH_RESULT_RETENTION_INTERVAL_SECONDS` | 86400 | One search-result retention run per day |
 
 `app/services/search_scheduler.py` expands each search's cron expression (via APScheduler's
 `CronTrigger`, already a dependency) and persists `next_run_at`, so the schedule survives a restart
@@ -1097,18 +1221,33 @@ an incident of its own:
 
 ### What raises an alert
 
-Three independent conditions, each with its own fingerprint so they never deduplicate into one
-another, all flowing into the same lifecycle and notification pipeline:
+The conditions in this table each have their own fingerprint, so they never deduplicate into
+one another, and they flow into the same lifecycle and notification pipeline. The same pipeline
+also carries `waf_anomaly`, `ips_anomaly`, `inventory` (a new log source, or a new catch-all
+sender) and `offense_collection_stale`.
 
 | Condition | Opens when | Resolves when |
 |---|---|---|
 | `anomaly` | a detector stays anomalous for N consecutive intervals (hysteresis) | it stays healthy for M intervals |
 | `search_threshold` | a completed run crosses the search's threshold | a later run completes under it |
 | `search_failure` | a search fails `SEARCH_FAILURE_ALERT_AFTER` consecutive runs | the next run succeeds |
+| `custom_rule_breach` | the metric stays past `sustain_buckets` while `CUSTOM_RULES_ALERTING_ENABLED` is on (the breach row is written either way) | `recovery_buckets` consecutive exact unders, but only while alerting is on. Disabling the rule or retiring its subject resolves the page on the same condition. Deleting the rule resolves it either way. A stale kind, a family that is off, and maintenance do not resolve a live page |
 
 `search_failure` exists because a detection that has quietly stopped executing produces no results
 and therefore no threshold breach — it would otherwise fail silently, which is precisely the blind
 spot this platform exists to close.
+
+`custom_rule_breach` (Phase F, `custom_rule_breach:<digest>` from
+`compute_fingerprint(source_type="custom_rule", source_id=rule_id, condition="custom_rule_breach")`)
+is an operator tripwire, not a platform detector finding. Its observation trail is the breach
+row under [Custom rules](#custom-rules). It stays out of `/anomalies` (D-17). In the default
+shadow mode (`CUSTOM_RULES_ALERTING_ENABLED=false`) breaches and rule state are written and
+nothing is opened, refreshed or resolved by the evaluator; a page left open from an earlier
+alerting period stays open until alerting is turned back on. Deleting the rule is the
+exception: that path resolves the page either way, with the deleting principal as actor. A
+cascade that never reaches it is closed on a later alerting tick by the orphan sweep,
+attributed to `custom-rule-evaluator`. A source-backed rule whose source is in maintenance
+neither opens, refreshes nor resolves an alert. A fleet class has no maintenance window.
 
 ### Result trends
 
@@ -1316,13 +1455,19 @@ lints and updates this README.
     measurement and cleanup (UI-6.1–UI-6.5). Its groundwork merged: characterization page tests
     for the untested routes and boundaries (T-096, T-097) and the unused `echarts-for-react`
     dropped (T-099, a UI-6.4 item).
-- **Phase F (designed; build in progress)** — custom detections (D-15, T-108): threshold rules
-  run on collected aggregates, and custom AQL gets an editor and result charts. The build is on
-  unmerged branches (F-1, F-4) and lands after Phase 5 reaches `main`. See
+- **Phase F (backend, API and the F.2 UI built; F-6 in progress)** — custom detections (D-15,
+  T-108): threshold rules on collected aggregates — F-1 (model, migration `0024`, metric
+  catalog, DB-only evaluator, breach retention), F-2 (shadow-mode alerting behind
+  `CUSTOM_RULES_ALERTING_ENABLED`), F-3 (the custom-rules API, previews, the
+  `detection_engineer` role) — and custom AQL — F-4 (enabled-search cap, cron floor, 422
+  `reasons[]`, enable/disable audit split, result retention), F-5 (the `/searches/new` editor)
+  and F-7 (the `chart.search_results` widget). F-6 (the `/custom-rules` UI) and F-6a (the
+  catalog endpoint) are in progress and are not on this branch; live validation on the lab is
+  the follow-up the design schedules. See
   [the Phase F design](docs/PHASE-F-CUSTOM-DETECTIONS.md).
 
-Next: UI-5.9, then the full gate and `feat/phase-ce` → `main`; Phase 6 QA (UI-6.1–UI-6.4); the
-Phase F build; the deferred production geo window (G-5); and the 24 h new-port validation
+Next: UI-5.9, then the full gate and `feat/phase-ce` → `main`; Phase 6 QA (UI-6.1–UI-6.4);
+F-6 and F-6a; the deferred production geo window (G-5); and the 24 h new-port validation
 ([T-054](docs/tasks/T-054.report.md), L-1). The order is the one in
 [the planner](docs/PLANNER.md).
 
