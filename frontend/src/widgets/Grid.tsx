@@ -124,7 +124,7 @@ function ArrangeControls({
         className="dg-arrange-trigger"
         aria-label={`Arrange ${title}`}
         aria-expanded={open}
-        aria-controls={panelId}
+        aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((current) => !current)}
       >
         Edit

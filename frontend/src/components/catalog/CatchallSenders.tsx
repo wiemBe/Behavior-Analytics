@@ -49,7 +49,7 @@ export function CatchallSenders() {
         return (
           <>
             <TableScroll label="Newest unreviewed catch-all senders">
-              <table className="tw-table cw-table">
+              <table className="tw-table cw-table" aria-label="Newest unreviewed catch-all senders">
                 <colgroup>
                   <col />
                   <col className="tw-col-time" />

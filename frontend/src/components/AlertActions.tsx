@@ -119,7 +119,17 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
       </div>
 
       {confirming && (
-        <div className="alert-actions-confirm" role="group" aria-label="Confirm resolve">
+        <div
+          className="alert-actions-confirm"
+          role="group"
+          aria-label="Confirm resolve"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              closeConfirm();
+            }
+          }}
+        >
           <p>Resolve this alert? A resolved alert cannot be reopened.</p>
           <div className="actions">
             <button

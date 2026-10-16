@@ -28,7 +28,7 @@ export default async function SearchCatalogPage() {
         <div className="notice">No scheduled searches defined yet.</div>
       ) : (
         <TableScroll label="Scheduled searches">
-          <table className="table-dense">
+          <table className="table-dense" aria-label="Scheduled searches">
             <thead>
               <tr>
                 <th>Name</th>

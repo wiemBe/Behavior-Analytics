@@ -159,6 +159,7 @@ export function IpsProfileEditor({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const confirmRef = useRef<HTMLDivElement>(null);
+  const confirmTrigger = useRef<HTMLButtonElement | null>(null);
 
   const changes = useMemo(() => ipsDraftChanges(schema, baseDraft, draft), [schema, baseDraft, draft]);
   const errors = useMemo(() => draftErrors(formSch, draft), [formSch, draft]);
@@ -234,7 +235,7 @@ export function IpsProfileEditor({
     );
   }
 
-  function review(where: "mapping" | "values") {
+  function review(where: "mapping" | "values", from: HTMLButtonElement) {
     setSaveMsg(null);
     setFormError(null);
     setFieldErrors({});
@@ -246,7 +247,15 @@ export function IpsProfileEditor({
       });
       return;
     }
+    confirmTrigger.current = from;
     setConfirmAt(where);
+  }
+
+  function closeConfirmation() {
+    setConfirmAt(null);
+    const from = confirmTrigger.current;
+    confirmTrigger.current = null;
+    queueMicrotask(() => from?.focus());
   }
 
   function discard() {
@@ -484,6 +493,12 @@ export function IpsProfileEditor({
         aria-label="Confirm the change"
         tabIndex={-1}
         ref={confirmRef}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && busy === null) {
+            event.stopPropagation();
+            closeConfirmation();
+          }
+        }}
       >
         <h3>{creating ? "Create this profile?" : "Save this change?"}</h3>
         {changeRows.length > 0 && (
@@ -554,7 +569,7 @@ export function IpsProfileEditor({
             type="button"
             className="action secondary"
             disabled={busy !== null}
-            onClick={() => setConfirmAt(null)}
+            onClick={closeConfirmation}
           >
             Cancel
           </button>
@@ -577,7 +592,7 @@ export function IpsProfileEditor({
           type="button"
           className="action"
           disabled={busy !== null || (!creating && !dirty) || confirmAt === where}
-          onClick={() => review(where)}
+          onClick={(event) => review(where, event.currentTarget)}
         >
           {creating ? "Review and create" : "Review and save"}
         </button>

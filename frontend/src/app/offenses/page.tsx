@@ -101,7 +101,7 @@ export default async function OffensesPage({
       ) : (
         <>
           <TableScroll label="Offenses">
-          <table className="offenses-table table-dense">
+          <table className="offenses-table table-dense" aria-label="Offenses">
             <thead>
               <tr>
                 <th>ID</th>

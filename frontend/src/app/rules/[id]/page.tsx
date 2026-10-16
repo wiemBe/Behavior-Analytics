@@ -138,7 +138,7 @@ export default async function RuleDetailPage({
 
       <h3>Metadata</h3>
       <TableScroll label="Rule metadata">
-      <table className="kv-table">
+      <table className="kv-table" aria-label="Rule metadata">
         <tbody>
           <tr>
             <th>Rule type</th>
@@ -207,7 +207,7 @@ export default async function RuleDetailPage({
         <div className="notice">No rule-health evaluation has been stored yet.</div>
       ) : (
         <TableScroll label="Rule health history">
-        <table className="rules-history table-dense">
+        <table className="rules-history table-dense" aria-label="Rule health history">
           <thead>
             <tr>
               <th>Evaluated</th>

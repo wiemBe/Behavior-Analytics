@@ -136,7 +136,7 @@ export default async function OffenseDetailPage({
 
       <h3>Attributes</h3>
       <TableScroll label="Offense attributes">
-      <table className="kv-table">
+      <table className="kv-table" aria-label="Offense attributes">
         <tbody>
           <tr>
             <th>Assigned to</th>
@@ -214,7 +214,7 @@ export default async function OffenseDetailPage({
         </div>
       ) : (
         <TableScroll label="Offense history">
-        <table>
+        <table aria-label="Offense history">
           <thead>
             <tr>
               <th>Captured</th>

@@ -47,7 +47,7 @@ export function FleetClasses({ range, expanded: expandedProp }: RangedProps = {}
         return (
           <>
             <TableScroll label="Source classes">
-              <table className="tw-table cw-table">
+              <table className="tw-table cw-table" aria-label="Source classes">
                 <colgroup>
                   <col />
                   <col className="tw-col-count" />

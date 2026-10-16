@@ -122,8 +122,13 @@ export function ResultTrend({
     const c = readChartPalette();
     const text = { color: c.label, fontFamily: c.font };
     const lone = isolatedIndices(values);
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     return {
+      animation: !reduceMotion,
       useUTC: true,
       grid: { left: 56, right: 24, top: 32, bottom: 56 },
       textStyle: text,

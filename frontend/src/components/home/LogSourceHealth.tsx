@@ -92,7 +92,7 @@ export function LogSourceHealth() {
                 </p>
               )}
               <TableScroll label="Log source health categories">
-                <table className="tw-table tw-categories">
+                <table className="tw-table tw-categories" aria-label="Log source health categories">
                   <colgroup>
                     <col />
                     <col className="tw-col-count" />

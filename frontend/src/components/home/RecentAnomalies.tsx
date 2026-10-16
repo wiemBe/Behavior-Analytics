@@ -68,7 +68,10 @@ export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
           return (
             <>
               <TableScroll label={waf ? "Recent WAF anomalies" : "Recent anomalies"}>
-                <table className="tw-table">
+                <table
+                  className="tw-table"
+                  aria-label={waf ? "Recent WAF anomalies" : "Recent anomalies"}
+                >
                   <colgroup>
                     <col className="tw-col-time tw-unfold" />
                     <col />
