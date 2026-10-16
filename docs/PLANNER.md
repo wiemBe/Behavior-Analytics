@@ -23,11 +23,11 @@ the sandboxing rules (still binding). The 14:35 section below is superseded wher
 
 **Branches.**
 - `main` @ `e26c683` (Phase 5 and everything before it). Unchanged this session.
-- `feat/phase-ce` @ `b2c5416` (pushed). Since `main` it holds:
+- `feat/phase-ce` @ `38ae87b` (pushed). Since `main` it holds:
   - UI-6.1 to UI-6.8: **Phase 6 is closed**;
   - T-114 to T-117;
   - F-1, F-2, F-3, F-4, F-5, F-6a, F-7, F-8;
-  - AUTH-1.
+  - AUTH-1, AUTH-2.
 - Migration head **`0025`**.
 - Last measured gates:
   - **Full integration: 1,281 passed, 0 failed.** Measured on the F-3 merged tree, which is
@@ -43,8 +43,7 @@ the sandboxing rules (still binding). The 14:35 section below is superseded wher
 
 | Task | Agent / unit | Worktree / DB | How to check, and what is left for the orchestrator |
 |---|---|---|---|
-| **F-6** ([spec](tasks/F-6.md)) custom-rules UI: `/custom-rules` list, editor with subject and metric pickers and a live preview, rule page with breaches; screenshots | **Codex**, `f6-codex2`, from 15:20, session `01a144a7-edef-77e3-aa7e-28e118bfd00d` | `f6` from `5999bb5`; ports 3106/8106/9106; log `QRadar-Dash-work/f6/codex.log`; report `docs/tasks/F-6.report.md` (written as it goes) | **35-minute check at 15:55**. Look for "usage limit" or "at capacity" in the log (Codex exits 0 either way). Then: review the PNGs, the escaping test for tooltip formatters, and the gates; then merge. If cut off, hand the worktree to Grok with "review what you inherit" |
-| **AUTH-2** round 1 ([review](../../QRadar-Dash-work/auth2/review1.md)) | **Grok**, `auth2-grok-r1`, from 15:15, session `01a14463-f1a8-7663-96c5-7f05eec20ae5` | `auth2` (holds round 0 `4f1258e`, with `feat/phase-ce` merged in at `45c12de`); ports 3102/8102/9102; PNGs `QRadar-Dash-work/auth2/screenshots/` | Review the recaptured PNGs against the six findings: account menu instead of a clipped clock; centred login with a one-sentence alert; Directory words and pills; field widths and hint weight; users table; `/admin` hub. Then the gates, then merge |
+| **F-6** round 1 ([review](../../QRadar-Dash-work/f6/review1.md)) | **Grok**, `f6-grok-r1`, from 16:03 (Codex built round 0 in 41 min, committed `a317bc5`: list, editor, rule page, honest preview chart, encoded tooltips; 273 / 3,047) | `f6` (based on `5999bb5`; **merge `feat/phase-ce` into it after this round**: AUTH-2 also touched `lib/api.ts` and `nav.ts`) | Findings: list PNG captured while loading, dev badge and "Status: Problem" in every shot; fixture invents data (one subject for every rule, "Recorded reason for X"); raw `NO_VERDICT`/`SUBJECT_RETIRED` pills; the status column is last (off-screen at 1024); empty band under the title; editor "hours" overflows its card; threshold label over the line; spaced time chip |
 | **T-118** ([spec](tasks/T-118.md)) Phase F.1 **live validation**: shadow mode, then alerting on, one fail-closed gap; ≤ 10 EPS, ≤ 60 Ariel searches | **Sonnet sub-agent of this chat**, driven by the clock (~75–90 min), from ~15:25 | worktree `t118` detached at `038380b`; DB `qradar_obs_t118`; report `QRadar-Dash-work/t118/T-118.report.md` (written as it goes) | **It dies with the chat.** If the chat closed: stop any `qradar_lab_loggen` process by PID (`pgrep -af qradar_lab_loggen`; never `pkill -f`). Read the report, then hand over with "review what you inherit"; it needs a Sonnet sub-agent again, because of the token. Every defect it finds becomes a fix task |
 
 Watchers, liveness and logs:
@@ -109,6 +108,7 @@ Watchers, liveness and logs:
 | ~~F-3~~ | **Merged** (`89886a9`).<br>• Round 1 was taken over by the orchestrator, see "Facts learned".<br>• `KNOWN_PERMISSIONS` gains the two custom-rule permissions.<br>• Gates on the merged tree:<br>&nbsp;&nbsp;– frontend: lint, typecheck, 263 / 2,994;<br>&nbsp;&nbsp;– backend: ruff, mypy 0, unit 3,435;<br>&nbsp;&nbsp;– **full integration 1,281 passed, 0 failed** |
 | ~~F-6a~~ | **Merged** (`5999bb5`, Grok, 22 min).<br>• `GET /custom-rules/catalog` reads every value from the code that enforces it, and is registered before `/{rule_id}`.<br>• Grok: unit 3,441; integration 22; a break-it test for each new test |
 | ~~F-8~~ | **Merged** (`b2c5416`; GLM 5.3 until its Z.AI limit, then Grok reviewing what it inherited, 19 min). README: custom rules (three tables, nine statuses, API, settings, the `custom_rule_breach` alert row), the F-4 search guards and settings, `/searches/new` and the `chart.search_results` widget, `detection_engineer`, 69 tables; design: [BUILT]/[BUILDING] markers with as-built notes. Grok listed 22 places where the code and the documents disagreed. The orchestrator checked five names (settings, `uq_custom_rule_breach_active`, `CRON_FLOOR_SECONDS`, the beat key, the 68 + 1 table count). **Follow-up after F-6:** finish the "(F-6, in progress)" and "(F-6a, in progress)" lines and the [BUILDING] markers |
+| ~~AUTH-2~~ | **Merged** (`38ae87b`, Grok, rounds 0–3): sign-in page; session in the shell (account menu: who, source, roles, change password, sign out); must-change and no-role screens; Users and Directory administration with a connection test in words; `GET /users/roles`. Review: round 1 fixed six PNG findings (clipped data-age clock, stretched login, raw probe values, stretched fields, users table, `/admin` hub); round 2 the error-alert contrast and a spacing; round 3 a roles test that hard-coded three roles (broke on `detection_engineer`; now reads the seed). Orchestrator: lint, typecheck, **278 files / 3,131 tests**; ruff, mypy 0, unit 3,443; PNGs reviewed |
 
 Worktrees and DBs of merged tasks were removed: `t116`, `ui65`, `ui68`, `t117`, `f3`, `f6a`, plus
 `f1`, `f2`, `f4`, `f7` and `auth1` from earlier sessions.
