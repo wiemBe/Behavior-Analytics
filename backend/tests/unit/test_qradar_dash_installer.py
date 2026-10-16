@@ -280,11 +280,20 @@ def build_path(tmp_path: Path) -> str:
         pytest.skip("the installer preflight needs 7.5 GiB of RAM on the test host")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for tool in [*NEEDED_TOOLS, "openssl", "curl", "sha256sum", "timeout", "getenforce",
+    for tool in [*NEEDED_TOOLS, "openssl", "sha256sum", "timeout", "getenforce",
                  "chmod", "mv", "cp", "ln", "touch", "wc", "cut", "tee", "sleep", "basename"]:
         found = shutil.which(tool)
         if found:
             (bin_dir / tool).symlink_to(found)
+    # Preflight wants curl, and a slim image has neither it nor openssl; stub what is absent so
+    # the build tests do not depend on the host's tools.
+    _stub(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
+    if not (bin_dir / "openssl").exists():
+        _stub(
+            bin_dir / "openssl",
+            "#!/bin/sh\n[ \"$1\" = rand ] && echo 0123456789abcdef0123456789abcdef01234567\n"
+            "exit 0\n",
+        )
     _stub(bin_dir / "docker", DOCKER_BUILD_STUB)
     _stub(bin_dir / "nproc", "#!/bin/sh\necho 8\n")
     _stub(bin_dir / "ss", "#!/bin/sh\nexit 0\n")

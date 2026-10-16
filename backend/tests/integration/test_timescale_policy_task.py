@@ -26,7 +26,14 @@ TABLES = {
 async def hypertables(db_session):  # type: ignore[no-untyped-def]
     ext = await db_session.scalar(text("SELECT 1 FROM pg_extension WHERE extname='timescaledb'"))
     if ext is None:
-        pytest.skip("timescaledb not installed")
+        # `reset_public_schema` in an earlier test module drops the extension with `public`.
+        available = await db_session.scalar(
+            text("SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'")
+        )
+        if available is None:
+            pytest.skip("the database image does not offer the timescaledb extension")
+        await db_session.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
+        await db_session.commit()
     for table, col in TABLES.items():
         await db_session.execute(
             text("SELECT create_hypertable(:t, :c, if_not_exists => TRUE, migrate_data => TRUE)")
