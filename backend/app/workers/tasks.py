@@ -42,6 +42,8 @@ from app.collectors.rule_match_collector import RuleMatchCollector
 from app.collectors.rule_metric_collector import RuleMetricCollector
 from app.core.config import get_settings
 from app.core.database import dispose_engine, get_sessionmaker
+from app.custom_rules.engine import CustomRuleEngine
+from app.custom_rules.retention import CustomRuleRetention
 from app.models.enums import EvidenceStatus, Severity
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
@@ -1292,6 +1294,33 @@ async def apply_waf_retention() -> dict:
         return report.as_dict()
 
 
+async def evaluate_custom_rules() -> dict:
+    """Judge custom threshold rules from stored buckets. Sends no Ariel search.
+
+    A no-op, and no session, while CUSTOM_RULES_ENABLED is false. The first
+    enabled run seeds each kind's watermark and judges nothing.
+    """
+    settings = get_settings()
+    if not settings.custom_rules_enabled:
+        return {"status": "disabled"}
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await CustomRuleEngine(session, settings).run()
+        await session.commit()
+        return report.as_dict()
+
+
+async def apply_custom_rule_retention() -> dict:
+    """Delete resolved breaches older than the retention window, in bounded batches.
+
+    The service commits each batch. Live breaches, and rules, are kept.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await CustomRuleRetention(session).run()
+        return report.as_dict()
+
+
 # ------------------------------------------------------------------ IPS (D.5)
 async def dispatch_ips_collection(instance_name: str | None = None) -> dict:
     """Run one fleet-wide IPS plan per instance after claiming its cadence slot."""
@@ -1495,3 +1524,13 @@ def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_ips_retention")
 def apply_ips_retention_task() -> dict:
     return _run(apply_ips_retention())
+
+
+@celery_app.task(name="evaluate_custom_rules")
+def evaluate_custom_rules_task() -> dict:
+    return _run(evaluate_custom_rules())
+
+
+@celery_app.task(name="apply_custom_rule_retention")
+def apply_custom_rule_retention_task() -> dict:
+    return _run(apply_custom_rule_retention())

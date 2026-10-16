@@ -527,6 +527,20 @@ class Settings(BaseSettings):
     geo_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     geo_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
+    # --- Phase F: custom threshold rules (design §F.4, §F.10) ----------------
+    #: Kill switch. The evaluator is DB-only and sends no Ariel search. Nothing
+    #: runs until this is set, so an upgrade changes no behaviour.
+    custom_rules_enabled: bool = False
+    #: Enabled rules. Creating or enabling beyond this is refused (409 at the API).
+    custom_rules_max_enabled: int = Field(default=100, ge=1, le=10_000)
+    #: Closed buckets judged per subject kind per run. 288 is a day of 5-minute buckets.
+    custom_rules_max_buckets_per_run: int = Field(default=288, ge=1, le=10_080)
+    #: Resolved breaches older than this are deleted. Live breaches are kept.
+    custom_rule_breach_retention_days: int = Field(default=180, ge=1)
+    custom_rules_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    custom_rules_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    custom_rules_retention_interval_seconds: int = Field(default=86400, ge=3600)
+
     # --- Phase B.1.5: Ariel budget and batching ------------------------------
     #: WAF sources that may have an Ariel search in flight at once, across every
     #: worker. Each source collects one bucket per permit; a source that cannot
