@@ -8,7 +8,58 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶ RESUME HERE — STATE AT 23:25, 2026-10-15 (supersedes 22:55 below; the orchestrator session was at 90 %)
+## ▶▶ RESUME HERE — STATE AT 10:30, 2026-10-16 (sixteenth session, from 10:05)
+
+The machine shut down at 00:39 and rebooted at 10:03; every agent had died. The test DB was
+restarted (`docker compose -f docker-compose.test.yml up -d test-db`) and the agent DBs recreated.
+
+**The user (10:05):** "opencode da z.ai üzerinden glm kullanma şuanlık ama glm 5.3 flash opencode
+da free deepseek v4 free 200k contexte codex grok falanda kullan". So: **no `zai-coding-plan/*`
+GLM**; use `opencode/glm-5.3-flash-free`, `opencode/deepseek-v4.1-flash-free` (both probed OK),
+Codex and Grok.
+
+**Sandboxing (new this session).** The auto-mode classifier refused an unsandboxed
+`grok --always-approve` launch. Every agent now runs in a sandbox:
+- Grok: `--sandbox qradar-agent` (profile in `~/.grok/sandbox.toml`: writes only to its `--cwd`
+  worktree and `QRadar-Dash-work/`; `.secrets/`, `~/.ssh`, `~/.codex` etc. denied). Probed:
+  main checkout write refused, `.secrets` unreadable, DB port reachable. A session created
+  without a sandbox **cannot be resumed** under one; start a new session with the spec, the
+  report and the review instead.
+- opencode: `QRadar-Dash-work/opencode-bwrap.sh <worktree> <workdir> run --standalone …`
+  (bubblewrap: `/` read-only, worktree + work dir + opencode state writable, `.secrets` hidden).
+- Codex: its own `-s workspace-write` plus `--add-dir <workdir>`.
+- All launched as `systemd-run --user --unit=<name> --collect <launch.sh>`; each task's
+  `launch.sh` is in its work dir. `systemctl --user is-active <unit>` is the liveness check.
+
+**Merged this session:** UI-5.9 (`1cd92e6`; the orchestrator re-ran lint, typecheck, 237 files /
+2,848 tests and build in the worktree, and reviewed the PNGs). **Phase 5 is complete on
+`feat/phase-ce`.** Merged-head frontend gate on `1cd92e6`: `npm ci`, lint and typecheck clean,
+237 files / 2,848 tests passed, build OK.
+
+**In flight:**
+
+| Task | Agent (unit) | Where | Notes |
+|---|---|---|---|
+| Backend full gate on `1cd92e6` | orchestrator | worktree `gate`; DBs `qradar_obs_gate`, `_gate_mig`; log `QRadar-Dash-work/gate-1016/backend.log` | then `feat/phase-ce` → `main` |
+| **F-1** handover 2 ("review what you inherit": GLM's models, migration, catalog, validation) | Grok (`f1-grok2`), from 10:11 | worktree `f1`; DBs `qradar_obs_f1`, `_f1_mig`; log `QRadar-Dash-work/f1/grok2.log` | the first Grok handover (00:22) wrote nothing before the shutdown. Merge only after `main` |
+| **F-4** review round 1 | Grok (`f4-grok-r1b`), from 10:15 | worktree `f4`; DB `qradar_obs_f4`; review `QRadar-Dash-work/f4/review1.md` | (1) the cron floor walks 105,408 fires in 1.61 s on the event loop for `*/5`: must be exact and < 50 ms; (2) `body: dict` dropped the OpenAPI request schema: restore and pin it. Cap, audit split, 422 object and retention accepted |
+| **UI-6.1** viewport matrix | Grok (`ui61-grok`), from 10:22 | worktree `ui61`; ports 3161/8161/9161 | measures; one-line route CSS fixes only |
+| **UI-6.2** accessibility | Codex (`ui62-codex`), from 10:21 | worktree `ui62`; ports 3162/8162/9162 | Codex reset was 02:18 |
+| **UI-6.3** dashboard performance | DeepSeek free (`ui63-ds`), from 10:25 | worktree `ui63`; ports 3163/8163/9163 | measures |
+| **T-114** ([spec](tasks/T-114.md)) docs screenshots after Phase 5 + README block-shift result | GLM 5.3 Flash free (`t114-glmf`), from 10:28 | worktree `t114`; ports 3114/8114/9114 | — |
+
+**Next:** UI-6.4 after UI-6.1 and UI-6.2 merge (it touches every stylesheet); `main` after the
+backend gate; then F-1 and F-4 onto `feat/phase-ce`; Phase F build (F-2, F-3, F-5…).
+
+**Follow-up seen in the UI-5.9 PNGs:** a saved dashboard ("Night shift", 1024×768) has ~60 px of
+empty space between its title and its description. Give it to UI-6.1's findings or a small task.
+
+**Still open for the user:** the five Phase F questions (§F.16); OPS-0 stays deferred (D-16);
+the runbook language and who operates production.
+
+---
+
+## ▶ RESUME HERE — STATE AT 23:25, 2026-10-15 (supersedes 22:55 below; the orchestrator session was at 90 %)
 
 **After a reboot:**
 1. `docker compose -f docker-compose.test.yml up -d test-db`. The tmpfs DB is empty; recreate
