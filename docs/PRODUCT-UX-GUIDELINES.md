@@ -14,7 +14,8 @@ Companion documents:
 [Behavioral Analytics Architecture](BEHAVIORAL-ANALYTICS-ARCHITECTURE.md) for
 the engine, lifecycle and explanation model;
 [Phase A design](PHASE-A-SOURCE-VOLUME-ANOMALY.md) for the source-volume
-detector.
+detector; [UI redesign plan](UI-REDESIGN-PLAN.md) for the charcoal system, the
+widget Dashboard and the rulings (UR.9, decision D-11) behind §3, §8 and §11.
 
 ---
 
@@ -37,6 +38,15 @@ Everything else the interface carries — offenses, rules, coverage, inventory �
 is a supporting capability. Supporting routes must not be given the visual
 weight, the hierarchy, or the development attention of the behavioral ones.
 
+The Dashboard at `/` is the one cross-cutting surface (the user's decision
+D-11). It is a home over behavior, fleet, offenses and alerts, not a behavioral
+route: `/behavior` keeps the behavioral triage job and its pinned tests. The
+weight rule holds on the Dashboard too — behavioral widgets take the larger
+area, and each supporting capability appears at a lower weight (on the default
+template, offenses hold one KPI card and one table). The Dashboard must not
+drift into a generic metrics screen: a widget that does not help an analyst
+decide what to look at does not belong on it.
+
 A feature that does not help an analyst answer *"did this source change, and
 what changed?"* does not belong on the behavioral routes.
 
@@ -52,6 +62,13 @@ must answer the question the route exists for. A page that opens with equally
 weighted counters answers nothing: the overview carries four counters, not ten,
 and the source page opens with its identity and four metrics rather than a
 technical collection table.
+
+A row of KPI cards is permitted **only on the Dashboard**, and only when every
+card in it earns its place: a different structure from its neighbours, a
+breakdown derived from real fields, a drill-down link, its own honest states,
+and no vanity delta. The four Dashboard cards (`KpiRow`) meet this; identical
+number tiles remain prohibited everywhere, and `/behavior` and the incident
+page keep their pinned four-counter and comparison-block contracts (§3, §8).
 
 **Semantic correctness before visual convenience.** When a layout is easier to
 build by blurring two states that mean different things, the layout loses. A
@@ -91,6 +108,31 @@ structurally. Hiding overflow is not a fix; it is the defect plus concealment
 ---
 
 ## 3. Information architecture
+
+### `/` — the Dashboard
+
+Answers *"what needs me now, across the platform?"*.
+
+- A widget dashboard: the analyst's saved layout (addressable as
+  `/?dashboard=<id>`), or the dashboard marked default, or the unsaved SOC
+  Overview template when there is none. Dashboards are persisted per owner;
+  the template is shown unsaved and says so.
+- Cross-cutting by decision D-11: behavior, fleet, offenses and alerts in one
+  view. Behavioral widgets get the larger area; supporting capabilities appear
+  at a lower weight (§1).
+- Widgets are registered, catalog-driven and configurable within enumerated
+  options only (§8). Every widget renders its own loading, empty, no-data,
+  not-collected, stale, error and forbidden state; one failed read leaves the
+  others standing.
+- Every widget drills down to the route that owns its data, with the filter
+  pre-applied where the target supports it.
+
+This route **must not** become the triage page (`/anomalies` and `/behavior`
+keep that job), a second source inventory, or a wall of vanity numbers: a
+figure is shown only where a real field backs it, a delta only where a baseline
+exists (deviation from expected), and a health share reads *"n of m judged
+normal"* — never a percentage that counts unjudged sources as healthy. A
+comparison against a previous window that no API provides is not invented.
 
 ### `/behavior` — behavioral overview
 
@@ -146,6 +188,17 @@ Sections 5–7 are secondary and use progressive disclosure. Collapsing them
 **must not** hide a critical `UNAVAILABLE` or `FAILED` condition: the disclosure
 summary carries the state even when the body is closed.
 
+### `/behavior/waf` and `/behavior/waf/sources/[id]` — WAF behavior
+
+Answers *"which WAF source or endpoint changed?"*.
+
+- The source list carries profile verdict, endpoint coverage and active
+  endpoints; the source page carries its endpoints and their verdicts.
+- Endpoint state `null` means *no detector has evaluated it* — rendered as
+  such, never as `NORMAL`.
+- Lower-bound measurements are marked with their own words (`≥`), apart from
+  exact ones; `INSUFFICIENT_DATA` keeps its neutral tone.
+
 ### `/anomalies` — triage
 
 Answers *"which incident do I open first?"*.
@@ -174,6 +227,47 @@ Established hierarchy:
   multi-table initial render it replaced.
 - **Technical and AQL material collapsed by default**, behind the established
   tab and disclosure presentation.
+
+### Supporting routes
+
+Each answers one question and none competes with the behavioral routes for
+weight (§1). Only routes that exist are listed; a navigation entry is a promise
+that something is on the other side of it.
+
+- **`/fleet`** — *"how healthy is each class of source?"* Window means per
+  class; a figure with no complete bucket behind it is null, never 0.
+- **`/fleet/sources`** — *"which source belongs to which class, and who has
+  reviewed it?"* Classification and review actions live here.
+- **`/fleet/catchall`** — *"which unconfigured devices send to the catch-all
+  sources, and how much?"* A bucket with no stored row is not measured:
+  shaded, never a zero.
+- **`/offenses` and `/offenses/[id]`** — *"which offense needs a SOC analyst,
+  and what is this offense?"* `magnitude`, `severity`, `credibility` and
+  `relevance` are nullable and render as em dashes when null.
+- **`/alerts` and `/alerts/[id]`** — *"which alerts are open, and what
+  happened on this one?"*
+- **`/rules` and `/rules/[id]`** — *"which rule is unhealthy, and what is this
+  rule doing?"* Sections that are null say so with a reason, never as an empty
+  list.
+- **`/rules/statistics`** — *"what does the rule set cost?"* Lower-bound match
+  rates say `≥`; truncated, failed and missing windows are counted apart.
+- **`/coverage`** — *"where is detection coverage absent or degraded?"*
+  `coverage_score` and `confidence` are nullable; provenance is explicit versus
+  inferred.
+- **`/log-sources` and `/log-sources/[id]`** — *"which sources exist, and what
+  is this one's metadata and health?"* `health_score` is nullable.
+- **`/searches`, `/searches/new` and `/searches/[id]`** — *"which stored
+  searches exist, how are they authored, and how did they run?"* The frontend
+  never supplies AQL of its own to execute; a run starts a stored, validated,
+  versioned query.
+- **`/admin`** — the administration hub; not in the navigation.
+- **`/admin/search-cadence`, `/admin/classification-rules`,
+  `/admin/outage-policy`, `/admin/waf-sources`, `/admin/ips-sources`** (each
+  with its detail route where one exists) — the administrative surfaces for
+  collection cadence, classification, outage policy, and WAF and IPS field
+  mapping.
+- **`/config-changes`** — a route whose data is not collected; it says so
+  rather than drawing an empty table. Not in the navigation.
 
 ---
 
@@ -366,11 +460,22 @@ attribute at all. A detail route marks its owning section, never that section's
 path prefix. Link names must be accessible and unambiguous: no two destinations
 may share an accessible name. The shell holds no heading element.
 
+Navigation is **text only** (decision D-11): no icons, no glyphs. An entry
+exists only where a page exists — a destination with nothing behind it spends
+the analyst's attention and delivers nothing. The Dashboard sits alone at the
+top; the Behavior group leads the labelled groups. The active item is shown by
+a raised surface and a neutral left rule, never by a status or accent hue;
+`aria-current` stays the semantic carrier.
+
 ### `PageHeader`
 
 Owns the document's single `h1` and names the page. Pages compose sections
 beneath it starting at `h2`. Child content **must not** introduce a second
-page-level `h1`.
+page-level `h1`. The description is one line of orientation: a fact (the
+window, the data age), never a restatement of the title and never a promise the
+product does not deliver. No tagline and no version line — no version endpoint
+exists, so a version number would be invented. The `meta` row holds badges and
+qualifiers and renders nothing when it is empty.
 
 ### `StatCard`
 
@@ -379,6 +484,10 @@ available field into a KPI — the limits in §3 are the contract. Its content m
 shrink or wrap rather than widen the page, and its optional note is where a
 counter carries its own caveat, next to the number rather than in a paragraph
 further down.
+
+The Dashboard's KPI row is not built from `StatCard`: its cards are the `kpi`
+variant of `WidgetFrame` (below), each with its own reads, states, breakdown
+and drill-down (§2). `StatCard` keeps the behavioral pages' counters.
 
 ### `Tabs`
 
@@ -473,6 +582,113 @@ nothing was changed, and what to try; it **must not** render the exception
 text, which can carry a stack trace or an upstream URL. Next's error digest may
 be shown as a reference.
 
+### `TopBar`, `TopSearch`, `AutoRefresh`, `AlertBell`, `ConnectionStatus`
+
+The shell's top bar (`components/shell/`). Its elements read existing list and
+health endpoints only; **no QRadar search is issued from the bar**, and search
+results are links, never actions.
+
+- `TopSearch` is a combobox (arrow keys, `aria-activedescendant`, Escape,
+  Ctrl+K) over lists that already exist: sources, rules, offenses, and active
+  anomalies (client-filtered over one bounded read, its group labelled with the
+  cap). A group the role may not read (`403`) is omitted from the results and
+  named once in a footer line — never drawn as "no results".
+- `AutoRefresh` offers Off, 1 min, 5 min. It shows two distinct times:
+  *refreshed* (when the browser last re-read) and *data to* (how far the data
+  reaches, supplied by the page, never inferred). It pauses while the tab is
+  hidden and while a dialog is open. **No copy anywhere says "live" or
+  "real-time"**: collection runs on a cadence, and a page refresh is not a
+  fresher measurement.
+- `AlertBell` shows the open-alert count and links to `/alerts`. A failed read
+  shows no badge and an "unavailable" name — **never `0`**. Its accessible name
+  carries the count or says it is unavailable.
+- `ConnectionStatus` shows the worst of three named signals (backend, QRadar
+  instance, collection). `UNKNOWN` is neutral, never green; a signal the role
+  may not read is omitted, not shown as bad; a signal with no data source is
+  not invented.
+
+### `WidgetFrame`
+
+The one frame every Dashboard widget shares (`components/home/`). It owns the
+title (which says what and for what window), the optional window control,
+Expand, the drill-down link and the states. The link stays in the header in
+**every** state, so an analyst can reach the page that owns the data even when
+the widget could not be read. Its states are `loading`, `ok`, `stale`, `empty`,
+`no_data`, `not_collected`, `error` and `forbidden`; the honesty qualifiers
+`INSUFFICIENT_DATA`, `PARTIAL`, `TRUNCATED` and `NOT_COLLECTED` attach to data
+the widget does have, as pills and reasons beside the figures. No state renders
+an exception's text. `forbidden` names the permission and says nothing was
+changed. Stale means the data's `asOf` is older than twice the collection
+cadence; it is derived, never stored, and shown with the time it is from. A
+failed refresh keeps the previous answer on screen with a note saying so.
+
+### `useApiResource`
+
+The one read hook the widgets share (`hooks/`). Callers with the same request
+key share one in-flight request, so six widgets reading the same URL send it
+once. A `403` is its own state; every other failure is an error with the HTTP
+status only. Requests abort when the last caller unmounts, and the shell's
+refresh tick re-reads them all.
+
+### `DashboardView` and the widget registry
+
+`/` renders a layout — a saved dashboard's or the template's — through the
+registry (`widgets/registry.ts`). The registry is the single list of placeable
+widgets; each entry names its data sources and required permissions, and the registry
+test asserts the sources are routes the client actually calls, the permissions
+exist in the backend, and no widget is `live` while its data is a gap. The
+grid is 12 columns when its container is at least 900 px wide, 6 from 600 px,
+1 below; only the 12-column layout is stored and the narrower ones are derived,
+in reading order, without overlap. Editing is offered only at 12 columns —
+below that the page shows the dashboard read-only with "Widen the window to
+customize". A widget of an unknown type renders "Unsupported widget" and keeps
+its place: an older client must not destroy a newer layout. Off-screen widget
+bodies are deferred: the box is drawn at its grid size and the body mounts when
+the box comes near the viewport, so an off-screen chart is never created and
+the layout never shifts.
+
+### `EditGrid` (customize mode)
+
+Drag and resize live behind the Customize toggle, so a stray drag cannot move
+anything in read mode. The grid library loads only when editing starts. The
+title row is the drag handle. Pointer editing has a keyboard equivalent: per
+widget, Move and Resize steppers change the cell geometry by one cell, with
+bound-aware disabled states. A widget **must not** be removable only by
+pointer.
+
+### `Catalog`, `Configure`, `ExpandDialog`
+
+- `Catalog` is the add-widget drawer: a real `<dialog>`, focus to Close on
+  open, returned to the trigger on close. It lists only what exists, with the
+  data each widget reads and the permission it needs; a `blocked` widget is
+  listed disabled with its reason, and a widget the caller's role cannot read
+  is disabled with the permission named. One dashboard holds at most 24
+  widgets.
+- `Configure` offers enumerated options only — pickers over ids and enums from
+  the real APIs. No free text, and nothing that could reach the server as a
+  query to execute; the dashboard API runs nothing from a layout.
+- `ExpandDialog` re-renders the same widget larger in a native `<dialog>`;
+  Escape closes and focus returns to the trigger.
+
+### `RangeControl`
+
+The per-widget window (`1h | 24h | 7d`): preset buttons where they fit, a
+named select where they do not. A widget without window presets follows the
+dashboard's default; the effective window is shown in the widget's title.
+There is **no global time range**: the dashboard's window belongs to the
+dashboard layout and rewrites nothing outside it; page-local selectors keep
+their own contracts.
+
+### `useDashboard`, `DashboardSwitcher`, `DashboardMenu`
+
+One reducer owns a dashboard's saved layout, current layout and save state; a
+failed or conflicting write changes only the save state and never discards the
+analyst's work. Unsaved changes guard navigation away (a dialog with Keep and
+Discard, in-page links included). A `409` revision conflict offers Reload and
+Save as a copy — nothing is overwritten silently. A caller without the write
+permission still sees the dashboard and may expand and configure in memory;
+changes then last for the session only, and the page says so.
+
 ---
 
 ## 9. Responsive layout
@@ -518,6 +734,18 @@ document.documentElement.clientWidth
   shrink below its text, and a long sibling label wraps instead of squeezing it.
 - Charts **must** remain contained by their parent layout at every supported
   width.
+- The Dashboard grid derives its narrow layouts from the stored 12-column one
+  (§8); at 1024×768 it reflows to 6 columns with no page overflow, and editing
+  is replaced by the honest narrow fallback ("Widen the window to customize").
+  A widget box taller than its body scrolls inside the box; it is never
+  clipped. Below 12 columns the read-only rows grow with their content and
+  widget bodies are not deferred.
+- The grid positions cells with unitless custom properties on `.dg-item` — the
+  one accepted inline style in the widget system: layout numbers, never a
+  colour or a length.
+- A widget title row that cannot hold the title, the qualifier pill and its
+  controls on one line moves only the pill into the body, decided by measured
+  fit rather than a fixed width, so it cannot flip back and forth on resize.
 
 ### Prohibited
 
@@ -546,7 +774,17 @@ The rules below are contracts with regression coverage. This repository has
 - Disclosures use native semantics (§8).
 - Timestamps are UTC and always carry the zone (`formatDateTime`,
   `formatDateTimeCompact`). A time without a zone is ambiguous to an analyst
-  comparing it with QRadar or another system.
+  comparing it with QRadar or another system. A relative age ("12 min ago")
+  **may** follow the absolute time in muted text, never replace it, and times
+  in tables and widgets are real `time` elements with a `datetime` value.
+- Non-inline interactive controls are at least 24 × 24 px (the WCAG 2.5.8
+  minimum, held by the `--target-min` token and pinned by
+  `controlTargetContract.test.ts`). Inline links inside text keep the inline
+  exception.
+- An ARIA relationship (`aria-controls`) is published only while the element it
+  names is mounted: a closed search result list, a lazily unmounted tab panel
+  and a collapsed arrange panel expose none. A reference that resolves to
+  nothing reads as present in the markup and absent to a screen reader.
 - Status and severity meaning is available in text. **Color must never be the
   sole carrier of meaning** — this covers severity (`LOW`, `MEDIUM`, `HIGH`,
   `CRITICAL`), lifecycle state including `INSUFFICIENT_DATA`, and evidence and
@@ -557,7 +795,8 @@ The rules below are contracts with regression coverage. This repository has
   `ok` (`sevTone`). A low-severity anomaly is still an anomaly.
 - Tables use real column-header semantics, carry an accessible name or caption,
   and their sorting and pagination controls have names identifying the column
-  and the action or state.
+  and the action or state. Every production table is named — a source-wide
+  regression (`TableNames.test.ts`) identifies any that is not.
 - Charts and timelines carry textual alternatives. The volume chart is exposed
   as a named image with a text summary of what it shows; an empty window leaves
   no named but meaningless image behind.
@@ -571,7 +810,80 @@ The rules below are contracts with regression coverage. This repository has
 
 ---
 
-## 11. Testing expectations
+## 11. Tokens and colour
+
+The palette is charcoal, defined once in `frontend/src/app/tokens.css`. The
+product is **dark only** (decision D-11): `color-scheme: dark`, no light theme,
+no `prefers-color-scheme` rule. Charts read their colours once, at creation
+(`lib/chartPalette.ts`, `lib/home/chartPalette.ts`), so a second theme is not
+one token block away, and no theme switch exists.
+
+- **Status colour is reserved for status.** Red, amber and green never decorate
+  a border, a heading or a category. A categorical series uses
+  `--chart-cat-1…5`, with `--chart-other` for the aggregate "Other" slice; none
+  of them is a status hue, and `contrast.test.ts` asserts exactly that. A
+  series that *is* a status — an anomaly marker, a gap band, a failed run —
+  uses the status hues.
+- **No chart relies on hue alone.** A series is named in a legend with its
+  value, in the tooltip, and for a part-to-whole chart in a list beside it. A
+  donut holds at most five slices: four named categories plus "Other". The
+  graphic itself is hidden from assistive technology, which gets the same
+  figures as text.
+- **Severity colour in charts.** Pills keep one `crit` tone for `CRITICAL` and
+  `HIGH` and carry the word (§10); there is no orange token and none is added.
+  Where a chart needs one mark per severity it uses `--sev-critical`,
+  `--sev-high` (a darker red), `--sev-medium`, `--sev-low` and `--sev-info` —
+  **charts only** — with a legend and tooltips carrying the words. CSS keyed to
+  a severity name stays prohibited (§9).
+- **A magnitude on a map is a sequential scale, not a status scale.** A
+  choropleth uses the one-hue ramp `--map-0…--map-4` with a numeric legend; a
+  Low-green, Medium-amber, High-red ramp would make "events from this country"
+  read as "this country is dangerous". (The geography widget that will consume
+  the ramp is not built yet; the tokens and the backend aggregate exist.)
+- **Solid fills with alpha, no gradients.** Chart fills are solid alpha tints
+  (`--chart-band`, the status `-bg` tints); no gradient fill, no glow, no
+  glassmorphism. The only gradients in the stylesheets are the table-scroll
+  covers and edge shadow — a functional scrolling affordance, not decoration.
+  There is one shadow token, `--shadow`; elevation is carried by layer and
+  border, not by stacked shadows.
+- **Cyan is the one data accent.** `--info` (cyan) is the observed series and
+  the `LOW` tone; links use `--link`; the primary button is neutral light
+  (`--primary` with `--on-accent` text); the focus ring is neutral
+  (`--focus`). Blue is not the identity. The word "info" and the `info` class
+  names are unchanged.
+- **No colour, spacing or type literal outside `tokens.css`.** The colour half
+  is enforced by `frontend/src/app/colourLiterals.test.ts`, which sweeps every
+  stylesheet under `src` for hex, `rgb()`/`hsl()` and named colours (only
+  `transparent`, `currentColor` and `inherit` are allowed), and by the same
+  check inside `contrast.test.ts`. Spacing and type literals are held by the
+  same rule in review. A palette change is a token change and nothing else.
+- **Contrast is tested** (`lib/contrast.test.ts`): `--text`, `--text-2` and
+  `--neutral-text` meet AA 4.5:1 on every surface; the status text tints meet
+  it on their tinted fills; the chart categories are at least 3:1 on
+  `--surface`.
+
+### The D-11 contrast exception, and its exact bounds
+
+Decision D-11 (the user, 2026-10-14) keeps two palette values although they are
+below the WCAG thresholds: `--text-3 = #73757B` is below AA 4.5:1 on every
+surface, and `--border-strong = #35363A` is below the 3:1 non-text minimum for
+an input boundary. The exception covers **exactly these two values and nothing
+else**. It is not permission for a third low-contrast value, and no new colour
+may be added below a threshold it should meet. `contrast.test.ts` pins both
+values instead of asserting them and asserts that no `--text-disabled` token
+exists — disabled text uses `--text-3`.
+
+### Typography
+
+Inter, self-hosted (`app/fonts/`, `app/fonts.css`, SIL OFL): the product is
+on-premises, so no request leaves for a font at build time or at runtime. The
+redesign added no new type size; the existing scale is used by role (page title,
+section heading, widget title, table header, body, metric), no size below 12 px
+is defined, and numbers use tabular figures (`.num`).
+
+---
+
+## 12. Testing expectations
 
 - Test user-observable behavior and established semantics, not implementation
   details.
@@ -598,6 +910,16 @@ The rules below are contracts with regression coverage. This repository has
 - Evidence and lifecycle edge cases must be explicit, not incidental.
 - Null versus zero, and the status distinctions in §4 and §10, require
   dedicated regression coverage.
+- A widget registered in the catalog is pinned by the registry test: its
+  `sources` are routes the client actually calls, its `requires` are
+  permissions the backend defines, no widget is `live` while its data is a gap,
+  and a template holds only `live` widgets. The frame's state union is tested
+  at both densities, and each catalog widget is tested through its loading,
+  error and forbidden states.
+- CSS contracts that are themselves the regression boundary — the colour
+  literal sweep, the contrast thresholds, the control target size, the table
+  names — read the stylesheets or the DOM and name the file that breaks
+  (§10, §11).
 
 External browser and viewport verification **complements** the jsdom suite and
 must not be confused with it. jsdom does not lay out, so it can guard the
@@ -607,7 +929,7 @@ substitutes for the other.
 
 ---
 
-## 12. Change checklist
+## 13. Change checklist
 
 For use during code review of any UI change.
 
@@ -625,6 +947,18 @@ For use during code review of any UI change.
 - [ ] Are ARIA relationships valid, unique, and native semantics left intact?
 - [ ] Is there page-level horizontal overflow at 1440, 1280 or 1024 — and was
       any overflow fixed structurally rather than hidden (§9)?
+- [ ] Is every new colour, spacing or type value a token, with no literal
+      added outside `tokens.css` (§11)?
+- [ ] Does a chart use the categorical or severity tokens, never a status hue,
+      and does more than hue carry its meaning (§11)?
+- [ ] On the Dashboard, does every KPI card keep a breakdown, a drill-down and
+      its honest states, with no vanity delta (§2, §8)?
+- [ ] Is a new widget registered with real sources and permissions, tested in
+      every state, and `blocked` while its data does not exist (§8)?
+- [ ] Do times carry UTC and their zone, with any relative age secondary
+      (§10)? Does copy avoid "live" and "real-time"?
+- [ ] Do non-inline interactive controls keep the 24 px minimum target, and
+      does an added dialog or drawer return focus to its trigger (§10)?
 - [ ] Do the targeted tests and the full frontend gates pass?
 - [ ] Was the change kept inside one coherent workstream, without unrelated
       fixes, dependency upgrades or scope expansion?
