@@ -61,6 +61,10 @@ export function previewTooltip(
     .join("<br/>");
 }
 
+function firingWord(count: number): string {
+  return count === 1 ? "time" : "times";
+}
+
 export function previewText(preview: CustomRulePreview, subjectLabel: string): string {
   const lowerBounds = preview.buckets.filter((bucket) => bucket.measurement === "LOWER_BOUND");
   const maintenance = preview.buckets.filter((bucket) => bucket.in_maintenance).length;
@@ -68,7 +72,7 @@ export function previewText(preview: CustomRulePreview, subjectLabel: string): s
     lowerBounds.length === 0
       ? "No lower-bound buckets."
       : `${lowerBounds.length} lower-bound ${lowerBounds.length === 1 ? "bucket reads" : "buckets read"} as at least the reported value.`;
-  return `${subjectLabel || "Selected subject"}. Would have fired ${preview.fired_count} times. ${preview.measured_count} measured and ${preview.unmeasured_count} unmeasured buckets. ${lowerText} ${maintenance} maintenance ${maintenance === 1 ? "bucket" : "buckets"}.`;
+  return `${subjectLabel || "Selected subject"}. Would have fired ${preview.fired_count} ${firingWord(preview.fired_count)}. ${preview.measured_count} measured and ${preview.unmeasured_count} unmeasured buckets. ${lowerText} ${maintenance} maintenance ${maintenance === 1 ? "bucket" : "buckets"}.`;
 }
 
 export function buildPreviewOption(
@@ -234,7 +238,7 @@ export function PreviewSummary({ preview }: { preview: CustomRulePreview }) {
   const maintenance = preview.buckets.filter((bucket) => bucket.in_maintenance).length;
   return (
     <div className="cr-preview-summary" aria-label="Preview summary">
-      <p><strong>Would have fired {preview.fired_count} times</strong></p>
+      <p><strong>Would have fired {preview.fired_count} {firingWord(preview.fired_count)}</strong></p>
       <dl>
         <div><dt>Measured</dt><dd className="num">{preview.measured_count} buckets</dd></div>
         <div><dt>Unmeasured</dt><dd className="num">{preview.unmeasured_count} buckets</dd></div>
