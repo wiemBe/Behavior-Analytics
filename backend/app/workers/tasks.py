@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
+from redis import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,7 +69,11 @@ from app.services.search_scheduler import SearchScheduler
 from app.services.waf_pipeline import PIPELINE_LOCK, eligible_profile_ids, run_waf_source
 from app.services.waf_profiles import WafProfileService
 from app.services.waf_retention import WafRetention
-from app.workers.celery_app import celery_app
+from app.workers.celery_app import (
+    BEAT_HEARTBEAT_KEY,
+    BEAT_HEARTBEAT_TTL_SECONDS,
+    celery_app,
+)
 
 logger = logging.getLogger("app.tasks")
 
@@ -1406,6 +1411,15 @@ async def dispatch_notifications() -> dict:
 
 
 # --------------------------------------------------------------- celery shims
+@celery_app.task(name="beat_heartbeat")
+def beat_heartbeat_task() -> dict[str, str]:
+    """Prove beat is dispatching by writing only a short-lived UTC timestamp."""
+    timestamp = datetime.now(UTC).isoformat()
+    with Redis.from_url(get_settings().redis_url, decode_responses=True) as client:
+        client.set(BEAT_HEARTBEAT_KEY, timestamp, ex=BEAT_HEARTBEAT_TTL_SECONDS)
+    return {"timestamp": timestamp}
+
+
 @celery_app.task(name="collect_metrics")
 def collect_metrics_task(instance_name: str | None = None) -> dict:
     return _run(collect_metrics(instance_name))

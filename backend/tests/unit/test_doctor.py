@@ -1,0 +1,493 @@
+from __future__ import annotations
+
+import asyncio
+import ssl
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+import respx
+from httpx import Response
+
+from app.cli import doctor as doctor_module
+from app.cli.doctor import (
+    CheckResult,
+    Doctor,
+    Status,
+    TlsProbe,
+    exit_code,
+    render_json,
+    render_text,
+)
+from app.core.config import Environment, Settings
+from app.providers.dto import InstanceInfoDTO
+
+
+class FakeScalars:
+    def __init__(self, rows: list[Any]) -> None:
+        self.rows = rows
+
+    def all(self) -> list[Any]:
+        return self.rows
+
+
+class FakeSession:
+    def __init__(
+        self,
+        *,
+        scalar_values: list[Any] | None = None,
+        scalars_values: list[list[Any]] | None = None,
+    ) -> None:
+        self.scalar_values = list(scalar_values or [])
+        self.scalars_values = list(scalars_values or [])
+
+    async def __aenter__(self) -> FakeSession:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    async def scalar(self, _query: object) -> Any:
+        return self.scalar_values.pop(0)
+
+    async def scalars(self, _query: object) -> FakeScalars:
+        return FakeScalars(self.scalars_values.pop(0))
+
+
+class FakeSessionmaker:
+    def __init__(self, session: FakeSession) -> None:
+        self.session = session
+
+    def __call__(self) -> FakeSession:
+        return self.session
+
+
+class FakeRedis:
+    def __init__(
+        self, *, ping: object = True, value: object = None, error: Exception | None = None
+    ) -> None:
+        self.ping_value = ping
+        self.value = value
+        self.error = error
+        self.closed = False
+
+    async def ping(self) -> object:
+        if self.error:
+            raise self.error
+        return self.ping_value
+
+    async def get(self, _key: str) -> object:
+        if self.error:
+            raise self.error
+        return self.value
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+def settings(tmp_path) -> Settings:
+    token = tmp_path / "qradar.sec"
+    ca = tmp_path / "qradar-ca.pem"
+    token.write_text("fixture-token", encoding="utf-8")
+    ca.write_text("fixture-ca", encoding="utf-8")
+    return Settings(
+        qradar_host="https://qradar.example.test",
+        qradar_api_token_file=str(token),
+        qradar_ca_bundle=str(ca),
+        public_origin="https://soc.example.test",
+        encryption_key="sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A=",
+    )
+
+
+def make_doctor(settings: Settings, session: FakeSession | None = None, **kwargs: Any) -> Doctor:
+    maker = FakeSessionmaker(session or FakeSession())
+    return Doctor(
+        settings=settings,
+        sessionmaker=cast(Any, maker),
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio
+async def test_db_connect_pass_and_fail(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doctor = make_doctor(settings)
+    monkeypatch.setattr(doctor, "_scalar", AsyncMock(return_value=1))
+    assert (await doctor.check_db_connect()).status is Status.PASS
+
+    monkeypatch.setattr(
+        doctor, "_scalar", AsyncMock(side_effect=ConnectionError("password=planted"))
+    )
+    result = await doctor.check_db_connect()
+    assert result.status is Status.FAIL
+    assert "planted" not in result.message
+    assert settings.postgres_host in result.message
+
+
+@pytest.mark.asyncio
+async def test_migration_head_pass_and_fail(settings: Settings) -> None:
+    passed = make_doctor(
+        settings, FakeSession(scalars_values=[["0025"]]), migration_head=lambda: "0025"
+    )
+    assert (await passed.check_migration_head()).status is Status.PASS
+
+    failed = make_doctor(
+        settings, FakeSession(scalars_values=[["0024"]]), migration_head=lambda: "0025"
+    )
+    assert (await failed.check_migration_head()).status is Status.FAIL
+
+
+@pytest.mark.asyncio
+async def test_timescale_pass_warn_and_fail(settings: Settings) -> None:
+    assert (
+        await make_doctor(settings, FakeSession(scalar_values=[1, 1])).check_timescale()
+    ).status is Status.PASS
+    assert (
+        await make_doctor(settings, FakeSession(scalar_values=[1, None])).check_timescale()
+    ).status is Status.WARN
+    assert (
+        await make_doctor(settings, FakeSession(scalar_values=[None])).check_timescale()
+    ).status is Status.WARN
+    production = settings.model_copy(update={"environment": Environment.PRODUCTION})
+    assert (
+        await make_doctor(production, FakeSession(scalar_values=[None])).check_timescale()
+    ).status is Status.FAIL
+
+
+@pytest.mark.asyncio
+async def test_retention_policy_pass_and_warn(settings: Settings) -> None:
+    assert (await make_doctor(settings).check_retention_policy()).status is Status.PASS
+    enabled = settings.model_copy(update={"retention_enabled": True})
+    result = await make_doctor(enabled, FakeSession(scalar_values=[None])).check_retention_policy()
+    assert result.status is Status.WARN
+
+
+@pytest.mark.asyncio
+async def test_redis_pass_and_fail(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    passing = FakeRedis()
+    monkeypatch.setattr(doctor_module.redis, "from_url", lambda *_args, **_kwargs: passing)
+    assert (await make_doctor(settings).check_redis()).status is Status.PASS
+    assert passing.closed
+
+    failing = FakeRedis(error=ConnectionError("redis://user:planted@redis/0"))
+    monkeypatch.setattr(doctor_module.redis, "from_url", lambda *_args, **_kwargs: failing)
+    result = await make_doctor(settings).check_redis()
+    assert result.status is Status.FAIL
+    assert "planted" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_celery_workers_pass_and_fail(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inspect_mock = MagicMock()
+    inspect_mock.ping.return_value = {
+        "celery@worker-b": {"ok": "pong"},
+        "celery@worker-a": {"ok": "pong"},
+    }
+    inspect_factory = MagicMock(return_value=inspect_mock)
+    monkeypatch.setattr(doctor_module.celery_app.control, "inspect", inspect_factory)
+    result = await make_doctor(settings).check_celery_workers()
+    assert result.status is Status.PASS
+    assert result.message == (
+        "2 worker(s) returned pong: celery@worker-a, celery@worker-b"
+    )
+    inspect_factory.assert_called_once_with(timeout=2.0)
+
+    inspect_mock.ping.return_value = None
+    result = await make_doctor(settings).check_celery_workers()
+    assert result.status is Status.FAIL
+    assert result.runbook == "OPS-R41"
+
+
+@pytest.mark.asyncio
+async def test_celery_beat_pass_and_fail(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime(2026, 10, 16, 12, tzinfo=UTC)
+    client = FakeRedis(value=(now - timedelta(seconds=20)).isoformat())
+    monkeypatch.setattr(doctor_module.redis, "from_url", lambda *_args, **_kwargs: client)
+    assert (await make_doctor(settings, now=lambda: now).check_celery_beat()).status is Status.PASS
+
+    client.value = None
+    missing = await make_doctor(settings, now=lambda: now).check_celery_beat()
+    assert missing.status is Status.FAIL
+    assert "or no worker is running its tasks" in missing.message
+
+    client.value = (now - timedelta(seconds=180)).isoformat()
+    stale = await make_doctor(settings, now=lambda: now).check_celery_beat()
+    assert stale.status is Status.FAIL
+    assert "or no worker is running its tasks" in stale.message
+
+
+@pytest.mark.asyncio
+async def test_qradar_tls_pass_warn_and_fail(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime(2026, 10, 16, tzinfo=UTC)
+    context = ssl.create_default_context()
+    monkeypatch.setattr(doctor_module, "build_ssl_context", lambda *_args, **_kwargs: context)
+    passed = make_doctor(
+        settings,
+        now=lambda: now,
+        tls_probe=AsyncMock(return_value=TlsProbe(now + timedelta(days=90))),
+    )
+    monkeypatch.setattr(passed, "_instance", AsyncMock(return_value=None))
+    assert (await passed.check_qradar_tls()).status is Status.PASS
+
+    warning = make_doctor(
+        settings,
+        now=lambda: now,
+        tls_probe=AsyncMock(return_value=TlsProbe(now + timedelta(days=10))),
+    )
+    monkeypatch.setattr(warning, "_instance", AsyncMock(return_value=None))
+    assert (await warning.check_qradar_tls()).status is Status.WARN
+
+    failed = make_doctor(settings, tls_probe=AsyncMock(side_effect=ssl.SSLError("bad chain")))
+    monkeypatch.setattr(failed, "_instance", AsyncMock(return_value=None))
+    assert (await failed.check_qradar_tls()).status is Status.FAIL
+
+
+@pytest.mark.asyncio
+async def test_qradar_auth_only_calls_validate_connection(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    instance = SimpleNamespace(console_host="https://qradar.example.test")
+    provider = MagicMock()
+    provider.validate_connection = AsyncMock(return_value=InstanceInfoDTO(version="7.6.0"))
+    provider.aclose = AsyncMock()
+    doctor = make_doctor(settings, provider_factory=lambda _instance: provider)
+    monkeypatch.setattr(doctor, "_instance", AsyncMock(return_value=instance))
+
+    assert (await doctor.check_qradar_auth()).status is Status.PASS
+    provider.validate_connection.assert_awaited_once_with()
+    provider.aclose.assert_awaited_once_with()
+    assert [call[0] for call in provider.method_calls] == ["validate_connection", "aclose"]
+
+    provider.validate_connection = AsyncMock(side_effect=RuntimeError("token=planted-password"))
+    provider.aclose = AsyncMock()
+    result = await doctor.check_qradar_auth()
+    assert result.status is Status.FAIL
+    assert "planted-password" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_watermarks_pass_warn_and_fail(settings: Settings) -> None:
+    healthy = SimpleNamespace(
+        collector="log_source_metric", consecutive_failures=0, last_error=None, lag_seconds=10
+    )
+    late = SimpleNamespace(
+        collector="log_source_metric", consecutive_failures=0, last_error=None, lag_seconds=1000
+    )
+    failed = SimpleNamespace(
+        collector="log_source_metric", consecutive_failures=3, last_error=None, lag_seconds=10
+    )
+    cadence = SimpleNamespace(family="PHASE_A_VOLUME", cadence_seconds=300)
+    assert (
+        await make_doctor(
+            settings, FakeSession(scalars_values=[[healthy], [cadence]])
+        ).check_watermarks()
+    ).status is Status.PASS
+    assert (
+        await make_doctor(
+            settings, FakeSession(scalars_values=[[late], [cadence]])
+        ).check_watermarks()
+    ).status is Status.WARN
+    assert (
+        await make_doctor(
+            settings, FakeSession(scalars_values=[[failed], [cadence]])
+        ).check_watermarks()
+    ).status is Status.FAIL
+
+
+@pytest.mark.asyncio
+async def test_cadence_pass_and_warn(settings: Settings) -> None:
+    now = datetime(2026, 10, 16, 12, tzinfo=UTC)
+    on_time = SimpleNamespace(
+        family="PHASE_A_VOLUME", cadence_seconds=300, last_run_at=now - timedelta(seconds=10)
+    )
+    late = SimpleNamespace(
+        family="PHASE_A_VOLUME", cadence_seconds=300, last_run_at=now - timedelta(hours=2)
+    )
+    assert (
+        await make_doctor(
+            settings, FakeSession(scalars_values=[[on_time]]), now=lambda: now
+        ).check_cadence()
+    ).status is Status.PASS
+    assert (
+        await make_doctor(
+            settings, FakeSession(scalars_values=[[late]]), now=lambda: now
+        ).check_cadence()
+    ).status is Status.WARN
+
+
+@pytest.mark.asyncio
+async def test_families_off_reports_both_states_as_pass(settings: Settings) -> None:
+    off = await make_doctor(settings).check_families_off()
+    assert off.status is Status.PASS
+    assert "WAF_COLLECTION_ENABLED=off" in off.message
+    enabled = settings.model_copy(
+        update={
+            "waf_collection_enabled": True,
+            "ips_collection_enabled": True,
+            "rule_match_collection_enabled": True,
+            "custom_rules_enabled": True,
+        }
+    )
+    on = await make_doctor(enabled).check_families_off()
+    assert on.status is Status.PASS
+    assert "CUSTOM_RULES_ENABLED=on" in on.message
+    rendered = render_text([on])
+    assert "RULE_MATCH_COLLECTION_ENABLED=on" in rendered
+    assert "CUSTOM_RULES_ENABLED=on" in rendered
+
+
+@pytest.mark.asyncio
+async def test_errors_recent_pass_warn_and_fail(settings: Settings) -> None:
+    for count, expected in ((0, Status.PASS), (1, Status.WARN), (3, Status.FAIL)):
+        result = await make_doctor(
+            settings, FakeSession(scalar_values=[count])
+        ).check_errors_recent()
+        assert result.status is expected
+
+
+@pytest.mark.asyncio
+async def test_pg_database_size_pass_and_fail(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doctor = make_doctor(settings)
+    monkeypatch.setattr(doctor, "_scalar", AsyncMock(return_value=1024))
+    assert (await doctor.check_pg_database_size()).status is Status.PASS
+    monkeypatch.setattr(doctor, "_scalar", AsyncMock(side_effect=RuntimeError("dsn planted-dsn")))
+    result = await doctor.check_pg_database_size()
+    assert result.status is Status.FAIL
+    assert "planted-dsn" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_encryption_pass_warn_and_fail(settings: Settings) -> None:
+    assert (
+        await make_doctor(settings, FakeSession(scalar_values=["decrypted"])).check_encryption()
+    ).status is Status.PASS
+    assert (
+        await make_doctor(settings, FakeSession(scalar_values=[None])).check_encryption()
+    ).status is Status.WARN
+    failed_session = FakeSession(scalar_values=[])
+    failed_session.scalar = AsyncMock(side_effect=RuntimeError("ciphertext gAAAAAplantedsecret"))
+    result = await make_doctor(settings, failed_session).check_encryption()
+    assert result.status is Status.FAIL
+    assert "gAAAAA" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_secrets_files_pass_and_fail(settings: Settings) -> None:
+    assert (await make_doctor(settings).check_secrets_files()).status is Status.PASS
+    missing = settings.model_copy(update={"qradar_api_token_file": None})
+    result = await make_doctor(missing).check_secrets_files()
+    assert result.status is Status.FAIL
+    assert "file is not configured" in result.message
+
+
+@pytest.mark.asyncio
+async def test_public_origin_pass_and_fail(settings: Settings) -> None:
+    assert (await make_doctor(settings).check_public_origin()).status is Status.PASS
+    insecure = settings.model_copy(update={"public_origin": "http://soc.example.test"})
+    assert (await make_doctor(insecure).check_public_origin()).status is Status.FAIL
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_version_match_pass_warn_and_fail(settings: Settings) -> None:
+    respx.get(doctor_module.FRONTEND_HEALTH_URL).mock(
+        return_value=Response(200, json={"status": "ok", "version": "0.1.0"})
+    )
+    backend = respx.get(doctor_module.BACKEND_VERSION_URL).mock(
+        return_value=Response(200, json={"version": "0.1.0"})
+    )
+    doctor = make_doctor(settings)
+    assert (await doctor.check_version_match()).status is Status.PASS
+
+    backend.mock(return_value=Response(200, json={"version": "0.2.0"}))
+    assert (await doctor.check_version_match()).status is Status.WARN
+
+    respx.get(doctor_module.FRONTEND_HEALTH_URL).mock(return_value=Response(503))
+    assert (await doctor.check_version_match()).status is Status.FAIL
+
+
+def test_output_redacts_token_password_dsn_and_ciphertext() -> None:
+    planted = (
+        "token=abcdefghijklmnopqrstuvwxyz123456 "
+        "password=hunter2 "
+        "postgresql://user:dbpass@db.example/test "
+        "gAAAAAabcdefghijklmnopqrstuvwxyz123456"
+    )
+    results = [CheckResult("fixture", Status.FAIL, planted, "OPS-R1")]
+    output = render_text(results) + render_json(results)
+    for secret in ("abcdefghijklmnopqrstuvwxyz123456", "hunter2", "dbpass", "gAAAAA"):
+        assert secret not in output
+
+
+def test_exit_code_matrix() -> None:
+    passed = CheckResult("pass", Status.PASS, "ok")
+    warned = CheckResult("warn", Status.WARN, "warn")
+    failed = CheckResult("fail", Status.FAIL, "fail")
+    assert exit_code([passed]) == 0
+    assert exit_code([passed, warned]) == 1
+    assert exit_code([passed, warned, failed]) == 2
+
+
+@pytest.mark.asyncio
+async def test_all_healthy_run_exits_zero(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doctor = make_doctor(settings)
+    for check_id, _runbook in doctor_module._CHECK_RUNBOOKS:
+        monkeypatch.setattr(
+            doctor,
+            f"check_{check_id}",
+            AsyncMock(return_value=CheckResult(check_id, Status.PASS, "healthy")),
+        )
+
+    results = await doctor.run()
+
+    assert "qradar_clock" not in {result.id for result in results}
+    assert exit_code(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_timed_out_check_fails_and_next_check_runs(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doctor = make_doctor(settings)
+    next_check_ran = False
+
+    async def too_slow() -> CheckResult:
+        await asyncio.sleep(1)
+        return CheckResult("db_connect", Status.PASS, "unexpected")
+
+    async def next_check() -> CheckResult:
+        nonlocal next_check_ran
+        next_check_ran = True
+        return CheckResult("migration_head", Status.PASS, "healthy")
+
+    for check_id, _runbook in doctor_module._CHECK_RUNBOOKS:
+        monkeypatch.setattr(
+            doctor,
+            f"check_{check_id}",
+            AsyncMock(return_value=CheckResult(check_id, Status.PASS, "healthy")),
+        )
+    monkeypatch.setattr(doctor_module, "CHECK_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(doctor, "check_db_connect", too_slow)
+    monkeypatch.setattr(doctor, "check_migration_head", next_check)
+
+    results = await doctor.run()
+
+    assert results[0] == CheckResult(
+        "db_connect", Status.FAIL, "did not answer within 0.01 s", "OPS-R36"
+    )
+    assert next_check_ran
+    assert results[1].status is Status.PASS

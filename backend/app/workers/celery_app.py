@@ -13,6 +13,9 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
+BEAT_HEARTBEAT_KEY = "qradar-observability:celery-beat-heartbeat"
+BEAT_HEARTBEAT_TTL_SECONDS = 180
+
 celery_app = Celery(
     "qradar_observability",
     broker=settings.celery_broker_url,
@@ -36,6 +39,10 @@ celery_app.conf.imports = ("app.workers.tasks",)
 
 # Periodic schedule. Intervals are conservative defaults; tune per deployment.
 celery_app.conf.beat_schedule = {
+    "beat-heartbeat": {
+        "task": "beat_heartbeat",
+        "schedule": 60.0,
+    },
     "collect-metrics": {
         "task": "collect_metrics",
         "schedule": 60.0,
