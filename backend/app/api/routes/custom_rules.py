@@ -5,6 +5,10 @@ Creating, editing and deleting also require ``custom_rule:write``, which
 ``read:*`` does not grant. ``admin:*`` does, so the admin role does not
 list the string.
 
+``GET /catalog`` is that same read. It lists the metric catalog, the subject
+pairing and the platform switches for the rule editor. It is registered
+before ``/{rule_id}``, because ``catalog`` is not a rule id.
+
 Validation is F-1's ``validate_rule_draft``. Every domain reason comes back
 in one 422, the F-4 shape ``{"message", "reasons"}``. The enabled-rule cap
 on its own is 409 and names the limit. A missing subject is one more
@@ -36,11 +40,16 @@ from app.alerts.routing import default_policy
 from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.custom_rules.alerts import alerting_mode, resolve_deleted_rule_alert
-from app.custom_rules.catalog import catalog_entry
+from app.custom_rules.catalog import CUSTOM_RULE_METRICS, catalog_entry
 from app.custom_rules.preview import PreviewResult, replay
-from app.custom_rules.validation import CustomRuleDraft, validate_rule_draft
+from app.custom_rules.validation import (
+    _SUBJECT_COLUMNS,
+    RULE_OPERATORS,
+    CustomRuleDraft,
+    validate_rule_draft,
+)
 from app.models.custom_rule import CustomRule, CustomRuleBreach
-from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind
+from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind, SourceClass
 from app.models.ips import IpsEntity
 from app.models.log_source import LogSource
 from app.models.waf import WafEndpoint
@@ -48,6 +57,9 @@ from app.repositories.audit import record_audit
 from app.schemas.custom_rule import (
     BreachIntervalOut,
     BreachOut,
+    CatalogMetricOut,
+    CatalogSubjectKindOut,
+    CustomRuleCatalogOut,
     CustomRuleCreate,
     CustomRuleOut,
     CustomRulePreviewIn,
@@ -64,6 +76,10 @@ from app.security.rbac import (
 )
 
 router = APIRouter(prefix="/custom-rules", tags=["custom-rules"])
+
+#: Inclusive bounds of the preview ``hours`` query. The catalog reports them.
+PREVIEW_HOURS_MIN = 1
+PREVIEW_HOURS_MAX = 168
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
@@ -383,6 +399,72 @@ async def _enabled_count(session: AsyncSession) -> int:
     return int(count or 0)
 
 
+def _catalog_metrics() -> list[CatalogMetricOut]:
+    """One row per catalog entry, in catalog order. Internals stay off the wire."""
+    return [
+        CatalogMetricOut(
+            metric=entry.metric.value,
+            subject_kind=entry.subject_kind.value,
+            unit=entry.unit,
+            is_ratio=entry.is_ratio,
+            measurement=entry.measurement,
+            note=entry.note,
+        )
+        for entry in CUSTOM_RULE_METRICS.values()
+    ]
+
+
+def _catalog_subject_kinds() -> list[CatalogSubjectKindOut]:
+    """Each kind with the column ``validate_rule_draft`` requires for it.
+
+    The pairing is ``_SUBJECT_COLUMNS``. A second handwritten map would drift
+    from the validator, so this reads that one.
+    """
+    rows: list[CatalogSubjectKindOut] = []
+    for kind in CustomRuleSubjectKind:
+        columns = _SUBJECT_COLUMNS[kind]
+        # One column per kind. A longer pairing must not lose a name on the wire.
+        if len(columns) != 1:
+            raise RuntimeError(f"{kind.value} pairs with {list(columns)}")
+        rows.append(CatalogSubjectKindOut(subject_kind=kind.value, column=columns[0]))
+    return rows
+
+
+def _catalog_source_classes() -> list[str]:
+    """Classes a FLEET_CLASS rule may name, in enum order.
+
+    Validation accepts a ``source_class`` exactly when it is a ``SourceClass``.
+    """
+    return [member.value for member in SourceClass]
+
+
+def _catalog_operators() -> list[str]:
+    """``RULE_OPERATORS``, sorted. A set has no stable wire order."""
+    return sorted(RULE_OPERATORS)
+
+
+def build_custom_rule_catalog(
+    *,
+    evaluation_enabled: bool,
+    alerting_enabled: bool,
+    max_enabled: int,
+    enabled_count: int,
+) -> CustomRuleCatalogOut:
+    """The editor's catalog. The caller supplies the count and the switches."""
+    return CustomRuleCatalogOut(
+        metrics=_catalog_metrics(),
+        subject_kinds=_catalog_subject_kinds(),
+        source_classes=_catalog_source_classes(),
+        operators=_catalog_operators(),
+        evaluation_enabled=evaluation_enabled,
+        alerting_mode=alerting_mode(alerting_enabled),
+        max_enabled=max_enabled,
+        enabled_count=enabled_count,
+        preview_hours_min=PREVIEW_HOURS_MIN,
+        preview_hours_max=PREVIEW_HOURS_MAX,
+    )
+
+
 async def _subject_reason(session: AsyncSession, draft: CustomRuleDraft) -> str | None:
     """The subject row is missing. A null id is the pairing reason, already listed."""
     if draft.subject_kind in _SOURCE_KINDS:
@@ -561,7 +643,7 @@ async def preview_draft(
     body: CustomRulePreviewIn,
     session: SessionDep,
     settings: SettingsDep,
-    hours: Annotated[int, Query(ge=1, le=168)] = 24,
+    hours: Annotated[int, Query(ge=PREVIEW_HOURS_MIN, le=PREVIEW_HOURS_MAX)] = 24,
 ) -> PreviewOut:
     """Replay a draft over stored buckets. Nothing is written and nothing is audited."""
     draft = _draft_from_create(body)
@@ -595,6 +677,21 @@ async def preview_draft(
         name="preview",
     )
     return _preview_out(result)
+
+
+@router.get("/catalog", response_model=CustomRuleCatalogOut)
+async def get_catalog(session: SessionDep, settings: SettingsDep) -> CustomRuleCatalogOut:
+    """Metrics, pairing and switches for the rule editor.
+
+    Registered before ``/{rule_id}`` so ``catalog`` is not parsed as a UUID.
+    One count statement supplies ``enabled_count``; the rest is in-process.
+    """
+    return build_custom_rule_catalog(
+        evaluation_enabled=settings.custom_rules_enabled,
+        alerting_enabled=settings.custom_rules_alerting_enabled,
+        max_enabled=settings.custom_rules_max_enabled,
+        enabled_count=await _enabled_count(session),
+    )
 
 
 @router.get("/{rule_id}", response_model=CustomRuleOut)
@@ -697,7 +794,7 @@ async def preview_rule(
     rule_id: uuid.UUID,
     session: SessionDep,
     settings: SettingsDep,
-    hours: Annotated[int, Query(ge=1, le=168)] = 24,
+    hours: Annotated[int, Query(ge=PREVIEW_HOURS_MIN, le=PREVIEW_HOURS_MAX)] = 24,
 ) -> PreviewOut:
     """Replay the stored rule. A disabled rule still answers the historical question."""
     rule = await _load_rule(session, rule_id)

@@ -15,6 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.custom_rules.catalog import MeasurementRule
 from app.models.enums import CustomRuleSubjectKind, Severity
 
 MeasurementLabel = Literal["EXACT", "LOWER_BOUND", "NOT_MEASURED"]
@@ -178,3 +179,46 @@ class PreviewOut(BaseModel):
     unmeasured_count: int
     buckets: list[PreviewBucketOut]
     breach_intervals: list[BreachIntervalOut]
+
+
+class CatalogMetricOut(BaseModel):
+    """One metric the editor may offer, with its unit and honesty note.
+
+    ``reads`` and ``bulk_loader`` stay in the catalog module. They name
+    tables and loaders, and the editor does not choose either.
+    """
+
+    metric: str
+    subject_kind: str
+    unit: str
+    is_ratio: bool
+    measurement: MeasurementRule
+    note: str
+
+
+class CatalogSubjectKindOut(BaseModel):
+    """A subject kind and the one column a rule of that kind must set."""
+
+    subject_kind: str
+    column: str
+
+
+class CustomRuleCatalogOut(BaseModel):
+    """What the rule editor needs before any rule exists.
+
+    ``evaluation_enabled`` is the platform switch. ``alerting_mode`` is the
+    same computed value a rule response carries (``shadow`` or ``alerting``).
+    ``enabled_count`` is how many rules already hold a slot against
+    ``max_enabled``. The preview hour bounds are the preview route's own.
+    """
+
+    metrics: list[CatalogMetricOut]
+    subject_kinds: list[CatalogSubjectKindOut]
+    source_classes: list[str]
+    operators: list[str]
+    evaluation_enabled: bool
+    alerting_mode: str
+    max_enabled: int
+    enabled_count: int
+    preview_hours_min: int
+    preview_hours_max: int

@@ -18,8 +18,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.alerts.fingerprint import custom_rule_breach_fingerprint
+from app.api.routes.custom_rules import build_custom_rule_catalog
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
+from app.custom_rules.alerts import alerting_mode
 from app.custom_rules.engine import CustomRuleEngine
 from app.custom_rules.evaluate import latest_closed_bucket
 from app.custom_rules.preview import replay
@@ -144,6 +146,20 @@ def _draft_body(source_id: uuid.UUID, **overrides: object) -> dict[str, object]:
 
 def _search_body(name: str) -> dict[str, object]:
     return {"name": name, "aql_query": AQL, "schedule_cron": HOURLY}
+
+
+def _catalog_body(enabled_count: int, **overrides: object) -> dict[str, object]:
+    """The catalog the route should return for these settings and this count."""
+    updates: dict[str, object] = {"collection_interval_seconds": 300}
+    updates.update(overrides)
+    settings = get_settings().model_copy(update=updates)
+    built = build_custom_rule_catalog(
+        evaluation_enabled=settings.custom_rules_enabled,
+        alerting_enabled=settings.custom_rules_alerting_enabled,
+        max_enabled=settings.custom_rules_max_enabled,
+        enabled_count=enabled_count,
+    )
+    return built.model_dump(mode="json")
 
 
 def _settings(**overrides: object) -> Settings:
@@ -957,3 +973,76 @@ async def test_http_preview_sees_a_stored_exact_bucket(db_session, db_schema: st
     assert len(await _audits(db_session, "custom_rule.create")) == audits_before
     rules = await db_session.scalar(select(func.count()).select_from(CustomRule))
     assert rules == 1
+
+
+def test_catalog_is_on_the_openapi_guard_walk(db_schema: str) -> None:
+    """401 and 403 are the OpenAPI sweep. Catalog has to be on that walk."""
+    client = _anonymous(db_schema)
+    assert ("GET", f"{PREFIX}/catalog") in _operations(client)
+
+
+def test_viewer_catalog_returns_the_enforced_values(db_schema: str) -> None:
+    client = _client(db_schema, _principal("viewer"))
+    response = client.get(f"{PREFIX}/catalog")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body == _catalog_body(0)
+    settings = get_settings()
+    assert body["evaluation_enabled"] is settings.custom_rules_enabled
+    assert body["alerting_mode"] == alerting_mode(settings.custom_rules_alerting_enabled)
+    assert body["max_enabled"] == settings.custom_rules_max_enabled
+    assert body["enabled_count"] == 0
+    assert body["preview_hours_min"] == 1
+    assert body["preview_hours_max"] == 168
+    for metric in body["metrics"]:
+        assert "reads" not in metric
+        assert "bulk_loader" not in metric
+
+    switched = _client(
+        db_schema,
+        _principal("viewer"),
+        custom_rules_enabled=not settings.custom_rules_enabled,
+        custom_rules_alerting_enabled=not settings.custom_rules_alerting_enabled,
+        custom_rules_max_enabled=40,
+    )
+    again = switched.get(f"{PREFIX}/catalog")
+    assert again.status_code == 200, again.text
+    switched_body = again.json()
+    assert switched_body == _catalog_body(
+        0,
+        custom_rules_enabled=not settings.custom_rules_enabled,
+        custom_rules_alerting_enabled=not settings.custom_rules_alerting_enabled,
+        custom_rules_max_enabled=40,
+    )
+    assert switched_body["evaluation_enabled"] is not settings.custom_rules_enabled
+    assert switched_body["max_enabled"] == 40
+
+
+async def test_catalog_enabled_count_counts_enabled_rules_only(
+    db_session, db_schema: str
+) -> None:
+    instance = await make_instance(db_session)
+    source = await make_log_source(db_session, instance, qradar_id=761, name="catalog-src")
+    await db_session.commit()
+    writer = _client(db_schema, _principal("admin"))
+    reader = _client(db_schema, _principal("viewer"))
+    assert reader.get(f"{PREFIX}/catalog").json()["enabled_count"] == 0
+    disabled = writer.post(PREFIX, json=_rule_body(source.id, "catalog-off", enabled=False))
+    assert disabled.status_code == 201, disabled.text
+    assert reader.get(f"{PREFIX}/catalog").json()["enabled_count"] == 0
+    enabled = writer.post(PREFIX, json=_rule_body(source.id, "catalog-on", enabled=True))
+    assert enabled.status_code == 201, enabled.text
+    counted = reader.get(f"{PREFIX}/catalog")
+    assert counted.status_code == 200, counted.text
+    assert counted.json()["enabled_count"] == 1
+    assert counted.json() == _catalog_body(1)
+
+
+def test_catalog_is_not_shadowed_by_rule_id(db_schema: str) -> None:
+    client = _client(db_schema, _principal("viewer"))
+    catalog = client.get(f"{PREFIX}/catalog")
+    assert catalog.status_code == 200, catalog.text
+    assert isinstance(catalog.json()["metrics"], list)
+    assert client.get(f"{PREFIX}/not-a-rule").status_code == 422
+    # A UUID still reaches the rule route. Absence is 404, not the catalog.
+    assert client.get(f"{PREFIX}/{NIL}").status_code == 404
