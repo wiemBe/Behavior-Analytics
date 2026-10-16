@@ -63,32 +63,45 @@ against a template dashboard.
 (it is normative) and `frontend/src/app/tokens.css`.
 
 **Build from what exists:**
-- Use the existing components (guidelines §8) and the tokens.
-- No new colour, spacing or type literal outside `tokens.css`.
+- Use the existing components (guidelines §8) and the tokens. Reuse the shell (top bar,
+  `PageHeader`) and the widget system (`WidgetFrame`, the widget registry) before building any
+  new frame or card.
+- No new colour, spacing or type literal outside `tokens.css`. The colour half is enforced by
+  `frontend/src/app/colourLiterals.test.ts` (guidelines §11).
 - No new UI, icon or CSS framework (Tailwind, MUI, shadcn and the like), unless the task says so.
-- No inline styles.
+- No inline styles. The one exception is the dashboard grid's unitless position properties on
+  `.dg-item` (guidelines §9).
+- Dark only; navigation is text only (decision D-11). The palette keeps `--text-3 = #73757B` and
+  `--border-strong = #35363A`, although the first is below WCAG AA. This is the user's explicit
+  exception for exactly these two values, and nothing else (guidelines §11).
 
 **Never:**
 - gradients, glows, glassmorphism, decorative shadows, emoji or decorative icons;
-- a row of identical KPI cards holding vanity numbers;
+- a row of identical KPI cards holding vanity numbers. A KPI row is allowed on the Dashboard
+  only, when each card carries a breakdown from real fields and drills down (guidelines §2);
 - hero or marketing copy, or text that restates the heading;
 - cards nested in cards;
 - placeholder, random or invented data;
 - a zero drawn where the measurement is missing;
 - a chart with no unit on its axis, a library-default chart style (a marker on every point,
-  rainbow series), or a pie chart with more than five slices;
+  rainbow series), a pie chart with more than five slices, or a status hue used as a
+  categorical series colour (guidelines §11);
+- the words "live" or "real-time": collection runs on a cadence;
 - vague copy such as "Something went wrong", or exclamation marks.
 
 **Always:**
 - Each view answers one question, and its first screen answers it.
 - Numbers carry their unit, use tabular figures, and are right-aligned in tables.
-- Times show their timezone.
+- Times show their timezone. A relative age may follow the absolute UTC time, but never
+  replaces it (guidelines §10).
 - Every state is designed, not left to the default:
   - loading;
   - empty, which says what is empty and why;
   - error, which says what failed and what the analyst can do;
   - the honesty states INSUFFICIENT_DATA, PARTIAL, TRUNCATED and NOT_COLLECTED (guidelines §4
-    and §6).
+    and §6);
+  - on a Dashboard widget, also stale and forbidden (naming the permission). The widget links
+    to the route that owns its data in every state (guidelines §8).
 - Expected ranges render as a band, not as three lines.
 - Pages pass guidelines §9 (no page overflow at 1440×900, 1280×800 and 1024×768) and §10
   (accessibility).
