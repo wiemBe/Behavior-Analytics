@@ -50,8 +50,45 @@ hand over with "review what you inherit".
 | **OPS-5a** ([spec](tasks/OPS-5a.md)): a daily beat task calling `apply_policies` (verified: nothing calls it, so TimescaleDB retention and compression never ran) | Sonnet sub-agent, **finished 18:3x** | `ops5a`; DB `qradar_obs_ops5a` | **Done, not yet reviewed** (report `docs/tasks/OPS-5a.report.md`).<br>**The task:** `apply_timescale_policies`, run daily from the beat and once at beat start (a `beat_init` hook), with the setting `timescale_policy_interval_seconds`.<br>**Three real defects it fixed in `apply_policies`:**<br>1. A changed retention never took effect, because `if_not_exists` kept the old interval. It now compares `drop_after` and removes, then adds.<br>2. Compression was never updated or removed.<br>3. Tables were not isolated: one SQL error aborted every later table. Each table now runs in a savepoint and logs `error:<Type>`.<br>**Gates:** ruff clean; mypy 0; unit 3,449; integration 1,286 passed.<br>**Orchestrator decision (taken):** when `RETENTION_ENABLED` is false, the task still calls `apply_policies` rather than doing nothing, so turning retention off removes the old data-dropping job. A test pins it.<br>**Review closely, because this code drops data.** Check:<br>• the remove-then-add path;<br>• that the savepoints do not hide a partial state;<br>• the `beat_init` single send.<br>**Then:** fix `docs/OPERATIONS-DESIGN.md` lines ~370, ~396 and ~1547, which still say the task does not exist. Merge conflict with OPS-7 in `celery_app.py` and `tasks.py`: additive, keep both sides |
 | **OPS-7** ([spec](tasks/OPS-7.md)): `python -m app.cli.doctor` (every in-container check of design §6, PASS/WARN/FAIL lines with runbook ids, exit 0/1/2, no secrets) and the beat heartbeat | **Codex**, systemd unit `ops7-codex`, 17:55–18:29, **finished**, no limit hit | `ops7`; DB `qradar_obs_ops7`; log `QRadar-Dash-work/ops7/codex.log` | **Done, not yet reviewed.** Codex reports:<br>• all 19 checks, text and JSON output, runbook ids, exit codes;<br>• the beat heartbeat: 60 s schedule, 180 s TTL;<br>• QRadar access only through `validate_connection`;<br>• ruff clean; mypy 0 errors in 241 files; unit 3,468; **integration 1,287, 100 %**.<br>Next: review `doctor.py`. Check it prints no secret (the planted-token test), that it makes no provider call other than `validate_connection`, and the exit-code matrix. Then commit and merge. **OPS-5a and OPS-7 both add beat entries** to `celery_app.py` and `tasks.py`: the merge conflict is additive, so keep both sides |
 
+**OPS-2 finished at ~18:50 (Sonnet; not yet reviewed; report `docs/tasks/OPS-2.report.md`).**
+- **The fix:**
+  - the locks were regenerated in `python:3.12-slim`: `sqlalchemy[asyncio]==2.1.4`,
+    `greenlet==3.5.6`, ruff 0.15.22, mypy 2.3.1 (ruff < 0.16 and mypy < 2.4 are pinned through a
+    compile-time constraint recorded in the lock header);
+  - `pyproject.toml` now depends on `sqlalchemy[asyncio]`;
+  - the Dockerfile and CI install from the locks with `--require-hashes`;
+  - `mypy || true` is removed.
+- **The image:** 890 MB, uid 10001, contains `greenlet`. **The import failure is fixed.**
+- **On the 3.12 lock environment:**
+  - ruff clean;
+  - integration **1,286 passed**, so SQLAlchemy 2.1.4 broke nothing;
+  - **mypy: 3 errors** (`repositories/anomaly.py:423` unused ignore, `custom_rules/loaders.py:224`
+    variadic unpacking, `custom_rules/engine.py:236` `None` assignment);
+  - **unit: 2 failed**: `test_tls_and_credentials.py::TestSSLContext`, strict RFC 5280.
+
+**⚠ A real security gap, found by OPS-2.** Production and CI are **Python 3.12**, but every local
+gate so far ran on the host venv, which is **Python 3.14**.
+- On 3.12, `ssl.create_default_context()` does **not** set `VERIFY_X509_STRICT` (the default
+  only arrived in 3.13).
+- So the production image verifies the QRadar chain **without strict RFC 5280**, while every test
+  assumed it was strict.
+- The fix is **T-121** (spec to write, small; it must merge **with or before OPS-2**, or CI is red):
+  1. set `VERIFY_X509_STRICT` explicitly in the app's TLS context (`app/security/tls.py` or
+     wherever the context is built), keeping `QRADAR_TLS_ALLOW_MISSING_AKI` as the one opt-out;
+  2. fix the three mypy errors on 3.12 without breaking 3.14;
+  3. pass both TLS tests on 3.12 **and** 3.14.
+- **Gates from now on must run on 3.12.** Use the lock environment in a `python:3.12-slim`
+  container with `--network host`, as OPS-2 did (`QRadar-Dash-work/ops2/`). The alternative is to
+  move the image and CI to 3.13 or later; that is a later, deliberate decision, because design §2.4
+  keeps 3.12 for now.
+
+Scratch cleanup: `QRadar-Dash-work/ops2/src` holds root-owned files from a container run. Remove
+them with a throwaway `alpine` container on that dedicated directory, the same way they were
+written.
+
 **Merge order:**
-- **OPS-2 first**: the image is broken without it;
+- **OPS-2 together with T-121 first**: the image is broken without OPS-2, and CI is red without
+  T-121;
 - then OPS-1, OPS-5a and OPS-7;
 - then a full gate on `feat/phase-ce`: backend, including the integration suite and alembic,
   and frontend;
