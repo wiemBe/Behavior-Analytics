@@ -45,8 +45,26 @@ typecheck, 290 files / 3,193 tests, and the build.
 (detached, for the frontend gate), and the DBs `qradar_obs_gate`, `qradar_obs_gate_mig` and
 `qradar_obs_test`.
 
-**Next:** OPS-5, OPS-6, OPS-9 round 2 (OPS-R41), OPS-10, and the backlog in the 20:20 section
-below. The user's rule for tonight still holds: nothing runs past 00:00.
+**Stopped for the night at 21:30** (the user: "yarına bırak"). No agent, container or timer is
+running.
+
+**First thing on 2026-10-17: OPS-5** ([spec](tasks/OPS-5.md), committed in `bb59b71`).
+- Give it to a Sonnet sub-agent, or to Codex once its window is fresh.
+- Use worktree `ops5` from `feat/phase-ce`, and DB `qradar_obs_ops5` with the timescaledb
+  extension.
+- Orchestrator decisions in the spec:
+  - one shared restore function, which OPS-6's `rollback` will reuse;
+  - a guard that refuses `DROP DATABASE` on `POSTGRES_DB`;
+  - a `.partial` backup directory, renamed only after the verify passes;
+  - restore refuses when the backup's `ENCRYPTION_KEY` is in neither `ENCRYPTION_KEY` nor
+    `ENCRYPTION_KEYS_JSON` of the current `.env`;
+  - the restore swaps by rename, and the broken copy is never dropped automatically;
+  - secrets are not restored automatically;
+  - the timer is installed only with `--install-timer`, and `--print-timer` exists for the
+    tests.
+- **Review it closely:** it can destroy a database.
+
+**Then:** OPS-6, OPS-9 round 2 (OPS-R41), OPS-10, and the backlog in the 20:20 section below.
 
 ---
 
