@@ -169,7 +169,21 @@ export default async function SearchDetailPage({
           Result trend
         </h2>
         <div className="card">
-          <ResultTrend searchId={search.id} truncatedAt={truncatedRunTimes(executions)} />
+          <ResultTrend
+            searchId={search.id}
+            visualization={search.visualization_type}
+            search={search}
+            executions={executions}
+            createdAt={
+              versions.find((version) => version.version === 1)?.created_at ??
+              versions.reduce<string | null>(
+                (earliest, version) =>
+                  earliest == null || version.created_at < earliest ? version.created_at : earliest,
+                null,
+              )
+            }
+            truncatedAt={truncatedRunTimes(executions)}
+          />
         </div>
       </section>
     </>

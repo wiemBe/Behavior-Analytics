@@ -25,7 +25,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: 
 const setOption = vi.fn();
 const init = vi.fn(() => ({ setOption, resize: vi.fn(), dispose: vi.fn() }));
 vi.mock("echarts/core", () => ({ init: (...args: unknown[]) => init(...(args as [])), use: vi.fn() }));
-vi.mock("echarts/charts", () => ({ LineChart: {} }));
+vi.mock("echarts/charts", () => ({ LineChart: {}, BarChart: {} }));
 vi.mock("echarts/components", () => ({
   GridComponent: {},
   MarkLineComponent: {},
@@ -125,6 +125,13 @@ beforeEach(() => {
     threshold_operator: "GT",
     count: 0,
     points: [],
+  });
+  vi.spyOn(api, "searchMetricKeys").mockResolvedValue({
+    search_id: "s-1", total: 0, count: 0, keys: [],
+  });
+  vi.spyOn(api, "searchLatestGroups").mockResolvedValue({
+    search_id: "s-1", execution_id: null, started_at: null, status: null,
+    truncated: false, values_are_lower_bounds: false, empty: "no_execution", total: 0, rows: [],
   });
 });
 
