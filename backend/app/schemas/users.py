@@ -30,6 +30,13 @@ class PasswordResetIn(BaseModel):
     password: str = Field(max_length=1024)
 
 
+class RoleOut(BaseModel):
+    """One role as the administration picker lists it. No description of a person."""
+
+    name: str
+    permissions: list[str]
+
+
 class UserOut(BaseModel):
     id: uuid.UUID
     username: str | None

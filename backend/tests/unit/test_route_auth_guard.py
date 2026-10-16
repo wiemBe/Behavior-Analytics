@@ -242,3 +242,19 @@ def test_open_paths_are_all_real() -> None:
     """An allowlist entry for a route that no longer exists is dead weight."""
     paths = {p for _, p in ROUTES}
     assert paths >= _OPEN_PATHS
+
+
+def test_user_roles_list_is_on_the_openapi_guard() -> None:
+    """GET /users/roles is read-only and still closed.
+
+    The parametrized walk already demands 401 for every route. This pins the
+    new path by name and demands 403 from a read-only principal, which the
+    mutating walk does not cover.
+    """
+    path = "/api/v1/users/roles"
+    assert ("GET", path) in ROUTES
+    assert path in _client("oidc").app.openapi()["paths"]
+    missing = _client("oidc").get(path)
+    assert missing.status_code == 401, missing.text
+    readonly = _client("local").get(path, headers={"Authorization": "Bearer read-only"})
+    assert readonly.status_code == 403, readonly.text

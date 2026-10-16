@@ -31,6 +31,8 @@ export const KNOWN_PERMISSIONS = [
   "read:dashboards",
   "dashboard:write",
   "admin:dashboards",
+  "admin:users",
+  "admin:auth",
 ] as const;
 
 export type KnownPermission = (typeof KNOWN_PERMISSIONS)[number];

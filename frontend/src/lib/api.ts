@@ -31,12 +31,127 @@ export class ApiError extends Error {
 }
 
 /**
+ * How the session cookie is attached.
+ *
+ * Production is one origin, so `same-origin` is enough and a cross-site request
+ * does not carry the cookie. Development publishes the API on another port:
+ * that is a different origin, and `same-origin` would leave the cookie behind.
+ * The decision is the resolved API origin against the page origin. A relative
+ * base such as `/api/v1` resolves to the page and stays `same-origin`.
+ */
+export function credentialMode(pageUrl: string, apiBase: string): RequestCredentials {
+  try {
+    const page = new URL(pageUrl);
+    const api = new URL(apiBase, page);
+    if (api.origin !== page.origin) return "include";
+  } catch {
+    return "same-origin";
+  }
+  return "same-origin";
+}
+
+/**
+ * A path the browser may return to after sign-in.
+ *
+ * Only a same-origin path. A scheme, a protocol-relative URL, a backslash, or
+ * a control character is refused, including after percent-decoding. The sign-in
+ * page itself is not a destination, or a successful sign-in would loop.
+ */
+export function safeReturnPath(raw: string | null | undefined): string {
+  if (raw == null) return "/";
+  const trimmed = raw.trim();
+  if (trimmed === "" || !trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("/\\")) {
+    return "/";
+  }
+  if (trimmed.includes("\\") || trimmed.includes("://")) return "/";
+  let decoded = trimmed;
+  try {
+    decoded = decodeURIComponent(trimmed);
+  } catch {
+    return "/";
+  }
+  if (
+    !decoded.startsWith("/") ||
+    decoded.startsWith("//") ||
+    decoded.includes("\\") ||
+    decoded.includes("://") ||
+    /[\u0000-\u001f\u007f]/.test(decoded)
+  ) {
+    return "/";
+  }
+  let url: URL;
+  try {
+    url = new URL(decoded, "http://localhost");
+  } catch {
+    return "/";
+  }
+  if (url.origin !== "http://localhost" || url.username || url.password) return "/";
+  const path = `${url.pathname}${url.search}`;
+  if (path === "/login" || path.startsWith("/login?") || path.startsWith("/login/")) return "/";
+  return path;
+}
+
+/**
+ * Where a 401 sends the browser, or null when the page should keep the error.
+ *
+ * Sign-in answers 401 for a wrong password, and a password change answers 401
+ * for a wrong current password while the session is still valid. Those stay on
+ * the page. Every other 401 is a missing session.
+ */
+export function loginRedirectFor(
+  status: number,
+  path: string,
+  method: string | undefined,
+  detail: unknown,
+  here: string,
+): string | null {
+  if (status !== 401) return null;
+  const verb = (method ?? "GET").toUpperCase();
+  const target = path.split("?")[0];
+  if (verb === "POST" && target === "/auth/login") return null;
+  if (detail === "current password is wrong") return null;
+  if (here === "/login" || here.startsWith("/login?") || here.startsWith("/login/")) return null;
+  const next = safeReturnPath(here);
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
+/** Where sign-in lands. A password that must change goes to that page first. */
+export function destinationAfterLogin(next: string | null | undefined, mustChange: boolean): string {
+  const safe = safeReturnPath(next);
+  if (!mustChange) return safe;
+  if (safe === "/") return "/account/password";
+  return `/account/password?next=${encodeURIComponent(safe)}`;
+}
+
+/** Where a completed password change lands. The password route is not a home. */
+export function destinationAfterPasswordChange(next: string | null | undefined, here: string): string {
+  if (next != null && next !== "") return safeReturnPath(next);
+  const stay = safeReturnPath(here);
+  if (stay === "/account/password" || stay.startsWith("/account/password?")) return "/";
+  return stay;
+}
+
+/** The browser navigation a missing session uses. Tests replace `assign`. */
+export const sessionNavigation = {
+  assign(url: string) {
+    window.location.assign(url);
+  },
+};
+
+function requestCredentials(): RequestCredentials {
+  if (typeof window === "undefined") return "same-origin";
+  return credentialMode(window.location.href, baseUrl());
+}
+
+/**
  * One request through the backend. Exported for the saved-dashboards client. A `204` has no body,
  * so it resolves to `undefined` instead of failing in `res.json()`; no existing route answers 204.
+ * The session cookie is sent. No token is stored by this client.
  */
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${baseUrl()}${path}`, {
     ...init,
+    credentials: requestCredentials(),
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
   });
@@ -48,6 +163,22 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
       if (typeof raw === "string") detail = raw;
     } catch {
       /* non-JSON error body */
+    }
+    if (typeof window !== "undefined") {
+      const target = loginRedirectFor(
+        res.status,
+        path,
+        init?.method,
+        raw,
+        `${window.location.pathname}${window.location.search}`,
+      );
+      if (target) {
+        try {
+          sessionNavigation.assign(target);
+        } catch {
+          /* jsdom refuses navigation; the caller still receives the error */
+        }
+      }
     }
     throw new ApiError(res.status, detail, raw);
   }
@@ -2468,6 +2599,12 @@ export interface CallerInfo {
   permissions: string[];
   /** Every `PERM_*` capability the caller holds once wildcards are resolved. */
   effective_permissions: string[];
+  /** Present for a session. The development principal sends `local-dev`. */
+  username?: string | null;
+  /** `LOCAL` or `LDAP` for a session. Absent for the development principal. */
+  auth_source?: string | null;
+  must_change_password?: boolean;
+  roles?: string[];
 }
 
 // The configurable catalog widgets (UI-3.5b). A window is a preset the widget's range names;
