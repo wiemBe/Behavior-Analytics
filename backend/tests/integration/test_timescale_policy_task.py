@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import pytest
@@ -52,7 +53,7 @@ def make_settings(**kw):  # type: ignore[no-untyped-def]
 
 
 @pytest.fixture
-def run_task(monkeypatch, hypertables):  # type: ignore[no-untyped-def]
+async def run_task(monkeypatch, hypertables):  # type: ignore[no-untyped-def]
     engine = create_async_engine(hypertables)
     maker = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -69,6 +70,46 @@ def run_task(monkeypatch, hypertables):  # type: ignore[no-untyped-def]
         return await tasks.apply_timescale_policies()
 
     yield run
+    try:
+        await _remove_policy_jobs(engine)
+    finally:
+        await engine.dispose()
+
+
+async def _remove_policy_jobs(engine) -> None:  # type: ignore[no-untyped-def]
+    """Leave no policy job running or scheduled for the generic teardown's DROP TABLE.
+
+    A new job is due at once; its worker holds the job's advisory lock and a lock on the
+    hypertable, which deadlocks with `drop_all`. Unschedule first so none starts, wait until
+    none is running, then delete them.
+    """
+    sel = (
+        "SELECT job_id FROM timescaledb_information.jobs "
+        "WHERE proc_name IN ('policy_retention', 'policy_compression')"
+    )
+    async with engine.connect() as conn:
+        ids = [r[0] for r in await conn.execute(text(sel))]
+        for job_id in ids:
+            await conn.execute(
+                text("SELECT alter_job(:j, scheduled => false)").bindparams(j=job_id)
+            )
+        await conn.commit()
+        for _ in range(100):
+            running = await conn.scalar(
+                text(
+                    "SELECT count(*) FROM timescaledb_information.job_stats "
+                    "WHERE job_id = ANY(:ids) AND job_status = 'Running'"
+                ).bindparams(ids=ids)
+            )
+            await conn.rollback()
+            if not running:
+                break
+            await asyncio.sleep(0.1)
+        else:
+            raise AssertionError("a TimescaleDB policy job is still running after 10 s")
+        for job_id in ids:
+            await conn.execute(text("SELECT delete_job(:j)").bindparams(j=job_id))
+        await conn.commit()
 
 
 async def jobs(session):  # type: ignore[no-untyped-def]
