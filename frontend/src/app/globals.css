@@ -476,7 +476,6 @@ a {
 /* Metrics, counts and timestamps align column-wise only with tabular figures. */
 .num,
 .card .v,
-.metric-value,
 .measure-value,
 td.num {
   font-variant-numeric: tabular-nums;
@@ -556,12 +555,8 @@ td.cell-name.cell-name-single {
   border-radius: var(--r-lg);
   padding: var(--sp-5);
 }
-.panel-pad-lg {
-  padding: var(--sp-6);
-}
 
-.card .k,
-.metric-label {
+.card .k {
   overflow-wrap: anywhere;
   color: var(--text-3);
   font-size: var(--fs-xs);
@@ -570,8 +565,7 @@ td.cell-name.cell-name-single {
      the visual noise, and it costs legibility at 12 px. */
   letter-spacing: 0;
 }
-.card .v,
-.metric-value {
+.card .v {
   display: block;
   margin-top: var(--sp-1);
   font-size: var(--fs-metric);
@@ -871,15 +865,6 @@ tbody tr:last-child td {
 }
 tbody tr:hover td {
   background: var(--surface-3);
-}
-/* Key/value tables used for metadata: no header row, quiet keys. */
-.kv td {
-  padding: var(--sp-2) var(--sp-3);
-}
-.kv td:nth-child(odd) {
-  color: var(--text-3);
-  width: 1%;
-  white-space: nowrap;
 }
 
 /* --- notices ---------------------------------------------------------------
@@ -1793,9 +1778,6 @@ pre {
 
 .stack-6 > * + * {
   margin-top: var(--sp-6);
-}
-.stack-7 > * + * {
-  margin-top: var(--sp-7);
 }
 .row {
   display: flex;
