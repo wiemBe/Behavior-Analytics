@@ -528,6 +528,8 @@ LLM_ENABLED=false
 LLM_ALLOW_AUTONOMOUS_ACTIONS=false
 MCP_ENABLED=false
 COMPOSE_PROJECT_NAME=${ANS[PROJECT_NAME]}
+# So a bare 'docker compose' in this directory uses the production overlay too (./qradar-dash passes -f itself).
+COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
 COMPOSE_PROFILES=$profiles
 QRADAR_DASH_VERSION=$version
 QRADAR_DASH_IMAGE_PREFIX=${ANS[IMAGE_PREFIX]}
@@ -550,6 +552,8 @@ get_images() { # get_images MODE OFFLINE_BUNDLE
   case "$mode" in
     build)
       say "Building the images from this checkout (the first build takes several minutes)..."
+      # Stamp the build with the commit; unset (not an error) outside a git checkout. Never in .env.
+      if GIT_SHA=$(git rev-parse HEAD 2>/dev/null) && [ -n "$GIT_SHA" ]; then export GIT_SHA; else unset GIT_SHA; fi
       # shellcheck disable=SC2086 # word splitting of the service list is intended
       dc build ${svc/redis /} || die "docker compose build failed"
       # redis is not built; the plain image is pulled when it is not present.
