@@ -52,7 +52,7 @@ describe("TopSources", () => {
     expect(within(row).getByText("1,000.00")).toBeInTheDocument();
     expect(within(row).getAllByText(/EPS/).length).toBeGreaterThan(0);
     expect(within(row).getByText("3.40x")).toBeInTheDocument();
-    expect(within(row).getAllByText("Open").length).toBeGreaterThan(0);
+    expect(within(row).getAllByText("OPEN").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("Top log sources by EPS");
   });
 
