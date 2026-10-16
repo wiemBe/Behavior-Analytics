@@ -8,9 +8,60 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶ RESUME HERE — STATE AT 19:20, 2026-10-16 (eighteenth session, from 18:58)
+## ▶▶▶▶▶▶ RESUME HERE — STATE AT 20:00, 2026-10-16 (eighteenth session, from 18:58)
 
 The 18:25 section below is the background. Where they differ, this section wins.
+
+**Update at 20:00.** It supersedes the 19:20 branch and in-flight lists that follow.
+
+**Merged since 19:20:**
+- **OPS-7b** (`ffdbbbb`, Codex, rounds 0–1): the host half of `./qradar-dash doctor`.
+  - shellcheck from the image is clean.
+  - The doctor and installer tests pass (50).
+  - Round 1: a `compose ps` Go template instead of an awk JSON parser (real tabs checked), and
+    a `migrate` that exited 0 is not a failure.
+- **OPS-2 + T-121** (`827c5c6`):
+  - the hashed 3.12 locks, and `sqlalchemy[asyncio]` brings `greenlet`;
+  - explicit `VERIFY_X509_STRICT` and `VERIFY_X509_PARTIAL_CHAIN` on every interpreter;
+  - mypy 0 on both environments;
+  - the image back on `pip install --no-deps -e .`;
+  - the agent's gates: 3.12 lock (unit 3,488, **integration 1,290/0**) and host 3.14
+    (unit 3,488).
+  - **SELinux deviation by the T-121 agent:** it bind-mounted the worktree's `VERSION` with
+    `:Z`. It restored the file by rewriting it. The orchestrator verified the label is back to
+    `user_home_t:s0` and that git shows no change. The OPS-3 prompt now forbids any mount from
+    the worktree.
+- Host venv on `827c5c6`: ruff clean; mypy 0 in 243 files; unit 3,543.
+- `feat/phase-ce` @ `827c5c6` is pushed.
+- Worktrees, branches and DBs of `ops1`, `ops2`, `ops5a`, `ops7` and `ops7b` are removed.
+
+**In flight at 20:00:**
+
+| Task | Agent | Worktree | Notes |
+|---|---|---|---|
+| **OPS-3** ([spec](tasks/OPS-3.md)) | Sonnet sub-agent (dies with the chat) | `ops3` from `827c5c6` | Release workflow, `/app/VERSION` through the `repo` additional build context, GHCR names, Redis digest. A fresh backend image fails `import app.main` until this lands. |
+| **OPS-8** ([spec](tasks/OPS-8.md)), `support-bundle` | Codex, unit `ops8-codex` | `ops8` from `79316aa` | The scrubber is Python in the backend image, run with `dc run --rm --no-deps`. Secrets go on stdin only. Fail closed. §7.2's UUID ambiguity is resolved in the spec. |
+| **OPS-9** ([spec](tasks/OPS-9.md)), Turkish runbook, draft round | Sonnet sub-agent (the user, 19:40: do not wait on rate limits, give it to Sonnet) | `ops9` | `docs/OPERATIONS.md`, OPS-R1 to OPS-R42. Stub commands get the "henüz yayımlanmadı" line. |
+| **Full backend gate on Python 3.12** of `827c5c6` | orchestrator, container `gate312` | scratch `QRadar-Dash-work/gate312/src` (`git archive`, `:Z` on that dedicated dir) | DBs `qradar_obs_gate312` (integration) and `qradar_obs_gate312_mig` (alembic round trip), both with the timescaledb extension. Log: `gate312/src/gate.log`. Read the **skip count**. |
+
+**Agents:**
+- Grok: out for the week (the user, ~19:25).
+- Z.AI GLM: back at 00:38.
+- opencode free (DeepSeek v4.1 flash, GLM 5.3 flash): rate-limited at 19:20 and 19:30. The user:
+  hand the task to Sonnet instead of waiting.
+
+**Next:**
+1. Review OPS-3, OPS-8 and OPS-9.
+2. Then the final 3.12 gate, plus the frontend gate, on the merged head.
+3. Then `main`.
+4. Then OPS-5 (backup, restore, disk guard, timer).
+5. Then OPS-6 (upgrade, rollback).
+6. Then OPS-9 round 2, removing the "not yet published" lines.
+7. Then OPS-10.
+
+---
+
+**State at 19:20 (kept for the log).**
 
 **The user, at 19:00:** "glm opencode free deepseek ve glm codex grok kullanabilrsin". Every agent
 is allowed. Probed at 19:02:
