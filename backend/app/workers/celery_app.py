@@ -7,7 +7,10 @@ documented MVP fallback for teams not running Celery — see README.
 
 from __future__ import annotations
 
+import logging
+
 from celery import Celery
+from celery.signals import beat_init
 
 from app.core.config import get_settings
 
@@ -182,4 +185,26 @@ celery_app.conf.beat_schedule = {
         "task": "apply_custom_rule_retention",
         "schedule": float(settings.custom_rules_retention_interval_seconds),
     },
+    "apply-timescale-policies": {
+        # Reconciles TimescaleDB retention and compression with the settings.
+        # Also sent once when beat starts (below), so a changed setting does not
+        # wait a day.
+        "task": "apply_timescale_policies",
+        "schedule": float(settings.timescale_policy_interval_seconds),
+    },
 }
+
+
+@beat_init.connect
+def _apply_policies_at_beat_start(**_: object) -> None:
+    """Send the policy task once at beat start.
+
+    Beat is a single process, so replicas of the API or the worker do not race.
+    The task is idempotent. A broker that is down must not stop beat.
+    """
+    try:
+        celery_app.send_task("apply_timescale_policies")
+    except Exception:
+        logging.getLogger("app.timescale").warning(
+            "could not queue the startup policy run", exc_info=True
+        )
