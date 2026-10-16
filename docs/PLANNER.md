@@ -8,6 +8,58 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶▶▶▶▶▶ RESUME HERE — STATE AT 19:20, 2026-10-16 (eighteenth session, from 18:58)
+
+The 18:25 section below is the background. Where they differ, this section wins.
+
+**The user, at 19:00:** "glm opencode free deepseek ve glm codex grok kullanabilrsin". Every agent
+is allowed. Probed at 19:02:
+- Grok: still **402** (credit balance exhausted);
+- Z.AI GLM: out until **00:38**;
+- DeepSeek free: rate-limited.
+
+Codex and Sonnet are working.
+
+**The old chat (session `qradar-dash-c7`) woke at 19:03** on its OPS-2 sub-agent's notice and
+committed `05a8427` (the PLANNER note on OPS-2 and T-121). It was told by message to take no
+further action. If a commit appears that this session did not make, check `ListAgents` first.
+
+**Branches.**
+- `main` @ `4169592`, unchanged.
+- `feat/phase-ce` @ `bd2904b` (pushed `bb7f49c`). Since 18:25 it holds:
+  - **OPS-1** merged (`f755a7c`). Review: code clean, the 12 PNGs reviewed, 207 targeted
+    backend tests and 32 frontend tests, typecheck and lint.
+  - **OPS-7** merged (`34bfc9d`, Codex, rounds 0–1). Round 1 fixed four review points:
+    - `celery_workers` PASSes on any pong. The doctor runs in the backend container, so the
+      hostname-targeted ping never matched a worker.
+    - `qradar_clock` moved to the host half, so a healthy run exits 0.
+    - Every check is bounded at 10 s, and a timeout is a FAIL line.
+    - The heartbeat message names beat or the worker.
+  - **OPS-5a** merged (`bb7f49c`, Sonnet, rounds 0–1). Round 1 proved that the daily re-run is
+    safe on a hypertable with compressed chunks (TimescaleDB 2.17.2: the `ALTER … compress`
+    does not fail; a test pins it). It also fixed the docstring and the design.
+    **Lesson:** round 0's policy integration tests had **skipped silently**, because the
+    agent's DB lacked the `timescaledb` extension. **Check the skip count in the final gate.**
+  - The specs for T-121, OPS-7b and OPS-3.
+  - Host venv on `bb7f49c`: ruff clean; mypy 0 in 243 files; unit 3,519 passed.
+
+**In flight.**
+
+| Task | Agent | Worktree | State |
+|---|---|---|---|
+| **T-121** ([spec](tasks/T-121.md)), OPS-2 round 1 | Sonnet sub-agent (dies with the chat) | `ops2` (OPS-2 round 0 committed `b289b59`, `feat/phase-ce` merged in `bfedb97`) | Explicit `VERIFY_X509_STRICT` and `VERIFY_X509_PARTIAL_CHAIN` on every interpreter; the three mypy errors on the 3.12 lock; `pip install --no-deps -e .` again. A message added the design §2.4 sentence, which wrongly said "not `-e`". Gates run in a 3.12 lock container **and** on the host venv, plus an image smoke test. **Merge OPS-2 and T-121 together.** |
+| **OPS-7b** ([spec](tasks/OPS-7b.md)), host half of `./qradar-dash doctor` | Codex, unit `ops7b-codex` | `ops7b` | Running. It flagged `test_qradar_dash_installer.py:224`, which pins `doctor` as an exit-64 stub. **Orchestrator decision:** drop `doctor` from that tuple only (the stub no longer exists). Resume Codex with that permission after it ends. Run shellcheck from `koalaman/shellcheck` on stdin; it is not on the host. |
+| **OPS-3** ([spec](tasks/OPS-3.md)) | not started | — | Starts after OPS-2 and T-121 merge, because both touch `backend/Dockerfile` and `ci.yml`. **Sonnet** sub-agent, because it needs real image builds. Until then a fresh backend image has no `/app/VERSION`, so OPS-1 refuses to start it. |
+
+**Next:**
+1. Merge OPS-2 with T-121.
+2. OPS-3.
+3. The **full gate on 3.12** (lock container) plus the frontend.
+4. `main`.
+5. OPS-5 (backup), OPS-6, OPS-8 and OPS-9, as in the 18:25 list.
+
+---
+
 ## ▶▶▶▶▶ RESUME HERE — STATE AT 18:25, 2026-10-16 (end of the seventeenth session; the user moved to a new chat because the context was long)
 
 **Read first:**
