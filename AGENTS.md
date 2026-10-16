@@ -111,6 +111,11 @@ enough.
 - New behavior needs tests. Pin every guard and exit path, not just the happy path.
 - After you write a test, break the code on purpose and confirm the test fails. Then restore the
   code.
+- Tests must run on any machine and against any test database. Never hard-code an absolute path
+  (`/home/...`), your task's database name, or a venv path in a test. Use `sys.executable`, the
+  `TEST_DATABASE_URL` the suite gives you (parse it; do not copy its name), and pytest's
+  `tmp_path` for files a test writes. (Added 2026-10-16 after an AUTH-1 test passed only on its
+  own agent database.)
 
 ## 5. Running things
 
