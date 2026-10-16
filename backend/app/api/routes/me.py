@@ -44,4 +44,8 @@ async def get_me(principal: Principal = Depends(get_principal)) -> MeOut:
         email=principal.email,
         permissions=granted,
         effective_permissions=effective,
+        username=principal.username,
+        auth_source=principal.auth_source,
+        must_change_password=principal.must_change_password,
+        roles=list(principal.roles),
     )

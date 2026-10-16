@@ -10,6 +10,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     AliasChoices,
@@ -142,6 +143,17 @@ class Settings(BaseSettings):
     # A search that has quietly stopped producing results is exactly the blind
     # spot this platform exists to surface, so it is alertable in its own right.
     search_failure_alert_after: int = Field(default=3, ge=1)
+    # Enabled scheduled searches. Creating or enabling one past this is 409.
+    # Disabled searches are not counted (design F.8.2).
+    scheduled_searches_max_enabled: int = Field(default=25, ge=1, le=10_000)
+    # search_result_metric rows older than this, by bucket_start, are deleted
+    # by the daily batch task. The optional Timescale chunk policy is the
+    # separate retention_search_result_metric_days switch and stays off unless
+    # RETENTION_ENABLED is set.
+    search_result_metric_retention_days: int = Field(default=90, ge=2)
+    search_result_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    search_result_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    search_result_retention_interval_seconds: int = Field(default=86400, ge=3600)
     # Delay a cadence slot after its boundary so late QRadar events can arrive.
     search_cadence_settle_seconds: int = Field(default=120, ge=0, le=900)
     search_cadence_max_searches_per_tick: int = Field(default=16, ge=1, le=256)
@@ -527,6 +539,24 @@ class Settings(BaseSettings):
     geo_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     geo_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
+    # --- Phase F: custom threshold rules (design §F.4, §F.10) ----------------
+    #: Kill switch. The evaluator is DB-only and sends no Ariel search. Nothing
+    #: runs until this is set, so an upgrade changes no behaviour.
+    custom_rules_enabled: bool = False
+    #: Shadow mode (D-17). Breaches and rule state are written either way.
+    #: Nothing opens, refreshes or resolves an alert, and nothing is enqueued,
+    #: until this is set. It sits beside ``custom_rules_enabled``.
+    custom_rules_alerting_enabled: bool = False
+    #: Enabled rules. Creating or enabling beyond this is refused (409 at the API).
+    custom_rules_max_enabled: int = Field(default=100, ge=1, le=10_000)
+    #: Closed buckets judged per subject kind per run. 288 is a day of 5-minute buckets.
+    custom_rules_max_buckets_per_run: int = Field(default=288, ge=1, le=10_080)
+    #: Resolved breaches older than this are deleted. Live breaches are kept.
+    custom_rule_breach_retention_days: int = Field(default=180, ge=1)
+    custom_rules_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    custom_rules_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    custom_rules_retention_interval_seconds: int = Field(default=86400, ge=3600)
+
     # --- Phase B.1.5: Ariel budget and batching ------------------------------
     #: WAF sources that may have an Ariel search in flight at once, across every
     #: worker. Each source collects one bucket per permit; a source that cannot
@@ -604,15 +634,32 @@ class Settings(BaseSettings):
     mcp_timeout_seconds: int = 60
 
     # --- auth ---------------------------------------------------------------
-    auth_provider: Literal["local", "oidc"] = "local"
+    # "local" is the development convenience (a local-dev principal, no cookie).
+    # "session" reads the server-side session cookie. Production always reads
+    # the cookie, whichever of those two is set. "oidc" is refused at startup
+    # in production; outside production its behaviour is unchanged.
+    auth_provider: Literal["local", "oidc", "session"] = "local"
     oidc_issuer: str = ""
     oidc_client_id: str = ""
     oidc_client_secret: SecretStr = SecretStr("")
     oidc_redirect_uri: str = ""
+    # Idle is measured from last_seen_at. Absolute is measured from created_at
+    # and is also stored on the row as expires_at.
+    session_idle_minutes: int = Field(default=480, ge=1, le=10080)
+    session_max_hours: int = Field(default=12, ge=1, le=720)
+    # Consecutive failures of one username. The per-IP limit on the login route
+    # is separate and does not reset this counter.
+    login_lockout_threshold: int = Field(default=5, ge=1, le=50)
+    login_lockout_minutes: int = Field(default=15, ge=1, le=1440)
+    # Browser origin of the UI. CORS and the CSRF check both use it.
+    public_origin: str = "http://localhost:3000"
+    # How many expired session rows one login may delete.
+    session_cleanup_batch: int = Field(default=500, ge=1, le=5000)
 
     # --- rate limiting ------------------------------------------------------
     rate_limit_default: str = "120/minute"
     rate_limit_search_execution: str = "10/minute"
+    rate_limit_login: str = "300/minute"
 
     # --- LLM (interface only) ----------------------------------------------
     llm_enabled: bool = False
@@ -642,6 +689,15 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment is Environment.PRODUCTION
+
+    def session_cookies_enforced(self) -> bool:
+        """True when a request must carry the session cookie.
+
+        Production never falls back to the development principal. Outside
+        production, only ``auth_provider=session`` does, so the existing suite
+        keeps working on the local provider.
+        """
+        return self.is_production or self.auth_provider == "session"
 
     def encryption_keyring(self) -> dict[int, str]:
         """All known Fernet keys by version, active version included.
@@ -798,6 +854,11 @@ class Settings(BaseSettings):
             )
         return self
 
+    @field_validator("public_origin")
+    @classmethod
+    def _normalise_public_origin(cls, value: str) -> str:
+        return value.strip().rstrip("/")
+
     @model_validator(mode="after")
     def _production_hardening(self) -> Settings:
         """Refuse to boot a production deployment with a development posture.
@@ -828,6 +889,25 @@ class Settings(BaseSettings):
         if self.llm_allow_autonomous_actions:
             problems.append(
                 "LLM_ALLOW_AUTONOMOUS_ACTIONS must be false; autonomous response is not implemented"
+            )
+        origin = urlsplit(self.public_origin)
+        if (
+            origin.scheme != "https"
+            or not origin.hostname
+            or origin.username
+            or origin.password
+            or origin.path not in ("", "/")
+            or origin.query
+            or origin.fragment
+            or "*" in self.public_origin
+        ):
+            problems.append(
+                "PUBLIC_ORIGIN must be an https origin with a host and no path, query, or wildcard"
+            )
+        if self.auth_provider == "oidc":
+            problems.append(
+                "AUTH_PROVIDER=oidc is not available; OIDC is out of scope. "
+                "Set AUTH_PROVIDER=session"
             )
 
         if problems:

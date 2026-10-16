@@ -125,7 +125,7 @@ export default async function CoveragePage({
           ) : (
             <>
               <TableScroll label="Techniques">
-              <table className="coverage-table">
+              <table className="coverage-table" aria-label="Techniques">
                 <thead>
                   <tr>
                     <th>Technique</th>
@@ -177,7 +177,7 @@ export default async function CoveragePage({
         <div className="notice">No rules have ATT&amp;CK technique mappings yet.</div>
       ) : (
         <TableScroll label="Coverage by rule">
-        <table className="coverage-table">
+        <table className="coverage-table" aria-label="Coverage by rule">
           <thead><tr><th>Rule</th><th>Enabled</th><th>Health</th><th>Techniques</th><th>Evidence</th></tr></thead>
           <tbody>
             {byRule.map((r) => (
@@ -198,7 +198,7 @@ export default async function CoveragePage({
         <div className="notice">No rule-to-log-source dependencies are available from this QRadar inventory.</div>
       ) : (
         <TableScroll label="Coverage by data source">
-        <table className="coverage-table">
+        <table className="coverage-table" aria-label="Coverage by data source">
           <thead><tr><th>Data source</th><th>Kind</th><th>Rules</th><th>Techniques</th><th>Evidence</th></tr></thead>
           <tbody>
             {byDataSource.map((d) => (

@@ -123,7 +123,7 @@ export function Evidence({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="evidence">
       {typeof data.reason === "string" && <p className="evidence-reason">{data.reason}</p>}
-      <table className="evidence-table">
+      <table className="evidence-table" aria-label="Detector evidence metrics">
         <tbody>
           {rows.map(([label, key, measure]) => {
             const n = measure ? figure(data[key], measure.scale) : null;

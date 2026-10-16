@@ -78,7 +78,7 @@ export default async function AlertDetailPage({
         <div className="notice">No notifications for this alert.</div>
       ) : (
         <TableScroll label="Notification delivery history">
-          <table className="table-dense delivery-table">
+          <table className="table-dense delivery-table" aria-label="Notification delivery history">
             <thead>
               <tr>
                 <th>Channel</th>

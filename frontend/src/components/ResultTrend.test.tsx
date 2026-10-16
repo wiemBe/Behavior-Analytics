@@ -16,7 +16,7 @@ vi.mock("echarts/core", () => ({
   init: (...args: unknown[]) => init(...(args as [])),
   use: vi.fn(),
 }));
-vi.mock("echarts/charts", () => ({ LineChart: {} }));
+vi.mock("echarts/charts", () => ({ LineChart: {}, BarChart: {} }));
 vi.mock("echarts/components", () => ({
   GridComponent: {},
   MarkLineComponent: {},
@@ -64,6 +64,14 @@ beforeEach(() => {
   dispose.mockClear();
   observe.mockClear();
   disconnect.mockClear();
+  vi.spyOn(api, "searchMetricKeys").mockResolvedValue({
+    search_id: "s-1", total: 1, count: 1,
+    keys: [{ metric_key: "total", point_count: 1, last_bucket_start: "2026-07-20T10:00:00Z" }],
+  });
+  vi.spyOn(api, "searchLatestGroups").mockResolvedValue({
+    search_id: "s-1", execution_id: null, started_at: null, status: null,
+    truncated: false, values_are_lower_bounds: false, empty: "no_execution", total: 0, rows: [],
+  });
 });
 
 describe("ResultTrend", () => {
@@ -81,7 +89,9 @@ describe("ResultTrend", () => {
     vi.spyOn(api, "searchResults").mockResolvedValue(trend({ points: [], count: 0 }));
     render(<ResultTrend searchId="s-1" />);
 
-    expect(await screen.findByText(/no result metrics recorded yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/never run/i)).toBeInTheDocument();
+    expect(screen.getByText(/creation time was not recorded/i)).toBeInTheDocument();
+    expect(screen.getByText(/Run it from this page with Run now/i)).toBeInTheDocument();
     expect(init).not.toHaveBeenCalled();
   });
 

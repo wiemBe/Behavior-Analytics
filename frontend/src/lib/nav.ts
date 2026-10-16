@@ -14,6 +14,8 @@
 export interface NavItem {
   href: string;
   label: string;
+  /** When set, the entry is shown only to a caller who holds this permission. */
+  permission?: string;
 }
 
 export interface NavGroup {
@@ -62,6 +64,7 @@ export const NAV: NavGroup[] = [
       { href: "/alerts", label: "Alerts" },
       { href: "/rules", label: "Rules" },
       { href: "/rules/statistics", label: "Rule statistics" },
+      { href: "/custom-rules", label: "Custom rules" },
       { href: "/coverage", label: "Coverage" },
     ],
   },
@@ -80,6 +83,8 @@ export const NAV: NavGroup[] = [
       { href: "/admin/outage-policy", label: "Outage alerts" },
       { href: "/admin/waf-sources", label: "WAF sources" },
       { href: "/admin/ips-sources", label: "IPS sources" },
+      { href: "/admin/users", label: "Users", permission: "admin:users" },
+      { href: "/admin/directory", label: "Directory", permission: "admin:auth" },
     ],
   },
 ];

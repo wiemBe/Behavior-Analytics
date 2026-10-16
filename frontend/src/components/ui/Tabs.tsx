@@ -85,7 +85,7 @@ export function Tabs({
               role="tab"
               id={`${baseId}-tab-${tab.id}`}
               aria-selected={selected}
-              aria-controls={`${baseId}-panel-${tab.id}`}
+              aria-controls={selected ? `${baseId}-panel-${tab.id}` : undefined}
               // Only the active tab is reachable by Tab; the rest are reached
               // with the arrow keys, per the ARIA tabs pattern.
               tabIndex={selected ? 0 : -1}

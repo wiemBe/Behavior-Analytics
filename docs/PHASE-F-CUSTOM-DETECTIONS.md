@@ -1,12 +1,14 @@
 # Phase F — custom detections and custom AQL (D-15)
 
-Status: **design, 2026-10-15.** Written by T-108; every design item below is **[DESIGN]** (nothing
-is built). It follows the shape of [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and rests
+Status: **built, 2026-10-16** (designed 2026-10-15 by T-108). F-1 through F-7 and F-6a are built
+and their sections are marked **[BUILT]**. An "As built" note under a section marks where the
+code differs from the design text. It follows the shape of
+[`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and rests
 on [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (D-7), [`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md)
 §29 (measurement semantics, admission, bulk loaders), [`UI-REDESIGN-PLAN.md`](UI-REDESIGN-PLAN.md)
-§UR.5 (the widget system) and [`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md). Every claim
-about the code carries a `file:line` citation. Build starts after Phase 5 merges to `main`
-([`PLANNER.md`](PLANNER.md) §4 D-15).
+§UR.5 (the widget system) and [`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md). The design's
+`file:line` citations were written against the pre-build tree; the "As built" notes cite the built
+files ([`PLANNER.md`](PLANNER.md) §4 D-15, D-17).
 
 ---
 
@@ -157,7 +159,12 @@ Ariel search for F.1; executing frontend-supplied AQL (AGENTS.md rule 4 — neve
 
 ---
 
-## F.3 F.1 — the rule model **[DESIGN]**
+## F.3 F.1 — the rule model **[BUILT]**
+
+> **As built** (`backend/app/models/custom_rule.py`, `backend/app/models/enums.py`, migration
+> `backend/alembic/versions/0024_custom_rules.py`): the rule row, the subject-pairing `CHECK`,
+> `uq_custom_rule_name` and the partial unique `uq_custom_rule_breach_active` are as designed.
+> The status vocabulary is larger than this section's `last_status` sketch — see §F.5's note.
 
 ### F.3.1 The rule row
 
@@ -245,7 +252,28 @@ alert stays readable after an entity is retired or deleted.
 
 ---
 
-## F.4 F.1 — evaluation **[DESIGN]**
+## F.4 F.1 — evaluation **[BUILT]**
+
+> **As built** (`backend/app/custom_rules/engine.py`, `evaluate.py`, `loaders.py`,
+> `backend/app/workers/celery_app.py`): the beat is `evaluate-custom-rules` every 60 s, a no-op
+> that opens no session while `CUSTOM_RULES_ENABLED` is false. A kind is seeded only when it
+> has an evaluable rule (enabled, not retired, family collected): that first run writes the
+> watermark at the latest closed bucket and judges nothing. The metric read is one statement
+> per such kind. The evaluation tick, and the non-opening and refresh alerting ticks, are
+> pinned equal at 10 rules and at 100
+> (`backend/tests/integration/test_custom_rules.py`,
+> `backend/tests/integration/test_custom_rule_alerts.py`). A tick that opens alerts inserts
+> one row per new alert; that cost is not in the pin. One state this section does not name: a
+> kind whose grid is empty beyond `cadence + bucket + settle + 60 s` sets `last_status` to
+> `STALE` on every evaluable rule of that kind. The breach row stays open, the counters and
+> the watermark do not move, and the backlog is judged when rows return (F-1 review round 1,
+> `evaluate.py::stale_bound_seconds`). A disabled, retired or family-off rule keeps its own
+> status and does not take `STALE`. §F.4.4 adds the same terms up to "about 1 h 13 min".
+> One hour plus a 5-minute bucket, a 2-minute settle and at most one minute is 68 minutes.
+> The README's cadence line is that sum without the evaluation beat, about 1 h 7 min.
+> `/custom-rules` and `/custom-rules/new` show §F.12's sentence with "seconds-level" in place
+> of "real-time" (`frontend/src/components/customrules/authoring.ts`). The README quotes that
+> sentence.
 
 ### F.4.1 Where it runs
 
@@ -345,7 +373,26 @@ cadence, about **13 minutes**. This is the platform's documented detection trade
 
 ---
 
-## F.5 F.1 — fail-closed rules **[DESIGN]**
+## F.5 F.1 — fail-closed rules **[BUILT]**
+
+> **As built** (`backend/app/custom_rules/evaluate.py`, `engine.py`): the statuses are
+> `NOT_ENABLED`, `SUBJECT_RETIRED`, `DISABLED`, `NOT_COLLECTED`, `OPEN`, `RECOVERING`, `OK`,
+> `NO_VERDICT` and `STALE`. Rule 7 names `NOT_ENABLED` for a disabled family; the code uses
+> `NOT_COLLECTED` for that, with the reason `waf_collection_enabled is off` or
+> `ips_collection_enabled is off`. A log-source or fleet-class rule is never
+> `NOT_COLLECTED`. `NOT_ENABLED` is the fold's answer when the platform switch is off. The
+> beat does not persist it: while `CUSTOM_RULES_ENABLED` is false it returns before opening a
+> session, and the engine always folds with the platform on. `SUBJECT_RETIRED` covers a
+> missing log source or IPS source (`the subject no longer exists`) as well as an inactive
+> endpoint or entity; a fleet class is never retired. `OK` means no live breach and the last
+> judged bucket was measured — a streak that has not reached `sustain_buckets` is still `OK`,
+> not "under". `NO_VERDICT` means no live breach and the last judged bucket proved nothing
+> (unmeasured or maintenance). `INSUFFICIENT_DATA` stays a bucket outcome. It increments
+> `unmeasured_buckets` only while a breach is already open; it pauses a streak and does not
+> reset it. Maintenance pauses the same way and is not counted as unmeasured. A rule never
+> evaluated has a null status. What a `LOWER_BOUND` proves comes from the catalog: `event_count`,
+> `average_eps` and `total_events` are `EXACT_ONLY`, so a lower bound proves nothing either
+> way, including `GT`/`GE`. The other seven entries are `LOWER_BOUND_PROVES_INCREASE`.
 
 1. **An unmeasured bucket is `INSUFFICIENT_DATA`.** No row for the subject and bucket (or, for
    WAF/IPS, no bucket record), a `PARTIAL` Phase A row, a `NOT_COLLECTED` breakdown: none of
@@ -378,7 +425,21 @@ cadence, about **13 minutes**. This is the platform's documented detection trade
 
 ---
 
-## F.6 F.1 — alerting **[DESIGN]**
+## F.6 F.1 — alerting **[BUILT]**
+
+> **As built** (`backend/app/custom_rules/alerts.py`, `backend/app/alerts/fingerprint.py`,
+> `backend/app/custom_rules/engine.py`; D-17 answer 1): shadow mode ships.
+> `CUSTOM_RULES_ALERTING_ENABLED` (default false) gates paging while `CUSTOM_RULES_ENABLED`
+> gates evaluation. With evaluation on and alerting off, breach rows and rule state are
+> written and the evaluator opens, refreshes, resolves and enqueues nothing — including a
+> rule disabled or a subject retired during shadow. The next alerting-on tick closes a page
+> whose breach is already gone (`condition recovered`), resolves `DISABLED` and
+> `SUBJECT_RETIRED` (the breach row is kept), and leaves `STALE`, `NOT_COLLECTED` and
+> maintenance open. The alerting tick's orphan sweep resolves pages of rules deleted by
+> cascade, actor `custom-rule-evaluator`. F-3's delete path resolves either way, alerting on or off,
+> with the deleting principal. Maintenance is the source's live window plus the flag stored
+> on the bucket; a fleet class has no window. The fingerprint prefix is
+> `custom_rule_breach:`.
 
 One alert per rule condition, through `AlertService`:
 
@@ -403,7 +464,17 @@ One alert per rule condition, through `AlertService`:
 
 ---
 
-## F.7 F.1 — the rule preview (question 6) **[DESIGN]**
+## F.7 F.1 — the rule preview (question 6) **[BUILT]**
+
+> **As built** (`backend/app/custom_rules/preview.py`, `backend/app/api/routes/custom_rules.py`):
+> both previews call `replay`, which runs the evaluator's own `fold_rule` over one bulk read —
+> nothing is persisted, alerted or audited. The replay starts from a clean counter and ignores
+> the operational halts (the rule disabled, the subject retired, the family or the platform
+> off, `STALE`), so a draft or a disabled rule still answers the historical question;
+> maintenance is applied exactly as the engine applies it. `hours` is 1–168, default 24.
+> Agreement with evaluation is the hand-built cases in
+> `backend/tests/integration/test_custom_rules_api.py`, not the property test the last
+> bullet of this section names.
 
 The preview answers *"would this rule have fired, on data that is already stored?"* It replays the
 rule over collected buckets and sends nothing to QRadar.
@@ -428,7 +499,22 @@ rule over collected buckets and sends nothing to QRadar.
 
 ---
 
-## F.8 F.2 — custom AQL: authoring, validation, preview **[DESIGN]**
+## F.8 F.2 — custom AQL: authoring, validation, preview **[BUILT]**
+
+> **As built** (F-4: `backend/app/services/search_scheduler.py`,
+> `backend/app/services/scheduled_search.py`,
+> `backend/app/services/search_result_retention.py`, `backend/app/schemas/search.py`; F-5:
+> `frontend/src/components/searches/SearchEditor.tsx`): the cron floor is
+> `check_cron_floor` (300 s, a constant), computed by a fast UTC-mapped derivation with the
+> fire-by-fire walk as the fallback, off the event loop. Authoring failures are
+> `{"detail": {"message", "reasons"}}` for AQL and threshold refusals on create and update.
+> A cron-floor refusal is 422 with a string detail, not that object. A patch whose only
+> counted field is `enabled` (`change_note` does not count) is audited
+> `search.enable`/`search.disable`. `search:write` is also on `detection_engineer`, not only
+> on admin (§F.8.2's "admin only today" is the pre-D-17 text). The editor creates with
+> `enabled: false`, keeps a non-preset cron verbatim as Custom, and previews with Run now on
+> the stored draft. Its latency statement is the search-specific sentence ("This search runs
+> in QRadar on its schedule; …"), not §F.12's custom-rules sentence (F-5 review round 1).
 
 ### F.8.1 The authoring flow
 
@@ -480,7 +566,15 @@ failure mode is *delayed runs, visible as late executions*, never unbounded load
 
 ---
 
-## F.9 F.2 — the result chart (question 8) **[DESIGN]**
+## F.9 F.2 — the result chart (question 8) **[BUILT]**
+
+> **As built** (F-7: `backend/app/api/routes/searches.py`,
+> `frontend/src/components/ResultTrend.tsx`, `frontend/src/widgets/SearchResultsWidget.tsx`):
+> two reads beyond the trend endpoint feed the widget — `GET /searches/{id}/metric-keys`
+> (distinct stored keys, `total` first) and `GET /searches/{id}/latest-groups` (the latest
+> execution's grouped rows, with `values_are_lower_bounds` when it truncated). `ResultTrend`
+> is the one component on `/searches/[id]` and in the widget, and a stored `PIE`/`HEATMAP`
+> renders as the table with a note, as designed.
 
 ### F.9.1 Which result shapes chart
 
@@ -528,7 +622,16 @@ apart — one component, two mounts.
 
 ---
 
-## F.10 Persistence and migration (question 9) **[DESIGN]**
+## F.10 Persistence and migration (question 9) **[BUILT]**
+
+> **As built**: migration `0024` (`backend/alembic/versions/0024_custom_rules.py`) is the only
+> Phase F migration — revision `0025` (`0025_auth_sessions`) is AUTH-1's, not Phase F. Breach
+> retention (180 d) shipped in F-1, not F-2 as §F.15 splits it; the `search_result_metric`
+> retention (90 d) is F-4's bounded daily task, and the optional Timescale chunk policy stays
+> off (`retention_search_result_metric_days` is unset unless `RETENTION_ENABLED` is set).
+> The breach delete also skips a `RESOLVED` row a rule still points at with
+> `active_breach_id` (`backend/app/custom_rules/retention.py`). `0024` revises `0023`; the
+> chain head on this branch is `0025`.
 
 One migration, `0024_custom_rules`, chained after the current head `0023_dashboards`
 (`alembic/versions/0023_dashboards.py`). **Additive only** (AGENTS.md rule 7): three new tables —
@@ -558,7 +661,28 @@ convention, `README.md` lines 683-699, needs no writer stop beyond it).
 
 ---
 
-## F.11 Permissions, audit and API (question 10) **[DESIGN]**
+## F.11 Permissions, audit and API (question 10) **[BUILT]**
+
+> **As built** (`backend/app/api/routes/custom_rules.py`, `backend/app/security/rbac.py`,
+> `backend/app/services/seed.py`): `custom_rule` has no integer version — a patch carries
+> `expected_updated_at`, the row's `updated_at` is the token, and a mismatch is 409 carrying
+> `current_version` and `updated_by`. The enabled-count read is one unlocked `SELECT`, so two
+> concurrent creates can both pass the cap. Validation returns every reason at once (422
+> `{"detail": {"message", "reasons"}}`); the cap alone is 409 and the detail is that
+> sentence. A duplicate name is also 409. A value outside an enum stays FastAPI's list 422.
+> Audit actions are `custom_rule.create|update|delete|enable|disable` with before/after
+> snapshots; enable and disable are used only when `enabled` is the only snapshot field that
+> changed, and a rule created already enabled stays `custom_rule.create`. Previews are not
+> audited. The `detection_engineer` role (D-17 answer 3) is the analyst list plus
+> `search:write` and `custom_rule:write`; `admin` keeps `admin:*`, which already satisfies the
+> write, so the admin role does not list the string. `GET /custom-rules/catalog` is registered
+> before `/{rule_id}` (`backend/app/api/routes/custom_rules.py`). The body is
+> `CustomRuleCatalogOut` (`backend/app/schemas/custom_rule.py`): `metrics` (`metric`,
+> `subject_kind`, `unit`, `is_ratio`, `measurement` as `EXACT_ONLY` or
+> `LOWER_BOUND_PROVES_INCREASE`, `note` — not `reads` or `bulk_loader`), `subject_kinds`
+> (`subject_kind` and the one `column`), `source_classes`, `operators`, `evaluation_enabled`,
+> `alerting_mode` (`shadow` or `alerting`), `max_enabled`, `enabled_count`,
+> `preview_hours_min` (1) and `preview_hours_max` (168).
 
 **Permissions** (`app/security/rbac.py`, following the dashboard pattern at lines 104-106):
 
@@ -588,11 +712,43 @@ are reads and are not audited, as for other list endpoints; "Run now" already is
 | `POST /custom-rules/preview` | Draft replay (§F.7); nothing persisted | `read:custom_rules` |
 | `GET /custom-rules/{id}/preview` | Stored-rule replay (§F.7) | `read:custom_rules` |
 | `GET /custom-rules/{id}/breaches` | Bounded breach history with values and measurements | `read:custom_rules` |
+| `GET /custom-rules/catalog` | Metric catalog, subject pairing and the editor's switches (`CustomRuleCatalogOut`) **[BUILT]** | `read:custom_rules` |
 | `GET /searches` · `POST /searches` · `PATCH /searches/{id}` · `POST /searches/{id}/run` | Existing; the editor and the enable-cap use them | as today |
 
 ---
 
-## F.12 UI (question 11) **[DESIGN]**
+## F.12 UI (question 11) **[BUILT — the AQL editor (F-5) and `/custom-rules` (F-6)]**
+
+> **As built**: the AQL editor (`frontend/src/app/searches/new/page.tsx` and the edit flow on
+> `/searches/[id]`, `frontend/src/components/searches/SearchEditor.tsx`) creates disabled,
+> keeps a Custom cron verbatim, lists 422 reasons inline, enables from the detail page, and
+> says the search latency sentence of F-5 review round 1 rather than the custom-rules
+> statement below. The custom-rules pages are `frontend/src/app/custom-rules/page.tsx`,
+> `frontend/src/app/custom-rules/new/page.tsx` and
+> `frontend/src/app/custom-rules/[id]/page.tsx`. The Detection entry is
+> `frontend/src/lib/nav.ts`. Edit reuses the editor inside a disclosure on the rule page.
+>
+> The list's columns, which this section does not name, are Name, Status and reason, Subject,
+> Condition, Severity, Enabled, Last evaluated (UTC). Status is second. Pills use words, not
+> the tokens below: a null status is "Never evaluated", and `statusLabel` in
+> `frontend/src/components/customrules/authoring.ts` maps `OPEN` to "Open", `RECOVERING` to
+> "Recovering", `NO_VERDICT` to "No verdict", `STALE` to "Stale", `NOT_COLLECTED` to "Not
+> collected", `SUBJECT_RETIRED` to "Subject retired", `DISABLED` to "Disabled" and
+> `NOT_ENABLED` to "Not enabled". `OK` stays "OK". The engine's reason is shown beside the
+> pill, unchanged. `INSUFFICIENT_DATA` is not a rule-status word; unmeasured buckets are gaps
+> on the preview.
+>
+> This section's editor does not name an hours control. The draft preview
+> (`frontend/src/components/customrules/CustomRuleEditor.tsx`) and the stored preview
+> (`frontend/src/components/customrules/StoredRulePreview.tsx`) each take a Window in hours,
+> from the catalog's `preview_hours_min` to `preview_hours_max`, starting at 24. Changing the
+> window of a complete draft reloads that preview. The stored preview applies a new window
+> only when the analyst presses Apply window; the rule page's first request is 24 hours.
+>
+> The sentence the list and the new-rule page show (`CUSTOM_RULE_LATENCY` in `authoring.ts`)
+> uses "seconds-level" where the statement below says "real-time". The edit disclosure does
+> not repeat it. `editorSummary` recovers with the complement of the operator ("at or below"
+> after a greater-than) and names the catalog unit, not "EPS".
 
 `docs/PRODUCT-UX-GUIDELINES.md` and `frontend/src/app/tokens.css` are normative; no new colour,
 spacing or type literal; existing components only.
@@ -640,7 +796,18 @@ screenshots at 1440×900, 1280×800 and 1024×768 (AGENTS.md §3a).
 
 ---
 
-## F.13 Cost summary **[DESIGN]**
+## F.13 Cost summary **[BUILT]**
+
+> **As built** (`backend/app/core/config.py`, `backend/app/custom_rules/engine.py`): the caps
+> and retentions exist as settings with the designed defaults (`scheduled_searches_max_enabled`
+> 25, `custom_rules_max_enabled` 100, `search_result_metric_retention_days` 90,
+> `custom_rule_breach_retention_days` 180). Ariel stays at zero new searches per custom-rule
+> tick. The "≤ ~20 statements, constant in rule count" cell is the design's estimate: the pins
+> show the evaluation tick and the non-opening and refresh alerting ticks are equal at 10 and
+> at 100 rules, and a tick that opens alerts inserts one row per new alert (§F.4's note).
+> Watermarks are one row per subject kind that has been seeded, and there are five kinds, not
+> three. The latency cell repeats §F.4.4's "about 1 h 13 min"; the terms in that sentence add
+> to 68 minutes.
 
 | | F.1 | F.2 |
 |---|---|---|
@@ -652,7 +819,23 @@ screenshots at 1440×900, 1280×800 and 1024×768 (AGENTS.md §3a).
 
 ---
 
-## F.14 The tests that pin it **[DESIGN]**
+## F.14 The tests that pin it **[BUILT]**
+
+> **As built**: `backend/tests/unit/test_custom_rule_*.py`,
+> `backend/tests/integration/test_custom_rule*.py` and
+> `backend/tests/integration/test_migration_0024.py` (F-1 to F-3),
+> `backend/tests/integration/test_search_guards_api.py`,
+> `backend/tests/integration/test_search_result_retention.py`,
+> `backend/tests/unit/test_search_result_retention_task.py`,
+> `backend/tests/unit/test_cron_floor.py` (F-4),
+> `backend/tests/integration/test_search_groups_api.py` (F-7), and the F-5/F-7 Vitest files
+> under `frontend/src/app/searches/`, `frontend/src/components/` and
+> `frontend/src/widgets/`. The custom-rules view tests are under
+> `frontend/src/app/custom-rules/` and `frontend/src/components/customrules/` (F-6).
+> One difference from the integration paragraph below: "preview equals evaluation" is pinned
+> by hand-built agreement cases per metric family in
+> `backend/tests/integration/test_custom_rules_api.py`, not by a property test over
+> randomized bucket streams.
 
 **Backend unit.** Catalog guard: every metric declares kind, unit, reader, measurement rule and
 bulk loader; every kind has ≥ 1 metric; no metric reads a column outside §F.1.1. Validation:
@@ -680,7 +863,14 @@ Every new test is checked by breaking the code on purpose (AGENTS.md §4).
 
 ---
 
-## F.15 Task split (question 12) **[DESIGN]**
+## F.15 Task split (question 12) **[BUILT — F-1 through F-7 and F-6a]**
+
+> **As built**: F-1 through F-7 and F-6a are on this branch. Review changed the cron floor
+> (§F.8) and replaced the search editor's latency sentence (§F.12). F-6 is the
+> `/custom-rules` UI; F-6a is `GET /custom-rules/catalog`. F-8 wrote these markers while those
+> two were still open; the placeholders are closed. Breach retention shipped in F-1, not under
+> F-2 as the table below splits it (§F.10's note). The live lab validation remains the
+> follow-up this section describes.
 
 In the PLANNER's style (`docs/PLANNER.md` §3). Phase F tasks are numbered F-1 to F-8 (F-1 to F-4 went to other work on 2026-10-15).
 

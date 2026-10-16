@@ -21,15 +21,19 @@ async def record_audit(
     outcome: str = "SUCCESS",
     detail: dict | None = None,
     source_ip: str | None = None,
+    actor_id: uuid.UUID | None = None,
+    user_agent: str | None = None,
 ) -> AuditLog:
     entry = AuditLog(
         created_at=datetime.now(UTC),
-        actor=actor,
+        actor=actor[:255] if actor is not None else None,
+        actor_id=actor_id,
         action=action,
         object_type=object_type,
         object_id=str(object_id) if object_id is not None else None,
         outcome=outcome,
-        source_ip=source_ip,
+        source_ip=source_ip[:64] if source_ip is not None else None,
+        user_agent=user_agent[:512] if user_agent is not None else None,
         detail=redact(detail or {}),
     )
     session.add(entry)

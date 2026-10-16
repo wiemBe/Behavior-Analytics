@@ -758,6 +758,8 @@ describe("template first save and navigation guard", () => {
       await screen.findByRole("heading", { name: "Night shift" });
       expect(await screen.findByText(admin)).toBeInTheDocument();
       expect(container.querySelector(".page-meta .dg-template-desc")).not.toBeNull();
+      // the clamped line carries its full text for the pointer that opens nothing
+      expect(container.querySelector(".dg-template-desc")!.getAttribute("title")).toBe(admin);
     });
 
     it("leaves the dashboard's own description alone, and a plain dashboard without a line", async () => {
@@ -774,6 +776,7 @@ describe("template first save and navigation guard", () => {
       const plain = render(<HomeDashboard />);
       await screen.findByRole("heading", { name: "Night shift" });
       expect(plain.container.querySelector(".page-desc")).toBeNull();
+      expect(plain.container.querySelector(".page-meta")).toBeNull();
     });
   });
 });

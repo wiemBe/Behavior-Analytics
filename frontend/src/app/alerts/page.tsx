@@ -36,7 +36,7 @@ export default async function AlertsPage() {
         <div className="notice">No alerts.</div>
       ) : (
         <TableScroll label="Alerts">
-          <table className="table-dense">
+          <table className="table-dense" aria-label="Alerts">
             <thead>
               <tr>
                 <th>Title</th>

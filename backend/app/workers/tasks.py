@@ -42,6 +42,8 @@ from app.collectors.rule_match_collector import RuleMatchCollector
 from app.collectors.rule_metric_collector import RuleMetricCollector
 from app.core.config import get_settings
 from app.core.database import dispose_engine, get_sessionmaker
+from app.custom_rules.engine import CustomRuleEngine
+from app.custom_rules.retention import CustomRuleRetention
 from app.models.enums import EvidenceStatus, Severity
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceProfile
@@ -61,6 +63,7 @@ from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
+from app.services.search_result_retention import SearchResultRetention
 from app.services.search_scheduler import SearchScheduler
 from app.services.waf_pipeline import PIPELINE_LOCK, eligible_profile_ids, run_waf_source
 from app.services.waf_profiles import WafProfileService
@@ -1292,6 +1295,36 @@ async def apply_waf_retention() -> dict:
         return report.as_dict()
 
 
+async def evaluate_custom_rules() -> dict:
+    """Judge custom threshold rules from stored buckets. Sends no Ariel search.
+
+    A no-op, and no session, while CUSTOM_RULES_ENABLED is false. The first
+    enabled run seeds each kind's watermark and judges nothing.
+    """
+    settings = get_settings()
+    if not settings.custom_rules_enabled:
+        return {"status": "disabled"}
+    maker = get_sessionmaker()
+    async with maker() as session:
+        # Enqueue only. Delivery stays on the notification beat, as for IPS.
+        # The engine drops this when shadow mode is on and writes no alert row.
+        enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
+        report = await CustomRuleEngine(session, settings, enqueuer=enqueuer).run()
+        await session.commit()
+        return report.as_dict()
+
+
+async def apply_custom_rule_retention() -> dict:
+    """Delete resolved breaches older than the retention window, in bounded batches.
+
+    The service commits each batch. Live breaches, and rules, are kept.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        report = await CustomRuleRetention(session).run()
+        return report.as_dict()
+
+
 # ------------------------------------------------------------------ IPS (D.5)
 async def dispatch_ips_collection(instance_name: str | None = None) -> dict:
     """Run one fleet-wide IPS plan per instance after claiming its cadence slot."""
@@ -1347,6 +1380,12 @@ async def apply_ips_retention() -> dict:
     maker = get_sessionmaker()
     async with maker() as session:
         return (await IpsRetention(session).run()).as_dict()
+
+
+async def apply_search_result_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await SearchResultRetention(session).run()).as_dict()
 
 
 # --------------------------------------------------------------- notifications
@@ -1495,3 +1534,18 @@ def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_ips_retention")
 def apply_ips_retention_task() -> dict:
     return _run(apply_ips_retention())
+
+
+@celery_app.task(name="apply_search_result_retention")
+def apply_search_result_retention_task() -> dict:
+    return _run(apply_search_result_retention())
+
+
+@celery_app.task(name="evaluate_custom_rules")
+def evaluate_custom_rules_task() -> dict:
+    return _run(evaluate_custom_rules())
+
+
+@celery_app.task(name="apply_custom_rule_retention")
+def apply_custom_rule_retention_task() -> dict:
+    return _run(apply_custom_rule_retention())

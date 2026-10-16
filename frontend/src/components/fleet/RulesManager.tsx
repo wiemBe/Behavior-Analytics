@@ -7,7 +7,7 @@
 // be edited and deleted. The pattern is validated by the server, and its
 // message is shown at the field it concerns.
 
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { Disclosure } from "@/components/ui/Disclosure";
@@ -167,6 +167,23 @@ function RuleRow({
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [outcome, setOutcome] = useState<ChangeOutcome>({ kind: "idle" });
+  const deleteRef = useRef<HTMLButtonElement>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
+  const restoreDeleteFocus = useRef(false);
+
+  useEffect(() => {
+    if (confirming) {
+      keepRef.current?.focus();
+    } else if (restoreDeleteFocus.current) {
+      restoreDeleteFocus.current = false;
+      deleteRef.current?.focus();
+    }
+  }, [confirming]);
+
+  function closeDelete() {
+    restoreDeleteFocus.current = true;
+    setConfirming(false);
+  }
 
   async function toggle(enabled: boolean) {
     if (pending) return;
@@ -239,7 +256,15 @@ function RuleRow({
           {rule.built_in ? (
             <span className="muted">—</span>
           ) : confirming ? (
-            <div className="actions">
+            <div
+              className="actions"
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && !pending) {
+                  event.stopPropagation();
+                  closeDelete();
+                }
+              }}
+            >
               <button
                 type="button"
                 className="action"
@@ -250,9 +275,10 @@ function RuleRow({
               </button>
               <button
                 type="button"
+                ref={keepRef}
                 className="action secondary"
                 disabled={pending}
-                onClick={() => setConfirming(false)}
+                onClick={closeDelete}
               >
                 Keep
               </button>
@@ -270,6 +296,7 @@ function RuleRow({
               </button>
               <button
                 type="button"
+                ref={deleteRef}
                 className="action secondary"
                 aria-label={`Delete ${label}`}
                 disabled={pending}

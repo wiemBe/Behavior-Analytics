@@ -476,7 +476,6 @@ a {
 /* Metrics, counts and timestamps align column-wise only with tabular figures. */
 .num,
 .card .v,
-.metric-value,
 .measure-value,
 td.num {
   font-variant-numeric: tabular-nums;
@@ -556,12 +555,8 @@ td.cell-name.cell-name-single {
   border-radius: var(--r-lg);
   padding: var(--sp-5);
 }
-.panel-pad-lg {
-  padding: var(--sp-6);
-}
 
-.card .k,
-.metric-label {
+.card .k {
   overflow-wrap: anywhere;
   color: var(--text-3);
   font-size: var(--fs-xs);
@@ -570,8 +565,7 @@ td.cell-name.cell-name-single {
      the visual noise, and it costs legibility at 12 px. */
   letter-spacing: 0;
 }
-.card .v,
-.metric-value {
+.card .v {
   display: block;
   margin-top: var(--sp-1);
   font-size: var(--fs-metric);
@@ -872,15 +866,6 @@ tbody tr:last-child td {
 tbody tr:hover td {
   background: var(--surface-3);
 }
-/* Key/value tables used for metadata: no header row, quiet keys. */
-.kv td {
-  padding: var(--sp-2) var(--sp-3);
-}
-.kv td:nth-child(odd) {
-  color: var(--text-3);
-  width: 1%;
-  white-space: nowrap;
-}
 
 /* --- notices ---------------------------------------------------------------
    Two shapes share this class: an empty state (centred, dashed) and an
@@ -922,14 +907,17 @@ tbody tr:hover td {
 .banner.warn {
   border-color: var(--warn-border);
   background: var(--warn-bg);
+  color: var(--warn-text);
 }
 .banner.crit {
   border-color: var(--crit-border);
   background: var(--crit-bg);
+  color: var(--crit-text);
 }
 .banner.ok {
   border-color: var(--ok-border);
   background: var(--ok-bg);
+  color: var(--ok-text);
 }
 .banner strong {
   color: var(--text);
@@ -1065,6 +1053,10 @@ input[type="checkbox"] {
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
+/* the checkbox label is clickable and its own hit target */
+label.filter-field.filter-check {
+  min-height: var(--target-min);
+}
 
 .pagination {
   display: flex;
@@ -1078,6 +1070,12 @@ input[type="checkbox"] {
 .pagination-links {
   display: flex;
   gap: var(--sp-5);
+}
+/* each paging link is its own hit target */
+.pagination-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
 }
 
 .chips {
@@ -1448,6 +1446,9 @@ a.action.secondary:hover {
   font-size: var(--fs-xs);
   padding: 2px var(--sp-2);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
 }
 .row-toggle:hover {
   color: var(--text);
@@ -1793,9 +1794,6 @@ pre {
 
 .stack-6 > * + * {
   margin-top: var(--sp-6);
-}
-.stack-7 > * + * {
-  margin-top: var(--sp-7);
 }
 .row {
   display: flex;
@@ -2236,6 +2234,7 @@ th.fm-value-cell .cell-sub {
   font-size: var(--fs-sm);
   color: var(--text-2);
   white-space: nowrap;
+  min-height: var(--target-min);
 }
 .fm-values > * + * {
   margin-top: var(--sp-3);
@@ -2539,6 +2538,12 @@ th.fm-value-cell .cell-sub {
   max-width: 26ch;
   white-space: normal;
 }
+/* The `.fleet-table td .cell-sub` rule above has a higher specificity than `.nowrap`, so a
+   time kept whole there would wrap anyway. Re-state it at the same specificity. */
+.fleet-table td .nowrap {
+  white-space: nowrap;
+}
+
 .fleet-table td.num .cell-sub {
   margin-left: auto;
   text-align: right;
@@ -2637,6 +2642,7 @@ th.fm-value-cell .cell-sub {
   align-items: center;
   gap: var(--sp-2);
   cursor: pointer;
+  min-height: var(--target-min);
 }
 
 .precedence {

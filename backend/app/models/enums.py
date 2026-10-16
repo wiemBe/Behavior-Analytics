@@ -195,6 +195,55 @@ class IpsAnomalyType(StrEnum):
     IPS_BLOCK_RATIO_SHIFT = "IPS_BLOCK_RATIO_SHIFT"
 
 
+class CustomRuleSubjectKind(StrEnum):
+    """What a custom threshold rule's subject is (Phase F, §F.3.1).
+
+    A rule names exactly one subject. The kind decides which subject column on
+    ``custom_rule`` carries it, which metric catalog entries are legal, and which
+    bulk loader feeds evaluation -- all enforced by the CHECK the migration
+    declares and by the catalog guard, never by evaluator reasoning.
+    """
+
+    LOG_SOURCE = "LOG_SOURCE"
+    FLEET_CLASS = "FLEET_CLASS"
+    WAF_ENDPOINT = "WAF_ENDPOINT"
+    IPS_ENTITY = "IPS_ENTITY"
+    IPS_SOURCE = "IPS_SOURCE"
+
+
+class CustomRuleMetric(StrEnum):
+    """The per-bucket metrics a custom rule may threshold (Phase F, §F.1.1).
+
+    Exactly the ten aggregates the platform already collects every bucket;
+    nothing else is legal. Each member has one entry in
+    ``app.custom_rules.catalog.CUSTOM_RULE_METRICS`` stating its subject kind,
+    unit, columns, measurement rule and bulk loader. Deliberately separate
+    values per kind (``event_count`` vs ``events`` vs ``total_events``) so the
+    metric alone identifies the table it reads.
+    """
+
+    #: LOG_SOURCE — events in the bucket (`log_source_metric.event_count`).
+    EVENT_COUNT = "event_count"
+    #: LOG_SOURCE — events per second (`log_source_metric.average_eps`).
+    AVERAGE_EPS = "average_eps"
+    #: FLEET_CLASS — class events per second, summed over monitored sources.
+    EPS = "eps"
+    #: WAF_ENDPOINT — requests in the bucket (`waf_endpoint_metric.request_count`).
+    REQUEST_COUNT = "request_count"
+    #: WAF_ENDPOINT — share of requests the WAF blocked.
+    BLOCK_RATIO = "block_ratio"
+    #: WAF_ENDPOINT — share of responses that were HTTP 5xx.
+    SERVER_ERROR_RATIO = "server_error_ratio"
+    #: WAF_ENDPOINT — share of responses that were HTTP 4xx.
+    CLIENT_ERROR_RATIO = "client_error_ratio"
+    #: IPS_ENTITY — events in the bucket for one admitted entity.
+    EVENTS = "events"
+    #: IPS_SOURCE — events in the bucket (`ips_source_bucket.total_events`).
+    TOTAL_EVENTS = "total_events"
+    #: IPS_SOURCE — blocked share of action events.
+    BLOCKED_SHARE = "blocked_share"
+
+
 class WafLogicalField(StrEnum):
     """A logical WAF field a source profile maps onto a site-authored property.
 
@@ -610,3 +659,15 @@ class InstanceStatus(StrEnum):
     DEGRADED = "DEGRADED"
     UNREACHABLE = "UNREACHABLE"
     UNKNOWN = "UNKNOWN"
+
+
+class AuthSource(StrEnum):
+    """Where an account's password is checked.
+
+    LOCAL is a bcrypt hash stored here. LDAP binds as the user against the
+    directory; this database never stores that password. Roles are not read
+    from the directory.
+    """
+
+    LOCAL = "LOCAL"
+    LDAP = "LDAP"

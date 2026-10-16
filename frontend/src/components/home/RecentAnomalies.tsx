@@ -9,7 +9,7 @@
 import Link from "next/link";
 
 import { TableScroll } from "@/components/ui/TableScroll";
-import { stateLabel } from "@/components/waf/wafLabels";
+import { statePillText } from "@/components/waf/wafLabels";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads, sevTone, type SubjectKind } from "@/lib/api";
 import { formatRatio, stateTone } from "@/lib/behavior";
@@ -68,7 +68,10 @@ export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
           return (
             <>
               <TableScroll label={waf ? "Recent WAF anomalies" : "Recent anomalies"}>
-                <table className="tw-table">
+                <table
+                  className="tw-table"
+                  aria-label={waf ? "Recent WAF anomalies" : "Recent anomalies"}
+                >
                   <colgroup>
                     <col className="tw-col-time tw-unfold" />
                     <col />
@@ -118,7 +121,7 @@ export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
                             </span>
                             {" · "}
                             <span className={`tw-state-word ${stateTone(r.state)}`}>
-                              {stateLabel(r.state)}
+                              {statePillText(r.state)}
                             </span>
                             {" · "}
                             <time dateTime={r.detectedAt} title={formatDateTime(r.detectedAt)}>
@@ -129,7 +132,7 @@ export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
                         <td className="tw-unfold">
                           <span className={`pill ${sevTone(r.severity)}`}>{r.severity}</span>
                           <span className={`tw-sub tw-wrap tw-state-word ${stateTone(r.state)}`}>
-                            {stateLabel(r.state)}
+                            {statePillText(r.state)}
                           </span>
                         </td>
                         <td className="num">

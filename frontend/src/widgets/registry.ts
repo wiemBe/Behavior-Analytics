@@ -10,6 +10,7 @@ import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 
 import { MONITORED_SOURCES, WAF_SOURCES, WAF_SOURCE_ENDPOINTS } from "./optionSources";
+import { SEARCH_METRIC_OPTIONS, SEARCH_OPTIONS } from "./searchResultOptions";
 import { placeholderFor } from "./Placeholder";
 import type {
   AnyWidgetDef,
@@ -22,6 +23,7 @@ import type {
 
 import type { SourceEpsConfig } from "@/components/catalog/SourceEps";
 import type { WafTrafficConfig } from "@/components/catalog/WafEndpointTraffic";
+import type { SearchResultsConfig } from "@/widgets/SearchResultsWidget";
 
 type NoConfig = Record<string, never>;
 
@@ -358,6 +360,31 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     defaultConfig: { source: null },
     drillDown: (cfg) => (cfg.source ? `/behavior/sources/${cfg.source}` : "/behavior/sources"),
     loader: () => import("@/components/catalog/SourceEps").then((m) => m.SourceEps),
+  }),
+  live<SearchResultsConfig>({
+    type: "chart.search_results",
+    title: "Search results",
+    description:
+      "One scheduled search's stored results: a line, bars, the latest total, or the latest run's top rows.",
+    category: "Chart",
+    requires: ["read:searches"],
+    sources: [
+      "/searches",
+      "/searches/${id}",
+      "/searches/${id}/results",
+      "/searches/${id}/metric-keys",
+      "/searches/${id}/latest-groups",
+      "/searches/${id}/executions",
+      "/searches/${id}/versions",
+    ],
+    size: { w: 6, h: 16, minW: 4, minH: 12 },
+    config: {
+      search_id: { label: "Search", from: SEARCH_OPTIONS },
+      metric_key: { label: "Metric", from: SEARCH_METRIC_OPTIONS },
+    },
+    defaultConfig: { search_id: null, metric_key: null },
+    drillDown: (cfg) => (cfg.search_id ? `/searches/${cfg.search_id}` : "/searches"),
+    loader: () => import("@/widgets/SearchResultsWidget").then((m) => m.SearchResultsWidget),
   }),
   live({
     type: "ips.source_anomalies",

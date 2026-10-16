@@ -8,6 +8,7 @@ from app.models.alert import Alert, AlertNotification
 from app.models.base import Base
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.config_change import ConfigurationChange, ConfigurationSnapshot
+from app.models.custom_rule import CustomRule, CustomRuleBreach, CustomRuleWatermark
 from app.models.dashboard import Dashboard, UserDashboardPref
 from app.models.explanation import (
     EXPLANATION_SCHEMA_VERSION,
@@ -22,7 +23,7 @@ from app.models.fleet import (
     LogSourceType,
 )
 from app.models.geo import GeoCountryBucket
-from app.models.identity import AuditLog, Role, User, user_role
+from app.models.identity import AuditLog, AuthSession, LdapConfig, Role, User, user_role
 from app.models.instance import QRadarInstance
 from app.models.ips import (
     IpsAnomaly,
@@ -107,6 +108,7 @@ __all__ = [
     "AnomalyExplanationDimension",
     "AnomalyStateTransition",
     "AuditLog",
+    "AuthSession",
     "Base",
     "CatchallBucket",
     "CatchallSender",
@@ -114,6 +116,9 @@ __all__ = [
     "CollectionWatermark",
     "ConfigurationChange",
     "ConfigurationSnapshot",
+    "CustomRule",
+    "CustomRuleBreach",
+    "CustomRuleWatermark",
     "Dashboard",
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
@@ -127,6 +132,7 @@ __all__ = [
     "IpsSourceBaseline",
     "IpsSourceBucket",
     "IpsSourceProfile",
+    "LdapConfig",
     "LogSource",
     "LogSourceAnomaly",
     "LogSourceBaseline",

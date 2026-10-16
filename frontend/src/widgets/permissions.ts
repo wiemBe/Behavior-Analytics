@@ -31,6 +31,16 @@ export const KNOWN_PERMISSIONS = [
   "read:dashboards",
   "dashboard:write",
   "admin:dashboards",
+  // Phase F. Listing and previewing a custom rule is a view of the estate, so `read:*`
+  // satisfies it. Authoring one is a write: `read:*` does not grant it. `admin:*` does.
+  "read:custom_rules",
+  "custom_rule:write",
+  // Account administration: creating and changing a sign-in. `admin:*` satisfies it; `read:*`
+  // does not.
+  "admin:users",
+  // Directory configuration: pointing the application at a directory. `admin:*` satisfies it;
+  // `read:*` does not.
+  "admin:auth",
 ] as const;
 
 export type KnownPermission = (typeof KNOWN_PERMISSIONS)[number];

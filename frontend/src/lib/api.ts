@@ -31,13 +31,134 @@ export class ApiError extends Error {
 }
 
 /**
+ * How the session cookie is attached.
+ *
+ * Production is one origin, so `same-origin` is enough and a cross-site request
+ * does not carry the cookie. Development publishes the API on another port:
+ * that is a different origin, and `same-origin` would leave the cookie behind.
+ * The decision is the resolved API origin against the page origin. A relative
+ * base such as `/api/v1` resolves to the page and stays `same-origin`.
+ */
+export function credentialMode(pageUrl: string, apiBase: string): RequestCredentials {
+  try {
+    const page = new URL(pageUrl);
+    const api = new URL(apiBase, page);
+    if (api.origin !== page.origin) return "include";
+  } catch {
+    return "same-origin";
+  }
+  return "same-origin";
+}
+
+/**
+ * A path the browser may return to after sign-in.
+ *
+ * Only a same-origin path. A scheme, a protocol-relative URL, a backslash, or
+ * a control character is refused, including after percent-decoding. The sign-in
+ * page itself is not a destination, or a successful sign-in would loop.
+ */
+export function safeReturnPath(raw: string | null | undefined): string {
+  if (raw == null) return "/";
+  const trimmed = raw.trim();
+  if (trimmed === "" || !trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("/\\")) {
+    return "/";
+  }
+  if (trimmed.includes("\\") || trimmed.includes("://")) return "/";
+  let decoded = trimmed;
+  try {
+    decoded = decodeURIComponent(trimmed);
+  } catch {
+    return "/";
+  }
+  if (
+    !decoded.startsWith("/") ||
+    decoded.startsWith("//") ||
+    decoded.includes("\\") ||
+    decoded.includes("://") ||
+    /[\u0000-\u001f\u007f]/.test(decoded)
+  ) {
+    return "/";
+  }
+  let url: URL;
+  try {
+    url = new URL(decoded, "http://localhost");
+  } catch {
+    return "/";
+  }
+  if (url.origin !== "http://localhost" || url.username || url.password) return "/";
+  const path = `${url.pathname}${url.search}`;
+  if (path === "/login" || path.startsWith("/login?") || path.startsWith("/login/")) return "/";
+  return path;
+}
+
+/**
+ * Where a 401 sends the browser, or null when the page should keep the error.
+ *
+ * Sign-in answers 401 for a wrong password, and a password change answers 401
+ * for a wrong current password while the session is still valid. Those stay on
+ * the page. Every other 401 is a missing session.
+ */
+export function loginRedirectFor(
+  status: number,
+  path: string,
+  method: string | undefined,
+  detail: unknown,
+  here: string,
+): string | null {
+  if (status !== 401) return null;
+  const verb = (method ?? "GET").toUpperCase();
+  const target = path.split("?")[0];
+  if (verb === "POST" && target === "/auth/login") return null;
+  if (detail === "current password is wrong") return null;
+  if (here === "/login" || here.startsWith("/login?") || here.startsWith("/login/")) return null;
+  const next = safeReturnPath(here);
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
+/** Where sign-in lands. A password that must change goes to that page first. */
+export function destinationAfterLogin(next: string | null | undefined, mustChange: boolean): string {
+  const safe = safeReturnPath(next);
+  if (!mustChange) return safe;
+  if (safe === "/") return "/account/password";
+  return `/account/password?next=${encodeURIComponent(safe)}`;
+}
+
+/** Where a completed password change lands. The password route is not a home. */
+export function destinationAfterPasswordChange(next: string | null | undefined, here: string): string {
+  if (next != null && next !== "") return safeReturnPath(next);
+  const stay = safeReturnPath(here);
+  if (stay === "/account/password" || stay.startsWith("/account/password?")) return "/";
+  return stay;
+}
+
+/** The browser navigation a missing session uses. Tests replace `assign`. */
+export const sessionNavigation = {
+  assign(url: string) {
+    window.location.assign(url);
+  },
+};
+
+function requestCredentials(): RequestCredentials {
+  if (typeof window === "undefined") return "same-origin";
+  return credentialMode(window.location.href, baseUrl());
+}
+
+/**
  * One request through the backend. Exported for the saved-dashboards client. A `204` has no body,
  * so it resolves to `undefined` instead of failing in `res.json()`; no existing route answers 204.
+ * The session cookie is sent. No token is stored by this client.
  */
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${baseUrl()}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    credentials: requestCredentials(),
+    // A bodyless read is a simple request. `Content-Type: application/json` is not a CORS-safelisted
+    // value, so sending it on a `GET` turns every cross-origin read into a preflighted one; it goes
+    // out only when there is a body. A caller's own header still wins.
+    headers:
+      init?.body === undefined
+        ? init?.headers
+        : { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
   });
   if (!res.ok) {
@@ -48,6 +169,22 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
       if (typeof raw === "string") detail = raw;
     } catch {
       /* non-JSON error body */
+    }
+    if (typeof window !== "undefined") {
+      const target = loginRedirectFor(
+        res.status,
+        path,
+        init?.method,
+        raw,
+        `${window.location.pathname}${window.location.search}`,
+      );
+      if (target) {
+        try {
+          sessionNavigation.assign(target);
+        } catch {
+          /* jsdom refuses navigation; the caller still receives the error */
+        }
+      }
     }
     throw new ApiError(res.status, detail, raw);
   }
@@ -138,6 +275,7 @@ export interface ScheduledSearch {
   aql_query: string;
   query_version: number;
   schedule_cron: string;
+  schedule_timezone: string;
   severity: string;
   threshold_value: number | null;
   threshold_operator: string;
@@ -150,6 +288,27 @@ export interface ScheduledSearch {
   next_run_at: string | null;
   consecutive_failures: number;
 }
+
+export interface ScheduledSearchCreate {
+  name: string;
+  description: string | null;
+  aql_query: string;
+  schedule_cron: string;
+  schedule_timezone: string;
+  threshold_value: number | null;
+  threshold_operator: string;
+  severity: string;
+  timeout_seconds: number;
+  max_time_range_hours: number;
+  max_result_rows: number;
+  visualization_type: string;
+  /** New definitions are always drafts; the editor sends false explicitly. */
+  enabled: false;
+}
+
+export type ScheduledSearchUpdate = Omit<ScheduledSearchCreate, "name" | "enabled"> & {
+  change_note: string | null;
+};
 
 export interface SearchExecution {
   id: string;
@@ -417,6 +576,44 @@ export interface SearchResultTrend {
   threshold_operator: string;
   count: number;
   points: ResultMetricPoint[];
+}
+
+/** One stored metric key of a search (`GET /searches/{id}/metric-keys`). */
+export interface MetricKeyStat {
+  metric_key: string;
+  point_count: number;
+  last_bucket_start: string;
+}
+
+export interface MetricKeyList {
+  search_id: string;
+  /** Distinct keys before the limit. */
+  total: number;
+  /** Keys this response holds. */
+  count: number;
+  keys: MetricKeyStat[];
+}
+
+/** One grouped aggregate of the latest execution that stored a row. */
+export interface LatestGroupRow {
+  metric_key: string;
+  dimensions: Record<string, unknown>;
+  value: number;
+}
+
+export interface LatestGroups {
+  search_id: string;
+  execution_id: string | null;
+  started_at: string | null;
+  status: string | null;
+  truncated: boolean;
+  /** True when each value is a floor: the UI shows "≥ n" and no verdict. */
+  values_are_lower_bounds: boolean;
+  /** Why `rows` is empty. An unknown search is 404, not one of these. */
+  empty: "no_execution" | "no_rows" | null;
+  /** Rows on that execution before the limit. */
+  total: number;
+  rows: LatestGroupRow[];
 }
 
 export interface Notification {
@@ -1357,6 +1554,129 @@ export interface PagedIpsEntities {
   offset: number;
 }
 
+// --- Phase F: custom threshold rules ---------------------------------------
+
+export type CustomRuleSubjectKind =
+  | "LOG_SOURCE"
+  | "FLEET_CLASS"
+  | "WAF_ENDPOINT"
+  | "IPS_ENTITY"
+  | "IPS_SOURCE";
+
+export interface CustomRuleBreach {
+  id: string;
+  rule_id: string;
+  state: string;
+  first_bucket_start: string;
+  last_bucket_start: string;
+  opened_at: string;
+  recovering_at: string | null;
+  resolved_at: string | null;
+  worst_value: number | null;
+  worst_measurement: string | null;
+  last_value: number | null;
+  last_measurement: string | null;
+  unmeasured_buckets: number;
+  subject_label: string;
+  details: Record<string, unknown>;
+}
+
+export interface CustomRule {
+  id: string;
+  name: string;
+  description: string | null;
+  subject_kind: CustomRuleSubjectKind;
+  log_source_id: string | null;
+  source_class: string | null;
+  waf_endpoint_id: string | null;
+  ips_entity_id: string | null;
+  metric: string;
+  operator: string;
+  threshold_value: number;
+  threshold_unit: string | null;
+  sustain_buckets: number;
+  recovery_buckets: number;
+  severity: string;
+  enabled: boolean;
+  consecutive_breaching: number;
+  consecutive_under: number;
+  last_evaluated_bucket_start: string | null;
+  last_evaluated_at: string | null;
+  last_status: string | null;
+  last_status_reason: string | null;
+  active_breach: CustomRuleBreach | null;
+  alerting_mode: "shadow" | "alerting";
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export interface CustomRuleDraft {
+  subject_kind: CustomRuleSubjectKind;
+  log_source_id: string | null;
+  source_class: string | null;
+  waf_endpoint_id: string | null;
+  ips_entity_id: string | null;
+  metric: string;
+  operator: string;
+  threshold_value: number;
+  sustain_buckets: number;
+  recovery_buckets: number;
+  severity: string;
+  enabled: boolean;
+}
+
+export interface CustomRuleCreate extends CustomRuleDraft {
+  name: string;
+  description: string | null;
+}
+
+export type CustomRuleUpdate = Partial<CustomRuleCreate> & {
+  expected_updated_at: string;
+};
+
+export interface CustomRulePreviewBucket {
+  bucket_start: string;
+  value: number | null;
+  measurement: "EXACT" | "LOWER_BOUND" | "NOT_MEASURED";
+  completeness: string | null;
+  in_maintenance: boolean;
+}
+
+export interface CustomRulePreview {
+  threshold_value: number;
+  unit: string;
+  operator: string;
+  fired_count: number;
+  measured_count: number;
+  unmeasured_count: number;
+  buckets: CustomRulePreviewBucket[];
+  breach_intervals: Array<{ start: string; end: string | null }>;
+}
+
+export interface CustomRuleCatalogMetric {
+  metric: string;
+  subject_kind: CustomRuleSubjectKind;
+  unit: string;
+  is_ratio: boolean;
+  measurement: "EXACT_ONLY" | "LOWER_BOUND_PROVES_INCREASE";
+  note: string;
+}
+
+export interface CustomRuleCatalog {
+  metrics: CustomRuleCatalogMetric[];
+  subject_kinds: Array<{ subject_kind: CustomRuleSubjectKind; column: string }>;
+  source_classes: string[];
+  operators: string[];
+  evaluation_enabled: boolean;
+  alerting_mode: "shadow" | "alerting";
+  max_enabled: number;
+  enabled_count: number;
+  preview_hours_min: number;
+  preview_hours_max: number;
+}
+
 function qs(params: Record<string, string | number | boolean | undefined>): string {
   const parts = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== "")
@@ -1370,14 +1690,50 @@ export const api = {
   logSource: (id: string) => request<LogSourceDetail>(`/log-sources/${id}`),
   syncLogSources: () => request<unknown>("/log-sources/sync", { method: "POST" }),
 
-  searches: () => request<ScheduledSearch[]>("/searches"),
-  search: (id: string) => request<ScheduledSearch>(`/searches/${id}`),
-  searchVersions: (id: string) => request<SearchVersion[]>(`/searches/${id}/versions`),
-  searchExecutions: (id: string) => request<SearchExecution[]>(`/searches/${id}/executions`),
-  searchResults: (id: string, metricKey = "total", limit = 500) =>
+  searches: (signal?: AbortSignal) => request<ScheduledSearch[]>("/searches", { signal }),
+  search: (id: string, signal?: AbortSignal) =>
+    request<ScheduledSearch>(`/searches/${id}`, { signal }),
+  searchVersions: (id: string, signal?: AbortSignal) =>
+    request<SearchVersion[]>(`/searches/${id}/versions`, { signal }),
+  searchExecutions: (id: string, signal?: AbortSignal) =>
+    request<SearchExecution[]>(`/searches/${id}/executions`, { signal }),
+  searchResults: (
+    id: string,
+    metricKey = "total",
+    limit = 500,
+    range?: { start?: string; end?: string },
+    signal?: AbortSignal,
+  ) =>
     request<SearchResultTrend>(
-      `/searches/${id}/results?metric_key=${encodeURIComponent(metricKey)}&limit=${limit}`,
+      `/searches/${id}/results${qs({
+        metric_key: metricKey,
+        limit,
+        start: range?.start,
+        end: range?.end,
+      })}`,
+      { signal },
     ),
+  searchMetricKeys: (id: string, limit = 1000, signal?: AbortSignal) =>
+    request<MetricKeyList>(`/searches/${id}/metric-keys${qs({ limit })}`, { signal }),
+  searchLatestGroups: (id: string, limit = 50, signal?: AbortSignal) =>
+    request<LatestGroups>(`/searches/${id}/latest-groups${qs({ limit })}`, { signal }),
+  createSearch: (definition: ScheduledSearchCreate) =>
+    request<ScheduledSearch>("/searches", {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
+  updateSearch: (id: string, definition: ScheduledSearchUpdate) =>
+    request<ScheduledSearch>(`/searches/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(definition),
+    }),
+  // `enabled` alone. A patch that also carries other fields is audited as
+  // search.update; this one is search.enable or search.disable (F-4).
+  setSearchEnabled: (id: string, enabled: boolean) =>
+    request<ScheduledSearch>(`/searches/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
 
   // --- operator actions ----------------------------------------------------
   // Mutations only. Authorization is the backend's job: these call the guarded
@@ -1450,6 +1806,31 @@ export const api = {
     request<AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail>(`/anomalies/${id}`),
   // The caller's identity and grants, for links the caller may not follow.
   caller: () => request<CallerInfo>("/me"),
+  customRules: () => request<CustomRule[]>("/custom-rules"),
+  customRule: (id: string) => request<CustomRule>(`/custom-rules/${id}`),
+  customRuleCatalog: () => request<CustomRuleCatalog>("/custom-rules/catalog"),
+  customRuleBreaches: (id: string) =>
+    request<CustomRuleBreach[]>(`/custom-rules/${id}/breaches`),
+  customRulePreview: (id: string, hours = 24, signal?: AbortSignal) =>
+    request<CustomRulePreview>(`/custom-rules/${id}/preview${qs({ hours })}`, { signal }),
+  previewCustomRule: (definition: CustomRuleDraft, hours = 24, signal?: AbortSignal) =>
+    request<CustomRulePreview>(`/custom-rules/preview${qs({ hours })}`, {
+      method: "POST",
+      body: JSON.stringify(definition),
+      signal,
+    }),
+  createCustomRule: (definition: CustomRuleCreate) =>
+    request<CustomRule>("/custom-rules", {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
+  updateCustomRule: (id: string, definition: CustomRuleUpdate) =>
+    request<CustomRule>(`/custom-rules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(definition),
+    }),
+  deleteCustomRule: (id: string) =>
+    request<void>(`/custom-rules/${id}`, { method: "DELETE" }),
   behaviorSummary: () => request<BehaviorSummary>("/anomalies/summary"),
 
   sourceBehaviors: () => request<SourceBehavior[]>("/behavior/sources"),
@@ -1783,7 +2164,11 @@ function detailText(detail: unknown, fallback: string): string {
 async function fleetRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${baseUrl()}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    // As `request`: only a request with a body carries `Content-Type`.
+    headers:
+      init?.body === undefined
+        ? init?.headers
+        : { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
   });
   if (!res.ok) {
@@ -2372,6 +2757,12 @@ export interface CallerInfo {
   permissions: string[];
   /** Every `PERM_*` capability the caller holds once wildcards are resolved. */
   effective_permissions: string[];
+  /** Present for a session. The development principal sends `local-dev`. */
+  username?: string | null;
+  /** `LOCAL` or `LDAP` for a session. Absent for the development principal. */
+  auth_source?: string | null;
+  must_change_password?: boolean;
+  roles?: string[];
 }
 
 // The configurable catalog widgets (UI-3.5b). A window is a preset the widget's range names;

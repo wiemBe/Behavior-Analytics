@@ -30,6 +30,7 @@ describe("NAV", () => {
       "Alerts",
       "Rules",
       "Rule statistics",
+      "Custom rules",
       "Coverage",
     ]);
     expect(NAV[4].items.map((i) => i.label)).toEqual(["Log Sources", "Searches"]);
@@ -43,6 +44,8 @@ describe("NAV", () => {
       { href: "/admin/outage-policy", label: "Outage alerts" },
       { href: "/admin/waf-sources", label: "WAF sources" },
       { href: "/admin/ips-sources", label: "IPS sources" },
+      { href: "/admin/users", label: "Users", permission: "admin:users" },
+      { href: "/admin/directory", label: "Directory", permission: "admin:auth" },
     ]);
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
     expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");
@@ -117,6 +120,7 @@ describe("activeNavHref", () => {
     expect(activeNavHref("/offenses")).toBe("/offenses");
     expect(activeNavHref("/rules/42")).toBe("/rules");
     expect(activeNavHref("/rules/statistics")).toBe("/rules/statistics");
+    expect(activeNavHref("/custom-rules/new")).toBe("/custom-rules");
     expect(activeNavHref("/log-sources/abc")).toBe("/log-sources");
     expect(activeNavHref("/")).toBe("/");
   });

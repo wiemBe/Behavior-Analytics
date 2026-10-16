@@ -222,7 +222,7 @@ describe("Dashboard page", () => {
     expect(screen.getByText(/No monitored log source; there is nothing to judge yet/)).toBeInTheDocument();
     expect(screen.getByText(/The window holds no step\. No line is drawn/)).toBeInTheDocument();
     expect(screen.getByText(/No log source has a complete bucket/)).toBeInTheDocument();
-    expect(screen.getByText(/No anomaly was detected in the last 24 hours/)).toBeInTheDocument();
+    expect(screen.getByText("No anomaly opened in the last 24 h.")).toBeInTheDocument();
     expect(screen.getAllByText(/No monitored log sources?\. Enable monitoring/)).toHaveLength(2);
     expect(screen.getByText(/No active anomalies\. Sources with no baseline/)).toBeInTheDocument();
     expect(screen.getAllByText(/No offense snapshot has been collected yet/)).toHaveLength(2);

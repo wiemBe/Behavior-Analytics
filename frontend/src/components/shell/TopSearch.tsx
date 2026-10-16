@@ -281,7 +281,7 @@ export function TopSearch() {
         role="combobox"
         aria-label="Search sources, rules, offenses and anomalies"
         aria-expanded={shown}
-        aria-controls={listId}
+        aria-controls={shown ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={shown && active >= 0 && flat[active] ? optionId(flat[active]) : undefined}
         autoComplete="off"

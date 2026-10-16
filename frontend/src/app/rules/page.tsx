@@ -126,7 +126,7 @@ export default async function RulesPage({
       ) : (
         <>
           <TableScroll label="Rules">
-          <table className="rule-list-table table-dense">
+          <table className="rule-list-table table-dense" aria-label="Rules">
             <thead>
               <tr>
                 <th>Rule</th>

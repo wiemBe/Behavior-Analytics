@@ -73,7 +73,10 @@ export function OutagePolicy() {
               </p>
             ) : (
               <TableScroll label="Classes that depart from the default policy">
-                <table className="tw-table cw-table">
+                <table
+                  className="tw-table cw-table"
+                  aria-label="Classes that depart from the default outage policy"
+                >
                   <colgroup>
                     <col />
                     <col className="tw-col-badge" />

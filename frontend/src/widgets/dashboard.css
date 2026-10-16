@@ -71,19 +71,6 @@
   font-size: var(--fs-sm);
   color: var(--text-3);
 }
-.dg-session {
-  position: absolute;
-  top: 50%;
-  right: calc(100% + var(--sp-3));
-  transform: translateY(-50%);
-  margin: 0;
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-  white-space: nowrap;
-}
-.page-header-actions:has(.dg-session) {
-  position: relative;
-}
 .dg-notice {
   color: var(--text);
 }
@@ -823,6 +810,16 @@ dialog.dg-modal::backdrop {
   line-height: var(--lh-tight);
   color: var(--text-3);
 }
+@media (max-width: 1080px) {
+  /* The wide layout folds into its narrow form below this width, so the row no longer earns
+     its reserved height: let the line wrap fully instead of hiding its bottom lines behind a
+     clamp the pointer cannot open. The full text stays in the `title`. */
+  .dg-template-desc {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+  }
+}
 .dg-modal-choices {
   margin: 0;
   padding-left: var(--sp-5);
@@ -866,6 +863,10 @@ dialog.dg-modal::backdrop {
 .home .page-meta {
   min-height: var(--sp-6);
   align-items: center;
+}
+/* An empty row renders no min-height box; the session only passes qualifiers it has. */
+.home .page-meta:empty {
+  display: none;
 }
 .dg-qualifier {
   color: var(--text-2);

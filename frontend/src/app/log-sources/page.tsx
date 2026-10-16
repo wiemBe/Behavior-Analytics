@@ -45,7 +45,7 @@ export default async function LogSourcesPage() {
         </div>
       ) : (
         <TableScroll label="Log sources">
-          <table className="table-dense log-sources-table">
+          <table className="table-dense log-sources-table" aria-label="Log sources">
             <thead>
               <tr>
                 <th>Name</th>

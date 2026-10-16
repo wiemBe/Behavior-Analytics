@@ -8,6 +8,172 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶▶▶▶ RESUME HERE — STATE AT 15:30, 2026-10-16 (seventeenth session, from 14:37)
+
+**Read first:** this section, then D-17, D-18, D-19 in §4, then the 10:30 section further down for
+the sandboxing rules (still binding). The 14:35 section below is superseded where they differ.
+
+**The user this session:**
+- 14:37: "planner.md oku devam et opencode da ki z.ai aboneliğindeki glm yi de
+  kullanabilirsin". **Z.AI GLM (`zai-coding-plan/glm-5.3`) is allowed again**, one session at a
+  time.
+- ~15:30, answering how the Phase F lab validation gets the lab token, which every sandbox now
+  hides: **"Sonnet sub-agent"** (unsandboxed, as in T-054). This was chosen over a Grok profile
+  that could read the token.
+
+**Branches.**
+- `main` @ `e26c683` (Phase 5 and everything before it). Unchanged this session.
+- `feat/phase-ce` @ `0117c32` (pushed). Since `main` it holds:
+  - UI-6.1 to UI-6.8: **Phase 6 is closed**;
+  - T-114 to T-117;
+  - F-1 to F-8 (Phase F built);
+  - AUTH-1, AUTH-2.
+- Migration head **`0025`**.
+- Last measured gates:
+  - **Full integration: 1,281 passed, 0 failed.** Measured on the F-3 merged tree, which is
+    `feat/phase-ce` plus F-3.
+  - **On the merged head `5999bb5`** (F-3 plus F-6a; only docs changed after it): ruff clean;
+    mypy 0 in 240 files; unit 3,441; custom-rules and auth integration 40 passed.
+  - **Frontend, after UI-6.8:** lint and typecheck clean; 263 files / 2,998 tests.
+    - T-117 changed the lockfile after that. Grok's gates on T-117 were green: build, and
+      263 files / 2,994 tests.
+    - **Re-run `npm ci` and the full frontend gate on the head before going to `main`.**
+
+**In flight.**
+
+| Task | Agent / unit | Worktree / DB | How to check, and what is left for the orchestrator |
+|---|---|---|---|
+| ~~T-119~~ | **Merged** (`0117c32`, Grok, 9 min): README and the design after F-6 (routes, the catalog body, [BUILT] markers, as-built notes); "fired 1 time" with a 0/1/2 test | — | — |
+| **Gate for `main`: GREEN** | Frontend on `0117c32`: `npm ci`, lint, typecheck, 288 files / 3,186 tests, build 33/33. Backend on `99610cb` (no backend change since): ruff, mypy 0, alembic up/check/down base/up/check at `0025`, unit 3,443, **full integration 1,286 passed, 0 failed** (15.5 min) | logs `QRadar-Dash-work/gate-main/` | **merge `feat/phase-ce` → `main` when T-118 reports** (part 2 ends ~17:30 local) |
+| **OPS-0** ([spec](tasks/OPS-0.md)) operability design: versioning, GHCR release, `./qradar-dash install/upgrade/rollback/backup/restore/doctor/support-bundle`, Turkish runbook outline, OPS-1… split for ~2026-10-30 | **Grok**, `ops0-grok`, from 17:05 (D-18: starts once the in-flight work is collected) | `ops0`; deliverable `docs/OPERATIONS-DESIGN.md` | review against the spec's 11 points; the user reviews the task split |
+| ~~T-118~~ | **Passed** ([report](tasks/T-118.report.md); Sonnet sub-agent, 15:24–17:31 local, 19 of 60 Ariel searches, two generator runs at 1/8/1 EPS, none left). Shadow: breach OPEN after the 2nd spike bucket, no alert or notification, RECOVERING, RESOLVED; stored preview = the same interval. Alerting: **one** deduplicated `custom_rule_breach` alert (`occurrence_count` 2), evidence value/measurement/threshold/bucket bounds, resolved by `custom-rule-evaluator` "condition recovered". Fail-closed gap: the uncollected bucket counted neither way (`unmeasured_buckets` 1, under 1 not 2, alert still open), preview drew it `NOT_MEASURED`; collected late, it was not re-judged (idempotent). Harness gap: the OPEN notification was not observed (no channel configured at that moment); the resolve notification was. Low-severity notes: `last_status` NULL after the seed run; `consecutive_under` counts up while OK and is exposed; after a late bucket the preview and the live breach end one bucket apart (by design) | — | no fix task needed; the notes go to the backlog |
+
+Watchers, liveness and logs:
+- Background watchers in this chat use `QRadar-Dash-work/watch-units.sh <unit…>`.
+- `systemctl --user is-active <unit>` is the liveness check.
+- The log for each task is in `QRadar-Dash-work/<task>/`.
+
+**Agents now.**
+- **Codex:** on F-6.
+  - Its window reset at 15:16.
+  - Expect about one large UI task per window.
+  - "Selected model is at capacity" is an OpenAI-side error, separate from the usage limit.
+    Retry once.
+- **Grok:** the workhorse, two units running. It runs sandboxed (`--sandbox qradar-agent`) and
+  cannot read `.secrets`.
+- **Z.AI GLM:** **out until 00:38**. It hit "Usage limit reached for 5 hour" after only about
+  35 minutes of single-session use (UI-6.5, then F-8). Give it one medium docs task per window.
+- **DeepSeek free:** still "Rate limit exceeded" at 14:41. Probe before using it.
+- **Sonnet sub-agents:** only for live validations that need the lab token (the user's choice).
+  They draw on the orchestrator's limit.
+
+**Next, in order (D-18: finish what we have, then OPS-0):**
+1. **Collect the four tasks.**
+   - Merge F-8, AUTH-2 and F-6.
+   - After F-6: finish the "(in progress)" lines in the README and the [BUILDING] markers in
+     the design. This is a small docs task, for GLM after 00:38, or Grok.
+   - T-118's defects become fix tasks.
+2. **Full gate on the head**, then `feat/phase-ce` → **`main`**.
+   - Backend: ruff, mypy, unit, the full integration suite, and alembic
+     upgrade → check → downgrade → upgrade → check at `0025`.
+   - Frontend: `npm ci`, lint, typecheck, vitest, build.
+3. **OPS-0.** The spec is ready, with the user's answers in it. Then OPS-1 and the rest: the
+   GHCR release, the `./qradar-dash` operator script, backup and rollback, doctor, the support
+   bundle, and a fresh-VM rehearsal.
+4. **Later, and deliberate:**
+   - echarts 6 (the Lines-series XSS is unreachable today);
+   - the `map.geography` widget (still `blocked`; the backend and the colour ramp exist);
+   - locking the enabled-count caps (F-3 and F-4: two concurrent enables can both pass);
+   - a public subject-column helper in place of the private `_SUBJECT_COLUMNS` import;
+   - a `v1.0.0` tag.
+
+**Facts learned this session:**
+- When a fix lands that an in-flight branch's full-suite run needs, merge it into that branch
+  before the run, or tell the agent the failure is already known.
+  - F-3's Grok hit the break-glass failure that T-116 had just fixed, and began re-fixing it.
+    The orchestrator stopped it and took over the gates.
+- **A tooltip `formatter`'s returned string is HTML in ECharts.** Never interpolate QRadar-sourced
+  text into it without `echarts.format.encodeHTML`. The F-6 spec now says so.
+- Codex refuses before its reset time ("try again at 3:16 PM"). A `systemd-run --on-calendar`
+  timer re-arms it cleanly.
+- A section renumbering in a normative doc leaves stale "§n" references in code comments. Grep
+  for them in the same task.
+
+### Done this session (log)
+
+| Task | Result |
+|---|---|
+| ~~T-116~~ | **Merged** (`4ad5010`, Grok).<br>• The test now uses `sys.executable`, takes `POSTGRES_*` from the test's own database URL, and writes certificates under `tmp_path`.<br>• Orchestrator: ruff clean; the auth and TLS integration files on a different DB name (`qradar_obs_gate`): 23 passed. No `/home/` path and no agent DB name is left in `backend/tests/`.<br>• Grok's full integration: 1,263 passed |
+| ~~UI-6.5~~ | **Merged** (`165b24e`; Z.AI GLM 5.3, 13 min plus a 3-min review round).<br>• What the guidelines gain:<br>&nbsp;&nbsp;– the `/` Dashboard and the supporting routes (§3);<br>&nbsp;&nbsp;– C1 (§2);<br>&nbsp;&nbsp;– the shell and widget-system component contracts (§8);<br>&nbsp;&nbsp;– the grid rules (§9);<br>&nbsp;&nbsp;– C4 times, 24 px targets and mounted-only ARIA (§10);<br>&nbsp;&nbsp;– a new **§11 Tokens and colour**, with the bounded D-11 exception.<br>• Testing moved to §12 and the Checklist to §13; three test comments follow the new numbers.<br>• The report traces each of C1–C17 to a proving file. The orchestrator spot-checked six claims against the code, and reverted GLM's edit of a past report.<br>• **AGENTS.md §3a** was updated by the orchestrator (`ac8f642`):<br>&nbsp;&nbsp;– a KPI row only on the Dashboard;<br>&nbsp;&nbsp;– D-11: dark only, text-only navigation, and the AA exception bounded to two values;<br>&nbsp;&nbsp;– status hues are never categorical colours;<br>&nbsp;&nbsp;– no "live" or "real-time";<br>&nbsp;&nbsp;– a relative age only after the UTC time;<br>&nbsp;&nbsp;– the widget states;<br>&nbsp;&nbsp;– the `.dg-item` inline-style exception |
+| ~~UI-6.8~~ | **Merged** (`3e9334a`, Grok).<br>• The severity widget says "No anomaly opened in the last 24 h." and draws no plot.<br>• A capped list, or a total that contradicts its rows, says so instead of drawing a zero.<br>• The folded-class line now wraps.<br>• Orchestrator: lint, typecheck, 263 files / 2,998 tests; PNGs reviewed.<br>• **Phase 6 is closed** |
+| ~~T-117~~ | **Merged** (`ca6d50c`, Grok).<br>• `overrides.postcss = 8.5.30`. PostCSS runs only in `next build`.<br>• `npm audit`: 8 → **6** advisories.<br>• The echarts Lines-series XSS is unreachable: only `BarChart`, `LineChart` and `PieChart` are registered. The orchestrator read the six tooltip formatters: they interpolate times, numbers and enums only.<br>• `braces` is dev-only and has no patched release |
+| ~~F-3~~ | **Merged** (`89886a9`).<br>• Round 1 was taken over by the orchestrator, see "Facts learned".<br>• `KNOWN_PERMISSIONS` gains the two custom-rule permissions.<br>• Gates on the merged tree:<br>&nbsp;&nbsp;– frontend: lint, typecheck, 263 / 2,994;<br>&nbsp;&nbsp;– backend: ruff, mypy 0, unit 3,435;<br>&nbsp;&nbsp;– **full integration 1,281 passed, 0 failed** |
+| ~~F-6a~~ | **Merged** (`5999bb5`, Grok, 22 min).<br>• `GET /custom-rules/catalog` reads every value from the code that enforces it, and is registered before `/{rule_id}`.<br>• Grok: unit 3,441; integration 22; a break-it test for each new test |
+| ~~F-8~~ | **Merged** (`b2c5416`; GLM 5.3 until its Z.AI limit, then Grok reviewing what it inherited, 19 min). README: custom rules (three tables, nine statuses, API, settings, the `custom_rule_breach` alert row), the F-4 search guards and settings, `/searches/new` and the `chart.search_results` widget, `detection_engineer`, 69 tables; design: [BUILT]/[BUILDING] markers with as-built notes. Grok listed 22 places where the code and the documents disagreed. The orchestrator checked five names (settings, `uq_custom_rule_breach_active`, `CRON_FLOOR_SECONDS`, the beat key, the 68 + 1 table count). **Follow-up after F-6:** finish the "(F-6, in progress)" and "(F-6a, in progress)" lines and the [BUILDING] markers |
+| ~~AUTH-2~~ | **Merged** (`38ae87b`, Grok, rounds 0–3): sign-in page; session in the shell (account menu: who, source, roles, change password, sign out); must-change and no-role screens; Users and Directory administration with a connection test in words; `GET /users/roles`. Review: round 1 fixed six PNG findings (clipped data-age clock, stretched login, raw probe values, stretched fields, users table, `/admin` hub); round 2 the error-alert contrast and a spacing; round 3 a roles test that hard-coded three roles (broke on `detection_engineer`; now reads the seed). Orchestrator: lint, typecheck, **278 files / 3,131 tests**; ruff, mypy 0, unit 3,443; PNGs reviewed |
+| ~~F-6~~ | **Merged** (`82b3b16`; Codex round 0 in 41 min after a quota refusal and a capacity error, Grok round 1). Round 1 fixed the eight PNG findings: status words instead of identifiers (only OK green), the engine's reason strings (no line for a null reason), status right after the name, realistic fixture (one rule per subject kind), production-build captures with a healthy shell, no empty band, a contained window control, the threshold caption off the data, an inline retirement time. Orchestrator on the tree merged with `feat/phase-ce` (AUTH-2): lint, typecheck, **288 files / 3,185 tests**, build; PNGs reviewed. **Phase F is built** (only T-118 live validation and T-119 docs remain) |
+
+Worktrees and DBs of merged tasks were removed: `t116`, `ui65`, `ui68`, `t117`, `f3`, `f6a`, plus
+`f1`, `f2`, `f4`, `f7` and `auth1` from earlier sessions.
+
+---
+
+## ▶▶▶ RESUME HERE — STATE AT 14:35, 2026-10-16 (end of the sixteenth session; the user moved to a new chat because the context was long)
+
+**Read first:** this section, then D-17, D-18, D-19 in §4, then the 10:30 section below for the
+sandboxing rules (still binding).
+
+**Branches.** `main` @ `e26c683` (Phase 5 and everything before it). `feat/phase-ce` @
+`a3eaf1a` (pushed): since `main` it holds UI-6.1, 6.2, 6.3, 6.4, 6.6, 6.7, T-114, T-115, F-1,
+F-2, F-4, F-5, F-7, AUTH-1. Migration head **`0025`** (`0024` custom rules, `0025` auth sessions).
+Last measured gates on `feat/phase-ce`: frontend **263 files / 2,994 tests**, lint, typecheck,
+build (after UI-6.7, at ~14:30); backend unit 3,407 and integration **1,262 passed, 1 failed** on
+`b5e667f` (the failure is a machine-bound AUTH-1 test, being fixed by T-116).
+
+**In flight — all Grok 4.7, sandboxed (`--sandbox qradar-agent`), as systemd user units that
+survive the chat.** Check each with `systemctl --user is-active <unit>`; its log is in
+`QRadar-Dash-work/<task>/`; resume a session with
+`grok --resume <session> --prompt-file <file> --cwd <worktree> --sandbox qradar-agent --always-approve --output-format plain`.
+
+| Task | Unit | Worktree / DB | Grok session | What is left for the orchestrator |
+|---|---|---|---|---|
+| **F-3** round 1 (custom-rule API) | `f3-grok-r1` | `f3` (branch already contains `feat/phase-ce` @ `b5e667f` merged in, conflicts resolved); DB `qradar_obs_f3` | `01a14435-ce73-7a32-a2f5-63a4e790cf56` | review "Review round 1" in `docs/tasks/F-3.report.md` (frontend `KNOWN_PERMISSIONS` gains `read:custom_rules`, `custom_rule:write`; full integration on the merged tree) → commit → merge into `feat/phase-ce` (expect `seed.py`/`rbac.py` already resolved) |
+| **AUTH-2** (login page, session in the shell, users/roles admin, LDAP settings with Test connection) | `auth2-grok` | `auth2`; DB `qradar_obs_auth2`; ports 3102/8102/9102 | `01a14463-f1a8-7663-96c5-7f05eec20ae5` | review the PNGs (`QRadar-Dash-work/auth2/`) and gates; it may add `GET /api/v1/users/roles` |
+| **T-116** (AUTH-1 tests: no hard-coded `/home/` path or agent DB; `sys.executable`, URL-derived env, `tmp_path`) | `t116-grok` | `t116`; DB `qradar_obs_t116` | `01a14470-4ef9-7842-980a-b7405d32da5a` | check the break-glass test passes on a foreign DB name; merge; re-run the merged-head integration |
+| **UI-6.8** (severity widget empty state; "Other classes" line clipping) | `ui68-grok` | `ui68`; ports 3168/8168/9168 | `01a1447c-3edc-7b32-b55e-154d79a3bf4e` | review PNGs and gates; merge |
+
+**Agents now.** Codex: usage limit hit 11:11, **reset 15:16** → give it **F-6** (custom-rules UI,
+spec still to write; depends on F-3 merged). DeepSeek free and GLM 5.3 Flash free: both hit
+"Rate limit exceeded" (13:41 and ~13:57); probe before use. Z.AI GLM: **not to be used** (user,
+10:05). Sonnet sub-agents: avoid (they eat the orchestrator's limit).
+
+**Next, in order (D-18 plan; the user: "finish what we have first", OPS-0 waits):**
+1. Collect the four above; merge; merged-head backend integration + frontend gate.
+2. **UI-6.5** (orchestrator): write the UR.9 rulings and D-11 into `PRODUCT-UX-GUIDELINES.md`
+   (delegate the text) and AGENTS.md §3a (orchestrator). Then Phase 6 is closed.
+3. **F-6** (custom-rules UI: `/custom-rules`, editor with subject/metric pickers and the live
+   preview chart, rule detail with breaches, the latency statement, `STALE`/shadow-mode honesty)
+   → Codex at 15:16, spec from §F.12. Then **F-8** (docs, a free model) and the **Phase F lab
+   validation** (generator EPS spike → a rule breaches in shadow mode → alerting on → alert
+   opens and resolves).
+4. Full gate → `feat/phase-ce` → `main`.
+5. **OPS-0** (design; spec ready, the user's answers in it: Turkish runbook, efe operates,
+   GHCR reachable, repo likely private, LDAP from the UI), then OPS-1… (GHCR release, the
+   `./qradar-dash` operator script, backup/rollback, doctor, support bundle, fresh-VM rehearsal).
+6. npm advisories (8, 6 high), a `v1.0.0` tag. The orchestrator's estimate: ~8–10 working days.
+
+**Facts learned this session (also in memory):**
+- Headless Grok can stop right after an auto-compaction mid-task: check the report reads as
+  final; resume the same session (a sandboxed session resumes only under the same sandbox).
+- `opencode` runs under `QRadar-Dash-work/opencode-bwrap.sh`; `--session <id>` continues one.
+- Merging several branches that all add to `rbac.py`, `seed.py`, `celery_app.py`, `tasks.py`,
+  `test_route_auth_guard.py` conflicts additively: keep both sides. The frontend contract test
+  `widgets/registry.test.ts` fails whenever `rbac.py` gains a permission that
+  `widgets/permissions.ts` lacks.
+- The user wants: LDAP entered from the UI with LDAPS; roles assigned in the app; no AD groups.
+
+---
+
 ## ▶▶ RESUME HERE — STATE AT 10:30, 2026-10-16 (sixteenth session, from 10:05)
 
 The machine shut down at 00:39 and rebooted at 10:03; every agent had died. The test DB was
@@ -36,20 +202,36 @@ Codex and Grok.
 `feat/phase-ce`.** Merged-head frontend gate on `1cd92e6`: `npm ci`, lint and typecheck clean,
 237 files / 2,848 tests passed, build OK.
 
+**`main` @ `e26c683` (~10:50): `feat/phase-ce` @ `edcc725` merged.** Backend full gate on
+`1cd92e6` (only docs changed after it): ruff clean; mypy 0; alembic up/check/down/up/check at
+`0023`; unit 3,224 passed; **integration 1,168 passed** (11 min). Frontend gate as above.
+**Phase F branches (F-1, F-4) may now merge into `feat/phase-ce` once reviewed.**
+T-114 merged (`edcc725`, GLM 5.3 Flash free): 27 PNGs recaptured, README block-shift sentence.
+
 **In flight:**
 
 | Task | Agent (unit) | Where | Notes |
 |---|---|---|---|
-| Backend full gate on `1cd92e6` | orchestrator | worktree `gate`; DBs `qradar_obs_gate`, `_gate_mig`; log `QRadar-Dash-work/gate-1016/backend.log` | then `feat/phase-ce` → `main` |
-| **F-1** handover 2 ("review what you inherit": GLM's models, migration, catalog, validation) | Grok (`f1-grok2`), from 10:11 | worktree `f1`; DBs `qradar_obs_f1`, `_f1_mig`; log `QRadar-Dash-work/f1/grok2.log` | the first Grok handover (00:22) wrote nothing before the shutdown. Merge only after `main` |
-| **F-4** review round 1 | Grok (`f4-grok-r1b`), from 10:15 | worktree `f4`; DB `qradar_obs_f4`; review `QRadar-Dash-work/f4/review1.md` | (1) the cron floor walks 105,408 fires in 1.61 s on the event loop for `*/5`: must be exact and < 50 ms; (2) `body: dict` dropped the OpenAPI request schema: restore and pin it. Cap, audit split, 422 object and retention accepted |
+| ~~F-1~~ | **Merged** (`fcccdc6`, GLM then Grok; review round 1 added `STALE` when a kind stops collecting, bound `cadence + bucket + settle + 60 s`, and `last_evaluated_at` only when a bucket was judged). Orchestrator: ruff, mypy 0, unit 3,292, custom-rule integration 11, alembic up/check/down/up/check at `0024`; Grok's full integration 1,179. Merge conflict in `celery_app.py`/`tasks.py` with F-4 (both additive) resolved by the orchestrator; merged-tree unit 3,314 | — | **merged-head integration on `fcccdc6`: 1,208 passed, 0 failed** (14 min, `gate`) |
+| ~~F-4~~ | **Merged** (`108871c`, Grok, after review round 1): the cron floor is exact and 8–18 ms for `*/5` (was 1.5 s), DST-aware (`58,1 1,3 * * *` New York refused at the 2026-11-01 fall-back), off the event loop via `to_thread`; OpenAPI request bodies restored and pinned. Orchestrator re-ran ruff, mypy 0, unit 3,246, the F-4 + phase3 integration files (96 passed); Grok's full integration: 1,197 passed | — | open: the cap count is unlocked (two concurrent enables can pass) |
+| ~~F-5~~ | **Merged** (`39edc2e`, Grok after Codex's limit; review round 1 fixed the five PNG findings). Orchestrator: lint, typecheck, 255 files / 2,910 tests, build; PNGs reviewed; merged-head colour-literal + searches tests 123 passed | — | — |
+| ~~UI-6.1~~ | **Merged** (`ebf5b0f`, Grok; one resume after a mid-task stop at an auto-compaction). 558 captures (32 routes × states × 3 viewports): **no page overflow anywhere**; 18 measurement fails = the documented `--dg-*` grid exception (12) and the outage-policy `.nowrap` time losing to `.fleet-table td .cell-sub` (6) | — | findings → **UI-6.6** |
+| ~~UI-6.6~~ | **Merged** (`4182571`, GLM 5.3 Flash free; report written, then the free model hit its rate limit). Orchestrator: lint, typecheck, 249 files / 2,899 tests, build; PNGs reviewed (Night shift band gone, description wraps in full at 1024). New findings seen on its 1024 PNG, outside its scope: the "Anomalies by severity" widget draws an empty axis with no sentence when there is no anomaly in the window; the "Other classes" line of "EPS by source class" clips at the right edge | — | → a small follow-up before UI-6.5 |
+| ~~T-115~~ | **Merged** (Grok, 3 min): `KNOWN_PERMISSIONS` gains `admin:users`, `admin:auth`. Orchestrator: full vitest 260 files / 2,974 tests, lint, typecheck. **`feat/phase-ce` frontend is green again** | — | — |
 | **UI-6.1** viewport matrix | Grok (`ui61-grok`), from 10:22 | worktree `ui61`; ports 3161/8161/9161 | measures; one-line route CSS fixes only |
-| **UI-6.2** accessibility | Codex (`ui62-codex`), from 10:21 | worktree `ui62`; ports 3162/8162/9162 | Codex reset was 02:18 |
-| **UI-6.3** dashboard performance | DeepSeek free (`ui63-ds`), from 10:25 | worktree `ui63`; ports 3163/8163/9163 | measures |
-| **T-114** ([spec](tasks/T-114.md)) docs screenshots after Phase 5 + README block-shift result | GLM 5.3 Flash free (`t114-glmf`), from 10:28 | worktree `t114`; ports 3114/8114/9114 | — |
+| ~~UI-6.2~~ accessibility | **Merged** (`ba6281f`, Codex 10:16–10:49). Orchestrator's gates in the worktree: lint and typecheck clean, 246 files / 2,857 tests, build OK; PNGs reviewed | — | Findings for a follow-up task (with UI-6.1's): under-24 px targets (anomaly technical-detail disclosure 47×21, filter checkbox labels 19 px, WAF/IPS mapping radios and classification toggles 19.5 px, Next pagination 29×19.5); dashboard description clipped with "…" at 1024; 8 npm advisories (2 moderate, 6 high) |
+| ~~UI-6.3~~ | **Merged** (`ad41df8`, DeepSeek free, 10:18–11:12). Every budget passes: first widget content ≤ 447 ms cold (< 2 s), no long task during a drag, 0 requests at idle. Findings: **F1** off-screen charts are created (no `IntersectionObserver`; UR.8.3 says they must not be); **F2** ~9 MiB retained per full-document round trip (bounded; a heap-snapshot task if ever needed); **F3** `Content-Type` on bodyless GETs preflights every cross-origin read (zero in the same-origin production topology); **F4** the 24-widget seed cannot hold every live type *and* 8 distinct charts (22 live types, 5 chart types) | — | F1 + F3 → **UI-6.7** |
 
-**Next:** UI-6.4 after UI-6.1 and UI-6.2 merge (it touches every stylesheet); `main` after the
-backend gate; then F-1 and F-4 onto `feat/phase-ce`; Phase F build (F-2, F-3, F-5…).
+
+| ~~UI-6.4~~ | **Merged** (`e65eb93`, GLM 5.3 Flash free): unused selectors dropped, colour-literal contract test; 204 dead exports reported, not stripped. Orchestrator's gates: lint, typecheck, 247 files / 2,886 tests, build | — | — |
+| ~~AUTH-1~~ | **Merged** (`b5e667f`, Grok; round 1 re-chained `0025` → `0024` and added real-TLS handshake tests: untrusted CA, host-name mismatch, expired refused; valid → TLS ok, bind failed). Orchestrator: security review of sessions, CSRF, LDAP, lockout, migration; ruff, mypy 0 (237 files), unit 3,402, auth + migration integration 25, `alembic heads` = `0025`; Grok's full integration 1,245; merged-head unit 3,407 | **merged-head integration on `b5e667f`: 1,262 passed, 1 failed**: `test_break_glass_admin_prints_the_password_once` hard-codes its agent's DB (`qradar_obs_auth1`) and `/home/efe/...` paths (also in `test_ldap_tls.py`, `ldap_fake.py`) → **T-116** (Grok); AGENTS.md §4 gained a rule against machine-bound tests | **the merge broke one frontend contract test** (`registry.test.ts`: `KNOWN_PERMISSIONS` lacks `admin:users`/`admin:auth`) → **T-115** (Grok). F-3 will add `custom_rule` permissions: update `widgets/permissions.ts` at its merge too |
+| ~~F-2~~ | **Merged** (`f278262`, Grok): shadow mode by default (`CUSTOM_RULES_ALERTING_ENABLED`), fingerprint `custom_rule_breach`, one `apply_bulk` per tick, STALE/maintenance keep a live page, disabled/retired close it, deleted-rule sweep; `alerting_mode` is the computed field F-3 exposes. Orchestrator: ruff, mypy 0, unit 3,334, custom-rule integration 23; Grok's full integration 1,221 | — | — |
+| **F-3** ([spec](tasks/F-3.md)) custom-rule API, preview, detection-engineer role | Grok: round 0 done 14:25 (unit 3,362, integration 1,239); orchestrator accepted it, committed it, merged `feat/phase-ce` into `agent/f3` and resolved the `rbac.py` and `test_route_auth_guard.py` conflicts (both additive; merged-tree unit 3,435) → **round 1** (`f3-grok-r1`) from 14:30: `KNOWN_PERMISSIONS` gains the two custom-rule permissions, AGENTS.md §4 check, full integration on the merged tree | worktree `f3`; DB `qradar_obs_f3` | — |
+| ~~F-7~~ | **Merged** (`ebe8cd8`, Grok; the first run stopped correctly on two missing API fields, the spec was amended with two read-only routes; review round 1 made the chart fill its widget and removed the overlapping ticks). Orchestrator: lint, typecheck, 258 files / 2,961 tests, build; ruff, mypy 0, unit 3,319, search integration 112; PNGs reviewed | — | — |
+| ~~UI-6.7~~ | **Merged** (DeepSeek rounds 0–1, Grok round 2 after DeepSeek's rate limit): off-screen charts deferred via `useInView`, cells on the first screen mount in the first render from the layout (the per-frame pump was rejected and removed); bodyless reads send no `Content-Type` (preflights 34 → 0). Warm first content 53/69/79 ms, cold ~430 ms (UI-6.3 band), idle 0, no drag long task; one discarded cold run at 2,106 ms under machine load is recorded. Merged-head frontend gate: lint, typecheck, **263 files / 2,994 tests**, build | — | — |
+
+**Next:** F-1 and F-4 onto `feat/phase-ce` after review; Phase F build (F-2, F-3, F-5…); a
+follow-up UI task from the UI-6.1 and UI-6.2 findings.
 
 **Follow-up seen in the UI-5.9 PNGs:** a saved dashboard ("Night shift", 1024×768) has ~60 px of
 empty space between its title and its description. Give it to UI-6.1's findings or a small task.
@@ -1630,6 +1812,8 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-15 | **Custom detections and custom AQL (user request, 2026-10-15; the "how" was left to the orchestrator).** Two tools share one alert pipeline. **F.1 threshold rules** on aggregates that are already collected. Examples: a source's EPS above X; a WAF endpoint's requests above N. They cost no extra Ariel search and fail closed (LOWER_BOUND proves only "above"). **F.2 custom AQL** for anything not collected, on the existing stored, validated and versioned scheduled searches with their threshold alerts. F.2 adds the editor UI and a result-chart widget, and the browser never runs AQL (rule 4). Design → **T-108**, `docs/PHASE-F-CUSTOM-DETECTIONS.md`. Build after Phase 5 merges to `main`. | Phase F |
 | D-16 | **Operability without AI (user, 2026-10-15 ~23:25).** The production host has no access to any AI: AI sites are blocked, while Docker registries and git are reachable. Installation must be painless, with as few commands as possible, and a few minutes of downtime per upgrade is acceptable. **Orchestrator direction:**<br>• versioned prebuilt images on GHCR (production pulls, it does not build), with a local build as the fallback;<br>• one `qradar-dash` operator script: `install` (preflight, `.env` wizard, pull, migrate, seed, start, health), `upgrade <v>` (automatic TimescaleDB-aware backup first), `rollback` (the previous tags plus a restore, because a downgrade drops data), `backup`/`restore`, `doctor`, a redacted `support-bundle`, `status`, `logs`;<br>• a visible app version;<br>• a symptom-indexed runbook `docs/OPERATIONS.md`.<br>Design → **OPS-0** (spec ready). **Deferred by the user on 2026-10-15 at 23:27 ("note it, do it later").** **Open:** the runbook's language and who operates production. | Production readiness |
 | D-17 | **Phase F open questions (§F.16), answered by the user on 2026-10-16 ~10:25.** <br>1. **Alerting: shadow mode first.** Add `CUSTOM_RULES_ALERTING_ENABLED` (default false) beside `CUSTOM_RULES_ENABLED`: breaches are recorded, nothing pages, until a live validation turns it on (the IPS pattern). → F-2. <br>2. Caps and retentions were not asked again: the proposed defaults stand as settings (100 enabled rules, 25 enabled searches, 90 days of search results, 180 days of resolved breaches). <br>3. **A new detection-engineer role** between analyst and admin: it may write custom rules and custom searches (`custom_rule:write`, `search:write`) but not the admin settings. → F-3 (and the role map in `app/security/rbac.py`). <br>4. **The F.2 preview is a real bounded Ariel run** of the stored draft. → F-5. <br>5. **Breaches stay out of `/anomalies`**: they show in `/alerts` and on the rule's page (§F.4.3 as designed). → F-6. | F-2, F-3, F-5, F-6 |
+| D-18 | **The plan (user, 2026-10-16 ~11:20: "lider sensin nasıl dersen öyle gideriz … 2 hafta falan var bitmesine"; at ~11:35 the user said the two weeks was a guess and asked for the orchestrator's estimate, and said OPS-0 need not start now: "ilk önce elimizdekileri bitir").** **OPS-0 waits until the tasks in flight are finished** (its Grok run was stopped at 11:31 before writing anything). The orchestrator's estimate: about **8–10 working days** of sessions at today's pace, so ~2 weeks of calendar time is realistic; the critical path is AUTH + OPS, not Phase F. Order set by the orchestrator: <br>• **Week 1 (10-16 → 10-22):** close Phase 6 (UI-6.4, 6.6, 6.7, 6.5) and merge to `main`; Phase F core (F-1, F-2, F-3, F-5) merged, F-6/F-7 started; **AUTH-1** (login backend) and **OPS-0** (operability design) now, because production is blocked without them. <br>• **Week 2 (10-23 → 10-30):** F-6, F-7, F-8 and the Phase F lab validation; **AUTH-2** (login and user-admin UI); **OPS-1…** (release images on GHCR, `./qradar-dash install/upgrade/rollback/backup/doctor/support-bundle`, the Turkish runbook); the npm advisories; a fresh-VM install rehearsal; the final gate, `main`, a `v1.0.0` tag. <br>• **OPS-0 is no longer deferred** (it was D-16's "later"). | Everything |
+| D-19 | **Production login (user, 2026-10-16 ~11:25).** Local accounts **and** AD password over LDAP (bind as the user). **No group or role is read from AD**: roles are assigned in the app by users holding the admin role; a first-time LDAP user gets **no role** (fail closed) until an admin assigns one. The operator of production is the user (efe); the runbook is **Turkish** (commands and outputs in English). OIDC stays out of scope. → **AUTH-1** (backend), **AUTH-2** (UI), OPS-0. | AUTH-1, AUTH-2, OPS-0 |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---

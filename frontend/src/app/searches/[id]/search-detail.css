@@ -1,4 +1,43 @@
-/* The caption under the result trend (ResultTrend renders inside this page). */
+/* The caption under the result trend (ResultTrend renders inside this page
+   and inside the search-results widget). */
 .trend-note {
   margin: var(--sp-2) 0 0;
+}
+.trend-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-3);
+  margin: 0 0 var(--sp-2);
+}
+.trend-value {
+  margin: 0;
+  font-size: var(--fs-metric);
+}
+.trend-dims {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+/* The page chart stays the 320px `.chart`. Inside a widget the root fills the
+   frame body, and the chart grows the way `.hc-chart` does: the body's height,
+   with the home chart as the minimum. */
+.sr-widget {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.sr-widget .chart {
+  flex: 1 1 var(--home-chart-h);
+  height: auto;
+  min-height: var(--home-chart-h);
+  min-width: 0;
+}
+
+/* A caption is centred by the browser. This one is a `.subtitle`, and it
+   takes the same left alignment as the column headers. */
+caption.subtitle {
+  text-align: left;
+  max-width: none;
 }

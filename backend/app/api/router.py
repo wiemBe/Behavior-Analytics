@@ -8,9 +8,11 @@ from app.api.deps import get_principal, requires
 from app.api.routes import (
     alerts,
     anomalies,
+    auth,
     catchall,
     classification_rules,
     coverage,
+    custom_rules,
     dashboards,
     fleet,
     geo,
@@ -25,13 +27,16 @@ from app.api.routes import (
     rules,
     search_cadence,
     searches,
+    users,
     waf,
     waf_catalog,
 )
 from app.security.rbac import (
     PERM_ALERT_READ,
     PERM_ANOMALY_READ,
+    PERM_AUTH_ADMIN,
     PERM_COVERAGE_READ,
+    PERM_CUSTOM_RULE_READ,
     PERM_DASHBOARD_READ,
     PERM_FLEET_READ,
     PERM_GEO_READ,
@@ -44,11 +49,18 @@ from app.security.rbac import (
     PERM_RULE_READ,
     PERM_SEARCH_CADENCE_READ,
     PERM_SEARCH_READ,
+    PERM_USER_ADMIN,
     PERM_WAF_ADMIN,
 )
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+# Login is unauthenticated. Logout and password change need a principal.
+# Directory configuration needs admin:auth, on its own router.
+api_router.include_router(auth.public_router)
+api_router.include_router(auth.session_router)
+api_router.include_router(auth.admin_router, dependencies=[Depends(requires(PERM_AUTH_ADMIN))])
+api_router.include_router(users.router, dependencies=[Depends(requires(PERM_USER_ADMIN))])
 # /me returns only the caller's own identity and grants; it requires
 # authentication but no additional permission.
 api_router.include_router(me.router, dependencies=[Depends(get_principal)])
@@ -126,4 +138,10 @@ api_router.include_router(
 # `dashboard:write` itself, and ownership and `admin:dashboards` where they apply.
 api_router.include_router(
     dashboards.router, dependencies=[Depends(requires(PERM_DASHBOARD_READ))]
+)
+# Phase F. Custom threshold rules over stored aggregates. Read-guarded;
+# `read:*` satisfies `read:custom_rules`. Every write handler checks
+# `custom_rule:write` itself. `read:*` does not grant that write.
+api_router.include_router(
+    custom_rules.router, dependencies=[Depends(requires(PERM_CUSTOM_RULE_READ))]
 )
