@@ -9,13 +9,15 @@ execution — a manual run always executes the stored query of an existing searc
 
 from __future__ import annotations
 
+import asyncio
 import builtins
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.models.search import ScheduledSearch, SearchExecution, SearchQueryVersion
 from app.schemas.search import (
     ScheduledSearchCreate,
@@ -25,11 +27,48 @@ from app.schemas.search import (
 )
 
 
+class EnabledSearchLimitError(Exception):
+    """Creating or enabling a search would pass the enabled-search cap."""
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        super().__init__(f"the limit is {limit} enabled searches")
+
+
 class ScheduledSearchService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, *, settings: Settings | None = None) -> None:
         self.session = session
+        self.settings = settings or get_settings()
+
+    async def count_enabled(self) -> int:
+        """How many searches are enabled. One query, for the whole table."""
+        counted = await self.session.scalar(
+            select(func.count())
+            .select_from(ScheduledSearch)
+            .where(ScheduledSearch.enabled.is_(True))
+        )
+        return int(counted or 0)
+
+    async def _refuse_over_cap(self) -> None:
+        limit = self.settings.scheduled_searches_max_enabled
+        if await self.count_enabled() >= limit:
+            raise EnabledSearchLimitError(limit)
+
+    async def _refuse_fast_cron(self, cron: str, timezone: str) -> None:
+        # Local import: search_scheduler imports this module. The check is a
+        # few milliseconds for a 5-minute schedule and longer only while it
+        # walks a DST transition. It stays off the event loop either way.
+        from app.services.search_scheduler import CronFloorError, check_cron_floor
+
+        outcome = await asyncio.to_thread(check_cron_floor, cron, timezone)
+        if not outcome.accepted:
+            raise CronFloorError(outcome.reason or "schedule_cron is below the floor")
 
     async def create(self, payload: ScheduledSearchCreate, *, actor: str | None) -> ScheduledSearch:
+        # Floor first, so a too-frequent cron is refused before the cap query.
+        await self._refuse_fast_cron(payload.schedule_cron, payload.schedule_timezone)
+        if payload.enabled:
+            await self._refuse_over_cap()
         search = ScheduledSearch(
             name=payload.name,
             description=payload.description,
@@ -80,6 +119,18 @@ class ScheduledSearchService:
     ) -> ScheduledSearch:
         data = payload.model_dump(exclude_unset=True, exclude={"change_note"})
         new_aql = data.pop("aql_query", None)
+
+        # An unchanged expression is kept verbatim, even when it would fail the
+        # floor. Only a new string is checked. A timezone-only edit does not
+        # recheck the stored cron (SEARCH-CADENCE, "Custom").
+        new_cron = data.get("schedule_cron")
+        if isinstance(new_cron, str) and new_cron != search.schedule_cron:
+            timezone = data.get("schedule_timezone", search.schedule_timezone)
+            if not isinstance(timezone, str) or not timezone:
+                timezone = search.schedule_timezone
+            await self._refuse_fast_cron(new_cron, timezone)
+        if data.get("enabled") is True and not search.enabled:
+            await self._refuse_over_cap()
 
         # The threshold rule applies to the *effective* search after this patch:
         # lowering max_result_rows under an existing threshold, raising the

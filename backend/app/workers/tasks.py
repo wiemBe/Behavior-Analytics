@@ -61,6 +61,7 @@ from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
+from app.services.search_result_retention import SearchResultRetention
 from app.services.search_scheduler import SearchScheduler
 from app.services.waf_pipeline import PIPELINE_LOCK, eligible_profile_ids, run_waf_source
 from app.services.waf_profiles import WafProfileService
@@ -1349,6 +1350,12 @@ async def apply_ips_retention() -> dict:
         return (await IpsRetention(session).run()).as_dict()
 
 
+async def apply_search_result_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await SearchResultRetention(session).run()).as_dict()
+
+
 # --------------------------------------------------------------- notifications
 async def dispatch_notifications() -> dict:
     maker = get_sessionmaker()
@@ -1495,3 +1502,8 @@ def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_ips_retention")
 def apply_ips_retention_task() -> dict:
     return _run(apply_ips_retention())
+
+
+@celery_app.task(name="apply_search_result_retention")
+def apply_search_result_retention_task() -> dict:
+    return _run(apply_search_result_retention())

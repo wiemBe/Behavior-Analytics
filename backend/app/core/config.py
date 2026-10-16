@@ -142,6 +142,17 @@ class Settings(BaseSettings):
     # A search that has quietly stopped producing results is exactly the blind
     # spot this platform exists to surface, so it is alertable in its own right.
     search_failure_alert_after: int = Field(default=3, ge=1)
+    # Enabled scheduled searches. Creating or enabling one past this is 409.
+    # Disabled searches are not counted (design F.8.2).
+    scheduled_searches_max_enabled: int = Field(default=25, ge=1, le=10_000)
+    # search_result_metric rows older than this, by bucket_start, are deleted
+    # by the daily batch task. The optional Timescale chunk policy is the
+    # separate retention_search_result_metric_days switch and stays off unless
+    # RETENTION_ENABLED is set.
+    search_result_metric_retention_days: int = Field(default=90, ge=2)
+    search_result_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    search_result_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    search_result_retention_interval_seconds: int = Field(default=86400, ge=3600)
     # Delay a cadence slot after its boundary so late QRadar events can arrive.
     search_cadence_settle_seconds: int = Field(default=120, ge=0, le=900)
     search_cadence_max_searches_per_tick: int = Field(default=16, ge=1, le=256)
