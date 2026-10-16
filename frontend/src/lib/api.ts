@@ -138,6 +138,7 @@ export interface ScheduledSearch {
   aql_query: string;
   query_version: number;
   schedule_cron: string;
+  schedule_timezone: string;
   severity: string;
   threshold_value: number | null;
   threshold_operator: string;
@@ -150,6 +151,27 @@ export interface ScheduledSearch {
   next_run_at: string | null;
   consecutive_failures: number;
 }
+
+export interface ScheduledSearchCreate {
+  name: string;
+  description: string | null;
+  aql_query: string;
+  schedule_cron: string;
+  schedule_timezone: string;
+  threshold_value: number | null;
+  threshold_operator: string;
+  severity: string;
+  timeout_seconds: number;
+  max_time_range_hours: number;
+  max_result_rows: number;
+  visualization_type: string;
+  /** New definitions are always drafts; the editor sends false explicitly. */
+  enabled: false;
+}
+
+export type ScheduledSearchUpdate = Omit<ScheduledSearchCreate, "name" | "enabled"> & {
+  change_note: string | null;
+};
 
 export interface SearchExecution {
   id: string;
@@ -1378,6 +1400,23 @@ export const api = {
     request<SearchResultTrend>(
       `/searches/${id}/results?metric_key=${encodeURIComponent(metricKey)}&limit=${limit}`,
     ),
+  createSearch: (definition: ScheduledSearchCreate) =>
+    request<ScheduledSearch>("/searches", {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
+  updateSearch: (id: string, definition: ScheduledSearchUpdate) =>
+    request<ScheduledSearch>(`/searches/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(definition),
+    }),
+  // `enabled` alone. A patch that also carries other fields is audited as
+  // search.update; this one is search.enable or search.disable (F-4).
+  setSearchEnabled: (id: string, enabled: boolean) =>
+    request<ScheduledSearch>(`/searches/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
 
   // --- operator actions ----------------------------------------------------
   // Mutations only. Authorization is the backend's job: these call the guarded

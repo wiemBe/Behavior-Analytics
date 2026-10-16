@@ -26,6 +26,7 @@ function search(over: Partial<ScheduledSearch> = {}): ScheduledSearch {
     aql_query: 'SELECT count(*) FROM events WHERE username IS NOT NULL',
     query_version: 2,
     schedule_cron: "0 */4 * * *",
+    schedule_timezone: "UTC",
     severity: "HIGH",
     threshold_value: 10,
     threshold_operator: "GT",
@@ -45,7 +46,24 @@ async function renderPage() {
   return render(await SearchCatalogPage());
 }
 
-beforeEach(() => vi.restoreAllMocks());
+const reader = {
+  subject: "analyst",
+  email: null,
+  permissions: ["read:*", "search:execute"],
+  effective_permissions: ["read:searches", "search:execute"],
+};
+
+const writer = {
+  subject: "ada",
+  email: null,
+  permissions: ["search:write"],
+  effective_permissions: ["read:searches", "search:write", "search:execute"],
+};
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.spyOn(api, "caller").mockResolvedValue(reader);
+});
 
 describe("search catalog states", () => {
   it("explains a failed read", async () => {
@@ -123,5 +141,38 @@ describe("search catalog layout", () => {
     vi.spyOn(api, "searches").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
     expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+  });
+});
+
+describe("search catalog authoring entry", () => {
+  it("offers New search to a caller who can write", async () => {
+    vi.spyOn(api, "caller").mockResolvedValue(writer);
+    vi.spyOn(api, "searches").mockResolvedValue([search()]);
+    await renderPage();
+    expect(screen.getByRole("link", { name: "New search" })).toHaveAttribute("href", "/searches/new");
+  });
+
+  it("hides New search from a reader", async () => {
+    vi.spyOn(api, "searches").mockResolvedValue([search()]);
+    await renderPage();
+    expect(screen.queryByRole("link", { name: "New search" })).toBeNull();
+  });
+
+  it("tells a writer how to store the first search", async () => {
+    vi.spyOn(api, "caller").mockResolvedValue(writer);
+    vi.spyOn(api, "searches").mockResolvedValue([]);
+    await renderPage();
+    expect(screen.getByText("No scheduled searches defined yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Use New search to store a disabled definition/, { selector: "p" }),
+    ).toBeInTheDocument();
+  });
+
+  it("tells a reader which role can grant search:write when the catalog is empty", async () => {
+    vi.spyOn(api, "searches").mockResolvedValue([]);
+    await renderPage();
+    expect(screen.getByText("No scheduled searches defined yet.")).toBeInTheDocument();
+    expect(screen.getByText("search:write").tagName).toBe("CODE");
+    expect(screen.getByText("detection_engineer").tagName).toBe("CODE");
   });
 });
