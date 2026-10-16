@@ -11,10 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { AlertBell } from "./AlertBell";
-import { AutoRefresh } from "./AutoRefresh";
-import { ConnectionStatus } from "./ConnectionStatus";
-import { TopSearch } from "./TopSearch";
+import styles from "@/components/auth/auth.module.css";
 import {
   ApiError,
   shellApi,
@@ -22,6 +19,12 @@ import {
   type SearchCadenceItem,
   type SocOverview,
 } from "@/lib/api";
+
+import { Account } from "./Account";
+import { AlertBell } from "./AlertBell";
+import { AutoRefresh } from "./AutoRefresh";
+import { ConnectionStatus } from "./ConnectionStatus";
+import { TopSearch } from "./TopSearch";
 
 /** A read as the bar sees it: pending, answered, refused (403) or failed. */
 export type Loaded<T> =
@@ -65,11 +68,12 @@ export function TopBar() {
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
   return (
-    <div className="topbar">
+    <div className={`topbar ${styles.bar}`}>
       <TopSearch />
       <AutoRefresh onRefresh={reload} />
       <AlertBell overview={overview} />
       <ConnectionStatus health={health} overview={overview} cadence={cadence} />
+      <Account />
     </div>
   );
 }

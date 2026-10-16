@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Request, status
+from sqlalchemy import select
 
 from app.api.deps import SessionDep, requires
-from app.models.identity import User
-from app.schemas.users import PasswordResetIn, RolesIn, UserCreate, UserOut
+from app.models.identity import Role, User
+from app.schemas.users import PasswordResetIn, RoleOut, RolesIn, UserCreate, UserOut
 from app.security.auth import get_principal
 from app.security.rbac import PERM_USER_ADMIN, Principal
 from app.services.user_admin import (
@@ -58,6 +59,17 @@ def _out(user: User) -> UserOut:
 @router.get("", response_model=list[UserOut])
 async def get_users(session: SessionDep) -> list[UserOut]:
     return [_out(user) for user in await list_users(session)]
+
+
+@router.get("/roles", response_model=list[RoleOut])
+async def get_roles(session: SessionDep) -> list[RoleOut]:
+    """Every role's name and permissions, in one read.
+
+    The administration picker lists whatever this returns. A role added in the
+    database (for example a detection engineer) appears without a frontend change.
+    """
+    rows = await session.execute(select(Role.name, Role.permissions).order_by(Role.name))
+    return [RoleOut(name=name, permissions=list(permissions or [])) for name, permissions in rows]
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)

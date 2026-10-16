@@ -163,6 +163,12 @@
      only a destination name with one supporting sentence. */
   --admin-form-max: 96ch;
   --admin-hub-max: 72ch;
+  /* Sign-in, the password gate and the no-role screen: one narrow column,
+     about 384 px, not a settings form stretched across the page. */
+  --auth-column: 24rem;
+  /* A timeout and other short numeric controls. Content width, not the
+     column. */
+  --control-num-w: 8ch;
 
   /* Catch-all senders: the sender hostname's floor (32ch of the monospace face: a
      50-character name in two lines), the source column's floor and cap, and the bucket detail grid's column floor so
