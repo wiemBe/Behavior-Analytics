@@ -43,6 +43,8 @@ describe("NAV", () => {
       { href: "/admin/outage-policy", label: "Outage alerts" },
       { href: "/admin/waf-sources", label: "WAF sources" },
       { href: "/admin/ips-sources", label: "IPS sources" },
+      { href: "/admin/users", label: "Users", permission: "admin:users" },
+      { href: "/admin/directory", label: "Directory", permission: "admin:auth" },
     ]);
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
     expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");

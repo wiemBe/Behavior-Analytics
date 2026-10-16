@@ -1,0 +1,304 @@
+.gate {
+  min-height: 100vh;
+  padding: var(--sp-7) var(--sp-5);
+  display: flex;
+  justify-content: center;
+}
+
+.column {
+  width: min(100%, var(--auth-column));
+  min-width: 0;
+}
+
+.product {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-2);
+}
+
+.submit {
+  width: 100%;
+}
+
+.form {
+  display: grid;
+  gap: var(--sp-4);
+  margin: 0;
+  min-width: 0;
+}
+
+.field {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.control {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--target-min);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+.controlNum {
+  width: var(--control-num-w);
+  max-width: 100%;
+}
+
+.hint {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-base);
+  color: var(--text-3);
+}
+
+/* A section description, then the same gap the page header leaves before the
+   first field. A hint under a control keeps only the small top margin. */
+.sectionNote {
+  margin-bottom: var(--sp-6);
+}
+
+.stack {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.area {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--target-min);
+  font-size: var(--fs-sm);
+}
+
+.checks {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0;
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+}
+
+.roleName {
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.reasons {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-5);
+}
+
+.urlRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+  min-width: 0;
+}
+
+.urlRow .control {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.preview {
+  margin: 0;
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.bar:global(.topbar) {
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+}
+
+.account {
+  position: relative;
+  justify-self: end;
+  min-width: 0;
+}
+
+.accountSummary {
+  display: flex;
+  align-items: center;
+  min-height: var(--target-min);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.accountSummary::-webkit-details-marker {
+  display: none;
+}
+
+.accountSummary:hover {
+  background: var(--surface-3);
+}
+
+.accountMenu {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  z-index: 2;
+  display: grid;
+  gap: var(--sp-2);
+  width: max-content;
+  max-width: min(var(--auth-column), calc(100vw - var(--sp-7)));
+  margin: 0;
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.accountMenu p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.accountMeta {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+
+.accountLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
+  color: var(--link);
+}
+
+.signOut {
+  justify-self: start;
+  min-height: var(--target-min);
+}
+
+.name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.defs {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr);
+  gap: var(--sp-2) var(--sp-4);
+  margin: var(--sp-4) 0 0;
+  font-size: var(--fs-sm);
+}
+
+.defs dt {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.defs dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.section {
+  min-width: 0;
+  max-width: var(--admin-form-max);
+}
+
+.tableActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.manage {
+  white-space: nowrap;
+}
+
+.accounts tbody th[scope="row"] {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  white-space: normal;
+}
+
+.accounts tbody tr:last-child th {
+  border-bottom: none;
+}
+
+.outcome {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.resultLine {
+  margin: var(--sp-4) 0 0;
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+/* At 1024 the clock would otherwise take the width the search field needs.
+   It sits under the refresh control, and the header grows with those two
+   lines, so neither the clock nor the placeholder is clipped. */
+@media (max-width: 1100px) {
+  :global(.shell-head):has(> .bar) {
+    height: auto;
+    min-height: var(--topbar-h);
+  }
+
+  .bar:global(.topbar) :global(.topbar-refresh) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+}
+
+@media (max-width: 860px) {
+  .bar:global(.topbar) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .defs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
