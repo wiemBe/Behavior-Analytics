@@ -8,6 +8,107 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶▶▶▶▶ RESUME HERE — STATE AT 18:25, 2026-10-16 (end of the seventeenth session; the user moved to a new chat because the context was long)
+
+**Read first:**
+- this section;
+- **D-16 to D-20** in §4;
+- `docs/OPERATIONS-DESIGN.md` §10, the OPS task split and its acceptance criteria;
+- the 10:30 section further down, for the sandboxing rules.
+
+The 15:30 section below is the detailed log of this session. Where it disagrees with this
+section, this section wins.
+
+**Branches.**
+- **`main` @ `4169592`** (17:33, pushed). It holds Phase 6, Phase F (live-validated by T-118)
+  and AUTH-1/AUTH-2, after a green gate:
+  - backend: ruff, mypy 0, alembic round trip at `0025`, unit 3,443, **integration
+    1,286 / 0**;
+  - frontend: 288 files / 3,186 tests, build.
+- **`feat/phase-ce` @ `a0a73ad`** (pushed). Since `main` it holds:
+  - OPS-0, the design: `docs/OPERATIONS-DESIGN.md`;
+  - **T-120**, the enabled caps under an advisory lock;
+  - **OPS-4**, `./qradar-dash install`, `status`, `logs` and `docker-compose.prod.yml`;
+  - D-20, the OPS-1, OPS-2, OPS-4, OPS-5a, OPS-7 and T-120 specs, and the PLANNER.
+  - No full gate has run on it since `main`. T-120 and OPS-4 passed their own targeted checks.
+
+**Decisions this session.**
+- Z.AI GLM is allowed again (14:37).
+- The Phase F lab validation runs on a Sonnet sub-agent (~15:30).
+- **D-20** (~17:40): the first release is `0.1.0`; the bundled TLS proxy; off-host backups after
+  2026-10-30.
+- **The user's Claude limit reset (~17:45): Sonnet sub-agents are welcome.**
+- Codex's weekly limit renewed (~17:50).
+
+**In flight at the save.** Sonnet sub-agents **die with the chat**: check their worktrees and
+hand over with "review what you inherit".
+
+| Task | Agent | Worktree / DB | State at 18:25, and what to do |
+|---|---|---|---|
+| **OPS-1** ([spec](tasks/OPS-1.md)): `VERSION` 0.1.0, `GET /api/v1/version`, the version line in the account menu and on sign-in, the CI equality check | Sonnet sub-agent (from 17:47) | `ops1`; DB `qradar_obs_ops1`; ports 3121/8121/9121 | Edits in progress: `ci.yml`, `router.py`, `main.py`, the health route, `LoginForm`. If there is no final `docs/tasks/OPS-1.report.md`, hand over. Review the PNGs |
+| **OPS-2** ([spec](tasks/OPS-2.md)): hashed Python 3.12 locks, the image and CI install from them, mypy not hidden, **plus the greenlet fix** | Sonnet sub-agent (from 17:47) | `ops2`; DB `qradar_obs_ops2` | The locks are written (`requirements.txt` has `sqlalchemy[asyncio]==2.1.4` and `greenlet`); `pyproject.toml`, `Dockerfile`, `ci.yml` and `README.md` are edited.<br>At the save it was running the **full suite inside a `python:3.12-slim` container** (`docker ps`: an unnamed `python:3.12-slim` container, e.g. `exciting_beaver`). **If the agent died, stop and remove that container by name.**<br>The orchestrator added binding requirements by message, so pass them on in a handover:<br>• depend on `sqlalchemy[asyncio]`, editing only that `pyproject.toml` line;<br>• run the **full unit and integration suite in the 3.12 lock environment**, because the suite has only ever run on SQLAlchemy 2.0.51, and the lock moves to 2.1.4;<br>• if 2.1 breaks tests, pin the newest 2.0.x instead of patching app code.<br>**This is the critical fix: today a freshly built backend image dies on import (no `greenlet`), found by OPS-4** |
+| **OPS-5a** ([spec](tasks/OPS-5a.md)): a daily beat task calling `apply_policies` (verified: nothing calls it, so TimescaleDB retention and compression never ran) | Sonnet sub-agent (from 17:47) | `ops5a`; DB `qradar_obs_ops5a` | Edits plus unit and integration tests exist. Check the report; review `timescale.py`'s add/update/remove behaviour |
+| **OPS-7** ([spec](tasks/OPS-7.md)): `python -m app.cli.doctor` (every in-container check of design §6, PASS/WARN/FAIL lines with runbook ids, exit 0/1/2, no secrets) and the beat heartbeat | **Codex**, systemd unit `ops7-codex` (survives the chat), from 17:55 | `ops7`; DB `qradar_obs_ops7`; log `QRadar-Dash-work/ops7/codex.log` | `doctor.py` and its tests are written. Check the unit, the log tail for "usage limit", and `codex-last.md`. **OPS-5a and OPS-7 both add beat entries** to `celery_app.py` and `tasks.py`: the merge conflict is additive, so keep both sides |
+
+**Merge order:**
+- **OPS-2 first**: the image is broken without it;
+- then OPS-1, OPS-5a and OPS-7;
+- then a full gate on `feat/phase-ce`: backend, including the integration suite and alembic,
+  and frontend;
+- then `main`.
+
+`ci.yml` conflicts between OPS-1 and OPS-2. Both changes are additive.
+
+**Agents now.**
+- **Codex:** fresh weekly limit. It ran T-120 (10 min) and is on OPS-7.
+- **Sonnet sub-agents:** OK. The user's limit reset at ~17:45.
+- **Grok:** **"402 … Grok Build usage balance exhausted"** at 17:43. It is a credit balance, not
+  a time window. Do not use it until the user tops it up.
+- **Z.AI GLM:** out until **00:38**.
+- **DeepSeek free:** last seen rate-limited. Probe it before use.
+
+**Next, after the four above (`docs/OPERATIONS-DESIGN.md` §10):**
+1. **OPS-3**: the release workflow on a tag, which pushes the images to GHCR with version and
+   SHA tags. It also:
+   - moves `NEXT_PUBLIC_API_BASE_URL` into `frontend/Dockerfile` and deletes OPS-4's copy,
+     `deploy/frontend/Dockerfile`;
+   - adds the prod compose `image:` keys;
+   - digest-pins Redis.
+2. **The host half of `./qradar-dash doctor`** (`df`, `timedatectl`, `getenforce`, then the
+   in-container doctor), added to OPS-4's script.
+3. **OPS-5**: `backup`, `restore`, a verified restore, backup retention, the disk guard, the
+   systemd timer.
+4. **OPS-6**: `upgrade` and `rollback`, with the state file and the automatic rollback
+   triggers.
+5. **OPS-8**: `support-bundle`.
+6. **OPS-9**: the Turkish runbook, `docs/OPERATIONS.md`.
+7. **OPS-10**: the fresh-VM install test, by the orchestrator. The target is done by
+   2026-10-30.
+
+The orchestrator reviews OPS-4/5/6-class work closely, because a bug there destroys a database.
+
+**Backlog (deliberate):**
+- echarts 6;
+- the `map.geography` widget;
+- a public subject-column helper;
+- T-118's low-severity notes;
+- OPS-4's open points: `has-admin` as a CLI subcommand, and the `.env.example`
+  `AUTH_PROVIDER` comment.
+
+**Facts learned this session:**
+- **A fresh image is not the dev venv.** Floating `>=` ranges let SQLAlchemy 2.1 drop
+  `greenlet` silently. The dev venv (Python 3.14, SQLAlchemy 2.0.51) never saw it. Only an
+  image build caught it.
+- A tooltip `formatter`'s string is HTML in ECharts. Escape QRadar-sourced text with
+  `echarts.format.encodeHTML`.
+- Merge a fix that an in-flight branch's full-suite run needs into that branch first; F-3's
+  Grok had begun re-fixing T-116.
+- Codex refuses before its reset time. A `systemd-run --on-calendar` timer re-arms it.
+  "Selected model is at capacity" is a separate error; retry once.
+- Grok has a credit balance (402) as well as compaction stops.
+
+---
+
 ## ▶▶▶▶ RESUME HERE — STATE AT 15:30, 2026-10-16 (seventeenth session, from 14:37)
 
 **Read first:** this section, then D-17, D-18, D-19 in §4, then the 10:30 section further down for
