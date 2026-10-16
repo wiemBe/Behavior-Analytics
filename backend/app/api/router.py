@@ -12,6 +12,7 @@ from app.api.routes import (
     catchall,
     classification_rules,
     coverage,
+    custom_rules,
     dashboards,
     fleet,
     geo,
@@ -35,6 +36,7 @@ from app.security.rbac import (
     PERM_ANOMALY_READ,
     PERM_AUTH_ADMIN,
     PERM_COVERAGE_READ,
+    PERM_CUSTOM_RULE_READ,
     PERM_DASHBOARD_READ,
     PERM_FLEET_READ,
     PERM_GEO_READ,
@@ -136,4 +138,10 @@ api_router.include_router(
 # `dashboard:write` itself, and ownership and `admin:dashboards` where they apply.
 api_router.include_router(
     dashboards.router, dependencies=[Depends(requires(PERM_DASHBOARD_READ))]
+)
+# Phase F. Custom threshold rules over stored aggregates. Read-guarded;
+# `read:*` satisfies `read:custom_rules`. Every write handler checks
+# `custom_rule:write` itself. `read:*` does not grant that write.
+api_router.include_router(
+    custom_rules.router, dependencies=[Depends(requires(PERM_CUSTOM_RULE_READ))]
 )
