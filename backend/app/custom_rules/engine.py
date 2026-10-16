@@ -14,8 +14,11 @@ scheduler's one-minute tolerance, every evaluable rule of that kind is
 ``STALE``. The watermark stays, so the backlog is judged when rows return.
 ``last_evaluated_at`` moves only when a bucket was judged.
 
-Alerts are not opened here. Events go to ``CustomRuleAlertSink``; F-1's
-default sink does nothing. F-2 replaces it.
+Shadow mode (``custom_rules_alerting_enabled`` false, the default) writes
+breaches and rule state and pages nothing. With it on, events go through
+``AlertingCustomRuleSink``: one bulk alert write per tick, then a
+notification per transition. An injected sink still receives the fold's
+events, so a test double can observe them while shadow mode is on.
 """
 
 from __future__ import annotations
@@ -29,12 +32,18 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.alerts.dispatcher import AlertEnqueuer
 from app.anomaly.seasonal import in_maintenance
 from app.core.config import Settings
 from app.custom_rules.alerts import (
+    AlertingCustomRuleSink,
+    CustomRuleAlertEvent,
     CustomRuleAlertSink,
     NoOpCustomRuleAlertSink,
+    alerting_mode,
+    extra_resolve_reason,
 )
+from app.custom_rules.catalog import catalog_entry
 from app.custom_rules.evaluate import (
     BreachState,
     BucketFacts,
@@ -121,6 +130,8 @@ class EvaluationReport:
     refreshed: int = 0
     seeded: list[str] = field(default_factory=list)
     judged_buckets: int = 0
+    #: ``shadow`` or ``alerting``. F-3 reads ``alerting_mode`` for the same value.
+    alerting_mode: str = "shadow"
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -130,6 +141,7 @@ class EvaluationReport:
             "refreshed": self.refreshed,
             "seeded": list(self.seeded),
             "judged_buckets": self.judged_buckets,
+            "alerting_mode": self.alerting_mode,
         }
 
 
@@ -162,17 +174,26 @@ class CustomRuleEngine:
         settings: Settings,
         *,
         sink: CustomRuleAlertSink | None = None,
+        enqueuer: AlertEnqueuer | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
-        self.sink = sink if sink is not None else NoOpCustomRuleAlertSink()
         self._clock = clock or (lambda: datetime.now(UTC))
+        # An injected sink wins, including under shadow mode, so a test double
+        # still sees fold events. The default follows the alerting setting.
+        if sink is not None:
+            self.sink = sink
+        elif settings.custom_rules_alerting_enabled:
+            self.sink = AlertingCustomRuleSink(session, enqueuer=enqueuer, clock=self._clock)
+        else:
+            self.sink = NoOpCustomRuleAlertSink()
 
     async def run(self) -> EvaluationReport:
         """One tick. A no-op, and no query, while custom rules are disabled."""
+        mode = alerting_mode(self.settings.custom_rules_alerting_enabled)
         if not self.settings.custom_rules_enabled:
-            return EvaluationReport(status="disabled")
+            return EvaluationReport(status="disabled", alerting_mode=mode)
         now = self._clock()
         interval = self.settings.collection_interval_seconds
         closed = latest_closed_bucket(now, interval)
@@ -183,9 +204,9 @@ class CustomRuleEngine:
         )
         outputs = [self._fold(item, plans, now) for item in loaded]
         self._persist(loaded, outputs, plans, watermarks, now)
-        await self._dispatch(outputs)
+        await self._dispatch(loaded, outputs)
         await self.session.flush()
-        return _report(outputs, plans)
+        return _report(outputs, plans, mode)
 
     async def _load_rules(self) -> list[_Loaded]:
         """Every rule, its live breach and its subject, in one statement."""
@@ -507,21 +528,89 @@ class CustomRuleEngine:
             )
         )
 
-    async def _dispatch(self, outputs: list[FoldOutput]) -> None:
+    async def _dispatch(self, loaded: list[_Loaded], outputs: list[FoldOutput]) -> None:
         """Hand events to the sink before flush, in the same transaction.
 
         Open and refresh share ``open_or_update``. Resolve is its own method.
         A sink error aborts the tick; this method does not swallow it.
+
+        Shadow mode does not add resolves: a disabled rule, a retired subject
+        and a recovery keep whatever alert they already have until paging is
+        on. With paging on, those closes are one more event on the same sink,
+        and ``flush`` writes the tick in one bulk call.
         """
-        for output in outputs:
+        paging = self.settings.custom_rules_alerting_enabled
+        alerting_sink = self.sink if isinstance(self.sink, AlertingCustomRuleSink) else None
+        if paging and alerting_sink is not None:
+            for item in loaded:
+                alerting_sink.watch(item.rule.id)
+        seen: set[uuid.UUID] = set()
+        for item, output in zip(loaded, outputs, strict=True):
             for event in output.events:
                 if event.action == "resolve":
+                    seen.add(event.rule_id)
                     await self.sink.resolve(event)
                 else:
                     await self.sink.open_or_update(event)
+            reason = extra_resolve_reason(
+                output.status,
+                output.status_reason,
+                breach_open=output.breach is not None,
+                alerting_enabled=paging,
+            )
+            if reason is None or item.rule.id in seen:
+                continue
+            await self.sink.resolve(self._halt_event(item, reason))
+            seen.add(item.rule.id)
+        if paging and alerting_sink is not None:
+            await alerting_sink.flush()
+
+    def _halt_event(self, item: _Loaded, reason: str) -> CustomRuleAlertEvent:
+        """A resolve the fold did not emit. The breach row is left as the fold wrote it."""
+        rule = item.rule
+        breach = item.breach_row
+        now = self._clock()
+        metric = CustomRuleMetric(_value(rule.metric))
+        if breach is None:
+            start = now
+            end = now
+            label = _label(item)
+            breach_id = rule.id
+            unmeasured = 0
+            observed = None
+            measurement = None
+        else:
+            start = breach.first_bucket_start
+            end = breach.last_bucket_start
+            label = breach.subject_label
+            breach_id = breach.id
+            unmeasured = breach.unmeasured_buckets
+            observed = breach.last_value
+            measurement = _value(breach.last_measurement) if breach.last_measurement else None
+        return CustomRuleAlertEvent(
+            action="resolve",
+            rule_id=rule.id,
+            breach_id=breach_id,
+            rule_name=rule.name,
+            severity=_value(rule.severity),
+            subject_kind=_value(rule.subject_kind),
+            subject_label=label,
+            metric=metric.value,
+            unit=catalog_entry(metric).unit,
+            operator=rule.operator,
+            threshold_value=float(rule.threshold_value),
+            observed_value=observed,
+            measurement=measurement,
+            first_bucket_start=start,
+            last_bucket_start=end,
+            unmeasured_buckets=unmeasured,
+            reason=reason,
+        )
 
 
-def _report(outputs: list[FoldOutput], plans: dict[str, _KindPlan]) -> EvaluationReport:
+def _report(
+    outputs: list[FoldOutput], plans: dict[str, _KindPlan], mode: str
+) -> EvaluationReport:
     seeded = sorted(kind for kind, plan in plans.items() if plan.seeded)
     judged = sum(len(plan.grid) for plan in plans.values())
     status = "seeded" if seeded and judged == 0 else "ok"
@@ -536,6 +625,7 @@ def _report(outputs: list[FoldOutput], plans: dict[str, _KindPlan]) -> Evaluatio
         ),
         seeded=seeded,
         judged_buckets=judged,
+        alerting_mode=mode,
     )
 
 

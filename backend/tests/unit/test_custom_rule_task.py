@@ -28,6 +28,7 @@ def test_the_tasks_are_registered() -> None:
 def test_settings_default_to_off_with_the_design_caps() -> None:
     fields = Settings.model_fields
     assert fields["custom_rules_enabled"].default is False
+    assert fields["custom_rules_alerting_enabled"].default is False
     assert fields["custom_rules_max_enabled"].default == 100
     assert fields["custom_rules_max_buckets_per_run"].default == 288
     assert fields["custom_rule_breach_retention_days"].default == 180
