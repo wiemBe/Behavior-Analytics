@@ -109,3 +109,70 @@ Integration, each failed as required:
 - The route-guard allowlist now includes `POST /api/v1/auth/login` (open) and `POST /api/v1/auth/logout` (any authenticated caller).
 - `get_principal` does not declare `Depends(get_session)`. Opening a session on the local and oidc paths would point existing tests at the default host `postgres`.
 - `passlib[bcrypt]` remains an unused dependency. Hashing goes through `bcrypt`.
+
+## Review round 1
+
+`0025` now revises `0024`. `alembic heads` is one head. A handshake that finishes is not reported as a TLS failure when the bind then fails, and a hostname refusal keeps the clause that names the mismatch.
+
+### Files changed
+
+- `backend/alembic/versions/0025_auth_sessions.py` — `down_revision` is `"0024"`. The docstring says 0025 revises 0024, which revises 0023.
+- `backend/app/services/ldap_bind.py` — a transport error after `open` (and StartTLS, when that runs) is a bind failure and keeps the peer certificate. `_sanitise` keeps the `doesn't match` clause when ldap3's certificate text would otherwise use up the 300-character reason.
+- `backend/tests/integration/test_migration_0024.py` — the data round trip is pinned to revision `0024`. It no longer asserts that the global head is `0024`. The custom-rule data assertions are unchanged. The closing upgrade and `alembic check` still run at head.
+- `backend/tests/integration/test_migration_0025.py` — new. The passwordless `admin@example.internal` row is disabled, not deleted, and its username stays NULL. Downgrade to `0024` restores that row and writes `{id}@unspecified.invalid` for a NULL email. `ldap_config.id` has no column default. `alembic check` runs at head.
+- `backend/tests/integration/test_ldap_tls.py` — new. A local TLS listener (thread, port 0, closed in teardown) and certificates generated in the test. No ldap3 patch.
+
+### What this round does
+
+The listener is dual-stack (`::`, `IPV6_V6ONLY=0`) because `localhost` resolves to `::1` before `127.0.0.1`. It accepts both. The client URL is `ldaps://localhost:<port>`, and the matching certificate has a DNS SAN of `localhost`. The listener completes the handshake and does not speak LDAP.
+
+- A server certificate from a CA that is not in `ca_pem` → `tls: failed`, reason contains `unable to get local issuer certificate`.
+- A certificate from the trusted CA whose only DNS SAN is `other.example` → `tls: failed`, reason contains `doesn't match any name`, `localhost`, and `other.example`. That phrase is ldap3's backport: Python 3.14 has no `ssl.match_hostname`.
+- A certificate from the trusted CA for `localhost` → `tls: ok`, with subject, issuer and `not_after`. `bind` is `failed`, never `ok`. The same shape is returned by `POST /api/v1/auth/ldap-config/test`.
+- An expired certificate from the trusted CA → `tls: failed`, reason contains `certificate has expired`.
+
+`test_migration_0024.py` had to change because it asserted `get_current_head() == "0024"` and that `upgrade head` stopped at `0024`. Those two assertions are the re-chain, not the custom-rule data. The data inserts, the downgrade to `0023`, and the surviving log source are as they were.
+
+### Gates
+
+Commands from `backend/`, venv `/home/efe/Documents/QRadar-Dash/backend/.venv/bin/`, `PYTHONPATH=.`. Redirected `pytest -q` again printed no `N passed` footer. Counts below are the junitxml `testsuite` attributes, which include skipped tests in `tests`.
+
+```
+All checks passed!
+Success: no issues found in 237 source files
+0025 (head)
+No new upgrade operations detected.
+```
+
+- `ruff check app tests` — `All checks passed!` (exit 0). `ruff format` was not run.
+- `mypy app` — `Success: no issues found in 237 source files` (exit 0).
+- Unit: `pytest -q -m "not integration"` — `EXIT:0`. junitxml: `errors="0" failures="0" skipped="8" tests="3410" time="43.501"`. That is 3402 passed and 8 skipped.
+- Auth integration: `pytest -q -m integration tests/integration/test_auth_api.py tests/integration/test_ldap_tls.py` on `postgresql+asyncpg://test:test@localhost:5433/qradar_obs_auth1` — `EXIT:0`. junitxml: `errors="0" failures="0" skipped="0" tests="23" time="28.912"`.
+- Data-carrying migrations, before the full suite: `test_ldap_tls.py`, `test_migration_0025.py`, `test_migration_0024.py`, and `test_upgrade_from_phase2_preserves_data_and_adds_phase3` — `........ [100%]` then `EXIT:0` (8 passed).
+- Full integration, same database: `pytest -q -m integration` — `EXIT:0`. junitxml: `errors="0" failures="0" skipped="0" tests="1245" time="873.871"`.
+- Alembic on `qradar_obs_auth1_mig`, after `DROP DATABASE` and `CREATE DATABASE`: `alembic heads` printed `0025 (head)` (`HEADS:0`). `upgrade head` (`UPGRADE1:0`), `alembic check` printed `No new upgrade operations detected.` (`CHECK1:0`), `downgrade 0024` (`DOWN:0`), `upgrade head` (`UPGRADE2:0`), `alembic check` printed `No new upgrade operations detected.` (`CHECK2:0`), `alembic heads` printed `0025 (head)` (`HEADS2:0`).
+
+### Break-it
+
+Each mutation was restored by copying the backup. `filecmp` reported the restored file identical both times. No git command.
+
+`validate` set to `ssl.CERT_NONE`. ldap3 runs its hostname check only when validate is `CERT_REQUIRED` or `CERT_OPTIONAL`, so this also skips that check. The matching-name tests still passed. These three failed:
+
+```
+FAILED tests/integration/test_ldap_tls.py::test_untrusted_ca_is_refused - AssertionError: assert 'ok' == 'failed'
+FAILED tests/integration/test_ldap_tls.py::test_wrong_hostname_is_refused - AssertionError: assert 'ok' == 'failed'
+FAILED tests/integration/test_ldap_tls.py::test_expired_certificate_is_refused - AssertionError: assert 'ok' == 'failed'
+```
+
+The post-handshake handler then cleared `tls_ok` (the classification this round fixed). These two failed:
+
+```
+FAILED tests/integration/test_ldap_tls.py::test_matching_hostname_is_tls_ok_and_bind_failed - AssertionError: assert 'failed' == 'ok'
+FAILED tests/integration/test_ldap_tls.py::test_matching_hostname_probe_returns_the_certificate - AssertionError: assert 'failed' == 'ok'
+```
+
+### Open points
+
+- The round-0 note that `0025` revises `0023` is closed. It revises `0024`.
+- README still describes OIDC. It was not edited.
+- The TLS listener binds `::` with `IPV6_V6ONLY=0`, not `127.0.0.1` alone, so the name `localhost` reaches it on `::1`.

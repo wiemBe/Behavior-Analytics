@@ -86,6 +86,16 @@ def _sanitise(exc: BaseException, password: str) -> str:
     text = f"{type(exc).__name__}: {exc}"
     if password:
         text = text.replace(password, "[redacted]")
+    # ldap3 puts the peer certificate dict in front of a hostname refusal, and
+    # it tries every address. That text is longer than the reason budget, so
+    # keep the clause that names the name we connected to.
+    marker = "doesn't match"
+    at = text.find(marker)
+    if at >= 0 and len(text) > 300:
+        start = text.rfind("subjectAltName", 0, at)
+        if start < 0:
+            start = max(0, at - 96)
+        text = f"{type(exc).__name__}: {text[start:]}"
     return text[:300]
 
 
@@ -125,11 +135,18 @@ def _bind_sync(spec: DirectorySpec, username: str, password: str) -> BindReport:
     for url in spec.urls:
         conn: Connection | None = None
         try:
-            conn = _connect(url, spec, bind_name, password)
-            conn.open()
-            if spec.start_tls and url.startswith("ldap://"):
-                conn.start_tls()
-            cert = _peer_cert(conn)
+            try:
+                conn = _connect(url, spec, bind_name, password)
+                conn.open()
+                if spec.start_tls and url.startswith("ldap://"):
+                    conn.start_tls()
+                cert = _peer_cert(conn)
+            except _TRANSPORT as exc:
+                tls_ok = False
+                last_cert = None
+                last_tls = _sanitise(exc, password)
+                continue
+            # The handshake finished. Anything after this is the bind.
             tls_ok = True
             last_cert = cert
             try:
@@ -149,6 +166,9 @@ def _bind_sync(spec: DirectorySpec, username: str, password: str) -> BindReport:
             except LDAPOperationResult as exc:
                 last_bind = _sanitise(exc, password)
                 continue
+            except _TRANSPORT as exc:
+                last_bind = _sanitise(exc, password)
+                continue
             display_name, mail = _profile(conn, spec, username)
             return BindReport(
                 tls_status="ok",
@@ -161,11 +181,6 @@ def _bind_sync(spec: DirectorySpec, username: str, password: str) -> BindReport:
                 display_name=display_name,
                 mail=mail,
             )
-        except _TRANSPORT as exc:
-            tls_ok = False
-            last_cert = None
-            last_tls = _sanitise(exc, password)
-            continue
         finally:
             if conn is not None:
                 with suppress(Exception):

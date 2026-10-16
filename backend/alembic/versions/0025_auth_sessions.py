@@ -1,7 +1,6 @@
 """Sessions, directory configuration, and the account columns they need.
 
-ADDITIVE. Revision 0025 chains to 0023 on purpose: F-1's 0024 is not on this
-branch. The orchestrator re-chains ``down_revision`` to 0024 at merge time.
+ADDITIVE. Revision 0025 revises 0024, which revises 0023. The chain has one head.
 
 ``email`` becomes nullable. An LDAP entry with no ``mail`` has no address worth
 storing, and a placeholder would be a second identity. PostgreSQL's unique
@@ -27,7 +26,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "0025"
-down_revision: str | None = "0023"
+down_revision: str | None = "0024"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
