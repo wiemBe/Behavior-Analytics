@@ -31,6 +31,12 @@ export const KNOWN_PERMISSIONS = [
   "read:dashboards",
   "dashboard:write",
   "admin:dashboards",
+  // Account administration: creating and changing a sign-in. `admin:*` satisfies it; `read:*`
+  // does not.
+  "admin:users",
+  // Directory configuration: pointing the application at a directory. `admin:*` satisfies it;
+  // `read:*` does not.
+  "admin:auth",
 ] as const;
 
 export type KnownPermission = (typeof KNOWN_PERMISSIONS)[number];
