@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -24,13 +26,12 @@ from app.models.enums import AuthSource
 from app.models.identity import AuditLog, AuthSession, LdapConfig, Role, User
 from app.security.passwords import hash_password
 from app.services.seed import ensure_default_roles
-from tests.integration.ldap_fake import SCRATCH, ClosedPort, DirectoryStandIn, write_server_material
+from tests.integration.ldap_fake import ClosedPort, DirectoryStandIn, write_server_material
 
 pytestmark = pytest.mark.integration
 
 ORIGIN = "http://localhost:3000"
 PASSWORD = "Correct-Horse-Battery-99!"
-_VENV_PYTHON = "/home/efe/Documents/QRadar-Dash/backend/.venv/bin/python"
 _BACKEND = Path(__file__).resolve().parents[2]
 
 
@@ -103,6 +104,32 @@ async def _add_user(
         await session.commit()
         await session.refresh(user)
         return user
+
+
+def _postgres_subprocess_env(database_url: str) -> dict[str, str]:
+    """POSTGRES_* for the CLI, parsed from the database the test reads.
+
+    ``create-admin`` builds its connection from these variables. They have to
+    name the same database as ``db_schema``, or the row it writes is invisible
+    to the login that follows.
+    """
+    parsed = make_url(database_url)
+    host = parsed.host
+    port = parsed.port
+    user = parsed.username
+    password = parsed.password
+    database = parsed.database
+    if host is None or port is None or user is None or password is None or database is None:
+        raise AssertionError(
+            "the test database URL must include user, password, host, port and database"
+        )
+    return {
+        "POSTGRES_HOST": host,
+        "POSTGRES_PORT": str(port),
+        "POSTGRES_USER": user,
+        "POSTGRES_PASSWORD": password,
+        "POSTGRES_DB": database,
+    }
 
 
 def _assert_no_secret(blob: str, password: str) -> None:
@@ -515,7 +542,9 @@ async def test_production_cookie_is_secure(api) -> None:
     assert "secure" in response.headers["set-cookie"].lower()
 
 
-async def test_ldap_config_api_and_probe(api, caplog: pytest.LogCaptureFixture) -> None:
+async def test_ldap_config_api_and_probe(
+    api, caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
     caplog.set_level(logging.DEBUG)
     client, maker = api
     await _add_user(maker, "ada", roles=["admin"])
@@ -576,7 +605,7 @@ async def test_ldap_config_api_and_probe(api, caplog: pytest.LogCaptureFixture) 
     assert "timeout_seconds" in detail
     assert "not a PEM" in detail
 
-    material = write_server_material(SCRATCH)
+    material = write_server_material(tmp_path)
     standin = DirectoryStandIn(material[0], material[1], PASSWORD)
     plain = ClosedPort()
     standin.start()
@@ -675,11 +704,7 @@ def test_break_glass_admin_prints_the_password_once(db_schema: str) -> None:
     env = os.environ.copy()
     env.update(
         {
-            "POSTGRES_HOST": "localhost",
-            "POSTGRES_PORT": "5433",
-            "POSTGRES_USER": "test",
-            "POSTGRES_PASSWORD": "test",
-            "POSTGRES_DB": "qradar_obs_auth1",
+            **_postgres_subprocess_env(db_schema),
             "ENCRYPTION_KEY": "sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A=",
             "SECRET_KEY": "test-secret-key-at-least-32-characters-long!!",
             "ENVIRONMENT": "development",
@@ -687,10 +712,10 @@ def test_break_glass_admin_prints_the_password_once(db_schema: str) -> None:
             "PYTHONPATH": ".",
         }
     )
-    command = [_VENV_PYTHON, "-m", "app.cli.users", "create-admin", "--username", "BreakGlass"]
+    command = [sys.executable, "-m", "app.cli.users", "create-admin", "--username", "BreakGlass"]
 
     def run() -> subprocess.CompletedProcess[str]:
-        # Fixed interpreter and argv. The username is a literal, not external input.
+        # This process's interpreter, and a literal argv. The username is not external input.
         return subprocess.run(  # noqa: S603
             command, cwd=_BACKEND, env=env, capture_output=True, text=True, check=False
         )

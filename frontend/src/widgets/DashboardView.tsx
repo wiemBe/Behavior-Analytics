@@ -17,6 +17,7 @@ import {
   useEffect,
   useLayoutEffect,
   useContext,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -25,6 +26,7 @@ import {
 } from "react";
 
 import { WidgetEditContext } from "@/components/home/WidgetFrame";
+import { useInView } from "@/hooks/useInView";
 
 import { Catalog, MAX_WIDGETS } from "./Catalog";
 import { ConfigureDrawer, hasConfigure, type ConfigChoice } from "./Configure";
@@ -37,8 +39,10 @@ import {
   newWidgetId,
   type GridColumns,
 } from "./layout";
+import { placeholderFor } from "./Placeholder";
 import { widgetDef } from "./registry";
 import { effectiveRange, WidgetRuntimeContext, type WidgetRuntime } from "./runtime";
+
 import type { AnyWidgetDef, DashboardLayout, LayoutWidget, WidgetRange } from "./types";
 
 import "@/components/home/kpi.css";
@@ -175,6 +179,73 @@ function PlacedWidget({
     <WidgetEditContext.Provider value={{ onRemove, arrange }}>{content}</WidgetEditContext.Provider>
   ) : (
     content
+  );
+}
+
+/**
+ * One cell of the read grid (UR.8.3). The box is drawn at once, at its grid size, so the layout
+ * never shifts; its body is mounted only once the box has come near the viewport, so an off-screen
+ * chart is never created. Until then the box holds the same title-and-loading-line placeholder the
+ * widget shows while its own code loads — no skeleton.
+ *
+ * A box the layout already puts inside the viewport plus one viewport of margin mounts its body
+ * in this cell's first render, which is the page's own commit: a widget body that first renders
+ * any later does not appear until React's reveal throttle has run (`useInView`, from the row and
+ * the row pitch, with no measurement). Boxes below the margin start as the placeholder and mount
+ * when the observer answers.
+ *
+ * `defer` is true only at 12 columns, where a box's height comes from the grid (`h x row`), so
+ * deferring the body cannot move anything. Below 12 columns the read-only view grows each row to
+ * its content, so a short placeholder would shift the page as bodies mount; there everything is
+ * mounted at once, and no box is observed at all. Customize mode does not use this cell: it renders
+ * every widget, because dragging needs the real sizes.
+ */
+function PlacedCell({
+  widget,
+  dashboardRange,
+  onRange,
+  onExpand,
+  defer,
+}: {
+  widget: LayoutWidget;
+  dashboardRange: WidgetRange;
+  onRange: (range: WidgetRange) => void;
+  onExpand: ((trigger: HTMLElement) => void) | null;
+  defer: boolean;
+}) {
+  const { ref, inView } = useInView<HTMLDivElement>(defer ? widget.y : null);
+  const def = widgetDef(widget.type);
+  // A stable placeholder for this type, so a re-render (a refresh tick) does not remount it.
+  const Deferred = useMemo(
+    () =>
+      def && def.status === "live"
+        ? placeholderFor(def.title, def.category === "KPI")
+        : null,
+    [def],
+  );
+  return (
+    <div
+      ref={ref}
+      className="dg-item"
+      data-type={widget.type}
+      data-x={widget.x}
+      data-y={widget.y}
+      data-w={widget.w}
+      data-h={widget.h}
+      style={cell(widget)}
+    >
+      {!defer || inView || !Deferred ? (
+        <PlacedWidget
+          widget={widget}
+          dashboardRange={dashboardRange}
+          onRemove={null}
+          onRange={onRange}
+          onExpand={onExpand}
+        />
+      ) : (
+        <Deferred />
+      )}
+    </div>
   );
 }
 
@@ -422,24 +493,14 @@ export function DashboardView({
         ) : (
           <div className="dg" data-cols={cols}>
             {placed.map((widget) => (
-              <div
-                className="dg-item"
+              <PlacedCell
                 key={widget.id}
-                data-type={widget.type}
-                data-x={widget.x}
-                data-y={widget.y}
-                data-w={widget.w}
-                data-h={widget.h}
-                style={cell(widget)}
-              >
-                <PlacedWidget
-                  widget={widget}
-                  dashboardRange={layout.range}
-                  onRemove={null}
-                  onRange={(range) => setRange(widget.id, range)}
-                  onExpand={(from) => openOverlay(setExpandedId, widget.id, from)}
-                />
-              </div>
+                widget={widget}
+                dashboardRange={layout.range}
+                onRange={(range) => setRange(widget.id, range)}
+                onExpand={(from) => openOverlay(setExpandedId, widget.id, from)}
+                defer={cols === 12}
+              />
             ))}
           </div>
         )}
