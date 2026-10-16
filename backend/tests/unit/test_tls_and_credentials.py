@@ -72,6 +72,29 @@ class TestSSLContext:
         assert relaxed.verify_mode is ssl.CERT_REQUIRED
         assert relaxed.check_hostname is True
 
+    def test_verify_flags_do_not_depend_on_the_interpreter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Python 3.12 leaves STRICT and PARTIAL_CHAIN clear; the app sets them itself."""
+        real = ssl.create_default_context
+
+        def like_312(*args: object, **kwargs: object) -> ssl.SSLContext:
+            ctx = real(*args, **kwargs)  # type: ignore[arg-type]
+            ctx.verify_flags &= ~(ssl.VERIFY_X509_STRICT | ssl.VERIFY_X509_PARTIAL_CHAIN)
+            return ctx
+
+        monkeypatch.setattr("app.providers.tls.ssl.create_default_context", like_312)
+        assert not (like_312().verify_flags & ssl.VERIFY_X509_STRICT)
+
+        strict = build_ssl_context()
+        assert strict.verify_flags & ssl.VERIFY_X509_STRICT
+        assert strict.verify_flags & ssl.VERIFY_X509_PARTIAL_CHAIN
+
+        relaxed = build_ssl_context(allow_missing_aki=True)
+        assert not (relaxed.verify_flags & ssl.VERIFY_X509_STRICT)
+        assert relaxed.verify_flags & ssl.VERIFY_X509_PARTIAL_CHAIN
+        assert (relaxed.verify_flags | ssl.VERIFY_X509_STRICT) == strict.verify_flags
+
     def test_ca_bundle_is_loaded(self, ca_file: str) -> None:
         ctx = build_ssl_context(ca_file)
         subjects = [c["subject"] for c in ctx.get_ca_certs()]

@@ -58,6 +58,14 @@ from app.services.search_scheduler import CronFloorError
 router = APIRouter(prefix="/searches", tags=["searches"])
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
+_ENABLED_CAP_LOCK_KEY = 5_214_200_002
+
+
+async def _lock_enabled_cap(session: SessionDep) -> None:
+    """Serialize transactions that may consume one enabled-search slot."""
+    # No row lock can protect a not-yet-created slot. This transaction lock
+    # keeps the single count and the subsequent write atomic at READ COMMITTED.
+    await session.execute(select(func.pg_advisory_xact_lock(_ENABLED_CAP_LOCK_KEY)))
 
 
 def _request_body(model: type[BaseModel]) -> dict[str, Any]:
@@ -243,6 +251,8 @@ async def create_search(
     payload = _parse_create(body)
     _guard(principal, PERM_SEARCH_WRITE)
     svc = ScheduledSearchService(session, settings=settings)
+    if payload.enabled:
+        await _lock_enabled_cap(session)
     try:
         search = await svc.create(payload, actor=principal.subject)
     except CronFloorError as exc:
@@ -331,6 +341,8 @@ async def update_search(
     before_version = search.query_version
     before_enabled = search.enabled
     changed = payload.model_dump(exclude_unset=True, exclude={"change_note"})
+    if payload.enabled is True and not search.enabled:
+        await _lock_enabled_cap(session)
     try:
         search = await svc.update(search, payload, actor=principal.subject)
     except ThresholdUnreachableError as exc:

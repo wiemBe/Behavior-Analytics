@@ -8,6 +8,316 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶▶▶▶▶▶ RESUME HERE — STATE AT 20:20, 2026-10-16 (eighteenth session, from 18:58)
+
+The 18:25 section below is the background. Where they differ, this section wins.
+
+**The user, ~20:15: "saat 00 sonrası için plan yapma bugün".** Plan nothing and start nothing
+that runs past 00:00 tonight.
+- Do not use Codex (back 22:54) or GLM (back 00:38) tonight.
+- No timers. Checked: no project timer and no agent unit exists.
+
+**Branches at 20:20.**
+- `main` @ `4169592`, unchanged.
+- **`feat/phase-ce` @ `dc2f510` (pushed).** It holds every OPS task merged so far:
+
+| Task | Merge | Agent | What it brought, and what review fixed |
+|---|---|---|---|
+| OPS-1 | `f755a7c` | Sonnet | `VERSION` 0.1.0; `GET /api/v1/version`; the version line in the account menu and on sign-in (PNGs reviewed) |
+| OPS-7 | `34bfc9d` | Codex r0–1 | The in-container `doctor`. Review fixed: `celery_workers` always WARNing; `qradar_clock` moved to the host; 10 s per check; the heartbeat wording |
+| OPS-5a | `bb7f49c` | Sonnet r0–1 | The daily `apply_timescale_policies` task. A test pins the re-run on compressed chunks |
+| OPS-7b | `ffdbbbb` | Codex r0–1 | `./qradar-dash doctor`, the host half: `disk_docker`, `disk_backup`, `qradar_clock`, `selinux`, `containers` |
+| OPS-2 + T-121 | `827c5c6` | Sonnet | The hashed 3.12 locks and greenlet; explicit TLS verify flags on every interpreter; mypy 0 on 3.12 and 3.14; the editable image install |
+| OPS-9 draft | `9f8a40b` | Sonnet | `docs/OPERATIONS.md` in Turkish, OPS-R1 to OPS-R42. The orchestrator checked five commands |
+| OPS-8 | `e9c651f` | Codex, cut off at 19:38, then a Sonnet handover and r1 | `./qradar-dash support-bundle`. Review fixed: the PEM pass was never applied; `export`, spaced and commented `.env` secrets were kept; the keys inside `ENCRYPTION_KEYS_JSON` |
+| OPS-3 | `d1e8fbf` | Sonnet | `release.yml`; five images with `VERSION`, `GIT_SHA` and labels; the frontend at `/api/v1`; Redis by digest; CI runs `npm ci`, lint and vitest. The orchestrator checked three action SHAs against `git ls-remote` |
+| T-122 | `dc2f510` | Sonnet | `COMPOSE_FILE` in `.env`, so the runbook's bare `docker compose` gets the prod overlay; `--build` exports `GIT_SHA` |
+
+**The final gate on `dc2f510`.**
+- **Frontend: green.** `npm ci`, lint and typecheck clean; 290 files / 3,193 tests; the build
+  is complete; the bundle has no `localhost:8000` URL.
+- **Backend on Python 3.12** (log `QRadar-Dash-work/gate312b/gate-dc2f510.log`):
+  - ruff clean;
+  - mypy 0 in 244 files;
+  - alembic upgrade, check, downgrade base, upgrade, check: clean at `0025`;
+  - integration **1,291 passed, 11 skipped**;
+  - unit **6 failed**, 3,556 passed.
+- **Two blockers before `main`:**
+  1. **Six T-122 installer tests fail in the 3.12 container** and pass on the host. A host
+     assumption in the test harness is suspected.
+  2. **The 11 skips are every OPS-5a TimescaleDB policy test.** `test_migrations.py`'s
+     `clean_db` resets `public`, which drops the extension, and the policy file runs later. In
+     every full run, CI included, these tests never execute. This is round 0's silent-skip
+     lesson, confirmed.
+
+**In flight:**
+
+| Task | Agent | Worktree / DB | Next |
+|---|---|---|---|
+| **T-123**: both blockers | Sonnet sub-agent (dies with the chat) | `t123` from `dc2f510`; DB `qradar_obs_t123` | Fix 1: the policy fixture runs `CREATE EXTENSION IF NOT EXISTS` when the extension is available, and skips only when the image lacks it. Fix 2: diagnose in a 3.12 container and make the six tests hermetic. Then repeat the 3.12 gate on the merged head (scratch via `git archive`, `:Z` on that dedicated dir only, fresh DBs); require **0 policy-file skips**; then merge `feat/phase-ce` to `main`. |
+
+**Agents:**
+- Grok: out for the week.
+- Codex and GLM: not tonight (see the user's 20:15 rule above).
+- opencode free: rate-limited. The user: hand the task to Sonnet instead of waiting.
+
+**Next (tomorrow, 2026-10-17, unless T-123 and `main` finish early tonight):**
+1. OPS-5: backup, restore, verified restore, backup retention, disk guard, the systemd timer.
+   Review it closely: it can destroy a database.
+2. OPS-6: upgrade, rollback, the state file.
+3. OPS-9 round 2:
+   - OPS-R41 describes OPS-7's original plan (a filtered ping, then WARN). As built,
+     `celery_workers` PASSes on any pong. Fix its confirm command, which is a bare
+     `docker inspect`.
+   - Remove the "henüz yayımlanmadı" lines once their commands land.
+4. OPS-10: the fresh-VM install test (orchestrator).
+5. Backlog from this session:
+   - deploy Dockerfiles without version labels for a `--build`, covering postgres and proxy;
+   - the tag push runs CI twice (`on: push` matches tags);
+   - support-bundle never run against a real image; do that in OPS-10;
+   - the T-122 tests skip on hosts with less than 7.5 GiB RAM (preflight reads
+     `/proc/meminfo`).
+
+---
+
+**Update at 20:00 (kept for the log).** It superseded the 19:20 branch and in-flight lists that
+follow.
+
+**Merged since 19:20:**
+- **OPS-7b** (`ffdbbbb`, Codex, rounds 0–1): the host half of `./qradar-dash doctor`.
+  - shellcheck from the image is clean.
+  - The doctor and installer tests pass (50).
+  - Round 1: a `compose ps` Go template instead of an awk JSON parser (real tabs checked), and
+    a `migrate` that exited 0 is not a failure.
+- **OPS-2 + T-121** (`827c5c6`):
+  - the hashed 3.12 locks, and `sqlalchemy[asyncio]` brings `greenlet`;
+  - explicit `VERIFY_X509_STRICT` and `VERIFY_X509_PARTIAL_CHAIN` on every interpreter;
+  - mypy 0 on both environments;
+  - the image back on `pip install --no-deps -e .`;
+  - the agent's gates: 3.12 lock (unit 3,488, **integration 1,290/0**) and host 3.14
+    (unit 3,488).
+  - **SELinux deviation by the T-121 agent:** it bind-mounted the worktree's `VERSION` with
+    `:Z`. It restored the file by rewriting it. The orchestrator verified the label is back to
+    `user_home_t:s0` and that git shows no change. The OPS-3 prompt now forbids any mount from
+    the worktree.
+- Host venv on `827c5c6`: ruff clean; mypy 0 in 243 files; unit 3,543.
+- `feat/phase-ce` @ `827c5c6` is pushed.
+- Worktrees, branches and DBs of `ops1`, `ops2`, `ops5a`, `ops7` and `ops7b` are removed.
+
+**In flight at 20:00:**
+
+| Task | Agent | Worktree | Notes |
+|---|---|---|---|
+| **OPS-3** ([spec](tasks/OPS-3.md)) | Sonnet sub-agent (dies with the chat) | `ops3` from `827c5c6` | Release workflow, `/app/VERSION` through the `repo` additional build context, GHCR names, Redis digest. A fresh backend image fails `import app.main` until this lands. |
+| **OPS-8** ([spec](tasks/OPS-8.md)), `support-bundle` | Codex, unit `ops8-codex` | `ops8` from `79316aa` | The scrubber is Python in the backend image, run with `dc run --rm --no-deps`. Secrets go on stdin only. Fail closed. §7.2's UUID ambiguity is resolved in the spec. |
+| **OPS-9** ([spec](tasks/OPS-9.md)), Turkish runbook, draft round | Sonnet sub-agent (the user, 19:40: do not wait on rate limits, give it to Sonnet) | `ops9` | `docs/OPERATIONS.md`, OPS-R1 to OPS-R42. Stub commands get the "henüz yayımlanmadı" line. |
+| **Full backend gate on Python 3.12** of `827c5c6` | orchestrator, container `gate312` | scratch `QRadar-Dash-work/gate312/src` (`git archive`, `:Z` on that dedicated dir) | DBs `qradar_obs_gate312` (integration) and `qradar_obs_gate312_mig` (alembic round trip), both with the timescaledb extension. Log: `gate312/src/gate.log`. Read the **skip count**. |
+
+**Agents:**
+- Grok: out for the week (the user, ~19:25).
+- Z.AI GLM: back at 00:38.
+- opencode free (DeepSeek v4.1 flash, GLM 5.3 flash): rate-limited at 19:20 and 19:30. The user:
+  hand the task to Sonnet instead of waiting.
+
+**Next:**
+1. Review OPS-3, OPS-8 and OPS-9.
+2. Then the final 3.12 gate, plus the frontend gate, on the merged head.
+3. Then `main`.
+4. Then OPS-5 (backup, restore, disk guard, timer).
+5. Then OPS-6 (upgrade, rollback).
+6. Then OPS-9 round 2, removing the "not yet published" lines.
+7. Then OPS-10.
+
+---
+
+**State at 19:20 (kept for the log).**
+
+**The user, at 19:00:** "glm opencode free deepseek ve glm codex grok kullanabilrsin". Every agent
+is allowed. Probed at 19:02:
+- Grok: still **402** (credit balance exhausted);
+- Z.AI GLM: out until **00:38**;
+- DeepSeek free: rate-limited.
+
+Codex and Sonnet are working.
+
+**The old chat (session `qradar-dash-c7`) woke at 19:03** on its OPS-2 sub-agent's notice and
+committed `05a8427` (the PLANNER note on OPS-2 and T-121). It was told by message to take no
+further action. If a commit appears that this session did not make, check `ListAgents` first.
+
+**Branches.**
+- `main` @ `4169592`, unchanged.
+- `feat/phase-ce` @ `bd2904b` (pushed `bb7f49c`). Since 18:25 it holds:
+  - **OPS-1** merged (`f755a7c`). Review: code clean, the 12 PNGs reviewed, 207 targeted
+    backend tests and 32 frontend tests, typecheck and lint.
+  - **OPS-7** merged (`34bfc9d`, Codex, rounds 0–1). Round 1 fixed four review points:
+    - `celery_workers` PASSes on any pong. The doctor runs in the backend container, so the
+      hostname-targeted ping never matched a worker.
+    - `qradar_clock` moved to the host half, so a healthy run exits 0.
+    - Every check is bounded at 10 s, and a timeout is a FAIL line.
+    - The heartbeat message names beat or the worker.
+  - **OPS-5a** merged (`bb7f49c`, Sonnet, rounds 0–1). Round 1 proved that the daily re-run is
+    safe on a hypertable with compressed chunks (TimescaleDB 2.17.2: the `ALTER … compress`
+    does not fail; a test pins it). It also fixed the docstring and the design.
+    **Lesson:** round 0's policy integration tests had **skipped silently**, because the
+    agent's DB lacked the `timescaledb` extension. **Check the skip count in the final gate.**
+  - The specs for T-121, OPS-7b and OPS-3.
+  - Host venv on `bb7f49c`: ruff clean; mypy 0 in 243 files; unit 3,519 passed.
+
+**In flight.**
+
+| Task | Agent | Worktree | State |
+|---|---|---|---|
+| **T-121** ([spec](tasks/T-121.md)), OPS-2 round 1 | Sonnet sub-agent (dies with the chat) | `ops2` (OPS-2 round 0 committed `b289b59`, `feat/phase-ce` merged in `bfedb97`) | Explicit `VERIFY_X509_STRICT` and `VERIFY_X509_PARTIAL_CHAIN` on every interpreter; the three mypy errors on the 3.12 lock; `pip install --no-deps -e .` again. A message added the design §2.4 sentence, which wrongly said "not `-e`". Gates run in a 3.12 lock container **and** on the host venv, plus an image smoke test. **Merge OPS-2 and T-121 together.** |
+| **OPS-7b** ([spec](tasks/OPS-7b.md)), host half of `./qradar-dash doctor` | Codex, unit `ops7b-codex` | `ops7b` | Running. It flagged `test_qradar_dash_installer.py:224`, which pins `doctor` as an exit-64 stub. **Orchestrator decision:** drop `doctor` from that tuple only (the stub no longer exists). Resume Codex with that permission after it ends. Run shellcheck from `koalaman/shellcheck` on stdin; it is not on the host. |
+| **OPS-3** ([spec](tasks/OPS-3.md)) | not started | — | Starts after OPS-2 and T-121 merge, because both touch `backend/Dockerfile` and `ci.yml`. **Sonnet** sub-agent, because it needs real image builds. Until then a fresh backend image has no `/app/VERSION`, so OPS-1 refuses to start it. |
+
+**Next:**
+1. Merge OPS-2 with T-121.
+2. OPS-3.
+3. The **full gate on 3.12** (lock container) plus the frontend.
+4. `main`.
+5. OPS-5 (backup), OPS-6, OPS-8 and OPS-9, as in the 18:25 list.
+
+---
+
+## ▶▶▶▶▶ RESUME HERE — STATE AT 18:25, 2026-10-16 (end of the seventeenth session; the user moved to a new chat because the context was long)
+
+**Read first:**
+- this section;
+- **D-16 to D-20** in §4;
+- `docs/OPERATIONS-DESIGN.md` §10, the OPS task split and its acceptance criteria;
+- the 10:30 section further down, for the sandboxing rules.
+
+The 15:30 section below is the detailed log of this session. Where it disagrees with this
+section, this section wins.
+
+**Branches.**
+- **`main` @ `4169592`** (17:33, pushed). It holds Phase 6, Phase F (live-validated by T-118)
+  and AUTH-1/AUTH-2, after a green gate:
+  - backend: ruff, mypy 0, alembic round trip at `0025`, unit 3,443, **integration
+    1,286 / 0**;
+  - frontend: 288 files / 3,186 tests, build.
+- **`feat/phase-ce` @ `a0a73ad`** (pushed). Since `main` it holds:
+  - OPS-0, the design: `docs/OPERATIONS-DESIGN.md`;
+  - **T-120**, the enabled caps under an advisory lock;
+  - **OPS-4**, `./qradar-dash install`, `status`, `logs` and `docker-compose.prod.yml`;
+  - D-20, the OPS-1, OPS-2, OPS-4, OPS-5a, OPS-7 and T-120 specs, and the PLANNER.
+  - No full gate has run on it since `main`. T-120 and OPS-4 passed their own targeted checks.
+
+**Decisions this session.**
+- Z.AI GLM is allowed again (14:37).
+- The Phase F lab validation runs on a Sonnet sub-agent (~15:30).
+- **D-20** (~17:40): the first release is `0.1.0`; the bundled TLS proxy; off-host backups after
+  2026-10-30.
+- **The user's Claude limit reset (~17:45): Sonnet sub-agents are welcome.**
+- Codex's weekly limit renewed (~17:50).
+
+**In flight at the save.** Sonnet sub-agents **die with the chat**: check their worktrees and
+hand over with "review what you inherit".
+
+| Task | Agent | Worktree / DB | State at 18:25, and what to do |
+|---|---|---|---|
+| **OPS-1** ([spec](tasks/OPS-1.md)): `VERSION` 0.1.0, `GET /api/v1/version`, the version line in the account menu and on sign-in, the CI equality check | Sonnet sub-agent, **finished ~18:40** | `ops1`; DB `qradar_obs_ops1`; PNGs `QRadar-Dash-work/ops1/screenshots/` (four sets × three viewports: `login-ok`, `login-fail`, `account-menu-ok`, `account-menu-fail`) | **Done, not yet reviewed** (report `docs/tasks/OPS-1.report.md`).<br>**Behaviour:**<br>• `VERSION` is read from `/app/VERSION` first, then the repository root; a missing or malformed file stops startup.<br>• `GET /api/v1/version` returns `version`, `git_sha` (null when `GIT_SHA` is unset or not hex) and `migration_head` (from the script directory).<br>• A shared `ApiVersionLine` says "API version could not be read" on failure.<br>**Gates:** ruff clean; mypy 0 (242); unit 3,458; frontend 290 files / 3,193 tests and build.<br>**Integration:** the full run had 1 failure, `test_auth_api.py`, whose own open-path set lacked `/version`. After the fix that file passes 18/18. **Re-run the full integration suite at merge.**<br>**Out-of-list edits (accept or not):**<br>• `ApiVersionLine.tsx`;<br>• the `shellApi` mock in `AppFrame.test.tsx`;<br>• the open-path set in `test_auth_api.py`.<br>**OPS-3 must:** copy `VERSION` to `/app/VERSION` in the image and pass `GIT_SHA`.<br>**`ci.yml` merge conflict with OPS-2:** additive, keep both sides |
+| **OPS-2** ([spec](tasks/OPS-2.md)): hashed Python 3.12 locks, the image and CI install from them, mypy not hidden, **plus the greenlet fix** | Sonnet sub-agent (from 17:47) | `ops2`; DB `qradar_obs_ops2` | The locks are written (`requirements.txt` has `sqlalchemy[asyncio]==2.1.4` and `greenlet`); `pyproject.toml`, `Dockerfile`, `ci.yml` and `README.md` are edited.<br>At the save it was running the **full suite inside a `python:3.12-slim` container** (`docker ps`: an unnamed `python:3.12-slim` container, e.g. `exciting_beaver`). **If the agent died, stop and remove that container by name.**<br>The orchestrator added binding requirements by message, so pass them on in a handover:<br>• depend on `sqlalchemy[asyncio]`, editing only that `pyproject.toml` line;<br>• run the **full unit and integration suite in the 3.12 lock environment**, because the suite has only ever run on SQLAlchemy 2.0.51, and the lock moves to 2.1.4;<br>• if 2.1 breaks tests, pin the newest 2.0.x instead of patching app code.<br>**This is the critical fix: today a freshly built backend image dies on import (no `greenlet`), found by OPS-4** |
+| **OPS-5a** ([spec](tasks/OPS-5a.md)): a daily beat task calling `apply_policies` (verified: nothing calls it, so TimescaleDB retention and compression never ran) | Sonnet sub-agent, **finished 18:3x** | `ops5a`; DB `qradar_obs_ops5a` | **Done, not yet reviewed** (report `docs/tasks/OPS-5a.report.md`).<br>**The task:** `apply_timescale_policies`, run daily from the beat and once at beat start (a `beat_init` hook), with the setting `timescale_policy_interval_seconds`.<br>**Three real defects it fixed in `apply_policies`:**<br>1. A changed retention never took effect, because `if_not_exists` kept the old interval. It now compares `drop_after` and removes, then adds.<br>2. Compression was never updated or removed.<br>3. Tables were not isolated: one SQL error aborted every later table. Each table now runs in a savepoint and logs `error:<Type>`.<br>**Gates:** ruff clean; mypy 0; unit 3,449; integration 1,286 passed.<br>**Orchestrator decision (taken):** when `RETENTION_ENABLED` is false, the task still calls `apply_policies` rather than doing nothing, so turning retention off removes the old data-dropping job. A test pins it.<br>**Review closely, because this code drops data.** Check:<br>• the remove-then-add path;<br>• that the savepoints do not hide a partial state;<br>• the `beat_init` single send.<br>**Then:** fix `docs/OPERATIONS-DESIGN.md` lines ~370, ~396 and ~1547, which still say the task does not exist. Merge conflict with OPS-7 in `celery_app.py` and `tasks.py`: additive, keep both sides |
+| **OPS-7** ([spec](tasks/OPS-7.md)): `python -m app.cli.doctor` (every in-container check of design §6, PASS/WARN/FAIL lines with runbook ids, exit 0/1/2, no secrets) and the beat heartbeat | **Codex**, systemd unit `ops7-codex`, 17:55–18:29, **finished**, no limit hit | `ops7`; DB `qradar_obs_ops7`; log `QRadar-Dash-work/ops7/codex.log` | **Done, not yet reviewed.** Codex reports:<br>• all 19 checks, text and JSON output, runbook ids, exit codes;<br>• the beat heartbeat: 60 s schedule, 180 s TTL;<br>• QRadar access only through `validate_connection`;<br>• ruff clean; mypy 0 errors in 241 files; unit 3,468; **integration 1,287, 100 %**.<br>Next: review `doctor.py`. Check it prints no secret (the planted-token test), that it makes no provider call other than `validate_connection`, and the exit-code matrix. Then commit and merge. **OPS-5a and OPS-7 both add beat entries** to `celery_app.py` and `tasks.py`: the merge conflict is additive, so keep both sides |
+
+**OPS-2 finished at ~18:50 (Sonnet; not yet reviewed; report `docs/tasks/OPS-2.report.md`).**
+- **The fix:**
+  - the locks were regenerated in `python:3.12-slim`: `sqlalchemy[asyncio]==2.1.4`,
+    `greenlet==3.5.6`, ruff 0.15.22, mypy 2.3.1 (ruff < 0.16 and mypy < 2.4 are pinned through a
+    compile-time constraint recorded in the lock header);
+  - `pyproject.toml` now depends on `sqlalchemy[asyncio]`;
+  - the Dockerfile and CI install from the locks with `--require-hashes`;
+  - `mypy || true` is removed.
+- **The image:** 890 MB, uid 10001, contains `greenlet`. **The import failure is fixed.**
+- **On the 3.12 lock environment:**
+  - ruff clean;
+  - integration **1,286 passed**, so SQLAlchemy 2.1.4 broke nothing;
+  - **mypy: 3 errors** (`repositories/anomaly.py:423` unused ignore, `custom_rules/loaders.py:224`
+    variadic unpacking, `custom_rules/engine.py:236` `None` assignment);
+  - **unit: 2 failed**: `test_tls_and_credentials.py::TestSSLContext`, strict RFC 5280.
+
+**⚠ A real security gap, found by OPS-2.** Production and CI are **Python 3.12**, but every local
+gate so far ran on the host venv, which is **Python 3.14**.
+- On 3.12, `ssl.create_default_context()` does **not** set `VERIFY_X509_STRICT` (the default
+  only arrived in 3.13).
+- So the production image verifies the QRadar chain **without strict RFC 5280**, while every test
+  assumed it was strict.
+- The fix is **T-121** (spec to write, small; it must merge **with or before OPS-2**, or CI is red):
+  1. set `VERIFY_X509_STRICT` explicitly in the app's TLS context (`app/security/tls.py` or
+     wherever the context is built), keeping `QRADAR_TLS_ALLOW_MISSING_AKI` as the one opt-out;
+  2. fix the three mypy errors on 3.12 without breaking 3.14;
+  3. pass both TLS tests on 3.12 **and** 3.14.
+- **Gates from now on must run on 3.12.** Use the lock environment in a `python:3.12-slim`
+  container with `--network host`, as OPS-2 did (`QRadar-Dash-work/ops2/`). The alternative is to
+  move the image and CI to 3.13 or later; that is a later, deliberate decision, because design §2.4
+  keeps 3.12 for now.
+
+Scratch cleanup: `QRadar-Dash-work/ops2/src` holds root-owned files from a container run. Remove
+them with a throwaway `alpine` container on that dedicated directory, the same way they were
+written.
+
+**Merge order:**
+- **OPS-2 together with T-121 first**: the image is broken without OPS-2, and CI is red without
+  T-121;
+- then OPS-1, OPS-5a and OPS-7;
+- then a full gate on `feat/phase-ce`: backend, including the integration suite and alembic,
+  and frontend;
+- then `main`.
+
+`ci.yml` conflicts between OPS-1 and OPS-2. Both changes are additive.
+
+**Agents now.**
+- **Codex:** fresh weekly limit. It ran T-120 (10 min) and is on OPS-7.
+- **Sonnet sub-agents:** OK. The user's limit reset at ~17:45.
+- **Grok:** **"402 … Grok Build usage balance exhausted"** at 17:43. It is a credit balance, not
+  a time window. Do not use it until the user tops it up.
+- **Z.AI GLM:** out until **00:38**.
+- **DeepSeek free:** last seen rate-limited. Probe it before use.
+
+**Next, after the four above (`docs/OPERATIONS-DESIGN.md` §10):**
+1. **OPS-3**: the release workflow on a tag, which pushes the images to GHCR with version and
+   SHA tags. It also:
+   - moves `NEXT_PUBLIC_API_BASE_URL` into `frontend/Dockerfile` and deletes OPS-4's copy,
+     `deploy/frontend/Dockerfile`;
+   - adds the prod compose `image:` keys;
+   - digest-pins Redis.
+2. **The host half of `./qradar-dash doctor`** (`df`, `timedatectl`, `getenforce`, then the
+   in-container doctor), added to OPS-4's script.
+3. **OPS-5**: `backup`, `restore`, a verified restore, backup retention, the disk guard, the
+   systemd timer.
+4. **OPS-6**: `upgrade` and `rollback`, with the state file and the automatic rollback
+   triggers.
+5. **OPS-8**: `support-bundle`.
+6. **OPS-9**: the Turkish runbook, `docs/OPERATIONS.md`.
+7. **OPS-10**: the fresh-VM install test, by the orchestrator. The target is done by
+   2026-10-30.
+
+The orchestrator reviews OPS-4/5/6-class work closely, because a bug there destroys a database.
+
+**Backlog (deliberate):**
+- echarts 6;
+- the `map.geography` widget;
+- a public subject-column helper;
+- T-118's low-severity notes;
+- OPS-4's open points: `has-admin` as a CLI subcommand, and the `.env.example`
+  `AUTH_PROVIDER` comment.
+
+**Facts learned this session:**
+- **A fresh image is not the dev venv.** Floating `>=` ranges let SQLAlchemy 2.1 drop
+  `greenlet` silently. The dev venv (Python 3.14, SQLAlchemy 2.0.51) never saw it. Only an
+  image build caught it.
+- A tooltip `formatter`'s string is HTML in ECharts. Escape QRadar-sourced text with
+  `echarts.format.encodeHTML`.
+- Merge a fix that an in-flight branch's full-suite run needs into that branch first; F-3's
+  Grok had begun re-fixing T-116.
+- Codex refuses before its reset time. A `systemd-run --on-calendar` timer re-arms it.
+  "Selected model is at capacity" is a separate error; retry once.
+- Grok has a credit balance (402) as well as compaction stops.
+
+---
+
 ## ▶▶▶▶ RESUME HERE — STATE AT 15:30, 2026-10-16 (seventeenth session, from 14:37)
 
 **Read first:** this section, then D-17, D-18, D-19 in §4, then the 10:30 section further down for
@@ -22,7 +332,7 @@ the sandboxing rules (still binding). The 14:35 section below is superseded wher
   that could read the token.
 
 **Branches.**
-- `main` @ `e26c683` (Phase 5 and everything before it). Unchanged this session.
+- **`main` @ `4169592` (17:33, pushed): `feat/phase-ce` @ `e90fba1` merged** after a green gate (backend ruff, mypy 0, alembic round trip at `0025`, unit 3,443, integration 1,286/0; frontend 288 files / 3,186 tests, build) and T-118 passing. Phase 6, Phase F (live-validated) and AUTH-1/AUTH-2 are on `main`.
 - `feat/phase-ce` @ `0117c32` (pushed). Since `main` it holds:
   - UI-6.1 to UI-6.8: **Phase 6 is closed**;
   - T-114 to T-117;
@@ -44,8 +354,14 @@ the sandboxing rules (still binding). The 14:35 section below is superseded wher
 | Task | Agent / unit | Worktree / DB | How to check, and what is left for the orchestrator |
 |---|---|---|---|
 | ~~T-119~~ | **Merged** (`0117c32`, Grok, 9 min): README and the design after F-6 (routes, the catalog body, [BUILT] markers, as-built notes); "fired 1 time" with a 0/1/2 test | — | — |
-| **Gate for `main`: GREEN** | Frontend on `0117c32`: `npm ci`, lint, typecheck, 288 files / 3,186 tests, build 33/33. Backend on `99610cb` (no backend change since): ruff, mypy 0, alembic up/check/down base/up/check at `0025`, unit 3,443, **full integration 1,286 passed, 0 failed** (15.5 min) | logs `QRadar-Dash-work/gate-main/` | **merge `feat/phase-ce` → `main` when T-118 reports** (part 2 ends ~17:30 local) |
-| **OPS-0** ([spec](tasks/OPS-0.md)) operability design: versioning, GHCR release, `./qradar-dash install/upgrade/rollback/backup/restore/doctor/support-bundle`, Turkish runbook outline, OPS-1… split for ~2026-10-30 | **Grok**, `ops0-grok`, from 17:05 (D-18: starts once the in-flight work is collected) | `ops0`; deliverable `docs/OPERATIONS-DESIGN.md` | review against the spec's 11 points; the user reviews the task split |
+| ~~Gate for `main`~~ | **Merged to `main`** (`4169592`). Frontend on `0117c32`: `npm ci`, lint, typecheck, 288 / 3,186, build 33/33. Backend on `99610cb`: ruff, mypy 0, alembic up/check/down base/up/check at `0025`, unit 3,443, integration 1,286/0. Only docs changed after the gated commits | — | worktrees `t118`, `gate-fe` and DB `qradar_obs_t118` removed |
+| **OPS-1** ([spec](tasks/OPS-1.md)) `VERSION`, `GET /api/v1/version`, the version line, the CI equality check | **Sonnet sub-agent** from 17:47 (Grok died at 17:43 on "402 … Grok Build usage balance exhausted") | `ops1`; DB `qradar_obs_ops1`; ports 3121/8121/9121 | dies with the chat |
+| **OPS-2** ([spec](tasks/OPS-2.md)) hashed Python 3.12 locks, image and CI install from them, mypy not hidden | **Sonnet sub-agent** from 17:47, inheriting Grok's 3.12 locks in `QRadar-Dash-work/ops2/lockbuild/` (built in `python:3.12-slim`, `:Z` on that dedicated dir) | `ops2` | dies with the chat |
+| ~~OPS-4~~ | **Merged** (`0524d6f`, Sonnet, 20 min).<br>**What it built:**<br>• `./qradar-dash install`: preflight; the wizard and `--non-interactive`; `--build`, `--offline` and pull; `--external-proxy`; `--dry-run`; secrets into volumes; migrate; `create-admin` once; the bundled TLS proxy; the summary.<br>• `status` and `logs`. The other subcommands are stubs that exit 64.<br>• `docker-compose.prod.yml` and `deploy/proxy/`.<br>**What it showed:**<br>• An offline install reaches the summary in 39 s.<br>• Re-runs keep the keys and the admin.<br>• `/login` returns 200 through the proxy, and the break-glass password signs in.<br>**Orchestrator checks:**<br>• shellcheck clean;<br>• 27 installer tests pass;<br>• the safety grep finds no `:z`, prune, `seed` or drop;<br>• no `ops4` container or volume is left.<br>**It found a critical defect:** a fresh backend image resolves SQLAlchemy 2.1.4 without `greenlet`, so the app and `create-admin` die on import. **OPS-2** fixes it with `sqlalchemy[asyncio]` and the lock. OPS-2 must pass the full suite in the Python 3.12 lock environment, because the suite has only run on SQLAlchemy 2.0.51 | — | **Open:**<br>• `deploy/frontend/Dockerfile` is a copy that adds the API build arg. OPS-3 moves the arg into `frontend/Dockerfile` and deletes the copy.<br>• `has-admin` is a `psql` count. It becomes a CLI subcommand later.<br>• The `AUTH_PROVIDER` comment in `.env.example` is not updated.<br>• The GHCR pull is untested; that is OPS-3.<br>• `POSTGRES_PASSWORD` is generated as hex, not base64, so it is safe inside the database URL |
+| **OPS-5a** ([spec](tasks/OPS-5a.md)) a daily beat task that calls `apply_policies` (the verified retention defect) | **Sonnet sub-agent** from 17:47 | `ops5a`; DB `qradar_obs_ops5a` | — |
+| ~~T-120~~ | **Merged** (`097e432`, Codex, 10 min): a transaction advisory lock per cap (`pg_advisory_xact_lock`, two keys) before the count, only on enabling paths (create enabled, PATCH that enables). Four concurrency tests with real sessions and a race gate; all four fail without the lock. Orchestrator: the new file + custom-rules API 26 passed, ruff clean | — | — |
+| **OPS-7** ([spec](tasks/OPS-7.md)) `python -m app.cli.doctor` (every in-container check of design §6, PASS/WARN/FAIL lines with runbook ids, exit 0/1/2, no secrets) and the beat heartbeat | **Codex**, `ops7-codex`, from 17:55 (the user: Codex weekly limit renewed) | `ops7`; DB `qradar_obs_ops7` | the host wrapper (`./qradar-dash doctor`) follows after OPS-4 merges; additive merge with OPS-5a in `celery_app.py`/`tasks.py` |
+| ~~OPS-0~~ | **Merged** (`66dc330`, Grok, 28 min): `docs/OPERATIONS-DESIGN.md` (1,562 lines): versioning, GHCR release, the `./qradar-dash` commands, TimescaleDB-aware backup, rollback by restore (never an Alembic downgrade), `doctor` checks, redacted support bundle, 42-symptom runbook outline, sizing (min 4 vCPU / 8 GiB / 80 GiB; rec. 8 / 16 / 400 + 400 backups), **OPS-1…10 safety cut, 10-17 → 10-30**. **Verified finding:** `apply_policies` is never called and no migration adds a TimescaleDB policy, so retention and compression on `log_source_metric`, `rule_metric`, `search_result_metric` and `offense_snapshot` have never run; OPS-5 wires it. The installer must not call `app.services.seed` (it inserts a mock instance). Open questions answered as D-20 | — | — |
 | ~~T-118~~ | **Passed** ([report](tasks/T-118.report.md); Sonnet sub-agent, 15:24–17:31 local, 19 of 60 Ariel searches, two generator runs at 1/8/1 EPS, none left). Shadow: breach OPEN after the 2nd spike bucket, no alert or notification, RECOVERING, RESOLVED; stored preview = the same interval. Alerting: **one** deduplicated `custom_rule_breach` alert (`occurrence_count` 2), evidence value/measurement/threshold/bucket bounds, resolved by `custom-rule-evaluator` "condition recovered". Fail-closed gap: the uncollected bucket counted neither way (`unmeasured_buckets` 1, under 1 not 2, alert still open), preview drew it `NOT_MEASURED`; collected late, it was not re-judged (idempotent). Harness gap: the OPEN notification was not observed (no channel configured at that moment); the resolve notification was. Low-severity notes: `last_status` NULL after the seed run; `consecutive_under` counts up while OK and is exposed; after a late bucket the preview and the live breach end one bucket apart (by design) | — | no fix task needed; the notes go to the backlog |
 
 Watchers, liveness and logs:
@@ -67,25 +383,16 @@ Watchers, liveness and logs:
 - **Sonnet sub-agents:** only for live validations that need the lab token (the user's choice).
   They draw on the orchestrator's limit.
 
-**Next, in order (D-18: finish what we have, then OPS-0):**
-1. **Collect the four tasks.**
-   - Merge F-8, AUTH-2 and F-6.
-   - After F-6: finish the "(in progress)" lines in the README and the [BUILDING] markers in
-     the design. This is a small docs task, for GLM after 00:38, or Grok.
-   - T-118's defects become fix tasks.
-2. **Full gate on the head**, then `feat/phase-ce` → **`main`**.
-   - Backend: ruff, mypy, unit, the full integration suite, and alembic
-     upgrade → check → downgrade → upgrade → check at `0025`.
-   - Frontend: `npm ci`, lint, typecheck, vitest, build.
-3. **OPS-0.** The spec is ready, with the user's answers in it. Then OPS-1 and the rest: the
-   GHCR release, the `./qradar-dash` operator script, backup and rollback, doctor, the support
-   bundle, and a fresh-VM rehearsal.
-4. **Later, and deliberate:**
-   - echarts 6 (the Lines-series XSS is unreachable today);
-   - the `map.geography` widget (still `blocked`; the backend and the colour ramp exist);
-   - locking the enabled-count caps (F-3 and F-4: two concurrent enables can both pass);
-   - a public subject-column helper in place of the private `_SUBJECT_COLUMNS` import;
-   - a `v1.0.0` tag.
+**Next, in order (D-18, D-20):**
+1. OPS-1 and OPS-2 (in flight), then OPS-3 (release workflow, GHCR), OPS-4 (`./qradar-dash`
+   install), OPS-5 (backup, restore, disk guard, **the `apply_policies` task**), OPS-6 (upgrade,
+   rollback), OPS-7 (`doctor`), OPS-8 (support bundle), OPS-9 (Turkish runbook), OPS-10
+   (fresh-VM install test, orchestrator). The order and acceptance are in
+   `docs/OPERATIONS-DESIGN.md` §10. The orchestrator reviews OPS-4, OPS-5 and OPS-6 closely: a
+   bug there destroys a database.
+2. Backlog, deliberate: echarts 6; `map.geography`; a public
+   subject-column helper; T-118's low-severity notes (`last_status` NULL after the seed run,
+   `consecutive_under` counting while OK).
 
 **Facts learned this session:**
 - When a fix lands that an in-flight branch's full-suite run needs, merge it into that branch
@@ -1814,6 +2121,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-17 | **Phase F open questions (§F.16), answered by the user on 2026-10-16 ~10:25.** <br>1. **Alerting: shadow mode first.** Add `CUSTOM_RULES_ALERTING_ENABLED` (default false) beside `CUSTOM_RULES_ENABLED`: breaches are recorded, nothing pages, until a live validation turns it on (the IPS pattern). → F-2. <br>2. Caps and retentions were not asked again: the proposed defaults stand as settings (100 enabled rules, 25 enabled searches, 90 days of search results, 180 days of resolved breaches). <br>3. **A new detection-engineer role** between analyst and admin: it may write custom rules and custom searches (`custom_rule:write`, `search:write`) but not the admin settings. → F-3 (and the role map in `app/security/rbac.py`). <br>4. **The F.2 preview is a real bounded Ariel run** of the stored draft. → F-5. <br>5. **Breaches stay out of `/anomalies`**: they show in `/alerts` and on the rule's page (§F.4.3 as designed). → F-6. | F-2, F-3, F-5, F-6 |
 | D-18 | **The plan (user, 2026-10-16 ~11:20: "lider sensin nasıl dersen öyle gideriz … 2 hafta falan var bitmesine"; at ~11:35 the user said the two weeks was a guess and asked for the orchestrator's estimate, and said OPS-0 need not start now: "ilk önce elimizdekileri bitir").** **OPS-0 waits until the tasks in flight are finished** (its Grok run was stopped at 11:31 before writing anything). The orchestrator's estimate: about **8–10 working days** of sessions at today's pace, so ~2 weeks of calendar time is realistic; the critical path is AUTH + OPS, not Phase F. Order set by the orchestrator: <br>• **Week 1 (10-16 → 10-22):** close Phase 6 (UI-6.4, 6.6, 6.7, 6.5) and merge to `main`; Phase F core (F-1, F-2, F-3, F-5) merged, F-6/F-7 started; **AUTH-1** (login backend) and **OPS-0** (operability design) now, because production is blocked without them. <br>• **Week 2 (10-23 → 10-30):** F-6, F-7, F-8 and the Phase F lab validation; **AUTH-2** (login and user-admin UI); **OPS-1…** (release images on GHCR, `./qradar-dash install/upgrade/rollback/backup/doctor/support-bundle`, the Turkish runbook); the npm advisories; a fresh-VM install rehearsal; the final gate, `main`, a `v1.0.0` tag. <br>• **OPS-0 is no longer deferred** (it was D-16's "later"). | Everything |
 | D-19 | **Production login (user, 2026-10-16 ~11:25).** Local accounts **and** AD password over LDAP (bind as the user). **No group or role is read from AD**: roles are assigned in the app by users holding the admin role; a first-time LDAP user gets **no role** (fail closed) until an admin assigns one. The operator of production is the user (efe); the runbook is **Turkish** (commands and outputs in English). OIDC stays out of scope. → **AUTH-1** (backend), **AUTH-2** (UI), OPS-0. | AUTH-1, AUTH-2, OPS-0 |
+| D-20 | **OPS-0 open questions (user, 2026-10-16 ~17:40), all defaults.** The first GHCR release is **0.1.0** (1.0.0 later, after the fresh-VM test and the first production install). TLS terminates on the **bundled proxy**, with `--external-proxy` for an existing load balancer. **Off-host backup copies (OPS-14) wait until after 2026-10-30.** The OPS-1…10 safety cut of `docs/OPERATIONS-DESIGN.md` §10 is the plan. | OPS-1… |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---

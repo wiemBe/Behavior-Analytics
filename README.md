@@ -229,6 +229,40 @@ sets. This is enforced by the read-only architecture, not merely by prompt.
 - (For a real deployment) a QRadar **read-only authorized service token** and, if QRadar uses an
   internal CA, the CA bundle.
 
+### Production install (one command)
+
+On a Linux x86_64 host with Docker Engine, the Compose v2 plugin (2.24 or newer), `git`, `openssl`
+and `curl`, a TLS certificate and key for the public name, a QRadar SEC token file and the QRadar
+CA bundle:
+
+```bash
+git clone --recurse-submodules https://github.com/wiemBe/QRadar-Dashboard.git
+cd QRadar-Dashboard
+./qradar-dash install                      # the wizard asks the questions
+./qradar-dash install --non-interactive .secrets/install.answers   # the same, from a file
+```
+
+The wizard checks the host, generates `SECRET_KEY`, `ENCRYPTION_KEY` and the database password
+into `.env` (mode 0600), loads the QRadar and TLS files into Docker volumes (no bind mount of the
+checkout, SELinux stays enforcing), migrates, creates one break-glass admin and **prints its
+password once**, registers the QRadar console, starts the stack behind the bundled TLS proxy and
+prints a summary. Running it again keeps every generated key and does not touch the admin.
+LDAP is configured in the UI afterwards. Options: `--build` (build the images from this checkout
+instead of pulling them), `--offline BUNDLE`, `--external-proxy` (you run the TLS proxy),
+`--reconfigure`, `--dry-run` (checks only), `--skip-qradar-check`. Then `./qradar-dash status` and
+`./qradar-dash logs`. The design is [docs/OPERATIONS-DESIGN.md](docs/OPERATIONS-DESIGN.md) section 3.
+
+### Cutting a release
+
+A release is a tag. Set `VERSION`, `backend/pyproject.toml` and `frontend/package.json` to the same
+number, add `docs/releases/<version>.md` (front matter `version:` and `min_from:`), merge, then push
+the tag `v<version>`. `.github/workflows/release.yml` checks the tag against `VERSION` and the
+`qradar-mcp` pin, runs the CI gates, builds the bundle check and then pushes the backend, frontend,
+postgres, qradar-mcp and proxy images to GHCR as `<version>` and `sha-<12 hex>`, and writes the
+GitHub Release. The backend image reads `VERSION` and `docs/releases/` from the repository root
+through a named build context, so a hand build needs it too:
+`docker buildx build --build-context repo=. --build-arg APP_VERSION=<version> backend`.
+
 ### Cloning (the qradar-mcp submodule)
 
 `qradar-mcp/` is a **git submodule** pinned to commit `b8f6a4a3fe901eac4f55e4ca5d146d952f55db51`
@@ -329,8 +363,8 @@ QRADAR_VERIFY_SSL=true
 QRADAR_CA_BUNDLE=/run/secrets/qradar_ca.pem
 ```
 
-> **If TLS fails only from Python.** Python 3.13+ enables `VERIFY_X509_STRICT`
-> by default. QRadar's self-generated console certificate carries a Subject Key
+> **If TLS fails only from Python.** The app sets `VERIFY_X509_STRICT` itself on
+> every interpreter (3.12, 3.13 and later alike). QRadar's self-generated console certificate carries a Subject Key
 > Identifier but no Authority Key Identifier, which RFC 5280 §4.2.1.1 requires,
 > so strict mode rejects a chain the `openssl` CLI accepts. The symptom is
 > `SSLCertVerificationError: Missing Authority Key Identifier` while the
@@ -712,10 +746,32 @@ Backend, without Docker:
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev]'
+pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+pip install --no-deps -e .
 export ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 export QRADAR_PROVIDER=mock
 uvicorn app.main:app --reload
+```
+
+**Dependency locks and updates:** `backend/requirements.txt` (production) and
+`backend/requirements-dev.txt` (the `dev` extra, constrained by the production lock) are hashed
+pip-tools locks resolved for Python 3.12, the interpreter in the image and in CI. The image and CI
+install them with `--require-hashes`, so a release installs exactly what was tested. A dependency
+change is its own commit, with no bot: edit `backend/pyproject.toml`, regenerate both locks, run the
+gates (`ruff check app tests`, `mypy app`, `pytest -q -m "not integration"`), then commit. Regenerate both together
+from a dedicated, secret-free scratch directory (it gets the private `:Z` label, so never mount the
+repository or `backend/` itself):
+
+```bash
+S=$(mktemp -d)   # an empty directory with no secrets in it
+cp backend/pyproject.toml "$S"/
+printf 'ruff<0.16\nmypy<2.4\n' > "$S"/constraints.txt   # dev-lock pins, see the lock header
+docker run --rm -v "$S:/w:Z" -w /w python:3.12-slim sh -c \
+  'pip install pip-tools && \
+   pip-compile --no-strip-extras --generate-hashes --output-file=requirements.txt pyproject.toml && \
+   pip-compile --no-strip-extras --constraint=requirements.txt --constraint=constraints.txt \
+     --extra=dev --generate-hashes --output-file=requirements-dev.txt pyproject.toml'
+cp "$S"/requirements.txt "$S"/requirements-dev.txt backend/
 ```
 
 Frontend:

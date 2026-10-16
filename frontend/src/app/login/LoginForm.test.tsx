@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LoginForm } from "./LoginForm";
 import Loading from "./loading";
@@ -49,7 +49,26 @@ beforeEach(() => {
   client.login.mockReset();
 });
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("LoginForm", () => {
+  it("shows the API version, or says it could not be read", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ version: "3.2.1", git_sha: null, migration_head: null }),
+      })),
+    );
+    const { unmount } = renderForm();
+    expect(await screen.findByText("API version 3.2.1")).toBeInTheDocument();
+    unmount();
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("down"))));
+    renderForm();
+    expect(await screen.findByText("API version could not be read")).toBeInTheDocument();
+  });
+
   it("is idle with one heading and one submit", () => {
     renderForm();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);

@@ -232,12 +232,13 @@ class CustomRuleEngine:
         for rule, breach, endpoint, entity, source in rows:
             # A dangling pointer is not a breach. The tick clears it and does
             # not invent a resolution.
+            breach_row: CustomRuleBreach | None = breach
             if rule.active_breach_id is None:
-                breach = None
+                breach_row = None
             loaded.append(
                 _Loaded(
                     rule=rule,
-                    breach_row=breach,
+                    breach_row=breach_row,
                     endpoint=endpoint,
                     entity=entity,
                     source=source,

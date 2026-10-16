@@ -1,0 +1,107 @@
+# Production overlay. Used by ./qradar-dash, always on top of docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml ...
+#
+# It adds the release image names (build: stays, so `--build` works), the
+# bundled TLS proxy, and the pinned edge network. Every ${...} below is written
+# into .env by the installer; the defaults only matter for a hand-run compose.
+# Requires Docker Compose 2.24 or newer (!override).
+
+# Build args for `./qradar-dash ... --build`. The release workflow passes the same two.
+x-backend-build-args: &backend-build-args
+  build:
+    args:
+      APP_VERSION: ${QRADAR_DASH_VERSION:-}
+      GIT_SHA: ${GIT_SHA:-}
+
+services:
+  postgres:
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/postgres:${QRADAR_DASH_VERSION:-0.1.0}
+
+  backend:
+    <<: *backend-build-args
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/backend:${QRADAR_DASH_VERSION:-0.1.0}
+    ports: !override
+      - "127.0.0.1:${API_LOOPBACK_PORT:-8000}:8000"
+
+  migrate:
+    <<: *backend-build-args
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/backend:${QRADAR_DASH_VERSION:-0.1.0}
+
+  celery-worker:
+    <<: *backend-build-args
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/backend:${QRADAR_DASH_VERSION:-0.1.0}
+
+  celery-beat:
+    <<: *backend-build-args
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/backend:${QRADAR_DASH_VERSION:-0.1.0}
+
+  frontend:
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/frontend:${QRADAR_DASH_VERSION:-0.1.0}
+    build:
+      context: ./frontend
+      args:
+        # Pinned: a production bundle uses the relative API base whatever .env says.
+        NEXT_PUBLIC_API_BASE_URL: /api/v1
+        APP_VERSION: ${QRADAR_DASH_VERSION:-}
+        GIT_SHA: ${GIT_SHA:-}
+    ports: !override
+      - "127.0.0.1:${UI_LOOPBACK_PORT:-3000}:3000"
+
+  qradar-mcp:
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/qradar-mcp:${QRADAR_DASH_VERSION:-0.1.0}
+
+  # Pinned by the multi-arch index digest, so a moved tag cannot change what runs.
+  # The release workflow checks that this digest still resolves.
+  redis:
+    image: redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+
+  # The bundled TLS proxy. Only in the `proxy` profile, which the installer
+  # puts in COMPOSE_PROFILES unless --external-proxy was chosen.
+  proxy:
+    profiles: [proxy]
+    build:
+      context: ./deploy/proxy
+      dockerfile: Dockerfile
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/proxy:${QRADAR_DASH_VERSION:-0.1.0}
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - proxy_certs:/etc/nginx/certs:ro
+    depends_on:
+      backend: {condition: service_healthy}
+      frontend: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      edge:
+        # Uvicorn trusts forwarded headers from this address and no other
+        # (FORWARDED_ALLOW_IPS), so every analyst gets their own rate-limit key.
+        ipv4_address: ${PROXY_EDGE_IP:-172.28.10.10}
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    restart: unless-stopped
+
+volumes:
+  qradar_secrets:
+    external: true
+    name: ${SECRETS_VOLUME:-qradar-observability-secrets}
+  # TLS certificate and key for the bundled proxy. Separate from the QRadar
+  # secrets volume, which the backend mounts. Populated by
+  # ./deploy/load-secrets.sh proxy.
+  proxy_certs:
+    external: true
+    name: ${PROXY_CERTS_VOLUME:-qradar-observability-proxy-certs}
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-172.28.10.0/24}

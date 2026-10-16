@@ -1,0 +1,1260 @@
+#!/usr/bin/env bash
+# qradar-dash -- install and operate the on-premises QRadar behavioural-analytics stack.
+#
+#   ./qradar-dash install [--non-interactive FILE] [--build | --offline BUNDLE]
+#                         [--external-proxy] [--reconfigure] [--dry-run]
+#                         [--skip-qradar-check]
+#   ./qradar-dash status
+#   ./qradar-dash logs [docker compose logs arguments]
+#
+# Specified in docs/OPERATIONS-DESIGN.md section 3. The script needs bash and
+# Docker with Compose v2 on the host, plus openssl and curl. It never calls
+# Python on the host, never changes the SELinux mode, never passes :z or :Z, and
+# never bind-mounts the checkout: secrets travel through deploy/load-secrets.sh.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+cd "$ROOT"
+
+START_SECONDS=$SECONDS
+ENV_FILE=.env
+SAVED_ANSWERS=.secrets/install.answers
+TMP_DIR=.install-tmp
+
+say() { printf '%s\n' "$*"; }
+info() { printf '[ ok ] %s\n' "$*"; }
+warn() { printf '[warn] %s\n' "$*" >&2; }
+fail() { printf '[FAIL] %s\n' "$*" >&2; }
+die() { fail "$*"; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage: ./qradar-dash <command> [options]
+
+Commands
+  install       Preflight, wizard, secrets, migrate, break-glass admin, start.
+  status        Show the stack and the API health.
+  logs          Show service logs (arguments go to `docker compose logs`).
+  doctor        Run read-only host and in-container diagnostics.
+  support-bundle
+                Write a redacted diagnostic archive under the backup root.
+  upgrade, rollback, backup, restore, bundle
+                Not built yet.
+
+install options
+  --non-interactive FILE   Read the answers from FILE (mode 0600, no secrets).
+  --build                  Build the images from this checkout instead of pulling.
+  --offline BUNDLE         Load the images from an offline bundle tar.
+  --external-proxy         Skip the bundled TLS proxy; you run your own.
+  --reconfigure            Ask the questions again even when answers are saved.
+  --dry-run                Run every check, write nothing, change nothing.
+  --skip-qradar-check      Skip the TLS handshake test against the QRadar console.
+EOF
+}
+
+# ---------------------------------------------------------------- answers
+
+# Keys an answers file may hold. None is a secret: files are named, never read here.
+ANSWER_KEYS="PUBLIC_HOSTNAME TLS_CERT_FILE TLS_KEY_FILE EXTERNAL_PROXY FORWARDED_ALLOW_IPS
+QRADAR_URL QRADAR_CONSOLE_FQDN QRADAR_API_VERSION QRADAR_TOKEN_FILE QRADAR_CA_FILE
+QRADAR_ALLOW_MISSING_AKI INSTANCE_NAME BACKUP_DIR GHCR_USER GHCR_TOKEN_FILE ADMIN_USERNAME
+HTTPS_PORT API_LOOPBACK_PORT UI_LOOPBACK_PORT IMAGE_PREFIX SECRETS_VOLUME PROXY_CERTS_VOLUME
+EDGE_SUBNET PROXY_EDGE_IP PROJECT_NAME"
+
+declare -A ANS=()
+ERRORS=()
+
+is_answer_key() {
+  local k
+  for k in $ANSWER_KEYS; do [ "$k" = "$1" ] && return 0; done
+  return 1
+}
+
+# check_value KEY VALUE -> prints the reason and returns 1 when VALUE is refused.
+# Pure: it reads files to check they are there but writes nothing.
+check_value() {
+  local key=$1 val=$2
+  case "$key" in
+    PUBLIC_HOSTNAME)
+      [[ $val =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
+        || { say "must be a bare host name (no scheme, port or path)"; return 1; } ;;
+    TLS_CERT_FILE)
+      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
+      grep -q 'BEGIN CERTIFICATE' "$val" || { say "not a PEM certificate: $val"; return 1; } ;;
+    TLS_KEY_FILE)
+      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
+      grep -q 'PRIVATE KEY' "$val" || { say "not a PEM private key: $val"; return 1; } ;;
+    EXTERNAL_PROXY | QRADAR_ALLOW_MISSING_AKI)
+      [[ $val =~ ^(yes|no)$ ]] || { say "must be yes or no"; return 1; } ;;
+    FORWARDED_ALLOW_IPS)
+      [ "$val" != "*" ] || { say "must list the proxy address, not *"; return 1; }
+      [[ $val =~ ^[0-9A-Fa-f.:,/\ ]+$ ]] || { say "must be a comma list of addresses"; return 1; } ;;
+    QRADAR_URL)
+      [[ $val =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$ ]] \
+        || { say "must be an https:// URL with a host and no path (plain http is refused)"; return 1; } ;;
+    QRADAR_CONSOLE_FQDN)
+      [[ $val =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
+        || { say "must be a bare host name"; return 1; } ;;
+    QRADAR_API_VERSION)
+      [[ $val =~ ^[0-9]{1,3}\.[0-9]{1,3}$ ]] || { say "must look like 20.0"; return 1; } ;;
+    QRADAR_TOKEN_FILE)
+      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
+      [ -s "$val" ] || { say "file is empty: $val"; return 1; } ;;
+    QRADAR_CA_FILE)
+      [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
+      grep -q 'BEGIN CERTIFICATE' "$val" || { say "no PEM certificate in: $val"; return 1; } ;;
+    INSTANCE_NAME)
+      [[ $val =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] \
+        || { say "1 to 64 characters: letters, digits, . _ -"; return 1; } ;;
+    BACKUP_DIR)
+      [[ $val == /* ]] || { say "must be an absolute path"; return 1; }
+      case "$val/" in
+        "$ROOT"/*) say "must not be inside the checkout ($ROOT)"; return 1 ;;
+      esac ;;
+    GHCR_USER)
+      [[ $val =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || { say "not a registry user name"; return 1; } ;;
+    GHCR_TOKEN_FILE)
+      [ -r "$val" ] && [ -f "$val" ] && [ -s "$val" ] \
+        || { say "file not readable or empty: $val"; return 1; } ;;
+    ADMIN_USERNAME)
+      [[ $val =~ ^[^[:space:][:cntrl:]]{1,255}$ ]] \
+        || { say "1 to 255 characters, no spaces or control characters"; return 1; } ;;
+    HTTPS_PORT | API_LOOPBACK_PORT | UI_LOOPBACK_PORT)
+      [[ $val =~ ^[0-9]{1,5}$ ]] && [ "$val" -ge 1 ] && [ "$val" -le 65535 ] \
+        || { say "not a port number (1-65535)"; return 1; } ;;
+    IMAGE_PREFIX)
+      [[ $val =~ ^[a-z0-9][a-z0-9._/:-]*$ ]] || { say "not an image name prefix"; return 1; } ;;
+    SECRETS_VOLUME | PROXY_CERTS_VOLUME | PROJECT_NAME)
+      [[ $val =~ ^[a-z0-9][a-z0-9_-]{0,62}$ ]] \
+        || { say "lower-case letters, digits, _ and - only"; return 1; } ;;
+    EDGE_SUBNET)
+      [[ $val =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$ ]] || { say "not an IPv4 CIDR"; return 1; } ;;
+    PROXY_EDGE_IP)
+      [[ $val =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || { say "not an IPv4 address"; return 1; } ;;
+  esac
+  return 0
+}
+
+# parse_answers FILE -> fills ANS. Never sources the file.
+parse_answers() {
+  local file=$1 mode line key val n=0
+  [ -f "$file" ] || { fail "answers file not found: $file"; exit 2; }
+  mode=$(stat -c '%a' "$file")
+  if [ "$mode" != "600" ] && [ "$mode" != "400" ]; then
+    fail "answers file $file has mode $mode; it must be 0600 (chmod 600 $file)"
+    exit 2
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    n=$((n + 1))
+    line=${line%$'\r'}
+    [[ $line =~ ^[[:space:]]*(#.*)?$ ]] && continue
+    if [[ ! $line =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]]; then
+      ERRORS+=("$file:$n: not KEY=value")
+      continue
+    fi
+    key=${BASH_REMATCH[1]}
+    val=${BASH_REMATCH[2]}
+    val=${val#"${val%%[![:space:]]*}"}
+    val=${val%"${val##*[![:space:]]}"}
+    if [[ $val =~ ^\"(.*)\"$ ]] || [[ $val =~ ^\'(.*)\'$ ]]; then val=${BASH_REMATCH[1]}; fi
+    if ! is_answer_key "$key"; then
+      if [[ $key =~ (TOKEN|PASSWORD|SECRET|ENCRYPTION|PRIVATE) ]] && [[ ! $key =~ _FILE$ ]]; then
+        ERRORS+=("$file:$n: $key looks like a secret; an answers file holds paths, never secrets")
+      else
+        ERRORS+=("$file:$n: unknown key $key")
+      fi
+      continue
+    fi
+    ANS[$key]=$val
+  done <"$file"
+}
+
+# Defaults for the keys a file may leave out. Order matters: derived values last.
+apply_defaults() {
+  : "${ANS[EXTERNAL_PROXY]:=no}"
+  : "${ANS[QRADAR_API_VERSION]:=20.0}"
+  : "${ANS[QRADAR_ALLOW_MISSING_AKI]:=no}"
+  : "${ANS[INSTANCE_NAME]:=qradar}"
+  : "${ANS[BACKUP_DIR]:=${HOME:-/root}/qradar-dash-backups}"
+  : "${ANS[ADMIN_USERNAME]:=admin}"
+  : "${ANS[HTTPS_PORT]:=443}"
+  : "${ANS[API_LOOPBACK_PORT]:=8000}"
+  : "${ANS[UI_LOOPBACK_PORT]:=3000}"
+  : "${ANS[IMAGE_PREFIX]:=ghcr.io/wiembe/qradar-dashboard}"
+  : "${ANS[SECRETS_VOLUME]:=qradar-observability-secrets}"
+  : "${ANS[PROXY_CERTS_VOLUME]:=qradar-observability-proxy-certs}"
+  : "${ANS[EDGE_SUBNET]:=172.28.10.0/24}"
+  : "${ANS[PROXY_EDGE_IP]:=172.28.10.10}"
+  : "${ANS[PROJECT_NAME]:=qradar-observability}"
+  if [ -z "${ANS[QRADAR_CONSOLE_FQDN]:-}" ] && [ -n "${ANS[QRADAR_URL]:-}" ]; then
+    local h=${ANS[QRADAR_URL]#https://}
+    h=${h%%/*}
+    ANS[QRADAR_CONSOLE_FQDN]=${h%%:*}
+  fi
+}
+
+# validate_answers MODE -> appends to ERRORS; MODE is pull, build or offline.
+validate_answers() {
+  local mode=$1 key msg required
+  required="PUBLIC_HOSTNAME QRADAR_URL QRADAR_TOKEN_FILE QRADAR_CA_FILE"
+  if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then required="$required TLS_CERT_FILE TLS_KEY_FILE"; fi
+  for key in $required; do
+    if [ -z "${ANS[$key]:-}" ]; then ERRORS+=("$key: required"); fi
+  done
+  for key in $ANSWER_KEYS; do
+    [ -n "${ANS[$key]:-}" ] || continue
+    if [ "${ANS[EXTERNAL_PROXY]}" = "yes" ] && [[ $key == TLS_*_FILE ]]; then continue; fi
+    if msg=$(check_value "$key" "${ANS[$key]}"); then :; else ERRORS+=("$key: $msg"); fi
+  done
+  if [ -n "${ANS[GHCR_TOKEN_FILE]:-}" ] && [ -z "${ANS[GHCR_USER]:-}" ]; then
+    ERRORS+=("GHCR_USER: required with GHCR_TOKEN_FILE")
+  fi
+  if [ "$mode" = "pull" ] && [ -n "${ANS[GHCR_USER]:-}" ] && [ -z "${ANS[GHCR_TOKEN_FILE]:-}" ] \
+    && [ ! -s .secrets/ghcr.token ]; then
+    ERRORS+=("GHCR_TOKEN_FILE: required with GHCR_USER")
+  fi
+  # Ports must be distinct, or compose publishes two services on one port.
+  local seen=" "
+  for key in API_LOOPBACK_PORT UI_LOOPBACK_PORT; do
+    if [[ $seen == *" ${ANS[$key]} "* ]]; then ERRORS+=("$key: port ${ANS[$key]} is used twice"); fi
+    seen="$seen${ANS[$key]} "
+  done
+  if [ "${ANS[EXTERNAL_PROXY]}" = "no" ] && [[ $seen == *" ${ANS[HTTPS_PORT]} "* ]]; then
+    ERRORS+=("HTTPS_PORT: port ${ANS[HTTPS_PORT]} is used twice")
+  fi
+}
+
+report_errors_and_exit() {
+  local e
+  [ "${#ERRORS[@]}" -gt 0 ] || return 0
+  fail "the answers are refused; nothing was written:"
+  for e in "${ERRORS[@]}"; do printf '       %s\n' "$e" >&2; done
+  exit 2
+}
+
+# ---------------------------------------------------------------- wizard
+
+ask() { # ask KEY "question" [hint]
+  local key=$1 question=$2 hint=${3:-} def=${ANS[$1]:-} reply msg
+  while true; do
+    if [ -n "$hint" ]; then say "    $hint"; fi
+    if [ -n "$def" ]; then printf '%s [%s]: ' "$question" "$def"; else printf '%s: ' "$question"; fi
+    IFS= read -r reply || die "input ended before the wizard finished"
+    reply=${reply:-$def}
+    if [ -z "$reply" ]; then
+      case "$key" in
+        GHCR_USER | GHCR_TOKEN_FILE | FORWARDED_ALLOW_IPS) ANS[$key]=""; return 0 ;;
+      esac
+      say "    an answer is required"
+      continue
+    fi
+    reply=${reply/#\~/$HOME}
+    if msg=$(check_value "$key" "$reply"); then ANS[$key]=$reply; return 0; fi
+    say "    $msg"
+  done
+}
+
+wizard() {
+  local mode=$1
+  say ""
+  say "QRadar Dash installer. LDAP is not asked here: set it up in the UI afterwards."
+  say ""
+  ask PUBLIC_HOSTNAME "1. Public host name analysts will type" \
+    "Becomes PUBLIC_ORIGIN=https://<name>. Production refuses any other shape."
+  if [ "$FLAG_EXTERNAL_PROXY" = "yes" ]; then
+    ANS[EXTERNAL_PROXY]=yes
+  else
+    ask EXTERNAL_PROXY "3. Use your own TLS proxy instead of the bundled one? (yes/no)" \
+      "Default no: the bundled nginx terminates TLS on 443."
+  fi
+  if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then
+    ask TLS_CERT_FILE "2. TLS certificate file (PEM) for that name"
+    ask TLS_KEY_FILE "   TLS private key file (PEM)"
+  else
+    say "2. External proxy chosen: no certificate is needed here. Run your own TLS proxy to"
+    say "   127.0.0.1:${ANS[API_LOOPBACK_PORT]:-8000} (/api/) and 127.0.0.1:${ANS[UI_LOOPBACK_PORT]:-3000}"
+    say "   (everything else), and set FORWARDED_ALLOW_IPS in .env to the peer address uvicorn sees"
+    say "   (README, 'Proxy headers and the rate limiter')."
+  fi
+  ask QRADAR_URL "4. QRadar base URL (https://...)"
+  ask QRADAR_CONSOLE_FQDN "5. QRadar console FQDN (bare host name)" \
+    "Used by the MCP profile only; asked now so a later enable has the value."
+  ask QRADAR_API_VERSION "6. QRadar API version" \
+    "Default 20.0. The lab console in the README uses 29.0. Not guessed."
+  ask QRADAR_TOKEN_FILE "7. Path to the file holding the SEC token" \
+    "It is copied to .secrets/qradar.sec (0600). The token is never typed or put in .env."
+  ask QRADAR_CA_FILE "8. Path to the QRadar CA bundle (root + intermediate)"
+  ask QRADAR_ALLOW_MISSING_AKI "9. Accept a QRadar certificate without an Authority Key Identifier? (yes/no)" \
+    "Only if the TLS check fails with 'Missing Authority Key Identifier' (runbook symptom 3)."
+  ask INSTANCE_NAME "10. Instance name"
+  ask BACKUP_DIR "11. Backup directory (absolute, outside this checkout)"
+  if [ "$mode" = "pull" ]; then
+    ask GHCR_USER "12. Registry user name (empty if the images are public)"
+    if [ -n "${ANS[GHCR_USER]:-}" ]; then ask GHCR_TOKEN_FILE "    Path to the read:packages token file"; fi
+  fi
+  ask ADMIN_USERNAME "13. Break-glass admin user name" "The password is generated and shown once."
+}
+
+# ---------------------------------------------------------------- preflight
+
+CPU_MIN=4
+MEM_MIN_KB=7864320 # 7.5 GiB: a nominal 8 GiB host reports slightly less
+DISK_MIN_KB=$((80 * 1024 * 1024))
+BACKUP_MIN_KB=$((20 * 1024 * 1024))
+COMPOSE_MIN="2.24"
+
+version_ge() { [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]; }
+
+free_kb() { # free space of the nearest existing parent of $1
+  local p=$1
+  while [ ! -e "$p" ] && [ "$p" != "/" ]; do p=$(dirname "$p"); done
+  df -Pk "$p" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+port_free() { ! ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
+
+preflight_host() {
+  local bad=0 arch cv mem cpus root free
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed (docker not on PATH). Nothing was written."
+  docker version >/dev/null 2>&1 || die "Docker is installed but 'docker version' failed (daemon down or no permission). Nothing was written."
+  cv=$(docker compose version --short 2>/dev/null) || die "Docker Compose v2 is required ('docker compose version' failed). The script does not call docker-compose."
+  cv=${cv#v}
+  version_ge "$cv" "$COMPOSE_MIN" || die "Docker Compose $cv is too old; $COMPOSE_MIN or newer is required."
+  info "docker $(docker version --format '{{.Server.Version}}' 2>/dev/null), compose $cv"
+  for tool in openssl curl ss tar sha256sum; do
+    command -v "$tool" >/dev/null 2>&1 || { fail "'$tool' is required on the host"; bad=1; }
+  done
+  arch=$(uname -m)
+  if [ "$arch" = "x86_64" ]; then info "architecture $arch"; else fail "architecture $arch; the images are x86_64 only"; bad=1; fi
+  cpus=$(nproc)
+  if [ "$cpus" -ge "$CPU_MIN" ]; then info "$cpus CPUs"; else fail "$cpus CPUs; at least $CPU_MIN are required"; bad=1; fi
+  mem=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+  if [ "$mem" -ge "$MEM_MIN_KB" ]; then info "RAM $((mem / 1024 / 1024)) GiB"; else fail "RAM $((mem / 1024 / 1024)) GiB; at least 8 GiB is required"; bad=1; fi
+  root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)
+  free=""
+  if [ -n "$root" ]; then free=$(free_kb "$root" || true); fi
+  if [ -z "$free" ] || [ ! -d "$root" ]; then
+    warn "cannot read the free space of the Docker root (${root:-unknown}); check 80 GiB by hand"
+  elif [ "$free" -ge "$DISK_MIN_KB" ]; then
+    info "$((free / 1024 / 1024)) GiB free on the Docker root ($root)"
+  else
+    fail "$((free / 1024 / 1024)) GiB free on the Docker root ($root); at least 80 GiB is required"; bad=1
+  fi
+  if command -v getenforce >/dev/null 2>&1; then
+    info "SELinux: $(getenforce) (left as it is; secrets go through deploy/load-secrets.sh)"
+  else
+    info "SELinux: not present"
+  fi
+  if command -v timedatectl >/dev/null 2>&1; then
+    if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null || echo no)" = "yes" ]; then
+      info "clock is NTP-synchronised ($(date -u '+%Y-%m-%d %H:%M UTC'), zone $(date '+%Z'))"
+    else
+      warn "the clock is not NTP-synchronised; collection watermarks and sessions use UTC"
+    fi
+  else
+    warn "timedatectl not found; check the clock by hand"
+  fi
+  if [ -f docker-compose.override.yml ]; then
+    info "docker-compose.override.yml exists and will be used as-is (a lab overlay)"
+  fi
+  [ "$bad" -eq 0 ] || { fail "preflight failed; nothing was written."; exit 1; }
+}
+
+stack_running() {
+  [ -f "$ENV_FILE" ] || return 1
+  [ -n "$(dc ps --status running -q 2>/dev/null || true)" ]
+}
+
+preflight_network() {
+  local bad=0 p backup_free url host port out
+  if stack_running; then
+    info "this stack is already running; its published ports are not re-checked"
+  else
+    local ports="${ANS[API_LOOPBACK_PORT]} ${ANS[UI_LOOPBACK_PORT]}"
+    if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then ports="${ANS[HTTPS_PORT]} $ports"; fi
+    for p in $ports; do
+      if port_free "$p"; then info "port $p is free"; else fail "port $p is already in use"; bad=1; fi
+    done
+  fi
+  backup_free=$(free_kb "${ANS[BACKUP_DIR]}" || true)
+  if [ -z "$backup_free" ]; then
+    warn "cannot read the free space of ${ANS[BACKUP_DIR]}"
+  elif [ "$backup_free" -lt "$BACKUP_MIN_KB" ]; then
+    fail "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}; at least 20 GiB is required"; bad=1
+  else
+    info "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}"
+  fi
+  if [ -e "${ANS[BACKUP_DIR]}" ] && [ ! -d "${ANS[BACKUP_DIR]}" ]; then
+    fail "${ANS[BACKUP_DIR]} exists and is not a directory"; bad=1
+  fi
+  local root_dev backup_dev
+  root_dev=$(stat -c %d "$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)" 2>/dev/null || true)
+  backup_dev=$(stat -c %d "$(dirname "${ANS[BACKUP_DIR]}")" 2>/dev/null || true)
+  if [ -n "$root_dev" ] && [ "$root_dev" = "$backup_dev" ]; then
+    warn "the backup directory and the Docker data root share a device; a dead disk loses both"
+  fi
+  if [ "$FLAG_SKIP_QRADAR" = "yes" ]; then
+    warn "QRadar TLS check skipped (--skip-qradar-check)"
+  elif ! command -v openssl >/dev/null 2>&1; then
+    warn "openssl missing; QRadar TLS check skipped"
+  else
+    url=${ANS[QRADAR_URL]#https://}
+    url=${url%%/*}
+    host=${url%%:*}
+    port=443
+    if [[ $url == *:* ]]; then port=${url##*:}; fi
+    # A handshake only: no token and no AQL are sent.
+    out=$(timeout 15 openssl s_client -connect "$host:$port" -servername "$host" \
+      -CAfile "${ANS[QRADAR_CA_FILE]}" -verify_return_error </dev/null 2>&1 || true)
+    if grep -q 'Verify return code: 0' <<<"$out"; then
+      info "QRadar $host:$port presents a certificate the CA bundle verifies"
+    elif grep -q 'Authority Key Identifier' <<<"$out"; then
+      warn "QRadar $host:$port certificate has no Authority Key Identifier; see runbook symptom 3 (QRADAR_ALLOW_MISSING_AKI)"
+    elif grep -q 'verify error' <<<"$out"; then
+      fail "QRadar $host:$port certificate does not verify against ${ANS[QRADAR_CA_FILE]}: $(grep -m1 'verify error' <<<"$out")"
+      bad=1
+    else
+      warn "QRadar $host:$port is not reachable from this host; the install continues and records the check as FAIL"
+    fi
+  fi
+  [ "$bad" -eq 0 ] || { fail "preflight failed; nothing was written."; exit 1; }
+}
+
+# ---------------------------------------------------------------- compose helpers
+
+PROJECT=qradar-observability
+dc() { docker compose -p "$PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"; }
+
+env_get() { # env_get KEY -> value from .env, or empty
+  [ -f "$ENV_FILE" ] || return 0
+  sed -n "s/^$1=//p" "$ENV_FILE" | head -n1
+}
+
+load_project_from_env() {
+  local p=${QRADAR_DASH_PROJECT:-}
+  [ -n "$p" ] || p=$(env_get COMPOSE_PROJECT_NAME)
+  [ -z "$p" ] || PROJECT=$p
+}
+
+# ---------------------------------------------------------------- install steps
+
+write_secrets_dir() {
+  umask 077
+  mkdir -p .secrets
+  chmod 700 .secrets
+  copy_secret "${ANS[QRADAR_TOKEN_FILE]}" .secrets/qradar.sec
+  copy_secret "${ANS[QRADAR_CA_FILE]}" .secrets/qradar-ca.pem
+  if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then
+    copy_secret "${ANS[TLS_CERT_FILE]}" .secrets/tls.crt
+    copy_secret "${ANS[TLS_KEY_FILE]}" .secrets/tls.key
+  fi
+  if [ -n "${ANS[GHCR_TOKEN_FILE]:-}" ]; then copy_secret "${ANS[GHCR_TOKEN_FILE]}" .secrets/ghcr.token; fi
+}
+
+copy_secret() { # copy_secret SRC DST, mode 0600, skipped when they are the same file
+  if [ -e "$2" ] && [ "$1" -ef "$2" ]; then chmod 600 "$2"; return 0; fi
+  install -m 600 "$1" "$2"
+}
+
+save_answers() {
+  local key f=$SAVED_ANSWERS.tmp
+  umask 077
+  {
+    say "# Written by ./qradar-dash install. Paths and names only; no secret is stored here."
+    for key in $ANSWER_KEYS; do
+      [ -n "${ANS[$key]:-}" ] && printf '%s=%s\n' "$key" "${ANS[$key]}"
+    done
+  } >"$f"
+  chmod 600 "$f"
+  mv "$f" "$SAVED_ANSWERS"
+}
+
+write_env() { # write_env ENCRYPTION_KEY
+  local enc=$1 secret_key pg_pass fwd origin profiles version
+  secret_key=$(env_get SECRET_KEY)
+  [ -n "$secret_key" ] || secret_key=$(openssl rand -base64 48 | tr -d '\n')
+  # hex, not base64: the password is spliced into a database URL unescaped, and a
+  # '/' or '+' from base64 would break it (backend/app/core/config.py database_url).
+  pg_pass=$(env_get POSTGRES_PASSWORD)
+  [ -n "$pg_pass" ] || pg_pass=$(openssl rand -hex 24)
+  fwd=${ANS[FORWARDED_ALLOW_IPS]:-}
+  if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then
+    fwd=${ANS[PROXY_EDGE_IP]}
+    profiles=proxy
+    origin="https://${ANS[PUBLIC_HOSTNAME]}"
+    if [ "${ANS[HTTPS_PORT]}" != "443" ]; then origin="$origin:${ANS[HTTPS_PORT]}"; fi
+  else
+    profiles=""
+    origin="https://${ANS[PUBLIC_HOSTNAME]}"
+    # Keep an earlier external-proxy value, never the bundled proxy address of a previous mode.
+    if [ -z "$fwd" ] && [ -z "$(env_get COMPOSE_PROFILES)" ]; then fwd=$(env_get FORWARDED_ALLOW_IPS); fi
+  fi
+  version=""
+  if [ -r VERSION ]; then version=$(tr -d '[:space:]' <VERSION); fi
+  : "${version:=0.1.0}"
+  umask 077
+  cat >"$ENV_FILE.tmp" <<EOF
+# Written by ./qradar-dash install. Mode 0600. Secret keys are kept on re-runs.
+ENVIRONMENT=production
+DEBUG=false
+LOG_LEVEL=INFO
+AUTH_PROVIDER=session
+PUBLIC_ORIGIN=$origin
+SECRET_KEY=$secret_key
+ENCRYPTION_KEY=$enc
+ENCRYPTION_KEY_VERSION=1
+ENCRYPTION_KEYS_JSON=
+POSTGRES_USER=qradar_obs
+POSTGRES_PASSWORD=$pg_pass
+POSTGRES_DB=qradar_obs
+POSTGRES_HOST=postgres
+QRADAR_PROVIDER=rest
+QRADAR_BASE_URL=${ANS[QRADAR_URL]%/}
+QRADAR_CONSOLE_FQDN=${ANS[QRADAR_CONSOLE_FQDN]}
+QRADAR_API_VERSION=${ANS[QRADAR_API_VERSION]}
+QRADAR_VERIFY_SSL=true
+QRADAR_API_TOKEN_FILE=/run/secrets/qradar_sec_token
+QRADAR_CA_BUNDLE=/run/secrets/qradar_ca.pem
+QRADAR_TLS_ALLOW_MISSING_AKI=$([ "${ANS[QRADAR_ALLOW_MISSING_AKI]}" = yes ] && echo true || echo false)
+NEXT_PUBLIC_API_BASE_URL=/api/v1
+INTERNAL_API_BASE_URL=http://backend:8000/api/v1
+RETENTION_ENABLED=true
+RETENTION_LOG_SOURCE_METRIC_DAYS=90
+RETENTION_RULE_METRIC_DAYS=90
+RETENTION_OFFENSE_SNAPSHOT_DAYS=90
+COMPRESSION_AFTER_DAYS=7
+FORWARDED_ALLOW_IPS=$fwd
+LLM_ENABLED=false
+LLM_ALLOW_AUTONOMOUS_ACTIONS=false
+MCP_ENABLED=false
+COMPOSE_PROJECT_NAME=${ANS[PROJECT_NAME]}
+# So a bare 'docker compose' in this directory uses the production overlay too (./qradar-dash passes -f itself).
+COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+COMPOSE_PROFILES=$profiles
+QRADAR_DASH_VERSION=$version
+QRADAR_DASH_IMAGE_PREFIX=${ANS[IMAGE_PREFIX]}
+QRADAR_DASH_BACKUP_DIR=${ANS[BACKUP_DIR]}
+SECRETS_VOLUME=${ANS[SECRETS_VOLUME]}
+PROXY_CERTS_VOLUME=${ANS[PROXY_CERTS_VOLUME]}
+HTTPS_PORT=${ANS[HTTPS_PORT]}
+API_LOOPBACK_PORT=${ANS[API_LOOPBACK_PORT]}
+UI_LOOPBACK_PORT=${ANS[UI_LOOPBACK_PORT]}
+EDGE_SUBNET=${ANS[EDGE_SUBNET]}
+PROXY_EDGE_IP=${ANS[PROXY_EDGE_IP]}
+EOF
+  chmod 600 "$ENV_FILE.tmp"
+  mv "$ENV_FILE.tmp" "$ENV_FILE"
+}
+
+get_images() { # get_images MODE OFFLINE_BUNDLE
+  local mode=$1 bundle=${2:-} svc="postgres redis backend frontend" dir
+  if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then svc="$svc proxy"; fi
+  case "$mode" in
+    build)
+      say "Building the images from this checkout (the first build takes several minutes)..."
+      # Stamp the build with the commit; unset (not an error) outside a git checkout. Never in .env.
+      if GIT_SHA=$(git rev-parse HEAD 2>/dev/null) && [ -n "$GIT_SHA" ]; then export GIT_SHA; else unset GIT_SHA; fi
+      # shellcheck disable=SC2086 # word splitting of the service list is intended
+      dc build ${svc/redis /} || die "docker compose build failed"
+      # redis is not built; the plain image is pulled when it is not present.
+      dc pull redis || warn "could not pull redis; compose will try again at start"
+      ;;
+    offline)
+      dir=$TMP_DIR/bundle
+      rm -rf "$TMP_DIR"
+      mkdir -p "$dir"
+      tar -xf "$bundle" -C "$dir" SHA256SUMS images.tar || die "cannot read the bundle $bundle"
+      (cd "$dir" && sha256sum -c --quiet SHA256SUMS) || die "the bundle checksums do not match; nothing was loaded"
+      docker load -i "$dir/images.tar" || die "docker load failed"
+      rm -rf "$TMP_DIR"
+      ;;
+    pull)
+      if [ -s .secrets/ghcr.token ] && [ -n "${ANS[GHCR_USER]:-}" ]; then
+        docker login ghcr.io --username "${ANS[GHCR_USER]}" --password-stdin <.secrets/ghcr.token \
+          || die "docker login ghcr.io failed"
+      fi
+      # shellcheck disable=SC2086
+      if ! dc pull $svc; then
+        die "docker compose pull failed. A private registry needs a read:packages token: set GHCR_USER and GHCR_TOKEN_FILE (it is stored as .secrets/ghcr.token)."
+      fi
+      ;;
+  esac
+}
+
+fernet_key() {
+  docker run --rm --entrypoint python "${ANS[IMAGE_PREFIX]}/backend:$(env_get QRADAR_DASH_VERSION)" \
+    -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' \
+    | tr -d '[:space:]'
+}
+
+wait_ready() { # wait_ready URL SECONDS
+  local url=$1 left=$2
+  while [ "$left" -gt 0 ]; do
+    if curl -fsS --max-time 5 -o /dev/null "$url" 2>/dev/null; then return 0; fi
+    sleep 3
+    left=$((left - 3))
+  done
+  return 1
+}
+
+admin_exists() { # prints yes or no; no user field is printed
+  local n
+  n=$(printf '%s\n' "SELECT count(*) FROM app_user u JOIN user_role_link l ON l.user_id = u.id JOIN role r ON r.id = l.role_id WHERE u.username = lower(:'u') AND r.name = 'admin';" \
+    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$(env_get POSTGRES_DB)" \
+      -v ON_ERROR_STOP=1 -v "u=${ANS[ADMIN_USERNAME]}" -Atq) || die "could not query for the break-glass admin"
+  if [ "$n" -gt 0 ] 2>/dev/null; then echo yes; else echo no; fi
+}
+
+cmd_install() {
+  local mode=pull bundle="" answers="" dry=no reconfigure=no
+  FLAG_EXTERNAL_PROXY=no
+  FLAG_SKIP_QRADAR=no
+  PREFLIGHT_HOST_DONE=no
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --non-interactive) [ $# -ge 2 ] || { fail "--non-interactive needs a file"; exit 2; }; answers=$2; shift ;;
+      --build) mode=build ;;
+      --offline) [ $# -ge 2 ] || { fail "--offline needs a bundle file"; exit 2; }; mode=offline; bundle=$2; shift ;;
+      --external-proxy) FLAG_EXTERNAL_PROXY=yes ;;
+      --reconfigure) reconfigure=yes ;;
+      --dry-run) dry=yes ;;
+      --skip-qradar-check) FLAG_SKIP_QRADAR=yes ;;
+      -h | --help) usage; exit 0 ;;
+      *) fail "unknown install option: $1"; usage >&2; exit 2 ;;
+    esac
+    shift
+  done
+  if [ "$mode" = "offline" ]; then
+    [ -r "$bundle" ] || { fail "bundle not readable: $bundle"; exit 2; }
+  fi
+
+  # 1. Answers. Pure: nothing is written until every check has passed.
+  if [ -n "$answers" ]; then
+    parse_answers "$answers"
+  elif [ -s "$SAVED_ANSWERS" ] && [ "$reconfigure" = "no" ] && [ -f "$ENV_FILE" ]; then
+    say "Re-run: reusing the saved answers in $SAVED_ANSWERS (use --reconfigure to be asked again)."
+    parse_answers "$SAVED_ANSWERS"
+  elif [ -t 0 ]; then
+    if [ -s "$SAVED_ANSWERS" ]; then parse_answers "$SAVED_ANSWERS"; fi
+  else
+    fail "no terminal and no --non-interactive FILE; nothing was written."
+    exit 2
+  fi
+  [ "$FLAG_EXTERNAL_PROXY" = "no" ] || ANS[EXTERNAL_PROXY]=yes
+  report_errors_and_exit # syntax errors in the file
+
+  if [ -z "$answers" ] && [ -t 0 ] && { [ "$reconfigure" = "yes" ] || [ ! -s "$SAVED_ANSWERS" ] || [ ! -f "$ENV_FILE" ]; }; then
+    preflight_host
+    PREFLIGHT_HOST_DONE=yes
+    apply_defaults
+    wizard "$mode"
+  fi
+  apply_defaults
+  validate_answers "$mode"
+  report_errors_and_exit
+
+  # 2. Preflight. Changes nothing.
+  say "Preflight"
+  if [ "$PREFLIGHT_HOST_DONE" = "no" ]; then preflight_host; fi
+  PROJECT=${ANS[PROJECT_NAME]}
+  preflight_network
+  if [ "$dry" = "yes" ]; then say "Dry run: every check passed; nothing was written."; exit 0; fi
+
+  # 3. First writes: secrets directory, answers, a .env with no Fernet key yet.
+  # compose reads .env for env_file, so it must exist before build or pull.
+  local enc
+  enc=$(env_get ENCRYPTION_KEY)
+  write_secrets_dir
+  save_answers
+  write_env "$enc"
+  info ".env written (mode 0600); existing keys were kept"
+
+  # 4. Images.
+  get_images "$mode" "$bundle"
+
+  # 5. The Fernet key, made inside the backend image. Never replaced once set.
+  if [ -z "$enc" ]; then
+    enc=$(fernet_key)
+    [ -n "$enc" ] || die "could not generate the encryption key inside the backend image"
+    write_env "$enc"
+    info "ENCRYPTION_KEY generated inside the backend image"
+  else
+    info "ENCRYPTION_KEY kept (never rotated)"
+  fi
+
+  # 6. Secret volumes, then data services.
+  export SECRETS_VOLUME=${ANS[SECRETS_VOLUME]} PROXY_CERTS_VOLUME=${ANS[PROXY_CERTS_VOLUME]}
+  if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then
+    ./deploy/load-secrets.sh all >/dev/null || die "deploy/load-secrets.sh failed"
+  else
+    ./deploy/load-secrets.sh qradar >/dev/null || die "deploy/load-secrets.sh failed"
+  fi
+  info "secrets loaded into the volumes ${ANS[SECRETS_VOLUME]}$([ "${ANS[EXTERNAL_PROXY]}" = no ] && echo " and ${ANS[PROXY_CERTS_VOLUME]}")"
+  mkdir -p "${ANS[BACKUP_DIR]}" && chmod 700 "${ANS[BACKUP_DIR]}"
+  dc up -d --wait --wait-timeout 180 postgres redis || { dc ps; die "postgres or redis did not become healthy"; }
+  info "postgres and redis are healthy"
+
+  # 7. Migrate. A failure stops the install: the database is new, nothing to restore.
+  if ! dc run --rm -T migrate; then
+    dc logs --no-color --tail 40 migrate || true
+    die "alembic upgrade head failed"
+  fi
+  info "migrations are at head"
+
+  # 8. Break-glass admin. seed is not run: it would insert a mock QRadar instance.
+  local have_admin
+  have_admin=$(admin_exists)
+  if [ "$have_admin" = "yes" ]; then
+    info "break-glass admin '${ANS[ADMIN_USERNAME]}' exists; create-admin is not run again"
+  else
+    say ""
+    say "==================== BREAK-GLASS ADMIN: password shown ONCE ===================="
+    dc run --rm --no-deps -T backend python -m app.cli.users create-admin \
+      --username "${ANS[ADMIN_USERNAME]}" || die "create-admin failed"
+    say "================================================================================"
+    say ""
+  fi
+
+  # 9. Register the console inside the container, so the stored CA path is the container path.
+  local qr_rc=0
+  dc run --rm --no-deps -T backend python -m app.cli.qradar add \
+    --name "${ANS[INSTANCE_NAME]}" --url "${ANS[QRADAR_URL]%/}" \
+    --token-file /run/secrets/qradar_sec_token --ca-file /run/secrets/qradar_ca.pem \
+    --api-version "${ANS[QRADAR_API_VERSION]}" || qr_rc=$?
+
+  # 10. Start.
+  if [ "${ANS[EXTERNAL_PROXY]}" = "yes" ]; then
+    local f
+    f=$(env_get FORWARDED_ALLOW_IPS)
+    if [ -z "$f" ] || [ "$f" = "*" ]; then
+      fail "external proxy: FORWARDED_ALLOW_IPS in $ENV_FILE is empty. The backend is not started."
+      say "Set it to the peer address uvicorn sees from your proxy (README, 'Proxy headers and the"
+      say "rate limiter'), then run ./qradar-dash install again. Any admin password printed above stays valid."
+      exit 3
+    fi
+  fi
+  local svc="backend celery-worker celery-beat frontend"
+  if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then svc="$svc proxy"; fi
+  # shellcheck disable=SC2086
+  dc up -d --wait --wait-timeout 180 $svc || { dc ps; fail "a service did not become healthy within 180 s"; exit 1; }
+  info "backend, worker, beat, frontend$([ "${ANS[EXTERNAL_PROXY]}" = no ] && echo ", proxy") are healthy"
+  local api="http://127.0.0.1:${ANS[API_LOOPBACK_PORT]}/api/v1"
+  wait_ready "$api/health/ready" 60 || warn "$api/health/ready did not answer 200 within 60 s"
+  local code
+  code=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$api/version" || true)
+  if [ "$code" = "200" ]; then
+    info "version: $(curl -s --max-time 5 "$api/version")"
+  else
+    warn "GET /api/v1/version answered $code (the endpoint arrives with OPS-1)"
+  fi
+
+  summary "$qr_rc" "$have_admin"
+  [ "$qr_rc" -eq 0 ] || exit 1
+}
+
+summary() {
+  local qr_rc=$1 had=$2 origin
+  origin=$(env_get PUBLIC_ORIGIN)
+  say ""
+  say "=============================== Install summary ==============================="
+  say "URL                 $origin/"
+  say "Sign-in             $origin/login"
+  if [ "$had" = "yes" ]; then
+    say "Admin               ${ANS[ADMIN_USERNAME]} (already existed; its password was not touched)"
+  else
+    say "Admin               ${ANS[ADMIN_USERNAME]} (the password was printed above and is not stored)"
+    say "                    The first sign-in must change that password."
+  fi
+  if [ "$qr_rc" -eq 0 ]; then
+    say "QRadar connection  ok (instance '${ANS[INSTANCE_NAME]}')"
+  else
+    say "QRadar connection  FAILED (exit $qr_rc). The instance row is stored; fix the console, token or"
+    say "                    CA and run ./qradar-dash install again (qradar add updates the row)."
+  fi
+  say "Left off           WAF, IPS, rule-match collection, custom rules (turn them on later)"
+  say "Next               Sign in, then Directory ($origin/admin/directory) if AD is used,"
+  say "                    and Users ($origin/admin/users) to assign roles."
+  say "Runbook            docs/OPERATIONS.md (arrives with OPS-9); ./qradar-dash doctor"
+  say "Backup directory   ${ANS[BACKUP_DIR]}"
+  say "Install time       $(((SECONDS - START_SECONDS) / 60)) min $(((SECONDS - START_SECONDS) % 60)) s"
+  say "================================================================================"
+}
+
+# ---------------------------------------------------------------- status, logs
+
+need_installed() {
+  [ -f "$ENV_FILE" ] || die "not installed here: $ENV_FILE is missing. Run ./qradar-dash install."
+  load_project_from_env
+}
+
+cmd_status() {
+  need_installed
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  dc ps
+  local port code
+  port=$(env_get API_LOOPBACK_PORT)
+  : "${port:=8000}"
+  code=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/v1/health/ready" || true)
+  say "API ready: HTTP ${code:-none} (http://127.0.0.1:$port/api/v1/health/ready)"
+  [ "$code" = "200" ]
+}
+
+cmd_logs() {
+  need_installed
+  dc logs "$@"
+}
+
+# ---------------------------------------------------------------- doctor
+
+DOCTOR_WORST=0
+DOCTOR_HAS_DOCKER=0
+DOCTOR_BACKEND_RUNNING=0
+DOCTOR_ID_WIDTH=16
+
+doctor_line() { # doctor_line STATUS ID MESSAGE [RUNBOOK]
+  local status=$1 id=$2 message=$3 runbook=${4:-} severity=0
+  case "$status" in
+    WARN) severity=1 ;;
+    FAIL) severity=2 ;;
+  esac
+  [ "$severity" -le "$DOCTOR_WORST" ] || DOCTOR_WORST=$severity
+  printf '%-5s %-*s %s' "$status" "$DOCTOR_ID_WIDTH" "$id" "$message"
+  [ -z "$runbook" ] || printf '    runbook: %s' "$runbook"
+  printf '\n'
+}
+
+doctor_free_gib() { awk -v blocks="$1" 'BEGIN {printf "%.1f", blocks / 1048576}'; }
+
+doctor_df() { # doctor_df PATH -> "FREE_KIB USED_PERCENT", or no output
+  local row free used
+  row=$(df -Pk -- "$1" 2>/dev/null | awk 'NR == 2 {print $4, $5}') || return 1
+  read -r free used <<<"$row"
+  used=${used%%%}
+  case "$free:$used" in
+    *[!0-9:]* | :* | *:) return 1 ;;
+  esac
+  printf '%s %s\n' "$free" "$used"
+}
+
+doctor_disk_docker() {
+  local root metrics free used free_gib status
+  if [ "$DOCTOR_HAS_DOCKER" -eq 0 ]; then
+    doctor_line FAIL disk_docker "Docker is not installed"
+    return
+  fi
+  root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)
+  if [ -z "$root" ]; then
+    doctor_line FAIL disk_docker "Docker root directory is unavailable" OPS-R14
+    return
+  fi
+  metrics=$(doctor_df "$root" || true)
+  if [ -z "$metrics" ]; then
+    doctor_line FAIL disk_docker "free space is unavailable for Docker root $root" OPS-R14
+    return
+  fi
+  read -r free used <<<"$metrics"
+  free_gib=$(doctor_free_gib "$free")
+  status=PASS
+  if [ "$used" -ge 90 ]; then status=FAIL; elif [ "$used" -ge 70 ]; then status=WARN; fi
+  doctor_line "$status" disk_docker "$used% used; $free_gib GiB free on $root" \
+    "$([ "$status" = PASS ] || echo OPS-R14)"
+}
+
+doctor_database_size() { # bytes on stdout; failure means unavailable
+  local size
+  [ "$DOCTOR_HAS_DOCKER" -eq 1 ] || return 1
+  size=$(printf '%s\n' "SELECT pg_database_size(current_database());" \
+    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$(env_get POSTGRES_DB)" \
+      -v ON_ERROR_STOP=1 -Atq 2>/dev/null) || return 1
+  case "$size" in '' | *[!0-9]*) return 1 ;; esac
+  printf '%s\n' "$size"
+}
+
+doctor_disk_backup() {
+  local path metrics free used free_gib status=PASS message db_size required_kib required_gib
+  path=$(env_get QRADAR_DASH_BACKUP_DIR)
+  if [ -z "$path" ]; then
+    doctor_line FAIL disk_backup "backup directory is not configured" OPS-R14
+    return
+  fi
+  if [ ! -e "$path" ]; then
+    doctor_line WARN disk_backup "backup directory does not exist: $path" OPS-R14
+    return
+  fi
+  if [ ! -d "$path" ]; then
+    doctor_line FAIL disk_backup "backup path is not a directory: $path" OPS-R14
+    return
+  fi
+  metrics=$(doctor_df "$path" || true)
+  if [ -z "$metrics" ]; then
+    doctor_line FAIL disk_backup "free space is unavailable for backup directory $path" OPS-R14
+    return
+  fi
+  read -r free used <<<"$metrics"
+  free_gib=$(doctor_free_gib "$free")
+  if [ "$used" -ge 90 ]; then status=FAIL; elif [ "$used" -ge 70 ]; then status=WARN; fi
+  message="$used% used; $free_gib GiB free on $path"
+  if db_size=$(doctor_database_size); then
+    required_kib=$(((2 * db_size + 2 * 1024 * 1024 * 1024 + 1023) / 1024))
+    required_gib=$(doctor_free_gib "$required_kib")
+    if [ "$free" -lt "$required_kib" ]; then
+      status=FAIL
+      message="$message; backup guard needs $required_gib GiB"
+    else
+      message="$message; backup guard passes"
+    fi
+  else
+    [ "$status" = FAIL ] || status=WARN
+    message="$message; database size unavailable"
+  fi
+  doctor_line "$status" disk_backup "$message" "$([ "$status" = PASS ] || echo OPS-R14)"
+}
+
+doctor_clock() {
+  local synced
+  if ! command -v timedatectl >/dev/null 2>&1; then
+    doctor_line WARN qradar_clock "timedatectl is not available; check NTP by hand" OPS-R15
+    return
+  fi
+  synced=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)
+  if [ "$synced" = yes ]; then
+    doctor_line PASS qradar_clock "NTP is synchronized"
+  else
+    doctor_line WARN qradar_clock "NTP is not synchronized" OPS-R15
+  fi
+}
+
+doctor_selinux() {
+  local mode
+  if ! command -v getenforce >/dev/null 2>&1; then
+    doctor_line PASS selinux "SELinux is not installed"
+    return
+  fi
+  mode=$(getenforce 2>/dev/null | head -n1 || true)
+  doctor_line PASS selinux "${mode:-unknown}"
+}
+
+doctor_profile_enabled() {
+  local profiles=${COMPOSE_PROFILES:-}
+  [ -n "$profiles" ] || profiles=$(env_get COMPOSE_PROFILES)
+  case ",${profiles// /,}," in *,$1,*) return 0 ;; *) return 1 ;; esac
+}
+
+doctor_container_runbook() {
+  case "$1" in
+    backend | postgres) say OPS-R36 ;;
+    celery-worker) say OPS-R41 ;;
+    celery-beat) say OPS-R9 ;;
+  esac
+}
+
+doctor_containers() {
+  local output row service state health exit_code state_l health_l total=0 runbook candidate detail
+  local -a failures=()
+  local -a failure_runbooks=()
+  DOCTOR_BACKEND_RUNNING=0
+  if [ "$DOCTOR_HAS_DOCKER" -eq 0 ]; then
+    doctor_line FAIL containers "Docker is not installed"
+    return
+  fi
+  if ! output=$(
+    dc ps --all --format '{{.Service}}\t{{.State}}\t{{.Health}}\t{{.ExitCode}}' 2>/dev/null
+  ); then
+    doctor_line FAIL containers "docker compose ps failed"
+    return
+  fi
+  while IFS= read -r row; do
+    row=${row//$'\t'/$'\x1f'}
+    IFS=$'\x1f' read -r service state health exit_code <<<"$row"
+    [ -n "$service" ] || continue
+    state_l=${state,,}
+    health_l=${health,,}
+    if [ "$service" = qradar-mcp ] && ! doctor_profile_enabled mcp; then continue; fi
+    if [ "$service" = migrate ] && [ "$state_l" = exited ]; then
+      if [ "$exit_code" = 0 ]; then continue; fi
+      total=$((total + 1))
+      failures+=("migrate is exited (exit code: ${exit_code:-unknown})")
+      failure_runbooks+=(OPS-R11)
+      continue
+    fi
+    total=$((total + 1))
+    if [ "$service" = backend ] && [ "$state_l" = running ]; then
+      DOCTOR_BACKEND_RUNNING=1
+    fi
+    if [ "$state_l" != running ] || { [ -n "$health_l" ] && [ "$health_l" != healthy ]; }; then
+      detail="$service is ${state_l:-unknown}"
+      [ -z "$health_l" ] || detail="$detail (health: $health_l)"
+      failures+=("$detail")
+      candidate=$(doctor_container_runbook "$service")
+      failure_runbooks+=("$candidate")
+    fi
+  done <<<"$output"
+  if [ "$total" -eq 0 ]; then
+    doctor_line FAIL containers "no active Compose services were found"
+  elif [ "${#failures[@]}" -gt 0 ]; then
+    local joined=${failures[0]}
+    for detail in "${failures[@]:1}"; do joined="$joined; $detail"; done
+    runbook=${failure_runbooks[0]:-}
+    if [ -n "$runbook" ]; then
+      for candidate in "${failure_runbooks[@]}"; do
+        if [ -z "$candidate" ] || [ "$candidate" != "$runbook" ]; then
+          runbook=""
+          break
+        fi
+      done
+    fi
+    doctor_line FAIL containers "$joined" "$runbook"
+  else
+    doctor_line PASS containers "$total Compose service(s) are running and healthy"
+  fi
+}
+
+doctor_incontainer() {
+  local rc
+  if [ "$DOCTOR_BACKEND_RUNNING" -eq 0 ]; then
+    doctor_line FAIL doctor_incontainer "backend container is not running" OPS-R36
+    return
+  fi
+  set +e
+  dc exec -T backend python -m app.cli.doctor
+  rc=$?
+  set -e
+  case "$rc" in
+    0) ;;
+    1) [ "$DOCTOR_WORST" -ge 1 ] || DOCTOR_WORST=1 ;;
+    *) DOCTOR_WORST=2 ;;
+  esac
+}
+
+cmd_doctor() {
+  need_installed
+  if command -v docker >/dev/null 2>&1; then DOCTOR_HAS_DOCKER=1; fi
+  doctor_disk_docker
+  doctor_disk_backup
+  doctor_clock
+  doctor_selinux
+  doctor_containers
+  doctor_incontainer
+  return "$DOCTOR_WORST"
+}
+
+# ---------------------------------------------------------------- support bundle
+
+SUPPORT_STAGE=""
+
+support_cleanup() {
+  [ -z "$SUPPORT_STAGE" ] || rm -rf -- "$SUPPORT_STAGE"
+}
+
+support_error() { # support_error PART MESSAGE
+  printf '%s\n' "$2" >"$SUPPORT_STAGE/input/$1.error.txt"
+}
+
+support_psql() { # support_psql PART QUERY
+  local part=$1 query=$2 target="$SUPPORT_STAGE/input/$1.txt"
+  if printf '%s\n' "$query" \
+    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$(env_get POSTGRES_DB)" \
+      -v ON_ERROR_STOP=1 -P pager=off >"$target" 2>/dev/null; then
+    return
+  fi
+  rm -f -- "$target"
+  support_error "$part" "$part could not be read; inspect ./qradar-dash doctor and the service logs."
+}
+
+support_version() {
+  local target="$SUPPORT_STAGE/input/version.txt" piece="$SUPPORT_STAGE/version-piece"
+  local api_port ui_port service digest
+  : >"$target"
+  if [ -f .qradar-dash/state.json ]; then
+    if cat .qradar-dash/state.json >"$piece"; then
+      printf '%s\n' 'state.json'
+      cat "$piece"
+      printf '\n'
+    else
+      support_error version-state \
+        "version state could not be read; check .qradar-dash/state.json permissions."
+    fi >>"$target"
+  fi
+
+  api_port=$(env_get API_LOOPBACK_PORT)
+  : "${api_port:=8000}"
+  if curl -fsS --max-time 5 "http://127.0.0.1:$api_port/api/v1/version" \
+    >"$piece" 2>/dev/null; then
+    printf '%s\n' 'backend /api/v1/version'
+    cat "$piece"
+    printf '\n'
+  else
+    support_error version-backend \
+      "backend version endpoint could not be read; inspect doctor.txt and backend.log."
+  fi >>"$target"
+
+  ui_port=$(env_get UI_LOOPBACK_PORT)
+  : "${ui_port:=3000}"
+  if curl -fsS --max-time 5 "http://127.0.0.1:$ui_port/api/health" \
+    >"$piece" 2>/dev/null; then
+    printf '%s\n' 'frontend /api/health'
+    cat "$piece"
+    printf '\n'
+  else
+    support_error version-frontend \
+      "frontend health endpoint could not be read; inspect doctor.txt and frontend.log."
+  fi >>"$target"
+
+  if dc config --services >"$SUPPORT_STAGE/services" 2>/dev/null; then
+    printf '%s\n' 'compose image digests' >>"$target"
+    while IFS= read -r service; do
+      [ -n "$service" ] || continue
+      case "$service" in
+        *[!A-Za-z0-9_.-]*)
+          support_error version-images \
+            "Compose returned an unsafe service name; image digests are incomplete."
+          continue
+          ;;
+      esac
+      digest=$(dc images -q "$service" 2>/dev/null || true)
+      if [ -n "$digest" ]; then
+        printf '%s\t%s\n' "$service" "$digest" >>"$target"
+      else
+        support_error "version-image-$service" \
+          "the $service image digest is unavailable; ensure its image has been pulled."
+      fi
+    done <"$SUPPORT_STAGE/services"
+    printf '\n' >>"$target"
+  else
+    : >"$SUPPORT_STAGE/services"
+    support_error version-images \
+      "Compose service discovery failed; verify the Compose files and rerun the bundle."
+  fi
+
+  if printf '%s\n' 'SELECT version_num FROM alembic_version;' \
+    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$(env_get POSTGRES_DB)" \
+      -v ON_ERROR_STOP=1 -P pager=off >"$piece" 2>/dev/null; then
+    printf '%s\n' 'alembic_version'
+    cat "$piece"
+    printf '\n'
+  else
+    support_error version-alembic \
+      "alembic_version could not be read; inspect doctor.txt and postgres.log."
+  fi >>"$target"
+  rm -f -- "$piece"
+}
+
+support_logs() {
+  local service
+  mkdir -p "$SUPPORT_STAGE/input/logs"
+  if [ ! -s "$SUPPORT_STAGE/services" ]; then
+    support_error logs \
+      "Compose service discovery failed; no service logs could be collected."
+    return
+  fi
+  while IFS= read -r service; do
+    [ -n "$service" ] || continue
+    case "$service" in
+      *[!A-Za-z0-9_.-]*) continue ;;
+    esac
+    if ! dc logs --tail=2000 --no-color "$service" \
+      >"$SUPPORT_STAGE/input/logs/$service.log" 2>/dev/null; then
+      rm -f -- "$SUPPORT_STAGE/input/logs/$service.log"
+      printf '%s\n' \
+        "$service logs could not be read; check whether the service has a container." \
+        >"$SUPPORT_STAGE/input/logs/$service.error.txt"
+    fi
+  done <"$SUPPORT_STAGE/services"
+}
+
+support_stage_secret() { # support_stage_secret SOURCE NAME
+  [ -e "$1" ] || return 0
+  if [ ! -f "$1" ] || [ ! -r "$1" ]; then
+    fail "secret input cannot be read: $1; fix its permissions and rerun. No archive was written."
+    return 1
+  fi
+  if ! install -m 600 "$1" "$SUPPORT_STAGE/input/.support-input/$2"; then
+    fail "secret input could not be staged: $1; fix disk access and rerun. No archive was written."
+    return 1
+  fi
+}
+
+cmd_support_bundle() {
+  need_installed
+  command -v docker >/dev/null 2>&1 || die \
+    "Docker is not installed; install Docker and rerun support-bundle."
+  command -v tar >/dev/null 2>&1 || die \
+    "tar is not installed; install tar and rerun support-bundle."
+
+  local backup_root timestamp final output
+  backup_root=$(env_get QRADAR_DASH_BACKUP_DIR)
+  [ -n "$backup_root" ] || die \
+    "backup root is not configured; set QRADAR_DASH_BACKUP_DIR and rerun support-bundle."
+  umask 077
+  mkdir -p -- "$backup_root" || die \
+    "backup root cannot be created: $backup_root; fix its parent permissions and rerun."
+  SUPPORT_STAGE=$(mktemp -d "$backup_root/.support-staging.XXXXXX") || die \
+    "staging directory cannot be created under $backup_root; fix its permissions and rerun."
+  trap support_cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  chmod 700 "$SUPPORT_STAGE"
+  mkdir -p "$SUPPORT_STAGE/input/.support-input/secrets"
+
+  (cmd_doctor || true) >"$SUPPORT_STAGE/input/doctor.txt" 2>&1
+  support_version
+  if ! dc ps --all >"$SUPPORT_STAGE/input/compose-ps.txt" 2>/dev/null; then
+    rm -f -- "$SUPPORT_STAGE/input/compose-ps.txt"
+    support_error compose-ps \
+      "docker compose ps failed; verify Docker access and inspect doctor.txt."
+  fi
+  support_psql watermarks \
+    'SELECT id, instance_id, collector, watermark_at, last_run_at, lag_seconds, intervals_collected, consecutive_failures, last_error, collection_metadata, created_at, updated_at FROM collection_watermark ORDER BY instance_id, collector;'
+  support_psql cadence \
+    'SELECT family, cadence_seconds, last_slot_start, updated_at, updated_by, last_run_at, last_run_outcome, last_run_searches, last_run_buckets, last_run_splits FROM search_cadence ORDER BY family;'
+  support_logs
+
+  if ! install -m 600 "$ENV_FILE" "$SUPPORT_STAGE/input/.support-input/config.env"; then
+    fail "configuration could not be staged; fix .env permissions and rerun. No archive was written."
+    return 1
+  fi
+  support_stage_secret .secrets/qradar.sec secrets/qradar.sec
+  support_stage_secret .secrets/ghcr.token secrets/ghcr.token
+  support_stage_secret .secrets/tls.key secrets/tls.key
+
+  output="$SUPPORT_STAGE/support.tar.gz"
+  if ! tar -C "$SUPPORT_STAGE/input" -cf - . \
+    | dc run --rm --no-deps -T backend python -m app.cli.support_bundle >"$output"; then
+    fail "support-bundle scrubber failed; ensure the backend image is available, then rerun. No archive was written."
+    return 1
+  fi
+
+  timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+  final="$backup_root/support-$timestamp.tar.gz"
+  [ ! -e "$final" ] || die \
+    "support archive already exists: $final; wait one second and rerun support-bundle."
+  chmod 600 "$output"
+  mv -- "$output" "$final"
+  chmod 600 "$final"
+  say "$final"
+}
+
+not_built() {
+  fail "'$1' is not built yet ($2)."
+  exit 64
+}
+
+main() {
+  local cmd=${1:-}
+  [ $# -eq 0 ] || shift
+  case "$cmd" in
+    install) cmd_install "$@" ;;
+    status) cmd_status ;;
+    logs) cmd_logs "$@" ;;
+    upgrade | rollback) not_built "$cmd" "OPS-6" ;;
+    backup | restore) not_built "$cmd" "OPS-5" ;;
+    doctor) cmd_doctor ;;
+    support-bundle) cmd_support_bundle ;;
+    bundle) not_built "$cmd" "OPS-3 and OPS-10" ;;
+    -h | --help | help | "") usage; [ -n "$cmd" ] || exit 2 ;;
+    *) fail "unknown command: $cmd"; usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"

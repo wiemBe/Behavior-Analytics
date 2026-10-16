@@ -222,6 +222,8 @@ class Settings(BaseSettings):
     retention_rule_metric_days: int | None = None
     retention_offense_snapshot_days: int | None = None
     compression_after_days: int | None = None
+    #: How often the beat task reconciles the policies above (it also runs once at beat start).
+    timescale_policy_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- Encryption / key rotation ------------------------------------------
     # Active key used for new encryptions. Legacy single-key deployments set

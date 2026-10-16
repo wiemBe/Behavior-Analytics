@@ -4,8 +4,12 @@ Kept out of migrations on purpose: retention *drops data*, and a destructive
 action must be an explicit, configurable operation — never an implicit side
 effect of running `alembic upgrade`. All policies default to disabled.
 
-Idempotent: `add_retention_policy(..., if_not_exists => TRUE)` and removing a
-policy that is absent are both safe to repeat.
+Reconciling, not just adding: each table's policy job is read back from
+`timescaledb_information.jobs` and its interval compared with the setting. An
+unchanged policy is left alone (stable job id), a different one is removed and
+added again inside a savepoint, and an unset one is removed (`if_exists`).
+`add_*_policy(..., if_not_exists => TRUE)` would keep an old interval, so it is
+not relied on. Safe to repeat, including on hypertables with compressed chunks.
 """
 
 from __future__ import annotations
@@ -46,10 +50,89 @@ async def _hypertables(session: AsyncSession) -> set[str]:
     return {row[0] for row in result}
 
 
+async def _policy_config(session: AsyncSession, table: str, proc: str) -> dict[str, str] | None:
+    """The config of the table's policy job, or None when it has no such job."""
+    result = await session.execute(
+        text(
+            "SELECT config::jsonb FROM timescaledb_information.jobs "
+            "WHERE proc_name = :proc AND hypertable_name = :t"
+        ).bindparams(proc=proc, t=table)
+    )
+    row = result.first()
+    return None if row is None else dict(row[0])
+
+
+async def _same_interval(session: AsyncSession, current: str | None, days: int) -> bool:
+    if current is None:
+        return False
+    result = await session.execute(
+        text("SELECT (:cur)::interval = (:want)::interval").bindparams(
+            cur=current, want=f"{days} days"
+        )
+    )
+    return bool(result.scalar())
+
+
+async def _reconcile_retention(session: AsyncSession, table: str, days: int | None) -> str:
+    """Make the table's retention policy match `days` (None = no policy).
+
+    `add_retention_policy(if_not_exists => TRUE)` keeps an existing policy as it
+    is when its interval differs, so a changed setting would never take effect.
+    A policy with another interval is removed and added again.
+    """
+    if days is None:
+        # Retention disabled or unset for this table: ensure no policy exists
+        # so a previously-configured destructive policy can be turned off.
+        await session.execute(
+            text("SELECT remove_retention_policy(:t, if_exists => TRUE)").bindparams(t=table)
+        )
+        return "retention-disabled"
+    if days < 1:
+        raise ValueError(f"retention for {table} must be >= 1 day, got {days}")
+    current = await _policy_config(session, table, "policy_retention")
+    if current is not None:
+        if await _same_interval(session, current.get("drop_after"), days):
+            return f"retention={days}d"
+        await session.execute(text("SELECT remove_retention_policy(:t)").bindparams(t=table))
+    await session.execute(
+        text("SELECT add_retention_policy(:t, drop_after => (:ival)::interval)").bindparams(
+            t=table, ival=f"{days} days"
+        )
+    )
+    return f"retention={days}d"
+
+
+async def _reconcile_compression(session: AsyncSession, table: str, days: int | None) -> str:
+    """Make the table's compression policy match `days` (None = no policy)."""
+    if days is None:
+        await session.execute(
+            text("SELECT remove_compression_policy(:t, if_exists => TRUE)").bindparams(t=table)
+        )
+        return "compression-disabled"
+    if days < 1:
+        raise ValueError(f"compression for {table} must be >= 1 day, got {days}")
+    # `table` comes from the module constant _METRIC_TABLES, never from input.
+    await session.execute(text("ALTER TABLE " + table + " SET (timescaledb.compress = true)"))
+    current = await _policy_config(session, table, "policy_compression")
+    if current is not None:
+        if await _same_interval(session, current.get("compress_after"), days):
+            return f"compression={days}d"
+        await session.execute(text("SELECT remove_compression_policy(:t)").bindparams(t=table))
+    await session.execute(
+        text(
+            "SELECT add_compression_policy(:t, compress_after => (:ival)::interval)"
+        ).bindparams(t=table, ival=f"{days} days")
+    )
+    return f"compression={days}d"
+
+
 async def apply_policies(session: AsyncSession, settings: Settings | None = None) -> dict[str, str]:
     """Reconcile retention/compression policies with configuration.
 
     Returns a per-table description of the action taken, for logging/auditing.
+    Compression results sit under `_compression:<table>` keys. Each table is
+    reconciled inside its own savepoint: a failure is reported as
+    `error:<ExceptionType>` for that table and the others still run.
     """
     settings = settings or get_settings()
     outcome: dict[str, str] = {}
@@ -65,40 +148,20 @@ async def apply_policies(session: AsyncSession, settings: Settings | None = None
         if table not in managed:
             outcome[table] = "not-a-hypertable"
             continue
-        days = retention.get(table)
-        if days is None:
-            # Retention disabled or unset for this table: ensure no policy exists
-            # so a previously-configured destructive policy can be turned off.
-            await session.execute(
-                text("SELECT remove_retention_policy(:t, if_exists => TRUE)").bindparams(t=table)
-            )
-            outcome[table] = "retention-disabled"
-            continue
-        if days < 1:
-            raise ValueError(f"retention for {table} must be >= 1 day, got {days}")
-        await session.execute(
-            text(
-                "SELECT add_retention_policy(:t, drop_after => (:ival)::interval, "
-                "if_not_exists => TRUE)"
-            ).bindparams(t=table, ival=f"{days} days")
-        )
-        outcome[table] = f"retention={days}d"
-
-    if settings.compression_after_days is not None:
-        cdays = settings.compression_after_days
-        for table in _METRIC_TABLES:
-            if table not in managed:
-                continue
-            await session.execute(
-                text("ALTER TABLE " + table + " SET (timescaledb.compress = true)")
-            )
-            await session.execute(
-                text(
-                    "SELECT add_compression_policy(:t, compress_after => (:ival)::interval, "
-                    "if_not_exists => TRUE)"
-                ).bindparams(t=table, ival=f"{cdays} days")
-            )
-        outcome["_compression"] = f"after={settings.compression_after_days}d"
+        try:
+            async with session.begin_nested():
+                outcome[table] = await _reconcile_retention(session, table, retention.get(table))
+        except Exception as exc:
+            outcome[table] = f"error:{type(exc).__name__}"
+            logger.error("retention policy failed", extra={"table": table}, exc_info=True)
+        try:
+            async with session.begin_nested():
+                outcome[f"_compression:{table}"] = await _reconcile_compression(
+                    session, table, settings.compression_after_days
+                )
+        except Exception as exc:
+            outcome[f"_compression:{table}"] = f"error:{type(exc).__name__}"
+            logger.error("compression policy failed", extra={"table": table}, exc_info=True)
 
     await session.commit()
     logger.info("timescale policies applied", extra={"outcome": outcome})

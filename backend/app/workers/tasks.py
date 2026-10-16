@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
+from redis import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,10 +66,15 @@ from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
 from app.services.search_result_retention import SearchResultRetention
 from app.services.search_scheduler import SearchScheduler
+from app.services.timescale import apply_policies
 from app.services.waf_pipeline import PIPELINE_LOCK, eligible_profile_ids, run_waf_source
 from app.services.waf_profiles import WafProfileService
 from app.services.waf_retention import WafRetention
-from app.workers.celery_app import celery_app
+from app.workers.celery_app import (
+    BEAT_HEARTBEAT_KEY,
+    BEAT_HEARTBEAT_TTL_SECONDS,
+    celery_app,
+)
 
 logger = logging.getLogger("app.tasks")
 
@@ -1388,6 +1394,25 @@ async def apply_search_result_retention() -> dict:
         return (await SearchResultRetention(session).run()).as_dict()
 
 
+async def apply_timescale_policies() -> dict:
+    """Reconcile the Timescale retention and compression policies with the settings.
+
+    Runs even while RETENTION_ENABLED is false: reconciling then removes any
+    retention policy, so switching the flag off stops a policy that would still
+    drop chunks. With the defaults no policy exists and nothing changes.
+    """
+    settings = get_settings()
+    if not settings.retention_enabled:
+        logger.info("RETENTION_ENABLED is false; removing any Timescale retention policy")
+    maker = get_sessionmaker()
+    async with maker() as session:
+        outcome = await apply_policies(session, settings)
+    failed = sorted(k for k, v in outcome.items() if v.startswith("error:"))
+    if failed:
+        logger.error("timescale policy reconcile failed", extra={"failed": failed})
+    return {"outcome": outcome, "failed": failed}
+
+
 # --------------------------------------------------------------- notifications
 async def dispatch_notifications() -> dict:
     maker = get_sessionmaker()
@@ -1406,6 +1431,15 @@ async def dispatch_notifications() -> dict:
 
 
 # --------------------------------------------------------------- celery shims
+@celery_app.task(name="beat_heartbeat")
+def beat_heartbeat_task() -> dict[str, str]:
+    """Prove beat is dispatching by writing only a short-lived UTC timestamp."""
+    timestamp = datetime.now(UTC).isoformat()
+    with Redis.from_url(get_settings().redis_url, decode_responses=True) as client:
+        client.set(BEAT_HEARTBEAT_KEY, timestamp, ex=BEAT_HEARTBEAT_TTL_SECONDS)
+    return {"timestamp": timestamp}
+
+
 @celery_app.task(name="collect_metrics")
 def collect_metrics_task(instance_name: str | None = None) -> dict:
     return _run(collect_metrics(instance_name))
@@ -1539,6 +1573,11 @@ def apply_ips_retention_task() -> dict:
 @celery_app.task(name="apply_search_result_retention")
 def apply_search_result_retention_task() -> dict:
     return _run(apply_search_result_retention())
+
+
+@celery_app.task(name="apply_timescale_policies")
+def apply_timescale_policies_task() -> dict:
+    return _run(apply_timescale_policies())
 
 
 @celery_app.task(name="evaluate_custom_rules")
