@@ -286,7 +286,7 @@ export function TopSearch() {
         aria-activedescendant={shown && active >= 0 && flat[active] ? optionId(flat[active]) : undefined}
         autoComplete="off"
         spellCheck={false}
-        placeholder="Search sources, rules, offenses, anomalies"
+        placeholder="Search sources, rules, anomalies"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);

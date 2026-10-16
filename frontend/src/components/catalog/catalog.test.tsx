@@ -48,15 +48,33 @@ describe("health.detection", () => {
     expect(screen.getByText("50 of 200 techniques covered")).toBeInTheDocument();
     const rules = screen.getByRole("table", { name: "Rule health by verdict" });
     expect(within(rules).getByText("120")).toBeInTheDocument();
-    expect(within(rules).getByText("Never observed")).toBeInTheDocument();
+    expect(within(rules).getByText("NEVER OBSERVED")).toBeInTheDocument();
+  });
+
+  it("words every verdict in one case, as the coverage page does", () => {
+    res.byKey = {
+      [COV]: ok(coverage()),
+      [RULES]: ok([
+        { status: "HEALTHY", count: 3 },
+        { status: "DEGRADED", count: 5 },
+        { status: "SILENT", count: 2 },
+        { status: "DEPENDENCY_DEGRADED", count: 1 },
+      ]),
+    };
+    render(<HealthDetection />);
+    const rules = screen.getByRole("table", { name: "Rule health by verdict" });
+    for (const w of ["HEALTHY", "DEGRADED", "SILENT", "DEPENDENCY DEGRADED"]) {
+      expect(within(rules).getByText(w)).toBeInTheDocument();
+    }
+    expect(within(rules).queryByText(/^(Healthy|Degraded|Silent)$/)).toBeNull();
   });
 
   it("lists the other technique statuses, never COVERED again", () => {
     res.byKey = { [COV]: ok(coverage()), [RULES]: ok([]) };
     render(<HealthDetection />);
     const note = screen.getByText(/Other statuses:/);
-    expect(note).toHaveTextContent("Missing 100");
-    expect(note).toHaveTextContent("Not evaluated 20");
+    expect(note).toHaveTextContent("MISSING 100");
+    expect(note).toHaveTextContent("NOT EVALUATED 20");
     expect(note).not.toHaveTextContent(/Covered/i);
   });
 

@@ -18,20 +18,8 @@ import { detectionView, ruleHealthView } from "./derive";
 
 import "./catalog.css";
 
-const STATUS_WORDS: Record<string, string> = {
-  PARTIAL: "Partial",
-  DEGRADED: "Degraded",
-  MISSING: "Missing",
-  NOT_COVERED: "Not covered",
-  NOT_EVALUATED: "Not evaluated",
-  NEVER_OBSERVED: "Never observed",
-  INACTIVE: "Inactive",
-  NOISY: "Noisy",
-  DISABLED: "Disabled",
-  DEPENDENCY_DEGRADED: "Dependency degraded",
-  INSUFFICIENT_DATA: "Insufficient data",
-};
-const word = (s: string) => STATUS_WORDS[s] ?? s;
+// One case for a verdict word: the coverage page's, upper case with the underscore read as a space.
+const word = (s: string) => s.replace(/_/g, " ");
 const n = (v: number) => v.toLocaleString("en-US");
 
 export function HealthDetection() {
@@ -113,7 +101,7 @@ export function HealthDetection() {
                   <>
                     <tr>
                       <td>
-                        <span className={`tw-state-word ${healthTone("HEALTHY")}`}>Healthy</span>
+                        <span className={`tw-state-word ${healthTone("HEALTHY")}`}>{word("HEALTHY")}</span>
                       </td>
                       <td className="num">{n(rv.healthy)}</td>
                     </tr>

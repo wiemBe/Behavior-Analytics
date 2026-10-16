@@ -38,7 +38,7 @@ import {
   formatMetric,
   formatRatio,
   isUnjudged,
-  stateMeaning,
+  stateMeaningAgainst,
 } from "@/lib/behavior";
 import { formatDateTime } from "@/lib/health";
 import {
@@ -156,7 +156,11 @@ export default async function SourceBehaviorPage({
     <>
       {/* --- 1. compact header ------------------------------------------- */}
       <SourceHeader behavior={behavior} meta={meta} />
-      <p className="subtitle">{stateMeaning(behavior.state)}</p>
+      <p className="subtitle">{stateMeaningAgainst(behavior.state, {
+          observed: behavior.observed_eps,
+          low: behavior.expected_low,
+          high: behavior.expected_high,
+        })}</p>
 
       {/* --- 2. four primary metrics -------------------------------------- */}
       <div className="grid-4">

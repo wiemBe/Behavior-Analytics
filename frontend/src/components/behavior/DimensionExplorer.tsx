@@ -21,8 +21,11 @@ import { defaultDimension, dimensionPriority } from "@/lib/contributors";
 
 export function DimensionExplorer({
   dimensions,
+  evidenceStatus,
 }: {
   dimensions: ExplanationDimension[];
+  /** The incident's evidence status; a failure is stated in full once, by the banner. */
+  evidenceStatus?: string;
 }) {
   const ordered = [...dimensions].sort(
     (a, b) => dimensionPriority(a.dimension) - dimensionPriority(b.dimension),
@@ -31,6 +34,9 @@ export function DimensionExplorer({
   const [selected, setSelected] = useState<string | null>(initial?.dimension ?? null);
 
   if (ordered.length === 0) {
+    if (evidenceStatus === "FAILED") {
+      return <div className="notice">Evidence collection failed; see the notice above.</div>;
+    }
     return (
       <div className="notice">
         No dimension analysis is stored for this anomaly. No field has been

@@ -71,6 +71,15 @@ export function stateLabel(state: string): string {
   return STATE_LABELS[state] ?? state;
 }
 
+/**
+ * A lifecycle state as the state pill shows it: the backend's own name, in upper case
+ * ("OPEN", "INSUFFICIENT_DATA"). The anomaly list renders that string as it arrives; this is
+ * the same string for every investigation pill.
+ */
+export function statePillText(state: string): string {
+  return state.toUpperCase();
+}
+
 const EVIDENCE_LABELS: Record<string, string> = {
   NOT_REQUESTED: "Not requested",
   PENDING: "Pending",

@@ -69,6 +69,13 @@ describe("IPS investigation: an entity incident", () => {
     );
   });
 
+  it("shows the lifecycle state in upper case, as the lists do", () => {
+    view(ipsDetail({ state: "INSUFFICIENT_DATA" }));
+    expect(document.querySelector(".incident-identity .pill-strong")).toHaveTextContent(
+      /^INSUFFICIENT_DATA$/,
+    );
+  });
+
   it("shows detected, opened and resolved times with their timezone", () => {
     view();
     const header = screen.getByText("Detected").closest("div")!;

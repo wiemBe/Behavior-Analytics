@@ -870,6 +870,11 @@ dialog.dg-modal::backdrop {
 .dg-qualifier {
   color: var(--text-2);
 }
+/* "Template, not saved" is a badge. Its description is the next sentence, on its own line,
+   so the two do not read as one where the row is wide enough to hold both. */
+.home .page-meta > .badge + .dg-qualifier {
+  flex-basis: 100%;
+}
 .dg-status {
   margin: 0 0 var(--sp-4);
   padding: var(--sp-3) var(--sp-4);

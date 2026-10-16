@@ -12,7 +12,7 @@ import { formatCount, stateTone } from "@/lib/behavior";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import { axisTimeLabel } from "@/lib/searchRuns";
 
-import { endpointLabel, stateLabel } from "./wafLabels";
+import { endpointLabel, statePillText } from "./wafLabels";
 
 import "@/components/ui/controls.css";
 
@@ -134,7 +134,7 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
               </td>
               <td>
                 {e.state ? (
-                  <span className={`pill pill-quiet ${stateTone(e.state)}`}>{stateLabel(e.state)}</span>
+                  <span className={`pill pill-quiet ${stateTone(e.state)}`}>{statePillText(e.state)}</span>
                 ) : (
                   <>
                     <span className="muted">Not evaluated</span>

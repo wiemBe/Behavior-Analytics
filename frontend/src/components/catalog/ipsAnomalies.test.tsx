@@ -110,6 +110,13 @@ describe("RecentIpsAnomalies", () => {
     expect(container.textContent).not.toMatch(/IPS_[A-Z_]+/);
   });
 
+  it("shows the lifecycle state in upper case, beside the upper-case severity", () => {
+    set(ok(page([ipsListItem({ state: "OPEN", severity: "HIGH" })])), ok(page([])));
+    const row = (render(<RecentIpsAnomalies />), screen.getByRole("link", { name: /^Investigate/ }).closest("tr")!);
+    expect(within(row).getAllByText("OPEN").length).toBeGreaterThan(0);
+    expect(within(row).queryByText("Open")).toBeNull();
+  });
+
   it("a detector this build does not know shows no figure, not a guessed unit", () => {
     set(ok(page([ipsListItem({ anomaly_type: "IPS_FUTURE_THING" as never })])), ok(page([])));
     const { container } = render(<RecentIpsAnomalies />);

@@ -41,7 +41,7 @@ describe("WAF source endpoints: layout", () => {
   it("shows a long path in full, and a never-evaluated endpoint as not evaluated", async () => {
     await renderPage();
     expect(screen.getByText(`GET ${LONG}`)).toBeInTheDocument();
-    expect(screen.getByText("Insufficient data")).toBeInTheDocument();
+    expect(screen.getByText("INSUFFICIENT_DATA")).toBeInTheDocument();
     expect(screen.getByText("Not evaluated")).toBeInTheDocument();
     expect(screen.queryByText("Normal")).not.toBeInTheDocument();
   });

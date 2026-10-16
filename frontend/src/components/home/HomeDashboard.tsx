@@ -289,7 +289,7 @@ function DashboardSession({
     <>
       {templateShown ? (
         <>
-          <span className="dg-qualifier">Template, not saved</span>
+          <span className="badge">Template, not saved</span>
           <span className="dg-qualifier">{TEMPLATE_DESCRIPTION}</span>
         </>
       ) : null}
@@ -482,7 +482,7 @@ export function HomeDashboard() {
     <>
       {showTemplate ? (
         <>
-          <span className="dg-qualifier">Template, not saved</span>
+          <span className="badge">Template, not saved</span>
           <span className="dg-qualifier">{TEMPLATE_DESCRIPTION}</span>
         </>
       ) : null}

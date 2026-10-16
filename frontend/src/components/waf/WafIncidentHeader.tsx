@@ -13,7 +13,7 @@ import { sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
 import { formatDateTime } from "@/lib/health";
 
-import { anomalyTypeLabel, endpointLabel, stateLabel } from "./wafLabels";
+import { anomalyTypeLabel, endpointLabel, statePillText } from "./wafLabels";
 
 /** Design §27.15, verbatim. */
 export const NO_VIRTUAL_HOST_SENTENCE =
@@ -48,7 +48,7 @@ export function WafIncidentHeader({ anomaly }: { anomaly: WafAnomalyDetail }) {
 
           <div className="row incident-identity">
             <span className="incident-detector">{anomalyTypeLabel(anomaly.anomaly_type)}</span>
-            <span className={`pill pill-strong ${stateTone(anomaly.state)}`}>{stateLabel(anomaly.state)}</span>
+            <span className={`pill pill-strong ${stateTone(anomaly.state)}`}>{statePillText(anomaly.state)}</span>
             <span className={`pill pill-quiet ${sevTone(anomaly.severity)}`}>
               {anomaly.severity}
             </span>
