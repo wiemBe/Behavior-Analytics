@@ -35,7 +35,8 @@ Commands
   install       Preflight, wizard, secrets, migrate, break-glass admin, start.
   status        Show the stack and the API health.
   logs          Show service logs (arguments go to `docker compose logs`).
-  upgrade, rollback, backup, restore, doctor, support-bundle, bundle
+  doctor        Run read-only host and in-container diagnostics.
+  upgrade, rollback, backup, restore, support-bundle, bundle
                 Not built yet.
 
 install options
@@ -767,7 +768,7 @@ summary() {
   say "Left off           WAF, IPS, rule-match collection, custom rules (turn them on later)"
   say "Next               Sign in, then Directory ($origin/admin/directory) if AD is used,"
   say "                    and Users ($origin/admin/users) to assign roles."
-  say "Runbook            docs/OPERATIONS.md (arrives with OPS-9); ./qradar-dash doctor (OPS-7)"
+  say "Runbook            docs/OPERATIONS.md (arrives with OPS-9); ./qradar-dash doctor"
   say "Backup directory   ${ANS[BACKUP_DIR]}"
   say "Install time       $(((SECONDS - START_SECONDS) / 60)) min $(((SECONDS - START_SECONDS) % 60)) s"
   say "================================================================================"
@@ -797,6 +798,240 @@ cmd_logs() {
   dc logs "$@"
 }
 
+# ---------------------------------------------------------------- doctor
+
+DOCTOR_WORST=0
+DOCTOR_HAS_DOCKER=0
+DOCTOR_BACKEND_RUNNING=0
+DOCTOR_ID_WIDTH=16
+
+doctor_line() { # doctor_line STATUS ID MESSAGE [RUNBOOK]
+  local status=$1 id=$2 message=$3 runbook=${4:-} severity=0
+  case "$status" in
+    WARN) severity=1 ;;
+    FAIL) severity=2 ;;
+  esac
+  [ "$severity" -le "$DOCTOR_WORST" ] || DOCTOR_WORST=$severity
+  printf '%-5s %-*s %s' "$status" "$DOCTOR_ID_WIDTH" "$id" "$message"
+  [ -z "$runbook" ] || printf '    runbook: %s' "$runbook"
+  printf '\n'
+}
+
+doctor_free_gib() { awk -v blocks="$1" 'BEGIN {printf "%.1f", blocks / 1048576}'; }
+
+doctor_df() { # doctor_df PATH -> "FREE_KIB USED_PERCENT", or no output
+  local row free used
+  row=$(df -Pk -- "$1" 2>/dev/null | awk 'NR == 2 {print $4, $5}') || return 1
+  read -r free used <<<"$row"
+  used=${used%%%}
+  case "$free:$used" in
+    *[!0-9:]* | :* | *:) return 1 ;;
+  esac
+  printf '%s %s\n' "$free" "$used"
+}
+
+doctor_disk_docker() {
+  local root metrics free used free_gib status
+  if [ "$DOCTOR_HAS_DOCKER" -eq 0 ]; then
+    doctor_line FAIL disk_docker "Docker is not installed"
+    return
+  fi
+  root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)
+  if [ -z "$root" ]; then
+    doctor_line FAIL disk_docker "Docker root directory is unavailable" OPS-R14
+    return
+  fi
+  metrics=$(doctor_df "$root" || true)
+  if [ -z "$metrics" ]; then
+    doctor_line FAIL disk_docker "free space is unavailable for Docker root $root" OPS-R14
+    return
+  fi
+  read -r free used <<<"$metrics"
+  free_gib=$(doctor_free_gib "$free")
+  status=PASS
+  if [ "$used" -ge 90 ]; then status=FAIL; elif [ "$used" -ge 70 ]; then status=WARN; fi
+  doctor_line "$status" disk_docker "$used% used; $free_gib GiB free on $root" \
+    "$([ "$status" = PASS ] || echo OPS-R14)"
+}
+
+doctor_database_size() { # bytes on stdout; failure means unavailable
+  local size
+  [ "$DOCTOR_HAS_DOCKER" -eq 1 ] || return 1
+  size=$(printf '%s\n' "SELECT pg_database_size(current_database());" \
+    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$(env_get POSTGRES_DB)" \
+      -v ON_ERROR_STOP=1 -Atq 2>/dev/null) || return 1
+  case "$size" in '' | *[!0-9]*) return 1 ;; esac
+  printf '%s\n' "$size"
+}
+
+doctor_disk_backup() {
+  local path metrics free used free_gib status=PASS message db_size required_kib required_gib
+  path=$(env_get QRADAR_DASH_BACKUP_DIR)
+  if [ -z "$path" ]; then
+    doctor_line FAIL disk_backup "backup directory is not configured" OPS-R14
+    return
+  fi
+  if [ ! -e "$path" ]; then
+    doctor_line WARN disk_backup "backup directory does not exist: $path" OPS-R14
+    return
+  fi
+  if [ ! -d "$path" ]; then
+    doctor_line FAIL disk_backup "backup path is not a directory: $path" OPS-R14
+    return
+  fi
+  metrics=$(doctor_df "$path" || true)
+  if [ -z "$metrics" ]; then
+    doctor_line FAIL disk_backup "free space is unavailable for backup directory $path" OPS-R14
+    return
+  fi
+  read -r free used <<<"$metrics"
+  free_gib=$(doctor_free_gib "$free")
+  if [ "$used" -ge 90 ]; then status=FAIL; elif [ "$used" -ge 70 ]; then status=WARN; fi
+  message="$used% used; $free_gib GiB free on $path"
+  if db_size=$(doctor_database_size); then
+    required_kib=$(((2 * db_size + 2 * 1024 * 1024 * 1024 + 1023) / 1024))
+    required_gib=$(doctor_free_gib "$required_kib")
+    if [ "$free" -lt "$required_kib" ]; then
+      status=FAIL
+      message="$message; backup guard needs $required_gib GiB"
+    else
+      message="$message; backup guard passes"
+    fi
+  else
+    [ "$status" = FAIL ] || status=WARN
+    message="$message; database size unavailable"
+  fi
+  doctor_line "$status" disk_backup "$message" "$([ "$status" = PASS ] || echo OPS-R14)"
+}
+
+doctor_clock() {
+  local synced
+  if ! command -v timedatectl >/dev/null 2>&1; then
+    doctor_line WARN qradar_clock "timedatectl is not available; check NTP by hand" OPS-R15
+    return
+  fi
+  synced=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)
+  if [ "$synced" = yes ]; then
+    doctor_line PASS qradar_clock "NTP is synchronized"
+  else
+    doctor_line WARN qradar_clock "NTP is not synchronized" OPS-R15
+  fi
+}
+
+doctor_selinux() {
+  local mode
+  if ! command -v getenforce >/dev/null 2>&1; then
+    doctor_line PASS selinux "SELinux is not installed"
+    return
+  fi
+  mode=$(getenforce 2>/dev/null | head -n1 || true)
+  doctor_line PASS selinux "${mode:-unknown}"
+}
+
+doctor_profile_enabled() {
+  local profiles=${COMPOSE_PROFILES:-}
+  [ -n "$profiles" ] || profiles=$(env_get COMPOSE_PROFILES)
+  case ",${profiles// /,}," in *,$1,*) return 0 ;; *) return 1 ;; esac
+}
+
+doctor_container_runbook() {
+  case "$1" in
+    backend | postgres) say OPS-R36 ;;
+    celery-worker) say OPS-R41 ;;
+    celery-beat) say OPS-R9 ;;
+  esac
+}
+
+doctor_containers() {
+  local output row service state health exit_code state_l health_l total=0 runbook candidate detail
+  local -a failures=()
+  local -a failure_runbooks=()
+  DOCTOR_BACKEND_RUNNING=0
+  if [ "$DOCTOR_HAS_DOCKER" -eq 0 ]; then
+    doctor_line FAIL containers "Docker is not installed"
+    return
+  fi
+  if ! output=$(
+    dc ps --all --format '{{.Service}}\t{{.State}}\t{{.Health}}\t{{.ExitCode}}' 2>/dev/null
+  ); then
+    doctor_line FAIL containers "docker compose ps failed"
+    return
+  fi
+  while IFS= read -r row; do
+    row=${row//$'\t'/$'\x1f'}
+    IFS=$'\x1f' read -r service state health exit_code <<<"$row"
+    [ -n "$service" ] || continue
+    state_l=${state,,}
+    health_l=${health,,}
+    if [ "$service" = qradar-mcp ] && ! doctor_profile_enabled mcp; then continue; fi
+    if [ "$service" = migrate ] && [ "$state_l" = exited ]; then
+      if [ "$exit_code" = 0 ]; then continue; fi
+      total=$((total + 1))
+      failures+=("migrate is exited (exit code: ${exit_code:-unknown})")
+      failure_runbooks+=(OPS-R11)
+      continue
+    fi
+    total=$((total + 1))
+    if [ "$service" = backend ] && [ "$state_l" = running ]; then
+      DOCTOR_BACKEND_RUNNING=1
+    fi
+    if [ "$state_l" != running ] || { [ -n "$health_l" ] && [ "$health_l" != healthy ]; }; then
+      detail="$service is ${state_l:-unknown}"
+      [ -z "$health_l" ] || detail="$detail (health: $health_l)"
+      failures+=("$detail")
+      candidate=$(doctor_container_runbook "$service")
+      failure_runbooks+=("$candidate")
+    fi
+  done <<<"$output"
+  if [ "$total" -eq 0 ]; then
+    doctor_line FAIL containers "no active Compose services were found"
+  elif [ "${#failures[@]}" -gt 0 ]; then
+    local joined=${failures[0]}
+    for detail in "${failures[@]:1}"; do joined="$joined; $detail"; done
+    runbook=${failure_runbooks[0]:-}
+    if [ -n "$runbook" ]; then
+      for candidate in "${failure_runbooks[@]}"; do
+        if [ -z "$candidate" ] || [ "$candidate" != "$runbook" ]; then
+          runbook=""
+          break
+        fi
+      done
+    fi
+    doctor_line FAIL containers "$joined" "$runbook"
+  else
+    doctor_line PASS containers "$total Compose service(s) are running and healthy"
+  fi
+}
+
+doctor_incontainer() {
+  local rc
+  if [ "$DOCTOR_BACKEND_RUNNING" -eq 0 ]; then
+    doctor_line FAIL doctor_incontainer "backend container is not running" OPS-R36
+    return
+  fi
+  set +e
+  dc exec -T backend python -m app.cli.doctor
+  rc=$?
+  set -e
+  case "$rc" in
+    0) ;;
+    1) [ "$DOCTOR_WORST" -ge 1 ] || DOCTOR_WORST=1 ;;
+    *) DOCTOR_WORST=2 ;;
+  esac
+}
+
+cmd_doctor() {
+  need_installed
+  if command -v docker >/dev/null 2>&1; then DOCTOR_HAS_DOCKER=1; fi
+  doctor_disk_docker
+  doctor_disk_backup
+  doctor_clock
+  doctor_selinux
+  doctor_containers
+  doctor_incontainer
+  return "$DOCTOR_WORST"
+}
+
 not_built() {
   fail "'$1' is not built yet ($2)."
   exit 64
@@ -811,7 +1046,7 @@ main() {
     logs) cmd_logs "$@" ;;
     upgrade | rollback) not_built "$cmd" "OPS-6" ;;
     backup | restore) not_built "$cmd" "OPS-5" ;;
-    doctor) not_built "$cmd" "OPS-7" ;;
+    doctor) cmd_doctor ;;
     support-bundle) not_built "$cmd" "OPS-8" ;;
     bundle) not_built "$cmd" "OPS-3 and OPS-10" ;;
     -h | --help | help | "") usage; [ -n "$cmd" ] || exit 2 ;;
