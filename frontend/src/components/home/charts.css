@@ -87,7 +87,9 @@
 }
 .hc-list {
   flex: 1 1 var(--home-list-min);
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
   border-collapse: collapse;
   /* Fixed, so the class column takes what the figures leave and wraps inside it;
      an auto table would refuse to shrink below its longest name and push the
@@ -115,7 +117,10 @@
 }
 .hc-list tbody th {
   min-width: 0;
+  /* `th` in globals is nowrap. Left as inherited, the folded-class line is one
+     unbreakable run and the widget edge cuts it. */
   overflow-wrap: anywhere;
+  white-space: normal;
   color: var(--text);
 }
 .hc-list tbody th .hc-swatch {
@@ -134,7 +139,12 @@
 }
 .hc-rest {
   display: block;
+  max-width: 100%;
   margin-left: calc(var(--sp-3) + var(--sp-2));
+  /* Own the wrap. The cell's white-space would otherwise inherit `th`'s nowrap
+     and the names would clip at the widget edge. The title carries the full list. */
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
