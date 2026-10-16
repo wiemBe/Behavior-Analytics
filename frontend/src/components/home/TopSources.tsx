@@ -67,7 +67,7 @@ export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) 
           return (
             <>
               <TableScroll label="Top log sources by EPS">
-                <table className="tw-table">
+                <table className="tw-table" aria-label="Top log sources by EPS">
                   <colgroup>
                     <col />
                     <col className="tw-col-eps" />

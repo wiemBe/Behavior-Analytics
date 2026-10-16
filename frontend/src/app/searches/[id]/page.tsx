@@ -94,7 +94,7 @@ export default async function SearchDetailPage({
             Query version history
           </h2>
           <TableScroll label="Query version history">
-            <table className="table-dense">
+            <table className="table-dense" aria-label="Query version history">
               <thead>
                 <tr>
                   <th scope="col">Version</th>

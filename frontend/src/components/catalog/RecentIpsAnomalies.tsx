@@ -56,7 +56,7 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
         return (
           <>
             <TableScroll label="Recent IPS anomalies">
-              <table className="tw-table">
+              <table className="tw-table" aria-label="Recent IPS anomalies">
                 <colgroup>
                   <col className="tw-col-time tw-unfold" />
                   <col />

@@ -49,7 +49,7 @@ export function WafSources() {
         return (
           <>
             <TableScroll label="WAF sources">
-              <table className="tw-table cw-table">
+              <table className="tw-table cw-table" aria-label="WAF sources">
                 <colgroup>
                   <col />
                   <col className="tw-col-badge" />

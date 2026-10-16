@@ -66,7 +66,7 @@ export function RecentOffenses() {
           return (
             <>
               <TableScroll label="Recent offenses">
-                <table className="tw-table">
+                <table className="tw-table" aria-label="Recent offenses">
                   <colgroup>
                     <col className="tw-col-time" />
                     <col />
