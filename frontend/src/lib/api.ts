@@ -441,6 +441,44 @@ export interface SearchResultTrend {
   points: ResultMetricPoint[];
 }
 
+/** One stored metric key of a search (`GET /searches/{id}/metric-keys`). */
+export interface MetricKeyStat {
+  metric_key: string;
+  point_count: number;
+  last_bucket_start: string;
+}
+
+export interface MetricKeyList {
+  search_id: string;
+  /** Distinct keys before the limit. */
+  total: number;
+  /** Keys this response holds. */
+  count: number;
+  keys: MetricKeyStat[];
+}
+
+/** One grouped aggregate of the latest execution that stored a row. */
+export interface LatestGroupRow {
+  metric_key: string;
+  dimensions: Record<string, unknown>;
+  value: number;
+}
+
+export interface LatestGroups {
+  search_id: string;
+  execution_id: string | null;
+  started_at: string | null;
+  status: string | null;
+  truncated: boolean;
+  /** True when each value is a floor: the UI shows "≥ n" and no verdict. */
+  values_are_lower_bounds: boolean;
+  /** Why `rows` is empty. An unknown search is 404, not one of these. */
+  empty: "no_execution" | "no_rows" | null;
+  /** Rows on that execution before the limit. */
+  total: number;
+  rows: LatestGroupRow[];
+}
+
 export interface Notification {
   id: string;
   alert_id: string;
@@ -1392,14 +1430,33 @@ export const api = {
   logSource: (id: string) => request<LogSourceDetail>(`/log-sources/${id}`),
   syncLogSources: () => request<unknown>("/log-sources/sync", { method: "POST" }),
 
-  searches: () => request<ScheduledSearch[]>("/searches"),
-  search: (id: string) => request<ScheduledSearch>(`/searches/${id}`),
-  searchVersions: (id: string) => request<SearchVersion[]>(`/searches/${id}/versions`),
-  searchExecutions: (id: string) => request<SearchExecution[]>(`/searches/${id}/executions`),
-  searchResults: (id: string, metricKey = "total", limit = 500) =>
+  searches: (signal?: AbortSignal) => request<ScheduledSearch[]>("/searches", { signal }),
+  search: (id: string, signal?: AbortSignal) =>
+    request<ScheduledSearch>(`/searches/${id}`, { signal }),
+  searchVersions: (id: string, signal?: AbortSignal) =>
+    request<SearchVersion[]>(`/searches/${id}/versions`, { signal }),
+  searchExecutions: (id: string, signal?: AbortSignal) =>
+    request<SearchExecution[]>(`/searches/${id}/executions`, { signal }),
+  searchResults: (
+    id: string,
+    metricKey = "total",
+    limit = 500,
+    range?: { start?: string; end?: string },
+    signal?: AbortSignal,
+  ) =>
     request<SearchResultTrend>(
-      `/searches/${id}/results?metric_key=${encodeURIComponent(metricKey)}&limit=${limit}`,
+      `/searches/${id}/results${qs({
+        metric_key: metricKey,
+        limit,
+        start: range?.start,
+        end: range?.end,
+      })}`,
+      { signal },
     ),
+  searchMetricKeys: (id: string, limit = 1000, signal?: AbortSignal) =>
+    request<MetricKeyList>(`/searches/${id}/metric-keys${qs({ limit })}`, { signal }),
+  searchLatestGroups: (id: string, limit = 50, signal?: AbortSignal) =>
+    request<LatestGroups>(`/searches/${id}/latest-groups${qs({ limit })}`, { signal }),
   createSearch: (definition: ScheduledSearchCreate) =>
     request<ScheduledSearch>("/searches", {
       method: "POST",
