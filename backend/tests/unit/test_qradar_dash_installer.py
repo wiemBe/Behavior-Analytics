@@ -247,3 +247,125 @@ def test_the_script_is_executable_and_runs_no_forbidden_command() -> None:
     compose = (REPO / "docker-compose.prod.yml").read_text()
     for forbidden in (":z", ":Z", "label=disable"):
         assert forbidden not in compose
+
+
+# ---- T-122: COMPOSE_FILE in .env, GIT_SHA for --build -------------------------------------
+
+COMPOSE_FILE_LINE = "COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml"
+
+DOCKER_BUILD_STUB = """#!/bin/sh
+case "$*" in
+  "compose version --short") echo 2.30.0; exit 0 ;;
+  *" build "*)
+    echo "GIT_SHA=${GIT_SHA-<unset>}" >> "$HOME/build.log"
+    exit 1 ;;
+esac
+exit 0
+"""
+
+
+def _stub(path: Path, body: str) -> None:
+    path.write_text(body)
+    path.chmod(0o755)
+
+
+@pytest.fixture
+def build_path(tmp_path: Path) -> str:
+    """A PATH with the script's tools and a docker stub whose `build` fails after logging."""
+    mem_kb = int(next(
+        line.split()[1] for line in Path("/proc/meminfo").read_text().splitlines()
+        if line.startswith("MemTotal:")
+    ))
+    if mem_kb < 7864320:
+        pytest.skip("the installer preflight needs 7.5 GiB of RAM on the test host")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for tool in [*NEEDED_TOOLS, "openssl", "curl", "sha256sum", "timeout", "getenforce",
+                 "chmod", "mv", "cp", "ln", "touch", "wc", "cut", "tee", "sleep", "basename"]:
+        found = shutil.which(tool)
+        if found:
+            (bin_dir / tool).symlink_to(found)
+    _stub(bin_dir / "docker", DOCKER_BUILD_STUB)
+    _stub(bin_dir / "nproc", "#!/bin/sh\necho 8\n")
+    _stub(bin_dir / "ss", "#!/bin/sh\nexit 0\n")
+    _stub(bin_dir / "df", "#!/bin/sh\nprintf 'Filesystem 1K-blocks Used Available Use%% Mounted\\n"
+          "x 999999999999 1 999999999999 1%% /\\n'\n")
+    return str(bin_dir)
+
+
+def _build(inst: Install, tmp_path: Path, path: str) -> subprocess.CompletedProcess[str]:
+    answers = inst.answers()
+    assert tmp_path == inst.root.parent  # the stub logs to $HOME, which is tmp_path
+    return inst.run(
+        "install", "--non-interactive", str(answers), "--build", "--skip-qradar-check",
+        path=path,
+    )
+
+
+def _env_lines(inst: Install) -> list[str]:
+    return (inst.root / ".env").read_text().splitlines()
+
+
+def test_a_fresh_env_has_compose_file(inst: Install, tmp_path: Path, build_path: str) -> None:
+    result = _build(inst, tmp_path, build_path)
+    assert "docker compose build failed" in result.stderr + result.stdout
+    lines = _env_lines(inst)
+    assert lines.count(COMPOSE_FILE_LINE) == 1
+    assert lines.index(COMPOSE_FILE_LINE) == lines.index(
+        next(x for x in lines if x.startswith("COMPOSE_PROJECT_NAME="))
+    ) + 2
+
+
+def test_a_rerun_adds_a_missing_compose_file_and_keeps_the_other_lines(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    _build(inst, tmp_path, build_path)
+    env = inst.root / ".env"
+    old = [x for x in _env_lines(inst) if x != COMPOSE_FILE_LINE]
+    env.write_text("\n".join(old) + "\n")
+    _build(inst, tmp_path, build_path)
+    new = _env_lines(inst)
+    assert new.count(COMPOSE_FILE_LINE) == 1
+    assert [x for x in new if x != COMPOSE_FILE_LINE] == old
+    keep = [x for x in old if x.split("=")[0] in ("SECRET_KEY", "POSTGRES_PASSWORD")]
+    assert len(keep) == 2
+
+
+def test_a_rerun_over_an_env_with_compose_file_does_not_duplicate_it(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    _build(inst, tmp_path, build_path)
+    first = (inst.root / ".env").read_text()
+    _build(inst, tmp_path, build_path)
+    again = _env_lines(inst)
+    assert again.count(COMPOSE_FILE_LINE) == 1
+    assert len([x for x in again if x.startswith("COMPOSE_FILE=")]) == 1
+    assert again[2:4] == first.splitlines()[2:4]  # the stable header keys
+
+
+def test_build_sees_git_sha_in_a_checkout_and_never_writes_it_to_env(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    _stub(
+        Path(build_path) / "git",
+        "#!/bin/sh\n[ \"$1 $2\" = 'rev-parse HEAD' ] && echo abc123def\n",
+    )
+    _build(inst, tmp_path, build_path)
+    assert (tmp_path / "build.log").read_text().strip() == "GIT_SHA=abc123def"
+    assert "GIT_SHA" not in (inst.root / ".env").read_text()
+
+
+def test_build_without_git_leaves_git_sha_unset_and_does_not_fail_early(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    assert not (Path(build_path) / "git").exists()
+    _build(inst, tmp_path, build_path)
+    assert (tmp_path / "build.log").read_text().strip() == "GIT_SHA=<unset>"
+
+
+def test_build_outside_a_repository_leaves_git_sha_unset(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    _stub(Path(build_path) / "git", "#!/bin/sh\nexit 128\n")
+    _build(inst, tmp_path, build_path)
+    assert (tmp_path / "build.log").read_text().strip() == "GIT_SHA=<unset>"
