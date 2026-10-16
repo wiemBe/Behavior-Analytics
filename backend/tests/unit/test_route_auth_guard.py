@@ -35,11 +35,17 @@ _OPEN_PATHS = {
 }
 
 # Mutating routes that a read-only principal may call. Add (METHOD, path) here
-# only with a reason. Currently empty: the two Phase 3 writes that sat behind
-# only the router-level read permission now check their own write permission
-# (PATCH /rules/{rule_id} needs rule:write, POST /coverage/mappings needs
-# coverage:write), so the guard test proves 403 for a read-only principal.
-_READONLY_MAY_MUTATE: set[tuple[str, str]] = set()
+# only with a reason. The Phase 3 writes that sat behind only the router-level
+# read permission now check their own write permission (PATCH /rules/{rule_id}
+# needs rule:write, POST /coverage/mappings needs coverage:write), so the guard
+# test proves 403 for a read-only principal.
+#
+# Draft preview is POST because the unsaved rule is a body. It reads stored
+# buckets, writes nothing, and the router already requires `read:custom_rules`,
+# which `read:*` satisfies. `custom_rule:write` is not required.
+_READONLY_MAY_MUTATE: set[tuple[str, str]] = {
+    ("POST", "/api/v1/custom-rules/preview"),
+}
 
 # Minimal valid bodies. A handler-level permission check runs after body
 # validation, so a mutating route with a required body needs one here to reach
@@ -106,6 +112,20 @@ _BODIES: dict[tuple[str, str], dict] = {
         "name": "g", "layout": {"v": 1, "range": "24h", "widgets": []}, "expected_revision": 1,
     },
     ("PATCH", "/api/v1/dashboards/{dashboard_id}"): {"name": "g"},
+    # Custom rules check `custom_rule:write` in the handler, after validation.
+    # Preview is allowlisted above: it is a read.
+    ("POST", "/api/v1/custom-rules"): {
+        "name": "guard",
+        "subject_kind": "LOG_SOURCE",
+        "metric": "event_count",
+        "operator": "GT",
+        "threshold_value": 1,
+        "sustain_buckets": 1,
+        "recovery_buckets": 1,
+    },
+    ("PATCH", "/api/v1/custom-rules/{rule_id}"): {
+        "expected_updated_at": "2026-01-01T00:00:00Z",
+    },
 }
 
 _ID = str(uuid.uuid4())

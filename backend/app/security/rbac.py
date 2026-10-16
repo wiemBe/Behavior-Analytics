@@ -104,6 +104,14 @@ PERM_GEO_READ = "read:geo"
 PERM_DASHBOARD_READ = "read:dashboards"
 PERM_DASHBOARD_WRITE = "dashboard:write"
 PERM_DASHBOARD_SHARE = "admin:dashboards"
+# Phase F. A custom rule thresholds aggregates the platform already stored.
+# Listing, reading and previewing one is a view of the estate, so `read:*`
+# satisfies it. Authoring, enabling or deleting one is a write: `read:*` does
+# not grant `custom_rule:write`, the same split as `dashboard:write`. `admin:*`
+# does satisfy the write, because that wildcard grants every permission; the
+# admin role therefore does not list the string.
+PERM_CUSTOM_RULE_READ = "read:custom_rules"
+PERM_CUSTOM_RULE_WRITE = "custom_rule:write"
 
 
 class PermissionDenied(Exception):

@@ -32,6 +32,15 @@ _ROLES = {
     ],
     "viewer": ["read:*"],
 }
+# Detection engineering (D-17): everything an analyst holds, plus the two writes
+# a rule author needs. No `admin:*`. `admin:*` already satisfies
+# `custom_rule:write` (`Principal.has` grants every permission to that
+# wildcard), so the string is not added to the admin role above.
+_ROLES["detection_engineer"] = [
+    *_ROLES["analyst"],
+    "search:write",
+    "custom_rule:write",
+]
 
 
 async def seed() -> None:
