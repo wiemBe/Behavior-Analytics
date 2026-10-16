@@ -8,6 +8,7 @@ from app.models.alert import Alert, AlertNotification
 from app.models.base import Base
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.config_change import ConfigurationChange, ConfigurationSnapshot
+from app.models.custom_rule import CustomRule, CustomRuleBreach, CustomRuleWatermark
 from app.models.dashboard import Dashboard, UserDashboardPref
 from app.models.explanation import (
     EXPLANATION_SCHEMA_VERSION,
@@ -114,6 +115,9 @@ __all__ = [
     "CollectionWatermark",
     "ConfigurationChange",
     "ConfigurationSnapshot",
+    "CustomRule",
+    "CustomRuleBreach",
+    "CustomRuleWatermark",
     "Dashboard",
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
