@@ -36,7 +36,9 @@ Commands
   status        Show the stack and the API health.
   logs          Show service logs (arguments go to `docker compose logs`).
   doctor        Run read-only host and in-container diagnostics.
-  upgrade, rollback, backup, restore, support-bundle, bundle
+  support-bundle
+                Write a redacted diagnostic archive under the backup root.
+  upgrade, rollback, backup, restore, bundle
                 Not built yet.
 
 install options
@@ -1032,6 +1034,203 @@ cmd_doctor() {
   return "$DOCTOR_WORST"
 }
 
+# ---------------------------------------------------------------- support bundle
+
+SUPPORT_STAGE=""
+
+support_cleanup() {
+  [ -z "$SUPPORT_STAGE" ] || rm -rf -- "$SUPPORT_STAGE"
+}
+
+support_error() { # support_error PART MESSAGE
+  printf '%s\n' "$2" >"$SUPPORT_STAGE/input/$1.error.txt"
+}
+
+support_psql() { # support_psql PART QUERY
+  local part=$1 query=$2 target="$SUPPORT_STAGE/input/$1.txt"
+  if printf '%s\n' "$query" \
+    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$(env_get POSTGRES_DB)" \
+      -v ON_ERROR_STOP=1 -P pager=off >"$target" 2>/dev/null; then
+    return
+  fi
+  rm -f -- "$target"
+  support_error "$part" "$part could not be read; inspect ./qradar-dash doctor and the service logs."
+}
+
+support_version() {
+  local target="$SUPPORT_STAGE/input/version.txt" piece="$SUPPORT_STAGE/version-piece"
+  local api_port ui_port service digest
+  : >"$target"
+  if [ -f .qradar-dash/state.json ]; then
+    if cat .qradar-dash/state.json >"$piece"; then
+      printf '%s\n' 'state.json'
+      cat "$piece"
+      printf '\n'
+    else
+      support_error version-state \
+        "version state could not be read; check .qradar-dash/state.json permissions."
+    fi >>"$target"
+  fi
+
+  api_port=$(env_get API_LOOPBACK_PORT)
+  : "${api_port:=8000}"
+  if curl -fsS --max-time 5 "http://127.0.0.1:$api_port/api/v1/version" \
+    >"$piece" 2>/dev/null; then
+    printf '%s\n' 'backend /api/v1/version'
+    cat "$piece"
+    printf '\n'
+  else
+    support_error version-backend \
+      "backend version endpoint could not be read; inspect doctor.txt and backend.log."
+  fi >>"$target"
+
+  ui_port=$(env_get UI_LOOPBACK_PORT)
+  : "${ui_port:=3000}"
+  if curl -fsS --max-time 5 "http://127.0.0.1:$ui_port/api/health" \
+    >"$piece" 2>/dev/null; then
+    printf '%s\n' 'frontend /api/health'
+    cat "$piece"
+    printf '\n'
+  else
+    support_error version-frontend \
+      "frontend health endpoint could not be read; inspect doctor.txt and frontend.log."
+  fi >>"$target"
+
+  if dc config --services >"$SUPPORT_STAGE/services" 2>/dev/null; then
+    printf '%s\n' 'compose image digests' >>"$target"
+    while IFS= read -r service; do
+      [ -n "$service" ] || continue
+      case "$service" in
+        *[!A-Za-z0-9_.-]*)
+          support_error version-images \
+            "Compose returned an unsafe service name; image digests are incomplete."
+          continue
+          ;;
+      esac
+      digest=$(dc images -q "$service" 2>/dev/null || true)
+      if [ -n "$digest" ]; then
+        printf '%s\t%s\n' "$service" "$digest" >>"$target"
+      else
+        support_error "version-image-$service" \
+          "the $service image digest is unavailable; ensure its image has been pulled."
+      fi
+    done <"$SUPPORT_STAGE/services"
+    printf '\n' >>"$target"
+  else
+    : >"$SUPPORT_STAGE/services"
+    support_error version-images \
+      "Compose service discovery failed; verify the Compose files and rerun the bundle."
+  fi
+
+  if printf '%s\n' 'SELECT version_num FROM alembic_version;' \
+    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$(env_get POSTGRES_DB)" \
+      -v ON_ERROR_STOP=1 -P pager=off >"$piece" 2>/dev/null; then
+    printf '%s\n' 'alembic_version'
+    cat "$piece"
+    printf '\n'
+  else
+    support_error version-alembic \
+      "alembic_version could not be read; inspect doctor.txt and postgres.log."
+  fi >>"$target"
+  rm -f -- "$piece"
+}
+
+support_logs() {
+  local service
+  mkdir -p "$SUPPORT_STAGE/input/logs"
+  if [ ! -s "$SUPPORT_STAGE/services" ]; then
+    support_error logs \
+      "Compose service discovery failed; no service logs could be collected."
+    return
+  fi
+  while IFS= read -r service; do
+    [ -n "$service" ] || continue
+    case "$service" in
+      *[!A-Za-z0-9_.-]*) continue ;;
+    esac
+    if ! dc logs --tail=2000 --no-color "$service" \
+      >"$SUPPORT_STAGE/input/logs/$service.log" 2>/dev/null; then
+      rm -f -- "$SUPPORT_STAGE/input/logs/$service.log"
+      printf '%s\n' \
+        "$service logs could not be read; check whether the service has a container." \
+        >"$SUPPORT_STAGE/input/logs/$service.error.txt"
+    fi
+  done <"$SUPPORT_STAGE/services"
+}
+
+support_stage_secret() { # support_stage_secret SOURCE NAME
+  [ -e "$1" ] || return 0
+  if [ ! -f "$1" ] || [ ! -r "$1" ]; then
+    fail "secret input cannot be read: $1; fix its permissions and rerun. No archive was written."
+    return 1
+  fi
+  if ! install -m 600 "$1" "$SUPPORT_STAGE/input/.support-input/$2"; then
+    fail "secret input could not be staged: $1; fix disk access and rerun. No archive was written."
+    return 1
+  fi
+}
+
+cmd_support_bundle() {
+  need_installed
+  command -v docker >/dev/null 2>&1 || die \
+    "Docker is not installed; install Docker and rerun support-bundle."
+  command -v tar >/dev/null 2>&1 || die \
+    "tar is not installed; install tar and rerun support-bundle."
+
+  local backup_root timestamp final output
+  backup_root=$(env_get QRADAR_DASH_BACKUP_DIR)
+  [ -n "$backup_root" ] || die \
+    "backup root is not configured; set QRADAR_DASH_BACKUP_DIR and rerun support-bundle."
+  umask 077
+  mkdir -p -- "$backup_root" || die \
+    "backup root cannot be created: $backup_root; fix its parent permissions and rerun."
+  SUPPORT_STAGE=$(mktemp -d "$backup_root/.support-staging.XXXXXX") || die \
+    "staging directory cannot be created under $backup_root; fix its permissions and rerun."
+  trap support_cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  chmod 700 "$SUPPORT_STAGE"
+  mkdir -p "$SUPPORT_STAGE/input/.support-input/secrets"
+
+  (cmd_doctor || true) >"$SUPPORT_STAGE/input/doctor.txt" 2>&1
+  support_version
+  if ! dc ps --all >"$SUPPORT_STAGE/input/compose-ps.txt" 2>/dev/null; then
+    rm -f -- "$SUPPORT_STAGE/input/compose-ps.txt"
+    support_error compose-ps \
+      "docker compose ps failed; verify Docker access and inspect doctor.txt."
+  fi
+  support_psql watermarks \
+    'SELECT id, instance_id, collector, watermark_at, last_run_at, lag_seconds, intervals_collected, consecutive_failures, last_error, collection_metadata, created_at, updated_at FROM collection_watermark ORDER BY instance_id, collector;'
+  support_psql cadence \
+    'SELECT family, cadence_seconds, last_slot_start, updated_at, updated_by, last_run_at, last_run_outcome, last_run_searches, last_run_buckets, last_run_splits FROM search_cadence ORDER BY family;'
+  support_logs
+
+  if ! install -m 600 "$ENV_FILE" "$SUPPORT_STAGE/input/.support-input/config.env"; then
+    fail "configuration could not be staged; fix .env permissions and rerun. No archive was written."
+    return 1
+  fi
+  support_stage_secret .secrets/qradar.sec secrets/qradar.sec
+  support_stage_secret .secrets/ghcr.token secrets/ghcr.token
+  support_stage_secret .secrets/tls.key secrets/tls.key
+
+  output="$SUPPORT_STAGE/support.tar.gz"
+  if ! tar -C "$SUPPORT_STAGE/input" -cf - . \
+    | dc run --rm --no-deps -T backend python -m app.cli.support_bundle >"$output"; then
+    fail "support-bundle scrubber failed; ensure the backend image is available, then rerun. No archive was written."
+    return 1
+  fi
+
+  timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+  final="$backup_root/support-$timestamp.tar.gz"
+  [ ! -e "$final" ] || die \
+    "support archive already exists: $final; wait one second and rerun support-bundle."
+  chmod 600 "$output"
+  mv -- "$output" "$final"
+  chmod 600 "$final"
+  say "$final"
+}
+
 not_built() {
   fail "'$1' is not built yet ($2)."
   exit 64
@@ -1047,7 +1246,7 @@ main() {
     upgrade | rollback) not_built "$cmd" "OPS-6" ;;
     backup | restore) not_built "$cmd" "OPS-5" ;;
     doctor) cmd_doctor ;;
-    support-bundle) not_built "$cmd" "OPS-8" ;;
+    support-bundle) cmd_support_bundle ;;
     bundle) not_built "$cmd" "OPS-3 and OPS-10" ;;
     -h | --help | help | "") usage; [ -n "$cmd" ] || exit 2 ;;
     *) fail "unknown command: $cmd"; usage >&2; exit 2 ;;

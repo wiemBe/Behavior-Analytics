@@ -1046,6 +1046,15 @@ button the runbook already points at.
 `./qradar-dash support-bundle` writes
 `<backup-root>/support-<utc>.tar.gz` mode `0600` and prints the path.
 
+As built in OPS-8, assembly happens in a mode-`0700` directory under the backup root, with an
+exit/signal trap removing it. Each unavailable diagnostic part becomes a one-line
+`<part>.error.txt`; it does not prevent a bundle for a broken deployment. The assembled files,
+the unfiltered `.env`, and readable secret files are sent to
+`docker compose run --rm --no-deps -T backend python -m app.cli.support_bundle` as one tar stream
+on stdin. Reserved input members never enter the output. The scrubbed archive is received inside
+the staging directory and moved to its final name only after the scrubber succeeds. A missing
+backend image or any scrubber failure therefore leaves no final archive.
+
 Contents:
 
 - `doctor.txt`, the combined report
@@ -1102,16 +1111,20 @@ OPS-8 adds a unit test that builds a bundle from a fixture directory. The
 fixture plants:
 
 - a UUID SEC token in a log line that does **not** contain the word `SEC`
-- the same UUID as a `correlation_id` in a watermark row, which must survive
+- the same UUID as a `correlation_id` in a watermark row
+- a different UUID as another `correlation_id`
 - a Fernet `gAAAAA…` string
 - `ENCRYPTION_KEY=` and `POSTGRES_PASSWORD=` lines
 - an `Authorization: Bearer …` header
 - a `BEGIN PRIVATE KEY` block and a `BEGIN CERTIFICATE` block
 - a `consecutive_failures` field, which must survive
 
-The test asserts the planted secrets are absent from the archive bytes and
-that `correlation_id`, `consecutive_failures` and `BEGIN CERTIFICATE` are
-present. It does not need a database or QRadar.
+The §7.2 ambiguity is resolved as follows: exact-value removal wins everywhere, so the planted SEC
+UUID is removed from both the unrelated log line and the `correlation_id` value. The watermark row
+and the field name `correlation_id` survive, as does the other UUID. The test asserts those facts,
+that all other planted secrets and every reserved input member are absent from the decompressed
+archive bytes, and that `consecutive_failures` and `BEGIN CERTIFICATE` remain. It does not need a
+database or QRadar.
 
 ---
 
