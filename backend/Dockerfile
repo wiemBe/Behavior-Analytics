@@ -10,13 +10,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
-# Install deps from the project metadata before copying source, so a code change
-# does not invalidate the dependency layer.
-RUN pip install --upgrade pip && pip install .
+COPY requirements.txt ./
+# Install the hashed production lock before copying source, so a code change
+# does not invalidate the dependency layer. Nothing newer than the lock is resolved.
+RUN pip install --upgrade pip && pip install --require-hashes -r requirements.txt
 
 COPY . .
-RUN pip install --no-deps -e .
+# Not -e: the image must not depend on a writable source tree.
+RUN pip install --no-deps .
 
 # Non-root. The app never needs to write to its own source tree.
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
