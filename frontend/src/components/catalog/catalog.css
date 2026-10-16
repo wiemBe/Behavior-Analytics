@@ -17,15 +17,9 @@
   font-weight: var(--fw-normal);
   color: var(--text-2);
 }
-.cw-table th.cw-th-sub {
-  font-weight: var(--fw-normal);
-}
 .cw-table td.cw-nowrap,
 .cw-table th.cw-nowrap {
   white-space: nowrap;
-}
-.cw-group + .cw-group {
-  margin-top: var(--sp-1);
 }
 
 /* A name that is the row's key never truncates: it wraps, at most two lines in practice. */
