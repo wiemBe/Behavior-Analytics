@@ -24,6 +24,11 @@ export interface WidgetRuntime {
   onExpand: ((trigger: HTMLElement) => void) | null;
   /** True inside the expand dialog. */
   expanded: boolean;
+  /**
+   * Opens the configure drawer from this trigger; set only while customizing. A widget whose
+   * subject is not chosen, or no longer exists, offers it; in read mode it only says so.
+   */
+  onConfigure?: ((trigger: HTMLElement) => void) | null;
 }
 
 export const WidgetRuntimeContext = createContext<WidgetRuntime | null>(null);
@@ -46,4 +51,10 @@ export function useEffectiveRange(override: WidgetRange | null | undefined): Wid
 export interface RangedProps {
   range?: WidgetRange | null;
   expanded?: boolean;
+}
+
+/** True inside the expand dialog: a table then shows every row its read returned. */
+export function useExpanded(prop?: boolean): boolean {
+  const runtime = useContext(WidgetRuntimeContext);
+  return prop ?? runtime?.expanded ?? false;
 }

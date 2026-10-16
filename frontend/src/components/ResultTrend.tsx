@@ -106,11 +106,14 @@ export function ResultTrend({
     const values = rows.map((r) =>
       r.point === null || FAILED_STATUSES.has(r.point.execution_status) ? null : r.point.value,
     );
+    // The x position is the run's time, so a 15-minute gap is drawn three times as wide as a
+    // 5-minute one. A null value at a time still breaks the line there.
+    const times = rows.map((r) => Date.parse(r.at));
 
     const failures = rows
       .map((r, i) =>
         r.point !== null && FAILED_STATUSES.has(r.point.execution_status)
-          ? { coord: [i, 0], value: r.point.execution_status }
+          ? { coord: [Date.parse(r.at), 0], value: r.point.execution_status }
           : null,
       )
       .filter((x): x is { coord: number[]; value: string } => x !== null);
@@ -121,6 +124,7 @@ export function ResultTrend({
     const lone = isolatedIndices(values);
 
     return {
+      useUTC: true,
       grid: { left: 56, right: 24, top: 32, bottom: 56 },
       textStyle: text,
       tooltip: {
@@ -159,14 +163,17 @@ export function ResultTrend({
         },
       },
       xAxis: {
-        type: "category",
-        data: rows.map((r) => axisTimeLabel(r.at)),
+        type: "time",
         name: "Time (UTC)",
         nameLocation: "middle",
         nameGap: 32,
         nameTextStyle: text,
         axisLine: { lineStyle: { color: c.axis } },
-        axisLabel: { ...text, hideOverlap: true },
+        axisLabel: {
+          ...text,
+          hideOverlap: true,
+          formatter: (value: number) => axisTimeLabel(new Date(value).toISOString()),
+        },
       },
       yAxis: {
         type: "value",
@@ -181,7 +188,7 @@ export function ResultTrend({
         {
           type: "line",
           name: metricKey,
-          data: values,
+          data: values.map((v, i) => [times[i], v]),
           // Leave a visible gap rather than bridging a failed run.
           connectNulls: false,
           // No marker on every point: a dense series reads as a string of
@@ -201,7 +208,7 @@ export function ResultTrend({
                 },
                 lineStyle: { color: c.warn, type: "dashed" },
                 data: boundaries.map((b) => ({
-                  xAxis: rows.findIndex((r) => r.point === b),
+                  xAxis: Date.parse(b.bucket_start),
                   name: `v${b.query_version}`,
                 })),
               }
@@ -214,7 +221,7 @@ export function ResultTrend({
                   data: [
                     ...lone.map((i) => ({
                       name: "Measured run between gaps",
-                      coord: [i, values[i] as number],
+                      coord: [times[i], values[i] as number],
                       symbol: "circle",
                       symbolSize: 5,
                       itemStyle: { color: c.observed },
@@ -236,7 +243,7 @@ export function ResultTrend({
               {
                 type: "line" as const,
                 name: "threshold",
-                data: rows.map(() => trend.threshold_value),
+                data: times.map((t) => [t, trend.threshold_value]),
                 showSymbol: false,
                 lineStyle: { color: c.crit, type: "dotted" as const, width: 1 },
                 itemStyle: { color: c.crit },
@@ -289,7 +296,7 @@ export function ResultTrend({
   return (
     <>
       <div ref={containerRef} className="chart" role="img" aria-label="Search result trend" />
-      <p className="subtitle" style={{ marginTop: 8 }}>
+      <p className="subtitle trend-note">
         {trend.count} point{trend.count === 1 ? "" : "s"} · metric <code>{trend.metric_key}</code>
         {trend.threshold_value != null
           ? ` · threshold ${trend.threshold_operator} ${trend.threshold_value}`

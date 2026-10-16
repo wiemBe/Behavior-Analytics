@@ -34,3 +34,21 @@
   overflow-wrap: anywhere;
   text-overflow: clip;
 }
+
+/* A subject widget whose subject is not chosen, or no longer exists (UI-3.5b): a sentence and,
+   while customizing, the one action that fixes it. */
+.cw-config {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+.cw-col-figures {
+  width: var(--table-col-figures);
+}
+
+/* The subject charts (UI-3.5b) keep a plot tall enough to read at one column. */
+.tw-body-fill .hc-chart.cw-tall {
+  min-height: var(--cw-chart-h);
+}

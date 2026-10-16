@@ -5,7 +5,7 @@
 // no session, no credentials.
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { actionErrorMessage, api } from "@/lib/api";
 
@@ -22,6 +22,26 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  // Resolving is terminal, so the button only asks; "Resolve alert" does it.
+  const [confirming, setConfirming] = useState(false);
+  const resolveRef = useRef<HTMLButtonElement | null>(null);
+  const confirmRef = useRef<HTMLButtonElement | null>(null);
+  const restoreFocus = useRef(false);
+
+  // Focus follows the confirmation in, and goes back to Resolve when it closes.
+  useEffect(() => {
+    if (confirming) {
+      confirmRef.current?.focus();
+    } else if (restoreFocus.current) {
+      restoreFocus.current = false;
+      resolveRef.current?.focus();
+    }
+  }, [confirming]);
+
+  function closeConfirm() {
+    restoreFocus.current = true;
+    setConfirming(false);
+  }
 
   const busy = pending !== null;
 
@@ -47,9 +67,9 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
 
   if (status === "RESOLVED") {
     return (
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="card alert-actions">
         <div className="k">Operator Actions</div>
-        <p className="subtitle" style={{ margin: "8px 0 0" }}>
+        <p className="subtitle alert-actions-closed">
           This alert is resolved. No further action is available.
         </p>
       </div>
@@ -57,10 +77,10 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
   }
 
   return (
-    <div className="card" style={{ marginTop: 16 }}>
+    <div className="card alert-actions">
       <div className="k">Operator Actions</div>
 
-      <div className="actions" style={{ marginTop: 10 }}>
+      <div className="actions alert-actions-row">
         {status === "OPEN" && (
           <button
             type="button"
@@ -88,24 +108,56 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
 
         <button
           type="button"
+          ref={resolveRef}
           className="action secondary"
           disabled={busy}
-          aria-busy={pending === "resolve"}
-          onClick={() =>
-            run("resolve", () => api.resolveAlert(alertId, reason.trim()), "Alert resolved.")
-          }
+          aria-expanded={confirming}
+          onClick={() => setConfirming(true)}
         >
-          {pending === "resolve" ? "Resolving…" : "Resolve"}
+          Resolve
         </button>
       </div>
 
+      {confirming && (
+        <div className="alert-actions-confirm" role="group" aria-label="Confirm resolve">
+          <p>Resolve this alert? A resolved alert cannot be reopened.</p>
+          <div className="actions">
+            <button
+              type="button"
+              ref={confirmRef}
+              className="action"
+              disabled={busy}
+              aria-busy={pending === "resolve"}
+              onClick={async () => {
+                await run(
+                  "resolve",
+                  () => api.resolveAlert(alertId, reason.trim()),
+                  "Alert resolved.",
+                );
+                closeConfirm();
+              }}
+            >
+              {pending === "resolve" ? "Resolving…" : "Resolve alert"}
+            </button>
+            <button
+              type="button"
+              className="action secondary"
+              disabled={busy}
+              onClick={closeConfirm}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {done && (
-        <p role="status" className="pill ok" style={{ display: "inline-block", marginTop: 10 }}>
+        <p role="status" className="pill ok alert-actions-result">
           {done}
         </p>
       )}
       {error && (
-        <p role="alert" className="pill crit" style={{ display: "inline-block", marginTop: 10 }}>
+        <p role="alert" className="pill crit alert-actions-result">
           {error}
         </p>
       )}

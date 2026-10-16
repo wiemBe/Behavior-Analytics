@@ -1,0 +1,17 @@
+.detail-card {
+  margin-top: var(--sp-5);
+}
+.detail-card p {
+  margin: var(--sp-2) 0 0;
+}
+.detail-note {
+  margin-top: var(--sp-5);
+}
+
+/* The unit after the overall score. */
+.card .v .v-unit {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+  letter-spacing: 0;
+}

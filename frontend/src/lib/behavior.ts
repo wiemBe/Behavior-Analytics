@@ -128,12 +128,60 @@ export function stateTone(state: AnomalyStateOrNullLocal): Tone {
   }
 }
 
+/** Where the observed value sits in the band the page is showing beside the sentence. */
+function bandPlace(band: BandObservation): "inside" | "outside" | "unknown" {
+  const { observed, low, high } = band;
+  if (
+    observed === null ||
+    low === null ||
+    high === null ||
+    !Number.isFinite(observed) ||
+    !Number.isFinite(low) ||
+    !Number.isFinite(high)
+  ) {
+    return "unknown";
+  }
+  return observed >= low && observed <= high ? "inside" : "outside";
+}
+
+/** The numbers shown beside a state sentence, when the page has them. */
+export interface BandObservation {
+  observed: number | null;
+  low: number | null;
+  high: number | null;
+}
+
+/**
+ * What a lifecycle state means, in a sentence.
+ *
+ * A band is passed by a page that shows the observed value and the expected band beside the
+ * sentence. A NORMAL verdict is worded "within the expected band" only when those numbers say
+ * so. Outside the band, it names the detector's verdict and says the value is not inside.
+ * With a number missing, it names the verdict and claims nothing about the band.
+ */
+export function stateMeaningAgainst(state: AnomalyStateOrNullLocal, band: BandObservation): string {
+  return meaning(state, band);
+}
+
+/** What a lifecycle state means, in a sentence, for a page that shows no band beside it. */
 export function stateMeaning(state: AnomalyStateOrNullLocal): string {
+  return meaning(state);
+}
+
+function meaning(state: AnomalyStateOrNullLocal, band?: BandObservation): string {
   switch (state) {
     case "INSUFFICIENT_DATA":
       return "No adequate baseline for this seasonal cell yet — this source is not being judged, which is not the same as being healthy.";
-    case "NORMAL":
+    case "NORMAL": {
+      const place = band ? bandPlace(band) : "unspecified";
+      if (place === "outside") {
+        return "NORMAL by the detector's verdict for this weekday and hour; the observed value shown here is not inside the expected band.";
+      }
+      if (place === "unknown") {
+        return "NORMAL by the detector's verdict for this weekday and hour.";
+      }
       return "Observed volume is within the expected band for this weekday and hour.";
+    }
     case "CANDIDATE":
       return "One abnormal interval recorded. Not yet an incident: promotion requires consecutive abnormal intervals.";
     case "OPEN":

@@ -238,7 +238,7 @@
   margin-top: var(--sp-3);
 }
 .dg-arrange-remove {
-  color: var(--danger);
+  color: var(--crit-text);
 }
 
 /* --- catalog drawer ---------------------------------------------------------- */
@@ -388,8 +388,6 @@ dialog.dg-catalog::backdrop {
 .wr-select-wrap {
   display: flex;
   flex: 0 0 auto;
-  /* The select is a little taller than the title's text: its margin box is not. */
-  margin-block: calc(var(--sp-1) * -1);
 }
 /* At KPI density the select must not make the title row taller than its text. */
 .wr-select {
@@ -415,13 +413,56 @@ dialog.dg-catalog::backdrop {
   .tw .wr-alt {
     display: flex;
   }
+  /* The select already states the range, so the title's own "24 h" is dropped. When title and
+     controls do not fit, the controls (.tw-tools) wrap as one group. */
+  .tw-head:has(.wr-alt) .tw-window {
+    display: none;
+  }
+}
+/* Hit targets (WCAG 2.5.8): every control in a widget's title row is at least --target-min
+   high and wide. The type stays at its size; the target grows through the box around it, and
+   the text is centred in it. */
+.wr-preset,
+.tw-expand,
+.wr-select,
+.tw-all,
+.kpi-link,
+.dg-arrange-trigger {
+  box-sizing: border-box;
+  min-height: var(--target-min);
+  min-width: var(--target-min);
+}
+.wr-preset,
+.tw-expand,
+.tw-all,
+.kpi-link,
+.dg-arrange-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.wr-select {
+  padding-block: 0;
+}
+/* One style for every drill-down link in the widget chrome: underlined, so it is told apart
+   without colour (WCAG 1.4.1); hover only changes its colour. */
+.tw .tw-all,
+.kpi .kpi-link {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tw .tw-all:hover,
+.kpi .kpi-link:hover {
+  color: var(--text);
+  text-decoration: underline;
 }
 /* A panel's range, Expand and drill-down travel together: when they do not fit beside the
    title they drop to the next line as one group, never one by one. */
 .tw-tools {
   display: flex;
   flex: 0 0 auto;
-  align-items: baseline;
+  align-items: center;
   gap: var(--sp-2);
   margin-left: auto;
   line-height: var(--lh-tight);
@@ -429,6 +470,21 @@ dialog.dg-catalog::backdrop {
 .tw-tools .tw-all,
 .tw-tools .tw-expand {
   line-height: 1;
+}
+.tw-pill {
+  align-self: flex-start;
+}
+/* The frame measures whether title, pill and controls fit one line: for that moment the head
+   does not wrap and the title keeps its natural width. It is undone before the next paint. */
+.tw.tw-measuring .tw-head {
+  flex-wrap: nowrap;
+}
+.tw.tw-measuring .tw-title {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.tw.tw-measuring .pill {
+  white-space: nowrap;
 }
 /* A title row that wraps costs its row gap once more; the small step keeps that line cheap. */
 .tw .tw-head {
@@ -472,9 +528,31 @@ dialog.dg-catalog::backdrop {
   font-weight: var(--fw-medium);
   color: var(--text-2);
 }
-.dg-field select {
+.dg-field select,
+.dg-field input[type="search"] {
   padding: var(--sp-2);
   font-size: var(--fs-base);
+}
+/* The filter over a long option list: a text field that looks like the selects it sits above. */
+.dg-field input[type="search"] {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font-family: inherit;
+}
+/* The states of a field whose options come from a read: text, never a spinner. */
+.dg-field-state,
+.dg-field-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.dg-field-state {
+  padding: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
 }
 .dg-configure-foot {
   display: flex;
@@ -537,4 +615,329 @@ dialog.dg-expand::backdrop {
 }
 .dg-expand-body > .tw > .tw-body-fill {
   overflow: hidden;
+}
+
+/* --- dashboards: switcher, menu, dialogs (UI-4.1) -------------------------------------- */
+
+/* The actions stay right-aligned when the header wraps, so a panel that hangs from its right
+   edge always has the room to open leftwards. */
+.page-header-actions:has(.dg-pop) {
+  margin-left: auto;
+}
+/* The title block gives way before the actions wrap under it, so a narrow main column keeps the
+   header to one row; its description and qualifiers wrap instead. */
+.page-header:has(.dg-pop) > :first-child {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.dg-pop {
+  position: relative;
+}
+.dg-trigger {
+  padding: var(--sp-2) var(--sp-4);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dg-trigger:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+.dg-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.dg-trigger:focus-visible,
+.dg-pop-item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.dg-pop-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: var(--dash-z-pop);
+  margin-top: var(--sp-1);
+  padding: var(--sp-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  max-height: calc(100vh - 2 * var(--sp-8));
+  overflow: auto;
+}
+.dg-switch-panel {
+  width: min(var(--dash-pop-w), calc(100vw - 2 * var(--sp-5)));
+}
+.dg-menu-panel {
+  width: min(var(--dash-menu-w), calc(100vw - 2 * var(--sp-5)));
+}
+.dg-pop-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dg-pop-template {
+  margin-top: var(--sp-1);
+  padding-top: var(--sp-1);
+  border-top: 1px solid var(--border);
+}
+.dg-pop-note {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.dg-pop-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-1) var(--sp-2);
+  align-items: center;
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.dg-pop-item:hover {
+  background: var(--surface-3);
+}
+.dg-pop-item[aria-current="true"] {
+  background: var(--surface-3);
+  border-left-color: var(--primary);
+}
+.dg-pop-item[aria-current="true"] .dg-pop-name {
+  font-weight: var(--fw-semibold);
+}
+.dg-pop-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dg-pop-marks {
+  display: flex;
+  gap: var(--sp-1);
+}
+.dg-pop-sub {
+  grid-column: 1 / -1;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.dg-menu-item {
+  display: block;
+}
+.dg-menu-danger {
+  color: var(--crit-text);
+}
+
+dialog.dg-modal {
+  width: min(var(--dash-modal-w), calc(100vw - 2 * var(--sp-5)));
+  max-height: calc(100vh - 2 * var(--sp-5));
+  margin: auto;
+  padding: var(--sp-5);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+}
+dialog.dg-modal:not([open]) {
+  display: none;
+}
+dialog.dg-modal::backdrop {
+  background: var(--scrim);
+}
+.dg-modal .dg-modal-title {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+.dg-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.dg-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+/* The same field as the admin forms: the global control look, its padding and size. Keep the
+   complete contract here as well because these controls live in a top-layer native dialog. */
+.dg-modal-field input,
+.dg-modal-field select {
+  width: 100%;
+  height: var(--dash-field-h);
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+.dg-modal-field input:focus-visible,
+.dg-modal-field select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.dg-modal-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.dg-modal-text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.page-meta:has(.dg-template-desc) {
+  /* A Default or Shared badge keeps its place beside the line; the line gives way, not the row. */
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.dg-template-desc {
+  /* The line fills the row the header already reserves under the title: two lines at most, so
+     it never moves the grid below it. The full text stays in the page for a screen reader. */
+  min-width: 0;
+  max-width: 76ch;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+  color: var(--text-3);
+}
+.dg-modal-choices {
+  margin: 0;
+  padding-left: var(--sp-5);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.dg-modal-choices strong {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+.dg-modal-error {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--crit-text);
+  background: var(--crit-bg);
+  border: 1px solid var(--crit-border);
+  border-radius: var(--r-md);
+  overflow-wrap: anywhere;
+}
+.dg-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+.dg-modal .dg-danger {
+  color: var(--crit-text);
+  background: var(--crit-bg);
+  border: 1px solid var(--crit-border);
+}
+.dg-modal .dg-danger:hover:not(:disabled) {
+  background: var(--crit-bg);
+  border-color: var(--crit-text);
+}
+
+/* The dashboard shown: qualifiers under the title, and the stated conditions above the grid.
+   The qualifier row keeps a badge's height, so the header is the same height with or without one. */
+.home .page-meta {
+  min-height: var(--sp-6);
+  align-items: center;
+}
+.dg-qualifier {
+  color: var(--text-2);
+}
+/* "Template, not saved" is a badge. Its description is the next sentence, on its own line,
+   so the two do not read as one where the row is wide enough to hold both. */
+.home .page-meta > .badge + .dg-qualifier {
+  flex-basis: 100%;
+}
+.dg-status {
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+  background: var(--neutral-bg);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--r-md);
+}
+/* The save line under the header: one quiet sentence, not a box, so an edit does not add a card. */
+.dg-save-status {
+  padding: 0;
+  margin: 0 0 var(--sp-3);
+  background: none;
+  border: 0;
+}
+.dg-status a {
+  color: var(--link);
+}
+.dg-problem {
+  max-width: 60ch;
+}
+.dg-problem .notice-actions {
+  margin-top: var(--sp-3);
+}
+
+/* The grid before the dashboard to show is known: the template's geometry, empty boxes, so
+   the page does not jump when the dashboard arrives. */
+.dg-skel {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.dg[data-cols="12"] .dg-skel[data-kind="kpi"] {
+  grid-column: span 3;
+  grid-row: span 7;
+}
+.dg[data-cols="12"] .dg-skel[data-kind="wide"] {
+  grid-column: span 8;
+  grid-row: span 12;
+}
+.dg[data-cols="12"] .dg-skel[data-kind="third"] {
+  grid-column: span 4;
+  grid-row: span 12;
+}
+.dg[data-cols="12"] .dg-skel[data-kind="tall"] {
+  grid-column: span 4;
+  grid-row: span 15;
+}
+.dg[data-cols="12"] .dg-skel[data-kind="half"] {
+  grid-column: span 6;
+  grid-row: span 15;
+}
+.dg[data-cols="6"] .dg-skel[data-kind="kpi"] {
+  grid-column: span 3;
+  min-height: calc(7 * var(--dash-row) + 6 * var(--dash-gap));
+}
+.dg[data-cols="6"] .dg-skel:not([data-kind="kpi"]) {
+  grid-column: span 6;
+  min-height: calc(8 * var(--dash-row) + 7 * var(--dash-gap));
+}
+.dg[data-cols="1"] .dg-skel {
+  min-height: calc(7 * var(--dash-row) + 6 * var(--dash-gap));
 }

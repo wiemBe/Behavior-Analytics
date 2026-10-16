@@ -4,20 +4,44 @@
 // state column is the worst detector state; `null` means no detector has
 // evaluated the endpoint, which is said in words and never drawn as NORMAL.
 
+import { Fragment } from "react";
+
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { WafEndpointInventory } from "@/lib/api";
 import { formatCount, stateTone } from "@/lib/behavior";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { axisTimeLabel } from "@/lib/searchRuns";
 
-import { endpointLabel, stateLabel } from "./wafLabels";
+import { endpointLabel, statePillText } from "./wafLabels";
 
 import "@/components/ui/controls.css";
 
-function Utc({ value }: { value: string }) {
+/** A time with its zone, or, under a header that already says "(UTC)", without it. */
+function Utc({ value, bare = false }: { value: string; bare?: boolean }) {
   return (
     <time className="nowrap" dateTime={value} title={formatDateTime(value)}>
-      {formatDateTimeCompact(value)}
+      {bare ? axisTimeLabel(value) : formatDateTimeCompact(value)}
     </time>
+  );
+}
+
+/** The method and path, with a break opportunity after each "/" so a path wraps between
+ * segments and a segment breaks inside itself only when it alone is wider than the column. */
+function PathLabel({ text }: { text: string }) {
+  const parts = text.split("/");
+  return (
+    <>
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 && (
+            <>
+              /<wbr />
+            </>
+          )}
+          {part}
+        </Fragment>
+      ))}
+    </>
   );
 }
 
@@ -77,7 +101,7 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
           {endpoints.map((e) => (
             <tr key={e.id}>
               <td className="cell-name">
-                <span className="waf-endpoint">{endpointLabel(e)}</span>
+                <span className="waf-endpoint"><PathLabel text={endpointLabel(e)} /></span>
                 {e.virtual_host && <span className="cell-sub">Virtual host {e.virtual_host}</span>}
                 <span className="cell-sub">Normalizer v{e.normalizer_version}</span>
               </td>
@@ -85,9 +109,9 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
                 <BaselineCell e={e} />
               </td>
               <td className="num">
-                <Utc value={e.last_seen_at} />
+                <Utc value={e.last_seen_at} bare />
                 <span className="cell-sub">
-                  First <Utc value={e.first_seen_at} />
+                  First <Utc value={e.first_seen_at} bare />
                 </span>
               </td>
               <td>
@@ -110,7 +134,7 @@ export function WafEndpointsTable({ endpoints }: { endpoints: WafEndpointInvento
               </td>
               <td>
                 {e.state ? (
-                  <span className={`pill pill-quiet ${stateTone(e.state)}`}>{stateLabel(e.state)}</span>
+                  <span className={`pill pill-quiet ${stateTone(e.state)}`}>{statePillText(e.state)}</span>
                 ) : (
                   <>
                     <span className="muted">Not evaluated</span>

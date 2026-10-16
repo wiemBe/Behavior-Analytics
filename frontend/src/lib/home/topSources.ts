@@ -55,6 +55,7 @@ export function deviationGapText(gap: DeviationGap): string {
 export function topSources(
   summary: FleetSummary,
   behaviors: SourceBehavior[] | null,
+  limit: number = TOP_N,
 ): TopSourceRow[] {
   const seconds = (Date.parse(summary.window_end) - Date.parse(summary.window_start)) / 1000;
   const usable = Number.isFinite(seconds) && seconds > 0;
@@ -90,7 +91,7 @@ export function topSources(
   }
   return [...union.values()]
     .sort((a, b) => b.events - a.events || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-    .slice(0, TOP_N);
+    .slice(0, limit);
 }
 
 /**

@@ -313,3 +313,178 @@ def test_vendor_ips_profiles_are_opt_in_and_not_mixed() -> None:
         loggen.validate_options(loggen.Options(
             profiles=("ips",), scenario="ips-baseline", output_format="vendor",
         ))
+
+
+# ---------------------------------------------------------------- defect D-1 ---
+# With two vendor profiles `_scenario_event` round-robins them and hands each
+# one `local_index = index // 2`, so the change phase must be half of that
+# profile's own share -- not half of the whole run. Every scenario below is
+# gated on that phase; `ips-port-sweep` is not and is intentionally absent.
+
+MIXED_PROFILES = ("pan_threat", "ftd_ips")
+GATED_SCENARIOS = (
+    "ips-new-port",
+    "ips-source-concentration",
+    "ips-signature-burst",
+    "ips-block-shift",
+)
+# 9000 events over two profiles is 4500 each, so the change starts at 2250.
+TWO_PROFILE_COUNT = 9_000
+TWO_PROFILE_HALF = TWO_PROFILE_COUNT // len(MIXED_PROFILES)
+TWO_PROFILE_TRANSITION = TWO_PROFILE_HALF // 2
+
+
+def _vendor_row(message: str) -> tuple[str, dict[str, str]]:
+    if loggen.syslog_body(message).startswith("%FTD-1-430001: "):
+        return "ftd_ips", ftd_fields(message)
+    return "pan_threat", pan_fields(message)
+
+
+def run_rows(
+    scenario: str,
+    *,
+    count: int = 0,
+    duration: float | None = None,
+    eps: float = loggen.DEFAULT_EPS,
+    emit: int | None = None,
+    profiles: tuple[str, ...] = MIXED_PROFILES,
+) -> dict[str, list[dict[str, str]]]:
+    """Build a vendor run in memory, grouped per profile in send order.
+
+    ``emit`` overrides how many messages are built, which the zero-planned
+    fallback needs in order to run past a zero ``--count``.
+    """
+    opts = loggen.Options(
+        profiles=profiles,
+        scenario=scenario,
+        output_format="vendor",
+        count=count,
+        duration=duration,
+        eps=eps,
+        seed=42,
+        dry_run=True,
+        stdout=True,
+    )
+    loggen.validate_options(opts)
+    generator = loggen.EventGenerator(opts, clock=lambda: NOW)
+    planned = count
+    if planned == 0 and duration is not None:
+        planned = int(duration * eps)
+    total = planned if emit is None else emit
+    grouped: dict[str, list[dict[str, str]]] = {profile: [] for profile in profiles}
+    for index in range(total):
+        profile, row = _vendor_row(generator.generate(index))
+        grouped[profile].append(row)
+    return grouped
+
+
+def change_share(scenario: str, profile: str, rows: list[dict[str, str]]) -> float:
+    """Fraction of ``rows`` carrying the scenario's changed shape."""
+    if scenario == "ips-new-port":
+        ports = value(rows, profile, "destination_port", "DstPort")
+        return sum(port == str(loggen.IPS_NEW_PORT) for port in ports) / len(rows)
+    if scenario == "ips-signature-burst":
+        signature = loggen.IPS_SIGNATURES[0]
+        target = (
+            f"{signature.name}({signature.pan_id})" if profile == "pan_threat"
+            else str(signature.sid)
+        )
+        return sum(item == target for item in value(rows, profile, "threat_id", "SID")) / len(rows)
+    if scenario == "ips-source-concentration":
+        sources = value(rows, profile, "source_address", "SrcIP")
+        return Counter(sources).most_common(1)[0][1] / len(rows)
+    if scenario == "ips-block-shift":
+        return sum(is_blocked(profile, row) for row in rows) / len(rows)
+    raise AssertionError(f"no change shape defined for {scenario}")
+
+
+@pytest.mark.parametrize("scenario", GATED_SCENARIOS)
+@pytest.mark.parametrize("profile", MIXED_PROFILES)
+def test_two_profiles_enter_the_change_phase_in_each_profile(
+    scenario: str, profile: str
+) -> None:
+    rows = run_rows(scenario, count=TWO_PROFILE_COUNT)[profile]
+    assert len(rows) == TWO_PROFILE_HALF
+    # Half the run (4500) never reached the change phase before the fix: the
+    # per-profile index stopped one short of a transition derived from the total.
+    assert change_share(scenario, profile, rows[:TWO_PROFILE_TRANSITION]) < 0.2
+    assert change_share(scenario, profile, rows[TWO_PROFILE_TRANSITION:]) >= 0.6
+
+
+def test_two_profiles_new_port_uses_8443_only_in_each_second_half() -> None:
+    grouped = run_rows("ips-new-port", count=TWO_PROFILE_COUNT)
+    for profile in MIXED_PROFILES:
+        ports = value(grouped[profile], profile, "destination_port", "DstPort")
+        assert str(loggen.IPS_NEW_PORT) not in set(ports[:TWO_PROFILE_TRANSITION])
+        assert set(ports[TWO_PROFILE_TRANSITION:]) == {str(loggen.IPS_NEW_PORT)}
+
+
+def test_two_profiles_signature_burst_concentrates_on_signature_zero() -> None:
+    grouped = run_rows("ips-signature-burst", count=TWO_PROFILE_COUNT)
+    signature = loggen.IPS_SIGNATURES[0]
+    for profile in MIXED_PROFILES:
+        target = (
+            f"{signature.name}({signature.pan_id})" if profile == "pan_threat"
+            else str(signature.sid)
+        )
+        signatures = value(grouped[profile], profile, "threat_id", "SID")
+        assert signatures[:TWO_PROFILE_TRANSITION].count(target) == (
+            TWO_PROFILE_TRANSITION // len(loggen.IPS_SIGNATURES)
+        )
+        assert set(signatures[TWO_PROFILE_TRANSITION:]) == {target}
+
+
+def test_two_profiles_source_concentration_puts_seventy_percent_on_one_source() -> None:
+    grouped = run_rows("ips-source-concentration", count=TWO_PROFILE_COUNT)
+    for profile in MIXED_PROFILES:
+        sources = value(grouped[profile], profile, "source_address", "SrcIP")
+        anomaly = sources[TWO_PROFILE_TRANSITION:]
+        top_source, top_count = Counter(anomaly).most_common(1)[0]
+        assert top_source == loggen.IPS_EXTERNAL_IPS[0]
+        assert top_count / len(anomaly) == pytest.approx(0.70)
+
+
+@pytest.mark.parametrize("scenario", GATED_SCENARIOS)
+@pytest.mark.parametrize("profile", MIXED_PROFILES)
+def test_odd_total_two_profiles_both_reach_the_change_phase(
+    scenario: str, profile: str
+) -> None:
+    # 9001 does not split evenly: one profile gets 4501 events, the other 4500.
+    rows = run_rows(scenario, count=TWO_PROFILE_COUNT + 1)[profile]
+    assert len(rows) in {TWO_PROFILE_HALF, TWO_PROFILE_HALF + 1}
+    # floor(9001 / 2) / 2 = 2250 falls inside both profiles' own runs.
+    assert change_share(scenario, profile, rows[:TWO_PROFILE_TRANSITION]) < 0.2
+    assert change_share(scenario, profile, rows[TWO_PROFILE_TRANSITION:]) >= 0.6
+
+
+@pytest.mark.parametrize("scenario", GATED_SCENARIOS)
+@pytest.mark.parametrize("profile", MIXED_PROFILES)
+def test_duration_path_two_profiles_enter_the_change_phase(
+    scenario: str, profile: str
+) -> None:
+    rows = run_rows(scenario, duration=float(TWO_PROFILE_COUNT), eps=1.0)[profile]
+    assert len(rows) == TWO_PROFILE_HALF
+    assert change_share(scenario, profile, rows[:TWO_PROFILE_TRANSITION]) < 0.2
+    assert change_share(scenario, profile, rows[TWO_PROFILE_TRANSITION:]) >= 0.6
+
+
+def test_single_profile_transition_is_unchanged() -> None:
+    # One profile keeps half of the whole run, exactly as before the fix.
+    rows = parsed("pan_threat", "ips-new-port", count=TWO_PROFILE_COUNT)
+    ports = value(rows, "pan_threat", "destination_port", "DstPort")
+    assert str(loggen.IPS_NEW_PORT) not in set(ports[:4_500])
+    assert set(ports[4_500:]) == {str(loggen.IPS_NEW_PORT)}
+    # The count=4000 shape the existing tests rely on still begins at 2000.
+    rows = parsed("ftd_ips", "ips-new-port", count=4_000)
+    ports = value(rows, "ftd_ips", "destination_port", "DstPort")
+    assert str(loggen.IPS_NEW_PORT) not in set(ports[:2_000])
+    assert set(ports[2_000:]) == {str(loggen.IPS_NEW_PORT)}
+
+
+def test_zero_planned_fallback_still_transitions_at_one_thousand() -> None:
+    rows = run_rows(
+        "ips-new-port", profiles=("pan_threat",), emit=1_001
+    )["pan_threat"]
+    ports = value(rows, "pan_threat", "destination_port", "DstPort")
+    assert str(loggen.IPS_NEW_PORT) not in set(ports[:1_000])
+    assert set(ports[1_000:]) == {str(loggen.IPS_NEW_PORT)}

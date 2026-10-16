@@ -36,15 +36,15 @@ def _validate_range(since: datetime, until: datetime, max_days: int) -> None:
     """Both bounds are timezone-aware, ordered and no wider than `max_days`, or a 422."""
     if since.tzinfo is None or until.tzinfo is None:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "since and until must carry a timezone"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "since and until must carry a timezone"
         )
     if until <= since:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "range end must be after its start"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "range end must be after its start"
         )
     if until - since > timedelta(days=max_days):
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"range exceeds the maximum of {max_days} days",
         )
 

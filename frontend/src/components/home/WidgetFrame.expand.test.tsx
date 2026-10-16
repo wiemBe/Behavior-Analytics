@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WidgetRuntimeContext, type WidgetRuntime } from "@/widgets/runtime";
 
@@ -97,5 +97,61 @@ describe("WidgetFrame range and Expand chrome", () => {
     frame(runtime(), true);
     expect(screen.getByRole("combobox", { name: "Window for Fleet state" })).toHaveDisplayValue("24 h");
     expect(screen.queryByRole("group", { name: "Window" })).toBeNull();
+  });
+});
+
+describe("WidgetFrame narrow panel title row", () => {
+  afterEach(() => vi.restoreAllMocks());
+  // The pill moves by fit (T-098), not by a width: `child` is what each child of the title row
+  // measures, so a row of three children needs three times that.
+  const width = (px: number, child = 0) => {
+    vi.spyOn(Element.prototype, "clientWidth", "get").mockReturnValue(px);
+    if (child > 0) vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(child);
+  };
+  const badged = (rt: WidgetRuntime) =>
+    render(
+      <WidgetRuntimeContext.Provider value={rt}>
+        <WidgetFrame
+          id="f"
+          title="EPS by source class"
+          windowText="24 h"
+          badge="Partial: 21 of 24 intervals"
+          link={{ href: "/fleet", label: "Fleet" }}
+          what="the fleet"
+          permission="read:fleet"
+          state={{ kind: "ok", data: "answer", asOf: null }}
+        >
+          {({ data }) => <p>{data}</p>}
+        </WidgetFrame>
+      </WidgetRuntimeContext.Provider>,
+    );
+
+  it("moves only the pill to the first body line; range, Expand and link stay in the title row", () => {
+    width(366, 200);
+    badged(runtime());
+    const head = screen.getByRole("heading", { level: 2 }).closest("header")!;
+    const pill = screen.getByText("Partial: 21 of 24 intervals");
+    expect(head.contains(pill)).toBe(false);
+    expect(pill.parentElement).toHaveClass("tw-body");
+    expect(pill.parentElement!.firstElementChild).toBe(pill);
+    expect(head.querySelector(".tw-expand")).not.toBeNull();
+    expect(head.querySelector(".wr-select")).not.toBeNull();
+    expect(head.querySelector("a")).toHaveAttribute("href", "/fleet");
+  });
+
+  it("keeps the select, Expand and the drill-down link in one wrapper, so they wrap as one unit", () => {
+    width(366, 200);
+    badged(runtime());
+    const group = screen.getByRole("link", { name: /Fleet/ }).closest(".tw-tools")!;
+    expect(group.querySelector(".wr-select")).not.toBeNull();
+    expect(group.querySelector(".tw-expand")).not.toBeNull();
+    expect(group.parentElement).toBe(screen.getByRole("heading", { level: 2 }).closest("header"));
+  });
+
+  it("keeps the pill beside the title in a wide panel", () => {
+    width(700);
+    badged(runtime());
+    const head = screen.getByRole("heading", { level: 2 }).closest("header")!;
+    expect(head.contains(screen.getByText("Partial: 21 of 24 intervals"))).toBe(true);
   });
 });

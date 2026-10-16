@@ -1,0 +1,31 @@
+/* Coverage tables: a technique name and an evidence line keep a readable measure, so the
+   narrow columns cannot squeeze them to a word per line at 1024 px. */
+.coverage-table td:nth-child(2),
+.coverage-table td:last-child {
+  min-width: 14ch;
+}
+
+/* A metric group sits in one row at wide widths and in at most two balanced rows at 1024 px;
+   the column count comes from the group's size (`coverage-cards-N`), never a lone card on a row. */
+.cards.coverage-cards {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.cards.coverage-cards .card {
+  padding: var(--sp-3) var(--sp-4);
+}
+@media (max-width: 1100px) {
+  .cards.coverage-cards-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cards.coverage-cards-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .cards.coverage-cards-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .cards.coverage-cards-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}

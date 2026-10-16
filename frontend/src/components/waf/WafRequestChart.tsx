@@ -30,6 +30,7 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef } from "react";
 
+import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { WafMetricBucket } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
 import { formatDateTime } from "@/lib/health";
@@ -84,6 +85,7 @@ export function WafRequestChart({
   textSummary,
   ratio = null,
   baseline,
+  compact = false,
 }: {
   buckets: WafMetricBucket[];
   expected: number | null;
@@ -107,6 +109,12 @@ export function WafRequestChart({
    * band is the flat range recorded at detection, and is labelled so.
    */
   baseline?: BaselineSource | null;
+  /**
+   * The dashboard widget's form: the requests panel alone, filling its container, with the
+   * coverage panel and the long note left out (the note stays for assistive technology). The
+   * honesty rules above are unchanged.
+   */
+  compact?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -186,16 +194,22 @@ export function WafRequestChart({
       const lone = isolatedPoints(points);
       const text = { color: c.label, fontFamily: c.font };
       const axisCommon = { axisLine: { lineStyle: { color: c.axis } }, axisLabel: text };
+      const timeAxisCommon = {
+        ...axisCommon,
+        axisLabel: { ...text, formatter: TIME_AXIS_FORMATTER },
+      };
       const quiet = { silent: true, label: { show: false } };
 
       return {
         animation: !reduceMotion,
         useUTC: true,
         textStyle: text,
-        grid: [
-          { left: 64, right: 24, top: 40, height: 190 },
-          { left: 64, right: 24, top: 268, height: 56 },
-        ],
+        grid: compact
+          ? [{ left: 56, right: 16, top: 28, bottom: 38 }]
+          : [
+              { left: 64, right: 24, top: 40, height: 190 },
+              { left: 64, right: 24, top: 268, height: 56 },
+            ],
         axisPointer: { link: [{ xAxisIndex: "all" }] },
         tooltip: {
           trigger: "axis",
@@ -262,23 +276,35 @@ export function WafRequestChart({
               .join("<br/>");
           },
         },
-        xAxis: [
-          {
-            type: "time",
-            gridIndex: 0,
-            ...axisCommon,
-            axisLabel: { show: false },
-          },
-          {
-            type: "time",
-            gridIndex: 1,
-            name: "Time (UTC)",
-            nameLocation: "middle",
-            nameGap: 30,
-            nameTextStyle: text,
-            ...axisCommon,
-          },
-        ],
+        xAxis: compact
+          ? [
+              {
+                type: "time",
+                gridIndex: 0,
+                name: "Time (UTC)",
+                nameLocation: "middle",
+                nameGap: 24,
+                nameTextStyle: text,
+                ...timeAxisCommon,
+              },
+            ]
+          : [
+              {
+                type: "time",
+                gridIndex: 0,
+                ...axisCommon,
+                axisLabel: { show: false },
+              },
+              {
+                type: "time",
+                gridIndex: 1,
+                name: "Time (UTC)",
+                nameLocation: "middle",
+                nameGap: 30,
+                nameTextStyle: text,
+                ...timeAxisCommon,
+              },
+            ],
         yAxis: [
           {
             type: "value",
@@ -289,17 +315,21 @@ export function WafRequestChart({
             splitLine: { lineStyle: { color: c.grid } },
             ...axisCommon,
           },
-          {
-            type: "value",
-            gridIndex: 1,
-            name: "Coverage (%)",
-            nameTextStyle: { ...text, align: "left" },
-            min: 0,
-            max: 100,
-            splitNumber: 2,
-            splitLine: { lineStyle: { color: c.grid } },
-            ...axisCommon,
-          },
+          ...(compact
+            ? []
+            : [
+                {
+                  type: "value" as const,
+                  gridIndex: 1,
+                  name: "Coverage (%)",
+                  nameTextStyle: { ...text, align: "left" as const },
+                  min: 0,
+                  max: 100,
+                  splitNumber: 2,
+                  splitLine: { lineStyle: { color: c.grid } },
+                  ...axisCommon,
+                },
+              ]),
         ],
         series: [
           {
@@ -387,20 +417,24 @@ export function WafRequestChart({
             lineStyle: { opacity: 0 },
             areaStyle: { color: c.band },
           },
-          {
-            type: "line",
-            name: "Endpoint coverage",
-            xAxisIndex: 1,
-            yAxisIndex: 1,
-            data: points.map(
-              (p) => [p.t, p.coverage == null ? null : p.coverage * 100] as [number, number | null],
-            ),
-            connectNulls: false,
-            showSymbol: false,
-            lineStyle: { color: c.expected, width: 1.5 },
-            itemStyle: { color: c.expected },
-            markArea: gapAreas.length ? { ...quiet, data: gapAreas } : undefined,
-          },
+          ...(compact
+            ? []
+            : [
+                {
+                  type: "line" as const,
+                  name: "Endpoint coverage",
+                  xAxisIndex: 1,
+                  yAxisIndex: 1,
+                  data: points.map(
+                    (p) => [p.t, p.coverage == null ? null : p.coverage * 100] as [number, number | null],
+                  ),
+                  connectNulls: false,
+                  showSymbol: false,
+                  lineStyle: { color: c.expected, width: 1.5 },
+                  itemStyle: { color: c.expected },
+                  markArea: gapAreas.length ? { ...quiet, data: gapAreas } : undefined,
+                },
+              ]),
         ],
       };
     };
@@ -421,6 +455,7 @@ export function WafRequestChart({
     cells,
     bandLabel,
     medianLabel,
+    compact,
   ]);
 
   useEffect(() => {
@@ -450,7 +485,12 @@ export function WafRequestChart({
 
   return (
     <>
-      <div ref={containerRef} className="chart chart-waf" role="img" aria-label={ariaLabel} />
+      <div
+        ref={containerRef}
+        className={compact ? "hc-chart cw-tall" : "chart chart-waf"}
+        role="img"
+        aria-label={ariaLabel}
+      />
       {textSummary && <p className="sr-only">{textSummary}</p>}
       <ul className="chart-legend" aria-label="Chart key">
         <li>
@@ -469,7 +509,7 @@ export function WafRequestChart({
             {bandLabel}
           </li>
         )}
-        {hasCoverage && (
+        {hasCoverage && !compact && (
           <li>
             <span className="chart-key chart-key-coverage" aria-hidden="true" />
             Endpoint coverage
@@ -494,7 +534,7 @@ export function WafRequestChart({
           </li>
         )}
       </ul>
-      <p className="subtitle chart-note">
+      <p className={compact ? "sr-only" : "subtitle chart-note"}>
         {ratio
           ? "Gaps in the line are buckets whose breakdown was not collected, failed, hit its cap or had no requests to divide. They are not 0 %."
           : "Gaps in the line are buckets that were partial or not stored. They are not zero requests."}

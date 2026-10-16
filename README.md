@@ -460,17 +460,24 @@ inventory surfaces remain as supporting capabilities.
 
 | Route | Purpose |
 |---|---|
+| `/` | The Dashboard — the widget home (KPIs, observed vs expected EPS, EPS by class, top sources, recent anomalies and offenses) loading the user's chosen, default or template dashboard (saved-dashboards switcher, UI-4.1). The top bar's connection status, on every route, carries `instance_last_health_check_at`, which the inventory sync stamps on every pass; a console that cannot be reached is recorded `UNREACHABLE` with a sanitized reason, so nothing downstream keeps reading a stale `HEALTHY` |
 | `/behavior` | Behavioral overview — four decision counters, the worklist needing attention, recently resolved, health distribution |
 | `/behavior/sources` | Source inventory — searchable, sortable, filterable, server-paginated |
 | `/behavior/sources/[id]` | One source's observed volume against its seasonal baseline, with anomaly overlay |
-| `/anomalies` | Filterable, server-paginated anomaly list |
+| `/behavior/waf` · `/behavior/waf/sources/[id]` | WAF behavior (Phase B) — which WAF sources are healthy enough to judge and where endpoint admission overflows; one source's tracked endpoints and how adequate each baseline is |
+| `/anomalies` | Unified, filterable, server-paginated incident list — Phase A, WAF and IPS subjects |
 | `/anomalies/[id]` | **Anomaly investigation** — what changed during the anomalous interval |
-| `/` · `/log-sources` · `/log-sources/[id]` | SOC overview and log-source inventory (Phase 1). The overview carries `instance_last_health_check_at`, which the inventory sync stamps on every pass; a console that cannot be reached is recorded `UNREACHABLE` with a sanitized reason, so nothing downstream keeps reading a stale `HEALTHY` |
-| `/offenses` · `/rules` · `/coverage` | Offenses, rule health, detection coverage (Phase 3) |
+| `/log-sources` · `/log-sources/[id]` | Log-source inventory and one source's metadata and health (Phase 1) — QRadar-owned fields refresh on sync; criticality, owner and maintenance are SOC-owned |
+| `/offenses` · `/offenses/[id]` | Offenses, and one offense's attributes, entities and history (Phase 3) |
+| `/rules` · `/rules/[id]` · `/rules/statistics` | Rule health; one rule's health and capacity history; rule-set statistics — most matched, costliest, composition, silent rules |
+| `/coverage` | Detection coverage (Phase 3) |
 | `/searches` · `/searches/[id]` · `/alerts` · `/alerts/[id]` | Scheduled searches and alert lifecycle (Phase 2) |
 | `/fleet` · `/fleet/sources` | Log-source fleet by class — volume against expected EPS with its completeness, the review queue of new and conflicting sources, class overrides (Phase C.1) |
 | `/fleet/catchall` | Catch-all senders (Phase C.2b) — who feeds SIM Generic and the Universal DSMs: the new-sender review queue, each sender's 24 h events, per-bucket totals |
-| `/admin/search-cadence` · `/admin/classification-rules` · `/admin/waf-sources` · `/admin/ips-sources` · `/admin/outage-policy` | Administration — search cadence per family (`admin:search_cadence`), classification rules (`admin:classification`), per-source WAF field mappings with validation (`admin:waf`), per-source IPS field mappings with validation (`admin:ips`), the outage alert policy (`admin:outage`) |
+| `/admin` · `/admin/search-cadence` · `/admin/classification-rules` · `/admin/waf-sources` · `/admin/ips-sources` · `/admin/outage-policy` | Administration — the hub plus search cadence per family (`admin:search_cadence`), classification rules (`admin:classification`), per-source WAF field mappings with validation (`admin:waf`), per-source IPS field mappings with validation (`admin:ips`), the outage alert policy (`admin:outage`); the profile editors are `/admin/waf-sources/[logSourceId]` and `/admin/ips-sources/[logSourceId]` |
+
+`/config-changes` is deliberately unlisted: it is a placeholder outside the navigation with no
+API behind it (configuration changes are not collected), kept by decision D-11.
 
 All of these require the `read:anomalies` permission (behavioral routes) or their Phase 2/3
 equivalents. The guard lives on the router, not on individual handlers, so adding an endpoint to a
@@ -503,9 +510,11 @@ action values count as blocked or allowed. `/admin/waf-sources` edits it; the de
 a deterministic incident summary and four primary metrics, then the timeline, then what changed; the
 lifecycle history, query provenance and detector internals sit behind the investigation tabs, and the
 AQL is collapsed inside them. The UX contract for this page and every other behavioral route is
-[docs/PRODUCT-UX-GUIDELINES.md](docs/PRODUCT-UX-GUIDELINES.md); the verification record, including
-the viewport matrix and screenshots, is
-[docs/UI-WORKSTREAM-COMPLETION.md](docs/UI-WORKSTREAM-COMPLETION.md).
+[docs/PRODUCT-UX-GUIDELINES.md](docs/PRODUCT-UX-GUIDELINES.md). The verification record, including
+the viewport matrix, is
+[docs/UI-WORKSTREAM-COMPLETION.md](docs/UI-WORKSTREAM-COMPLETION.md). The screenshot gallery,
+recaptured on 2026-10-15 (T-111), is [`docs/screenshots/ui/`](docs/screenshots/ui/), and its index
+is [docs/UI-WORKSTREAM-COMPLETION.md](docs/UI-WORKSTREAM-COMPLETION.md) §7.
 
 Two behaviors there are load-bearing and are covered by tests:
 
@@ -1198,10 +1207,124 @@ lints and updates this README.
     search per family per tick, results equal to the per-bucket path (Phase A exactly; rule
     matches in 5 of 6 buckets, the sixth lower on the per-bucket side because of a QRadar `STOP`
     edge effect), and every new bucket judged in order.
+- **Phase C ✅ (log-source fleet — inventory, classification, outage policy, catch-all senders)**
+  (goal G1):
+  - *Inventory enrichment and classification rules (C.1).* The inventory sync stores the facts a
+    class needs — types with their `internal` flag, the group tree, identifiers, QRadar
+    created/modified and auto-discovered flags (migration `0011`) — and a pure, deterministic
+    classifier applies operator-editable rules with the fixed precedence override > internal >
+    group > type > name. Equal-priority ties and lower-level disagreements are recorded as
+    conflicts for review; built-in seed rules classify the well-known DSMs, and multi-role NGFW
+    DSMs deliberately get no type rule, so the site's naming convention decides (T-022, T-022b,
+    T-022c). A source the platform has not seen before is `NEW` and raises a LOW inventory alert
+    (`inventory_new_source_alerts_enabled`, default **true**). Fleet views, review and overrides:
+    `/fleet`, `/fleet/sources`, `/admin/classification-rules`; routing can match on the class
+    (T-023, T-024).
+  - *Outage alert policy (C.2).* A class or a single source resolves to `ALERT` (as before) or
+    `RECORD_ONLY` — the anomaly and its lifecycle are recorded, nothing pages — with an optional
+    silence-grace override. A source row beats its class row, and where no row applies
+    `OUTAGE_ALERT_DEFAULT` decides; its default `ALERT` keeps Phase A's behaviour, so an upgrade
+    alerts exactly as before (D-9). Administration is audited, needs `admin:outage` (reads
+    included) and lives at `/admin/outage-policy` (migration `0019`; T-068, T-070a).
+  - *Catch-all senders (C.2b).* The `CATCHALL_SENDERS` family folds sender hostnames out of the
+    catch-all types (SIM Generic and the Universal DSMs by default), storing only admitted
+    senders: a per-bucket quota, an active ceiling and a minimum event count bound what an
+    attacker-chosen name can create. Buckets carry per-bucket totals and a bounded `top_senders`
+    list; each sender's 24 h event count is a lower bound. The review queue is `/fleet/catchall`;
+    a newly admitted sender *can* raise a LOW inventory alert, but that is **off by default**
+    (`CATCHALL_NEW_SENDER_ALERTS_ENABLED=false`; D-9 — the queue is the surface)
+    (migration `0020`; T-069, T-070b).
+  - *Validation.* The seed patterns were fitted to the live lab's type names
+    ([T-015](docs/tasks/T-015.report.md), 2026-10-12), but the fleet pipeline itself is **not
+    validated live**: the planned pass — a sender at ≤ 2 EPS appears in the queue as `NEW`, and a
+    `RECORD_ONLY` class stays silent while its `NO_EVENTS` anomaly is still recorded — has not
+    run. See [the Phase C design](docs/PHASE-C-LOG-SOURCE-FLEET.md).
+- **Phase D ✅ (backend, admin UI, analyst API/UI; live-validated in part)** — IPS traffic
+  behavior (goal G2): versioned per-source field-mapping profiles with read-only validation and
+  presets (Cisco FTD, Palo Alto THREAT), administered at `/admin/ips-sources` (T-049, T-053,
+  T-078); keyed fleet collection — one search per dimension per tick, split time-first then by
+  sources, with entity admission bounds (T-050a/T-050b, migration `0018`); the seven detectors —
+  `IPS_PORT_RATE_SPIKE`, `IPS_DESTINATION_RATE_SPIKE`, `IPS_SIGNATURE_BURST`,
+  `IPS_NEW_DESTINATION_PORT`, `IPS_SOURCE_CONCENTRATION_SPIKE`, `IPS_PORT_FANOUT_SPIKE`,
+  `IPS_BLOCK_RATIO_SHIFT` — on seasonal cells per entity and per source, each failing closed with
+  its reason (T-051a–T-051d, migration `0021`); alerting behind `IPS_ALERTING_ENABLED` (default
+  **false**: shadow mode — incidents and their lifecycle are recorded, nothing pages; T-052); and
+  the analyst API and UI — IPS incidents in the unified `/anomalies` list and the investigation
+  view, plus the `GET /api/v1/behavior/ips/*` reads (T-085, T-087). Collection is off by default
+  (`IPS_COLLECTION_ENABLED=false`, and per profile). Live validation on the lab console
+  (2026-10-15, [T-054](docs/tasks/T-054.report.md)): port-sweep **passed** —
+  `IPS_PORT_FANOUT_SPIKE` opened on both sources, sibling fires were true statements about that
+  traffic or failed closed with their reason, and the six pilot incidents walked
+  `CANDIDATE → OPEN → RECOVERING → RESOLVED`. Signature-burst, with alerting on, **passed**:
+  `IPS_SIGNATURE_BURST` opened on both sources, and two `ips_anomaly` alerts opened and resolved.
+  No notification row was stored, because no channel is configured (L-6). Source-concentration
+  **passed**. A morning run of those two was voided by generator defect D-1; T-101 fixed the
+  generator, and the part-3 re-run is what passed. New-port is still limited by its 24 h history
+  rule (L-1) and was not re-run. Block-shift, with alerting on, **passed**:
+  `IPS_BLOCK_RATIO_SHIFT` observed 0.60 against expected 0.10 on both lab sources in the change
+  buckets, its two alerts opened 20:47:33Z and resolved "condition recovered" at 21:02:32Z; the
+  analysis is in [T-054](docs/tasks/T-054.report.md) "Part 4 analysis" (T-110). T-107, on the
+  lab console only, added `IPS_Action` expressions for PAN and FTD through
+  the API under the lab-only exception. The application stays read-only. The lab profiles map
+  ACTION, and FTD `Would block` counts as allowed. See
+  [the Phase D design](docs/PHASE-D-IPS-BEHAVIOR.md).
+- **Geography ✅ (backend; D-10)** — the `GEO_COLLECTION` family: two keyed searches per instance
+  per tick, one per direction in `GEO_DIRECTIONS`, with the QRadar `GEO::` lookup resolving the
+  address to an ISO country code inside the search — no IP address is ever selected or stored, and
+  the raw lookup string is parsed in the fold and dropped. Countries beyond the per-bucket cap are
+  summed into `OVER_CAP`; a bucket that was not measured has no row (`geo_country_bucket`,
+  migration `0022`, bounded retention). `GET /api/v1/geo/countries` (`read:geo`) answers with each
+  country's events and share, the remainders (`UNRESOLVED`, `OVER_CAP`, `UNPARSEABLE`), the
+  measurement (`EXACT`/`LOWER_BOUND`), coverage, and a status of `NOT_COLLECTED`,
+  `INSUFFICIENT_DATA`, `PARTIAL` or `OK` (G-2, G-2b). The AQL was validated live on the lab
+  console (2026-10-13–14, [T-077](docs/tasks/T-077.report.md)): `GEO::LOOKUP` returns a JSON
+  string and ignores its third argument, GeoIP data is loaded (one approved real public address
+  resolved), private, internal and unknown addresses all return `{}` and cannot be told apart,
+  and the geo key shares a `GROUP BY` with the bucket key at no measured cost. **Not validated**:
+  the collector has not run against any console — GeoIP data age, production row counts and cost
+  are unmeasured, and the map widget is not built (`map.geography` is `blocked` in the widget
+  catalog). Production validation needs a read-only window on the production console, which the
+  user has not given yet.
+- **UI redesign (D-10/D-11; in progress)** — the charcoal system, the widget dashboard and the
+  page restyles of [the UI redesign plan](docs/UI-REDESIGN-PLAN.md):
+  - **Phase 1 ✅** — charcoal tokens and self-hosted Inter (D-11 keeps the palette's own muted
+    text and input-edge values by the user's decision), the shell with grouped navigation, and
+    the top bar — search over existing lists, auto-refresh with the data's age, the open-alert
+    bell, connection status (UI-1.1, UI-1.3, UI-1.5).
+  - **Phase 2 ✅** — the Home at `/` rebuilt as the Dashboard: four KPI cards, observed vs
+    expected fleet EPS (`GET /fleet/eps-series`), bulk `/behavior/sources` and
+    `/anomalies/summary` reads, the anomaly histogram, EPS by source class, severity, top
+    sources, recent anomalies and offenses (B-2.1–B-2.3, UI-2.1–UI-2.5).
+  - **Phase 3 ✅** — the widget system: registry and catalog, `WidgetFrame` with the full state
+    set, drag/resize with keyboard steppers (`react-grid-layout`), per-widget range, configure
+    drawer and expand dialog, and the catalog widgets including WAF endpoint traffic, a source's
+    EPS against its band and recent IPS anomalies (UI-3.1–UI-3.3b, UI-3.5a/b).
+  - **Phase 4 ✅** — saved dashboards: models, migration `0023`, the `/api/v1/dashboards` API
+    with its own permissions, revision conflicts and audit, never interpreting or executing a
+    layout (B-4); the switcher and management UI, with `/` loading the chosen, default or
+    template dashboard (UI-4.1, UI-4.3). Saving is merged (UI-4.2): "Done" writes with
+    `expected_revision`, a conflict dialog, an unsaved-changes guard, restore defaults, and four
+    more templates (QRadar Administration, Behavioral Analytics, Log Source Monitoring, WAF / IPS
+    Monitoring). Widget-frame polish is merged (T-098).
+  - **Phase 5 (nearly done)** — page restyles merged for the behavior pages (UI-5.1), the
+    anomaly list and investigation (UI-5.2), the WAF behavior pages (UI-5.3), the fleet pages
+    (UI-5.4), offenses, rules and coverage (UI-5.5), log sources, searches and alerts (UI-5.6,
+    UI-5.6b) and the admin pages (UI-5.7). UI-5.8: every loading and error boundary is plain
+    text on the route's real page header, and `/config-changes` says configuration changes are
+    not collected. UI-5.9 (cross-page consistency) is in flight.
+  - **Phase 6 (QA, not merged)** — the full viewport matrix, accessibility pass, performance
+    measurement and cleanup (UI-6.1–UI-6.5). Its groundwork merged: characterization page tests
+    for the untested routes and boundaries (T-096, T-097) and the unused `echarts-for-react`
+    dropped (T-099, a UI-6.4 item).
+- **Phase F (designed; build in progress)** — custom detections (D-15, T-108): threshold rules
+  run on collected aggregates, and custom AQL gets an editor and result charts. The build is on
+  unmerged branches (F-1, F-4) and lands after Phase 5 reaches `main`. See
+  [the Phase F design](docs/PHASE-F-CUSTOM-DETECTIONS.md).
 
-Next: the goals in [the planner](docs/PLANNER.md) §0. Production WAF onboarding still needs a
-field-availability pass
-against a real WAF product ([the Phase B design](docs/PHASE-B-WAF-BEHAVIOR.md) §30.14).
+Next: UI-5.9, then the full gate and `feat/phase-ce` → `main`; Phase 6 QA (UI-6.1–UI-6.4); the
+Phase F build; the deferred production geo window (G-5); and the 24 h new-port validation
+([T-054](docs/tasks/T-054.report.md), L-1). The order is the one in
+[the planner](docs/PLANNER.md).
 
 ## License
 

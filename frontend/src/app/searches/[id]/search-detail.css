@@ -1,0 +1,4 @@
+/* The caption under the result trend (ResultTrend renders inside this page). */
+.trend-note {
+  margin: var(--sp-2) 0 0;
+}

@@ -15,11 +15,14 @@ import { truncated } from "@/lib/home/qualifiers";
 import { formatPercent } from "@/components/waf/wafFormat";
 import { atCeiling, sortByAttention, validationView } from "@/components/waf/wafSourceHealth";
 
+import { useExpanded } from "@/widgets/runtime";
+
 import "./catalog.css";
 
 export const WAF_SOURCE_ROWS = 6;
 
 export function WafSources() {
+  const expanded = useExpanded();
   const read = homeReads.wafSources();
   const state = useApiResource(read.key, read.fetch);
 
@@ -42,7 +45,7 @@ export function WafSources() {
           );
         }
         const sorted = sortByAttention(data.items);
-        const rows = sorted.slice(0, WAF_SOURCE_ROWS);
+        const rows = expanded ? sorted : sorted.slice(0, WAF_SOURCE_ROWS);
         return (
           <>
             <TableScroll label="WAF sources">
@@ -107,7 +110,7 @@ export function WafSources() {
             <WidgetQualifiers
               qualifiers={data.total > data.items.length ? [truncated(data.items.length, data.total)] : []}
             />
-            {sorted.length > rows.length ? (
+            {expanded || sorted.length > rows.length ? (
               <p className="tw-note">
                 Showing the {rows.length} that need attention first, of {sorted.length}.
               </p>

@@ -109,10 +109,11 @@ export const CATCHALL_ROWS = 5;
 export function newestSenders(
   items: CatchallSender[],
   total: number,
+  limit: number = CATCHALL_ROWS,
 ): { rows: CatchallSender[]; qualifiers: Qualifier[] } {
   const rows = [...items]
     .sort((a, b) => Date.parse(b.first_seen_at) - Date.parse(a.first_seen_at))
-    .slice(0, CATCHALL_ROWS);
+    .slice(0, limit);
   return {
     rows,
     qualifiers: total > items.length ? [truncated(items.length, total)] : [],
@@ -133,7 +134,10 @@ export interface ClassRow {
   silent: number | null;
 }
 
-export function classRows(s: FleetSummary): { rows: ClassRow[]; hidden: number; incomplete: boolean } {
+export function classRows(
+  s: FleetSummary,
+  limit: number = FLEET_CLASS_ROWS,
+): { rows: ClassRow[]; hidden: number; incomplete: boolean } {
   const withSources = s.classes.filter((c: FleetClassSummary) => c.sources.enabled + c.sources.disabled > 0);
   const all = withSources
     .map((c) => ({
@@ -145,8 +149,8 @@ export function classRows(s: FleetSummary): { rows: ClassRow[]; hidden: number; 
     }))
     .sort((a, b) => (b.meanEps ?? -1) - (a.meanEps ?? -1) || a.label.localeCompare(b.label));
   return {
-    rows: all.slice(0, FLEET_CLASS_ROWS),
-    hidden: Math.max(0, all.length - FLEET_CLASS_ROWS),
+    rows: all.slice(0, limit),
+    hidden: Math.max(0, all.length - limit),
     incomplete: s.classes.some((c) => c.buckets.partial + c.buckets.missing > 0),
   };
 }

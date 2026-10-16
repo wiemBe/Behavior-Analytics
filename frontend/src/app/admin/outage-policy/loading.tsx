@@ -1,5 +1,5 @@
-import { LoadingState } from "@/components/ui/RouteState";
+import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 
 export default function Loading() {
-  return <LoadingState what="the outage alert policy" />;
+  return <BoundaryLoading title="Outage alerts" what="the outage alert policy" />;
 }

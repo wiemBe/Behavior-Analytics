@@ -39,13 +39,18 @@ export function unavailableReason(
       return `Your role lacks ${missing.length === 1 ? "permission" : "permissions"} ${missing.join(", ")}.`;
     }
   }
-  // None of today's widgets has configuration, so a second copy would be identical. UI-3.3's
-  // configuration makes duplicates meaningful; this guard then goes.
-  if (placedTypes.has(def.type)) return ALREADY_PLACED;
+  // A widget without config keys shows the same thing twice, so a second copy is refused. One
+  // with config keys (an endpoint, a source) can be placed once per subject, so it is not.
+  if (placedTypes.has(def.type) && Object.keys(def.config).length === 0) return ALREADY_PLACED;
   if (placedCount >= MAX_WIDGETS) {
     return `A dashboard holds at most ${MAX_WIDGETS} widgets.`;
   }
   return null;
+}
+
+/** A route as the analyst reads it: a path parameter is `{id}`, not a template placeholder. */
+function showRoute(route: string): string {
+  return route.replace(/\$\{(\w+)\}/g, "{$1}");
 }
 
 export function Catalog({
@@ -124,7 +129,7 @@ export function Catalog({
                           <dl className="dg-catalog-facts">
                             <div>
                               <dt>Reads</dt>
-                              <dd>{def.sources.join(", ")}</dd>
+                              <dd>{def.sources.map(showRoute).join(", ")}</dd>
                             </div>
                             <div>
                               <dt>Needs</dt>

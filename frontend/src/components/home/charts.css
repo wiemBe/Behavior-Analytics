@@ -40,30 +40,6 @@
   height: var(--sp-3);
   border-radius: var(--r-sm);
 }
-.hc-presets {
-  display: flex;
-  flex: 0 0 auto;
-  gap: var(--sp-1);
-}
-.hc-preset {
-  padding: var(--sp-1) var(--sp-2);
-  font: inherit;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.hc-preset:hover {
-  color: var(--text);
-  background: var(--surface-2);
-}
-.hc-preset[aria-pressed="true"] {
-  color: var(--text);
-  background: var(--surface-3);
-  border-color: var(--border-strong);
-}
 
 /* --- class donut and list ---------------------------------------------------- */
 

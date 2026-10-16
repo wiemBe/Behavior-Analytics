@@ -3,13 +3,26 @@
 // The configure drawer (UR.5.3), built like the catalog drawer: a native modal dialog on the
 // right, `Esc` and Cancel close it without a change, Apply hands the choices back. It holds the
 // range choice of a range-declaring widget ("Follow the dashboard" or a preset) and one select
-// per `config` key, rendered from the widget's `ConfigSchema`. Every control is a pick from the
-// enumerated options; there is no text field, so nothing typed here can reach a query.
+// per `config` key, rendered from the widget's `ConfigSchema`. A key's options are a fixed list
+// or the ids of one existing GET read (UI-3.5b; a read may depend on another key, so changing
+// that key clears this one). Every control is a pick; the only text field is the filter over a
+// long read, and it narrows the options in the browser: its text is not a query, not a request
+// body and not part of the stored config. Apply is off while a read is loading, has failed or
+// is empty, and until each read key holds an id the read returned.
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+
+import { useApiResource } from "@/hooks/useApiResource";
 
 import { RANGE_TEXT } from "./runtime";
-import type { AnyWidgetDef, LayoutWidget, WidgetRange } from "./types";
+import {
+  isReadField,
+  type AnyWidgetDef,
+  type ConfigOption,
+  type LayoutWidget,
+  type OptionsSource,
+  type WidgetRange,
+} from "./types";
 
 import "./dashboard.css";
 
@@ -25,22 +38,196 @@ export interface ConfigChoice {
 
 const FOLLOW = "";
 
-/** One select per config key, with exactly the schema's options. */
+/** A list longer than this gets a filter above its select, and its select shows a few rows. */
+export const FILTER_AFTER = 8;
+const LISTBOX_ROWS = 6;
+
+const NO_READ = async (): Promise<unknown> => null;
+
+/** The options of a read field narrowed by the filter; the chosen one always stays. */
+function narrowed(options: ConfigOption[], filter: string, chosen: string | null): ConfigOption[] {
+  const needle = filter.trim().toLowerCase();
+  if (!needle) return options;
+  return options.filter((o) => o.id === chosen || o.label.toLowerCase().includes(needle));
+}
+
+/** One select over the ids a read returned, with the read's own states designed. */
+function ReadField({
+  id,
+  label,
+  source,
+  values,
+  onChange,
+  onReady,
+  fieldKey,
+}: {
+  id: string;
+  label: string;
+  source: OptionsSource;
+  values: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+  onReady?: (key: string, ready: boolean) => void;
+  fieldKey: string;
+}) {
+  const parent = source.dependsOn ? ((values[source.dependsOn] as string | null) ?? null) : null;
+  const read = source.read(parent);
+  const state = useApiResource(read?.key ?? null, read?.fetch ?? NO_READ);
+  const [filter, setFilter] = useState("");
+  const chosen = typeof values[fieldKey] === "string" ? (values[fieldKey] as string) : null;
+  const list = state.status === "ok" && read ? read.options(state.data) : null;
+  const options = list ? list.options : [];
+  const ready = state.status === "ok" && options.some((o) => o.id === chosen);
+
+  useEffect(() => {
+    onReady?.(fieldKey, ready);
+    return () => onReady?.(fieldKey, false);
+  }, [fieldKey, ready, onReady]);
+
+  const fieldLabel = <label htmlFor={id}>{label}</label>;
+  if (read === null) {
+    return (
+      <div className="dg-field">
+        {fieldLabel}
+        <select id={id} value="" disabled>
+          <option value="">{source.needs ?? "Choose the option above first"}</option>
+        </select>
+      </div>
+    );
+  }
+  if (state.status === "idle" || state.status === "loading") {
+    return (
+      <div className="dg-field">
+        {fieldLabel}
+        <p className="dg-field-state" role="status">
+          Loading the {source.what}…
+        </p>
+      </div>
+    );
+  }
+  if (state.status === "forbidden") {
+    return (
+      <div className="dg-field">
+        {fieldLabel}
+        <p className="dg-field-state" role="alert">
+          Your role cannot read the {source.what}, so nothing can be chosen here.
+        </p>
+      </div>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <div className="dg-field">
+        {fieldLabel}
+        <p className="dg-field-state" role="alert">
+          <strong>The {source.what} could not be read.</strong>{" "}
+          {state.httpStatus === null
+            ? "The backend did not answer. "
+            : `The backend answered with HTTP ${state.httpStatus}. `}
+          Close this drawer and open it again; if it still fails, check that the backend is
+          reachable.
+        </p>
+      </div>
+    );
+  }
+  if (options.length === 0) {
+    return (
+      <div className="dg-field">
+        {fieldLabel}
+        <p className="dg-field-state" role="status">
+          <strong>No {source.what}.</strong> {source.emptyReason}
+        </p>
+      </div>
+    );
+  }
+  const shown = narrowed(options, filter, chosen);
+  const filterId = `${id}-filter`;
+  // A long list is a listbox beside its filter, so the narrowed options are in view, not behind
+  // a closed dropdown. It has no placeholder row: nothing is selected until one is picked.
+  const long = options.length > FILTER_AFTER;
+  return (
+    <div className="dg-field">
+      {fieldLabel}
+      {long ? (
+        <>
+          <input
+            id={filterId}
+            type="search"
+            aria-label={`Filter ${source.what}`}
+            placeholder={`Filter ${source.what}`}
+            autoComplete="off"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+          />
+          <p className="dg-field-note" aria-live="polite">
+            {filter.trim()
+              ? `${shown.length} of ${options.length} shown`
+              : `${options.length} ${source.what}`}
+          </p>
+        </>
+      ) : null}
+      <select
+        id={id}
+        size={long ? LISTBOX_ROWS : undefined}
+        value={chosen !== null && options.some((o) => o.id === chosen) ? chosen : ""}
+        onChange={(event) => onChange(fieldKey, event.target.value)}
+      >
+        {ready ? null : long ? (
+          // Selected but not shown: no row looks chosen before the analyst picks one.
+          <option value="" disabled hidden />
+        ) : (
+          <option value="" disabled>
+            Choose…
+          </option>
+        )}
+        {shown.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {list && list.total > options.length ? (
+        <p className="dg-field-note">
+          The read returned the first {options.length} of {list.total} {source.what}; only
+          these can be chosen here.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** One select per config key: the schema's static options, or the ids of a read. */
 export function ConfigForm({
   schema,
   values,
   onChange,
+  onReady,
 }: {
   schema: AnyWidgetDef["config"];
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
+  /** Reported by each read field: true once it holds an id its read returned. */
+  onReady?: (key: string, ready: boolean) => void;
 }) {
   const base = useId();
   return (
     <>
       {Object.entries(schema).map(([key, field]) => {
-        const options = (field as { label: string; options: ReadonlyArray<unknown> }).options;
         const label = (field as { label: string }).label;
+        if (isReadField(field as never)) {
+          return (
+            <ReadField
+              key={key}
+              id={`${base}-${key}`}
+              fieldKey={key}
+              label={label}
+              source={(field as { from: OptionsSource }).from}
+              values={values}
+              onChange={onChange}
+              onReady={onReady}
+            />
+          );
+        }
+        const options = (field as { options: ReadonlyArray<unknown> }).options;
         const index = options.findIndex((option) => Object.is(option, values[key]));
         return (
           <div className="dg-field" key={key}>
@@ -64,6 +251,22 @@ export function ConfigForm({
   );
 }
 
+/** Sets a key and clears every key whose read depends on it, and theirs in turn. */
+export function setConfigKey(
+  schema: AnyWidgetDef["config"],
+  current: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): Record<string, unknown> {
+  const next = { ...current, [key]: value };
+  for (const [other, field] of Object.entries(schema)) {
+    if (isReadField(field as never) && (field as { from: OptionsSource }).from.dependsOn === key) {
+      Object.assign(next, setConfigKey(schema, next, other, null));
+    }
+  }
+  return next;
+}
+
 export function ConfigureDrawer({
   def,
   widget,
@@ -85,6 +288,16 @@ export function ConfigureDrawer({
     ...def.defaultConfig,
     ...widget.config,
   });
+  const [ready, setReady] = useState<Record<string, boolean>>({});
+  const onReady = useCallback(
+    (key: string, value: boolean) =>
+      setReady((current) => (current[key] === value ? current : { ...current, [key]: value })),
+    [],
+  );
+  const readKeys = Object.entries(def.config)
+    .filter(([, field]) => isReadField(field as never))
+    .map(([key]) => key);
+  const blocked = readKeys.some((key) => !ready[key]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -137,8 +350,16 @@ export function ConfigureDrawer({
         <ConfigForm
           schema={def.config}
           values={config}
-          onChange={(key, value) => setConfig((current) => ({ ...current, [key]: value }))}
+          onChange={(key, value) =>
+            setConfig((current) => setConfigKey(def.config, current, key, value))
+          }
+          onReady={onReady}
         />
+        {blocked ? (
+          <p className="dg-catalog-note" id="dg-configure-blocked">
+            Apply is off until every choice above is made from what its read returned.
+          </p>
+        ) : null}
         <p className="dg-catalog-note">
           Applies to this session only; saving is not built yet.
         </p>
@@ -147,7 +368,13 @@ export function ConfigureDrawer({
         <button type="button" className="action secondary" onClick={onClose}>
           Cancel
         </button>
-        <button type="button" className="action" onClick={() => onApply({ range, config })}>
+        <button
+          type="button"
+          className="action"
+          disabled={blocked}
+          aria-describedby={blocked ? "dg-configure-blocked" : undefined}
+          onClick={() => onApply({ range, config })}
+        >
           Apply
         </button>
       </footer>

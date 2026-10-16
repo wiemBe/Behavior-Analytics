@@ -15,7 +15,7 @@ import { WafIncidentHeader } from "./WafIncidentHeader";
 import { WafIncidentMetrics } from "./WafIncidentMetrics";
 import { WafRequestChart } from "./WafRequestChart";
 import type { BaselineSource } from "./wafBaseline";
-import { stateLabel } from "./wafLabels";
+import { stateLabel, statePillText } from "./wafLabels";
 import { buildWafRatioSeries, buildWafSeries, ratioSpecFor } from "./wafSeries";
 import { isNewEndpointType, summarizeWafAnomaly } from "./wafSummary";
 
@@ -141,7 +141,7 @@ export function WafInvestigation({
         <LifecycleTimeline
           transitions={anomaly.transitions}
           policyVersion={anomaly.policy_version}
-          stateLabel={stateLabel}
+          stateLabel={statePillText}
         />
       </section>
     </>

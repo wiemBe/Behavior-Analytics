@@ -6,13 +6,13 @@
 // follow would lead to a permission error, so without the grant it is plain text.
 // Times carry their timezone.
 
+import { statePillText } from "@/components/waf/wafLabels";
 import Link from "next/link";
 
 import type { IpsAnomalyDetail } from "@/lib/api";
 import { sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
 import { formatDateTime } from "@/lib/health";
-import { stateLabel } from "@/components/waf/wafLabels";
 
 import "./ips.css";
 import { dimensionNoun, ipsSubjectText, ipsTypeLabel, SOURCE_LEVEL } from "./ipsLabels";
@@ -71,7 +71,7 @@ export function IpsIncidentHeader({
         <div className="row incident-identity">
           <span className="incident-detector">{ipsTypeLabel(anomaly.anomaly_type)}</span>
           <span className={`pill pill-strong ${stateTone(anomaly.state)}`}>
-            {stateLabel(anomaly.state)}
+            {statePillText(anomaly.state)}
           </span>
           <span className={`pill pill-quiet ${sevTone(anomaly.severity)}`}>{anomaly.severity}</span>
           {anomaly.suppressed && <span className="pill pill-quiet warn">Suppressed</span>}

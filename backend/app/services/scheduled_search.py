@@ -9,6 +9,7 @@ execution — a manual run always executes the stored query of an existing searc
 
 from __future__ import annotations
 
+import builtins
 import uuid
 from datetime import UTC, datetime
 
@@ -63,7 +64,7 @@ class ScheduledSearchService:
         )
         return list(result.all())
 
-    async def versions(self, search_id: uuid.UUID) -> list[SearchQueryVersion]:
+    async def versions(self, search_id: uuid.UUID) -> builtins.list[SearchQueryVersion]:
         return list(
             (
                 await self.session.scalars(
@@ -108,7 +109,7 @@ class ScheduledSearchService:
 
     async def executions(
         self, search_id: uuid.UUID, *, limit: int = 50
-    ) -> list[SearchExecution]:
+    ) -> builtins.list[SearchExecution]:
         return list(
             (
                 await self.session.scalars(

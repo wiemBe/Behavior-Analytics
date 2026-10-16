@@ -46,7 +46,10 @@ vi.mock("echarts/components", () => ({
   TooltipComponent: {},
 }));
 vi.mock("echarts/renderers", () => ({ CanvasRenderer: {} }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 vi.mock("@/components/shell/AutoRefresh", () => ({
   formatClockUtc: () => "13:58:00 UTC",
   useRefreshTick: () => 0,
@@ -108,6 +111,12 @@ function stateFor(key: string): ResourceState<unknown> {
     return forbidden;
   }
 
+  // UI-4.1: the page reads the saved dashboards first; none saved shows the template.
+  if (key.startsWith("/dashboards")) return okay({ items: [], total: 0, limit: 200, offset: 0 });
+  if (key === "/me") {
+    return okay({ subject: "analyst", email: null, permissions: [], effective_permissions: [] });
+  }
+
   const empty = mocks.scenario === "empty";
   const insufficient = mocks.scenario === "insufficient";
 
@@ -160,7 +169,8 @@ function stateFor(key: string): ResourceState<unknown> {
 }
 
 vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (key: string) => stateFor(key),
+  // A null key means "do not fetch yet" (UI-4.1: no saved dashboard is selected).
+  useApiResource: (key: string | null) => (key === null ? { status: "idle" } : stateFor(key)),
 }));
 
 beforeEach(() => {
@@ -183,10 +193,10 @@ describe("Dashboard page", () => {
   it("has one h1 and the fixed widget hierarchy in order", async () => {
     const { container } = render(<HomePage />);
     await widgetsLoaded(container);
-    expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "SOC Overview" })).toBeInTheDocument();
     expect(screen.getByText(/24 h view of fleet volume/)).toBeInTheDocument();
     expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual([
-      "Dashboard",
+      "SOC Overview",
       "Total EPS, 24 h",
       "Log sources, now",
       "Open offenses, latest snapshot",
@@ -240,7 +250,7 @@ describe("Dashboard page", () => {
       expect(alert).toHaveTextContent(/Refresh|next refresh/);
       expect(alert).toHaveTextContent(/backend is reachable/);
     }
-    expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "SOC Overview" })).toBeInTheDocument();
   });
 
   it("keeps insufficient data neutral and does not draw an absent fleet measurement", async () => {

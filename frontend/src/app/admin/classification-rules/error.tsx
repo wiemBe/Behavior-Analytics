@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function ClassificationRulesError({
   error,
@@ -9,5 +9,12 @@ export default function ClassificationRulesError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="Classification rules" digest={error.digest} onRetry={reset} />;
+  return (
+    <BoundaryError
+      title="Classification rules"
+      what="Classification rules"
+      digest={error.digest}
+      onRetry={reset}
+    />
+  );
 }

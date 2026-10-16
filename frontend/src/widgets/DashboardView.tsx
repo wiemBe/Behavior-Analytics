@@ -7,10 +7,9 @@
 // box; it is never clipped. Below 12 columns rows grow with their content, because that view
 // is read-only and its widgets are narrower than their boxes were sized for.
 //
-// Customize mode (UR.5.3) works on a copy in memory: Add from the catalog, Remove, arrange,
-// and configure (the range and the widget's enumerated config). Nothing is saved. Editing is
-// offered only at 12 columns. A widget's range override, the Expand dialog and the Configure
-// drawer are owned here, so the layout in memory is the one source of each.
+// Customize mode (UR.5.3) edits the layout supplied by `useDashboard`: Add from the catalog,
+// Remove, arrange, configure and per-widget range all report the same current layout upward.
+// Editing is offered only at 12 columns. Expand stays local because it changes no layout.
 
 import dynamic from "next/dynamic";
 import {
@@ -28,7 +27,7 @@ import {
 import { WidgetEditContext } from "@/components/home/WidgetFrame";
 
 import { Catalog, MAX_WIDGETS } from "./Catalog";
-import { ConfigureDrawer, type ConfigChoice } from "./Configure";
+import { ConfigureDrawer, hasConfigure, type ConfigChoice } from "./Configure";
 import { ExpandDialog } from "./Expand";
 import {
   columnsForWidth,
@@ -118,6 +117,7 @@ function PlacedWidget({
   arrange,
   onRange,
   onExpand,
+  onConfigure = null,
   expanded = false,
 }: {
   widget: LayoutWidget;
@@ -127,6 +127,8 @@ function PlacedWidget({
   onRange: (range: WidgetRange) => void;
   /** Opens the expand dialog; null where Expand is not offered from the frame. */
   onExpand: ((trigger: HTMLElement) => void) | null;
+  /** Opens the configure drawer; set in customize mode only. */
+  onConfigure?: ((trigger: HTMLElement) => void) | null;
   expanded?: boolean;
 }) {
   const def = widgetDef(widget.type);
@@ -156,6 +158,7 @@ function PlacedWidget({
       setRange: onRange,
       onExpand: def.expandable ? onExpand : null,
       expanded,
+      onConfigure: hasConfigure(def) ? onConfigure : null,
     };
     content = (
       <WidgetRuntimeContext.Provider value={runtime}>
@@ -176,14 +179,45 @@ function PlacedWidget({
 }
 
 export interface DashboardViewProps {
-  /** The layout to start from; changes are kept in memory only. */
+  /** The current layout. With `onLayoutChange`, this component is controlled by `useDashboard`. */
   layout: DashboardLayout;
+  onLayoutChange?: (layout: DashboardLayout) => void;
   /** The page header, given the customize controls for its actions. */
   renderHeader: (actions: ReactNode) => ReactNode;
+  /** True for a saved dashboard. */
+  saved?: boolean;
+  /**
+   * Header controls that lead the actions (the dashboard switcher and menu). They are left out
+   * while customizing: the session line takes their room, and switching away would drop the
+   * changes in memory.
+   */
+  leading?: ReactNode | ((customizing: boolean) => ReactNode);
+  dirty?: boolean;
+  canSave?: boolean;
+  saveOnDone?: boolean;
+  saving?: boolean;
+  saveMessage?: string | null;
+  onSave?: () => Promise<boolean>;
+  onDiscard?: () => void;
+  onCustomizeChange?: (customizing: boolean) => void;
 }
 
-export function DashboardView({ layout: initial, renderHeader }: DashboardViewProps) {
-  const [layout, setLayout] = useState(initial);
+export function DashboardView({
+  layout: initial,
+  onLayoutChange,
+  renderHeader,
+  leading = null,
+  dirty = false,
+  canSave = false,
+  saveOnDone = false,
+  saving = false,
+  saveMessage = null,
+  onSave,
+  onDiscard,
+  onCustomizeChange,
+}: DashboardViewProps) {
+  const [localLayout, setLocalLayout] = useState(initial);
+  const layout = onLayoutChange ? initial : localLayout;
   const [customizing, setCustomizing] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [notice, setNotice] = useState("");
@@ -203,6 +237,20 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
   const configuring = layout.widgets.find((w) => w.id === configureId) ?? null;
   const configureDef = configuring ? widgetDef(configuring.type) : undefined;
 
+  const updateLayout = useCallback(
+    (update: DashboardLayout | ((current: DashboardLayout) => DashboardLayout)) => {
+      const next = typeof update === "function" ? update(layout) : update;
+      if (onLayoutChange) onLayoutChange(next);
+      else setLocalLayout(next);
+    },
+    [layout, onLayoutChange],
+  );
+
+  const setCustomize = (value: boolean) => {
+    setCustomizing(value);
+    onCustomizeChange?.(value);
+  };
+
   // Focus returns to the trigger once the catalog has closed.
   useEffect(() => {
     if (wasOpen.current && !catalogOpen) addRef.current?.focus();
@@ -210,22 +258,22 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
   }, [catalogOpen]);
 
   const remove = useCallback((id: string) => {
-    setLayout((l) => ({
+    updateLayout((l) => ({
       ...l,
       widgets: compactLayout(l.widgets.filter((widget) => widget.id !== id)),
     }));
     setNotice("Widget removed.");
-  }, []);
+  }, [updateLayout]);
 
   const setRange = useCallback((id: string, range: WidgetRange | null) => {
-    setLayout((l) => ({
+    updateLayout((l) => ({
       ...l,
       widgets: l.widgets.map((widget) => (widget.id === id ? { ...widget, range } : widget)),
     }));
-  }, []);
+  }, [updateLayout]);
 
   const apply = (id: string, choice: ConfigChoice) => {
-    setLayout((l) => ({
+    updateLayout((l) => ({
       ...l,
       widgets: l.widgets.map((widget) =>
         widget.id === id ? { ...widget, range: choice.range, config: choice.config } : widget,
@@ -253,7 +301,7 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
     if (def.status !== "live" || layout.widgets.length >= MAX_WIDGETS) return;
     const { x, y } = firstFreeSpot(layout.widgets, def.size.w, def.size.h);
     const id = newWidgetId(new Set(layout.widgets.map((w) => w.id)));
-    setLayout({
+    updateLayout({
       ...layout,
       widgets: [
         ...layout.widgets,
@@ -273,22 +321,44 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
     setCatalogOpen(false);
   };
 
+  const pending = (
+    <>
+      {dirty && canSave ? (
+        <button type="button" className="action" disabled={saving} onClick={() => void onSave?.()}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+      ) : null}
+      {dirty ? (
+        <button type="button" className="action secondary" onClick={onDiscard}>
+          Discard
+        </button>
+      ) : null}
+    </>
+  );
+  const lead = typeof leading === "function" ? leading(customizing) : leading;
   let actions: ReactNode;
   if (!editable) {
-    actions = <p className="dg-hint">Widen the window to customize</p>;
+    actions = (
+      <>
+        {lead}
+        {pending}
+        {dirty ? null : <p className="dg-hint">Widen the window to customize</p>}
+      </>
+    );
   } else if (!editing) {
     actions = (
-      <button type="button" className="action secondary" onClick={() => setCustomizing(true)}>
-        Customize
-      </button>
+      <>
+        {lead}
+        {pending}
+        <button type="button" className="action secondary" onClick={() => setCustomize(true)}>
+          Customize
+        </button>
+      </>
     );
   } else {
     actions = (
       <>
-        <p className="dg-session" role="status">
-          Customizing. Changes last for this session only; saving is not built yet.
-          {notice ? <span className="dg-notice"> {notice}</span> : null}
-        </p>
+        {lead}
         <button
           type="button"
           ref={addRef}
@@ -300,12 +370,16 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
         <button
           type="button"
           className="action"
-          onClick={() => {
-            setCustomizing(false);
+          disabled={saving}
+          onClick={async () => {
+            if ((dirty || saveOnDone) && canSave && onSave) {
+              if (!(await onSave())) return;
+            }
+            setCustomize(false);
             setNotice("");
           }}
         >
-          Done
+          {saving ? "Saving…" : "Done"}
         </button>
       </>
     );
@@ -314,11 +388,22 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
   return (
     <>
       {renderHeader(actions)}
+      {dirty || saveMessage || notice ? (
+        <p className="dg-status dg-save-status" role="status" aria-live="polite">
+          {dirty
+            ? canSave
+              ? "Unsaved changes."
+              : "Unsaved changes. They last for this session only."
+            : null}
+          {saveMessage ? `${dirty ? " " : ""}${saveMessage}` : null}
+          {notice ? <span className="dg-notice"> {notice}</span> : null}
+        </p>
+      ) : null}
       <div ref={gridRef} className="dg-measure" data-cols={cols} data-editing={editing || undefined}>
         {editing ? (
           <EditGrid
             widgets={layout.widgets}
-            onChange={(widgets) => setLayout((current) => ({ ...current, widgets }))}
+            onChange={(widgets) => updateLayout((current) => ({ ...current, widgets }))}
             onRemove={remove}
             onConfigure={(id, from) => openOverlay(setConfigureId, id, from)}
             onExpand={(id, from) => openOverlay(setExpandedId, id, from)}
@@ -330,6 +415,7 @@ export function DashboardView({ layout: initial, renderHeader }: DashboardViewPr
                 onRemove={() => remove(widget.id)}
                 onRange={(range) => setRange(widget.id, range)}
                 onExpand={null}
+                onConfigure={(from) => openOverlay(setConfigureId, widget.id, from)}
               />
             )}
           />

@@ -1,0 +1,46 @@
+.alert-evidence {
+  margin-top: var(--sp-2);
+}
+.alert-lifecycle {
+  margin-top: var(--sp-5);
+}
+.alert-lifecycle p {
+  margin: var(--sp-2) 0 0;
+}
+
+/* A delivery error is prose of unbounded length: it wraps in its own column rather than
+   stretching the table. */
+td.cell-error {
+  min-width: 12ch;
+  overflow-wrap: anywhere;
+}
+
+/* Operator actions (AlertActions renders inside this page). */
+.alert-actions {
+  margin-top: var(--sp-5);
+}
+.alert-actions-closed {
+  margin: var(--sp-2) 0 0;
+}
+.alert-actions-row {
+  margin-top: var(--sp-3);
+}
+.alert-actions-result {
+  display: inline-block;
+  margin: var(--sp-3) 0 0;
+}
+.alert-actions-confirm {
+  margin-top: var(--sp-3);
+}
+.alert-actions-confirm p {
+  margin: 0 0 var(--sp-2);
+}
+
+/* A header may wrap at its spaces ("Next attempt" / "(UTC)") so the time columns stay as
+   narrow as their cells; the cells themselves never wrap. */
+.delivery-table th {
+  white-space: normal;
+}
+.delivery-table td.nowrap {
+  white-space: nowrap;
+}

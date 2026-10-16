@@ -33,6 +33,8 @@ import {
   parseSubjectQuery,
 } from "@/lib/anomalyQuery";
 
+import "./anomalies.css";
+
 export const metadata: Metadata = {
   title: "Anomalies",
 };
@@ -80,10 +82,10 @@ export default async function AnomaliesPage({
   } catch (err) {
     error =
       err instanceof ApiError && err.status === 403
-        ? "You do not have permission to view anomalies."
+        ? "You do not have permission to view anomalies. Ask an administrator for the read:anomalies grant."
         : err instanceof ApiError && err.status === 401
           ? "Your session has expired. Sign in again to continue."
-          : "Anomalies could not be loaded. The backend may be unreachable.";
+          : "Anomalies could not be loaded. The backend may be unreachable; reload the page to try again.";
   }
 
   const filtered = Boolean(
@@ -143,7 +145,7 @@ export default async function AnomaliesPage({
       ) : (
         <>
           <TableScroll label="Detected anomalies">
-            <table className="sticky-actions">
+            <table className="sticky-actions anomaly-list">
               <caption className="sr-only">
                 Detected anomalies with lifecycle state, observed against
                 expected volume, deviation, severity and evidence status.
@@ -156,13 +158,13 @@ export default async function AnomaliesPage({
                   <th scope="col" className="num col-nowrap">
                     {hasWaf ? "Observed → Expected" : "Observed → Expected (EPS)"}
                   </th>
-                  <th scope="col" className="num col-md">
+                  <th scope="col" className="num col-md col-dev">
                     Deviation
                   </th>
                   <th scope="col" className="col-sm">
                     Severity
                   </th>
-                  <th scope="col" className="num col-sm">
+                  <th scope="col" className="num col-sm col-started">
                     Started
                   </th>
                   <th scope="col" className="col-md">

@@ -31,6 +31,7 @@ from app.core.config import Settings, get_settings
 from app.models.enums import ExecutionErrorType, ExecutionStatus
 from app.models.search import ScheduledSearch, SearchExecution, SearchResultMetric
 from app.providers.base import ProviderCapability, QRadarProvider
+from app.providers.dto import ArielSearchStatusDTO
 from app.services.aql_validator import validate_aql
 from app.services.ariel_errors import (
     ArielSearchFailed,
@@ -159,11 +160,15 @@ class SearchExecutor:
 
         async with self.limiter.slot(execution_instance_key(execution, search)):
             handle = await self.provider.create_ariel_search(search.aql_query)
-            execution.ariel_search_id = handle.search_id
+            # The row's ariel_search_id is nullable (a search is created before
+            # the id exists), but past this point the id is always set; thread
+            # the non-optional value through rather than re-reading the column.
+            search_id = handle.search_id
+            execution.ariel_search_id = search_id
             execution.ariel_status = handle.status
             await self.session.flush()
 
-            status = await self._poll_until_terminal(search, execution)
+            status = await self._poll_until_terminal(search, execution, search_id)
             if status.status == "ERROR":
                 raise ArielSearchFailed("; ".join(status.error_messages) or "Ariel search failed")
 
@@ -183,18 +188,20 @@ class SearchExecutor:
                 "truncated": results.truncated,
             }
 
-    async def _poll_until_terminal(self, search: ScheduledSearch, execution: SearchExecution):
+    async def _poll_until_terminal(
+        self, search: ScheduledSearch, execution: SearchExecution, search_id: str
+    ) -> ArielSearchStatusDTO:
         timeout = min(search.timeout_seconds, self.settings.ariel_max_timeout_seconds)
         poll = self.settings.ariel_poll_interval_seconds
         start = self.clock()
         while True:
-            status = await self.provider.get_ariel_search_status(execution.ariel_search_id)
+            status = await self.provider.get_ariel_search_status(search_id)
             execution.ariel_status = status.status
             if status.is_terminal:
                 return status
             elapsed = (self.clock() - start).total_seconds()
             if elapsed >= timeout:
-                await self._safe_cancel(execution.ariel_search_id)
+                await self._safe_cancel(search_id)
                 raise ArielTimeout(f"search exceeded timeout of {timeout}s")
             await self.sleep(poll)
 

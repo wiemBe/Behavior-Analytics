@@ -26,6 +26,7 @@ import {
   isUnobserved,
   robustScoreMeaning,
   stateMeaning,
+  stateMeaningAgainst,
   stateTone,
 } from "./behavior";
 
@@ -247,3 +248,46 @@ describe("detectorLabel", () => {
   });
 });
 
+
+describe("stateMeaning against the numbers beside it", () => {
+  const inside = { observed: 40, low: 31, high: 48 };
+
+  it("claims the expected band only when the observed value lies inside it", () => {
+    expect(stateMeaningAgainst("NORMAL", inside)).toMatch(/within the expected band/);
+    expect(stateMeaning("NORMAL")).toMatch(/within the expected band/);
+  });
+
+  it("names the detector's verdict, not the band, when the value lies outside it", () => {
+    for (const band of [
+      { observed: 0, low: 31, high: 48 },
+      { observed: 60, low: 31, high: 48 },
+    ]) {
+      const text = stateMeaningAgainst("NORMAL", band);
+      expect(text).toMatch(/by the detector's verdict/);
+      expect(text).toMatch(/not inside the expected band/);
+      expect(text).not.toMatch(/within the expected band/);
+    }
+  });
+
+  it("treats a value on either edge of the band as inside it", () => {
+    expect(stateMeaningAgainst("NORMAL", { observed: 31, low: 31, high: 48 })).toMatch(
+      /within the expected band/,
+    );
+    expect(stateMeaningAgainst("NORMAL", { observed: 48, low: 31, high: 48 })).toMatch(
+      /within the expected band/,
+    );
+  });
+
+  it("claims nothing about a band it cannot check", () => {
+    for (const band of [
+      { observed: null, low: 31, high: 48 },
+      { observed: 40, low: null, high: null },
+      { observed: 40, low: 31, high: null },
+    ]) {
+      const text = stateMeaningAgainst("NORMAL", band);
+      expect(text).toMatch(/by the detector's verdict/);
+      expect(text).not.toMatch(/within/);
+      expect(text).not.toMatch(/not inside/);
+    }
+  });
+});

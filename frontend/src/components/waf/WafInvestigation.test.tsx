@@ -69,7 +69,7 @@ describe("WAF investigation: identity", () => {
   it("gives the lifecycle state the strong badge and severity a quiet one", () => {
     const { container } = view({ state: "OPEN" });
     const header = within(container.querySelector("header") as HTMLElement);
-    expect(header.getByText("Open").className).toContain("pill-strong");
+    expect(header.getByText("OPEN").className).toContain("pill-strong");
     expect(header.getByText("HIGH").className).toContain("pill-quiet");
   });
 
@@ -218,7 +218,7 @@ describe("WAF investigation: working, evidence and lifecycle", () => {
   it("states INSUFFICIENT_DATA as not judged, never as healthy", () => {
     view({ state: "INSUFFICIENT_DATA", detection: null });
     expect(screen.getByText(/not being judged, which is not the same as being healthy/)).toBeInTheDocument();
-    expect(screen.getByText("Insufficient data").className).not.toMatch(/\bok\b/);
+    expect(screen.getByText("INSUFFICIENT_DATA").className).not.toMatch(/\bok\b/);
   });
 
   it("has no Evidence section: WAF anomalies are never given an evidence request", () => {
@@ -240,21 +240,21 @@ describe("WAF investigation: working, evidence and lifecycle", () => {
   it("lists every transition in order", () => {
     view();
     const list = screen.getByRole("list");
-    expect(within(list).getAllByText("Candidate").length).toBeGreaterThan(0);
+    expect(within(list).getAllByText("CANDIDATE").length).toBeGreaterThan(0);
     expect(screen.getByText("first abnormal bucket")).toBeInTheDocument();
     expect(screen.getByText("3 consecutive abnormal buckets")).toBeInTheDocument();
   });
 
-  it("words both ends of every lifecycle transition, never as an enum with an underscore", () => {
+  it("shows both ends of a lifecycle transition as the backend names them", () => {
     const base = wafDetail().transitions[0];
     view({
       transitions: [{ ...base, from_state: "INSUFFICIENT_DATA", to_state: "NORMAL" }],
     });
     const lifecycle = within(screen.getByRole("heading", { name: "Lifecycle" }).closest("section")!);
-    expect(lifecycle.getByText("Insufficient data")).toBeInTheDocument();
-    expect(lifecycle.getByText("Normal")).toBeInTheDocument();
-    expect(lifecycle.queryByText("INSUFFICIENT_DATA")).not.toBeInTheDocument();
-    expect(lifecycle.queryByText("NORMAL")).not.toBeInTheDocument();
+    expect(lifecycle.getByText("INSUFFICIENT_DATA")).toBeInTheDocument();
+    expect(lifecycle.getByText("NORMAL")).toBeInTheDocument();
+    expect(lifecycle.queryByText("Insufficient data")).not.toBeInTheDocument();
+    expect(lifecycle.queryByText("Normal")).not.toBeInTheDocument();
   });
 
   it("uses no causal language in its summary", () => {
@@ -318,6 +318,44 @@ describe("WAF investigation: seasonal band and ratio", () => {
 describe("WAF investigation: against what normal", () => {
   const working = () =>
     within(screen.getByRole("heading", { name: "Against what normal" }).closest("section")!);
+
+  it.each([
+    ["OK", "21.40"],
+    [null, "21.40"],
+  ] as const)("shows the robust z figure when status is %s", (status, figure) => {
+    view({ detection: wafDetection({ robust_score_status: status, robust_z: 21.4 }) });
+    expect(working().getByText("Robust z").closest("div")).toHaveTextContent(figure);
+  });
+
+  it.each([
+    ["DEGENERATE", "not used: MAD was zero"],
+    ["UNAVAILABLE", "not computed"],
+  ] as const)("withholds the stored robust z when status is %s", (status, reason) => {
+    view({ detection: wafDetection({ robust_score_status: status, robust_z: 21.4 }) });
+    const row = working().getByText("Robust z").closest("div")!;
+    expect(row).toHaveTextContent(reason);
+    expect(row).not.toHaveTextContent("21.40");
+  });
+
+  it.each([
+    ["seasonal", "WAF_REQUEST_RATE_SPIKE", wafDetection],
+    ["new endpoint", "WAF_NEW_ENDPOINT_ACCESS", wafNewEndpointDetection],
+  ] as const)("renders and omits the detector caveat in the %s branch", (_name, type, detection) => {
+    const caveat = "This detector records a change in traffic, not its cause.";
+    const first = view({ anomaly_type: type, detection: detection({ caveat }) });
+    expect(working().getByText(caveat)).toBeInTheDocument();
+    first.unmount();
+
+    view({ anomaly_type: type, detection: detection({ caveat: null }) });
+    expect(working().queryByText(caveat)).not.toBeInTheDocument();
+  });
+
+  it("omits a caveat that is absent from an older WAF payload", () => {
+    view({ detection: wafDetection() });
+    expect(
+      working().queryByText("This detector records a change in traffic, not its cause."),
+    ).not.toBeInTheDocument();
+  });
 
   it("gives the expected range its unit", () => {
     view();

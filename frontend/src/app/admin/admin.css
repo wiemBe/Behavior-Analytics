@@ -1,0 +1,57 @@
+/* Administration is a settings surface, not a dashboard. The route layout
+ * supplies the scope so these rules cannot alter analyst-facing pages. */
+
+.admin-page {
+  min-width: 0;
+}
+
+/* One divided index keeps the hub scannable without turning destinations into
+ * a row of decorative cards. */
+.admin-page .admin-links {
+  gap: 0;
+  max-width: var(--admin-hub-max);
+  border-top: 1px solid var(--border);
+}
+
+.admin-page .admin-links li {
+  min-width: 0;
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-page .admin-links a {
+  display: inline-block;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+.admin-page .admin-links .cell-sub {
+  margin-top: var(--sp-2);
+  max-width: var(--admin-hub-max);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+/* A mapping is read label → control → consequence. On wide screens, allowing
+ * that line to span the whole page separates those three parts. At 1024 px the
+ * maximum naturally yields to the available content column. */
+.admin-page .fm-section,
+.admin-page .fm-banner,
+.admin-page .fm-picker,
+.admin-page .outage-note {
+  width: 100%;
+  max-width: var(--admin-form-max);
+}
+
+/* Long editors need a visible semantic boundary. The line is structural, not
+ * elevation, and the existing heading order remains unchanged. */
+.admin-page .fm-section + .fm-section {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--border);
+}
+
+.admin-page .fm-section + .fm-section > h2:first-child {
+  margin-top: 0;
+}

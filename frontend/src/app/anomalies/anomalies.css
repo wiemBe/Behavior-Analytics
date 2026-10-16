@@ -1,0 +1,28 @@
+/* The anomaly list. The table must fit its container at the three supported widths with the
+   detail link still in reach, so its secondary columns fold under a primary cell one step
+   earlier than the shared breakpoints (globals.css .col-md / .col-sm, which stay). */
+
+/* Tighter cells rather than smaller type: the figures keep their size. */
+@media (max-width: 1440px) {
+  .anomaly-list th,
+  .anomaly-list td {
+    padding-inline: var(--sp-2);
+  }
+  /* Deviation folds under the observed figure. */
+  .anomaly-list .col-dev {
+    display: none;
+  }
+  .anomaly-list .cell-sub.cell-fold.fold-dev {
+    display: block;
+  }
+}
+
+/* Started folds under the subject; severity stays a column. */
+@media (max-width: 1280px) {
+  .anomaly-list .col-started {
+    display: none;
+  }
+  .anomaly-list .cell-sub.cell-fold.fold-started {
+    display: block;
+  }
+}

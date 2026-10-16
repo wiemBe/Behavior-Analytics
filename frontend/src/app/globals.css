@@ -174,6 +174,23 @@ a {
   border-left-color: var(--neutral);
 }
 
+/* On a short viewport (1024x768, 1280x800) the 21 entries and six group labels do not fit with
+   the roomy group rhythm, and the sidebar scrolls. The entries keep their target size; only the
+   space between and inside the groups tightens, so the whole navigation stays on screen. */
+@media (max-height: 820px) {
+  .sidebar {
+    padding-top: var(--sp-2);
+    padding-bottom: var(--sp-2);
+  }
+  .nav-group + .nav-group {
+    margin-top: var(--sp-1);
+    padding-top: var(--sp-1);
+  }
+  .nav-group-label {
+    margin-bottom: 0;
+  }
+}
+
 .main {
   grid-column: 2;
   grid-row: 1;
@@ -760,12 +777,18 @@ th[aria-sort="descending"] .sort-link {
   gap: var(--sp-2);
   min-width: 0;
 }
+/* A figure that must stay whole (a time) never wraps, at any width. Defined here as well as in
+   controls.css because not every page loads that stylesheet. */
+.nowrap {
+  white-space: nowrap;
+}
 @media (max-width: 1200px) {
-  /* A timestamp may fold before its zone rather than widen the table. */
+  /* A timestamp may fold before its zone rather than widen the table, unless it carries
+     `.nowrap`. */
   td.num.cell-when {
     white-space: normal;
   }
-  .nowrap {
+  td.num.cell-when.nowrap {
     white-space: nowrap;
   }
   .pill.pill-wrap {
@@ -1455,7 +1478,27 @@ a.action.secondary:hover {
   position: sticky;
   right: 0;
   background: var(--canvas);
-  box-shadow: inset 1px 0 0 var(--border);
+}
+/* The rule beside the pinned column exists only while the table scrolls under
+ * it. The cells follow the scroll position of their `.table-scroll`: the rule is
+ * drawn while content still lies beyond the pinned column and gone at the end of
+ * the scroll. A table that does not scroll has no scroll range, the timeline is
+ * inactive and the animation does not apply, so no rule is drawn. */
+@supports (animation-timeline: scroll()) {
+  .sticky-actions th:last-child,
+  .sticky-actions td.row-actions {
+    animation: sticky-actions-rule linear both;
+    animation-timeline: scroll(nearest inline);
+  }
+}
+@keyframes sticky-actions-rule {
+  from,
+  96% {
+    box-shadow: inset 1px 0 0 var(--border);
+  }
+  to {
+    box-shadow: inset 0 0 0 transparent;
+  }
 }
 .sticky-actions tbody tr:hover td.row-actions {
   background: var(--surface-2);
@@ -2310,6 +2353,9 @@ th.fm-value-cell .cell-sub {
 @media (max-width: 1080px) {
   .grid-4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* Folded to 2x2, the cards of one row stay equal (grid items stretch) but a
+       row no longer takes the height of the tallest row of the grid. */
+    grid-auto-rows: auto;
   }
   /* The comparison block folds to two columns: the lead figure takes the first
      row, the three secondary ones share the second. */
@@ -2915,128 +2961,6 @@ td.cell-name.ips-source-cell {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-1) var(--sp-5);
-}
-
-/* --- catch-all senders (T-070b) ----------------------------------------------
-   Tokens only. The queue is a fleet-table; these rules keep a long syslog
-   hostname inside its cell, set the first/last seen pair, and lay out the
-   selected bucket. */
-.catchall-table th.cell-sender {
-  max-width: 30ch;
-  min-width: 14ch;
-}
-.sender-id {
-  font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-  /* Breaks after . and - (see SenderId); anywhere only for one unbroken run. */
-  overflow-wrap: anywhere;
-}
-.catchall-table td.cell-source {
-  overflow-wrap: anywhere;
-  max-width: 24ch;
-}
-.catchall-table .seen {
-  display: block;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
-}
-.catchall-table .seen-label {
-  display: inline-block;
-  min-width: 5ch;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
-.catchall-table td.num {
-  white-space: nowrap;
-}
-.catchall-table .cell-sub {
-  max-width: 24ch;
-  white-space: normal;
-}
-.queue-count {
-  margin-bottom: var(--sp-2);
-}
-.denied-note {
-  color: var(--warn-text);
-}
-.load-more {
-  margin-top: var(--sp-4);
-}
-.catchall-volume button[aria-pressed="true"] {
-  background: var(--surface-3);
-  border-color: var(--info-border);
-  color: var(--info-text);
-  font-weight: var(--fw-semibold);
-}
-.catchall-volume .range-selector {
-  margin-bottom: 0;
-}
-.collected-up-to {
-  margin-bottom: var(--sp-2);
-}
-.chart-key-bar {
-  height: 10px;
-  background: var(--chart-observed);
-}
-.chart-key-bar-lower {
-  height: 10px;
-  background: var(--warn);
-}
-.bucket-top-table {
-  min-width: 0;
-}
-.bucket-top-table table {
-  width: 100%;
-}
-.bucket-nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2) var(--sp-3);
-  margin: var(--sp-4) 0;
-  font-size: var(--fs-xs);
-}
-.bucket-detail {
-  min-width: 0;
-}
-.bucket-detail .bucket-detail-title {
-  margin: 0 0 var(--sp-3);
-}
-.bucket-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-  gap: var(--sp-5) var(--sp-6);
-  min-width: 0;
-}
-.bucket-grid > * {
-  min-width: 0;
-}
-.bucket-grid h4 {
-  margin-top: 0;
-}
-.bucket-facts {
-  display: grid;
-  gap: var(--sp-3);
-  align-content: start;
-  margin: 0;
-}
-.bucket-facts dt {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
-.bucket-facts dd {
-  margin: 0;
-  font-size: var(--fs-base);
-}
-.bucket-admission li {
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-}
-/* The last row of a table with row headers ends without a rule in both cells,
-   so the closing line does not stop at the header cell. */
-.catchall-table tbody tr:last-child th {
-  border-bottom: none;
 }
 
 /* --- Outage alert policy (T-070a) -------------------------------------------

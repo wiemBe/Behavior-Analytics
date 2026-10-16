@@ -1,4 +1,5 @@
 import { ScheduleLabel } from "@/components/searches/ScheduleLabel";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type ScheduledSearch } from "@/lib/api";
 
@@ -13,19 +14,21 @@ export default async function SearchCatalogPage() {
 
   return (
     <>
-      <h2>Search Catalog</h2>
-      <p className="subtitle">
-        Stored, validated AQL searches. Only persisted definitions are scheduled or executed —
-        the frontend never runs ad-hoc AQL.
-      </p>
+      <PageHeader
+        title="Search Catalog"
+        description="Stored, validated AQL searches. Only persisted definitions are scheduled or executed — the frontend never runs ad-hoc AQL."
+      />
 
       {error ? (
-        <div className="notice">Backend unreachable.</div>
+        <div className="notice" role="alert">
+          <p>Backend unreachable.</p>
+          <p>The search catalog could not be loaded. Check that the stack is running, then reload the page.</p>
+        </div>
       ) : searches.length === 0 ? (
         <div className="notice">No scheduled searches defined yet.</div>
       ) : (
         <TableScroll label="Scheduled searches">
-          <table>
+          <table className="table-dense">
             <thead>
               <tr>
                 <th>Name</th>

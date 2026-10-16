@@ -1,6 +1,6 @@
 "use client";
 
-import { ErrorState } from "@/components/ui/RouteState";
+import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function FleetError({
   error,
@@ -9,5 +9,12 @@ export default function FleetError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorState what="The log-source fleet" digest={error.digest} onRetry={reset} />;
+  return (
+    <BoundaryError
+      title="Log-source fleet"
+      what="The log-source fleet"
+      digest={error.digest}
+      onRetry={reset}
+    />
+  );
 }

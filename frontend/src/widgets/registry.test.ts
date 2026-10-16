@@ -5,8 +5,15 @@ import { describe, expect, it } from "vitest";
 
 import { KNOWN_PERMISSIONS } from "./permissions";
 import { WIDGETS, widgetDef } from "./registry";
-import { TEMPLATES } from "./templates";
+import {
+  BEHAVIORAL_ANALYTICS,
+  LOG_SOURCE_MONITORING,
+  QRADAR_ADMINISTRATION,
+  TEMPLATES,
+  WAF_IPS_MONITORING,
+} from "./templates";
 import { GRID_COLUMNS } from "./types";
+import { deriveLayout, type GridColumns } from "./layout";
 
 const apiSource = readFileSync(resolve(__dirname, "../lib/api.ts"), "utf8");
 const rbacSource = readFileSync(resolve(__dirname, "../../../backend/app/security/rbac.py"), "utf8");
@@ -18,7 +25,7 @@ describe("widget registry", () => {
     for (const type of types) expect(type).toMatch(/^[a-z0-9_.]{1,64}$/);
   });
 
-  it("lists exactly the Phase 2 widgets, the catalog widgets and the two blocked ones", () => {
+  it("lists exactly the Phase 2 widgets, the catalog widgets and the one blocked one", () => {
     expect(WIDGETS.filter((w) => w.status === "live").map((w) => w.type)).toEqual([
       "kpi.total_eps",
       "kpi.log_sources",
@@ -39,10 +46,12 @@ describe("widget registry", () => {
       "table.outage_policy",
       "waf.sources",
       "table.recent_waf_anomalies",
+      "waf.endpoint_traffic",
+      "chart.eps_observed_expected",
+      "ips.source_anomalies",
     ]);
     expect(WIDGETS.filter((w) => w.status === "blocked").map((w) => w.type)).toEqual([
       "map.geography",
-      "ips.source_anomalies",
     ]);
   });
 
@@ -90,7 +99,9 @@ describe("widget registry", () => {
     expect(widgetDef("map.geography")?.blockedBy).toBe(
       "the map widget is not built yet; geo collection is",
     );
-    expect(widgetDef("ips.source_anomalies")?.blockedBy).toBe("the IPS analyst API is being built");
+    // UI-3.5b: the IPS analyst API and its UI exist, so the IPS widget is no longer blocked.
+    expect(widgetDef("ips.source_anomalies")?.status).toBe("live");
+    expect(widgetDef("ips.source_anomalies")?.blockedBy).toBeUndefined();
   });
 
   it("keeps every default size inside its own bounds and the grid", () => {
@@ -119,5 +130,52 @@ describe("widget registry", () => {
         }
       });
     }
+  });
+
+  it.each([
+    [QRADAR_ADMINISTRATION.name, QRADAR_ADMINISTRATION],
+    [BEHAVIORAL_ANALYTICS.name, BEHAVIORAL_ANALYTICS],
+    [LOG_SOURCE_MONITORING.name, LOG_SOURCE_MONITORING],
+    [WAF_IPS_MONITORING.name, WAF_IPS_MONITORING],
+  ])("derives %s at 6 and 1 columns without overlap", (_name, template) => {
+    for (const columns of [6, 1] as GridColumns[]) {
+      const widgets = deriveLayout(template.layout.widgets, columns);
+      widgets.forEach((widget, index) => {
+        expect(widget.x + widget.w).toBeLessThanOrEqual(columns);
+        for (const other of widgets.slice(index + 1)) {
+          const apart =
+            widget.x + widget.w <= other.x ||
+            other.x + other.w <= widget.x ||
+            widget.y + widget.h <= other.y ||
+            other.y + other.h <= widget.y;
+          expect(apart, `${template.key}/${columns}: ${widget.type} overlaps ${other.type}`).toBe(
+            true,
+          );
+        }
+      });
+    }
+  });
+});
+
+// T-098: at 1440 and 1280 the 13-row "Source classes" table overflowed its panel by 16-17 px
+// and scrolled inside it, so the scrollbar covered its last column header. One more grid row
+// is 36 px (24 px row, 12 px gap); the templates give the tables the room they measured.
+describe("templates give their tables the rows they measured", () => {
+  const sized = (template: { layout: { widgets: Array<{ type: string; h: number }> } }, type: string) =>
+    template.layout.widgets.find((w) => w.type === type)?.h ?? 0;
+
+  it("QRadar Administration: Source classes is 14 rows or more, and nothing below it overlaps", () => {
+    expect(sized(QRADAR_ADMINISTRATION, "table.fleet_classes")).toBeGreaterThanOrEqual(14);
+    const classes = QRADAR_ADMINISTRATION.layout.widgets.find((w) => w.type === "table.fleet_classes")!;
+    const policy = QRADAR_ADMINISTRATION.layout.widgets.find((w) => w.type === "table.outage_policy")!;
+    expect(policy.y).toBeGreaterThanOrEqual(classes.y + classes.h);
+  });
+
+  it("Log Source Monitoring: Source classes is 14 rows or more and Top sources 16 or more", () => {
+    expect(sized(LOG_SOURCE_MONITORING, "table.fleet_classes")).toBeGreaterThanOrEqual(14);
+    expect(sized(LOG_SOURCE_MONITORING, "table.top_sources")).toBeGreaterThanOrEqual(16);
+    const top = LOG_SOURCE_MONITORING.layout.widgets.filter((w) => w.y === 0);
+    const lower = LOG_SOURCE_MONITORING.layout.widgets.filter((w) => w.y > 0);
+    for (const upper of top) for (const w of lower) expect(w.y).toBeGreaterThanOrEqual(upper.h);
   });
 });

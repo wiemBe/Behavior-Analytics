@@ -8,7 +8,531 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶ Resume here (twelfth session, 2026-10-14, from ~21:15)
+## ▶▶ RESUME HERE — STATE AT 10:30, 2026-10-16 (sixteenth session, from 10:05)
+
+The machine shut down at 00:39 and rebooted at 10:03; every agent had died. The test DB was
+restarted (`docker compose -f docker-compose.test.yml up -d test-db`) and the agent DBs recreated.
+
+**The user (10:05):** "opencode da z.ai üzerinden glm kullanma şuanlık ama glm 5.3 flash opencode
+da free deepseek v4 free 200k contexte codex grok falanda kullan". So: **no `zai-coding-plan/*`
+GLM**; use `opencode/glm-5.3-flash-free`, `opencode/deepseek-v4.1-flash-free` (both probed OK),
+Codex and Grok.
+
+**Sandboxing (new this session).** The auto-mode classifier refused an unsandboxed
+`grok --always-approve` launch. Every agent now runs in a sandbox:
+- Grok: `--sandbox qradar-agent` (profile in `~/.grok/sandbox.toml`: writes only to its `--cwd`
+  worktree and `QRadar-Dash-work/`; `.secrets/`, `~/.ssh`, `~/.codex` etc. denied). Probed:
+  main checkout write refused, `.secrets` unreadable, DB port reachable. A session created
+  without a sandbox **cannot be resumed** under one; start a new session with the spec, the
+  report and the review instead.
+- opencode: `QRadar-Dash-work/opencode-bwrap.sh <worktree> <workdir> run --standalone …`
+  (bubblewrap: `/` read-only, worktree + work dir + opencode state writable, `.secrets` hidden).
+- Codex: its own `-s workspace-write` plus `--add-dir <workdir>`.
+- All launched as `systemd-run --user --unit=<name> --collect <launch.sh>`; each task's
+  `launch.sh` is in its work dir. `systemctl --user is-active <unit>` is the liveness check.
+
+**Merged this session:** UI-5.9 (`1cd92e6`; the orchestrator re-ran lint, typecheck, 237 files /
+2,848 tests and build in the worktree, and reviewed the PNGs). **Phase 5 is complete on
+`feat/phase-ce`.** Merged-head frontend gate on `1cd92e6`: `npm ci`, lint and typecheck clean,
+237 files / 2,848 tests passed, build OK.
+
+**In flight:**
+
+| Task | Agent (unit) | Where | Notes |
+|---|---|---|---|
+| Backend full gate on `1cd92e6` | orchestrator | worktree `gate`; DBs `qradar_obs_gate`, `_gate_mig`; log `QRadar-Dash-work/gate-1016/backend.log` | then `feat/phase-ce` → `main` |
+| **F-1** handover 2 ("review what you inherit": GLM's models, migration, catalog, validation) | Grok (`f1-grok2`), from 10:11 | worktree `f1`; DBs `qradar_obs_f1`, `_f1_mig`; log `QRadar-Dash-work/f1/grok2.log` | the first Grok handover (00:22) wrote nothing before the shutdown. Merge only after `main` |
+| **F-4** review round 1 | Grok (`f4-grok-r1b`), from 10:15 | worktree `f4`; DB `qradar_obs_f4`; review `QRadar-Dash-work/f4/review1.md` | (1) the cron floor walks 105,408 fires in 1.61 s on the event loop for `*/5`: must be exact and < 50 ms; (2) `body: dict` dropped the OpenAPI request schema: restore and pin it. Cap, audit split, 422 object and retention accepted |
+| **UI-6.1** viewport matrix | Grok (`ui61-grok`), from 10:22 | worktree `ui61`; ports 3161/8161/9161 | measures; one-line route CSS fixes only |
+| **UI-6.2** accessibility | Codex (`ui62-codex`), from 10:21 | worktree `ui62`; ports 3162/8162/9162 | Codex reset was 02:18 |
+| **UI-6.3** dashboard performance | DeepSeek free (`ui63-ds`), from 10:25 | worktree `ui63`; ports 3163/8163/9163 | measures |
+| **T-114** ([spec](tasks/T-114.md)) docs screenshots after Phase 5 + README block-shift result | GLM 5.3 Flash free (`t114-glmf`), from 10:28 | worktree `t114`; ports 3114/8114/9114 | — |
+
+**Next:** UI-6.4 after UI-6.1 and UI-6.2 merge (it touches every stylesheet); `main` after the
+backend gate; then F-1 and F-4 onto `feat/phase-ce`; Phase F build (F-2, F-3, F-5…).
+
+**Follow-up seen in the UI-5.9 PNGs:** a saved dashboard ("Night shift", 1024×768) has ~60 px of
+empty space between its title and its description. Give it to UI-6.1's findings or a small task.
+
+**Phase F questions answered (D-17, 10:25):** shadow mode first (`CUSTOM_RULES_ALERTING_ENABLED`
+default false); a new detection-engineer role writes rules and searches; the F.2 preview is a
+real bounded run; breaches stay out of `/anomalies`. Caps keep the proposed defaults.
+
+**Still open for the user:** OPS-0 stays deferred (D-16); the runbook language and who operates
+production.
+
+---
+
+## ▶ RESUME HERE — STATE AT 23:25, 2026-10-15 (supersedes 22:55 below; the orchestrator session was at 90 %)
+
+**After a reboot:**
+1. `docker compose -f docker-compose.test.yml up -d test-db`. The tmpfs DB is empty; recreate
+   the agent DBs `qradar_obs_f1`, `_f1_mig` and `qradar_obs_f4` with `createdb`.
+2. Check for leftovers: `pgrep -af "opencode|codex|grok -p|qradar_lab_loggen|hour_tick[s]"`, and
+   `systemctl --user status t110-launcher`.
+
+**Merged since 22:55:** UI-5.8 (`dde1ee6`), T-112, T-109, T-111, T-108 and T-098.
+- Merged-head frontend gate on `dde1ee6`: lint and typecheck clean, **2,826 tests passed**,
+  build OK.
+- Backend full gate on `0bdc334`: green (integration 1,168 passed). Re-run it on the head
+  before `main`, because T-109 changed the backend.
+
+**In flight (collect each; if cut off, hand over with "review what you inherit"):**
+
+| Task | Agent | Where |
+|---|---|---|
+| **UI-5.9** (the last Phase 5 task, points 1–10) | Sonnet did all ten points to 23:27, then was **stopped at the user's request** ("Sonnet eats your limit, give it to Grok") → **Grok** handover from 23:29 | worktree `ui59`; log `QRadar-Dash-work/ui59/grok.log` |
+| **F-1** Phase F core, migration `0024` | GLM hit its 5 h limit ~00:00 (reset 07:18) → **Grok handover from 00:25** | worktree `f1`; **merge only after Phase 5 is on `main`** |
+| **F-4** F.2 backend guards | **Grok finished 00:15**; the orchestrator's review is owed (diff, ruff, mypy, unit, integration on `qradar_obs_f4`) | worktree `f4`; same merge rule |
+| **T-113** README refresh | **Merged**. The README's block-shift line still says "analysis pending" and needs a one-line update to **pass** (T-110) | — |
+| ~~OPS-0~~ operability design (D-16) | **Deferred by the user (23:27): "note it, don't do it now, we'll do it later."** The Grok run was stopped by PID before it wrote anything, and the worktree was removed | spec `docs/tasks/OPS-0.md` is ready; start it only when the user says so |
+| **T-054 / T-110** | **CLOSED.** Block-shift passes live: `IPS_BLOCK_RATIO_SHIFT` 0.60 against 0.10 on both sources, alerts opened 20:47Z and resolved 21:02Z (`31bdd47`, Grok). DB dumps deleted. A duplicate step-5 analysis from a surviving old launcher was stopped before it wrote | — |
+
+Grok's progress shows in `~/.grok/logs/unified.jsonl` (filter by pid). Its plain log stays flat
+while it works.
+
+**The user (23:00–23:25):**
+- Grok 4.7 is to take most of the work.
+- D-16: the production host has no AI. The user wants a painless install (`./qradar-dash
+  install`), prebuilt GHCR images, upgrade with automatic backup and rollback, `doctor`, a
+  support bundle and a symptom-indexed runbook.
+- **Open questions for the user:**
+  - the runbook's language (TR, EN or both);
+  - who operates production;
+  - the five Phase F questions in §F.16.
+
+**Next:** collect the above; Phase 5 → full gate → `main`; re-run the T-111 screenshot capture;
+Phase 6 (UI-6.1 to UI-6.4); Phase F build (F-2, F-3, F-5…); OPS-1… after the user approves
+OPS-0.
+
+---
+
+## ▶ RESUME HERE — STATE AT 22:55, 2026-10-15 (the machine may shut down; the session limit is near)
+
+The user (22:52): the machine may be shut down, around 00:30 at the latest; act so that nothing
+is lost. **After a reboot the tmpfs test DB is empty and every agent is dead.** Worktrees and
+`QRadar-Dash-work/` are on disk and survive.
+
+**Branches:** `feat/phase-ce` @ the commit after `35eda6a` (pushed); `main` @ `8573bdf`.
+Migration head on `feat/phase-ce` is `0023`; `agent/f1` will add `0024`.
+
+**First steps after a reboot:**
+1. `docker compose -f docker-compose.test.yml up -d test-db`
+2. `pgrep -af "opencode|codex|qradar_lab_loggen|hour_tick[s]|hour_chai[n]|until \["` should show
+   nothing left. Stop any leftover by PID only.
+3. Collect each row below.
+
+| Task | State at 22:55 | Where | After a reboot |
+|---|---|---|---|
+| **UI-5.8** | **Merged** (`dde1ee6`): boundaries are `PageHeader` + `RouteState`, 11 routes gained boundaries, `.nowrap` unconditional; 221 files / 2,720 tests in its worktree. **Merged-head frontend gate (`dde1ee6`, after `npm ci`): lint and typecheck clean; 232 files / 2,826 tests passed, 0 failed; build OK** | — | Next: **UI-5.9** (spec ready, points 1–10) |
+| **UI-5.9** ([spec](tasks/UI-5.9.md), points 1–10) | Sonnet sub-agent from ~23:05 (dies with the chat) | worktree `ui59`; ports 3159/8159/9159; scratch `QRadar-Dash-work/ui59/` | report written point by point; if cut off, hand over with "review what you inherit" (Codex after 02:18) |
+| **F-4** ([spec](tasks/F-4.md)) F.2 backend guards | **Grok** (`grok -p … --always-approve`, PID 1617296) from 23:06; first Grok task | worktree `f4` (branch `agent/f4`, not merged before Phase 5 is on `main`); DB `qradar_obs_f4` (recreate after a reboot) | report in worktree; log `QRadar-Dash-work/f4/grok.log` |
+| **T-113** ([spec](tasks/T-113.md)) README roadmap and status refresh | **Grok** (PID 1636842) from 23:18 | worktree `t113` | report in worktree; log `QRadar-Dash-work/t113/grok.log`. Progress shows in `~/.grok/logs/unified.jsonl` (filter by pid), not in the plain log |
+| OPS-0: deferred by the user at 23:27 (see D-16) | — | — | — |
+| **F-1** ([spec](tasks/F-1.md)) Phase F core, migration `0024` | GLM 5.3 from 22:50, `--title f1-glm` | worktree `f1` (branch `agent/f1`); DBs `qradar_obs_f1`, `_f1_mig` (**recreate them** with `createdb` after a reboot) | Read `docs/tasks/F-1.report.md` and `QRadar-Dash-work/f1/opencode.log`. If it is unfinished, hand over with "review what you inherit". **Do not merge before Phase 5 is on `main`** |
+| **T-112** | **Merged** (`HomeDashboard.test.tsx` lazy waits at 15 s; 0 failures in 6 loaded full runs). DeepSeek hit a free-model **rate limit** at 22:28 before writing its report | — | — |
+| **T-054 part 4** (block-shift, hour 20Z = 23:00 local) | detached chains 1445211/1445212; ticks 23:22:30, 23:47:30, **00:02:30** local; alerting on | `QRadar-Dash-work/t054/` | — |
+| **T-110** ([spec](tasks/T-110.md)) part 4 analysis | **systemd user unit `t110-launcher.service`** (script `QRadar-Dash-work/t110/launcher.sh`; two earlier `nohup setsid` launchers died silently), independent of the chat. It falls back to `step-5-preview-free` if DeepSeek is rate-limited: it waits for 21:04Z and the end of the chains, then `pg_dump`s `qradar_obs_t054` to `QRadar-Dash-work/t054/db/qradar_obs_t054.dump` (mode 600) and starts DeepSeek `--title t110-ds` in worktree `t110` | log `QRadar-Dash-work/t110/launcher.log`, `t110/opencode.log`; report section "Part 4 analysis" in `QRadar-Dash-work/t054/T-054.report.md` | If the section is complete: check it, then copy the report to `docs/tasks/T-054.report.md`. If it is not: restore the dump and run T-110 again (see below) |
+
+**DB dumps** (`QRadar-Dash-work/t054/db/`, mode 600; they hold the lab instance row with its
+token encrypted under the public test key, so **delete them once T-054 is closed**):
+- `qradar_obs_t054-pre-part4.dump` (22:53): part 3 and the T-107 profile mappings;
+- `qradar_obs_t054.dump`: written by the launcher after part 4's last tick.
+
+Restoring TimescaleDB: `createdb qradar_obs_t054`, then `CREATE EXTENSION timescaledb;`, then
+`SELECT timescaledb_pre_restore();`, then `pg_restore -d qradar_obs_t054 <dump>`, then
+`SELECT timescaledb_post_restore();`. Run these inside the test-db container, with the dump
+copied in via `docker cp`.
+
+**Done this session:** T-104, UI-4.2, T-106, T-105 (T-054 part 3 closed), T-107 (lab ACTION
+property: Parts 1 and 2), T-098, T-108 (Phase F design), T-111 (docs screenshots), T-109. The
+backend full gate on `0bdc334` was green (integration 1,168 passed).
+
+**Then, in order:**
+1. UI-5.9 (spec ready, after UI-5.8).
+2. Re-run the T-111 capture script (`QRadar-Dash-work/t111/README.md`).
+3. The full gate (backend on the head, because T-109 changed it; frontend, with T-112's fix) →
+   `main`.
+4. Phase 6: UI-6.1 to UI-6.4 (specs ready); UI-6.5 is the orchestrator's.
+5. Phase F: F-1 merged after `main`, then F-2 to F-8. **The user still has to answer the five
+   questions in `PHASE-F-CUSTOM-DETECTIONS.md` §F.16.**
+
+**Agents:**
+- Codex: reset at 02:18.
+- GLM: its 5 h window started at ~21:18; T-105, T-108 and F-1 used it.
+- DeepSeek, `opencode/deepseek-v4.1-flash-free`: free and good.
+- `opencode/step-5-preview-free` did T-109's amendment correctly.
+
+---
+
+## ▶ Resume here (fifteenth session, 2026-10-15, from ~21:15)
+
+The user: "planner.md oku devam et ve glm codex kullan ayrıca opencode deepseek flash v4 200k
+context beleş onu da kullan" — use GLM, Codex and `opencode/deepseek-v4.1-flash-free`.
+
+**Found at start (21:16):** the fourteenth session's Sonnet sub-agents had died with its chat.
+- UI-4.2: finished, report written (16:01), unreviewed.
+- UI-5.8: work done to the "after" capture (~16:00), **no report**. Its fixture (PID 892474)
+  and Chrome (893610) were still running; stopped by PID.
+- T-104: finished (report 16:13).
+- T-054 part 3: all chains and ticks finished (last 19:02 local); no generator left.
+
+**Merged:**
+- **T-104** (`8b71fa6`, DeepSeek). The orchestrator re-ran mypy ("no issues found in 213
+  source files"), ruff (clean) and the unit suite (pass); the diff is annotations only.
+  AGENTS.md §3 now says the mypy baseline is 0. T-104's integration run found **one failure
+  that pre-dates it**: `test_waf_detail_carries_the_projection_and_transitions` does not list
+  T-093's `caveat` key → **T-106**.
+- **UI-4.2** (`0a73b49`). Orchestrator's gates in the worktree: lint and typecheck clean;
+  194 files / 2,643 tests + 2 todo; build OK. The test edits are the authorised removal of
+  UI-4.1's interim copy. PNGs reviewed.
+  - Follow-ups → **T-098 part B**: the Administration template's Source classes table scrolls
+    and clips "Silent"; the conflict and discard dialogs restate their headings; ~60 px empty
+    under an unsaved template's title.
+  - **UI-5.9 point 9:** `HealthDetection` mixes "SILENT"/"UNCOVERED" with title case.
+
+**Merged later (~21:30–22:05):**
+- **T-106** (`779ee3c`, DeepSeek): the orchestrator re-ran the two integration files
+  (67 passed) and ruff (clean).
+- **T-105 / T-054 closed** (GLM; final report `docs/tasks/T-054.report.md`):
+  - signature-burst, with alerting on, passes live;
+  - source-concentration passes;
+  - two `ips_anomaly` alerts opened at 14:47Z and resolved at 15:02Z, and all 10 incidents are
+    RESOLVED (the orchestrator checked both in the DB);
+  - no enqueued notification, because no `NOTIFY_*` channel is set (L-6);
+  - no application defect.
+- **T-107** (`9d098fd`), lab ACTION property:
+  - Part 1 added `IPS_Action` expressions 783 (PAN, type 206) and 784 (FTD, type 448). Values
+    are 100 % populated. **The app's token is write-capable** (the POSTs returned 201).
+  - Part 2 mapped ACTION on the lab profiles: PAN v2, and FTD v3 with **`Would block` allowed**
+    (orchestrator ruling). Otherwise every FTD bucket would lose its training sample.
+  - Block-shift now waits for its baseline.
+  - Profile versions checked by the orchestrator in the DB.
+- **UI-5.8 ruling:** Codex stopped on a real conflict: the spec asked for a skeleton, and
+  guidelines §8 say plain text with no skeleton. The guidelines win (ruling in the spec), and
+  Codex was resumed.
+
+**Merged ~22:10–22:20:**
+- **T-098** (`0e797c3`, Sonnet): pill by fit, 24 px targets, one time-axis convention, part B
+  (templates fit, dialogs say what each choice does, template line). The orchestrator's gates:
+  lint, typecheck and build OK.
+  - **Vitest flake (pre-existing, from UI-4.2's tests):** under load 32–46, `HomeDashboard.test.tsx`
+    "layout saving" fails on **head without T-098 too** (2 failures; T-098 had 1). Both trees
+    pass the file alone, 3 of 3 runs. → **T-112**.
+- **T-108** (`79fdec9`, GLM): `docs/PHASE-F-CUSTOM-DETECTIONS.md`. The orchestrator spot-checked
+  the citations and renumbered the task split to **F-1…F-8**. **Five open questions for the
+  user** are in §F.16.
+
+**In flight (from ~22:20):**
+
+| Task | Agent | Where | Collect / check |
+|---|---|---|---|
+| **UI-5.8** after the ruling | Codex resume 21:47–22:45 (rewrote the boundaries per the ruling, captured PNGs), **usage limit at 22:45** (reset 02:18) → **Sonnet handover** from 22:47 (dies with the chat) | worktree `ui58` | report in the worktree; if the chat died, hand over again with "review what you inherit" |
+| **T-109** amendment (`starlette>=0.48.0`) | `opencode/step-5-preview-free`, `--title t109b-step` | worktree `t109` | then the orchestrator merges T-109; first pass done by DeepSeek, gates re-run by the orchestrator (ruff, mypy 0, unit 3,224) |
+| **T-111** ([spec](tasks/T-111.md)): refresh `docs/screenshots/ui/` (user request) | Sonnet sub-agent (dies with the chat) | worktree `t111`; ports 3111/8111/9111 | report; capture script `QRadar-Dash-work/t111/capture.mjs`, **re-run after UI-5.8/5.9** |
+| **T-112** ([spec](tasks/T-112.md)): saving tests robust under load | DeepSeek, `--title t112-ds` (PID 1482205) | worktree `t112` | report; log `t112/opencode.log` |
+| **T-054 part 4** (block-shift, 20Z) | detached chains, PIDs 1445211/1445212 | `QRadar-Dash-work/t054/` | last tick 21:02:30Z (00:02:30 local) → **T-110** ([spec](tasks/T-110.md)) analysis on **DeepSeek** (GLM is on F-1) |
+| **F-1** ([spec](tasks/F-1.md)) Phase F core, migration `0024` | GLM 5.3, `--title f1-glm` (PID 1577613), from 22:50 | worktree `f1` (branch `agent/f1`, **not merged until Phase 5 is on `main`**); DBs `qradar_obs_f1`, `_f1_mig` | report in worktree; log `QRadar-Dash-work/f1/opencode.log` (grep "Usage limit"); the GLM 5 h window started ~21:18 |
+| Backend full gate on `0bdc334` | orchestrator | worktree `gate` | **Green:** ruff clean; mypy 0; alembic up/down/up, head `0023`, no drift; unit 3,009 passed; **integration 1,168 passed** on a fresh DB (20 min). T-109 changed the backend afterwards, so the final gate before `main` re-runs on the head |
+
+**Next:** collect the above; UI-5.9 after UI-5.8; full gate → `main`; Phase 6 (UI-6.1, UI-6.2).
+
+**The user's decisions (~21:40; recorded in §4):**
+- D-12: no rename.
+- G-5: deferred.
+- D-13: the lab ACTION property may be created through the API → **T-107** ([spec](tasks/T-107.md)).
+  Part 1 is the QRadar side. Part 2, the profile mapping in `qradar_obs_t054`, waits for T-105.
+  The block-shift live run then becomes a T-054 amendment.
+- D-14: AI rule analysis is v3/v4. The user does the production field-availability pass.
+
+---
+
+## ▶ Resume here (fourteenth session, 2026-10-15, from ~14:30) — STATE AT 15:50
+
+**Saved at 15:50 local (12:50Z) at the user's request: the session limit is running low.**
+
+**Branches:** `main` @ `8573bdf` (unchanged this session). `feat/phase-ce` @ the commit after
+`6efafc9` (pushed). Migration head `0023` (no backend migration this session).
+
+**Merged into `feat/phase-ce` this session (all reviewed by the orchestrator, PNGs looked at):**
+UI-5.6, T-099, UI-4.1 (+r2, Codex), T-100, UI-5.3 (+r2), T-101 (generator D-1 fix), UI-5.6b
+(4 rounds), T-102 (README), UI-5.5 (+r2), UI-5.2, **UI-5.1** (`6efafc9`; overlapping bands merged,
+a failed metric read makes no collection claim, worklist fits at 1024). Merged-head frontend gate
+on `566c3c4` (before UI-5.1): lint, typecheck clean; **199 files / 2,687 tests, 0 todo**; build OK.
+**Re-run the frontend gate on the head** (UI-5.1 added 4 test files) before `main`.
+
+**Still in flight at save — check each first:**
+
+| Task | Agent | Survives the chat? | Where / how to collect |
+|---|---|---|---|
+| **UI-4.2** (handover from Codex, "review what you inherit") | Sonnet sub-agent | **No** | worktree `QRadar-Dash-wt/ui42`; if no `docs/tasks/UI-4.2.report.md` there, hand the worktree to a new agent with the spec + "review what you inherit" (Codex is back **19:34**) |
+| **UI-5.8** ([spec](tasks/UI-5.8.md): `/config-changes`, every loading/error boundary, global `.nowrap`) | Sonnet sub-agent (from ~15:38) | **No** | worktree `ui58`; ports 3158/8158/9158; same rule as above |
+| **T-104** ([spec](tasks/T-104.md), mypy 31 → 0 without behaviour change) | DeepSeek, `opencode run --standalone --title t104-ds` (PID 848148) | Yes (own process) | worktree `t104`; DB `qradar_obs_t104`; log `QRadar-Dash-work/t104/opencode.log`; review the per-error table, re-run mypy/ruff/unit/integration (only on `qradar_obs_t104`), then merge |
+| **T-054 part 3** (live, clock-driven) | detached chains (no agent) | Yes | PIDs 847474/847476 (hour chains 14Z signature-burst, 15Z concentration), 847475/847477 (ticks; hour 14 alerting **on**), 853311 (catch-up `c-tick1` at 13:50Z). **Last tick 16:02:30Z = 19:02:30 local.** Then a hand (GLM did the last analysis very well) analyses: Part 3 section of `QRadar-Dash-work/t054/T-054.report.md`, `analysis/db2.py`; check `alert`/`alert_notification` for the IPS fingerprint; copy the final report to `docs/tasks/T-054.report.md`. If stopping early: kill these PIDs (and their `at.sh`/`gen.sh` children) by PID only |
+
+**Agents:** Codex out until **19:34** (hit the limit 15:20). GLM 5.3 used ~1 h of its window today
+(T-054 analysis, T-102), no limit hit. DeepSeek `opencode/deepseek-v4.1-flash-free` is good and
+free (T-099, T-100, T-101 done well). Sonnet sub-agents die with the chat.
+
+**Next, in order:**
+1. Collect UI-4.2, UI-5.8, T-104 (above). Gate the head.
+2. **T-098** (widget frame polish, [spec](tasks/T-098.md)) after UI-4.2 merges (both edit
+   `widgets/dashboard.css`) — a good Codex task after 19:34.
+3. T-054 part 3 analysis after 19:02 local: **[T-105](tasks/T-105.md)** (spec ready; GLM).
+4. **[UI-5.9](tasks/UI-5.9.md)** cross-page consistency (spec ready; after UI-5.8).
+   Phase 6 specs ready: **[UI-6.1](tasks/UI-6.1.md)** viewport matrix and overflow measurement,
+   **[UI-6.2](tasks/UI-6.2.md)** accessibility pass (both after Phase 5 is merged).
+5. Full gate (backend: ruff, mypy, unit, integration on a fresh DB, alembic round trip; frontend:
+   four gates) → `feat/phase-ce` → `main` → Phase 5 screenshots to the user.
+6. Phase 6 (UI-6.1 viewport matrix, 6.2 accessibility, 6.3 performance, 6.4 cleanup, 6.5 docs).
+7. The user's open decisions: D-12 (project name), G-5 (production geo window), the lab ACTION
+   property (IPS block-shift).
+
+**UI-5.1 open points to fold into "UI-5.9":** `stateMeaning` in `lib/behavior.ts` says "within the
+expected band" for 0.00 EPS against 31–48 (inconsistent data only); `.sticky-actions` draws a
+vertical rule on anomaly tables (`globals.css`); 2×2 primary cards leave empty space at 1024
+(`StatCard` `grid-auto-rows: 1fr`); search placeholder clipped at 1024; a 92-character source
+name takes 6 lines on `/behavior/sources` at 1024.
+
+---
+
+## (fourteenth session, earlier notes)
+
+The user: "planner.mdye devam et glm codex falan hepsini kullan … opencode da deepseek v4 flash
+200k context ücretsizmiş onu da kullan". **GLM is allowed again**; use every agent. The free
+DeepSeek model is `opencode/deepseek-v4.1-flash-free` (probed 14:33 with the read-and-count test:
+pass; `step-5-preview-free` and `cat-jam-free` are new and also pass; `zai-coding-plan/glm-5.3`
+pass).
+
+The thirteenth session's three sub-agents died with its chat. Found at start:
+- **UI-5.6** finished (report 10:45), unreviewed → reviewed by the orchestrator: gates green
+  (lint, typecheck; 188 files / 2,519 tests + 2 todo; build), diff clean (only the six `it.todo`
+  lines left the tests), PNGs looked at → **merged `337e530`**. Follow-ups → **UI-5.6b**.
+- **UI-4.1** round 1 done; round 2 had started at 10:44 (dialog input CSS, `asSentence`) and was
+  cut off; the stray "·" at 1024 was still there → handed to Codex.
+- **T-054**: the scheduled chains and ticks ran to completion (last tick h09-t3 at 10:02Z; 104/250
+  searches, 8/60 GETs; no generator left). Report stops at 07:23Z → GLM finalises it from the
+  recorded data (no more live traffic).
+
+**Merged this session (~14:40–15:30):** UI-5.6 (`337e530`), T-099 (`65cad96`, DeepSeek: unused
+`echarts-for-react` dropped, `/admin` page test), UI-4.1 + round 2 (Codex), T-100 (DeepSeek:
+`testTimeout: 15000`; the slowest test took 5.5 s under load 32), UI-5.3 + round 2 (`903c4c6`).
+Merged-head frontend gate after UI-4.1 (before T-100/UI-5.3): lint, typecheck clean; first run
+1 failed | 2,605 passed (not identified), re-run with JSON report **0 failed of 2,608**; build OK.
+**T-054 is closed** (report `docs/tasks/T-054.report.md`, GLM analysis): the port sweep passes
+end to end; hours 07–09 were voided by **D-1**, a lab-generator defect (two profiles →
+`transition` computed on the total count, so the change phase never runs) → **T-101**. No
+application defect. Alerting stays unexercised live until a re-run after T-101.
+
+**Merged later (~15:30–15:45):** T-101 (`b59052a`, DeepSeek; generator D-1 fixed, 200 generator
+tests pass), UI-5.6b after four rounds (`4760e02`; the delivery table fits 765/765 at 1024 with
+`min-width: 12ch; overflow-wrap: anywhere` on the Error column). **Codex hit its limit at 15:20**
+(UI-4.2 half done; reset 19:34) → handed to Sonnet. The shared `.nowrap` defect (defined only
+under `max-width: 1200px` in `globals.css`) is folded into UI-5.8 Part 3 (no T-103).
+
+**In flight (from ~15:45):**
+
+| Task | Agent | Where | Collect / check |
+|---|---|---|---|
+| UI-4.2 handover ("review what you inherit" from Codex) | Sonnet sub-agent | worktree `ui42`; ports 3142/8142/9142 | report in worktree (section "Inherited from Codex") |
+| UI-5.5 round 2 (fit at 1024, no orphan card, h1, history alert) | Sonnet sub-agent | worktree `ui55` | "## Round 2" in its report |
+| UI-5.1 ([spec](tasks/UI-5.1.md)) | Sonnet sub-agent | worktree `ui51`; ports 3151/8151/9151 | report in worktree |
+| UI-5.2 ([spec](tasks/UI-5.2.md)) | Sonnet sub-agent | worktree `ui52`; ports 3152/8152/9152 | report in worktree |
+| T-054 part 3 setup ([amendment 3](tasks/T-054.md)) | Sonnet sub-agent | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` | schedules hour 14Z signature-burst (alerting on) and 15Z concentration; **last tick 16:02:30Z**; then a later hand analyses. `pgrep -af "qradar_lab_loggen\|hour_chain\|hour_ticks"` |
+| T-102 ([spec](tasks/T-102.md)) README roadmap + routes | GLM 5.3, `--title t102-glm` (PID 801525) | worktree `t102` | report in worktree; log `QRadar-Dash-work/t102/opencode.log` |
+| T-104 ([spec](tasks/T-104.md)) mypy baseline | DeepSeek, `--title t104-ds` (PID 848148) | worktree `t104`; DB `qradar_obs_t104` | report in worktree; log `QRadar-Dash-work/t104/opencode.log` |
+
+**Merged ~15:35–15:40:** T-102 (GLM, README roadmap + routes), UI-5.5 + round 2 (`8d3a6f4`),
+UI-5.2 (`566c3c4`; Evidence units per detector, list fits). UI-5.8 launched (Sonnet, `ui58`).
+Gate worktree `QRadar-Dash-wt/gate566` (detached @ `566c3c4`) runs the frontend gate; remove it
+after.
+
+**Cross-page consistency follow-ups (collected for one task, "UI-5.9", after Phase 5):**
+- WAF and IPS investigation pages show the state pill in title case ("Open"), the log-source page
+  in upper case ("OPEN") (`components/waf`, `components/ips`);
+- a FAILED evidence collection is stated three times on `/anomalies/[id]` (the "What changed"
+  notice, `EvidenceBanner`, the Evidence tab), wording pinned by tests;
+- the sidebar scrolls at 1024×768 (shell);
+- `/rules` Meaning sentences wrap 4–5 lines at 1024; `/offenses` fits with 0 px slack;
+- `MostMatched` renders "≥ < 0.01".
+
+**Next:** T-098 after UI-4.2 (both edit `widgets/dashboard.css`); T-054 part 3 after T-101 (re-run signature-burst with alerting
+on, and source-concentration; new-port stays limited by the 24 h history rule); then the full
+gate and `feat/phase-ce` → `main`.
+
+---
+
+## ▶ Resume here (thirteenth session, 2026-10-15, from ~09:10)
+
+The user: "planner.md yi oku devam et ama glm yi kullanma şuanlık" — **no GLM for now** (until the
+user says otherwise).
+
+**The machine rebooted again ~09:07.** The tmpfs test DB was empty; the orchestrator restarted it
+(`docker compose -f docker-compose.test.yml up -d test-db`). No leftover generator or agent
+process was found. Persistent work under `/home/efe/Documents/QRadar-Dash-work/` survived.
+
+**Branches:** `main` @ `8573bdf`; `feat/phase-ce` @ `633f0a6` (docs only since `main`: specs
+T-093, T-094, T-054 amendment 2). Migration head `0023`.
+
+**In flight (from ~09:15):**
+
+| Task | Agent | Where | Collect / check |
+|---|---|---|---|
+| **UI-4.1** ([spec](tasks/UI-4.1.md)) | Sonnet sub-agent, from ~10:17 | worktree `ui41` (own `node_modules`); ports 3140/8140/9140; fixture from `ui35b/` | `docs/tasks/UI-4.1.report.md`; PNGs `QRadar-Dash-work/ui41/png/` |
+| **T-054** restart #3 ([spec](tasks/T-054.md), amendment 2) | Sonnet sub-agent (clock-driven; checked by evidence) | `QRadar-Dash-work/t054/`; DB `qradar_obs_t054` (recreated) | `t054/T-054.report.md`; settles the fan-out lead first. `pgrep -af "qradar_lab_loggen\|chain"` |
+| **UI-5.6** log sources, searches, alerts ([spec](tasks/UI-5.6.md)) | Sonnet sub-agent, from ~10:37 | worktree `ui56` (own `node_modules`); ports 3148/8148/9148 | `docs/tasks/UI-5.6.report.md`; PNGs `QRadar-Dash-work/ui56/png/{before,after}/` |
+
+**Done this session:**
+- **T-093 merged** (`7f59821`, big-pickle, 3 min): `WafDetectionDetailOut.caveat`. The
+  orchestrator re-ran ruff (clean) and the unit suite (exit 0); break-it reported.
+- **T-094 merged** (`c389061`, Codex, 11 min): the WAF caveat line; "Robust z" shows a reasoned
+  em dash when DEGENERATE/UNAVAILABLE (WAF, IPS, Phase A). PNGs reviewed; the orchestrator's gate:
+  lint, typecheck clean; 160 files / 2,312 tests; build OK.
+- **UI-3.3b round 1 rejected** (Sonnet handover): to fit one line at 1440 it squeezed the select
+  (the "h" of "24 h" ran into the chevron) and the Expand/link spacing. One line cannot fit at
+  1280 (281 px inner) without truncating titles. **Ruling:** no squeezing; the controls group
+  wraps as one unit; the pill stays on the first body line. Round 2 sent (~09:30). **Ask the user
+  at the Phase 3 review** whether the third row should get wider panels at 1280.
+- Specs written: UI-4.2, UI-5.7 (Phase 5's admin pages, started early on Codex because it
+  overlaps no in-flight file), T-096 (Phase 5's characterization pre-work).
+- **UI-3.3b merged** (`eaa83ca`) after round 2: no squeeze; the controls group wraps as one unit.
+  Header heights: `eps_by_class` one line at 1440 and 1024, two at 1280; `top_sources` and
+  `anomaly_severity` two lines at all widths. Expand's hit target is 60×14 px, below WCAG 2.5.8's
+  24 px: a follow-up for `WidgetFrame`/shared controls. Crops reviewed by the orchestrator.
+- **T-095 merged** (`afa6b27`, big-pickle): vitest 4.1.11, plugin-react 5.2.0, `vite` pinned
+  6.4.4 (keeps `@types/node`); no test edits; audit full tree 14 → 8, criticals 2 → 0, production
+  3 → 3. **Merged-head frontend gate** (main checkout, after `npm ci`): lint, typecheck clean;
+  162 files / 2,326 tests; build OK.
+- **UI-5.7 merged** (`6ef3065`, Codex, 14 min): admin hub as a divided index, stale "Phase 4"
+  copy fixed, settings forms bounded (`--admin-form-max`, `--admin-hub-max`), section hairlines.
+  Its review was shallow (five measure/spacing defects); UI-5.4's spec asks for a harder look.
+  Left as small points: the cadence table repeats "UTC" in its header and its cells. Merged-head
+  gate: lint, typecheck clean; 162 files / 2,326 tests; build OK.
+- **T-096 merged** (`6d44fd5`, big-pickle, 12 min): page tests for the ten untested routes
+  (76 tests) and **8 defects recorded as `it.todo`**: offense detail draws unmeasured
+  Events/Flows and Sources/Destinations as 0; `/log-sources` says "0 sources" on a failed read
+  and tones an unknown status as critical; times without a timezone on `/log-sources`,
+  `/log-sources/[id]`, `/alerts`, `/alerts/[id]`; `/log-sources/[id]` uses inline styles.
+  UI-5.6's spec carries the log-sources and alerts ones; the offense ones go to UI-5.5.
+  Orchestrator re-ran the ten files (76 passed, 8 todo), lint, typecheck.
+- **T-054 finding so far:** `IPS_NEW_DESTINATION_PORT` needs ≥ 24 h of continuous EXACT history
+  (`ips_new_port_history_days` has `ge=1`), so it cannot be validated in a several-hour run
+  (fail-closed by design; the report will say so).
+- **T-054: the fan-out lead is NOT reproduced** (pilot sweep 06:40–06:55Z, hour-06 cell trained
+  with 4 samples): `IPS_PORT_FANOUT_SPIKE` ANOMALOUS in all three sweep buckets on both sources
+  (749–750 distinct ports against a median of 2), destination-port coverage 1.000, EXACT. Fan-out
+  and concentration incidents opened on both sources and are recovering. Hour 07 runs
+  signature-burst with alerting on. Searches 56/250 at 07:23Z.
+- **UI-4.1** done by Sonnet (gates green, 192 files / 2,575 tests); round 2 sent (~10:44) for the
+  rename input styling, a stray "·" at 1024 and server refusal text capitalisation.
+- Spec written: T-098 (widget frame polish), to start after UI-4.1 merges.
+- Specs: UI-5.6 (ready), T-097.
+- **T-097 merged** (`5982b2a`, big-pickle, 3 min): 11 untested `error`/`loading` boundaries now
+  tested (22 tests; it corrected the orchestrator's list: 4 dropped as already tested, 3 added).
+  No §3a defect found. Orchestrator re-ran the affected folders (37 files / 572 tests), lint,
+  typecheck.
+- **UI-3.5b merged** (`4432b65`, Sonnet, ~35 min): options from a read with a WAF source →
+  endpoint cascade (client-side filter, ids only in config), `waf.endpoint_traffic`,
+  `chart.eps_observed_expected` (source mode), `ips.source_anomalies` live. The orchestrator
+  confirmed the `registryRange.test.ts` list edit (two new ranged widgets). PNGs reviewed.
+  Merged-head gate: lint, typecheck clean; **188 files / 2,497 tests + 8 todo**; build OK.
+  **Phase 3 is complete.**
+- **Phase 3 screenshots for the user:** `/home/efe/Documents/QRadar-Dash-screens/phase3/` (33 PNGs
+  + `README.md` with the open question about the 1280 third row).
+- **Follow-up T-098 (spec to write; after UI-4.1 merges, it shares `widgets/dashboard.css`):**
+  `WidgetFrame` polish: (1) the status pill moves to the body's first line whenever the title row
+  would wrap, not only in panels < 28 rem (a 6-column subject widget's header reads three lines
+  at 1440); (2) Expand's hit target is 60×14 px, below WCAG 2.5.8's 24 px; (3) the subject charts
+  label midnight "15" while the Fleet EPS chart says "14 Oct"; (4) an unconfigured widget's
+  drill-down link is underlined, the others are not.
+- **UI-5.4 merged** (`4cac607`; Codex 10 min, then a Sonnet handover and a round 2): the
+  catch-all CSS moved out of `globals.css` and re-tokenised; an inherited `min-width: 60rem` that
+  scrolled the whole page was removed; sender hostnames 2 lines at 1024 (were 6-7), 1 line at
+  1440; the range control matches the Home's presets (wording kept: a test pins "6 hours").
+  No change needed on `/fleet` and `/fleet/sources`. Open points (shared code): `PageHeader`
+  drops the window switch under the description at 1024; `formatDateTimeCompact` has no year;
+  the not-measured shading shares the warn tint with LOWER_BOUND. Merged-head gate: 188 files /
+  2,497 tests + 8 todo; build OK.
+
+**Next, in order:** collect the four above; UI-3.5b (after UI-3.3b merges; Codex if its window
+allows, else Sonnet); Phase 3 screenshots to the user; **UI-4.1** ([spec](tasks/UI-4.1.md),
+ready; UI-4.3 folded in; ports 3140/8140/9140; after UI-3.5b, both touch `widgets/*`); then the
+UI-4.2 spec; the user's open decisions (D-12 name, G-5 geo window, the lab ACTION property).
+
+---
+
+## ▶ Resume here (twelfth session, 2026-10-14, from ~21:15; latest state at 22:32)
+
+### State at 22:32 (start here)
+
+**Branches:**
+- `main` @ `8573bdf` (pushed): gated merge of `feat/phase-ce` @ `ad0088a`.
+- `feat/phase-ce` @ `0e70c10` (pushed). Since `main`: docs only (the UI-3.3b and UI-3.5b specs,
+  PLANNER).
+- Migration head `0023`.
+- Worktrees: only `ui33b` (in flight). Test DBs on `:5433`: only `qradar_obs_t054` (T-054). The
+  test-db container was restarted after the reboot.
+
+**Persistent work dir:** `/home/efe/Documents/QRadar-Dash-work/<task>/`: logs, prompts, fixtures,
+PNGs. **Never `/tmp`** (the user's rule after the 21:08 reboot wiped it).
+- The reusable fixture APIs:
+  - `ui33/fixture/`: Home, catalog, fleet `window`;
+  - `t087/fixture/fixture_api.py`: anomalies, IPS;
+  - `t090/fixture/`: WAF details, metrics, baselines.
+- Verification script: `ui33/verify.mjs` (drag, resize, keyboard, density measurement).
+
+**In flight:**
+
+| Task | Agent | Where | Collect / check |
+|---|---|---|---|
+| **UI-3.3b** ([spec](tasks/UI-3.3b.md)) | Sonnet sub-agent of this chat, from ~22:30 | worktree `ui33b` (own `node_modules`); ports 3134/8134/9134; `ui33b/` | `docs/tasks/UI-3.3b.report.md` in the worktree; PNGs `ui33b/png/`. Review the PNGs yourself, run the 4 frontend gates, then merge. **35-minute check ~23:05** |
+| **T-054** IPS live validation ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat, from ~21:30 (clock-driven, so it is checked by evidence, not by the 35-minute rule) | `t054/`; DB `qradar_obs_t054`; generator chain `t054/chain19.sh` | Plan, in UTC: sweep r2 19:20–19:35, **tick2 ~19:38 (22:38 local) decides the fan-out lead**, r3 baseline 19:35–20:00, tick3 ~20:02. At 19:18Z it had used 28/250 searches. Report `t054/T-054.report.md`. Check `pgrep -af qradar_lab_loggen` (stop by PID only). If the chat dies: stop the generator and `chain19.sh` by PID, then hand over with "review what you inherit" |
+
+**Next, in order:**
+1. UI-3.3b: review and merge.
+2. **UI-3.5b** ([spec](tasks/UI-3.5b.md), ready).
+   - It covers options from a read (a cascading WAF source → endpoint picker), widgets
+     `waf.endpoint_traffic`, `chart.eps_observed_expected` in source mode, and
+     `ips.source_anomalies` made live.
+   - Use ports 3136/8136/9136. Start after UI-3.3b, since both change `widgets/*`.
+3. **Phase 3 screenshots to the user for approval** (as with Phase 2). Keep the PNGs under
+   `/home/efe/Documents/QRadar-Dash-screens/phase3/`.
+4. T-054's result. Each confirmed defect becomes a fix task (for example the fan-out coverage
+   floor, if it holds).
+5. Phase 4 UI: UI-4.1 (dashboard API client and switcher; read the 409
+   `{message, current_revision}`), UI-4.2 (save/restore/templates), UI-4.3 (`/` loads the user's
+   default dashboard). The backend for it, B-4, is merged.
+6. Small follow-ups (no spec yet):
+   - the WAF new-endpoint `caveat` in the `WafDetectionDetailOut` whitelist;
+   - "Robust z" shown when the status is DEGENERATE or UNAVAILABLE;
+   - the vitest 4 and echarts 6 majors;
+   - the map widget (G-4).
+7. The user's decisions:
+   - D-12, the project name;
+   - G-5, the first production read-only geo window;
+   - the ACTION custom property on the lab console (needed for the IPS block-ratio scenario).
+
+**Agents:**
+- **Codex** is out until **02:17**: its limit was hit ~21:54, after UI-3.2's two rounds. One large
+  UI task per window.
+- **GLM** is out until **02:36**.
+- **Sonnet**: allowed by the user.
+- **Free models** (`big-pickle` did T-088, T-091, T-092 and B-2.3b r2 well; `mimo` looped on
+  T-083b): usable.
+- **The user's rule (22:15):** an agent past 35 minutes is probably stuck or rate-limited. Check its
+  real progress, stop it by PID and hand over. The exception is clock-driven live validations,
+  checked by evidence.
+
+**Lessons this session:**
+- Look at every PNG: each screenshot round found defects that the tests passed. Examples: the
+  new-port unit, WAF pp ×100 on `main`, the WAF new-endpoint semantics, KPI scrollbars at 1280.
+- A fixture must use the backend's real payloads. Fraction-vs-points errors were hidden by
+  fixtures that used fractions.
+- A break-it must never act across databases on the shared test server (T-083b's "widen the
+  terminate").
+- PLANNER and spec edits: use exact edits. A scripted replace silently did nothing once.
+
+### Earlier in this session
 
 **The machine rebooted at 21:08 and `/tmp` was wiped.** Lost with it:
 - every session scratchpad, with the agent logs, the UI-3.2 launcher and prompt, and the UI-3.5a
@@ -23,6 +547,25 @@ agent scratch go in `/home/efe/Documents/QRadar-Dash-work/<task>/`, which is per
 the repository.
 
 **Done:**
+- **`main` @ `8573bdf`** (pushed ~22:40): `feat/phase-ce` @ `ad0088a` merged. It brings T-085/B-2.3b,
+  T-087, T-089, T-090, UI-3.1/3.5a/3.2/3.3, B-4 (`0023`), T-091, and T-083/T-083b/T-092.
+  - Evidence: the full backend gate on `0ecfd7d` (ruff, mypy 31, 2,977 unit, alembic
+    `0023`→`0022`→`0023` with no drift and one head, 1,164 integration).
+  - Its one failure was a clock flake, fixed by T-092 (the proof failed the old code and passed
+    the new); the affected files re-ran 31/31, and `backend/app` is unchanged since `0ecfd7d`.
+  - Frontend on the merged head: 159 files / 2,297 tests, build OK.
+- **UI-3.3 merged** (`2cb7a61`; Codex hit its limit before writing, Sonnet built it). It adds the
+  per-widget range on five fleet widgets, the configure drawer and the expand dialog.
+  The orchestrator's gate: 159 files / 2,281 tests, build OK; PNGs reviewed.
+  Not done (UI-3.3b): expanded tables show no extra rows, and the three 4-column panels' headers
+  wrap to a second line.
+- **T-083b merged** (`01725a6`): one `reset_public_schema` for all 12 migration test files, plus a
+  guard test. Its "wait" step cannot be pinned without a flaky timing test (accepted).
+  **Lesson:** the spec's "widen the terminate to every database" break-it ran against the shared
+  test server. No harm was seen (T-054's tick1 ran cleanly), but **never spec a break-it that
+  acts across databases on the shared server.**
+- **T-092 merged** (`ad0088a`): `test_behavior_bulk_reads.py` reads the clock per test and waits
+  out an hour boundary.
 - **T-083 merged** (`fea4273`). The setup ERROR was proven to be a deadlock between the fixture's
   `DROP SCHEMA public CASCADE` and the TimescaleDB Telemetry Reporter. `clean_db` now terminates
   the other sessions on its own DB first: 4 errors in 55 runs before, 0 in 50 after. Re-verified
@@ -32,8 +575,7 @@ the repository.
   Audit: production criticals 1 → 0, full tree 22 → 14. What remains is the planned vitest 4 and
   echarts 6 majors, and `braces` (no fix). The agent built the image (`next` 15.5.28 inside) and
   ran the standalone server (200s). The orchestrator re-ran 153 files / 2,237 tests and the build.
-  **After the full gate finishes, run `npm install` in the main checkout's `frontend/`** (its
-  `node_modules` still has `next` 15.5.22; the gate worktree symlinks it).
+  The main checkout's `frontend/node_modules` was refreshed with `npm ci` (`next` 15.5.28).
 - **UI-3.2 merged** (`b9295d1`) after two rounds. Round 2 replaced Arrange and Remove with one
   `Edit` disclosure; the measurement shows no added overflow and no taller title row for all 11
   widgets at 1440 and 1280. The orchestrator's gate: lint and typecheck clean; 144 files / 2,120
@@ -63,16 +605,21 @@ the repository.
 
 | Task | Agent | Where | Collect |
 |---|---|---|---|
-| **Full gate** on `0ecfd7d` | the orchestrator | `gate` worktree; DBs `qradar_obs_gate`, `_gate_mig` | **Done.** Ruff clean; mypy 31; unit 2,977; alembic `0023`→`0022`→`0023`, no drift, one head; frontend 153 files / 2,253 tests, build OK. Integration: **1,164 passed, 1 failed**: `test_behavior_bulk_reads.py::test_summary_counts_reliable_unreliable_and_missing_cells`. It passes alone (6/6). Cause: a module-level `NOW` set at collection, and the run crossed 19:00 UTC → **T-092**. Before `main`: T-092, then that file plus unit, then the frontend gate on the head (T-091 changed dependencies) |
-| **T-092** deflake across a UTC hour ([spec](tasks/T-092.md)) | opencode `big-pickle`, `--standalone`, pid 252013 | `t092`; DB `qradar_obs_t092` | `t092/agent.log`; `docs/tasks/T-092.report.md` in `t092` |
-| **T-083b** ([spec](tasks/T-083b.md)) | opencode `mimo-v2.6-flash-free`, `--standalone`, pid 18281 | `t083b`; DB `qradar_obs_t083b` | `t083b/agent.log`; `docs/tasks/T-083b.report.md` in `t083b` |
-| **UI-3.3** ([spec](tasks/UI-3.3.md) + amendment) | Codex hit its usage limit at ~21:54 before writing a file (reset **02:17**). Now a **Sonnet sub-agent of this chat**, starting fresh | `ui33` (own `node_modules`); ports 3133/8133/9133 | `docs/tasks/UI-3.3.report.md` in `ui33`; PNGs `ui33/png/`; fixture `ui33/fixture/` |
+| **UI-3.3b** expanded tables show more rows; 4-column title rows ([spec](tasks/UI-3.3b.md)) | Sonnet sub-agent of this chat (from ~22:30) | `ui33b` (own `node_modules`); ports 3134/8134/9134 | `docs/tasks/UI-3.3b.report.md` in `ui33b`; PNGs `ui33b/png/` |
 | **T-054** restart ([spec](tasks/T-054.md) + amendment) | Sonnet sub-agent of this chat | `t054/`; DB `qradar_obs_t054` | `t054/T-054.report.md`; settles the fan-out coverage lead first. Check `pgrep -af qradar_lab_loggen` |
 
 **Next:**
-1. UI-3.3 (running), then UI-3.5b.
-2. T-083b; T-054, whose defects become fix tasks.
-3. T-092, then `feat/phase-ce` → `main` (the WAF fixes T-089 and T-090 are defects on `main`).
+1. UI-3.3b (running), then **UI-3.5b** ([spec](tasks/UI-3.5b.md), ready).
+   - It covers options from a read (a cascading WAF source → endpoint picker),
+     `waf.endpoint_traffic`, `chart.eps_observed_expected` in source mode, and
+     `ips.source_anomalies` made live.
+   - Use ports 3136/8136/9136. It conflicts with UI-3.3b in `widgets/*`, so start it after
+     UI-3.3b merges.
+   - Then the Phase 3 screenshots go to the user for approval.
+2. T-054 (running; it settles the fan-out lead after its ~19:38Z tick). Each defect it confirms
+   becomes a fix task.
+3. Phase 4 UI (UI-4.1 dashboard API client and switcher, UI-4.2 save/restore/templates, UI-4.3 `/`
+   loads the user's default dashboard).
 
 **T-088 done** ([report](tasks/T-088.report.md), big-pickle): none of the 22 `npm audit` findings is
 reachable in this deployment.
@@ -83,8 +630,14 @@ reachable in this deployment.
 
 **It also found a real gap:** `frontend/Dockerfile` ignores the committed lockfile
 (`COPY package.json`, then `npm install`), so the image is not what the gates tested. **T-091**
-([spec](tasks/T-091.md)) fixes both. Start it **after UI-3.2 merges** (both change `package.json`).
-The vitest 4 major and echarts 6 are planned later.
+([spec](tasks/T-091.md)) fixed both and is merged. The vitest 4 major and echarts 6 are planned
+later.
+
+**Small follow-ups (not started):**
+- `WafDetectionDetailOut` lacks the new-endpoint `caveat` (IPS has one); this is a backend
+  whitelist change (T-090 open point).
+- The WAF and IPS rate and ratio blocks show a "Robust z" figure even when `robust_score_status`
+  is DEGENERATE or UNAVAILABLE. The status line explains it; consider the em dash instead.
 
 **Agents:**
 - **Codex is out until 02:17** (limit hit ~21:54, after UI-3.2's two rounds of ~375k tokens and the
@@ -1070,6 +1623,13 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-9 | ~~Outage alert default and new catch-all senders~~ **Resolved 2026-10-13 by the user:** outage (`NO_EVENTS`) alerts stay on for **every monitored source** by default (`ALERT`, today's behaviour); operators switch classes or sources to `RECORD_ONLY` (design §C.7). A new SIM Generic sender goes to a **review queue only**, no alert (`catchall_new_sender_alerts_enabled = false`, §C.8). | T-068, T-069 |
 | D-10 | ~~UI redesign: which overhaul items?~~ **Resolved 2026-10-13 (seventh session) by the user, asked by the orchestrator.** <br>• **Widget dashboard: the full system now.** It covers a widget catalog, drag and drop, resize, and multiple dashboards persisted per user in the DB: a new table, migration and API, plus `react-grid-layout`, the dependency the user explicitly allowed. <br>• **World map: add a new geo collection.** First validate the AQL `GEO::` functions on live QRadar. Then collect a country-level aggregate under the search cadence. No raw IPs are kept (AGENTS.md rule 3). <br>• **"Events by category" becomes "EPS by source class":** the top 4 classes plus "Other", from existing data. <br>• **Top bar: existing APIs only.** Search runs over existing lists (sources, anomalies, rules). "Live" becomes auto-refresh with the last-updated time. The bell shows the open-alert count and links to `/alerts`. | UI redesign (UI-R0 onward) |
 | D-11 | ~~UI plan questions (UR.10)~~ **Resolved 2026-10-14 by the user**, who also approved the plan ("Approved, start"). <br>• `/` becomes the widget Dashboard; `/behavior` stays as the behavioral triage page. <br>• Navigation is **text only**, with no icons. <br>• **Dark only**; no light mode. <br>• **Keep the palette's original values**: muted text `--text-3 = #73757B` and the input edge `--border-strong = #35363A`. The plan's contrast deviations (UR.2.2) are **not** applied, even though `#73757B` is below WCAG AA (3.70:1 on the panel). This is the user's explicit decision and overrides AGENTS.md §3a's §10 accessibility point for these two values only. <br>• **Orchestrator defaults** for the questions not asked: dashboards are built now, keyed on the principal's `subject`, and shared by `local-dev` until OIDC; `GET /me` is added (B-1.3); `/config-changes` is restyled, not removed. <br>• The plan's 17 collision rulings (UR.9) are accepted by the orchestrator, with C11 replaced by this decision. | UI-1.1 onward |
+| D-12 | ~~Rename the project?~~ **Resolved 2026-10-15 by the user: no rename.** The current "Behavior Analytics" title stays, with QRadar in the subline. | — |
+| G-5 | **Deferred by the user (2026-10-15).** The production read-only geo window is to be thought about later. The user is considering two options: pull the WAF property through groups, or write a geo AQL for QRadar. `map.geography` stays `blocked`. | Map widget, geo production validation |
+| D-13 | **Lab ACTION property: authorised by the user on 2026-10-15** ("action propertyi sen oluşturup api ile ekleyebilirsin izin var"). It is created through the QRadar API, on the lab console only, by a throwaway script outside the application, add-only. AGENTS.md §2 rule 1 carries the exception. → **T-107**. | IPS block-shift validation |
+| D-14 | **Scope (user, 2026-10-15):** the AI rule analysis (Phase E.3, and with it D-5) is **out of the current scope**; it comes in v3 or v4. The user will do the production field-availability pass for WAF and IPS (FTD, PAN THREAT) themselves. | — |
+| D-15 | **Custom detections and custom AQL (user request, 2026-10-15; the "how" was left to the orchestrator).** Two tools share one alert pipeline. **F.1 threshold rules** on aggregates that are already collected. Examples: a source's EPS above X; a WAF endpoint's requests above N. They cost no extra Ariel search and fail closed (LOWER_BOUND proves only "above"). **F.2 custom AQL** for anything not collected, on the existing stored, validated and versioned scheduled searches with their threshold alerts. F.2 adds the editor UI and a result-chart widget, and the browser never runs AQL (rule 4). Design → **T-108**, `docs/PHASE-F-CUSTOM-DETECTIONS.md`. Build after Phase 5 merges to `main`. | Phase F |
+| D-16 | **Operability without AI (user, 2026-10-15 ~23:25).** The production host has no access to any AI: AI sites are blocked, while Docker registries and git are reachable. Installation must be painless, with as few commands as possible, and a few minutes of downtime per upgrade is acceptable. **Orchestrator direction:**<br>• versioned prebuilt images on GHCR (production pulls, it does not build), with a local build as the fallback;<br>• one `qradar-dash` operator script: `install` (preflight, `.env` wizard, pull, migrate, seed, start, health), `upgrade <v>` (automatic TimescaleDB-aware backup first), `rollback` (the previous tags plus a restore, because a downgrade drops data), `backup`/`restore`, `doctor`, a redacted `support-bundle`, `status`, `logs`;<br>• a visible app version;<br>• a symptom-indexed runbook `docs/OPERATIONS.md`.<br>Design → **OPS-0** (spec ready). **Deferred by the user on 2026-10-15 at 23:27 ("note it, do it later").** **Open:** the runbook's language and who operates production. | Production readiness |
+| D-17 | **Phase F open questions (§F.16), answered by the user on 2026-10-16 ~10:25.** <br>1. **Alerting: shadow mode first.** Add `CUSTOM_RULES_ALERTING_ENABLED` (default false) beside `CUSTOM_RULES_ENABLED`: breaches are recorded, nothing pages, until a live validation turns it on (the IPS pattern). → F-2. <br>2. Caps and retentions were not asked again: the proposed defaults stand as settings (100 enabled rules, 25 enabled searches, 90 days of search results, 180 days of resolved breaches). <br>3. **A new detection-engineer role** between analyst and admin: it may write custom rules and custom searches (`custom_rule:write`, `search:write`) but not the admin settings. → F-3 (and the role map in `app/security/rbac.py`). <br>4. **The F.2 preview is a real bounded Ariel run** of the stored draft. → F-5. <br>5. **Breaches stay out of `/anomalies`**: they show in `/alerts` and on the rule's page (§F.4.3 as designed). → F-6. | F-2, F-3, F-5, F-6 |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---

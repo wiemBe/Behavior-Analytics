@@ -9,8 +9,7 @@ import "@/components/ui/controls.css";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { SearchExecution } from "@/lib/api";
-import { formatDateTimeCompact } from "@/lib/health";
-import { formatRunDuration, resultCount, thresholdVerdict } from "@/lib/searchRuns";
+import { axisTimeLabel, formatRunDuration, resultCount, thresholdVerdict } from "@/lib/searchRuns";
 
 function execTone(status: string): string {
   if (status === "COMPLETED") return "ok";
@@ -88,7 +87,7 @@ export function ExecutionsTable({ executions }: { executions: SearchExecution[] 
           <tbody>
             {executions.map((e) => (
               <tr key={e.id}>
-                <td>{formatDateTimeCompact(e.started_at)}</td>
+                <td className="nowrap">{axisTimeLabel(e.started_at)}</td>
                 <td>
                   <span className={`pill ${execTone(e.status)}`}>{e.status}</span>
                 </td>

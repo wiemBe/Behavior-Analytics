@@ -36,7 +36,7 @@ export function TopContributors({
           : evidenceStatus === "PENDING"
             ? "Contributor evidence is still being collected. This is a backlog, not a finding."
             : evidenceStatus === "FAILED"
-              ? "Contributor evidence collection failed, so no contributors are available. The detection metrics and lifecycle below are unaffected."
+              ? "No contributors: evidence collection failed (see the notice below)."
               : "No contributor evidence is available for this anomaly. No field has been examined, so nothing has been ruled out."}
       </div>
     );

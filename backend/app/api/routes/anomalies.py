@@ -39,6 +39,7 @@ from app.models.enums import (
     WafAnomalyType,
     WafProfileValidationStatus,
 )
+from app.models.explanation import AnomalyExplanation
 from app.models.ips import (
     IpsAnomaly,
     IpsAnomalyTransition,
@@ -46,7 +47,7 @@ from app.models.ips import (
     IpsSourceBucket,
     IpsSourceProfile,
 )
-from app.models.log_source import LogSource, LogSourceAnomaly
+from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
@@ -127,11 +128,11 @@ def _validate_range(
         end = end.replace(tzinfo=UTC)
     if end <= start:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "range end must be after its start"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "range end must be after its start"
         )
     if (end - start) > timedelta(days=max_days):
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"range exceeds the maximum of {max_days} days",
         )
     return start, end
@@ -294,7 +295,7 @@ async def anomaly_histogram(
     try:
         check_range(start, end)
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     result = await histogram(session, since=start, until=end, subject_kind=subject_kind)
     return AnomalyHistogramOut(
         since=start,
@@ -450,7 +451,7 @@ async def _ips_detail(
     )
 
 
-def _explanation_out(package) -> ExplanationOut | None:
+def _explanation_out(package: AnomalyExplanation | None) -> ExplanationOut | None:
     """Assemble the evidence package, grouping contributors under dimensions.
 
     Contributors are stored flat and joined here rather than nested in storage,
@@ -512,7 +513,12 @@ async def list_source_behavior(session: SessionDep) -> list[SourceBehaviorOut]:
     return out
 
 
-def _source_behavior(src, bucket, cell, active_count: int) -> SourceBehaviorOut:
+def _source_behavior(
+    src: LogSource,
+    bucket: LogSourceMetric | None,
+    cell: LogSourceBaseline | None,
+    active_count: int,
+) -> SourceBehaviorOut:
     observed = bucket.average_eps if bucket is not None else None
     expected = cell.median if (cell is not None and cell.is_reliable) else None
     # A ratio against a zero expectation does not exist. Reporting one would

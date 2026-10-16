@@ -158,6 +158,24 @@
   /* The connection-status popover's width, in characters of its own text. */
   --status-popover-w: 44ch;
 
+  /* Administration pages: a settings form and its operational notices stay
+     within one readable scan line; the hub index is narrower because it is
+     only a destination name with one supporting sentence. */
+  --admin-form-max: 96ch;
+  --admin-hub-max: 72ch;
+
+  /* Catch-all senders: the sender hostname's floor (32ch of the monospace face: a
+     50-character name in two lines), the source column's floor and cap, and the bucket detail grid's column floor so
+     it stays useful at every supported viewport. */
+  --catchall-sender-min: 32ch;
+  --catchall-source-min: 17ch;
+  --catchall-source-max: 17ch;
+  --catchall-source-narrow: 12ch;
+  --catchall-note-narrow: 14ch;
+  --catchall-seen-label-w: 5ch;
+  --catchall-bucket-col-min: 15rem;
+  --catchall-top-max: 44rem;
+
   /* --- chart --------------------------------------------------------------
      Consumed by the ECharts option builder so the chart shares the page's
      palette rather than carrying its own hard-coded one. */
@@ -225,6 +243,8 @@
 :root {
   --table-col-time: 15ch;
   --table-col-eps: 11ch;
+  /* Observed → expected in a detector's unit: "62.0% → 18.0%", or "1,480 → 310" over its unit. */
+  --table-col-figures: 17ch;
   --table-col-ratio: 11ch;
   --table-col-badge: 11ch;
   --table-col-count: 8ch;
@@ -242,6 +262,8 @@
    small square beside its list. */
 :root {
   --home-chart-h: 152px;
+  /* A subject chart is the widget's content, not context for a figure: it keeps more height. */
+  --cw-chart-h: 224px;
   --home-donut: 112px;
   /* The centre label is bounded by the same radius the canvas uses for its hole. */
   --home-donut-hole-radius: 42px;
@@ -261,6 +283,8 @@
   --dash-expand-max-w: 90rem;
   --dash-expand-inset: var(--sp-6);
   --dash-select-w: 3.5rem;
+  /* WCAG 2.5.8 target minimum: every control in a widget's title row is at least this big. */
+  --target-min: 24px;
   --dash-resize-hit: var(--sp-6);
   --dash-resize-mark: var(--sp-1);
   --dash-resize-stroke: 2px;
@@ -268,5 +292,10 @@
   --dash-z-placeholder: 2;
   --dash-z-drag: 3;
   --dash-z-arrange: 4;
+  --dash-z-pop: 5;
+  --dash-pop-w: 22rem;
+  --dash-menu-w: 16rem;
+  --dash-modal-w: 30rem;
+  --dash-field-h: 38px;
   --scrim: rgba(0, 0, 0, 0.55);
 }

@@ -14,10 +14,13 @@
 
 import type { Metadata } from "next";
 
+import Link from "next/link";
+
 import { RangeSelector } from "@/components/behavior/RangeSelector";
 import { SourceAdvanced } from "@/components/behavior/SourceAdvanced";
 import { SourceAnomalies } from "@/components/behavior/SourceAnomalies";
 import { SourceHeader } from "@/components/behavior/SourceHeader";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { SourceQuality } from "@/components/behavior/SourceQuality";
 import { VolumeChart } from "@/components/behavior/VolumeChart";
 import {
@@ -35,7 +38,7 @@ import {
   formatMetric,
   formatRatio,
   isUnjudged,
-  stateMeaning,
+  stateMeaningAgainst,
 } from "@/lib/behavior";
 import { formatDateTime } from "@/lib/health";
 import {
@@ -48,6 +51,8 @@ import {
   summarizeSourceTimeline,
 } from "@/lib/sourceDetail";
 import { buildSeries } from "@/lib/timeseries";
+
+import "../sources.css";
 
 export const metadata: Metadata = {
   title: "Source behavior",
@@ -74,15 +79,18 @@ export default async function SourceBehaviorPage({
   if (!behavior) {
     return (
       <>
-        <h1 className="page-title">Source behavior</h1>
+        <PageHeader
+          title="Source behavior"
+          meta={<Link href="/behavior/sources">← All sources</Link>}
+        />
         <div className="notice" role="alert">
           {status === 404
-            ? "This log source does not exist."
+            ? "This log source does not exist. It may have been removed from monitoring; choose another from the source list."
             : status === 403
               ? "You do not have permission to view behavioral analytics."
               : status === 401
                 ? "Your session has expired. Sign in again to continue."
-                : "Could not load this source. The backend may be unreachable."}
+                : "Could not load this source. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health."}
         </div>
       </>
     );
@@ -115,6 +123,7 @@ export default async function SourceBehaviorPage({
 
   const { active, recent } = partitionAnomalies(anomalies);
   const quality = baselineQuality(behavior, cells);
+  const metricsFailed = bucketsResult.status === "rejected";
   const health = collectionHealth(buckets, behavior.last_bucket_at, range * 3600);
   const unjudged = isUnjudged(behavior.state) || behavior.expected_eps == null;
 
@@ -136,7 +145,9 @@ export default async function SourceBehaviorPage({
   const notes: string[] = [];
   if (unjudged) notes.push("Baseline still learning");
   if (quality.status === "DEGENERATE") notes.push("Baseline variability is zero");
-  if (health.status !== "CURRENT") notes.push(`Collection ${health.label.toLowerCase()}`);
+  // With the metric read failed there are no intervals to judge collection by:
+  // saying "delayed" would turn a failed request into a claim about the source.
+  if (!metricsFailed && health.status !== "CURRENT") notes.push(`Collection ${health.label.toLowerCase()}`);
   if (behavior.observed_eps === 0) notes.push("Source is currently silent");
   if (meta?.monitoring_enabled === false) notes.push("Monitoring disabled");
   if (meta?.maintenance_mode) notes.push("Maintenance mode active");
@@ -145,7 +156,11 @@ export default async function SourceBehaviorPage({
     <>
       {/* --- 1. compact header ------------------------------------------- */}
       <SourceHeader behavior={behavior} meta={meta} />
-      <p className="subtitle">{stateMeaning(behavior.state)}</p>
+      <p className="subtitle">{stateMeaningAgainst(behavior.state, {
+          observed: behavior.observed_eps,
+          low: behavior.expected_low,
+          high: behavior.expected_high,
+        })}</p>
 
       {/* --- 2. four primary metrics -------------------------------------- */}
       <div className="grid-4">
@@ -249,6 +264,7 @@ export default async function SourceBehaviorPage({
         <SourceQuality
           baseline={quality}
           collection={health}
+          collectionUnknown={metricsFailed}
           expectedLow={behavior.expected_low}
           expectedHigh={behavior.expected_high}
           lastBucketAt={behavior.last_bucket_at}
@@ -265,6 +281,7 @@ export default async function SourceBehaviorPage({
           buckets={buckets}
           cells={cells}
           cellsFailed={cellsResult.status === "rejected"}
+          bucketsFailed={metricsFailed}
         />
       </section>
     </>

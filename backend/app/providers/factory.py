@@ -6,6 +6,8 @@ imports a concrete provider class directly.
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import ProviderKind, Settings, get_settings
@@ -119,7 +121,7 @@ def build_provider_for_instance(
 
 # FastAPI dependency. Kept module-level so it can be overridden in tests via
 # app.dependency_overrides.
-async def get_provider() -> QRadarProvider:
+async def get_provider() -> AsyncGenerator[QRadarProvider, None]:
     provider = build_provider()
     try:
         yield provider

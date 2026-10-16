@@ -29,6 +29,17 @@ const RANKS: { value: Rank; label: string }[] = [
   { value: "matches", label: "Match records" },
 ];
 
+/**
+ * A rate under the display floor reads "< 0.01". As a lower bound, "≥ < 0.01" is gibberish and
+ * "≥ 0.01" would be false (the measured bound is below 0.01), so the cell says what is true: the
+ * figure is below the floor and it is a lower bound. No digits are invented for it.
+ */
+function RateBound({ lower, perSecond }: { lower: boolean; perSecond: number }) {
+  const text = formatRate(perSecond);
+  if (lower && text.startsWith("<")) return <span>{text}&nbsp;(lower bound)</span>;
+  return <Bound lower={lower}>{text}</Bound>;
+}
+
 function Bound({ lower, children }: { lower: boolean; children: string }) {
   return lower ? <span>≥&nbsp;{children}</span> : <>{children}</>;
 }
@@ -135,7 +146,7 @@ export function MostMatched({
                       <Bound lower={r.lower_bound}>{formatCount(r.match_records)}</Bound>
                     </td>
                     <td className="num">
-                      <Bound lower={r.lower_bound}>{formatRate(r.match_rate_per_second)}</Bound>
+                      <RateBound lower={r.lower_bound} perSecond={r.match_rate_per_second} />
                     </td>
                   </tr>
                 ))}

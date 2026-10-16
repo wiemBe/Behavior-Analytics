@@ -8,6 +8,7 @@ import {
   isWafRow,
   isWafType,
   stateLabel,
+  statePillText,
   subjectText,
 } from "./wafLabels";
 
@@ -63,5 +64,13 @@ describe("stateLabel and evidenceLabel", () => {
   it("shows an unknown value as sent", () => {
     expect(stateLabel("SOMETHING_NEW")).toBe("SOMETHING_NEW");
     expect(evidenceLabel("SOMETHING_NEW")).toBe("SOMETHING_NEW");
+  });
+});
+
+describe("statePillText", () => {
+  it("shows the backend's state name in upper case, underscore included", () => {
+    expect(statePillText("OPEN")).toBe("OPEN");
+    expect(statePillText("INSUFFICIENT_DATA")).toBe("INSUFFICIENT_DATA");
+    expect(statePillText("Recovering")).toBe("RECOVERING");
   });
 });

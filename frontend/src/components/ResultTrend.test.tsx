@@ -129,10 +129,10 @@ describe("ResultTrend", () => {
 
     await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
     const option = setOption.mock.calls[0][0] as {
-      series: { data: (number | null)[]; connectNulls?: boolean }[];
+      series: { data: [number, number | null][]; connectNulls?: boolean }[];
     };
     // A zero here would invent a traffic cliff that never happened.
-    expect(option.series[0].data).toEqual([100, null, 120]);
+    expect(option.series[0].data.map((d) => d[1])).toEqual([100, null, 120]);
     expect(option.series[0].connectNulls).toBe(false);
   });
 
@@ -152,8 +152,10 @@ describe("ResultTrend", () => {
     const option = setOption.mock.calls[0][0] as {
       series: { markLine?: { data: { xAxis: number; name: string }[] } }[];
     };
-    // Exactly one boundary: at the transition, not on every v2 point.
-    expect(option.series[0].markLine?.data).toEqual([{ xAxis: 1, name: "v2" }]);
+    // Exactly one boundary: at the transition, not on every v2 point. Its position is a time.
+    expect(option.series[0].markLine?.data).toEqual([
+      { xAxis: Date.parse("2026-07-20T10:00:00Z"), name: "v2" },
+    ]);
     expect(
       screen.getByText(/dashed lines mark query-version changes/i),
     ).toBeInTheDocument();
@@ -182,13 +184,15 @@ describe("ResultTrend", () => {
 
     await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
     const option = setOption.mock.calls[0][0] as {
-      series: { data: (number | null)[]; connectNulls?: boolean }[];
-      xAxis: { data: string[] };
+      series: { data: [number, number | null][]; connectNulls?: boolean }[];
     };
-    expect(option.series[0].data).toEqual([100, null, 120]);
-    expect(option.series[0].data).not.toContain(0);
+    expect(option.series[0].data).toEqual([
+      [Date.parse("2026-07-20T10:00:00Z"), 100],
+      [Date.parse("2026-07-20T11:00:00Z"), null],
+      [Date.parse("2026-07-20T12:00:00Z"), 120],
+    ]);
+    expect(option.series[0].data.map((d) => d[1])).not.toContain(0);
     expect(option.series[0].connectNulls).toBe(false);
-    expect(option.xAxis.data).toHaveLength(3);
     expect(screen.getByText(/1 truncated run left a gap/i)).toBeInTheDocument();
   });
 
@@ -207,8 +211,8 @@ describe("ResultTrend", () => {
     const option = setOption.mock.calls[0][0] as {
       series: { markLine?: { data: { xAxis: number }[] } }[];
     };
-    // The gap occupies index 1, so v2 starts at index 2.
-    expect(option.series[0].markLine?.data[0].xAxis).toBe(2);
+    // The marker sits at v2's own time, whatever the gap before it.
+    expect(option.series[0].markLine?.data[0].xAxis).toBe(Date.parse("2026-07-20T12:00:00Z"));
   });
 
   it("says nothing about gaps when no run was truncated", async () => {
@@ -220,7 +224,11 @@ describe("ResultTrend", () => {
 
   describe("chart presentation", () => {
     type Opt = {
-      xAxis: { name: string; data: string[]; axisLabel: { show?: boolean } };
+      xAxis: {
+        type: string;
+        name: string;
+        axisLabel: { show?: boolean; formatter: (v: number) => string };
+      };
       yAxis: { name: string; min: number };
       series: {
         name: string;
@@ -237,8 +245,28 @@ describe("ResultTrend", () => {
       render(<ResultTrend searchId="s-1" />);
       await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
       expect(lastOption().xAxis.axisLabel.show).not.toBe(false);
-      expect(lastOption().xAxis.data).toEqual(["07-20 10:05"]);
+      expect(lastOption().xAxis.axisLabel.formatter(Date.parse("2026-07-20T10:05:00Z"))).toBe(
+        "07-20 10:05",
+      );
       expect(lastOption().xAxis.name).toMatch(/UTC/);
+    });
+
+    it("uses a time axis, so unevenly spaced runs are drawn unevenly spaced", async () => {
+      vi.spyOn(api, "searchResults").mockResolvedValue(
+        trend({
+          points: [
+            point({ bucket_start: "2026-07-20T10:00:00Z" }),
+            point({ bucket_start: "2026-07-20T10:04:00Z" }),
+            point({ bucket_start: "2026-07-20T10:19:00Z" }),
+          ],
+        }),
+      );
+      render(<ResultTrend searchId="s-1" />);
+      await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
+      expect(lastOption().xAxis.type).toBe("time");
+      const data = (lastOption().series[0] as unknown as { data: [number, number][] }).data;
+      expect(data[1][0] - data[0][0]).toBe(4 * 60_000);
+      expect(data[2][0] - data[1][0]).toBe(15 * 60_000);
     });
 
     it("names the value axis as result rows and starts it at zero", async () => {
@@ -278,7 +306,7 @@ describe("ResultTrend", () => {
       await waitFor(() => expect(setOption).toHaveBeenCalledTimes(1));
       const marks = lastOption().series[0].markPoint?.data ?? [];
       expect(marks).toHaveLength(1);
-      expect(marks[0].coord[0]).toBe(3);
+      expect(marks[0].coord[0]).toBe(Date.parse("2026-07-20T13:00:00Z"));
     });
 
     it("takes every colour from the tokens, never from a literal", async () => {

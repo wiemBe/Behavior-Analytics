@@ -57,6 +57,16 @@ export function IpsDetectionBlock({
   const spec = detectorSpec(anomaly.anomaly_type);
   const f = ipsFigures(anomaly, d);
   const unit = unitText(f.unit, bucketWidth(bucketSeconds));
+  const robustZ =
+    d.robust_score_status === "DEGENERATE" ? (
+      <Missing reason="not used: MAD was zero" />
+    ) : d.robust_score_status === "UNAVAILABLE" ? (
+      <Missing reason="not computed" />
+    ) : d.robust_z != null ? (
+      formatMetric(d.robust_z)
+    ) : (
+      <Missing reason="no robust score was computed" />
+    );
   const hasRange = d.expected_low != null && d.expected_high != null;
   const range = !hasRange ? (
     <Missing reason={spec?.baselineMetric ? "not recorded for this incident" : "no seasonal baseline applies to this detector"} />
@@ -158,9 +168,7 @@ export function IpsDetectionBlock({
         />
         <Row
           label="Robust z"
-          value={
-            d.robust_z != null ? formatMetric(d.robust_z) : <Missing reason="no robust score was computed" />
-          }
+          value={robustZ}
         />
         <Row label="Consecutive abnormal buckets" value={formatCount(anomaly.consecutive_buckets)} />
       </dl>

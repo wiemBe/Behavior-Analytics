@@ -8,7 +8,11 @@ import {
 } from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TableScroll } from "@/components/ui/TableScroll";
 import { formatDateTime, healthMeaning, healthTone } from "@/lib/health";
+
+import "./coverage.css";
 
 const PAGE_SIZE = 50;
 
@@ -44,25 +48,29 @@ export default async function CoveragePage({
   if (error) {
     return (
       <>
-        <h2>Detection Coverage</h2>
-        <div className="notice">
-          Backend unreachable. Start the stack, then run{" "}
-          <code>python -m app.cli.sync coverage</code>.
+        <PageHeader title="Detection Coverage" />
+        <div className="notice" role="alert">
+          <p>
+            Backend unreachable. Start the stack, then run{" "}
+            <code>python -m app.cli.sync coverage</code>. Nothing was changed; reload once the
+            backend answers.
+          </p>
         </div>
       </>
     );
   }
 
   const items = page?.items ?? [];
+  const cardCount =
+    STATUSES.length + Object.keys(summary?.by_status ?? {}).filter((s) => !STATUSES.includes(s)).length;
   const nothingMapped = (summary?.total_techniques ?? 0) === 0;
 
   return (
     <>
-      <h2>Detection Coverage</h2>
-      <p className="subtitle">
-        MITRE ATT&amp;CK technique coverage, derived from mapped rules and their
-        observed health. Coverage is never inferred from a rule merely existing.
-      </p>
+      <PageHeader
+        title="Detection Coverage"
+        description="MITRE ATT&CK technique coverage, derived from mapped rules and their observed health. Coverage is never inferred from a rule merely existing."
+      />
 
       {nothingMapped ? (
         // The honest empty state. Showing 0% covered here would be a claim we
@@ -83,7 +91,7 @@ export default async function CoveragePage({
         </div>
       ) : (
         <>
-          <div className="cards">
+          <div className={`cards coverage-cards coverage-cards-${Math.ceil(cardCount / 2)}`}>
             {STATUSES.map((s) => (
               <StatCard
                 key={s}
@@ -92,6 +100,16 @@ export default async function CoveragePage({
                 tone={healthTone(s) || undefined}
               />
             ))}
+            {Object.keys(summary?.by_status ?? {})
+              .filter((s) => !STATUSES.includes(s))
+              .map((s) => (
+                <StatCard
+                  key={s}
+                  label={s.replace(/_/g, " ")}
+                  value={summary?.by_status?.[s] ?? 0}
+                  tone={healthTone(s) || undefined}
+                />
+              ))}
           </div>
 
           <p className="muted">
@@ -106,15 +124,16 @@ export default async function CoveragePage({
             <div className="notice">No techniques on this page.</div>
           ) : (
             <>
-              <table>
+              <TableScroll label="Techniques">
+              <table className="coverage-table">
                 <thead>
                   <tr>
                     <th>Technique</th>
                     <th>Name</th>
                     <th>Tactic</th>
                     <th>Status</th>
-                    <th>Rules</th>
-                    <th>Score</th>
+                    <th className="num">Rules</th>
+                    <th className="num">Score</th>
                     <th>Evidence</th>
                   </tr>
                 </thead>
@@ -129,8 +148,8 @@ export default async function CoveragePage({
                           {t.status.replace(/_/g, " ")}
                         </span>
                       </td>
-                      <td>{t.mapped_rule_count}</td>
-                      <td>
+                      <td className="num">{t.mapped_rule_count}</td>
+                      <td className="num">
                         {t.coverage_score == null
                           ? "—"
                           : Math.round(t.coverage_score * 100) + "%"}
@@ -140,6 +159,7 @@ export default async function CoveragePage({
                   ))}
                 </tbody>
               </table>
+              </TableScroll>
 
               <Pagination
                 total={page?.total ?? 0}
@@ -156,7 +176,8 @@ export default async function CoveragePage({
       {byRule.length === 0 ? (
         <div className="notice">No rules have ATT&amp;CK technique mappings yet.</div>
       ) : (
-        <table>
+        <TableScroll label="Coverage by rule">
+        <table className="coverage-table">
           <thead><tr><th>Rule</th><th>Enabled</th><th>Health</th><th>Techniques</th><th>Evidence</th></tr></thead>
           <tbody>
             {byRule.map((r) => (
@@ -169,13 +190,15 @@ export default async function CoveragePage({
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
 
       <h3>Data-source-centric view</h3>
       {byDataSource.length === 0 ? (
         <div className="notice">No rule-to-log-source dependencies are available from this QRadar inventory.</div>
       ) : (
-        <table>
+        <TableScroll label="Coverage by data source">
+        <table className="coverage-table">
           <thead><tr><th>Data source</th><th>Kind</th><th>Rules</th><th>Techniques</th><th>Evidence</th></tr></thead>
           <tbody>
             {byDataSource.map((d) => (
@@ -188,6 +211,7 @@ export default async function CoveragePage({
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
     </>
   );

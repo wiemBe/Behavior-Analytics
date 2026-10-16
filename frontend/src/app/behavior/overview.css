@@ -1,0 +1,60 @@
+/* The behavioral overview's worklist and counters. */
+
+/* A source name wraps at its words inside a cap and shows at most two lines
+   (the link's title carries the whole name): rows are two or three lines tall
+   anyway, and an uncapped name takes the width the figures need at 1024 px. */
+@media (max-width: 1400px) {
+  .attention-table td.cell-name.cell-name-single {
+    min-width: 12ch;
+    max-width: 18ch;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: normal;
+  }
+  .attention-table td.cell-name.cell-name-single a {
+    display: -webkit-box;
+    overflow: hidden;
+    overflow-wrap: break-word;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+}
+
+/* Seven counters fit one row at 1024 px with a tighter gap; at the global gap
+   the last one fell alone onto a second line. */
+.status-strip {
+  column-gap: var(--sp-5);
+}
+
+.attention-table .issue-with-severity__label {
+  min-width: 9ch;
+}
+
+/* Seven columns do not fit 765 px at the table's normal cell padding. */
+@media (max-width: 1200px) {
+  .attention-table th,
+  .attention-table td {
+    padding-inline: var(--sp-2);
+  }
+}
+
+/* The zone folds with the date and time or not at all, at every width. */
+.when-utc {
+  white-space: nowrap;
+}
+
+/* A state pill that has to fold keeps a readable line height: at the pill's
+   own tight one the two lines of INSUFFICIENT_DATA overprint each other. */
+.attention-table .pill.pill-wrap {
+  white-space: normal;
+  text-align: center;
+  line-height: var(--lh-base);
+  padding-block: var(--sp-1);
+}
+
+/* A time never wraps. */
+.attention-table td.num.cell-when {
+  white-space: nowrap;
+}
