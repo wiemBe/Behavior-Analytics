@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Account } from "./Account";
 import { StaticSession, type SessionValue } from "@/components/auth/session";
@@ -37,7 +37,34 @@ function summary(container: HTMLElement): HTMLElement {
   return trigger;
 }
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("Account", () => {
+  it("shows the API version in the menu, or says it could not be read", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ version: "3.2.1", git_sha: null, migration_head: "0025" }),
+      })),
+    );
+    const { unmount } = render(
+      <StaticSession value={session()}>
+        <Account />
+      </StaticSession>,
+    );
+    expect(await screen.findByText("API version 3.2.1")).toBeInTheDocument();
+    unmount();
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("down"))));
+    render(
+      <StaticSession value={session()}>
+        <Account />
+      </StaticSession>,
+    );
+    expect(await screen.findByText("API version could not be read")).toBeInTheDocument();
+  });
+
   it("shows the username and signs out from the menu", async () => {
     const value = session();
     const { container } = render(

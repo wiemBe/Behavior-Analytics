@@ -2680,7 +2680,15 @@ export interface HealthReady {
   database: string;
 }
 
+export interface ApiVersion {
+  version: string;
+  git_sha: string | null;
+  migration_head: string | null;
+}
+
 export const shellApi = {
+  // Open route: it answers without a session, so the sign-in page can read it.
+  version: (signal?: AbortSignal) => request<ApiVersion>("/version", { signal }),
   healthReady: (signal?: AbortSignal) => request<HealthReady>("/health/ready", { signal }),
   overview: (signal?: AbortSignal) => request<SocOverview>("/overview", { signal }),
   searchCadence: (signal?: AbortSignal) =>
