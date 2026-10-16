@@ -49,7 +49,7 @@ T-114 merged (`edcc725`, GLM 5.3 Flash free): 27 PNGs recaptured, README block-s
 | **F-1** handover 2 ("review what you inherit": GLM's models, migration, catalog, validation) | Grok (`f1-grok2`), from 10:11 | worktree `f1`; DBs `qradar_obs_f1`, `_f1_mig`; log `QRadar-Dash-work/f1/grok2.log` | the first Grok handover (00:22) wrote nothing before the shutdown. Merge only after `main` |
 | **F-4** review round 1 | Grok (`f4-grok-r1b`), from 10:15 | worktree `f4`; DB `qradar_obs_f4`; review `QRadar-Dash-work/f4/review1.md` | (1) the cron floor walks 105,408 fires in 1.61 s on the event loop for `*/5`: must be exact and < 50 ms; (2) `body: dict` dropped the OpenAPI request schema: restore and pin it. Cap, audit split, 422 object and retention accepted |
 | **UI-6.1** viewport matrix | Grok (`ui61-grok`), from 10:22 | worktree `ui61`; ports 3161/8161/9161 | measures; one-line route CSS fixes only |
-| **UI-6.2** accessibility | Codex (`ui62-codex`), from 10:21 | worktree `ui62`; ports 3162/8162/9162 | Codex reset was 02:18 |
+| ~~UI-6.2~~ accessibility | **Merged** (`ba6281f`, Codex 10:16–10:49). Orchestrator's gates in the worktree: lint and typecheck clean, 246 files / 2,857 tests, build OK; PNGs reviewed | — | Findings for a follow-up task (with UI-6.1's): under-24 px targets (anomaly technical-detail disclosure 47×21, filter checkbox labels 19 px, WAF/IPS mapping radios and classification toggles 19.5 px, Next pagination 29×19.5); dashboard description clipped with "…" at 1024; 8 npm advisories (2 moderate, 6 high) |
 | **UI-6.3** dashboard performance | DeepSeek free (`ui63-ds`), from 10:25 | worktree `ui63`; ports 3163/8163/9163 | measures |
 
 
