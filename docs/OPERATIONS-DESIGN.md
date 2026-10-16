@@ -954,6 +954,20 @@ redactor. The support bundle is (§7).
 2. `docker compose exec -T backend python -m app.cli.doctor`, which prints
    the in-container checks.
 
+The host half is built as of OPS-7b. As built, `disk_docker` reports `df -P`
+for Docker's root with the 70% WARN and 90% FAIL thresholds. As built,
+`disk_backup` applies the same thresholds to `QRADAR_DASH_BACKUP_DIR` and also
+checks the §5.3 database-size guard, warning when that size is unavailable. As
+built, `qradar_clock` reports `timedatectl` NTP synchronization and uses
+OPS-R15 for either an unsynchronized clock or a host without that command. As
+built, `selinux` reports the current `getenforce` result as PASS, including
+`Enforcing`, or PASSes with "SELinux is not installed" when the command is
+absent. As built, `containers` checks every service returned by Compose and
+ignores a stopped `qradar-mcp` while the `mcp` profile is off and an exited
+`migrate` only when its exit code is zero. As built,
+`doctor_incontainer` is emitted only when the backend is not running; otherwise
+the wrapper prints the in-container output unchanged and preserves its status.
+
 The disk **free-space** lines are host-side because the backend container
 does not mount the Postgres volume (`docker-compose.yml:40` mounts only the
 secrets volume). The in-container half prints `pg_database_size`, which is
