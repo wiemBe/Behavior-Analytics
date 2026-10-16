@@ -1,5 +1,5 @@
 // The three shell defects left by T-021. jsdom does not lay out, so the two CSS
-// ones are guarded as the CSS contract they are (guidelines §11).
+// ones are guarded as the CSS contract they are (guidelines §12).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

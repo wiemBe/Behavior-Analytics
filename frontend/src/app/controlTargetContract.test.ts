@@ -1,6 +1,6 @@
 // The checkbox, pager links, radio labels, row toggles and toggle labels on the list and
 // admin pages are the operator's click targets. WCAG 2.5.8 wants 24 px for each; jsdom lays
-// nothing out, so the size is pinned as the CSS contract it is (guidelines §11), the same way
+// nothing out, so the size is pinned as the CSS contract it is (guidelines §12), the same way
 // `WidgetFrame.chrome.test.tsx` pins its own controls. Found in UI-6.6: five of them measured
 // 19–21 px.
 import { readFileSync } from "node:fs";

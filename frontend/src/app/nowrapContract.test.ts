@@ -1,5 +1,5 @@
 // `.nowrap` must hold at every width, on every page. jsdom does not lay out, so it is
-// guarded as the CSS contract it is (guidelines §11). Found in UI-5.6b: above 1200 px a
+// guarded as the CSS contract it is (guidelines §12). Found in UI-5.6b: above 1200 px a
 // `td.nowrap` time wrapped on pages that do not load `components/ui/controls.css`, because
 // `globals.css` defined the rule only inside `@media (max-width: 1200px)`.
 import { readFileSync } from "node:fs";
