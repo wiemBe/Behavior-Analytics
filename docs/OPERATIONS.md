@@ -19,11 +19,10 @@ Dört kural her bölümde geçerlidir:
 4. [Yedek ve geri alma](#yedek-ve-geri-alma)
 5. [Tanı](#tanı)
 6. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R42; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R45; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
-Bu kılavuzda geçen bazı komutlar henüz yayımlanmadı (`upgrade`, `rollback`, `backup`, `restore`,
-`support-bundle`, `bundle`). Bunları kullanan her blokta bir uyarı satırı vardır. `install`,
-`status`, `logs` ve `doctor` bugün çalışır.
+`install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
+`support-bundle` bugün çalışır. Yalnız `bundle` (çevrimdışı paket, OPS-3 / OPS-10) henüz yoktur.
 
 ---
 
@@ -236,32 +235,49 @@ denetlenir.
 
 ## Yükseltme
 
-> Bu komut henüz yayımlanmadı (OPS-6).
-
 ```bash
-./qradar-dash upgrade <version>
+./qradar-dash upgrade <version> [--offline]
 ```
 
-`version`, başında `v` olmayan SemVer'dir. İmaj etiketlerinde `v` yoktur.
+`version`, başında `v` olmayan, düz SemVer'dir (`MAJOR.MINOR.PATCH`). Aksi halde betik
+`upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)` ile reddeder. İmaj etiketlerinde `v`
+yoktur. `--offline`, çekmek yerine hedef imajların yerelde yüklü olmasını şart koşar.
 
 ### Ön kontrol
 
 Hiçbir konteyner durdurulmadan önce:
 
-- Hedef `latest` değildir ve tire içermez.
-- `.qradar-dash/state.json` vardır ve `installed_version` hedeften eskidir. Aynı sürüm ve sağlıklı
-  konteynerlerde komut 0 ile çıkar ve bir şey yapmaz. Daha yeni kurulu sürüm reddedilir; o durum
-  `rollback` işidir.
+- `.qradar-dash/state.json` vardır ve geçerlidir; değilse betik geçersiz ya da eksik alanı
+  adıyla bildirir (`upgrade refused: .qradar-dash/state.json field <alan> is invalid or missing`).
+- `installed_version` hedeften eskidir. Aynı sürüm ve sağlıklı konteynerlerde komut çalışma
+  kontrollerini geçer, `Version <sürüm> is already installed and healthy; nothing changed.`
+  yazar ve 0 ile çıkar; aynı sürüm sağlıklı değilse
+  `version <sürüm> is recorded but the running stack is not healthy: <neden>` ile durur.
+  Daha yeni kurulu sürüm `upgrade refused: <kurulu> is newer than <hedef>; that is rollback` ile
+  reddedilir.
 - Hedef imaj çekilebilir ya da zaten yüklüdür. Çekme, yazıcılar durmadan **önce** olur; kayıt
-  defteri hatası kesinti yaratmaz.
+  defteri hatası kesinti yaratmaz. Çekilemezse
+  `upgrade refused: target images are unavailable; no container was stopped`. `--offline`
+  verilmişse çekme yerine her hedef imajın yerelde olduğu doğrulanır.
 - Hedef imajın sürüm notları ayrıştırılır ve `installed_version`, `min_from` değerine eşit ya da
-  büyüktür. Değilse dur: imajlar çekilmiştir, konteynerlere dokunulmamıştır.
-- Disk koruması (bkz. Yedek ve geri alma) geçer.
-- Mevcut `doctor` veritabanı ve migrasyon kontrolleri zaten FAIL değildir. Veritabanı **mevcut**
-  imajın başında değilse biri elle migrate etmiştir ya da önceki migrate çökmüştür. Dur ve OPS-R11'e
-  bak.
+  büyüktür. Ayrıştırılamazsa
+  `upgrade refused: target release notes are missing, invalid, or for another version`; eskiyse
+  `upgrade refused: <hedef> requires at least <min_from>`. Dur: imajlar çekilmiştir,
+  konteynerlere dokunulmamıştır.
+- Disk koruması (bkz. Yedek ve geri alma) geçer. Yedek kökü yoksa
+  `upgrade refused: backup root is unavailable`.
+- `doctor` `db_connect` ve `migration_head` **PASS** verir. Biri FAIL ise
+  `upgrade refused: database readiness is already failing; see runbook OPS-R11`; biri hiç PASS
+  bildirilmediyse `upgrade refused: doctor did not report db_connect and migration_head as PASS;
+  see runbook OPS-R11`. Veritabanı **mevcut** imajın başında değilse biri elle migrate etmiştir
+  ya da önceki migrate çökmüştür. Dur ve OPS-R11'e bak.
+- `.env` içindeki `QRADAR_DASH_VERSION`, durum dosyasındaki `installed_version` ile aynıdır.
+  Değilse `upgrade refused: .env has QRADAR_DASH_VERSION=<değer> but the state file says
+  <kurulu>`.
 - Önceki yükseltme `outcome=failed` kaydettiyse, `rollback` ya da başarılı bir `restore` bunu
-  temizleyene kadar yeni yükseltme engellenir.
+  temizleyene kadar yeni yükseltme `upgrade refused: the last upgrade failed; run rollback or
+  restore first` ile engellenir. `last_upgrade.restored_from` alanı dolu olan `failed` bir kayıt
+  bu engeli kaldırır (başarılı bir `restore` o alanı yazar).
 
 ### Yedek, sonra migrasyon
 
@@ -272,15 +288,24 @@ Hiçbir konteyner durdurulmadan önce:
    eski kodla çalışan bir süreç bir sonraki ekleme işleminde hata alır.
 3. Yedek alınır, nedeni `pre-upgrade`, geçici veritabanına geri yükleme testi dahil. Test
    başarısızsa yükseltme iptal edilir ve yazıcılar **eski** özetlerle yeniden başlar.
-4. Compose projesi yeni özetlere çevrilir.
-5. **Yeni** backend imajıyla `run --rm migrate`.
-6. Migrate 0 ile çıkarsa: backend, worker, beat, frontend ve proxy `up -d`.
-7. 180 sn'ye kadar sağlık beklenir. Sonra:
+4. Redis boşaltılır (`redis-cli FLUSHALL`). Başarısızsa yazıcılar **eski** özetlerle yeniden
+   başlar.
+5. Yükseltme denemesi durum dosyasına yazılır: `installed_version` ve iki imaj haritası eski,
+   `last_upgrade` hedefe `outcome=failed` ve az önce alınan yedekle. Bu kayıt `.env`
+   düzenlenmeden ve migrate çalışmadan **önce** yapılır; buradan sonraki bir çökme ya da yeniden
+   başlatma `upgrade`'i bloklar ve `rollback`'in çalışmasını sağlar. Bu yazı `.env` düzenlemesinden
+   önce başarısız olursa yazıcılar **eski** özetlerle yeniden başlar.
+6. Compose projesi yeni özetlere çevrilir (`.env` içindeki `QRADAR_DASH_VERSION` tek satırda
+   atomik güncellenir).
+7. **Yeni** backend imajıyla `run --rm migrate`.
+8. Migrate 0 ile çıkarsa: backend, worker, beat, frontend ve proxy `up -d`.
+9. 180 sn'ye kadar sağlık beklenir. Sonra:
    - `GET /api/v1/health/ready` 200 döner ve `"database": "ok"` der.
    - `GET /api/v1/version` hedef sürümü bildirir.
    - `doctor` `db_connect` ve `migration_head` PASS verir; canlı `alembic_version` imajın
      `migration_head` değerine eşittir.
-8. Sonuç durum dosyasına yazılır. 7. adım geçmeden başlangıç tamamlanmış sayılmaz.
+10. Sonuç durum dosyasına yazılır (`outcome=success`). 9. adım geçmeden başlangıç tamamlanmış
+    sayılmaz.
 
 Redis, yazıcılar durdurulduktan sonra ve yeni worker'lar başlamadan önce boşaltılır
 (`redis-cli FLUSHALL`). Redis sistem kaydı değildir; broker ve sonuç deposudur. Eski kodun sıraya
@@ -291,18 +316,27 @@ sonraki beat tick'inde alınır. Toplama filigranlıdır ve başarısız bir ça
 
 Yazıcılar durdurulduktan sonra şunlardan biri olursa tetiklenir:
 
-- `migrate` sıfırdan farklı çıkar
-- gerekli bir servis 180 sn içinde sağlıklı olmaz
-- `/api/v1/version` hedef sürüm değildir
+- `migrate` sıfırdan farklı çıkar (`migration failed; starting automatic rollback`)
+- gerekli bir servis 180 sn içinde sağlıklı olmaz (`a required service was not healthy within
+  180 seconds; starting automatic rollback`)
+- `/api/v1/version` hedef sürüm değildir (`version endpoint did not report <hedef>; starting
+  automatic rollback`)
 - `doctor` `db_connect` ya da `migration_head` FAIL verir
 
 QRadar'a ulaşılamaması, bir LDAP hatası, geç kalmış bir arama ailesi ya da disk WARN'ı geri almayı
 tetiklemez. Bunlar yükseltmeden önce de doğru olabilir; eski bir veritabanını sağlam bir yenisinin
 üzerine geri yüklememelidir.
 
-Eylem, az önce alınan yedekle ve `previous_images` ile `rollback`'tir. O geri almanın kendi sağlık
-kontrolü de başarısız olursa betik yazıcıları yeniden durdurur, yedek yolunu yazdırır ve sıfırdan
-farklı kodla çıkar. Üçüncü bir strateji denemez.
+Eylem, az önce alınan yedekle ve `previous_images` ile `rollback`'tir. Bu geri almanın kendi sağlık
+kontrolü de başarısız olursa betik yazıcıları yeniden durdurur, yedek yolunu yazdırır, durumu
+`outcome=failed` olarak kaydeder ve sıfırdan farklı kodla çıkar
+(`Rollback failed; the writers and the UI are stopped. Verified backup: <yol>`). Üçüncü bir
+strateji denemez; operatör `./qradar-dash rollback` komutunu yeniden çalıştırır ya da
+`./qradar-dash restore <yol>` kullanır.
+
+Geri alma başarılı olsa bile `upgrade` **sıfırdan farklı** kodla çıkar: istenen sürüm çalışmıyor.
+Son satır `upgrade to <hedef> failed and was rolled back to <eski>; the broken database was kept`
+olur. Bu, otomatik geri almayı OPS-R44 girişiyle bulmanı sağlar.
 
 ### Kesinti
 
@@ -325,12 +359,14 @@ içermez.
     "from": "0.1.0",
     "to": "0.2.0",
     "outcome": "success",
-    "backup": "/var/backups/qradar-dash/pre-upgrade-20261030T115500Z.dump"
+    "backup": "/var/backups/qradar-dash/qradar-dash-20261030T115500Z-pre-upgrade"
   }
 }
 ```
 
-`outcome` değeri `success`, `rolled_back` ya da `failed` olur. `status` son girdiyi yazdırır.
+`backup` alanı, OPS-5'in yazdığı gibi bir yedek **dizininin** yoludur (`qradar-dash-<utc>-<reason>/`),
+tek bir `.dump` dosyası değil. `outcome` değeri `success`, `rolled_back` ya da `failed` olur.
+Başarılı bir `restore` aynı bloğa `restored_from` alanını ekler. `status` son girdiyi yazdırır.
 `previous_images` `null` ise `rollback` reddeder.
 
 ---
@@ -350,8 +386,8 @@ Bir yedek, yedek kökünün içinde `qradar-dash-<utc>-<reason>/` adlı, izni `0
 | `database.dump` | `POSTGRES_DB` için `pg_dump -Fc` | `0600` |
 | `env.bak` | `.env` kopyası | `0600` |
 | `secrets.tar` | QRadar sırları volume'unun ve vekil sertifika volume'unun tar'ı | `0600` |
-| `state.json` | o andaki durum dosyası | `0600` |
-| `MANIFEST` | sürüm, imaj özetleri, `alembic_version`, veritabanı boyutu, ana makine adı | `0600` |
+| `state.json` | varsa o andaki durum dosyası | `0600` |
+| `MANIFEST` | sürüm, imaj özetleri, `alembic_version`, veritabanı boyutu, ana makine adı, durum dosyası var mı, sır volume kümesi | `0600` |
 
 `reason` değeri `manual`, `scheduled` ya da `pre-upgrade` olur.
 
@@ -362,16 +398,29 @@ TLS özel anahtarını taşır. Redis yedeğe girmez.
 
 ### Yedek alma
 
-> Bu komut henüz yayımlanmadı (OPS-5).
-
 ```bash
-./qradar-dash backup
+./qradar-dash backup [manual|scheduled|pre-upgrade] [--no-verify]
 ```
+
+`reason` verilmezse `manual` olur. Betik önce diski okur, dökümü konteynerin içinde alır, dışarı
+kopyalar ve `.<ad>.partial` altında hazırlar; doğrulama geçince dizini son adına taşır. Her başarı
+ya da hata yolu yarım dizini, konteyner içindeki dökümü ve doğrulama veritabanını temizler.
 
 `backup`, `--no-verify` verilmedikçe veritabanını aynı sunucuda `qradar_obs_restore_test` içine geri
 yükler, `alembic_version` değerinin kaynakla eşleştiğini ve `alembic_version` ile `role` üzerinde
 `SELECT count(*)` çalıştığını doğrular, sonra geçici veritabanını siler. `pre-upgrade` yedekleri her
-zaman doğrulanır. Başarısız doğrulama eksik dizini siler ve sıfırdan farklı kodla çıkar.
+zaman doğrulanır; `pre-upgrade` ile `--no-verify` birlikte verilemez (`pre-upgrade backups must be
+verified`). Başarısız doğrulama eksik dizini siler ve sıfırdan farklı kodla çıkar.
+
+İki seçenek yedek almaz; ikisi de yalnız zamanlayıcı içindir ve bir nedenle ya da `--no-verify` ile
+birleştirilemez:
+
+- `./qradar-dash backup --print-timer`: günlük systemd servisini ve zamanlayıcısını yazdırır,
+  hiçbir şey yazmaz.
+- `./qradar-dash backup --install-timer`: bunları yazıp etkinleştirir. `root` için
+  `/etc/systemd/system` altına, diğer kullanıcılar için o kullanıcının systemd dizinine. Kullanıcı
+  zamanlayıcısı için betik "A user timer runs only while that user has a session unless lingering
+  is enabled." satırını ve `loginctl enable-linger <kullanıcı>` komutunu yazdırır; komutu çalıştırmaz.
 
 **Disk koruması:** betik yazmadan önce `pg_database_size` ve yedek dosya sisteminin `df` değerini
 okur. Boş alan `2 × veritabanı boyutu + 2 GiB` değerinden azsa reddeder. `doctor` `disk_backup` bu
@@ -386,43 +435,90 @@ korumayı kullanır.
 Bir yedek, ancak **sonraki** yedeğin koruması o yedek olmadan zaten geçiyorsa silinir. Koruma
 geçmezse betik boyutu ve yolu yazdırır ve durur.
 
-Günlük yedek `qradar-dash-backup.timer` adlı systemd zamanlayıcısıyla `qradar-dash backup` çalıştırır
-(OPS-5 kurar).
+Günlük yedek `qradar-dash-backup.timer` adlı systemd zamanlayıcısıyla `./qradar-dash backup
+scheduled` çalıştırır; zamanlayıcı kalıcıdır ve 15 dakikalık rastgele bir gecikmesi vardır.
 
 ### Geri alma (`rollback`)
 
-> Bu komut henüz yayımlanmadı (OPS-6).
-
 ```bash
-./qradar-dash rollback
+./qradar-dash rollback [--non-interactive --yes]
 ```
 
-Argüman almaz. `previous_images` ve `last_upgrade.backup` kullanır.
+Argüman olarak yalnız bu iki seçeneği alır. `previous_images` ve `last_upgrade.backup` kullanır;
+başka bir yedeği seçemez. Sıradan önce, hiçbir konteyner durdurulmadan reddeder:
 
-1. `previous_images` null ise ya da yedek dizini yoksa reddeder.
-2. Yazıcıları ve arayüzü durdurur.
-3. O dökümü uygulama veritabanının üzerine geri yükler: `qradar_obs_rollback` içine geri yükler,
-   `alembic_version` doğrular, bağlantıları sonlandırır, mevcut veritabanını
-   `qradar_obs_broken_<utc>` olarak yeniden adlandırır, geri yükleneni `POSTGRES_DB` yapar. Bozuk
-   kopya, operatör silene kadar durur; kötü bir geri alma, değiştirdiği veritabanını yine bulur.
-4. Önceki imaj özetlerini başlatır. İmaj çekmez; özetler yereldir.
-5. Yükseltmedeki aynı sağlık kontrolleri, bu kez **önceki** sürümü bekleyerek.
-6. `outcome=rolled_back` kaydeder.
+- `.qradar-dash/state.json` geçersizse
+  (`rollback refused: .qradar-dash/state.json field <alan> is invalid or missing`).
+- `previous_images` null ise (`rollback refused: previous_images is null`).
+- `last_upgrade` yoksa (`rollback refused: last_upgrade is missing`).
+- Yedek dizini eksik ya da izinleri güvensizse
+  (`rollback refused: last_upgrade.backup is missing or incomplete: <yol>`).
+- Yedeğin `MANIFEST` sürümü `last_upgrade.from` ile eşleşmiyorsa
+  (`rollback refused: backup version does not match last_upgrade.from`).
+- Önceki imajlardan biri yerelde yoksa ya da özeti tutmuyorsa
+  (`rollback refused: a previous image is absent or has the wrong local digest`).
+- Yedeğin `ENCRYPTION_KEY` değeri ne geçerli anahtar ne de `ENCRYPTION_KEYS_JSON` içindeyse
+  (`rollback refused: the backup's ENCRYPTION_KEY is not the current key or in
+  ENCRYPTION_KEYS_JSON`).
+- Docker kökündeki disk koruması geçmezse.
+
+Sonra, durdurmadan önce onay ister. Etkileşimli modda
+`Rollback replaces the live database with <yol>; data written since is kept only in the broken
+copy.` yazıp `Type rollback to continue: ` ile stdin'den `rollback` sözcüğünü bekler; yanlış sözcük
+`rollback confirmation was not given` ile reddedilir. `--non-interactive` verilmişse `--yes` de
+gereklidir (`--non-interactive rollback requires --yes`).
+
+1. Yazıcıları ve arayüzü durdurur.
+2. O dökümü uygulama veritabanının üzerine geri yükler: geçici `qradar_obs_restore_<utc>`
+   veritabanına geri yükler, `alembic_version` doğrular, bağlantıları sonlandırır, mevcut
+   veritabanını `qradar_obs_broken_<utc>` olarak yeniden adlandırır, geri yükleneni `POSTGRES_DB`
+   yapar. Bozuk kopya, operatör silene kadar durur; kötü bir geri alma, değiştirdiği veritabanını
+   yine bulur. Swap başarılı olduğunda betik bozuk kopyayı ve onu sonra düşürmek için tam komutu
+   yazdırır.
+3. Önceki imaj özetlerini başlatır; özetleri önceki sürümün etiketlerine çevirir. İmaj çekmez;
+   özetler yereldir.
+4. Yükseltmedeki aynı sağlık kontrolleri, bu kez **önceki** sürümü bekleyerek.
+5. `outcome=rolled_back` kaydeder ve `previous_images` değerini temizler.
+
+Geri alma kendi sağlık kontrolünde başarısız olursa (OPS-R45): yazıcılar yeniden durdurulur, yedek
+yolu yazdırılır, durum `outcome=failed` olarak kaydedilir ve üçüncü bir yol denenmez.
 
 `rollback` `alembic downgrade` çalıştırmaz.
 
 ### Seçili yedeği geri yükleme (`restore`)
 
-> Bu komut henüz yayımlanmadı (OPS-5).
-
 ```bash
-./qradar-dash restore <path>
+./qradar-dash restore <backup-directory> [--non-interactive --yes]
 ```
 
-`restore <path>`, `last_upgrade.backup` olmayan seçili bir yedek için aynı sıradır. Etkileşimli
-modda stdin'den `restore` sözcüğünü ister; `--non-interactive` verilmişse `--yes` ister.
-`MANIFEST` sürümü başlatılacak imajlardan yeni olan bir yolu reddeder: eski koda karşı yeni döküm,
-migrasyon kuralının önlemek için var olduğu hatadır.
+`restore <backup-directory>`, `last_upgrade.backup` olmayan seçili bir yedek için aynı sıradır.
+Durdurmadan önce şunları reddeder:
+
+- Dizin eksik ya da dosyaları/izinleri güvensizse
+  (`restore refused: the backup directory is incomplete or has unsafe modes`). Dört zorunlu dosya
+  (`database.dump`, `env.bak`, `secrets.tar`, `MANIFEST`) ve `MANIFEST` `STATE_JSON=included` diyorsa
+  `state.json` gerekir.
+- Yedeğin ya da çalışan imajın sürümü okunamıyorsa
+  (`restore refused: backup or current image version is unavailable`).
+- `MANIFEST` sürümü çalışan sürümden **farklıysa, iki yönde de**: yeni ise
+  `restore refused: backup version is newer; upgrade to that version first`; eski ise
+  `restore refused: backup version is older; use rollback, or put that version's images back and
+  then restore`. Eski koda karşı yeni döküm, migrasyon kuralının önlemek için var olduğu hatadır.
+- Yedekteki `ENCRYPTION_KEY` ne geçerli anahtar ne de `ENCRYPTION_KEYS_JSON` içindeyse
+  (`restore refused: the backup encryption key is not in the current keyring.`). İki anahtar da
+  yazdırılmaz; betik eski anahtarı yerine koymayı söyler.
+- Docker kökündeki disk koruması geçmezse
+  (`2 × döküm boyutu + 2 GiB`, kopyalanan döküm ve geri yüklenen veritabanı için).
+
+Sonra onay ister: etkileşimli modda stdin'den `restore` sözcüğünü
+(`Type restore to replace the application database: `); `--non-interactive` verilmişse `--yes`
+ister (`--non-interactive restore requires --yes`).
+
+Swap, mevcut veritabanını `qradar_obs_broken_<utc>` olarak saklar ve bozuk kopyayı düşürmek için
+tam komutu hemen yazdırır. Başarılı geri yükleme `Restore complete (manual).` yazar ve şu satırla
+biter: `Secrets were not restored.` Yani `secrets.tar` **otomatik geri yüklenmez**; içeriğini
+`tar -tf <yedek>/secrets.tar` ile incele ve gerekirse elle uygula. `state.json`'a `restored_from`
+alanı işlenir.
 
 ---
 
@@ -510,8 +606,13 @@ bilerek kapalıdır. Satır, bir ailenin neden filigranı olmadığını bayrak 
 ./qradar-dash status
 ```
 
-Compose sağlığını, `installed_version` değerini, imaj özetlerini, son yükseltme satırını, son yedek
-yolunu ve yaşını ve iki dosya sistemindeki boş alanı yazdırır. `.env` dosyasını yazdırmaz.
+Compose sağlığını (`docker compose ps`), API hazırlık satırını
+(`API ready: HTTP <kod> (http://127.0.0.1:<port>/api/v1/health/ready)`), `Installed version`
+değerini, her imaj için `Image <servis>: <özet>` satırını ve son yükseltmeyi yazdırır:
+`Last upgrade: <outcome>, <from> -> <to> at <at>` ve `Last upgrade backup: <yol> (age <yaş>)`.
+Son yükseltme yoksa `Last upgrade: none` yazar. `.env` dosyasını yazdırmaz. `.qradar-dash/state.json`
+eksik ya da geçersizse geçersiz alanı adıyla bildirir, `Installed version: unknown` yazar ve 1 ile
+çıkar.
 
 ### `logs`
 
@@ -525,13 +626,17 @@ geçen satırlarda gizler. `logs` ikinci bir temizleyici değildir; temizleyici 
 
 ### `support-bundle`
 
-> Bu komut henüz yayımlanmadı (OPS-8).
-
 ```bash
 ./qradar-dash support-bundle
 ```
 
-`<backup-root>/support-<utc>.tar.gz` dosyasını (izin `0600`) yazar ve yolu yazdırır.
+`<backup-root>/support-<utc>.tar.gz` dosyasını (izin `0600`) yazar ve yolu yazdırır. Parçalar yedek
+kökü altında `0700` bir hazırlık dizininde toplanır; bu dizin ve çıkış/sinyal tuzaklarıyla
+temizlenir. Okunamayan her tanı parçası tek satırlık bir `<parça>.error.txt` olur ve paketi
+engellemez. Birleştirilen dosyalar, filtrelenmemiş `.env` ve okunabilen sır dosyaları tek bir tar
+akışı olarak `docker compose run --rm --no-deps -T backend python -m app.cli.support_bundle`
+komutuna stdin'den verilir; temizlenmiş arşiv ancak temizleyici başarılı olursa son adına taşınır.
+Backend imajı yoksa ya da temizleyici hata verirse son arşiv oluşmaz.
 
 İçeriği: `doctor.txt` (birleşik rapor), `version.txt`, `compose-ps.txt`, `watermarks.txt` ve
 `cadence.txt`, `config.env` (sır satırları **maskelenmez, çıkarılır**) ve `logs/` (her servis için
@@ -809,10 +914,8 @@ docker compose up -d backend frontend celery-worker celery-beat
 
 Veritabanı imajdan **yeniyse downgrade etme**. İmaja uyan yedeği geri yükle (Yedek ve geri alma).
 
-> Bu komut henüz yayımlanmadı (OPS-5).
-
 ```bash
-./qradar-dash restore <path>
+./qradar-dash restore <backup-directory>
 ```
 
 ### OPS-R12. Arayüz açılıyor ama her API çağrısı başarısız
@@ -1201,10 +1304,8 @@ docker compose ps
 **Çözüm:** Yükseltme öncesi yedeğin `restore` ile geri yüklenmesi. Geri almayı "bitirmek" için
 downgrade çalıştırma.
 
-> Bu komut henüz yayımlanmadı (OPS-5).
-
 ```bash
-./qradar-dash restore <path>
+./qradar-dash restore <backup-directory>
 ```
 
 ### OPS-R35. `.env` düzenlendikten sonra `password authentication failed for user qradar_obs`
@@ -1299,21 +1400,27 @@ yoktur (AUTH-1).
 
 ### OPS-R41. Worker sağlık kontrolü `inspect ping` ile titreşiyor
 
-**Belirti:** Worker sağlık kontrolü `inspect ping` ile gidip geliyor (flap).
+**Belirti:** `celery-worker` servisinin Compose sağlığı gidip geliyor (flap) ya da `unhealthy`
+kalıyor, buna karşın `doctor` `celery_workers` PASS verir.
 
-**Olası neden:** Kontrol `celery@$HOSTNAME` adresine ping atar. Celery düğüm adıyla eşleşmeyen bir
-ana makine adı ping'i başarısız kılar.
+**Olası neden:** Compose sağlık kontrolü `celery@$HOSTNAME` adresine ping atar
+(`docker-compose.yml`, `celery-worker` `healthcheck`). Ana makine adı Celery düğüm adıyla
+eşleşmezse filtreli ping boş döner; worker'lar ayakta olsa bile kontrol başarısız olur.
 
-**Doğrulama:** `doctor` `celery_workers` ile `docker inspect` sağlığı karşılaştırılır.
+**Doğrulama:** İki görünüm çelişir: `doctor` `celery_workers` satırı en az bir pong bildirir (filtresiz
+`inspect ping`), `docker compose ps` ise `celery-worker` için `unhealthy` ya da dalgalanan bir sağlık
+gösterir. Bu çelişki adlandırma uyuşmazlığının kanıtıdır; ikisi de down ise sorun worker'ın kendisidir.
 
 ```bash
-docker inspect
+docker compose ps
 ```
 
-**Çözüm:** Düğüm adı ve sağlık kontrolü aynı adı kullanmalıdır. OPS-7, filtreli ping hiçbir şey
-döndürmediğinde sabit düğüm adı olmadan `inspect ping` kullanır ve iki sonucu da bildirir; adlandırma
-uyumsuzluğu bütün worker kümesinin sahte FAIL'i yerine nedenli bir WARN olur. Filtresiz ping bir düğüm
-döndürürse worker'lar ayaktadır.
+**Çözüm:** Düğüm adı ile sağlık kontrolü aynı adı kullanmalıdır. As built, `doctor` `celery_workers`
+tek bir **filtresiz** `inspect ping` yapar: en az bir yanıt PASS olur ve worker sayısını ve düğüm
+adlarını yazar; hiç yanıt yoksa FAIL verir (`no Celery worker returned pong`, `runbook: OPS-R41`).
+Yani adlandırma uyuşmazlığı artık bütün worker kümesinin sahte FAIL'i değil, Compose sağlığında bir
+titreşimdir. Sağlık kontrolündeki adı Celery düğüm adıyla hizala; filtresiz ping bir düğüm
+döndürüyorsa worker'lar ayaktadır.
 
 ### OPS-R42. Oturum ana makineden bir kez çalışıyor, tarayıcıdan çalışmıyor
 
@@ -1329,3 +1436,70 @@ onu saklamaz.
 ```
 
 **Çözüm:** `https` genel kökenini kullan. Loopback HTTP üretim arayüzü değildir.
+
+### OPS-R43. `restore` seçilen yedeği reddediyor
+
+**Belirti:** `restore`, seçilen yedeği hiçbir şey durdurmadan reddediyor.
+
+**Olası neden:** Dizin `database.dump`, `env.bak`, `secrets.tar`, `MANIFEST` (ya da
+`STATE_JSON=included` ise `state.json`) dosyalarından biri eksik ya da izinleri `0700`/`0600`
+değil; `MANIFEST` sürümü çalışan sürümden **iki yönde de** farklı; yedeğin `ENCRYPTION_KEY` değeri
+ne geçerli anahtar ne de `ENCRYPTION_KEYS_JSON` içinde; Docker kökündeki disk koruması geçmiyor;
+ya da onay sözcüğü yanlış yazıldı.
+
+**Doğrulama:** Reddetme satırı nedeni tam olarak yazar
+(`restore refused: …` / `restore confirmation was not given`).
+
+```bash
+./qradar-dash restore <backup-directory>
+```
+
+**Çözüm:** Satırın adını verdiği neden:
+
+- Dizin eksik/bozuksa yedeği yeniden al (`./qradar-dash backup`).
+- `backup version is newer` ise önce `./qradar-dash upgrade <sürüm>` ile o sürüme geç.
+- `backup version is older` ise `./qradar-dash rollback` kullan (bkz. OPS-R45) ya da o sürümün
+  imajlarını geri koyup `restore`'u yeniden çalıştır.
+- Anahtar uyuşmazlığında eski `ENCRYPTION_KEY` değerini `ENCRYPTION_KEYS_JSON` içine koy
+  (bkz. OPS-R16); yeni anahtar üretme.
+- Disk yetersizse yer aç (bkz. OPS-R14).
+
+### OPS-R44. Bir yükseltme otomatik geri alındı
+
+**Belirti:** `upgrade` sıfırdan farklı kodla çıktı ve son satır
+`upgrade to <hedef> failed and was rolled back to <eski>; the broken database was kept` oldu.
+Çalışan sürüm yine eski sürümdür.
+
+**Olası neden:** Yazıcılar durdurulduktan sonra tetikleyicilerden biri: `migrate` sıfırdan farklı
+çıktı, gerekli bir servis 180 sn içinde sağlıklı olmadı, `/api/v1/version` hedefi bildirmedi, ya da
+`doctor` `db_connect`/`migration_head` FAIL verdi. QRadar'a ulaşılamaması, bir LDAP hatası, geç
+kalmış bir arama ailesi ya da disk WARN'ı bu geri almayı tetiklemez.
+
+**Doğrulama:** Durum dosyası son yükseltmeyi `outcome=rolled_back` gösterir ve `doctor` sağlıklıdır.
+
+```bash
+./qradar-dash status
+```
+
+**Çözüm:** Geri alma tamamlandı; veri kaybı yok, yazıcılar eski sürümle çalışıyor. Yukarıdaki
+tetikleyicinin nedenini gider (migrate çıktısı, servis sağlığı, sürüm ucu, OPS-R11), sonra
+yükseltmeyi yeniden dene. `outcome=rolled_back` sonraki yükseltmeyi engellemez; `outcome=failed`
+engeller (bkz. OPS-R45).
+
+### OPS-R45. Geri alma başarısız oldu
+
+**Belirti:** `Rollback failed; the writers and the UI are stopped. Verified backup: <yol>` yazıldı;
+yazıcılar durmuş ve durum dosyası son yükseltmeyi `outcome=failed` gösteriyor.
+
+**Olası neden:** Geri yüklenen dökümün swap'i ya da **önceki** sürümün sağlık kontrolü başarısız
+oldu. Betik üçüncü bir strateji denemez; kontrollü durur.
+
+**Doğrulama:** `status` `Last upgrade: failed, …` yazar ve `doctor` FAIL verir; yazıcılar kapalıdır.
+
+```bash
+./qradar-dash status
+```
+
+**Çözüm:** Yazdırılan nedeni gider, sonra `./qradar-dash rollback` komutunu yeniden çalıştır; o da
+olmazsa `./qradar-dash restore <yol>` ile aynı doğrulanmış yedeği geri yükle. Bozuk veritabanı
+kopyası silinmeden durur.
