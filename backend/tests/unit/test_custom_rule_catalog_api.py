@@ -22,7 +22,7 @@ from app.main import create_app
 from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind, SourceClass
 from app.schemas.custom_rule import CatalogMetricOut, CustomRuleCatalogOut
 
-_COLUMNS = ("log_source_id", "source_class", "waf_endpoint_id", "ips_entity_id")
+_COLUMNS = ("log_source_id", "source_class", "waf_endpoint_id", "ips_entity_id", "pw_value_id")
 
 
 def _catalog(
@@ -56,6 +56,7 @@ def _paired(kind: CustomRuleSubjectKind, column: str) -> CustomRuleDraft:
         source_class=SourceClass.LINUX.value if column == "source_class" else None,
         waf_endpoint_id=uuid.uuid4() if column == "waf_endpoint_id" else None,
         ips_entity_id=uuid.uuid4() if column == "ips_entity_id" else None,
+        pw_value_id=uuid.uuid4() if column == "pw_value_id" else None,
     )
 
 

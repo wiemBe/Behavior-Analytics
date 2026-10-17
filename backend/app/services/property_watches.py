@@ -34,6 +34,7 @@ from sqlalchemy import and_, func, null, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.models.custom_rule import CustomRule
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     PwAnomalyType,
@@ -55,6 +56,7 @@ from app.property_watch.facts import (
     PwBucketFact,
     PwFactError,
     PwReadingKind,
+    join_tuple_key,
     reading_for,
     split_tuple_key,
 )
@@ -1229,4 +1231,60 @@ def preview_audit_counts(preview: PreviewOut) -> dict[str, Any]:
         "total_events": preview.total_events,
         "parsed_events": preview.parsed_events,
         "property_parses": preview.property_parses,
+    }
+
+
+# --------------------------------------------------------- F.1 rules that pin a value (PW-6)
+@dataclass(frozen=True)
+class DependentRule:
+    """A custom rule that pins one of a watch's values (design §G.10.2)."""
+
+    id: uuid.UUID
+    name: str
+
+
+async def dependent_rules(
+    session: AsyncSession,
+    watch_id: uuid.UUID,
+    *,
+    value_keys: Iterable[str] | None = None,
+) -> list[DependentRule]:
+    """The F.1 rules that pin a value of this watch, by name; one statement.
+
+    `value_keys` narrows to the named values (an unpin); `None` is every value (a delete or a
+    change of `watch_version`). A rule holds a `pw_value` row of some version, so the version
+    is not part of the question.
+    """
+    statement = (
+        select(CustomRule.id, CustomRule.name)
+        .join(PwValue, PwValue.id == CustomRule.pw_value_id)
+        .where(PwValue.watch_id == watch_id)
+        .order_by(CustomRule.name.asc(), CustomRule.id.asc())
+    )
+    if value_keys is not None:
+        keys = list(value_keys)
+        if not keys:
+            return []
+        statement = statement.where(PwValue.value_key.in_(keys))
+    rows = (await session.execute(statement)).all()
+    return [DependentRule(id=row[0], name=row[1]) for row in rows]
+
+
+def removed_pin_keys(
+    current: Iterable[Sequence[str]], wanted: Iterable[Sequence[str]]
+) -> list[str]:
+    """The `value_key` of every pin in `current` that `wanted` no longer holds."""
+    keep = {tuple(pin) for pin in wanted}
+    return [join_tuple_key(tuple(pin)) for pin in current if tuple(pin) not in keep]
+
+
+def dependency_refusal(rules: Sequence[DependentRule], action: str) -> dict[str, Any]:
+    """The 409 body: what was refused, why, and the rules to detach first."""
+    names = ", ".join(f"'{rule.name}'" for rule in rules)
+    return {
+        "message": (
+            f"cannot {action}: custom rule(s) {names} pin a value of this watch; "
+            "detach or delete the rule(s) first"
+        ),
+        "rules": [{"id": str(rule.id), "name": rule.name} for rule in rules],
     }

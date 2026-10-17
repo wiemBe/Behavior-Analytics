@@ -25,6 +25,7 @@ _SUBJECT_COLUMNS: dict[CustomRuleSubjectKind, tuple[str, ...]] = {
     CustomRuleSubjectKind.WAF_ENDPOINT: ("waf_endpoint_id",),
     CustomRuleSubjectKind.IPS_ENTITY: ("ips_entity_id",),
     CustomRuleSubjectKind.IPS_SOURCE: ("log_source_id",),
+    CustomRuleSubjectKind.PW_VALUE: ("pw_value_id",),
 }
 
 
@@ -44,6 +45,7 @@ class CustomRuleDraft:
     source_class: str | None = None
     waf_endpoint_id: uuid.UUID | None = None
     ips_entity_id: uuid.UUID | None = None
+    pw_value_id: uuid.UUID | None = None
     enabled: bool = False
 
 
@@ -69,6 +71,7 @@ def validate_rule_draft(
         "source_class": draft.source_class,
         "waf_endpoint_id": draft.waf_endpoint_id,
         "ips_entity_id": draft.ips_entity_id,
+        "pw_value_id": draft.pw_value_id,
     }
     for name, value in columns.items():
         if name in expected and value is None:

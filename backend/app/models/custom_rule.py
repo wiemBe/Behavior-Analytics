@@ -1,7 +1,8 @@
 """Phase F — operator-authored threshold rules over collected aggregates.
 
 A custom rule is a tripwire on data the platform already stores every bucket:
-a subject (log source, fleet class, WAF endpoint, IPS entity or IPS source), a
+a subject (log source, fleet class, WAF endpoint, IPS entity, IPS source or
+pinned property-watch value), a
 metric from the catalog in `app.custom_rules.catalog`, an operator, a
 threshold, a sustain and a recovery. Evaluation reads stored aggregates only —
 never a new Ariel search — and persists nothing raw: breach rows carry counts,
@@ -45,15 +46,23 @@ from app.models.enums import AnomalyState, CustomRuleSubjectKind, Severity, WafM
 #: validated against the in-code catalog (design §F.3.1, §F.3.2).
 CUSTOM_RULE_SUBJECT_CHECK = (
     "(subject_kind = 'LOG_SOURCE' AND log_source_id IS NOT NULL "
-    "AND source_class IS NULL AND waf_endpoint_id IS NULL AND ips_entity_id IS NULL) OR "
+    "AND source_class IS NULL AND waf_endpoint_id IS NULL AND ips_entity_id IS NULL "
+    "AND pw_value_id IS NULL) OR "
     "(subject_kind = 'FLEET_CLASS' AND source_class IS NOT NULL "
-    "AND log_source_id IS NULL AND waf_endpoint_id IS NULL AND ips_entity_id IS NULL) OR "
+    "AND log_source_id IS NULL AND waf_endpoint_id IS NULL AND ips_entity_id IS NULL "
+    "AND pw_value_id IS NULL) OR "
     "(subject_kind = 'WAF_ENDPOINT' AND waf_endpoint_id IS NOT NULL "
-    "AND log_source_id IS NULL AND source_class IS NULL AND ips_entity_id IS NULL) OR "
+    "AND log_source_id IS NULL AND source_class IS NULL AND ips_entity_id IS NULL "
+    "AND pw_value_id IS NULL) OR "
     "(subject_kind = 'IPS_ENTITY' AND ips_entity_id IS NOT NULL "
-    "AND log_source_id IS NULL AND source_class IS NULL AND waf_endpoint_id IS NULL) OR "
+    "AND log_source_id IS NULL AND source_class IS NULL AND waf_endpoint_id IS NULL "
+    "AND pw_value_id IS NULL) OR "
     "(subject_kind = 'IPS_SOURCE' AND log_source_id IS NOT NULL "
-    "AND source_class IS NULL AND waf_endpoint_id IS NULL AND ips_entity_id IS NULL)"
+    "AND source_class IS NULL AND waf_endpoint_id IS NULL AND ips_entity_id IS NULL "
+    "AND pw_value_id IS NULL) OR "
+    "(subject_kind = 'PW_VALUE' AND pw_value_id IS NOT NULL "
+    "AND log_source_id IS NULL AND source_class IS NULL AND waf_endpoint_id IS NULL "
+    "AND ips_entity_id IS NULL)"
 )
 
 _OPERATOR_CHECK = "('GT', 'GE', 'LT', 'LE', 'EQ')"
@@ -101,6 +110,14 @@ class CustomRule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     #: Set iff IPS_ENTITY.
     ips_entity_id: Mapped[uuid.UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("ips_entity.id", ondelete="CASCADE")
+    )
+
+    #: Set iff PW_VALUE (Phase G, design §G.10.2). RESTRICT, not CASCADE: an
+    #: operator who deletes a watch on purpose must not silently delete rules.
+    pw_value_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("pw_value.id", ondelete="RESTRICT"),
+        index=True,
     )
 
     #: One of `CustomRuleMetric`; validated against the catalog in code.

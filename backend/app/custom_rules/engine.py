@@ -62,6 +62,7 @@ from app.custom_rules.loaders import (
     load_ips_entities,
     load_ips_sources,
     load_log_sources,
+    load_pw_values,
     load_waf_endpoints,
 )
 from app.models.custom_rule import CustomRule, CustomRuleBreach, CustomRuleWatermark
@@ -75,6 +76,7 @@ from app.models.enums import (
 )
 from app.models.ips import IpsEntity
 from app.models.log_source import LogSource
+from app.models.property_watch import PropertyWatch, PwValue
 from app.models.search_cadence import SearchCadenceSetting
 from app.models.waf import WafEndpoint
 
@@ -108,6 +110,7 @@ _FLEET_CLASS = CustomRuleSubjectKind.FLEET_CLASS.value
 _WAF_ENDPOINT = CustomRuleSubjectKind.WAF_ENDPOINT.value
 _IPS_ENTITY = CustomRuleSubjectKind.IPS_ENTITY.value
 _IPS_SOURCE = CustomRuleSubjectKind.IPS_SOURCE.value
+_PW_VALUE = CustomRuleSubjectKind.PW_VALUE.value
 
 # Fleet EPS is summed from Phase A ``log_source_metric`` rows, so it waits on
 # the same search family as a log-source rule. There is no fleet cadence.
@@ -117,6 +120,7 @@ _KIND_FAMILY: dict[str, SearchFamily] = {
     _WAF_ENDPOINT: SearchFamily.WAF_COLLECTION,
     _IPS_ENTITY: SearchFamily.IPS_COLLECTION,
     _IPS_SOURCE: SearchFamily.IPS_COLLECTION,
+    _PW_VALUE: SearchFamily.PROPERTY_WATCH,
 }
 
 
@@ -152,6 +156,8 @@ class _Loaded:
     endpoint: WafEndpoint | None
     entity: IpsEntity | None
     source: LogSource | None
+    pw_value: PwValue | None = None
+    pw_watch: PropertyWatch | None = None
 
 
 @dataclass
@@ -217,7 +223,15 @@ class CustomRuleEngine:
         )
         rows = (
             await self.session.execute(
-                select(CustomRule, CustomRuleBreach, WafEndpoint, IpsEntity, LogSource)
+                select(
+                    CustomRule,
+                    CustomRuleBreach,
+                    WafEndpoint,
+                    IpsEntity,
+                    LogSource,
+                    PwValue,
+                    PropertyWatch,
+                )
                 .outerjoin(
                     CustomRuleBreach,
                     CustomRuleBreach.id == CustomRule.active_breach_id,
@@ -225,11 +239,13 @@ class CustomRuleEngine:
                 .outerjoin(WafEndpoint, WafEndpoint.id == CustomRule.waf_endpoint_id)
                 .outerjoin(IpsEntity, IpsEntity.id == CustomRule.ips_entity_id)
                 .outerjoin(LogSource, LogSource.id == source_id)
+                .outerjoin(PwValue, PwValue.id == CustomRule.pw_value_id)
+                .outerjoin(PropertyWatch, PropertyWatch.id == PwValue.watch_id)
                 .order_by(CustomRule.id)
             )
         ).all()
         loaded: list[_Loaded] = []
-        for rule, breach, endpoint, entity, source in rows:
+        for rule, breach, endpoint, entity, source, pw_value, pw_watch in rows:
             # A dangling pointer is not a breach. The tick clears it and does
             # not invent a resolution.
             breach_row: CustomRuleBreach | None = breach
@@ -242,6 +258,8 @@ class CustomRuleEngine:
                     endpoint=endpoint,
                     entity=entity,
                     source=source,
+                    pw_value=pw_value,
+                    pw_watch=pw_watch,
                 )
             )
         return loaded
@@ -371,6 +389,14 @@ class CustomRuleEngine:
         if kind == _IPS_SOURCE:
             return await load_ips_sources(
                 self.session, _uuids(keys), after=after, through=through
+            )
+        if kind == _PW_VALUE:
+            return await load_pw_values(
+                self.session,
+                _uuids(keys),
+                after=after,
+                through=through,
+                coverage_floor=self.settings.pw_min_coverage,
             )
         raise RuntimeError(f"no bulk loader for subject kind {kind}")
 
@@ -640,6 +666,10 @@ def _evaluable(item: _Loaded, settings: Settings) -> bool:
     return collected
 
 
+#: Kinds whose data comes from Phase A rows, which have no collection switch of their own.
+_FAMILY_ALWAYS_COLLECTED = frozenset({_LOG_SOURCE, _FLEET_CLASS})
+
+
 def _family_collected(kind: str, settings: Settings) -> tuple[bool, str | None]:
     if kind == _WAF_ENDPOINT:
         if settings.waf_collection_enabled:
@@ -649,7 +679,14 @@ def _family_collected(kind: str, settings: Settings) -> tuple[bool, str | None]:
         if settings.ips_collection_enabled:
             return True, None
         return False, "ips_collection_enabled is off"
-    return True, None
+    if kind == _PW_VALUE:
+        if settings.pw_collection_enabled:
+            return True, None
+        return False, "pw_collection_enabled is off"
+    if kind in _FAMILY_ALWAYS_COLLECTED:
+        return True, None
+    # An unknown kind is never judged: the default must not be "collected".
+    return False, f"no collection family is known for subject kind {kind}"
 
 
 def _retired(item: _Loaded) -> tuple[bool, str | None]:
@@ -674,9 +711,23 @@ def _retired(item: _Loaded) -> tuple[bool, str | None]:
                 return True, f"the entity was retired at {entity.retired_at.isoformat()}"
             return True, "the entity is retired"
         return False, None
-    if item.source is None:
-        return True, "the subject no longer exists"
-    return False, None
+    if kind == _PW_VALUE:
+        value = item.pw_value
+        if value is None:
+            return True, "the subject no longer exists"
+        # A pinned value is never retired by idleness. One that is no longer pinned is a
+        # value the rule may not depend on (design §G.10.2): fail closed.
+        if not value.pinned:
+            return True, "the value is no longer pinned"
+        if not value.active:
+            return True, "the value is retired"
+        return False, None
+    if kind in (_LOG_SOURCE, _IPS_SOURCE):
+        if item.source is None:
+            return True, "the subject no longer exists"
+        return False, None
+    # An unknown kind has no retirement branch: it is retired, never evaluated.
+    return True, f"no retirement rule is known for subject kind {kind}"
 
 
 def _label(item: _Loaded) -> str:
@@ -692,9 +743,16 @@ def _label(item: _Loaded) -> str:
             return "retired entity"
         shown = item.entity.display_name or item.entity.value_key
         return f"{_value(item.entity.dimension)} {shown}"[:255]
-    if item.source is None:
-        return "unknown source"
-    return item.source.name[:255]
+    if kind == _PW_VALUE:
+        if item.pw_value is None or item.pw_watch is None:
+            return "unknown property-watch value"
+        shown = item.pw_value.value_key.replace("\x1f", " / ")
+        return f"{item.pw_watch.name}: {shown}"[:255]
+    if kind in (_LOG_SOURCE, _IPS_SOURCE):
+        if item.source is None:
+            return "unknown source"
+        return item.source.name[:255]
+    raise RuntimeError(f"no label for subject kind {kind}")
 
 
 def _in_live_maintenance(item: _Loaded, bucket_start: datetime) -> bool:
@@ -723,6 +781,8 @@ def _subject_key(rule: CustomRule) -> str | None:
         return None if rule.waf_endpoint_id is None else str(rule.waf_endpoint_id)
     if kind == _IPS_ENTITY:
         return None if rule.ips_entity_id is None else str(rule.ips_entity_id)
+    if kind == _PW_VALUE:
+        return None if rule.pw_value_id is None else str(rule.pw_value_id)
     return None
 
 
