@@ -27,7 +27,19 @@ Both Sonnet sub-agents of the twentieth session died **without a report**:
 | **PW-2b** handover ("review what you inherit") | Codex, unit `pw2b-codex` from 00:04 | worktree `pw2b`, DB `qradar_obs_pw2b`, log `QRadar-Dash-work/pw2b/codex.log`, prompt `prompt-handover.md` | Check the log for "usage limit"; 35-min check at 00:40. |
 | **PW-5** handover | Sonnet sub-agent (dies with the chat) | worktree `pw5`, DB `qradar_obs_pw5` | Review the report. |
 
-Next is unchanged from the 19:41 list below (PW-3b and PW-5b specs to write while these run).
+**Specs written this session:** [PW-3b](tasks/PW-3b.md) (engine: loaders, lifecycle, pipeline
+step, training, threshold wiring, `all_detectors()`, ≤ 40 statements; DB `qradar_obs_pw3b`),
+[PW-5b](tasks/PW-5b.md) (`/scope`, member counts, one resolver; DB `qradar_obs_pw5b`),
+[PW-7](tasks/PW-7.md) (UI read side; needs PW-5 and PW-5b; ports 3117/8117/9117).
+
+**Next, in order:**
+1. Review and merge PW-2b and PW-5 (decide every open point; ruff, mypy, unit on the merged tree;
+   remove worktree, branch, DB).
+2. In parallel: **PW-3b** on Codex (worktree from the merged head; `createdb qradar_obs_pw3b`),
+   **PW-5b** on Sonnet. They share `repositories/property_watch.py` (PW-5b only adds reads):
+   expect a small merge.
+3. **PW-7** (Sonnet) after PW-5b merges. Then PW-4, PW-6, PW-8 (§G.16 order).
+4. Before the next `main`: the full 3.12 gate with the whole integration suite.
 
 ---
 
