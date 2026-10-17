@@ -276,6 +276,21 @@ Mevcut `.env` ile ikinci `install`:
 `--reconfigure` sır olmayan soruları yeniden sorar. Postgres volume'u varsa `ENCRYPTION_KEY` ve
 `POSTGRES_PASSWORD` değişimini reddeder.
 
+Yeniden çalıştırma, sitenin çalıştırdığı sürümün checkout'unda yapılır. `.qradar-dash/state.json`
+varsa `install` kayıtlı sürümü değiştirmez; checkout'un `VERSION` dosyası kayıtlı sürümden farklıysa
+(ya da son yükseltme başarısız kaydedilmişse, ya da durum dosyası geçersizse) hiçbir şey yazmadan
+`--dry-run` ile bile reddeder:
+
+```
+install refused: this site runs 0.1.0 and this checkout is 0.1.1; use ./qradar-dash upgrade 0.1.1 to change versions, or check out v0.1.0 to re-run install (see docs/OPERATIONS.md, Yükseltme)
+install refused: the last upgrade failed; run rollback or restore first
+install refused: .qradar-dash/state.json field <alan> is invalid; see ./qradar-dash status
+```
+
+Sürüm değiştirmenin tek yolu `upgrade`'dir: yükseltme öncesi yedek alır ve otomatik geri alma
+vardır, `install` ise ikisine de sahip değildir. Durum dosyası hiç yoksa `install` her zamanki gibi
+çalışır; bu, QRadar kontrolü başarısız olan bir 0.1.0 sitesinin durum dosyasına ulaştığı yoldur.
+
 ---
 
 ## Dizin
@@ -300,9 +315,24 @@ denetlenir.
 
 ## Yükseltme
 
+Önce checkout'u hedef etikete getir; ardından komutu çalıştır:
+
 ```bash
+git fetch --tags
+git checkout v<version>
 ./qradar-dash upgrade <version> [--offline]
 ```
+
+Yükseltmeyi hedef sürümün betiği ve compose dosyaları yürütür; eski bir checkout, yeni imajları eski
+compose dosyasıyla başlatırdı. Bu yüzden `upgrade`, `VERSION` dosyası hedefle aynı olmayan bir
+checkout'u, hiçbir şey çekmeden ve durdurmadan reddeder:
+
+```
+upgrade refused: this checkout is version <checkout>, not <hedef>; run git fetch --tags && git checkout v<hedef> first (see docs/OPERATIONS.md, Yükseltme)
+```
+
+`VERSION` okunamıyorsa `<checkout>` yerine `unknown` yazılır. Kayıt defteri kurulumu submodule
+gerektirmez. Sürüm notları yine hedef imajdan okunur.
 
 `version`, başında `v` olmayan, düz SemVer'dir (`MAJOR.MINOR.PATCH`). Aksi halde betik
 `upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)` ile reddeder. İmaj etiketlerinde `v`
@@ -414,6 +444,10 @@ strateji denemez; operatör `./qradar-dash rollback` komutunu yeniden çalışt�
 Geri alma başarılı olsa bile `upgrade` **sıfırdan farklı** kodla çıkar: istenen sürüm çalışmıyor.
 Son satır `upgrade to <hedef> failed and was rolled back to <eski>; the broken database was kept`
 olur. Bu, otomatik geri almayı OPS-R44 girişiyle bulmanı sağlar.
+
+Geri alma bitince checkout'u artık çalışan sürüme döndür (`git checkout v<önceki>`); böylece
+`install` ve compose dosyaları o sürümle eşleşir. Aksi halde bir sonraki `install` yukarıdaki
+`install refused` ile durur.
 
 ### Kesinti
 
@@ -568,6 +602,9 @@ Geri alma kendi sağlık kontrolünde başarısız olursa (OPS-R45): yazıcılar
 yolu yazdırılır, durum `outcome=failed` olarak kaydedilir ve üçüncü bir yol denenmez.
 
 `rollback` `alembic downgrade` çalıştırmaz.
+
+Başarılı bir geri almadan sonra (elle ya da otomatik) checkout'u artık çalışan sürüme döndür:
+`git checkout v<önceki>`. `install` ve compose dosyaları böylece çalışan sürümle eşleşir.
 
 ### Seçili yedeği geri yükleme (`restore`)
 

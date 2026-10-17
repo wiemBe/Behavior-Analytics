@@ -662,6 +662,26 @@ cmd_install() {
     [ -r "$bundle" ] || { fail "bundle not readable: $bundle"; exit 2; }
   fi
 
+  # 0. A site that records a version keeps it: changing versions is `upgrade`, which backs up first.
+  if [ -e .qradar-dash/state.json ] || [ -L .qradar-dash/state.json ]; then
+    local checkout_version=""
+    if [ -r VERSION ]; then checkout_version=$(tr -d '[:space:]' <VERSION); fi
+    : "${checkout_version:=0.1.0}"
+    state_read .qradar-dash/state.json || {
+      fail "install refused: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid; see ./qradar-dash status"
+      exit 1
+    }
+    if [ "$STATE_LAST_PRESENT" = yes ] && [ "$STATE_LAST_OUTCOME" = failed ] \
+      && [ -z "$STATE_LAST_RESTORED_FROM" ]; then
+      fail "install refused: the last upgrade failed; run rollback or restore first"
+      exit 1
+    fi
+    if [ "$STATE_INSTALLED_VERSION" != "$checkout_version" ]; then
+      fail "install refused: this site runs $STATE_INSTALLED_VERSION and this checkout is $checkout_version; use ./qradar-dash upgrade $checkout_version to change versions, or check out v$STATE_INSTALLED_VERSION to re-run install (see docs/OPERATIONS.md, Yükseltme)"
+      exit 1
+    fi
+  fi
+
   # 1. Answers. Pure: nothing is written until every check has passed.
   if [ -n "$answers" ]; then
     parse_answers "$answers"
@@ -2030,7 +2050,7 @@ perform_rollback() { # backup old-version old-images from to at
 
 cmd_upgrade() {
   local target="" offline=no installed min_from db_size backup_root old_images
-  local backup_output backup at new_images old_env_version
+  local backup_output backup at new_images old_env_version checkout_version
   need_installed
   command -v docker >/dev/null 2>&1 || die "Docker is not installed"
   while [ $# -gt 0 ]; do
@@ -2047,6 +2067,12 @@ cmd_upgrade() {
     fail "upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)"
     return 1
   }
+  checkout_version=""
+  if [ -r VERSION ]; then checkout_version=$(tr -d '[:space:]' <VERSION); fi
+  if [ "$checkout_version" != "$target" ]; then
+    fail "upgrade refused: this checkout is version ${checkout_version:-unknown}, not $target; run git fetch --tags && git checkout v$target first (see docs/OPERATIONS.md, Yükseltme)"
+    return 1
+  fi
   state_read .qradar-dash/state.json || {
     fail "upgrade refused: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid or missing"
     return 1

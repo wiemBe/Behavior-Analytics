@@ -269,6 +269,7 @@ class UpgradeFixture:
         self.script = self.root / "qradar-dash"
         shutil.copy(SCRIPT, self.script)
         self.script.chmod(0o755)
+        (self.root / "VERSION").write_text(f"{TARGET_VERSION}\n")  # the checkout is at the target
         self.backup_root = tmp_path / "backups"
         self.backup_root.mkdir(mode=0o700)
         self.docker_root = tmp_path / "docker-root"
@@ -459,6 +460,52 @@ def test_invalid_target_is_refused_before_stop(
     assert_no_stop(upgrade)
 
 
+def _assert_checkout_refused(
+    upgrade: UpgradeFixture, result: subprocess.CompletedProcess[str], checkout: str
+) -> None:
+    assert result.returncode == 1, output(result)
+    assert (
+        f"upgrade refused: this checkout is version {checkout}, not {TARGET_VERSION}; run "
+        f"git fetch --tags && git checkout v{TARGET_VERSION} first "
+        "(see docs/OPERATIONS.md, Yükseltme)"
+    ) in result.stderr
+    actions = upgrade.action_text()
+    for call in (" pull ", " stop ", " up "):
+        assert call not in actions
+    assert "state-write" not in actions
+
+
+def test_checkout_of_another_version_is_refused_before_pull_or_stop(
+    upgrade: UpgradeFixture,
+) -> None:
+    (upgrade.root / "VERSION").write_text(f"{OLD_VERSION}\n")
+    before = (upgrade.state_dir / "state.json").read_bytes()
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    _assert_checkout_refused(upgrade, result, OLD_VERSION)
+    assert (upgrade.state_dir / "state.json").read_bytes() == before
+
+
+def test_checkout_without_a_version_file_is_refused_as_unknown(
+    upgrade: UpgradeFixture,
+) -> None:
+    (upgrade.root / "VERSION").unlink()
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    _assert_checkout_refused(upgrade, result, "unknown")
+
+
+def test_checkout_check_runs_before_the_state_file_is_read(upgrade: UpgradeFixture) -> None:
+    (upgrade.root / "VERSION").write_text(f"{OLD_VERSION}\n")
+    (upgrade.state_dir / "state.json").write_text("not json\n")
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    _assert_checkout_refused(upgrade, result, OLD_VERSION)
+
+
 def test_newer_installed_version_is_refused_before_stop(upgrade: UpgradeFixture) -> None:
     upgrade.write_state(installed="0.3.0")
 
@@ -541,6 +588,7 @@ def test_unparseable_state_is_refused_before_pull_or_stop(upgrade: UpgradeFixtur
 
 
 def test_same_healthy_version_changes_nothing(upgrade: UpgradeFixture) -> None:
+    (upgrade.root / "VERSION").write_text(f"{OLD_VERSION}\n")
     before = (upgrade.state_dir / "state.json").read_bytes()
 
     result = upgrade.run("upgrade", OLD_VERSION)

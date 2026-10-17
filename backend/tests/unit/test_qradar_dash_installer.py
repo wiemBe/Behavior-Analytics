@@ -719,3 +719,138 @@ def test_a_mkdir_that_fails_after_preflight_stops_the_install(
     assert f"cannot create the backup directory {backups}" in result.stderr
     assert not (inst.root / ".qradar-dash").exists()
     assert not backups.exists()
+
+
+# ---- T-131: install never changes the version a site records ----------------------------
+
+
+def _write_site_state(
+    inst: Install, installed: str = "0.1.0", *, outcome: str | None = None, raw: str | None = None
+) -> Path:
+    state_dir = inst.root / ".qradar-dash"
+    state_dir.mkdir(mode=0o700, exist_ok=True)
+    state: dict[str, object] = {
+        "installed_version": installed,
+        "images": {"backend": f"sha256:{2:064d}"},
+        "previous_images": None,
+    }
+    if outcome is not None:
+        state["last_upgrade"] = {
+            "at": "2026-10-17T12:00:00Z",
+            "from": "0.1.0",
+            "to": "0.1.1",
+            "outcome": outcome,
+            "backup": "/var/backups/qradar-dash-previous",
+        }
+    path = state_dir / "state.json"
+    path.write_text(raw if raw is not None else json.dumps(state) + "\n")
+    return path
+
+
+def _env_with_version(inst: Install, version: str) -> bytes:
+    (inst.root / "VERSION").write_text(f"{version}\n")
+    env = inst.root / ".env"
+    env.write_text(f"COMPOSE_PROJECT_NAME=fixture-project\nQRADAR_DASH_VERSION={version}\n")
+    return env.read_bytes()
+
+
+def test_install_from_a_checkout_of_another_version_is_refused_and_keeps_env(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, "0.1.0")
+    before = _env_with_version(inst, "0.1.0")
+    (inst.root / "VERSION").write_text("0.1.1\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (
+        "install refused: this site runs 0.1.0 and this checkout is 0.1.1; use "
+        "./qradar-dash upgrade 0.1.1 to change versions, or check out v0.1.0 to re-run "
+        "install (see docs/OPERATIONS.md, Yükseltme)"
+    ) in result.stderr
+    assert (inst.root / ".env").read_bytes() == before
+
+
+def test_install_dry_run_from_another_version_is_refused_too(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, "0.1.0")
+    (inst.root / "VERSION").write_text("0.1.1\n")
+    answers = inst.answers()
+
+    result = inst.run(
+        "install", "--non-interactive", str(answers), "--dry-run", path=flow_path
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "install refused: this site runs 0.1.0 and this checkout is 0.1.1" in result.stderr
+    assert not (inst.root / ".env").exists()
+
+
+def test_install_after_a_failed_upgrade_is_refused(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, "0.1.0", outcome="failed")
+    before = _env_with_version(inst, "0.1.0")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "install refused: the last upgrade failed; run rollback or restore first" in (
+        result.stderr
+    )
+    assert (inst.root / ".env").read_bytes() == before
+
+
+def test_install_with_an_invalid_state_file_is_refused(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, raw='{"installed_version": "latest"}\n')
+    before = _env_with_version(inst, "0.1.0")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (
+        "install refused: .qradar-dash/state.json field installed_version is invalid; "
+        "see ./qradar-dash status"
+    ) in result.stderr
+    assert (inst.root / ".env").read_bytes() == before
+
+
+def test_install_rerun_at_the_recorded_version_completes(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, "0.1.0")
+    (inst.root / "VERSION").write_text("0.1.0\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "install refused" not in result.stderr
+
+
+def test_install_rerun_after_a_restored_failure_completes(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    path = _write_site_state(inst, "0.1.0", outcome="failed")
+    state = json.loads(path.read_text())
+    state["last_upgrade"]["restored_from"] = "/var/backups/qradar-dash-previous"
+    path.write_text(json.dumps(state) + "\n")
+    (inst.root / "VERSION").write_text("0.1.0\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_install_with_no_state_file_completes_at_any_checkout_version(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (inst.root / "VERSION").write_text("0.1.1\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (inst.root / ".qradar-dash" / "state.json").is_file()
