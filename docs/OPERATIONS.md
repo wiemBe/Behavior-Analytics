@@ -22,18 +22,35 @@ Dört kural her bölümde geçerlidir:
    (OPS-R1 ... OPS-R45; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
-`support-bundle` bugün çalışır. Yalnız `bundle` (çevrimdışı paket, OPS-3 / OPS-10) henüz yoktur.
+`support-bundle` bugün çalışır. `bundle` (çevrimdışı paket) bu sürümde yoktur. `./qradar-dash bundle`
+şu satırı yazıp 64 ile çıkar:
+
+```
+'bundle' is not built yet (the offline bundle is not part of this release; use ./qradar-dash install --build from a checkout, or install by pulling from the registry).
+```
+
+`install` yardımındaki satır şudur:
+`Not built in this release (use install --build, or pull from the registry).`
 
 ---
 
 ## Kurulum
 
-Kurulum tek komuttur. Klonladıktan sonra:
+Kurulum tek komuttur. Kayıt defterinden (registry) kuran olağan kurulum alt modül istemez:
+
+```bash
+git clone https://github.com/wiemBe/QRadar-Dashboard.git
+cd QRadar-Dashboard
+./qradar-dash install
+```
+
+`--recurse-submodules` yalnız `install --build` için gerekir: `qradar-mcp` alt modülünü çeker. Kayıt
+defterinden kuran bir kurulum alt modül olmadan çalışır.
 
 ```bash
 git clone --recurse-submodules https://github.com/wiemBe/QRadar-Dashboard.git
 cd QRadar-Dashboard
-./qradar-dash install
+./qradar-dash install --build
 ```
 
 Betik bash ile yazılmıştır ve `docker compose` (v2) kullanır. Ana makinede Python çalıştırmaz.
@@ -60,13 +77,37 @@ Yanıt dosyasının izni `0600` olur. İçinde yollar ve yönetici kullanıcı a
 | `--dry-run` | Her kontrolü çalıştır, hiçbir şey yazma, hiçbir şey değiştirme. |
 | `--skip-qradar-check` | QRadar konsoluna TLS el sıkışması testini atla. |
 
+### Operatör hesabı ve yedek dizini
+
+Kurulum ve işletme için ayrılmış bir hesap kullan; günlük işi `root` ile yapma. Hesap, `docker`
+komutunu çalıştırabilmelidir: `install`, `status`, `doctor`, `backup`, `restore`, `upgrade` ve
+`rollback` tümü `docker compose` çağırır. Bu yüzden hesabı `docker` grubuna ekle.
+
+> RHEL, Rocky ve Alma'da **`operator` zaten bir sistem hesabıdır** (uid 11, giriş yoktur,
+> `/sbin/nologin`). Bu adı seçme; kendi hesabını kur, örneğin `qdops`.
+
+```bash
+sudo useradd -m -G docker qdops
+sudo passwd -l qdops
+```
+
+**Yedek dizini** kurulumdan **önce** vardır ve operatör hesabına aittir. `install` dizini `0700` ile
+oluşturur; üst dizin `root` sahipliyse operatör onu oluşturamaz ve ön kontrol durur. Yedek dizini git
+checkout'unun dışında olmalıdır. Sahipliği operatöre ver:
+
+```bash
+sudo mkdir -p /var/backups/qradar-dash
+sudo chown qdops /var/backups/qradar-dash
+sudo chmod 700 /var/backups/qradar-dash
+```
+
 ### Ana makine boyutu
 
 Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 1 KiB'dir. İlk haftadan sonra
 `pg_database_size` ile değiştirilecek bir tahmindir. `doctor` bu boyutu yazar.
 
-- **En az:** 4 vCPU, 8 GiB RAM, 80 GiB disk. Bu ana makine, varsayılanda kapalı aileler kapalı
-  bırakılmış Phase A içindir.
+- **En az:** 4 vCPU, 8 GiB RAM, **Docker kökünde 80 GiB boş** disk. Bu ana makine, varsayılanda
+  kapalı aileler kapalı bırakılmış Phase A içindir.
 - **Önerilen:** 8 vCPU, 16 GiB RAM, Docker ve Postgres için 400 GiB ve yedek dizini olarak bağlanmış
   **ikinci bir dosya sistemi** (400 GiB). İkinci dosya sistemi, veri diski dolduğunda bile yedeğe
   erişmeni sağlar. Yedek dizini ile Docker veri kökü aynı aygıttaysa kurulum ön kontrolü uyarır,
@@ -179,6 +220,8 @@ token değeri `.env` içinde yoktur.
 11. Ana makineden `GET http://127.0.0.1:8000/api/v1/health/ready` ve
     `GET http://127.0.0.1:8000/api/v1/version`.
 
+Bir test VM'de ilk kurulum toplam 1 dk 40 sn sürdü (QRadar erişilemezken). Bu bir söz değildir.
+
 ### Özet ve ilk oturum açma
 
 Özet en sonda yazdırılır: URL `https://<ad>/`, oturum açma yolu `/login`, yönetici kullanıcı adı ve
@@ -186,11 +229,21 @@ token değeri `.env` içinde yoktur.
 IPS, kural eşleşmeleri, özel kurallar), yedek dizini ve bu kılavuzun yolu `docs/OPERATIONS.md`.
 
 - Çıkış kodu 0: yığın sağlıklı ve yönetici var.
-- Çıkış kodu 1: yığın sağlıklı ama QRadar kontrolü başarısız ya da bir servis hiç sağlıklı olmadı.
-  Parola bu çıkıştan önce stdout'a yazılır; başarısız QRadar kontrolü onu yutmaz.
+- Çıkış kodu 1: QRadar kontrolü başarısız ya da bir servis hiç sağlıklı olmadı. Parola bu çıkıştan
+  önce stdout'a yazılır; başarısız QRadar kontrolü onu yutmaz.
 
-İlk oturum açmada parola değiştirmek zorunludur (`must_change_password`). Bu bir arıza değildir
-(bkz. OPS-R27). Sonra:
+  QRadar kontrolü başarısız olduğunda yığın ve `.qradar-dash/state.json` **yerindedir**: kurulum
+  "başarısız" görünse de `status`, `upgrade` ve `rollback` çalışır. QRadar'ı düzelt ve `install`
+  komutunu yeniden çalıştır (`qradar add` satırı günceller); ya da `./qradar-dash status` ile duruma
+  bak. Yığın ayağa kalkmadıysa (bir servis hiç sağlıklı olmadı) `.qradar-dash/state.json` yazılmaz;
+  `docker compose ps` ve `./qradar-dash logs` ile bak.
+
+İlk oturum açmada parola değiştirmek zorunludur (`must_change_password`). Değiştirene kadar API her
+başka isteğe 403 `A password change is required before any other request.` ile cevap verir. Bu bir
+arıza değildir (bkz. OPS-R27). Komut satırından API'ye oturum açacaksan isteğe siteyle eşleşen bir
+`Origin` başlığı ekle (`https://<ad>`); CSRF koruması eksik başlığa 403
+`Cross-site request refused: the request has no Origin or Referer header.` döner (bkz. OPS-R22).
+Sonra:
 
 1. `/admin/directory` sayfasında AD kullanılıyorsa dizini ayarla (bkz. Dizin).
 2. `/admin/users` sayfasında kullanıcılara rol ata (bkz. OPS-R25).
@@ -242,6 +295,18 @@ denetlenir.
 `version`, başında `v` olmayan, düz SemVer'dir (`MAJOR.MINOR.PATCH`). Aksi halde betik
 `upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)` ile reddeder. İmaj etiketlerinde `v`
 yoktur. `--offline`, çekmek yerine hedef imajların yerelde yüklü olmasını şart koşar.
+
+`upgrade` ve `rollback`, `doctor` raporundan yalnız `db_connect` ve `migration_head` satırlarını
+yazdırır; ardından `Full report: ./qradar-dash doctor` satırı gelir:
+
+```
+PASS  db_connect     database accepted SELECT 1
+PASS  migration_head database and image are at 0025
+Full report: ./qradar-dash doctor
+```
+
+Raporun geri kalanı (henüz yazılmamış bir beat kalp atışı, QRadar kontrolleri) yükseltmeyi ya da
+geri almayı yanlış bir başarısızlık gibi gösterirdi; bu yüzden yalnız karar veren iki satır yazılır.
 
 ### Ön kontrol
 
@@ -342,7 +407,10 @@ olur. Bu, otomatik geri almayı OPS-R44 girişiyle bulmanı sağlar.
 
 Yazıcılar `pg_dump` başlangıcından `/api/v1/health/ready` 200 dönene kadar kapalıdır. Çekme bu
 pencerenin dışındadır. Baskın süre dökümdür. Yaklaşık 5 GiB altındaki veritabanı için bütçe 10
-dakikadır; veritabanı büyükse döküm süresi eklenir. Ölçülmüş bir değer yoktur.
+dakikadır; veritabanı büyükse döküm süresi eklenir.
+
+Bir test VM'de (küçük bir veritabanı) yükseltme kesintisi yaklaşık 15 sn, geri alma yaklaşık 13 sn
+ölçüldü. Bunlar bir söz değildir; kendi veritabanın büyükse döküm süresi eklenir.
 
 ### Durum dosyasını okuma
 
@@ -405,6 +473,10 @@ TLS özel anahtarını taşır. Redis yedeğe girmez.
 `reason` verilmezse `manual` olur. Betik önce diski okur, dökümü konteynerin içinde alır, dışarı
 kopyalar ve `.<ad>.partial` altında hazırlar; doğrulama geçince dizini son adına taşır. Her başarı
 ya da hata yolu yarım dizini, konteyner içindeki dökümü ve doğrulama veritabanını temizler.
+
+`pg_dump` TimescaleDB için `circular foreign-key constraints` uyarıları yazabilir (`continuous_agg`).
+Bunlar beklenir ve yedeğin dökümünü bozmaz; belirleyici olan yedeğin çıkış kodudur ve sağlıklı bir
+yedek 0 ile çıkar. Uyarıyı hata sanıp `--no-verify` ekleme.
 
 `backup`, `--no-verify` verilmedikçe veritabanını aynı sunucuda `qradar_obs_restore_test` içine geri
 yükler, `alembic_version` değerinin kaynakla eşleştiğini ve `alembic_version` ile `role` üzerinde
@@ -854,11 +926,12 @@ geçerli olana kadar bekle. Doğrulanmamış eşleme üzerinden toplama yapma.
 
 **Belirti:** Beat sağlıklı görünüyor ama hiçbir görev zamanlanmıyor.
 
-**Olası neden:** Compose kontrolü yalnız zamanlama dosyasına bakar.
+**Olası neden:** Compose kontrolü yalnız zamanlama dosyasına bakar. Beat artık başlangıçta kalp
+atışını yazar; bu yüzden bir yeniden başlatmadan ya da bir yükseltmeden (Redis `FLUSHALL`) sonraki
+ilk iki dakikadaki bir `celery_beat` FAIL geçicidir, gerçek bir arıza değildir.
 
-**Doğrulama:** `celery_beat` FAIL ve etkin her aile için `cadence` WARN. Kalp atışı görevi bu
-sürümde yoksa doğrulama, konteyner içindeki dosyanın mtime değeri ve yeni görev günlüklerinin
-olmamasıdır.
+**Doğrulama:** `celery_beat` FAIL **iki dakikadan uzun sürüyor** ve etkin her aile için `cadence`
+WARN. Yeniden başlatmadan ya da yükseltmeden sonra ilk iki dakikada henüz karar verme.
 
 ```bash
 ./qradar-dash doctor
@@ -869,6 +942,9 @@ olmamasıdır.
 ```bash
 docker compose restart celery-beat
 ```
+
+Yeniden başlatmadan iki dakika sonra `celery_beat` hâlâ FAIL veriyorsa bu gerçek bir belirtidir:
+worker günlüklerine ve OPS-R41'e bak.
 
 ### OPS-R10. `Offense collection is stale for <name>`
 
@@ -1171,17 +1247,19 @@ docker compose run --rm --no-deps backend \
 
 ### OPS-R27. Arayüz yalnız parola değiştirmeye izin veriyor
 
-**Belirti:** Arayüz yalnız parola değiştirmeye izin veriyor.
+**Belirti:** Arayüz yalnız parola değiştirmeye izin veriyor. API'den yapılan her başka istek 403
+`A password change is required before any other request.` ile reddediliyor.
 
 **Olası neden:** `must_change_password` ayarlı. `create-admin` bunu her zaman ayarlar.
 
-**Doğrulama:** Hesap menüsü ya da `/me`.
+**Doğrulama:** Hesap menüsü, `/me` ya da 403 gövdesi.
 
 ```bash
 ./qradar-dash doctor
 ```
 
-**Çözüm:** Parolayı değiştir. Bu ilk oturum durumudur, arıza değildir.
+**Çözüm:** Parolayı değiştir. Değiştirene kadar yalnız `/me`, parola yolu ve oturum kapatma
+çağrılabilir. Bu ilk oturum durumudur, arıza değildir.
 
 ### OPS-R28. `pagination stopped at the page ceiling`
 
@@ -1435,7 +1513,10 @@ onu saklamaz.
 ./qradar-dash doctor
 ```
 
-**Çözüm:** `https` genel kökenini kullan. Loopback HTTP üretim arayüzü değildir.
+**Çözüm:** `https` genel kökenini kullan. Loopback HTTP üretim arayüzü değildir. Komut satırından
+API ile oturum açıyorsan isteğe siteyle eşleşen bir `Origin` başlığı ekle (`https://<ad>`); CSRF
+koruması eksik başlığa 403
+`Cross-site request refused: the request has no Origin or Referer header.` döner.
 
 ### OPS-R43. `restore` seçilen yedeği reddediyor
 
