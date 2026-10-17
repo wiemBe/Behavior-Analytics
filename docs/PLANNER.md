@@ -43,7 +43,12 @@ tasks run in parallel on a snapshot base, not one merge at a time:
 | **PW-6** ([spec](tasks/PW-6.md)) F.1 kind, migration `0027` | Sonnet sub-agent | `pw6` / `qradar_obs_pw6` | no | Report (written early) → review. If dead: hand over. |
 | **PW-7** ([spec](tasks/PW-7.md)) UI read side | Sonnet — **done 00:50**, committed `agent/pw7` @ `256a324` (pushed) | `pw7`; PNGs `QRadar-Dash-work/pw7/` (90) | — | **Accepted** after the PNGs (list, detail exact 1440, lower bound 1024): honest gaps, unit, band rule, no slop. Lint, typecheck, build clean; vitest 3,354 / **1 failed** (`widgets/registry.test.ts`: the new `rbac.py` permissions are not in the widget list → **PW-9** fixes it). Decisions on its open points: honesty line above the chart and nullable `log_source_id` → **PW-8** (added to its spec); `GET /anomalies/{id}` 404 for a PW row, `value_id` in `PwValueRefOut`, a read route for the generated AQL → **PW-5c** (backend, spec to write); `[BUILT — PW-7]` markers → PW-11; the 18-char name column → accepted. |
 
+| **PW-9** ([spec](tasks/PW-9.md)) widget + the red `registry.test` | Sonnet sub-agent from 01:07 | `pw9` from `agent/pw7`; ports 3119/8119/9119; scratch `QRadar-Dash-work/pw9/` | no | Report + PNGs → review the PNGs myself. |
+
 After a reboot: restart the test DB and `createdb -U test` each `qradar_obs_pw*` above.
+**If this chat died:** the Sonnet worktrees (`pw5`, `pw3b`, `pw6`, `pw9`) keep their files and an
+early report; commit what each has on its `agent/*` branch, then hand each over (Codex after
+05:03 — PW-3b has its own 05:10 timer — or Sonnet) with the spec + "review what you inherit".
 
 **Specs ready, not started:** [PW-4](tasks/PW-4.md) (alerting; after PW-3b, DB `qradar_obs_pw4`),
 [PW-8](tasks/PW-8.md) (editor UI; after PW-6 and PW-7, ports 3118/8118/9118),
