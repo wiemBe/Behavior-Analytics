@@ -8,7 +8,31 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 13:00, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 13:50, 2026-10-17 (nineteenth session, from 12:44)
+
+**Since 13:00:**
+- **OPS-5 merged** into `feat/phase-ce` (`b5db8fb`, Codex rounds 0–1, eight review points fixed).
+  The 3.12 gate on `b5db8fb` (recipe: `QRadar-Dash-work/gate-1017a/run.sh`; archive the **whole
+  tree** with `git archive <sha> | tar -x`, because the loggen and `qradar_dash` tests read files
+  outside `backend/`): ruff clean, mypy 0 in 244 files, unit 3,603, alembic round trip clean at
+  `0025`, **integration 1,300 passed, 2 failed, 1 skipped**. The skip is expected (the round-trip
+  test needs host `pg_dump` 16 or Docker; it passes on the host). The two failures
+  (`test_ips_collection::…tick_budget…`, `test_waf_profile_admin::…worker_source_busy…`) **pass
+  in isolation on 3.14 and twice on 3.12 (35/35)**; the full run shared the machine with the OPS-6
+  agent's tests. Cause unknown: **rerun the full integration with the log kept before `main`.**
+- **T-125 merged** (`1aeb98f`): `docs/PHASE-G-PROPERTY-WATCH.md`, §G.0–§G.17, with the user's
+  answers **D-22**.
+- **Codex hit its usage limit at ~13:30**, 10 min into OPS-6 (reset **17:46**). OPS-6 handed to a
+  Sonnet sub-agent with "review what you inherit" (worktree `ops6`, no DB).
+- **PW-0** ([spec](tasks/PW-0.md)), the read-only lab probe: a Sonnet sub-agent, scratch
+  `QRadar-Dash-work/pw0/`.
+
+**Agents now:** Codex out until 17:46; Z.AI GLM out until 2026-10-21 01:47; Grok 402; opencode
+free and Sonnet available.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 13:00, 2026-10-17 (kept for the log)
 
 The machine rebooted at ~12:39: the tmpfs test DB was restarted
 (`docker compose -f docker-compose.test.yml up -d test-db`).
@@ -2203,6 +2227,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-19 | **Production login (user, 2026-10-16 ~11:25).** Local accounts **and** AD password over LDAP (bind as the user). **No group or role is read from AD**: roles are assigned in the app by users holding the admin role; a first-time LDAP user gets **no role** (fail closed) until an admin assigns one. The operator of production is the user (efe); the runbook is **Turkish** (commands and outputs in English). OIDC stays out of scope. → **AUTH-1** (backend), **AUTH-2** (UI), OPS-0. | AUTH-1, AUTH-2, OPS-0 |
 | D-20 | **OPS-0 open questions (user, 2026-10-16 ~17:40), all defaults.** The first GHCR release is **0.1.0** (1.0.0 later, after the fresh-VM test and the first production install). TLS terminates on the **bundled proxy**, with `--external-proxy` for an existing load balancer. **Off-host backup copies (OPS-14) wait until after 2026-10-30.** The OPS-1…10 safety cut of `docs/OPERATIONS-DESIGN.md` §10 is the plan. | OPS-1… |
 | D-21 | **Property watches (user request, 2026-10-17 ~12:45: "operöttörün herhangi bir log source veya log source type veya log group'u seçip şu custom property değerini veya değerlerini takip et diyebilir miyiz bence deriz altyapı hazır").** The operator picks a log source, a log-source type or a log-source group, and one or more properties to track. **The user's answers (12:55):** <br>• **outputs: all four** — the per-value distribution (table, chart, widget), F.1 threshold alerts on a value, new-value detection, and baseline deviation per value (spike, drop, disappearance); <br>• **values: both** — pinned values always counted, plus an automatic top-N of the rest; <br>• **combination and correlation wanted** ("korelasyon ve kombinasyon iyi olur"): several properties grouped together (e.g. `Username` × `Action`), and a correlation the design must define, bounded, with the alternatives as open questions; <br>• **order: design now, build after OPS-5, OPS-6, OPS-9 r2 and OPS-10.** <br>Design → **T-125**, `docs/PHASE-G-PROPERTY-WATCH.md`; build tasks will be **PW-1…**. | Phase G |
+| D-22 | **Phase G open questions (§G.17), answered by the user on 2026-10-17 ~13:35.** <br>• **Q1 privacy: values in clear text, readable by anyone with `read:*`, as offenses are.** No separate values permission (the design had recommended one; removed in T-125 round 2). <br>• **Q2: correlation in v1 = the new combination only** (two values each seen before, never together); conditional shift and co-movement stay out. <br>• **Q3: two properties per watch.** <br>• **Q14: PW-0, the read-only lab probe, runs now**, before the OPS work. <br>• Q4–Q13 and Q15: the design's recommendations stand as defaults (no marginal series; `/anomalies` + shadow mode `PW_ALERTING_ENABLED=false`; the caps as settings; one scope per watch; pins with a quote refused until PW-0 proves an escape; `username` the only normalized field; a grace window on membership change; the flood detector in v1.1; nav group Behavior; no per-watch cadence; no share thresholds in v1). | PW-0…PW-11 |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
