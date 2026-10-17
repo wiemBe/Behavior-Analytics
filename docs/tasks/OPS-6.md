@@ -32,6 +32,10 @@ function, **the one shared restore function** (it takes a backup directory and a
    - **Read it with the same method OPS-5's retention uses.** A file that does not parse, or
      lacks a field `upgrade` or `rollback` needs, makes them refuse with the path and the
      field (fail closed). Never guess a missing field.
+   - **Digests are full image ids** (`sha256:` + 64 hex), read with
+     `docker inspect --format '{{.Image}}'` on each service's container. `compose images -q`
+     prints bare hex ids without the prefix: do not use it. Reuse OPS-5's MANIFEST helper
+     (round 1 made it read container image ids this way and skip one-off containers).
    - `install` writes it at the end of a successful run: `installed_version` and `images`
      (the digests of the running containers), `previous_images: null`, no `last_upgrade`.
      An idempotent re-run keeps an existing `previous_images` and `last_upgrade`.
@@ -60,6 +64,13 @@ function, **the one shared restore function** (it takes a backup directory and a
    3. Run OPS-5's backup with reason `pre-upgrade`, **always verified**. A failed backup
       aborts: start the stopped services on the **old** images, exit non-zero, state
       unchanged.
+      - **Run it in a subshell** (`( cmd_backup_create pre-upgrade yes )`) and test its exit
+        status. It calls `die` and sets its own `EXIT` trap; called directly, a backup failure
+        would exit the whole script and replace `upgrade`'s trap, so the old services would
+        never restart. Pin this with the failed-backup test.
+      - The same applies to any OPS-5 function that can `die`: check before reusing one.
+      - The new backup's path: read it from the subshell's last stdout line (the final
+        directory), and validate it as a managed backup directory before recording it.
    4. `FLUSHALL` inside the redis container (§4.2's paragraph).
    5. Set `QRADAR_DASH_VERSION=<target>` in `.env` atomically (the same temp-and-`mv` way),
       changing that one line only. The backup's `env.bak` already holds the old file.
@@ -79,10 +90,12 @@ function, **the one shared restore function** (it takes a backup directory and a
    - Refuse, before stopping anything, when `previous_images` is null, the
      `last_upgrade.backup` directory is missing or incomplete, or a previous image is not
      present locally **with the recorded digest** (it never pulls).
-   - Restore with **OPS-5's shared restore function** (do not write a second one). It keeps
-     the broken copy and never drops it.
-   - Put the previous `QRADAR_DASH_VERSION` back in `.env` (atomically), start the services on
-     the previous images, and run the §4.2 step 7 checks expecting the **previous** version.
+   - Restore with **OPS-5's `restore_swap_database`** (do not write a second one). It stops the
+     writers, swaps, keeps the broken copy (never dropped), and returns with the services
+     stopped.
+   - Then put the previous `QRADAR_DASH_VERSION` back in `.env` (atomically), start the
+     services on the previous images (`restore_start_and_wait`, or the same start-and-check
+     path `upgrade` uses), and run the §4.2 step 7 checks expecting the **previous** version.
    - Record `outcome=rolled_back`. Never `alembic downgrade`.
 7. **Never:** `docker volume rm`, any prune, `alembic downgrade`, deleting any backup, printing
    a key, password or token, `:z`, a bind mount of the checkout, or a pull inside `rollback`.
