@@ -45,6 +45,17 @@ tasks run in parallel on a snapshot base, not one merge at a time:
 
 After a reboot: restart the test DB and `createdb -U test` each `qradar_obs_pw*` above.
 
+**Specs ready, not started:** [PW-4](tasks/PW-4.md) (alerting; after PW-3b, DB `qradar_obs_pw4`),
+[PW-8](tasks/PW-8.md) (editor UI; after PW-6 and PW-7, ports 3118/8118/9118),
+[PW-9](tasks/PW-9.md) (widget; after PW-7, ports 3119/8119/9119). Then PW-10 (live validation),
+PW-11 (docs).
+
+**When the in-flight work is done:** commit each worktree's diff on its `agent/*` branch, merge
+`agent/pw2b`, `agent/pw5`, then PW-3b/5b/6/7 into `feat/phase-ce` (expect small conflicts in
+`services/property_watches.py`, `routes/property_watches.py`, `repositories/property_watch.py`,
+`PHASE-G-PROPERTY-WATCH.md`), then one review pass and the full gate. Nothing to `main` until the
+user says so.
+
 **Specs written this session:** [PW-3b](tasks/PW-3b.md) (engine: loaders, lifecycle, pipeline
 step, training, threshold wiring, `all_detectors()`, ≤ 40 statements; DB `qradar_obs_pw3b`),
 [PW-5b](tasks/PW-5b.md) (`/scope`, member counts, one resolver; DB `qradar_obs_pw5b`),
