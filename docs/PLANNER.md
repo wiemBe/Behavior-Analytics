@@ -8,7 +8,30 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 19:41, 2026-10-17 (end of the twentieth session; the user's limit is near)
+## ▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 00:05, 2026-10-18 (twenty-first session, from 00:01)
+
+**The machine rebooted at ~00:00.** The tmpfs test DB was restarted (`docker compose -f
+docker-compose.test.yml up -d test-db`) and `qradar_obs_pw2b`, `qradar_obs_pw5` recreated with
+`createdb -U test`. `qradarce2` came back up by itself. No leftover agent process.
+
+Both Sonnet sub-agents of the twentieth session died **without a report**:
+- PW-2b: unit 4,254 / 10 skipped; its whole-integration log ends at 100 % with no summary line;
+  mutation survivors (`retention: unbounded batch`, `stored value text for non-admitted`,
+  `factory: cap not passed` never ran).
+- PW-5: whole integration 1,336 passed at 20:01; 20 guard mutations, all caught.
+
+**In flight:**
+
+| Task | Agent | Where | Next |
+|---|---|---|---|
+| **PW-2b** handover ("review what you inherit") | Codex, unit `pw2b-codex` from 00:04 | worktree `pw2b`, DB `qradar_obs_pw2b`, log `QRadar-Dash-work/pw2b/codex.log`, prompt `prompt-handover.md` | Check the log for "usage limit"; 35-min check at 00:40. |
+| **PW-5** handover | Sonnet sub-agent (dies with the chat) | worktree `pw5`, DB `qradar_obs_pw5` | Review the report. |
+
+Next is unchanged from the 19:41 list below (PW-3b and PW-5b specs to write while these run).
+
+---
+
+## ▶▶▶▶▶▶▶▶▶▶ STATE AT 19:41, 2026-10-17 (end of the twentieth session; kept for the log)
 
 **Branches.** `main` @ `9bf3d4d` = **v0.1.1** (released, images public, verified on a fresh VM by
 OPS-11). `feat/phase-ce` @ the PLANNER commit after `343c81a` (pushed) = `main` + PW-1, PW-2a,
