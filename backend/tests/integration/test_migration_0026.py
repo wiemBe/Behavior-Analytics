@@ -102,7 +102,9 @@ def test_0026_round_trip_hypertables_seed_and_no_drift(clean_db: str) -> None:
 
     config = _alembic_config(clean_db)
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["0026"]
+    heads = script.get_heads()
+    assert len(heads) == 1
+    assert "0026" in {item.revision for item in script.walk_revisions("base", heads[0])}
     revision = script.get_revision("0026")
     assert revision is not None
     assert revision.down_revision == "0025"
@@ -177,7 +179,7 @@ def test_0026_round_trip_hypertables_seed_and_no_drift(clean_db: str) -> None:
         command.upgrade(config, "head")
         with engine.connect() as connection:
             context = MigrationContext.configure(connection)
-            assert context.get_current_revision() == "0026"
+            assert context.get_current_revision() == script.get_heads()[0]
             assert connection.execute(
                 text("SELECT count(*) FROM search_cadence WHERE family = 'PROPERTY_WATCH'")
             ).scalar_one() == 1
