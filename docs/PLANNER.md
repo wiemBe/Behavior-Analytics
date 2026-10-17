@@ -8,9 +8,140 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶ RESUME HERE — STATE AT 20:20, 2026-10-16 (eighteenth session, from 18:58)
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 13:55, 2026-10-17 (nineteenth session, from 12:44)
 
-The 18:25 section below is the background. Where they differ, this section wins.
+**Since 13:50 (`feat/phase-ce` @ `128d41b` + the OPS-9r2 spec, pushed; the header said 14:25 by mistake):**
+- **OPS-6 merged** (`128d41b`). Codex round 0 was cut off by its limit; a Sonnet handover
+  reviewed it and fixed nine points (restart traps between the stop and the `.env` edit, the
+  doctor preflight requiring PASS, no `.env` rewrite after a failed swap, the key check on
+  rollback, `status` on a bad state file, …). Round 2 (orchestrator review): **the attempt is
+  recorded in the state file before the `.env` edit and the migrate**, so a crash or reboot
+  leaves a state that blocks `upgrade` and lets `rollback` run (a test SIGKILLs the script during
+  the migrate); **a manual `rollback` asks for the word `rollback`** (`--non-interactive --yes`).
+  A successful automatic rollback exits non-zero (orchestrator: the requested version is not
+  running). Accepted deviation: `up --wait` and the readiness loop are two separate 180 s waits.
+  Host: 150 `test_qradar_dash_*` tests, shellcheck clean.
+- **PW-0 done** (`f43a78a`, report `docs/tasks/PW-0.report.md`, 26 searches, read-only); T-125
+  round 3 folded its answers into the design (cycle-safe group walk: the lab's two groups name
+  each other as parent; `IN` pins; NULL is unparsed; integer-valued float counts; the invisible
+  `LIMIT` cut; **the measured-zero rule**).
+- **In flight:** OPS-9 round 2 ([spec](tasks/OPS-9r2.md)) on opencode free DeepSeek (unit
+  `ops9r2-ds`, worktree `ops9r2`); the full 3.12 integration rerun of `a63ddbc` with its log kept
+  (container `gate-1017b`, log `QRadar-Dash-work/gate-1017a/integ-a63ddbc.log`).
+- **Next:** if the rerun is clean, the full 3.12 gate on the head (with OPS-6) and the frontend
+  gate, then `main`; then OPS-10 (the fresh-VM install test, orchestrator) and OPS-6r (the
+  real-stack upgrade/rollback rehearsal that measures downtime). Phase G build (PW-1…) after
+  OPS-10.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 13:50, 2026-10-17 (kept for the log)
+
+**Since 13:00:**
+- **OPS-5 merged** into `feat/phase-ce` (`b5db8fb`, Codex rounds 0–1, eight review points fixed).
+  The 3.12 gate on `b5db8fb` (recipe: `QRadar-Dash-work/gate-1017a/run.sh`; archive the **whole
+  tree** with `git archive <sha> | tar -x`, because the loggen and `qradar_dash` tests read files
+  outside `backend/`): ruff clean, mypy 0 in 244 files, unit 3,603, alembic round trip clean at
+  `0025`, **integration 1,300 passed, 2 failed, 1 skipped**. The skip is expected (the round-trip
+  test needs host `pg_dump` 16 or Docker; it passes on the host). The two failures
+  (`test_ips_collection::…tick_budget…`, `test_waf_profile_admin::…worker_source_busy…`) **pass
+  in isolation on 3.14 and twice on 3.12 (35/35)**; the full run shared the machine with the OPS-6
+  agent's tests. Cause unknown: **rerun the full integration with the log kept before `main`.**
+- **T-125 merged** (`1aeb98f`): `docs/PHASE-G-PROPERTY-WATCH.md`, §G.0–§G.17, with the user's
+  answers **D-22**.
+- **Codex hit its usage limit at ~13:30**, 10 min into OPS-6 (reset **17:46**). OPS-6 handed to a
+  Sonnet sub-agent with "review what you inherit" (worktree `ops6`, no DB).
+- **PW-0** ([spec](tasks/PW-0.md)), the read-only lab probe: a Sonnet sub-agent, scratch
+  `QRadar-Dash-work/pw0/`.
+
+**Agents now:** Codex out until 17:46; Z.AI GLM out until 2026-10-21 01:47; Grok 402; opencode
+free and Sonnet available.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 13:00, 2026-10-17 (kept for the log)
+
+The machine rebooted at ~12:39: the tmpfs test DB was restarted
+(`docker compose -f docker-compose.test.yml up -d test-db`).
+
+**In flight:**
+
+| Task | Agent | Worktree / DB | Next |
+|---|---|---|---|
+| **OPS-5** ([spec](tasks/OPS-5.md)) | Codex. Round 0 12:47–13:02 (all gates green, five guard mutations). **Round 1** from 13:20, unit `ops5-codex-r1`, prompt `QRadar-Dash-work/ops5/prompt-r1.md` | `ops5` (branch `agent/ops5` from `6a0f114`); DB `qradar_obs_ops5` | Round 1 fixes eight review points: restore refused every backup without `state.json` (install never writes it); the secrets tar created missing volumes; the image list failed on services with no container; the restore/verify guards checked the backup root instead of Docker's root; restore of an older backup never migrates (now: versions must be equal); the restore split into `restore_swap_database` + `restore_start_and_wait` for OPS-6; the broken-copy name printed right after the swap. Then the 3.12 gate (expect 1 skip there: the round-trip test needs host `pg_dump` 16 or Docker). |
+| **T-125** ([spec](tasks/T-125.md)): the Phase G design, property watches (**D-21**) | Z.AI GLM 12:55–13:05, cut off by **"Weekly/Monthly Limit Exhausted" (reset 2026-10-21 01:47)**; Sonnet sub-agent handover from 13:22 | `t125` | GLM left §G.0–G.2 in the doc and §G.3–G.6 in `QRadar-Dash-work/t125/g-part2.md`. Spot-check citations; take the open questions to the user. Build (PW-1…) only after the OPS work. |
+| **OPS-B1** | Sonnet | merged `013972a` | Version labels on the postgres and proxy images for a local `--build`; CI runs once per tag push. |
+
+**Agent probe at 12:55** (the user asked; Z.AI GLM then ran out at 13:05 until 10-21): Codex OK; Z.AI `glm-5.3` and
+`glm-5.3-flash` OK; opencode free `deepseek-v4.1-flash-free`, `glm-5.3-flash-free` and
+`big-pickle` OK; `step-5-preview-free` unavailable; **Grok still 402** (balance exhausted).
+
+**Next:** OPS-5 review and merge, then OPS-6, OPS-9 round 2, OPS-10 (the 21:35 list below), with
+the Phase G open questions to the user when T-125 is done.
+
+---
+
+## ▶▶▶▶▶▶ RESUME HERE — STATE AT 21:35, 2026-10-16 (eighteenth session, from 18:58)
+
+**At 21:35, `main` @ `924d95c` (pushed).** `feat/phase-ce` @ `c745405` was merged after a green
+gate, and the trees are identical. `main` now holds:
+- OPS-1, OPS-2, OPS-3, OPS-4, OPS-5a, OPS-7, OPS-7b, OPS-8 and the OPS-9 draft;
+- T-120 to T-124.
+
+**The gate on `c745405`, in the Python 3.12.15 lock container with SQLAlchemy 2.1.4:**
+- ruff clean;
+- mypy 0 in 244 files;
+- unit 3,562;
+- alembic up, check, down base, up and check, clean at `0025`;
+- **integration 1,302 passed, 0 skipped, 0 errors**;
+- log in `QRadar-Dash-work/gate312d/gate-c745405.log`.
+
+The frontend gate ran on `dc2f510`, and no frontend file has changed since: `npm ci`, lint,
+typecheck, 290 files / 3,193 tests, and the build.
+
+**After 20:20:**
+- **T-123** (Sonnet): the TimescaleDB policy fixture creates the extension, which
+  `test_migrations`' `clean_db` drops; the T-122 build tests now stub `curl` and `openssl`
+  (python:3.12-slim has neither).
+- **T-124** (Sonnet): once those tests ran, they deadlocked at teardown (3/3) with the
+  background worker of the job they had just created. `run_task` now unschedules the jobs,
+  waits on `job_stats`, and deletes them. Five repro runs had 0 errors.
+- **Lesson:** a gate is not green until its skip count has been read. These 11 tests had never
+  run in any full suite, CI included.
+
+**How to gate from now on:**
+- Use the 3.12 lock container, as in the `gate312d` command of this session (`git archive` into
+  a dedicated scratch dir, `:Z` on that dir only, fresh DBs, `-rfEs`).
+- The host venv (3.14) is a quick check only.
+
+**Cleaned up:** every agent worktree, branch and DB of this session. What remains: `gate`
+(detached, for the frontend gate), and the DBs `qradar_obs_gate`, `qradar_obs_gate_mig` and
+`qradar_obs_test`.
+
+**Stopped for the night at 21:30** (the user: "yarına bırak"). No agent, container or timer is
+running.
+
+**First thing on 2026-10-17: OPS-5** ([spec](tasks/OPS-5.md), committed in `bb59b71`).
+- Give it to a Sonnet sub-agent, or to Codex once its window is fresh.
+- Use worktree `ops5` from `feat/phase-ce`, and DB `qradar_obs_ops5` with the timescaledb
+  extension.
+- Orchestrator decisions in the spec:
+  - one shared restore function, which OPS-6's `rollback` will reuse;
+  - a guard that refuses `DROP DATABASE` on `POSTGRES_DB`;
+  - a `.partial` backup directory, renamed only after the verify passes;
+  - restore refuses when the backup's `ENCRYPTION_KEY` is in neither `ENCRYPTION_KEY` nor
+    `ENCRYPTION_KEYS_JSON` of the current `.env`;
+  - the restore swaps by rename, and the broken copy is never dropped automatically;
+  - secrets are not restored automatically;
+  - the timer is installed only with `--install-timer`, and `--print-timer` exists for the
+    tests.
+- **Review it closely:** it can destroy a database.
+
+**Then:** OPS-6, OPS-9 round 2 (OPS-R41), OPS-10, and the backlog in the 20:20 section below.
+
+---
+
+**State at 20:20 (kept for the log).** The 18:25 section further down is the background.
 
 **The user, ~20:15: "saat 00 sonrası için plan yapma bugün".** Plan nothing and start nothing
 that runs past 00:00 tonight.
@@ -2122,6 +2253,8 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-18 | **The plan (user, 2026-10-16 ~11:20: "lider sensin nasıl dersen öyle gideriz … 2 hafta falan var bitmesine"; at ~11:35 the user said the two weeks was a guess and asked for the orchestrator's estimate, and said OPS-0 need not start now: "ilk önce elimizdekileri bitir").** **OPS-0 waits until the tasks in flight are finished** (its Grok run was stopped at 11:31 before writing anything). The orchestrator's estimate: about **8–10 working days** of sessions at today's pace, so ~2 weeks of calendar time is realistic; the critical path is AUTH + OPS, not Phase F. Order set by the orchestrator: <br>• **Week 1 (10-16 → 10-22):** close Phase 6 (UI-6.4, 6.6, 6.7, 6.5) and merge to `main`; Phase F core (F-1, F-2, F-3, F-5) merged, F-6/F-7 started; **AUTH-1** (login backend) and **OPS-0** (operability design) now, because production is blocked without them. <br>• **Week 2 (10-23 → 10-30):** F-6, F-7, F-8 and the Phase F lab validation; **AUTH-2** (login and user-admin UI); **OPS-1…** (release images on GHCR, `./qradar-dash install/upgrade/rollback/backup/doctor/support-bundle`, the Turkish runbook); the npm advisories; a fresh-VM install rehearsal; the final gate, `main`, a `v1.0.0` tag. <br>• **OPS-0 is no longer deferred** (it was D-16's "later"). | Everything |
 | D-19 | **Production login (user, 2026-10-16 ~11:25).** Local accounts **and** AD password over LDAP (bind as the user). **No group or role is read from AD**: roles are assigned in the app by users holding the admin role; a first-time LDAP user gets **no role** (fail closed) until an admin assigns one. The operator of production is the user (efe); the runbook is **Turkish** (commands and outputs in English). OIDC stays out of scope. → **AUTH-1** (backend), **AUTH-2** (UI), OPS-0. | AUTH-1, AUTH-2, OPS-0 |
 | D-20 | **OPS-0 open questions (user, 2026-10-16 ~17:40), all defaults.** The first GHCR release is **0.1.0** (1.0.0 later, after the fresh-VM test and the first production install). TLS terminates on the **bundled proxy**, with `--external-proxy` for an existing load balancer. **Off-host backup copies (OPS-14) wait until after 2026-10-30.** The OPS-1…10 safety cut of `docs/OPERATIONS-DESIGN.md` §10 is the plan. | OPS-1… |
+| D-21 | **Property watches (user request, 2026-10-17 ~12:45: "operöttörün herhangi bir log source veya log source type veya log group'u seçip şu custom property değerini veya değerlerini takip et diyebilir miyiz bence deriz altyapı hazır").** The operator picks a log source, a log-source type or a log-source group, and one or more properties to track. **The user's answers (12:55):** <br>• **outputs: all four** — the per-value distribution (table, chart, widget), F.1 threshold alerts on a value, new-value detection, and baseline deviation per value (spike, drop, disappearance); <br>• **values: both** — pinned values always counted, plus an automatic top-N of the rest; <br>• **combination and correlation wanted** ("korelasyon ve kombinasyon iyi olur"): several properties grouped together (e.g. `Username` × `Action`), and a correlation the design must define, bounded, with the alternatives as open questions; <br>• **order: design now, build after OPS-5, OPS-6, OPS-9 r2 and OPS-10.** <br>Design → **T-125**, `docs/PHASE-G-PROPERTY-WATCH.md`; build tasks will be **PW-1…**. | Phase G |
+| D-22 | **Phase G open questions (§G.17), answered by the user on 2026-10-17 ~13:35.** <br>• **Q1 privacy: values in clear text, readable by anyone with `read:*`, as offenses are.** No separate values permission (the design had recommended one; removed in T-125 round 2). <br>• **Q2: correlation in v1 = the new combination only** (two values each seen before, never together); conditional shift and co-movement stay out. <br>• **Q3: two properties per watch.** <br>• **Q14: PW-0, the read-only lab probe, runs now**, before the OPS work. <br>• Q4–Q13 and Q15: the design's recommendations stand as defaults (no marginal series; `/anomalies` + shadow mode `PW_ALERTING_ENABLED=false`; the caps as settings; one scope per watch; pins with a quote refused until PW-0 proves an escape; `username` the only normalized field; a grace window on membership change; the flood detector in v1.1; nav group Behavior; no per-watch cadence; no share thresholds in v1). | PW-0…PW-11 |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---

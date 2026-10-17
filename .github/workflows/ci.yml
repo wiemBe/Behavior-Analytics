@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # Branches only: a tag push reaches CI through the release workflow's workflow_call.
   push:
+    branches: ["**"]
   pull_request:
   # The release workflow runs these same gates before it builds any image.
   workflow_call:

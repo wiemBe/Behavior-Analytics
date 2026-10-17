@@ -93,6 +93,10 @@ There is no `latest` tag. `upgrade` takes an explicit version.
 | qradar-mcp | labels carry the app version and the pin `b8f6a4a3fe901eac4f55e4ca5d146d952f55db51` (`README.md:234-235`). |
 | proxy (§3.4) | labels carry the app version. |
 
+**[as built, OPS-B1]** The postgres and proxy Dockerfiles declare the same two args and
+labels, so a local `./qradar-dash ... --build` carries them too. `qradar-mcp/` is a pinned
+gitlink, so its labels are set by the release workflow only.
+
 Each image is pushed with two tags: the SemVer (`0.1.0`) and `sha-<12 hex chars>`.
 The operator script records the image **digest** it started, not only the tag
 (§4.5). A moved tag cannot change what `rollback` restarts.
@@ -807,6 +811,22 @@ database loaded with a fixture. The design does not claim a measured figure.
 `outcome` is `success`, `rolled_back`, or `failed`. `status` prints the last
 entry.
 
+**As built (OPS-6).** One shell function writes this file with a mode-`0600`
+temporary file in the mode-`0700` state directory and an atomic `mv`. It validates every
+version, full image ID, UTC timestamp and absolute backup path before opening the temporary
+file. Install records the running containers and preserves rollback history on an idempotent
+rerun. Upgrade reads the same line-oriented JSON shape used by OPS-5 retention, names an invalid
+or missing field, pulls before release-note and database preflight checks, and does not write
+state until the new release passes readiness, version and database doctor checks.
+The preflight also refuses when `.env` and the state file disagree on the version, or when
+`doctor` does not report both `db_connect` and `migration_head` as PASS. The backup runs in a
+subshell, and an `EXIT`/signal trap restarts the stopped services on the old images until the
+`.env` edit succeeds. An automatic rollback that succeeds still makes `upgrade` exit non-zero:
+the requested version is not running. A direct restore with no recorded upgrade creates no
+`last_upgrade` block. `--offline`
+replaces the pull with local image inspection. A successful direct restore records
+`restored_from`; a failed outcome with that marker no longer blocks the next upgrade.
+
 ---
 
 ## 5. Backup, restore, rollback
@@ -821,8 +841,8 @@ backup root:
 | `database.dump` | `pg_dump -Fc` of `POSTGRES_DB` | `0600` |
 | `env.bak` | copy of `.env` | `0600` |
 | `secrets.tar` | tar of the QRadar secrets volume and the proxy cert volume | `0600` |
-| `state.json` | the state file at that moment | `0600` |
-| `MANIFEST` | version, image digests, `alembic_version`, database size, hostname | `0600` |
+| `state.json` | the state file at that moment, when one exists | `0600` |
+| `MANIFEST` | version, image digests, `alembic_version`, database size, hostname, state presence, secret-volume set | `0600` |
 
 `reason` is `manual`, `scheduled`, or `pre-upgrade`.
 
@@ -839,6 +859,21 @@ database. A restore that omitted them would bring back a database whose
 empty. The tar is produced by the same stdin-tar approach as `load-secrets.sh`,
 reading the volume from a short-lived container, so the checkout is not bind
 mounted.
+
+**As built (OPS-5).** `./qradar-dash backup` writes
+`.qradar-dash-<utc>-<reason>.partial` with umask `077`, verifies it, then renames
+it to the public name above. The exit/signal trap removes the partial directory,
+the in-container dump and any verification database. `MANIFEST` has the seven
+line-oriented fields `VERSION`, `IMAGE_DIGESTS`, `ALEMBIC_VERSION`,
+`DATABASE_SIZE_BYTES`, `HOSTNAME`, `STATE_JSON` and `SECRETS_VOLUMES`.
+`STATE_JSON` is `included` or `absent`; a restore requires the private regular
+file only when it says `included`, and validates it when present. The required
+QRadar secrets volume is inspected before it is mounted. The proxy certificate
+volume is included only when its inspection succeeds, so backup never creates a
+missing named volume as a side effect. `SECRETS_VOLUMES` records `qradar` or
+`qradar,proxy`. Image IDs come from the non-one-off Compose containers that
+actually exist; `postgres` is required while a service with no container is
+omitted.
 
 Redis is not in the backup (§4.2).
 
@@ -887,6 +922,16 @@ backup filesystem. It refuses when free space is less than `2 × database size
 created by the verify step. Custom-format dumps are often smaller. The guard
 does not assume compression.
 
+**As built (OPS-5).** The Docker root comes from `docker info`. On separate
+filesystems, the backup root requires `2 × database size + 2 GiB`; the Docker
+root requires `2 × database size + 2 GiB` with verification or `1 × database
+size + 2 GiB` with `--no-verify`. When both paths have the same device, one
+guard requires the sum: three copies with verification or two without.
+`restore` requires `2 × database size + 2 GiB` on the Docker root for the
+copied-in dump and restored database. Every guard runs before creating a
+backup, scratch database, or stopping a service, and unavailable free-space
+data is a refusal.
+
 `backup` without `--no-verify` restores into `qradar_obs_restore_test` on the
 same server, checks that `alembic_version` matches the source and that
 `SELECT count(*)` on `alembic_version` and `role` succeeds, then drops the
@@ -908,6 +953,17 @@ OPS-5 installs a systemd timer, `qradar-dash-backup.timer`, daily, running
 `qradar-dash backup`. The host OS in §3.1 has systemd. The timer is the
 difference between a backup command that exists and a backup that exists.
 
+**As built (OPS-5).** The timer invokes `backup scheduled`, is persistent and
+has a 15-minute randomized delay. `backup --print-timer` prints both units and
+does not write or enable anything. `backup --install-timer` writes and enables
+them under `/etc/systemd/system` for root, or the user's systemd directory for a
+non-root operator. Manual and scheduled backups share the seven-backup window.
+Retention only removes an exact, direct-child backup-directory name after the
+same disk guard still passes; when it does not, the retained path is printed.
+Unreadable state keeps every pre-upgrade backup. For a user timer, installation
+also explains that it runs only while the user has a session unless lingering
+is enabled, and prints (but does not run) `loginctl enable-linger <user>`.
+
 ### 5.4 `rollback`
 
 No argument. It uses `previous_images` and `last_upgrade.backup`.
@@ -927,12 +983,47 @@ No argument. It uses `previous_images` and `last_upgrade.backup`.
 `rollback` does not run `alembic downgrade`. Downgrade drops columns and
 tables (`README.md:704-706`). The restored dump is already at the old head.
 
+**As built (OPS-6).** Rollback validates the complete backup and every recorded local image ID
+before it stops a service, and it never pulls. It calls OPS-5's `restore_swap_database`, restores
+the prior version in `.env` atomically, retags the recorded image IDs to that version's Compose
+references, and starts the fixed writer/UI service set. Automatic rollback uses exactly that
+path for migrate, service-health, reported-version, `db_connect` and `migration_head` failures.
+A QRadar or other doctor failure is printed but does not trigger it. If rollback health fails,
+the writers are stopped again, the verified backup path is printed, `outcome=failed` is written,
+and there is no third recovery attempt. A manual `rollback` asks for the word `rollback` on stdin, or with `--non-interactive`
+requires `--yes`, after all its refusals and before it stops anything; the automatic rollback
+inside `upgrade` does not ask. `upgrade` writes the state before the `.env` edit and the migrate
+(`installed_version` and both image maps old, `last_upgrade` to the target with
+`outcome=failed` and the pre-upgrade backup), so a crash or reboot during the migrate leaves a
+state that blocks `upgrade` and lets `rollback` run. If that write fails, the old services are
+restarted and `upgrade` exits before the `.env` edit. A successful rollback clears `previous_images`, keeps the
+broken database, and records `outcome=rolled_back`.
+
 `restore <path>` is the same sequence for a chosen backup, used when the
 operator wants a backup that is not `last_upgrade.backup`. It asks for the
 word `restore` on stdin unless `--non-interactive` is set, in which case it
-requires `--yes`. It refuses a path whose `MANIFEST` version is newer than
-the images it would start: a newer dump against older code is the failure
-mode the migration rule exists to prevent.
+requires `--yes`. It refuses a path whose `MANIFEST` version differs from the
+images it would start. This is an as-built deviation from the original
+newer-only rule: newer backups require upgrading first, while older backups
+require `rollback` or putting that version's images back before restore. A
+direct restore never runs a migration.
+
+**As built (OPS-5).** `restore` also refuses before stopping a service unless
+the four required files, the manifest-declared state file and all private modes
+are valid, the Docker-root guard passes, and the `ENCRYPTION_KEY` in `env.bak`
+is either the current key or a key listed in the current
+`ENCRYPTION_KEYS_JSON`. On a key refusal it directs the operator back to §5.1
+and never prints either key. The shared `restore_swap_database <directory>
+<reason>` function stops services, performs the Timescale restore and revision
+check, terminates connections, and executes the two-name swap. It returns with
+services stopped on success so `rollback` can select the previous images before
+calling `restore_start_and_wait`. A direct `restore` calls both functions. The
+swap drops only the new restore database on a pre-swap failure; after the first
+rename, a failed second rename restores the original name and prints both names
+and the exact recovery rename command if that also fails. After a successful
+second rename, the broken database name and later drop command are printed
+immediately, before services start and readiness is checked. The broken copy
+and `secrets.tar` are always left for an operator to inspect.
 
 ### 5.5 `status` and `logs`
 
