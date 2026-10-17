@@ -8,7 +8,46 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 19:25, 2026-10-17 (twentieth session, from 17:44)
+## ▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 19:41, 2026-10-17 (end of the twentieth session; the user's limit is near)
+
+**Branches.** `main` @ `9bf3d4d` = **v0.1.1** (released, images public, verified on a fresh VM by
+OPS-11). `feat/phase-ce` @ the PLANNER commit after `343c81a` (pushed) = `main` + PW-1, PW-2a,
+PW-3a, OPS-11 report, specs. Migration head on `feat/phase-ce`: `0026`. `qradarce2` is
+**running**. VM `qradar-dash-ops11` shut off and kept.
+
+**In flight at save — all three are Sonnet sub-agents and die with this chat:**
+
+| Task | Worktree / DB | State at 19:41 | If the chat died |
+|---|---|---|---|
+| **PW-2b** ([spec](tasks/PW-2b.md)) collection | `pw2b` / `qradar_obs_pw2b` | 19 files changed; its whole integration run was at 53 % (log `QRadar-Dash-work/pw2b/integ.log`); no report yet | If `docs/tasks/PW-2b.report.md` exists in the worktree: review it. Else hand over (Codex after **22:49**, or Sonnet) with the spec + "review what you inherit". Check first that no `pytest` of it is still running (`pgrep -af "qradar_obs_pw2b"`). |
+| **PW-5** ([spec](tasks/PW-5.md)) API | `pw5` / `qradar_obs_pw5` | 13 files changed, still writing; no report | Same rule. |
+| **T-132** ([spec](tasks/T-132.md)) OPS-11 polish | `t132` / `qradar_obs_t132` | 8 files changed; whole integration run started 19:39 (log `QRadar-Dash-work/t132/integ.log`); no report | Same rule. |
+
+**Next, in order:**
+1. Review and merge PW-2b, PW-5, T-132 (each: the report's open points get a decision; run ruff,
+   mypy, the unit suite on the merged tree; remove worktree, branch, DB after the merge).
+2. **PW-5b**: `GET /property-watches/{id}/scope` and the resolved member counts in
+   `scope-options`, on PW-2b's resolver (spec to write).
+3. **PW-3b** (spec to write from §G.16 and the PW-3a decisions): bulk loaders, the lifecycle, the
+   pipeline step (evaluate + train after collect), `watch_version`, the spike's consecutive
+   buckets through `anomaly_open_after_intervals`, `all_detectors()` including PW, the
+   `PwThresholds` wiring from the `pw_*` settings, statement-count pins at ≤ 40. Codex after 22:49.
+4. Then PW-7 (UI read side, after PW-5), PW-4 (alerting; also: DELETE resolves open alerts,
+   maintenance suppression), PW-6 (F.1 extension; also: the DELETE 409 while a rule pins a value),
+   PW-8, PW-9, PW-10, PW-11 (§G.16 order).
+5. **Before the next `main`:** the full 3.12 gate with the **whole** integration suite (PW-1 was
+   gated on an older base; unit skips expect 13 under root).
+
+**Open for the user:** T-132's fixes are not urgent. Default (unless the user says otherwise):
+they ship with the next release, together with Phase G (off by default). Alternative: a v0.1.2
+patch from a release branch off `main` with T-132 only.
+
+**Agents:** Codex out until **22:49**; Z.AI GLM until 2026-10-21 01:47; Grok 402; Sonnet and the
+opencode free models available.
+
+---
+
+## ▶▶▶▶▶▶▶▶▶ STATE AT 19:25, 2026-10-17 (twentieth session; kept for the log)
 
 **Update 19:25.**
 - **OPS-11 done** ([report](tasks/OPS-11.report.md)): v0.1.0 installed from GHCR on a fresh
