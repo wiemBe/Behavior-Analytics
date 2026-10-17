@@ -44,16 +44,16 @@ reboot, recreate them.**
 | **PW-6** F.1 kind, migration `0027` ([spec](tasks/PW-6.md)) | Sonnet sub-agent from 00:33 | `pw6` / `qradar_obs_pw6` | 20 files, report in progress | Report → review. |
 | **PW-7** UI read side ([spec](tasks/PW-7.md)) | Sonnet | `pw7`; PNGs `QRadar-Dash-work/pw7/` (90) | **done 00:50, accepted** after the PNGs (list 1440, detail exact 1440, lower bound 1024): honest gaps, unit on the axis, band only for one value, no slop. Lint, typecheck, build clean; vitest 3,354 / 1 failed (`widgets/registry.test.ts`, the new `rbac.py` permissions → PW-9) | Its open points: honesty line above the chart and nullable `log_source_id` → **PW-8** (in its spec); `GET /anomalies/{id}` 404 for a PW row, `value_id` in `PwValueRefOut`, a read route for the generated AQL → **PW-5c** (backend, spec to write); `[BUILT — PW-7]` markers → PW-11. |
 | **PW-9** widget ([spec](tasks/PW-9.md)) + the red `registry.test` | Sonnet sub-agent from 01:07 | `pw9` (from `agent/pw7`), ports 3119/8119/9119, scratch `QRadar-Dash-work/pw9/` | started | Report + PNGs → review the PNGs myself. |
+| **PW-5c** PW API gaps ([spec](tasks/PW-5c.md)): PW anomaly detail, `value_id`, histogram, AQL view, `list_values` filter | Sonnet sub-agent from 01:21 | `pw5c` (from `agent/pw-base`) / `qradar_obs_pw5c` | started | Report → review; then a small UI follow-up wires PW-7's investigation view to the real detail shape. |
 
-**If this chat died:** Sonnet sub-agents (PW-3b, PW-6, PW-9) die with it; their worktrees
+**If this chat died:** Sonnet sub-agents (PW-3b, PW-6, PW-9, PW-5c) die with it; their worktrees
 keep the files and an early report. For each: commit what it has on its `agent/*` branch, then
 hand it over (Codex after 05:03 — PW-3b has its own 05:10 timer — or Sonnet) with the spec +
 "review what you inherit". PW-5b (DeepSeek) keeps running: check `systemctl --user is-active
 pw5b-ds` and the log.
 
 **Not started, specs ready:** [PW-4](tasks/PW-4.md) alerting (after PW-3b; DB `qradar_obs_pw4`),
-[PW-8](tasks/PW-8.md) editor UI (after PW-6 and PW-7; ports 3118/8118/9118). To write: **PW-5c**
-(above), PW-10 (live validation on the lab), PW-11 (docs).
+[PW-8](tasks/PW-8.md) editor UI (after PW-6 and PW-7; ports 3118/8118/9118). To write: PW-10 (live validation on the lab), PW-11 (docs).
 
 **Then, when the code is written:**
 1. Commit each worktree's diff on its `agent/*` branch.
