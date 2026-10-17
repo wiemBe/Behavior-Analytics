@@ -8,7 +8,34 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 13:50, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 14:25, 2026-10-17 (nineteenth session, from 12:44)
+
+**Since 13:50 (`feat/phase-ce` @ `128d41b` + the OPS-9r2 spec, pushed):**
+- **OPS-6 merged** (`128d41b`). Codex round 0 was cut off by its limit; a Sonnet handover
+  reviewed it and fixed nine points (restart traps between the stop and the `.env` edit, the
+  doctor preflight requiring PASS, no `.env` rewrite after a failed swap, the key check on
+  rollback, `status` on a bad state file, …). Round 2 (orchestrator review): **the attempt is
+  recorded in the state file before the `.env` edit and the migrate**, so a crash or reboot
+  leaves a state that blocks `upgrade` and lets `rollback` run (a test SIGKILLs the script during
+  the migrate); **a manual `rollback` asks for the word `rollback`** (`--non-interactive --yes`).
+  A successful automatic rollback exits non-zero (orchestrator: the requested version is not
+  running). Accepted deviation: `up --wait` and the readiness loop are two separate 180 s waits.
+  Host: 150 `test_qradar_dash_*` tests, shellcheck clean.
+- **PW-0 done** (`f43a78a`, report `docs/tasks/PW-0.report.md`, 26 searches, read-only); T-125
+  round 3 folded its answers into the design (cycle-safe group walk: the lab's two groups name
+  each other as parent; `IN` pins; NULL is unparsed; integer-valued float counts; the invisible
+  `LIMIT` cut; **the measured-zero rule**).
+- **In flight:** OPS-9 round 2 ([spec](tasks/OPS-9r2.md)) on opencode free DeepSeek (unit
+  `ops9r2-ds`, worktree `ops9r2`); the full 3.12 integration rerun of `a63ddbc` with its log kept
+  (container `gate-1017b`, log `QRadar-Dash-work/gate-1017a/integ-a63ddbc.log`).
+- **Next:** if the rerun is clean, the full 3.12 gate on the head (with OPS-6) and the frontend
+  gate, then `main`; then OPS-10 (the fresh-VM install test, orchestrator) and OPS-6r (the
+  real-stack upgrade/rollback rehearsal that measures downtime). Phase G build (PW-1…) after
+  OPS-10.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 13:50, 2026-10-17 (kept for the log)
 
 **Since 13:00:**
 - **OPS-5 merged** into `feat/phase-ce` (`b5db8fb`, Codex rounds 0–1, eight review points fixed).
