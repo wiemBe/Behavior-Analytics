@@ -8,7 +8,44 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 15:48, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 16:03, 2026-10-17 (end of the nineteenth session; the user's session limit is at 96 %)
+
+**Branches.** `main` @ `8815715` = v0.1.0 (tag pushed, release published, images public).
+`feat/phase-ce` @ `17ad7ff` (pushed) = `main` + T-127, T-128, OPS-10 report, specs, AGENTS.md
+rules of 2026-10-17. `qradarce2` (lab QRadar) is **running** again since 15:45.
+
+**In flight at save:**
+
+| Task | Agent | Where | When it ends |
+|---|---|---|---|
+| **OPS-9 r3** ([spec](tasks/OPS-9r3.md)), runbook after OPS-10/T-127/T-128 | opencode free DeepSeek, systemd unit `ops9r3-ds` (survives the chat) | worktree `ops9r3`, scratch `QRadar-Dash-work/ops9r3/` | `systemctl --user is-active ops9r3-ds`; read `docs/tasks/OPS-9r3.report.md` in the worktree; check every quoted command against `qradar-dash`; `grep -c "henüz yayımlanmadı"` = 0; merge. |
+| **PW-1** ([spec](tasks/PW-1.md)), Phase G foundations (migration 0026) | Sonnet sub-agent (**dies with the chat**) | worktree `pw1`, DB `qradar_obs_pw1` | If the chat died: hand the worktree to Codex (back 17:46) or Sonnet with "review what you inherit". **Do not merge PW-1 until `v0.1.1` is tagged (D-24).** |
+
+**Next, in order (D-24):**
+1. Merge OPS-9 r3.
+2. **T-129** ([spec](tasks/T-129.md)): the 0.1.1 bump (`VERSION`, `pyproject.toml`,
+   `package.json`, the two root lines of `package-lock.json` only — not `yocto-queue`) and
+   `docs/releases/0.1.1.md` (`min_from: 0.1.0`). A small task: an opencode free model is enough.
+3. Full gate: 3.12 backend (`QRadar-Dash-work/gate-1017a/run.sh`, `git archive <sha> | tar -x`
+   of the whole tree, fresh DBs `qradar_obs_gate`/`_mig`; expect integration 1 skip = the backup
+   round trip) **and** the frontend gate (`package.json` changes: `npm ci`, lint, typecheck,
+   vitest, build; Node at `~/.local/node/bin`; the `gate` worktree is the usual place).
+4. Merge to `main`, tag `v0.1.1`, watch the release run, check the images anonymously.
+5. Real-path check: a **fresh** VM (`virt-install --cloud-init root-password-generate=on,ssh-key=…`,
+   account `qdops`, never `operator`; **80 GiB+ disk**, 10 GiB RAM; shut `qradarce2` down first,
+   start it after), install v0.1.0 from GHCR, `upgrade 0.1.1` from GHCR. The old VM
+   `qradar-dash-ops10` holds local test images tagged 0.1.1: delete it (`virsh destroy/undefine`,
+   `vol-delete` its overlay) rather than reuse it.
+6. Then PW-1 review and merge, and the rest of Phase G (`docs/PHASE-G-PROPERTY-WATCH.md` §G.16).
+
+**Backlog:** the users list once missed a just-created user (OPS-10; investigate before v0.2.0).
+
+**Agents:** Codex back **17:46**; Z.AI GLM out until **2026-10-21 01:47**; Grok 402; opencode free
+(DeepSeek v4.1 flash, GLM 5.3 flash, big-pickle) and Sonnet available.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 15:48, 2026-10-17 (kept for the log)
 
 **`qradarce2` was started again at 15:45** (the 14:56 warning below is closed). The OPS-10 VM
 `qradar-dash-ops10` is shut off and kept (11 GiB overlay + 616 MiB base in pool `default`; login
