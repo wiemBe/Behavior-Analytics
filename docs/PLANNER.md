@@ -33,7 +33,7 @@ tasks run in parallel on a snapshot base, not one merge at a time:
   `agent/pw5`, then merge everything into `feat/phase-ce` (the WIP commits are shared ancestors,
   so no add/add conflicts).
 
-**In flight (00:35):**
+**In flight (00:32):**
 
 | Task | Agent | Worktree / DB | Survives the chat? | Next |
 |---|---|---|---|---|
