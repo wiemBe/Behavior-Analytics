@@ -732,6 +732,14 @@ Before any container is stopped:
 - A previous upgrade recorded `outcome=failed` blocks a new upgrade until
   `rollback` or a successful `restore` has cleared it.
 
+**[as built, T-131]** `upgrade` also requires the checkout at the target version: right after the
+SemVer check, and before the state file is read, the `VERSION` file must equal the target.
+Otherwise it refuses and pulls and stops nothing, so the target version's script and compose files
+run the upgrade (release notes are still read from the target image, §1.3). `install` refuses to
+change a recorded version: with `.qradar-dash/state.json` present, it refuses (also under
+`--dry-run`) on an invalid state file, on a failed last upgrade without `restored_from`, and when
+`installed_version` differs from the checkout's `VERSION`. With no state file it runs as before.
+
 ### 4.2 Backup, then the migration
 
 1. Record the running image digests into the state file as `previous_images`.
