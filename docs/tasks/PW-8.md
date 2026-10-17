@@ -44,6 +44,12 @@ series chart (`frontend/src/components/propertywatch/`) for the preview; extend 
    kind: choose a watch, then one of its **pinned** values; an automatic value is not offered, and
    the picker says to pin it first, linking to the watch.
 
+6. **From the PW-7 review (orchestrator, 2026-10-18):** move the honesty line (`WatchHonesty`)
+   **above the chart** in `WatchWorkspace.tsx`, so a lower-bound or partial window is said on the
+   first screen at 1440×900 (guidelines: the first screen answers the question); make
+   `log_source_id` nullable in the anomaly type in `lib/api.ts` (a type or group PW row has none)
+   and check every caller.
+
 Values and names are attacker-controlled text: rendered as text, and through
 `echarts.format.encodeHTML` in any chart tooltip (T-117); pin it with a test.
 
