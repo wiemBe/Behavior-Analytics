@@ -6,6 +6,8 @@
 #                         [--skip-qradar-check]
 #   ./qradar-dash status
 #   ./qradar-dash logs [docker compose logs arguments]
+#   ./qradar-dash backup [manual|scheduled|pre-upgrade] [--no-verify]
+#   ./qradar-dash restore <backup-directory> [--non-interactive --yes]
 #
 # Specified in docs/OPERATIONS-DESIGN.md section 3. The script needs bash and
 # Docker with Compose v2 on the host, plus openssl and curl. It never calls
@@ -36,10 +38,21 @@ Commands
   status        Show the stack and the API health.
   logs          Show service logs (arguments go to `docker compose logs`).
   doctor        Run read-only host and in-container diagnostics.
+  backup        Create and verify a private database, configuration and secrets backup.
+  restore       Restore a complete backup after confirmation.
   support-bundle
                 Write a redacted diagnostic archive under the backup root.
-  upgrade, rollback, backup, restore, bundle
+  upgrade, rollback, bundle
                 Not built yet.
+
+backup options
+  --no-verify       Skip the scratch-database restore (not allowed for pre-upgrade).
+  --print-timer     Print the daily systemd service and timer; write nothing.
+  --install-timer   Install and enable the daily systemd timer.
+
+restore options
+  --non-interactive Refuse unless --yes is also present.
+  --yes             Confirm a non-interactive restore.
 
 install options
   --non-interactive FILE   Read the answers from FILE (mode 0600, no secrets).
@@ -804,6 +817,694 @@ cmd_logs() {
   dc logs "$@"
 }
 
+# ---------------------------------------------------------------- backup and restore primitives
+
+database_size_bytes() { # bytes on stdout; failure means unavailable
+  local size
+  size=$(printf '%s\n' "SELECT pg_database_size(current_database());" \
+    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$(env_get POSTGRES_DB)" \
+      -v ON_ERROR_STOP=1 -Atq 2>/dev/null) || return 1
+  case "$size" in '' | *[!0-9]*) return 1 ;; esac
+  printf '%s\n' "$size"
+}
+
+backup_guard_values() { # backup_guard_values PATH DATABASE_BYTES COPIES -> "FREE_KIB REQUIRED_KIB"
+  local metrics free used required_kib
+  metrics=$(doctor_df "$1" || true)
+  [ -n "$metrics" ] || return 1
+  read -r free used <<<"$metrics"
+  required_kib=$((($3 * $2 + 2 * 1024 * 1024 * 1024 + 1023) / 1024))
+  printf '%s %s\n' "$free" "$required_kib"
+}
+
+backup_disk_guard() { # backup_disk_guard PATH DATABASE_BYTES COPIES [DISPLAY_PATHS]
+  local path=$1 display=${4:-$1} values free required free_gib required_gib
+  values=$(backup_guard_values "$path" "$2" "$3") || {
+    fail "free space is unavailable for backup path $display"
+    return 1
+  }
+  read -r free required <<<"$values"
+  free_gib=$(doctor_free_gib "$free")
+  required_gib=$(doctor_free_gib "$required")
+  say "Backup disk: $free_gib GiB free; $required_gib GiB required at $display."
+  if [ "$free" -lt "$required" ]; then
+    fail "backup disk guard refused: $free_gib GiB free, $required_gib GiB required at $display"
+    return 1
+  fi
+}
+
+docker_root_path() {
+  local path
+  path=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null) || return 1
+  [ -n "$path" ] || return 1
+  printf '%s\n' "$path"
+}
+
+backup_storage_guards() { # backup_storage_guards BACKUP_ROOT DATABASE_BYTES VERIFY
+  local backup_root=$1 db_size=$2 verify=$3 docker_root backup_device docker_device copies
+  docker_root=$(docker_root_path) || {
+    fail "Docker root directory is unavailable; no backup was written."
+    return 1
+  }
+  backup_device=$(stat -c %d -- "$backup_root" 2>/dev/null) || {
+    fail "backup filesystem is unavailable at $backup_root"
+    return 1
+  }
+  docker_device=$(stat -c %d -- "$docker_root" 2>/dev/null) || {
+    fail "Docker filesystem is unavailable at $docker_root"
+    return 1
+  }
+  if [ "$backup_device" = "$docker_device" ]; then
+    if [ "$verify" = yes ]; then copies=3; else copies=2; fi
+    say "Backup and Docker paths share one filesystem: $backup_root and $docker_root."
+    backup_disk_guard "$backup_root" "$db_size" "$copies" \
+      "$backup_root and $docker_root"
+    return
+  fi
+  backup_disk_guard "$backup_root" "$db_size" 2 || return 1
+  if [ "$verify" = yes ]; then copies=2; else copies=1; fi
+  backup_disk_guard "$docker_root" "$db_size" "$copies"
+}
+
+validate_database_identifier() {
+  [[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || {
+    fail "unsafe database name refused"
+    return 1
+  }
+}
+
+guard_drop_database() { # guard_drop_database NAME
+  local live
+  live=$(env_get POSTGRES_DB)
+  validate_database_identifier "$1" || return 1
+  if [ "$1" = "$live" ]; then
+    fail "refusing to drop the live POSTGRES_DB database"
+    return 1
+  fi
+}
+
+is_restore_database_name() {
+  [[ $1 == qradar_obs_restore_test || $1 =~ ^qradar_obs_restore_[0-9]{8}t[0-9]{6}z$ ]]
+}
+
+postgres_sql() { # postgres_sql DATABASE SQL
+  printf '%s\n' "$2" \
+    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$1" \
+      -v ON_ERROR_STOP=1 -Atq
+}
+
+drop_database() { # drop_database NAME
+  guard_drop_database "$1" || return 1
+  postgres_sql postgres "DROP DATABASE IF EXISTS $1;"
+}
+
+RESTORE_CONTAINER_DUMP=""
+
+restore_container_dump_cleanup() {
+  [ -z "$RESTORE_CONTAINER_DUMP" ] \
+    || dc exec -T postgres rm -f -- "$RESTORE_CONTAINER_DUMP" >/dev/null 2>&1 \
+    || true
+  RESTORE_CONTAINER_DUMP=""
+}
+
+restore_dump_into_database() { # restore_dump_into_database DUMP NAME
+  local dump=$1 database=$2
+  is_restore_database_name "$database" || {
+    fail "unsafe restore database name refused"
+    return 1
+  }
+  guard_drop_database "$database" || return 1
+  RESTORE_CONTAINER_DUMP="/tmp/qradar-dash-${database}.dump"
+  dc cp "$dump" "postgres:$RESTORE_CONTAINER_DUMP" || {
+    restore_container_dump_cleanup
+    return 1
+  }
+  if ! postgres_sql postgres "CREATE DATABASE $database;"; then
+    restore_container_dump_cleanup
+    return 1
+  fi
+  if ! postgres_sql "$database" \
+      'CREATE EXTENSION IF NOT EXISTS timescaledb; CREATE EXTENSION IF NOT EXISTS pgcrypto;' \
+    || ! postgres_sql "$database" 'SELECT timescaledb_pre_restore();' \
+    || ! dc exec -T postgres pg_restore -U "$(env_get POSTGRES_USER)" \
+      -d "$database" --no-owner "$RESTORE_CONTAINER_DUMP" \
+    || ! postgres_sql "$database" 'SELECT timescaledb_post_restore();'; then
+    restore_container_dump_cleanup
+    return 1
+  fi
+  restore_container_dump_cleanup
+}
+
+manifest_get() { # manifest_get BACKUP_DIRECTORY KEY
+  sed -n "s/^$2=//p" "$1/MANIFEST" | head -n1
+}
+
+verify_restored_database() { # verify_restored_database NAME EXPECTED_ALEMBIC [COUNTS]
+  local database=$1 expected=$2 counts=${3:-no} actual
+  actual=$(postgres_sql "$database" 'SELECT version_num FROM alembic_version;' \
+    | tr -d '[:space:]') || return 1
+  [ "$actual" = "$expected" ] || {
+    fail "restored alembic_version does not match the backup manifest"
+    return 1
+  }
+  if [ "$counts" = yes ]; then
+    postgres_sql "$database" 'SELECT count(*) FROM alembic_version;' >/dev/null || return 1
+    postgres_sql "$database" 'SELECT count(*) FROM role;' >/dev/null || return 1
+  fi
+}
+
+BACKUP_STAGE=""
+BACKUP_SCRATCH_CREATED=no
+BACKUP_CONTAINER_DUMP=""
+
+backup_cleanup() {
+  if [ "$BACKUP_SCRATCH_CREATED" = yes ]; then
+    drop_database qradar_obs_restore_test >/dev/null 2>&1 || true
+    BACKUP_SCRATCH_CREATED=no
+  fi
+  if [ -n "$BACKUP_CONTAINER_DUMP" ]; then
+    dc exec -T postgres rm -f -- "$BACKUP_CONTAINER_DUMP" >/dev/null 2>&1 || true
+    BACKUP_CONTAINER_DUMP=""
+  fi
+  [ -z "$BACKUP_STAGE" ] || rm -rf -- "$BACKUP_STAGE"
+  BACKUP_STAGE=""
+}
+
+backup_image_digests() {
+  local containers container row service oneoff digest joined="" has_postgres=no
+  containers=$(dc ps -a -q) || return 1
+  while IFS= read -r container; do
+    [ -n "$container" ] || continue
+    case "$container" in *[!A-Za-z0-9_.-]*) return 1 ;; esac
+    row=$(docker inspect --format \
+      '{{printf "%s\t%s\t%s" (index .Config.Labels "com.docker.compose.service") (index .Config.Labels "com.docker.compose.oneoff") .Image}}' \
+      "$container") || return 1
+    IFS=$'\t' read -r service oneoff digest <<<"$row"
+    [ "${oneoff,,}" = true ] && continue
+    case "$service" in '' | *[!A-Za-z0-9_.-]*) return 1 ;; esac
+    if [[ $digest =~ ^[0-9a-f]{64}$ ]]; then digest="sha256:$digest"; fi
+    [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+    [ "$service" != postgres ] || has_postgres=yes
+    if [ -n "$joined" ]; then joined="$joined,"; fi
+    joined="$joined$service:$digest"
+  done <<<"$containers"
+  [ "$has_postgres" = yes ] || return 1
+  printf '%s\n' "$joined"
+}
+
+write_backup_manifest() { # write_backup_manifest DIR DB_SIZE ALEMBIC STATE SECRET_VOLUMES
+  local version images host
+  version=$(env_get QRADAR_DASH_VERSION)
+  if [ -z "$version" ] && [ -r VERSION ]; then version=$(tr -d '[:space:]' <VERSION); fi
+  [ -n "$version" ] || return 1
+  images=$(backup_image_digests) || return 1
+  host=$(hostname) || return 1
+  {
+    printf 'VERSION=%s\n' "$version"
+    printf 'IMAGE_DIGESTS=%s\n' "$images"
+    printf 'ALEMBIC_VERSION=%s\n' "$3"
+    printf 'DATABASE_SIZE_BYTES=%s\n' "$2"
+    printf 'HOSTNAME=%s\n' "$host"
+    printf 'STATE_JSON=%s\n' "$4"
+    printf 'SECRETS_VOLUMES=%s\n' "$5"
+  } >"$1/MANIFEST"
+}
+
+state_last_upgrade_fields() { # state_last_upgrade_fields FILE -> OUTCOME<TAB>BACKUP
+  local compact object outcome backup
+  compact=$(tr -d '\n\r' <"$1") || return 1
+  object=$(printf '%s\n' "$compact" \
+    | sed -n 's/.*"last_upgrade"[[:space:]]*:[[:space:]]*{\([^}]*\)}.*/\1/p')
+  [ -n "$object" ] || return 1
+  outcome=$(printf '%s\n' "$object" \
+    | sed -n 's/.*"outcome"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  backup=$(printf '%s\n' "$object" \
+    | sed -n 's/.*"backup"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+  [ -n "$outcome" ] || return 1
+  printf '%s\t%s\n' "$outcome" "$backup"
+}
+
+successful_upgrades_after() { # successful_upgrades_after STAMP STATE_FILE BACKUP_ROOT
+  local stamp=$1 state=$2 root=$3 text at outcome path fields count=0 candidate_stamp seen="|"
+  [ -r "$state" ] || return 1
+  text=$(tr -d '\n\r' <"$state") || return 1
+  while IFS= read -r fields; do
+    at=$(printf '%s\n' "$fields" \
+      | sed -n 's/.*"at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+      | tr -d -- '-:')
+    outcome=$(printf '%s\n' "$fields" \
+      | sed -n 's/.*"outcome"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    if [ "$outcome" = success ] && [[ $at > $stamp ]] && [[ $seen != *"|$at|"* ]]; then
+      count=$((count + 1))
+      seen="$seen$at|"
+    fi
+  done < <(printf '%s\n' "$text" | sed 's/}/}\n/g')
+  for path in "$root"/qradar-dash-*-pre-upgrade; do
+    [ -d "$path" ] || continue
+    candidate_stamp=${path##*/qradar-dash-}
+    candidate_stamp=${candidate_stamp%-pre-upgrade}
+    [[ $candidate_stamp > $stamp ]] || continue
+    [ -r "$path/state.json" ] || continue
+    fields=$(state_last_upgrade_fields "$path/state.json" 2>/dev/null || true)
+    outcome=${fields%%$'\t'*}
+    at=$(tr -d '\n\r' <"$path/state.json" \
+      | sed -n 's/.*"last_upgrade"[[:space:]]*:[[:space:]]*{[^}]*"at"[[:space:]]*:[[:space:]]*"\([^"]*\)"[^}]*}.*/\1/p' \
+      | tr -d -- '-:')
+    if [ "$outcome" = success ] && [ -n "$at" ] && [[ $seen != *"|$at|"* ]]; then
+      count=$((count + 1))
+      seen="$seen$at|"
+    fi
+  done
+  printf '%s\n' "$count"
+}
+
+backup_path_is_managed() { # exact direct-child backup directory pattern
+  local root=$1 path=$2 base
+  [ -d "$path" ] && [ ! -L "$path" ] || return 1
+  [ "$(dirname -- "$path")" = "$root" ] || return 1
+  base=${path##*/}
+  [[ $base =~ ^qradar-dash-[0-9]{8}T[0-9]{6}Z-(manual|scheduled|pre-upgrade)$ ]]
+}
+
+retention_delete() { # retention_delete ROOT PATH DB_SIZE
+  backup_path_is_managed "$1" "$2" || return 1
+  if ! backup_disk_guard "$1" "$3" 2 >/dev/null; then
+    warn "retention kept backup because the next-backup disk guard does not pass: $2"
+    return 1
+  fi
+  rm -rf -- "$2"
+}
+
+apply_backup_retention() { # apply_backup_retention ROOT DB_SIZE
+  local root=$1 db_size=$2 path base stamp state=.qradar-dash/state.json
+  local fields outcome protected count
+  local -a ordinary=()
+  protected=""
+  if [ -r "$state" ]; then
+    fields=$(state_last_upgrade_fields "$state" 2>/dev/null || true)
+    outcome=${fields%%$'\t'*}
+    if [ "$outcome" = failed ] || [ "$outcome" = rolled_back ]; then
+      protected=${fields#*$'\t'}
+    fi
+  fi
+  for path in "$root"/qradar-dash-*-manual "$root"/qradar-dash-*-scheduled; do
+    [ -d "$path" ] || continue
+    backup_path_is_managed "$root" "$path" || continue
+    ordinary+=("$path")
+  done
+  if [ "${#ordinary[@]}" -gt 7 ]; then
+    mapfile -t ordinary < <(printf '%s\n' "${ordinary[@]}" | sort)
+    count=$((${#ordinary[@]} - 7))
+    for path in "${ordinary[@]:0:count}"; do
+      [ "$path" = "$protected" ] || retention_delete "$root" "$path" "$db_size"
+    done
+  fi
+  [ -r "$state" ] || return 0
+  for path in "$root"/qradar-dash-*-pre-upgrade; do
+    [ -d "$path" ] || continue
+    backup_path_is_managed "$root" "$path" || continue
+    [ "$path" = "$protected" ] && continue
+    base=${path##*/qradar-dash-}
+    stamp=${base%-pre-upgrade}
+    count=$(successful_upgrades_after "$stamp" "$state" "$root" 2>/dev/null || true)
+    case "$count" in '' | *[!0-9]*) continue ;; esac
+    [ "$count" -ge 2 ] && retention_delete "$root" "$path" "$db_size"
+  done
+  return 0
+}
+
+BACKUP_SECRETS_VOLUMES=""
+
+write_secrets_backup() { # write_secrets_backup TARGET
+  local secrets proxy
+  local -a mounts entries
+  secrets=$(env_get SECRETS_VOLUME)
+  proxy=$(env_get PROXY_CERTS_VOLUME)
+  : "${secrets:=qradar-observability-secrets}"
+  : "${proxy:=qradar-observability-proxy-certs}"
+  case "$secrets:$proxy" in *[!A-Za-z0-9_.:-]*) return 1 ;; esac
+  docker volume inspect "$secrets" >/dev/null 2>&1 || {
+    fail "required QRadar secrets volume is missing"
+    return 1
+  }
+  mounts=(-v "$secrets:/volumes/qradar:ro")
+  entries=(qradar)
+  BACKUP_SECRETS_VOLUMES=qradar
+  if docker volume inspect "$proxy" >/dev/null 2>&1; then
+    mounts+=(-v "$proxy:/volumes/proxy:ro")
+    entries+=(proxy)
+    BACKUP_SECRETS_VOLUMES=qradar,proxy
+  fi
+  docker run --rm "${mounts[@]}" alpine tar -C /volumes -cf - "${entries[@]}" >"$1"
+}
+
+cmd_backup_create() { # cmd_backup_create REASON VERIFY
+  local reason=$1 verify=$2 root stamp name final db_size alembic state_json=absent
+  need_installed
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  root=$(env_get QRADAR_DASH_BACKUP_DIR)
+  [ -n "$root" ] || die "backup root is not configured; set QRADAR_DASH_BACKUP_DIR."
+  [ -d "$root" ] || die "backup root is not a directory: $root"
+  db_size=$(database_size_bytes) || die "database size is unavailable; no backup was written."
+  backup_storage_guards "$root" "$db_size" "$verify" || return 1
+  alembic=$(postgres_sql "$(env_get POSTGRES_DB)" \
+    'SELECT version_num FROM alembic_version;' | tr -d '[:space:]') \
+    || die "alembic_version is unavailable; no backup was written."
+  [ -n "$alembic" ] || die "alembic_version is empty; no backup was written."
+
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  name="qradar-dash-$stamp-$reason"
+  final="$root/$name"
+  BACKUP_STAGE="$root/.$name.partial"
+  [ ! -e "$final" ] && [ ! -e "$BACKUP_STAGE" ] \
+    || die "backup path already exists: $final"
+  umask 077
+  mkdir -m 700 -- "$BACKUP_STAGE"
+  trap backup_cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  BACKUP_CONTAINER_DUMP="/tmp/qradar-dash-$stamp.dump"
+  dc exec -T postgres pg_dump -U "$(env_get POSTGRES_USER)" -Fc \
+    -d "$(env_get POSTGRES_DB)" -f "$BACKUP_CONTAINER_DUMP" \
+    || die "database dump failed; the partial backup was removed."
+  dc cp "postgres:$BACKUP_CONTAINER_DUMP" "$BACKUP_STAGE/database.dump" \
+    || die "database dump copy-out failed; the partial backup was removed."
+  dc exec -T postgres rm -f -- "$BACKUP_CONTAINER_DUMP" \
+    || die "database dump cleanup failed; the partial backup was removed."
+  BACKUP_CONTAINER_DUMP=""
+  install -m 600 "$ENV_FILE" "$BACKUP_STAGE/env.bak" \
+    || die "environment backup failed; the partial backup was removed."
+  write_secrets_backup "$BACKUP_STAGE/secrets.tar" \
+    || die "secrets backup failed; the partial backup was removed."
+  if [ -f .qradar-dash/state.json ]; then
+    install -m 600 .qradar-dash/state.json "$BACKUP_STAGE/state.json" \
+      || die "state backup failed; the partial backup was removed."
+    state_json=included
+  fi
+  write_backup_manifest \
+    "$BACKUP_STAGE" "$db_size" "$alembic" "$state_json" "$BACKUP_SECRETS_VOLUMES" \
+    || die "backup manifest failed; the partial backup was removed."
+  chmod 600 "$BACKUP_STAGE"/*
+
+  if [ "$verify" = yes ]; then
+    drop_database qradar_obs_restore_test >/dev/null \
+      || die "could not clear the backup verification database."
+    # From this point cleanup may safely issue DROP IF EXISTS even when copy-in
+    # or CREATE DATABASE itself is the failing step.
+    BACKUP_SCRATCH_CREATED=yes
+    restore_dump_into_database "$BACKUP_STAGE/database.dump" qradar_obs_restore_test \
+      || die "backup verification restore failed; the partial backup was removed."
+    verify_restored_database qradar_obs_restore_test "$alembic" yes \
+      || die "backup verification failed; the partial backup was removed."
+    drop_database qradar_obs_restore_test \
+      || die "backup verification database cleanup failed; the partial backup was removed."
+    BACKUP_SCRATCH_CREATED=no
+  fi
+  mv -- "$BACKUP_STAGE" "$final"
+  BACKUP_STAGE=""
+  trap - EXIT HUP INT TERM
+  apply_backup_retention "$root" "$db_size"
+  say "$final"
+}
+
+print_backup_timer() {
+  cat <<EOF
+# qradar-dash-backup.service
+[Unit]
+Description=Create a verified QRadar Dash backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=$ROOT
+ExecStart=$ROOT/qradar-dash backup scheduled
+
+# qradar-dash-backup.timer
+[Unit]
+Description=Create a daily QRadar Dash backup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=15min
+Unit=qradar-dash-backup.service
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+install_backup_timer() {
+  local unit_dir systemctl_args=()
+  if [ "$(id -u)" -eq 0 ]; then
+    unit_dir=/etc/systemd/system
+  else
+    unit_dir=${HOME:?HOME is not set}/.config/systemd/user
+    systemctl_args=(--user)
+  fi
+  mkdir -p -- "$unit_dir"
+  print_backup_timer | sed -n '/^# qradar-dash-backup.service$/,/^# qradar-dash-backup.timer$/p' \
+    | sed '$d' >"$unit_dir/qradar-dash-backup.service"
+  print_backup_timer | sed -n '/^# qradar-dash-backup.timer$/,$p' \
+    >"$unit_dir/qradar-dash-backup.timer"
+  chmod 644 "$unit_dir/qradar-dash-backup.service" "$unit_dir/qradar-dash-backup.timer"
+  systemctl "${systemctl_args[@]}" daemon-reload
+  systemctl "${systemctl_args[@]}" enable --now qradar-dash-backup.timer
+  say "Installed and enabled backup timer under $unit_dir."
+  if [ "${#systemctl_args[@]}" -gt 0 ]; then
+    say "A user timer runs only while that user has a session unless lingering is enabled."
+    say "Enable lingering if required: loginctl enable-linger $(id -un)"
+  fi
+}
+
+cmd_backup() {
+  local reason=manual verify=yes action=create
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      manual | scheduled | pre-upgrade) reason=$1 ;;
+      --no-verify) verify=no ;;
+      --print-timer) action=print ;;
+      --install-timer) action=install ;;
+      -h | --help) usage; return 0 ;;
+      *) fail "unknown backup option: $1"; return 2 ;;
+    esac
+    shift
+  done
+  if [ "$action" != create ]; then
+    [ "$reason" = manual ] && [ "$verify" = yes ] \
+      || { fail "timer options cannot be combined with a backup reason or --no-verify"; return 2; }
+    if [ "$action" = print ]; then print_backup_timer; else install_backup_timer; fi
+    return
+  fi
+  if [ "$reason" = pre-upgrade ] && [ "$verify" = no ]; then
+    fail "pre-upgrade backups must be verified"
+    return 2
+  fi
+  cmd_backup_create "$reason" "$verify"
+}
+
+backup_directory_complete() { # backup_directory_complete DIRECTORY
+  local path=$1 file mode state_json secrets_volumes
+  [ -d "$path" ] && [ ! -L "$path" ] || return 1
+  mode=$(stat -c '%a' "$path" 2>/dev/null) || return 1
+  [ "$mode" = 700 ] || return 1
+  for file in database.dump env.bak secrets.tar MANIFEST; do
+    [ -f "$path/$file" ] && [ ! -L "$path/$file" ] && [ -s "$path/$file" ] || return 1
+    mode=$(stat -c '%a' "$path/$file" 2>/dev/null) || return 1
+    [ "$mode" = 600 ] || return 1
+  done
+  state_json=$(manifest_get "$path" STATE_JSON)
+  case "$state_json" in included | absent) ;; *) return 1 ;; esac
+  if [ "$state_json" = included ] && [ ! -f "$path/state.json" ]; then return 1; fi
+  if [ -e "$path/state.json" ] || [ -L "$path/state.json" ]; then
+    [ -f "$path/state.json" ] && [ ! -L "$path/state.json" ] \
+      && [ -s "$path/state.json" ] || return 1
+    mode=$(stat -c '%a' "$path/state.json" 2>/dev/null) || return 1
+    [ "$mode" = 600 ] || return 1
+  fi
+  secrets_volumes=$(manifest_get "$path" SECRETS_VOLUMES)
+  case "$secrets_volumes" in qradar | qradar,proxy) ;; *) return 1 ;; esac
+}
+
+version_is_newer() { # version_is_newer CANDIDATE CURRENT
+  [ "$1" = "$2" ] && return 1
+  [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)" = "$1" ]
+}
+
+encryption_key_compatible() { # encryption_key_compatible BACKUP_ENV
+  local backup_key current keys item
+  backup_key=$(sed -n 's/^ENCRYPTION_KEY=//p' "$1" | head -n1)
+  current=$(env_get ENCRYPTION_KEY)
+  [ -n "$backup_key" ] || return 1
+  [ "$backup_key" = "$current" ] && return 0
+  keys=$(env_get ENCRYPTION_KEYS_JSON)
+  keys=${keys#\{}
+  keys=${keys%\}}
+  keys=${keys//[[:space:]]/}
+  keys=${keys//,/$'\n'}
+  while IFS= read -r item; do
+    [[ $item == *:* ]] || continue
+    item=${item#*:}
+    item=${item#\"}
+    item=${item%\"}
+    [ "$item" = "$backup_key" ] && return 0
+  done <<<"$keys"
+  return 1
+}
+
+RESTORE_STOPPED_SERVICES=()
+
+restore_stop_services() {
+  local service running_text
+  local -a running=()
+  running_text=$(dc ps --services --status running) || return 1
+  mapfile -t running <<<"$running_text"
+  for service in backend celery-worker celery-beat frontend proxy; do
+    if printf '%s\n' "${running[@]}" | grep -qx "$service"; then
+      RESTORE_STOPPED_SERVICES+=("$service")
+    fi
+  done
+  [ "${#RESTORE_STOPPED_SERVICES[@]}" -gt 0 ] || return 0
+  dc stop "${RESTORE_STOPPED_SERVICES[@]}"
+}
+
+restore_start_services() {
+  [ "${#RESTORE_STOPPED_SERVICES[@]}" -eq 0 ] || dc start "${RESTORE_STOPPED_SERVICES[@]}"
+}
+
+restore_failure_before_swap() { # restore_failure_before_swap DATABASE
+  drop_database "$1" >/dev/null 2>&1 || true
+  restore_start_services || true
+}
+
+print_broken_database_instructions() { # print_broken_database_instructions NAME
+  say "Previous database kept as $1."
+  say "Drop it later only after validation:"
+  say "  docker compose -p $PROJECT -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'DROP DATABASE $1;'"
+}
+
+restore_swap_database() { # restore_swap_database BACKUP_DIRECTORY REASON
+  local backup=$1 reason=$2 stamp db_stamp restored broken live expected
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  db_stamp=${stamp,,}
+  restored="qradar_obs_restore_$db_stamp"
+  broken="qradar_obs_broken_$db_stamp"
+  live=$(env_get POSTGRES_DB)
+  validate_database_identifier "$live" || return 1
+  expected=$(manifest_get "$backup" ALEMBIC_VERSION)
+  RESTORE_STOPPED_SERVICES=()
+  if ! restore_stop_services; then
+    restore_start_services || true
+    return 1
+  fi
+  if ! restore_dump_into_database "$backup/database.dump" "$restored"; then
+    restore_failure_before_swap "$restored"
+    return 1
+  fi
+  if ! verify_restored_database "$restored" "$expected"; then
+    restore_failure_before_swap "$restored"
+    return 1
+  fi
+  if ! postgres_sql postgres \
+    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$live' AND pid <> pg_backend_pid();" \
+      >/dev/null; then
+    restore_failure_before_swap "$restored"
+    return 1
+  fi
+  if ! postgres_sql postgres "ALTER DATABASE $live RENAME TO $broken;"; then
+    restore_failure_before_swap "$restored"
+    return 1
+  fi
+  if ! postgres_sql postgres "ALTER DATABASE $restored RENAME TO $live;"; then
+    if ! postgres_sql postgres "ALTER DATABASE $broken RENAME TO $live;"; then
+      fail "restore swap failed and the original database could not be renamed back"
+      say "Original database: $broken"
+      say "Restored candidate database: $restored"
+      say "Rename the original back with:"
+      say "  docker compose -p $PROJECT -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'ALTER DATABASE $broken RENAME TO $live;'"
+    fi
+    restore_start_services || true
+    return 1
+  fi
+  print_broken_database_instructions "$broken"
+  say "Database swap complete ($reason); services remain stopped."
+}
+
+restore_start_and_wait() { # restore_start_and_wait BACKUP_DIRECTORY REASON
+  local backup=$1 reason=$2 port
+  if ! restore_start_services; then
+    fail "the database was restored but the stopped services did not all restart"
+    return 1
+  fi
+  port=$(env_get API_LOOPBACK_PORT)
+  : "${port:=8000}"
+  if ! wait_ready "http://127.0.0.1:$port/api/v1/health/ready" 180; then
+    fail "the database was restored but readiness did not answer within 180 seconds"
+    return 1
+  fi
+  say "Restore complete ($reason)."
+  say "Secrets were not restored. Inspect the archive with:"
+  printf '  tar -tf %q\n' "$backup/secrets.tar"
+}
+
+cmd_restore() {
+  local backup="" non_interactive=no yes=no version current db_size answer
+  need_installed
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --non-interactive) non_interactive=yes ;;
+      --yes) yes=yes ;;
+      -h | --help) usage; return 0 ;;
+      -*) fail "unknown restore option: $1"; return 2 ;;
+      *) [ -z "$backup" ] || { fail "restore accepts one backup path"; return 2; }; backup=$1 ;;
+    esac
+    shift
+  done
+  [ -n "$backup" ] || { fail "restore needs a backup directory"; return 2; }
+  backup_directory_complete "$backup" || {
+    fail "restore refused: the backup directory is incomplete or has unsafe modes"
+    return 1
+  }
+  version=$(manifest_get "$backup" VERSION)
+  current=$(env_get QRADAR_DASH_VERSION)
+  [ -n "$version" ] && [ -n "$current" ] || {
+    fail "restore refused: backup or current image version is unavailable"
+    return 1
+  }
+  if [ "$version" != "$current" ]; then
+    if version_is_newer "$version" "$current"; then
+      fail "restore refused: backup version is newer; upgrade to that version first"
+    else
+      fail "restore refused: backup version is older; use rollback, or put that version's images back and then restore"
+    fi
+    return 1
+  fi
+  if ! encryption_key_compatible "$backup/env.bak"; then
+    fail "restore refused: the backup encryption key is not in the current keyring."
+    fail "Put the backup's key back as described in OPERATIONS-DESIGN section 5.1, without replacing or printing keys."
+    return 1
+  fi
+  db_size=$(manifest_get "$backup" DATABASE_SIZE_BYTES)
+  case "$db_size" in '' | *[!0-9]*) fail "restore refused: invalid database size in MANIFEST"; return 1 ;; esac
+  local docker_root
+  docker_root=$(docker_root_path) || {
+    fail "restore refused: Docker root directory is unavailable"
+    return 1
+  }
+  backup_disk_guard "$docker_root" "$db_size" 2 || return 1
+  if [ "$non_interactive" = yes ]; then
+    [ "$yes" = yes ] || { fail "--non-interactive restore requires --yes"; return 1; }
+  else
+    printf 'Type restore to replace the application database: '
+    IFS= read -r answer || answer=""
+    [ "$answer" = restore ] || { fail "restore confirmation was not given"; return 1; }
+  fi
+  restore_swap_database "$backup" manual || return 1
+  restore_start_and_wait "$backup" manual
+}
+
 # ---------------------------------------------------------------- doctor
 
 DOCTOR_WORST=0
@@ -861,13 +1562,8 @@ doctor_disk_docker() {
 }
 
 doctor_database_size() { # bytes on stdout; failure means unavailable
-  local size
   [ "$DOCTOR_HAS_DOCKER" -eq 1 ] || return 1
-  size=$(printf '%s\n' "SELECT pg_database_size(current_database());" \
-    | dc exec -T postgres psql -U "$(env_get POSTGRES_USER)" -d "$(env_get POSTGRES_DB)" \
-      -v ON_ERROR_STOP=1 -Atq 2>/dev/null) || return 1
-  case "$size" in '' | *[!0-9]*) return 1 ;; esac
-  printf '%s\n' "$size"
+  database_size_bytes
 }
 
 doctor_disk_backup() {
@@ -895,7 +1591,7 @@ doctor_disk_backup() {
   if [ "$used" -ge 90 ]; then status=FAIL; elif [ "$used" -ge 70 ]; then status=WARN; fi
   message="$used% used; $free_gib GiB free on $path"
   if db_size=$(doctor_database_size); then
-    required_kib=$(((2 * db_size + 2 * 1024 * 1024 * 1024 + 1023) / 1024))
+    read -r _ required_kib <<<"$(backup_guard_values "$path" "$db_size" 2)"
     required_gib=$(doctor_free_gib "$required_kib")
     if [ "$free" -lt "$required_kib" ]; then
       status=FAIL
@@ -1248,7 +1944,8 @@ main() {
     status) cmd_status ;;
     logs) cmd_logs "$@" ;;
     upgrade | rollback) not_built "$cmd" "OPS-6" ;;
-    backup | restore) not_built "$cmd" "OPS-5" ;;
+    backup) cmd_backup "$@" ;;
+    restore) cmd_restore "$@" ;;
     doctor) cmd_doctor ;;
     support-bundle) cmd_support_bundle ;;
     bundle) not_built "$cmd" "OPS-3 and OPS-10" ;;
@@ -1257,4 +1954,4 @@ main() {
   esac
 }
 
-main "$@"
+if [ "${QRADAR_DASH_SOURCE_ONLY:-0}" != 1 ]; then main "$@"; fi
