@@ -8,7 +8,29 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 18:45, 2026-10-17 (twentieth session, from 17:44)
+## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 19:10, 2026-10-17 (twentieth session, from 17:44)
+
+**Update 19:10.**
+- **v0.1.1 released** (run `39044902711` all green, GitHub release published 19:01). The five
+  `ghcr.io/wiembe/qradar-dashboard/*:0.1.1` images are public (anonymous inspect), version label
+  `0.1.1`, revision `9bf3d4d`.
+- **⚠ `qradarce2` is SHUT DOWN (19:02) for OPS-11. Start it again when OPS-11 ends:
+  `virsh -c qemu:///system start qradarce2`.**
+- **PW-2a merged** (`ea21d50`) and **PW-3a merged** (`fb0158d`; Codex hit its limit at 18:53,
+  reset **22:49**; a Sonnet handover fixed six inherited defects). Host on the merged tree: ruff
+  clean, mypy 0 (256), unit 4,170 / 10 skipped. Decisions on their open points: no Hypothesis in
+  the repo (seeded loops accepted; the spec's wording was wrong); a failed or uncollected chunk
+  makes the bucket unmeasured (stricter than §G.4, fail closed, accepted); `parsed > total` leaves
+  the total unknown (accepted); `factory.py` wiring, admission and provenance → PW-2b;
+  maintenance suppression → PW-4; spike consecutive buckets, `all_detectors()`, threshold wiring
+  → PW-3b.
+- **In flight (all Sonnet sub-agents; they die with the chat):**
+
+| Task | Where | Next |
+|---|---|---|
+| **OPS-11** ([spec](tasks/OPS-11.md)) fresh VM `qradar-dash-ops11`, v0.1.0 → v0.1.1 by the runbook | scratch and report `QRadar-Dash-work/ops11/` | Read `OPS-11.report.md`; start `qradarce2`; decide every finding. |
+| **PW-2b** ([spec](tasks/PW-2b.md)) collection | worktree `pw2b`, DB `qradar_obs_pw2b` | Review; then PW-3b (Codex after 22:49, or Sonnet) and PW-5b. |
+| **PW-5** ([spec](tasks/PW-5.md)) API (the `/scope` route and member counts deferred to PW-5b) | worktree `pw5`, DB `qradar_obs_pw5` | Review; then PW-7 (UI). |
 
 **Update 18:45 — Phase G build started.**
 - **PW-1 merged** (`882a366`) after round 1: `test_migration_0025.py` now requires one head with
