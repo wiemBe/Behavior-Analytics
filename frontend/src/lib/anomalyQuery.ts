@@ -7,6 +7,7 @@
 // range is clamped before it reaches an endpoint that queries a hypertable.
 
 import { isIpsType } from "@/components/ips/ipsLabels";
+import { isPwType } from "@/components/propertywatch/pwFormat";
 import { isWafType } from "@/components/waf/wafLabels";
 
 import type { SubjectKind } from "./api";
@@ -151,6 +152,7 @@ export const SUBJECT_KINDS: Array<{ value: SubjectKind; label: string }> = [
   { value: "WAF_ENDPOINT", label: "WAF endpoints" },
   { value: "IPS_ENTITY", label: "IPS entities" },
   { value: "IPS_SOURCE", label: "IPS sources" },
+  { value: "PW_VALUE", label: "Property watch values" },
 ];
 
 export interface SubjectQuery {
@@ -160,8 +162,12 @@ export interface SubjectQuery {
   waf_anomaly_type: string;
   /** An IPS detector type, or "". */
   ips_anomaly_type: string;
+  /** A property-watch detector type, or "". */
+  pw_anomaly_type: string;
   /** An IPS entity id (a link from an entity view), or "" when absent or not a UUID. */
   ips_entity_id: string;
+  /** One property watch (a link from its page), or "" when absent or not a UUID. */
+  property_watch_id: string;
 }
 
 export function parseSubjectQuery(params: Record<string, string | undefined>): SubjectQuery {
@@ -171,7 +177,9 @@ export function parseSubjectQuery(params: Record<string, string | undefined>): S
     subject_kind: kind,
     waf_anomaly_type: type && isWafType(type) ? type : "",
     ips_anomaly_type: type && isIpsType(type) ? type : "",
+    pw_anomaly_type: type && isPwType(type) ? type : "",
     ips_entity_id: uuid(params.ips_entity_id),
+    property_watch_id: uuid(params.property_watch_id),
   };
 }
 

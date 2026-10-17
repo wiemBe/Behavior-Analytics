@@ -1,0 +1,164 @@
+/* Property-watch components: layout only. Every colour, length and type size is a token. */
+
+/* --- status ------------------------------------------------------------------ */
+.pw-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.pw-status-reason {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  overflow-wrap: anywhere;
+}
+
+/* --- the series chart ---------------------------------------------------------- */
+.pw-chart {
+  min-width: 0;
+}
+.pw-chart-canvas {
+  width: 100%;
+  height: 400px;
+}
+.pw-chart-compact {
+  height: 100%;
+  min-height: 200px;
+}
+.pw-key-1 {
+  border-top: 2px solid var(--chart-cat-1);
+}
+.pw-key-2 {
+  border-top: 2px solid var(--chart-cat-2);
+}
+.pw-key-3 {
+  border-top: 2px solid var(--chart-cat-3);
+}
+.pw-key-4 {
+  border-top: 2px solid var(--chart-cat-4);
+}
+.pw-key-5 {
+  border-top: 2px solid var(--chart-cat-5);
+}
+.pw-key-bound {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--text-2);
+  border-radius: var(--r-pill);
+}
+.pw-key-label {
+  min-width: 0;
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+/* --- the values table ----------------------------------------------------------- */
+.pw-values .pw-col-plot {
+  width: 1%;
+  text-align: center;
+}
+.pw-values td.pw-value-cell,
+td.pw-value-cell {
+  min-width: 20ch;
+  max-width: 40ch;
+}
+/* A value is attacker-controlled text of any length: it wraps anywhere and never widens the page. */
+.pw-value-text {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+.pw-values th.num,
+.pw-values td.num {
+  white-space: nowrap;
+}
+.pw-values td:last-child {
+  min-width: 24ch;
+}
+.pw-values tr[aria-selected="true"] td {
+  background: var(--surface-2);
+}
+
+/* --- the definition tab ------------------------------------------------------- */
+.pw-dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24ch), 1fr));
+  gap: var(--sp-4) var(--sp-6);
+  margin: 0;
+}
+.pw-dl dd {
+  overflow-wrap: anywhere;
+}
+.pw-def-prop {
+  display: block;
+  font-family: var(--font-mono);
+}
+.pw-def-prop .muted {
+  font-family: var(--font);
+}
+.pw-def-pins {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+}
+
+.pw-status.pw-status-inline {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pw-status-inline .pw-status-reason {
+  font-size: var(--fs-sm);
+}
+
+/* No value plotted: the parsed share stands alone, in a panel as tall as its one grid. */
+.pw-chart-coverage-only {
+  height: 200px;
+  margin-top: var(--sp-3);
+}
+
+/* A sortable header is a quiet link: the shell's content-link colour would read as a call to act. */
+.pw-values th .sort-link {
+  color: inherit;
+}
+.pw-values th[aria-sort="ascending"] .sort-link,
+.pw-values th[aria-sort="descending"] .sort-link {
+  color: var(--text);
+}
+
+.pw-subtitle {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+}
+.pw-def-changes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+}
+/* Up to 200 names scroll inside their own box, never widening or lengthening the page. */
+.pw-def-members {
+  margin: 0;
+  padding: var(--sp-3);
+  list-style: none;
+  max-height: 14rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  columns: 18ch auto;
+}
+.pw-def-members li {
+  overflow-wrap: anywhere;
+}

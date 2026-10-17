@@ -8,13 +8,14 @@ describe("NAV", () => {
     expect(NAV[0].items).toEqual([{ href: "/", label: "Dashboard" }]);
   });
 
-  it("groups the four behavioral destinations first among the labeled groups", () => {
+  it("groups the five behavioral destinations first among the labeled groups", () => {
     expect(NAV[1].label).toBe("Behavior");
     expect(NAV[1].items.map((i) => i.label)).toEqual([
       "Overview",
       "Anomalies",
       "Sources",
       "WAF behavior",
+      "Property watches",
     ]);
   });
 
@@ -50,6 +51,14 @@ describe("NAV", () => {
     expect(activeNavHref("/admin/search-cadence")).toBe("/admin/search-cadence");
     expect(activeNavHref("/admin/classification-rules")).toBe("/admin/classification-rules");
     expect(activeNavHref("/admin/outage-policy")).toBe("/admin/outage-policy");
+  });
+
+  it("resolves property watch pages to their own entry, not to the Overview", () => {
+    expect(activeNavHref("/behavior/watches")).toBe("/behavior/watches");
+    expect(activeNavHref("/behavior/watches/6f1c0f9e-0000-4000-8000-000000000001")).toBe(
+      "/behavior/watches",
+    );
+    expect(activeNavHref("/behavior")).toBe("/behavior");
   });
 
   it("resolves the catch-all page to its own entry, not to Fleet", () => {

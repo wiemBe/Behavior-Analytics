@@ -16,6 +16,7 @@ import { AnomalyFilters } from "@/components/behavior/AnomalyFilters";
 import { AnomalyRows } from "@/components/behavior/AnomalyRows";
 import { Pagination } from "@/components/Pagination";
 import { isIpsRow } from "@/components/ips/ipsLabels";
+import { isPwRow } from "@/components/propertywatch/pwFormat";
 import { isWafRow } from "@/components/waf/wafLabels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -50,7 +51,11 @@ export default async function AnomaliesPage({
   // detector type is a valid `anomaly_type` here and would be dropped by the
   // Phase A allow-list.
   const subject = parseSubjectQuery(raw);
-  const anomalyType = q.anomaly_type || subject.waf_anomaly_type || subject.ips_anomaly_type;
+  const anomalyType =
+    q.anomaly_type ||
+    subject.waf_anomaly_type ||
+    subject.ips_anomaly_type ||
+    subject.pw_anomaly_type;
 
   let page: Page<AnomalySummary> | null = null;
   let sources: SourceBehavior[] = [];
@@ -69,6 +74,7 @@ export default async function AnomaliesPage({
         anomaly_type: anomalyType || undefined,
         subject_kind: subject.subject_kind || undefined,
         ips_entity_id: subject.ips_entity_id || undefined,
+        property_watch_id: subject.property_watch_id || undefined,
         state: q.state || undefined,
         severity: q.severity || undefined,
         evidence_status: q.evidence_status || undefined,
@@ -95,6 +101,7 @@ export default async function AnomaliesPage({
       anomalyType ||
       subject.subject_kind ||
       subject.ips_entity_id ||
+      subject.property_watch_id ||
       q.state ||
       q.severity ||
       q.evidence_status ||
@@ -105,7 +112,7 @@ export default async function AnomaliesPage({
   // Every cell of the observed column names its own unit (EPS, req / 5 min, events,
   // ports or %), so the heading carries none once a WAF or IPS row is on the page. A
   // page of log sources keeps the "(EPS)" its existing test pins.
-  const hasWaf = items.some((a) => isWafRow(a) || isIpsRow(a));
+  const hasWaf = items.some((a) => isWafRow(a) || isIpsRow(a) || isPwRow(a));
   return (
     <>
       <PageHeader
@@ -117,6 +124,7 @@ export default async function AnomaliesPage({
         values={{
           subject_kind: subject.subject_kind,
           ips_entity_id: subject.ips_entity_id,
+          property_watch_id: subject.property_watch_id,
           active_only: q.active_only,
           log_source_id: q.log_source_id,
           instance_id: q.instance_id,
@@ -189,6 +197,7 @@ export default async function AnomaliesPage({
               anomaly_type: anomalyType || undefined,
               subject_kind: subject.subject_kind || undefined,
               ips_entity_id: subject.ips_entity_id || undefined,
+              property_watch_id: subject.property_watch_id || undefined,
             }}
           />
         </>

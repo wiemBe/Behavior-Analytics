@@ -1,0 +1,57 @@
+/* Property watches: layout of the list and the watch page. Tokens only. */
+
+.pw-notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+}
+.pw-latency {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  max-width: 80ch;
+}
+
+/* The list: a name and a scope are read as words, so they get a measure to wrap in. */
+.pw-list td.cell-name {
+  min-width: 18ch;
+  max-width: 32ch;
+  overflow-wrap: anywhere;
+}
+.pw-list td.pw-scope-cell,
+.pw-list td.pw-props-cell {
+  min-width: 16ch;
+  max-width: 28ch;
+  overflow-wrap: anywhere;
+}
+.pw-list td.pw-status-cell {
+  min-width: 22ch;
+  max-width: 34ch;
+}
+
+/* The watch page. */
+.pw-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-6);
+}
+.pw-range .subtitle {
+  margin: 0;
+}
+.pw-remainder {
+  margin-top: var(--sp-3);
+}
+.pw-prop-name {
+  font-family: var(--font-mono);
+}
+.pw-honesty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.pw-honesty .banner {
+  margin: 0;
+}
