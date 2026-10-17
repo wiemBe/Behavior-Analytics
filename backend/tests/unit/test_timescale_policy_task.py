@@ -1,4 +1,4 @@
-"""The Timescale policy task: beat registration, disabled and enabled paths."""
+"""The Timescale policy task and the beat-start sends: registration and paths."""
 
 from __future__ import annotations
 
@@ -90,19 +90,42 @@ async def test_failed_tables_are_reported(monkeypatch: pytest.MonkeyPatch) -> No
     assert result["failed"] == ["rule_metric"]
 
 
-def test_beat_start_sends_the_task_once_and_survives_a_dead_broker(
+def test_beat_start_sends_each_task_once_and_survives_a_dead_broker(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     sent: list[str] = []
     monkeypatch.setattr(celery_module.celery_app, "send_task", lambda name: sent.append(name))
     beat_init.send(sender=None)  # the signal beat fires, not a direct call
-    assert sent == ["apply_timescale_policies"]
+    assert sent.count("apply_timescale_policies") == 1
+    assert sent.count("beat_heartbeat") == 1
+
+    attempted: list[str] = []
 
     def boom(name: str) -> None:
+        attempted.append(name)
         raise OSError("broker down")
 
     monkeypatch.setattr(celery_module.celery_app, "send_task", boom)
-    with caplog.at_level(logging.WARNING, logger="app.timescale"):
+    with caplog.at_level(logging.WARNING):
         responses = beat_init.send(sender=None)
+    assert attempted == ["apply_timescale_policies", "beat_heartbeat"]
     assert all(not isinstance(r[1], Exception) for r in responses)
-    assert "could not queue" in caplog.text
+    assert "could not queue apply_timescale_policies" in caplog.text
+    assert "could not queue beat_heartbeat" in caplog.text
+
+
+def test_beat_start_still_sends_the_heartbeat_when_the_first_send_raises(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    sent: list[str] = []
+
+    def flaky(name: str) -> None:
+        if name == "apply_timescale_policies":
+            raise OSError("broker down")
+        sent.append(name)
+
+    monkeypatch.setattr(celery_module.celery_app, "send_task", flaky)
+    with caplog.at_level(logging.WARNING, logger="app.timescale"):
+        beat_init.send(sender=None)
+    assert sent == ["beat_heartbeat"]
+    assert "could not queue apply_timescale_policies" in caplog.text
