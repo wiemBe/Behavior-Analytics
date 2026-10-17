@@ -8,7 +8,31 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 17:50, 2026-10-17 (twentieth session, from 17:44)
+## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 18:00, 2026-10-17 (twentieth session, from 17:44)
+
+**Update 18:00:**
+- **T-130 merged** (`eb6210f`, Sonnet): host 164/0 `qradar_dash` tests, shellcheck clean (through
+  stdin, no mount). Accepted: the `chmod … || die` branch has no test (it needs a directory owned
+  by another user; the `mkdir` branch of the same shape is tested). **+3 unit skips under root**:
+  the 3.12 gate's unit skip count is now **13** (10 auth-guard allowlist + 3 T-130).
+- **T-129 merged** (`671adac`, DeepSeek): `0.1.1` in `VERSION`, `pyproject.toml`,
+  `package.json`, the two root lock lines (`yocto-queue` untouched); `docs/releases/0.1.1.md`;
+  version test 13/0; the `verify` logic checked by hand. Accepted: the `:-0.1.0` fallbacks in
+  `docker-compose.prod.yml` and `qradar-dash` (reached only without `.env`/`VERSION`).
+- **Review finding → T-131** ([spec](tasks/T-131.md), Sonnet sub-agent, worktree `t131`):
+  nothing ties the operator's checkout to the running version. `upgrade` reads the target's
+  notes from the image, so an old checkout's script and compose files upgrade new images; and
+  `install` from a newer checkout silently upgrades **without a backup or rollback**. Decision:
+  `upgrade X` refuses unless `VERSION` = X; `install` refuses when the state file records another
+  version (or a failed upgrade, or is invalid); no state file → as today (the 0.1.0 escape path);
+  runbook + notes: check out the target tag first, return to the old tag after a rollback. In
+  0.1.1 because the first production site starts at 0.1.1 and its first upgrade is run by the
+  0.1.1 script.
+- **Frontend gate** on `69ba093` running in the `gate` worktree (log
+  `QRadar-Dash-work/gate-1017c/frontend.log`); T-131 touches no frontend file.
+- **Next:** T-131 review and merge → the 3.12 backend gate on the head (expect unit skips 13,
+  integration 1) → `main` → tag `v0.1.1` → the fresh-VM check, which now follows the documented
+  path: clone at `v0.1.0`, install, `git checkout v0.1.1`, `upgrade 0.1.1`, `rollback`, back.
 
 The nineteenth chat (`qradar-dash-ae`) was told to stand down and confirmed.
 
