@@ -49,6 +49,11 @@ series chart (`frontend/src/components/propertywatch/`) for the preview; extend 
    first screen at 1440×900 (guidelines: the first screen answers the question); make
    `log_source_id` nullable in the anomaly type in `lib/api.ts` (a type or group PW row has none)
    and check every caller.
+7. **From the PW-6 review:** a value pinned through `PUT /pins` has no `pw_value` row until the
+   next PW collection tick, so the F.1 picker cannot offer it yet and a rule on it is refused
+   (422 "does not exist"). The picker and the pins editor say so in words ("a new pin can be used
+   in a rule after the next collection, within about an hour"); the PW-6 409 bodies are
+   `{"message", "rules": [{"id", "name"}]}`.
 
 Values and names are attacker-controlled text: rendered as text, and through
 `echarts.format.encodeHTML` in any chart tooltip (T-117); pin it with a test.
