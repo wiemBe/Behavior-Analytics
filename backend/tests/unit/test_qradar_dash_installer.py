@@ -686,6 +686,47 @@ def test_dry_run_refuses_an_unwritable_backup_dir_and_writes_nothing(
     assert NOT_WRITABLE in result.stderr
 
 
+@needs_non_root
+@pytest.mark.parametrize("case", ["missing_under_unwritable_parent", "existing_unwritable"])
+def test_dry_run_prints_no_free_space_line_for_a_refused_backup_dir(
+    inst: Install, flow_path: str, case: str
+) -> None:
+    if case == "existing_unwritable":
+        locked = inst.files / "backups"
+        locked.mkdir()
+        backups = locked
+    else:
+        locked = inst.files / "ro"
+        locked.mkdir()
+        backups = locked / "qradar-dash"
+    answers = inst.answers(BACKUP_DIR=str(backups))
+    locked.chmod(0o500)
+    try:
+        result = inst.run(
+            "install", "--non-interactive", str(answers), "--dry-run", "--skip-qradar-check",
+            path=flow_path,
+        )
+    finally:
+        locked.chmod(0o700)
+
+    _assert_refused_unwritten(inst, result)
+    assert "[FAIL]" in result.stderr
+    assert "free for backups" not in result.stdout + result.stderr
+
+
+def test_dry_run_prints_the_free_space_line_for_an_accepted_backup_dir(
+    inst: Install, flow_path: str
+) -> None:
+    answers = inst.answers()
+
+    result = inst.run(
+        "install", "--non-interactive", str(answers), "--dry-run", "--skip-qradar-check",
+        path=flow_path,
+    )
+
+    assert "GiB free for backups at " in result.stdout + result.stderr
+
+
 def test_install_creates_a_missing_backup_dir_with_mode_0700(
     inst: Install, tmp_path: Path, flow_path: str
 ) -> None:

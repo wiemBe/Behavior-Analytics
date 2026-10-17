@@ -102,6 +102,34 @@ def _safe_text(value: object) -> str:
     return _TOKENISH_RE.sub(replace_tokenish, cleaned)[:500]
 
 
+#: Collector names that `CollectionWatermark.collector` can hold. They are a fixed, known set of
+#: code constants, never operator or QRadar text, so they print as they are. The token heuristic
+#: in `_safe_text` would mask a long one (`geo_countries_destination` is 25 characters).
+_WATERMARK_NAMES = frozenset(
+    {
+        "offense_snapshot",
+        "ips_collection",
+        "ips_evaluation",
+        "rule_inventory",
+        "rule_metric",
+        "rule_match",
+        "log_source_metric",
+        "log_source_inventory",
+        "geo_countries_source",
+        "geo_countries_destination",
+        "waf_endpoint_metric",
+        "waf_endpoint_evaluation",
+        "anomaly_explanation",
+        "catchall_senders",
+    }
+)
+
+
+def _watermark_list(names: Sequence[str]) -> str:
+    """Collector names for output: a known name as is, anything else redacted."""
+    return ", ".join(n if n in _WATERMARK_NAMES else _safe_text(n) for n in names)[:500]
+
+
 def _host_from_url(value: str, fallback: str) -> str:
     return urlsplit(value).hostname or fallback
 
@@ -509,7 +537,7 @@ class Doctor:
                 return CheckResult(
                     "watermarks",
                     Status.FAIL,
-                    f"{len(failed)} watermark(s) failed: {_safe_text(', '.join(failed))}",
+                    f"{len(failed)} watermark(s) failed: {_watermark_list(failed)}",
                     "OPS-R30",
                 )
             if late:
@@ -517,7 +545,7 @@ class Doctor:
                     "watermarks",
                     Status.WARN,
                     f"{len(late)} watermark(s) exceed twice their cadence: "
-                    f"{_safe_text(', '.join(late))}",
+                    f"{_watermark_list(late)}",
                     "OPS-R30",
                 )
             return CheckResult(
@@ -559,7 +587,7 @@ class Doctor:
                 return CheckResult(
                     "cadence",
                     Status.WARN,
-                    f"enabled families late or never run: {_safe_text(', '.join(late))}",
+                    f"enabled families late or never run: {_watermark_list(late)}",
                     "OPS-R30",
                 )
             return CheckResult(
