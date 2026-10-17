@@ -41,7 +41,7 @@ from app.ips.keyed_rows import (
     validate_ips_fields,
     validate_ips_sources,
 )
-from app.models.enums import IpsDimension
+from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.base import (
     IPS_NORMALIZED_FIELD_ALLOWLIST,
     IPS_PROBE_MAX_WINDOW_SECONDS,
@@ -76,6 +76,8 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    PwKeyedResult,
+    PwSearchKind,
     RuleMatchBatch,
     RuleMatchRow,
     WafBreakdownBatch,
@@ -244,6 +246,7 @@ class QRadarRestProvider(QRadarProvider):
         ariel_stop_pad_seconds: int = 0,
         clock: Callable[[], datetime] | None = None,
         ips_max_sources_per_search: int = 50,
+        pw_max_sources_per_search: int = 50,
     ) -> None:
         if not verify_ssl:
             # Hard failure, not a warning. See config._production_hardening.
@@ -262,6 +265,7 @@ class QRadarRestProvider(QRadarProvider):
         self._sleep = sleep or asyncio.sleep
         self._ariel_stop_pad_seconds = max(0, int(ariel_stop_pad_seconds))
         self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
+        self._pw_max_sources_per_search = max(1, int(pw_max_sources_per_search))
         self._clock = clock or (lambda: datetime.now(UTC))
 
         if client is not None:
@@ -1647,6 +1651,74 @@ class QRadarRestProvider(QRadarProvider):
         return IpsKeyedResult(
             dimension=dimension,
             qradar_log_source_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
+
+    async def get_pw_keyed(
+        self,
+        search: PwSearchKind,
+        *,
+        scope_kind: PwScopeKind,
+        scope_ids: Sequence[int],
+        properties: Sequence[tuple[str, str]],
+        pinned: Sequence[Sequence[str]] = (),
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> PwKeyedResult:
+        """One keyed property-watch search (design §G.6); see the base class.
+
+        ``LIMIT cap + 1`` with ``cap = _keyed_row_cap(max_rows)``; volume is
+        ``SUM(eventcount)``. Read-only: an Ariel search over ``events``. The query text
+        comes from `app.property_watch.aql`, which re-validates every reference and pin.
+        """
+        # Imported here: `app.property_watch.reference` imports `app.providers.base`, and
+        # the providers package imports this module, so a top-level import is circular.
+        from app.property_watch.aql import build_query, validate_query_inputs
+        from app.property_watch.keyed_rows import parse_pw_keyed_rows
+
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        spec = validate_query_inputs(
+            search,
+            scope_kind=scope_kind,
+            scope_ids=scope_ids,
+            properties=properties,
+            pinned=pinned,
+            max_sources=self._pw_max_sources_per_search,
+        )
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        cap = self._keyed_row_cap(max_rows)
+        aql = (
+            build_query(
+                spec,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                bucket_ms=int(bucket_seconds) * 1000,
+                limit=cap + 1,
+            )
+            + f" {self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_pw_keyed_rows(
+            raw,
+            property_count=0 if spec.search is PwSearchKind.TOTALS else len(spec.properties),
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=cap,
+        )
+        return PwKeyedResult(
+            search=spec.search,
+            scope_kind=spec.scope_kind,
+            scope_ids=spec.scope_ids,
             window_start=start,
             window_end=end,
             bucket_seconds=bucket_seconds,

@@ -326,7 +326,18 @@ Design decisions, each against the facts of §G.1:
   `NULL`, which is not `OK`. Every state is a reason, never silence — the detector-status contract
   (`backend/app/anomaly/capabilities.py:66-77`).
 
-## G.4 Scope resolution (question 2)
+## G.4 Scope resolution (question 2) **[BUILT — PW-2a: the AQL side only]**
+
+> **As built by PW-2a** (`backend/app/property_watch/aql.py`): the `<scope>` filter of the table
+> below, from an already-resolved input: `LOG_SOURCE` and `LOG_SOURCE_TYPE` take exactly one id,
+> `LOG_SOURCE_GROUP` takes one chunk of at most `pw_max_sources_per_search` ids (sorted,
+> de-duplicated). Scope ids must be non-negative integers and are re-checked in the provider.
+> Resolution from the inventory (the cycle-safe walk, `SCOPE_EMPTY`/`SCOPE_STALE`/
+> `SCOPE_TOO_LARGE`, the fingerprint, the chunking itself) remains **PW-2b**. The chunk sums are
+> built (`keyed_search.combine_chunks`): a bucket is `COMPLETE` only when every chunk was whole,
+> `LOWER_BOUND` when any chunk was cut at one bucket, and **unmeasured when any chunk was failed or
+> not collected** (a decision PW-2a made: a sum over part of the scope is not a statement about the
+> scope, so the other chunks' rows are dropped rather than kept as a lower bound).
 
 At each cadence tick, per enabled watch, the collector resolves the scope to a source-id list and
 builds the searches of §G.6:
@@ -396,6 +407,17 @@ inventory when the watch is saved and when it runs; a vanished group id is `SCOP
 
 ## G.5 Property applicability and the unparsed remainder (question 3)
 
+> **[BUILT — PW-2a: the collection side].** `backend/app/property_watch/fold.py` (`fold_bucket`)
+> produces the coverage inputs of this section from the grouped and totals outcomes of a bucket:
+> `total_events` is the totals search's sum and is `None` unless that search was whole (a whole
+> search with no row is a measured silent scope, `0`; a failed, cut or not-collected one is
+> unknown, never `0`); `parsed_events` is the sum of every row of the grouped search whose
+> properties are all values (a row with a NULL, empty or whitespace-only component is the
+> remainder and is never a value row); `unparsed_events = total - parsed` and its direction come
+> from the existing `PwBucketFact` properties. **Where the two searches disagree** (`parsed >
+> total`, an event stored between them) the fold leaves the total unknown, so coverage is unknown
+> rather than above 1. The `NOT_APPLICABLE` status and the coverage floor are applied by PW-2b/PW-3.
+
 A custom property is defined by its parsing expressions per log-source type
 (`backend/app/providers/qradar_rest.py:595-606`); a scope that mixes types will contain events the
 property never parsed.
@@ -443,11 +465,35 @@ property never parsed.
 
 ## G.6 Collection (question 4)
 
-> **[BUILT — PW-1 fact contract only].** `backend/app/property_watch/facts.py` defines the pure
-> bucket, value/tuple, coverage, unparsed-remainder, measurement and reading facts. It implements
-> the measured-zero boundary, strict integer-count coercion (including PW-0's integer-valued
-> floats), `cap + 1` truncation recognition, and NULL/empty unparsed classification. Provider,
-> AQL, fold/admission and split-driver work in the rest of this section remains PW-2a/PW-2b.
+> **[BUILT — PW-1 fact contract; PW-2a provider, AQL, fold and split driver].**
+> `backend/app/property_watch/facts.py` (PW-1) defines the pure bucket, value/tuple, coverage,
+> unparsed-remainder, measurement and reading facts, the measured-zero boundary, strict
+> integer-count coercion (including PW-0's integer-valued floats), `cap + 1` truncation recognition
+> and NULL/empty unparsed classification. **PW-2a** adds, all pure except the provider methods:
+>
+> - `app/property_watch/aql.py`: `validate_query_inputs` and `build_query`, the three searches
+>   exactly as written below (`LIMIT cap + 1`, `IS NOT NULL` on every property, the pinned `IN`
+>   form over the distinct components, the `p0`/`p1`/`k`/`events` aliases). Every reference and pin
+>   is re-validated there (`PwFieldReference`, `validate_pinned_value`), whoever the caller is.
+> - `QRadarProvider.get_pw_keyed(search, ...)` in `app/providers/base.py`, implemented on
+>   `QRadarRestProvider` (which appends the padded `START`/`STOP`) and on `MockQRadarProvider`
+>   (which builds the real query, parses with the real parser and keeps test hooks `pw_fault`,
+>   `pw_force_truncated`, `pw_script`). MCP inherits the base refusal (`AQL_EXECUTION`). One method
+>   with a `PwSearchKind` (`GROUPED`, `TOTALS`, `PINNED`), as `get_ips_keyed` has a dimension.
+> - `app/property_watch/keyed_rows.py`: the shared row parser. A key outside the span, a
+>   non-integer key and any count `coerce_count` refuses fail the whole search with a
+>   `ProviderError`. Raw values stay raw in `PwKeyedRow.values`.
+> - `app/property_watch/keyed_search.py`: `PwSearchBudget(max, max_per_watch=...)`, the time-first
+>   split driver `run_search`, and `combine_chunks`. The row cap per search is computed here:
+>   grouped `pw_max_rows_per_search`; totals one row per bucket of the (half) window; pinned the
+>   product of the distinct pinned components per bucket times the buckets, never above the grouped
+>   cap (so at most `pw_max_pinned_values`^2 per bucket, as designed).
+> - `app/property_watch/fold.py`: `fold_bucket`, which builds a `PwBucketFact` from a bucket's
+>   three outcomes. The admission columns keep their defaults for PW-2b.
+>
+> Not built here, still **PW-2b**: scope resolution, admission, persistence, the dispatch task, the
+> statement-count pins. The provider takes `pw_max_sources_per_search` as a constructor argument
+> (default 50); `providers/factory.py` does not pass it yet, so the two-line wiring is PW-2b's.
 
 **Decision: a dedicated collector in the IPS keyed style — not F.2 scheduled searches.**
 
@@ -561,8 +607,8 @@ multi-bucket search** (AGENTS.md rule 8). The pure split driver is `keyed_search
 applied to a scope key instead of a source group; reusing its budget class under a PW name is
 PW-2's decision, and the contract (time first, never zero) is fixed here.
 
-**The fold.** A pure function (the `app/ips/fold.py` / `app/waf/breakdown.py` layer) maps rows to
-buckets and values. Raw values never leave it except as the bounded lists the design allows
+**The fold. [BUILT — PW-2a, `app/property_watch/fold.py`.]** A pure function (the `app/ips/fold.py` /
+`app/waf/breakdown.py` layer) maps rows to buckets and values. Raw values never leave it except as the bounded lists the design allows
 (AGENTS.md rule 3). Per bucket it:
 
 - validates the bucket key (a key outside the span fails the whole search,
@@ -583,6 +629,24 @@ buckets and values. Raw values never leave it except as the bounded lists the de
   reconstruction sound (WAF §29.4);
 - applies admission (§G.7) and emits per-value `events` rows plus the bucket's totals, coverage and
   measurement.
+
+**As built (PW-2a) where the text above leaves a choice.**
+
+- *Sanitizing.* A value is stripped, then every non-printable character (control characters,
+  U+001F, a lone surrogate, a non-space separator) becomes U+FFFD, then the text is cut to the
+  limit and right-stripped. Text that is empty or whitespace-only, and anything that is not text,
+  is unparsed. It never raises. Two raw strings that sanitize alike are one value.
+- *The width of a tuple.* One property: the limit is `pw_value_max_length`. Two properties:
+  `(pw_value_max_length - 1) // 2` per component (127 at the default), so the joined `value_key`
+  fits the stored 255 and still splits back into its components. Pinned tuples are cut the same
+  way before they are compared.
+- *Pinned counts.* A whole grouped search stays the authority for every count, pinned values
+  included. Only when the grouped search is cut or unmeasured does the pinned search fill in the
+  pinned values (the larger count wins, and a `LOWER_BOUND` `parsed_events` is raised to cover
+  them, still a lower bound). When the grouped search was not collected, the bucket is
+  `NOT_COLLECTED` with the pinned values alone, and `pinned_measurement` carries the pinned
+  search's own state, so a whole pinned search still proves a pinned value's zero.
+- *A combination pin* keeps only the pinned tuples: the `IN` x `IN` cross terms are dropped.
 
 **Preview (D-17 item 4).** `POST /api/v1/property-watches/{id}/preview` runs **one real bounded
 Ariel search of the stored watch**, enabled or not: the grouped search of this section with the
@@ -1304,7 +1368,14 @@ numbers are estimates from the WAF row sizes measured in `docs/PHASE-B-WAF-BEHAV
 (164-173 bytes per sparse metric row with its time index, about 1,219 bytes per full baseline cell,
 about 600 bytes per bucket record). PW-10 (§G.16) measures the real ones on the lab.
 
-### G.14.1 Ariel
+### G.14.1 Ariel **[BUILT — PW-2a: the budget and the caps]**
+
+> **As built by PW-2a:** `PwSearchBudget(pw_max_searches_per_tick, max_per_watch=
+> pw_max_searches_per_watch_per_tick)` in `app/property_watch/keyed_search.py` (the
+> `IpsSearchBudget` shape). `try_take(watch)` refuses once the tick's total or that watch's share
+> is spent, and the driver then leaves the remaining buckets `NOT_COLLECTED`. Every search the
+> split driver sends, including the splits, takes one unit. The static-cost check at enable time
+> is PW-2b/PW-5.
 
 Per watch per tick the cost is `chunks x (2 or 3)`: the grouped search, the totals search, and the
 pinned search when values are pinned (§G.6), where `chunks = ceil(members / pw_max_sources_per_search)`
