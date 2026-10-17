@@ -8,6 +8,27 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 13:00, 2026-10-17 (nineteenth session, from 12:44)
+
+The machine rebooted at ~12:39: the tmpfs test DB was restarted
+(`docker compose -f docker-compose.test.yml up -d test-db`).
+
+**In flight:**
+
+| Task | Agent | Worktree / DB | Next |
+|---|---|---|---|
+| **OPS-5** ([spec](tasks/OPS-5.md)) | Codex, unit `ops5-codex`, from 12:47 | `ops5` (branch `agent/ops5` from `6a0f114`); DB `qradar_obs_ops5` | Review closely (it can destroy a database). If its sandbox could not reach Docker or the DB, run the integration test 3× outside it. Then the 3.12 gate. |
+| **T-125** ([spec](tasks/T-125.md)): the Phase G design, property watches (**D-21**) | Z.AI GLM 5.3 | `t125` | Spot-check citations; take the open questions to the user. Build (PW-1…) only after the OPS work. |
+
+**Agent probe at 12:55** (the user asked): Codex OK (running OPS-5); Z.AI `glm-5.3` and
+`glm-5.3-flash` OK; opencode free `deepseek-v4.1-flash-free`, `glm-5.3-flash-free` and
+`big-pickle` OK; `step-5-preview-free` unavailable; **Grok still 402** (balance exhausted).
+
+**Next:** OPS-5 review and merge, then OPS-6, OPS-9 round 2, OPS-10 (the 21:35 list below), with
+the Phase G open questions to the user when T-125 is done.
+
+---
+
 ## ▶▶▶▶▶▶ RESUME HERE — STATE AT 21:35, 2026-10-16 (eighteenth session, from 18:58)
 
 **At 21:35, `main` @ `924d95c` (pushed).** `feat/phase-ce` @ `c745405` was merged after a green
@@ -2180,6 +2201,7 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-18 | **The plan (user, 2026-10-16 ~11:20: "lider sensin nasıl dersen öyle gideriz … 2 hafta falan var bitmesine"; at ~11:35 the user said the two weeks was a guess and asked for the orchestrator's estimate, and said OPS-0 need not start now: "ilk önce elimizdekileri bitir").** **OPS-0 waits until the tasks in flight are finished** (its Grok run was stopped at 11:31 before writing anything). The orchestrator's estimate: about **8–10 working days** of sessions at today's pace, so ~2 weeks of calendar time is realistic; the critical path is AUTH + OPS, not Phase F. Order set by the orchestrator: <br>• **Week 1 (10-16 → 10-22):** close Phase 6 (UI-6.4, 6.6, 6.7, 6.5) and merge to `main`; Phase F core (F-1, F-2, F-3, F-5) merged, F-6/F-7 started; **AUTH-1** (login backend) and **OPS-0** (operability design) now, because production is blocked without them. <br>• **Week 2 (10-23 → 10-30):** F-6, F-7, F-8 and the Phase F lab validation; **AUTH-2** (login and user-admin UI); **OPS-1…** (release images on GHCR, `./qradar-dash install/upgrade/rollback/backup/doctor/support-bundle`, the Turkish runbook); the npm advisories; a fresh-VM install rehearsal; the final gate, `main`, a `v1.0.0` tag. <br>• **OPS-0 is no longer deferred** (it was D-16's "later"). | Everything |
 | D-19 | **Production login (user, 2026-10-16 ~11:25).** Local accounts **and** AD password over LDAP (bind as the user). **No group or role is read from AD**: roles are assigned in the app by users holding the admin role; a first-time LDAP user gets **no role** (fail closed) until an admin assigns one. The operator of production is the user (efe); the runbook is **Turkish** (commands and outputs in English). OIDC stays out of scope. → **AUTH-1** (backend), **AUTH-2** (UI), OPS-0. | AUTH-1, AUTH-2, OPS-0 |
 | D-20 | **OPS-0 open questions (user, 2026-10-16 ~17:40), all defaults.** The first GHCR release is **0.1.0** (1.0.0 later, after the fresh-VM test and the first production install). TLS terminates on the **bundled proxy**, with `--external-proxy` for an existing load balancer. **Off-host backup copies (OPS-14) wait until after 2026-10-30.** The OPS-1…10 safety cut of `docs/OPERATIONS-DESIGN.md` §10 is the plan. | OPS-1… |
+| D-21 | **Property watches (user request, 2026-10-17 ~12:45: "operöttörün herhangi bir log source veya log source type veya log group'u seçip şu custom property değerini veya değerlerini takip et diyebilir miyiz bence deriz altyapı hazır").** The operator picks a log source, a log-source type or a log-source group, and one or more properties to track. **The user's answers (12:55):** <br>• **outputs: all four** — the per-value distribution (table, chart, widget), F.1 threshold alerts on a value, new-value detection, and baseline deviation per value (spike, drop, disappearance); <br>• **values: both** — pinned values always counted, plus an automatic top-N of the rest; <br>• **combination and correlation wanted** ("korelasyon ve kombinasyon iyi olur"): several properties grouped together (e.g. `Username` × `Action`), and a correlation the design must define, bounded, with the alternatives as open questions; <br>• **order: design now, build after OPS-5, OPS-6, OPS-9 r2 and OPS-10.** <br>Design → **T-125**, `docs/PHASE-G-PROPERTY-WATCH.md`; build tasks will be **PW-1…**. | Phase G |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
