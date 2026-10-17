@@ -16,6 +16,10 @@ x-backend-build-args: &backend-build-args
 
 services:
   postgres:
+    build:
+      args:
+        APP_VERSION: ${QRADAR_DASH_VERSION:-}
+        GIT_SHA: ${GIT_SHA:-}
     image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/postgres:${QRADAR_DASH_VERSION:-0.1.0}
 
   backend:
@@ -63,6 +67,9 @@ services:
     build:
       context: ./deploy/proxy
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${QRADAR_DASH_VERSION:-}
+        GIT_SHA: ${GIT_SHA:-}
     image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/qradar-dashboard}/proxy:${QRADAR_DASH_VERSION:-0.1.0}
     ports:
       - "${HTTPS_PORT:-443}:443"
