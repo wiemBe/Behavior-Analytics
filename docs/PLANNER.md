@@ -21,10 +21,11 @@ PW-3a, OPS-11 report, specs. Migration head on `feat/phase-ce`: `0026`. `qradarc
 |---|---|---|---|
 | **PW-2b** ([spec](tasks/PW-2b.md)) collection | `pw2b` / `qradar_obs_pw2b` | 19 files changed; its whole integration run was at 53 % (log `QRadar-Dash-work/pw2b/integ.log`); no report yet | If `docs/tasks/PW-2b.report.md` exists in the worktree: review it. Else hand over (Codex after **22:49**, or Sonnet) with the spec + "review what you inherit". Check first that no `pytest` of it is still running (`pgrep -af "qradar_obs_pw2b"`). |
 | **PW-5** ([spec](tasks/PW-5.md)) API | `pw5` / `qradar_obs_pw5` | 13 files changed, still writing; no report | Same rule. |
-| **T-132** ([spec](tasks/T-132.md)) OPS-11 polish | `t132` / `qradar_obs_t132` | 8 files changed; whole integration run started 19:39 (log `QRadar-Dash-work/t132/integ.log`); no report | Same rule. |
+
+**T-132 merged (19:50)**: items 1–6 fixed and pinned (doctor masked `geo_countries_destination`, 25 chars, by its token heuristic; `status` aged the backup by `last_upgrade.at`, which `rollback` rewrites); item 7 (the users list after a sign-in) **not reproduced** in 290 reads: stays on the backlog, capture status and body next time. Its whole integration run: 1,309 passed / 0 skipped. Accepted: the hand-kept `_WATERMARK_NAMES` (an unlisted long name is masked, the safe side).
 
 **Next, in order:**
-1. Review and merge PW-2b, PW-5, T-132 (each: the report's open points get a decision; run ruff,
+1. Review and merge PW-2b, PW-5 (each: the report's open points get a decision; run ruff,
    mypy, the unit suite on the merged tree; remove worktree, branch, DB after the merge).
 2. **PW-5b**: `GET /property-watches/{id}/scope` and the resolved member counts in
    `scope-options`, on PW-2b's resolver (spec to write).
