@@ -8,7 +8,37 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 15:00, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 15:50, 2026-10-17 (nineteenth session, from 12:44)
+
+**OPS-10 so far** (report `QRadar-Dash-work/ops10/OPS-10.report.md`, still running Part C 5–6):
+v0.1.0 installs from GHCR on a fresh Rocky 9.8 VM, SELinux Enforcing, in **1 min 40 s**; a second
+install keeps the keys and the admin password; backup 3 s, verified; upgrade 0.1.0 → 0.1.1
+**14.7 s** downtime; rollback **13.2 s**; data survived both.
+
+**Findings → backlog (decide each before `main`):**
+1. **D2 (defect):** `cmd_install` writes `.qradar-dash/state.json` only when the QRadar check
+   passes (`qradar-dash` ~774–777), so an install whose QRadar check fails has no state file:
+   `status` FAILs, `upgrade`/`rollback` refuse. Write it once the stack is healthy, whatever the
+   QRadar check says; a test runs `install` itself (AGENTS.md §4, new rule).
+2. **`doctor` `celery_beat` FAILs right after every upgrade/rollback** (no heartbeat yet after
+   the Redis flush and restart). It does not trigger a rollback, but it is a false alarm: give
+   the check a grace period after the beat container's start.
+3. **Runbook:** on RHEL/Rocky, `operator` is a system account (uid 11): never suggest it as the
+   operator's login; say the host needs **80 GiB** free on the Docker root (the preflight's
+   number). OPS-10's own spec was wrong on both (orchestrator error).
+4. Sign-in through the API needs an `Origin` header (CSRF guard, correct); note it in the runbook
+   where it shows API calls, if any.
+
+**Lessons recorded 2026-10-17** (the user: "dersimizi çıkaralım birdaha olmasın"): AGENTS.md §4
+now forbids tests that leave process-wide state changed (Alembic `Config()` without the ini),
+requires a new integration test to pass inside the whole integration run, and requires testing
+the command path, not only the helper; §6 asks what could go wrong for each open point. The
+orchestrator's own rules: spec facts from the code, a decision for every open point, no "flake"
+without a cause, times from `date`, gates archive the whole tree.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 15:00, 2026-10-17 (kept for the log)
 
 **⚠ The lab QRadar VM `qradarce2` is SHUT DOWN (14:56, D-23) for OPS-10. Start it again when
 OPS-10 ends: `virsh -c qemu:///system start qradarce2`.**

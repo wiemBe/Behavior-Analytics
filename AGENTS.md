@@ -129,6 +129,20 @@ enough.
   `TEST_DATABASE_URL` the suite gives you (parse it; do not copy its name), and pytest's
   `tmp_path` for files a test writes. (Added 2026-10-16 after an AUTH-1 test passed only on its
   own agent database.)
+- **A test must not change process-wide state and leave it changed:** logging configuration,
+  environment variables, the settings cache, the working directory. A test that runs Alembic
+  builds `Config()` **without** `alembic.ini`, as `tests/integration/test_migrations.py` does:
+  with the ini file, `env.py` calls `fileConfig()`, which disables every existing `app.*`
+  logger for the rest of the session.
+- **A new or changed integration test must also pass inside the whole integration run**
+  (`-m integration` over `tests/integration/`, one session), not only alone. Passing alone
+  proves nothing about the tests that run after it. (Both added 2026-10-17 after OPS-5's
+  round-trip test passed alone and broke nine `caplog` tests in CI, T-126.)
+- **Test the path the operator takes, not only the helper.** When your task adds a function
+  that a command must call (for example "install writes the state file"), at least one test
+  runs the command itself and checks the effect on every exit path the command has, including
+  the ones that end in a warning. (Added 2026-10-17 after `install` skipped the state file
+  whenever the QRadar check failed, which the helper-only tests could not see, OPS-10.)
 
 ## 5. Running things
 
@@ -176,6 +190,8 @@ End with a short report containing:
 2. **What you did:** how it meets the task's acceptance criteria.
 3. **Gates:** each command you ran, with its actual result (counts of passed and failed, lint
    output). If you did not run a command, say so.
-4. **Open points:** anything not done, uncertain, or outside your scope that you noticed.
+4. **Open points:** anything not done, uncertain, or outside your scope that you noticed. Say
+   for each one what could go wrong if it is left as it is. "Tests call the helper directly"
+   or "not run against a real stack" is an open point, not a detail.
 
 Report honestly. A reported failure is useful; a hidden one costs a review cycle.
