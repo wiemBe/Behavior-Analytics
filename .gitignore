@@ -47,3 +47,4 @@ docker-compose.override.yml
 # Installer: the answers file and the generated edge/backup state
 install.answers
 .install-tmp/
+.qradar-dash/

@@ -83,6 +83,19 @@ Kurulum ve işletme için ayrılmış bir hesap kullan; günlük işi `root` ile
 komutunu çalıştırabilmelidir: `install`, `status`, `doctor`, `backup`, `restore`, `upgrade` ve
 `rollback` tümü `docker compose` çağırır. Bu yüzden hesabı `docker` grubuna ekle.
 
+**Sıra önemlidir.** `docker` grubu, Docker kurulunca oluşur. Önce Docker Engine ve Compose v2
+eklentisini Docker'ın RHEL deposundan kur (Rocky ve Alma dahil), sonra hesabı aç:
+
+```bash
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable --now docker
+docker compose version   # Compose v2 eklentisini doğrular
+```
+
+Docker kurulmadan `useradd -G docker` "group 'docker' does not exist" ile düşer.
+
 > RHEL, Rocky ve Alma'da **`operator` zaten bir sistem hesabıdır** (uid 11, giriş yoktur,
 > `/sbin/nologin`). Bu adı seçme; kendi hesabını kur, örneğin `qdops`.
 
@@ -481,7 +494,9 @@ içermez.
 `backup` alanı, OPS-5'in yazdığı gibi bir yedek **dizininin** yoludur (`qradar-dash-<utc>-<reason>/`),
 tek bir `.dump` dosyası değil. `outcome` değeri `success`, `rolled_back` ya da `failed` olur.
 Başarılı bir `restore` aynı bloğa `restored_from` alanını ekler. `status` son girdiyi yazdırır.
-`previous_images` `null` ise `rollback` reddeder.
+`previous_images` `null` ise `rollback` reddeder. Başarılı bir yükseltmeden sonra `previous_images`
+dolu kalır, çünkü `rollback` onu okur; yalnız `rollback` onu `null` yapar. `status` içindeki
+`Last upgrade backup … (age …)` yaşı, yedek dizininin adındaki UTC damgasından hesaplanır.
 
 ---
 

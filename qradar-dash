@@ -400,25 +400,29 @@ preflight_network() {
       if port_free "$p"; then info "port $p is free"; else fail "port $p is already in use"; bad=1; fi
     done
   fi
-  backup_free=$(free_kb "${ANS[BACKUP_DIR]}" || true)
-  if [ -z "$backup_free" ]; then
-    warn "cannot read the free space of ${ANS[BACKUP_DIR]}"
-  elif [ "$backup_free" -lt "$BACKUP_MIN_KB" ]; then
-    fail "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}; at least 20 GiB is required"; bad=1
-  else
-    info "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}"
-  fi
+  local dir_ok=yes
   if [ -e "${ANS[BACKUP_DIR]}" ] && [ ! -d "${ANS[BACKUP_DIR]}" ]; then
-    fail "${ANS[BACKUP_DIR]} exists and is not a directory"; bad=1
+    fail "${ANS[BACKUP_DIR]} exists and is not a directory"; bad=1; dir_ok=no
   elif [ -d "${ANS[BACKUP_DIR]}" ]; then
     if [ ! -w "${ANS[BACKUP_DIR]}" ] || [ ! -x "${ANS[BACKUP_DIR]}" ]; then
-      fail "the backup directory ${ANS[BACKUP_DIR]} is not writable by this account; give it to this account (see docs/OPERATIONS.md, Kurulum)"; bad=1
+      fail "the backup directory ${ANS[BACKUP_DIR]} is not writable by this account; give it to this account (see docs/OPERATIONS.md, Kurulum)"; bad=1; dir_ok=no
     fi
   elif [ ! -e "${ANS[BACKUP_DIR]}" ]; then
     local parent=${ANS[BACKUP_DIR]}
     while [ ! -e "$parent" ] && [ "$parent" != "/" ]; do parent=$(dirname "$parent"); done
     if [ ! -d "$parent" ] || [ ! -w "$parent" ] || [ ! -x "$parent" ]; then
-      fail "cannot create the backup directory ${ANS[BACKUP_DIR]}: $parent is not writable by this account; create it first (see docs/OPERATIONS.md, Kurulum)"; bad=1
+      fail "cannot create the backup directory ${ANS[BACKUP_DIR]}: $parent is not writable by this account; create it first (see docs/OPERATIONS.md, Kurulum)"; bad=1; dir_ok=no
+    fi
+  fi
+  # Free space is reported only for a directory the checks above accepted.
+  if [ "$dir_ok" = yes ]; then
+    backup_free=$(free_kb "${ANS[BACKUP_DIR]}" || true)
+    if [ -z "$backup_free" ]; then
+      warn "cannot read the free space of ${ANS[BACKUP_DIR]}"
+    elif [ "$backup_free" -lt "$BACKUP_MIN_KB" ]; then
+      fail "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}; at least 20 GiB is required"; bad=1
+    else
+      info "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}"
     fi
   fi
   local root_dev backup_dev
@@ -866,7 +870,9 @@ cmd_status() {
     say "Image $service: $digest"
   done < <(printf '%s\n' "${STATE_IMAGES//,/$'\n'}")
   if [ "$STATE_LAST_PRESENT" = yes ]; then
-    if age=$(state_age "$STATE_LAST_AT" 2>/dev/null); then :; else age=unknown; fi
+    # The age is the backup's own: `last_upgrade.at` is the time of the last event, and a
+    # rollback rewrites it, which made a backup taken minutes earlier look 0 min old.
+    if age=$(backup_stamp_age "$STATE_LAST_BACKUP" 2>/dev/null); then :; else age=unknown; fi
     say "Last upgrade: $STATE_LAST_OUTCOME, $STATE_LAST_FROM -> $STATE_LAST_TO at $STATE_LAST_AT"
     say "Last upgrade backup: $STATE_LAST_BACKUP (age $age)"
   else
@@ -1311,6 +1317,12 @@ write_restore_state() { # write_restore_state BACKUP_DIRECTORY
   fi
   write_state "$version" "$images" "$previous" "$at" "$from" "$to" \
     "$outcome" "$recorded_backup" "$backup"
+}
+
+backup_stamp_age() { # backup_stamp_age DIR: age from the UTC stamp in the directory name
+  local stamp=${1##*/}
+  [[ $stamp =~ ^qradar-dash-([0-9]{8})T([0-9]{2})([0-9]{2})([0-9]{2})Z- ]] || return 1
+  state_age "${BASH_REMATCH[1]:0:4}-${BASH_REMATCH[1]:4:2}-${BASH_REMATCH[1]:6:2}T${BASH_REMATCH[2]}:${BASH_REMATCH[3]}:${BASH_REMATCH[4]}Z"
 }
 
 state_age() {

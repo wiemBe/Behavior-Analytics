@@ -305,6 +305,35 @@ async def test_watermarks_pass_warn_and_fail(settings: Settings) -> None:
 
 
 @pytest.mark.asyncio
+async def test_failing_watermark_names_print_unredacted_but_secrets_stay_masked(
+    settings: Settings,
+) -> None:
+    from app.collectors.geo_collector import watermark_name
+    from app.geo.fold import GeoDirection
+
+    names = [watermark_name(direction) for direction in GeoDirection]
+    names.append("catchall_senders")
+    secret = "Zk9qL2mPx7VbN4cRt8YwHs3Q"  # token-shaped, not a known collector name
+    rows = [
+        SimpleNamespace(collector=n, consecutive_failures=3, last_error=None, lag_seconds=None)
+        for n in [*names, secret, "password=planted-password"]
+    ]
+    cadence = SimpleNamespace(family="PHASE_A_VOLUME", cadence_seconds=300)
+
+    result = await make_doctor(
+        settings, FakeSession(scalars_values=[rows, [cadence]])
+    ).check_watermarks()
+
+    assert result.status is Status.FAIL
+    for name in names:
+        assert name in result.message
+    assert "geo_countries_destination" in result.message
+    assert secret not in result.message
+    assert "planted-password" not in result.message
+    assert "***redacted***" in result.message
+
+
+@pytest.mark.asyncio
 async def test_cadence_pass_and_warn(settings: Settings) -> None:
     now = datetime(2026, 10, 16, 12, tzinfo=UTC)
     on_time = SimpleNamespace(
