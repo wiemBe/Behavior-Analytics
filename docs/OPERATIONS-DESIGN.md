@@ -93,7 +93,9 @@ There is no `latest` tag. `upgrade` takes an explicit version.
 | qradar-mcp | labels carry the app version and the pin `b8f6a4a3fe901eac4f55e4ca5d146d952f55db51` (`README.md:234-235`). |
 | proxy (§3.4) | labels carry the app version. |
 
-The postgres and proxy Dockerfiles declare the same two args and labels, so a local `./qradar-dash ... --build` carries them too; `qradar-mcp/` is a pinned gitlink, so its labels are set by the release workflow only.
+**[as built, OPS-B1]** The postgres and proxy Dockerfiles declare the same two args and
+labels, so a local `./qradar-dash ... --build` carries them too. `qradar-mcp/` is a pinned
+gitlink, so its labels are set by the release workflow only.
 
 Each image is pushed with two tags: the SemVer (`0.1.0`) and `sha-<12 hex chars>`.
 The operator script records the image **digest** it started, not only the tag
