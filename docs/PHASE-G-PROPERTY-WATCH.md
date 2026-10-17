@@ -326,15 +326,15 @@ Design decisions, each against the facts of §G.1:
   `NULL`, which is not `OK`. Every state is a reason, never silence — the detector-status contract
   (`backend/app/anomaly/capabilities.py:66-77`).
 
-## G.4 Scope resolution (question 2) **[BUILT — PW-2a: the AQL side only]**
+## G.4 Scope resolution (question 2) **[BUILT — PW-2a: AQL] [BUILT — PW-2b]**
 
 > **As built by PW-2a** (`backend/app/property_watch/aql.py`): the `<scope>` filter of the table
 > below, from an already-resolved input: `LOG_SOURCE` and `LOG_SOURCE_TYPE` take exactly one id,
 > `LOG_SOURCE_GROUP` takes one chunk of at most `pw_max_sources_per_search` ids (sorted,
 > de-duplicated). Scope ids must be non-negative integers and are re-checked in the provider.
 > Resolution from the inventory (the cycle-safe walk, `SCOPE_EMPTY`/`SCOPE_STALE`/
-> `SCOPE_TOO_LARGE`, the fingerprint, the chunking itself) remains **PW-2b**. The chunk sums are
-> built (`keyed_search.combine_chunks`): a bucket is `COMPLETE` only when every chunk was whole,
+> `SCOPE_TOO_LARGE`, the fingerprint, the chunking itself) is built by **PW-2b**. The chunk sums
+> are built (`keyed_search.combine_chunks`): a bucket is `COMPLETE` only when every chunk was whole,
 > `LOWER_BOUND` when any chunk was cut at one bucket, and **unmeasured when any chunk was failed or
 > not collected** (a decision PW-2a made: a sum over part of the scope is not a statement about the
 > scope, so the other chunks' rows are dropped rather than kept as a lower bound).
@@ -463,7 +463,7 @@ property never parsed.
     `total_events > 0`: a scope that sent nothing is a silent scope (its buckets are `COMPLETE`
     with zero events), not a property that fails to parse.
 
-## G.6 Collection (question 4)
+## G.6 Collection (question 4) **[BUILT — PW-2b]**
 
 > **[BUILT — PW-1 fact contract; PW-2a provider, AQL, fold and split driver].**
 > `backend/app/property_watch/facts.py` (PW-1) defines the pure bucket, value/tuple, coverage,
@@ -491,9 +491,9 @@ property never parsed.
 > - `app/property_watch/fold.py`: `fold_bucket`, which builds a `PwBucketFact` from a bucket's
 >   three outcomes. The admission columns keep their defaults for PW-2b.
 >
-> Not built here, still **PW-2b**: scope resolution, admission, persistence, the dispatch task, the
-> statement-count pins. The provider takes `pw_max_sources_per_search` as a constructor argument
-> (default 50); `providers/factory.py` does not pass it yet, so the two-line wiring is PW-2b's.
+> **PW-2b** built scope resolution, admission, persistence, the dispatch task and the
+> statement-count pins. `providers/factory.py` passes
+> `pw_max_sources_per_search` to the mock and REST providers.
 
 **Decision: a dedicated collector in the IPS keyed style — not F.2 scheduled searches.**
 
@@ -692,7 +692,7 @@ admission threshold or beyond a quota exists only inside the fold, and its event
 `untracked_events`); the generated AQL's *parameters beyond the pinned values the operator typed*.
 The only value texts that persist are admitted values and pinned values.
 
-### G.7.2 Values as personal data (rule 3)
+### G.7.2 Values as personal data (rule 3) **[BUILT — PW-2b]**
 
 A property such as `Username` carries personal data, and a free-text field can carry worse: a
 user who types a password into a username box on a failed login produces a "username" that is a
@@ -725,11 +725,10 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   visible without the audit table becoming a second copy of the values.
 - **Masking** (show `al***` instead of `alice`) is not built.
 
-### G.7.3 Admission, the two kinds of value, and retirement
+### G.7.3 Admission, the two kinds of value, and retirement **[BUILT — PW-2b]**
 
-> **[BUILT — PW-1 persistence contract only].** The bucket admission-outcome columns and the
-> value tracking-window/pinned/retirement columns are in model metadata and migration `0026`.
-> The admission and retirement behavior that writes them remains PW-2b.
+> **[BUILT — PW-1 persistence contract; PW-2b behavior].** The bucket admission-outcome columns and
+> the value tracking-window/pinned/retirement columns are in model metadata and migration `0026`.
 
 - **Pinned values** (user answer 2) are `pw_value` rows from the moment the watch is saved:
   `pinned = true`, `tracked_since` = the first bucket collected after enable, never subject to
@@ -1445,7 +1444,7 @@ for a group and 1 for a source or a type.
   and 6 globally (`backend/app/core/config.py:122,132`). PW never raises it.
 - **Preview:** two searches, rate-limited (§G.6).
 
-### G.14.2 Database
+### G.14.2 Database **[BUILT — PW-2b]**
 
 - **Statements per tick: a design target of at most 40**, **constant in the number of watches
   (1 against 10) and in the number of values (50 against 200)**, excluding opening an alert (a few

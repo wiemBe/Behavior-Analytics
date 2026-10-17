@@ -6,7 +6,9 @@ What leaves them is `PwBucketFact`: counts, and the bounded value list the desig
 Everything else is summed into `untracked_events` and its text is gone (AGENTS.md rule 3).
 
 The tracked and pinned sets are **inputs**: which values are tracked is decided by
-admission (§G.7.3, PW-2b). The admission columns of the fact keep their defaults here.
+admission (§G.7.3, PW-2b, `app.property_watch.admission`). The fold fills only
+`observed_values` (every distinct value of the grouped result, before the cut); admission
+fills the other admission columns.
 
 A bucket whose search did not measure it folds to `NOT_COLLECTED` with no counts, never to
 a zero. A zero is only ever made by a `COMPLETE` search that did not mention a key
@@ -259,6 +261,7 @@ def fold_bucket(
         total_events=total,
         parsed_events=parsed,
         untracked_events=untracked,
+        observed_values=len(sums),
         values=tuple(
             PwValueFact(
                 value_key=key,
