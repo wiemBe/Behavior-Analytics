@@ -671,6 +671,11 @@ healthy but the QRadar check failed, or when a service never became healthy.
 The password is printed before that exit, on stdout, so a failed QRadar check
 does not swallow it.
 
+As built (T-127): the state file is written whenever the services came up, whatever the
+QRadar check said, so a site whose QRadar check failed can still `status`, `upgrade` and
+`rollback`; the exit code stays 1 in that case. If the stack never came up, no state file is
+written.
+
 ### 3.7 Idempotent re-run
 
 A second `install` with an existing `.env`:
@@ -750,6 +755,11 @@ Before any container is stopped:
    - `doctor` checks `db_connect` and `migration_head` are PASS, and the live
      `alembic_version` equals the image's `migration_head`.
 8. Record the outcome (§4.5). Start is not complete until step 7 passes.
+
+As built (T-127): the pre-upgrade preflight, the step 7 checks and the rollback's checks print
+only the `db_connect` and `migration_head` lines of the doctor report, then one line pointing
+to `./qradar-dash doctor`. A `FAIL celery_beat` or QRadar line shortly after a restart is not
+shown in the middle of a successful upgrade. Which checks decide is unchanged.
 
 Redis is flushed after the writers are stopped and before the new workers
 start (`redis-cli FLUSHALL` inside the redis container). Redis holds the broker
