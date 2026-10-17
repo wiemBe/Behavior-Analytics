@@ -1,7 +1,8 @@
 # Phase G — property watches: track any property's values on a scope (D-21)
 
-Status: **design, 2026-10-17** (task T-125). The orchestrator owns this file. The build (PW-1…, §G.16)
-starts only after the operations work (OPS-5, OPS-6, OPS-9 round 2, OPS-10), by the user's order
+Status: **building, 2026-10-17** (designed by T-125; PW-1 foundations built). The orchestrator
+owns this file. The build (PW-1…, §G.16) starts only after the operations work (OPS-5, OPS-6,
+OPS-9 round 2, OPS-10), by the user's order
 (D-21 item 4, [`PLANNER.md`](PLANNER.md) §4 D-21). It follows the shape of
 [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and
 [`PHASE-F-CUSTOM-DETECTIONS.md`](PHASE-F-CUSTOM-DETECTIONS.md) and rests on
@@ -225,7 +226,16 @@ value may be a deployment, a new combination may be a role change; alerting with
 
 ---
 
-## G.3 The watch model (question 1)
+## G.3 The watch model (question 1) **[BUILT — PW-1 foundation]**
+
+> **As built by PW-1** (`backend/app/models/property_watch.py`,
+> `backend/app/models/enums.py`, `backend/app/property_watch/reference.py`, migration `0026`):
+> the row, scope and one-or-two-properties `CHECK`s, separate PW enum vocabulary,
+> `watch_version`, the `username`-only normalized allowlist and the reject-not-escape pin pattern
+> are present. The severity, version, enabled and value-state defaults are SQLAlchemy creation
+> defaults rather than persistent database defaults, preserving the repository's migration
+> invariant that fresh tables leave no non-timestamp server defaults behind. The API rules that
+> decide when to bump `watch_version` remain PW-5.
 
 ```text
 property_watch
@@ -433,6 +443,12 @@ property never parsed.
 
 ## G.6 Collection (question 4)
 
+> **[BUILT — PW-1 fact contract only].** `backend/app/property_watch/facts.py` defines the pure
+> bucket, value/tuple, coverage, unparsed-remainder, measurement and reading facts. It implements
+> the measured-zero boundary, strict integer-count coercion (including PW-0's integer-valued
+> floats), `cap + 1` truncation recognition, and NULL/empty unparsed classification. Provider,
+> AQL, fold/admission and split-driver work in the rest of this section remains PW-2a/PW-2b.
+
 **Decision: a dedicated collector in the IPS keyed style — not F.2 scheduled searches.**
 
 Against rule 4 first: the browser never sends AQL. The watch is stored as validated parameters
@@ -586,7 +602,12 @@ page shows, marked `PREVIEW`, plus the generated AQL text read-only. It needs `p
 
 ## G.7 Persistence, admission, retention and the migration (question 5)
 
-### G.7.1 What is stored, and what is never stored
+### G.7.1 What is stored, and what is never stored **[BUILT — PW-1 schema]**
+
+> **As built by PW-1:** `backend/app/models/property_watch.py` and migration `0026` create only
+> the aggregate definition, bucket, admitted/pinned value, sparse metric, baseline and lifecycle
+> tables below. `pw_bucket` and `pw_value_metric` are TimescaleDB hypertables. No raw-event table
+> or unadmitted-value table exists.
 
 Values become **aggregate keys**, as IPS entities and WAF endpoints already are
 (`backend/app/models/ips.py:206-241`, `backend/app/models/waf.py:217-231`). The tables mirror the
@@ -642,6 +663,10 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
 
 ### G.7.3 Admission, the two kinds of value, and retirement
 
+> **[BUILT — PW-1 persistence contract only].** The bucket admission-outcome columns and the
+> value tracking-window/pinned/retirement columns are in model metadata and migration `0026`.
+> The admission and retirement behavior that writes them remains PW-2b.
+
 - **Pinned values** (user answer 2) are `pw_value` rows from the moment the watch is saved:
   `pinned = true`, `tracked_since` = the first bucket collected after enable, never subject to
   admission, never retired, counted as a measured zero when the pinned search is whole and absent (§G.6 rule).
@@ -663,7 +688,14 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   pinned values plus tracked values would exceed the ceiling stops admitting automatic values and
   says so (`admission_truncated`).
 
-### G.7.4 The migration
+### G.7.4 The migration **[BUILT — PW-1 half]**
+
+> **As built by PW-1:** `0026_property_watch.py` revises `0025`, creates the eight PW tables,
+> registers both hypertables and seeds `PROPERTY_WATCH` at 3,600 seconds with `ON CONFLICT DO
+> NOTHING`. Its integration test upgrades, downgrades and upgrades again, checks both
+> hypertables, the seed, the scope/property `CHECK`s and `alembic check`. In accordance with the
+> PW-1 task split below, `custom_rule.pw_value_id` and the recreated subject `CHECK` are not in
+> `0026`; they remain PW-6's next migration.
 
 One additive migration, number "next at build time" (head is `0025_auth_sessions`,
 `backend/alembic/versions/`). It creates the tables above, registers `pw_bucket` and
@@ -686,6 +718,12 @@ PW-1 and PW-6 is in §G.16.
 ## G.8 Detection: the four outputs (question 6)
 
 ### G.8.0 Shared machinery
+
+> **[BUILT — PW-1 enums and reading contract only].** The separate PW anomaly, scope,
+> reference, bucket/pinned measurement and watch-status enums are in `app/models/enums.py`;
+> `app/property_watch/facts.py` decides exact counts, lower bounds, measured zeros, unknowns and
+> non-observations without I/O. Capability specs, baselines, detectors and lifecycle execution
+> remain PW-3a/PW-3b.
 
 **New enums, `AnomalyType` untouched** (AGENTS.md rule 6; the reason is stated at
 `backend/app/models/enums.py:139-145` for WAF and `:172-179` for IPS):
@@ -1343,7 +1381,13 @@ The ceiling of 200 active values is what bounds the worst row. A query on a hype
 is by `bucket_start` and watch, both indexed; the table is registered as a hypertable like
 `ips_entity_metric` (`backend/alembic/versions/0018_ips_collection.py:181-182`).
 
-### G.14.3 Settings
+### G.14.3 Settings **[BUILT — PW-1]**
+
+> **As built by PW-1** (`backend/app/core/config.py`): every setting below is present with the
+> stated default and a field bound; collection and alerting both default false. Startup
+> cross-checks, when PW collection is enabled, keep rows within the Ariel cap, the per-watch
+> budget within the tick budget, pins within the active ceiling, the baseline lookback within
+> retention, and novelty history strictly below retention.
 
 All in `backend/app/core/config.py`, validated, with the defaults below. Names follow the
 `ips_*` and `waf_*` families they copy; a `:N` in the Notes column is a line of

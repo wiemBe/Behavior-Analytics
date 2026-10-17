@@ -103,6 +103,7 @@ class SearchFamily(StrEnum):
     ANOMALY_EXPLANATION = "ANOMALY_EXPLANATION"
     RULE_MATCH = "RULE_MATCH"
     IPS_COLLECTION = "IPS_COLLECTION"
+    PROPERTY_WATCH = "PROPERTY_WATCH"
     CATCHALL_SENDERS = "CATCHALL_SENDERS"
     GEO_COLLECTION = "GEO_COLLECTION"
 
@@ -193,6 +194,85 @@ class IpsAnomalyType(StrEnum):
     IPS_PORT_FANOUT_SPIKE = "IPS_PORT_FANOUT_SPIKE"
     #: The blocked share of action events rose, judged through the profile's action map.
     IPS_BLOCK_RATIO_SHIFT = "IPS_BLOCK_RATIO_SHIFT"
+
+
+class PwAnomalyType(StrEnum):
+    """Phase G property-watch detector taxonomy (design §G.8.0).
+
+    Separate from `AnomalyType`, `WafAnomalyType` and `IpsAnomalyType` for the same
+    reason they are separate from each other: those enums are persisted in rows and
+    alert fingerprints, and a `PW_` value in any of them would be a value none of
+    their detectors can produce. Persisted in `pw_anomaly.detector_type` and in the
+    watch's `detectors` list.
+    """
+
+    #: A watched value's events above its seasonal band.
+    PW_VALUE_SPIKE = "PW_VALUE_SPIKE"
+    #: A watched value's events exactly below its band while it normally carries traffic.
+    PW_VALUE_DROP = "PW_VALUE_DROP"
+    #: A watched value, normally present, has a measured zero for several buckets.
+    PW_VALUE_DISAPPEARED = "PW_VALUE_DISAPPEARED"
+    #: A value absent from a verified history appears with material traffic.
+    PW_NEW_VALUE = "PW_NEW_VALUE"
+    #: A tuple of two known components absent from a verified history appears.
+    PW_NEW_COMBINATION = "PW_NEW_COMBINATION"
+
+
+class PwScopeKind(StrEnum):
+    """What a property watch is scoped to: exactly one of a source, a type or a group."""
+
+    LOG_SOURCE = "LOG_SOURCE"
+    LOG_SOURCE_TYPE = "LOG_SOURCE_TYPE"
+    LOG_SOURCE_GROUP = "LOG_SOURCE_GROUP"
+
+
+class PwReferenceKind(StrEnum):
+    """How a watched property is named. The IPS enum is IPS-only by its own use."""
+
+    NORMALIZED = "NORMALIZED"
+    CUSTOM_PROPERTY = "CUSTOM_PROPERTY"
+
+
+class PwBucketMeasurement(StrEnum):
+    """What a `pw_bucket` row claims about its per-value counts.
+
+    `EXACT`: the grouped search was whole, so a tracked value absent from the bucket
+    had none of the parsed events. `LOWER_BOUND`: the search was cut at one bucket;
+    every stored count is real but the tail is missing, so an absent tracked value is
+    unknown. `NOT_COLLECTED`: nothing was measured; no value reading exists.
+    """
+
+    EXACT = "EXACT"
+    LOWER_BOUND = "LOWER_BOUND"
+    NOT_COLLECTED = "NOT_COLLECTED"
+
+
+class PwPinnedMeasurement(StrEnum):
+    """What the small pinned search established for a bucket (design §G.6, §G.7.1).
+
+    The `PwBucketMeasurement` states, plus `NOT_REQUESTED` for a watch that pins no
+    value: nothing was asked, so nothing is measured, and it is never an `EXACT` zero.
+    """
+
+    EXACT = "EXACT"
+    LOWER_BOUND = "LOWER_BOUND"
+    NOT_COLLECTED = "NOT_COLLECTED"
+    NOT_REQUESTED = "NOT_REQUESTED"
+
+
+class PwWatchStatus(StrEnum):
+    """`property_watch.last_status` (design §G.3). A never-run watch is NULL, not OK."""
+
+    NOT_ENABLED = "NOT_ENABLED"
+    DISABLED = "DISABLED"
+    SCOPE_EMPTY = "SCOPE_EMPTY"
+    SCOPE_STALE = "SCOPE_STALE"
+    SCOPE_TOO_LARGE = "SCOPE_TOO_LARGE"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    STALE = "STALE"
+    OPEN = "OPEN"
+    RECOVERING = "RECOVERING"
+    OK = "OK"
 
 
 class CustomRuleSubjectKind(StrEnum):
