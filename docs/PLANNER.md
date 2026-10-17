@@ -8,9 +8,9 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 14:25, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 13:55, 2026-10-17 (nineteenth session, from 12:44)
 
-**Since 13:50 (`feat/phase-ce` @ `128d41b` + the OPS-9r2 spec, pushed):**
+**Since 13:50 (`feat/phase-ce` @ `128d41b` + the OPS-9r2 spec, pushed; the header said 14:25 by mistake):**
 - **OPS-6 merged** (`128d41b`). Codex round 0 was cut off by its limit; a Sonnet handover
   reviewed it and fixed nine points (restart traps between the stop and the `.env` edit, the
   doctor preflight requiring PASS, no `.env` rewrite after a failed swap, the key check on
