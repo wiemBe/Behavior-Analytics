@@ -608,3 +608,114 @@ def test_preflight_refuses_a_host_with_7_gib_of_memory(
     assert "RAM 7 GiB; at least 8 GiB is required" in result.stderr
     assert not (inst.root / ".qradar-dash").exists()
     assert not (inst.root / ".env").exists()
+
+
+# T-130: the backup directory must be one this account can create or write.
+needs_non_root = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root bypasses file permissions"
+)
+
+NOT_WRITABLE = "is not writable by this account; give it to this account"
+CANNOT_CREATE = "cannot create the backup directory"
+
+
+def _assert_refused_unwritten(inst: Install, result: subprocess.CompletedProcess[str]) -> None:
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert not (inst.root / ".env").exists()
+    assert not (inst.root / ".qradar-dash").exists()
+
+
+@needs_non_root
+def test_install_refuses_an_existing_backup_dir_it_cannot_write(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    backups = inst.files / "backups"
+    backups.mkdir()
+    backups.chmod(0o500)
+    try:
+        result = _install_flow(inst, tmp_path, flow_path)
+    finally:
+        backups.chmod(0o700)
+
+    _assert_refused_unwritten(inst, result)
+    assert f"the backup directory {backups} {NOT_WRITABLE}" in result.stderr
+    assert "(see docs/OPERATIONS.md, Kurulum)" in result.stderr
+
+
+@needs_non_root
+def test_install_refuses_a_missing_backup_dir_under_an_unwritable_parent(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    parent = inst.files / "ro"
+    parent.mkdir()
+    backups = parent / "qradar-dash"
+    answers = inst.answers(BACKUP_DIR=str(backups))
+    parent.chmod(0o500)
+    try:
+        result = inst.run(
+            "install", "--non-interactive", str(answers), "--skip-qradar-check", path=flow_path
+        )
+    finally:
+        parent.chmod(0o700)
+
+    _assert_refused_unwritten(inst, result)
+    assert (
+        f"cannot create the backup directory {backups}: {parent} is not writable by this "
+        "account; create it first (see docs/OPERATIONS.md, Kurulum)"
+    ) in result.stderr
+    assert not backups.exists()
+
+
+@needs_non_root
+def test_dry_run_refuses_an_unwritable_backup_dir_and_writes_nothing(
+    inst: Install, flow_path: str
+) -> None:
+    backups = inst.files / "backups"
+    backups.mkdir()
+    backups.chmod(0o500)
+    answers = inst.answers()
+    try:
+        result = inst.run(
+            "install", "--non-interactive", str(answers), "--dry-run", "--skip-qradar-check",
+            path=flow_path,
+        )
+    finally:
+        backups.chmod(0o700)
+
+    _assert_refused_unwritten(inst, result)
+    assert NOT_WRITABLE in result.stderr
+
+
+def test_install_creates_a_missing_backup_dir_with_mode_0700(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    backups = inst.files / "backups"
+    assert not backups.exists()
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert stat.S_IMODE(backups.stat().st_mode) == 0o700
+
+
+def test_a_mkdir_that_fails_after_preflight_stops_the_install(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    backups = inst.files / "backups"
+    real_mkdir = shutil.which("mkdir")
+    assert real_mkdir
+    stub = Path(flow_path) / "mkdir"
+    stub.unlink()
+    _stub(
+        stub,
+        "#!/bin/sh\n"
+        f"for a in \"$@\"; do [ \"$a\" = '{backups}' ] && exit 1; done\n"
+        f"exec {real_mkdir} \"$@\"\n",
+    )
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"cannot create the backup directory {backups}" in result.stderr
+    assert not (inst.root / ".qradar-dash").exists()
+    assert not backups.exists()

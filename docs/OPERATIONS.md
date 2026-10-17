@@ -92,8 +92,20 @@ sudo passwd -l qdops
 ```
 
 **Yedek dizini** kurulumdan **önce** vardır ve operatör hesabına aittir. `install` dizini `0700` ile
-oluşturur; üst dizin `root` sahipliyse operatör onu oluşturamaz ve ön kontrol durur. Yedek dizini git
-checkout'unun dışında olmalıdır. Sahipliği operatöre ver:
+oluşturur; üst dizin `root` sahipliyse operatör onu oluşturamaz ve ön kontrol hiçbir şey yazmadan
+durur:
+
+```
+cannot create the backup directory <path>: <parent> is not writable by this account; create it first (see docs/OPERATIONS.md, Kurulum)
+```
+
+Dizin varsa ama hesap yazamıyorsa mesaj şudur:
+
+```
+the backup directory <path> is not writable by this account; give it to this account (see docs/OPERATIONS.md, Kurulum)
+```
+
+Yedek dizini git checkout'unun dışında olmalıdır. Sahipliği operatöre ver:
 
 ```bash
 sudo mkdir -p /var/backups/qradar-dash

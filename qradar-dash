@@ -410,6 +410,16 @@ preflight_network() {
   fi
   if [ -e "${ANS[BACKUP_DIR]}" ] && [ ! -d "${ANS[BACKUP_DIR]}" ]; then
     fail "${ANS[BACKUP_DIR]} exists and is not a directory"; bad=1
+  elif [ -d "${ANS[BACKUP_DIR]}" ]; then
+    if [ ! -w "${ANS[BACKUP_DIR]}" ] || [ ! -x "${ANS[BACKUP_DIR]}" ]; then
+      fail "the backup directory ${ANS[BACKUP_DIR]} is not writable by this account; give it to this account (see docs/OPERATIONS.md, Kurulum)"; bad=1
+    fi
+  elif [ ! -e "${ANS[BACKUP_DIR]}" ]; then
+    local parent=${ANS[BACKUP_DIR]}
+    while [ ! -e "$parent" ] && [ "$parent" != "/" ]; do parent=$(dirname "$parent"); done
+    if [ ! -d "$parent" ] || [ ! -w "$parent" ] || [ ! -x "$parent" ]; then
+      fail "cannot create the backup directory ${ANS[BACKUP_DIR]}: $parent is not writable by this account; create it first (see docs/OPERATIONS.md, Kurulum)"; bad=1
+    fi
   fi
   local root_dev backup_dev
   root_dev=$(stat -c %d "$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)" 2>/dev/null || true)
@@ -714,7 +724,8 @@ cmd_install() {
     ./deploy/load-secrets.sh qradar >/dev/null || die "deploy/load-secrets.sh failed"
   fi
   info "secrets loaded into the volumes ${ANS[SECRETS_VOLUME]}$([ "${ANS[EXTERNAL_PROXY]}" = no ] && echo " and ${ANS[PROXY_CERTS_VOLUME]}")"
-  mkdir -p "${ANS[BACKUP_DIR]}" && chmod 700 "${ANS[BACKUP_DIR]}"
+  mkdir -p "${ANS[BACKUP_DIR]}" || die "cannot create the backup directory ${ANS[BACKUP_DIR]}"
+  chmod 700 "${ANS[BACKUP_DIR]}" || die "cannot set mode 0700 on the backup directory ${ANS[BACKUP_DIR]}"
   dc up -d --wait --wait-timeout 180 postgres redis || { dc ps; die "postgres or redis did not become healthy"; }
   info "postgres and redis are healthy"
 
