@@ -46,7 +46,7 @@ Commands
                 Write a redacted diagnostic archive under the backup root.
   upgrade       Pull and install one explicit production SemVer release.
   rollback      Restore the pre-upgrade backup and previous image digests (asks first).
-  bundle        Not built yet.
+  bundle        Not built in this release (use install --build, or pull from the registry).
 
 backup options
   --no-verify       Skip the scratch-database restore (not allowed for pre-upgrade).
@@ -351,7 +351,8 @@ preflight_host() {
   if [ "$arch" = "x86_64" ]; then info "architecture $arch"; else fail "architecture $arch; the images are x86_64 only"; bad=1; fi
   cpus=$(nproc)
   if [ "$cpus" -ge "$CPU_MIN" ]; then info "$cpus CPUs"; else fail "$cpus CPUs; at least $CPU_MIN are required"; bad=1; fi
-  mem=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+  # QRADAR_DASH_MEMINFO_FILE exists for the tests, so they run on a host of any size.
+  mem=$(awk '/^MemTotal:/ {print $2}' "${QRADAR_DASH_MEMINFO_FILE:-/proc/meminfo}")
   if [ "$mem" -ge "$MEM_MIN_KB" ]; then info "RAM $((mem / 1024 / 1024)) GiB"; else fail "RAM $((mem / 1024 / 1024)) GiB; at least 8 GiB is required"; bad=1; fi
   root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)
   free=""
@@ -409,6 +410,16 @@ preflight_network() {
   fi
   if [ -e "${ANS[BACKUP_DIR]}" ] && [ ! -d "${ANS[BACKUP_DIR]}" ]; then
     fail "${ANS[BACKUP_DIR]} exists and is not a directory"; bad=1
+  elif [ -d "${ANS[BACKUP_DIR]}" ]; then
+    if [ ! -w "${ANS[BACKUP_DIR]}" ] || [ ! -x "${ANS[BACKUP_DIR]}" ]; then
+      fail "the backup directory ${ANS[BACKUP_DIR]} is not writable by this account; give it to this account (see docs/OPERATIONS.md, Kurulum)"; bad=1
+    fi
+  elif [ ! -e "${ANS[BACKUP_DIR]}" ]; then
+    local parent=${ANS[BACKUP_DIR]}
+    while [ ! -e "$parent" ] && [ "$parent" != "/" ]; do parent=$(dirname "$parent"); done
+    if [ ! -d "$parent" ] || [ ! -w "$parent" ] || [ ! -x "$parent" ]; then
+      fail "cannot create the backup directory ${ANS[BACKUP_DIR]}: $parent is not writable by this account; create it first (see docs/OPERATIONS.md, Kurulum)"; bad=1
+    fi
   fi
   local root_dev backup_dev
   root_dev=$(stat -c %d "$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)" 2>/dev/null || true)
@@ -651,6 +662,26 @@ cmd_install() {
     [ -r "$bundle" ] || { fail "bundle not readable: $bundle"; exit 2; }
   fi
 
+  # 0. A site that records a version keeps it: changing versions is `upgrade`, which backs up first.
+  if [ -e .qradar-dash/state.json ] || [ -L .qradar-dash/state.json ]; then
+    local checkout_version=""
+    if [ -r VERSION ]; then checkout_version=$(tr -d '[:space:]' <VERSION); fi
+    : "${checkout_version:=0.1.0}"
+    state_read .qradar-dash/state.json || {
+      fail "install refused: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid; see ./qradar-dash status"
+      exit 1
+    }
+    if [ "$STATE_LAST_PRESENT" = yes ] && [ "$STATE_LAST_OUTCOME" = failed ] \
+      && [ -z "$STATE_LAST_RESTORED_FROM" ]; then
+      fail "install refused: the last upgrade failed; run rollback or restore first"
+      exit 1
+    fi
+    if [ "$STATE_INSTALLED_VERSION" != "$checkout_version" ]; then
+      fail "install refused: this site runs $STATE_INSTALLED_VERSION and this checkout is $checkout_version; use ./qradar-dash upgrade $checkout_version to change versions, or check out v$STATE_INSTALLED_VERSION to re-run install (see docs/OPERATIONS.md, Yükseltme)"
+      exit 1
+    fi
+  fi
+
   # 1. Answers. Pure: nothing is written until every check has passed.
   if [ -n "$answers" ]; then
     parse_answers "$answers"
@@ -713,7 +744,8 @@ cmd_install() {
     ./deploy/load-secrets.sh qradar >/dev/null || die "deploy/load-secrets.sh failed"
   fi
   info "secrets loaded into the volumes ${ANS[SECRETS_VOLUME]}$([ "${ANS[EXTERNAL_PROXY]}" = no ] && echo " and ${ANS[PROXY_CERTS_VOLUME]}")"
-  mkdir -p "${ANS[BACKUP_DIR]}" && chmod 700 "${ANS[BACKUP_DIR]}"
+  mkdir -p "${ANS[BACKUP_DIR]}" || die "cannot create the backup directory ${ANS[BACKUP_DIR]}"
+  chmod 700 "${ANS[BACKUP_DIR]}" || die "cannot set mode 0700 on the backup directory ${ANS[BACKUP_DIR]}"
   dc up -d --wait --wait-timeout 180 postgres redis || { dc ps; die "postgres or redis did not become healthy"; }
   info "postgres and redis are healthy"
 
@@ -768,13 +800,12 @@ cmd_install() {
   if [ "$code" = "200" ]; then
     info "version: $(curl -s --max-time 5 "$api/version")"
   else
-    warn "GET /api/v1/version answered $code (the endpoint arrives with OPS-1)"
+    warn "GET /api/v1/version did not answer 200 (got '${code:-no answer}'); check ./qradar-dash doctor"
   fi
 
   summary "$qr_rc" "$have_admin"
-  if [ "$qr_rc" -eq 0 ]; then
-    write_install_state || die "the install succeeded but its state file could not be written"
-  fi
+  # The state file records the version and image digests, which do not depend on QRadar.
+  write_install_state || die "the install succeeded but its state file could not be written"
   [ "$qr_rc" -eq 0 ] || exit 1
 }
 
@@ -800,7 +831,7 @@ summary() {
   say "Left off           WAF, IPS, rule-match collection, custom rules (turn them on later)"
   say "Next               Sign in, then Directory ($origin/admin/directory) if AD is used,"
   say "                    and Users ($origin/admin/users) to assign roles."
-  say "Runbook            docs/OPERATIONS.md (arrives with OPS-9); ./qradar-dash doctor"
+  say "Runbook            docs/OPERATIONS.md; ./qradar-dash doctor"
   say "Backup directory   ${ANS[BACKUP_DIR]}"
   say "Install time       $(((SECONDS - START_SECONDS) / 60)) min $(((SECONDS - START_SECONDS) % 60)) s"
   say "================================================================================"
@@ -1881,10 +1912,17 @@ read_target_release_notes() { # read_target_release_notes VERSION
   printf '%s\n' "$min_from"
 }
 
+# Only db_connect and migration_head decide an upgrade or rollback; the rest of the report
+# (a beat heartbeat not written yet, QRadar checks) would read as a failed upgrade.
+print_deciding_checks() { # print_deciding_checks REPORT
+  printf '%s\n' "$1" | grep -E '^[A-Z]+[[:space:]]+(db_connect|migration_head)([[:space:]]|$)' || true
+  say "Full report: ./qradar-dash doctor"
+}
+
 upgrade_doctor_preflight() {
   local report
   report=$(cmd_doctor || true)
-  printf '%s\n' "$report"
+  print_deciding_checks "$report"
   if printf '%s\n' "$report" \
       | grep -Eq '^FAIL[[:space:]]+(db_connect|migration_head)([[:space:]]|$)'; then
     fail "upgrade refused: database readiness is already failing; see runbook OPS-R11"
@@ -1924,7 +1962,7 @@ upgrade_runtime_checks() { # upgrade_runtime_checks EXPECTED_VERSION
     return 1
   fi
   report=$(cmd_doctor || true)
-  printf '%s\n' "$report"
+  print_deciding_checks "$report"
   if ! printf '%s\n' "$report" \
       | grep -Eq '^PASS[[:space:]]+db_connect([[:space:]]|$)'; then
     UPGRADE_CHECK_FAILURE="doctor db_connect is not PASS"
@@ -2012,7 +2050,7 @@ perform_rollback() { # backup old-version old-images from to at
 
 cmd_upgrade() {
   local target="" offline=no installed min_from db_size backup_root old_images
-  local backup_output backup at new_images old_env_version
+  local backup_output backup at new_images old_env_version checkout_version
   need_installed
   command -v docker >/dev/null 2>&1 || die "Docker is not installed"
   while [ $# -gt 0 ]; do
@@ -2029,6 +2067,12 @@ cmd_upgrade() {
     fail "upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)"
     return 1
   }
+  checkout_version=""
+  if [ -r VERSION ]; then checkout_version=$(tr -d '[:space:]' <VERSION); fi
+  if [ "$checkout_version" != "$target" ]; then
+    fail "upgrade refused: this checkout is version ${checkout_version:-unknown}, not $target; run git fetch --tags && git checkout v$target first (see docs/OPERATIONS.md, Yükseltme)"
+    return 1
+  fi
   state_read .qradar-dash/state.json || {
     fail "upgrade refused: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid or missing"
     return 1
@@ -2673,7 +2717,7 @@ main() {
     restore) cmd_restore "$@" ;;
     doctor) cmd_doctor ;;
     support-bundle) cmd_support_bundle ;;
-    bundle) not_built "$cmd" "OPS-3 and OPS-10" ;;
+    bundle) not_built "$cmd" "the offline bundle is not part of this release; use ./qradar-dash install --build from a checkout, or install by pulling from the registry" ;;
     -h | --help | help | "") usage; [ -n "$cmd" ] || exit 2 ;;
     *) fail "unknown command: $cmd"; usage >&2; exit 2 ;;
   esac

@@ -43,6 +43,9 @@ celery_app.conf.imports = ("app.workers.tasks",)
 # Periodic schedule. Intervals are conservative defaults; tune per deployment.
 celery_app.conf.beat_schedule = {
     "beat-heartbeat": {
+        # Also sent once when beat starts (below): without that, the first
+        # write comes one interval after a restart, and doctor FAILs on a
+        # healthy stack.
         "task": "beat_heartbeat",
         "schedule": 60.0,
     },
@@ -202,16 +205,29 @@ celery_app.conf.beat_schedule = {
 }
 
 
-@beat_init.connect
-def _apply_policies_at_beat_start(**_: object) -> None:
-    """Send the policy task once at beat start.
+def _send_at_beat_start(name: str, logger_name: str) -> None:
+    """Send one task by name, surviving a broker that is down.
 
-    Beat is a single process, so replicas of the API or the worker do not race.
-    The task is idempotent. A broker that is down must not stop beat.
+    A failure to queue one task must not stop beat, nor prevent the next
+    task from being sent.
     """
     try:
-        celery_app.send_task("apply_timescale_policies")
+        celery_app.send_task(name)
     except Exception:
-        logging.getLogger("app.timescale").warning(
-            "could not queue the startup policy run", exc_info=True
+        logging.getLogger(logger_name).warning(
+            "could not queue %s at beat start", name, exc_info=True
         )
+
+
+@beat_init.connect
+def _send_startup_tasks_at_beat_start(**_: object) -> None:
+    """Send the once-per-beat-start tasks.
+
+    Beat is a single process, so replicas of the API or the worker do not race.
+    Both tasks are idempotent. Beat's first run of an interval task comes one
+    interval after it starts, so sending them here closes that window: the
+    heartbeat exists within seconds of a restart instead of up to a minute,
+    and a changed Timescale setting does not wait a day.
+    """
+    _send_at_beat_start("apply_timescale_policies", "app.timescale")
+    _send_at_beat_start("beat_heartbeat", "app.beat")

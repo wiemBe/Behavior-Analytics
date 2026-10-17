@@ -167,6 +167,8 @@ case "$*" in
     printf '%s\n' 'PASS  migration_head   database at image head'
     [ "${STUB_QRADAR_FAIL:-0}" -eq 0 ] \
       || printf '%s\n' 'FAIL  qradar_auth      QRadar refused credentials'
+    [ "${STUB_BEAT_FAIL:-0}" -eq 0 ] \
+      || printf '%s\n' 'FAIL  celery_beat       heartbeat not written yet'
     ;;
   *" exec -T postgres pg_dump "*) exit "${STUB_DUMP_RC:-0}" ;;
   *" exec -T postgres pg_restore "*) exit 0 ;;
@@ -267,6 +269,7 @@ class UpgradeFixture:
         self.script = self.root / "qradar-dash"
         shutil.copy(SCRIPT, self.script)
         self.script.chmod(0o755)
+        (self.root / "VERSION").write_text(f"{TARGET_VERSION}\n")  # the checkout is at the target
         self.backup_root = tmp_path / "backups"
         self.backup_root.mkdir(mode=0o700)
         self.docker_root = tmp_path / "docker-root"
@@ -457,6 +460,52 @@ def test_invalid_target_is_refused_before_stop(
     assert_no_stop(upgrade)
 
 
+def _assert_checkout_refused(
+    upgrade: UpgradeFixture, result: subprocess.CompletedProcess[str], checkout: str
+) -> None:
+    assert result.returncode == 1, output(result)
+    assert (
+        f"upgrade refused: this checkout is version {checkout}, not {TARGET_VERSION}; run "
+        f"git fetch --tags && git checkout v{TARGET_VERSION} first "
+        "(see docs/OPERATIONS.md, Yükseltme)"
+    ) in result.stderr
+    actions = upgrade.action_text()
+    for call in (" pull ", " stop ", " up "):
+        assert call not in actions
+    assert "state-write" not in actions
+
+
+def test_checkout_of_another_version_is_refused_before_pull_or_stop(
+    upgrade: UpgradeFixture,
+) -> None:
+    (upgrade.root / "VERSION").write_text(f"{OLD_VERSION}\n")
+    before = (upgrade.state_dir / "state.json").read_bytes()
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    _assert_checkout_refused(upgrade, result, OLD_VERSION)
+    assert (upgrade.state_dir / "state.json").read_bytes() == before
+
+
+def test_checkout_without_a_version_file_is_refused_as_unknown(
+    upgrade: UpgradeFixture,
+) -> None:
+    (upgrade.root / "VERSION").unlink()
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    _assert_checkout_refused(upgrade, result, "unknown")
+
+
+def test_checkout_check_runs_before_the_state_file_is_read(upgrade: UpgradeFixture) -> None:
+    (upgrade.root / "VERSION").write_text(f"{OLD_VERSION}\n")
+    (upgrade.state_dir / "state.json").write_text("not json\n")
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    _assert_checkout_refused(upgrade, result, OLD_VERSION)
+
+
 def test_newer_installed_version_is_refused_before_stop(upgrade: UpgradeFixture) -> None:
     upgrade.write_state(installed="0.3.0")
 
@@ -539,6 +588,7 @@ def test_unparseable_state_is_refused_before_pull_or_stop(upgrade: UpgradeFixtur
 
 
 def test_same_healthy_version_changes_nothing(upgrade: UpgradeFixture) -> None:
+    (upgrade.root / "VERSION").write_text(f"{OLD_VERSION}\n")
     before = (upgrade.state_dir / "state.json").read_bytes()
 
     result = upgrade.run("upgrade", OLD_VERSION)
@@ -671,6 +721,32 @@ def test_qradar_doctor_failure_is_not_a_rollback_trigger(upgrade: UpgradeFixture
     assert "Database swap complete (rollback)" not in result.stdout
     assert "ALTER DATABASE" not in upgrade.action_text()
     assert upgrade.running_version.read_text().strip() == TARGET_VERSION
+
+
+def test_upgrade_output_shows_only_the_deciding_doctor_checks(upgrade: UpgradeFixture) -> None:
+    result = upgrade.run("upgrade", TARGET_VERSION, STUB_QRADAR_FAIL="1", STUB_BEAT_FAIL="1")
+
+    assert result.returncode == 0, output(result)
+    combined = result.stdout + result.stderr
+    assert "celery_beat" not in combined
+    assert "qradar_auth" not in combined
+    assert "db_connect" in combined
+    assert "migration_head" in combined
+    assert "Full report: ./qradar-dash doctor" in combined
+
+
+def test_automatic_rollback_output_hides_the_non_deciding_doctor_checks(
+    upgrade: UpgradeFixture,
+) -> None:
+    result = upgrade.run(
+        "upgrade", TARGET_VERSION, STUB_MIGRATE_RC="17", STUB_QRADAR_FAIL="1", STUB_BEAT_FAIL="1"
+    )
+
+    assert "was rolled back" in result.stderr
+    combined = result.stdout + result.stderr
+    assert "celery_beat" not in combined
+    assert "qradar_auth" not in combined
+    assert "Full report: ./qradar-dash doctor" in combined
 
 
 def test_failed_rollback_stops_writers_records_failed_and_has_no_third_attempt(

@@ -45,6 +45,11 @@ class Install:
         (self.files / "ca.pem").write_text(PEM_CERT)
         (self.files / "tls.crt").write_text(PEM_CERT)
         (self.files / "tls.key").write_text(PEM_KEY)
+        self.meminfo = self.files / "meminfo"
+        self.set_memory_gib(16)
+
+    def set_memory_gib(self, gib: int) -> None:
+        self.meminfo.write_text(f"MemTotal:       {gib * 1024 * 1024} kB\n")
 
     def answers(self, **overrides: str | None) -> Path:
         values: dict[str, str | None] = {
@@ -67,7 +72,11 @@ class Install:
     def run(
         self, *args: str, path: str | None = None
     ) -> subprocess.CompletedProcess[str]:
-        env = {"HOME": str(self.root.parent), "PATH": path or os.environ["PATH"]}
+        env = {
+            "HOME": str(self.root.parent),
+            "PATH": path or os.environ["PATH"],
+            "QRADAR_DASH_MEMINFO_FILE": str(self.meminfo),
+        }
         bash = shutil.which("bash") or "/bin/bash"
         return subprocess.run(  # noqa: S603
             [bash, str(self.script), *args],
@@ -228,6 +237,13 @@ def test_unbuilt_subcommands_exit_non_zero(inst: Install) -> None:
         assert "not built yet" in result.stderr
 
 
+def test_bundle_says_what_to_use_instead(inst: Install) -> None:
+    result = inst.run("bundle")
+    assert "OPS-" not in result.stderr
+    assert "install --build" in result.stderr
+    assert "registry" in result.stderr
+
+
 def test_status_without_an_install_says_so(inst: Install) -> None:
     result = inst.run("status")
     assert result.returncode == 1
@@ -273,12 +289,6 @@ def _stub(path: Path, body: str) -> None:
 @pytest.fixture
 def build_path(tmp_path: Path) -> str:
     """A PATH with the script's tools and a docker stub whose `build` fails after logging."""
-    mem_kb = int(next(
-        line.split()[1] for line in Path("/proc/meminfo").read_text().splitlines()
-        if line.startswith("MemTotal:")
-    ))
-    if mem_kb < 7864320:
-        pytest.skip("the installer preflight needs 7.5 GiB of RAM on the test host")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for tool in [*NEEDED_TOOLS, "openssl", "sha256sum", "timeout", "getenforce",
@@ -471,3 +481,376 @@ def test_install_rerun_preserves_previous_images_and_last_upgrade(
     state = json.loads((state_dir / "state.json").read_text())
     assert state["previous_images"] == existing["previous_images"]
     assert state["last_upgrade"] == existing["last_upgrade"]
+
+
+# ---- T-127: the state file on every exit path of the install command --------------------
+
+INSTALL_FLOW_DOCKER_STUB = """#!/bin/bash
+rc() { [ -f "$HOME/$1" ] && cat "$HOME/$1" || echo 0; }
+case "$*" in
+  "compose version --short") echo 2.30.0 ;;
+  "version"*) echo 27.0.0 ;;
+  "info "*) echo "$HOME" ;;
+  "run --rm --entrypoint python "*)
+    echo sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A= ;;
+  *" ps --status running -q") ;;
+  *" ps -a -q") printf '%s\\n' postgres-container backend-container ;;
+  "inspect "*)
+    container=${!#}
+    if [ "$container" = postgres-container ]; then
+      printf 'postgres\\tFalse\\tsha256:%064d\\n' 1
+    else
+      printf 'backend\\tFalse\\tsha256:%064d\\n' 2
+    fi
+    ;;
+  *" up -d --wait --wait-timeout 180 postgres redis") ;;
+  *" up -d --wait --wait-timeout 180 "*) exit "$(rc up_rc)" ;;
+  *" pull "*) ;;
+  *" run --rm -T migrate") ;;
+  *" exec -T postgres psql "*) cat >/dev/null; echo 1 ;;
+  *" app.cli.qradar add "*) exit "$(rc qr_rc)" ;;
+  *" ps") ;;
+  *) echo "unexpected docker call: $*" >&2; exit 97 ;;
+esac
+"""
+
+
+@pytest.fixture
+def flow_path(tmp_path: Path, build_path: str, inst: Install) -> str:
+    """build_path with a docker stub that lets the whole install run, and the helper script."""
+    _stub(Path(build_path) / "docker", INSTALL_FLOW_DOCKER_STUB)
+    _stub(Path(build_path) / "curl", "#!/bin/sh\n"
+          "case \"$*\" in *'-w '*) echo 200 ;; *version) echo '{\"version\":\"0.1.0\"}' ;; esac\n")
+    deploy = inst.root / "deploy"
+    deploy.mkdir()
+    _stub(deploy / "load-secrets.sh", "#!/bin/sh\nexit 0\n")
+    return build_path
+
+
+def _install_flow(
+    inst: Install, tmp_path: Path, path: str, *, qr_rc: int = 0, up_rc: int = 0
+) -> subprocess.CompletedProcess[str]:
+    (tmp_path / "qr_rc").write_text(f"{qr_rc}\n")
+    (tmp_path / "up_rc").write_text(f"{up_rc}\n")
+    answers = inst.answers()
+    return inst.run(
+        "install", "--non-interactive", str(answers), "--skip-qradar-check", path=path
+    )
+
+
+def test_install_with_a_passing_qradar_check_writes_the_state_file(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    state = json.loads((inst.root / ".qradar-dash" / "state.json").read_text())
+    assert state["installed_version"] == "0.1.0"
+    assert state["images"] == {
+        "postgres": f"sha256:{1:064d}",
+        "backend": f"sha256:{2:064d}",
+    }
+    assert "QRadar connection  ok" in result.stdout
+
+
+def test_install_with_a_failing_qradar_check_still_writes_the_state_file(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    result = _install_flow(inst, tmp_path, flow_path, qr_rc=3)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "QRadar connection  FAILED (exit 3)" in result.stdout
+    state_path = inst.root / ".qradar-dash" / "state.json"
+    state = json.loads(state_path.read_text())
+    assert state["installed_version"] == "0.1.0"
+    assert state["images"]["backend"] == f"sha256:{2:064d}"
+    assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
+
+
+def test_install_whose_stack_does_not_come_up_writes_no_state_file(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    result = _install_flow(inst, tmp_path, flow_path, qr_rc=3, up_rc=1)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "a service did not become healthy" in result.stderr
+    assert not (inst.root / ".qradar-dash").exists()
+
+
+def test_install_summary_has_no_stale_arrives_with_text(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert "arrives with" not in result.stdout + result.stderr
+    assert "Runbook            docs/OPERATIONS.md; ./qradar-dash doctor" in result.stdout
+
+
+def test_a_version_endpoint_failure_says_what_failed(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _stub(Path(flow_path) / "curl", "#!/bin/sh\ncase \"$*\" in *'-w '*) echo 503 ;; esac\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert "GET /api/v1/version did not answer 200 (got '503')" in result.stderr
+    assert "OPS-1" not in result.stderr
+
+
+def test_preflight_refuses_a_host_with_7_gib_of_memory(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    inst.set_memory_gib(7)
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "RAM 7 GiB; at least 8 GiB is required" in result.stderr
+    assert not (inst.root / ".qradar-dash").exists()
+    assert not (inst.root / ".env").exists()
+
+
+# T-130: the backup directory must be one this account can create or write.
+needs_non_root = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root bypasses file permissions"
+)
+
+NOT_WRITABLE = "is not writable by this account; give it to this account"
+CANNOT_CREATE = "cannot create the backup directory"
+
+
+def _assert_refused_unwritten(inst: Install, result: subprocess.CompletedProcess[str]) -> None:
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert not (inst.root / ".env").exists()
+    assert not (inst.root / ".qradar-dash").exists()
+
+
+@needs_non_root
+def test_install_refuses_an_existing_backup_dir_it_cannot_write(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    backups = inst.files / "backups"
+    backups.mkdir()
+    backups.chmod(0o500)
+    try:
+        result = _install_flow(inst, tmp_path, flow_path)
+    finally:
+        backups.chmod(0o700)
+
+    _assert_refused_unwritten(inst, result)
+    assert f"the backup directory {backups} {NOT_WRITABLE}" in result.stderr
+    assert "(see docs/OPERATIONS.md, Kurulum)" in result.stderr
+
+
+@needs_non_root
+def test_install_refuses_a_missing_backup_dir_under_an_unwritable_parent(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    parent = inst.files / "ro"
+    parent.mkdir()
+    backups = parent / "qradar-dash"
+    answers = inst.answers(BACKUP_DIR=str(backups))
+    parent.chmod(0o500)
+    try:
+        result = inst.run(
+            "install", "--non-interactive", str(answers), "--skip-qradar-check", path=flow_path
+        )
+    finally:
+        parent.chmod(0o700)
+
+    _assert_refused_unwritten(inst, result)
+    assert (
+        f"cannot create the backup directory {backups}: {parent} is not writable by this "
+        "account; create it first (see docs/OPERATIONS.md, Kurulum)"
+    ) in result.stderr
+    assert not backups.exists()
+
+
+@needs_non_root
+def test_dry_run_refuses_an_unwritable_backup_dir_and_writes_nothing(
+    inst: Install, flow_path: str
+) -> None:
+    backups = inst.files / "backups"
+    backups.mkdir()
+    backups.chmod(0o500)
+    answers = inst.answers()
+    try:
+        result = inst.run(
+            "install", "--non-interactive", str(answers), "--dry-run", "--skip-qradar-check",
+            path=flow_path,
+        )
+    finally:
+        backups.chmod(0o700)
+
+    _assert_refused_unwritten(inst, result)
+    assert NOT_WRITABLE in result.stderr
+
+
+def test_install_creates_a_missing_backup_dir_with_mode_0700(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    backups = inst.files / "backups"
+    assert not backups.exists()
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert stat.S_IMODE(backups.stat().st_mode) == 0o700
+
+
+def test_a_mkdir_that_fails_after_preflight_stops_the_install(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    backups = inst.files / "backups"
+    real_mkdir = shutil.which("mkdir")
+    assert real_mkdir
+    stub = Path(flow_path) / "mkdir"
+    stub.unlink()
+    _stub(
+        stub,
+        "#!/bin/sh\n"
+        f"for a in \"$@\"; do [ \"$a\" = '{backups}' ] && exit 1; done\n"
+        f"exec {real_mkdir} \"$@\"\n",
+    )
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"cannot create the backup directory {backups}" in result.stderr
+    assert not (inst.root / ".qradar-dash").exists()
+    assert not backups.exists()
+
+
+# ---- T-131: install never changes the version a site records ----------------------------
+
+
+def _write_site_state(
+    inst: Install, installed: str = "0.1.0", *, outcome: str | None = None, raw: str | None = None
+) -> Path:
+    state_dir = inst.root / ".qradar-dash"
+    state_dir.mkdir(mode=0o700, exist_ok=True)
+    state: dict[str, object] = {
+        "installed_version": installed,
+        "images": {"backend": f"sha256:{2:064d}"},
+        "previous_images": None,
+    }
+    if outcome is not None:
+        state["last_upgrade"] = {
+            "at": "2026-10-17T12:00:00Z",
+            "from": "0.1.0",
+            "to": "0.1.1",
+            "outcome": outcome,
+            "backup": "/var/backups/qradar-dash-previous",
+        }
+    path = state_dir / "state.json"
+    path.write_text(raw if raw is not None else json.dumps(state) + "\n")
+    return path
+
+
+def _env_with_version(inst: Install, version: str) -> bytes:
+    (inst.root / "VERSION").write_text(f"{version}\n")
+    env = inst.root / ".env"
+    env.write_text(f"COMPOSE_PROJECT_NAME=fixture-project\nQRADAR_DASH_VERSION={version}\n")
+    return env.read_bytes()
+
+
+def test_install_from_a_checkout_of_another_version_is_refused_and_keeps_env(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, "0.1.0")
+    before = _env_with_version(inst, "0.1.0")
+    (inst.root / "VERSION").write_text("0.1.1\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (
+        "install refused: this site runs 0.1.0 and this checkout is 0.1.1; use "
+        "./qradar-dash upgrade 0.1.1 to change versions, or check out v0.1.0 to re-run "
+        "install (see docs/OPERATIONS.md, Yükseltme)"
+    ) in result.stderr
+    assert (inst.root / ".env").read_bytes() == before
+
+
+def test_install_dry_run_from_another_version_is_refused_too(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, "0.1.0")
+    (inst.root / "VERSION").write_text("0.1.1\n")
+    answers = inst.answers()
+
+    result = inst.run(
+        "install", "--non-interactive", str(answers), "--dry-run", path=flow_path
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "install refused: this site runs 0.1.0 and this checkout is 0.1.1" in result.stderr
+    assert not (inst.root / ".env").exists()
+
+
+def test_install_after_a_failed_upgrade_is_refused(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, "0.1.0", outcome="failed")
+    before = _env_with_version(inst, "0.1.0")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "install refused: the last upgrade failed; run rollback or restore first" in (
+        result.stderr
+    )
+    assert (inst.root / ".env").read_bytes() == before
+
+
+def test_install_with_an_invalid_state_file_is_refused(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, raw='{"installed_version": "latest"}\n')
+    before = _env_with_version(inst, "0.1.0")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (
+        "install refused: .qradar-dash/state.json field installed_version is invalid; "
+        "see ./qradar-dash status"
+    ) in result.stderr
+    assert (inst.root / ".env").read_bytes() == before
+
+
+def test_install_rerun_at_the_recorded_version_completes(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    _write_site_state(inst, "0.1.0")
+    (inst.root / "VERSION").write_text("0.1.0\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "install refused" not in result.stderr
+
+
+def test_install_rerun_after_a_restored_failure_completes(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    path = _write_site_state(inst, "0.1.0", outcome="failed")
+    state = json.loads(path.read_text())
+    state["last_upgrade"]["restored_from"] = "/var/backups/qradar-dash-previous"
+    path.write_text(json.dumps(state) + "\n")
+    (inst.root / "VERSION").write_text("0.1.0\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_install_with_no_state_file_completes_at_any_checkout_version(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (inst.root / "VERSION").write_text("0.1.1\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (inst.root / ".qradar-dash" / "state.json").is_file()

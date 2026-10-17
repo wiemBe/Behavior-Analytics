@@ -8,7 +8,196 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 13:55, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 18:00, 2026-10-17 (twentieth session, from 17:44)
+
+**Update 18:00:**
+- **T-130 merged** (`eb6210f`, Sonnet): host 164/0 `qradar_dash` tests, shellcheck clean (through
+  stdin, no mount). Accepted: the `chmod … || die` branch has no test (it needs a directory owned
+  by another user; the `mkdir` branch of the same shape is tested). **+3 unit skips under root**:
+  the 3.12 gate's unit skip count is now **13** (10 auth-guard allowlist + 3 T-130).
+- **T-129 merged** (`671adac`, DeepSeek): `0.1.1` in `VERSION`, `pyproject.toml`,
+  `package.json`, the two root lock lines (`yocto-queue` untouched); `docs/releases/0.1.1.md`;
+  version test 13/0; the `verify` logic checked by hand. Accepted: the `:-0.1.0` fallbacks in
+  `docker-compose.prod.yml` and `qradar-dash` (reached only without `.env`/`VERSION`).
+- **Review finding → T-131** ([spec](tasks/T-131.md), Sonnet sub-agent, worktree `t131`):
+  nothing ties the operator's checkout to the running version. `upgrade` reads the target's
+  notes from the image, so an old checkout's script and compose files upgrade new images; and
+  `install` from a newer checkout silently upgrades **without a backup or rollback**. Decision:
+  `upgrade X` refuses unless `VERSION` = X; `install` refuses when the state file records another
+  version (or a failed upgrade, or is invalid); no state file → as today (the 0.1.0 escape path);
+  runbook + notes: check out the target tag first, return to the old tag after a rollback. In
+  0.1.1 because the first production site starts at 0.1.1 and its first upgrade is run by the
+  0.1.1 script.
+- **Frontend gate** on `69ba093` running in the `gate` worktree (log
+  `QRadar-Dash-work/gate-1017c/frontend.log`); T-131 touches no frontend file.
+- **Next:** T-131 review and merge → the 3.12 backend gate on the head (expect unit skips 13,
+  integration 1) → `main` → tag `v0.1.1` → the fresh-VM check, which now follows the documented
+  path: clone at `v0.1.0`, install, `git checkout v0.1.1`, `upgrade 0.1.1`, `rollback`, back.
+
+The nineteenth chat (`qradar-dash-ae`) was told to stand down and confirmed.
+
+**Done since 16:03:**
+- **OPS-9 r3 merged** (`c9e3eac`, DeepSeek). Every quoted command and message checked against
+  `qradar-dash`, `doctor.py`, `auth.py`, `celery_app.py` (beat TTL 180 s, heartbeat every 60 s
+  and at start). Its open points accepted: uid 11 is OPS-10's observation (the warning holds
+  anyway); the submodule is only `qradar-mcp`; the doctor column spacing is illustrative; the
+  pg_dump warning and the measured numbers are OPS-10's, labelled as such. The fresh-VM check
+  (step 5 below) exercises the runbook on a real host.
+- **Review finding → T-130** ([spec](tasks/T-130.md)): the runbook said the preflight stops when
+  the operator cannot create the backup directory; **it does not**, and worse,
+  `mkdir -p "$BACKUP_DIR" && chmod 700 …` under `set -e` lets a failing `mkdir` pass, so the
+  install ends "healthy" and the first backup (and every pre-upgrade backup) fails. Decision: fix
+  it in v0.1.1 (it is a first-install defect, which is what D-24 is for). The 3.12 gate container
+  runs as root, so the new permission tests are `skipif(root)`: **the gate's unit skip count
+  rises by T-130's number**; they run on the host and in GitHub CI (`runner`).
+
+**In flight:**
+
+| Task | Agent | Where | Next |
+|---|---|---|---|
+| **T-130** | Sonnet sub-agent (dies with the chat) | worktree `t130`, scratch `QRadar-Dash-work/t130/` | Review: run the new tests on the host as `efe`, shellcheck via `docker run --rm -i koalaman/shellcheck:stable - < qradar-dash`. |
+| **T-129** ([spec](tasks/T-129.md), now with T-130 in the notes) | opencode free DeepSeek, unit `t129-ds` | worktree `t129`, scratch `QRadar-Dash-work/t129/` | Review the bump (two lock lines only) and `docs/releases/0.1.1.md`. |
+| **PW-1** handover | Codex, unit `pw1-codex` ("review what you inherit"; the Sonnet run died at 16:07 with ~2,000 lines and no report) | worktree `pw1`, DB `qradar_obs_pw1`, log `QRadar-Dash-work/pw1/codex.log` | Check the log for "usage limit". **Merge only after `v0.1.1` is tagged (D-24).** |
+
+**Next (D-24, unchanged otherwise):** merge T-130 and T-129 → full 3.12 backend gate + frontend
+gate → `main` → tag `v0.1.1` → the fresh-VM real-path check (16:03 list, step 5) → PW-1.
+
+---
+
+## ▶▶▶▶▶▶▶▶ STATE AT 16:03, 2026-10-17 (end of the nineteenth session; kept for the log)
+
+**Branches.** `main` @ `8815715` = v0.1.0 (tag pushed, release published, images public).
+`feat/phase-ce` @ `17ad7ff` (pushed) = `main` + T-127, T-128, OPS-10 report, specs, AGENTS.md
+rules of 2026-10-17. `qradarce2` (lab QRadar) is **running** again since 15:45.
+
+**In flight at save:**
+
+| Task | Agent | Where | When it ends |
+|---|---|---|---|
+| **OPS-9 r3** ([spec](tasks/OPS-9r3.md)), runbook after OPS-10/T-127/T-128 | opencode free DeepSeek, systemd unit `ops9r3-ds` (survives the chat) | worktree `ops9r3`, scratch `QRadar-Dash-work/ops9r3/` | `systemctl --user is-active ops9r3-ds`; read `docs/tasks/OPS-9r3.report.md` in the worktree; check every quoted command against `qradar-dash`; `grep -c "henüz yayımlanmadı"` = 0; merge. |
+| **PW-1** ([spec](tasks/PW-1.md)), Phase G foundations (migration 0026) | Sonnet sub-agent (**dies with the chat**) | worktree `pw1`, DB `qradar_obs_pw1` | If the chat died: hand the worktree to Codex (back 17:46) or Sonnet with "review what you inherit". **Do not merge PW-1 until `v0.1.1` is tagged (D-24).** |
+
+**Next, in order (D-24):**
+1. Merge OPS-9 r3.
+2. **T-129** ([spec](tasks/T-129.md)): the 0.1.1 bump (`VERSION`, `pyproject.toml`,
+   `package.json`, the two root lines of `package-lock.json` only — not `yocto-queue`) and
+   `docs/releases/0.1.1.md` (`min_from: 0.1.0`). A small task: an opencode free model is enough.
+3. Full gate: 3.12 backend (`QRadar-Dash-work/gate-1017a/run.sh`, `git archive <sha> | tar -x`
+   of the whole tree, fresh DBs `qradar_obs_gate`/`_mig`; expect integration 1 skip = the backup
+   round trip) **and** the frontend gate (`package.json` changes: `npm ci`, lint, typecheck,
+   vitest, build; Node at `~/.local/node/bin`; the `gate` worktree is the usual place).
+4. Merge to `main`, tag `v0.1.1`, watch the release run, check the images anonymously.
+5. Real-path check: a **fresh** VM (`virt-install --cloud-init root-password-generate=on,ssh-key=…`,
+   account `qdops`, never `operator`; **80 GiB+ disk**, 10 GiB RAM; shut `qradarce2` down first,
+   start it after), install v0.1.0 from GHCR, `upgrade 0.1.1` from GHCR. The old VM
+   `qradar-dash-ops10` holds local test images tagged 0.1.1: delete it (`virsh destroy/undefine`,
+   `vol-delete` its overlay) rather than reuse it.
+6. Then PW-1 review and merge, and the rest of Phase G (`docs/PHASE-G-PROPERTY-WATCH.md` §G.16).
+
+**Backlog:** the users list once missed a just-created user (OPS-10; investigate before v0.2.0).
+
+**Agents:** Codex back **17:46**; Z.AI GLM out until **2026-10-21 01:47**; Grok 402; opencode free
+(DeepSeek v4.1 flash, GLM 5.3 flash, big-pickle) and Sonnet available.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 15:48, 2026-10-17 (kept for the log)
+
+**`qradarce2` was started again at 15:45** (the 14:56 warning below is closed). The OPS-10 VM
+`qradar-dash-ops10` is shut off and kept (11 GiB overlay + 616 MiB base in pool `default`; login
+`qdops` with `QRadar-Dash-work/ops10/ops10_key`): reuse it to re-test the T-127 fixes.
+
+**OPS-10 + OPS-6r done** ([report](tasks/OPS-10.report.md)); every acceptance item met. Part C:
+upgrade 0.1.1 again 15.7 s; **the failing 0.1.2 migrate rolled back automatically** (exit 1,
+22.7 s downtime, `rolled_back`, data intact, broken copy kept); `restore` of the 0.1.0 backup
+**refused** (older version), a same-version restore worked (7.6 s downtime, later data gone as
+expected).
+
+**Decisions on its findings (orchestrator, 15:47):**
+- D2 → **T-127** (Sonnet, worktree `t127`): state written once the stack is up, whatever the
+  QRadar check says, tested through `install` itself; stale "arrives with OPS-…" texts; the
+  upgrade/rollback output prints only the deciding doctor checks.
+- `celery_beat` false FAIL after restarts → **T-128** (opencode DeepSeek, unit `t128-ds`): send
+  `beat_heartbeat` once at beat start, like the policy task.
+- The users list missing a just-created user once (not reproduced): **backlog, investigate
+  before v0.2.0** — risk: an admin re-creates the user and gets a conflict.
+- Runbook (OPS-9 r3, after T-127): `operator` is a RHEL system account; 80 GiB on the Docker
+  root; `--recurse-submodules` only for `--build`; pg_dump's TimescaleDB warnings are expected;
+  API sign-in needs an `Origin` header.
+- Accepted: pg_dump warnings (exit 0), `git_sha` null on non-hex test builds.
+
+**OPS-10 so far (kept)** (report `QRadar-Dash-work/ops10/OPS-10.report.md`):
+v0.1.0 installs from GHCR on a fresh Rocky 9.8 VM, SELinux Enforcing, in **1 min 40 s**; a second
+install keeps the keys and the admin password; backup 3 s, verified; upgrade 0.1.0 → 0.1.1
+**14.7 s** downtime; rollback **13.2 s**; data survived both.
+
+**Findings → backlog (decide each before `main`):**
+1. **D2 (defect):** `cmd_install` writes `.qradar-dash/state.json` only when the QRadar check
+   passes (`qradar-dash` ~774–777), so an install whose QRadar check fails has no state file:
+   `status` FAILs, `upgrade`/`rollback` refuse. Write it once the stack is healthy, whatever the
+   QRadar check says; a test runs `install` itself (AGENTS.md §4, new rule).
+2. **`doctor` `celery_beat` FAILs right after every upgrade/rollback** (no heartbeat yet after
+   the Redis flush and restart). It does not trigger a rollback, but it is a false alarm: give
+   the check a grace period after the beat container's start.
+3. **Runbook:** on RHEL/Rocky, `operator` is a system account (uid 11): never suggest it as the
+   operator's login; say the host needs **80 GiB** free on the Docker root (the preflight's
+   number). OPS-10's own spec was wrong on both (orchestrator error).
+4. Sign-in through the API needs an `Origin` header (CSRF guard, correct); note it in the runbook
+   where it shows API calls, if any.
+
+**Lessons recorded 2026-10-17** (the user: "dersimizi çıkaralım birdaha olmasın"): AGENTS.md §4
+now forbids tests that leave process-wide state changed (Alembic `Config()` without the ini),
+requires a new integration test to pass inside the whole integration run, and requires testing
+the command path, not only the helper; §6 asks what could go wrong for each open point. The
+orchestrator's own rules: spec facts from the code, a decision for every open point, no "flake"
+without a cause, times from `date`, gates archive the whole tree.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 15:00, 2026-10-17 (kept for the log)
+
+**⚠ The lab QRadar VM `qradarce2` is SHUT DOWN (14:56, D-23) for OPS-10. Start it again when
+OPS-10 ends: `virsh -c qemu:///system start qradarce2`.**
+
+- **Release v0.1.0 published** (run `39028016282`, all jobs green, 14:53). The five images
+  `ghcr.io/wiembe/qradar-dashboard/{backend,frontend,postgres,proxy,qradar-mcp}:0.1.0` are
+  **public** (anonymous manifest fetch works) and carry version `0.1.0` and revision
+  `881571530f6e`. GitHub release: `releases/tag/v0.1.0`.
+- **OPS-10 + OPS-6r** ([spec](tasks/OPS-10.md)) on a Sonnet sub-agent from 14:57 (dies with the
+  chat): VM `qradar-dash-ops10` (Rocky 9, `qemu:///system`), scratch and report in
+  `QRadar-Dash-work/ops10/`. If the chat died: read `OPS-10.report.md` there, shut the VM down,
+  start `qradarce2`.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 14:20, 2026-10-17 (kept for the log)
+
+**`main` @ `8815715` (pushed), tree = `feat/phase-ce` @ `7ca6bbc`.** It holds OPS-5, OPS-6,
+OPS-9 r2, OPS-B1, T-126 and the Phase G design (no Phase G code). Gate on `7ca6bbc` in the 3.12
+lock container (`QRadar-Dash-work/gate-1017a/run.sh`, log `integ-full.log`): ruff clean, mypy 0
+(244), unit 3,653 (10 skipped, the auth-guard allowlist as always), alembic round trip clean at
+`0025`, **integration 1,302 passed / 1 skipped / 0 errors** (the skip is the backup round trip,
+which needs host `pg_dump` 16 or Docker; it runs and passes on the host and in GitHub CI).
+Frontend unchanged since `dc2f510`.
+
+**T-126** (Sonnet) explains the two "flakes" of the morning: OPS-5's round-trip test built
+`Config(alembic.ini)`, so `env.py`'s `fileConfig()` disabled every `app.*` logger for the rest of
+the session, and every later `caplog` assertion saw `''`. In GitHub CI (unit and integration in
+one session) it broke nine tests. **Lesson: a test that runs Alembic must use `Config()` without
+the ini file, as `test_migrations.py` does; and "passes alone" is a symptom, not a verdict.**
+
+**Tag `v0.1.0` pushed at 14:15** (D-23); the release workflow (run `39028016282`) passed
+`verify` and is in its gates. When it ends: check the five GHCR images, their labels, and whether
+the packages are public (anonymous manifest fetch); tell the user.
+
+**Next: OPS-10 + OPS-6r** ([spec](tasks/OPS-10.md)) once the images exist: the orchestrator shuts
+`qradarce2` down (D-23), a Sonnet sub-agent builds the Rocky 9 VM `qradar-dash-ops10`, installs
+v0.1.0 from GHCR, then rehearses backup, upgrade 0.1.1, rollback, a failing 0.1.2 with automatic
+rollback, and restore. Start `qradarce2` again afterwards.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 13:55, 2026-10-17 (kept for the log)
 
 **Since 13:50 (`feat/phase-ce` @ `128d41b` + the OPS-9r2 spec, pushed; the header said 14:25 by mistake):**
 - **OPS-6 merged** (`128d41b`). Codex round 0 was cut off by its limit; a Sonnet handover
@@ -2255,6 +2444,8 @@ Statuses: `TODO`, `IN PROGRESS`, `REVIEW` (agent finished; orchestrator verifyin
 | D-20 | **OPS-0 open questions (user, 2026-10-16 ~17:40), all defaults.** The first GHCR release is **0.1.0** (1.0.0 later, after the fresh-VM test and the first production install). TLS terminates on the **bundled proxy**, with `--external-proxy` for an existing load balancer. **Off-host backup copies (OPS-14) wait until after 2026-10-30.** The OPS-1…10 safety cut of `docs/OPERATIONS-DESIGN.md` §10 is the plan. | OPS-1… |
 | D-21 | **Property watches (user request, 2026-10-17 ~12:45: "operöttörün herhangi bir log source veya log source type veya log group'u seçip şu custom property değerini veya değerlerini takip et diyebilir miyiz bence deriz altyapı hazır").** The operator picks a log source, a log-source type or a log-source group, and one or more properties to track. **The user's answers (12:55):** <br>• **outputs: all four** — the per-value distribution (table, chart, widget), F.1 threshold alerts on a value, new-value detection, and baseline deviation per value (spike, drop, disappearance); <br>• **values: both** — pinned values always counted, plus an automatic top-N of the rest; <br>• **combination and correlation wanted** ("korelasyon ve kombinasyon iyi olur"): several properties grouped together (e.g. `Username` × `Action`), and a correlation the design must define, bounded, with the alternatives as open questions; <br>• **order: design now, build after OPS-5, OPS-6, OPS-9 r2 and OPS-10.** <br>Design → **T-125**, `docs/PHASE-G-PROPERTY-WATCH.md`; build tasks will be **PW-1…**. | Phase G |
 | D-22 | **Phase G open questions (§G.17), answered by the user on 2026-10-17 ~13:35.** <br>• **Q1 privacy: values in clear text, readable by anyone with `read:*`, as offenses are.** No separate values permission (the design had recommended one; removed in T-125 round 2). <br>• **Q2: correlation in v1 = the new combination only** (two values each seen before, never together); conditional shift and co-movement stay out. <br>• **Q3: two properties per watch.** <br>• **Q14: PW-0, the read-only lab probe, runs now**, before the OPS work. <br>• Q4–Q13 and Q15: the design's recommendations stand as defaults (no marginal series; `/anomalies` + shadow mode `PW_ALERTING_ENABLED=false`; the caps as settings; one scope per watch; pins with a quote refused until PW-0 proves an escape; `username` the only normalized field; a grace window on membership change; the flood detector in v1.1; nav group Behavior; no per-watch cadence; no share thresholds in v1). | PW-0…PW-11 |
+| D-23 | **OPS-10 and the first release (user, 2026-10-17 ~14:00).** <br>• **RAM:** the host has 31 GB and the lab QRadar VM `qradarce2` holds 16 GB; for OPS-10 the orchestrator **shuts `qradarce2` down for the duration of the test**, gives the test VM 8–10 GB, and starts `qradarce2` again afterwards. No lab-dependent work runs meanwhile, so the install test runs with `--skip-qradar-check`. <br>• **Release:** push the tag **`v0.1.0` after `main` merges**; the release workflow publishes to `ghcr.io/wiembe/qradar-dashboard` (the repository is public, so the packages are likely public: check and tell the user). OPS-10 then tests the real pull path. <br>• **Production OS: RHEL / Rocky / Alma 9** (SELinux enforcing); the test VM is Rocky 9 from its cloud image. | OPS-10, OPS-6r |
+| D-24 | **v0.1.1 before the first production install (user, 2026-10-17 ~16:05).** It carries T-127 (the install state file whatever the QRadar check says; the deciding doctor lines; plain texts), T-128 (the beat heartbeat at start) and OPS-9 r3 (the runbook after OPS-10). Order: OPS-9 r3 merged → the version bump to 0.1.1 and `docs/releases/0.1.1.md` (`min_from: 0.1.0`) → the full 3.12 backend gate and the frontend gate → `main` → tag `v0.1.1` → a real-path check: a fresh VM installs v0.1.0 from GHCR and upgrades to 0.1.1 from GHCR. **PW-1 (migration 0026) is not merged until `v0.1.1` is tagged**, so the release carries no Phase G schema. | v0.1.1 |
 | D-2 | ~~Which opencode free models?~~ **Resolved 2026-10-10** by probing. Working: `opencode/mimo-v2.6-flash-free`, `ling-3.1-flash-free`, `longcat-2.5-preview-free`, `nemotron-3-ultra-free`. Unavailable or deprecated: `deepseek-v4-flash-free`, `kimi-k2.5-free`, `minimax-m3-free`, `glm-5-free`, `qwen3.6-plus-free`, `north-mini-code-free`, `exo-free`. | — |
 
 ---
