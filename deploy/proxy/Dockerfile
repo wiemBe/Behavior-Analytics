@@ -8,3 +8,10 @@
 FROM nginx:1.27-alpine
 
 COPY default.conf /etc/nginx/conf.d/default.conf
+
+# Build-time identity, declared after the COPY so a new version or SHA does not
+# invalidate the cached layer.
+ARG APP_VERSION
+ARG GIT_SHA
+LABEL org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.revision=$GIT_SHA
