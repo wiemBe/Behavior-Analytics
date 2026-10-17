@@ -9,6 +9,7 @@ holding the script and nothing else.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import stat
@@ -221,7 +222,7 @@ def test_non_interactive_needs_a_file(inst: Install) -> None:
 
 
 def test_unbuilt_subcommands_exit_non_zero(inst: Install) -> None:
-    for cmd in ("upgrade", "rollback", "bundle"):
+    for cmd in ("bundle",):
         result = inst.run(cmd)
         assert result.returncode == 64, cmd
         assert "not built yet" in result.stderr
@@ -378,3 +379,95 @@ def test_build_outside_a_repository_leaves_git_sha_unset(
     _stub(Path(build_path) / "git", "#!/bin/sh\nexit 128\n")
     _build(inst, tmp_path, build_path)
     assert (tmp_path / "build.log").read_text().strip() == "GIT_SHA=<unset>"
+
+
+# ---- OPS-6: install state --------------------------------------------------------------
+
+INSTALL_STATE_DOCKER_STUB = """#!/bin/bash
+case "$*" in
+  *" ps -a -q") printf '%s\\n' postgres-container backend-container ;;
+  "inspect "*)
+    container=${!#}
+    if [ "$container" = postgres-container ]; then
+      printf 'postgres\\tFalse\\tsha256:%064d\\n' 1
+    else
+      printf 'backend\\tFalse\\tsha256:%064d\\n' 2
+    fi
+    ;;
+  *) exit 97 ;;
+esac
+"""
+
+
+def _write_install_state(inst: Install, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    bin_dir = tmp_path / "state-bin"
+    bin_dir.mkdir()
+    for tool in ("bash", "chmod", "dirname", "grep", "head", "mkdir", "mv", "readlink",
+                 "rm", "sed", "tr"):
+        executable = shutil.which(tool)
+        assert executable is not None
+        (bin_dir / tool).symlink_to(executable)
+    _stub(bin_dir / "docker", INSTALL_STATE_DOCKER_STUB)
+    (inst.root / ".env").write_text(
+        "COMPOSE_PROJECT_NAME=fixture-project\nQRADAR_DASH_VERSION=0.1.0\n"
+    )
+    bash = shutil.which("bash") or "/bin/bash"
+    return subprocess.run(  # noqa: S603
+        [
+            bash,
+            "-c",
+            'QRADAR_DASH_SOURCE_ONLY=1 source "$1"; write_install_state',
+            "bash",
+            str(inst.script),
+        ],
+        cwd=inst.root,
+        env={"HOME": str(tmp_path), "PATH": str(bin_dir)},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def test_install_writes_initial_private_state(inst: Install, tmp_path: Path) -> None:
+    result = _write_install_state(inst, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    state_path = inst.root / ".qradar-dash" / "state.json"
+    state = json.loads(state_path.read_text())
+    assert state["installed_version"] == "0.1.0"
+    assert state["previous_images"] is None
+    assert "last_upgrade" not in state
+    assert state["images"] == {
+        "postgres": f"sha256:{1:064d}",
+        "backend": f"sha256:{2:064d}",
+    }
+    assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(state_path.parent.stat().st_mode) == 0o700
+
+
+def test_install_rerun_preserves_previous_images_and_last_upgrade(
+    inst: Install, tmp_path: Path
+) -> None:
+    state_dir = inst.root / ".qradar-dash"
+    state_dir.mkdir(mode=0o700)
+    existing = {
+        "installed_version": "0.1.0",
+        "images": {"backend": f"sha256:{2:064d}"},
+        "previous_images": {"backend": f"sha256:{3:064d}"},
+        "last_upgrade": {
+            "at": "2026-10-17T12:00:00Z",
+            "from": "0.0.9",
+            "to": "0.1.0",
+            "outcome": "success",
+            "backup": "/var/backups/qradar-dash-previous",
+        },
+    }
+    (state_dir / "state.json").write_text(json.dumps(existing) + "\n")
+
+    result = _write_install_state(inst, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    state = json.loads((state_dir / "state.json").read_text())
+    assert state["previous_images"] == existing["previous_images"]
+    assert state["last_upgrade"] == existing["last_upgrade"]
