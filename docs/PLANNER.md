@@ -8,7 +8,32 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 18:00, 2026-10-17 (twentieth session, from 17:44)
+## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 18:25, 2026-10-17 (twentieth session, from 17:44)
+
+**Update 18:25 — `main` @ `9bf3d4d` = v0.1.1, tag `v0.1.1` pushed.**
+- **T-131 merged** (`59b8872`, Sonnet; host 174/0 `qradar_dash`, shellcheck clean). Accepted:
+  the 0.1.0 script has no checkout check (the notes give the order); a checkout without
+  `VERSION` counts as 0.1.0 for `install` (the `.env` writer's default; refuses on a mismatch).
+- **Gates on `59b8872`** (3.12.15 lock container `gate-1017d`, archive in
+  `QRadar-Dash-work/gate-1017c/w/`, log `backend.log`): ruff clean, mypy 0 (244), **unit 3,675
+  passed / 13 skipped** (10 allowlist + 3 T-130 root), alembic round trip clean at `0025`,
+  **integration 1,302 passed / 1 skipped** (backup round trip) / 0 errors. Frontend on `69ba093`
+  (unchanged since): lint, typecheck clean, vitest 290 files / 3,193, build OK.
+- `main` merge `9bf3d4d` (tree = `59b8872`; message in `QRadar-Dash-work/gate-1017c/`), tag
+  `v0.1.1` (annotated) pushed 18:24; **release run `39044902711`** watched into
+  `QRadar-Dash-work/gate-1017c/release-watch.log`. When green: check the five
+  `ghcr.io/wiembe/qradar-dashboard/*:0.1.1` images anonymously (version label 0.1.1, revision
+  `9bf3d4d…`), then **OPS-11** ([spec](tasks/OPS-11.md)): shut `qradarce2` down (host has 8 GiB
+  free), a Sonnet sub-agent runs the fresh-VM path (v0.1.0 clone → install with a stand-in
+  console so the 0.1.0 state file is written → `git checkout v0.1.1` → `upgrade 0.1.1` → the
+  T-130/T-131 guards → rollback → back), then start `qradarce2` again.
+- **PW-1**: Codex round 0 done (report `docs/tasks/PW-1.report.md` in `pw1`: four inherited
+  defects fixed — `SearchFamily` order, strict count coercion, six server defaults, ruff; ten
+  guard mutations; integration 1,306/2 failed, both explained). **Round 1** (unit
+  `pw1-codex-r1`, from 18:21): `test_migration_0025.py:64` pinned the head to `0025` forever →
+  "exactly one head, 0025 an ancestor" (orchestrator decision: not a weakening; the
+  `down_revision` pin stays), then the whole integration suite again. Merge after the tag (now
+  allowed: `v0.1.1` is tagged).
 
 **Update 18:00:**
 - **T-130 merged** (`eb6210f`, Sonnet): host 164/0 `qradar_dash` tests, shellcheck clean (through
