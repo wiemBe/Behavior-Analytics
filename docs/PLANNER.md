@@ -8,7 +8,7 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 15:50, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 15:45, 2026-10-17 (nineteenth session, from 12:44)
 
 **OPS-10 so far** (report `QRadar-Dash-work/ops10/OPS-10.report.md`, still running Part C 5–6):
 v0.1.0 installs from GHCR on a fresh Rocky 9.8 VM, SELinux Enforcing, in **1 min 40 s**; a second
