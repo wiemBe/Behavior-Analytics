@@ -8,7 +8,23 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 14:20, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 15:00, 2026-10-17 (nineteenth session, from 12:44)
+
+**⚠ The lab QRadar VM `qradarce2` is SHUT DOWN (14:56, D-23) for OPS-10. Start it again when
+OPS-10 ends: `virsh -c qemu:///system start qradarce2`.**
+
+- **Release v0.1.0 published** (run `39028016282`, all jobs green, 14:53). The five images
+  `ghcr.io/wiembe/qradar-dashboard/{backend,frontend,postgres,proxy,qradar-mcp}:0.1.0` are
+  **public** (anonymous manifest fetch works) and carry version `0.1.0` and revision
+  `881571530f6e`. GitHub release: `releases/tag/v0.1.0`.
+- **OPS-10 + OPS-6r** ([spec](tasks/OPS-10.md)) on a Sonnet sub-agent from 14:57 (dies with the
+  chat): VM `qradar-dash-ops10` (Rocky 9, `qemu:///system`), scratch and report in
+  `QRadar-Dash-work/ops10/`. If the chat died: read `OPS-10.report.md` there, shut the VM down,
+  start `qradarce2`.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 14:20, 2026-10-17 (kept for the log)
 
 **`main` @ `8815715` (pushed), tree = `feat/phase-ce` @ `7ca6bbc`.** It holds OPS-5, OPS-6,
 OPS-9 r2, OPS-B1, T-126 and the Phase G design (no Phase G code). Gate on `7ca6bbc` in the 3.12
