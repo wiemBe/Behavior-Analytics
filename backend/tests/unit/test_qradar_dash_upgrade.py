@@ -167,6 +167,8 @@ case "$*" in
     printf '%s\n' 'PASS  migration_head   database at image head'
     [ "${STUB_QRADAR_FAIL:-0}" -eq 0 ] \
       || printf '%s\n' 'FAIL  qradar_auth      QRadar refused credentials'
+    [ "${STUB_BEAT_FAIL:-0}" -eq 0 ] \
+      || printf '%s\n' 'FAIL  celery_beat       heartbeat not written yet'
     ;;
   *" exec -T postgres pg_dump "*) exit "${STUB_DUMP_RC:-0}" ;;
   *" exec -T postgres pg_restore "*) exit 0 ;;
@@ -671,6 +673,32 @@ def test_qradar_doctor_failure_is_not_a_rollback_trigger(upgrade: UpgradeFixture
     assert "Database swap complete (rollback)" not in result.stdout
     assert "ALTER DATABASE" not in upgrade.action_text()
     assert upgrade.running_version.read_text().strip() == TARGET_VERSION
+
+
+def test_upgrade_output_shows_only_the_deciding_doctor_checks(upgrade: UpgradeFixture) -> None:
+    result = upgrade.run("upgrade", TARGET_VERSION, STUB_QRADAR_FAIL="1", STUB_BEAT_FAIL="1")
+
+    assert result.returncode == 0, output(result)
+    combined = result.stdout + result.stderr
+    assert "celery_beat" not in combined
+    assert "qradar_auth" not in combined
+    assert "db_connect" in combined
+    assert "migration_head" in combined
+    assert "Full report: ./qradar-dash doctor" in combined
+
+
+def test_automatic_rollback_output_hides_the_non_deciding_doctor_checks(
+    upgrade: UpgradeFixture,
+) -> None:
+    result = upgrade.run(
+        "upgrade", TARGET_VERSION, STUB_MIGRATE_RC="17", STUB_QRADAR_FAIL="1", STUB_BEAT_FAIL="1"
+    )
+
+    assert "was rolled back" in result.stderr
+    combined = result.stdout + result.stderr
+    assert "celery_beat" not in combined
+    assert "qradar_auth" not in combined
+    assert "Full report: ./qradar-dash doctor" in combined
 
 
 def test_failed_rollback_stops_writers_records_failed_and_has_no_third_attempt(
