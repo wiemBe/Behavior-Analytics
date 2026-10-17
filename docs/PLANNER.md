@@ -17,10 +17,11 @@ The machine rebooted at ~12:39: the tmpfs test DB was restarted
 
 | Task | Agent | Worktree / DB | Next |
 |---|---|---|---|
-| **OPS-5** ([spec](tasks/OPS-5.md)) | Codex, unit `ops5-codex`, from 12:47 | `ops5` (branch `agent/ops5` from `6a0f114`); DB `qradar_obs_ops5` | Review closely (it can destroy a database). If its sandbox could not reach Docker or the DB, run the integration test 3× outside it. Then the 3.12 gate. |
-| **T-125** ([spec](tasks/T-125.md)): the Phase G design, property watches (**D-21**) | Z.AI GLM 5.3 | `t125` | Spot-check citations; take the open questions to the user. Build (PW-1…) only after the OPS work. |
+| **OPS-5** ([spec](tasks/OPS-5.md)) | Codex. Round 0 12:47–13:02 (all gates green, five guard mutations). **Round 1** from 13:20, unit `ops5-codex-r1`, prompt `QRadar-Dash-work/ops5/prompt-r1.md` | `ops5` (branch `agent/ops5` from `6a0f114`); DB `qradar_obs_ops5` | Round 1 fixes eight review points: restore refused every backup without `state.json` (install never writes it); the secrets tar created missing volumes; the image list failed on services with no container; the restore/verify guards checked the backup root instead of Docker's root; restore of an older backup never migrates (now: versions must be equal); the restore split into `restore_swap_database` + `restore_start_and_wait` for OPS-6; the broken-copy name printed right after the swap. Then the 3.12 gate (expect 1 skip there: the round-trip test needs host `pg_dump` 16 or Docker). |
+| **T-125** ([spec](tasks/T-125.md)): the Phase G design, property watches (**D-21**) | Z.AI GLM 12:55–13:05, cut off by **"Weekly/Monthly Limit Exhausted" (reset 2026-10-21 01:47)**; Sonnet sub-agent handover from 13:22 | `t125` | GLM left §G.0–G.2 in the doc and §G.3–G.6 in `QRadar-Dash-work/t125/g-part2.md`. Spot-check citations; take the open questions to the user. Build (PW-1…) only after the OPS work. |
+| **OPS-B1** | Sonnet | merged `013972a` | Version labels on the postgres and proxy images for a local `--build`; CI runs once per tag push. |
 
-**Agent probe at 12:55** (the user asked): Codex OK (running OPS-5); Z.AI `glm-5.3` and
+**Agent probe at 12:55** (the user asked; Z.AI GLM then ran out at 13:05 until 10-21): Codex OK; Z.AI `glm-5.3` and
 `glm-5.3-flash` OK; opencode free `deepseek-v4.1-flash-free`, `glm-5.3-flash-free` and
 `big-pickle` OK; `step-5-preview-free` unavailable; **Grok still 402** (balance exhausted).
 
