@@ -8,72 +8,64 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 00:05, 2026-10-18 (twenty-first session, from 00:01)
+## ▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 01:12, 2026-10-18 (twenty-first session, from 00:01)
 
-**The machine rebooted at ~00:00.** The tmpfs test DB was restarted (`docker compose -f
-docker-compose.test.yml up -d test-db`) and `qradar_obs_pw2b`, `qradar_obs_pw5` recreated with
-`createdb -U test`. `qradarce2` came back up by itself. No leftover agent process.
+**The user's instructions this session (00:30):** "for now just write the code, nothing to
+`main`; merge bugs later" and "use your own (Sonnet) agents too so it finishes faster". The chat
+may be closed at any time after ~01:00. So the Phase G tasks run **in parallel on a snapshot
+base**, not one merge at a time; review and merging come afterwards.
 
-Both Sonnet sub-agents of the twentieth session died **without a report**:
-- PW-2b: unit 4,254 / 10 skipped; its whole-integration log ends at 100 % with no summary line;
-  mutation survivors (`retention: unbounded batch`, `stored value text for non-admitted`,
-  `factory: cap not passed` never ran).
-- PW-5: whole integration 1,336 passed at 20:01; 20 guard mutations, all caught.
+**Environment.** The machine rebooted at ~00:00: the tmpfs test DB was restarted (`docker compose
+-f docker-compose.test.yml up -d test-db`) and the agent DBs created with `createdb -U test`:
+`qradar_obs_pw2b`, `_pw5`, `_pw3b`, `_pw5b`, `_pw6`. `qradarce2` is running. **After another
+reboot, recreate them.**
 
-**The user, 00:30: "for now just write the code, nothing to `main`; merge bugs later", and "use
-your own (Sonnet) agents too so it finishes faster". The chat may be closed ~01:00.** So the PW
-tasks run in parallel on a snapshot base, not one merge at a time:
-- `agent/pw2b` @ `c4e335c` = PW-2b **finished** (Codex, 00:31; report in the worktree: unit
-  4,255 / 10 skipped, whole integration **1,345 passed / 0 skipped**, statement pins 9 (source)
-  and 10 (group) at every size). Not yet reviewed by the orchestrator.
-- `agent/pw5` @ `091e84f` = a **WIP snapshot** of PW-5 at 00:31; its Sonnet handover keeps
-  working uncommitted on top of it in `pw5`.
-- `agent/pw-base` @ `a9a44b5` = `feat/phase-ce` + `agent/pw2b` + `agent/pw5` (clean merge, ruff
-  clean). PW-3b, PW-5b, PW-6, PW-7 branch from it. Later: commit PW-5's remaining diff on
-  `agent/pw5`, then merge everything into `feat/phase-ce` (the WIP commits are shared ancestors,
-  so no add/add conflicts).
+**Branches** (all pushed except where noted):
+- `main` @ `9bf3d4d` = v0.1.1, untouched.
+- `feat/phase-ce` = `main` + PW-1, PW-2a, PW-3a, T-132, OPS-11 report, and the specs PW-3b, PW-4,
+  PW-5b, PW-6, PW-7, PW-8, PW-9 (all in `docs/tasks/`). Migration head `0026`.
+- `agent/pw2b` @ `c4e335c` = PW-2b **finished** (Codex handover 00:04–00:31; report in the
+  worktree: unit 4,255 / 10 skipped, whole integration **1,345 / 0 skipped**, statement pins 9
+  (source) and 10 (group), constant). Not yet reviewed by the orchestrator.
+- `agent/pw5` @ `091e84f` = a **WIP snapshot** of PW-5 at 00:31 (its handover may still add an
+  uncommitted diff in `pw5`).
+- `agent/pw-base` @ `a9a44b5` = `feat/phase-ce` (at 00:31) + `agent/pw2b` + `agent/pw5`. PW-3b,
+  PW-5b and PW-6 branch from it.
+- `agent/pw7` @ `256a324` = PW-7 **done**, on `agent/pw-base`. `agent/pw9` branches from it.
 
-**In flight (00:32):**
+**Tasks:**
 
-| Task | Agent | Worktree / DB | Survives the chat? | Next |
+| Task | Agent | Worktree / DB | State at 01:12 | Next |
 |---|---|---|---|---|
-| **PW-5** handover | Sonnet sub-agent | `pw5` / `qradar_obs_pw5` | no | Report → commit the rest on `agent/pw5`. If dead: hand over with "review what you inherit". |
-| **PW-3b** ([spec](tasks/PW-3b.md)) | Codex 00:32–00:45 (**usage limit, reset 05:03**; ~930-line `engine.py`, `training.py`, tests, skeleton report), then a **Sonnet handover from 00:46** | `pw3b` / `qradar_obs_pw3b`, logs `QRadar-Dash-work/pw3b/` | no (Sonnet) | **Timer `pw3b-codex-resume` at 05:10**: if the report's first line is not `STATUS: FINAL`, it resumes Codex session `01a14bc6-…` with `prompt-resume.md` (log `codex-resume.log`). Cancel it with `systemctl --user stop pw3b-codex-resume.timer` if the work is done. |
-| **PW-5b** ([spec](tasks/PW-5b.md)) | opencode DeepSeek free, unit `pw5b-ds` from 00:32 (bwrap) | `pw5b` / `qradar_obs_pw5b`, log `QRadar-Dash-work/pw5b/opencode.log` | yes | Check "Rate limit"; if stuck, hand to Sonnet. |
-| **PW-6** ([spec](tasks/PW-6.md)) F.1 kind, migration `0027` | Sonnet sub-agent | `pw6` / `qradar_obs_pw6` | no | Report (written early) → review. If dead: hand over. |
-| **PW-7** ([spec](tasks/PW-7.md)) UI read side | Sonnet — **done 00:50**, committed `agent/pw7` @ `256a324` (pushed) | `pw7`; PNGs `QRadar-Dash-work/pw7/` (90) | — | **Accepted** after the PNGs (list, detail exact 1440, lower bound 1024): honest gaps, unit, band rule, no slop. Lint, typecheck, build clean; vitest 3,354 / **1 failed** (`widgets/registry.test.ts`: the new `rbac.py` permissions are not in the widget list → **PW-9** fixes it). Decisions on its open points: honesty line above the chart and nullable `log_source_id` → **PW-8** (added to its spec); `GET /anomalies/{id}` 404 for a PW row, `value_id` in `PwValueRefOut`, a read route for the generated AQL → **PW-5c** (backend, spec to write); `[BUILT — PW-7]` markers → PW-11; the 18-char name column → accepted. |
+| **PW-2b** collection | Codex | `pw2b` / `qradar_obs_pw2b` | done, committed | Review the report (its mutation survivors were addressed per the report). |
+| **PW-5** API (handover, "review what you inherit") | Sonnet sub-agent from 00:04 | `pw5` / `qradar_obs_pw5` | **no change since the 00:31 snapshot, no report yet** | Report → commit any diff on `agent/pw5`. If the chat died: hand over. |
+| **PW-3b** engine ([spec](tasks/PW-3b.md)) | Codex 00:32–00:45 (usage limit, **reset 05:03**), Sonnet handover from 00:46 | `pw3b` / `qradar_obs_pw3b` | 14 files, report in progress | **Timer `pw3b-codex-resume` at 05:10**: resumes Codex session `01a14bc6-f94b-7a31-858a-ec05b300d0db` with `QRadar-Dash-work/pw3b/prompt-resume.md` unless the report's first line is `STATUS: FINAL` (log `codex-resume.log`). Stop it with `systemctl --user stop pw3b-codex-resume.timer` if the work is done. |
+| **PW-5b** `/scope` ([spec](tasks/PW-5b.md)) | opencode DeepSeek free, unit `pw5b-ds` from 00:32 (bwrap; **survives the chat**) | `pw5b` / `qradar_obs_pw5b`, log `QRadar-Dash-work/pw5b/opencode.log` | 8 files; unit 4,318 / 10 skipped green; whole integration running | Report. If "Rate limit exceeded": hand to Sonnet. |
+| **PW-6** F.1 kind, migration `0027` ([spec](tasks/PW-6.md)) | Sonnet sub-agent from 00:33 | `pw6` / `qradar_obs_pw6` | 20 files, report in progress | Report → review. |
+| **PW-7** UI read side ([spec](tasks/PW-7.md)) | Sonnet | `pw7`; PNGs `QRadar-Dash-work/pw7/` (90) | **done 00:50, accepted** after the PNGs (list 1440, detail exact 1440, lower bound 1024): honest gaps, unit on the axis, band only for one value, no slop. Lint, typecheck, build clean; vitest 3,354 / 1 failed (`widgets/registry.test.ts`, the new `rbac.py` permissions → PW-9) | Its open points: honesty line above the chart and nullable `log_source_id` → **PW-8** (in its spec); `GET /anomalies/{id}` 404 for a PW row, `value_id` in `PwValueRefOut`, a read route for the generated AQL → **PW-5c** (backend, spec to write); `[BUILT — PW-7]` markers → PW-11. |
+| **PW-9** widget ([spec](tasks/PW-9.md)) + the red `registry.test` | Sonnet sub-agent from 01:07 | `pw9` (from `agent/pw7`), ports 3119/8119/9119, scratch `QRadar-Dash-work/pw9/` | started | Report + PNGs → review the PNGs myself. |
 
-| **PW-9** ([spec](tasks/PW-9.md)) widget + the red `registry.test` | Sonnet sub-agent from 01:07 | `pw9` from `agent/pw7`; ports 3119/8119/9119; scratch `QRadar-Dash-work/pw9/` | no | Report + PNGs → review the PNGs myself. |
+**If this chat died:** Sonnet sub-agents (PW-5, PW-3b, PW-6, PW-9) die with it; their worktrees
+keep the files and an early report. For each: commit what it has on its `agent/*` branch, then
+hand it over (Codex after 05:03 — PW-3b has its own 05:10 timer — or Sonnet) with the spec +
+"review what you inherit". PW-5b (DeepSeek) keeps running: check `systemctl --user is-active
+pw5b-ds` and the log.
 
-After a reboot: restart the test DB and `createdb -U test` each `qradar_obs_pw*` above.
-**If this chat died:** the Sonnet worktrees (`pw5`, `pw3b`, `pw6`, `pw9`) keep their files and an
-early report; commit what each has on its `agent/*` branch, then hand each over (Codex after
-05:03 — PW-3b has its own 05:10 timer — or Sonnet) with the spec + "review what you inherit".
+**Not started, specs ready:** [PW-4](tasks/PW-4.md) alerting (after PW-3b; DB `qradar_obs_pw4`),
+[PW-8](tasks/PW-8.md) editor UI (after PW-6 and PW-7; ports 3118/8118/9118). To write: **PW-5c**
+(above), PW-10 (live validation on the lab), PW-11 (docs).
 
-**Specs ready, not started:** [PW-4](tasks/PW-4.md) (alerting; after PW-3b, DB `qradar_obs_pw4`),
-[PW-8](tasks/PW-8.md) (editor UI; after PW-6 and PW-7, ports 3118/8118/9118),
-[PW-9](tasks/PW-9.md) (widget; after PW-7, ports 3119/8119/9119). Then PW-10 (live validation),
-PW-11 (docs).
+**Then, when the code is written:**
+1. Commit each worktree's diff on its `agent/*` branch.
+2. Merge into `feat/phase-ce`: `agent/pw2b`, `agent/pw5`, then PW-3b, PW-5b, PW-6, PW-7, PW-9.
+   Expect small conflicts in `services/property_watches.py`, `routes/property_watches.py`,
+   `repositories/property_watch.py`, `PHASE-G-PROPERTY-WATCH.md`.
+3. One review pass over the merged tree (every report's open points get a decision), then the
+   full 3.12 gate with the whole integration suite and the frontend gate.
+4. Nothing to `main` until the user says so.
 
-**When the in-flight work is done:** commit each worktree's diff on its `agent/*` branch, merge
-`agent/pw2b`, `agent/pw5`, then PW-3b/5b/6/7 into `feat/phase-ce` (expect small conflicts in
-`services/property_watches.py`, `routes/property_watches.py`, `repositories/property_watch.py`,
-`PHASE-G-PROPERTY-WATCH.md`), then one review pass and the full gate. Nothing to `main` until the
-user says so.
-
-**Specs written this session:** [PW-3b](tasks/PW-3b.md) (engine: loaders, lifecycle, pipeline
-step, training, threshold wiring, `all_detectors()`, ≤ 40 statements; DB `qradar_obs_pw3b`),
-[PW-5b](tasks/PW-5b.md) (`/scope`, member counts, one resolver; DB `qradar_obs_pw5b`),
-[PW-7](tasks/PW-7.md) (UI read side; needs PW-5 and PW-5b; ports 3117/8117/9117).
-
-**Next, in order:**
-1. Review and merge PW-2b and PW-5 (decide every open point; ruff, mypy, unit on the merged tree;
-   remove worktree, branch, DB).
-2. In parallel: **PW-3b** on Codex (worktree from the merged head; `createdb qradar_obs_pw3b`),
-   **PW-5b** on Sonnet. They share `repositories/property_watch.py` (PW-5b only adds reads):
-   expect a small merge.
-3. **PW-7** (Sonnet) after PW-5b merges. Then PW-4, PW-6, PW-8 (§G.16 order).
-4. Before the next `main`: the full 3.12 gate with the whole integration suite.
+**Agents:** Codex out until **05:03**; Z.AI GLM until 2026-10-21 01:47; Grok 402 (done for the
+week); Sonnet (the user asked for it) and the opencode free models available.
 
 ---
 
