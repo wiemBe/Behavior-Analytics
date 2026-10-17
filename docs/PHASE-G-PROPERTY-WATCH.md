@@ -719,11 +719,16 @@ PW-1 and PW-6 is in §G.16.
 
 ### G.8.0 Shared machinery
 
-> **[BUILT — PW-1 enums and reading contract only].** The separate PW anomaly, scope,
-> reference, bucket/pinned measurement and watch-status enums are in `app/models/enums.py`;
-> `app/property_watch/facts.py` decides exact counts, lower bounds, measured zeros, unknowns and
-> non-observations without I/O. Capability specs, baselines, detectors and lifecycle execution
-> remain PW-3a/PW-3b.
+> **[BUILT — PW-3a pure detection; PW-1 enums and reading contract].** The separate PW anomaly,
+> scope, reference, bucket/pinned measurement and watch-status enums are in
+> `app/models/enums.py`; `app/property_watch/facts.py` decides exact counts, lower bounds,
+> measured zeros, unknowns and non-observations without I/O. PW-3a added the declared capability
+> specs and shared verdict-scope mapping (`app/anomaly/capabilities.py`,
+> `app/property_watch/inputs.py`), the pure seasonal builder (`property_watch/baseline.py`), the
+> pure history verifier (`property_watch/history.py`) and all five pure verdict functions
+> (`property_watch/detectors.py`). Loading, persistence and lifecycle execution remain PW-3b; until
+> that scheduled pipeline exists, PW specs are exposed through `PW_DETECTORS` rather than the
+> production-wiring `all_detectors()` inventory.
 
 **New enums, `AnomalyType` untouched** (AGENTS.md rule 6; the reason is stated at
 `backend/app/models/enums.py:139-145` for WAF and `:172-179` for IPS):
@@ -809,7 +814,17 @@ No verdict. Per bucket and value: events, the reading's measurement, share of **
 continuity). Requirement: none beyond the bucket existing. The table, the chart and the widget read
 the same bulk response (§G.11).
 
-### G.8.2 Output 4a: baseline deviation, three verdicts
+### G.8.2 Output 4a: baseline deviation, three verdicts **[BUILT — PW-3a]**
+
+> **As built.** One ordered precondition path fails closed on watch state, missing/uncollected
+> buckets, membership changes, a property that parsed on no event (`NOT_APPLICABLE`), thin or
+> incompatible cells and unknown readings. Maintenance is not a verdict exit (it only keeps a bucket
+> out of training; suppression is alerting's, PW-4). Consecutive-bucket confirmation of the spike
+> is the lifecycle's `anomaly_open_after_intervals` (PW-3b). A missing bucket inside the
+> disappearance window is `INSUFFICIENT_DATA`, never a broken streak. The
+> spike consumes the capability-granted increase-only scope; drop and disappearance never infer
+> absence from a lower bound. Disappearance reads an explicit sequence of exact, covered readings,
+> so an absent metric row becomes zero only through the PW-1 reading contract.
 
 All three read the value's `PW_VALUE_EVENTS_METRIC` cell for the bucket's weekday and hour.
 
@@ -833,7 +848,12 @@ is `scope_changed` (reason "membership changed"); the cell is missing or below
 `baseline_min_samples`; the value's measurement is unknown; then the detector's own guards. Each
 exit is `INSUFFICIENT_DATA` with a reason, never `NORMAL` and never zero.
 
-### G.8.3 Output 3: new-value detection
+### G.8.3 Output 3: new-value detection **[BUILT — PW-3a]**
+
+> **As built.** `verify_value_history` reports the first ordered completeness failure (missing or
+> duplicate buckets, width, `NOT_COLLECTED`, lower-bound discovery, truncated admission or another
+> watch version). The pure verdict then applies the learning, membership-change, pin, established,
+> history, appearance-flood and materiality exits without consulting storage.
 
 `PW_NEW_VALUE`, the analogue of `WAF_NEW_ENDPOINT_ACCESS` (`docs/PHASE-B-WAF-BEHAVIOR.md` §30.5;
 spec `backend/app/anomaly/capabilities.py:394-414`; settings
@@ -940,7 +960,12 @@ B is noisier by construction (many pairs, sparse series, a high chance that some
 by accident) and has no precise claim to fail closed on. C is the better statistic and is blocked
 only by a missing marginal.
 
-### G.9.3 `PW_NEW_COMBINATION`, precisely
+### G.9.3 `PW_NEW_COMBINATION`, precisely **[BUILT — PW-3a]**
+
+> **As built.** Component histories are explicit pure inputs. A tracked occurrence in a
+> lower-bound bucket proves presence; a component that was not tracked, including one seen only
+> below admission, classifies conservatively as `PW_NEW_VALUE`. The two novelty verdicts are
+> mutually exclusive, and a one-property watch fails closed before combination evaluation.
 
 On a 2-property watch every first-appearing tuple is classified once, at its first appearance, as
 exactly one of:
