@@ -38,7 +38,7 @@ tasks run in parallel on a snapshot base, not one merge at a time:
 | Task | Agent | Worktree / DB | Survives the chat? | Next |
 |---|---|---|---|---|
 | **PW-5** handover | Sonnet sub-agent | `pw5` / `qradar_obs_pw5` | no | Report → commit the rest on `agent/pw5`. If dead: hand over with "review what you inherit". |
-| **PW-3b** ([spec](tasks/PW-3b.md)) | Codex, unit `pw3b-codex` from 00:32 | `pw3b` / `qradar_obs_pw3b`, log `QRadar-Dash-work/pw3b/codex.log` | yes | Check "usage limit" (Codex used ~27 min of this window on PW-2b). If cut: resume or hand over. |
+| **PW-3b** ([spec](tasks/PW-3b.md)) | Codex 00:32–00:45 (**usage limit, reset 05:03**; ~930-line `engine.py`, `training.py`, tests, skeleton report), then a **Sonnet handover from 00:46** | `pw3b` / `qradar_obs_pw3b`, logs `QRadar-Dash-work/pw3b/` | no (Sonnet) | **Timer `pw3b-codex-resume` at 05:10**: if the report's first line is not `STATUS: FINAL`, it resumes Codex session `01a14bc6-…` with `prompt-resume.md` (log `codex-resume.log`). Cancel it with `systemctl --user stop pw3b-codex-resume.timer` if the work is done. |
 | **PW-5b** ([spec](tasks/PW-5b.md)) | opencode DeepSeek free, unit `pw5b-ds` from 00:32 (bwrap) | `pw5b` / `qradar_obs_pw5b`, log `QRadar-Dash-work/pw5b/opencode.log` | yes | Check "Rate limit"; if stuck, hand to Sonnet. |
 | **PW-6** ([spec](tasks/PW-6.md)) F.1 kind, migration `0027` | Sonnet sub-agent | `pw6` / `qradar_obs_pw6` | no | Report (written early) → review. If dead: hand over. |
 | **PW-7** ([spec](tasks/PW-7.md)) UI read side | Sonnet sub-agent | `pw7` (own `node_modules`), ports 3117/8117/9117, scratch `QRadar-Dash-work/pw7/` | no | Report + PNGs at three viewports → review the PNGs myself. |
