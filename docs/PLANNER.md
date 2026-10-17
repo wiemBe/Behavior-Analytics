@@ -20,12 +20,30 @@ Both Sonnet sub-agents of the twentieth session died **without a report**:
   `factory: cap not passed` never ran).
 - PW-5: whole integration 1,336 passed at 20:01; 20 guard mutations, all caught.
 
-**In flight:**
+**The user, 00:30: "for now just write the code, nothing to `main`; merge bugs later", and "use
+your own (Sonnet) agents too so it finishes faster". The chat may be closed ~01:00.** So the PW
+tasks run in parallel on a snapshot base, not one merge at a time:
+- `agent/pw2b` @ `c4e335c` = PW-2b **finished** (Codex, 00:31; report in the worktree: unit
+  4,255 / 10 skipped, whole integration **1,345 passed / 0 skipped**, statement pins 9 (source)
+  and 10 (group) at every size). Not yet reviewed by the orchestrator.
+- `agent/pw5` @ `091e84f` = a **WIP snapshot** of PW-5 at 00:31; its Sonnet handover keeps
+  working uncommitted on top of it in `pw5`.
+- `agent/pw-base` @ `a9a44b5` = `feat/phase-ce` + `agent/pw2b` + `agent/pw5` (clean merge, ruff
+  clean). PW-3b, PW-5b, PW-6, PW-7 branch from it. Later: commit PW-5's remaining diff on
+  `agent/pw5`, then merge everything into `feat/phase-ce` (the WIP commits are shared ancestors,
+  so no add/add conflicts).
 
-| Task | Agent | Where | Next |
-|---|---|---|---|
-| **PW-2b** handover ("review what you inherit") | Codex, unit `pw2b-codex` from 00:04 | worktree `pw2b`, DB `qradar_obs_pw2b`, log `QRadar-Dash-work/pw2b/codex.log`, prompt `prompt-handover.md` | Check the log for "usage limit"; 35-min check at 00:40. |
-| **PW-5** handover | Sonnet sub-agent (dies with the chat) | worktree `pw5`, DB `qradar_obs_pw5` | Review the report. |
+**In flight (00:35):**
+
+| Task | Agent | Worktree / DB | Survives the chat? | Next |
+|---|---|---|---|---|
+| **PW-5** handover | Sonnet sub-agent | `pw5` / `qradar_obs_pw5` | no | Report → commit the rest on `agent/pw5`. If dead: hand over with "review what you inherit". |
+| **PW-3b** ([spec](tasks/PW-3b.md)) | Codex, unit `pw3b-codex` from 00:32 | `pw3b` / `qradar_obs_pw3b`, log `QRadar-Dash-work/pw3b/codex.log` | yes | Check "usage limit" (Codex used ~27 min of this window on PW-2b). If cut: resume or hand over. |
+| **PW-5b** ([spec](tasks/PW-5b.md)) | opencode DeepSeek free, unit `pw5b-ds` from 00:32 (bwrap) | `pw5b` / `qradar_obs_pw5b`, log `QRadar-Dash-work/pw5b/opencode.log` | yes | Check "Rate limit"; if stuck, hand to Sonnet. |
+| **PW-6** ([spec](tasks/PW-6.md)) F.1 kind, migration `0027` | Sonnet sub-agent | `pw6` / `qradar_obs_pw6` | no | Report (written early) → review. If dead: hand over. |
+| **PW-7** ([spec](tasks/PW-7.md)) UI read side | Sonnet sub-agent | `pw7` (own `node_modules`), ports 3117/8117/9117, scratch `QRadar-Dash-work/pw7/` | no | Report + PNGs at three viewports → review the PNGs myself. |
+
+After a reboot: restart the test DB and `createdb -U test` each `qradar_obs_pw*` above.
 
 **Specs written this session:** [PW-3b](tasks/PW-3b.md) (engine: loaders, lifecycle, pipeline
 step, training, threshold wiring, `all_detectors()`, ≤ 40 statements; DB `qradar_obs_pw3b`),
