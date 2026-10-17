@@ -8,7 +8,34 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 13:55, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 14:20, 2026-10-17 (nineteenth session, from 12:44)
+
+**`main` @ `8815715` (pushed), tree = `feat/phase-ce` @ `7ca6bbc`.** It holds OPS-5, OPS-6,
+OPS-9 r2, OPS-B1, T-126 and the Phase G design (no Phase G code). Gate on `7ca6bbc` in the 3.12
+lock container (`QRadar-Dash-work/gate-1017a/run.sh`, log `integ-full.log`): ruff clean, mypy 0
+(244), unit 3,653 (10 skipped, the auth-guard allowlist as always), alembic round trip clean at
+`0025`, **integration 1,302 passed / 1 skipped / 0 errors** (the skip is the backup round trip,
+which needs host `pg_dump` 16 or Docker; it runs and passes on the host and in GitHub CI).
+Frontend unchanged since `dc2f510`.
+
+**T-126** (Sonnet) explains the two "flakes" of the morning: OPS-5's round-trip test built
+`Config(alembic.ini)`, so `env.py`'s `fileConfig()` disabled every `app.*` logger for the rest of
+the session, and every later `caplog` assertion saw `''`. In GitHub CI (unit and integration in
+one session) it broke nine tests. **Lesson: a test that runs Alembic must use `Config()` without
+the ini file, as `test_migrations.py` does; and "passes alone" is a symptom, not a verdict.**
+
+**Tag `v0.1.0` pushed at 14:15** (D-23); the release workflow (run `39028016282`) passed
+`verify` and is in its gates. When it ends: check the five GHCR images, their labels, and whether
+the packages are public (anonymous manifest fetch); tell the user.
+
+**Next: OPS-10 + OPS-6r** ([spec](tasks/OPS-10.md)) once the images exist: the orchestrator shuts
+`qradarce2` down (D-23), a Sonnet sub-agent builds the Rocky 9 VM `qradar-dash-ops10`, installs
+v0.1.0 from GHCR, then rehearses backup, upgrade 0.1.1, rollback, a failing 0.1.2 with automatic
+rollback, and restore. Start `qradarce2` again afterwards.
+
+---
+
+## ▶▶▶▶▶▶▶ STATE AT 13:55, 2026-10-17 (kept for the log)
 
 **Since 13:50 (`feat/phase-ce` @ `128d41b` + the OPS-9r2 spec, pushed; the header said 14:25 by mistake):**
 - **OPS-6 merged** (`128d41b`). Codex round 0 was cut off by its limit; a Sonnet handover
