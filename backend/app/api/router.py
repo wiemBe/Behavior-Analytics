@@ -23,6 +23,7 @@ from app.api.routes import (
     offenses,
     outage_policy,
     overview,
+    property_watches,
     providers,
     rules,
     search_cadence,
@@ -46,6 +47,7 @@ from app.security.rbac import (
     PERM_OFFENSE_READ,
     PERM_OUTAGE_ADMIN,
     PERM_OVERVIEW_READ,
+    PERM_PROPERTY_WATCH_READ,
     PERM_PROVIDER_READ,
     PERM_RULE_READ,
     PERM_SEARCH_CADENCE_READ,
@@ -147,4 +149,10 @@ api_router.include_router(
 # `custom_rule:write` itself. `read:*` does not grant that write.
 api_router.include_router(
     custom_rules.router, dependencies=[Depends(requires(PERM_CUSTOM_RULE_READ))]
+)
+# Phase G. Property watches: the values of a QRadar property per bucket, clear text (D-22).
+# Read-guarded at the mount; `read:*` satisfies `read:property_watches`. Every write handler,
+# the preview included, checks `property_watch:write` itself. `read:*` does not grant it.
+api_router.include_router(
+    property_watches.router, dependencies=[Depends(requires(PERM_PROPERTY_WATCH_READ))]
 )
