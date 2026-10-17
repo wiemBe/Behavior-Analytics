@@ -8,7 +8,24 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 18:25, 2026-10-17 (twentieth session, from 17:44)
+## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 18:45, 2026-10-17 (twentieth session, from 17:44)
+
+**Update 18:45 — Phase G build started.**
+- **PW-1 merged** (`882a366`) after round 1: `test_migration_0025.py` now requires one head with
+  `0025` in its lineage; whole integration on `qradar_obs_pw1` **1,308 passed / 0 failed / 0
+  skipped**; on the merged tree (host): ruff clean, mypy 0 (248), unit 3,875 / 10 skipped, head
+  `0026`. Worktree, branch and DB `qradar_obs_pw1` removed. **The next `main` gate must run the
+  whole integration suite again** (PW-1 was gated on an older base).
+- **In flight:**
+
+| Task | Agent | Where | Next |
+|---|---|---|---|
+| **PW-2a** ([spec](tasks/PW-2a.md)): provider keyed searches, AQL generator, fold, split driver | Sonnet sub-agent (dies with the chat) | worktree `pw2a` (from `8805a5b`) | Review; then PW-2b (Codex) and PW-5 (preview needs PW-2a). |
+| **PW-3a** ([spec](tasks/PW-3a.md)): pure detection (baselines, five detectors, capabilities, history) | Codex, unit `pw3a-codex` from 18:44 (log `QRadar-Dash-work/pw3a/codex.log`) | worktree `pw3a` (from `8805a5b`) | Check for "usage limit"; at 35 min check progress. |
+| v0.1.1 release run `39044902711` | GitHub | `QRadar-Dash-work/gate-1017c/release-watch.log` | Images, then OPS-11. |
+
+  PW-2a and PW-3a both edit `docs/PHASE-G-PROPERTY-WATCH.md` (different sections: §G.4–§G.6 and
+  §G.8–§G.9); expect a trivial merge.
 
 **Update 18:25 — `main` @ `9bf3d4d` = v0.1.1, tag `v0.1.1` pushed.**
 - **T-131 merged** (`59b8872`, Sonnet; host 174/0 `qradar_dash`, shellcheck clean). Accepted:
