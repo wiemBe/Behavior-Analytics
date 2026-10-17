@@ -87,7 +87,8 @@ def _prepare_extensions(url: URL) -> None:
 
 
 def _migrate(url: URL) -> None:
-    config = Config(str(BACKEND / "alembic.ini"))
+    # No ini file: env.py would call fileConfig() and disable every existing app.* logger.
+    config = Config()
     config.set_main_option("script_location", str(BACKEND / "alembic"))
     config.set_main_option("sqlalchemy.url", url.render_as_string(hide_password=False))
     command.upgrade(config, "head")
