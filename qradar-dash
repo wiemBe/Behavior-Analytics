@@ -8,6 +8,8 @@
 #   ./qradar-dash logs [docker compose logs arguments]
 #   ./qradar-dash backup [manual|scheduled|pre-upgrade] [--no-verify]
 #   ./qradar-dash restore <backup-directory> [--non-interactive --yes]
+#   ./qradar-dash upgrade <version> [--offline]
+#   ./qradar-dash rollback [--non-interactive --yes]
 #
 # Specified in docs/OPERATIONS-DESIGN.md section 3. The script needs bash and
 # Docker with Compose v2 on the host, plus openssl and curl. It never calls
@@ -42,8 +44,9 @@ Commands
   restore       Restore a complete backup after confirmation.
   support-bundle
                 Write a redacted diagnostic archive under the backup root.
-  upgrade, rollback, bundle
-                Not built yet.
+  upgrade       Pull and install one explicit production SemVer release.
+  rollback      Restore the pre-upgrade backup and previous image digests (asks first).
+  bundle        Not built yet.
 
 backup options
   --no-verify       Skip the scratch-database restore (not allowed for pre-upgrade).
@@ -53,6 +56,13 @@ backup options
 restore options
   --non-interactive Refuse unless --yes is also present.
   --yes             Confirm a non-interactive restore.
+
+upgrade options
+  --offline         Refuse unless every target image is already loaded locally.
+
+rollback options
+  --non-interactive Refuse unless --yes is also present.
+  --yes             Confirm a non-interactive rollback.
 
 install options
   --non-interactive FILE   Read the answers from FILE (mode 0600, no secrets).
@@ -762,6 +772,9 @@ cmd_install() {
   fi
 
   summary "$qr_rc" "$have_admin"
+  if [ "$qr_rc" -eq 0 ]; then
+    write_install_state || die "the install succeeded but its state file could not be written"
+  fi
   [ "$qr_rc" -eq 0 ] || exit 1
 }
 
@@ -804,11 +817,30 @@ cmd_status() {
   need_installed
   command -v docker >/dev/null 2>&1 || die "Docker is not installed"
   dc ps
-  local port code
+  local port code service digest item age="unknown"
   port=$(env_get API_LOOPBACK_PORT)
   : "${port:=8000}"
   code=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/v1/health/ready" || true)
   say "API ready: HTTP ${code:-none} (http://127.0.0.1:$port/api/v1/health/ready)"
+  if ! state_read .qradar-dash/state.json; then
+    fail "status: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid or missing"
+    say "Installed version: unknown"
+    return 1
+  fi
+  say "Installed version: $STATE_INSTALLED_VERSION"
+  while IFS= read -r item; do
+    [ -n "$item" ] || continue
+    service=${item%%:*}
+    digest=${item#*:}
+    say "Image $service: $digest"
+  done < <(printf '%s\n' "${STATE_IMAGES//,/$'\n'}")
+  if [ "$STATE_LAST_PRESENT" = yes ]; then
+    if age=$(state_age "$STATE_LAST_AT" 2>/dev/null); then :; else age=unknown; fi
+    say "Last upgrade: $STATE_LAST_OUTCOME, $STATE_LAST_FROM -> $STATE_LAST_TO at $STATE_LAST_AT"
+    say "Last upgrade backup: $STATE_LAST_BACKUP (age $age)"
+  else
+    say "Last upgrade: none"
+  fi
   [ "$code" = "200" ]
 }
 
@@ -1010,6 +1042,259 @@ backup_image_digests() {
   done <<<"$containers"
   [ "$has_postgres" = yes ] || return 1
   printf '%s\n' "$joined"
+}
+
+# ---------------------------------------------------------------- version state
+
+STATE_INSTALLED_VERSION=""
+STATE_IMAGES=""
+STATE_PREVIOUS_IMAGES=""
+STATE_LAST_PRESENT=no
+STATE_LAST_AT=""
+STATE_LAST_FROM=""
+STATE_LAST_TO=""
+STATE_LAST_OUTCOME=""
+STATE_LAST_BACKUP=""
+STATE_LAST_RESTORED_FROM=""
+STATE_ERROR_FIELD="json"
+
+valid_release_version() { [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+
+valid_state_time() {
+  [[ $1 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+}
+
+state_now() {
+  local value
+  value=$(date -u +%Y-%m-%dT%H:%M:%SZ) || return 1
+  if [[ $value =~ ^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$ ]]; then
+    value="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}T${BASH_REMATCH[4]}:${BASH_REMATCH[5]}:${BASH_REMATCH[6]}Z"
+  fi
+  valid_state_time "$value" || return 1
+  printf '%s\n' "$value"
+}
+
+valid_state_path() {
+  [[ $1 == /* ]] || return 1
+  [[ $1 != *['"'\\]* ]] || return 1
+  ! printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'
+}
+
+validate_image_map() { # comma-separated service:sha256 image ids
+  local map=$1 item service digest seen="|"
+  [ -n "$map" ] || return 1
+  while IFS= read -r item; do
+    [ -n "$item" ] || return 1
+    service=${item%%:*}
+    digest=${item#*:}
+    [[ $service =~ ^[A-Za-z0-9_.-]+$ ]] || return 1
+    [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+    [[ $seen != *"|$service|"* ]] || return 1
+    seen="$seen$service|"
+  done < <(printf '%s\n' "${map//,/$'\n'}")
+}
+
+image_map_to_json() {
+  local map=$1 item service digest joined=""
+  validate_image_map "$map" || return 1
+  while IFS= read -r item; do
+    service=${item%%:*}
+    digest=${item#*:}
+    [ -z "$joined" ] || joined="$joined,"
+    joined="$joined\"$service\":\"$digest\""
+  done < <(printf '%s\n' "${map//,/$'\n'}")
+  printf '{%s}' "$joined"
+}
+
+json_object_to_image_map() {
+  local object=${1//[[:space:]]/} item service digest joined=""
+  [ -n "$object" ] || return 1
+  while IFS= read -r item; do
+    if [[ ! $item =~ ^\"([A-Za-z0-9_.-]+)\":\"(sha256:[0-9a-f]{64})\"$ ]]; then
+      return 1
+    fi
+    service=${BASH_REMATCH[1]}
+    digest=${BASH_REMATCH[2]}
+    [ -z "$joined" ] || joined="$joined,"
+    joined="$joined$service:$digest"
+  done < <(printf '%s\n' "${object//,/$'\n'}")
+  validate_image_map "$joined" || return 1
+  printf '%s\n' "$joined"
+}
+
+state_object_field() { # compact JSON, object name -> object body
+  printf '%s\n' "$1" \
+    | sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*{\([^}]*\)}.*/\1/p"
+}
+
+state_string_field() { # compact JSON/object, field name -> string value
+  printf '%s\n' "$1" \
+    | sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p"
+}
+
+state_read() { # state_read FILE -> validated STATE_* globals
+  local file=$1 compact images_object previous_object last_object
+  STATE_ERROR_FIELD="file"
+  [ -r "$file" ] && [ -f "$file" ] && [ ! -L "$file" ] || return 1
+  STATE_ERROR_FIELD=json
+  compact=$(tr -d '\n\r' <"$file") || return 1
+  [[ $compact == \{*\} ]] || return 1
+  STATE_INSTALLED_VERSION=$(state_string_field "$compact" installed_version)
+  STATE_ERROR_FIELD=installed_version
+  valid_release_version "$STATE_INSTALLED_VERSION" || return 1
+  images_object=$(state_object_field "$compact" images)
+  STATE_ERROR_FIELD=images
+  STATE_IMAGES=$(json_object_to_image_map "$images_object") || return 1
+  STATE_ERROR_FIELD=previous_images
+  if [[ $compact =~ \"previous_images\"[[:space:]]*:[[:space:]]*null ]]; then
+    STATE_PREVIOUS_IMAGES=""
+  else
+    previous_object=$(state_object_field "$compact" previous_images)
+    STATE_PREVIOUS_IMAGES=$(json_object_to_image_map "$previous_object") || return 1
+  fi
+  STATE_LAST_PRESENT=no
+  STATE_LAST_AT=""
+  STATE_LAST_FROM=""
+  STATE_LAST_TO=""
+  STATE_LAST_OUTCOME=""
+  STATE_LAST_BACKUP=""
+  STATE_LAST_RESTORED_FROM=""
+  if [[ $compact =~ \"last_upgrade\"[[:space:]]*:[[:space:]]*\{ ]]; then
+    STATE_ERROR_FIELD=last_upgrade
+    last_object=$(state_object_field "$compact" last_upgrade)
+    [ -n "$last_object" ] || return 1
+    STATE_LAST_AT=$(state_string_field "$last_object" at)
+    STATE_LAST_FROM=$(state_string_field "$last_object" from)
+    STATE_LAST_TO=$(state_string_field "$last_object" to)
+    STATE_LAST_OUTCOME=$(state_string_field "$last_object" outcome)
+    STATE_LAST_BACKUP=$(state_string_field "$last_object" backup)
+    STATE_LAST_RESTORED_FROM=$(state_string_field "$last_object" restored_from)
+    STATE_ERROR_FIELD=last_upgrade.at
+    valid_state_time "$STATE_LAST_AT" || return 1
+    STATE_ERROR_FIELD=last_upgrade.from
+    valid_release_version "$STATE_LAST_FROM" || return 1
+    STATE_ERROR_FIELD=last_upgrade.to
+    valid_release_version "$STATE_LAST_TO" || return 1
+    STATE_ERROR_FIELD=last_upgrade.outcome
+    case "$STATE_LAST_OUTCOME" in success | rolled_back | failed) ;; *) return 1 ;; esac
+    STATE_ERROR_FIELD=last_upgrade.backup
+    valid_state_path "$STATE_LAST_BACKUP" || return 1
+    if [ -n "$STATE_LAST_RESTORED_FROM" ]; then
+      STATE_ERROR_FIELD=last_upgrade.restored_from
+      valid_state_path "$STATE_LAST_RESTORED_FROM" || return 1
+    fi
+    STATE_LAST_PRESENT=yes
+  elif [[ $compact =~ \"last_upgrade\"[[:space:]]*:[[:space:]]*null ]]; then
+    :
+  elif [[ $compact =~ \"last_upgrade\" ]]; then
+    STATE_ERROR_FIELD=last_upgrade
+    return 1
+  fi
+  STATE_ERROR_FIELD=""
+}
+
+write_state() { # installed images previous-or-empty [last fields and restored-from]
+  local installed=$1 images=$2 previous=$3 at=${4:-} from=${5:-} to=${6:-}
+  local outcome=${7:-} backup=${8:-} restored_from=${9:-}
+  local images_json previous_json tmp last_json=""
+  valid_release_version "$installed" || { fail "state write refused: invalid version"; return 1; }
+  images_json=$(image_map_to_json "$images") \
+    || { fail "state write refused: invalid image digest"; return 1; }
+  if [ -n "$previous" ]; then
+    previous_json=$(image_map_to_json "$previous") \
+      || { fail "state write refused: invalid previous image digest"; return 1; }
+  else
+    previous_json=null
+  fi
+  if [ -n "$at$from$to$outcome$backup$restored_from" ]; then
+    valid_state_time "$at" || { fail "state write refused: invalid UTC time"; return 1; }
+    if ! valid_release_version "$from" || ! valid_release_version "$to"; then
+      fail "state write refused: invalid upgrade version"
+      return 1
+    fi
+    case "$outcome" in success | rolled_back | failed) ;; *)
+      fail "state write refused: invalid outcome"; return 1 ;;
+    esac
+    valid_state_path "$backup" \
+      || { fail "state write refused: invalid backup path"; return 1; }
+    if [ -n "$restored_from" ]; then
+      valid_state_path "$restored_from" \
+        || { fail "state write refused: invalid restore path"; return 1; }
+    fi
+    last_json=",\"last_upgrade\":{\"at\":\"$at\",\"from\":\"$from\",\"to\":\"$to\",\"outcome\":\"$outcome\",\"backup\":\"$backup\""
+    [ -z "$restored_from" ] || last_json="$last_json,\"restored_from\":\"$restored_from\""
+    last_json="$last_json}"
+  fi
+  umask 077
+  mkdir -p .qradar-dash || return 1
+  chmod 700 .qradar-dash || return 1
+  tmp=".qradar-dash/.state.json.$$"
+  [ ! -e "$tmp" ] || { fail "state temporary file already exists"; return 1; }
+  if ! printf '{\n  "installed_version":"%s",\n  "images":%s,\n  "previous_images":%s%s\n}\n' \
+      "$installed" "$images_json" "$previous_json" "$last_json" >"$tmp" \
+    || ! chmod 600 "$tmp" \
+    || ! mv -- "$tmp" .qradar-dash/state.json; then
+    rm -f -- "$tmp"
+    fail "state file write failed; the previous state was kept"
+    return 1
+  fi
+}
+
+write_install_state() {
+  local version images previous="" at="" from="" to="" outcome="" backup="" restored=""
+  version=$(env_get QRADAR_DASH_VERSION)
+  valid_release_version "$version" || return 1
+  images=$(backup_image_digests) || return 1
+  if [ -e .qradar-dash/state.json ]; then
+    state_read .qradar-dash/state.json || return 1
+    previous=$STATE_PREVIOUS_IMAGES
+    if [ "$STATE_LAST_PRESENT" = yes ]; then
+      at=$STATE_LAST_AT
+      from=$STATE_LAST_FROM
+      to=$STATE_LAST_TO
+      outcome=$STATE_LAST_OUTCOME
+      backup=$STATE_LAST_BACKUP
+      restored=$STATE_LAST_RESTORED_FROM
+    fi
+  fi
+  write_state "$version" "$images" "$previous" "$at" "$from" "$to" \
+    "$outcome" "$backup" "$restored"
+}
+
+write_restore_state() { # write_restore_state BACKUP_DIRECTORY
+  local backup=$1 version images previous="" at from to outcome recorded_backup
+  version=$(manifest_get "$backup" VERSION)
+  valid_release_version "$version" || return 1
+  images=$(backup_image_digests) || return 1
+  if [ -e .qradar-dash/state.json ] && state_read .qradar-dash/state.json; then
+    previous=$STATE_PREVIOUS_IMAGES
+  fi
+  if [ "${STATE_LAST_PRESENT:-no}" = yes ]; then
+    at=$STATE_LAST_AT
+    from=$STATE_LAST_FROM
+    to=$STATE_LAST_TO
+    outcome=$STATE_LAST_OUTCOME
+    recorded_backup=$STATE_LAST_BACKUP
+  else
+    at="" from="" to="" outcome="" recorded_backup="" backup=""
+  fi
+  write_state "$version" "$images" "$previous" "$at" "$from" "$to" \
+    "$outcome" "$recorded_backup" "$backup"
+}
+
+state_age() {
+  local timestamp now seconds
+  timestamp=$(date -u -d "$1" +%s) || return 1
+  now=$(date -u +%s) || return 1
+  seconds=$((now - timestamp))
+  [ "$seconds" -ge 0 ] || return 1
+  if [ "$seconds" -lt 3600 ]; then
+    printf '%s min\n' "$((seconds / 60))"
+  elif [ "$seconds" -lt 86400 ]; then
+    printf '%s h\n' "$((seconds / 3600))"
+  else
+    printf '%s d\n' "$((seconds / 86400))"
+  fi
 }
 
 write_backup_manifest() { # write_backup_manifest DIR DB_SIZE ALEMBIC STATE SECRET_VOLUMES
@@ -1463,6 +1748,10 @@ cmd_restore() {
     shift
   done
   [ -n "$backup" ] || { fail "restore needs a backup directory"; return 2; }
+  backup=$(readlink -f -- "$backup") || {
+    fail "restore refused: the backup path cannot be resolved"
+    return 1
+  }
   backup_directory_complete "$backup" || {
     fail "restore refused: the backup directory is incomplete or has unsafe modes"
     return 1
@@ -1502,7 +1791,442 @@ cmd_restore() {
     [ "$answer" = restore ] || { fail "restore confirmation was not given"; return 1; }
   fi
   restore_swap_database "$backup" manual || return 1
-  restore_start_and_wait "$backup" manual
+  restore_start_and_wait "$backup" manual || return 1
+  write_restore_state "$backup" || {
+    fail "restore completed but the state file could not be updated"
+    return 1
+  }
+}
+
+# ---------------------------------------------------------------- upgrade and rollback
+
+UPGRADE_SERVICES=()
+UPGRADE_CHECK_FAILURE=""
+
+set_upgrade_services() {
+  UPGRADE_SERVICES=(backend celery-worker celery-beat frontend)
+  if doctor_profile_enabled proxy; then UPGRADE_SERVICES+=(proxy); fi
+}
+
+set_env_version() { # set_env_version VERSION
+  local version=$1 tmp="$ENV_FILE.version.$$" count
+  valid_release_version "$version" || return 1
+  count=$(grep -c '^QRADAR_DASH_VERSION=' "$ENV_FILE" 2>/dev/null || true)
+  [ "$count" -eq 1 ] || {
+    fail "$ENV_FILE must contain exactly one QRADAR_DASH_VERSION line"
+    return 1
+  }
+  umask 077
+  if ! sed "s/^QRADAR_DASH_VERSION=.*/QRADAR_DASH_VERSION=$version/" \
+      "$ENV_FILE" >"$tmp" \
+    || ! chmod 600 "$tmp" \
+    || ! mv -- "$tmp" "$ENV_FILE"; then
+    rm -f -- "$tmp"
+    fail "$ENV_FILE version update failed; the previous file was kept"
+    return 1
+  fi
+}
+
+release_notes_fields() { # release_notes_fields TEXT -> version<TAB>min_from
+  local text=$1 front version min_from count
+  [ "$(printf '%s\n' "$text" | sed -n '1p')" = "---" ] || return 1
+  front=$(printf '%s\n' "$text" \
+    | awk 'NR == 1 {next} /^---[[:space:]]*$/ {found=1; exit} {print}
+        END {if (!found) exit 1}') || return 1
+  count=$(printf '%s\n' "$front" | grep -c '^version:[[:space:]]*' || true)
+  [ "$count" -eq 1 ] || return 1
+  count=$(printf '%s\n' "$front" | grep -c '^min_from:[[:space:]]*' || true)
+  [ "$count" -eq 1 ] || return 1
+  version=$(printf '%s\n' "$front" \
+    | sed -n 's/^version:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p')
+  min_from=$(printf '%s\n' "$front" \
+    | sed -n 's/^min_from:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p')
+  valid_release_version "$version" && valid_release_version "$min_from" || return 1
+  printf '%s\t%s\n' "$version" "$min_from"
+}
+
+upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE
+  local target=$1 offline=$2 prefix service ref
+  local -a services=(postgres redis backend frontend)
+  doctor_profile_enabled proxy && services+=(proxy)
+  doctor_profile_enabled mcp && services+=(qradar-mcp)
+  if [ "$offline" = no ]; then
+    QRADAR_DASH_VERSION=$target dc pull "${services[@]}"
+    return
+  fi
+  prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+  : "${prefix:=ghcr.io/wiembe/qradar-dashboard}"
+  for service in postgres backend frontend; do
+    docker image inspect "$prefix/$service:$target" >/dev/null || return 1
+  done
+  if doctor_profile_enabled proxy; then
+    docker image inspect "$prefix/proxy:$target" >/dev/null || return 1
+  fi
+  if doctor_profile_enabled mcp; then
+    docker image inspect "$prefix/qradar-mcp:$target" >/dev/null || return 1
+  fi
+  ref='redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499'
+  docker image inspect "$ref" >/dev/null
+}
+
+read_target_release_notes() { # read_target_release_notes VERSION
+  local target=$1 prefix notes fields version min_from
+  prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+  : "${prefix:=ghcr.io/wiembe/qradar-dashboard}"
+  notes=$(docker run --rm --entrypoint cat "$prefix/backend:$target" \
+    "/app/releases/$target.md") || return 1
+  fields=$(release_notes_fields "$notes") || return 1
+  IFS=$'\t' read -r version min_from <<<"$fields"
+  [ "$version" = "$target" ] || return 1
+  printf '%s\n' "$min_from"
+}
+
+upgrade_doctor_preflight() {
+  local report
+  report=$(cmd_doctor || true)
+  printf '%s\n' "$report"
+  if printf '%s\n' "$report" \
+      | grep -Eq '^FAIL[[:space:]]+(db_connect|migration_head)([[:space:]]|$)'; then
+    fail "upgrade refused: database readiness is already failing; see runbook OPS-R11"
+    return 1
+  fi
+  # Fail closed: a doctor that could not report either check proves nothing.
+  if ! printf '%s\n' "$report" | grep -Eq '^PASS[[:space:]]+db_connect([[:space:]]|$)' \
+    || ! printf '%s\n' "$report" | grep -Eq '^PASS[[:space:]]+migration_head([[:space:]]|$)'; then
+    fail "upgrade refused: doctor did not report db_connect and migration_head as PASS; see runbook OPS-R11"
+    return 1
+  fi
+}
+
+upgrade_runtime_checks() { # upgrade_runtime_checks EXPECTED_VERSION
+  local expected=$1 port api ready="" reported reported_version report left=180
+  UPGRADE_CHECK_FAILURE=""
+  port=$(env_get API_LOOPBACK_PORT)
+  : "${port:=8000}"
+  api="http://127.0.0.1:$port/api/v1"
+  while [ "$left" -gt 0 ]; do
+    ready=$(curl -fsS --max-time 5 "$api/health/ready" 2>/dev/null || true)
+    if grep -Eq '"database"[[:space:]]*:[[:space:]]*"ok"' <<<"$ready"; then break; fi
+    sleep 3
+    left=$((left - 3))
+  done
+  if ! grep -Eq '"database"[[:space:]]*:[[:space:]]*"ok"' <<<"$ready"; then
+    UPGRADE_CHECK_FAILURE="readiness did not report database ok within 180 seconds"
+    return 1
+  fi
+  reported=$(curl -fsS --max-time 5 "$api/version" 2>/dev/null) || {
+    UPGRADE_CHECK_FAILURE="version endpoint did not answer 200"
+    return 1
+  }
+  reported_version=$(state_string_field "$reported" version)
+  if [ "$reported_version" != "$expected" ]; then
+    UPGRADE_CHECK_FAILURE="version endpoint did not report $expected"
+    return 1
+  fi
+  report=$(cmd_doctor || true)
+  printf '%s\n' "$report"
+  if ! printf '%s\n' "$report" \
+      | grep -Eq '^PASS[[:space:]]+db_connect([[:space:]]|$)'; then
+    UPGRADE_CHECK_FAILURE="doctor db_connect is not PASS"
+    return 1
+  fi
+  if ! printf '%s\n' "$report" \
+      | grep -Eq '^PASS[[:space:]]+migration_head([[:space:]]|$)'; then
+    UPGRADE_CHECK_FAILURE="doctor migration_head is not PASS"
+    return 1
+  fi
+}
+
+image_map_digest() { # image_map_digest MAP SERVICE
+  local item service
+  while IFS= read -r item; do
+    service=${item%%:*}
+    [ "$service" = "$2" ] && { printf '%s\n' "${item#*:}"; return 0; }
+  done < <(printf '%s\n' "${1//,/$'\n'}")
+  return 1
+}
+
+previous_images_are_local() { # previous_images_are_local MAP
+  local item digest actual
+  validate_image_map "$1" || return 1
+  while IFS= read -r item; do
+    digest=${item#*:}
+    actual=$(docker image inspect --format '{{.Id}}' "$digest" 2>/dev/null) || return 1
+    [ "$actual" = "$digest" ] || return 1
+  done < <(printf '%s\n' "${1//,/$'\n'}")
+}
+
+tag_previous_images() { # tag_previous_images MAP VERSION
+  local map=$1 version=$2 prefix service digest
+  prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+  : "${prefix:=ghcr.io/wiembe/qradar-dashboard}"
+  for service in postgres backend frontend proxy qradar-mcp; do
+    digest=$(image_map_digest "$map" "$service" 2>/dev/null || true)
+    [ -n "$digest" ] || continue
+    docker tag "$digest" "$prefix/$service:$version" || return 1
+  done
+}
+
+UPGRADE_RESTART_OLD=no
+
+upgrade_restart_old() { # start the stopped services again, on the old images
+  [ "$UPGRADE_RESTART_OLD" = yes ] || return 0
+  UPGRADE_RESTART_OLD=no
+  restore_start_services || fail "the stopped services did not all restart; run: ./qradar-dash doctor"
+}
+
+start_upgrade_services() {
+  dc up -d --wait --wait-timeout 180 "${UPGRADE_SERVICES[@]}"
+}
+
+record_rollback_failure() { # backup old-version old-images from to at
+  local backup=$1 old_version=$2 old_images=$3 from=$4 to=$5 at=$6
+  restore_stop_services >/dev/null 2>&1 || true
+  say "Rollback failed; the writers and the UI are stopped. Verified backup: $backup"
+  say "Nothing further was attempted. Run ./qradar-dash rollback again once the cause is fixed,"
+  say "or ./qradar-dash restore $backup"
+  write_state "$old_version" "$old_images" "$old_images" "$at" "$from" "$to" \
+    failed "$backup" || true
+  return 1
+}
+
+perform_rollback() { # backup old-version old-images from to at
+  local backup=$1 old_version=$2 old_images=$3 from=$4 to=$5 at=$6 images
+  if ! restore_swap_database "$backup" rollback; then
+    record_rollback_failure "$backup" "$old_version" "$old_images" "$from" "$to" "$at"
+    return 1
+  fi
+  if ! set_env_version "$old_version" \
+    || ! tag_previous_images "$old_images" "$old_version" \
+    || ! start_upgrade_services \
+    || ! upgrade_runtime_checks "$old_version"; then
+    [ -z "$UPGRADE_CHECK_FAILURE" ] || fail "$UPGRADE_CHECK_FAILURE"
+    record_rollback_failure "$backup" "$old_version" "$old_images" "$from" "$to" "$at"
+    return 1
+  fi
+  images=$(backup_image_digests) || images=$old_images
+  write_state "$old_version" "$images" "" "$at" "$from" "$to" rolled_back "$backup" \
+    || return 1
+  say "Rollback complete."
+}
+
+cmd_upgrade() {
+  local target="" offline=no installed min_from db_size backup_root old_images
+  local backup_output backup at new_images old_env_version
+  need_installed
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --offline) offline=yes ;;
+      -h | --help) usage; return 0 ;;
+      -*) fail "unknown upgrade option: $1"; return 2 ;;
+      *) [ -z "$target" ] || { fail "upgrade accepts one version"; return 2; }; target=$1 ;;
+    esac
+    shift
+  done
+  [ -n "$target" ] || { fail "upgrade needs a version"; return 2; }
+  valid_release_version "$target" || {
+    fail "upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)"
+    return 1
+  }
+  state_read .qradar-dash/state.json || {
+    fail "upgrade refused: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid or missing"
+    return 1
+  }
+  installed=$STATE_INSTALLED_VERSION
+  set_upgrade_services
+  if [ "$installed" = "$target" ]; then
+    if upgrade_runtime_checks "$target"; then
+      say "Version $target is already installed and healthy; nothing changed."
+      return 0
+    fi
+    fail "version $target is recorded but the running stack is not healthy: $UPGRADE_CHECK_FAILURE"
+    return 1
+  fi
+  if version_is_newer "$installed" "$target"; then
+    fail "upgrade refused: $installed is newer than $target; that is rollback"
+    return 1
+  fi
+  if [ "$STATE_LAST_PRESENT" = yes ] && [ "$STATE_LAST_OUTCOME" = failed ] \
+    && [ -z "$STATE_LAST_RESTORED_FROM" ]; then
+    fail "upgrade refused: the last upgrade failed; run rollback or restore first"
+    return 1
+  fi
+  upgrade_pull_target "$target" "$offline" || {
+    fail "upgrade refused: target images are unavailable; no container was stopped"
+    return 1
+  }
+  min_from=$(read_target_release_notes "$target") || {
+    fail "upgrade refused: target release notes are missing, invalid, or for another version"
+    return 1
+  }
+  version_ge "$installed" "$min_from" || {
+    fail "upgrade refused: $target requires at least $min_from"
+    return 1
+  }
+  backup_root=$(env_get QRADAR_DASH_BACKUP_DIR)
+  [ -d "$backup_root" ] || { fail "upgrade refused: backup root is unavailable"; return 1; }
+  db_size=$(database_size_bytes) || {
+    fail "upgrade refused: database size is unavailable"
+    return 1
+  }
+  backup_storage_guards "$backup_root" "$db_size" yes || return 1
+  upgrade_doctor_preflight || return 1
+  old_images=$(backup_image_digests) || {
+    fail "upgrade refused: running image digests are unavailable"
+    return 1
+  }
+  old_env_version=$(env_get QRADAR_DASH_VERSION)
+  if [ "$old_env_version" != "$installed" ]; then
+    fail "upgrade refused: $ENV_FILE has QRADAR_DASH_VERSION=${old_env_version:-unset} but the state file says $installed"
+    return 1
+  fi
+  at=$(state_now) || {
+    fail "upgrade refused: the UTC time is unavailable"
+    return 1
+  }
+  RESTORE_STOPPED_SERVICES=()
+  UPGRADE_RESTART_OLD=yes
+  trap upgrade_restart_old EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  if ! restore_stop_services; then
+    upgrade_restart_old
+    fail "upgrade could not stop all writer and UI services"
+    return 1
+  fi
+  # A subshell: cmd_backup_create calls die and sets its own EXIT trap. Called directly, a
+  # failed backup would exit this script and replace the trap that restarts the old services.
+  if ! backup_output=$( (cmd_backup_create pre-upgrade yes) ); then
+    upgrade_restart_old
+    fail "pre-upgrade backup failed; old services were restarted"
+    return 1
+  fi
+  printf '%s\n' "$backup_output"
+  backup=$(printf '%s\n' "$backup_output" | tail -n1)
+  if ! backup_path_is_managed "$backup_root" "$backup" \
+    || ! backup_directory_complete "$backup"; then
+    upgrade_restart_old
+    fail "pre-upgrade backup returned an unsafe or incomplete path; old services were restarted"
+    return 1
+  fi
+  if ! dc exec -T redis redis-cli FLUSHALL >/dev/null; then
+    upgrade_restart_old
+    fail "Redis flush failed before migration; old services were restarted"
+    return 1
+  fi
+  # Record the attempt before anything irreversible: a crash or reboot from here on leaves a
+  # state that blocks upgrade and lets rollback run. Success, rollback and failure overwrite it.
+  if ! write_state "$installed" "$old_images" "$old_images" "$at" "$installed" "$target" \
+    failed "$backup"; then
+    upgrade_restart_old
+    fail "the upgrade attempt could not be recorded; old services were restarted"
+    return 1
+  fi
+  if ! set_env_version "$target"; then
+    # Nothing irreversible happened: put the recorded state back as it was.
+    write_state "$installed" "$STATE_IMAGES" "$STATE_PREVIOUS_IMAGES" "$STATE_LAST_AT" \
+      "$STATE_LAST_FROM" "$STATE_LAST_TO" "$STATE_LAST_OUTCOME" "$STATE_LAST_BACKUP" \
+      "$STATE_LAST_RESTORED_FROM" || fail "the previous state could not be put back"
+    upgrade_restart_old
+    return 1
+  fi
+  UPGRADE_RESTART_OLD=no
+  if ! dc run --rm -T migrate; then
+    fail "migration failed; starting automatic rollback"
+    upgrade_auto_rollback "$backup" "$installed" "$old_images" "$target" "$at"
+    return 1
+  fi
+  if ! start_upgrade_services; then
+    fail "a required service was not healthy within 180 seconds; starting automatic rollback"
+    upgrade_auto_rollback "$backup" "$installed" "$old_images" "$target" "$at"
+    return 1
+  fi
+  if ! upgrade_runtime_checks "$target"; then
+    fail "$UPGRADE_CHECK_FAILURE; starting automatic rollback"
+    upgrade_auto_rollback "$backup" "$installed" "$old_images" "$target" "$at"
+    return 1
+  fi
+  new_images=$(backup_image_digests) || {
+    fail "upgrade is healthy but its running image digests could not be recorded"
+    return 1
+  }
+  write_state "$target" "$new_images" "$old_images" "$at" "$installed" "$target" \
+    success "$backup" || return 1
+  say "Upgrade complete: $installed -> $target."
+}
+
+upgrade_auto_rollback() { # backup old-version old-images target at
+  if perform_rollback "$1" "$2" "$3" "$2" "$4" "$5"; then
+    fail "upgrade to $4 failed and was rolled back to $2; the broken database was kept"
+  fi
+}
+
+cmd_rollback() {
+  local backup old_version old_images db_size docker_root at answer
+  local non_interactive=no yes=no
+  need_installed
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --non-interactive) non_interactive=yes ;;
+      --yes) yes=yes ;;
+      -h | --help) usage; return 0 ;;
+      *) fail "unknown rollback argument: $1"; return 2 ;;
+    esac
+    shift
+  done
+  state_read .qradar-dash/state.json || {
+    fail "rollback refused: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid or missing"
+    return 1
+  }
+  old_images=$STATE_PREVIOUS_IMAGES
+  [ -n "$old_images" ] || {
+    fail "rollback refused: previous_images is null"
+    return 1
+  }
+  [ "$STATE_LAST_PRESENT" = yes ] || {
+    fail "rollback refused: last_upgrade is missing"
+    return 1
+  }
+  backup=$STATE_LAST_BACKUP
+  backup_directory_complete "$backup" || {
+    fail "rollback refused: last_upgrade.backup is missing or incomplete: $backup"
+    return 1
+  }
+  old_version=$STATE_LAST_FROM
+  [ "$(manifest_get "$backup" VERSION)" = "$old_version" ] || {
+    fail "rollback refused: backup version does not match last_upgrade.from"
+    return 1
+  }
+  previous_images_are_local "$old_images" || {
+    fail "rollback refused: a previous image is absent or has the wrong local digest"
+    return 1
+  }
+  encryption_key_compatible "$backup/env.bak" || {
+    fail "rollback refused: the backup's ENCRYPTION_KEY is not the current key or in ENCRYPTION_KEYS_JSON"
+    return 1
+  }
+  db_size=$(manifest_get "$backup" DATABASE_SIZE_BYTES)
+  case "$db_size" in '' | *[!0-9]*) fail "rollback refused: invalid backup size"; return 1 ;; esac
+  docker_root=$(docker_root_path) || {
+    fail "rollback refused: Docker root directory is unavailable"
+    return 1
+  }
+  backup_disk_guard "$docker_root" "$db_size" 2 || return 1
+  if [ "$non_interactive" = yes ]; then
+    [ "$yes" = yes ] || { fail "--non-interactive rollback requires --yes"; return 1; }
+  else
+    say "Rollback replaces the live database with $backup; data written since is kept only in the broken copy."
+    printf 'Type rollback to continue: '
+    IFS= read -r answer || answer=""
+    [ "$answer" = rollback ] || { fail "rollback confirmation was not given"; return 1; }
+  fi
+  set_upgrade_services
+  at=$(state_now) || return 1
+  perform_rollback "$backup" "$old_version" "$old_images" \
+    "$STATE_LAST_FROM" "$STATE_LAST_TO" "$at"
 }
 
 # ---------------------------------------------------------------- doctor
@@ -1943,7 +2667,8 @@ main() {
     install) cmd_install "$@" ;;
     status) cmd_status ;;
     logs) cmd_logs "$@" ;;
-    upgrade | rollback) not_built "$cmd" "OPS-6" ;;
+    upgrade) cmd_upgrade "$@" ;;
+    rollback) cmd_rollback "$@" ;;
     backup) cmd_backup "$@" ;;
     restore) cmd_restore "$@" ;;
     doctor) cmd_doctor ;;

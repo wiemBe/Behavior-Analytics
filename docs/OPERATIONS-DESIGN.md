@@ -811,6 +811,22 @@ database loaded with a fixture. The design does not claim a measured figure.
 `outcome` is `success`, `rolled_back`, or `failed`. `status` prints the last
 entry.
 
+**As built (OPS-6).** One shell function writes this file with a mode-`0600`
+temporary file in the mode-`0700` state directory and an atomic `mv`. It validates every
+version, full image ID, UTC timestamp and absolute backup path before opening the temporary
+file. Install records the running containers and preserves rollback history on an idempotent
+rerun. Upgrade reads the same line-oriented JSON shape used by OPS-5 retention, names an invalid
+or missing field, pulls before release-note and database preflight checks, and does not write
+state until the new release passes readiness, version and database doctor checks.
+The preflight also refuses when `.env` and the state file disagree on the version, or when
+`doctor` does not report both `db_connect` and `migration_head` as PASS. The backup runs in a
+subshell, and an `EXIT`/signal trap restarts the stopped services on the old images until the
+`.env` edit succeeds. An automatic rollback that succeeds still makes `upgrade` exit non-zero:
+the requested version is not running. A direct restore with no recorded upgrade creates no
+`last_upgrade` block. `--offline`
+replaces the pull with local image inspection. A successful direct restore records
+`restored_from`; a failed outcome with that marker no longer blocks the next upgrade.
+
 ---
 
 ## 5. Backup, restore, rollback
@@ -966,6 +982,22 @@ No argument. It uses `previous_images` and `last_upgrade.backup`.
 
 `rollback` does not run `alembic downgrade`. Downgrade drops columns and
 tables (`README.md:704-706`). The restored dump is already at the old head.
+
+**As built (OPS-6).** Rollback validates the complete backup and every recorded local image ID
+before it stops a service, and it never pulls. It calls OPS-5's `restore_swap_database`, restores
+the prior version in `.env` atomically, retags the recorded image IDs to that version's Compose
+references, and starts the fixed writer/UI service set. Automatic rollback uses exactly that
+path for migrate, service-health, reported-version, `db_connect` and `migration_head` failures.
+A QRadar or other doctor failure is printed but does not trigger it. If rollback health fails,
+the writers are stopped again, the verified backup path is printed, `outcome=failed` is written,
+and there is no third recovery attempt. A manual `rollback` asks for the word `rollback` on stdin, or with `--non-interactive`
+requires `--yes`, after all its refusals and before it stops anything; the automatic rollback
+inside `upgrade` does not ask. `upgrade` writes the state before the `.env` edit and the migrate
+(`installed_version` and both image maps old, `last_upgrade` to the target with
+`outcome=failed` and the pre-upgrade backup), so a crash or reboot during the migrate leaves a
+state that blocks `upgrade` and lets `rollback` run. If that write fails, the old services are
+restarted and `upgrade` exits before the `.env` edit. A successful rollback clears `previous_images`, keeps the
+broken database, and records `outcome=rolled_back`.
 
 `restore <path>` is the same sequence for a chosen backup, used when the
 operator wants a backup that is not `last_upgrade.backup`. It asks for the
