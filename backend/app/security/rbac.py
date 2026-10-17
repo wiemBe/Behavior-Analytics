@@ -123,6 +123,13 @@ PERM_DASHBOARD_SHARE = "admin:dashboards"
 # admin role therefore does not list the string.
 PERM_CUSTOM_RULE_READ = "read:custom_rules"
 PERM_CUSTOM_RULE_WRITE = "custom_rule:write"
+# Phase G. A property watch counts the values of a QRadar property per bucket, and the
+# values are stored in clear text (design §G.7.2, D-22), so reading them is `read:*`, as
+# offenses carry usernames to any reader. Authoring, enabling, pinning, deleting and
+# previewing one (a preview spends an Ariel search) is a write: `read:*` does not grant
+# `property_watch:write`. `admin:*` does, so the admin role does not list the string.
+PERM_PROPERTY_WATCH_READ = "read:property_watches"
+PERM_PROPERTY_WATCH_WRITE = "property_watch:write"
 # Accounts and directory configuration. `admin:*` satisfies both. `read:*`
 # does not: a viewer can see the estate and cannot create a sign-in or point
 # the application at a directory.

@@ -35,6 +35,7 @@ from app.models.enums import (
     IpsAnomalyType,
     IpsDimension,
     IpsProfileValidationStatus,
+    PwAnomalyType,
     Severity,
     WafAnomalyType,
     WafProfileValidationStatus,
@@ -49,6 +50,7 @@ from app.models.ips import (
 )
 from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
+from app.property_watch.facts import split_tuple_key
 from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
 from app.repositories.anomaly_histogram import BUCKET_SECONDS, check_range, histogram
@@ -73,6 +75,7 @@ from app.schemas.anomaly import (
     PagedWafEndpoints,
     PagedWafMetrics,
     PagedWafSources,
+    PwValueRefOut,
     SourceBehaviorOut,
     SubjectKind,
     WafAdmissionOverflowOut,
@@ -145,10 +148,15 @@ async def list_anomalies(
     settings: SettingsDep,
     log_source_id: uuid.UUID | None = Query(default=None),
     instance_id: uuid.UUID | None = Query(default=None),
-    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType | None = Query(default=None),
+    anomaly_type: AnomalyType
+    | WafAnomalyType
+    | IpsAnomalyType
+    | PwAnomalyType
+    | None = Query(default=None),
     subject_kind: SubjectKind | None = Query(default=None),
     waf_endpoint_id: uuid.UUID | None = Query(default=None),
     ips_entity_id: uuid.UUID | None = Query(default=None),
+    property_watch_id: uuid.UUID | None = Query(default=None),
     state: AnomalyState | None = Query(default=None),
     severity: Severity | None = Query(default=None),
     evidence_status: EvidenceStatus | None = Query(default=None),
@@ -166,6 +174,7 @@ async def list_anomalies(
         subject_kind=subject_kind,
         waf_endpoint_id=waf_endpoint_id,
         ips_entity_id=ips_entity_id,
+        pw_watch_id=property_watch_id,
         log_source_id=log_source_id,
         instance_id=instance_id,
         anomaly_type=anomaly_type.value if anomaly_type is not None else None,
@@ -204,13 +213,26 @@ def _unified_item(row: dict) -> AnomalyListItem:
             value_key=row["entity_value_key"],
             display_name=row["entity_display_name"],
         )
+    pw_value = None
+    if row["pw_watch_id"] is not None:
+        pw_value = PwValueRefOut(
+            watch_id=row["pw_watch_id"],
+            watch_name=row["pw_watch_name"],
+            watch_version=row["pw_watch_version"],
+            scope_kind=row["pw_scope_kind"],
+            properties=row["pw_properties"],
+            value_key=row["pw_value_key"],
+            components=split_tuple_key(row["pw_value_key"]),
+        )
     fields = {
         k: v
         for k, v in row.items()
-        if not k.startswith(("endpoint_", "entity_"))
+        if not k.startswith(("endpoint_", "entity_", "pw_"))
         and k not in ("waf_endpoint_id", "ips_entity_id")
     }
-    return AnomalyListItem(**fields, waf_endpoint=waf_endpoint, ips_entity=ips_entity)
+    return AnomalyListItem(
+        **fields, waf_endpoint=waf_endpoint, ips_entity=ips_entity, pw_value=pw_value
+    )
 
 
 async def _list_items(

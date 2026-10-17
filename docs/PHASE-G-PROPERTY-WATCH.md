@@ -1154,7 +1154,7 @@ bucket, sustained 3 buckets"). The extension, all additive:
 
 ---
 
-## G.11 Permissions, audit and API (question 10)
+## G.11 Permissions, audit and API (question 10) **[BUILT — PW-5, except what the note below defers]**
 
 **Permissions** (`backend/app/security/rbac.py`; `Principal.has` grants a permission by exact name,
 by its `prefix:*` wildcard, or by `admin:*`, `backend/app/security/rbac.py:33-38`):
@@ -1198,6 +1198,34 @@ with counts only. Reads are not audited.
 `hours` is 1 to 168 with default 24, the F.1 preview bound
 (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.7). A value outside an enum stays FastAPI's list 422. Errors
 never carry QRadar text, a console address or a secret (AGENTS.md rule 5).
+
+
+> **As built by PW-5** (`backend/app/api/routes/property_watches.py`,
+> `backend/app/services/property_watches.py`, `backend/app/schemas/property_watch.py`). Every
+> route above exists **except** `GET /property-watches/{id}/scope` and the resolved member count of
+> a group in `scope-options`: both need the pure scope resolver of PW-2b and come in **PW-5b**
+> (`scope-options` returns ids, names, a type's synced-source count and a group's path). Two parts of
+> `DELETE` wait for their owners: resolving open alerts first is **PW-4** (alerting does not exist),
+> and the 409 while an F.1 rule pins a value is **PW-6** (the column does not exist). Likewise
+> `PUT /pins` does not yet report the F.1 rules that depend on a pin (PW-6). The delete itself is
+> the cascade of the schema: every value, bucket, baseline and incident goes with the watch.
+>
+> Decisions the table leaves open: the optimistic token is `updated_at` (`expected_updated_at`,
+> 409 with `current_version` and `updated_by`), as for rules; `PUT /pins` replaces the whole list
+> and carries the same token; the scope travels as a unit in a `PATCH`; pins, severity, detectors
+> and `enabled` never bump `watch_version`. A `PATCH` or `PUT /pins` that makes an enabled watch
+> dearer re-runs the §G.14 checks. The enable 409s name the cap, the tick budget (with both
+> numbers) or the group that is too large; a group's size here comes from `resolve_groups`, the
+> minimum the API needs, until PW-5b swaps in the resolver. The preview sends the totals search and
+> then the grouped one under a two-search budget: a grouped result cut at the row limit is not
+> split (a split would be a third search), so its buckets read `NOT_COLLECTED` and the response
+> says so. It refuses (409) a group that is stale (`SCOPE_STALE`), empty (`SCOPE_EMPTY`) or wider
+> than one search chunk. It is limited by `rate_limit_search_execution` per client address. Audit
+> snapshots hold `pinned_count` and `pinned_digest` (`sha256:` plus the hex digest of the sorted
+> pins) and the scope as `KIND:id`; a preview's audit row holds counts and states only. `/anomalies`
+> gains `subject_kind=PW_VALUE`, `anomaly_type` accepting `PwAnomalyType`, a `property_watch_id`
+> filter and a `pw_value` object; `log_source_id` is `null` for a type- or group-scoped watch.
+> The anomaly histogram does not count PW incidents yet (its repository is outside PW-5).
 
 ---
 

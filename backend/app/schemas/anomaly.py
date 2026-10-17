@@ -31,6 +31,8 @@ from app.models.enums import (
     EvidenceStatus,
     IpsAnomalyType,
     IpsDimension,
+    PwAnomalyType,
+    PwScopeKind,
     RobustScoreStatus,
     Severity,
     WafAnomalyType,
@@ -49,6 +51,9 @@ class SubjectKind(StrEnum):
     WAF_ENDPOINT = "WAF_ENDPOINT"
     IPS_ENTITY = "IPS_ENTITY"
     IPS_SOURCE = "IPS_SOURCE"
+    #: A tracked value of a property watch (Phase G). Its row is `pw_anomaly`; the value text
+    #: is shown to every caller who can read the list (design §G.7.2, D-22).
+    PW_VALUE = "PW_VALUE"
 
 
 class WafEndpointRefOut(BaseModel):
@@ -78,6 +83,23 @@ class IpsEntityRefOut(BaseModel):
     #: The signature's name when the dimension is SIGNATURE. None when the
     #: source named nothing; it may change without changing the entity's identity.
     display_name: str | None = None
+
+
+class PwValueRefOut(BaseModel):
+    """The property-watch value an anomaly is about.
+
+    Clear text by decision (D-22): anyone who reads `/anomalies` reads the value, as an
+    offense's usernames. `components` is the value split per watched property.
+    """
+
+    watch_id: uuid.UUID
+    watch_name: str
+    watch_version: int
+    scope_kind: PwScopeKind
+    #: The watched properties, in order: `[{"kind", "name"}, ...]`.
+    properties: list[dict[str, str]]
+    value_key: str
+    components: list[str]
 
 
 class MetricBucketOut(BaseModel):
@@ -201,8 +223,9 @@ class AnomalyListItem(BaseModel):
     id: uuid.UUID
     #: What the anomaly is about. Phase A rows are LOG_SOURCE.
     subject_kind: SubjectKind = SubjectKind.LOG_SOURCE
-    #: For a WAF_ENDPOINT subject, the WAF log source that carries the endpoint.
-    log_source_id: uuid.UUID
+    #: For a WAF_ENDPOINT subject, the WAF log source that carries the endpoint. `None` for
+    #: a PW_VALUE subject whose watch is scoped to a type or a group, not one source.
+    log_source_id: uuid.UUID | None = None
     #: Resolved by the route from the owning source. None only when the source
     #: row is gone, which the UI renders as the id rather than as a blank cell.
     log_source_name: str | None = None
@@ -211,8 +234,10 @@ class AnomalyListItem(BaseModel):
     #: Set for an IPS_ENTITY subject, otherwise None. An IPS_SOURCE subject has
     #: none: the anomaly is about the log source itself.
     ips_entity: IpsEntityRefOut | None = None
-    #: A Phase A type, or for a WAF or IPS subject the row's detector type.
-    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType
+    #: Set for a PW_VALUE subject, otherwise None.
+    pw_value: PwValueRefOut | None = None
+    #: A Phase A type, or for a WAF, IPS or property-watch subject the row's detector type.
+    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType | PwAnomalyType
     state: AnomalyState
     severity: Severity
     observed_value: float | None = None
