@@ -8,7 +8,39 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 16:03, 2026-10-17 (end of the nineteenth session; the user's session limit is at 96 %)
+## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 17:50, 2026-10-17 (twentieth session, from 17:44)
+
+The nineteenth chat (`qradar-dash-ae`) was told to stand down and confirmed.
+
+**Done since 16:03:**
+- **OPS-9 r3 merged** (`c9e3eac`, DeepSeek). Every quoted command and message checked against
+  `qradar-dash`, `doctor.py`, `auth.py`, `celery_app.py` (beat TTL 180 s, heartbeat every 60 s
+  and at start). Its open points accepted: uid 11 is OPS-10's observation (the warning holds
+  anyway); the submodule is only `qradar-mcp`; the doctor column spacing is illustrative; the
+  pg_dump warning and the measured numbers are OPS-10's, labelled as such. The fresh-VM check
+  (step 5 below) exercises the runbook on a real host.
+- **Review finding → T-130** ([spec](tasks/T-130.md)): the runbook said the preflight stops when
+  the operator cannot create the backup directory; **it does not**, and worse,
+  `mkdir -p "$BACKUP_DIR" && chmod 700 …` under `set -e` lets a failing `mkdir` pass, so the
+  install ends "healthy" and the first backup (and every pre-upgrade backup) fails. Decision: fix
+  it in v0.1.1 (it is a first-install defect, which is what D-24 is for). The 3.12 gate container
+  runs as root, so the new permission tests are `skipif(root)`: **the gate's unit skip count
+  rises by T-130's number**; they run on the host and in GitHub CI (`runner`).
+
+**In flight:**
+
+| Task | Agent | Where | Next |
+|---|---|---|---|
+| **T-130** | Sonnet sub-agent (dies with the chat) | worktree `t130`, scratch `QRadar-Dash-work/t130/` | Review: run the new tests on the host as `efe`, shellcheck via `docker run --rm -i koalaman/shellcheck:stable - < qradar-dash`. |
+| **T-129** ([spec](tasks/T-129.md), now with T-130 in the notes) | opencode free DeepSeek, unit `t129-ds` | worktree `t129`, scratch `QRadar-Dash-work/t129/` | Review the bump (two lock lines only) and `docs/releases/0.1.1.md`. |
+| **PW-1** handover | Codex, unit `pw1-codex` ("review what you inherit"; the Sonnet run died at 16:07 with ~2,000 lines and no report) | worktree `pw1`, DB `qradar_obs_pw1`, log `QRadar-Dash-work/pw1/codex.log` | Check the log for "usage limit". **Merge only after `v0.1.1` is tagged (D-24).** |
+
+**Next (D-24, unchanged otherwise):** merge T-130 and T-129 → full 3.12 backend gate + frontend
+gate → `main` → tag `v0.1.1` → the fresh-VM real-path check (16:03 list, step 5) → PW-1.
+
+---
+
+## ▶▶▶▶▶▶▶▶ STATE AT 16:03, 2026-10-17 (end of the nineteenth session; kept for the log)
 
 **Branches.** `main` @ `8815715` = v0.1.0 (tag pushed, release published, images public).
 `feat/phase-ce` @ `17ad7ff` (pushed) = `main` + T-127, T-128, OPS-10 report, specs, AGENTS.md
