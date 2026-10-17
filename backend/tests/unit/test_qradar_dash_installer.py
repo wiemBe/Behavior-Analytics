@@ -221,7 +221,7 @@ def test_non_interactive_needs_a_file(inst: Install) -> None:
 
 
 def test_unbuilt_subcommands_exit_non_zero(inst: Install) -> None:
-    for cmd in ("upgrade", "rollback", "backup", "restore", "bundle"):
+    for cmd in ("upgrade", "rollback", "bundle"):
         result = inst.run(cmd)
         assert result.returncode == 64, cmd
         assert "not built yet" in result.stderr
