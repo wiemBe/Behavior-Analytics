@@ -8,7 +8,23 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 19:10, 2026-10-17 (twentieth session, from 17:44)
+## ▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 19:25, 2026-10-17 (twentieth session, from 17:44)
+
+**Update 19:25.**
+- **OPS-11 done** ([report](tasks/OPS-11.report.md)): v0.1.0 installed from GHCR on a fresh
+  Rocky 9 VM with a stand-in console (state file written), then by the runbook `git checkout
+  v0.1.1` + `upgrade 0.1.1`: exit 0, **downtime 15.7 s**; only the deciding doctor lines;
+  `celery_beat` PASS right after; `upgrade 0.1.2` refused by T-131 with nothing pulled or stopped;
+  `rollback` 12.7 s; `install --dry-run` refused on the newer checkout (`.env` unchanged); the
+  T-130 refusal; a same-version re-run kept the password and the keys; backup 3 s. **`qradarce2`
+  is running again (19:20).** VM `qradar-dash-ops11` shut off and kept (5.55 GiB).
+- Decisions on its findings: → **T-132** ([spec](tasks/T-132.md), Sonnet sub-agent, worktree
+  `t132`, DB `qradar_obs_t132`): `.qradar-dash/` into `.gitignore`; runbook Docker install
+  commands and order; the preflight's "ok" free-space line before a refusal; `status`'s wrong
+  backup age; `doctor` redacting a watermark family name; a `previous_images` sentence; reproduce
+  the users list returning a non-list body right after a sign-in (seen in OPS-10 and OPS-11).
+  Accepted: the v0.1.0 summary text (fixed in 0.1.1). None blocks v0.1.1; they ship with the next
+  release.
 
 **Update 19:10.**
 - **v0.1.1 released** (run `39044902711` all green, GitHub release published 19:01). The five
