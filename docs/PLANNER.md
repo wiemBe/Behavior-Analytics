@@ -8,9 +8,32 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 15:45, 2026-10-17 (nineteenth session, from 12:44)
+## ▶▶▶▶▶▶▶ RESUME HERE — STATE AT 15:48, 2026-10-17 (nineteenth session, from 12:44)
 
-**OPS-10 so far** (report `QRadar-Dash-work/ops10/OPS-10.report.md`, still running Part C 5–6):
+**`qradarce2` was started again at 15:45** (the 14:56 warning below is closed). The OPS-10 VM
+`qradar-dash-ops10` is shut off and kept (11 GiB overlay + 616 MiB base in pool `default`; login
+`qdops` with `QRadar-Dash-work/ops10/ops10_key`): reuse it to re-test the T-127 fixes.
+
+**OPS-10 + OPS-6r done** ([report](tasks/OPS-10.report.md)); every acceptance item met. Part C:
+upgrade 0.1.1 again 15.7 s; **the failing 0.1.2 migrate rolled back automatically** (exit 1,
+22.7 s downtime, `rolled_back`, data intact, broken copy kept); `restore` of the 0.1.0 backup
+**refused** (older version), a same-version restore worked (7.6 s downtime, later data gone as
+expected).
+
+**Decisions on its findings (orchestrator, 15:47):**
+- D2 → **T-127** (Sonnet, worktree `t127`): state written once the stack is up, whatever the
+  QRadar check says, tested through `install` itself; stale "arrives with OPS-…" texts; the
+  upgrade/rollback output prints only the deciding doctor checks.
+- `celery_beat` false FAIL after restarts → **T-128** (opencode DeepSeek, unit `t128-ds`): send
+  `beat_heartbeat` once at beat start, like the policy task.
+- The users list missing a just-created user once (not reproduced): **backlog, investigate
+  before v0.2.0** — risk: an admin re-creates the user and gets a conflict.
+- Runbook (OPS-9 r3, after T-127): `operator` is a RHEL system account; 80 GiB on the Docker
+  root; `--recurse-submodules` only for `--build`; pg_dump's TimescaleDB warnings are expected;
+  API sign-in needs an `Origin` header.
+- Accepted: pg_dump warnings (exit 0), `git_sha` null on non-hex test builds.
+
+**OPS-10 so far (kept)** (report `QRadar-Dash-work/ops10/OPS-10.report.md`):
 v0.1.0 installs from GHCR on a fresh Rocky 9.8 VM, SELinux Enforcing, in **1 min 40 s**; a second
 install keeps the keys and the admin password; backup 3 s, verified; upgrade 0.1.0 → 0.1.1
 **14.7 s** downtime; rollback **13.2 s**; data survived both.
