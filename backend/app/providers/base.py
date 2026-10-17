@@ -23,7 +23,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from app.models.enums import IpsDimension
+from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.dto import (
     AnalyticsRuleDTO,
     ArielSearchHandleDTO,
@@ -42,6 +42,8 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    PwKeyedResult,
+    PwSearchKind,
     RuleMatchBatch,
     WafBreakdownBatch,
     WafBreakdownBucketBatch,
@@ -507,6 +509,37 @@ class QRadarProvider(ABC):
         `max_rows` are kept. A key outside the span, a non-integer key or a
         log source that was not asked for fails the whole search with a
         ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_pw_keyed(
+        self,
+        search: PwSearchKind,
+        *,
+        scope_kind: PwScopeKind,
+        scope_ids: Sequence[int],
+        properties: Sequence[tuple[str, str]],
+        pinned: Sequence[Sequence[str]] = (),
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> PwKeyedResult:
+        """One keyed property-watch search: grouped, totals or pinned (design §G.6).
+
+        The scope is a source id, a type id or one chunk of a group's source ids
+        (`pw_max_sources_per_search`); `properties` are one or two ``(kind, name)``
+        references and `pinned` the pinned tuples of a PINNED search. Every one of them
+        is validated again here before it is quoted: a name against the allowlist or
+        `PROPERTY_NAME_PATTERN`, a pinned value against `PW_PINNED_VALUE_PATTERN`.
+        The span must be whole epoch-aligned `bucket_seconds` buckets. Rows carry the
+        bucket start, the raw property values and ``SUM(eventcount)``, ordered by volume;
+        more than `max_rows` rows set ``truncated`` and only the first `max_rows` are
+        kept. A key outside the span, a non-integer key or a count that is not an
+        integer-valued number fails the whole search with a ProviderError.
 
         Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
         """

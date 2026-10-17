@@ -13,10 +13,11 @@ separate is what stops QRadar's field naming from leaking end to end.
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import IpsDimension
+from app.models.enums import IpsDimension, PwScopeKind
 
 
 class ProviderDTO(BaseModel):
@@ -430,6 +431,48 @@ class IpsKeyedResult(ProviderDTO):
     bucket_seconds: int
     #: Rows returned, at most `max_rows`, in the search's volume order.
     rows: tuple[IpsKeyedRow, ...] = ()
+    #: More than `max_rows` rows existed: `rows` is the top, the tail is missing.
+    truncated: bool = False
+    #: The query text, for provenance. Holds validated integers and quoted names only.
+    query: str = ""
+
+
+class PwSearchKind(StrEnum):
+    """Which of the three property-watch searches a keyed read runs (design §G.6)."""
+
+    #: Values x buckets, over the events that carry every property.
+    GROUPED = "GROUPED"
+    #: One row per bucket over every event in scope: the denominator of coverage.
+    TOTALS = "TOTALS"
+    #: The grouped search restricted to the pinned values.
+    PINNED = "PINNED"
+
+
+class PwKeyedRow(ProviderDTO):
+    """One keyed aggregate row of a property-watch search: raw, folded then discarded.
+
+    `values` holds the raw property values in the watch's order (empty for TOTALS): the
+    text exactly as the console returned it, hostile or not, and None for NULL. Only
+    `app.property_watch.fold` sanitizes it, and none of it is persisted as it is.
+    """
+
+    bucket_start: datetime
+    #: `SUM(eventcount)`, already a strict non-negative integer.
+    events: int
+    values: tuple[str | None, ...] = ()
+
+
+class PwKeyedResult(ProviderDTO):
+    """One property-watch search: the rows, whether they are whole, and what was searched."""
+
+    search: PwSearchKind
+    scope_kind: PwScopeKind
+    scope_ids: tuple[int, ...]
+    window_start: datetime
+    window_end: datetime
+    bucket_seconds: int
+    #: Rows returned, at most `max_rows`, in the search's volume order.
+    rows: tuple[PwKeyedRow, ...] = ()
     #: More than `max_rows` rows existed: `rows` is the top, the tail is missing.
     truncated: bool = False
     #: The query text, for provenance. Holds validated integers and quoted names only.
