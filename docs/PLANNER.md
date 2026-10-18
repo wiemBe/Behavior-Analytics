@@ -8,7 +8,44 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 11:30, 2026-10-18 (twenty-second session, from 11:19)
+## ▶▶▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 16:40, 2026-10-18 (twenty-second session)
+
+**Branches.** `main` @ `9bf3d4d` = v0.1.1, untouched (the user: nothing to `main` until they say
+so). **`feat/phase-ce` @ `ea58e9a`** (pushed) = the whole Phase G build (PW-1 … PW-9 with PW-3b,
+3c, 4, 5, 5b, 5c, 6, 6b, 7, 7b, 8, 9), T-133 (Apache-2.0, NOTICE, trademark line, mcp labels) and
+OPS-17 (image prefix → `ghcr.io/wiembe/behavior-analytics`). Migration head `0027`.
+Every merged `agent/*` branch, worktree and DB was removed (local and origin).
+
+**Gates of the merged tree (the code of `ea58e9a`):**
+- 3.12 lock container on `9f073f0` (backend identical to `ea58e9a`): ruff clean, mypy 0 (267),
+  **unit 4,425 passed / 15 skipped** (10 allowlist + 3 T-130 + 2 T-132, the new expected count
+  under root), alembic up/down/up clean with `check` clean at `0027`, **integration 1,515 passed /
+  1 skipped (the backup round trip) / 0 failed**. Log `QRadar-Dash-work/gate-1018b/`.
+- Frontend on `0ae7b82` (= `ea58e9a`'s frontend): lint, typecheck clean, **vitest 313 files /
+  3,490 passed**, build 35/35. Log `QRadar-Dash-work/pwmerge/frontend-0ae7b82.log`.
+
+**In flight:** **PW-7c** ([spec](tasks/PW-7c.md)) on Codex, unit `pw7c-codex` from 16:26,
+worktree `pw7c` (from `0ae7b82`), DB `qradar_obs_pw7c`, log `QRadar-Dash-work/pw7c/codex.log`.
+Review: the backend fields, then the PNGs myself; then merge into `feat/phase-ce`.
+
+**Next:**
+1. PW-7c review and merge.
+2. **PW-10** live validation on the lab console (`qradarce2`), spec to write: a watch per scope
+   kind over the lab's synthetic telemetry, preview against the real Ariel, a full collection →
+   evaluation → training tick through Celery/beat, the training row volume (PW-3b), the alert
+   path with `PW_ALERTING_ENABLED=true` on the lab only.
+3. **PW-11** docs, spec to write: README Phase G section, the runbook settings, the §G.10.1
+   sentence that a maintenance bucket holds a resolve, the PW-6b race note, `[BUILT]` markers.
+4. Next release (the user decides when): the checklist below (mirror, package visibility,
+   fresh-VM check, TimescaleDB license).
+
+**Agents:** Codex until its next limit; Sonnet available again (the session limit hit 12:55,
+reset 16:10); opencode free DeepSeek and GLM flash (both did good work today); Z.AI GLM until
+2026-10-21 01:47; Grok done for the week.
+
+---
+
+## ▶▶▶▶▶▶▶▶▶▶▶▶ STATE AT 11:30, 2026-10-18 (twenty-second session, from 11:19; kept for the log)
 
 **What happened.** The machine shut down at **01:27** and booted again at 11:17 (`last -x`). Every
 agent died at 01:27, including the "surviving" DeepSeek unit, and the 05:10 `pw3b-codex-resume`
