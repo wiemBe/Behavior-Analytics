@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from app.anomaly.seasonal import in_any_span, retained_fraction, seasonal_key, summarize_cell
 from app.models.enums import WafMeasurement
@@ -72,12 +72,18 @@ def build_value_baseline(
     watch_version: int,
     min_coverage: float,
     baseline_min_samples: int,
+    baseline_min_visits: int = 1,
     incident_spans: Sequence[tuple[datetime, datetime]] = (),
 ) -> tuple[dict[tuple[int, int], PwBaselineCell], PwExclusionTally]:
     """Build every non-empty ``PW_VALUE_EVENTS_METRIC`` cell and its exclusion tally.
 
     Thin cells are deliberately returned with ``is_reliable=False``. Persistence can
     therefore show learning progress without allowing the detector to use the cell.
+
+    A cell is also unreliable until its retained samples come from ``baseline_min_visits``
+    distinct weekly visits (D-30): the 12 five-minute samples of one hour are correlated,
+    not a baseline. A visit is the UTC calendar date of the bucket start, the same clock
+    ``seasonal_key`` reads. Only retained samples count toward visits.
     """
     if watch_version < 1:
         raise ValueError("a watch version starts at 1")
@@ -85,9 +91,12 @@ def build_value_baseline(
         raise ValueError("coverage must be between zero and one")
     if baseline_min_samples < 1:
         raise ValueError("baseline_min_samples must be positive")
+    if baseline_min_visits < 1:
+        raise ValueError("baseline_min_visits must be positive")
 
     tally = PwExclusionTally()
     retained: dict[tuple[int, int], list[float]] = {}
+    visits: dict[tuple[int, int], set[date]] = {}
     candidates: dict[tuple[int, int], int] = {}
     for item in readings:
         bucket, reading = item.bucket, item.reading
@@ -111,6 +120,7 @@ def build_value_baseline(
             tally.known_anomaly += 1
         else:
             retained.setdefault(key, []).append(float(reading.events))
+            visits.setdefault(key, set()).add(bucket.bucket_start.date())
 
     cells: dict[tuple[int, int], PwBaselineCell] = {}
     for (weekday, hour), values in retained.items():
@@ -124,7 +134,7 @@ def build_value_baseline(
             p05=summary.p05,
             p95=summary.p95,
             sample_count=summary.sample_count,
-            is_reliable=summary.is_reliable,
+            is_reliable=summary.is_reliable and len(visits[(weekday, hour)]) >= baseline_min_visits,
             completeness=retained_fraction(len(values), candidates[(weekday, hour)]),
             observations=summary.observations,
             watch_version=watch_version,

@@ -263,6 +263,65 @@ class TestBaselineBuilder:
         assert built.median == 100.0
 
 
+class TestBaselineVisits:
+    """D-30: a cell is reliable only when its retained samples span enough weekly visits."""
+
+    @staticmethod
+    def points(*visits: tuple[int, int], **fact: object) -> list[PwBaselineReading]:
+        """`(week offset, sample count)` per visit: five-minute buckets within one hour."""
+        out: list[PwBaselineReading] = []
+        for week, count in visits:
+            for i in range(count):
+                when = NOW + timedelta(weeks=week, minutes=5 * i)
+                out.append(
+                    PwBaselineReading(bucket(when, **fact), reading(100, WafMeasurement.EXACT))
+                )
+        return out
+
+    @staticmethod
+    def build(points: list[PwBaselineReading], **over: int):  # type: ignore[no-untyped-def]
+        kwargs = {"baseline_min_samples": 8, "baseline_min_visits": 2, **over}
+        cells, _ = build_value_baseline(points, watch_version=1, min_coverage=0.9, **kwargs)
+        return cells[(NOW.isoweekday(), NOW.hour)]
+
+    def test_twelve_samples_of_one_visit_are_not_reliable(self) -> None:
+        built = self.build(self.points((0, 12)))
+        assert built.sample_count == 12 and built.is_reliable is False
+
+    def test_two_visits_a_week_apart_are_reliable(self) -> None:
+        built = self.build(self.points((0, 4), (1, 4)))
+        assert built.sample_count == 8 and built.is_reliable is True
+
+    def test_a_visit_whose_samples_are_all_excluded_does_not_count(self) -> None:
+        good = self.points((0, 8))
+        thin = self.points((1, 8), parsed=20, total=100)  # low coverage: every sample dropped
+        cells, tally = build_value_baseline(
+            [*good, *thin], watch_version=1, min_coverage=0.9,
+            baseline_min_samples=8, baseline_min_visits=2,
+        )
+        built = cells[(NOW.isoweekday(), NOW.hour)]
+        assert tally.low_coverage == 8 and built.sample_count == 8
+        assert built.is_reliable is False
+
+    def test_one_visit_setting_reproduces_the_sample_count_rule(self) -> None:
+        assert self.build(self.points((0, 12)), baseline_min_visits=1).is_reliable is True
+        assert self.build(self.points((0, 7)), baseline_min_visits=1).is_reliable is False
+
+    def test_enough_visits_cannot_rescue_too_few_samples(self) -> None:
+        assert self.build(self.points((0, 2), (1, 2))).is_reliable is False
+
+    def test_the_visits_setting_must_be_positive(self) -> None:
+        with pytest.raises(ValueError, match="baseline_min_visits"):
+            self.build(self.points((0, 12)), baseline_min_visits=0)
+
+    def test_the_detector_names_the_missing_visits_not_the_samples(self) -> None:
+        unreliable = cell(samples=12, reliable=False)
+        verdict = detect_value_spike(context(baseline=unreliable))
+        assert verdict.signal is DetectorSignal.UNKNOWN
+        assert "weekly visits" in verdict.evidence.reason
+        assert "below the minimum" not in verdict.evidence.reason
+
+
 class TestHistoryVerification:
     @staticmethod
     def _window() -> tuple[datetime, datetime, list[PwBucketFact]]:

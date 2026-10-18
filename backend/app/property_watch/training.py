@@ -120,6 +120,7 @@ class PwBaselineTrainer:
                 watch_version=value.watch_version,
                 min_coverage=self.settings.pw_min_coverage,
                 baseline_min_samples=self.settings.baseline_min_samples,
+                baseline_min_visits=self.settings.pw_baseline_min_visits,
                 incident_spans=span_map.get(value.id, ()),
             )
             for cell in cells.values():

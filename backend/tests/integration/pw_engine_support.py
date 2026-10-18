@@ -223,6 +223,8 @@ async def make_rig(
                 )
             )
     await session.commit()
+    # One-hour fixtures predate D-30 (two weekly visits); a test about visits sets it to 2.
+    overrides.setdefault("pw_baseline_min_visits", 1)
     settings = cfg(
         anomaly_open_after_intervals=2,
         anomaly_resolve_after_intervals=3,

@@ -7,6 +7,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select, update
 
+from app.models.enums import PwAnomalyType
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwBucket, PwValueBaseline
 from app.property_watch.baseline import PW_VALUE_EVENTS_SEMANTICS
 from app.property_watch.inputs import PW_VALUE_EVENTS_METRIC
@@ -353,3 +354,55 @@ async def test_a_collection_failure_leaves_evaluation_where_it_was(db_session) -
     assert report.evaluation is not None and report.evaluation.buckets_evaluated == 0
     watch = await rig.reload_watch()
     assert watch.evaluated_through == T0 - STEP
+
+
+# --------------------------------------------------------------------- D-30: two weekly visits
+
+WEEK = 2016  # five-minute ticks in seven days: the same weekday and hour, one week on
+VOLUME = (SPIKE, PwAnomalyType.PW_VALUE_DROP, PwAnomalyType.PW_VALUE_DISAPPEARED)
+
+
+
+async def skip_to(rig: Rig, k: int) -> None:
+    """Move both watermarks to just before tick k: the rig collects one bucket per tick."""
+    await rig.session.execute(  # type: ignore[attr-defined]
+        update(PropertyWatch)
+        .where(PropertyWatch.id == rig.watch.id)
+        .values(collected_through=T0 + STEP * (k - 1), evaluated_through=T0 + STEP * (k - 1))
+    )
+    await rig.session.commit()  # type: ignore[attr-defined]
+
+
+async def test_one_hour_of_buckets_is_not_a_baseline_for_any_volume_detector(db_session) -> None:
+    rig = await make_rig(
+        db_session, values=("alice",), detectors=VOLUME, pw_baseline_min_visits=2
+    )
+    await rig.ticks(0, 12)
+    await train(rig)
+    [cell] = await cells_of(rig, "alice")
+    assert cell.sample_count == 12 and not cell.is_reliable
+    # the same hour, a week later: the cell has 12 samples but only one visit
+    await skip_to(rig, WEEK)
+    plan_range(rig.plan, WEEK, WEEK + 8, {"alice": 900, "bob": 400})
+    await rig.ticks(WEEK, WEEK + 8)
+    for detector in VOLUME:
+        assert await rig.state_name("alice", detector) == "INSUFFICIENT_DATA", detector
+    assert await rig.anomalies() == []
+
+
+async def test_a_second_weekly_visit_makes_the_cell_reliable_and_judged(db_session) -> None:
+    rig = await make_rig(
+        db_session, values=("alice",), detectors=VOLUME, pw_baseline_min_visits=2
+    )
+    await rig.ticks(0, 12)
+    await skip_to(rig, WEEK)
+    await rig.ticks(WEEK, WEEK + 12)
+    await train(rig, now=LATER + timedelta(days=7))
+    [cell] = await cells_of(rig, "alice")
+    assert cell.sample_count == 24 and cell.is_reliable and cell.median == 100
+    await skip_to(rig, 2 * WEEK)
+    plan_range(rig.plan, 2 * WEEK, 2 * WEEK + 6, {"alice": 900, "bob": 400})
+    await rig.ticks(2 * WEEK, 2 * WEEK + 6)
+    assert await rig.state_name("alice", SPIKE) in {"CANDIDATE", "ACTIVE", "OPEN"}
+    assert [a.detector_type for a in await rig.anomalies()] == [SPIKE.value]
+

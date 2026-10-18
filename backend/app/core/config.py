@@ -654,6 +654,7 @@ class Settings(BaseSettings):
     pw_scope_stale_after_hours: int = Field(default=24, ge=1, le=720)
     pw_scope_change_grace_buckets: int = Field(default=12, ge=0, le=2016)
     pw_baseline_lookback_days: int = Field(default=28, ge=1)
+    pw_baseline_min_visits: int = Field(default=2, ge=1, le=52)
     pw_baseline_values_per_run: int = Field(default=100, ge=1, le=5000)
     pw_max_evaluation_buckets_per_run: int = Field(default=24, ge=1, le=2016)
     #: Spike: minimum multiple of the median, absolute rise and bucket population.
@@ -932,6 +933,15 @@ class Settings(BaseSettings):
             problems.append(
                 "PW_BASELINE_LOOKBACK_DAYS must not exceed PW_METRIC_RETENTION_DAYS "
                 f"({self.pw_baseline_lookback_days} > {self.pw_metric_retention_days})"
+            )
+        # One visit asks for no recurrence, so it needs no week of lookback.
+        if (
+            self.pw_baseline_min_visits > 1
+            and self.pw_baseline_min_visits * 7 > self.pw_baseline_lookback_days
+        ):
+            problems.append(
+                "PW_BASELINE_MIN_VISITS weekly visits must fit in PW_BASELINE_LOOKBACK_DAYS "
+                f"({self.pw_baseline_min_visits} x 7 > {self.pw_baseline_lookback_days})"
             )
         if self.pw_new_value_history_days >= self.pw_metric_retention_days:
             problems.append(
