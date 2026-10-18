@@ -789,9 +789,33 @@ PW-1 and PW-6 is in §G.16.
 > specs and shared verdict-scope mapping (`app/anomaly/capabilities.py`,
 > `app/property_watch/inputs.py`), the pure seasonal builder (`property_watch/baseline.py`), the
 > pure history verifier (`property_watch/history.py`) and all five pure verdict functions
-> (`property_watch/detectors.py`). Loading, persistence and lifecycle execution remain PW-3b; until
-> that scheduled pipeline exists, PW specs are exposed through `PW_DETECTORS` rather than the
-> production-wiring `all_detectors()` inventory.
+> (`property_watch/detectors.py`).
+>
+> **[BUILT — PW-3b].** `property_watch/engine.py` (`PwAnomalyEngine`) loads everything for all
+> enabled watches of an instance in bulk (the buckets after each watch's `evaluated_through`
+> up to `collected_through`, at most `pw_max_evaluation_buckets_per_run` per watch; tracked
+> values; their metric rows; the baseline cells of the pending hours of the week; the detector
+> states; the open incidents; the bucket history and the component lookup only while a value is
+> inside its novelty window), judges them with the pure detectors, and writes once per table
+> (states, incidents, transitions, watch status). The lifecycle is the shared
+> `anomaly/lifecycle.py` with `anomaly_open_after_intervals` and
+> `anomaly_resolve_after_intervals`; **this is where the spike's "required consecutive buckets"
+> live.** Disappearance keeps its own rule in the detector (`pw_disappear_buckets` measured zeros
+> before the first anomalous verdict); the lifecycle then needs `anomaly_open_after_intervals`
+> consecutive anomalous verdicts, so the incident opens at the `pw_disappear_buckets +
+> anomaly_open_after_intervals - 1`-th zero bucket (6 + 2 - 1 = 7 at the defaults). The two are
+> not counted twice: the detector counts zeros, the lifecycle counts verdicts. A bucket that is
+> unknown or not judgeable holds state; a failed collection stores no judged bucket and the
+> evaluation watermark does not move. A value that was not tracked at a bucket is not judged at
+> all. A `watch_version` bump resolves the old version's active incident at the next run with the
+> transition reason "watch definition changed" (the hook where PW-4 resolves the alert); the new
+> version's values are new rows with no baseline. `property_watch/training.py`
+> (`PwBaselineTrainer`) runs after evaluation in the same run: the
+> `pw_baseline_values_per_run` least recently computed current values, only up to the
+> evaluation watermark, 5 statements per chunk. `services/pw_pipeline.py` runs collect, evaluate,
+> train per instance; evaluation and training each run in a savepoint, so a failure keeps what
+> collection stored. `PW_DETECTORS` are in `all_detectors()` now that
+> `dispatch_property_watch_collection` is scheduled.
 
 **New enums, `AnomalyType` untouched** (AGENTS.md rule 6; the reason is stated at
 `backend/app/models/enums.py:139-145` for WAF and `:172-179` for IPS):
@@ -877,17 +901,23 @@ No verdict. Per bucket and value: events, the reading's measurement, share of **
 continuity). Requirement: none beyond the bucket existing. The table, the chart and the widget read
 the same bulk response (§G.11).
 
-### G.8.2 Output 4a: baseline deviation, three verdicts **[BUILT — PW-3a]**
+### G.8.2 Output 4a: baseline deviation, three verdicts **[BUILT — PW-3a] [BUILT — PW-3b]**
 
 > **As built.** One ordered precondition path fails closed on watch state, missing/uncollected
 > buckets, membership changes, a property that parsed on no event (`NOT_APPLICABLE`), thin or
 > incompatible cells and unknown readings. Maintenance is not a verdict exit (it only keeps a bucket
 > out of training; suppression is alerting's, PW-4). Consecutive-bucket confirmation of the spike
-> is the lifecycle's `anomaly_open_after_intervals` (PW-3b). A missing bucket inside the
+> is the lifecycle's `anomaly_open_after_intervals` (built in PW-3b, §G.8.0). A missing bucket inside the
 > disappearance window is `INSUFFICIENT_DATA`, never a broken streak. The
 > spike consumes the capability-granted increase-only scope; drop and disappearance never infer
 > absence from a lower bound. Disappearance reads an explicit sequence of exact, covered readings,
 > so an absent metric row becomes zero only through the PW-1 reading contract.
+
+> **[BUILT — PW-3b].** The engine feeds these three detectors the cell of the bucket's weekday and
+> hour, the value's reading (the §G.8.0 table through `facts.reading_for`), and the trailing
+> `pw_disappear_buckets` readings of the current `watch_version` only. Their thresholds come from
+> `PwAnomalyEngine._thresholds()`; a unit test fails if a `PwThresholds` field has no source in
+> the settings.
 
 All three read the value's `PW_VALUE_EVENTS_METRIC` cell for the bucket's weekday and hour.
 
@@ -911,12 +941,20 @@ is `scope_changed` (reason "membership changed"); the cell is missing or below
 `baseline_min_samples`; the value's measurement is unknown; then the detector's own guards. Each
 exit is `INSUFFICIENT_DATA` with a reason, never `NORMAL` and never zero.
 
-### G.8.3 Output 3: new-value detection **[BUILT — PW-3a]**
+### G.8.3 Output 3: new-value detection **[BUILT — PW-3a] [BUILT — PW-3b]**
 
 > **As built.** `verify_value_history` reports the first ordered completeness failure (missing or
 > duplicate buckets, width, `NOT_COLLECTED`, lower-bound discovery, truncated admission or another
 > watch version). The pure verdict then applies the learning, membership-change, pin, established,
 > history, appearance-flood and materiality exits without consulting storage.
+
+> **[BUILT — PW-3b].** The novelty facts (verified history, first-appearance bucket, events and
+> buckets with traffic since first appearance, materiality measurement, the watch's first
+> collected bucket, membership change around the first appearance) are built by the engine only
+> for values whose novelty window still covers a pending bucket, and only for watches that
+> selected a novelty detector. Values outside the window are passed an "established" fact the
+> detector leaves on at once. The watch's first collected bucket of the current version rides on
+> the pending-bucket read, so it costs no statement.
 
 `PW_NEW_VALUE`, the analogue of `WAF_NEW_ENDPOINT_ACCESS` (`docs/PHASE-B-WAF-BEHAVIOR.md` §30.5;
 spec `backend/app/anomaly/capabilities.py:394-414`; settings
@@ -1023,12 +1061,17 @@ B is noisier by construction (many pairs, sparse series, a high chance that some
 by accident) and has no precise claim to fail closed on. C is the better statistic and is blocked
 only by a missing marginal.
 
-### G.9.3 `PW_NEW_COMBINATION`, precisely **[BUILT — PW-3a]**
+### G.9.3 `PW_NEW_COMBINATION`, precisely **[BUILT — PW-3a] [BUILT — PW-3b]**
 
 > **As built.** Component histories are explicit pure inputs. A tracked occurrence in a
 > lower-bound bucket proves presence; a component that was not tracked, including one seen only
 > below admission, classifies conservatively as `PW_NEW_VALUE`. The two novelty verdicts are
 > mutually exclusive, and a one-property watch fails closed before combination evaluation.
+
+> **[BUILT — PW-3b].** The component lookup is the one conditional read: a single aggregated
+> statement (earliest counted occurrence of each component, per position and per bucket
+> measurement, before the tuple's first appearance), issued only while a tuple is inside its novelty
+> window. A test pins that it adds exactly one statement.
 
 On a 2-property watch every first-appearing tuple is classified once, at its first appearance, as
 exactly one of:
@@ -1472,7 +1515,13 @@ for a group and 1 for a source or a type.
   and 6 globally (`backend/app/core/config.py:122,132`). PW never raises it.
 - **Preview:** two searches, rate-limited (§G.6).
 
-### G.14.2 Database **[BUILT — PW-2b]**
+### G.14.2 Database **[BUILT — PW-2b] [BUILT — PW-3b]**
+
+> **[BUILT — PW-3b].** Pinned by `tests/integration/test_pw_engine_scale.py`: collection plus
+> evaluation is 20 statements per tick at 1 and 10 watches and at 50 and 200 values (the number
+> is equal at every size; the ceiling is 40), the component lookup adds one statement only
+> while a tuple is in its window, and training is 5 statements per chunk of
+> `pw_baseline_values_per_run` values whatever the number of values.
 
 - **Statements per tick: a design target of at most 40**, **constant in the number of watches
   (1 against 10) and in the number of values (50 against 200)**, excluding opening an alert (a few
