@@ -13,6 +13,20 @@ probe in §B.3.5 and is marked **[C-n]**.
 > backfill and the property-watch bootstrap; WAF and IPS read history only for sources first collected
 > after the answer; the load of a large install is accepted, with the window fitted to 72 hours and
 > said so. The remaining open questions take this design's recommendations.
+>
+> **Lab probe results (2026-10-18, 59 searches, read-only).** The lab console holds 16 days (from
+> 2026-10-02 15:00 UTC); its sources are young and spiky (one to four days with events each), so the
+> lab can show a `PARTIAL` history and a short new-value demonstration (§H.12.1 case B with a 3-day
+> history), not a full 28-day window. Ariel time grows about linearly with the window, roughly
+> 0.09 s per hour of window plus 0.05 s per search at this console's ~190 k events per hour: §B.8's
+> 1–3.5 s per search is too high here, and the limit is the search count and the per-tick cap, not
+> Ariel seconds (a busier console costs more per hour). A 168-hour Phase A search took 10–13 s, far
+> under the 120 s cut. The `STOP` pad changes no count (C-6). A per-source `MIN(starttime)` floor
+> costs ~31 s (C-7, not cheap), so the floor stays derived from the read itself. The first hour at the
+> console floor held 81 % of a steady hour, so the 24-hour margin is ample (C-4). Custom properties
+> were present on every old event found (C-3, events up to 6 days old). **Still open: A1 (retention
+> buckets, C-2)** — the console's retention endpoint was not reached; confirm it with the production
+> console's owner before relying on history there.
 
 ## B.0 What was asked, and what the backfill is not
 
