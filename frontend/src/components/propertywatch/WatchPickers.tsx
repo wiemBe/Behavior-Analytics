@@ -84,10 +84,7 @@ export function WatchScopePicker({
           id={queryId}
           type="search"
           className="field"
-          role="combobox"
           aria-controls={optionId}
-          aria-expanded="true"
-          aria-autocomplete="list"
           value={query}
           placeholder="Search the synced inventory"
           onChange={(event) => setQuery(event.target.value)}
@@ -126,16 +123,33 @@ export function WatchScopePicker({
             );
           })}
         </select>
+        {state === "ready" && (
+          <p className="field-hint" role="status">
+            {options.length === 0
+              ? `No ${SCOPE_KIND_LABELS[kind].toLowerCase()} matches.`
+              : `${options.length.toLocaleString("en-US")} ${SCOPE_KIND_LABELS[kind].toLowerCase()} ${options.length === 1 ? "option" : "options"} listed.`}
+          </p>
+        )}
         {state === "error" && (
           <p className="field-error" role="alert">
             Scope options could not be loaded. Check the backend, then search again.
           </p>
         )}
         {options.some(scopeOptionTooLarge) && (
-          <p className="field-hint">
-            Oversized groups are disabled. Split the group or use a type scope; the option names
-            its resolved size and limit reason.
-          </p>
+          <div className="field-hint pw-oversize">
+            <p>Disabled: these scopes are over the per-watch search limit.</p>
+            <ul>
+              {options.filter(scopeOptionTooLarge).map((option) => (
+                <li key={option.id}>
+                  <strong>{option.name}</strong>
+                  {option.synced_source_count === null
+                    ? ""
+                    : `, ${option.synced_source_count.toLocaleString("en-US")} sources`}
+                  . {option.scope_reason ?? "Split the scope or use a type scope."}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </div>

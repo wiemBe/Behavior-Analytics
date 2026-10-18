@@ -6,12 +6,10 @@ import {
   type PropertyWatchCreate,
   type PropertyWatchUpdate,
   type PwAnomalyTypeName,
-  type PwPreview,
   type PwPropertyOptions,
   type PwPropertyRef,
   type PwScopeKind,
   type PwScopeOption,
-  type PwValueSeries,
 } from "@/lib/api";
 
 export const PROPERTY_WATCH_WRITE = "property_watch:write";
@@ -43,7 +41,7 @@ export const DETECTORS: Record<
   },
   PW_VALUE_DROP: {
     label: "Value drop",
-    claim: "A value fell exactly below its seasonal expected range.",
+    claim: "A value's exact count fell below its seasonal expected range.",
     learning: "Needs a week of reliable baselines and adequate parsing coverage.",
   },
   PW_VALUE_DISAPPEARED: {
@@ -58,7 +56,7 @@ export const DETECTORS: Record<
   },
   PW_NEW_COMBINATION: {
     label: "New combination",
-    claim: "Two values seen before appeared together for the first time.",
+    claim: "A pair of values, each seen before, appeared together for the first time.",
     learning: "Needs two properties and 7 days of complete component history.",
   },
 };
@@ -278,25 +276,4 @@ export function classifyWatchError(error: unknown): WatchWriteRefusal {
   if (error.status === 429) return { kind: "rate", detail: text };
   if (error.status === 409) return { kind: "conflict", detail: text };
   return { kind: "error", detail: "The property watch could not be saved. Check the backend, then try again." };
-}
-
-/** Preview rows are one-hour aggregates, so the shared series chart gets one honest 60-minute point. */
-export function previewSeries(preview: PwPreview): PwValueSeries[] {
-  return preview.rows.slice(0, 5).map((row, index) => ({
-    value_id: `preview-${index}`,
-    value_key: row.components.join(" × ") || row.value_key,
-    pinned: false,
-    points: [
-      {
-        bucket_start: preview.window_end,
-        reading: row.events === 0 ? "MEASURED_ZERO" : "COUNT",
-        events: row.events,
-        measurement: preview.rows_measurement,
-        baseline_state: "NONE",
-        expected_low: null,
-        expected_median: null,
-        expected_high: null,
-      },
-    ],
-  }));
 }

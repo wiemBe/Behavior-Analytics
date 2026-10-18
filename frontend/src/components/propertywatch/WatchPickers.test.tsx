@@ -44,7 +44,10 @@ describe("property-watch scope picker", () => {
         onSelect={select}
       />,
     );
-    fireEvent.change(screen.getByRole("combobox", { name: "Find log source group" }), {
+    const filter = screen.getByRole("searchbox", { name: "Find log source group" });
+    expect(screen.queryByRole("combobox", { name: "Find log source group" })).toBeNull();
+    expect(filter).toHaveAttribute("aria-controls", screen.getByRole("combobox", { name: "Log source group" }).id);
+    fireEvent.change(filter, {
       target: { value: "DMZ" },
     });
     await act(async () => vi.advanceTimersByTime(200));
@@ -56,7 +59,9 @@ describe("property-watch scope picker", () => {
     const option = screen.getByRole("option", { name: /All devices.*needs 9 chunks/ });
     expect(option).toBeDisabled();
     expect(screen.getByRole("option", { name: /DMZ firewalls.*37 sources/ })).toBeEnabled();
-    expect(screen.getByText(/Split the group or use a type scope/)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("2 log source group options listed.");
+    expect(screen.getByText(/Disabled: these scopes are over the per-watch search limit/)).toBeInTheDocument();
+    expect(screen.getByRole("listitem")).toHaveTextContent("All devices. needs 9 chunks, above the limit of 4");
   });
 
   it("names an option-read failure rather than showing an empty inventory", async () => {

@@ -435,3 +435,6 @@ td.pw-value-cell {
     grid-column: auto;
   }
 }
+
+.pw-oversize p { margin: 0 0 var(--sp-1); }
+.pw-oversize ul { margin: 0; padding-left: var(--sp-5); }

@@ -4,12 +4,12 @@ import { ApiError } from "@/lib/api";
 
 import { catalog, watch } from "./fixtures";
 import {
+  DETECTORS,
   classifyWatchError,
   createWatchBody,
   draftFromWatch,
   draftReasons,
   pinReason,
-  previewSeries,
   propertyApplicability,
   propertyWatchAccessFrom,
   updateWatchBody,
@@ -128,34 +128,9 @@ describe("property-watch API refusals", () => {
   });
 });
 
-describe("preview chart projection", () => {
-  it("projects aggregate rows as one honest point and preserves hostile text as data", () => {
-    const result = previewSeries({
-      mode: "PREVIEW",
-      watch_id: "watch-1",
-      watch_version: 1,
-      window_start: "2026-10-18T07:00:00Z",
-      window_end: "2026-10-18T08:00:00Z",
-      bucket_seconds: 300,
-      searches_sent: 2,
-      outcome: "PARTIAL",
-      reason: null,
-      buckets_measured: 11,
-      buckets_lower_bound: 1,
-      buckets_unmeasured: 0,
-      total_events: 100,
-      parsed_events: 90,
-      unparsed_events: 10,
-      unparsed_bound: "UPPER_BOUND",
-      coverage: 0.9,
-      property_parses: true,
-      rows_measurement: "LOWER_BOUND",
-      rows: [{ value_key: '<img src=x onerror="x">', components: ['<img src=x onerror="x">'], events: 9, share: 0.1, truncated: false }],
-      queries: [],
-    });
-    expect(result[0].value_key).toContain("<img");
-    expect(result[0].points).toEqual([
-      expect.objectContaining({ bucket_start: "2026-10-18T08:00:00Z", events: 9, measurement: "LOWER_BOUND" }),
-    ]);
+describe("detector claims", () => {
+  it("states the drop as an exact count below the range, not an 'exactly below' slip", () => {
+    expect(DETECTORS.PW_VALUE_DROP.claim).toBe("A value's exact count fell below its seasonal expected range.");
+    expect(DETECTORS.PW_NEW_COMBINATION.claim).toContain("each seen before");
   });
 });

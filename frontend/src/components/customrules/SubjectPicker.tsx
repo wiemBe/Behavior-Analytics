@@ -392,6 +392,8 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
           {watchId && pinnedValues.length > 0 && (
             <p className="field-hint">
               Only pinned values are listed. To use another value, <Link href={`/behavior/watches/${watchId}`}>pin it on the watch first</Link>.
+              A value pinned just now is listed after the next property-watch collection, within
+              about an hour.
             </p>
           )}
         </>

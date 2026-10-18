@@ -51,7 +51,7 @@ function row(a: AnomalySummary): IpsAnomalyRow {
     id: a.id,
     detectedAt: a.detected_at,
     subject: ipsSubjectText(a),
-    sourceName: a.log_source_name ?? a.log_source_id,
+    sourceName: a.log_source_name ?? a.log_source_id ?? "Unknown source",
     typeLabel: rowTypeLabel(a),
     severity: a.severity,
     state: a.state,

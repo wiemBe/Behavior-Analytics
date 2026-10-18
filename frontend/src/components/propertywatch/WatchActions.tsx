@@ -8,6 +8,8 @@ import { api, type PropertyWatch, type PropertyWatchCatalog } from "@/lib/api";
 
 import { classifyWatchError } from "./authoring";
 
+import "./propertywatch.css";
+
 export function WatchActions({
   watch,
   catalog,
@@ -25,7 +27,7 @@ export function WatchActions({
     if (refusal.kind === "dependencies") {
       return (
         <>
-          {refusal.message} Detach these rules first:{" "}
+          {refusal.message}. Rules to detach first:{" "}
           {refusal.rules.map((rule, index) => (
             <span key={rule.id}>
               {index > 0 ? ", " : ""}
@@ -75,6 +77,7 @@ export function WatchActions({
       await api.deletePropertyWatch(watch.id);
       router.push("/behavior/watches");
     } catch (caught) {
+      setConfirming(null);
       setError(renderRefusal(caught, "The watch could not be deleted. Reload it and try again."));
       setPending(false);
     }
@@ -162,7 +165,11 @@ export function WatchActions({
           </div>
         </div>
       )}
-      {error && <div className="field-error pw-action-error" role="alert">{error}</div>}
+      {error && (
+        <div className="banner crit pw-action-error" role="alert">
+          <span>{error}</span>
+        </div>
+      )}
     </div>
   );
 }

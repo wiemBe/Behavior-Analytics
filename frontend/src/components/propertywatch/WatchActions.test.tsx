@@ -64,6 +64,10 @@ describe("property-watch enable, disable and delete", () => {
     fireEvent.click(within(confirm).getByRole("button", { name: "Delete this property watch" }));
     const refusal = await screen.findByText(/cannot delete the watch/);
     expect(refusal).toHaveTextContent("Deny flood");
+    expect(screen.getByRole("alert")).toHaveTextContent("custom rules pin its values. Rules to detach first:");
+    expect(screen.queryByRole("group", { name: "Delete watch confirmation" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete this property watch" })).toBeNull();
+    expect(screen.getByRole("alert")).toHaveClass("banner", "crit");
     expect(screen.getByRole("link", { name: "Deny flood" })).toHaveAttribute("href", "/custom-rules/rule-1");
     expect(screen.getByRole("link", { name: "Admin silence" })).toHaveAttribute("href", "/custom-rules/rule-2");
   });

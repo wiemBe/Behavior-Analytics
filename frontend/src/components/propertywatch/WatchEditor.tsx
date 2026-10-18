@@ -4,14 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useState } from "react";
 
-import { PropertyWatchSeriesChart } from "@/components/propertywatch/PropertyWatchSeriesChart";
 import { CodePanel } from "@/components/ui/CodePanel";
 import {
   api,
   type PropertyWatch,
   type PropertyWatchCatalog,
   type PwAnomalyTypeName,
-  type PwBucket,
   type PwPreview,
   type PwPropertyOptions,
   type PwScopeOption,
@@ -27,7 +25,6 @@ import {
   draftReasons,
   emptyWatchDraft,
   pinReason,
-  previewSeries,
   propertyReason,
   updateWatchBody,
   watchSummary,
@@ -35,46 +32,27 @@ import {
 } from "./authoring";
 import { WatchPropertyPicker, WatchScopePicker } from "./WatchPickers";
 
-const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
-const FALLBACK_DETECTORS = Object.keys(DETECTORS) as PwAnomalyTypeName[];
+import "./propertywatch.css";
 
-function previewBucket(preview: PwPreview): PwBucket {
-  const lower = preview.rows_measurement === "LOWER_BOUND";
-  return {
-    bucket_start: preview.window_end,
-    bucket_seconds: 3600,
-    watch_version: preview.watch_version,
-    total_events: preview.total_events,
-    parsed_events: preview.parsed_events,
-    unparsed_events: preview.unparsed_events,
-    untracked_events: null,
-    totals_complete: preview.total_events !== null,
-    values_measurement: lower ? "LOWER_BOUND" : preview.outcome === "MEASURED" ? "EXACT" : "NOT_COLLECTED",
-    pinned_measurement: "NOT_COLLECTED",
-    observed_values: preview.rows.length,
-    tracked_values_observed: preview.rows.length,
-    admitted_values: 0,
-    below_admission_threshold: 0,
-    rejected_over_quota: 0,
-    admission_truncated: false,
-    scope_member_count: null,
-    scope_changed: false,
-    in_maintenance: false,
-    collected_at: preview.window_end,
-  };
+const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+/** When a "n/unit" limit has room again: within one unit of it, never sooner than a second. */
+function retryIn(limit: string): string {
+  const unit = limit.split("/")[1]?.trim().replace(/s$/, "");
+  if (unit === "second") return "about a second";
+  if (unit === "minute") return "about a minute";
+  if (unit === "hour") return "up to an hour";
+  return "a little while";
 }
+
+const FALLBACK_DETECTORS = Object.keys(DETECTORS) as PwAnomalyTypeName[];
 
 function PreviewResult({
   preview,
-  catalog,
   propertyOptions,
 }: {
   preview: PwPreview;
-  catalog: PropertyWatchCatalog;
   propertyOptions: PwPropertyOptions | null;
 }) {
-  const series = previewSeries(preview);
-  const bucket = previewBucket(preview);
   const empty =
     preview.total_events === 0
       ? "The scope sent no events in the last closed hour. That is measured silence, so there are no values to list."
@@ -97,19 +75,8 @@ function PreviewResult({
       </div>
       <p className="subtitle">
         Last closed hour: <time dateTime={preview.window_start}>{formatDateTime(preview.window_start)}</time>{" "}
-        to <time dateTime={preview.window_end}>{formatDateTime(preview.window_end)}</time>. Counts in the
-        chart are one-hour aggregates, not 5-minute points.
+        to <time dateTime={preview.window_end}>{formatDateTime(preview.window_end)}</time>.
       </p>
-      <PropertyWatchSeriesChart
-        series={series}
-        bucketSeconds={3600}
-        windowStart={preview.window_start}
-        windowEnd={preview.window_end}
-        collected={preview.outcome === "NOT_MEASURED" ? [] : [preview.window_end]}
-        coverage={{ buckets: [bucket], floor: catalog.min_coverage }}
-        ariaLabel="Preview values in the last closed hour and their parsed share"
-        emptyText={empty}
-      />
       <dl className="pw-preview-facts">
         <div>
           <dt>Total events</dt>
@@ -298,14 +265,14 @@ export function WatchEditor({
       } else if (refusal.kind === "rate") {
         setMessage({
           tone: "warn",
-          text: `Preview rate limit reached. Try again after the ${catalog.preview_rate_limit} limit resets. The disabled watch remains saved.`,
+          text: `The preview is rate limited to ${catalog.preview_rate_limit}. Try again in ${retryIn(catalog.preview_rate_limit)}. The watch was saved disabled and the preview did not run.`,
         });
       } else if (refusal.kind === "dependencies") {
         setMessage({
           tone: "crit",
           text: (
             <>
-              {refusal.message} Detach these rules first:{" "}
+              {refusal.message}. Rules to detach first:{" "}
               {refusal.rules.map((rule, index) => (
                 <span key={rule.id}>
                   {index > 0 ? ", " : ""}
@@ -333,6 +300,14 @@ export function WatchEditor({
           void saveAndPreview();
         }}
       >
+        {currentWatch?.enabled && (
+          <div className="banner warn" role="note">
+            <span>
+              This watch is enabled. Saving here disables it until you enable it again from the
+              actions above.
+            </span>
+          </div>
+        )}
         <div className="pw-field">
           <label htmlFor={nameId}>Watch name</label>
           <input
@@ -605,7 +580,7 @@ export function WatchEditor({
           </div>
         )}
         {preview ? (
-          <PreviewResult preview={preview} catalog={catalog} propertyOptions={propertyOptions} />
+          <PreviewResult preview={preview} propertyOptions={propertyOptions} />
         ) : (
           <div className="notice" role="status">
             <p><strong>No preview has run for this draft.</strong></p>

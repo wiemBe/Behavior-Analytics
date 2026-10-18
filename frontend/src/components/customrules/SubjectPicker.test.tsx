@@ -118,10 +118,32 @@ describe("custom-rule subject picker", () => {
     fireEvent.change(await screen.findByRole("combobox", { name: "Property watch" }), {
       target: { value: watch().id },
     });
-    expect(await screen.findByText(/fresh pin becomes selectable after the next/)).toBeInTheDocument();
+    expect(await screen.findByText(/new pin can be used in a rule after the next property-watch collection, within about an hour/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the property watch/i })).toHaveAttribute(
       "href",
       `/behavior/watches/${watch().id}`,
     );
+  });
+
+  it("says a just-pinned value is not listed yet, even when other pins are", async () => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
+    vi.spyOn(api, "propertyWatchValues").mockResolvedValue(
+      paged([value("pv-1", "svc-backup", { pinned: true }), value("pv-2", "alice")]),
+    );
+    render(
+      <SubjectPicker
+        catalog={catalog()}
+        kind="PW_VALUE"
+        value={{ logSourceId: "", sourceClass: "", wafEndpointId: "", ipsEntityId: "", pwValueId: "" }}
+        onKind={vi.fn()}
+        onChange={vi.fn()}
+        onLabel={vi.fn()}
+      />,
+    );
+    fireEvent.change(await screen.findByRole("combobox", { name: "Property watch" }), {
+      target: { value: watch().id },
+    });
+    expect(await screen.findByText(/pinned just now is listed after the next/)).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "alice" })).toBeNull();
   });
 });

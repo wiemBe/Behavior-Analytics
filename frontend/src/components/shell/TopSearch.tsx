@@ -165,7 +165,7 @@ export function TopSearch() {
               .filter((a) =>
                 // An IPS row is also found by its subject (the entity), which its source name
                 // does not contain.
-                `${a.log_source_name ?? ""} ${isIpsRow(a) ? ipsSubjectText(a) : ""}`
+                `${a.log_source_name ?? ""} ${a.pw_value?.watch_name ?? ""} ${isIpsRow(a) ? ipsSubjectText(a) : ""}`
                   .toLowerCase()
                   .includes(needle),
               )
@@ -180,7 +180,7 @@ export function TopSearch() {
                   : {
                       id: `anomaly-${a.id}`,
                       href: `/anomalies/${a.id}`,
-                      title: a.log_source_name ?? a.log_source_id,
+                      title: a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? "Property watch value",
                       sub: `${a.anomaly_type} · ${a.state}`,
                     },
               );

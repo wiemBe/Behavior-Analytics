@@ -7,15 +7,8 @@ import { catalog, scope, watch } from "./fixtures";
 import { WatchEditor } from "./WatchEditor";
 
 const navigation = vi.hoisted(() => ({ refresh: vi.fn() }));
-const chart = vi.hoisted(() => ({ props: null as unknown }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
-vi.mock("./PropertyWatchSeriesChart", () => ({
-  PropertyWatchSeriesChart: (props: unknown) => {
-    chart.props = props;
-    return <div role="img" aria-label="preview chart" />;
-  },
-}));
 vi.mock("./WatchPickers", () => ({
   WatchScopePicker: ({ onKind, onSelect }: { onKind: (kind: string) => void; onSelect: (value: unknown) => void }) => (
     <button
@@ -142,6 +135,8 @@ describe("property-watch save and preview", () => {
       expect((field as HTMLInputElement).value).not.toContain("SELECT ");
     }
     expect(container.querySelectorAll("pre code")).toHaveLength(2);
+    expect(screen.getAllByText("Read-only")).toHaveLength(2);
+    expect(container.querySelector("pre code")?.closest("textarea, [contenteditable]")).toBeNull();
   });
 
   it("shows the preview coverage, unparsed remainder, per-type reading and lower bounds", async () => {
@@ -161,6 +156,9 @@ describe("property-watch save and preview", () => {
     expect(screen.getByText(/at most 100 events/)).toBeInTheDocument();
     expect(screen.getByText(/catalog consulted 3 types/)).toBeInTheDocument();
     expect(screen.getAllByText(/at least 600/).length).toBeGreaterThan(0);
+    // The preview has one aggregate per value, so no time series is drawn for it.
+    expect(screen.queryByText(/chart|Not collected/i)).toBeNull();
+    expect(document.querySelector("canvas, .pw-chart")).toBeNull();
   });
 
   it.each([
@@ -184,6 +182,19 @@ describe("property-watch save and preview", () => {
     render(<WatchEditor catalog={catalog()} mode="edit" watch={watch()} initialScope={scope()} />);
     await save();
     expect(screen.getAllByText(words).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/chart/i)).toBeNull();
+  });
+});
+
+describe("property-watch editor on an enabled watch", () => {
+  it("says once that saving disables the watch, and not for a disabled watch", () => {
+    const { unmount } = render(
+      <WatchEditor catalog={catalog()} mode="edit" watch={watch({ enabled: true })} initialScope={scope()} />,
+    );
+    expect(screen.getAllByText(/Saving here disables it until you enable it again/)).toHaveLength(1);
+    unmount();
+    render(<WatchEditor catalog={catalog()} mode="edit" watch={watch({ enabled: false })} initialScope={scope()} />);
+    expect(screen.queryByText(/Saving here disables it/)).toBeNull();
   });
 });
 
@@ -238,8 +249,9 @@ describe("property-watch editor refusals", () => {
     render(<WatchEditor catalog={catalog({ preview_rate_limit: "5/minute" })} mode="edit" watch={watch()} initialScope={scope()} />);
     fireEvent.click(screen.getByRole("button", { name: "Save as disabled and preview" }));
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Try again after the 5/minute limit resets");
-    expect(alert).toHaveTextContent("remains saved");
+    expect(alert).toHaveTextContent("rate limited to 5/minute");
+    expect(alert).toHaveTextContent("Try again in about a minute");
+    expect(alert).toHaveTextContent("saved disabled");
   });
 
   it("shows collection off and inline pin reasons without inventing a preview", () => {
@@ -252,6 +264,7 @@ describe("property-watch editor refusals", () => {
       />,
     );
     expect(screen.getByText("PW_COLLECTION_ENABLED").tagName).toBe("CODE");
+    expect(screen.getByText("COLLECTION OFF.")).toBeInTheDocument();
     expect(screen.getByText(/Quotes, backslashes/)).toBeInTheDocument();
     expect(screen.getByText("No preview has run for this draft.")).toBeInTheDocument();
   });
