@@ -17,7 +17,9 @@ A scope that cannot be trusted resolves to a reason, never to a guess: a vanishe
 group is `SCOPE_EMPTY`, a group row older than `pw_scope_stale_after_hours` is `SCOPE_STALE`
 (a failed group listing is swallowed by the sync, so its rows keep their old `synced_at`),
 and a group above `pw_max_chunks_per_watch` chunks is `SCOPE_TOO_LARGE`. Each of them writes
-no bucket (AGENTS.md rule 8).
+no bucket (AGENTS.md rule 8). Their `groups_walked`, `member_count` and `members` still carry
+what the last sync held, so the API's `/scope` read can show it marked with the status; only a
+`resolved` scope ever searches or persists.
 
 `scope_changed_flags` decides which buckets of a tick carry `scope_changed`: the first bucket
 under a new fingerprint and the `pw_scope_change_grace_buckets` after it.
@@ -76,7 +78,10 @@ class ResolvedScope:
     groups_walked: tuple[int, ...] = ()
     #: The one source of a `LOG_SOURCE` scope, for its maintenance window.
     source: SourceRow | None = None
-    #: Resolved members for source/group maintenance; type scopes deliberately have none.
+    #: The inventory's members, for group maintenance and for the `/scope` read. Populated by
+    #: the walk even when the scope did not resolve (`SCOPE_STALE`/`SCOPE_TOO_LARGE`), so the
+    #: API can return what the inventory holds, marked as it is: only `resolved` scopes search
+    #: or persist anything. Type scopes deliberately have none.
     members: tuple[SourceRow, ...] = ()
 
     @property
@@ -176,13 +181,6 @@ def resolve_scope(
         return _unresolved(
             scope_kind, PwWatchStatus.SCOPE_EMPTY, "the log source group is not in the inventory"
         )
-    if now - own.synced_at > stale_after:
-        return _unresolved(
-            scope_kind,
-            PwWatchStatus.SCOPE_STALE,
-            "the group inventory was last synced at "
-            f"{own.synced_at.isoformat()}, older than {stale_after}",
-        )
     walked = group_and_descendants(group_id, groups)
     wanted = set(walked)
     member_rows = tuple(
@@ -192,13 +190,27 @@ def resolve_scope(
         )
     )
     member_ids = sorted({source.qradar_id for source in member_rows})
+    walked_ids = tuple(sorted(wanted))
+    # The inventory facts are reported even when the scope does not resolve, so the API can
+    # show what the last sync holds; `chunks` and the status still fail the scope closed.
+    if now - own.synced_at > stale_after:
+        return _unresolved(
+            scope_kind,
+            PwWatchStatus.SCOPE_STALE,
+            "the group inventory was last synced at "
+            f"{own.synced_at.isoformat()}, older than {stale_after}",
+            member_count=len(member_ids),
+            groups_walked=walked_ids,
+            members=member_rows,
+        )
     if not member_ids:
         return _unresolved(
             scope_kind,
             PwWatchStatus.SCOPE_EMPTY,
             "the group and its descendants hold no synced log source",
             member_count=0,
-            groups_walked=tuple(sorted(wanted)),
+            groups_walked=walked_ids,
+            members=member_rows,
         )
     chunks = chunk_ids(member_ids, max_sources)
     if len(chunks) > max_chunks:
@@ -207,14 +219,15 @@ def resolve_scope(
             PwWatchStatus.SCOPE_TOO_LARGE,
             f"{len(member_ids)} sources need {len(chunks)} searches; the limit is {max_chunks}",
             member_count=len(member_ids),
-            groups_walked=tuple(sorted(wanted)),
+            groups_walked=walked_ids,
+            members=member_rows,
         )
     return ResolvedScope(
         scope_kind,
         chunks=chunks,
         member_count=len(member_ids),
         fingerprint=scope_fingerprint(member_ids),
-        groups_walked=tuple(sorted(wanted)),
+        groups_walked=walked_ids,
         members=member_rows,
     )
 
