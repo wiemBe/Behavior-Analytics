@@ -199,9 +199,23 @@ _CUSTOM_RULE_METRICS: tuple[MetricCatalogEntry, ...] = (
             "the numerator a lower bound"
         ),
     ),
+    MetricCatalogEntry(
+        metric=CustomRuleMetric.PW_VALUE_EVENTS,
+        subject_kind=CustomRuleSubjectKind.PW_VALUE,
+        unit="events/bucket",
+        reads=("pw_value_metric.events",),
+        measurement=MeasurementRule.LOWER_BOUND_PROVES_INCREASE,
+        is_ratio=False,
+        bulk_loader="PW_VALUE",
+        note=(
+            "exact for a pinned value when its search was whole; a lower-bound "
+            "bucket proves 'above' only"
+        ),
+    ),
 )
 
-#: Every legal rule metric, keyed by metric. Exactly the ten rows of §F.1.1.
+#: Every legal rule metric, keyed by metric: the ten rows of §F.1.1 and the
+#: property-watch value row of Phase G §G.10.2.
 CUSTOM_RULE_METRICS: dict[CustomRuleMetric, MetricCatalogEntry] = {
     entry.metric: entry for entry in _CUSTOM_RULE_METRICS
 }

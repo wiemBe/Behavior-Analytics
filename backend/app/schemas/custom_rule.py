@@ -33,6 +33,7 @@ class CustomRuleCreate(BaseModel):
     source_class: str | None = Field(default=None, max_length=32)
     waf_endpoint_id: uuid.UUID | None = None
     ips_entity_id: uuid.UUID | None = None
+    pw_value_id: uuid.UUID | None = None
     metric: str = Field(min_length=1, max_length=32)
     operator: str = Field(min_length=1, max_length=16)
     threshold_value: float
@@ -52,6 +53,7 @@ class CustomRulePreviewIn(BaseModel):
     source_class: str | None = Field(default=None, max_length=32)
     waf_endpoint_id: uuid.UUID | None = None
     ips_entity_id: uuid.UUID | None = None
+    pw_value_id: uuid.UUID | None = None
     metric: str = Field(min_length=1, max_length=32)
     operator: str = Field(min_length=1, max_length=16)
     threshold_value: float
@@ -78,6 +80,7 @@ class CustomRuleUpdate(BaseModel):
     source_class: str | None = Field(default=None, max_length=32)
     waf_endpoint_id: uuid.UUID | None = None
     ips_entity_id: uuid.UUID | None = None
+    pw_value_id: uuid.UUID | None = None
     metric: str | None = Field(default=None, min_length=1, max_length=32)
     operator: str | None = Field(default=None, min_length=1, max_length=16)
     threshold_value: float | None = None
@@ -131,6 +134,7 @@ class CustomRuleOut(BaseModel):
     source_class: str | None
     waf_endpoint_id: uuid.UUID | None
     ips_entity_id: uuid.UUID | None
+    pw_value_id: uuid.UUID | None
     metric: str
     operator: str
     threshold_value: float

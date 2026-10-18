@@ -842,6 +842,9 @@ _INTERPRETERS: dict[CustomRuleMetric, _Interpreter] = {
     CustomRuleMetric.EVENTS: _entity_events,
     CustomRuleMetric.TOTAL_EVENTS: _total_events,
     CustomRuleMetric.BLOCKED_SHARE: _blocked_share,
+    # The loader decides the value's measurement and puts it where an IPS entity's
+    # dimension measurement goes (design §G.10.2), so the reading is the same shape.
+    CustomRuleMetric.PW_VALUE_EVENTS: _entity_events,
 }
 
 # A missing key is a programming error and should fail at import, not on the

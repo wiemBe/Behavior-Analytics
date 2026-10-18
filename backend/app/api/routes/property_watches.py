@@ -585,6 +585,22 @@ def _merge(watch: PropertyWatch, payload: PropertyWatchUpdate) -> _Merged:
     )
 
 
+async def _refuse_if_pinned_by_rules(
+    session: AsyncSession,
+    watch_id: uuid.UUID,
+    action: str,
+    *,
+    value_keys: list[str] | None = None,
+) -> None:
+    """409 naming the F.1 rules that pin a value of this watch (design §G.10.2).
+
+    `value_keys` narrows the check to the values an unpin would drop; `None` is every value.
+    """
+    rules = await svc.dependent_rules(session, watch_id, value_keys=value_keys)
+    if rules:
+        raise HTTPException(status.HTTP_409_CONFLICT, svc.dependency_refusal(rules, action))
+
+
 def _label(kind: PwScopeKind, source: object, type_id: object, group_id: object) -> str:
     if kind is PwScopeKind.LOG_SOURCE:
         return f"{kind.value}:{source}"
@@ -664,6 +680,17 @@ async def update_watch(
     )
     if needs_capacity:
         await _lock_enabled_cap(session)
+    if changed & {"scope", "properties"}:
+        await _refuse_if_pinned_by_rules(
+            session, watch.id, "change the scope or properties (the watch version would change)"
+        )
+    if "pinned_values" in changed:
+        await _refuse_if_pinned_by_rules(
+            session,
+            watch.id,
+            "unpin a value",
+            value_keys=svc.removed_pin_keys(watch.pinned_values, merged.pinned_values),
+        )
     snapshot_before = svc.watch_snapshot(watch)
     watch.name = new_name
     watch.description = merged.description
@@ -707,9 +734,14 @@ async def update_watch(
 async def delete_watch(
     watch_id: uuid.UUID, session: SessionDep, principal: PrincipalDep
 ) -> Response:
-    """Delete the watch and, by cascade, every value, bucket, baseline and incident it holds."""
+    """Delete the watch and, by cascade, every value, bucket, baseline and incident it holds.
+
+    Refused with 409 while an F.1 rule pins one of its values: the rule is not deleted by
+    cascade, and the database restricts it too.
+    """
     _guard(principal)
     watch = await _locked(session, watch_id)
+    await _refuse_if_pinned_by_rules(session, watch.id, "delete the watch")
     snapshot = svc.watch_snapshot(watch)
     key = str(watch.id)
     await session.delete(watch)
@@ -834,8 +866,8 @@ async def put_pins(
 ) -> PinsOut:
     """Replace the pinned list. Each pin is checked against ``PW_PINNED_VALUE_PATTERN``.
 
-    Pins do not bump ``watch_version``. F.1 rules that depend on a pinned value are not
-    reported yet: the dependency column arrives with PW-6.
+    Pins do not bump ``watch_version``. Unpinning a value an F.1 rule pins is refused with
+    409 naming the rules (design §G.10.2).
     """
     _guard(principal)
     watch = await _locked(session, watch_id)
@@ -843,6 +875,12 @@ async def put_pins(
         raise HTTPException(status.HTTP_409_CONFLICT, _conflict(watch))
     _reject(
         svc.pin_reasons(payload.pinned_values, len(watch.properties), settings.pw_max_pinned_values)
+    )
+    await _refuse_if_pinned_by_rules(
+        session,
+        watch.id,
+        "unpin a value",
+        value_keys=svc.removed_pin_keys(watch.pinned_values, payload.pinned_values),
     )
     current = {tuple(p) for p in watch.pinned_values}
     wanted = [list(p) for p in payload.pinned_values]
