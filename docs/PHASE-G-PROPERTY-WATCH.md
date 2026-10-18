@@ -1232,6 +1232,29 @@ never carry QRadar text, a console address or a secret (AGENTS.md rule 5).
 > filter and a `pw_value` object; `log_source_id` is `null` for a type- or group-scoped watch.
 > The anomaly histogram does not count PW incidents yet (its repository is outside PW-5).
 
+> **[BUILT — PW-5b: `GET /property-watches/{id}/scope` and the resolved member count of a
+> group in `scope-options`]** (`backend/app/api/routes/property_watches.py`,
+> `backend/app/services/property_watches.py`, `backend/app/schemas/property_watch.py`,
+> `backend/app/property_watch/scope.py`). PW-5's minimal `resolve_groups` is gone: the API, the
+> enable caps, the preview and the collector all resolve through PW-2b's pure resolver over the
+> one bulk inventory read (`resolve_subjects`), so they can never disagree about a scope, and a
+> group walk is computed before the freshness check, so an unresolved scope still carries the
+> `groups_walked`, `member_count` and `members` the last sync held. `GET /{id}/scope` answers with
+> the resolved `member_count`, the cycle-safe walk's group ids and names, the walked group rows'
+> oldest `synced_at` as the inventory age in seconds (UTC), the state (resolved, or `SCOPE_EMPTY`,
+> `SCOPE_STALE` or `SCOPE_TOO_LARGE`) and its reason, the stored membership changes of the watch's
+> current version (a stored bucket whose `scope_fingerprint` differs from the one before it,
+> newest first, with the count before and after and whether it is in the grace window; a
+> `NOT_COLLECTED` bucket is skipped), and up to `SCOPE_MEMBERS_LIMIT` (200) member names, sorted,
+> with the true total. A scope that does not resolve still returns the last sync's members, marked
+> with its state, never a zero (§G.4). `scope-options` reports a group's resolved member count and
+> a type's synced-source count through the same resolver; a group that is stale or too large shows
+> no count and names why in `scope_state`/`scope_reason`, while an empty group's measured zero is
+> reported as `0` with `SCOPE_EMPTY`. Every read is bulk: `/{id}/scope` is a fixed 6 statements for
+> a group (4 for a source or a type) and `scope-options` a fixed 3 for groups (2 for types), at any
+> number of groups or sources (rule 9). `property-options` for a group now takes the in-scope types
+> from the resolver's own walk (404 when the group row is absent, 409 when it does not resolve).
+
 ---
 
 ## G.12 Fail-closed rules, in one place

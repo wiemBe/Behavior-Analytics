@@ -122,6 +122,58 @@ class ScopeSummaryOut(BaseModel):
     detail: str | None = None
     #: The QRadar id the generated AQL speaks (a source's `qradar_id`, a type or group id).
     qradar_id: int | None = None
+    #: The resolved member count (design §G.4), from the same resolver as `/scope`. `None`
+    #: when the scope could not be resolved or the read did not ask for it.
+    member_count: int | None = None
+
+
+class ScopeGroupOut(BaseModel):
+    """One group the cycle-safe walk met, by id and name."""
+
+    qradar_id: int
+    name: str
+
+
+class ScopeChangeOut(BaseModel):
+    """One membership change: the first stored bucket under a fingerprint that differs.
+
+    `member_count_before` is the previous stored bucket's count (or `None` when there was
+    none); `in_grace_window` is the bucket's `scope_changed` flag (design §G.4).
+    """
+
+    bucket_start: datetime
+    member_count_before: int | None = None
+    member_count_after: int | None = None
+    in_grace_window: bool
+
+
+class WatchScopeOut(BaseModel):
+    """`GET /property-watches/{id}/scope`: what the scope resolves to, and how it changed.
+
+    `state` is `None` when the scope resolved; otherwise it is the resolver's status
+    (`SCOPE_EMPTY`, `SCOPE_STALE` or `SCOPE_TOO_LARGE`) with its `reason`. A scope that did
+    not resolve still returns what the inventory holds, marked: `member_count` may be absent
+    and is never a zero drawn from nothing. `members` names at most `members_total` sources.
+    """
+
+    watch_id: uuid.UUID
+    watch_version: int
+    kind: PwScopeKind
+    resolved: bool
+    state: PwWatchStatus | None = None
+    reason: str | None = None
+    #: The resolved member count. `None` when the resolver would not state one.
+    member_count: int | None = None
+    #: Up to 200 member names, sorted; `members_total` is the true count.
+    members: list[str] = Field(default_factory=list)
+    members_total: int | None = None
+    #: The groups the walk met, the group itself first in the walk order.
+    groups_walked: list[ScopeGroupOut] = Field(default_factory=list)
+    #: The oldest `synced_at` of the walked group rows: the inventory age, UTC.
+    inventory_synced_at: datetime | None = None
+    inventory_age_seconds: int | None = None
+    #: The stored membership changes, newest first (empty when the scope cannot change).
+    changes: list[ScopeChangeOut] = Field(default_factory=list)
 
 
 class CoverageOut(BaseModel):
@@ -219,9 +271,13 @@ class ScopeOptionOut(BaseModel):
     name: str
     #: A source's type name, a group's path from the root.
     detail: str | None = None
-    #: A type's number of synced sources. `None` for a source or group: the resolved member
-    #: count of a group comes with the scope resolver (PW-5b).
+    #: A type's or group's resolved member count (design §G.4). `None` when the scope could
+    #: not be resolved (`scope_state` says why); a measured zero is `0`, never `None`.
     synced_source_count: int | None = None
+    #: `None`: the scope resolved. Otherwise the resolver's status (`SCOPE_STALE` and the
+    #: like), with its `scope_reason`. A group or type with no count says why here.
+    scope_state: PwWatchStatus | None = None
+    scope_reason: str | None = None
 
 
 class PropertyOptionOut(BaseModel):
