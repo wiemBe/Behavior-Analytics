@@ -1701,11 +1701,11 @@ ailenin `last_run_at` alanı NULL kalır. Kaydedilen bir izleme her zaman **devr
 etkinleştirilmemiş bir izleme toplanmaz. `PROPERTY_WATCH` aile kadansı (varsayılan 1 sa) henüz
 dolmamışsa kova da yoktur.
 
-**Doğrulama:** `doctor` çıktısındaki `cadence` satırı `PROPERTY_WATCH` ailesini sayar. **Dikkat:**
-`doctor` ailenin anahtarını bilmez (`families_off` satırı mülk izlemeyi listelemez), bu yüzden aile
-kapalıyken `cadence` satırı `PROPERTY_WATCH`'i "enabled families late or never run" olarak WARN
-gösterebilir; bu tek başına toplamanın açık olduğunu göstermez. Kesin doğrulama izlemenin
-durumudur:
+**Doğrulama:** `doctor` çıktısındaki `cadence` satırı `PROPERTY_WATCH` ailesini sayar ve
+`families_off` satırı `PW_COLLECTION_ENABLED` anahtarını gösterir. **Dikkat:** aile kapalıyken
+`cadence` satırı `PROPERTY_WATCH`'i listelemez; `cadence` satırında WARN görmek tek başına
+toplamanın açık olduğunu göstermez (aile açık ama kadansı henüz dolmamış da olabilir). Kesin
+doğrulama izlemenin durumudur:
 
 ```bash
 ./qradar-dash doctor

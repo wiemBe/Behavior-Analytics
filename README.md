@@ -1363,9 +1363,12 @@ and `pw_bucket` rows older than `pw_metric_retention_days`, then any retired `pw
 last metric has aged out. It never deletes a value whose incident is still OPEN or RECOVERING, and
 counts the rows it held back; a value retired through idleness resolves its still-open incident at
 the next engine run, so that guard normally protects nothing and the row leaves as it would anyway.
-`PW_ANOMALY_RETENTION_DAYS` is declared and validated but **not applied by any task yet**: resolved
-`pw_anomaly` rows are not deleted, so incident history accumulates (the design schedules 180-day
-incident retention; the code does not implement it).
+It also deletes a `pw_anomaly` incident whose state is terminal (RESOLVED, or a candidate that
+closed back to NORMAL) and that ended more than `pw_anomaly_retention_days` ago, taking its
+transitions by cascade. It never deletes one a `pw_detector_state` still points at, nor one an
+unresolved alert depends on — the engine resolves an incident's alert together with the incident
+only while alerting is on, so a shadow-mode flip can leave an open alert on a resolved incident —
+and counts what it held back.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -1402,7 +1405,7 @@ incident retention; the code does not implement it).
 | `PW_NEW_VALUE_MIN_EVENTS` | 20 | New value: minimum events since first appearance to be material |
 | `PW_NEW_VALUE_MIN_BUCKETS` | 2 | New value: minimum buckets with traffic since first appearance |
 | `PW_METRIC_RETENTION_DAYS` | 35 | Age at which buckets and value metrics are deleted |
-| `PW_ANOMALY_RETENTION_DAYS` | 180 | Resolved-incident retention; declared and validated, but no task applies it yet |
+| `PW_ANOMALY_RETENTION_DAYS` | 180 | Age at which a terminal incident and its transitions are deleted |
 | `PW_RETENTION_BATCH_SIZE` | 5000 | Rows deleted per retention batch |
 | `PW_RETENTION_MAX_BATCHES` | 20 | Batches per retention run |
 | `PW_RETENTION_INTERVAL_SECONDS` | 86400 | One retention run per day |

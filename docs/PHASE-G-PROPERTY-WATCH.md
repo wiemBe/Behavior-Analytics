@@ -696,11 +696,13 @@ The only value texts that persist are admitted values and pinned values.
 
 ### G.7.2 Values as personal data (rule 3) **[BUILT — PW-2b; PW-3c: the open-incident retention guard]**
 
-> **As built, and one gap.** `PwRetention` deletes aged `pw_value_metric` and `pw_bucket` rows and
-> retired `pw_value` rows, and never a value whose incident is still OPEN or RECOVERING (PW-3c
-> item 2). `PW_ANOMALY_RETENTION_DAYS` is declared and validated but **no task applies it**: resolved
-> `pw_anomaly` rows are not deleted, so the "anomalies 180 days" sentence below is design intent, not
-> built. The code wins; §G.14.3's row for that setting carries the same caveat.
+> **As built.** `PwRetention` deletes aged `pw_value_metric` and `pw_bucket` rows, retired
+> `pw_value` rows, and terminal `pw_anomaly` incidents older than `pw_anomaly_retention_days`
+> (with their transitions by cascade). It never deletes a value whose incident is still OPEN or
+> RECOVERING (PW-3c item 2), an incident a `pw_detector_state` still points at, or one an
+> unresolved alert depends on; what it holds back is counted in `blocked`. T-135 closed PW-11's
+> gap: the "anomalies 180 days" sentence below is now applied by
+> `apply_property_watch_retention`, and §G.14.3's row for that setting says so.
 
 A property such as `Username` carries personal data, and a free-text field can carry worse: a
 user who types a password into a username box on a failed login produces a "username" that is a
@@ -1688,7 +1690,7 @@ tuning, not measurements.
 | `pw_new_value_history_days` | 7 | `waf_new_endpoint_history_days` (`:618`); validated below the retention |
 | `pw_new_value_window_buckets`, `pw_new_value_min_events`, `pw_new_value_min_buckets` | 12, 20, 2 | the WAF novelty defaults (`:620-624`) |
 | `pw_metric_retention_days` | 35 | bucket and metric rows |
-| `pw_anomaly_retention_days` | 180 | resolved incidents; declared and validated, but no task applies it yet (§G.7.2) |
+| `pw_anomaly_retention_days` | 180 | terminal incidents and their transitions; applied by `apply_property_watch_retention` (§G.7.2) |
 | `pw_retention_batch_size`, `_max_batches`, `_interval_seconds` | 5,000, 20, 86,400 | the other retention tasks |
 
 Retention is one bounded daily task, `apply_pw_retention`, on the beat entry pattern of
