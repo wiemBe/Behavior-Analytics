@@ -751,7 +751,7 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   pinned values plus tracked values would exceed the ceiling stops admitting automatic values and
   says so (`admission_truncated`).
 
-### G.7.4 The migration **[BUILT — PW-1 half]**
+### G.7.4 The migration **[BUILT — PW-1 half; PW-6 half is `0027`]**
 
 > **As built by PW-1:** `0026_property_watch.py` revises `0025`, creates the eight PW tables,
 > registers both hypertables and seeds `PROPERTY_WATCH` at 3,600 seconds with `ON CONFLICT DO
@@ -759,6 +759,12 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
 > hypertables, the seed, the scope/property `CHECK`s and `alembic check`. In accordance with the
 > PW-1 task split below, `custom_rule.pw_value_id` and the recreated subject `CHECK` are not in
 > `0026`; they remain PW-6's next migration.
+>
+> **As built by PW-6:** `0027_custom_rule_pw_value.py` revises `0026`: it adds
+> `custom_rule.pw_value_id` (FK to `pw_value.id`, `ON DELETE RESTRICT`, indexed) and drops and
+> recreates `ck_custom_rule_subject_matches_kind` with `PW_VALUE`. The downgrade deletes the
+> `PW_VALUE` rules (their breaches cascade) before restoring the old `CHECK`. Its test is
+> `tests/integration/test_migration_0027.py`.
 
 One additive migration, number "next at build time" (head is `0025_auth_sessions`,
 `backend/alembic/versions/`). It creates the tables above, registers `pw_bucket` and
@@ -1145,7 +1151,7 @@ renamed host; the page does not claim intent (§G.2).
   resolved member is; a type watch has no maintenance state in v1 (the membership is decided on the
   appliance). That limitation is stated on the watch page.
 
-### G.10.2 Threshold alerts: the F.1 subject kind
+### G.10.2 Threshold alerts: the F.1 subject kind **[BUILT — PW-6]**
 
 Threshold alerts are an F.1 rule, not a PW detector (user answer 1, "value DENY above 500 per
 bucket, sustained 3 buckets"). The extension, all additive:
