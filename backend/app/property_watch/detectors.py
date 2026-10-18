@@ -229,6 +229,16 @@ class _Guard:
                 f"the baseline uses watch version {cell.watch_version}, not the bucket's "
                 f"{self.bucket.watch_version}"  # type: ignore[union-attr]
             )
+        if (
+            not cell.is_reliable
+            and cell.sample_count >= self.thresholds.baseline_min_samples
+        ):
+            return self.insufficient(
+                f"the value-events baseline has {cell.sample_count} sample(s), but they come "
+                "from too few separate weekly visits of this weekday and hour: a baseline "
+                "needs the same hour from at least two different weeks",
+                sample_count=cell.sample_count,
+            )
         if not cell.is_reliable or cell.sample_count < self.thresholds.baseline_min_samples:
             return self.insufficient(
                 f"the value-events baseline has {cell.sample_count} sample(s), below the "

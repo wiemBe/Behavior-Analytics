@@ -896,7 +896,10 @@ that is gone (PW-3c item 3). Lookback `pw_baseline_lookback_days` = 28 (`ips_bas
 **Learning period, stated honestly.** A cell is judged only once it has 8 clean samples. A visit to
 an hour-of-week gives up to 12 five-minute samples, but the same cell is visited once a week, so the
 first verdict on a cell comes **one week after the value was first tracked**, and a value is fully
-judged after a week of recurring hours. The watch page shows, per value, "baseline: N of 168
+judged after a week of recurring hours. A cell is also reliable only when its retained samples
+come from at least `pw_baseline_min_visits` (default 2) distinct weekly visits, counted as UTC
+calendar dates of the bucket start (D-30): the 12 samples of one hour are correlated, not a baseline.
+The watch page shows, per value, "baseline: N of 168
 hour-of-week cells reliable", never a silent `NORMAL`. `PW_NEW_VALUE` has its own, shorter period
 (history, §G.8.3).
 
@@ -1681,6 +1684,7 @@ tuning, not measurements.
 | `pw_scope_stale_after_hours` | 24 | |
 | `pw_scope_change_grace_buckets` | 12 | |
 | `pw_baseline_lookback_days` | 28 | not above the metric retention |
+| `pw_baseline_min_visits` | 2 | 1 to 52; above 1, `min_visits x 7` not above `pw_baseline_lookback_days` |
 | `pw_baseline_values_per_run` | 100 | |
 | `pw_max_evaluation_buckets_per_run` | 24 | `ips_max_evaluation_buckets_per_run` (`:191`) |
 | `pw_spike_ratio`, `pw_min_absolute_delta_events`, `pw_min_bucket_events` | 2.0, 50, 20 | `ips_spike_ratio` and neighbours (`:193-195`), proposed |
