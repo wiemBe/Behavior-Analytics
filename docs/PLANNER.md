@@ -16,11 +16,11 @@ so). **`feat/phase-ce` @ `ea58e9a` + PW-7c + docs (pushed; code head `15f109e` m
 OPS-17 (image prefix → `ghcr.io/wiembe/behavior-analytics`). Migration head `0027`.
 Every merged `agent/*` branch, worktree and DB was removed (local and origin).
 
-**In flight at 17:00 — read this first in the new chat:**
+**In flight at 17:00 (PW-10 stopped 17:03) — read this first in the new chat:**
 
 | Task | Agent | Survives the chat? | Where | If it stopped |
 |---|---|---|---|---|
-| **PW-10** live validation ([spec](tasks/PW-10.md)), shadow mode | Sonnet sub-agent | **No** | detached worktree `pw10` @ `9924ea9`, DB `qradar_obs_pw10`, scratch and report `QRadar-Dash-work/pw10/PW-10.report.md` (written as it goes; plan table in §2) | Its plan: source **212 `ips-gw-01@IPS`**, `username`, pin `compromised.user`; ticks every 5 min **14:02:30–14:57:30 UTC (17:02–17:57 local)**; generator S1 steady 1.2 EPS 13:50–14:55 UTC (`--duration 3900`, ends by itself), S2 `--fixed-username compromised.user` 5 EPS 14:10–14:25 UTC. First: `pgrep -af qradar_lab_loggen` and stop leftovers by PID (never `pkill -f`). If the report is not `final`, hand the remaining parts to a new Sonnet agent with the spec + the report + "review what you inherit"; the parts after the cut-off need a new tick schedule. |
+| **PW-10** live validation ([spec](tasks/PW-10.md)), shadow mode | **stopped 17:03 at the user's request** (this chat stops so two orchestrators do not overlap); the generator `s1` (PID 1602906) stopped by PID at 17:04, none left; no PW-10 process left | — | detached worktree `pw10` @ `9924ea9`, DB `qradar_obs_pw10` (kept: it holds the Part A watch on source **212 `ips-gw-01@IPS`**, `username`, pin `compromised.user`), report `QRadar-Dash-work/pw10/PW-10.report.md` (§1 scope choice, §2 plan, §3 Part A done), ticks `ticks.jsonl` (only **t1** at 14:02:31 UTC and the F.1 seed ran) | **Restart in the new chat:** a new Sonnet agent with the spec + this report + "review what you inherit"; it keeps the DB and the watch, writes a **new tick schedule** (the old UTC plan is void), then Parts B–F. Count the searches already spent (in the report). |
 | **PW-11** docs ([spec](tasks/PW-11.md)) | opencode DeepSeek free, unit `pw11-ds` (bwrap) | Yes (not a reboot) | worktree `pw11` (branch `agent/pw11`), log `QRadar-Dash-work/pw11/opencode.log`, report `docs/tasks/PW-11.report.md` in the worktree | `systemctl --user is-active pw11-ds`; on "Rate limit exceeded" hand to Sonnet or GLM flash. Then a short second round with PW-10's measured numbers. |
 
 **Open questions for the user (asked at 16:42, not answered yet):**
