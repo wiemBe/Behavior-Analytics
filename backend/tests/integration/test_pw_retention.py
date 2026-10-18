@@ -7,8 +7,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, insert, select
 
-from app.models.property_watch import PwBucket, PwValue, PwValueMetric
-from app.services.pw_retention import PwRetention
+from app.models.enums import AnomalyState
+from app.models.property_watch import PwAnomaly, PwBucket, PwValue, PwValueMetric
+from app.services import pw_retention
+from app.services.pw_retention import BLOCKING_INCIDENT_STATES, PwRetention
 from tests.integration.factories import make_instance
 from tests.integration.test_pw_collection import add_watch, cfg
 
@@ -170,3 +172,61 @@ async def test_retention_runs_while_collection_is_off(db_session) -> None:
     off = cfg(pw_collection_enabled=False)
     report = await PwRetention(db_session, settings=off, clock=lambda: NOW).run()
     assert report.deleted["pw_bucket"] == 7
+
+
+# ------------------------------------------------ a value an active incident protects (PW-3c)
+async def _value_with_incident(db_session, state: str) -> None:  # type: ignore[no-untyped-def]
+    """One retired, metric-less value whose incident is in `state`."""
+    instance = await make_instance(db_session)
+    watch = await add_watch(db_session, instance)
+    await db_session.execute(
+        insert(PwValue), [value_row(watch.id, "gone", active=False, retired_at=OLD)]
+    )
+    value_id = await db_session.scalar(select(PwValue.id))
+    db_session.add(
+        PwAnomaly(
+            watch_id=watch.id,
+            pw_value_id=value_id,
+            value_key="gone",
+            detector_type="PW_VALUE_SPIKE",
+            fingerprint="pw_anomaly:gone",
+            severity="HIGH",
+            state=state,
+            detected_at=OLD,
+            watch_version=1,
+        )
+    )
+    await db_session.commit()
+
+
+@pytest.mark.parametrize("state", [AnomalyState.OPEN.value, AnomalyState.RECOVERING.value])
+async def test_retention_keeps_a_value_whose_incident_is_still_active(
+    db_session, state: str
+) -> None:
+    """PW-3c item 2: deleting the value would leave the investigation without its subject."""
+    await _value_with_incident(db_session, state)
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+    assert report.deleted["pw_value"] == 0
+    assert report.blocked == {"pw_value": 1}
+    assert await count(db_session, PwValue) == 1
+
+
+async def test_retention_deletes_a_value_whose_incident_has_ended(db_session) -> None:
+    await _value_with_incident(db_session, AnomalyState.RESOLVED.value)
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+    assert report.deleted["pw_value"] == 1
+    assert report.blocked == {"pw_value": 0}
+    assert await count(db_session, PwValue) == 0
+
+
+async def test_the_value_delete_protects_exactly_the_active_incident_states() -> None:
+    """The raw SQL's `IN` list is pinned to `AnomalyState`, so the two cannot drift."""
+    expected = {AnomalyState.OPEN.value, AnomalyState.RECOVERING.value}
+    assert set(BLOCKING_INCIDENT_STATES) == expected
+    step = next(s for s in pw_retention._STATEMENTS if s.table == "pw_value")
+    for state in BLOCKING_INCIDENT_STATES:
+        assert f"'{state}'" in step.delete
+        assert f"'{state}'" in step.remaining
+        assert step.blocked is not None and f"'{state}'" in step.blocked
+    for state in (AnomalyState.CANDIDATE.value, AnomalyState.RESOLVED.value):
+        assert f"'{state}'" not in step.delete

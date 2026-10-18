@@ -54,6 +54,7 @@ from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.property_watch import PropertyWatch
+from app.property_watch.engine import PwAnomalyEngine
 from app.property_watch.reference import PW_MAX_PROPERTIES, PW_NORMALIZED_FIELD_ALLOWLIST
 from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider_for_instance
@@ -832,6 +833,20 @@ async def update_watch(
         capacity = await svc.enable_reasons(session, watch, settings)
         if capacity:
             raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(capacity))
+    if was_enabled and not wants_enabled:
+        # A disabled watch is no longer evaluated, so an incident open on it would never end
+        # (design §G.10.1): resolve the watch's incidents and their alerts here, as the
+        # operator, in this same transaction. Enabling again starts fresh.
+        await PwAnomalyEngine(session, settings=settings).resolve_watch_incidents(
+            watch, reason=svc.REASON_WATCH_DISABLED
+        )
+        await svc.resolve_watch_alerts(
+            session,
+            watch.id,
+            actor=principal.subject,
+            reason=svc.REASON_WATCH_DISABLED,
+            enqueuer=NotificationDispatcher(session, notifiers={}, policy=default_policy()),
+        )
     action = (
         ("property_watch.enable" if watch.enabled else "property_watch.disable")
         if changed == {"enabled"}

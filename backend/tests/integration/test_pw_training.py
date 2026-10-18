@@ -8,6 +8,8 @@ import pytest
 from sqlalchemy import select, update
 
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwBucket, PwValueBaseline
+from app.property_watch.baseline import PW_VALUE_EVENTS_SEMANTICS
+from app.property_watch.inputs import PW_VALUE_EVENTS_METRIC
 from app.property_watch.training import PwBaselineTrainer
 from app.services.pw_pipeline import PwInstancePipeline
 from tests.integration.pw_engine_support import (
@@ -156,6 +158,86 @@ async def test_the_least_recently_computed_values_go_first_and_each_run_is_bound
     assert chosen[0].isdisjoint(chosen[1])
     # the third run takes the one never computed, then the oldest
     assert (set(names) - (chosen[0] | chosen[1])) <= chosen[2]
+
+
+# ----------------------------------------------------------------------------- stale cells
+def _stale_cell(value_id, *, weekday: int, hour: int, computed_at):  # type: ignore[no-untyped-def]
+    """A cell the rebuild will not produce: its readings are gone, its statistics are not."""
+    return PwValueBaseline(
+        pw_value_id=value_id,
+        metric_name=PW_VALUE_EVENTS_METRIC,
+        weekday=weekday,
+        hour=hour,
+        median=999.0,
+        mad=1.0,
+        p05=1.0,
+        p95=999.0,
+        sample_count=50,
+        is_reliable=True,
+        completeness=1.0,
+        observations=[999.0],
+        computed_at=computed_at,
+        baseline_version=1,
+        metric_semantics=PW_VALUE_EVENTS_SEMANTICS,
+        watch_version=1,
+    )
+
+
+async def test_a_cell_the_rebuild_did_not_write_is_deleted(db_session) -> None:
+    """PW-3c item 3: a cell whose samples aged out must not keep judging on old data."""
+    rig = await make_rig(db_session, values=("alice",))
+    await rig.ticks(0, 12)
+    await train(rig)
+    value = await rig.value("alice")
+    # one cell from a rebuild that is now stale, and one row a rebuild never wrote at all
+    db_session.add_all(
+        [
+            _stale_cell(value.id, weekday=6, hour=3, computed_at=LATER - timedelta(hours=1)),
+            _stale_cell(value.id, weekday=6, hour=4, computed_at=None),
+        ]
+    )
+    await db_session.commit()
+    assert len(await cells_of(rig, "alice")) == 3
+
+    later = LATER + timedelta(minutes=5)
+    report = await train(rig, now=later)
+    assert report.cells_written >= 1
+    cells = await cells_of(rig, "alice")
+    assert [(c.weekday, c.hour) for c in cells] == [(2, 10)]
+    assert all(c.computed_at == later for c in cells)
+
+
+async def test_a_value_whose_readings_all_aged_out_loses_every_cell(db_session) -> None:
+    rig = await make_rig(db_session, values=("alice",), pw_baseline_lookback_days=1)
+    await rig.ticks(0, 12)
+    await train(rig)
+    assert await cells_of(rig, "alice")
+    # the training window is the watermark minus the lookback; jump it past the readings
+    await mark_evaluated(rig, 2 * 288)  # T0 + two days
+    report = await train(rig, now=LATER + timedelta(days=3))
+    assert report.cells_written == 0
+    assert await cells_of(rig, "alice") == []
+
+
+async def test_the_pipeline_deletes_a_stale_cell(db_session) -> None:
+    """PW-3c item 3 through the scheduled pipeline the worker runs."""
+    rig = await make_rig(db_session, values=("alice",))
+    await rig.ticks(0, 12)
+    await train(rig)
+    value = await rig.value("alice")
+    db_session.add(
+        _stale_cell(value.id, weekday=6, hour=3, computed_at=LATER - timedelta(hours=1))
+    )
+    await db_session.commit()
+
+    report = await PwInstancePipeline(
+        rig.session, rig.provider, settings=rig.settings, clock=lambda: now_of(12)
+    ).run(rig.instance)
+    await db_session.commit()
+    assert report.training is not None and report.training.cells_written >= 1
+    keys = {(c.weekday, c.hour) for c in await cells_of(rig, "alice")}
+    assert (6, 3) not in keys, "the stale cell the rebuild did not write is gone"
+    assert (2, 10) in keys, "the rebuilt cell survives"
 
 
 async def test_a_new_version_trains_only_on_its_own_buckets(db_session) -> None:

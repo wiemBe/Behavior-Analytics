@@ -280,6 +280,12 @@ SCOPE_STATEMENTS = {"group": 6, "type": 4, "source": 4}
 #: What `scope-options` costs, pinned: the inventory and the resolver's one bulk read. Flat
 #: at any size. With an explicit `instance_id` there is no `_default_instance` statement.
 OPTIONS_STATEMENTS = {"group": 3, "type": 2, "source": 1}
+#: What `property-options` costs, pinned: for a group scope, the group's existence check, the
+#: resolver's two bulk reads (the walk and its sources), and the instance row; for a type
+#: scope, the instance row alone. Flat at any number of groups or sources. With an explicit
+#: `instance_id` there is no `_default_instance` statement; the editor's call (no
+#: `instance_id`) adds one (PW-5b §5 point 4, PW-3c item 6).
+PROPERTY_OPTIONS_STATEMENTS = {"group": 4, "type": 1}
 
 
 # ----------------------------------------------------------------------------- guards
@@ -1333,6 +1339,26 @@ async def test_a_stale_group_inventory_is_marked_and_carries_no_zero(
     assert body["changes"] == []
 
 
+async def test_a_stale_descendant_marks_the_scope_read_stale(db_session, db_schema: str) -> None:
+    """PW-3c item 4: the `/scope` read agrees with the resolver on the oldest walked row."""
+    world = await _seed(db_session)
+    writer = _client(db_schema, _principal("detection_engineer"))
+    reader = _client(db_schema, _principal("viewer"))
+    made = _create(writer, "stale-child", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                   scope_group_id=GROUP_ID)
+    now = datetime.now(UTC)
+    child = await db_session.get(LogSourceGroup, (world.instance.id, GROUP_ID + 1))
+    child.synced_at = now - timedelta(hours=48)
+    await db_session.commit()
+
+    body = reader.get(f"{PREFIX}/{made['id']}/scope").json()
+    assert body["resolved"] is False and body["state"] == "SCOPE_STALE"
+    # The named group (Edge) is fresh; the read still reports the oldest walked row's age.
+    assert body["inventory_age_seconds"] >= 47 * 3600
+    assert [g["qradar_id"] for g in body["groups_walked"]] == [GROUP_ID, GROUP_ID + 1]
+    assert body["reason"] and child.synced_at.isoformat() in body["reason"]
+
+
 async def test_a_group_above_the_chunk_limit_is_too_large_and_keeps_its_members(
     db_session, db_schema: str
 ) -> None:
@@ -1532,6 +1558,50 @@ async def test_scope_options_costs_the_same_statements_at_every_size(
         assert [o["synced_source_count"] for o in options] == [sources]
         counts[f"type-{sources}"] = len(reader.statements)  # type: ignore[attr-defined]
     assert counts["type-10"] == counts["type-200"] == OPTIONS_STATEMENTS["type"], counts
+
+
+async def test_property_options_costs_the_same_statements_at_every_size(
+    db_session, db_schema: str
+) -> None:
+    """PW-3c item 6: `/property-options` is flat in the number of groups and sources.
+
+    The editor's picker resolves the scope (the walk and its sources, one bulk read each) and
+    loads the instance row; it never issues a query per group or per member. Pinned so a
+    per-group query cannot creep in unnoticed.
+    """
+    reader = _client(db_schema, _principal("viewer"), provider=MockQRadarProvider())
+    counts: dict[str, int] = {}
+    for groups, sources in ((2, 10), (20, 200)):
+        base = 5000 + groups
+        instance = await _bulk_tree(db_session, groups=groups, sources=sources, base=base)
+        reader.statements.clear()  # type: ignore[attr-defined]
+        body = reader.get(
+            f"{PREFIX}/property-options",
+            params={
+                "scope_kind": "LOG_SOURCE_GROUP",
+                "scope_id": base,
+                "instance_id": str(instance.id),
+            },
+        ).json()
+        assert body["status"] == "AVAILABLE" and body["scope_type_ids"] == [TYPE_ID]
+        counts[f"group-{groups}"] = len(reader.statements)  # type: ignore[attr-defined]
+    assert counts["group-2"] == counts["group-20"] == PROPERTY_OPTIONS_STATEMENTS["group"], counts
+
+    for sources in (10, 200):
+        base = 6000 + sources
+        instance = await _bulk_tree(db_session, groups=1, sources=sources, base=base)
+        reader.statements.clear()  # type: ignore[attr-defined]
+        body = reader.get(
+            f"{PREFIX}/property-options",
+            params={
+                "scope_kind": "LOG_SOURCE_TYPE",
+                "scope_id": TYPE_ID,
+                "instance_id": str(instance.id),
+            },
+        ).json()
+        assert body["status"] == "AVAILABLE" and body["scope_type_ids"] == [TYPE_ID]
+        counts[f"type-{sources}"] = len(reader.statements)  # type: ignore[attr-defined]
+    assert counts["type-10"] == counts["type-200"] == PROPERTY_OPTIONS_STATEMENTS["type"], counts
 
 
 async def test_the_scope_read_of_an_empty_group_is_a_measured_zero(

@@ -1538,9 +1538,11 @@ def dependency_refusal(rules: Sequence[DependentRule], action: str) -> dict[str,
     }
 
 
-# --------------------------------------------------------- alerts of a deleted watch (PW-4)
+# ------------------------------------------- alerts of a deleted or disabled watch (PW-4, G.10.1)
 ALERT_SOURCE_TYPE = "pw_value"
 REASON_WATCH_DELETED = "the watch was deleted"
+#: The reason a `PATCH` that disables a watch resolves its incidents and alerts with.
+REASON_WATCH_DISABLED = "watch disabled; no longer evaluated"
 
 
 async def resolve_watch_alerts(
@@ -1548,15 +1550,16 @@ async def resolve_watch_alerts(
     watch_id: uuid.UUID,
     *,
     actor: str,
+    reason: str = REASON_WATCH_DELETED,
     enqueuer: AlertEnqueuer | None = None,
     clock: Any = None,
 ) -> int:
-    """Resolve every open alert of this watch before the watch row is deleted (design §G.15).
+    """Resolve every open alert of this watch before its watch row is deleted, or on a disable.
 
     The alerts are found through the watch id the engine put in their context, not through the
     incident rows, so an alert whose incident is gone is resolved too. The actor is the
-    deleting principal. Two statements and one flush however many alerts there are; none
-    open is a no-op and enqueues nothing. Returns the number resolved.
+    principal who deleted or disabled the watch. Two statements and one flush however many
+    alerts there are; none open is a no-op and enqueues nothing. Returns the number resolved.
     """
     if not actor.strip():
         raise ValueError("actor is required")
@@ -1576,7 +1579,7 @@ async def resolve_watch_alerts(
     _, resolved = await AlertService(session, clock=clock).apply_bulk(
         [],
         [
-            AlertResolution(fingerprint=item, actor=actor, reason=REASON_WATCH_DELETED)
+            AlertResolution(fingerprint=item, actor=actor, reason=reason)
             for item in fingerprints
         ],
     )

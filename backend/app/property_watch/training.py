@@ -149,4 +149,9 @@ class PwBaselineTrainer:
                     }
                 )
         await self.repo.upsert_baselines(rows)
+        # Any cell of these values the rebuild did not write is stale: its samples aged out
+        # of the window (or were all excluded), so it must not keep judging (PW-3c item 3).
+        await self.repo.delete_stale_baselines(
+            [value.id for value in values], computed_at=now
+        )
         return len(rows)

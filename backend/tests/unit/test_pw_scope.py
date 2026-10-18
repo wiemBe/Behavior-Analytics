@@ -161,6 +161,33 @@ class TestGroups:
                         sources=[source(1, (1,))], group_id=1)
         assert scope.resolved
 
+    def test_the_oldest_walked_row_decides_staleness_not_the_named_group(self) -> None:
+        # PW-3c item 4: an interrupted sync can leave a descendant stale while the named group
+        # is fresh. The scope must be SCOPE_STALE, and the reason names the descendant's age.
+        old = NOW - DAY - timedelta(seconds=1)
+        groups = [group(1, synced=FRESH), group(2, 1, synced=old)]
+        scope = resolve(
+            PwScopeKind.LOG_SOURCE_GROUP,
+            groups=groups,
+            sources=[source(10, (1,)), source(11, (2,))],
+            group_id=1,
+        )
+        assert scope.status is PwWatchStatus.SCOPE_STALE and scope.chunks == ()
+        assert scope.reason and old.isoformat() in scope.reason
+        assert scope.groups_walked == (1, 2)
+        # The named group's own row is fresh, so a rule keyed on it would have missed this.
+        assert groups[0].synced_at == FRESH
+
+    def test_a_fresh_descendant_under_a_fresh_group_resolves(self) -> None:
+        groups = [group(1, synced=FRESH), group(2, 1, synced=FRESH)]
+        scope = resolve(
+            PwScopeKind.LOG_SOURCE_GROUP,
+            groups=groups,
+            sources=[source(10, (1,)), source(11, (2,))],
+            group_id=1,
+        )
+        assert scope.resolved and scope.member_count == 2
+
     def test_stale_wins_over_empty(self) -> None:
         old = NOW - 2 * DAY
         scope = resolve(PwScopeKind.LOG_SOURCE_GROUP, groups=[group(1, synced=old)], sources=[],

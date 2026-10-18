@@ -21,6 +21,7 @@ from sqlalchemy import (
     Table,
     and_,
     bindparam,
+    delete,
     func,
     literal,
     or_,
@@ -570,5 +571,32 @@ class PropertyWatchRepository:
                 },
             ),
             rows,
+        )
+
+    async def delete_stale_baselines(
+        self,
+        value_ids: Sequence[uuid.UUID],
+        *,
+        computed_at: datetime,
+    ) -> None:
+        """Delete the cells of `value_ids` the rebuild did not produce (PW-3c item 3, §G.8.0).
+
+        A cell whose samples all aged out (or were all excluded) is not among the rows the
+        rebuild just upserted, so it keeps its last statistics and would judge a detector on
+        old data. Removing it makes the detector read `INSUFFICIENT_DATA` instead. The rebuild
+        marks every row it writes with `computed_at`, so any other cell of these values is
+        stale. One statement per chunk whatever the number of values, and no bind-parameter
+        list of the sized-to-the-chunk cells.
+        """
+        if not value_ids:
+            return
+        await self.session.execute(
+            delete(PwValueBaseline).where(
+                PwValueBaseline.pw_value_id.in_(list(value_ids)),
+                or_(
+                    PwValueBaseline.computed_at.is_(None),
+                    PwValueBaseline.computed_at != computed_at,
+                ),
+            )
         )
 
