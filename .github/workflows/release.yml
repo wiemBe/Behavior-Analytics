@@ -105,11 +105,19 @@ jobs:
             echo "org.opencontainers.image.version=$VERSION"
             echo "org.opencontainers.image.revision=$GITHUB_SHA"
             echo "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+            echo "org.opencontainers.image.licenses=Apache-2.0"
             if [ "${{ matrix.name }}" = "postgres" ] || [ "${{ matrix.name }}" = "proxy" ]; then
               echo "org.opencontainers.image.base.name=${{ matrix.base-label }}"
             fi
             if [ "${{ matrix.name }}" = "qradar-mcp" ]; then
               echo "dev.qradar-dash.qradar-mcp.pin=$QRADAR_MCP_PIN"
+              # Overriding the Dockerfile's IBM maintainer label: docker/build-push-action passes
+              # this step's labels: lines to buildx as --label flags, and a --label value wins
+              # over the image's own LABEL for the same key. This image is built from IBM's
+              # unchanged qradar-mcp and must not read as an IBM release.
+              echo "org.opencontainers.image.title=qradar-mcp"
+              echo "org.opencontainers.image.description=Unmodified build of IBM/qradar-mcp at commit $QRADAR_MCP_PIN. Apache-2.0. Not an IBM release."
+              echo "maintainer=Behavior Analytics release workflow (unmodified build of IBM/qradar-mcp)"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
