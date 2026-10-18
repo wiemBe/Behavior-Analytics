@@ -3,9 +3,11 @@
 
 import { endpointLabel } from "@/components/waf/wafLabels";
 import {
+  api,
   homeReads,
   type PagedWafEndpoints,
   type PagedWafSources,
+  type PropertyWatch,
   type SourceBehavior,
   type WafEndpointInventory,
 } from "@/lib/api";
@@ -75,4 +77,23 @@ export const WAF_SOURCE_ENDPOINTS: OptionsSource = {
       }),
     };
   },
+};
+
+/**
+ * The property watches (`GET /property-watches`, a plain list). The layout stores the watch id,
+ * never its name; a disabled watch is offered and says so, because its history is still drawn.
+ */
+export const PROPERTY_WATCH_OPTIONS: OptionsSource = {
+  what: "property watches",
+  emptyReason: "No property watch exists yet, so there is nothing to chart.",
+  read: () => ({
+    key: "/property-watches",
+    fetch: () => api.propertyWatches(),
+    options: (rows: PropertyWatch[]) => ({
+      options: rows
+        .map((w) => ({ id: w.id, label: w.enabled ? w.name : `${w.name} (disabled)` }))
+        .sort(byLabel),
+      total: rows.length,
+    }),
+  }),
 };

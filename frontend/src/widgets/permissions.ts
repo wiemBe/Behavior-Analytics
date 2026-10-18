@@ -41,6 +41,10 @@ export const KNOWN_PERMISSIONS = [
   // Directory configuration: pointing the application at a directory. `admin:*` satisfies it;
   // `read:*` does not.
   "admin:auth",
+  // Phase G. Reading a property watch (its values are stored in clear text) is `read:*`;
+  // authoring, enabling, pinning, deleting and previewing one is a write `read:*` does not grant.
+  "read:property_watches",
+  "property_watch:write",
 ] as const;
 
 export type KnownPermission = (typeof KNOWN_PERMISSIONS)[number];

@@ -9,7 +9,12 @@
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 
-import { MONITORED_SOURCES, WAF_SOURCES, WAF_SOURCE_ENDPOINTS } from "./optionSources";
+import {
+  MONITORED_SOURCES,
+  PROPERTY_WATCH_OPTIONS,
+  WAF_SOURCES,
+  WAF_SOURCE_ENDPOINTS,
+} from "./optionSources";
 import { SEARCH_METRIC_OPTIONS, SEARCH_OPTIONS } from "./searchResultOptions";
 import { placeholderFor } from "./Placeholder";
 import type {
@@ -23,6 +28,7 @@ import type {
 
 import type { SourceEpsConfig } from "@/components/catalog/SourceEps";
 import type { WafTrafficConfig } from "@/components/catalog/WafEndpointTraffic";
+import type { PropertyWatchWidgetConfig } from "@/widgets/PropertyWatchWidget";
 import type { SearchResultsConfig } from "@/widgets/SearchResultsWidget";
 
 type NoConfig = Record<string, never>;
@@ -385,6 +391,30 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     defaultConfig: { search_id: null, metric_key: null },
     drillDown: (cfg) => (cfg.search_id ? `/searches/${cfg.search_id}` : "/searches"),
     loader: () => import("@/widgets/SearchResultsWidget").then((m) => m.SearchResultsWidget),
+  }),
+  live<PropertyWatchWidgetConfig>({
+    type: "chart.property_watch",
+    title: "Property watch",
+    description:
+      "One property watch: its pinned values and the top values of the last bucket, in events per bucket, with the coverage of the scope.",
+    category: "Chart",
+    requires: ["read:property_watches"],
+    sources: [
+      "/property-watches/${id}",
+      "/property-watches/catalog",
+      "/property-watches/${id}/buckets",
+      "/property-watches/${id}/values",
+      // The series read takes its value ids as a query; the path is quoted up to it.
+      "/property-watches/${id}/series?",
+    ],
+    size: { w: 6, h: 16, minW: 4, minH: 12 },
+    config: {
+      watch_id: { label: "Property watch", from: PROPERTY_WATCH_OPTIONS },
+    },
+    defaultConfig: { watch_id: null },
+    drillDown: (cfg) => (cfg.watch_id ? `/behavior/watches/${cfg.watch_id}` : "/behavior/watches"),
+    loader: () =>
+      import("@/widgets/PropertyWatchWidget").then((m) => m.PropertyWatchWidget),
   }),
   live({
     type: "ips.source_anomalies",
