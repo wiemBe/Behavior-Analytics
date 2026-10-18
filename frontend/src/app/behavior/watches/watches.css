@@ -13,6 +13,11 @@
   line-height: var(--lh-prose);
   max-width: 80ch;
 }
+.pw-write-note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
 
 /* The list: a name and a scope are read as words, so they get a measure to wrap in. */
 .pw-list td.cell-name {

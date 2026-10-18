@@ -182,7 +182,12 @@ describe("the states of the values tab", () => {
 
   it("puts the honesty line in the values tab", () => {
     render(<WatchWorkspace {...props({ catalog: catalog({ collection_enabled: false }) })} />);
-    expect(screen.getByRole("group", { name: /not known/ })).toHaveTextContent("PW_COLLECTION_ENABLED");
+    const honesty = screen.getByRole("group", { name: /not known/ });
+    expect(honesty).toHaveTextContent("PW_COLLECTION_ENABLED");
+    expect(
+      honesty.compareDocumentPosition(screen.getByRole("region", { name: "Series chart" })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 

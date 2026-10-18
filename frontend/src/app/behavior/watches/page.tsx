@@ -13,6 +13,10 @@ import Link from "next/link";
 
 import { PwStatus } from "@/components/propertywatch/PwStatus";
 import {
+  propertyWatchAccessFrom,
+  type PropertyWatchAccess,
+} from "@/components/propertywatch/authoring";
+import {
   coverageText,
   PW_LATENCY,
   propertiesText,
@@ -36,6 +40,7 @@ export default async function PropertyWatchesPage() {
   let catalog: PropertyWatchCatalog | null = null;
   let forbidden = false;
   let failed = false;
+  let access: PropertyWatchAccess = "unknown";
   try {
     watches = await api.propertyWatches();
   } catch (error) {
@@ -45,13 +50,21 @@ export default async function PropertyWatchesPage() {
   if (!failed && !forbidden) {
     // The switches only qualify the list: their failure must not blank it, and it is said.
     catalog = await api.propertyWatchCatalog().catch(() => null);
+    access = await api.caller().then(propertyWatchAccessFrom).catch(() => "unknown" as const);
   }
   const now = new Date();
   const rows = sortWatches(watches);
 
   return (
     <>
-      <PageHeader title="Property watches" />
+      <PageHeader
+        title="Property watches"
+        actions={
+          access === "writer" ? (
+            <Link className="action" href="/behavior/watches/new">New watch</Link>
+          ) : null
+        }
+      />
 
       {forbidden ? (
         <div className="notice" role="alert">
@@ -104,6 +117,12 @@ export default async function PropertyWatchesPage() {
               </>
             )}
             <p className="pw-latency">{PW_LATENCY}</p>
+            {access !== "writer" && (
+              <p className="pw-write-note" role={access === "unknown" ? "alert" : undefined}>
+                {access === "unknown" ? "Permissions could not be read. " : ""}
+                Creating and editing a watch needs <code>property_watch:write</code>.
+              </p>
+            )}
           </div>
 
           {rows.length === 0 ? (

@@ -207,6 +207,8 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
         </p>
       )}
 
+      <WatchHonesty notes={notes} />
+
       <section aria-label="Series chart">
         <PropertyWatchSeriesChart
           series={plotted}
@@ -280,7 +282,6 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
         )}
       </section>
 
-      <WatchHonesty notes={notes} />
     </div>
   );
 

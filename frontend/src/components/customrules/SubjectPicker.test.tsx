@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SubjectPicker } from "./SubjectPicker";
 import { catalog } from "./fixtures";
 import { api } from "@/lib/api";
+import { paged, value, watch } from "@/components/propertywatch/fixtures";
 
 describe("custom-rule subject picker", () => {
   it("explains an empty admitted WAF endpoint list and links to custom search", async () => {
@@ -36,7 +37,7 @@ describe("custom-rule subject picker", () => {
       <SubjectPicker
         catalog={catalog()}
         kind="WAF_ENDPOINT"
-        value={{ logSourceId: "", sourceClass: "", wafEndpointId: "", ipsEntityId: "" }}
+        value={{ logSourceId: "", sourceClass: "", wafEndpointId: "", ipsEntityId: "", pwValueId: "" }}
         onKind={vi.fn()}
         onChange={vi.fn()}
         onLabel={vi.fn()}
@@ -56,7 +57,7 @@ describe("custom-rule subject picker", () => {
       <SubjectPicker
         catalog={catalog()}
         kind="LOG_SOURCE"
-        value={{ logSourceId: "", sourceClass: "", wafEndpointId: "", ipsEntityId: "" }}
+        value={{ logSourceId: "", sourceClass: "", wafEndpointId: "", ipsEntityId: "", pwValueId: "" }}
         onKind={vi.fn()}
         onChange={vi.fn()}
         onLabel={vi.fn()}
@@ -64,5 +65,63 @@ describe("custom-rule subject picker", () => {
     );
     expect(screen.getByRole("searchbox", { name: "Find log source" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toHaveTextContent("Check the backend");
+  });
+
+  it("offers only pinned property-watch values, renders hostile text inert and links to pin first", async () => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
+    vi.spyOn(api, "propertyWatchValues").mockResolvedValue(
+      paged([
+        value("pin-1", '<img src=x onerror="x">', {
+          pinned: true,
+          components: ['<img src=x onerror="x">'],
+        }),
+        value("auto-1", "automatic", { pinned: false }),
+      ]),
+    );
+    const change = vi.fn();
+    const { container } = render(
+      <SubjectPicker
+        catalog={catalog()}
+        kind="PW_VALUE"
+        value={{ logSourceId: "", sourceClass: "", wafEndpointId: "", ipsEntityId: "", pwValueId: "" }}
+        onKind={vi.fn()}
+        onChange={change}
+        onLabel={vi.fn()}
+      />,
+    );
+    const watches = await screen.findByRole("combobox", { name: "Property watch" });
+    fireEvent.change(watches, { target: { value: watch().id } });
+    const values = await screen.findByRole("combobox", { name: "Pinned value" });
+    await waitFor(() => expect(values).not.toBeDisabled());
+    expect(within(values).getByRole("option", { name: /<img/ })).toBeInTheDocument();
+    expect(within(values).queryByRole("option", { name: "automatic" })).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("link", { name: /pin it on the watch first/i })).toHaveAttribute(
+      "href",
+      `/behavior/watches/${watch().id}`,
+    );
+  });
+
+  it("explains that a fresh pin waits for the next collection tick", async () => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
+    vi.spyOn(api, "propertyWatchValues").mockResolvedValue(paged([]));
+    render(
+      <SubjectPicker
+        catalog={catalog()}
+        kind="PW_VALUE"
+        value={{ logSourceId: "", sourceClass: "", wafEndpointId: "", ipsEntityId: "", pwValueId: "" }}
+        onKind={vi.fn()}
+        onChange={vi.fn()}
+        onLabel={vi.fn()}
+      />,
+    );
+    fireEvent.change(await screen.findByRole("combobox", { name: "Property watch" }), {
+      target: { value: watch().id },
+    });
+    expect(await screen.findByText(/fresh pin becomes selectable after the next/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open the property watch/i })).toHaveAttribute(
+      "href",
+      `/behavior/watches/${watch().id}`,
+    );
   });
 });

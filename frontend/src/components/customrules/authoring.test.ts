@@ -77,6 +77,7 @@ describe("custom-rule authoring semantics", () => {
     expect(subjectKindInSentence("IPS_SOURCE")).toBe("IPS source");
     expect(subjectKindInSentence("LOG_SOURCE")).toBe("log source");
     expect(subjectKindInSentence("FLEET_CLASS")).toBe("fleet class");
+    expect(subjectKindInSentence("PW_VALUE")).toBe("property watch value");
     const draft = emptyDraft(catalog());
     expect(draftReason({ ...draft, name: "Named" }, catalog().metrics[0])).toBe("Choose a log source.");
     const waf = catalog().metrics.find((metric) => metric.metric === "REQUEST_COUNT")!;
