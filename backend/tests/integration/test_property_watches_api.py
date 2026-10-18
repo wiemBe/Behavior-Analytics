@@ -33,7 +33,7 @@ from app.models.enums import (
 )
 from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.identity import AuditLog
-from app.models.log_source import LogSourceAnomaly
+from app.models.log_source import LogSource, LogSourceAnomaly
 from app.models.property_watch import (
     PropertyWatch,
     PwAnomaly,
@@ -236,6 +236,52 @@ def _bucket(watch_id: str, back: int, **kw: object) -> PwBucket:
     return PwBucket(**values)  # type: ignore[arg-type]
 
 
+async def _bulk_tree(session, *, groups: int, sources: int, base: int):  # type: ignore[no-untyped-def]
+    """A fresh instance with a `groups`-group chain under `base`, holding `sources` members.
+
+    Written in bulk (one `INSERT` each) so a 200-source scope is cheap to build. The type row
+    lets the same tree resolve a type scope too.
+    """
+    instance = await make_instance(session)
+    now = datetime.now(UTC)
+    session.add(
+        LogSourceType(
+            instance_id=instance.id, type_id=TYPE_ID, name="Web Application Firewall",
+            internal=False, custom=False, synced_at=now,
+        )
+    )
+    session.add_all(
+        [
+            LogSourceGroup(
+                instance_id=instance.id, qradar_id=base + index, name=f"g{index}",
+                parent_qradar_id=None if index == 0 else base + index - 1, assignable=True,
+                synced_at=now,
+            )
+            for index in range(groups)
+        ]
+    )
+    session.add_all(
+        [
+            LogSource(
+                instance_id=instance.id, qradar_id=base + 1000 + index, name=f"src-{index:04d}",
+                type_id=TYPE_ID, type_name="WAF", group_ids=[base + index % groups],
+            )
+            for index in range(sources)
+        ]
+    )
+    await session.commit()
+    return instance
+
+
+#: What a `/scope` read costs, pinned: the watch, the inventory (the group walk and its
+#: sources), the walked group names, the member names and the stored changes. Flat at any
+#: number of groups or sources (AGENTS.md rule 9).
+SCOPE_STATEMENTS = {"group": 6, "type": 4, "source": 4}
+#: What `scope-options` costs, pinned: the inventory and the resolver's one bulk read. Flat
+#: at any size. With an explicit `instance_id` there is no `_default_instance` statement.
+OPTIONS_STATEMENTS = {"group": 3, "type": 2, "source": 1}
+
+
 # ----------------------------------------------------------------------------- guards
 def test_every_property_watch_route_without_a_token_is_401(db_schema: str) -> None:
     client = _anonymous(db_schema)
@@ -272,6 +318,7 @@ async def test_each_role_reads_and_only_writers_write(db_session, db_schema: str
         f"{PREFIX}/scope-options?kind=LOG_SOURCE",
         f"{PREFIX}/property-options?scope_kind=LOG_SOURCE_TYPE&scope_id={TYPE_ID}",
         path,
+        f"{path}/scope",
         f"{path}/buckets",
         f"{path}/values",
         f"{path}/series?value_ids={NIL}",
@@ -311,6 +358,7 @@ async def test_unknown_ids_are_404_for_a_writer(db_session, db_schema: str) -> N
         client.get(f"{PREFIX}/{NIL}"),
         client.patch(f"{PREFIX}/{NIL}", json={"expected_updated_at": stale}),
         client.delete(f"{PREFIX}/{NIL}"),
+        client.get(f"{PREFIX}/{NIL}/scope"),
         client.get(f"{PREFIX}/{NIL}/buckets"),
         client.get(f"{PREFIX}/{NIL}/values"),
         client.get(f"{PREFIX}/{NIL}/series?value_ids={NIL}"),
@@ -399,6 +447,7 @@ async def test_the_source_scope_takes_its_instance_and_a_duplicate_name_is_409(
     assert made["instance_id"] == str(world.instance.id)
     assert made["scope"] == {
         "kind": "LOG_SOURCE", "name": "fw-1", "detail": "WAF", "qradar_id": 701,
+        "member_count": 1,
     }
     dup = client.post(PREFIX, json=_body("by-source"))
     assert dup.status_code == 409
@@ -689,12 +738,16 @@ async def test_catalog_scope_options_and_property_options(db_session, db_schema:
     assert types == [{
         "kind": "LOG_SOURCE_TYPE", "id": str(TYPE_ID), "qradar_id": TYPE_ID,
         "name": "Web Application Firewall", "detail": None, "synced_source_count": 2,
+        "scope_state": None, "scope_reason": None,
     }]
     groups = client.get(f"{PREFIX}/scope-options", params={"kind": "LOG_SOURCE_GROUP"}).json()
     assert [(g["name"], g["detail"]) for g in groups] == [
         ("Edge", "Edge"), ("Edge DMZ", "Edge / Edge DMZ"),
     ]
-    assert all(g["synced_source_count"] is None for g in groups), "member counts are PW-5b's"
+    # PW-5b: the resolved member count of a group, through the shared resolver. Edge holds
+    # fw-1 and, through its child group Edge DMZ, fw-2; Edge DMZ holds fw-2.
+    assert {g["name"]: g["synced_source_count"] for g in groups} == {"Edge": 2, "Edge DMZ": 1}
+    assert all(g["scope_state"] is None for g in groups)
     assert len(client.get(f"{PREFIX}/scope-options",
                           params={"kind": "LOG_SOURCE", "limit": 1}).json()) == 1
     assert client.get(f"{PREFIX}/scope-options").status_code == 422
@@ -1180,3 +1233,293 @@ async def test_anomalies_list_a_pw_row_as_pw_value_with_its_text(
     assert viewer.get("/api/v1/anomalies", params={"anomaly_type": "PW_NOPE"}).status_code == 422
     # Any caller who can read /anomalies reads the text (D-22); one who cannot, does not.
     assert _client(db_schema, NOBODY).get("/api/v1/anomalies").status_code == 403
+
+
+# --------------------------------------------------------------------------- the scope read
+async def test_the_scope_read_answers_a_source_a_type_and_a_group(
+    db_session, db_schema: str
+) -> None:
+    world = await _seed(db_session)
+    writer = _client(db_schema, _principal("detection_engineer"))
+    reader = _client(db_schema, _principal("viewer"))
+
+    by_source = _create(writer, "scope-src", scope_kind="LOG_SOURCE", scope_type_id=None,
+                        log_source_id=str(world.source.id))
+    source = reader.get(f"{PREFIX}/{by_source['id']}/scope")
+    assert source.status_code == 200, source.text
+    body = source.json()
+    assert body["watch_id"] == by_source["id"] and body["watch_version"] == 1
+    assert body["kind"] == "LOG_SOURCE" and body["resolved"] is True and body["state"] is None
+    assert body["reason"] is None
+    assert body["member_count"] == 1 and body["members"] == ["fw-1"]
+    assert body["members_total"] == 1
+    assert body["groups_walked"] == [] and body["changes"] == []
+    # A source scope has no group inventory to age.
+    assert body["inventory_synced_at"] is None and body["inventory_age_seconds"] is None
+
+    by_type = _create(writer, "scope-type")
+    typed = reader.get(f"{PREFIX}/{by_type['id']}/scope").json()
+    assert typed["kind"] == "LOG_SOURCE_TYPE" and typed["resolved"] is True
+    assert typed["member_count"] == 2 and typed["members"] == ["fw-1", "fw-2"]
+    assert typed["members_total"] == 2 and typed["groups_walked"] == []
+
+    # Edge (10) holds fw-1 and, through its child Edge DMZ (11), fw-2.
+    by_group = _create(writer, "scope-group", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                       scope_group_id=GROUP_ID)
+    grouped = reader.get(f"{PREFIX}/{by_group['id']}/scope").json()
+    assert grouped["kind"] == "LOG_SOURCE_GROUP" and grouped["resolved"] is True
+    assert grouped["member_count"] == 2 and grouped["members"] == ["fw-1", "fw-2"]
+    assert grouped["members_total"] == 2
+    assert [(g["qradar_id"], g["name"]) for g in grouped["groups_walked"]] == [
+        (GROUP_ID, "Edge"), (GROUP_ID + 1, "Edge DMZ")]
+    assert grouped["inventory_synced_at"] is not None
+    assert grouped["inventory_age_seconds"] is not None and grouped["inventory_age_seconds"] >= 0
+    assert grouped["changes"] == []
+
+
+async def test_a_two_group_parent_cycle_terminates_and_lists_each_group_once(
+    db_session, db_schema: str
+) -> None:
+    world = await _seed(db_session)
+    now = datetime.now(UTC)
+    # The lab's own inventory shape: group 20 names 21 as parent and 21 names 20.
+    db_session.add_all([
+        LogSourceGroup(instance_id=world.instance.id, qradar_id=20, name="Cyc-A",
+                       parent_qradar_id=21, assignable=True, synced_at=now),
+        LogSourceGroup(instance_id=world.instance.id, qradar_id=21, name="Cyc-B",
+                       parent_qradar_id=20, assignable=True, synced_at=now),
+        LogSource(instance_id=world.instance.id, qradar_id=801, name="cyc-1", type_id=TYPE_ID,
+                  type_name="WAF", group_ids=[20]),
+        LogSource(instance_id=world.instance.id, qradar_id=802, name="cyc-2", type_id=TYPE_ID,
+                  type_name="WAF", group_ids=[21]),
+    ])
+    await db_session.commit()
+    writer = _client(db_schema, _principal("detection_engineer"))
+    reader = _client(db_schema, _principal("viewer"))
+    made = _create(writer, "cyclic", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                   scope_group_id=20)
+    body = reader.get(f"{PREFIX}/{made['id']}/scope").json()
+    assert body["resolved"] is True and body["member_count"] == 2
+    assert [g["qradar_id"] for g in body["groups_walked"]] == [20, 21], "each group once"
+    assert body["members"] == ["cyc-1", "cyc-2"]
+
+
+async def test_a_stale_group_inventory_is_marked_and_carries_no_zero(
+    db_session, db_schema: str
+) -> None:
+    world = await _seed(db_session)
+    writer = _client(db_schema, _principal("detection_engineer"))
+    reader = _client(db_schema, _principal("viewer"))
+    made = _create(writer, "stale", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                   scope_group_id=GROUP_ID)
+    row = await db_session.get(LogSourceGroup, (world.instance.id, GROUP_ID))
+    row.synced_at = datetime.now(UTC) - timedelta(hours=48)
+    await db_session.commit()
+
+    body = reader.get(f"{PREFIX}/{made['id']}/scope").json()
+    assert body["resolved"] is False and body["state"] == "SCOPE_STALE"
+    assert body["reason"] and "older than" in body["reason"]
+    # The last sync's members are shown, marked stale: never a zero drawn from nothing.
+    assert body["member_count"] == 2
+    assert body["members"] == ["fw-1", "fw-2"] and body["members_total"] == 2
+    assert body["inventory_age_seconds"] >= 47 * 3600
+    assert body["changes"] == []
+
+
+async def test_a_group_above_the_chunk_limit_is_too_large_and_keeps_its_members(
+    db_session, db_schema: str
+) -> None:
+    await _seed(db_session)
+    writer = _client(db_schema, _principal("detection_engineer"))
+    made = _create(writer, "too-big", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                   scope_group_id=GROUP_ID)
+    client = _client(db_schema, _principal("viewer"),
+                     pw_max_sources_per_search=1, pw_max_chunks_per_watch=1)
+    body = client.get(f"{PREFIX}/{made['id']}/scope").json()
+    assert body["resolved"] is False and body["state"] == "SCOPE_TOO_LARGE"
+    assert body["member_count"] == 2 and body["members_total"] == 2
+    assert body["members"] == ["fw-1", "fw-2"]
+    assert "2 sources need 2 searches; the limit is 1" in body["reason"]
+    assert body["changes"] == []
+
+
+async def test_the_scope_read_names_at_most_200_members_and_totals_the_rest(
+    db_session, db_schema: str
+) -> None:
+    await _bulk_tree(db_session, groups=1, sources=205, base=900)
+    writer = _client(db_schema, _principal("detection_engineer"), pw_max_chunks_per_watch=10)
+    reader = _client(db_schema, _principal("viewer"), pw_max_chunks_per_watch=10)
+    made = _create(writer, "many", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                   scope_group_id=900)
+    body = reader.get(f"{PREFIX}/{made['id']}/scope").json()
+    assert body["resolved"] is True and body["member_count"] == 205
+    assert body["members_total"] == 205
+    assert len(body["members"]) == 200, "the names are capped, the total is not"
+    assert body["members"] == sorted(body["members"])
+    assert body["members"][0] == "src-0000" and body["members"][-1] == "src-0199"
+
+
+async def test_the_scope_read_reports_the_seeded_membership_changes(
+    db_session, db_schema: str
+) -> None:
+    await _seed(db_session)
+    writer = _client(db_schema, _principal("detection_engineer"))
+    made = _create(writer, "history")
+    # Oldest to newest: a change z->a, a bucket that measured nothing, then a change a->b.
+    db_session.add_all([
+        _bucket(made["id"], 7, scope_fingerprint="z", scope_member_count=8),
+        _bucket(made["id"], 6, scope_fingerprint="a", scope_member_count=10, scope_changed=True),
+        _bucket(made["id"], 5, scope_fingerprint="a", scope_member_count=10),
+        _bucket(made["id"], 3, values_measurement="NOT_COLLECTED", scope_fingerprint="a",
+                scope_member_count=10),
+        _bucket(made["id"], 2, scope_fingerprint="b", scope_member_count=12, scope_changed=True),
+        _bucket(made["id"], 1, scope_fingerprint="b", scope_member_count=12),
+        _bucket(made["id"], 0, watch_version=2, scope_fingerprint="c", scope_member_count=1),
+    ])
+    await db_session.commit()
+
+    changes = _client(db_schema, _principal("viewer")).get(
+        f"{PREFIX}/{made['id']}/scope").json()["changes"]
+    assert len(changes) == 2, "a NOT_COLLECTED bucket says nothing; another version is not ours"
+    newest, oldest = changes
+    assert _same_instant(newest["bucket_start"], _bucket_start(2).isoformat())
+    assert newest["member_count_before"] == 10 and newest["member_count_after"] == 12
+    assert newest["in_grace_window"] is True
+    assert _same_instant(oldest["bucket_start"], _bucket_start(6).isoformat())
+    assert oldest["member_count_before"] == 8 and oldest["member_count_after"] == 10
+    assert oldest["in_grace_window"] is True
+
+
+async def test_scope_options_show_a_stale_group_without_a_count(
+    db_session, db_schema: str
+) -> None:
+    world = await _seed(db_session)
+    now = datetime.now(UTC)
+    db_session.add(LogSourceGroup(instance_id=world.instance.id, qradar_id=12, name="Empty",
+                                  parent_qradar_id=None, assignable=True, synced_at=now))
+    stale = await db_session.get(LogSourceGroup, (world.instance.id, GROUP_ID))
+    stale.synced_at = now - timedelta(hours=48)
+    await db_session.commit()
+
+    client = _client(db_schema, _principal("viewer"))
+    groups = client.get(f"{PREFIX}/scope-options", params={"kind": "LOG_SOURCE_GROUP"}).json()
+    by_name = {g["name"]: g for g in groups}
+    # Edge's own row is stale: no count, and the reason says why.
+    assert by_name["Edge"]["synced_source_count"] is None
+    assert by_name["Edge"]["scope_state"] == "SCOPE_STALE"
+    assert by_name["Edge"]["scope_reason"]
+    # Edge DMZ's own row is fresh: it still resolves and counts its one member.
+    assert by_name["Edge DMZ"]["synced_source_count"] == 1
+    assert by_name["Edge DMZ"]["scope_state"] is None
+    # An empty group is a measured zero, not missing data.
+    assert by_name["Empty"]["synced_source_count"] == 0
+    assert by_name["Empty"]["scope_state"] == "SCOPE_EMPTY"
+
+
+async def test_the_cap_the_preview_and_the_scope_read_agree_on_the_member_count(
+    db_session, db_schema: str
+) -> None:
+    await _seed(db_session)
+    provider = MockQRadarProvider(seed=1)
+    writer = _client(db_schema, _principal("detection_engineer"), provider=provider)
+    made = _create(writer, "agree", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                   scope_group_id=GROUP_ID)
+    reader = _client(db_schema, _principal("viewer"))
+    count = reader.get(f"{PREFIX}/{made['id']}/scope").json()["member_count"]
+    assert count == 2
+
+    # The enable cap names the same number.
+    strict = _client(db_schema, _principal("detection_engineer"),
+                     pw_max_sources_per_search=1, pw_max_chunks_per_watch=1)
+    refused = strict.patch(f"{PREFIX}/{made['id']}",
+                           json={"expected_updated_at": made["updated_at"], "enabled": True})
+    assert refused.status_code == 409
+    assert f"resolves to {count} sources" in refused.json()["detail"]
+
+    # A preview of the same group is refused and names the same number, spending nothing.
+    narrow = _client(db_schema, _principal("detection_engineer"), provider=provider,
+                     pw_max_sources_per_search=1)
+    preview = narrow.post(f"{PREFIX}/{made['id']}/preview")
+    assert preview.status_code == 409
+    assert f"the group resolves to {count} sources" in preview.text
+    assert provider.pw_searches == []
+
+    # A roomy preview searches exactly the members the /scope read names.
+    roomy = _client(db_schema, _principal("detection_engineer"), provider=provider)
+    assert roomy.post(f"{PREFIX}/{made['id']}/preview").status_code == 200
+    assert {i for s in provider.pw_searches for i in s.scope_ids} == {701, 702}
+    assert reader.get(f"{PREFIX}/{made['id']}/scope").json()["members"] == ["fw-1", "fw-2"]
+
+
+async def test_the_scope_read_costs_the_same_statements_at_every_size(
+    db_session, db_schema: str
+) -> None:
+    reader = _client(db_schema, _principal("viewer"), pw_max_chunks_per_watch=10)
+    writer = _client(db_schema, _principal("detection_engineer"), pw_max_chunks_per_watch=10)
+    counts: dict[str, int] = {}
+    for groups, sources in ((2, 10), (20, 200)):
+        base = 1000 + groups
+        instance = await _bulk_tree(db_session, groups=groups, sources=sources, base=base)
+        made = _create(writer, f"scale-{groups}", scope_kind="LOG_SOURCE_GROUP",
+                       scope_type_id=None, scope_group_id=base, instance_id=str(instance.id))
+        reader.statements.clear()  # type: ignore[attr-defined]
+        body = reader.get(f"{PREFIX}/{made['id']}/scope").json()
+        assert body["member_count"] == sources and len(body["groups_walked"]) == groups
+        counts[f"group-{groups}"] = len(reader.statements)  # type: ignore[attr-defined]
+    assert len(set(counts.values())) == 1, counts
+    assert counts["group-2"] == SCOPE_STATEMENTS["group"], counts
+
+    for sources in (10, 200):
+        base = 2000 + sources
+        instance = await _bulk_tree(db_session, groups=1, sources=sources, base=base)
+        made = _create(writer, f"type-{sources}", scope_group_id=None, scope_kind="LOG_SOURCE_TYPE",
+                       scope_type_id=TYPE_ID, instance_id=str(instance.id))
+        reader.statements.clear()  # type: ignore[attr-defined]
+        body = reader.get(f"{PREFIX}/{made['id']}/scope").json()
+        assert body["member_count"] == sources
+        counts[f"type-{sources}"] = len(reader.statements)  # type: ignore[attr-defined]
+        # A single-source read costs the same at either size too.
+        source_id = await db_session.scalar(
+            select(LogSource.id).where(LogSource.instance_id == instance.id).limit(1)
+        )
+        one = _create(writer, f"source-{sources}", scope_kind="LOG_SOURCE", scope_type_id=None,
+                      log_source_id=str(source_id), instance_id=str(instance.id))
+        reader.statements.clear()  # type: ignore[attr-defined]
+        assert reader.get(f"{PREFIX}/{one['id']}/scope").json()["member_count"] == 1
+        counts[f"source-{sources}"] = len(reader.statements)  # type: ignore[attr-defined]
+    assert counts["type-10"] == counts["type-200"] == SCOPE_STATEMENTS["type"], counts
+    assert counts["source-10"] == counts["source-200"] == SCOPE_STATEMENTS["source"], counts
+
+
+async def test_scope_options_costs_the_same_statements_at_every_size(
+    db_session, db_schema: str
+) -> None:
+    reader = _client(db_schema, _principal("viewer"))
+    counts: dict[str, int] = {}
+    for groups, sources in ((2, 10), (20, 200)):
+        instance = await _bulk_tree(db_session, groups=groups, sources=sources, base=3000 + groups)
+        reader.statements.clear()  # type: ignore[attr-defined]
+        options = reader.get(f"{PREFIX}/scope-options",
+                             params={"kind": "LOG_SOURCE_GROUP",
+                                     "instance_id": str(instance.id)}).json()
+        assert len(options) == groups
+        assert any(o["synced_source_count"] == sources for o in options)
+        counts[f"group-{groups}"] = len(reader.statements)  # type: ignore[attr-defined]
+        reader.statements.clear()  # type: ignore[attr-defined]
+        page = reader.get(f"{PREFIX}/scope-options",
+                          params={"kind": "LOG_SOURCE", "instance_id": str(instance.id),
+                                  "limit": 5}).json()
+        assert len(page) == 5
+        counts[f"sources-{groups}"] = len(reader.statements)  # type: ignore[attr-defined]
+    assert counts["group-2"] == counts["group-20"] == OPTIONS_STATEMENTS["group"], counts
+    assert counts["sources-2"] == counts["sources-20"] == OPTIONS_STATEMENTS["source"], counts
+
+    for sources in (10, 200):
+        instance = await _bulk_tree(db_session, groups=1, sources=sources, base=4000 + sources)
+        reader.statements.clear()  # type: ignore[attr-defined]
+        options = reader.get(f"{PREFIX}/scope-options",
+                             params={"kind": "LOG_SOURCE_TYPE",
+                                     "instance_id": str(instance.id)}).json()
+        assert [o["synced_source_count"] for o in options] == [sources]
+        counts[f"type-{sources}"] = len(reader.statements)  # type: ignore[attr-defined]
+    assert counts["type-10"] == counts["type-200"] == OPTIONS_STATEMENTS["type"], counts

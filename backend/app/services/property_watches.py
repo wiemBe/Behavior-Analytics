@@ -13,9 +13,10 @@ Three rules shape it:
 * **Reads are bulk.** A list of watches costs a fixed number of statements, whatever their
   number (AGENTS.md rule 9): scope names, the newest bucket of each, and the open incidents.
 
-The group resolution here (`resolve_groups`) is the minimum the API needs: the capacity check,
-the preview and the property picker. The collector's pure resolver (stale sync, fingerprint,
-chunking, membership history) is PW-2b's, and PW-5b replaces this with it.
+The scope resolution here is PW-2b's pure resolver (`app/property_watch/scope.py`) over the one
+bulk inventory read a tick uses: the capacity check, the preview, the pickers and `/scope` all
+resolve through it, so the API, the enable caps and the collector can never disagree about a
+scope. The only group walking left in this module is `group_path`, a display helper.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from typing import Any
 
 from sqlalchemy import and_, func, null, select, tuple_
@@ -73,8 +75,10 @@ from app.property_watch.reference import (
     PwReferenceError,
     validate_pinned_value,
 )
+from app.property_watch.scope import ResolvedScope, resolve_scope
 from app.providers.base import QRadarProvider
 from app.providers.dto import PwSearchKind
+from app.repositories.property_watch import PropertyWatchRepository
 from app.schemas.property_watch import (
     BaselineState,
     CoverageOut,
@@ -84,10 +88,13 @@ from app.schemas.property_watch import (
     PreviewRowOut,
     PropertyWatchOut,
     PwPropertyRef,
+    ScopeChangeOut,
+    ScopeGroupOut,
     ScopeSummaryOut,
     SeriesPointOut,
     ValueSeriesOut,
     WatchBucketOut,
+    WatchScopeOut,
     WatchValueOut,
 )
 
@@ -292,93 +299,82 @@ def watch_snapshot(watch: PropertyWatch) -> dict[str, Any]:
     }
 
 
-# --------------------------------------------------------------------------- groups
+# --------------------------------------------------------------------------- scopes
+#: The most member names a `/scope` read returns; the true count is reported beside them.
+SCOPE_MEMBERS_LIMIT = 200
+#: The newest stored buckets a `/scope` read walks back for membership changes.
+SCOPE_HISTORY_BUCKETS = 500
+
+
 @dataclass(frozen=True)
-class GroupResolution:
-    """A group as the synced inventory describes it. Not the collector's resolver."""
+class ScopeSubject:
+    """One scope to resolve: a watch's kind and the columns that name it."""
 
-    exists: bool
-    synced_at: datetime | None = None
-    #: Member `qradar_id`s: every source whose `group_ids` holds the group or a descendant.
-    members: tuple[int, ...] = ()
-    #: The groups walked, the group itself first.
-    walked: tuple[int, ...] = ()
-    #: The distinct log-source types of the members.
-    type_ids: tuple[int, ...] = ()
+    instance_id: uuid.UUID
+    scope_kind: PwScopeKind
+    log_source_id: uuid.UUID | None = None
+    scope_type_id: int | None = None
+    scope_group_id: int | None = None
 
-
-def _children(groups: Iterable[LogSourceGroup]) -> dict[int, list[int]]:
-    out: dict[int, list[int]] = defaultdict(list)
-    for group in groups:
-        if group.parent_qradar_id is not None:
-            out[group.parent_qradar_id].append(group.qradar_id)
-    return out
-
-
-def _descendants(root: int, children: dict[int, list[int]]) -> tuple[int, ...]:
-    """The group and every group below it. Cycle-safe: the lab's own groups name each
-    other as parent (design §G.4)."""
-    visited: list[int] = []
-    seen: set[int] = set()
-    stack = [root]
-    while stack:
-        current = stack.pop()
-        if current in seen:
-            continue
-        seen.add(current)
-        visited.append(current)
-        stack.extend(sorted(children.get(current, ()), reverse=True))
-    return tuple(visited)
-
-
-async def resolve_groups(
-    session: AsyncSession, instance_id: uuid.UUID, group_ids: Iterable[int]
-) -> dict[int, GroupResolution]:
-    """Two statements for any number of groups: the instance's groups and its sources."""
-    wanted = sorted(set(group_ids))
-    if not wanted:
-        return {}
-    groups = list(
-        (
-            await session.scalars(
-                select(LogSourceGroup).where(LogSourceGroup.instance_id == instance_id)
-            )
-        ).all()
-    )
-    by_id = {g.qradar_id: g for g in groups}
-    children = _children(groups)
-    sources = (
-        await session.execute(
-            select(LogSource.qradar_id, LogSource.type_id, LogSource.group_ids).where(
-                LogSource.instance_id == instance_id, LogSource.group_ids.is_not(None)
-            )
+    @classmethod
+    def of(cls, watch: PropertyWatch) -> ScopeSubject:
+        return cls(
+            instance_id=watch.instance_id,
+            scope_kind=PwScopeKind(str(watch.scope_kind)),
+            log_source_id=watch.log_source_id,
+            scope_type_id=watch.scope_type_id,
+            scope_group_id=watch.scope_group_id,
         )
-    ).all()
-    out: dict[int, GroupResolution] = {}
-    for gid in wanted:
-        group = by_id.get(gid)
-        if group is None:
-            out[gid] = GroupResolution(exists=False)
-            continue
-        walked = _descendants(gid, children)
-        reach = set(walked)
-        members: list[int] = []
-        types: set[int] = set()
-        for qradar_id, type_id, group_ids_value in sources:
-            if not isinstance(group_ids_value, list):
-                continue
-            if reach.intersection(v for v in group_ids_value if isinstance(v, int)):
-                members.append(qradar_id)
-                if type_id is not None:
-                    types.add(type_id)
-        out[gid] = GroupResolution(
-            exists=True,
-            synced_at=group.synced_at,
-            members=tuple(sorted(members)),
-            walked=walked,
-            type_ids=tuple(sorted(types)),
+
+
+async def resolve_subjects(
+    session: AsyncSession,
+    settings: Settings,
+    subjects: Sequence[ScopeSubject],
+    *,
+    now: datetime,
+) -> list[ResolvedScope]:
+    """Resolve every subject with PW-2b's pure resolver over one bulk read per instance.
+
+    The read the collector does: the instance's groups when a scope needs the walk, and its
+    sources (the whole inventory for a type or group scope, the named ones for a source
+    scope). One statement each, whatever the number of subjects (AGENTS.md rule 9).
+    """
+    if not subjects:
+        return []
+    repo = PropertyWatchRepository(session)
+    by_instance: dict[uuid.UUID, list[int]] = defaultdict(list)
+    for index, subject in enumerate(subjects):
+        by_instance[subject.instance_id].append(index)
+    resolved: list[ResolvedScope | None] = [None] * len(subjects)
+    for instance_id, indexes in by_instance.items():
+        whole = any(subjects[i].scope_kind is not PwScopeKind.LOG_SOURCE for i in indexes)
+        source_ids: set[uuid.UUID] = set()
+        for i in indexes:
+            named = subjects[i].log_source_id
+            if named is not None:
+                source_ids.add(named)
+        sources = await repo.sources(instance_id, source_ids=source_ids, whole_inventory=whole)
+        groups = (
+            await repo.groups(instance_id)
+            if any(subjects[i].scope_kind is PwScopeKind.LOG_SOURCE_GROUP for i in indexes)
+            else {}
         )
-    return out
+        for i in indexes:
+            subject = subjects[i]
+            resolved[i] = resolve_scope(
+                subject.scope_kind,
+                log_source_id=subject.log_source_id,
+                type_id=subject.scope_type_id,
+                group_id=subject.scope_group_id,
+                groups=groups,
+                sources=sources,
+                now=now,
+                stale_after=timedelta(hours=settings.pw_scope_stale_after_hours),
+                max_sources=settings.pw_max_sources_per_search,
+                max_chunks=settings.pw_max_chunks_per_watch,
+            )
+    return [scope for scope in resolved if scope is not None]
 
 
 def group_path(group_id: int, groups: dict[int, LogSourceGroup]) -> str:
@@ -407,26 +403,16 @@ def search_cost(
 async def static_costs(
     session: AsyncSession, watches: Sequence[PropertyWatch], settings: Settings
 ) -> dict[uuid.UUID, tuple[int, int]]:
-    """`{watch id: (searches per tick, resolved members)}`, group resolution done in bulk."""
-    by_instance: dict[uuid.UUID, set[int]] = defaultdict(set)
-    for watch in watches:
-        if PwScopeKind(str(watch.scope_kind)) is PwScopeKind.LOG_SOURCE_GROUP:
-            assert watch.scope_group_id is not None
-            by_instance[watch.instance_id].add(watch.scope_group_id)
-    resolved: dict[tuple[uuid.UUID, int], GroupResolution] = {}
-    for instance_id, ids in by_instance.items():
-        for gid, resolution in (await resolve_groups(session, instance_id, ids)).items():
-            resolved[(instance_id, gid)] = resolution
+    """`{watch id: (searches per tick, resolved members)}`, scope resolution done in bulk."""
+    scopes = await resolve_subjects(
+        session, settings, [ScopeSubject.of(watch) for watch in watches], now=datetime.now(UTC)
+    )
     out: dict[uuid.UUID, tuple[int, int]] = {}
-    for watch in watches:
-        kind = PwScopeKind(str(watch.scope_kind))
-        members = 1
-        if kind is PwScopeKind.LOG_SOURCE_GROUP:
-            assert watch.scope_group_id is not None
-            members = len(resolved[(watch.instance_id, watch.scope_group_id)].members)
+    for watch, scope in zip(watches, scopes, strict=True):
+        members = scope.member_count or 0
         out[watch.id] = (
             search_cost(
-                kind,
+                PwScopeKind(str(watch.scope_kind)),
                 members,
                 pinned=bool(watch.pinned_values),
                 max_sources=settings.pw_max_sources_per_search,
@@ -499,7 +485,11 @@ def _ratio(parsed: int | None, total: int | None) -> float | None:
 
 
 async def _scope_summaries(
-    session: AsyncSession, watches: Sequence[PropertyWatch]
+    session: AsyncSession,
+    watches: Sequence[PropertyWatch],
+    settings: Settings,
+    *,
+    with_members: bool,
 ) -> dict[uuid.UUID, ScopeSummaryOut]:
     source_ids = {w.log_source_id for w in watches if w.log_source_id is not None}
     types = {
@@ -531,19 +521,32 @@ async def _scope_summaries(
         ).all()
         for group in found:
             groups.setdefault(group.instance_id, {})[group.qradar_id] = group
+    # The resolved member count comes from the same resolver as `/scope` and the collector,
+    # but only a detail read pays for the extra bulk read (the list stays its fixed cost).
+    members: dict[uuid.UUID, int | None] = {}
+    if with_members and watches:
+        scopes = await resolve_subjects(
+            session,
+            settings,
+            [ScopeSubject.of(watch) for watch in watches],
+            now=datetime.now(UTC),
+        )
+        members = {w.id: s.member_count for w, s in zip(watches, scopes, strict=True)}
     out: dict[uuid.UUID, ScopeSummaryOut] = {}
     for watch in watches:
         kind = PwScopeKind(str(watch.scope_kind))
+        member_count = members.get(watch.id)
         if kind is PwScopeKind.LOG_SOURCE and watch.log_source_id is not None:
             qid, name, type_name = sources.get(watch.log_source_id, (None, None, None))
             out[watch.id] = ScopeSummaryOut(
-                kind=kind, name=name, detail=type_name, qradar_id=qid
+                kind=kind, name=name, detail=type_name, qradar_id=qid, member_count=member_count
             )
         elif kind is PwScopeKind.LOG_SOURCE_TYPE and watch.scope_type_id is not None:
             out[watch.id] = ScopeSummaryOut(
                 kind=kind,
                 name=type_names.get((watch.instance_id, watch.scope_type_id)),
                 qradar_id=watch.scope_type_id,
+                member_count=member_count,
             )
         else:
             assert watch.scope_group_id is not None
@@ -554,6 +557,7 @@ async def _scope_summaries(
                 name=found_group.name if found_group else None,
                 detail=group_path(watch.scope_group_id, known) if found_group else None,
                 qradar_id=watch.scope_group_id,
+                member_count=member_count,
             )
     return out
 
@@ -614,6 +618,145 @@ async def _active_incidents(
     return out
 
 
+def _as_utc(value: datetime) -> datetime:
+    """A stored timestamp as UTC, whether the driver returned it naive or aware."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+async def _walked_groups(
+    session: AsyncSession, instance_id: uuid.UUID, group_ids: Sequence[int]
+) -> tuple[list[ScopeGroupOut], datetime | None]:
+    """The walked groups' ids and names, and the oldest of their `synced_at`: one statement."""
+    if not group_ids:
+        return [], None
+    rows = (
+        await session.execute(
+            select(LogSourceGroup.qradar_id, LogSourceGroup.name, LogSourceGroup.synced_at)
+            .where(
+                LogSourceGroup.instance_id == instance_id,
+                LogSourceGroup.qradar_id.in_(list(group_ids)),
+            )
+            .order_by(LogSourceGroup.qradar_id)
+        )
+    ).all()
+    groups = [ScopeGroupOut(qradar_id=qradar_id, name=name) for qradar_id, name, _ in rows]
+    oldest = min((synced_at for _, _, synced_at in rows), default=None)
+    return groups, oldest
+
+
+def _member_predicate(subject: ScopeSubject, scope: ResolvedScope) -> Any:
+    """The one predicate that names a scope's members, matching the resolver's membership."""
+    if subject.scope_kind is PwScopeKind.LOG_SOURCE:
+        return LogSource.id == subject.log_source_id
+    if subject.scope_kind is PwScopeKind.LOG_SOURCE_TYPE:
+        return LogSource.type_id == subject.scope_type_id
+    return LogSource.id.in_([member.id for member in scope.members])
+
+
+async def _member_names(
+    session: AsyncSession, subject: ScopeSubject, scope: ResolvedScope
+) -> list[str]:
+    """Up to `SCOPE_MEMBERS_LIMIT` member names, sorted: one statement, bounded.
+
+    For a group the members come from the resolver's own walk (its `SourceRow` set), so the
+    names cannot disagree with the count; for a source or a type the inventory is filtered by
+    the same column the resolver counts.
+    """
+    if subject.scope_kind is PwScopeKind.LOG_SOURCE_GROUP and not scope.members:
+        return []
+    query = (
+        select(LogSource.name)
+        .where(LogSource.instance_id == subject.instance_id, _member_predicate(subject, scope))
+        .order_by(LogSource.name, LogSource.id)
+        .limit(SCOPE_MEMBERS_LIMIT + 1)
+    )
+    names = list((await session.scalars(query)).all())
+    return names[:SCOPE_MEMBERS_LIMIT]
+
+
+async def _scope_changes(
+    session: AsyncSession, watch: PropertyWatch
+) -> list[ScopeChangeOut]:
+    """The stored membership changes of the current version, newest first: one statement.
+
+    The newest `SCOPE_HISTORY_BUCKETS` collected buckets are walked; a bucket that measured
+    nothing says nothing about the scope and is left out, as the collector's history read
+    does. A change is a stored bucket whose `scope_fingerprint` differs from the one before
+    it; its `scope_changed` flag says whether it is in the grace window.
+    """
+    rows = (
+        await session.execute(
+            select(
+                PwBucket.bucket_start,
+                PwBucket.scope_member_count,
+                PwBucket.scope_fingerprint,
+                PwBucket.scope_changed,
+            )
+            .where(
+                PwBucket.watch_id == watch.id,
+                PwBucket.watch_version == watch.watch_version,
+                PwBucket.values_measurement != PwBucketMeasurement.NOT_COLLECTED.value,
+            )
+            .order_by(PwBucket.bucket_start.desc())
+            .limit(SCOPE_HISTORY_BUCKETS)
+        )
+    ).all()
+    ordered = list(reversed(rows))
+    changes: list[ScopeChangeOut] = []
+    for previous, current in pairwise(ordered):
+        if current[2] == previous[2]:
+            continue
+        changes.append(
+            ScopeChangeOut(
+                bucket_start=current[0],
+                member_count_before=previous[1],
+                member_count_after=current[1],
+                in_grace_window=bool(current[3]),
+            )
+        )
+    changes.reverse()
+    return changes
+
+
+async def watch_scope(
+    session: AsyncSession,
+    watch: PropertyWatch,
+    settings: Settings,
+    *,
+    now: datetime,
+) -> WatchScopeOut:
+    """What the watch's scope resolves to, and how its membership changed (design §G.4).
+
+    Statements: the resolver's one read per group/source set, the walked groups' names, the
+    member names, and the stored changes. Each is one statement whatever the number of groups
+    or sources (AGENTS.md rule 9). A scope that does not resolve still returns what the
+    inventory holds, marked with its state and reason, never a zero.
+    """
+    subject = ScopeSubject.of(watch)
+    scope = (await resolve_subjects(session, settings, [subject], now=now))[0]
+    groups, synced_at = await _walked_groups(session, watch.instance_id, scope.groups_walked)
+    names = await _member_names(session, subject, scope)
+    changes = await _scope_changes(session, watch)
+    age = None if synced_at is None else int((now - _as_utc(synced_at)).total_seconds())
+    return WatchScopeOut(
+        watch_id=watch.id,
+        watch_version=int(watch.watch_version),
+        kind=scope.scope_kind,
+        resolved=scope.resolved,
+        state=scope.status,
+        reason=scope.reason,
+        member_count=scope.member_count,
+        members=names,
+        members_total=scope.member_count,
+        groups_walked=groups,
+        inventory_synced_at=synced_at,
+        inventory_age_seconds=age,
+        changes=changes,
+    )
+
+
 async def watch_outs(
     session: AsyncSession,
     watches: Sequence[PropertyWatch],
@@ -622,9 +765,13 @@ async def watch_outs(
     alerting_mode: str,
     detail: bool = False,
 ) -> list[PropertyWatchOut]:
-    """The watches as the API serves them: three bulk statements plus up to three for names."""
+    """The watches as the API serves them: three bulk statements plus up to three for names.
+
+    A detail read additionally resolves each scope's member count, through the same resolver
+    as `/scope` (one more bulk read per instance).
+    """
     ids = [w.id for w in watches]
-    scopes = await _scope_summaries(session, watches)
+    scopes = await _scope_summaries(session, watches, settings, with_members=detail)
     coverage = await _latest_coverage(session, ids)
     incidents = await _active_incidents(session, ids)
     rendered: list[PropertyWatchOut] = []
@@ -1023,37 +1170,17 @@ async def preview_scope_ids(
 ) -> tuple[int, ...]:
     """The ids the preview's searches name, or `PreviewRefused` with the reason."""
     kind = PwScopeKind(str(watch.scope_kind))
-    if kind is PwScopeKind.LOG_SOURCE:
-        qradar_id = await session.scalar(
-            select(LogSource.qradar_id).where(LogSource.id == watch.log_source_id)
-        )
-        if qradar_id is None:
-            raise PreviewRefused("the watch's log source is not in the synced inventory")
-        return (int(qradar_id),)
-    if kind is PwScopeKind.LOG_SOURCE_TYPE:
-        assert watch.scope_type_id is not None
-        return (int(watch.scope_type_id),)
-    assert watch.scope_group_id is not None
-    group = (await resolve_groups(session, watch.instance_id, [watch.scope_group_id]))[
-        watch.scope_group_id
-    ]
-    if not group.exists:
-        raise PreviewRefused("SCOPE_EMPTY: the group is not in the synced inventory")
-    assert group.synced_at is not None
-    if now - group.synced_at > timedelta(hours=settings.pw_scope_stale_after_hours):
+    scope = (await resolve_subjects(session, settings, [ScopeSubject.of(watch)], now=now))[0]
+    if not scope.resolved:
+        status = scope.status.value if scope.status is not None else "SCOPE_UNRESOLVED"
+        raise PreviewRefused(f"{status}: {scope.reason}")
+    if kind is PwScopeKind.LOG_SOURCE_GROUP and len(scope.chunks) > 1:
         raise PreviewRefused(
-            "SCOPE_STALE: the group was last synced more than "
-            f"{settings.pw_scope_stale_after_hours} hours ago, so its members cannot be trusted"
-        )
-    if not group.members:
-        raise PreviewRefused("SCOPE_EMPTY: the group resolves to no synced log source")
-    if len(group.members) > settings.pw_max_sources_per_search:
-        raise PreviewRefused(
-            f"the group resolves to {len(group.members)} sources and a preview covers one "
+            f"the group resolves to {scope.member_count} sources and a preview covers one "
             f"search chunk of at most {settings.pw_max_sources_per_search}; preview a smaller "
             "group, a type or a source"
         )
-    return group.members
+    return scope.chunks[0]
 
 
 async def run_preview(

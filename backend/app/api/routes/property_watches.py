@@ -41,7 +41,13 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings, get_settings
 from app.core.rate_limit import limiter
 from app.custom_rules.alerts import alerting_mode
-from app.models.enums import PwAnomalyType, PwReferenceKind, PwScopeKind, Severity
+from app.models.enums import (
+    PwAnomalyType,
+    PwReferenceKind,
+    PwScopeKind,
+    PwWatchStatus,
+    Severity,
+)
 from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
@@ -63,6 +69,7 @@ from app.schemas.property_watch import (
     ScopeOptionOut,
     WatchBucketOut,
     WatchCatalogOut,
+    WatchScopeOut,
     WatchSeriesOut,
 )
 from app.security.auth import get_principal
@@ -242,8 +249,9 @@ async def scope_options(
 ) -> list[ScopeOptionOut]:
     """Search the synced inventory for sources, types or groups.
 
-    A type carries its number of synced sources. The resolved member count of a group
-    comes with the scope resolver (PW-5b); a group carries its path.
+    A type carries its number of synced sources and a group its resolved member count, both
+    through PW-2b's resolver over the same bulk read the collector uses. A group that does
+    not resolve (stale, too large) shows no count and names the reason in ``scope_reason``.
     """
     instance = await _default_instance(session, instance_id)
     if instance is None:
@@ -271,26 +279,25 @@ async def scope_options(
                 tquery.order_by(LogSourceType.name, LogSourceType.type_id).limit(size)
             )
         ).all()
-        counts: dict[int, int] = {}
-        if types:
-            rows = await session.execute(
-                select(LogSource.type_id, func.count())
-                .where(
-                    LogSource.instance_id == instance,
-                    LogSource.type_id.in_([t.type_id for t in types]),
-                )
-                .group_by(LogSource.type_id)
-            )
-            counts = {r[0]: int(r[1]) for r in rows.all()}
+        counts = await _resolved_options(
+            session,
+            settings,
+            [
+                svc.ScopeSubject(instance, kind, scope_type_id=t.type_id)
+                for t in types
+            ],
+        )
         return [
             ScopeOptionOut(
                 kind=kind,
                 id=str(t.type_id),
                 qradar_id=t.type_id,
                 name=t.name,
-                synced_source_count=counts.get(t.type_id, 0),
+                synced_source_count=counts[index][0],
+                scope_state=counts[index][1],
+                scope_reason=counts[index][2],
             )
-            for t in types
+            for index, t in enumerate(types)
         ]
     groups = {
         g.qradar_id: g
@@ -307,17 +314,49 @@ async def scope_options(
         if not needle or needle in group.name.casefold()
     ]
     found.sort(key=lambda item: (item[0].casefold(), item[1].qradar_id))
+    page = found[:size]
+    counts = await _resolved_options(
+        session,
+        settings,
+        [svc.ScopeSubject(instance, kind, scope_group_id=g.qradar_id) for _, g in page],
+    )
     return [
         ScopeOptionOut(
-            kind=kind, id=str(g.qradar_id), qradar_id=g.qradar_id, name=g.name, detail=path
+            kind=kind,
+            id=str(g.qradar_id),
+            qradar_id=g.qradar_id,
+            name=g.name,
+            detail=path,
+            synced_source_count=counts[index][0],
+            scope_state=counts[index][1],
+            scope_reason=counts[index][2],
         )
-        for path, g in found[:size]
+        for index, (path, g) in enumerate(page)
     ]
+
+
+async def _resolved_options(
+    session: AsyncSession, settings: Settings, subjects: list[svc.ScopeSubject]
+) -> list[tuple[int | None, PwWatchStatus | None, str | None]]:
+    """`(synced_source_count, state, reason)` per subject, from the shared resolver.
+
+    A scope that resolved reports its count. A scope that did not reports no count and names
+    the reason, except an empty one whose emptiness the inventory measured: that is a real
+    zero and is reported as one (design §G.4).
+    """
+    scopes = await svc.resolve_subjects(session, settings, subjects, now=datetime.now(UTC))
+    out: list[tuple[int | None, PwWatchStatus | None, str | None]] = []
+    for scope in scopes:
+        measurable = scope.resolved or scope.status is PwWatchStatus.SCOPE_EMPTY
+        count = scope.member_count if measurable else None
+        out.append((count, scope.status, scope.reason))
+    return out
 
 
 @router.get("/property-options", response_model=PropertyOptionsOut)
 async def property_options(
     session: SessionDep,
+    settings: SettingsDep,
     scope_kind: PwScopeKind,
     scope_id: Annotated[str, Query(min_length=1, max_length=64)],
     service: Annotated[PropertyCatalogService, Depends(get_property_catalog_service)],
@@ -352,12 +391,34 @@ async def property_options(
         if scope_kind is PwScopeKind.LOG_SOURCE_TYPE:
             type_ids = (number,)
         else:
-            group = (await svc.resolve_groups(session, instance_key, [number]))[number]
-            if not group.exists:
+            known = await session.scalar(
+                select(LogSourceGroup.qradar_id).where(
+                    LogSourceGroup.instance_id == instance_key,
+                    LogSourceGroup.qradar_id == number,
+                )
+            )
+            if known is None:
                 raise HTTPException(
                     status.HTTP_404_NOT_FOUND, "log source group not found in the inventory"
                 )
-            type_ids = group.type_ids
+            group_scope = (
+                await svc.resolve_subjects(
+                    session,
+                    settings,
+                    [svc.ScopeSubject(instance_key, scope_kind, scope_group_id=number)],
+                    now=datetime.now(UTC),
+                )
+            )[0]
+            if not group_scope.resolved:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    group_scope.reason or "the group's scope cannot be resolved",
+                )
+            # The members' types come from the resolver's own walk, so the picker cannot
+            # disagree with the count the editor shows (design §G.4).
+            type_ids = tuple(
+                sorted({m.type_id for m in group_scope.members if m.type_id is not None})
+            )
     instance = await session.get(QRadarInstance, instance_key)
     if instance is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "QRadar instance not found")
@@ -489,7 +550,7 @@ async def create_watch(
         object_id=str(watch.id),
         detail={"before": None, "after": svc.watch_snapshot(watch)},
     )
-    return await _one_out(session, watch, settings)
+    return await _one_out(session, watch, settings, detail=True)
 
 
 @router.get("/{watch_id}", response_model=PropertyWatchOut)
@@ -498,6 +559,19 @@ async def get_watch(
 ) -> PropertyWatchOut:
     watch = await _load(session, watch_id)
     return await _one_out(session, watch, settings, detail=True)
+
+
+@router.get("/{watch_id}/scope", response_model=WatchScopeOut)
+async def get_watch_scope(
+    watch_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+) -> WatchScopeOut:
+    """The resolved scope, the groups walked, the inventory age and the membership history.
+
+    ``read:property_watches`` (the mount guard). A scope that does not resolve is returned
+    with its state and reason and whatever the last sync holds, never a zero.
+    """
+    watch = await _load(session, watch_id)
+    return await svc.watch_scope(session, watch, settings, now=datetime.now(UTC))
 
 
 def _null_reasons(payload: PropertyWatchUpdate) -> list[str]:

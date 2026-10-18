@@ -18,11 +18,14 @@ from app.main import create_app
 from app.models.enums import PwAnomalyType, PwScopeKind
 from app.models.fleet import LogSourceGroup
 from app.property_watch.reference import PW_NORMALIZED_FIELD_ALLOWLIST
+from app.property_watch.scope import GroupRow, group_and_descendants
 from app.providers.dto import CustomPropertyDTO
 from app.schemas.property_watch import (
     PinsIn,
     PropertyWatchCreate,
     PropertyWatchUpdate,
+    ScopeSummaryOut,
+    WatchScopeOut,
 )
 from app.security.rbac import (
     PERM_PROPERTY_WATCH_READ,
@@ -111,6 +114,7 @@ def test_the_expected_routes_exist() -> None:
         ("GET", f"{PREFIX}/{{watch_id}}"),
         ("PATCH", f"{PREFIX}/{{watch_id}}"),
         ("DELETE", f"{PREFIX}/{{watch_id}}"),
+        ("GET", f"{PREFIX}/{{watch_id}}/scope"),
         ("GET", f"{PREFIX}/{{watch_id}}/buckets"),
         ("GET", f"{PREFIX}/{{watch_id}}/values"),
         ("GET", f"{PREFIX}/{{watch_id}}/series"),
@@ -118,8 +122,6 @@ def test_the_expected_routes_exist() -> None:
         ("PUT", f"{PREFIX}/{{watch_id}}/pins"),
     }
     assert expected <= found
-    # The two routes that need the scope resolver are PW-5b's, not placeholders here.
-    assert ("GET", f"{PREFIX}/{{watch_id}}/scope") not in found
 
 
 def test_static_routes_precede_the_watch_id_route() -> None:
@@ -184,6 +186,23 @@ def test_update_forbids_unknown_fields() -> None:
 
 def test_hours_bounds_are_the_f1_preview_bounds() -> None:
     assert (svc.HOURS_MIN, svc.HOURS_MAX, svc.HOURS_DEFAULT) == (1, 168, 24)
+
+
+def test_a_missing_member_count_stays_missing_and_never_becomes_a_zero() -> None:
+    # The scope read's schema defaults (PW-5b): a scope that did not resolve carries no count
+    # unless the resolver measured a real zero, and the cap is 200 names.
+    assert svc.SCOPE_MEMBERS_LIMIT == 200
+    summary = ScopeSummaryOut(kind=PwScopeKind.LOG_SOURCE_GROUP, qradar_id=1)
+    assert summary.member_count is None
+    scope = WatchScopeOut(
+        watch_id=uuid.uuid4(), watch_version=1, kind=PwScopeKind.LOG_SOURCE_GROUP,
+        resolved=False,
+    )
+    assert scope.resolved is False
+    assert scope.member_count is None and scope.members == [] and scope.members_total is None
+    assert scope.groups_walked == [] and scope.changes == []
+    assert scope.state is None and scope.reason is None
+    assert scope.inventory_synced_at is None and scope.inventory_age_seconds is None
 
 
 # --------------------------------------------------------------------------- validation
@@ -315,13 +334,18 @@ def _group(gid: int, parent: int | None) -> LogSourceGroup:
     )
 
 
+def _group_row(gid: int, parent: int | None) -> GroupRow:
+    return GroupRow(gid, parent, datetime.now(UTC))
+
+
 def test_the_group_walk_includes_descendants_and_survives_a_cycle() -> None:
-    children = svc._children([_group(1, None), _group(2, 1), _group(3, 2), _group(4, None)])
-    assert svc._descendants(1, children) == (1, 2, 3)
+    # The walk the API and the collector both use is PW-2b's shared resolver.
+    tree = {g.qradar_id: g for g in (_group_row(1, None), _group_row(2, 1), _group_row(3, 2))}
+    assert group_and_descendants(1, tree) == [1, 2, 3]
     # The lab's own two groups name each other as parent.
-    cyclic = svc._children([_group(0, 1), _group(1, 0)])
-    assert set(svc._descendants(0, cyclic)) == {0, 1}
-    assert set(svc._descendants(1, cyclic)) == {0, 1}
+    cyclic = {g.qradar_id: g for g in (_group_row(0, 1), _group_row(1, 0))}
+    assert set(group_and_descendants(0, cyclic)) == {0, 1}
+    assert set(group_and_descendants(1, cyclic)) == {0, 1}
 
 
 def test_group_path_is_cycle_safe() -> None:
