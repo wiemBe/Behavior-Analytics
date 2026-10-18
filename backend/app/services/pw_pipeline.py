@@ -22,7 +22,12 @@ from app.models.instance import QRadarInstance
 from app.property_watch.engine import PwAnomalyEngine, PwEvaluationReport
 from app.property_watch.training import PwBaselineTrainer, PwTrainingReport
 from app.providers.base import QRadarProvider
+from app.services.locks import CollectorAdvisoryLock
 from app.services.waf_pipeline import sanitized_error
+
+#: The lock's collector name, keyed like the collector families' names
+#: (`app/collectors/geo_collector.py` and friends).
+COLLECTOR_NAME = "property_watch"
 
 
 @dataclass
@@ -80,32 +85,46 @@ class PwInstancePipeline:
         self._enqueuer = enqueuer
 
     async def run(self, instance: QRadarInstance) -> PwPipelineReport:
-        collection = await PwCollector(
-            self.session, self.provider, settings=self.settings, clock=self._clock
-        ).collect(instance)
-        report = PwPipelineReport(instance.id, collection, steps=["collect"])
-        # Each later step runs in its own savepoint: a failure leaves what collection stored
-        # (and the evaluation watermark where it was) instead of rolling the whole tick back,
-        # the IPS pipeline's isolation. A failed evaluation also skips training: baselines are
-        # trained only from buckets that were judged first.
-        try:
-            async with self.session.begin_nested():
-                # Handed over only when there is one, so a narrower factory keeps working.
-                extra = {"enqueuer": self._enqueuer} if self._enqueuer is not None else {}
-                report.evaluation = await self._engine_factory(
-                    self.session, settings=self.settings, clock=self._clock, **extra
-                ).evaluate(instance)
-        except Exception as exc:
-            report.evaluation_error = sanitized_error(exc)
+        # One advisory lock for the whole pipeline (collect → evaluate → train), as every
+        # collector family holds one (`CollectorAdvisoryLock`). `claim_slot` keeps two
+        # dispatches from claiming the same slot, but a tick that outlasts the cadence
+        # (40 searches of up to 120 s each at a 5-minute cadence, D-28) would otherwise
+        # overlap the next slot's tick and run the same watches twice. The lock is
+        # non-blocking: the run that loses sends no search and writes nothing, and the
+        # dispatch records the skip as `skipped_locked`, the geo collector's shape.
+        async with CollectorAdvisoryLock(
+            self.session, self.settings, instance.id, COLLECTOR_NAME
+        ) as acquired:
+            if not acquired:
+                collection = PwCollectionReport(instance.id)
+                collection.status = "skipped_locked"
+                return PwPipelineReport(instance.id, collection)
+            collection = await PwCollector(
+                self.session, self.provider, settings=self.settings, clock=self._clock
+            ).collect(instance)
+            report = PwPipelineReport(instance.id, collection, steps=["collect"])
+            # Each later step runs in its own savepoint: a failure leaves what collection
+            # stored (and the evaluation watermark where it was) instead of rolling the
+            # whole tick back, the IPS pipeline's isolation. A failed evaluation also skips
+            # training: baselines are trained only from buckets that were judged first.
+            try:
+                async with self.session.begin_nested():
+                    # Handed over only when there is one, so a narrower factory keeps working.
+                    extra = {"enqueuer": self._enqueuer} if self._enqueuer is not None else {}
+                    report.evaluation = await self._engine_factory(
+                        self.session, settings=self.settings, clock=self._clock, **extra
+                    ).evaluate(instance)
+            except Exception as exc:
+                report.evaluation_error = sanitized_error(exc)
+                return report
+            report.steps.append("evaluate")
+            try:
+                async with self.session.begin_nested():
+                    report.training = await self._trainer_factory(
+                        self.session, settings=self.settings
+                    ).rebuild_due(instance, now=self._clock())
+            except Exception as exc:
+                report.training_error = sanitized_error(exc)
+                return report
+            report.steps.append("train")
             return report
-        report.steps.append("evaluate")
-        try:
-            async with self.session.begin_nested():
-                report.training = await self._trainer_factory(
-                    self.session, settings=self.settings
-                ).rebuild_due(instance, now=self._clock())
-        except Exception as exc:
-            report.training_error = sanitized_error(exc)
-            return report
-        report.steps.append("train")
-        return report

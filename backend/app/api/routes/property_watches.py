@@ -833,6 +833,22 @@ async def update_watch(
         capacity = await svc.enable_reasons(session, watch, settings)
         if capacity:
             raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(capacity))
+    if wants_enabled and not was_enabled:
+        # A re-enable starts fresh, exactly as a first enable does: a NULL `collected_through`
+        # makes the collector's first-run rule seed at the latest closed bucket
+        # (`pw_collector.py`: "the first run starts at the latest closed bucket"), so the
+        # disabled period is never collected from Ariel. `evaluated_through` takes that
+        # pre-reset watermark: every stored bucket is at or before it, so `pending_buckets`
+        # counts none of them pending and nothing stored is evaluated a second time, while
+        # it stays non-NULL so training still reads the values (`due_baseline_values`
+        # requires a non-NULL watermark). A watch that was never collected holds both
+        # watermarks NULL here, as a first enable does. The version, values, pins, baselines
+        # and detector states are left as they are. Novelty history across the gap is now
+        # incomplete, so a value that appears after it is judged `INSUFFICIENT_DATA` (fail
+        # closed) — catching the gap up as learning-only history belongs to the bootstrap
+        # build (PW-13).
+        watch.evaluated_through = watch.collected_through
+        watch.collected_through = None
     if was_enabled and not wants_enabled:
         # A disabled watch is no longer evaluated, so an incident open on it would never end
         # (design §G.10.1): resolve the watch's incidents and their alerts here, as the
