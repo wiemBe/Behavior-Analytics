@@ -30,7 +30,8 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
     match settings.qradar_provider:
         case ProviderKind.MOCK:
             return MockQRadarProvider(
-                ips_max_sources_per_search=settings.ips_max_sources_per_search
+                ips_max_sources_per_search=settings.ips_max_sources_per_search,
+                pw_max_sources_per_search=settings.pw_max_sources_per_search,
             )
         case ProviderKind.REST:
             return QRadarRestProvider(
@@ -42,6 +43,7 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
                 tls_allow_missing_aki=settings.qradar_tls_allow_missing_aki,
                 ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
                 ips_max_sources_per_search=settings.ips_max_sources_per_search,
+                pw_max_sources_per_search=settings.pw_max_sources_per_search,
             )
         case ProviderKind.MCP:
             return QRadarMCPProvider(
@@ -76,7 +78,8 @@ def build_provider_for_instance(
     match kind:
         case ProviderKind.MOCK:
             return MockQRadarProvider(
-                ips_max_sources_per_search=settings.ips_max_sources_per_search
+                ips_max_sources_per_search=settings.ips_max_sources_per_search,
+                pw_max_sources_per_search=settings.pw_max_sources_per_search,
             )
         case ProviderKind.REST:
             token = instance.sec_token
@@ -97,6 +100,7 @@ def build_provider_for_instance(
                 retry_max_seconds=settings.ariel_retry_max_seconds,
                 ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
                 ips_max_sources_per_search=settings.ips_max_sources_per_search,
+                pw_max_sources_per_search=settings.pw_max_sources_per_search,
             )
         case ProviderKind.MCP:
             return QRadarMCPProvider(
