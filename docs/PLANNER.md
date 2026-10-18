@@ -34,7 +34,7 @@ Every merged `agent/*` branch, worktree and DB was removed (local and origin).
    kind over the lab's synthetic telemetry, preview against the real Ariel, a full collection →
    evaluation → training tick through Celery/beat, the training row volume (PW-3b), the alert
    path with `PW_ALERTING_ENABLED=true` on the lab only.
-3. **PW-11** docs, spec to write: README Phase G section, the runbook settings, the §G.10.1
+3. **PW-11** ([spec](tasks/PW-11.md)) **started 16:48** on opencode DeepSeek free, unit `pw11-ds`, worktree `pw11` (from `feat/phase-ce`), log `QRadar-Dash-work/pw11/opencode.log`; PW-10's measured numbers go in a short second round. Was: README Phase G section, the runbook settings, the §G.10.1
    sentence that a maintenance bucket holds a resolve, the PW-6b race note, `[BUILT]` markers.
 4. Next release (the user decides when): the checklist below (mirror, package visibility,
    fresh-VM check, TimescaleDB license).
