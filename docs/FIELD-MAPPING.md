@@ -206,7 +206,7 @@ console. An HTTP request must not wait for it.
 
 The editor should offer the names that exist on the console instead of a bare text box.
 
-**Facts (T-041, lab 7.6, [report](tasks/T-041.report.md)):**
+**Facts (T-041, lab 7.6, report):**
 - `GET /config/event_sources/custom_properties/regex_properties` (119 rows) holds the names;
   `.../property_expressions` (474 rows) ties each property to a log-source type through
   `regex_property_identifier` → `identifier` and `log_source_type_id`. No single endpoint does the
@@ -323,7 +323,7 @@ IPS screens are the same components with the IPS schema.
 
 ## FM.9 IPS (Phase D) — the contract it inherits
 
-**Facts (T-030, lab 7.6, 2026-10-13, [report](tasks/T-030.report.md)).** QRadar auto-discovered both
+**Facts (T-030, lab 7.6, 2026-10-13, report).** QRadar auto-discovered both
 vendor-native lab sources within seconds: `PaSeries @ pa-fw-01` (id 412, type 206 "Palo Alto PA
 Series", from raw PAN-OS THREAT CSV) and `CiscoFirepowerThreatDefense @ ftd-01` (id 413, type 448).
 

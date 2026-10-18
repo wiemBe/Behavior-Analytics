@@ -5,10 +5,10 @@ and their sections are marked **[BUILT]**. An "As built" note under a section ma
 code differs from the design text. It follows the shape of
 [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and rests
 on [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (D-7), [`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md)
-§29 (measurement semantics, admission, bulk loaders), [`UI-REDESIGN-PLAN.md`](UI-REDESIGN-PLAN.md)
+§29 (measurement semantics, admission, bulk loaders), `UI-REDESIGN-PLAN.md`
 §UR.5 (the widget system) and [`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md). The design's
 `file:line` citations were written against the pre-build tree; the "As built" notes cite the built
-files ([`PLANNER.md`](PLANNER.md) §4 D-15, D-17).
+files (`PLANNER.md` §4 D-15, D-17).
 
 ---
 
@@ -21,7 +21,7 @@ files ([`PLANNER.md`](PLANNER.md) §4 D-15, D-17).
 Three wants: an option to write custom AQL; charts built from it; and custom incident logic —
 user-written rules such as "alert when this log source exceeds this EPS" and "alert when this URI
 gets this many requests". The "how" was left to the orchestrator (decision D-15,
-[`PLANNER.md`](PLANNER.md) §4).
+`PLANNER.md` §4).
 
 ## F.0a The decision in one table
 

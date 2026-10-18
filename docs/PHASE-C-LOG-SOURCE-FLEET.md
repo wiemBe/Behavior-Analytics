@@ -1,8 +1,8 @@
 # Phase C — log-source fleet: inventory, classification, new sources (goal G1)
 
 Status: **design, 2026-10-12**. Written by the orchestrator. It rests on the live facts measured
-in [`tasks/T-015.report.md`](tasks/T-015.report.md), and serves goal G1 in
-[`PLANNER.md`](PLANNER.md) §0.
+in `tasks/T-015.report.md`, and serves goal G1 in
+`PLANNER.md` §0.
 
 ## C.0 What the user asked for
 
@@ -175,7 +175,7 @@ builds on.
 # Part 2 (Phase C.2): outage policy and catch-all senders
 
 Status: **design, 2026-10-13 (sixth session).** Written by the orchestrator. Live facts:
-[`tasks/T-063.report.md`](tasks/T-063.report.md). It covers the two G1 gaps C.1 left: "be alerted
+`tasks/T-063.report.md`. It covers the two G1 gaps C.1 left: "be alerted
 when **selected** sources stop" and "track SIM Generic Log".
 
 ## C.7 Outage alert policy [DECISION, default open to the user as D-9]

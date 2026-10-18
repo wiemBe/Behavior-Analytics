@@ -1,0 +1,180 @@
+# Development
+
+This guide covers local development, dependency updates and the test suites. For deployment and
+operator procedures, see [`INSTALL.md`](INSTALL.md) and the Turkish runbook,
+[`OPERATIONS.md`](OPERATIONS.md).
+
+## Repository layout
+
+```text
+backend/app/
+  api/          FastAPI routers and dependencies
+  core/         configuration, database, logging and rate limiting
+  models/       SQLAlchemy models
+  schemas/      Pydantic request and response models
+  services/     collection and domain services
+  providers/    direct REST, MCP and mock QRadar providers
+  collectors/   bounded metric collectors
+  anomaly/      baselines, detector capabilities and the anomaly engine
+  alerts/       alert lifecycle, routing and notifiers
+  workers/      Celery application and tasks
+  repositories/ data access
+  security/     authentication, authorization, sanitization and redaction
+
+frontend/src/
+  app/          Next.js App Router pages, layouts and styles
+  components/   shared product components
+  lib/          typed API client and utilities
+  widgets/      dashboard registry, frames and widget implementations
+```
+
+The backend uses FastAPI, SQLAlchemy 2 and Pydantic 2. PostgreSQL with TimescaleDB stores the
+application data, Redis backs Celery, and the frontend uses Next.js with TypeScript and Apache
+ECharts.
+
+## Backend without Docker
+
+Use Python 3.12, which is the interpreter used by the image and CI:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+pip install --no-deps -e .
+export ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+export QRADAR_PROVIDER=mock
+uvicorn app.main:app --reload
+```
+
+The mock provider is deterministic and does not need QRadar. Production configuration refuses the
+mock provider, debug mode, missing REST credentials, disabled TLS verification, and autonomous LLM
+actions.
+
+## Frontend
+
+```bash
+cd frontend
+npm ci
+INTERNAL_API_BASE_URL=http://localhost:8000/api/v1 \
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
+```
+
+Open <http://localhost:3000>. In development, the backend permits the local frontend origin. A
+production image embeds `NEXT_PUBLIC_API_BASE_URL` during the build; runtime changes do not replace
+that value.
+
+## Background work
+
+Celery and Redis are the default scheduler and queue. Task orchestration lives in async functions
+with thin Celery wrappers, keeping the orchestration usable independently of the transport.
+
+Celery Beat drives inventory and metric collection, offense and rule processing, detection
+coverage, anomaly evaluation and evidence, scheduled searches, notifications, baseline rebuilds,
+WAF and IPS collection, catch-all and geography collection, property watches, custom rules, and
+bounded retention. Every QRadar search family defaults to a five-minute cadence. Bucket width and
+search cadence are separate controls; see [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md).
+
+WAF profiles can also be administered from the backend CLI:
+
+```bash
+python -m app.cli.waf --help
+```
+
+The commands include setting, validating, enabling, disabling and inspecting profiles, plus a
+bounded rejection probe. IPS profiles are administered through the API and UI.
+
+## Backend tests
+
+Run commands from `backend/` with the worktree first on `PYTHONPATH`:
+
+```bash
+ruff check app tests
+mypy app
+PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> pytest -q -m "not integration"
+```
+
+Integration tests require PostgreSQL with TimescaleDB and a dedicated database:
+
+```bash
+PYTHONPATH=. \
+ENCRYPTION_KEY=<fernet-key> \
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/behavior_analytics_test \
+pytest -q -m integration tests/integration
+```
+
+Never run two test processes against the same test database. The schema fixture recreates tables,
+so concurrent runs corrupt one another's assumptions. Migration checks use the same isolated test
+database:
+
+```bash
+alembic upgrade head
+alembic check
+```
+
+The backend suites cover provider behavior, TLS enforcement, encrypted storage, production
+hardening, collectors, robust baselines, detector fail-closed paths, alert fingerprints,
+notification routing, scheduling, API guards and database integration. QRadar responses are mocked
+in automated tests, and `MockNotifier` prevents external delivery.
+
+## Frontend tests
+
+```bash
+cd frontend
+export PATH="$HOME/.local/node/bin:$PATH"
+npm ci
+npm audit --omit=dev
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+Server Components are tested by awaiting their page functions and rendering the results against a
+stubbed API client. Chart tests stub ECharts because jsdom has no canvas; they assert registration,
+lifecycle and series data, including that unobserved intervals remain gaps rather than zeros.
+
+UI changes also require deterministic screenshots at 1440×900, 1280×800 and 1024×768. The
+normative product rules are in [`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md).
+
+## Dependency locks
+
+`backend/requirements.txt` is the hashed production lock. `backend/requirements-dev.txt` adds the
+development extra while remaining constrained by the production lock. The image and CI install
+with `--require-hashes`.
+
+When dependencies change, edit `backend/pyproject.toml`, regenerate both locks together in a
+secret-free scratch directory using Python 3.12, and run lint, type checking and unit tests before
+submitting the change. Do not mount the repository or a secrets directory into a dependency-build
+container.
+
+The enforced formatter policy is deliberate: run `ruff check`, but do not run `ruff format` over
+the repository.
+
+## Adding a migration
+
+Migrations are additive and must implement both upgrade and downgrade. Verify a fresh upgrade, a
+downgrade and upgrade round trip, and `alembic check`. The Timescale hypertable registry is
+`backend/app/models/__init__.py`; migrations create hypertables only after creating their ordinary
+tables.
+
+Do not run an old backend or worker while applying a migration that adds required columns. The
+operator upgrade command stops all writers before migration.
+
+## Provider boundary
+
+All product code depends on `QRadarProvider` and declared capabilities. The direct REST provider
+owns deterministic collection and the Ariel lifecycle. The MCP provider is limited to read-only
+inventory and cannot execute AQL. The mock provider supplies in-memory data for development and
+tests.
+
+New provider methods must remain read-only. Never add create, update or delete operations against
+QRadar, and never execute frontend-supplied AQL. Stored searches are validated and versioned before
+the scheduler can execute them.
+
+## Synthetic telemetry lab
+
+The optional lab generator is manual and isolated from the application. The backend, worker,
+scheduler, Compose stack and normal tests never start it. Use the
+[`LAB-SYNTHETIC-TELEMETRY.md`](LAB-SYNTHETIC-TELEMETRY.md) guide and review the sanitized
+[`LAB-DEMO-RESULTS.md`](LAB-DEMO-RESULTS.md) before running it.

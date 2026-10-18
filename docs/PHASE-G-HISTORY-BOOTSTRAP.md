@@ -5,7 +5,7 @@ Status: **design, 2026-10-18** (PW-12). Not built. It extends
 the sentences this design makes wrong are listed in §H.0.4 for a later docs round (PW-11 is editing
 that file now). It rests on [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (§SC.5, §SC.6, §SC.10), on
 [`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md) (§4, §6, §8) and on decisions D-27 and D-28
-([`PLANNER.md`](PLANNER.md) §4). Every claim about the code carries a `file:line` citation checked
+(`PLANNER.md` §4). Every claim about the code carries a `file:line` citation checked
 on this branch (`agent/pw12`, from `feat/phase-ce`) on 2026-10-18. Where the code and §G disagree the
 code wins, and the disagreement is listed in §H.14.3. Facts that only the console can give are not
 asserted: each has a probe in §H.3.5 and is marked **[C-n]**.
@@ -28,7 +28,7 @@ facts taken from it are its section 1 and 3 (scope, source 212, search times) an
 ## H.0 What the user asked, and what the bootstrap is not
 
 User, 2026-10-18 about 17:15, after saying the machine cannot stay on for 24 hours: "Yes, design it
-first". D-27 ([`PLANNER.md`](PLANNER.md) §4) states the decision:
+first". D-27 (`PLANNER.md` §4) states the decision:
 
 > When a watch is enabled, it reads its past history from Ariel once, in bounded searches, **for
 > learning only**: the bootstrapped buckets are never evaluated, never open an incident, an F.1

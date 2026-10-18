@@ -3,12 +3,12 @@
 Status: **building, 2026-10-17** (designed by T-125; PW-1 foundations built). The orchestrator
 owns this file. The build (PW-1…, §G.16) starts only after the operations work (OPS-5, OPS-6,
 OPS-9 round 2, OPS-10), by the user's order
-(D-21 item 4, [`PLANNER.md`](PLANNER.md) §4 D-21). It follows the shape of
+(D-21 item 4, `PLANNER.md` §4 D-21). It follows the shape of
 [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and
 [`PHASE-F-CUSTOM-DETECTIONS.md`](PHASE-F-CUSTOM-DETECTIONS.md) and rests on
 [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (D-7), [`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md)
 §29–§30 (measurement semantics, admission, novelty, bulk loaders),
-[`UI-REDESIGN-PLAN.md`](UI-REDESIGN-PLAN.md) §UR.5 (the widget system) and
+`UI-REDESIGN-PLAN.md` §UR.5 (the widget system) and
 [`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md). Every claim about the code carries a
 `file:line` citation checked on this branch (`agent/t125`) on 2026-10-17.
 
@@ -22,7 +22,7 @@ OPS-9 round 2, OPS-10), by the user's order
 The operator picks any **log source**, **log source type** or **log source group**, and says "track
 this custom property's value, or values". The user believes the infrastructure is ready.
 
-The user's answers at 12:55 (binding, [`PLANNER.md`](PLANNER.md) §4 D-21):
+The user's answers at 12:55 (binding, `PLANNER.md` §4 D-21):
 
 1. **Outputs: all four.** The per-value distribution (a table, a time-series chart on the watch's
    page and a dashboard widget); **threshold alerts** as a new F.1 subject kind ("value DENY above
@@ -47,7 +47,7 @@ collector, the detectors, the API and the UI (§G.16 builds exactly those).
 ## G.1 Facts that constrain the design
 
 Verified on this branch, `file:line`. Facts about the QRadar console were settled by the PW-0 lab probe
-(L1 to L8, [`PW-0.report.md`](tasks/PW-0.report.md), summarised in §G.17).
+(L1 to L8, `PW-0.report.md`, summarised in §G.17).
 
 ### G.1.1 The inventory already knows sources, types and groups
 
@@ -111,25 +111,25 @@ Verified on this branch, `file:line`. Facts about the QRadar console were settle
 - A **`devicetype` filter** is in use by the catch-all senders search
   (`WHERE devicetype IN (…)`, `backend/app/providers/qradar_rest.py:1665-1670`; the device-type id
   setting is described at `README.md:1019`). The lab probe ran `devicetype = <id>` together with a
-  quoted custom property and the bucket key in one query and lost no events (L3, [`PW-0.report.md`](tasks/PW-0.report.md)).
+  quoted custom property and the bucket key in one query and lost no events (L3, `PW-0.report.md`).
 - `LIMIT` caps the **whole result, not each bucket** — there is no per-group top-N in AQL
   (`docs/SEARCH-CADENCE.md` §SC.2). `GROUP BY` a quoted custom property together with the bucket
   key works live (`docs/SEARCH-CADENCE.md` §SC.10).
-- **Group filter (L1, [`PW-0.report.md`](tasks/PW-0.report.md)).** The repository generates only `logsourceid`
+- **Group filter (L1, `PW-0.report.md`).** The repository generates only `logsourceid`
   (`backend/app/providers/qradar_rest.py:1589`) and `devicetype`
   (`backend/app/providers/qradar_rest.py:1668`) filters. The lab accepted
   `WHERE LOGSOURCEGROUPNAME(logsourceid) = '<name>'` (by group **name**; five other forms were
   rejected). §G.4 keeps the inventory-resolved `logsourceid IN (…)` as the design anyway.
-- **String literals (L4, [`PW-0.report.md`](tasks/PW-0.report.md)).** Equality and `IN ('a','b')` against a string custom property are
+- **String literals (L4, `PW-0.report.md`).** Equality and `IN ('a','b')` against a string custom property are
   accepted and exact on the lab. A backslash escape is rejected; a doubled quote is accepted but
   whether it matches a real value containing a quote is unproven. §G.6 therefore generates `IN`
   and refuses, rather than escapes, a pinned value that contains a quote, a backslash or a control
   character. The only literal in the generated AQL today is the IPS loopback filter `!= '::1'` on an
   IP-typed field (`backend/app/providers/qradar_rest.py:1494-1497`).
-- **A `LIMIT` cut is invisible (L8, [`PW-0.report.md`](tasks/PW-0.report.md)).** A search cut by `LIMIT` finishes `COMPLETED` with no
+- **A `LIMIT` cut is invisible (L8, `PW-0.report.md`).** A search cut by `LIMIT` finishes `COMPLETED` with no
   truncation flag; the only signal is `rows == LIMIT`. Every PW search therefore carries
   `LIMIT cap + 1`, and more than `cap` rows is `truncated` (§G.6).
-- **Counts arrive as floats (L6, [`PW-0.report.md`](tasks/PW-0.report.md)).** The lab returns `SUM(eventcount)` and `COUNT(*)` as JSON
+- **Counts arrive as floats (L6, `PW-0.report.md`).** The lab returns `SUM(eventcount)` and `COUNT(*)` as JSON
   floats. The §G.6 fold accepts only integer-valued floats.
 
 ### G.1.5 Bounded admission, bounded contributor lists and measured zeros are solved problems
@@ -349,14 +349,14 @@ builds the searches of §G.6:
 | `LOG_SOURCE_GROUP` | member `qradar_id`s from the synced inventory: every `LogSource` of the instance whose `group_ids` (`backend/app/models/log_source.py:73`) contains the group id **or the id of any descendant group** (the tree is `LogSourceGroup.parent_qradar_id`, `backend/app/models/fleet.py:36-49`; descendants are computed in memory from the one groups read) | `WHERE logsourceid IN (<ids>)`, chunked |
 
 The descendant rule is a choice made under uncertainty: the lab could not show whether QRadar lists
-a parent group in a source's `group_ids` (L2, [`PW-0.report.md`](tasks/PW-0.report.md): not testable, indicative no). Including
+a parent group in a source's `group_ids` (L2, `PW-0.report.md`: not testable, indicative no). Including
 descendants is correct either way, and the editor shows the resolved member count and names the
 groups it walked. **The walk is cycle-safe**: it keeps a visited set of group ids. The lab's own two
 groups name each other as parent (id 1 has parent 0, id 0 has parent 1), and id 0 is both a real group
 and a `parent_id` value; an unguarded walk would never end. The group must exist in the synced
 inventory when the watch is saved and when it runs; a vanished group id is `SCOPE_EMPTY` (below).
 
-- **Groups: resolved from the inventory, by id (L1, [`PW-0.report.md`](tasks/PW-0.report.md)).** The lab accepts
+- **Groups: resolved from the inventory, by id (L1, `PW-0.report.md`).** The lab accepts
   `WHERE LOGSOURCEGROUPNAME(logsourceid) = '<name>'` and rejects five other forms, but it matches by
   **name** (not unique, broken by a rename), and the lab has one populated group so it cannot show
   nested or multi-group behaviour. The default is therefore the inventory-resolved
@@ -373,7 +373,7 @@ inventory when the watch is saved and when it runs; a vanished group id is `SCOP
   is a `LOWER_BOUND` (a chunk's missing tail can only add events). A type scope is one filter and is
   never chunked. A scope that outgrows the cap therefore costs more searches, never wrong numbers.
   Whether one `IN (…)` list of 50 ids is the right size on the lab console is
-  The lab accepted a 54-id list of 453 characters (L7, [`PW-0.report.md`](tasks/PW-0.report.md)); the setting is the knob.
+  The lab accepted a 54-id list of 453 characters (L7, `PW-0.report.md`); the setting is the knob.
 - **Membership churn.** A source gained or lost by the group changes the population the watch
   measures. That is honest: the watch measures the scope *as currently synced*. It must not look like
   behavior, though. The bucket row stores `scope_member_count` and `scope_fingerprint` (a hash of
@@ -555,10 +555,10 @@ buckets, not values x buckets x members (§G.4). With `k = starttime / bucket_ms
    (`backend/app/providers/qradar_rest.py:1505`). `LIMIT` caps the whole result, not each bucket
    (`docs/SEARCH-CADENCE.md` §SC.2), so a busy bucket can crowd a quiet one out of the result: that
    is what the truncation split below is for. A `LIMIT` cut is invisible on the console (status
-   `COMPLETED`, no flag; L8, [`PW-0.report.md`](tasks/PW-0.report.md)), so truncation is detected **only** by the `cap + 1`
+   `COMPLETED`, no flag; L8, `PW-0.report.md`), so truncation is detected **only** by the `cap + 1`
    construction above: more than `pw_max_rows_per_search` rows means truncated. The same
    construction is on the totals and pinned searches (their own caps, below). An unparsed property
-   comes back as NULL in a `GROUP BY` (L5, [`PW-0.report.md`](tasks/PW-0.report.md); no empty strings seen); the fold counts NULL as
+   comes back as NULL in a `GROUP BY` (L5, `PW-0.report.md`; no empty strings seen); the fold counts NULL as
    unparsed and also counts an empty string as unparsed, never as a value.
 2. **Totals search** (always): the same scope and window with no property condition, `GROUP BY k`:
    the exact denominator of every coverage claim (`LIMIT` buckets + 1: one row per bucket). It is not redundant, for the reason the WAF
@@ -587,7 +587,7 @@ buckets, not values x buckets x members (§G.4). With `k = starttime / bucket_ms
 So: **2 searches per watch per tick, 3 when values are pinned**, plus splits (§G.14).
 
 **The measured-zero rule (stated once; everything else refers here).** An aggregate that matches
-nothing returns **zero rows**, not a row holding 0 (the lab saw this, [`PW-0.report.md`](tasks/PW-0.report.md) "Surprises" 3). So the
+nothing returns **zero rows**, not a row holding 0 (the lab saw this, `PW-0.report.md` "Surprises" 3). So the
 collector applies exactly this: **zero rows, or an absent key, from a search that ended `COMPLETED`
 and was not truncated (at most `cap` rows) is a measured zero** for whatever that search was asked
 about (a total of 0 events in a bucket, a pinned value's 0, a tracked value's 0 in an `EXACT`
@@ -1807,7 +1807,7 @@ and they are sequential; no other PW task may.
 
 | ID | Task | Agent | Depends on | Parallel with |
 |---|---|---|---|---|
-| PW-0 | Lab probe (read-only): **DONE 2026-10-17** ([report](tasks/PW-0.report.md)): the L1 to L8 list of §G.17: group filter, `devicetype` with a quoted property, string equality and `IN`, empty versus NULL for an unparsed property, descendant groups in `group_ids`, the `IN` list size, `GROUP BY username`. A throwaway script outside the repository; a report with the raw results | Sonnet | none (runs now, D-22) | OPS work |
+| PW-0 | Lab probe (read-only): **DONE 2026-10-17** (report): the L1 to L8 list of §G.17: group filter, `devicetype` with a quoted property, string equality and `IN`, empty versus NULL for an unparsed property, descendant groups in `group_ids`, the `IN` list size, `GROUP BY username`. A throwaway script outside the repository; a report with the raw results | Sonnet | none (runs now, D-22) | OPS work |
 | PW-1 | Foundations: enums, models, the first migration (tables of §G.7, family seed, hypertables), all `pw_*` settings with validators, the pure fact dataclasses (the contract PW-2 and PW-3 build against), `PW_PINNED_VALUE_PATTERN` and the reference validation | Codex | OPS-5, OPS-6, OPS-9 r2, OPS-10 | none |
 | PW-2a | Provider: the keyed `get_pw_values` and totals/pinned searches on the base, REST and mock providers; the AQL generator; the pure fold; the time-first split driver and budget | Sonnet | PW-1, PW-0 | PW-3a, PW-5 |
 | PW-2b | Collection: scope resolution (pure, then the one bulk read), admission, persistence by bulk statements, the `dispatch_property_watch_collection` task behind the family gate and `PW_COLLECTION_ENABLED`, the retention task, the statement-count pins | Codex | PW-2a | PW-3b |
@@ -1852,14 +1852,14 @@ PW-0 ran on 2026-10-17; each row states the lab's answer and points at its repor
 
 | # | Fact | Lab answer |
 |---|---|---|
-| L1 | Native AQL filter by log-source group | **Yes, by name only** (`LOGSOURCEGROUPNAME(logsourceid) = '<name>'`; five other forms rejected). Design keeps the inventory-resolved `IN (<ids>)`; the function is a possible later optimisation. [`PW-0.report.md`](tasks/PW-0.report.md) L1 |
-| L2 | Does a parent group appear in a source's `group_ids` | **Not testable** on this lab (indicative no). The lab's two groups name each other as parent (a cycle), so the descendant walk is cycle-safe (§G.4, §G.15). [`PW-0.report.md`](tasks/PW-0.report.md) L2 |
-| L3 | `devicetype = <id>` with a quoted custom property | **Yes**; no events lost. No type-scope fallback needed. [`PW-0.report.md`](tasks/PW-0.report.md) L3 |
-| L4 | String equality, `IN`, escaping | **Equality and `IN` work.** Backslash escape rejected; a doubled quote accepted, matching unproven. Pins use `IN`; a pin with a quote stays refused (Q8). [`PW-0.report.md`](tasks/PW-0.report.md) L4 |
-| L5 | Unparsed property in a `GROUP BY` | **NULL** (no empty strings seen); the fold counts NULL and `''` as unparsed. [`PW-0.report.md`](tasks/PW-0.report.md) L5 |
-| L6 | `GROUP BY username` and `QIDNAME(qid)` with the bucket key | **Yes, both.** Counts come back as floats: the fold accepts only integer-valued floats. [`PW-0.report.md`](tasks/PW-0.report.md) L6 |
-| L7 | A 50-id `IN` list | **Yes** (54 ids, 453 characters). The cap stays a setting. [`PW-0.report.md`](tasks/PW-0.report.md) L7 |
-| L8 | Real Ariel time and rows | **About 1 s per search** at about 240k events/hour; production not measured (PW-10). **A `LIMIT` cut is invisible**, so `cap + 1` detection is mandatory. [`PW-0.report.md`](tasks/PW-0.report.md) L8 |
+| L1 | Native AQL filter by log-source group | **Yes, by name only** (`LOGSOURCEGROUPNAME(logsourceid) = '<name>'`; five other forms rejected). Design keeps the inventory-resolved `IN (<ids>)`; the function is a possible later optimisation. `PW-0.report.md` L1 |
+| L2 | Does a parent group appear in a source's `group_ids` | **Not testable** on this lab (indicative no). The lab's two groups name each other as parent (a cycle), so the descendant walk is cycle-safe (§G.4, §G.15). `PW-0.report.md` L2 |
+| L3 | `devicetype = <id>` with a quoted custom property | **Yes**; no events lost. No type-scope fallback needed. `PW-0.report.md` L3 |
+| L4 | String equality, `IN`, escaping | **Equality and `IN` work.** Backslash escape rejected; a doubled quote accepted, matching unproven. Pins use `IN`; a pin with a quote stays refused (Q8). `PW-0.report.md` L4 |
+| L5 | Unparsed property in a `GROUP BY` | **NULL** (no empty strings seen); the fold counts NULL and `''` as unparsed. `PW-0.report.md` L5 |
+| L6 | `GROUP BY username` and `QIDNAME(qid)` with the bucket key | **Yes, both.** Counts come back as floats: the fold accepts only integer-valued floats. `PW-0.report.md` L6 |
+| L7 | A 50-id `IN` list | **Yes** (54 ids, 453 characters). The cap stays a setting. `PW-0.report.md` L7 |
+| L8 | Real Ariel time and rows | **About 1 s per search** at about 240k events/hour; production not measured (PW-10). **A `LIMIT` cut is invisible**, so `cap + 1` detection is mandatory. `PW-0.report.md` L8 |
 
 
 ### Questions
