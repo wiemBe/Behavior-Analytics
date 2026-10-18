@@ -8,7 +8,51 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 01:12, 2026-10-18 (twenty-first session, from 00:01)
+## ▶▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 11:30, 2026-10-18 (twenty-second session, from 11:19)
+
+**What happened.** The machine shut down at **01:27** and booted again at 11:17 (`last -x`). Every
+agent died at 01:27, including the "surviving" DeepSeek unit, and the 05:10 `pw3b-codex-resume`
+timer was lost (transient). The tmpfs test DB was restarted and the agent DBs created fresh:
+`qradar_obs_pw3b`, `_pw4`, `_pw5b`, `_pw5c`, `_pw6b`, `_pw8`, `_pw9`, `_gate`. `qradarce2` is
+running.
+
+**The user renamed the GitHub repository to `wiemBe/Behavior-Analytics`** (11:25). `origin` now
+points there (GitHub redirects the old URL). The released images stay at
+`ghcr.io/wiembe/qradar-dashboard/*:0.1.0/0.1.1` and still pull anonymously (checked 11:27), but
+`release.yml` derives the prefix from `GITHUB_REPOSITORY`, so **the next release would push to
+`ghcr.io/wiembe/behavior-analytics/*` while `qradar-dash` and `docker-compose.prod.yml` default
+to the old prefix**: an installed site's `upgrade` would not find the images. Decision asked of
+the user (11:30): keep publishing under the old prefix, or move to the new one with an upgrade
+step that rewrites `IMAGE_PREFIX`. Also asked: is the product renamed too (D-12 was "no rename")?
+Same message: the qradar-mcp image question (Apache-2.0 redistribution is allowed; LICENSE and
+NOTICE are in the image; open: the inherited `maintainer="IBM …"` label on an image we publish,
+no "not affiliated with IBM / QRadar is an IBM trademark" line, and **the repository has no
+LICENSE file** although README §License refers to "this repository's license").
+
+**Snapshots committed and pushed (11:25)**, each the cut-off agent's uncommitted work:
+`agent/pw3b` @ `849d19b`, `agent/pw5b` @ `55daca2`, `agent/pw5c` @ `04fc8ff`, `agent/pw9` @
+`7369f15`. New: `agent/pw8` @ `5b68c7a` (= `17fe786` + `agent/pw5b` snapshot, clean merge, so
+PW-8 sees the scope routes); `agent/pw4` @ `3dd3659` (= `agent/pw3b` + `agent/pw6`, clean merge).
+
+| Task | Agent | Worktree / DB | Started | Next |
+|---|---|---|---|---|
+| **PW-3b** | done (report `STATUS: FINAL`, unit 4,336 / 10 skipped, mypy 0 (267), statement pins 20 at all sizes); only its whole integration run was cut at 35 % | `pw3b` / `qradar_obs_pw3b` | orchestrator re-runs the whole integration suite, unit `pw3b-integ` 11:24, log `QRadar-Dash-work/pw3b/integ-rerun.log` | Read the counts; review the report's open points (retired value with an open incident; a value deleted by retention; stale baseline cells; training row volume; `workers/tasks.py` docstring). |
+| **PW-8** editor UI | Codex, unit `pw8-codex` (fresh start; the 01:21 Sonnet run left nothing) | `pw8` / ports 3118/8118/9118, log `QRadar-Dash-work/pw8/codex.log` | 11:25 | Check the log for "usage limit"; 35-min check 12:00; PNGs → review myself. |
+| **PW-5b** `/scope` | opencode DeepSeek free, unit `pw5b-ds-h`, handover ("review what you inherit"; r0 log `opencode-r0.log`) | `pw5b` / `qradar_obs_pw5b`, log `QRadar-Dash-work/pw5b/opencode.log` | 11:26 | "Rate limit exceeded" → Sonnet at once. |
+| **PW-9** widget | Sonnet sub-agent, handover | `pw9` / ports 3119/8119/9119 | 11:27 | Report + PNGs → review myself. |
+| **PW-5c** API gaps | Sonnet sub-agent, handover (6 min of inherited work) | `pw5c` / `qradar_obs_pw5c` | 11:27 | Report → review. |
+| **PW-4** alerting | Sonnet sub-agent, fresh | `pw4` / `qradar_obs_pw4`, scratch `QRadar-Dash-work/pw4/` | 11:27 | Report → review. |
+
+**If this chat dies:** the three Sonnet sub-agents die with it (PW-9, PW-5c, PW-4); the units
+(`pw3b-integ`, `pw8-codex`, `pw5b-ds-h`) survive a chat but not a shutdown. Hand over as before.
+
+**Still to write:** PW-6b spec (from the PW-6 review row below), PW-10, PW-11.
+**Agents:** Codex fresh window from 11:25; Z.AI GLM until 2026-10-21 01:47; Grok done for the
+week; Sonnet and the opencode free models available.
+
+---
+
+## ▶▶▶▶▶▶▶▶▶▶▶ STATE AT 01:12, 2026-10-18 (twenty-first session, from 00:01; kept for the log)
 
 **The user's instructions this session (00:30):** "for now just write the code, nothing to
 `main`; merge bugs later" and "use your own (Sonnet) agents too so it finishes faster". The chat
