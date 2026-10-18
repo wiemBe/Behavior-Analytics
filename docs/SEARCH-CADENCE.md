@@ -2,8 +2,8 @@
 
 Status: **built on `feat/phase-ce`, 2026-10-12** (T-033 to T-039). **Live validation (T-040)
 is pending.** Written by the orchestrator. It rests on the live facts measured
-in [`tasks/T-032.report.md`](tasks/T-032.report.md) and records decision D-7 in
-[`PLANNER.md`](PLANNER.md) §4.
+in `tasks/T-032.report.md` and records decision D-7 in
+`PLANNER.md` §4.
 
 ## SC.0 What the user asked for
 
@@ -353,7 +353,7 @@ QRadar, and what does that cost in latency?**
 Phase A search per tick, the per-bucket rows equal a per-bucket control run, and the alerts still
 open on the generator's spike scenario.
 
-## SC.10 Live validation (T-040, lab 7.6, 2026-10-12) — [report](tasks/T-040.report.md)
+## SC.10 Live validation (T-040, lab 7.6, 2026-10-12) — report
 
 - **One search per kind per tick held.** Phase A at 1 h (12 buckets) and 8 h (96 buckets): one
   search each, no split. Rule matches at 1 h (12 five-minute windows) and 8 h (8 one-hour

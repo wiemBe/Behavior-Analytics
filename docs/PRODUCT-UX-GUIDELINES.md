@@ -14,7 +14,7 @@ Companion documents:
 [Behavioral Analytics Architecture](BEHAVIORAL-ANALYTICS-ARCHITECTURE.md) for
 the engine, lifecycle and explanation model;
 [Phase A design](PHASE-A-SOURCE-VOLUME-ANOMALY.md) for the source-volume
-detector; [UI redesign plan](UI-REDESIGN-PLAN.md) for the charcoal system, the
+detector; UI redesign plan for the charcoal system, the
 widget Dashboard and the rulings (UR.9, decision D-11) behind §3, §8 and §11.
 
 ---

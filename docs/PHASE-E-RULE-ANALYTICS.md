@@ -1,8 +1,8 @@
 # Phase E — rule analytics (goal G3)
 
 Status: **design, 2026-10-12**. Written by the orchestrator. It rests on the live facts measured
-in [`tasks/T-015.report.md`](tasks/T-015.report.md) §8–§11, and serves goal G3 in
-[`PLANNER.md`](PLANNER.md) §0.
+in `tasks/T-015.report.md` §8–§11, and serves goal G3 in
+`PLANNER.md` §0.
 
 ## E.0 What the user asked for
 
