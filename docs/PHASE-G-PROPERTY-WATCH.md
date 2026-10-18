@@ -1380,6 +1380,10 @@ new-combination detection on"), regenerated from the form, never free text. The 
 
 ### G.13.5 The widget
 
+> **[BUILT — PW-9]** `chart.property_watch` in `frontend/src/widgets/` (`PropertyWatchWidget.tsx`,
+> `pwWidgetState.ts`). Window fixed at 24 h. `forbidden` and a deleted watch use the widget's own note
+> body so the text names who grants `read:property_watches`; `sources` lists every path read.
+
 A configurable widget **`chart.property_watch`** in the registry
 (`frontend/src/widgets/registry.ts:62-76,105`, the `chart.search_results` precedent at `:365`,
 `docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.9.2): `requires: ["read:property_watches"]`, `sources: ["/property-watches/{id}/series"]`, `config: { watch_id }`
