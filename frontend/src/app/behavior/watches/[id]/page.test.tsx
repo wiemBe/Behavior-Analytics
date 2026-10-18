@@ -185,30 +185,30 @@ describe("the Definition and Threshold rules reads", () => {
     expect(given().aql).toEqual({ kind: "error", status: 0 });
   });
 
-  it("maps a rule's pinned value from the page's own read, with no second read", async () => {
+  it("uses the rule's own value when it is not on the values page, with no wider read", async () => {
     vi.spyOn(api, "propertyWatch").mockResolvedValue(
-      watch({ threshold_rules: [{ id: "r1", name: "Backup flood", pw_value_id: "id-p", enabled: true }] }),
+      watch({
+        threshold_rules: [
+          {
+            id: "r1",
+            name: "Old",
+            pw_value_id: "id-far",
+            value_key: "far-away",
+            components: ["far-away"],
+            enabled: true,
+          },
+        ],
+      }),
     );
     await renderPage();
-    expect(given().ruleValues?.get("id-p")?.value_key).toBe("pin");
+    expect(given().watch.threshold_rules?.[0]).toMatchObject({ value_key: "far-away" });
     expect(api.propertyWatchValues).toHaveBeenCalledTimes(1);
-  });
-
-  it("makes one wider read when a rule pins a value that is not on the page", async () => {
-    vi.spyOn(api, "propertyWatch").mockResolvedValue(
-      watch({ threshold_rules: [{ id: "r1", name: "Old", pw_value_id: "id-far", enabled: true }] }),
-    );
-    vi.mocked(api.propertyWatchValues).mockResolvedValueOnce(values);
-    vi.mocked(api.propertyWatchValues).mockResolvedValueOnce(paged([value("id-far", "far-away")]));
-    await renderPage();
-    expect(api.propertyWatchValues).toHaveBeenCalledTimes(2);
-    expect(api.propertyWatchValues).toHaveBeenLastCalledWith(WATCH_ID, { hours: 168, limit: 200 });
-    expect(given().ruleValues?.get("id-far")?.value_key).toBe("far-away");
-  });
-
-  it("makes no wider read when the watch has no rules", async () => {
-    await renderPage();
-    expect(api.propertyWatchValues).toHaveBeenCalledTimes(1);
+    expect(api.propertyWatchValues).toHaveBeenCalledWith(WATCH_ID, {
+      hours: 24,
+      sort: "events",
+      limit: 50,
+      offset: 0,
+    });
   });
 
   it("tells the workspace whether the caller may add a rule", async () => {

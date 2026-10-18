@@ -837,7 +837,12 @@ async def watch_outs(
                 threshold_rules=(
                     [
                         PinRuleOut(
-                            id=r.id, name=r.name, pw_value_id=r.pw_value_id, enabled=r.enabled
+                            id=r.id,
+                            name=r.name,
+                            pw_value_id=r.pw_value_id,
+                            value_key=r.value_key,
+                            components=r.components,
+                            enabled=r.enabled,
                         )
                         for r in pinned_by.get(watch.id, [])
                     ]
@@ -1600,6 +1605,8 @@ class PinningRule:
     id: uuid.UUID
     name: str
     pw_value_id: uuid.UUID
+    value_key: str
+    components: list[str]
     enabled: bool
 
 
@@ -1611,19 +1618,32 @@ async def pinning_rules_by_watch(
         return {}
     rows = (
         await session.execute(
-            select(CustomRule.id, CustomRule.name, CustomRule.pw_value_id, CustomRule.enabled,
-                   PwValue.watch_id)
+            select(
+                CustomRule.id,
+                CustomRule.name,
+                CustomRule.pw_value_id,
+                CustomRule.enabled,
+                PwValue.watch_id,
+                PwValue.value_key,
+            )
             .join(PwValue, PwValue.id == CustomRule.pw_value_id)
             .where(PwValue.watch_id.in_(list(watch_ids)))
             .order_by(CustomRule.name.asc(), CustomRule.id.asc())
         )
     ).all()
     found: dict[uuid.UUID, list[PinningRule]] = {}
-    for rule_id, name, value_id, enabled, watch_id in rows:
+    for rule_id, name, value_id, enabled, watch_id, value_key in rows:
         # The inner join makes a null value id unreachable; a row that has one is malformed.
         if value_id is None:
             continue
         found.setdefault(watch_id, []).append(
-            PinningRule(id=rule_id, name=name, pw_value_id=value_id, enabled=bool(enabled))
+            PinningRule(
+                id=rule_id,
+                name=name,
+                pw_value_id=value_id,
+                value_key=value_key,
+                components=list(split_tuple_key(value_key)),
+                enabled=bool(enabled),
+            )
         )
     return found

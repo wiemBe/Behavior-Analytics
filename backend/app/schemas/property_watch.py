@@ -199,6 +199,8 @@ class PinRuleOut(BaseModel):
     id: uuid.UUID
     name: str
     pw_value_id: uuid.UUID
+    value_key: str
+    components: list[str]
     enabled: bool
 
 

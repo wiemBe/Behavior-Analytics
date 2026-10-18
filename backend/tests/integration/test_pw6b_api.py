@@ -35,6 +35,7 @@ from tests.integration.test_custom_rules_pw_value import (
     ACTION,
     KEY,
     PREFIX,
+    USER,
     WATCH_PREFIX,
     _api_world,
     _principal,
@@ -53,6 +54,7 @@ pytestmark = [
 ]
 
 FK = "fk_custom_rule_pw_value_id_pw_value"
+HOSTILE = '<img src=x onerror="alert(1)">'
 
 
 def _counted_client(db_url: str):  # type: ignore[no-untyped-def]
@@ -147,8 +149,9 @@ async def test_pins_success_lists_the_rules_that_pin_a_value(db_session, db_sche
     assert grown.status_code == 200, grown.text
     rules = grown.json()["rules"]
     assert [r["name"] for r in rules] == ["a-rule", "b-rule"]
-    keys = {"id", "name", "pw_value_id", "enabled"}
+    keys = {"id", "name", "pw_value_id", "value_key", "components", "enabled"}
     assert all(r["pw_value_id"] == str(pinned.id) and set(r) == keys for r in rules)
+    assert all(r["value_key"] == KEY and r["components"] == [KEY] for r in rules)
     # one statement reads the rules; nothing is refused on a pure addition
     assert sum("custom_rule" in s and "pw_value" in s for s in seen) == 1
 
@@ -415,8 +418,10 @@ async def test_the_single_read_lists_the_threshold_rules_and_the_list_does_not(
     instance = await make_instance(db_session)
     source = await make_log_source(db_session, instance, qradar_id=51, name="fw")
     mine = await _watch(db_session, instance, source)
+    mine.properties = [USER, ACTION]
+    mine.pinned_values = [["alice", HOSTILE]]
     other = await _watch(db_session, instance, source)
-    own_value = await _value(db_session, mine)
+    own_value = await _value(db_session, mine, key=f"alice\x1f{HOSTILE}")
     foreign_value = await _value(db_session, other)
     db_session.add_all(
         [
@@ -433,6 +438,8 @@ async def test_the_single_read_lists_the_threshold_rules_and_the_list_does_not(
     rules = single.json()["threshold_rules"]
     assert [(r["name"], r["enabled"]) for r in rules] == [("a-rule", True), ("b-rule", False)]
     assert all(r["pw_value_id"] == str(own_value.id) for r in rules)
+    assert all(r["value_key"] == f"alice\x1f{HOSTILE}" for r in rules)
+    assert all(r["components"] == ["alice", HOSTILE] for r in rules)
     assert sum("custom_rule" in s and "pw_value" in s for s in seen) == 1
 
     with _statements(engine) as listed_seen:

@@ -20,7 +20,6 @@ import {
   type PropertyWatch,
   type PropertyWatchCatalog,
   type PwBucket,
-  type PwValue,
   type PwValueSeries,
   type WatchScope,
 } from "@/lib/api";
@@ -59,8 +58,6 @@ export interface WatchWorkspaceProps {
   scope: WatchScope | null;
   /** The generated query text; null when the read did not happen. */
   aql?: AqlRead | null;
-  /** Tracked values by id, for the Threshold rules tab; null when they could not be read. */
-  ruleValues?: ReadonlyMap<string, PwValue> | null;
   /** Whether the caller holds `custom_rule:write`. */
   ruleAccess?: RuleAccess;
   initialSelected: string[];
@@ -312,7 +309,6 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
           content: () => (
             <ThresholdRules
               rules={watch.threshold_rules ?? null}
-              values={props.ruleValues ?? null}
               access={props.ruleAccess ?? "unknown"}
             />
           ),
