@@ -20,12 +20,14 @@ from app.models.enums import (
     PwPinnedMeasurement,
     PwScopeKind,
     PwWatchStatus,
+    SearchFamily,
 )
 from app.models.fleet import LogSourceGroup
 from app.models.property_watch import PropertyWatch, PwBucket, PwValue, PwValueMetric
 from app.providers.base import ProviderError
 from app.providers.dto import PwSearchKind
 from app.providers.mock import MockPwSearch, MockQRadarProvider
+from app.services.search_cadence import SearchCadenceService
 from tests.integration.factories import make_instance, make_log_source
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -38,6 +40,12 @@ USER_ACTION = [
     {"kind": "NORMALIZED", "name": "username"},
     {"kind": "CUSTOM_PROPERTY", "name": "Action"},
 ]
+
+
+async def pin_cadence(session, seconds: int) -> None:  # type: ignore[no-untyped-def]
+    await SearchCadenceService(session, cfg()).set_cadence(
+        SearchFamily.PROPERTY_WATCH, seconds, actor="pw-collection-test", source_ip=None
+    )
 
 
 def cfg(**overrides: object) -> Settings:
@@ -171,6 +179,7 @@ async def test_the_first_run_replays_no_history(db_session) -> None:
 
 async def test_the_next_run_continues_from_the_watermark_without_overlap(db_session) -> None:
     instance = await make_instance(db_session)
+    await pin_cadence(db_session, 3600)  # pre-D-28 default
     watch = await add_watch(db_session, instance)
     provider = provider_with({"alice": 10})
     await collect(db_session, instance, provider)
@@ -223,6 +232,7 @@ async def test_a_failed_search_holds_the_watermark_and_stores_not_collected(db_s
 
 async def test_the_watermark_advances_only_past_the_buckets_that_completed(db_session) -> None:
     instance = await make_instance(db_session)
+    await pin_cadence(db_session, 3600)  # pre-D-28 default
     start = datetime(2026, 10, 13, 9, 0, tzinfo=UTC)
     watch = await add_watch(db_session, instance, through=start - STEP)
     provider = provider_with({"alice": 10})
@@ -502,6 +512,7 @@ async def test_a_membership_change_flags_the_first_bucket_and_the_grace_after_it
     db_session,
 ) -> None:
     instance = await make_instance(db_session)
+    await pin_cadence(db_session, 3600)  # pre-D-28 default
     await _group(db_session, instance, 1)
     await make_log_source(db_session, instance, qradar_id=11, group_ids=[1])
     watch = await add_watch(

@@ -21,6 +21,7 @@ from tests.integration.pw_engine_support import (
     now_of,
     plan_range,
 )
+from tests.integration.test_pw_collection import pin_cadence
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -268,6 +269,7 @@ async def test_a_new_version_trains_only_on_its_own_buckets(db_session) -> None:
 # ------------------------------------------------------------------ the pipeline
 async def test_the_pipeline_collects_then_evaluates_then_trains(db_session) -> None:
     rig = await make_rig(db_session, values=("alice",))
+    await pin_cadence(db_session, 3600)  # pre-D-28 default
     pipeline = PwInstancePipeline(
         db_session, rig.provider, settings=rig.settings, clock=lambda: now_of(11)
     )

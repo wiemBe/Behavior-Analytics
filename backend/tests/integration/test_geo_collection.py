@@ -6,13 +6,16 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import func, select, text
 
 from app.collectors.geo_collector import GeoCollector, watermark_name
 from app.core.config import get_settings
 from app.geo.fold import GeoDirection
+from app.models.enums import SearchFamily
 from app.models.geo import GeoCountryBucket
 from app.models.monitoring import CollectionWatermark
+from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import ProviderError
 from app.providers.mock import MockQRadarProvider, geo_key
 from app.providers.qradar_mcp import QRadarMCPProvider
@@ -24,6 +27,17 @@ pytestmark = pytest.mark.integration
 
 BUCKET = 300
 NOW = datetime(2026, 10, 13, 12, 10, tzinfo=UTC)
+
+
+@pytest_asyncio.fixture
+async def pin_cadence(db_session):  # type: ignore[no-untyped-def]
+    """The pre-D-28 one-hour cadence (12 buckets per tick) these scenarios were written for."""
+    db_session.add(
+        SearchCadenceSetting(
+            family=SearchFamily.GEO_COLLECTION.value, cadence_seconds=3600, updated_at=NOW
+        )
+    )
+    await db_session.commit()
 #: With the default 120 s settle, the run at NOW closes at 12:05, so its first-run
 #: window is the twelve buckets 11:05 .. 12:00.
 FIRST = datetime(2026, 10, 13, 11, 5, tzinfo=UTC)
@@ -87,6 +101,7 @@ async def watermark(session, inst, direction) -> CollectionWatermark:  # type: i
     )
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestRows:
     async def test_countries_and_the_unresolved_remainder_are_stored_per_bucket(
         self, db_session
@@ -197,6 +212,7 @@ class TestRows:
         assert {(r.slot, r.events) for r in rows} == {("US", 9)} and len(rows) == 12
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestDirections:
     async def test_both_directions_run_with_separate_watermarks_and_series(
         self, db_session
@@ -250,6 +266,7 @@ class TestDirections:
 SOURCE_ONLY = {"geo_directions": ["SOURCE"]}
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestSplitAndFailure:
     async def test_a_truncated_wide_search_is_split_by_time_and_nothing_wide_is_kept(
         self, db_session
@@ -376,6 +393,7 @@ class TestSplitAndFailure:
         assert count == 0
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestConstantCost:
     async def run_with(self, session, n_countries: int) -> tuple[int, int]:  # type: ignore[no-untyped-def]
         inst = await make_instance(session)
@@ -405,6 +423,7 @@ class TestConstantCost:
             assert len(provider.geo_searches) == 2
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestRetention:
     async def test_old_buckets_are_deleted_in_batches_and_recent_ones_kept(
         self, db_session

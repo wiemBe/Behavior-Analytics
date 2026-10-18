@@ -1,4 +1,4 @@
-# Search cadence — how often the platform searches QRadar (D-7)
+# Search cadence — how often the platform searches QRadar (D-7, D-28)
 
 Status: **built on `feat/phase-ce`, 2026-10-12** (T-033 to T-039). **Live validation (T-040)
 is pending.** Written by the orchestrator. It rests on the live facts measured
@@ -7,10 +7,17 @@ in [`tasks/T-032.report.md`](tasks/T-032.report.md) and records decision D-7 in
 
 ## SC.0 What the user asked for
 
+**D-28 (2026-10-18) replaces D-7's default:** every search family now defaults to **5 min**,
+as does the schedule preset selected for a new operator-defined search. The migration moves only
+the untouched 1 h seed rows (`updated_by IS NULL`); an operator-set cadence stays as set. Cadence
+still changes only when QRadar is searched. Bucket widths, rule-match windows and every learning
+period are unchanged. The 1 h statements below remain as the history of D-7 and are marked as
+replaced where they described a default.
+
 The platform must not flood QRadar with Ariel searches. The user's requirements:
 - Operators choose how often each search family runs: **5 min, 15 min, 30 min, 1 h, 2 h, 4 h or
   8 h**.
-- **The default is 1 h for every family**, Phase A included.
+- **Historical D-7 default, replaced by D-28:** 1 h for every family, Phase A included.
 - Each family is set separately, from the UI, with no restart.
 - Every change is audited.
 
@@ -25,6 +32,35 @@ The search families are:
 | `ANOMALY_EXPLANATION` | Evidence for open anomalies | 2 per dimension per anomaly |
 | `RULE_MATCH` | `GROUP BY creEventList` (T-025) | 1 per window |
 | Scheduled searches | Operator AQL | Each search's own cron |
+
+### D-28 search count at the two defaults
+
+Steady-state counts below come from the current dispatch and collection paths. They exclude
+truncation splits and retries; the formula or configured cap is shown where a fleet shape changes
+the count. `B` is the number of enabled WAF breakdowns (0–3), `P` is the IPS plan size after
+grouping equal field mappings and chunking sources, `A` is the pending explanation count (0–5),
+and `C` is a property watch's scope chunks (1–4).
+
+| Family | Searches per tick at 5 min | Searches per hour at 5 min | Searches per tick at 1 h | Searches per hour at 1 h | Measured Ariel time (T-032/T-040) |
+|---|---:|---:|---:|---:|---|
+| `PHASE_A_VOLUME` | 1 | 12 | 1 | 1 | 5 min controls: 0.04–0.10 s; 1 h keyed: 0.37 s, or 3.48 s on the first call of a process |
+| `WAF_COLLECTION` | `2 + B` per source | `12 × (2 + B)` per source | `2 + B` per source | `2 + B` per source | 5 min controls: 0.06–0.17 s each; 1 h endpoints + totals: 0.14–0.15 s, source-IP breakdown: 0.08 s |
+| `ANOMALY_EXPLANATION` | `20 × A` (default 10 dimensions, two windows) | at most 1,200 while a backlog remains | `20 × A` | at most 100 | Not measured in T-032/T-040. Each anomaly leaves `PENDING` after one attempt, so it is never searched again merely because another tick arrived |
+| `RULE_MATCH` | 0 on eleven ticks, then 1 when the 1 h window closes | 1 | 1 | 1 | Default 1 h window: 1.11 s. A 1 h keyed run over twelve 5 min test windows took 1.17 s |
+| `IPS_COLLECTION` | `P` (normally 6–7 for one mapping group; cap 16) | `12 × P` (cap 192) | `P` (cap 16) | `P` (cap 16) | Not measured in T-032/T-040 |
+| `PROPERTY_WATCH` | `C × (2 + pinned)` per watch; caps 12/watch and 40/instance | cap 480/instance | same formula; caps 12/watch and 40/instance | cap 40/instance | Not measured in T-032/T-040 |
+| `CATCHALL_SENDERS` | 1 | 12 | 1 | 1 | Not measured in T-032/T-040 |
+| `GEO_COLLECTION` | 2 with both default directions | 24 | 2 | 2 | Not measured in T-032/T-040 |
+
+Every family resumes from its own watermark (or `collected_through`) and takes only complete,
+settled buckets after it, so a tick that finds nothing new sends no search. A faster tick never
+re-searches a collected bucket. Two behaviours follow from "one cadence of buckets" now being one
+bucket: the first run of a family looks back one bucket (5 min), not 12 (1 h), and a property
+watch is marked `NOT_APPLICABLE` after one collected bucket in which the property parsed on no
+event (`pw_collector.py`, `count >= cadence_buckets`), not after twelve.
+
+The Phase A, WAF and rule-match timings are lab measurements, not production capacity claims.
+The T-040 lab was nearly idle and did not exercise a truncation split or a failing wide search.
 
 ## SC.1 The constraint: cadence is not the bucket width
 
@@ -230,7 +266,8 @@ progress. In that case, give Phase A the same split-on-failure, bounded by
 `search_cadence_max_searches_per_tick`.
 
 **Scheduled searches**
-- The editor offers the seven presets as cron. A new search defaults to 1 h.
+- The editor offers the seven presets as cron. Under D-28 a new search defaults to 5 min; before
+  D-28 it defaulted to 1 h. An existing search keeps its stored cron.
 
   | Preset | Cron |
   |---|---|

@@ -67,10 +67,10 @@ from app.custom_rules.loaders import (
 )
 from app.models.custom_rule import CustomRule, CustomRuleBreach, CustomRuleWatermark
 from app.models.enums import (
+    DEFAULT_SEARCH_CADENCE,
     AnomalyState,
     CustomRuleMetric,
     CustomRuleSubjectKind,
-    SearchCadence,
     SearchFamily,
     WafMeasurement,
 )
@@ -358,7 +358,7 @@ class CustomRuleEngine:
             )
         ).all()
         found = {str(family): int(seconds) for family, seconds in rows}
-        default = int(SearchCadence.ONE_HOUR)
+        default = int(DEFAULT_SEARCH_CADENCE)
         return {kind: found.get(_KIND_FAMILY[kind].value, default) for kind in kinds}
 
     async def _load_metrics(

@@ -407,7 +407,7 @@ async def test_a_missing_family_row_serves_the_default_cadence(
     watch = await _watch(db_session, instance, source)
     await db_session.commit()
     # the same default the collector uses when the seed row is missing
-    assert client.get(f"{WATCH_PREFIX}/{watch.id}").json()["cadence_seconds"] == 3600
+    assert client.get(f"{WATCH_PREFIX}/{watch.id}").json()["cadence_seconds"] == 300
     await engine.dispose()
 
 

@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.models.enums import SearchCadence, SearchFamily
+from app.models.enums import DEFAULT_SEARCH_CADENCE, SearchCadence, SearchFamily
 from app.models.search_cadence import SearchCadenceSetting
 from app.repositories.audit import record_audit
 
@@ -69,7 +69,7 @@ class SearchCadenceService:
                 "search cadence seed row missing; restoring default",
                 extra={"family": family.value},
             )
-            cadence_seconds = int(SearchCadence.ONE_HOUR)
+            cadence_seconds = int(DEFAULT_SEARCH_CADENCE)
             await self.session.execute(
                 insert(SearchCadenceSetting)
                 .values(
@@ -178,6 +178,6 @@ class SearchCadenceService:
         )
         return SearchCadenceSetting(
             family=family.value,
-            cadence_seconds=int(SearchCadence.ONE_HOUR),
+            cadence_seconds=int(DEFAULT_SEARCH_CADENCE),
             updated_at=self._clock(),
         )
