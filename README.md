@@ -236,8 +236,8 @@ and `curl`, a TLS certificate and key for the public name, a QRadar SEC token fi
 CA bundle:
 
 ```bash
-git clone --recurse-submodules https://github.com/wiemBe/QRadar-Dashboard.git
-cd QRadar-Dashboard
+git clone --recurse-submodules https://github.com/wiemBe/Behavior-Analytics.git
+cd Behavior-Analytics
 ./qradar-dash install                      # the wizard asks the questions
 ./qradar-dash install --non-interactive .secrets/install.answers   # the same, from a file
 ```

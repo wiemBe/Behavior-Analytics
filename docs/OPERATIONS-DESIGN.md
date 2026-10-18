@@ -28,7 +28,7 @@ a bind template or a CA. It creates the break-glass local admin and nothing else
 the directory.
 
 **[user]** The production host can reach `ghcr.io`. The repository
-`wiemBe/QRadar-Dashboard` is public today and is designed for as private. A
+`wiemBe/Behavior-Analytics` (renamed from `wiemBe/QRadar-Dashboard` on 2026-10-18) is public today and is designed for as private. A
 `read:packages` token lives under `.secrets/` and is used by `docker login ghcr.io`.
 An offline `docker save` / `docker load` bundle and a `--build` fallback both stay.
 
@@ -188,16 +188,18 @@ New file `.github/workflows/release.yml`. Trigger: a tag `v*`. The workflow:
 
 | Compose service | Image | Notes |
 |---|---|---|
-| backend, migrate, celery-worker, celery-beat | `ghcr.io/wiembe/qradar-dashboard/backend` | One image. Migrate is `alembic upgrade head` (`docker-compose.yml:137-143`). Worker and beat are the same image with other commands (`docker-compose.yml:145-179`). |
-| frontend | `ghcr.io/wiembe/qradar-dashboard/frontend` | Built with `NEXT_PUBLIC_API_BASE_URL=/api/v1` (§2.3). |
-| postgres | `ghcr.io/wiembe/qradar-dashboard/postgres` | Built from `deploy/postgres/Dockerfile:10-12` on `timescale/timescaledb:2.17.2-pg16`. Also tagged `2.17.2-pg16` when the Dockerfile has not changed. |
-| qradar-mcp | `ghcr.io/wiembe/qradar-dashboard/qradar-mcp` | Built from the pinned submodule. Not started unless the `mcp` profile is requested (`docker-compose.yml:121`). |
-| proxy | `ghcr.io/wiembe/qradar-dashboard/proxy` | New. Nginx config baked into the image (§3.4). |
+| backend, migrate, celery-worker, celery-beat | `ghcr.io/wiembe/behavior-analytics/backend` | One image. Migrate is `alembic upgrade head` (`docker-compose.yml:137-143`). Worker and beat are the same image with other commands (`docker-compose.yml:145-179`). |
+| frontend | `ghcr.io/wiembe/behavior-analytics/frontend` | Built with `NEXT_PUBLIC_API_BASE_URL=/api/v1` (§2.3). |
+| postgres | `ghcr.io/wiembe/behavior-analytics/postgres` | Built from `deploy/postgres/Dockerfile:10-12` on `timescale/timescaledb:2.17.2-pg16`. Also tagged `2.17.2-pg16` when the Dockerfile has not changed. |
+| qradar-mcp | `ghcr.io/wiembe/behavior-analytics/qradar-mcp` | Built from the pinned submodule. Not started unless the `mcp` profile is requested (`docker-compose.yml:121`). |
+| proxy | `ghcr.io/wiembe/behavior-analytics/proxy` | New. Nginx config baked into the image (§3.4). |
 | redis | `redis:7.4-alpine@sha256:<digest>` | Not built. The release resolves the digest and the production compose file pins it. Today's file floats on the tag (`docker-compose.yml:71`). |
 
 GHCR lowercases the owner and the image name. The repository is
-`wiemBe/QRadar-Dashboard`, so the image prefix is
-`ghcr.io/wiembe/qradar-dashboard/`.
+`wiemBe/Behavior-Analytics`, so the image prefix is
+`ghcr.io/wiembe/behavior-analytics/`. Releases `0.1.0` and `0.1.1` were pushed under the earlier
+name `ghcr.io/wiembe/qradar-dashboard/` and stay there; `upgrade` moves an installed site to the
+new prefix (OPS-17).
 
 The production compose file sets `image:` to those names and keeps `build:` so
 `--build` still works. `docker compose pull` is the default. `docker compose build`
@@ -348,8 +350,8 @@ compiler). The production path is the pull.
 The human sequence is:
 
 ```bash
-git clone --recurse-submodules https://github.com/wiemBe/QRadar-Dashboard.git
-cd QRadar-Dashboard
+git clone --recurse-submodules https://github.com/wiemBe/Behavior-Analytics.git
+cd Behavior-Analytics
 ./qradar-dash install
 ```
 
