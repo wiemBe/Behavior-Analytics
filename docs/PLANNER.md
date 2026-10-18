@@ -39,14 +39,21 @@ PW-8 sees the scope routes); `agent/pw4` @ `3dd3659` (= `agent/pw3b` + `agent/pw
 | **PW-3b** | done (report `STATUS: FINAL`, unit 4,336 / 10 skipped, mypy 0 (267), statement pins 20 at all sizes); only its whole integration run was cut at 35 % | `pw3b` / `qradar_obs_pw3b` | orchestrator re-runs the whole integration suite, unit `pw3b-integ` 11:24, log `QRadar-Dash-work/pw3b/integ-rerun.log` | Read the counts; review the report's open points (retired value with an open incident; a value deleted by retention; stale baseline cells; training row volume; `workers/tasks.py` docstring). |
 | **PW-8** editor UI | Codex, unit `pw8-codex` (fresh start; the 01:21 Sonnet run left nothing) | `pw8` / ports 3118/8118/9118, log `QRadar-Dash-work/pw8/codex.log` | 11:25 | Check the log for "usage limit"; 35-min check 12:00; PNGs → review myself. |
 | **PW-5b** `/scope` | opencode DeepSeek free, unit `pw5b-ds-h`, handover ("review what you inherit"; r0 log `opencode-r0.log`) | `pw5b` / `qradar_obs_pw5b`, log `QRadar-Dash-work/pw5b/opencode.log` | 11:26 | "Rate limit exceeded" → Sonnet at once. |
-| **PW-9** widget | Sonnet sub-agent, handover | `pw9` / ports 3119/8119/9119 | 11:27 | Report + PNGs → review myself. |
+| **PW-9** widget | Sonnet sub-agent, handover | `pw9` | **done 11:32, accepted** after the PNGs (1440 two columns, 1024 one column, no overflow; units on the axis; hostile value as text; every state worded). The inherited code needed no change. Committed `agent/pw9` @ `e87fb13`, pushed. Lint/typecheck clean, vitest 305 files / 3,401, build OK, 10 break-its caught | Decisions on its open points: blank space under the state-only widgets → accepted (the dashboard grid owns the height); the fixed 24 h window → accepted (the title says "24 h"; the dashboard has no range selector); **the fixed 2 h stale limit is wrong for a non-default cadence** (§G.13.5 says twice the family cadence, D-7 allows 5 min–8 h) → **PW-6b** adds the family cadence to the watch read shape, **PW-7b** (UI follow-up, also wiring PW-7's investigation view to PW-5c's detail shape) uses 2 × cadence. |
+| **T-133** ([spec](tasks/T-133.md)) Apache-2.0, NOTICE, trademark line, mcp image labels (D-25) | opencode GLM 5.3 flash free, unit `t133-glmf` | `t133` (from `8b63d9b`; the orchestrator initialised the `qradar-mcp` submodule there) | 11:38 | Review. |
+| **OPS-17** ([spec](tasks/OPS-17.md)) image prefix → `ghcr.io/wiembe/behavior-analytics` (D-26) | Sonnet sub-agent | `ops17` (from `8b63d9b`) | 11:40 | Review; the mirror workflow runs at the next release. |
 | **PW-5c** API gaps | Sonnet sub-agent, handover (6 min of inherited work) | `pw5c` / `qradar_obs_pw5c` | 11:27 | Report → review. |
 | **PW-4** alerting | Sonnet sub-agent, fresh | `pw4` / `qradar_obs_pw4`, scratch `QRadar-Dash-work/pw4/` | 11:27 | Report → review. |
 
 **If this chat dies:** the three Sonnet sub-agents die with it (PW-9, PW-5c, PW-4); the units
 (`pw3b-integ`, `pw8-codex`, `pw5b-ds-h`) survive a chat but not a shutdown. Hand over as before.
 
-**Still to write:** PW-6b spec (from the PW-6 review row below), PW-10, PW-11.
+**User's answers 11:36:** only the repository was renamed (not the product); license Apache-2.0
+(D-25 → T-133); images move to the new name (D-26 → OPS-17). Not asked yet: the TimescaleDB
+license of the published `postgres` image (check before the next release).
+
+**Still to write:** PW-6b spec (from the PW-6 review row below, plus the family cadence in the
+watch read shape from PW-9), PW-7b (UI follow-up after PW-5c), PW-10, PW-11.
 **Agents:** Codex fresh window from 11:25; Z.AI GLM until 2026-10-21 01:47; Grok done for the
 week; Sonnet and the opencode free models available.
 
