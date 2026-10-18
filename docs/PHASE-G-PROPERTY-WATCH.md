@@ -694,7 +694,13 @@ admission threshold or beyond a quota exists only inside the fold, and its event
 `untracked_events`); the generated AQL's *parameters beyond the pinned values the operator typed*.
 The only value texts that persist are admitted values and pinned values.
 
-### G.7.2 Values as personal data (rule 3) **[BUILT — PW-2b]**
+### G.7.2 Values as personal data (rule 3) **[BUILT — PW-2b; PW-3c: the open-incident retention guard]**
+
+> **As built, and one gap.** `PwRetention` deletes aged `pw_value_metric` and `pw_bucket` rows and
+> retired `pw_value` rows, and never a value whose incident is still OPEN or RECOVERING (PW-3c
+> item 2). `PW_ANOMALY_RETENTION_DAYS` is declared and validated but **no task applies it**: resolved
+> `pw_anomaly` rows are not deleted, so the "anomalies 180 days" sentence below is design intent, not
+> built. The code wins; §G.14.3's row for that setting carries the same caveat.
 
 A property such as `Username` carries personal data, and a free-text field can carry worse: a
 user who types a password into a username box on a failed login produces a "username" that is a
@@ -729,7 +735,7 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   visible without the audit table becoming a second copy of the values.
 - **Masking** (show `al***` instead of `alice`) is not built.
 
-### G.7.3 Admission, the two kinds of value, and retirement **[BUILT — PW-2b]**
+### G.7.3 Admission, the two kinds of value, and retirement **[BUILT — PW-2b; PW-3c: the retired-value resolve]**
 
 > **[BUILT — PW-1 persistence contract; PW-2b behavior].** The bucket admission-outcome columns and
 > the value tracking-window/pinned/retirement columns are in model metadata and migration `0026`.
@@ -911,7 +917,7 @@ answer 5 decided (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.16, §F.4.3): "the pla
 this" and "my number crossed my line" stay separate. A `PW_VALUE` row carries the value text and is shown to every caller who can read `/anomalies`,
 the same as an offense's usernames (D-22).
 
-### G.8.1 Output 1: the value distribution
+### G.8.1 Output 1: the value distribution **[BUILT — PW-2b: the bucket and value reads; PW-7 and PW-9: the table, chart and widget]**
 
 No verdict. Per bucket and value: events, the reading's measurement, share of **parsed** events
 (shown only when the bucket is `EXACT`, since a share over a lower-bound total bounds nothing,
@@ -1024,7 +1030,7 @@ still records `observed_values`, `admitted_values` and `rejected_over_quota`, an
 shows "280 values were refused admission in this bucket". A detector that alerts on the flood itself
 is §G.17 Q11, not v1.
 
-### G.8.4 Output 2: threshold alerts
+### G.8.4 Output 2: threshold alerts **[BUILT — PW-6, PW-6b]**
 
 Not an anomaly type. An F.1 rule on a pinned value (§G.10). Its verdict rule and measurement
 requirement are the F.1 ones: `LOWER_BOUND_PROVES_INCREASE` for `GT`/`GE` (a lower bound that
@@ -1038,7 +1044,7 @@ bucket plus settle plus 60 s (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.13).
 
 ## G.9 Combination and correlation (question 7)
 
-### G.9.1 Combination
+### G.9.1 Combination **[BUILT — PW-1 model; PW-2b collection; PW-3a/PW-3b detection; PW-7 page]**
 
 A watch with two property references (`Username` x `Action`) tracks **tuples**. Everything in §G.6
 to §G.8 applies to a tuple exactly as to a single value; nothing is special-cased except what is
@@ -1058,7 +1064,7 @@ listed here.
   component; it is §G.17 Q4.
 - A third property is refused (§G.3, §G.17 Q3).
 
-### G.9.2 Correlation, defined
+### G.9.2 Correlation, defined **[BUILT — candidate A, the new combination (PW-3a/PW-3b); B, C and D are not built]**
 
 The user wrote "korelasyon ve kombinasyon iyi olur" and did not define the first word. In this
 design, **correlation means a claim about the joint behaviour of values that a single property
@@ -1235,6 +1241,13 @@ bucket, sustained 3 buckets"). The extension, all additive:
 - Latency is the F.1 statement: the rule is judged on collected buckets, up to about an hour (plus
   the PW cadence) after the events arrived; not a real-time engine
   (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.12). The editor repeats that sentence.
+- **[BUILT — PW-6b]** One race remains and is accepted. A rule created on a value that is **unpinned
+  between the 409 check and the create's commit** can pass the check; the engine then reads the value
+  as no longer pinned and reports the rule `SUBJECT_RETIRED` with reason "the value is no longer
+  pinned" (`backend/app/custom_rules/engine.py:714-721`), so the rule judges nothing rather than
+  judging a value it may not depend on. No data is lost and no wrong verdict is written; the operator
+  re-pins the value or deletes the rule. The database's `ON DELETE RESTRICT` key is the backstop for
+  the delete path.
 
 
 ---
@@ -1338,7 +1351,7 @@ never carry QRadar text, a console address or a secret (AGENTS.md rule 5).
 
 ---
 
-## G.12 Fail-closed rules, in one place
+## G.12 Fail-closed rules, in one place **[BUILT — the rules of §G.3, §G.4, §G.6, §G.8 and §G.10]**
 
 Every row is `INSUFFICIENT_DATA` or a named watch status with a reason. None is a zero, none is
 `NORMAL`, none lets a detector grant itself lower-bound reasoning (AGENTS.md rule 8).
@@ -1524,7 +1537,7 @@ the coverage pill. States (`docs/PRODUCT-UX-GUIDELINES.md` §8 `WidgetFrame`; UR
 | `error` | what failed (the read), that the previous answer stays on screen, and what to do |
 | `forbidden` | names the missing permission, `read:property_watches`, and says who can grant it |
 
-### G.13.6 Everything else every view designs
+### G.13.6 Everything else every view designs **[BUILT — PW-7, PW-8, PW-9]**
 
 Loading, empty (says what a watch is and that none exists), error (what failed and what to do), the
 honesty states `INSUFFICIENT_DATA`, `PARTIAL`, `TRUNCATED`, `NOT_COLLECTED` (guidelines §4 and §6),
@@ -1675,7 +1688,7 @@ tuning, not measurements.
 | `pw_new_value_history_days` | 7 | `waf_new_endpoint_history_days` (`:618`); validated below the retention |
 | `pw_new_value_window_buckets`, `pw_new_value_min_events`, `pw_new_value_min_buckets` | 12, 20, 2 | the WAF novelty defaults (`:620-624`) |
 | `pw_metric_retention_days` | 35 | bucket and metric rows |
-| `pw_anomaly_retention_days` | 180 | resolved incidents |
+| `pw_anomaly_retention_days` | 180 | resolved incidents; declared and validated, but no task applies it yet (§G.7.2) |
 | `pw_retention_batch_size`, `_max_batches`, `_interval_seconds` | 5,000, 20, 86,400 | the other retention tasks |
 
 Retention is one bounded daily task, `apply_pw_retention`, on the beat entry pattern of

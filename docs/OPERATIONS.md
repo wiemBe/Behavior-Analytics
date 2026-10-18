@@ -19,7 +19,7 @@ Dört kural her bölümde geçerlidir:
 4. [Yedek ve geri alma](#yedek-ve-geri-alma)
 5. [Tanı](#tanı)
 6. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R45; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R53; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
 `support-bundle` bugün çalışır. `bundle` (çevrimdışı paket) bu sürümde yoktur. `./qradar-dash bundle`
@@ -193,8 +193,17 @@ Sorular şu sırayla sorulur:
 13. Acil durum (break-glass) yönetici kullanıcı adı. Parola sorulmaz, `create-admin` üretir.
 
 Sorulmayanlar: LDAP (arayüzden yapılır), dedektör eşikleri, aile etkinleştirme, SMTP, webhook, LLM.
-WAF, IPS, kural eşleşmesi toplama ve özel kurallar varsayılanda **kapalı** kalır. Catch-all ve geo
-varsayılanda açıktır. Özet bunu söyler.
+WAF, IPS, kural eşleşmesi toplama, özel kurallar ve mülk izleme (property watch) varsayılanda
+**kapalı** kalır. Catch-all ve geo varsayılanda açıktır. Özet bunu söyler.
+
+**Mülk izleme (Phase G).** İki anahtar vardır: `PW_COLLECTION_ENABLED` (varsayılan **false**) aile
+anahtarı, `PW_ALERTING_ENABLED` (varsayılan **false**) gölge moddur; gölge modda olaylar ve yaşam
+döngüsü yazılır ama hiçbir şey sayfa açmaz. Üst sınırlar: `PW_MAX_ENABLED_WATCHES` 10, tick başına
+`PW_MAX_SEARCHES_PER_TICK` 40, izleme başına `PW_MAX_SEARCHES_PER_WATCH_PER_TICK` 12, izleme başına
+etkin değer `PW_MAX_ACTIVE_VALUES_PER_WATCH` 200, sabitlenmiş (pinned) değer `PW_MAX_PINNED_VALUES`
+10. En yüksek sıklık `PROPERTY_WATCH` ailesine `/admin/search-cadence` sayfasından verilir (5 dk –
+8 sa, varsayılan 1 sa). Tüm `pw_*` ayarları ve varsayılanları README'deki "Property watches"
+bölümündedir.
 
 `.env` dosyası (izin `0600`) imaj geldikten sonra yazılır. `SECRET_KEY`, `ENCRYPTION_KEY` ve
 `POSTGRES_PASSWORD` üretilir. `QRADAR_API_TOKEN_FILE=/run/secrets/qradar_sec_token` bir yoldur;
@@ -1680,3 +1689,196 @@ oldu. Betik üçüncü bir strateji denemez; kontrollü durur.
 **Çözüm:** Yazdırılan nedeni gider, sonra `./qradar-dash rollback` komutunu yeniden çalıştır; o da
 olmazsa `./qradar-dash restore <yol>` ile aynı doğrulanmış yedeği geri yükle. Bozuk veritabanı
 kopyası silinmeden durur.
+
+### OPS-R46. Hiçbir mülk izlemesi toplanmıyor
+
+**Belirti:** `/behavior/watches` listesi boş ya da her izleme `NOT_ENABLED` gösteriyor; hiçbir izleme
+için toplanmış kova yok.
+
+**Olası neden:** `PW_COLLECTION_ENABLED` varsayılanda false'tur; false iken
+`dispatch_property_watch_collection` görevi hiç oturum açmaz ve QRadar'a arama gitmez, bu yüzden
+ailenin `last_run_at` alanı NULL kalır. Kaydedilen bir izleme her zaman **devre dışıdır**; elle
+etkinleştirilmemiş bir izleme toplanmaz. `PROPERTY_WATCH` aile kadansı (varsayılan 1 sa) henüz
+dolmamışsa kova da yoktur.
+
+**Doğrulama:** `doctor` çıktısındaki `cadence` satırı `PROPERTY_WATCH` ailesini sayar. **Dikkat:**
+`doctor` ailenin anahtarını bilmez (`families_off` satırı mülk izlemeyi listelemez), bu yüzden aile
+kapalıyken `cadence` satırı `PROPERTY_WATCH`'i "enabled families late or never run" olarak WARN
+gösterebilir; bu tek başına toplamanın açık olduğunu göstermez. Kesin doğrulama izlemenin
+durumudur:
+
+```bash
+./qradar-dash doctor
+```
+
+```
+GET /api/v1/property-watches/{id}
+```
+
+**Çözüm:** İstenirse `PW_COLLECTION_ENABLED` ayarını aç, sonra izlemeyi etkinleştir
+(`PATCH /api/v1/property-watches/{id}`); etkinleştirme üst sınır ya da bütçe yetmezse 409 verir
+(OPS-R50). Aile kadansını `/admin/search-cadence` sayfasından doğrula. Yeni kurulumda kapalı bir aile
+beklenen durumdur (Kurulum, Sihirbaz).
+
+### OPS-R47. İzleme `SCOPE_STALE` durumunda takılıyor
+
+**Belirti:** Bir grup ya da tip izlemesi `SCOPE_STALE` gösteriyor ve kova yazmıyor.
+
+**Olası neden:** Envanter eşitlemesi (inventory sync) grubu ya da tipi yenilemedi. Kapsam, yürünen
+**en eski** grup satırının `synced_at` alanı `PW_SCOPE_STALE_AFTER_HOURS` (varsayılan 24) saatten
+eski olduğunda bayatlar. Tek bir eşitleme geçişi tüm tip ve grup satırlarını aynı zamanla damgalar;
+başarısız bir grup listelemesi yutulur, bu yüzden kısmi bir geçiş satırları eski bırakabilir.
+
+**Doğrulama:** Kapsam okuması durumu, gerekçesini ve envanterin yaşını (saniye, UTC) verir:
+
+```
+GET /api/v1/property-watches/{id}/scope
+```
+
+`doctor` `watermarks` ve `cadence` satırları eşitleme gecikmesini gösterir.
+
+```bash
+./qradar-dash doctor
+```
+
+**Çözüm:** Envanter eşitlemesinin çalıştığını ve QRadar'a erişebildiğini doğrula (OPS-R4, OPS-R10).
+Eşitleme düzeldiğinde kapsam bir sonraki tick'te yeniden çözülür; kapsam çözülmediği sürece son
+eşitlemenin üye sayısı ve adları yine döner, sıfır değil.
+
+### OPS-R48. İzleme `SCOPE_TOO_LARGE` gösteriyor
+
+**Belirti:** Bir grup izlemesi `SCOPE_TOO_LARGE` gösteriyor ve kova yazmıyor; ya da etkinleştirme
+kapsamın çok büyük olduğunu söyleyen bir 409 ile reddediliyor.
+
+**Olası neden:** Çözülen grup `PW_MAX_SOURCES_PER_SEARCH` (50) kaynaklık parçalara (chunk) bölünür;
+`PW_MAX_CHUNKS_PER_WATCH` (4) parçadan fazlasını gerektiren bir kapsam (yaklaşık 200 kaynak)
+bilerek reddedilir, ki tek bir izleme tick bütçesini yakmasın.
+
+**Doğrulama:** Kapsam okumasındaki `member_count`, `groups_walked` ve `SCOPE_TOO_LARGE` durumu.
+Editör kataloğu sınırları gösterir:
+
+```
+GET /api/v1/property-watches/{id}/scope
+```
+
+```
+GET /api/v1/property-watches/catalog
+```
+
+**Çözüm:** Kapsamı böl: daha küçük bir grup seç, birkaç izlemeye ayır ya da kaynak düzeyinde tek
+izlemeler kur. Kapsam yeniden çözülünce kova yazılmaya başlar.
+
+### OPS-R49. İzleme `SCOPE_EMPTY` gösteriyor
+
+**Belirti:** Bir grup ya da tip izlemesi `SCOPE_EMPTY` gösteriyor ve kova yazmıyor.
+
+**Olası neden:** Çözülen kapsam tek kaynak içermiyor: grup kimliği envanterde yok (silinmiş grup) ya
+da grubun/tipin hiçbir üyesi yok.
+
+**Doğrulama:** Kapsam okuması `SCOPE_EMPTY` durumunu ve son eşitlemenin üye sayısını verir. Boş bir
+grubun ölçülmüş sıfırı `0` olarak, `SCOPE_EMPTY` ile birlikte raporlanır.
+
+```
+GET /api/v1/property-watches/{id}/scope
+```
+
+**Çözüm:** Kaynağın envanterde gruba/tip'e bağlı olduğunu doğrula ve envanter eşitlemesinin güncel
+olduğundan emin ol (OPS-R47); kapsamı mevcut bir gruba ya da kaynağa çevir.
+
+### OPS-R50. Etkinleştirme 409 ile reddediliyor (etkin izleme üst sınırı ya da arama bütçesi)
+
+**Belirti:** `PATCH /api/v1/property-watches/{id}` gövdesinde `enabled=true` iken istek 409
+döndürüyor; gerekçe etkin izleme üst sınırını ya da tick bütçesini adlandırıyor.
+
+**Olası neden:** Etkin izleme sayısı `PW_MAX_ENABLED_WATCHES` (10) sınırına dayandı, ya da etkin
+izlemelerin statik maliyet toplamı `PW_MAX_SEARCHES_PER_TICK` (40) aramayı aşıyor (örn. iki 12-arama
+grup izlemesi artı altı 3-arama izlemesi 42 eder). Etkinleştirme ikisini de önceden reddeder ki
+sığmayan bir yapılandırma hiç başlamasın.
+
+**Doğrulama:** Katalog ucu sayıları verir (`max_enabled`, `enabled_count`, `search_budget`,
+`budget_used`):
+
+```
+GET /api/v1/property-watches/catalog
+```
+
+**Çözüm:** Gereksiz bir izlemeyi devre dışı bırak ya da sil, kapsamları küçült (daha az parça = daha
+az arama) veya operatör istiyorsa `PW_MAX_ENABLED_WATCHES` / `PW_MAX_SEARCHES_PER_TICK` ayarlarını
+yükselt. Sınırlar bilerek ayardır; yükseltmeden önce PW-10 lab ölçümünü bekle.
+
+### OPS-R51. Dedektörler "öğreniyor" durumunda kalıyor
+
+**Belirti:** Bir izlemenin değerleri günlerce `INSUFFICIENT_DATA` gösteriyor; arayüz "learning" der ve
+bazı değerler için "baseline: N of 168 hour-of-week cells reliable" satırındaki N düşük kalır.
+
+**Olası neden:** Her dedektörün kendi öğrenme gereksinimi vardır. Taban sapması (`PW_VALUE_SPIKE`,
+`PW_VALUE_DROP`) için bir hücrenin **8 temiz örnek** toplaması gerekir; aynı saat-hücresi haftada bir
+ziyaret edildiğinden ilk karar değer ilk izlendiğinden yaklaşık **bir hafta** sonra gelir.
+`PW_VALUE_DISAPPEARED` hücre medyanının en az `PW_DISAPPEAR_MIN_MEDIAN` (5) olmasını ve
+`PW_DISAPPEAR_BUCKETS` (6) ardışık ölçülmüş sıfır bekler. `PW_NEW_VALUE` geçmiş penceresinin
+(`PW_NEW_VALUE_HISTORY_DAYS`, 7 gün) tam olmasını bekler. Kova `scope_changed` ise (bir üyelik
+değişikliğinden sonraki `PW_SCOPE_CHANGE_GRACE_BUCKETS` = 12 kova) hiçbir karar verilmez.
+
+**Doğrulama:** Değerler okuması her değerin taban durumunu ve öğrenme ilerlemesini verir; kova
+okuması kapsam değişikliği ve bakım bayraklarını gösterir.
+
+```
+GET /api/v1/property-watches/{id}/values
+```
+
+```
+GET /api/v1/property-watches/{id}/buckets
+```
+
+**Çözüm:** Bekle; öğrenme bir arıza değil, dürüst bir durumdur. Kova `scope_changed` ya da bakımda
+ise karar tutulur. Öğrenme hiç ilerlemiyorsa kapsamın trafik aldığını (`parsed_events` ve `coverage`)
+doğrula; kapsamda özellik hiç ayrıştırılmıyorsa izleme `NOT_APPLICABLE` olur (OPS-R7).
+
+### OPS-R52. Olaylar kaydediliyor ama hiçbir şey sayfa açmıyor
+
+**Belirti:** `/anomalies` içinde mülk izleme olayları (`PW_VALUE`) görünüyor ama bunlara karşılık
+gelen bir uyarı yok; olayların yaşam döngüsü yine de ilerliyor.
+
+**Olası neden:** `PW_ALERTING_ENABLED` varsayılanda false'tur; bu **gölge moddur**. Gölge modda
+olaylar ve yaşam döngüsü (CANDIDATE → OPEN → RECOVERING → RESOLVED) yazılır ama motor hiçbir uyarı
+açmaz, yenilemez, çözmez ya da bildirim kuyruklamaz. Uyarılar olaylar kapalı olduğu için değil,
+bilerek açılmaz.
+
+**Doğrulama:** Katalog okumasındaki `alerting_mode` alanı uyarı beklentisini söyler (`shadow` ya da
+`alerting`):
+
+```
+GET /api/v1/property-watches/catalog
+```
+
+`alerting_mode` değeri `shadow` ise uyarı beklenmez.
+
+**Çözüm:** Kullanıcı canlı doğrulamadan sonra isterse `PW_ALERTING_ENABLED` ayarını aç. Önceki bir
+dönemden açık kalan bir sayfa, ayar yeniden açılana kadar açık kalır; bir izlemeyi devre dışı bırakmak
+ya da silmek açık uyarıları yine de çözer.
+
+### OPS-R53. Silme ya da pin kaldırma 409 ile reddediliyor (bir kural bir değeri sabitliyor)
+
+**Belirti:** `DELETE /api/v1/property-watches/{id}` 409 döndürüyor ve hangi F.1 kurallarının bağlı
+olduğunu adlandırıyor; ya da bir değeri serbest bırakan bir pin değişikliği 409 alıyor.
+
+**Olası neden:** Bir F.1 eşik kuralı (özel kural) bu izlemenin sabitlenmiş bir değerini konu olarak
+kullanıyor. Yeni yabancı anahtar `ON DELETE RESTRICT`'tir: operatörün kuralı sessizce silinmesin diye
+silme reddedilir. Aynı sebeple `watch_version`'ı artıran bir değişiklik (kapsam ya da özellik kümesi)
+de — kuralın değeri eski sürümde veri almayı bırakacağı için — bir kural bu değeri sabitliyorken 409
+verir.
+
+**Doğrulama:** 409 yanıtı bağlı kuralları (`id`, `name`, `pw_value_id`) adlandırır. Pin değişikliği
+de, değişiklikten sonra bu listeyi döner. Bağlı kurallar `/custom-rules` listesinde görünür.
+
+```
+PUT /api/v1/property-watches/{id}/pins
+```
+
+```bash
+./qradar-dash logs
+```
+
+**Çözüm:** Önce bağlı kuralı çöz ya da sil (`DELETE /api/v1/custom-rules/{id}`) ya da o değeri
+serbest bırak; sonra izlemeyi sil / değiştir. İzleme sayfasındaki "Threshold rules" sekmesi hangi
+kuralın hangi değeri tuttuğunu gösterir.

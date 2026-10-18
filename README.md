@@ -504,7 +504,8 @@ inventory surfaces remain as supporting capabilities.
 | `/behavior/sources` | Source inventory — searchable, sortable, filterable, server-paginated |
 | `/behavior/sources/[id]` | One source's observed volume against its seasonal baseline, with anomaly overlay |
 | `/behavior/waf` · `/behavior/waf/sources/[id]` | WAF behavior (Phase B) — which WAF sources are healthy enough to judge and where endpoint admission overflows; one source's tracked endpoints and how adequate each baseline is |
-| `/anomalies` | Unified, filterable, server-paginated incident list — Phase A, WAF and IPS subjects |
+| `/behavior/watches` · `/behavior/watches/new` · `/behavior/watches/[id]` | Property watches (Phase G), in the Behavior group. The list names each watch, its status in words with the engine's reason, its scope and its last collected bucket (UTC). `/new` is the editor: scope picker, property picker with per-type applicability, pinned values, detectors and a live bounded preview. `/[id]` is the watch page — the value series chart with the parsed share beneath it and the values table on the first screen, then the Incidents, Threshold rules and Definition tabs. The dashboard widget `chart.property_watch` draws one watch's pinned values and top values. Creating, editing, enabling, disabling, deleting and previewing need `property_watch:write` |
+| `/anomalies` | Unified, filterable, server-paginated incident list — Phase A, WAF, IPS and property-watch subjects |
 | `/anomalies/[id]` | **Anomaly investigation** — what changed during the anomalous interval |
 | `/log-sources` · `/log-sources/[id]` | Log-source inventory and one source's metadata and health (Phase 1) — QRadar-owned fields refresh on sync; criticality, owner and maintenance are SOC-owned |
 | `/offenses` · `/offenses/[id]` | Offenses, and one offense's attributes, entities and history (Phase 3) |
@@ -879,14 +880,14 @@ codebase uses a compact hand-formatted style throughout.
 
 ## Data model
 
-69 tables across bounded contexts (`instance`, `log_source`, `explanation`, `search`,
+77 tables across bounded contexts (`instance`, `log_source`, `explanation`, `search`,
 `search_cadence`, `offense`, `rule`, `config_change`, `alert`, `identity`, `monitoring`, `fleet`,
-`outage`, `waf`, `catchall`, `ips`, `geo`, `dashboard`, `custom_rule`). Thirteen are
-**TimescaleDB hypertables**:
+`outage`, `waf`, `catchall`, `ips`, `geo`, `dashboard`, `custom_rule`, `property_watch`). Fifteen
+are **TimescaleDB hypertables**:
 `log_source_metric`, `search_result_metric`, `rule_metric`, `rule_match_metric`,
 `offense_snapshot`, `rule_health_snapshot`, `detection_coverage_snapshot`, `waf_endpoint_metric`,
-`waf_source_bucket`, `ips_source_bucket`, `ips_entity_metric`, `catchall_bucket` and
-`geo_country_bucket`.
+`waf_source_bucket`, `ips_source_bucket`, `ips_entity_metric`, `catchall_bucket`,
+`geo_country_bucket`, `pw_bucket` and `pw_value_metric`.
 
 Highlights:
 
@@ -921,6 +922,14 @@ Highlights:
   `dedup_key` for non-resolved alerts that structurally prevents duplicate notifications.
 - **Scheduled searches** store the AQL, enforce timeout / max time-range / max rows / concurrency,
   keep query **version history**, and store **aggregated** results by default — never raw events.
+- **Property watches (Phase G).** `property_watch` plus seven child tables — `pw_value`,
+  `pw_value_metric`, `pw_value_baseline`, `pw_bucket`, `pw_detector_state`, `pw_anomaly` and
+  `pw_anomaly_transition` (migration `0026`); `pw_bucket` and `pw_value_metric` are hypertables.
+  A watch tracks one or two property values per bucket over one source, type or group, admitting
+  values with the same bounded pattern as IPS entities. Values are clear text (D-22), readable by
+  any `read:*` caller through `/anomalies`, as an offense's usernames are; the row sizes, not the raw
+  events, are what is stored. Migration `0027` adds `custom_rule.pw_value_id` (`ON DELETE RESTRICT`)
+  and recreates the rule subject `CHECK`, so an F.1 rule may pin a property-watch value.
 
 ### Search cadence
 
@@ -940,6 +949,7 @@ own cadence: how often it searches.
 | `IPS_COLLECTION` | IPS dimension facts — ports, destinations, signatures, source IPs, fan-out, action — per enabled, validated IPS source | `COLLECTION_INTERVAL_SECONDS` |
 | `CATCHALL_SENDERS` | Sender names per catch-all log source (SIM Generic, Universal DSMs) | `COLLECTION_INTERVAL_SECONDS` |
 | `GEO_COLLECTION` | Events per country, by source and destination address | `COLLECTION_INTERVAL_SECONDS` |
+| `PROPERTY_WATCH` | A property's values per bucket, per enabled property watch | `COLLECTION_INTERVAL_SECONDS` |
 
 **The cadence decides when a family searches, not how finely it measures.**
 - At each tick, a family runs **one** Ariel search covering every complete bucket since its last
@@ -978,8 +988,8 @@ presets.
 every 5 minutes. So after the upgrade, an outage (`NO_EVENTS`) alert can arrive about an hour
 later than before. If that latency matters more than the search load, set the family back to
 5 min on the admin page. The families added later are seeded at 1 h by their own migrations
-(`IPS_COLLECTION` by `0018`, `CATCHALL_SENDERS` by `0020`, `GEO_COLLECTION` by `0022`). The
-design is in [`docs/SEARCH-CADENCE.md`](docs/SEARCH-CADENCE.md).
+(`IPS_COLLECTION` by `0018`, `CATCHALL_SENDERS` by `0020`, `GEO_COLLECTION` by `0022`,
+`PROPERTY_WATCH` by `0026`). The design is in [`docs/SEARCH-CADENCE.md`](docs/SEARCH-CADENCE.md).
 
 ### Outage alert policy
 
@@ -1153,12 +1163,13 @@ OIDC lands every dev caller has the subject `local-dev`, so all dashboards share
 Phase F (D-15): operator-authored threshold rules over aggregates the platform **already
 collects**. Evaluation is DB-only — no new Ariel search, ever — and nothing raw is stored: rules
 read buckets that already exist, and a breach row carries counts, shares and a bounded subject
-label only. A rule names one subject. A log source, an IPS source, a WAF endpoint or an IPS
-entity is a pinned row id; a fleet class is a `SourceClass` value. The rule never names free
-text. It names one metric from the ten-entry catalog (`app/custom_rules/catalog.py`: `event_count` and
-`average_eps` per log source, fleet-class `eps`, a WAF endpoint's `request_count` and its three
-ratios `block_ratio`, `server_error_ratio` and `client_error_ratio`, an IPS entity's `events`,
-an IPS source's `total_events` and `blocked_share`), an operator (`GT`/`GE`/`LT`/`LE`/`EQ`), a
+label only. A rule names one subject. A log source, an IPS source, a WAF endpoint, an IPS entity or a
+property-watch value is a pinned row id; a fleet class is a `SourceClass` value. The rule never names
+free text. It names one metric from the eleven-entry catalog (`app/custom_rules/catalog.py`:
+`event_count` and `average_eps` per log source, fleet-class `eps`, a WAF endpoint's `request_count`
+and its three ratios `block_ratio`, `server_error_ratio` and `client_error_ratio`, an IPS entity's
+`events`, an IPS source's `total_events` and `blocked_share`, and a property-watch value's
+`pw_value_events`), an operator (`GT`/`GE`/`LT`/`LE`/`EQ`), a
 threshold, a sustain and a recovery in buckets, and a severity.
 
 A 60-second Celery beat (`evaluate_custom_rules`, schedule key `evaluate-custom-rules`) is a
@@ -1247,6 +1258,182 @@ Previews are not audited.
 | `CUSTOM_RULES_RETENTION_MAX_BATCHES` | 20 | Batches per retention run |
 | `CUSTOM_RULES_RETENTION_INTERVAL_SECONDS` | 86400 | One breach-retention run per day |
 
+### Property watches
+
+Phase G (D-21, D-22): track the values one QRadar property takes on a set of log sources, and detect
+when those values change. A watch answers one question — *what values does this property take on this
+scope, and has anything about them changed?*
+
+A watch names **one scope** — one log source, one log source **type** or one log source **group** —
+and **one or two properties**. A property is the IPS `(kind, name)` reference
+(`app/property_watch/reference.py`): a `CUSTOM_PROPERTY` whose name passes `PROPERTY_NAME_PATTERN`,
+or a `NORMALIZED` field from the watch's own allowlist, which ships exactly one string-valued field,
+`username`. A third property is refused. A watch is stored disabled; creating, editing, enabling,
+disabling, deleting and previewing need `property_watch:write`; every read needs
+`read:property_watches` (`read:*` satisfies it).
+
+**Scope resolution** (`app/property_watch/scope.py`, PW-2b, PW-3c) runs from the synced inventory at
+every tick and is cycle-safe:
+
+- `LOG_SOURCE` — the source's `qradar_id`, one `logsourceid IN (<id>)` filter.
+- `LOG_SOURCE_TYPE` — the QRadar `devicetype` id; one filter, never chunked.
+- `LOG_SOURCE_GROUP` — every source whose `group_ids` contains the group **or any descendant group**
+  (the walk keeps a visited set, because the lab's own groups name each other as parent). A group
+  larger than `pw_max_sources_per_search` is chunked into consecutive searches; a group that needs
+  more than `pw_max_chunks_per_watch` chunks is `SCOPE_TOO_LARGE`.
+
+A scope fails closed. A group or type whose synced membership resolves to no source is `SCOPE_EMPTY`;
+a group whose oldest walked row's `synced_at` is older than `pw_scope_stale_after_hours` is
+`SCOPE_STALE`. Neither stores a bucket, and neither is a zero; a scope that does not resolve still
+reports the last sync's member count and up to 200 member names, marked with its state. A membership
+change stores a new `scope_fingerprint` and flags the next `pw_scope_change_grace_buckets` buckets
+`scope_changed`, in which no verdict is concluded and which the baseline builder excludes.
+
+**The pipeline.** `PROPERTY_WATCH` is a search family with its own cadence (set on
+`/admin/search-cadence`, 5 min to 8 h, default 1 h). One dispatch per tick (beat
+`dispatch_property_watch_collection`, every 60 s) claims the family slot, then per instance collects,
+evaluates and trains in that order, each instance isolated — a failed collection stores no judged
+bucket and does not move the evaluation watermark, and an evaluation or training failure runs in a
+savepoint so it keeps what collection stored. Collection sends at most `pw_max_searches_per_tick`
+searches a tick, at most `pw_max_searches_per_watch_per_tick` of them one watch's. A truncated search
+splits **time-first, then by sources**; a spent budget leaves the rest `NOT_COLLECTED`. The per-tick
+statement count is constant in the number of watches and values (bulk loaders; AGENTS.md rule 9),
+pinned by `tests/integration/test_pw_engine_scale.py`.
+
+**Measurement words.** Every reading carries its measurement:
+
+- `EXACT` — the whole grouped search returned it, or the small **pinned** search was whole even
+  though the open-ended one was cut.
+- `LOWER_BOUND` — a search was cut at its row cap (`LIMIT cap + 1`, so a cut is visible). A lower
+  bound can prove an increase and never a decrease: only `PW_VALUE_SPIKE` may fire on one; a drop or
+  a disappearance on a lower bound is `INSUFFICIENT_DATA`.
+- **not collected** — no bucket row (collection failed, the budget was spent, the scope was stale).
+  It is a gap, never a zero.
+
+Each bucket stores `total_events` (every event in scope) and `parsed_events` (the events the grouped
+search saw carrying every property); **coverage** is `parsed / total`, a lower bound when the grouped
+search was cut. The **unparsed remainder** (`total − parsed`) is counted on the bucket with its
+direction, and is never a value row, never admitted and never a denominator. Anything that reads an
+absence as evidence — a drop towards zero, a disappearance, a "below" threshold, a `NORMAL` verdict —
+additionally needs coverage at `pw_min_coverage` (0.90). A scope where the property parsed on no
+event takes `NOT_APPLICABLE` (only when `total_events > 0`), and its verdicts are `INSUFFICIENT_DATA`;
+a silent scope is not a parsing failure.
+
+**Five detectors** (`PwAnomalyType`; `AnomalyType` is never extended, AGENTS.md rule 6). Each fails
+closed with a reason and needs this before it can judge:
+
+| Detector | Claim | Needs before it can judge |
+|---|---|---|
+| `PW_VALUE_SPIKE` | the value's events are above its seasonal band | a reliable weekday×hour cell; at least `pw_min_bucket_events` events; a rise of at least `pw_spike_ratio` × the median and at least `pw_min_absolute_delta_events`; the bucket not `scope_changed`. A `LOWER_BOUND` may prove it |
+| `PW_VALUE_DROP` | the value's events are exactly below its band while it normally carries traffic | a reliable cell; median at least `pw_drop_min_median`; count at most `pw_drop_ratio` of the median and a fall of at least `pw_min_absolute_delta_events`; coverage at the floor. `EXACT` only |
+| `PW_VALUE_DISAPPEARED` | a normally-present value has a measured zero for several buckets | observed within `pw_value_active_days`; cell median at least `pw_disappear_min_median`; a measured zero for `pw_disappear_buckets` consecutive evaluated buckets, none unknown; coverage at the floor. `EXACT` only |
+| `PW_NEW_VALUE` | the value was not observed at admission level in any recorded bucket before its first appearance | a complete history window of `pw_new_value_history_days`, every bucket recorded with whole discovery and whole admission under one `watch_version`; then at least `pw_new_value_min_events` events and `pw_new_value_min_buckets` buckets since. Pinned values are never "new" |
+| `PW_NEW_COMBINATION` | on a two-property watch, both components were each seen before but the pair was never seen together | a complete tuple history (`EXACT`: an absence claim) and each component known (`LOWER_BOUND` proves presence). A component seen only below admission is not known, so the tuple falls to `PW_NEW_VALUE` |
+
+"Never seen" is not claimed: the evidence states that the value was not observed at admission level
+in any recorded bucket. The first baseline verdict comes about a **week** after the value was first
+tracked — a weekday×hour cell needs 8 clean samples and is revisited weekly — so the watch page shows
+each value's learning progress ("baseline: N of 168 hour-of-week cells reliable"), never a silent
+`NORMAL`. `PW_NEW_VALUE` has its own, shorter period of `pw_new_value_history_days`. A flood of new
+values past the per-bucket admission quota is refused admission (the bucket row records
+`observed_values`, `admitted_values` and `rejected_over_quota`), and detection on the flood itself is
+a v1.1 item.
+
+**Shadow mode and alerting.** `PW_COLLECTION_ENABLED` (default **false**) is the family switch and
+the beat is a no-op until it is set. `PW_ALERTING_ENABLED` (default **false**) is shadow mode:
+incidents and their lifecycle are recorded and nothing opens, refreshes, resolves or enqueues until
+it is on. With alerting on, an OPEN incident opens one `pw_anomaly` alert (fingerprint
+`pw_anomaly_fingerprint`, the stable `(instance, watch, value_key)` — never the value text), a
+still-anomalous incident refreshes it, RESOLVED resolves it, and notifications enqueue per
+transition. A `LOG_SOURCE` watch honours the source's maintenance: nothing opens or refreshes, and a
+maintenance bucket **holds** a resolve until a bucket outside maintenance decides. A `PATCH` that
+disables a watch resolves its open incidents and alerts in the same transaction; a `watch_version`
+bump and a `DELETE` resolve them too.
+
+**F.1 "Property watch value".** A threshold rule (`/custom-rules`) may name a property-watch value as
+its subject (`CustomRuleSubjectKind.PW_VALUE`, metric `pw_value_events`). **A rule pins a pinned
+value only** — a pinned value is never retired, its zero is provable and the rule cannot silently
+depend on the 200-value ceiling — so to alert on an automatic value the analyst pins it first.
+Deleting a watch, or a change that bumps its `watch_version`, is refused with 409 while an F.1 rule
+pins one of its values (the new FK is `ON DELETE RESTRICT`), naming the rules rather than deleting
+them by cascade.
+
+**Retention.** One bounded daily task (`apply_property_watch_retention`) deletes `pw_value_metric`
+and `pw_bucket` rows older than `pw_metric_retention_days`, then any retired `pw_value` row whose
+last metric has aged out. It never deletes a value whose incident is still OPEN or RECOVERING, and
+counts the rows it held back; a value retired through idleness resolves its still-open incident at
+the next engine run, so that guard normally protects nothing and the row leaves as it would anyway.
+`PW_ANOMALY_RETENTION_DAYS` is declared and validated but **not applied by any task yet**: resolved
+`pw_anomaly` rows are not deleted, so incident history accumulates (the design schedules 180-day
+incident retention; the code does not implement it).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `PW_COLLECTION_ENABLED` | false | Family kill switch; the beat opens no session until it is set |
+| `PW_ALERTING_ENABLED` | false | Shadow mode: incidents are recorded, nothing pages, until this is on |
+| `PW_MAX_ENABLED_WATCHES` | 10 | Enabled watches; enabling beyond it is refused with 409 |
+| `PW_MAX_SEARCHES_PER_TICK` | 40 | Ariel searches one instance may send per tick, and the enable-time static-cost cap |
+| `PW_MAX_SEARCHES_PER_WATCH_PER_TICK` | 12 | Searches one watch may spend of the tick budget |
+| `PW_MAX_SOURCES_PER_SEARCH` | 50 | Sources per keyed search (`logsourceid IN (…)`); a larger group is chunked |
+| `PW_MAX_CHUNKS_PER_WATCH` | 4 | Chunks per watch; a scope needing more is `SCOPE_TOO_LARGE` |
+| `PW_MAX_ROWS_PER_SEARCH` | 5000 | Rows per search; one more is read so a `LIMIT` cut is visible |
+| `PW_MAX_VALUES_PER_BUCKET` | 50 | Untracked values kept per bucket after the fold's top-N cut |
+| `PW_MAX_NEW_VALUES_PER_BUCKET` | 20 | New values admitted per bucket |
+| `PW_MAX_ACTIVE_VALUES_PER_WATCH` | 200 | Active values kept per watch (on a combination watch, tuples) |
+| `PW_MAX_PINNED_VALUES` | 10 | Pinned values per watch |
+| `PW_VALUE_MAX_LENGTH` | 255 | Stored width of a value text; longer text is cut by the fold |
+| `PW_MIN_ADMISSION_EVENTS` | 3 | Events in a bucket below which an unseen value is not admitted |
+| `PW_VALUE_ACTIVE_DAYS` | 7 | Days without an observation before a value is retired |
+| `PW_MIN_COVERAGE` | 0.90 | Coverage below which an absence-reading verdict is `INSUFFICIENT_DATA` |
+| `PW_SCOPE_STALE_AFTER_HOURS` | 24 | Age of the oldest walked group row above which the scope is `SCOPE_STALE` |
+| `PW_SCOPE_CHANGE_GRACE_BUCKETS` | 12 | Buckets after a membership change in which no verdict is concluded |
+| `PW_BASELINE_LOOKBACK_DAYS` | 28 | Days of version-compatible buckets a baseline rebuild considers |
+| `PW_BASELINE_VALUES_PER_RUN` | 100 | Values trained per scheduled run |
+| `PW_MAX_EVALUATION_BUCKETS_PER_RUN` | 24 | Collected buckets evaluated per watch per run |
+| `PW_SPIKE_RATIO` | 2.0 | Spike: minimum multiple of the cell median |
+| `PW_MIN_ABSOLUTE_DELTA_EVENTS` | 50 | Spike and drop: minimum absolute change in events |
+| `PW_MIN_BUCKET_EVENTS` | 20 | Spike: minimum bucket population to judge |
+| `PW_DROP_MIN_MEDIAN` | 20 | Drop: minimum cell median for the value to be judged |
+| `PW_DROP_RATIO` | 0.5 | Drop: count at most this fraction of the median |
+| `PW_DISAPPEAR_MIN_MEDIAN` | 5 | Disappearance: minimum cell median for the value to be judged |
+| `PW_DISAPPEAR_BUCKETS` | 6 | Disappearance: consecutive measured-zero buckets before the first verdict |
+| `PW_NEW_VALUE_HISTORY_DAYS` | 7 | New value: days of history that must be complete; below the retention |
+| `PW_NEW_VALUE_WINDOW_BUCKETS` | 12 | New value: buckets after first appearance in which it stays "new" |
+| `PW_NEW_VALUE_MIN_EVENTS` | 20 | New value: minimum events since first appearance to be material |
+| `PW_NEW_VALUE_MIN_BUCKETS` | 2 | New value: minimum buckets with traffic since first appearance |
+| `PW_METRIC_RETENTION_DAYS` | 35 | Age at which buckets and value metrics are deleted |
+| `PW_ANOMALY_RETENTION_DAYS` | 180 | Resolved-incident retention; declared and validated, but no task applies it yet |
+| `PW_RETENTION_BATCH_SIZE` | 5000 | Rows deleted per retention batch |
+| `PW_RETENTION_MAX_BATCHES` | 20 | Batches per retention run |
+| `PW_RETENTION_INTERVAL_SECONDS` | 86400 | One retention run per day |
+
+**The API** (`/api/v1/property-watches`; the router is mount-guarded by `read:property_watches`,
+which `read:*` satisfies, and every write also needs `property_watch:write`):
+
+| Method and path | Purpose | Permission |
+|---|---|---|
+| `GET /property-watches/catalog` | the editor's switches and bounds: `collection_enabled`, `alerting_mode`, `max_enabled`, `enabled_count`, `search_budget`, `budget_used`, the `username` allowlist, detectors, caps and preview limits. Registered before `/{id}` | `read:property_watches` |
+| `GET /property-watches/scope-options` | search the synced inventory for sources, types or groups, with a type's synced-source count and a group's resolved member count and path | `read:property_watches` |
+| `GET /property-watches/property-options` | the custom-property catalog filtered by the scope's types, each property with the types in scope that define it | `read:property_watches` |
+| `GET /property-watches` | list with status, reason, last-bucket coverage, last collected bucket (UTC) and open incident count | `read:property_watches` |
+| `POST /property-watches` | create, always **disabled**; validation returns every reason at once (422) | `property_watch:write` |
+| `GET /property-watches/{id}` | one watch with status, resolved scope summary and per-detector state | `read:property_watches` |
+| `PATCH /property-watches/{id}` | edit; carries `expected_updated_at` (409 with `current_version` on mismatch); enabling is refused with 409 naming the cap or the budget | `property_watch:write` |
+| `DELETE /property-watches/{id}` | resolve open alerts, then delete with all its values (204); 409 while an F.1 rule pins a value | `property_watch:write` |
+| `GET /property-watches/{id}/scope` | resolved member count, groups walked, inventory age, membership-change history and up to 200 member names | `read:property_watches` |
+| `GET /property-watches/{id}/buckets` | per bucket: total, parsed, unparsed, untracked, measurements, admission counts, truncation flags, `scope_changed`, `in_maintenance`; a gap is an absent bucket, never zero | `read:property_watches` |
+| `GET /property-watches/{id}/aql` | the generated AQL of the stored watch, read-only text; runs no search (PW-5c) | `read:property_watches` |
+| `GET /property-watches/{id}/values` | tracked values, pinned first: latest reading with measurement, band, baseline state, learning progress, `first_seen_at`; addressed by id, never in a URL | `read:property_watches` |
+| `GET /property-watches/{id}/series` | per-bucket series for at most 12 values in one bulk read, with the expected band | `read:property_watches` |
+| `POST /property-watches/{id}/preview` | one real bounded Ariel run of the stored watch, rate-limited | `property_watch:write` |
+| `PUT /property-watches/{id}/pins` | replace the pinned values (each checked against the pin pattern) and report the F.1 rules that depend on them | `property_watch:write` |
+
+`hours` is 1 to 168 with default 24. Every write is audited (`property_watch.create|update|delete|`
+`.enable|disable|preview`), with before/after snapshots that hold the **count and digest** of pinned
+values and never the values, and the preview (which spends an Ariel search) is audited with counts
+only. A refused `DELETE` or `PATCH` changes no alert. Errors carry no QRadar text, no console address
+and no secret.
+
 ### Scheduled-search dispatch
 
 Phase F (F-4) adds authoring guards on the same stored searches. At most
@@ -1288,8 +1475,8 @@ an incident of its own:
 
 The conditions in this table each have their own fingerprint, so they never deduplicate into
 one another, and they flow into the same lifecycle and notification pipeline. The same pipeline
-also carries `waf_anomaly`, `ips_anomaly`, `inventory` (a new log source, or a new catch-all
-sender) and `offense_collection_stale`.
+also carries `waf_anomaly`, `ips_anomaly`, `pw_anomaly`, `inventory` (a new log source, or a new
+catch-all sender) and `offense_collection_stale`.
 
 | Condition | Opens when | Resolves when |
 |---|---|---|
@@ -1530,6 +1717,18 @@ lints and updates this README.
   enable/disable audit split, result retention), F-5 (the `/searches/new` editor) and F-7
   (the `chart.search_results` widget). Live validation on the lab is the follow-up the design
   schedules. See [the Phase F design](docs/PHASE-F-CUSTOM-DETECTIONS.md).
+- **Phase G (built; live validation in progress)** — property watches (D-21, D-22): the values of a
+  QRadar custom property or the normalized `username` per bucket over one log source, type or group,
+  one or two properties per watch; the `PROPERTY_WATCH` search family (default 1 h); keyed
+  collect → evaluate → train with bounded admission, measured coverage and a counted unparsed
+  remainder; the five detectors `PW_VALUE_SPIKE`, `PW_VALUE_DROP`, `PW_VALUE_DISAPPEARED`,
+  `PW_NEW_VALUE` and `PW_NEW_COMBINATION` on a `PwAnomalyType` of the family's own; PW incidents in
+  `/anomalies` and alerts behind `PW_ALERTING_ENABLED` (default **false**, shadow mode); the F.1
+  "Property watch value" subject kind with the pin-only rule; migrations `0026` (the eight tables,
+  two hypertables, the family seed) and `0027` (the `PW_VALUE` subject kind); the API under
+  `/api/v1/property-watches`; the `/behavior/watches` UI and the `chart.property_watch` widget. PW-10
+  live validation is running on the lab in shadow mode and has no report yet. See
+  [the Phase G design](docs/PHASE-G-PROPERTY-WATCH.md).
 
 Next: UI-5.9, then the full gate and `feat/phase-ce` → `main`; Phase 6 QA (UI-6.1–UI-6.4);
 the deferred production geo window (G-5); and the 24 h new-port validation
