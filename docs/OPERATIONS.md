@@ -39,8 +39,8 @@ Dört kural her bölümde geçerlidir:
 Kurulum tek komuttur. Kayıt defterinden (registry) kuran olağan kurulum alt modül istemez:
 
 ```bash
-git clone https://github.com/wiemBe/QRadar-Dashboard.git
-cd QRadar-Dashboard
+git clone https://github.com/wiemBe/Behavior-Analytics.git
+cd Behavior-Analytics
 ./qradar-dash install
 ```
 
@@ -48,8 +48,8 @@ cd QRadar-Dashboard
 defterinden kuran bir kurulum alt modül olmadan çalışır.
 
 ```bash
-git clone --recurse-submodules https://github.com/wiemBe/QRadar-Dashboard.git
-cd QRadar-Dashboard
+git clone --recurse-submodules https://github.com/wiemBe/Behavior-Analytics.git
+cd Behavior-Analytics
 ./qradar-dash install --build
 ```
 
@@ -362,6 +362,38 @@ Full report: ./qradar-dash doctor
 
 Raporun geri kalanı (henüz yazılmamış bir beat kalp atışı, QRadar kontrolleri) yükseltmeyi ya da
 geri almayı yanlış bir başarısızlık gibi gösterirdi; bu yüzden yalnız karar veren iki satır yazılır.
+
+### İmaj ön ekinin taşınması
+
+Depo 2026-10-18'de `wiemBe/QRadar-Dashboard` adından `wiemBe/Behavior-Analytics` adına taşındı.
+Sonraki sürümlerin imajları `ghcr.io/wiembe/behavior-analytics/<servis>` altına yayımlanır;
+`0.1.0` ve `0.1.1` imajları eski adda (`ghcr.io/wiembe/qradar-dashboard/<servis>`) kalır.
+
+`upgrade`, taşımayı kendisi yapar. Hedef sürümün betiği, sürüm kontrollerinden ve durum dosyası
+kontrollerinden sonra, hiçbir şey çekmeden önce çalışır:
+
+- `.env` içindeki `QRADAR_DASH_IMAGE_PREFIX` tam olarak eski ön ek ise ya da anahtar hiç yoksa
+  (eski compose varsayılanı geçerliydi) taşıma yapılır. Başka her değer operatörün kendi kayıt
+  defteri ya da yansısıdır; dokunulmaz ve betik tek satırla hedef imajların o ön ek altında
+  bulunması gerektiğini söyler.
+- Önce kurulu sürümün imajları (`postgres`, `backend`, `frontend`; profil açıksa `proxy` ve
+  `qradar-mcp`) yerelde yeni ön ek altında etiketlenir; böylece çalışan yığın çevrimdışı yeniden
+  oluşturulabilir. Gerekli bir imaj yerelde yoksa yükseltme, imajı adıyla anarak reddedilir ve hiçbir
+  şey değişmez.
+- Sonra `.env` içindeki `QRADAR_DASH_IMAGE_PREFIX` ve (varsa) `.secrets/install.answers`
+  içindeki `IMAGE_PREFIX` yeni değerle yeniden yazılır (dosya kipi 0600 kalır) ve şu satır yazılır:
+
+```
+Image prefix moved: ghcr.io/wiembe/qradar-dashboard -> ghcr.io/wiembe/behavior-analytics (the repository was renamed).
+```
+
+Taşımadan sonra yükseltme başarısız olursa (çekme reddedilir, otomatik geri alma çalışır) taşıma
+yerinde kalır; yerel etiketler sayesinde durum tutarlıdır. `rollback` kayıtlı imaj kimliklerini
+**geçerli** `.env` ön ekiyle etiketler ve `.env` dosyasını eski haline döndürmez; yani geri alınan
+sürüm de yeni ön ek altında çalışır. Eski bir sürümü yeni ön ek altında çekmek gerekirse (geri
+almadan sonra aynı sürümün `install` yeniden çalıştırması), imajlar `mirror-images` iş akışıyla
+(`.github/workflows/mirror-images.yml`, elle çalıştırılır) yeni ada kopyalanmış olmalıdır.
+`upgrade --offline` taşımayı aynı şekilde yapar; hedef imajlar yeni ön ek altında yüklü olmalıdır.
 
 ### Ön kontrol
 
