@@ -9,6 +9,11 @@ Every claim about the code carries a `file:line` citation checked on this branch
 disagreement is listed in §B.14.3. Facts that only the console can give are not asserted: each has a
 probe in §B.3.5 and is marked **[C-n]**.
 
+> **The user's decisions (2026-10-18 ~22:45):** build it as designed, with one shared core for this
+> backfill and the property-watch bootstrap; WAF and IPS read history only for sources first collected
+> after the answer; the load of a large install is accepted, with the window fitted to 72 hours and
+> said so. The remaining open questions take this design's recommendations.
+
 ## B.0 What was asked, and what the backfill is not
 
 The operator is asked once, right after installation, whether the platform should search the past so
