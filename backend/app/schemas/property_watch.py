@@ -167,7 +167,7 @@ class WatchScopeOut(BaseModel):
     #: Up to 200 member names, sorted; `members_total` is the true count.
     members: list[str] = Field(default_factory=list)
     members_total: int | None = None
-    #: The groups the walk met, the group itself first in the walk order.
+    #: The groups the walk met, sorted by id (the resolver's own order, design §G.4).
     groups_walked: list[ScopeGroupOut] = Field(default_factory=list)
     #: The oldest `synced_at` of the walked group rows: the inventory age, UTC.
     inventory_synced_at: datetime | None = None

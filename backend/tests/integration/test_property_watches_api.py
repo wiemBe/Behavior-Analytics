@@ -783,6 +783,13 @@ async def test_catalog_scope_options_and_property_options(db_session, db_schema:
     ghost = client.get(f"{PREFIX}/property-options",
                        params={"scope_kind": "LOG_SOURCE_GROUP", "scope_id": 99999})
     assert ghost.status_code == 404
+    # The editor's own call names no instance: `_default_instance` adds one statement, and the
+    # read is still flat in the number of groups and sources (AGENTS.md rule 9).
+    for kind, expected in (("LOG_SOURCE_GROUP", OPTIONS_STATEMENTS["group"]),
+                           ("LOG_SOURCE_TYPE", OPTIONS_STATEMENTS["type"])):
+        client.statements.clear()  # type: ignore[attr-defined]
+        assert client.get(f"{PREFIX}/scope-options", params={"kind": kind}).status_code == 200
+        assert len(client.statements) == expected + 1, kind  # type: ignore[attr-defined]
 
 
 async def test_property_options_degrade_with_a_fixed_sentence(
@@ -1365,13 +1372,15 @@ async def test_the_scope_read_reports_the_seeded_membership_changes(
     await _seed(db_session)
     writer = _client(db_schema, _principal("detection_engineer"))
     made = _create(writer, "history")
-    # Oldest to newest: a change z->a, a bucket that measured nothing, then a change a->b.
+    # Oldest to newest: a change z->a, a bucket that measured nothing (with its own fingerprint,
+    # so a read that kept it would invent a change), then a change a->b. The last row is another
+    # version, whose bucket is not this watch's history.
     db_session.add_all([
         _bucket(made["id"], 7, scope_fingerprint="z", scope_member_count=8),
         _bucket(made["id"], 6, scope_fingerprint="a", scope_member_count=10, scope_changed=True),
         _bucket(made["id"], 5, scope_fingerprint="a", scope_member_count=10),
-        _bucket(made["id"], 3, values_measurement="NOT_COLLECTED", scope_fingerprint="a",
-                scope_member_count=10),
+        _bucket(made["id"], 3, values_measurement="NOT_COLLECTED", scope_fingerprint="x",
+                scope_member_count=99),
         _bucket(made["id"], 2, scope_fingerprint="b", scope_member_count=12, scope_changed=True),
         _bucket(made["id"], 1, scope_fingerprint="b", scope_member_count=12),
         _bucket(made["id"], 0, watch_version=2, scope_fingerprint="c", scope_member_count=1),
@@ -1523,3 +1532,92 @@ async def test_scope_options_costs_the_same_statements_at_every_size(
         assert [o["synced_source_count"] for o in options] == [sources]
         counts[f"type-{sources}"] = len(reader.statements)  # type: ignore[attr-defined]
     assert counts["type-10"] == counts["type-200"] == OPTIONS_STATEMENTS["type"], counts
+
+
+async def test_the_scope_read_of_an_empty_group_is_a_measured_zero(
+    db_session, db_schema: str
+) -> None:
+    """An empty group resolved: the inventory held no member, so the zero is a measured fact.
+
+    The collection side of §G.4 stays fail-closed (no bucket, no zero); a membership count is
+    a statement about the synced inventory, not a measurement, so an empty group states 0.
+    """
+    world = await _seed(db_session)
+    now = datetime.now(UTC)
+    db_session.add(LogSourceGroup(instance_id=world.instance.id, qradar_id=12, name="Empty",
+                                  parent_qradar_id=None, assignable=True, synced_at=now))
+    await db_session.commit()
+    writer = _client(db_schema, _principal("detection_engineer"))
+    reader = _client(db_schema, _principal("viewer"))
+    made = _create(writer, "empty", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                   scope_group_id=12)
+    reader.statements.clear()  # type: ignore[attr-defined]
+    body = reader.get(f"{PREFIX}/{made['id']}/scope").json()
+    assert body["resolved"] is False and body["state"] == "SCOPE_EMPTY"
+    assert body["member_count"] == 0 and body["members_total"] == 0
+    assert body["members"] == [] and body["changes"] == []
+    assert [(g["qradar_id"], g["name"]) for g in body["groups_walked"]] == [(12, "Empty")]
+    assert body["reason"] and "hold no synced log source" in body["reason"]
+    assert body["inventory_synced_at"] is not None
+    # The walk found nothing to name, but the read is the same size as any other group's.
+    assert len(reader.statements) == SCOPE_STATEMENTS["group"]  # type: ignore[attr-defined]
+
+
+async def test_a_group_that_vanished_reads_as_empty_with_no_count(
+    db_session, db_schema: str
+) -> None:
+    """A vanished group is `SCOPE_EMPTY`: no count is drawn from nothing (rule 8)."""
+    world = await _seed(db_session)
+    writer = _client(db_schema, _principal("detection_engineer"))
+    reader = _client(db_schema, _principal("viewer"))
+    made = _create(writer, "vanished", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                   scope_group_id=GROUP_ID)
+    gone = await db_session.get(LogSourceGroup, (world.instance.id, GROUP_ID))
+    await db_session.delete(gone)
+    await db_session.commit()
+
+    body = reader.get(f"{PREFIX}/{made['id']}/scope").json()
+    assert body["resolved"] is False and body["state"] == "SCOPE_EMPTY"
+    # The group row is gone, so there is no walk and no count: never a zero invented for it.
+    assert body["member_count"] is None and body["members_total"] is None
+    assert body["members"] == [] and body["groups_walked"] == []
+    assert body["inventory_synced_at"] is None and body["inventory_age_seconds"] is None
+    assert body["reason"] and "not in the inventory" in body["reason"]
+
+
+async def test_scope_options_show_no_count_for_a_group_that_is_too_large(
+    db_session, db_schema: str
+) -> None:
+    """A group over the chunk cap shows a reason, not a count, as a stale one does."""
+    await _seed(db_session)
+    client = _client(db_schema, _principal("viewer"),
+                     pw_max_sources_per_search=1, pw_max_chunks_per_watch=1)
+    groups = client.get(f"{PREFIX}/scope-options", params={"kind": "LOG_SOURCE_GROUP"}).json()
+    by_name = {g["name"]: g for g in groups}
+    assert by_name["Edge"]["synced_source_count"] is None
+    assert by_name["Edge"]["scope_state"] == "SCOPE_TOO_LARGE"
+    assert by_name["Edge"]["scope_reason"] and "limit is 1" in by_name["Edge"]["scope_reason"]
+    # One member is one chunk even at these settings, so it still counts.
+    assert by_name["Edge DMZ"]["synced_source_count"] == 1
+    assert by_name["Edge DMZ"]["scope_state"] is None
+
+
+async def test_property_options_refuse_a_group_that_does_not_resolve(
+    db_session, db_schema: str
+) -> None:
+    """A stale group has no trustworthy in-scope types: 409 with the resolver's reason."""
+    world = await _seed(db_session)
+    row = await db_session.get(LogSourceGroup, (world.instance.id, GROUP_ID))
+    row.synced_at = datetime.now(UTC) - timedelta(hours=48)
+    await db_session.commit()
+
+    client = _client(db_schema, _principal("viewer"), provider=MockQRadarProvider())
+    refused = client.get(f"{PREFIX}/property-options",
+                         params={"scope_kind": "LOG_SOURCE_GROUP", "scope_id": GROUP_ID})
+    assert refused.status_code == 409
+    assert "older than" in refused.text
+    assert "http" not in refused.text, "no console address in an error (rule 5)"
+    # A fresh group still offers its members' types.
+    fresh = client.get(f"{PREFIX}/property-options",
+                       params={"scope_kind": "LOG_SOURCE_GROUP", "scope_id": GROUP_ID + 1})
+    assert fresh.status_code == 200 and fresh.json()["scope_type_ids"] == [TYPE_ID]

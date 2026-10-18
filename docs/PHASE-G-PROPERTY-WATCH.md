@@ -1244,9 +1244,10 @@ never carry QRadar text, a console address or a secret (AGENTS.md rule 5).
 > with its state, never a zero (§G.4). `scope-options` reports a group's resolved member count and
 > a type's synced-source count through the same resolver; a group that is stale or too large shows
 > no count and names why in `scope_state`/`scope_reason`, while an empty group's measured zero is
-> reported as `0` with `SCOPE_EMPTY`. Every read is bulk: `/{id}/scope` is a fixed 6 statements for
-> a group (4 for a source or a type) and `scope-options` a fixed 3 for groups (2 for types), at any
-> number of groups or sources (rule 9). `property-options` for a group now takes the in-scope types
+> reported as `0` with `SCOPE_EMPTY`. Every read is bulk and flat in size: `/{id}/scope` is a fixed
+> 6 statements for a group (4 for a source or a type), and `scope-options` 3 for groups and 2 for
+> types, at any number of groups or sources, one more when the caller does not name the instance
+> (rule 9). `property-options` for a group now takes the in-scope types
 > from the resolver's own walk (404 when the group row is absent, 409 when it does not resolve).
 
 ---

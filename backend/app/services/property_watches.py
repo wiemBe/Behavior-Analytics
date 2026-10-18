@@ -662,18 +662,16 @@ async def _member_names(
 
     For a group the members come from the resolver's own walk (its `SourceRow` set), so the
     names cannot disagree with the count; for a source or a type the inventory is filtered by
-    the same column the resolver counts.
+    the same column the resolver counts. A group the walk found no member for filters to an
+    empty `IN` list, so the read still costs its one statement at every scope size.
     """
-    if subject.scope_kind is PwScopeKind.LOG_SOURCE_GROUP and not scope.members:
-        return []
     query = (
         select(LogSource.name)
         .where(LogSource.instance_id == subject.instance_id, _member_predicate(subject, scope))
         .order_by(LogSource.name, LogSource.id)
-        .limit(SCOPE_MEMBERS_LIMIT + 1)
+        .limit(SCOPE_MEMBERS_LIMIT)
     )
-    names = list((await session.scalars(query)).all())
-    return names[:SCOPE_MEMBERS_LIMIT]
+    return list((await session.scalars(query)).all())
 
 
 async def _scope_changes(
