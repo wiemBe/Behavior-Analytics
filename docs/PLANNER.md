@@ -8,7 +8,14 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 17:10, 2026-10-18 (twenty-third session, from 17:06; chat `qradar-dash-ec`)
+## ▶▶▶▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 18:25 (session limit 92 %), 2026-10-18 (twenty-third session, from 17:06; chat `qradar-dash-ec`)
+
+**At 18:25 the user's session limit was 92 %. Every agent in flight is a Sonnet sub-agent and dies with this chat.** In the next chat:
+1. `pgrep -af qradar_lab_loggen` and stop any leftover by PID (PW-10's `s1b` ends by itself at 15:10 UTC). `ListAgents`: if `qradar-dash-ec` is idle, ignore it.
+2. For each of **PW-10** (`QRadar-Dash-work/pw10/PW-10.report.md`), **T-134** (`wt/t134`), **T-135** (`wt/t135`), **T-136** (`wt/t136`): read the report's first line. `STATUS: FINAL` → review and merge (T-134 first: `0028`; then T-135/T-136; whole integration by the orchestrator at the merge, 3.12 gate before `main`). Otherwise hand over again with "review what you inherit" (the table below has each task's history).
+3. Then: **PW-13a** (spec ready; after T-134 merges; Codex is back 21:26), **PW-13p** (spec ready; after PW-10), PW-11 round 2, PW-10b (F.1 alert part only until the bootstrap exists).
+Merged this session: PW-11 round 0, PW-12 design (+ D-29 amendments). Decisions D-27, D-28, D-29 in §4.
+
 
 **Branches unchanged** since 17:00 (below): `main` @ `9bf3d4d` = v0.1.1, `feat/phase-ce` holds the whole Phase G build. The previous chat (`qradar-dash-a3`) is idle; it stopped its PW-10 sub-agent at 17:03 itself, so nothing of it should wake.
 
