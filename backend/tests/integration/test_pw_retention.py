@@ -7,10 +7,22 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, insert, select
 
-from app.models.enums import AnomalyState
-from app.models.property_watch import PwAnomaly, PwBucket, PwValue, PwValueMetric
+from app.models.alert import Alert
+from app.models.enums import AlertStatus, AnomalyState
+from app.models.property_watch import (
+    PwAnomaly,
+    PwAnomalyTransition,
+    PwBucket,
+    PwDetectorState,
+    PwValue,
+    PwValueMetric,
+)
 from app.services import pw_retention
-from app.services.pw_retention import BLOCKING_INCIDENT_STATES, PwRetention
+from app.services.pw_retention import (
+    BLOCKING_INCIDENT_STATES,
+    TERMINAL_INCIDENT_STATES,
+    PwRetention,
+)
 from tests.integration.factories import make_instance
 from tests.integration.test_pw_collection import add_watch, cfg
 
@@ -80,10 +92,10 @@ async def test_retention_removes_aged_buckets_and_metrics_then_retired_values(db
     await seeded(db_session)
     report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
     # `gone` is retired and its last metric aged out in this very run: it leaves with it
-    assert report.deleted == {"pw_value_metric": 2, "pw_bucket": 7, "pw_value": 1}
+    assert report.deleted == {"pw_value_metric": 2, "pw_bucket": 7, "pw_anomaly": 0, "pw_value": 1}
     assert report.incomplete == []
     report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
-    assert report.deleted == {"pw_value_metric": 0, "pw_bucket": 0, "pw_value": 0}
+    assert report.deleted == {"pw_value_metric": 0, "pw_bucket": 0, "pw_anomaly": 0, "pw_value": 0}
     keys = set(await db_session.scalars(select(PwValue.value_key)))
     assert keys == {"active-and-old", "retired-but-recent-metric", "retired-recently"}
     assert await count(db_session, PwBucket) == 1
@@ -142,7 +154,7 @@ async def test_every_retention_table_obeys_the_per_run_batch_bound(db_session) -
     )
     report = await PwRetention(db_session, settings=bounded, clock=lambda: NOW).run()
 
-    assert report.deleted == {"pw_value_metric": 3, "pw_bucket": 3, "pw_value": 3}
+    assert report.deleted == {"pw_value_metric": 3, "pw_bucket": 3, "pw_anomaly": 0, "pw_value": 3}
     assert report.incomplete == ["pw_value_metric", "pw_bucket", "pw_value"]
     assert await count(db_session, PwValueMetric) == 4
     assert await count(db_session, PwBucket) == 4
@@ -207,7 +219,7 @@ async def test_retention_keeps_a_value_whose_incident_is_still_active(
     await _value_with_incident(db_session, state)
     report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
     assert report.deleted["pw_value"] == 0
-    assert report.blocked == {"pw_value": 1}
+    assert report.blocked == {"pw_value": 1, "pw_anomaly": 0}
     assert await count(db_session, PwValue) == 1
 
 
@@ -215,7 +227,7 @@ async def test_retention_deletes_a_value_whose_incident_has_ended(db_session) ->
     await _value_with_incident(db_session, AnomalyState.RESOLVED.value)
     report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
     assert report.deleted["pw_value"] == 1
-    assert report.blocked == {"pw_value": 0}
+    assert report.blocked == {"pw_value": 0, "pw_anomaly": 0}
     assert await count(db_session, PwValue) == 0
 
 
@@ -230,3 +242,278 @@ async def test_the_value_delete_protects_exactly_the_active_incident_states() ->
         assert step.blocked is not None and f"'{state}'" in step.blocked
     for state in (AnomalyState.CANDIDATE.value, AnomalyState.RESOLVED.value):
         assert f"'{state}'" not in step.delete
+
+
+# ------------------------------------------ an aged-out incident (T-135, PW_ANOMALY_RETENTION_DAYS)
+#: Older than the 180-day anomaly cutoff (and the 35-day metric cutoff). `OLD` (40 days) ages
+#: values and metrics, but not incidents: the two windows differ.
+ANCIENT = NOW - timedelta(days=200)
+
+
+async def _add_incident(  # type: ignore[no-untyped-def]
+    session, watch, *, state: str, at: datetime, value_id=None, key: str = "gone"
+) -> PwAnomaly:
+    """One incident of `watch` in `state`, its whole lifetime at `at`."""
+    incident = PwAnomaly(
+        watch_id=watch.id,
+        pw_value_id=value_id,
+        value_key=key,
+        detector_type="PW_VALUE_SPIKE",
+        fingerprint=f"pw_anomaly:{watch.id}:{key}",
+        severity="HIGH",
+        state=state,
+        detected_at=at,
+        anomaly_start=at,
+        anomaly_end=at,
+        resolved_at=at if state == AnomalyState.RESOLVED.value else None,
+        watch_version=1,
+    )
+    session.add(incident)
+    await session.flush()
+    return incident
+
+
+async def _watch(db_session):  # type: ignore[no-untyped-def]
+    instance = await make_instance(db_session)
+    return await add_watch(db_session, instance)
+
+
+async def test_retention_deletes_an_aged_terminal_incident_with_its_transitions(db_session) -> None:
+    watch = await _watch(db_session)
+    incident = await _add_incident(
+        db_session, watch, state=AnomalyState.RESOLVED.value, at=ANCIENT
+    )
+    db_session.add(
+        PwAnomalyTransition(
+            pw_anomaly_id=incident.id,
+            from_state=AnomalyState.OPEN.value,
+            to_state=AnomalyState.RESOLVED.value,
+            occurred_at=ANCIENT,
+            actor="pw-engine",
+        )
+    )
+    await db_session.commit()
+
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 1
+    assert await count(db_session, PwAnomaly) == 0
+    assert await count(db_session, PwAnomalyTransition) == 0
+
+
+async def test_retention_deletes_an_aged_normal_incident(db_session) -> None:
+    """A CANDIDATE closed back to NORMAL is terminal too; its age is `anomaly_end`."""
+    watch = await _watch(db_session)
+    await _add_incident(db_session, watch, state=AnomalyState.NORMAL.value, at=ANCIENT)
+    await db_session.commit()
+
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 1
+    assert await count(db_session, PwAnomaly) == 0
+
+
+async def test_retention_keeps_a_terminal_incident_inside_the_window(db_session) -> None:
+    watch = await _watch(db_session)
+    await _add_incident(db_session, watch, state=AnomalyState.RESOLVED.value, at=FRESH)
+    await db_session.commit()
+
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 0
+    assert await count(db_session, PwAnomaly) == 1
+
+
+async def test_the_anomaly_cutoff_is_independent_of_the_metric_cutoff(db_session) -> None:
+    """`OLD` (40 days) is past the 35-day metric window but inside the 180-day anomaly window."""
+    watch = await _watch(db_session)
+    await _add_incident(db_session, watch, state=AnomalyState.RESOLVED.value, at=OLD)
+    await db_session.commit()
+
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 0
+    assert await count(db_session, PwAnomaly) == 1
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        AnomalyState.CANDIDATE.value,
+        AnomalyState.OPEN.value,
+        AnomalyState.RECOVERING.value,
+    ],
+)
+async def test_retention_keeps_a_live_incident_whatever_its_age(db_session, state: str) -> None:
+    """Only a terminal incident ages; a live investigation is never deleted, however old."""
+    watch = await _watch(db_session)
+    await _add_incident(db_session, watch, state=state, at=ANCIENT)
+    await db_session.commit()
+
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 0
+    assert await count(db_session, PwAnomaly) == 1
+
+
+async def test_retention_keeps_an_incident_a_detector_state_points_at(db_session) -> None:
+    watch = await _watch(db_session)
+    await db_session.execute(
+        insert(PwValue), [value_row(watch.id, "gone", active=True, retired_at=None)]
+    )
+    value_id = await db_session.scalar(select(PwValue.id))
+    incident = await _add_incident(
+        db_session,
+        watch,
+        state=AnomalyState.RESOLVED.value,
+        at=ANCIENT,
+        value_id=value_id,
+    )
+    db_session.add(
+        PwDetectorState(
+            watch_id=watch.id,
+            pw_value_id=value_id,
+            detector_type="PW_VALUE_SPIKE",
+            state=AnomalyState.RESOLVED.value,
+            active_anomaly_id=incident.id,
+        )
+    )
+    await db_session.commit()
+
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 0
+    assert report.blocked["pw_anomaly"] == 1
+    assert await count(db_session, PwAnomaly) == 1
+
+
+@pytest.mark.parametrize("status", [AlertStatus.OPEN.value, AlertStatus.ACKNOWLEDGED.value])
+async def test_retention_keeps_an_incident_an_unresolved_alert_depends_on(
+    db_session, status: str
+) -> None:
+    """The engine resolves an alert with its incident only while alerting is on, so an
+    incident can be resolved while its alert still does: retention keeps it and counts it."""
+    watch = await _watch(db_session)
+    incident = await _add_incident(
+        db_session, watch, state=AnomalyState.RESOLVED.value, at=ANCIENT
+    )
+    db_session.add(
+        Alert(
+            dedup_key=f"alert-{incident.id}",
+            fingerprint=f"alert-{incident.id}",
+            title="pw value spike",
+            severity="HIGH",
+            status=status,
+            source_type="pw_value",
+            source_anomaly_ids=[str(incident.id)],
+            opened_at=ANCIENT,
+            first_seen_at=ANCIENT,
+            last_seen_at=ANCIENT,
+        )
+    )
+    await db_session.commit()
+
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 0
+    assert report.blocked["pw_anomaly"] == 1
+    assert await count(db_session, PwAnomaly) == 1
+
+
+async def test_a_resolved_alert_does_not_block_the_incident(db_session) -> None:
+    watch = await _watch(db_session)
+    incident = await _add_incident(
+        db_session, watch, state=AnomalyState.RESOLVED.value, at=ANCIENT
+    )
+    db_session.add(
+        Alert(
+            dedup_key=f"alert-{incident.id}",
+            fingerprint=f"alert-{incident.id}",
+            title="pw value spike",
+            severity="HIGH",
+            status=AlertStatus.RESOLVED.value,
+            source_type="pw_value",
+            source_anomaly_ids=[str(incident.id)],
+            opened_at=ANCIENT,
+            first_seen_at=ANCIENT,
+            last_seen_at=ANCIENT,
+            resolved_at=ANCIENT,
+        )
+    )
+    await db_session.commit()
+
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 1
+    assert report.blocked["pw_anomaly"] == 0
+    assert await count(db_session, PwAnomaly) == 0
+
+
+async def test_the_incident_step_obeys_the_per_run_batch_bound(db_session) -> None:
+    watch = await _watch(db_session)
+    for index in range(5):
+        await _add_incident(
+            db_session,
+            watch,
+            state=AnomalyState.RESOLVED.value,
+            at=ANCIENT,
+            key=f"gone-{index}",
+        )
+    await db_session.commit()
+
+    bounded = cfg().model_copy(
+        update={"pw_retention_batch_size": 3, "pw_retention_max_batches": 1}
+    )
+    report = await PwRetention(db_session, settings=bounded, clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 3
+    assert "pw_anomaly" in report.incomplete
+    assert await count(db_session, PwAnomaly) == 2
+
+
+async def test_the_value_step_deletes_a_value_whose_only_incident_aged_out_in_the_same_run(
+    db_session,
+) -> None:
+    """The incident step runs before the value step, so one run takes both."""
+    watch = await _watch(db_session)
+    await db_session.execute(
+        insert(PwValue), [value_row(watch.id, "gone", active=False, retired_at=OLD)]
+    )
+    value_id = await db_session.scalar(select(PwValue.id))
+    await _add_incident(
+        db_session,
+        watch,
+        state=AnomalyState.RESOLVED.value,
+        at=ANCIENT,
+        value_id=value_id,
+    )
+    await db_session.commit()
+
+    report = await PwRetention(db_session, settings=cfg(), clock=lambda: NOW).run()
+
+    assert report.deleted["pw_anomaly"] == 1
+    assert report.deleted["pw_value"] == 1
+    assert await count(db_session, PwAnomaly) == 0
+    assert await count(db_session, PwValue) == 0
+
+
+async def test_the_incident_delete_protects_exactly_the_terminal_states() -> None:
+    """The raw SQL's `IN` list is pinned to the engine's terminal states, so they cannot drift."""
+    expected = {AnomalyState.RESOLVED.value, AnomalyState.NORMAL.value}
+    assert set(TERMINAL_INCIDENT_STATES) == expected
+    step = next(s for s in pw_retention._STATEMENTS if s.table == "pw_anomaly")
+    for state in TERMINAL_INCIDENT_STATES:
+        assert f"'{state}'" in step.delete
+        assert f"'{state}'" in step.remaining
+        assert step.blocked is not None and f"'{state}'" in step.blocked
+    for live in (
+        AnomalyState.CANDIDATE.value,
+        AnomalyState.OPEN.value,
+        AnomalyState.RECOVERING.value,
+    ):
+        assert f"'{live}'" not in step.delete
+
+
+async def test_the_incident_step_runs_before_the_value_step() -> None:
+    tables = [step.table for step in pw_retention._STATEMENTS]
+    assert tables.index("pw_anomaly") < tables.index("pw_value")

@@ -229,6 +229,7 @@ Custom rules evaluate aggregates already stored by the platform. They never add 
 | `PW_SCOPE_STALE_AFTER_HOURS` | `24` | Inventory age at which a group scope fails closed |
 | `PW_SCOPE_CHANGE_GRACE_BUCKETS` | `12` | Buckets withheld after scope membership changes |
 | `PW_BASELINE_LOOKBACK_DAYS` | `28` | Compatible history used for baselines |
+| `PW_BASELINE_MIN_VISITS` | `2` | Distinct weekly visits a weekday-and-hour cell needs before a property-watch volume detector may judge it |
 | `PW_BASELINE_VALUES_PER_RUN` | `100` | Values trained in one run |
 | `PW_MAX_EVALUATION_BUCKETS_PER_RUN` | `24` | Buckets evaluated per watch and run |
 | `PW_SPIKE_RATIO` | `2.0` | Minimum spike multiple |
@@ -243,7 +244,7 @@ Custom rules evaluate aggregates already stored by the platform. They never add 
 | `PW_NEW_VALUE_MIN_EVENTS` | `20` | Minimum events for a new value |
 | `PW_NEW_VALUE_MIN_BUCKETS` | `2` | Minimum buckets for a new value |
 | `PW_METRIC_RETENTION_DAYS` | `35` | Bucket and value-metric retention |
-| `PW_ANOMALY_RETENTION_DAYS` | `180` | Declared resolved-incident retention; no task applies it yet |
+| `PW_ANOMALY_RETENTION_DAYS` | `180` | Age at which a terminal property-watch incident (resolved, or a candidate closed back) and its transitions are deleted; an incident a detector state or an unresolved alert depends on is kept |
 | `PW_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
 | `PW_RETENTION_MAX_BATCHES` | `20` | Batches per retention run |
 | `PW_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule |

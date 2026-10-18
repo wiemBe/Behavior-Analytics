@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Environment, Settings, get_settings
 from app.core.database import dispose_engine, get_sessionmaker
-from app.models.enums import DEFAULT_SEARCH_CADENCE
+from app.models.enums import DEFAULT_SEARCH_CADENCE, SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
 from app.models.search_cadence import SearchCadenceSetting
@@ -185,6 +185,25 @@ def _worst(results: Sequence[CheckResult]) -> Status:
 
 def exit_code(results: Sequence[CheckResult]) -> int:
     return {Status.PASS: 0, Status.WARN: 1, Status.FAIL: 2}[_worst(results)]
+
+
+#: Every search family that has an off switch, mapped to the setting that is it. A family
+#: absent here (only `PHASE_A_VOLUME`) has no switch: the log-source volume collector is the
+#: always-on core of the platform. `test_doctor` fails if a new `SearchFamily` member appears
+#: in neither this map nor `_FAMILIES_WITHOUT_SWITCH`, so the two cannot drift.
+_FAMILY_SWITCHES: dict[str, str] = {
+    SearchFamily.WAF_COLLECTION.value: "waf_collection_enabled",
+    SearchFamily.ANOMALY_EXPLANATION.value: "explanation_enabled",
+    SearchFamily.RULE_MATCH.value: "rule_match_collection_enabled",
+    SearchFamily.IPS_COLLECTION.value: "ips_collection_enabled",
+    SearchFamily.PROPERTY_WATCH.value: "pw_collection_enabled",
+    SearchFamily.CATCHALL_SENDERS.value: "catchall_collection_enabled",
+    SearchFamily.GEO_COLLECTION.value: "geo_collection_enabled",
+}
+
+#: The families with no off switch, listed so the drift test can tell "deliberately switchless"
+#: from "forgotten". `PHASE_A_VOLUME` is the only one.
+_FAMILIES_WITHOUT_SWITCH = frozenset({SearchFamily.PHASE_A_VOLUME.value})
 
 
 class Doctor:
@@ -562,13 +581,11 @@ class Doctor:
             )
 
     def _family_enabled(self, family: str) -> bool:
-        return {
-            "WAF_COLLECTION": self.settings.waf_collection_enabled,
-            "IPS_COLLECTION": self.settings.ips_collection_enabled,
-            "RULE_MATCH": self.settings.rule_match_collection_enabled,
-            "CATCHALL_SENDERS": self.settings.catchall_collection_enabled,
-            "GEO_COLLECTION": self.settings.geo_collection_enabled,
-        }.get(family, True)
+        attribute = _FAMILY_SWITCHES.get(family)
+        if attribute is None:
+            # `PHASE_A_VOLUME`, and anything unknown: no switch, so treat it as enabled.
+            return True
+        return bool(getattr(self.settings, attribute))
 
     async def check_cadence(self) -> CheckResult:
         try:
@@ -604,12 +621,13 @@ class Doctor:
             )
 
     async def check_families_off(self) -> CheckResult:
+        # Every family switch in `_FAMILY_SWITCHES` order, then the custom-rule engine's switch
+        # (F.1), which is not a `SearchFamily`. The environment name is the field's upper case.
         flags = {
-            "WAF_COLLECTION_ENABLED": self.settings.waf_collection_enabled,
-            "IPS_COLLECTION_ENABLED": self.settings.ips_collection_enabled,
-            "RULE_MATCH_COLLECTION_ENABLED": self.settings.rule_match_collection_enabled,
-            "CUSTOM_RULES_ENABLED": self.settings.custom_rules_enabled,
+            attribute.upper(): bool(getattr(self.settings, attribute))
+            for attribute in _FAMILY_SWITCHES.values()
         }
+        flags["CUSTOM_RULES_ENABLED"] = self.settings.custom_rules_enabled
         summary = ", ".join(
             f"{name}={'on' if enabled else 'off'}" for name, enabled in flags.items()
         )

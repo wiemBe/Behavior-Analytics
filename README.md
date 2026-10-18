@@ -254,7 +254,6 @@ The upstream MCP tool audit is published in the
   it remains insufficient data.
 - Geography stores country aggregates only. Private, internal and unknown addresses share the same
   unresolved remainder because QRadar does not distinguish them in this lookup.
-- Property-watch resolved-incident retention is configured but not yet applied by a worker task.
 - The synthetic telemetry generator is never started by the backend, workers, Compose or tests.
 
 ## License

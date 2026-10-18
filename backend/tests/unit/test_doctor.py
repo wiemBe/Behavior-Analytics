@@ -22,7 +22,7 @@ from app.cli.doctor import (
     render_text,
 )
 from app.core.config import Environment, Settings
-from app.models.enums import DEFAULT_SEARCH_CADENCE
+from app.models.enums import DEFAULT_SEARCH_CADENCE, SearchFamily
 from app.providers.dto import InstanceInfoDTO
 
 
@@ -370,6 +370,84 @@ async def test_cadence_pass_and_warn(settings: Settings) -> None:
             settings, FakeSession(scalars_values=[[late]]), now=lambda: now
         ).check_cadence()
     ).status is Status.WARN
+
+
+@pytest.mark.asyncio
+async def test_cadence_skips_property_watch_while_its_switch_is_off(settings: Settings) -> None:
+    """The default install: `PW_COLLECTION_ENABLED=false`, a PW row never run, no warning."""
+    never = SimpleNamespace(family="PROPERTY_WATCH", cadence_seconds=3600, last_run_at=None)
+    result = await make_doctor(settings, FakeSession(scalars_values=[[never]])).check_cadence()
+    assert result.status is Status.PASS
+    assert "PROPERTY_WATCH" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_cadence_warns_for_property_watch_when_enabled_and_late(settings: Settings) -> None:
+    now = datetime(2026, 10, 16, 12, tzinfo=UTC)
+    late = SimpleNamespace(
+        family="PROPERTY_WATCH", cadence_seconds=3600, last_run_at=now - timedelta(hours=3)
+    )
+    enabled = settings.model_copy(update={"pw_collection_enabled": True})
+    result = await make_doctor(
+        enabled, FakeSession(scalars_values=[[late]]), now=lambda: now
+    ).check_cadence()
+    assert result.status is Status.WARN
+    assert "PROPERTY_WATCH" in result.message
+
+
+@pytest.mark.asyncio
+async def test_cadence_skips_explanation_when_its_switch_is_off(settings: Settings) -> None:
+    never = SimpleNamespace(
+        family="ANOMALY_EXPLANATION", cadence_seconds=3600, last_run_at=None
+    )
+    off = settings.model_copy(update={"explanation_enabled": False})
+    result = await make_doctor(off, FakeSession(scalars_values=[[never]])).check_cadence()
+    assert result.status is Status.PASS
+    assert "ANOMALY_EXPLANATION" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_cadence_warns_for_explanation_when_enabled_and_late(settings: Settings) -> None:
+    now = datetime(2026, 10, 16, 12, tzinfo=UTC)
+    late = SimpleNamespace(
+        family="ANOMALY_EXPLANATION", cadence_seconds=3600, last_run_at=now - timedelta(hours=3)
+    )
+    # `explanation_enabled` is on by default, so no settings override is needed.
+    result = await make_doctor(
+        settings, FakeSession(scalars_values=[[late]]), now=lambda: now
+    ).check_cadence()
+    assert result.status is Status.WARN
+    assert "ANOMALY_EXPLANATION" in result.message
+
+
+@pytest.mark.asyncio
+async def test_families_off_names_every_switch_in_switch_map_order(settings: Settings) -> None:
+    result = await make_doctor(settings).check_families_off()
+    assert result.status is Status.PASS
+    expected = [attribute.upper() for attribute in doctor_module._FAMILY_SWITCHES.values()]
+    expected.append("CUSTOM_RULES_ENABLED")
+    assert [part.split("=")[0] for part in result.message.split(", ")] == expected
+
+
+def test_every_search_family_has_a_switch_or_is_deliberately_switchless() -> None:
+    """A new `SearchFamily` member without a switch cannot slip in unnoticed."""
+    mapped = set(doctor_module._FAMILY_SWITCHES)
+    known = mapped | set(doctor_module._FAMILIES_WITHOUT_SWITCH)
+    assert known == {family.value for family in SearchFamily}
+    for attribute in doctor_module._FAMILY_SWITCHES.values():
+        assert attribute in Settings.model_fields
+    # `PHASE_A_VOLUME` is the one switchless family, and the volume collector always runs.
+    assert "PHASE_A_VOLUME" in doctor_module._FAMILIES_WITHOUT_SWITCH
+    assert not mapped & set(doctor_module._FAMILIES_WITHOUT_SWITCH)
+
+
+def test_family_enabled_reads_the_map(settings: Settings) -> None:
+    doctor = make_doctor(settings)
+    assert doctor._family_enabled("PHASE_A_VOLUME") is True
+    assert doctor._family_enabled("PROPERTY_WATCH") is False
+    assert doctor._family_enabled("ANOMALY_EXPLANATION") is True
+    off = make_doctor(settings.model_copy(update={"explanation_enabled": False}))
+    assert off._family_enabled("ANOMALY_EXPLANATION") is False
 
 
 @pytest.mark.asyncio
