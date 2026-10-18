@@ -4,7 +4,8 @@ An **on-premises QRadar behavioral anomaly and investigation platform**. It base
 log source normally does, detects when that changes, and answers *what changed during the anomalous
 interval* with bounded, auditable evidence. Around that it also monitors IBM QRadar SIEM health,
 scheduled security searches, offenses, analytics-rule health and MITRE ATT&CK detection coverage —
-and it operates strictly **read-only** against QRadar.
+and it operates strictly **read-only** against QRadar. Not affiliated with or endorsed by IBM; IBM
+and QRadar are trademarks of IBM.
 
 > **Status:** Phases 1–3 complete, including a verified live QRadar 7.6.0 FP1 vertical slice.
 > **Phase A** (source-volume behavioral analytics) is **complete and validated against live QRadar
@@ -1537,5 +1538,7 @@ the deferred production geo window (G-5); and the 24 h new-port validation
 
 ## License
 
-The vendored `qradar-mcp/` retains its upstream Apache-2.0 license and `NOTICE`. This platform's own
-code is under this repository's license.
+This repository is under the [Apache License, Version 2.0](LICENSE); see also [NOTICE](NOTICE)
+(the vendored `qradar-mcp/` keeps its upstream Apache-2.0 `LICENSE` and `NOTICE`). IBM and QRadar
+are trademarks of International Business Machines Corporation, registered in many jurisdictions
+worldwide. This project is not affiliated with, sponsored by or endorsed by IBM.
