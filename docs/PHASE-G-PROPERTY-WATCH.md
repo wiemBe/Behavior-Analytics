@@ -326,7 +326,7 @@ Design decisions, each against the facts of §G.1:
   `NULL`, which is not `OK`. Every state is a reason, never silence — the detector-status contract
   (`backend/app/anomaly/capabilities.py:66-77`).
 
-## G.4 Scope resolution (question 2) **[BUILT — PW-2a: AQL] [BUILT — PW-2b]**
+## G.4 Scope resolution (question 2) **[BUILT — PW-2a: AQL] [BUILT — PW-2b] [BUILT — PW-3c: staleness]**
 
 > **As built by PW-2a** (`backend/app/property_watch/aql.py`): the `<scope>` filter of the table
 > below, from an already-resolved input: `LOG_SOURCE` and `LOG_SOURCE_TYPE` take exactly one id,
@@ -387,13 +387,15 @@ inventory when the watch is saved and when it runs; a vanished group id is `SCOP
   **not** thrown away: after the grace the watch is judged against the old cells again, so a large
   membership change keeps showing as a shift until the cells retrain (§G.17 Q10 offers a relearn
   switch). The watch page shows the current member count and when it last changed.
-- **Stale sync fails closed.** Inventory freshness is the group row's own `synced_at`
-  (`backend/app/models/fleet.py:49`). One sync pass stamps every type and group row with the same
-  time (`backend/app/services/inventory_sync.py:50,79-150`), and a failed group listing is
-  **swallowed** (`backend/app/services/inventory_sync.py:73-75`): sources keep syncing while the
-  group rows keep their old `synced_at`, and a group deleted on the console is never deleted here
-  (the pass only upserts). An age check on `synced_at` therefore catches exactly the cases in which
-  `group_ids` can no longer be trusted. A group scope whose group row is older than
+- **Stale sync fails closed.** Inventory freshness is the **oldest** `synced_at` of the groups the
+  walk visited (`backend/app/models/fleet.py:49`; **PW-3c**, the interrupted-sync fix). One sync pass
+  stamps every type and group row with the same time (`backend/app/services/inventory_sync.py:50,79-150`),
+  and a failed group listing is **swallowed** (`backend/app/services/inventory_sync.py:73-75`):
+  sources keep syncing while the group rows keep their old `synced_at`, and a group deleted on the
+  console is never deleted here (the pass only upserts). An age check on `synced_at` therefore
+  catches exactly the cases in which `group_ids` can no longer be trusted. An interrupted sync can
+  leave a descendant older than the named group, so the check reads the oldest walked row — the same
+  row `/scope` reports — and a group scope whose oldest walked row is older than
   `pw_scope_stale_after_hours` (default 24) writes **no bucket**; the watch takes `SCOPE_STALE`
   with the inventory age, existing incidents hold state (missing data is not recovery, Phase A §5),
   and the next tick retries. A type scope is one appliance-side filter and needs no membership
@@ -710,7 +712,9 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   is never stored. A value that does repeat three times in five minutes is stored.
 - **Retention.** Bucket and metric rows 35 days (the WAF, IPS, catch-all and geo default,
   `backend/app/core/config.py:182,488,521,539`); a value row is deleted when it is retired and its
-  last metric has aged out; anomalies 180 days (the WAF default,
+  last metric has aged out, **never while an incident on it is still OPEN or RECOVERING** (PW-3c
+  item 2: deleting the subject would strand the investigation, so the row is skipped and counted in
+  the run's `blocked` report); anomalies 180 days (the WAF default,
   `backend/app/core/config.py:490`). **Deleting a watch deletes every value it holds** (cascade),
   which is the erasure path for "stop tracking this property"; its open alerts are resolved first,
   as F.1 does (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.4.3). An alert's context holds the text of the
@@ -744,6 +748,9 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   `ips_entity_active_days` default, `backend/app/core/config.py:179`) without an observation is
   retired (`active = false`, `tracked_until` set so a lagging backfill cannot read its absence as
   zero, WAF §29.4); a returning value starts a new tracking period and keeps `first_seen_at`.
+  **A retired value is judged no further, so an incident still open on it is resolved** (PW-3c
+  item 1: the engine's next run ends it with actor `pw-engine` and reason `value retired; no
+  longer evaluated`, resolving the alert too when alerting is on).
 - **Every admission outcome is a count on the bucket row** (`admitted_values`,
   `below_admission_threshold`, `rejected_over_quota`, `admission_truncated`), so the new-value
   detector can tell "not new" from "refused" (§G.8.3).
@@ -797,7 +804,8 @@ PW-1 and PW-6 is in §G.16.
 > pure history verifier (`property_watch/history.py`) and all five pure verdict functions
 > (`property_watch/detectors.py`).
 >
-> **[BUILT — PW-3b].** `property_watch/engine.py` (`PwAnomalyEngine`) loads everything for all
+> **[BUILT — PW-3b; PW-3c: the retired-value resolve and the stale-cell delete].**
+> `property_watch/engine.py` (`PwAnomalyEngine`) loads everything for all
 > enabled watches of an instance in bulk (the buckets after each watch's `evaluated_through`
 > up to `collected_through`, at most `pw_max_evaluation_buckets_per_run` per watch; tracked
 > values; their metric rows; the baseline cells of the pending hours of the week; the detector
@@ -815,12 +823,16 @@ PW-1 and PW-6 is in §G.16.
 > evaluation watermark does not move. A value that was not tracked at a bucket is not judged at
 > all. A `watch_version` bump resolves the old version's active incident at the next run with the
 > transition reason "watch definition changed" (the hook where PW-4 resolves the alert); the new
-> version's values are new rows with no baseline. `property_watch/training.py`
+> version's values are new rows with no baseline. **A value this run retired resolves its still-open
+> incident the same way** (PW-3c item 1), reason "value retired; no longer evaluated", read from
+> values already in memory so it adds no query. `property_watch/training.py`
 > (`PwBaselineTrainer`) runs after evaluation in the same run: the
 > `pw_baseline_values_per_run` least recently computed current values, only up to the
-> evaluation watermark, 5 statements per chunk. `services/pw_pipeline.py` runs collect, evaluate,
-> train per instance; evaluation and training each run in a savepoint, so a failure keeps what
-> collection stored. `PW_DETECTORS` are in `all_detectors()` now that
+> evaluation watermark, the due read plus five bounded statements per chunk — the last of which
+> deletes every cell of those values the rebuild did not write, so a cell whose samples aged out
+> can no longer judge old data (PW-3c item 3, detectors then read `INSUFFICIENT_DATA`).
+> `services/pw_pipeline.py` runs collect, evaluate, train per instance; evaluation and training
+> each run in a savepoint, so a failure keeps what collection stored. `PW_DETECTORS` are in `all_detectors()` now that
 > `dispatch_property_watch_collection` is scheduled.
 
 **New enums, `AnomalyType` untouched** (AGENTS.md rule 6; the reason is stated at
@@ -868,7 +880,9 @@ Phase A construction (`docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md` §3-§4.2), the IP
 buckets below the coverage floor (`low_coverage`), `scope_changed` buckets, maintenance buckets,
 buckets under another `watch_version`, buckets inside a known incident span. A cell below
 `baseline_min_samples` (8, `backend/app/core/config.py:335`) is stored and never drives a verdict.
-Lookback `pw_baseline_lookback_days` = 28 (`ips_baseline_lookback_days`,
+A cell the next rebuild no longer produces — its samples aged out of the window, or every one was
+excluded — is **deleted**, so a detector reads `INSUFFICIENT_DATA` rather than statistics from data
+that is gone (PW-3c item 3). Lookback `pw_baseline_lookback_days` = 28 (`ips_baseline_lookback_days`,
 `backend/app/core/config.py:187`). Training runs after evaluation in the same run (the WAF order,
 `docs/PHASE-B-WAF-BEHAVIOR.md` §28.7), a bounded number of values per run
 (`pw_baseline_values_per_run` = 100, the IPS batch idea, `backend/app/core/config.py:189`).
@@ -1158,6 +1172,13 @@ renamed host; the page does not claim intent (§G.2).
 > the alert whatever the bucket's maintenance flag. `DELETE` resolves the watch's open alerts
 > (actor: the deleting principal, reason `the watch was deleted`), found through the watch id in
 > the alert context, after the 409 check and in the delete's own transaction; a refused delete changes no alert.
+
+> **[BUILT — PW-3c].** A `PATCH` that turns `enabled` to false no longer leaves an incident
+> stranded either: in the disable's own transaction the route resolves the watch's OPEN and
+> RECOVERING incidents through the engine (`PwAnomalyEngine.resolve_watch_incidents`, reason
+> `watch disabled; no longer evaluated`) and their alerts through `resolve_watch_alerts` with the
+> changing principal as the actor. Enabling again starts fresh; a `PATCH` that leaves `enabled`
+> alone resolves nothing.
 
 ### G.10.2 Threshold alerts: the F.1 subject kind **[BUILT — PW-6]**
 
@@ -1707,6 +1728,13 @@ path, a database name or a venv.
 - Retention in bounded batches; a value row leaves after retirement and aging; deleting a watch
   removes every value and resolves its alerts; a startup validator refuses a novelty history at or
   above the retention.
+- **PW-3c follow-ups.** A retired value's incident and alert resolve (and shadow mode touches no
+  alert row); a `PATCH` disable resolves the watch's incident and alert as the principal, a `PATCH`
+  that leaves `enabled` alone resolves nothing, and re-enabling starts fresh; retention never
+  deletes a value whose incident is still OPEN or RECOVERING, and counts it; a stale baseline cell
+  is deleted while training stays a fixed per-chunk cost; the scope staleness reads the oldest
+  walked group at the resolver, the collector and `/scope`; `property-options` is flat at 2 and 20
+  groups and 10 and 200 sources.
 - **Privacy:** a value that never reached admission is found in no table; log capture and audit rows
   of a create, a preview and an incident contain no seeded value; `/anomalies` shows the value text to a `read:*` caller (D-22); the permission matrix
   (401/403/404/409/422) on every route; a test that every route on the PW router carries the mount

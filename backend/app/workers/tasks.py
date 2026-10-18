@@ -1394,9 +1394,10 @@ async def apply_ips_retention() -> dict:
 async def dispatch_property_watch_collection(instance_name: str | None = None) -> dict:
     """Run one property-watch plan per instance after claiming its cadence slot.
 
-    Collection only: evaluation and training join the same pipeline in PW-3b. A no-op while
-    `PW_COLLECTION_ENABLED` is false, and the slot is claimed before any provider is built,
-    so a losing or early minute sends nothing to QRadar.
+    The plan is the whole pipeline: collect, then evaluate, then train (design §G.6), all in
+    one call to `PwInstancePipeline`. A no-op while `PW_COLLECTION_ENABLED` is false, and the
+    slot is claimed before any provider is built, so a losing or early minute sends nothing
+    to QRadar.
     """
     settings = get_settings()
     if not settings.pw_collection_enabled:

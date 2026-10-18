@@ -193,12 +193,17 @@ def resolve_scope(
     walked_ids = tuple(sorted(wanted))
     # The inventory facts are reported even when the scope does not resolve, so the API can
     # show what the last sync holds; `chunks` and the status still fail the scope closed.
-    if now - own.synced_at > stale_after:
+    # Staleness is the **oldest** walked row's age, not the watch's own group: an interrupted
+    # sync can leave a descendant older than the limit while the named group is fresh, and
+    # `/scope` reports the oldest walked row too, so the two must agree (PW-3c item 4).
+    walked_rows = [groups[gid] for gid in walked if gid in groups]
+    oldest = min((row.synced_at for row in walked_rows), default=own.synced_at)
+    if now - oldest > stale_after:
         return _unresolved(
             scope_kind,
             PwWatchStatus.SCOPE_STALE,
             "the group inventory was last synced at "
-            f"{own.synced_at.isoformat()}, older than {stale_after}",
+            f"{oldest.isoformat()}, older than {stale_after}",
             member_count=len(member_ids),
             groups_walked=walked_ids,
             members=member_rows,

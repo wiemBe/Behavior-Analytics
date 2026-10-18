@@ -183,7 +183,10 @@ async def test_training_scales_with_chunks_not_values(db_session) -> None:
             )
         assert report.values_rebuilt == values and report.cells_written > 0
         counts[values] = len(statements)
-    assert counts == {50: 5, 100: 5}
+    # Per chunk: the due-values read, the buckets, the metrics, the incident spans, the
+    # upsert of the rebuilt cells, and the delete of the cells the rebuild did not write
+    # (PW-3c item 3). Every one is bounded, so 50 values and 100 values cost the same.
+    assert counts == {50: 6, 100: 6}
 
 
 async def test_the_component_lookup_costs_one_statement_only_when_a_tuple_is_in_its_window(

@@ -543,6 +543,39 @@ async def test_a_stale_group_inventory_writes_no_bucket_and_says_why(db_session)
     assert watch.last_status is None and watch.collected_through is not None
 
 
+async def test_an_interrupted_sync_leaves_a_stale_descendant_and_blocks_the_scope(
+    db_session,
+) -> None:
+    """PW-3c item 4: the named group is fresh, a descendant is not. The scope still fails closed.
+
+    A group listing that failed mid-walk leaves older group rows behind the fresh parent; a
+    rule that read only the watch's own row would collect on an inventory it cannot trust.
+    """
+    instance = await make_instance(db_session)
+    await _group(db_session, instance, 1, synced=NOW - timedelta(minutes=5))
+    await _group(db_session, instance, 2, parent=1, synced=NOW - timedelta(hours=30))
+    await make_log_source(db_session, instance, qradar_id=11, group_ids=[1])
+    await make_log_source(db_session, instance, qradar_id=12, group_ids=[2])
+    watch = await add_watch(
+        db_session, instance, scope_kind=PwScopeKind.LOG_SOURCE_GROUP, scope_group_id=1
+    )
+    provider = provider_with({"alice": 10})
+    await collect(db_session, instance, provider)
+    await reload(db_session, watch)
+    assert provider.pw_searches == [] and await buckets_of(db_session, watch) == []
+    assert watch.last_status == PwWatchStatus.SCOPE_STALE.value
+    assert watch.last_status_reason and "synced" in watch.last_status_reason
+
+    # once the child catches up, the same watch collects
+    await db_session.execute(
+        text("UPDATE log_source_group SET synced_at = :t WHERE qradar_id = 2"),
+        {"t": NOW - timedelta(minutes=5)},
+    )
+    await collect(db_session, instance, provider)
+    await reload(db_session, watch)
+    assert watch.last_status is None and watch.collected_through is not None
+
+
 async def test_an_empty_or_too_large_scope_is_a_reason_not_a_zero(db_session) -> None:
     instance = await make_instance(db_session)
     await _group(db_session, instance, 1)

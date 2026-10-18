@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select, update
@@ -537,6 +538,190 @@ async def test_old_rows_keep_their_stored_fingerprint_but_alert_on_the_new_one(
     [alert] = await alerts(rig)
     assert alert.fingerprint == fingerprint_of(rig) != anomaly.fingerprint
     assert uuid.UUID(str(alert.source_anomaly_ids[0])) == anomaly.id
+
+
+# -------------------------------------------------------------------- retirement (PW-3c 1)
+async def _age(session, rig: Rig, *, days: int = 2, text: str = "alice") -> None:
+    """Push a value's last sighting into the past so the next bucket retires it.
+
+    `pw_value_active_days=1` and a 5-minute cadence cannot age a value through real ticks, so
+    the row is aged directly, exactly as a week of absence would leave it.
+    """
+    value = await rig.value(text)
+    value.last_seen_at = T0 - timedelta(days=days)
+    await session.commit()
+
+
+async def test_a_retired_values_incident_and_alert_resolve(db_session) -> None:
+    """PW-3c item 1: a value admission retires is judged no further, so its incident ends."""
+    rig = await alerting_rig(db_session, pw_value_active_days=1)
+    spike(rig, 1, 4)
+    enqueuer = RecordingEnqueuer()
+    for k in range(0, 3):
+        await step(rig, k, enqueuer=enqueuer)
+    assert await rig.state_name("alice", SPIKE) == "OPEN"
+    [alert] = await alerts(rig)
+    assert alert.status == AlertStatus.OPEN
+
+    # alice is unseen for longer than `pw_value_active_days`: the next collected bucket
+    # retires it, and the same run must end the incident that would otherwise never end.
+    rig.plan[3] = {"bob": 400}
+    await _age(db_session, rig)
+    report = await step(rig, 3, enqueuer=enqueuer)
+
+    assert report.retired_resolved == 1
+    assert await rig.state_name("alice", SPIKE) == "RESOLVED"
+    [anomaly] = await rig.anomalies(SPIKE)
+    assert anomaly.state == "RESOLVED" and anomaly.resolved_at is not None
+    transitions = await rig.transitions(anomaly)
+    assert transitions[-1].reason == "value retired; no longer evaluated"
+    [alert] = await alerts(rig)
+    assert alert.status == AlertStatus.RESOLVED
+    assert alert.resolved_by == "pw-engine"
+    assert alert.resolution_reason == "value retired; no longer evaluated"
+    assert [call[1] for call in enqueuer.calls] == ["OPENED", "RESOLVED"]
+
+
+async def test_a_retired_values_incident_resolves_in_shadow_mode(db_session) -> None:
+    """PW-3c item 1: with alerting off the incident still ends, and no alert row is touched."""
+    rig = await alerting_rig(db_session, alerting=False, pw_value_active_days=1)
+    spike(rig, 1, 4)
+    with recorded_statements(db_session) as statements:
+        for k in range(0, 3):
+            await step(rig, k)
+        assert await rig.state_name("alice", SPIKE) == "OPEN"
+        rig.plan[3] = {"bob": 400}
+        await _age(db_session, rig)
+        report = await step(rig, 3)
+    assert report.retired_resolved == 1
+    [anomaly] = await rig.anomalies(SPIKE)
+    assert anomaly.state == "RESOLVED"
+    assert await alerts(rig) == []
+    assert not [s for s in statements if ALERT_TABLES.search(s)], "shadow mode adds no statement"
+
+
+async def test_the_pipeline_resolves_a_retired_values_incident(db_session) -> None:
+    """PW-3c item 1 through the scheduled pipeline the worker runs."""
+    rig = await alerting_rig(db_session, pw_value_active_days=1)
+    spike(rig, 1, 4)
+    for k in range(0, 3):
+        report = await PwInstancePipeline(
+            rig.session,
+            rig.provider,
+            settings=rig.settings,
+            clock=lambda k=k: now_of(k),
+            trainer_factory=NoTraining,
+        ).run(rig.instance)
+        await db_session.commit()
+        assert report.evaluation_error is None, report.evaluation_error
+        if k == 2:
+            assert await rig.state_name("alice", SPIKE) == "OPEN"
+
+    rig.plan[3] = {"bob": 400}
+    await _age(db_session, rig)
+    report = await PwInstancePipeline(
+        rig.session,
+        rig.provider,
+        settings=rig.settings,
+        clock=lambda: now_of(3),
+        trainer_factory=NoTraining,
+    ).run(rig.instance)
+    await db_session.commit()
+    assert report.evaluation is not None and report.evaluation.retired_resolved == 1
+    [anomaly] = await rig.anomalies(SPIKE)
+    assert anomaly.state == "RESOLVED"
+    [alert] = await alerts(rig)
+    assert alert.status == AlertStatus.RESOLVED
+    assert alert.resolved_by == "pw-engine"
+    assert alert.resolution_reason == "value retired; no longer evaluated"
+
+
+# ---------------------------------------------------------------- a disabled watch (PW-3c 5)
+async def _watch_api(db_schema: str, role: str = "detection_engineer"):  # type: ignore[no-untyped-def]
+    from tests.integration.test_property_watches_api import _client, _principal
+
+    return _client(db_schema, _principal(role))
+
+
+async def _patch(rig: Rig, client, **body: object):  # type: ignore[no-untyped-def]
+    from tests.integration.test_property_watches_api import PREFIX
+
+    watch = await rig.reload_watch()
+    return client.patch(
+        f"{PREFIX}/{watch.id}",
+        json={"expected_updated_at": watch.updated_at.isoformat(), **body},
+    )
+
+
+async def test_disabling_a_watch_resolves_its_incident_and_alert_as_the_principal(
+    db_session, db_schema: str
+) -> None:
+    """PW-3c item 5: a `PATCH` to `enabled=false` ends the watch's incident and alert."""
+    rig = await alerting_rig(db_session)
+    spike(rig, 1, 6)
+    for k in range(0, 3):
+        await step(rig, k)
+    assert await rig.state_name("alice", SPIKE) == "OPEN"
+    [alert] = await alerts(rig)
+    assert alert.status == AlertStatus.OPEN
+
+    client = await _watch_api(db_schema)
+    response = await _patch(rig, client, enabled=False)
+    assert response.status_code == 200, response.text
+    assert response.json()["enabled"] is False
+
+    await rig.reload_watch()
+    [anomaly] = await rig.anomalies(SPIKE)
+    assert anomaly.state == "RESOLVED" and anomaly.resolved_at is not None
+    transitions = await rig.transitions(anomaly)
+    assert transitions[-1].reason == "watch disabled; no longer evaluated"
+    assert await rig.state_name("alice", SPIKE) == "RESOLVED"
+    [alert] = await alerts(rig)
+    assert alert.status == AlertStatus.RESOLVED
+    assert alert.resolved_by == "detection_engineer"
+    assert alert.resolution_reason == "watch disabled; no longer evaluated"
+
+
+async def test_a_patch_that_leaves_enabled_alone_resolves_nothing(
+    db_session, db_schema: str
+) -> None:
+    rig = await alerting_rig(db_session)
+    spike(rig, 1, 6)
+    for k in range(0, 3):
+        await step(rig, k)
+    client = await _watch_api(db_schema)
+
+    response = await _patch(rig, client, description="still watched")
+    assert response.status_code == 200, response.text
+    assert response.json()["enabled"] is True
+
+    await rig.reload_watch()
+    [anomaly] = await rig.anomalies(SPIKE)
+    assert anomaly.state == "OPEN" and anomaly.resolved_at is None
+    [alert] = await alerts(rig)
+    assert alert.status == AlertStatus.OPEN
+
+
+async def test_enabling_a_watch_again_starts_fresh(db_session, db_schema: str) -> None:
+    rig = await alerting_rig(db_session)
+    spike(rig, 1, 6)
+    for k in range(0, 3):
+        await step(rig, k)
+    client = await _watch_api(db_schema)
+    assert (await _patch(rig, client, enabled=False)).status_code == 200
+    await rig.reload_watch()
+    [closed] = await rig.anomalies(SPIKE)
+    assert closed.state == "RESOLVED"
+
+    assert (await _patch(rig, client, enabled=True)).status_code == 200
+    assert (await rig.reload_watch()).enabled is True
+    [still_closed] = await rig.anomalies(SPIKE)
+    assert still_closed.state == "RESOLVED", "the old incident is not resurrected"
+    # the next anomalous buckets open a new incident, not a reopened one
+    for k in range(3, 5):
+        await step(rig, k)
+    assert still_closed.id in {row.id for row in await rig.anomalies(SPIKE)}
+    assert [row.state for row in await rig.anomalies(SPIKE)] == ["RESOLVED", "OPEN"]
 
 
 # ------------------------------------------------------------------------------- delete

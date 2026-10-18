@@ -73,6 +73,7 @@ class PwEvaluationReport:
     opened: int = 0
     resolved: int = 0
     version_resolved: int = 0
+    retired_resolved: int = 0
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -81,6 +82,7 @@ class PwEvaluationReport:
             "opened": self.opened,
             "resolved": self.resolved,
             "version_resolved": self.version_resolved,
+            "retired_resolved": self.retired_resolved,
         }
 
 
@@ -147,10 +149,11 @@ class _AlertResolve:
 
 type _AlertAction = _AlertOpenOrUpdate | _AlertResolve
 
-#: The alert actor and the two reasons the engine resolves with (design §G.10.1).
+#: The alert actor and the reasons the engine resolves with (design §G.10.1).
 ALERT_ACTOR = "pw-engine"
 REASON_RECOVERED = "condition recovered"
 REASON_VERSION = "watch definition changed"
+REASON_RETIRED = "value retired; no longer evaluated"
 
 
 @dataclass
@@ -339,6 +342,10 @@ class PwAnomalyEngine:
                 writes,
                 report,
             )
+        # A value this run retired is judged no further, so an incident still open on it is
+        # resolved here, with its alert (design §G.7.3, §G.10.1). After the pending buckets,
+        # so a bucket of this run that opened an incident is resolved too, never stranded.
+        self._resolve_retired(current_values, states, incidents, writes, report)
         await self._persist(states, incidents, writes)
         if writes.alerts:
             await self._apply_alert_actions(instance, by_watch, writes.alerts)
@@ -460,48 +467,125 @@ class PwAnomalyEngine:
         for state in states.values():
             if state.value_version == versions.get(state.watch_id):
                 continue
-            incident = incidents.get(state.active_anomaly_id) if state.active_anomaly_id else None
-            if incident is not None:
-                previous = state.state
-                incident.row.update(
-                    state=AnomalyState.RESOLVED.value,
-                    resolved_at=self._clock(),
-                    anomaly_end=state.last_interval_start,
-                )
-                incident.dirty = True
-                writes.transitions.append(
-                    self._transition(
-                        incident.id,
-                        previous,
-                        AnomalyState.RESOLVED,
-                        state.last_interval_start,
-                        "watch definition changed",
-                    )
-                )
-                report.resolved += 1
+            if self._retire_state(state, incidents, writes, report, reason=REASON_VERSION):
                 report.version_resolved += 1
-                if self._alerting and previous in (AnomalyState.OPEN, AnomalyState.RECOVERING):
-                    # The values no longer exist under the new semantics (design §G.3), and a
-                    # bucket in maintenance does not delay this: the definition is gone.
-                    writes.alerts.append(
-                        _AlertResolve(
-                            state.watch_id,
-                            str(incident.row["value_key"]),
-                            state.detector.value,
-                            REASON_VERSION,
-                        )
-                    )
+
+    def _resolve_retired(
+        self,
+        values: Sequence[PwValue],
+        states: Mapping[tuple[uuid.UUID, PwAnomalyType], _State],
+        incidents: Mapping[uuid.UUID, _Incident],
+        writes: _Writes,
+        report: PwEvaluationReport,
+    ) -> None:
+        """Resolve the incidents of the values this run retired (design §G.7.3, §G.10.1).
+
+        A retired value is no longer judged, so an incident open on it would never end. The
+        engine's run already holds every current-version value and every detector state in
+        memory, so this reads nothing extra and writes through the same one statement per
+        table as the rest of the run (AGENTS.md rule 9). A value retired under an older
+        `watch_version` belongs to `_resolve_old_versions` and is left to it.
+        """
+        retired = {value.id for value in values if not value.active}
+        if not retired:
+            return
+        for state in states.values():
+            if state.value_id not in retired:
+                continue
+            if self._retire_state(state, incidents, writes, report, reason=REASON_RETIRED):
+                report.retired_resolved += 1
+
+    def _retire_state(
+        self,
+        state: _State,
+        incidents: Mapping[uuid.UUID, _Incident],
+        writes: _Writes,
+        report: PwEvaluationReport,
+        *,
+        reason: str,
+        emit_alert: bool = True,
+    ) -> bool:
+        """Resolve one state's active incident and clear the state; report whether it resolved.
+
+        The one place a PW incident ends without a bucket: the old-version resolve, the
+        retirement resolve and the disable path all pass through here, so an alert is
+        resolved in exactly the same way wherever its incident ends.
+        """
+        incident = incidents.get(state.active_anomaly_id) if state.active_anomaly_id else None
+        resolved_incident = False
+        if incident is not None:
+            previous = state.state
+            incident.row.update(
+                state=AnomalyState.RESOLVED.value,
+                resolved_at=self._clock(),
+                anomaly_end=state.last_interval_start,
+            )
+            incident.dirty = True
+            writes.transitions.append(
+                self._transition(
+                    incident.id,
+                    previous,
+                    AnomalyState.RESOLVED,
+                    state.last_interval_start,
+                    reason,
+                )
+            )
+            report.resolved += 1
+            resolved_incident = True
             if (
-                state.state is not AnomalyState.RESOLVED
-                or state.active_anomaly_id is not None
-                or state.open_anomaly_id is not None
+                emit_alert
+                and self._alerting
+                and previous in (AnomalyState.OPEN, AnomalyState.RECOVERING)
             ):
-                state.dirty = True
-            state.state = AnomalyState.RESOLVED
-            state.consecutive_anomalous = 0
-            state.consecutive_healthy = 0
-            state.active_anomaly_id = None
-            state.open_anomaly_id = None
+                writes.alerts.append(
+                    _AlertResolve(
+                        state.watch_id,
+                        str(incident.row["value_key"]),
+                        state.detector.value,
+                        reason,
+                    )
+                )
+        if (
+            state.state is not AnomalyState.RESOLVED
+            or state.active_anomaly_id is not None
+            or state.open_anomaly_id is not None
+        ):
+            state.dirty = True
+        state.state = AnomalyState.RESOLVED
+        state.consecutive_anomalous = 0
+        state.consecutive_healthy = 0
+        state.active_anomaly_id = None
+        state.open_anomaly_id = None
+        return resolved_incident
+
+    async def resolve_watch_incidents(self, watch: PropertyWatch, *, reason: str) -> int:
+        """Resolve every incident a watch still holds (the PATCH-disable path, §G.10.1).
+
+        Loads the watch's detector states and their active incidents in two bulk statements
+        and writes one statement per lifecycle table, whatever the number of incidents. The
+        watch's alerts are resolved by `resolve_watch_alerts` instead: their actor is the
+        operator who changed the watch, which the engine's alert actor cannot express.
+        """
+        states = self._states(await self.repo.detector_states([watch.id]))
+        incident_ids = {
+            state.active_anomaly_id
+            for state in states.values()
+            if state.active_anomaly_id is not None
+        }
+        incidents = {
+            row.id: _Incident(self._incident_row(row))
+            for row in await self.repo.anomalies(incident_ids)
+        }
+        writes = _Writes()
+        report = PwEvaluationReport(watch.instance_id)
+        for state in states.values():
+            if state.active_anomaly_id is None:
+                continue
+            self._retire_state(
+                state, incidents, writes, report, reason=reason, emit_alert=False
+            )
+        await self._persist(states, incidents, writes)
+        return report.resolved
 
     def _evaluate_pending(
         self,
