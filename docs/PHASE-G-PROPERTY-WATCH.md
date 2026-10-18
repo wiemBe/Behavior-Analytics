@@ -1123,7 +1123,7 @@ renamed host; the page does not claim intent (§G.2).
 
 ### G.10.1 Incident alerts (spike, drop, disappearance, new value, new combination)
 
-- **Fingerprint.** A new `pw_anomaly_fingerprint(instance_id, watch_id, detector_type, value_key)`
+- **Fingerprint. [BUILT — PW-4]** A new `pw_anomaly_fingerprint(instance_id, watch_id, detector_type, value_key)`
   beside `ips_anomaly_fingerprint` (`backend/app/alerts/fingerprint.py:125-144`), through
   `compute_fingerprint` with `source_type="pw_value"`, `condition="pw_anomaly"` and the detector
   type as `subtype` (`backend/app/alerts/fingerprint.py:35-50`). The natural key is the stable
@@ -1133,7 +1133,7 @@ renamed host; the page does not claim intent (§G.2).
   **not** in the fingerprint: bumping the version resolves the watch's open incidents and alerts
   (actor `pw-engine`, reason `watch definition changed`) because their values no longer exist under
   the new semantics (§G.3).
-- **Shadow mode.** `PW_COLLECTION_ENABLED` (default **false**, the family switch) and
+- **Shadow mode. [BUILT — PW-4]** `PW_COLLECTION_ENABLED` (default **false**, the family switch) and
   `PW_ALERTING_ENABLED` (default **false**), the IPS pair
   (`backend/app/core/config.py:171-173`). With alerting off, incidents are recorded and the engine
   opens, refreshes, resolves and enqueues nothing; turning it on is a decision taken after a live
@@ -1141,15 +1141,23 @@ renamed host; the page does not claim intent (§G.2).
   opens one alert, a still-anomalous incident refreshes it, RESOLVED resolves it with actor
   `pw-engine` and reason `condition recovered`, and notifications are enqueued per transition
   (`docs/PHASE-D-IPS-BEHAVIOR.md` D.10).
-- **Context.** Watch name, scope label, detector, severity (the watch's), the value text, the
+- **Context. [BUILT — PW-4]** Watch name, scope label, detector, severity (the watch's), the value text, the
   reading with its measurement, the band, the bucket bounds. The value text is in the alert context
   and so in notifications, the same exposure as an IPS entity's destination IP.
-- **Maintenance.** A `LOG_SOURCE` watch honours the source's maintenance state, stored on the
+- **Maintenance. [BUILT — PW-4]** A `LOG_SOURCE` watch honours the source's maintenance state, stored on the
   bucket as `in_maintenance` (`backend/app/custom_rules/loaders.py:207,294` read the same flag for
   WAF and IPS): nothing opens or refreshes, and following IPS a maintenance bucket does not resolve
   an alert (`docs/PHASE-D-IPS-BEHAVIOR.md` D.10). A group watch is in maintenance only when **every**
   resolved member is; a type watch has no maintenance state in v1 (the membership is decided on the
   appliance). That limitation is stated on the watch page.
+
+> **[BUILT — PW-4]** Built as written, with these decisions the text left open. A bucket in
+> maintenance still gets its verdict and its incident, but a verdict that would **resolve** an
+> incident is held (counters and watermark move, the state does not) until a bucket outside
+> maintenance, so an open alert is never stranded by a resolved incident. A version bump resolves
+> the alert whatever the bucket's maintenance flag. `DELETE` resolves the watch's open alerts
+> (actor: the deleting principal, reason `the watch was deleted`), found through the watch id in
+> the alert context, after the 409 check and in the delete's own transaction; a refused delete changes no alert.
 
 ### G.10.2 Threshold alerts: the F.1 subject kind **[BUILT — PW-6]**
 

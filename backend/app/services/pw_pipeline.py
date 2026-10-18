@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.alerts.dispatcher import AlertEnqueuer, NotificationDispatcher
+from app.alerts.routing import default_policy
 from app.collectors.pw_collector import PwCollectionReport, PwCollector
 from app.core.config import Settings, get_settings
 from app.models.instance import QRadarInstance
@@ -61,6 +63,7 @@ class PwInstancePipeline:
         clock: Callable[[], datetime] | None = None,
         engine_factory: Callable[..., PwAnomalyEngine] | None = None,
         trainer_factory: Callable[..., PwBaselineTrainer] | None = None,
+        enqueuer: AlertEnqueuer | None = None,
     ) -> None:
         self.session = session
         self.provider = provider
@@ -68,6 +71,13 @@ class PwInstancePipeline:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._engine_factory = engine_factory or PwAnomalyEngine
         self._trainer_factory = trainer_factory or PwBaselineTrainer
+        # Notifications follow alerts: built only while alerting is on, so shadow mode
+        # constructs nothing that could enqueue.
+        if enqueuer is None and self.settings.pw_alerting_enabled:
+            enqueuer = NotificationDispatcher(
+                session, notifiers={}, policy=default_policy(), settings=self.settings
+            )
+        self._enqueuer = enqueuer
 
     async def run(self, instance: QRadarInstance) -> PwPipelineReport:
         collection = await PwCollector(
@@ -80,8 +90,10 @@ class PwInstancePipeline:
         # trained only from buckets that were judged first.
         try:
             async with self.session.begin_nested():
+                # Handed over only when there is one, so a narrower factory keeps working.
+                extra = {"enqueuer": self._enqueuer} if self._enqueuer is not None else {}
                 report.evaluation = await self._engine_factory(
-                    self.session, settings=self.settings, clock=self._clock
+                    self.session, settings=self.settings, clock=self._clock, **extra
                 ).evaluate(instance)
         except Exception as exc:
             report.evaluation_error = sanitized_error(exc)
