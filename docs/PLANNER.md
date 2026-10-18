@@ -8,13 +8,26 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 16:40, 2026-10-18 (twenty-second session)
+## ▶▶▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 17:00, 2026-10-18 (end of the twenty-second session; the user moved to a new chat because this one was long)
 
 **Branches.** `main` @ `9bf3d4d` = v0.1.1, untouched (the user: nothing to `main` until they say
-so). **`feat/phase-ce` @ `ea58e9a`** (pushed) = the whole Phase G build (PW-1 … PW-9 with PW-3b,
+so). **`feat/phase-ce` @ `ea58e9a` + PW-7c + docs (pushed; code head `15f109e` merged at 16:46)** = the whole Phase G build (PW-1 … PW-9 with PW-3b,
 3c, 4, 5, 5b, 5c, 6, 6b, 7, 7b, 8, 9), T-133 (Apache-2.0, NOTICE, trademark line, mcp labels) and
 OPS-17 (image prefix → `ghcr.io/wiembe/behavior-analytics`). Migration head `0027`.
 Every merged `agent/*` branch, worktree and DB was removed (local and origin).
+
+**In flight at 17:00 — read this first in the new chat:**
+
+| Task | Agent | Survives the chat? | Where | If it stopped |
+|---|---|---|---|---|
+| **PW-10** live validation ([spec](tasks/PW-10.md)), shadow mode | Sonnet sub-agent | **No** | detached worktree `pw10` @ `9924ea9`, DB `qradar_obs_pw10`, scratch and report `QRadar-Dash-work/pw10/PW-10.report.md` (written as it goes; plan table in §2) | Its plan: source **212 `ips-gw-01@IPS`**, `username`, pin `compromised.user`; ticks every 5 min **14:02:30–14:57:30 UTC (17:02–17:57 local)**; generator S1 steady 1.2 EPS 13:50–14:55 UTC (`--duration 3900`, ends by itself), S2 `--fixed-username compromised.user` 5 EPS 14:10–14:25 UTC. First: `pgrep -af qradar_lab_loggen` and stop leftovers by PID (never `pkill -f`). If the report is not `final`, hand the remaining parts to a new Sonnet agent with the spec + the report + "review what you inherit"; the parts after the cut-off need a new tick schedule. |
+| **PW-11** docs ([spec](tasks/PW-11.md)) | opencode DeepSeek free, unit `pw11-ds` (bwrap) | Yes (not a reboot) | worktree `pw11` (branch `agent/pw11`), log `QRadar-Dash-work/pw11/opencode.log`, report `docs/tasks/PW-11.report.md` in the worktree | `systemctl --user is-active pw11-ds`; on "Rate limit exceeded" hand to Sonnet or GLM flash. Then a short second round with PW-10's measured numbers. |
+
+**Open questions for the user (asked at 16:42, not answered yet):**
+1. May PW-10 (or a follow-up) turn **PW alerting on** in the lab validation DB, with no real notification channel? The design (§G.16 PW-10 row) says only if the user says so. Until then: shadow mode only.
+2. Do they want a separate **24-hour lab run** so the new-value detectors fire live (they need ≥ 1 day of complete history; the volume detectors need a week of seasonal samples and cannot be shown live in hours)?
+
+**Housekeeping:** worktrees left: `gate` (old, detached), `pw10`, `pw11`. Test DB container up (tmpfs: after a reboot, restart it and recreate `qradar_obs_gate`, `_gate_mig`, `_pw10`). `qradarce2` running. Expected 3.12 unit skips under root: **15**.
 
 **Gates of the merged tree (the code of `ea58e9a`):**
 - 3.12 lock container on `9f073f0` (backend identical to `ea58e9a`): ruff clean, mypy 0 (267),
