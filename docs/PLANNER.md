@@ -24,14 +24,12 @@ Every merged `agent/*` branch, worktree and DB was removed (local and origin).
 - Frontend on `0ae7b82` (= `ea58e9a`'s frontend): lint, typecheck clean, **vitest 313 files /
   3,490 passed**, build 35/35. Log `QRadar-Dash-work/pwmerge/frontend-0ae7b82.log`.
 
-**In flight:** **PW-7c** ([spec](tasks/PW-7c.md)) on Codex, unit `pw7c-codex` from 16:26,
-worktree `pw7c` (from `0ae7b82`), DB `qradar_obs_pw7c`, log `QRadar-Dash-work/pw7c/codex.log`.
-Review: the backend fields, then the PNGs myself; then merge into `feat/phase-ce`.
+**PW-7c done (Codex 16:26–16:44), accepted after the PNGs and merged into `feat/phase-ce` 16:46**: `PinRuleOut` carries `value_key`/`components` (no extra statement); the rules tab drops its fallback read and the impossible "may no longer be stored" line; the Definition tab says "Every 1 h". Its gates: unit 4,430 / 10, the PW API files 66/0 (re-run by the orchestrator on the merge), vitest 314 / 3,491, build OK. Worktree, branch and DB removed.
 
 **PW-10** ([spec](tasks/PW-10.md)) **started 16:41** on a Sonnet sub-agent (dies with the chat): detached worktree `pw10` @ `9924ea9`, DB `qradar_obs_pw10`, scratch and report `QRadar-Dash-work/pw10/`. Shadow mode only. Scope decided from the code: the volume detectors need a week of seasonal samples and the new-value detectors ≥ 1 day of history, so a few-hour run shows collection, preview, the F.1 path live and the detectors' learning state; a 24-hour new-value run would be its own task. **If the chat dies:** `pgrep -af qradar_lab_loggen` and stop leftovers by PID; read the report; hand over.
 
 **Next:**
-1. PW-7c review and merge.
+1. (done) PW-7c.
 2. **PW-10** (running) — was: a watch per scope
    kind over the lab's synthetic telemetry, preview against the real Ariel, a full collection →
    evaluation → training tick through Celery/beat, the training row volume (PW-3b), the alert
