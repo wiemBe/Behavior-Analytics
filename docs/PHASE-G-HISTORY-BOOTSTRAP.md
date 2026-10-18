@@ -17,6 +17,11 @@ asserted: each has a probe in §H.3.5 and is marked **[C-n]**.
 > is the setting, not NULL; `history_days: 0` asks for none). The fail-closed rules (§H.3.2 the
 > floor, §H.6) are unchanged, and assumption A1 stays stated on the page. Q2: 28 days. Q3: new
 > watches only, no prepending. Q4 to Q8: the recommendations as written.
+> **D-30 (2026-10-18 ~21:20):** a property-watch baseline cell is reliable only when its retained
+> samples come from at least `pw_baseline_min_visits` (2) different weekly visits. So a 7-day bootstrap
+> leaves every cell unreliable (one visit each), and §H.8.2's "`D = 7` makes every cell reliable at
+> once" no longer holds; the 28-day default gives four visits. The lab demonstration (§H.12) shows
+> new-value detection, which does not need cells.
 
 The numbers of the live run PW-10 are used only where this file says so. The report
 (`QRadar-Dash-work/pw10/PW-10.report.md`) was still `STATUS: IN PROGRESS` when this was written; the
