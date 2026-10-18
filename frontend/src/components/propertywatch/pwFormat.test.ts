@@ -99,7 +99,7 @@ describe("numbers", () => {
 
   it("names the scope even when the inventory no longer lists it", () => {
     expect(scopeText(watch())).toBe("Log source group: DMZ firewalls");
-    const gone = watch({ scope: { kind: "LOG_SOURCE_TYPE", name: null, detail: null, qradar_id: 42 } });
+    const gone = watch({ scope: { kind: "LOG_SOURCE_TYPE", name: null, detail: null, qradar_id: 42, member_count: null } });
     expect(scopeText(gone)).toBe("Log source type 42: not in the synced inventory");
   });
 

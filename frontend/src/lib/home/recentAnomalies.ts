@@ -48,7 +48,7 @@ export function recentAnomalies(
   summary: BehaviorSummary | null,
 ): RecentAnomaliesView {
   const rows: RecentAnomalyRow[] = active.items.slice(0, RECENT_ANOMALIES_LIMIT).map((a) => {
-    const source = a.log_source_name ?? a.log_source_id;
+    const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? "Unnamed subject";
     const waf = isWafRow(a) && a.waf_endpoint != null;
     const ips = isIpsRow(a);
     return {
@@ -66,7 +66,9 @@ export function recentAnomalies(
         ? `/anomalies/${a.id}`
         : waf
           ? `/behavior/waf/sources/${a.log_source_id}`
-          : `/behavior/sources/${a.log_source_id}`,
+          : a.pw_value
+            ? `/behavior/watches/${a.pw_value.watch_id}`
+            : `/behavior/sources/${a.log_source_id}`,
       typeLabel: rowTypeLabel(a),
       severity: a.severity,
       state: a.state,

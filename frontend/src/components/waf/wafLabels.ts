@@ -48,7 +48,7 @@ export function isWafRow(a: Pick<AnomalySummary, "subject_kind" | "waf_endpoint"
  * is never blank.
  */
 export function subjectText(a: AnomalySummary): string {
-  const source = a.log_source_name ?? a.log_source_id;
+  const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? "Unnamed subject";
   return a.waf_endpoint && isWafRow(a) ? `${endpointLabel(a.waf_endpoint)} · ${source}` : source;
 }
 

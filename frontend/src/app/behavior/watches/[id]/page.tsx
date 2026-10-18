@@ -9,7 +9,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { PwStatus } from "@/components/propertywatch/PwStatus";
+import { PropertyWatchWriteNotice } from "@/components/propertywatch/PropertyWatchWriteNotice";
+import { WatchActions } from "@/components/propertywatch/WatchActions";
+import { WatchEditor } from "@/components/propertywatch/WatchEditor";
 import { WatchWorkspace } from "@/components/propertywatch/WatchWorkspace";
+import {
+  propertyWatchAccessFrom,
+  type PropertyWatchAccess,
+} from "@/components/propertywatch/authoring";
 import { propertiesText, relativeAge, scopeText } from "@/components/propertywatch/pwFormat";
 import {
   defaultSelection,
@@ -123,6 +130,10 @@ export default async function PropertyWatchPage({
       })
       .catch(() => null),
   ]);
+  const access: PropertyWatchAccess = await api
+    .caller()
+    .then(propertyWatchAccessFrom)
+    .catch(() => "unknown" as const);
 
   const selection = defaultSelection(values?.items ?? [], asked);
   let initialSeries: PwValueSeries[] = [];
@@ -139,6 +150,7 @@ export default async function PropertyWatchPage({
     <>
       <PageHeader
         title={watch.name}
+        actions={access === "writer" ? <WatchActions watch={watch} catalog={catalog} /> : null}
         meta={
           <>
             <PwStatus status={watch.status} reason={watch.status_reason} strong inline />
@@ -171,6 +183,23 @@ export default async function PropertyWatchPage({
           </>
         }
       />
+
+      <section className="pw-definition-editor" aria-labelledby="pw-edit-title">
+        <h2 id="pw-edit-title" className="sr-only">Watch definition editor</h2>
+        {access === "writer" && catalog ? (
+          <details className="pw-edit-disclosure">
+            <summary>Edit watch</summary>
+            <WatchEditor catalog={catalog} mode="edit" watch={watch} initialScope={scope} />
+          </details>
+        ) : access === "writer" ? (
+          <div className="notice" role="alert">
+            <p><strong>The editor bounds could not be loaded.</strong></p>
+            <p>The watch remains readable. Reload the page to try the catalog read again.</p>
+          </div>
+        ) : (
+          <PropertyWatchWriteNotice unknown={access === "unknown"} />
+        )}
+      </section>
 
       <WatchWorkspace
         watch={watch}

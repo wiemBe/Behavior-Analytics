@@ -54,7 +54,8 @@ import "@/components/ui/controls.css";
  * separator the old single line carried is kept for assistive technology only.
  */
 function SubjectCell({ a }: { a: AnomalySummary }) {
-  const source = a.log_source_name ?? a.log_source_id;
+  // A property-watch row has no source of its own: its watch names it.
+  const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? "Unnamed subject";
   // Below 1100 px the Started column folds under the subject.
   const started = (
     <span className="cell-sub cell-fold fold-sm fold-started">
@@ -96,9 +97,15 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
   if (!isWafRow(a) || !a.waf_endpoint) {
     return (
       <td className="cell-name cell-subject">
-        <a className="subject-source" href={`/behavior/sources/${a.log_source_id}`} title={source}>
-          {source}
-        </a>
+        {a.log_source_id ? (
+          <a className="subject-source" href={`/behavior/sources/${a.log_source_id}`} title={source}>
+            {source}
+          </a>
+        ) : (
+          <span className="subject-source" title={source}>
+            {source}
+          </span>
+        )}
         {started}
       </td>
     );

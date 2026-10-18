@@ -1414,7 +1414,7 @@ markup). The bucket provenance lives under `TechnicalDetails`.
 Windows: 1 h, 6 h, 24 h, 7 d (the F.1 preview bound is 168 h, §G.11). All times show UTC; a relative
 age may follow.
 
-### G.13.4 The editor, `/behavior/watches/new` and the disclosure
+### G.13.4 The editor, `/behavior/watches/new` and the disclosure **[BUILT — PW-8]**
 
 One form, five labelled sections, with the preview beside it as the F.1 rule editor does:
 

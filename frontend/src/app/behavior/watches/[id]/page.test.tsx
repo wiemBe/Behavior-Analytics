@@ -19,6 +19,12 @@ vi.mock("@/components/propertywatch/WatchWorkspace", () => ({
     return <div data-testid="workspace" />;
   },
 }));
+vi.mock("@/components/propertywatch/WatchEditor", () => ({
+  WatchEditor: () => <div aria-label="watch editor" />,
+}));
+vi.mock("@/components/propertywatch/WatchActions", () => ({
+  WatchActions: () => <div aria-label="watch actions" />,
+}));
 const given = () => handed.props as WatchWorkspaceProps;
 
 const values = paged([
@@ -39,6 +45,9 @@ beforeEach(() => {
     series: [series("id-p", "pin", [point(0)])],
   });
   vi.spyOn(api, "anomalies").mockResolvedValue({ items: [incident()], total: 1, limit: 50, offset: 0 });
+  vi.spyOn(api, "caller").mockResolvedValue({
+    subject: "analyst", email: null, permissions: ["read:*"], effective_permissions: ["read:property_watches"],
+  });
 });
 
 async function renderPage(query: Record<string, string | string[] | undefined> = {}, id = WATCH_ID) {
@@ -91,10 +100,20 @@ describe("the header", () => {
     expect(meta).toHaveTextContent("UTC");
   });
 
-  it("shows no Edit and no Threshold rules: they are not built", async () => {
+  it("hides editing from readers and names the writer permission", async () => {
     await renderPage();
-    expect(screen.queryByRole("button", { name: /edit/i })).toBeNull();
-    expect(screen.queryByText(/threshold rules/i)).toBeNull();
+    expect(screen.queryByText("Edit watch")).toBeNull();
+    expect(screen.getByText("property_watch:write").tagName).toBe("CODE");
+  });
+
+  it("shows the actions and collapsed edit disclosure to writers", async () => {
+    vi.spyOn(api, "caller").mockResolvedValue({
+      subject: "engineer", email: null, permissions: ["property_watch:write"], effective_permissions: ["property_watch:write"],
+    });
+    await renderPage();
+    expect(screen.getByLabelText("watch actions")).toBeInTheDocument();
+    const edit = screen.getByText("Edit watch");
+    expect(edit.closest("details")).not.toHaveAttribute("open");
   });
 });
 

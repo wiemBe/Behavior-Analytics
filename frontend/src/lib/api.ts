@@ -937,10 +937,8 @@ export interface AnomalyTransition {
 
 export interface AnomalySummary {
   id: string;
-  // The API sends null here for a PW_VALUE row whose watch is scoped to a type or a group;
-  // that is why a PW row is read through `pw_value` and never through this field. Declared
-  // `string` because every other family has one, and the callers outside this task assume it.
-  log_source_id: string;
+  // A PW_VALUE row whose watch is scoped to a type or group has no single source.
+  log_source_id: string | null;
   log_source_name: string | null;
   anomaly_type: string;
   state: AnomalyState;
@@ -1460,6 +1458,35 @@ export interface PwScopeSummary {
   // A source's type name, a group's path from the root.
   detail: string | null;
   qradar_id: number | null;
+  member_count: number | null;
+}
+
+export interface PwScopeOption {
+  kind: PwScopeKind;
+  id: string;
+  qradar_id: number;
+  name: string;
+  detail: string | null;
+  synced_source_count: number | null;
+  scope_state: PwWatchStatus | null;
+  scope_reason: string | null;
+}
+
+export interface PwPropertyOption {
+  name: string;
+  property_type: string | null;
+  name_allowed: boolean;
+  defined_on_type_ids: number[];
+  covers_scope: boolean;
+}
+
+export interface PwPropertyOptions {
+  status: "AVAILABLE" | "UNAVAILABLE";
+  fetched_at: string | null;
+  scope_type_ids: number[];
+  properties: PwPropertyOption[];
+  normalized_fields: string[];
+  detail: string | null;
 }
 
 export interface PwScopeGroup {
@@ -1638,6 +1665,56 @@ export interface PwValueSeries {
 export interface PwSeries {
   hours: number;
   series: PwValueSeries[];
+}
+
+export interface PropertyWatchCreate {
+  name: string;
+  description: string | null;
+  scope_kind: PwScopeKind;
+  log_source_id: string | null;
+  scope_type_id: number | null;
+  scope_group_id: number | null;
+  properties: PwPropertyRef[];
+  pinned_values: string[][];
+  detectors: PwAnomalyTypeName[];
+  severity: string;
+}
+
+export type PropertyWatchUpdate = Partial<PropertyWatchCreate> & {
+  expected_updated_at: string;
+  enabled?: boolean;
+};
+
+export interface PwPreviewRow {
+  value_key: string;
+  components: string[];
+  events: number;
+  share: number | null;
+  truncated: boolean;
+}
+
+export interface PwPreview {
+  mode: "PREVIEW";
+  watch_id: string;
+  watch_version: number;
+  window_start: string;
+  window_end: string;
+  bucket_seconds: number;
+  searches_sent: number;
+  outcome: "MEASURED" | "PARTIAL" | "NOT_MEASURED";
+  reason: string | null;
+  buckets_measured: number;
+  buckets_lower_bound: number;
+  buckets_unmeasured: number;
+  total_events: number | null;
+  parsed_events: number | null;
+  unparsed_events: number | null;
+  unparsed_bound: "EXACT" | "UPPER_BOUND" | null;
+  coverage: number | null;
+  property_parses: boolean | null;
+  rows_measurement: MeasurementKind | null;
+  rows: PwPreviewRow[];
+  queries: Array<{ search: "GROUPED" | "TOTALS"; text: string }>;
 }
 
 export interface PwValueRef {
@@ -1830,7 +1907,8 @@ export type CustomRuleSubjectKind =
   | "FLEET_CLASS"
   | "WAF_ENDPOINT"
   | "IPS_ENTITY"
-  | "IPS_SOURCE";
+  | "IPS_SOURCE"
+  | "PW_VALUE";
 
 export interface CustomRuleBreach {
   id: string;
@@ -1859,6 +1937,7 @@ export interface CustomRule {
   source_class: string | null;
   waf_endpoint_id: string | null;
   ips_entity_id: string | null;
+  pw_value_id: string | null;
   metric: string;
   operator: string;
   threshold_value: number;
@@ -1887,6 +1966,7 @@ export interface CustomRuleDraft {
   source_class: string | null;
   waf_endpoint_id: string | null;
   ips_entity_id: string | null;
+  pw_value_id: string | null;
   metric: string;
   operator: string;
   threshold_value: number;
@@ -2082,6 +2162,25 @@ export const api = {
   propertyWatch: (id: string) => request<PropertyWatch>(`/property-watches/${id}`),
   propertyWatchScope: (id: string) => request<WatchScope>(`/property-watches/${id}/scope`),
   propertyWatchCatalog: () => request<PropertyWatchCatalog>("/property-watches/catalog"),
+  propertyWatchScopeOptions: (kind: PwScopeKind, query = "", signal?: AbortSignal) =>
+    request<PwScopeOption[]>(
+      `/property-watches/scope-options${qs({ kind, q: query || undefined, limit: 100 })}`,
+      { signal },
+    ),
+  propertyWatchPropertyOptions: (
+    kind: PwScopeKind,
+    scopeId: string,
+    query = "",
+    signal?: AbortSignal,
+  ) =>
+    request<PwPropertyOptions>(
+      `/property-watches/property-options${qs({
+        scope_kind: kind,
+        scope_id: scopeId,
+        q: query || undefined,
+      })}`,
+      { signal },
+    ),
   propertyWatchBuckets: (id: string, hours = 24) =>
     request<PwBucket[]>(`/property-watches/${id}/buckets${qs({ hours })}`),
   propertyWatchValues: (
@@ -2102,6 +2201,20 @@ export const api = {
       ].join("&")}`,
       { signal },
     ),
+  createPropertyWatch: (definition: PropertyWatchCreate) =>
+    request<PropertyWatch>("/property-watches", {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
+  updatePropertyWatch: (id: string, definition: PropertyWatchUpdate) =>
+    request<PropertyWatch>(`/property-watches/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(definition),
+    }),
+  deletePropertyWatch: (id: string) =>
+    request<void>(`/property-watches/${id}`, { method: "DELETE" }),
+  previewPropertyWatch: (id: string) =>
+    request<PwPreview>(`/property-watches/${id}/preview`, { method: "POST" }),
   customRules: () => request<CustomRule[]>("/custom-rules"),
   customRule: (id: string) => request<CustomRule>(`/custom-rules/${id}`),
   customRuleCatalog: () => request<CustomRuleCatalog>("/custom-rules/catalog"),

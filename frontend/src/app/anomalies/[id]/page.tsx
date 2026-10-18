@@ -132,6 +132,7 @@ async function ipsSeries(anomaly: IpsAnomalyDetail): Promise<IpsSeriesData | nul
       const page = await api.ipsEntityMetrics(anomaly.ips_entity.id, window);
       return { kind: "entity", buckets: page.items };
     }
+    if (anomaly.log_source_id === null) return null;
     const page = await api.ipsSourceMetrics(anomaly.log_source_id, window);
     return { kind: "source", buckets: page.items };
   } catch {
@@ -327,6 +328,7 @@ export default async function AnomalyDetailPage({
   let buckets: MetricBucket[] = [];
   let bucketsFailed = false;
   try {
+    if (anomaly.log_source_id === null) throw new Error("no source");
     buckets = await api.sourceMetrics(anomaly.log_source_id, { since, until, limit: 2000 });
   } catch {
     bucketsFailed = true;

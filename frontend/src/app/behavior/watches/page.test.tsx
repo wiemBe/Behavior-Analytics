@@ -9,6 +9,9 @@ import { ApiError, api, type PwWatchStatus } from "@/lib/api";
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(catalog());
+  vi.spyOn(api, "caller").mockResolvedValue({
+    subject: "analyst", email: null, permissions: ["read:*"], effective_permissions: ["read:property_watches"],
+  });
 });
 
 async function renderPage() {
@@ -40,11 +43,21 @@ describe("the list states", () => {
     expect(screen.getByText(/counts the values of one or two properties/)).toBeInTheDocument();
   });
 
-  it("links to no route that does not exist: no New watch action", async () => {
+  it("hides New watch from readers and names the permission that adds it", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([]);
     await renderPage();
     expect(screen.queryByRole("link", { name: /new watch/i })).toBeNull();
     expect(document.querySelector('a[href="/behavior/watches/new"]')).toBeNull();
+    expect(screen.getByText("property_watch:write").tagName).toBe("CODE");
+  });
+
+  it("offers New watch to writers", async () => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([]);
+    vi.spyOn(api, "caller").mockResolvedValue({
+      subject: "engineer", email: null, permissions: ["property_watch:write"], effective_permissions: ["property_watch:write"],
+    });
+    await renderPage();
+    expect(screen.getByRole("link", { name: "New watch" })).toHaveAttribute("href", "/behavior/watches/new");
   });
 });
 
