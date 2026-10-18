@@ -8,7 +8,20 @@ If this file disagrees with the code, the code wins. Fix the file.
 
 ---
 
-## ▶▶▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 17:00, 2026-10-18 (end of the twenty-second session; the user moved to a new chat because this one was long)
+## ▶▶▶▶▶▶▶▶▶▶▶▶▶▶ RESUME HERE — STATE AT 17:10, 2026-10-18 (twenty-third session, from 17:06; chat `qradar-dash-ec`)
+
+**Branches unchanged** since 17:00 (below): `main` @ `9bf3d4d` = v0.1.1, `feat/phase-ce` holds the whole Phase G build. The previous chat (`qradar-dash-a3`) is idle; it stopped its PW-10 sub-agent at 17:03 itself, so nothing of it should wake.
+
+| Task | Agent | Survives the chat? | Where | If it stopped |
+|---|---|---|---|---|
+| **PW-10** live validation, shadow mode, **handover** | Sonnet sub-agent from **17:08** ("review what you inherit"; new §2b UTC plan; reuses the watch `3531df0b…` and the seeded rule `7ab45103…`; budget spent before it: 6 searches / 6 GETs) | **No** | worktree `pw10` @ `9924ea9`, DB `qradar_obs_pw10`, report `QRadar-Dash-work/pw10/PW-10.report.md` | `pgrep -af qradar_lab_loggen` and stop leftovers by PID; read the report's §2b and the ticks; hand over again. Source 212 carried no generator traffic from 14:04:29 UTC until the new run: the first new tick catches up that gap (its reading is checked on purpose). |
+| **PW-11** docs | opencode DeepSeek free, unit `pw11-ds` (from 16:48) | Yes (not a reboot) | worktree `pw11`, log `QRadar-Dash-work/pw11/opencode.log` | as below |
+
+**Open questions for the user** (from 16:42, asked again in this chat): PW alerting on in the lab validation; a separate 24-hour new-value run.
+
+---
+
+## ▶▶▶▶▶▶▶▶▶▶▶▶▶ STATE AT 17:00, 2026-10-18 (end of the twenty-second session; kept for the log)
 
 **Branches.** `main` @ `9bf3d4d` = v0.1.1, untouched (the user: nothing to `main` until they say
 so). **`feat/phase-ce` @ `ea58e9a` + PW-7c + docs (pushed; code head `15f109e` merged at 16:46)** = the whole Phase G build (PW-1 … PW-9 with PW-3b,
