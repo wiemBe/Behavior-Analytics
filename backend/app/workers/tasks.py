@@ -1423,7 +1423,8 @@ async def dispatch_property_watch_collection(instance_name: str | None = None) -
         return pipeline.as_dict()
 
     result = await _for_each_instance(run, instance_name)
-    failed = any(item.get("status") == "failed" for item in result.get("results", []))
+    statuses = [item.get("status") for item in result.get("results", [])]
+    failed = any(status == "failed" for status in statuses)
     searches = None if failed else sum(
         int(item.get("searches_sent", 0)) for item in result.get("results", [])
     )
@@ -1433,7 +1434,13 @@ async def dispatch_property_watch_collection(instance_name: str | None = None) -
     async with maker() as cadence_session:
         await SearchCadenceService(cadence_session, settings).record_run(
             family,
-            outcome="failed" if failed else "ok",
+            # A lock skip is not a failure (the geo and metric dispatches record it
+            # `partial`): another worker holds the run, so the tick simply moves on.
+            outcome=(
+                "failed"
+                if failed
+                else "partial" if "skipped_locked" in statuses else "ok"
+            ),
             searches=searches,
             buckets=buckets,
             splits=None,

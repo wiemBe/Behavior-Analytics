@@ -524,7 +524,11 @@ dispatch task claims the slot (`backend/app/services/search_cadence.py:61`), is 
 watch's scope (§G.4), then per watch collect → evaluate → train (the WAF per-source ordering,
 `docs/PHASE-B-WAF-BEHAVIOR.md` §28.7), under one `PwSearchBudget(pw_max_searches_per_tick)` shared
 by every watch of the instance (the `IpsSearchBudget` shape,
-`backend/app/ips/keyed_search.py:35-52`). Bucket width is `collection_interval_seconds` (300 s,
+`backend/app/ips/keyed_search.py:35-52`). The whole per-instance pipeline holds the family's
+collector advisory lock (`CollectorAdvisoryLock` with the collector name `property_watch`, T-136),
+as every collector family does, so a tick that outlasts the cadence slot skips instead of
+overlapping the next one and reports `skipped_locked` (the geo collector's skip). Bucket width is
+`collection_interval_seconds` (300 s,
 `backend/app/core/config.py:237`) — the cadence decides when the family searches, never how finely
 it measures (`docs/SEARCH-CADENCE.md` §SC.1). Watermarks: `collected_through` advances only past
 buckets that completed; the **first run seeds the watermark at the latest closed bucket and replays no history** (the
@@ -1183,7 +1187,11 @@ renamed host; the page does not claim intent (§G.2).
 > stranded either: in the disable's own transaction the route resolves the watch's OPEN and
 > RECOVERING incidents through the engine (`PwAnomalyEngine.resolve_watch_incidents`, reason
 > `watch disabled; no longer evaluated`) and their alerts through `resolve_watch_alerts` with the
-> changing principal as the actor. Enabling again starts fresh; a `PATCH` that leaves `enabled`
+> changing principal as the actor. Enabling again starts fresh (built exactly so, T-136): the
+> first tick after `enabled` turns back to true seeds at the latest closed bucket, so the disabled
+> period is never collected and no stored bucket is evaluated a second time, while novelty history
+> across the gap is incomplete — a value that appears after it is judged `INSUFFICIENT_DATA`. A
+> `PATCH` that leaves `enabled`
 > alone resolves nothing.
 
 ### G.10.2 Threshold alerts: the F.1 subject kind **[BUILT — PW-6]**
