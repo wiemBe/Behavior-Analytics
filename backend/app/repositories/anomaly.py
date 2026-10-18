@@ -27,6 +27,7 @@ from sqlalchemy import (
     tuple_,
     union_all,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
@@ -37,6 +38,7 @@ from app.models.enums import (
     AnomalyType,
     EvidenceStatus,
     IpsAnomalyType,
+    PwAnomalyType,
     Severity,
     WafAnomalyType,
 )
@@ -48,6 +50,7 @@ from app.models.log_source import (
     LogSourceBaseline,
     LogSourceMetric,
 )
+from app.models.property_watch import PropertyWatch, PwAnomaly
 from app.models.waf import (
     WafAnomaly,
     WafDetectorState,
@@ -64,6 +67,7 @@ from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 _PHASE_A_TYPES = frozenset(t.value for t in AnomalyType)
 _WAF_TYPES = frozenset(t.value for t in WafAnomalyType)
 _IPS_TYPES = frozenset(t.value for t in IpsAnomalyType)
+_PW_TYPES = frozenset(t.value for t in PwAnomalyType)
 
 
 class AnomalyRepository:
@@ -182,6 +186,12 @@ class AnomalyRepository:
                 cast(null(), String).label("entity_dimension"),
                 cast(null(), String).label("entity_value_key"),
                 cast(null(), String).label("entity_display_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_watch_id"),
+                cast(null(), String).label("pw_watch_name"),
+                cast(null(), Integer).label("pw_watch_version"),
+                cast(null(), String).label("pw_scope_kind"),
+                cast(null(), JSONB).label("pw_properties"),
+                cast(null(), String).label("pw_value_key"),
                 a.anomaly_type.label("anomaly_type"),
                 a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
@@ -221,6 +231,12 @@ class AnomalyRepository:
                 cast(null(), String).label("entity_dimension"),
                 cast(null(), String).label("entity_value_key"),
                 cast(null(), String).label("entity_display_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_watch_id"),
+                cast(null(), String).label("pw_watch_name"),
+                cast(null(), Integer).label("pw_watch_version"),
+                cast(null(), String).label("pw_scope_kind"),
+                cast(null(), JSONB).label("pw_properties"),
+                cast(null(), String).label("pw_value_key"),
                 w.detector_type.label("anomaly_type"),
                 w.state, w.severity, w.observed_value, w.expected_value, w.deviation_ratio,
                 w.robust_z, w.absolute_delta, w.consecutive_buckets, w.confidence,
@@ -258,6 +274,12 @@ class AnomalyRepository:
                 e.dimension.label("entity_dimension"),
                 e.value_key.label("entity_value_key"),
                 e.display_name.label("entity_display_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_watch_id"),
+                cast(null(), String).label("pw_watch_name"),
+                cast(null(), Integer).label("pw_watch_version"),
+                cast(null(), String).label("pw_scope_kind"),
+                cast(null(), JSONB).label("pw_properties"),
+                cast(null(), String).label("pw_value_key"),
                 a.detector_type.label("anomaly_type"),
                 a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
@@ -272,6 +294,45 @@ class AnomalyRepository:
             .where(*conditions)
         )
 
+    def _unified_pw(self, conditions: list[ColumnElement[bool]]) -> Select:
+        a = PwAnomaly
+        w = PropertyWatch
+        return (
+            select(
+                a.id,
+                cast(literal_column("'PW_VALUE'"), String).label("subject_kind"),
+                w.log_source_id.label("log_source_id"),
+                LogSource.name.label("log_source_name"),
+                cast(null(), PgUUID(as_uuid=True)).label("waf_endpoint_id"),
+                cast(null(), String).label("endpoint_normalized"),
+                cast(null(), String).label("endpoint_method"),
+                cast(null(), String).label("endpoint_virtual_host"),
+                cast(null(), Boolean).label("endpoint_virtual_host_available"),
+                cast(null(), Integer).label("endpoint_normalizer_version"),
+                cast(null(), PgUUID(as_uuid=True)).label("ips_entity_id"),
+                cast(null(), String).label("entity_dimension"),
+                cast(null(), String).label("entity_value_key"),
+                cast(null(), String).label("entity_display_name"),
+                w.id.label("pw_watch_id"),
+                w.name.label("pw_watch_name"),
+                a.watch_version.label("pw_watch_version"),
+                w.scope_kind.label("pw_scope_kind"),
+                w.properties.label("pw_properties"),
+                a.value_key.label("pw_value_key"),
+                a.detector_type.label("anomaly_type"),
+                a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
+                a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
+                a.detected_at, a.opened_at, a.anomaly_start, a.anomaly_end, a.resolved_at,
+                a.evidence_status, a.suppressed,
+                a.observed_measurement.label("observed_measurement"),
+                a.explanation,
+            )
+            .select_from(a)
+            .join(w, w.id == a.watch_id)
+            .outerjoin(LogSource, LogSource.id == w.log_source_id)
+            .where(*conditions)
+        )
+
     async def list_unified(
         self,
         *,
@@ -280,6 +341,7 @@ class AnomalyRepository:
         subject_kind: SubjectKind | None = None,
         waf_endpoint_id: uuid.UUID | None = None,
         ips_entity_id: uuid.UUID | None = None,
+        pw_watch_id: uuid.UUID | None = None,
         log_source_id: uuid.UUID | None = None,
         instance_id: uuid.UUID | None = None,
         anomaly_type: str | None = None,
@@ -290,7 +352,7 @@ class AnomalyRepository:
         since: datetime | None = None,
         until: datetime | None = None,
     ) -> tuple[list[dict], int]:
-        """Phase A, WAF and IPS anomalies in one ordering: two statements, any page size.
+        """Phase A, WAF, IPS and property-watch anomalies in one ordering: two statements.
 
         One `UNION ALL` of the applicable families, counted once and paged once.
         Source names and subject identity (endpoint or IPS entity) are joined
@@ -305,6 +367,15 @@ class AnomalyRepository:
             ips_entity_id=ips_entity_id,
             anomaly_type=anomaly_type,
         )
+        # The property-watch family (Phase G): its own subject kind and detector types. A
+        # filter that names another family's subject excludes it, as for the others.
+        pw = subject_kind in (None, SubjectKind.PW_VALUE)
+        if waf_endpoint_id is not None or ips_entity_id is not None:
+            pw = False
+        if anomaly_type is not None:
+            pw = pw and anomaly_type in _PW_TYPES
+        if pw_watch_id is not None:
+            phase_a = waf = ips = False
         active = [s.value for s in ACTIVE_ANOMALY_STATES]
 
         def common(model: Any) -> list[ColumnElement[bool]]:
@@ -371,6 +442,17 @@ class AnomalyRepository:
             if anomaly_type is not None:
                 conditions.append(IpsAnomaly.detector_type == anomaly_type)
             branches.append(self._unified_ips(conditions))
+        if pw:
+            conditions = common(PwAnomaly)
+            if log_source_id is not None:
+                conditions.append(PropertyWatch.log_source_id == log_source_id)
+            if instance_id is not None:
+                conditions.append(PropertyWatch.instance_id == instance_id)
+            if pw_watch_id is not None:
+                conditions.append(PwAnomaly.watch_id == pw_watch_id)
+            if anomaly_type is not None:
+                conditions.append(PwAnomaly.detector_type == anomaly_type)
+            branches.append(self._unified_pw(conditions))
         if not branches:
             return [], 0
 
