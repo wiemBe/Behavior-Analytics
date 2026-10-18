@@ -152,6 +152,7 @@ describe("the IPS filters", () => {
       "WAF_ENDPOINT",
       "IPS_ENTITY",
       "IPS_SOURCE",
+      "PW_VALUE",
     ]);
   });
 

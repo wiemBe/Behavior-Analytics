@@ -29,17 +29,21 @@ import { VolumeChart } from "@/components/behavior/VolumeChart";
 import { AnomalyTabs } from "@/components/behavior/AnomalyTabs";
 import { detectorSpec } from "@/components/ips/ipsDetectors";
 import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
+import { PwInvestigation, type PwInvestigationData } from "@/components/propertywatch/PwInvestigation";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
   api,
   isIpsDetail,
+  isPwDetail,
   isWafDetail,
   type AnomalyDetail,
   type IpsAnomalyDetail,
   type IpsBaselineCell,
   type MetricBucket,
+  type PwAnomalyDetail,
+  type PwValueSeries,
   type WafAnomalyDetail,
   type WafBaselineCell,
   type WafMetricBucket,
@@ -176,6 +180,69 @@ async function canOpenIpsSource(): Promise<boolean> {
   }
 }
 
+/** The series read serves at most this many hours back from now. */
+const PW_SERIES_MAX_HOURS = 168;
+
+/**
+ * What the property-watch view draws: the value's id (looked up by its text among the watch's
+ * tracked values, never put in a URL), its series around the incident, and the watch's buckets.
+ * Every part is optional: a failed read is `null` and the view says so, it is not "nothing".
+ */
+async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
+  const anchor = Date.parse(anomaly.anomaly_start ?? anomaly.detected_at);
+  const end = Date.parse(anomaly.anomaly_end ?? anomaly.resolved_at ?? anomaly.detected_at);
+  const now = Date.now();
+  const windowStart = new Date(anchor - CONTEXT_HOURS * 3600_000);
+  const windowEnd = new Date(Math.min(now, Math.max(end, anchor) + CONTEXT_HOURS * 3600_000));
+  const base = { windowStart: windowStart.toISOString(), windowEnd: windowEnd.toISOString() };
+  const hours = Math.ceil((now - windowStart.getTime()) / 3600_000);
+  const watchId = anomaly.pw_value.watch_id;
+
+  let valueId: string | null = null;
+  try {
+    const page = await api.propertyWatchValues(watchId, { hours: PW_SERIES_MAX_HOURS, limit: 200 });
+    valueId = page.items.find((v) => v.value_key === anomaly.pw_value.value_key)?.id ?? null;
+  } catch {
+    valueId = null;
+  }
+  if (hours > PW_SERIES_MAX_HOURS) {
+    return {
+      ...base,
+      valueId,
+      series: null,
+      buckets: null,
+      chartNote: `This incident is older than the ${PW_SERIES_MAX_HOURS / 24} days the series read covers, so its chart is not drawn. The incident's own figures and lifecycle are shown.`,
+    };
+  }
+  if (valueId === null) {
+    return {
+      ...base,
+      valueId,
+      series: null,
+      buckets: null,
+      chartNote:
+        "This value could not be found among the watch's tracked values, so its series is not drawn. It may have been retired, or the tracked values could not be read.",
+    };
+  }
+  const [series, buckets] = await Promise.all([
+    api
+      .propertyWatchSeries(watchId, [valueId], hours)
+      .then((r) => r.series[0] ?? null)
+      .catch(() => null as PwValueSeries | null),
+    api.propertyWatchBuckets(watchId, hours).catch(() => null),
+  ]);
+  return {
+    ...base,
+    valueId,
+    series,
+    buckets,
+    chartNote:
+      series === null
+        ? "The series of this value could not be loaded. The rest of this investigation is unaffected, but the chart is absent rather than empty."
+        : null,
+  };
+}
+
 export default async function AnomalyDetailPage({
   params,
 }: {
@@ -183,7 +250,7 @@ export default async function AnomalyDetailPage({
 }) {
   const { id } = await params;
 
-  let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | null = null;
+  let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | null = null;
   let status = 0;
   try {
     loaded = await api.anomaly(id);
@@ -213,6 +280,10 @@ export default async function AnomalyDetailPage({
     );
   }
 
+  // A property-watch value is investigated against its own watch's series, in events per bucket.
+  if (isPwDetail(loaded)) {
+    return <PwInvestigation anomaly={loaded} data={await pwData(loaded)} />;
+  }
   // A WAF endpoint is investigated against its own request buckets, in requests
   // rather than EPS, so it has its own view; the Phase A page below is unchanged.
   if (isWafDetail(loaded)) {

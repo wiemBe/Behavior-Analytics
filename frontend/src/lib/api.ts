@@ -937,6 +937,9 @@ export interface AnomalyTransition {
 
 export interface AnomalySummary {
   id: string;
+  // The API sends null here for a PW_VALUE row whose watch is scoped to a type or a group;
+  // that is why a PW row is read through `pw_value` and never through this field. Declared
+  // `string` because every other family has one, and the callers outside this task assume it.
   log_source_id: string;
   log_source_name: string | null;
   anomaly_type: string;
@@ -965,6 +968,9 @@ export interface AnomalySummary {
   waf_endpoint?: WafEndpointRef | null;
   // IPS_ENTITY only (T-085): the admitted entity. An IPS_SOURCE row has none.
   ips_entity?: IpsEntityRef | null;
+  // PW_VALUE only (Phase G): the watch and the tracked value. `log_source_id` is null for a
+  // type- or group-scoped watch.
+  pw_value?: PwValueRef | null;
   // WAF and IPS: EXACT, or LOWER_BOUND when observed_value is "at least n".
   observed_measurement?: MeasurementKind | null;
 }
@@ -1104,6 +1110,8 @@ export interface AnomalyListParams {
   subject_kind?: SubjectKind;
   waf_endpoint_id?: string;
   ips_entity_id?: string;
+  // A property watch's incidents (Phase G).
+  property_watch_id?: string;
   since?: string;
   until?: string;
 }
@@ -1112,7 +1120,12 @@ export interface AnomalyListParams {
 // These mirror app/schemas/anomaly.py (T-057). A missing measurement is `null`,
 // never 0: narrowing one of these to `number` would let it render as a zero.
 
-export type SubjectKind = "LOG_SOURCE" | "WAF_ENDPOINT" | "IPS_ENTITY" | "IPS_SOURCE";
+export type SubjectKind =
+  | "LOG_SOURCE"
+  | "WAF_ENDPOINT"
+  | "IPS_ENTITY"
+  | "IPS_SOURCE"
+  | "PW_VALUE";
 
 /** EXACT, or LOWER_BOUND when the count is "at least n". */
 export type MeasurementKind = "EXACT" | "LOWER_BOUND";
@@ -1174,7 +1187,7 @@ export interface WafAnomalyDetail
 }
 
 export function isWafDetail(
-  a: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail,
+  a: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail,
 ): a is WafAnomalyDetail {
   return a.subject_kind === "WAF_ENDPOINT" && a.waf_endpoint != null;
 }
@@ -1391,9 +1404,265 @@ export interface IpsAnomalyDetail
 /** Decided by the subject kind alone: an IPS row whose entity reference is missing
  *  must still reach the IPS view, never fall through to the EPS page. */
 export function isIpsDetail(
-  a: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail,
+  a: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail,
 ): a is IpsAnomalyDetail {
   return a.subject_kind === "IPS_ENTITY" || a.subject_kind === "IPS_SOURCE";
+}
+
+// --- Phase G: property watches ----------------------------------------------
+// These mirror app/schemas/property_watch.py and the PW_VALUE additions in
+// app/schemas/anomaly.py. A count that was not measured is `null`, never 0; a reading carries
+// its own label so a client never infers "zero" from an absent number. Value text is shown to
+// every caller who can read the route (design §G.7.2, D-22) and is attacker-controlled text:
+// render it as text only.
+
+export type PwScopeKind = "LOG_SOURCE" | "LOG_SOURCE_TYPE" | "LOG_SOURCE_GROUP";
+
+export type PwWatchStatus =
+  | "NOT_ENABLED"
+  | "DISABLED"
+  | "SCOPE_EMPTY"
+  | "SCOPE_STALE"
+  | "SCOPE_TOO_LARGE"
+  | "NOT_APPLICABLE"
+  | "STALE"
+  | "OPEN"
+  | "RECOVERING"
+  | "OK";
+
+export type PwAnomalyTypeName =
+  | "PW_VALUE_SPIKE"
+  | "PW_VALUE_DROP"
+  | "PW_VALUE_DISAPPEARED"
+  | "PW_NEW_VALUE"
+  | "PW_NEW_COMBINATION";
+
+/** `COUNT`: a number of events; `MEASURED_ZERO`: zero, measured; `UNKNOWN`: lower bound 0, not a
+ *  zero; `NOT_AN_OBSERVATION`: the value was not tracked then; `NO_BUCKET`: nothing was collected. */
+export type PwReadingLabel =
+  | "COUNT"
+  | "MEASURED_ZERO"
+  | "UNKNOWN"
+  | "NOT_AN_OBSERVATION"
+  | "NO_BUCKET";
+
+export type PwBaselineState = "RELIABLE" | "LEARNING" | "NONE";
+
+export interface PwPropertyRef {
+  kind: "NORMALIZED" | "CUSTOM_PROPERTY";
+  name: string;
+}
+
+export interface PwScopeSummary {
+  kind: PwScopeKind;
+  // null when the inventory no longer lists it.
+  name: string | null;
+  // A source's type name, a group's path from the root.
+  detail: string | null;
+  qradar_id: number | null;
+}
+
+export interface PwScopeGroup {
+  qradar_id: number;
+  name: string;
+}
+
+export interface PwScopeChange {
+  bucket_start: string;
+  member_count_before: number | null;
+  member_count_after: number | null;
+  in_grace_window: boolean;
+}
+
+/** `GET /property-watches/{id}/scope` (PW-5b). A scope that did not resolve still returns what the
+ *  inventory holds, marked; `member_count` is `null` when the resolver would not state one. */
+export interface WatchScope {
+  watch_id: string;
+  watch_version: number;
+  kind: PwScopeKind;
+  resolved: boolean;
+  state: PwWatchStatus | null;
+  reason: string | null;
+  member_count: number | null;
+  members: string[];
+  members_total: number | null;
+  groups_walked: PwScopeGroup[];
+  inventory_synced_at: string | null;
+  inventory_age_seconds: number | null;
+  changes: PwScopeChange[];
+}
+
+export interface PwCoverage {
+  bucket_start: string;
+  total_events: number | null;
+  parsed_events: number | null;
+  // null when unknown, never 0.
+  ratio: number | null;
+  measurement: string;
+}
+
+export interface PropertyWatch {
+  id: string;
+  instance_id: string;
+  name: string;
+  description: string | null;
+  scope_kind: PwScopeKind;
+  log_source_id: string | null;
+  scope_type_id: number | null;
+  scope_group_id: number | null;
+  scope: PwScopeSummary;
+  properties: PwPropertyRef[];
+  pinned_values: string[][];
+  detectors: PwAnomalyTypeName[];
+  severity: string;
+  watch_version: number;
+  enabled: boolean;
+  // null: the watch has never run, which is not OK.
+  status: PwWatchStatus | null;
+  status_reason: string | null;
+  collected_through: string | null;
+  evaluated_through: string | null;
+  last_run_at: string | null;
+  coverage: PwCoverage | null;
+  open_incidents: number;
+  // Only on the single-watch read.
+  detector_states: Array<{ detector_type: PwAnomalyTypeName; active_incidents: number }> | null;
+  alerting_mode: "shadow" | "alerting";
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export interface PropertyWatchCatalog {
+  collection_enabled: boolean;
+  alerting_mode: "shadow" | "alerting";
+  max_enabled: number;
+  enabled_count: number;
+  search_budget: number;
+  budget_used: number;
+  normalized_fields: string[];
+  reference_kinds: string[];
+  detectors: string[];
+  max_properties: number;
+  max_values_per_bucket: number;
+  max_new_values_per_bucket: number;
+  max_active_values_per_watch: number;
+  max_pinned_values: number;
+  value_max_length: number;
+  max_sources_per_search: number;
+  max_chunks_per_watch: number;
+  // The coverage floor, a fraction in [0, 1].
+  min_coverage: number;
+  hours_min: number;
+  hours_max: number;
+  hours_default: number;
+  preview_searches: number;
+  preview_rate_limit: string;
+}
+
+export interface PwBucket {
+  bucket_start: string;
+  bucket_seconds: number;
+  watch_version: number;
+  total_events: number | null;
+  parsed_events: number | null;
+  unparsed_events: number | null;
+  untracked_events: number | null;
+  totals_complete: boolean;
+  values_measurement: string;
+  pinned_measurement: string;
+  observed_values: number;
+  tracked_values_observed: number;
+  admitted_values: number;
+  below_admission_threshold: number;
+  rejected_over_quota: number;
+  admission_truncated: boolean;
+  scope_member_count: number | null;
+  scope_changed: boolean;
+  in_maintenance: boolean;
+  collected_at: string;
+}
+
+export interface PwValue {
+  id: string;
+  watch_version: number;
+  value_key: string;
+  components: string[];
+  truncated: boolean;
+  pinned: boolean;
+  active: boolean;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  tracked_since: string | null;
+  tracked_until: string | null;
+  latest_bucket_start: string | null;
+  reading: PwReadingLabel;
+  events: number | null;
+  measurement: MeasurementKind | null;
+  baseline_state: PwBaselineState;
+  expected_low: number | null;
+  expected_median: number | null;
+  expected_high: number | null;
+  // Reliable hour-of-week cells out of `cells_total`.
+  reliable_cells: number;
+  cells_total: number;
+}
+
+export interface PagedPwValues {
+  items: PwValue[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PwSeriesPoint {
+  bucket_start: string;
+  reading: PwReadingLabel;
+  events: number | null;
+  measurement: MeasurementKind | null;
+  baseline_state: PwBaselineState;
+  expected_low: number | null;
+  expected_median: number | null;
+  expected_high: number | null;
+}
+
+export interface PwValueSeries {
+  value_id: string;
+  value_key: string;
+  pinned: boolean;
+  // Only collected buckets have a point: a gap is an absent point, never a zero.
+  points: PwSeriesPoint[];
+}
+
+export interface PwSeries {
+  hours: number;
+  series: PwValueSeries[];
+}
+
+export interface PwValueRef {
+  watch_id: string;
+  watch_name: string;
+  watch_version: number;
+  scope_kind: PwScopeKind;
+  properties: Array<{ kind: string; name: string }>;
+  value_key: string;
+  components: string[];
+}
+
+/** A property-watch value's incident. The detail read does not serve it yet (see the
+ *  PW-7 report), so the investigation view is built from the unified list item's shape. */
+export interface PwAnomalyDetail
+  extends Omit<AnomalyDetail, "detection" | "subject_kind" | "pw_value"> {
+  subject_kind: "PW_VALUE";
+  pw_value: PwValueRef;
+  detection: null;
+}
+
+export function isPwDetail(
+  a: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail,
+): a is PwAnomalyDetail {
+  return a.subject_kind === "PW_VALUE";
 }
 
 export interface IpsDimensionCoverage {
@@ -1803,9 +2072,36 @@ export const api = {
   anomalies: (params: AnomalyListParams = {}) =>
     request<Page<AnomalySummary>>(`/anomalies${qs({ ...params })}`),
   anomaly: (id: string) =>
-    request<AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail>(`/anomalies/${id}`),
+    request<AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail>(
+      `/anomalies/${id}`,
+    ),
   // The caller's identity and grants, for links the caller may not follow.
   caller: () => request<CallerInfo>("/me"),
+  // --- Phase G: property watches. Read-only; the editor's writes are PW-8's. -------
+  propertyWatches: () => request<PropertyWatch[]>("/property-watches"),
+  propertyWatch: (id: string) => request<PropertyWatch>(`/property-watches/${id}`),
+  propertyWatchScope: (id: string) => request<WatchScope>(`/property-watches/${id}/scope`),
+  propertyWatchCatalog: () => request<PropertyWatchCatalog>("/property-watches/catalog"),
+  propertyWatchBuckets: (id: string, hours = 24) =>
+    request<PwBucket[]>(`/property-watches/${id}/buckets${qs({ hours })}`),
+  propertyWatchValues: (
+    id: string,
+    params: {
+      hours?: number;
+      sort?: "events" | "value" | "first_seen";
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) => request<PagedPwValues>(`/property-watches/${id}/values${qs({ ...params })}`),
+  // One bulk read for at most 12 values. A value is addressed by id, never by its text.
+  propertyWatchSeries: (id: string, valueIds: string[], hours = 24, signal?: AbortSignal) =>
+    request<PwSeries>(
+      `/property-watches/${id}/series?${[
+        ...valueIds.map((v) => `value_ids=${encodeURIComponent(v)}`),
+        `hours=${hours}`,
+      ].join("&")}`,
+      { signal },
+    ),
   customRules: () => request<CustomRule[]>("/custom-rules"),
   customRule: (id: string) => request<CustomRule>(`/custom-rules/${id}`),
   customRuleCatalog: () => request<CustomRuleCatalog>("/custom-rules/catalog"),
