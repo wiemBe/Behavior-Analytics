@@ -10,6 +10,14 @@ on this branch (`agent/pw12`, from `feat/phase-ce`) on 2026-10-18. Where the cod
 code wins, and the disagreement is listed in §H.14.3. Facts that only the console can give are not
 asserted: each has a probe in §H.3.5 and is marked **[C-n]**.
 
+> **The user's decisions on §H.14.1 (2026-10-18 ~18:00, D-29; they override the text below where
+> it differs).** Build it as designed, in the order of §H.13. **Q1: `pw_bootstrap_enabled` defaults to
+> `true` everywhere** (the user chose this over the recommended "off in the code"), and so a watch
+> created without `history_days` asks for `pw_bootstrap_days` when the switch is on (the API default
+> is the setting, not NULL; `history_days: 0` asks for none). The fail-closed rules (§H.3.2 the
+> floor, §H.6) are unchanged, and assumption A1 stays stated on the page. Q2: 28 days. Q3: new
+> watches only, no prepending. Q4 to Q8: the recommendations as written.
+
 The numbers of the live run PW-10 are used only where this file says so. The report
 (`QRadar-Dash-work/pw10/PW-10.report.md`) was still `STATUS: IN PROGRESS` when this was written; the
 facts taken from it are its section 1 and 3 (scope, source 212, search times) and `probe.log`
@@ -62,7 +70,7 @@ first". D-27 ([`PLANNER.md`](PLANNER.md) §4) states the decision:
 | H5 | The searches are the existing GROUPED, TOTALS and PINNED kinds. TOTALS and PINNED run over spans of up to 168 h, GROUPED over density-sized sub-windows inside the span | §H.4 |
 | H6 | Bootstrap searches draw on what is left of the tick budget after every live watch has had its turn, are capped separately, and stop after a time budget | §H.4.4 |
 | H7 | Progress lives in columns on `property_watch` (additive migration `0029`); no new table | §H.5 |
-| H8 | A kill switch, `pw_bootstrap_enabled`, **defaults to off** until the probes of §H.3.5 have been run and read | §H.10 |
+| H8 | A kill switch, `pw_bootstrap_enabled`, **defaults to on** (D-29, the user's choice; the design proposed off until the probes of §H.3.5 were read) | §H.10 |
 | H9 | An existing watch is not bootstrapped at upgrade. History can be requested only for a watch with no stored bucket of its current version | §H.5.5 |
 
 ### H.0.3 Alternatives weighed and rejected
@@ -815,7 +823,7 @@ other PW cross-checks (`config.py:906-945`), and additionally where `pw_bootstra
 
 | Setting | Default | Bounds and notes |
 |---|---|---|
-| `pw_bootstrap_enabled` | **false** | the kill switch (below) |
+| `pw_bootstrap_enabled` | **true** (D-29) | the kill switch; the text below argues for false, the user chose true |
 | `pw_bootstrap_days` | 28 | `>= pw_new_value_history_days`, `<= pw_baseline_lookback_days` |
 | `pw_bootstrap_searches_per_tick` | 12 | `1..256`, `<= pw_max_searches_per_tick`; the history sub-budget of §H.4.4 |
 | `pw_bootstrap_seconds_per_tick` | 180 | `10..3600`; no history search starts after it |
