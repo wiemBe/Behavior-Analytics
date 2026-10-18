@@ -882,8 +882,9 @@ def detector_status(spec: DetectorSpec, settings: Any | None = None) -> Detector
 
 
 def all_detectors() -> list[DetectorSpec]:
-    # PW-3b adds the scheduled pipeline and can then publish PW through this
-    # production-wiring inventory. PW-3a exposes the pure specs directly through
-    # `PW_DETECTORS`; including their future task here would claim a Beat entry
-    # that does not exist yet.
-    return [*LOG_SOURCE_DETECTORS.values(), *WAF_DETECTORS.values(), *IPS_DETECTORS.values()]
+    return [
+        *LOG_SOURCE_DETECTORS.values(),
+        *WAF_DETECTORS.values(),
+        *IPS_DETECTORS.values(),
+        *PW_DETECTORS.values(),
+    ]

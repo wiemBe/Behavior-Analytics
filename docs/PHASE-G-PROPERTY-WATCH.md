@@ -326,15 +326,15 @@ Design decisions, each against the facts of §G.1:
   `NULL`, which is not `OK`. Every state is a reason, never silence — the detector-status contract
   (`backend/app/anomaly/capabilities.py:66-77`).
 
-## G.4 Scope resolution (question 2) **[BUILT — PW-2a: the AQL side only]**
+## G.4 Scope resolution (question 2) **[BUILT — PW-2a: AQL] [BUILT — PW-2b] [BUILT — PW-3c: staleness]**
 
 > **As built by PW-2a** (`backend/app/property_watch/aql.py`): the `<scope>` filter of the table
 > below, from an already-resolved input: `LOG_SOURCE` and `LOG_SOURCE_TYPE` take exactly one id,
 > `LOG_SOURCE_GROUP` takes one chunk of at most `pw_max_sources_per_search` ids (sorted,
 > de-duplicated). Scope ids must be non-negative integers and are re-checked in the provider.
 > Resolution from the inventory (the cycle-safe walk, `SCOPE_EMPTY`/`SCOPE_STALE`/
-> `SCOPE_TOO_LARGE`, the fingerprint, the chunking itself) remains **PW-2b**. The chunk sums are
-> built (`keyed_search.combine_chunks`): a bucket is `COMPLETE` only when every chunk was whole,
+> `SCOPE_TOO_LARGE`, the fingerprint, the chunking itself) is built by **PW-2b**. The chunk sums
+> are built (`keyed_search.combine_chunks`): a bucket is `COMPLETE` only when every chunk was whole,
 > `LOWER_BOUND` when any chunk was cut at one bucket, and **unmeasured when any chunk was failed or
 > not collected** (a decision PW-2a made: a sum over part of the scope is not a statement about the
 > scope, so the other chunks' rows are dropped rather than kept as a lower bound).
@@ -387,13 +387,15 @@ inventory when the watch is saved and when it runs; a vanished group id is `SCOP
   **not** thrown away: after the grace the watch is judged against the old cells again, so a large
   membership change keeps showing as a shift until the cells retrain (§G.17 Q10 offers a relearn
   switch). The watch page shows the current member count and when it last changed.
-- **Stale sync fails closed.** Inventory freshness is the group row's own `synced_at`
-  (`backend/app/models/fleet.py:49`). One sync pass stamps every type and group row with the same
-  time (`backend/app/services/inventory_sync.py:50,79-150`), and a failed group listing is
-  **swallowed** (`backend/app/services/inventory_sync.py:73-75`): sources keep syncing while the
-  group rows keep their old `synced_at`, and a group deleted on the console is never deleted here
-  (the pass only upserts). An age check on `synced_at` therefore catches exactly the cases in which
-  `group_ids` can no longer be trusted. A group scope whose group row is older than
+- **Stale sync fails closed.** Inventory freshness is the **oldest** `synced_at` of the groups the
+  walk visited (`backend/app/models/fleet.py:49`; **PW-3c**, the interrupted-sync fix). One sync pass
+  stamps every type and group row with the same time (`backend/app/services/inventory_sync.py:50,79-150`),
+  and a failed group listing is **swallowed** (`backend/app/services/inventory_sync.py:73-75`):
+  sources keep syncing while the group rows keep their old `synced_at`, and a group deleted on the
+  console is never deleted here (the pass only upserts). An age check on `synced_at` therefore
+  catches exactly the cases in which `group_ids` can no longer be trusted. An interrupted sync can
+  leave a descendant older than the named group, so the check reads the oldest walked row — the same
+  row `/scope` reports — and a group scope whose oldest walked row is older than
   `pw_scope_stale_after_hours` (default 24) writes **no bucket**; the watch takes `SCOPE_STALE`
   with the inventory age, existing incidents hold state (missing data is not recovery, Phase A §5),
   and the next tick retries. A type scope is one appliance-side filter and needs no membership
@@ -463,7 +465,7 @@ property never parsed.
     `total_events > 0`: a scope that sent nothing is a silent scope (its buckets are `COMPLETE`
     with zero events), not a property that fails to parse.
 
-## G.6 Collection (question 4)
+## G.6 Collection (question 4) **[BUILT — PW-2b]**
 
 > **[BUILT — PW-1 fact contract; PW-2a provider, AQL, fold and split driver].**
 > `backend/app/property_watch/facts.py` (PW-1) defines the pure bucket, value/tuple, coverage,
@@ -491,9 +493,9 @@ property never parsed.
 > - `app/property_watch/fold.py`: `fold_bucket`, which builds a `PwBucketFact` from a bucket's
 >   three outcomes. The admission columns keep their defaults for PW-2b.
 >
-> Not built here, still **PW-2b**: scope resolution, admission, persistence, the dispatch task, the
-> statement-count pins. The provider takes `pw_max_sources_per_search` as a constructor argument
-> (default 50); `providers/factory.py` does not pass it yet, so the two-line wiring is PW-2b's.
+> **PW-2b** built scope resolution, admission, persistence, the dispatch task and the
+> statement-count pins. `providers/factory.py` passes
+> `pw_max_sources_per_search` to the mock and REST providers.
 
 **Decision: a dedicated collector in the IPS keyed style — not F.2 scheduled searches.**
 
@@ -692,7 +694,7 @@ admission threshold or beyond a quota exists only inside the fold, and its event
 `untracked_events`); the generated AQL's *parameters beyond the pinned values the operator typed*.
 The only value texts that persist are admitted values and pinned values.
 
-### G.7.2 Values as personal data (rule 3)
+### G.7.2 Values as personal data (rule 3) **[BUILT — PW-2b]**
 
 A property such as `Username` carries personal data, and a free-text field can carry worse: a
 user who types a password into a username box on a failed login produces a "username" that is a
@@ -710,7 +712,9 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   is never stored. A value that does repeat three times in five minutes is stored.
 - **Retention.** Bucket and metric rows 35 days (the WAF, IPS, catch-all and geo default,
   `backend/app/core/config.py:182,488,521,539`); a value row is deleted when it is retired and its
-  last metric has aged out; anomalies 180 days (the WAF default,
+  last metric has aged out, **never while an incident on it is still OPEN or RECOVERING** (PW-3c
+  item 2: deleting the subject would strand the investigation, so the row is skipped and counted in
+  the run's `blocked` report); anomalies 180 days (the WAF default,
   `backend/app/core/config.py:490`). **Deleting a watch deletes every value it holds** (cascade),
   which is the erasure path for "stop tracking this property"; its open alerts are resolved first,
   as F.1 does (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.4.3). An alert's context holds the text of the
@@ -725,11 +729,10 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   visible without the audit table becoming a second copy of the values.
 - **Masking** (show `al***` instead of `alice`) is not built.
 
-### G.7.3 Admission, the two kinds of value, and retirement
+### G.7.3 Admission, the two kinds of value, and retirement **[BUILT — PW-2b]**
 
-> **[BUILT — PW-1 persistence contract only].** The bucket admission-outcome columns and the
-> value tracking-window/pinned/retirement columns are in model metadata and migration `0026`.
-> The admission and retirement behavior that writes them remains PW-2b.
+> **[BUILT — PW-1 persistence contract; PW-2b behavior].** The bucket admission-outcome columns and
+> the value tracking-window/pinned/retirement columns are in model metadata and migration `0026`.
 
 - **Pinned values** (user answer 2) are `pw_value` rows from the moment the watch is saved:
   `pinned = true`, `tracked_since` = the first bucket collected after enable, never subject to
@@ -745,6 +748,9 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   `ips_entity_active_days` default, `backend/app/core/config.py:179`) without an observation is
   retired (`active = false`, `tracked_until` set so a lagging backfill cannot read its absence as
   zero, WAF §29.4); a returning value starts a new tracking period and keeps `first_seen_at`.
+  **A retired value is judged no further, so an incident still open on it is resolved** (PW-3c
+  item 1: the engine's next run ends it with actor `pw-engine` and reason `value retired; no
+  longer evaluated`, resolving the alert too when alerting is on).
 - **Every admission outcome is a count on the bucket row** (`admitted_values`,
   `below_admission_threshold`, `rejected_over_quota`, `admission_truncated`), so the new-value
   detector can tell "not new" from "refused" (§G.8.3).
@@ -752,7 +758,7 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   pinned values plus tracked values would exceed the ceiling stops admitting automatic values and
   says so (`admission_truncated`).
 
-### G.7.4 The migration **[BUILT — PW-1 half]**
+### G.7.4 The migration **[BUILT — PW-1 half; PW-6 half is `0027`]**
 
 > **As built by PW-1:** `0026_property_watch.py` revises `0025`, creates the eight PW tables,
 > registers both hypertables and seeds `PROPERTY_WATCH` at 3,600 seconds with `ON CONFLICT DO
@@ -760,6 +766,12 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
 > hypertables, the seed, the scope/property `CHECK`s and `alembic check`. In accordance with the
 > PW-1 task split below, `custom_rule.pw_value_id` and the recreated subject `CHECK` are not in
 > `0026`; they remain PW-6's next migration.
+>
+> **As built by PW-6:** `0027_custom_rule_pw_value.py` revises `0026`: it adds
+> `custom_rule.pw_value_id` (FK to `pw_value.id`, `ON DELETE RESTRICT`, indexed) and drops and
+> recreates `ck_custom_rule_subject_matches_kind` with `PW_VALUE`. The downgrade deletes the
+> `PW_VALUE` rules (their breaches cascade) before restoring the old `CHECK`. Its test is
+> `tests/integration/test_migration_0027.py`.
 
 One additive migration, number "next at build time" (head is `0025_auth_sessions`,
 `backend/alembic/versions/`). It creates the tables above, registers `pw_bucket` and
@@ -790,9 +802,38 @@ PW-1 and PW-6 is in §G.16.
 > specs and shared verdict-scope mapping (`app/anomaly/capabilities.py`,
 > `app/property_watch/inputs.py`), the pure seasonal builder (`property_watch/baseline.py`), the
 > pure history verifier (`property_watch/history.py`) and all five pure verdict functions
-> (`property_watch/detectors.py`). Loading, persistence and lifecycle execution remain PW-3b; until
-> that scheduled pipeline exists, PW specs are exposed through `PW_DETECTORS` rather than the
-> production-wiring `all_detectors()` inventory.
+> (`property_watch/detectors.py`).
+>
+> **[BUILT — PW-3b; PW-3c: the retired-value resolve and the stale-cell delete].**
+> `property_watch/engine.py` (`PwAnomalyEngine`) loads everything for all
+> enabled watches of an instance in bulk (the buckets after each watch's `evaluated_through`
+> up to `collected_through`, at most `pw_max_evaluation_buckets_per_run` per watch; tracked
+> values; their metric rows; the baseline cells of the pending hours of the week; the detector
+> states; the open incidents; the bucket history and the component lookup only while a value is
+> inside its novelty window), judges them with the pure detectors, and writes once per table
+> (states, incidents, transitions, watch status). The lifecycle is the shared
+> `anomaly/lifecycle.py` with `anomaly_open_after_intervals` and
+> `anomaly_resolve_after_intervals`; **this is where the spike's "required consecutive buckets"
+> live.** Disappearance keeps its own rule in the detector (`pw_disappear_buckets` measured zeros
+> before the first anomalous verdict); the lifecycle then needs `anomaly_open_after_intervals`
+> consecutive anomalous verdicts, so the incident opens at the `pw_disappear_buckets +
+> anomaly_open_after_intervals - 1`-th zero bucket (6 + 2 - 1 = 7 at the defaults). The two are
+> not counted twice: the detector counts zeros, the lifecycle counts verdicts. A bucket that is
+> unknown or not judgeable holds state; a failed collection stores no judged bucket and the
+> evaluation watermark does not move. A value that was not tracked at a bucket is not judged at
+> all. A `watch_version` bump resolves the old version's active incident at the next run with the
+> transition reason "watch definition changed" (the hook where PW-4 resolves the alert); the new
+> version's values are new rows with no baseline. **A value this run retired resolves its still-open
+> incident the same way** (PW-3c item 1), reason "value retired; no longer evaluated", read from
+> values already in memory so it adds no query. `property_watch/training.py`
+> (`PwBaselineTrainer`) runs after evaluation in the same run: the
+> `pw_baseline_values_per_run` least recently computed current values, only up to the
+> evaluation watermark, the due read plus five bounded statements per chunk — the last of which
+> deletes every cell of those values the rebuild did not write, so a cell whose samples aged out
+> can no longer judge old data (PW-3c item 3, detectors then read `INSUFFICIENT_DATA`).
+> `services/pw_pipeline.py` runs collect, evaluate, train per instance; evaluation and training
+> each run in a savepoint, so a failure keeps what collection stored. `PW_DETECTORS` are in `all_detectors()` now that
+> `dispatch_property_watch_collection` is scheduled.
 
 **New enums, `AnomalyType` untouched** (AGENTS.md rule 6; the reason is stated at
 `backend/app/models/enums.py:139-145` for WAF and `:172-179` for IPS):
@@ -839,7 +880,9 @@ Phase A construction (`docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md` §3-§4.2), the IP
 buckets below the coverage floor (`low_coverage`), `scope_changed` buckets, maintenance buckets,
 buckets under another `watch_version`, buckets inside a known incident span. A cell below
 `baseline_min_samples` (8, `backend/app/core/config.py:335`) is stored and never drives a verdict.
-Lookback `pw_baseline_lookback_days` = 28 (`ips_baseline_lookback_days`,
+A cell the next rebuild no longer produces — its samples aged out of the window, or every one was
+excluded — is **deleted**, so a detector reads `INSUFFICIENT_DATA` rather than statistics from data
+that is gone (PW-3c item 3). Lookback `pw_baseline_lookback_days` = 28 (`ips_baseline_lookback_days`,
 `backend/app/core/config.py:187`). Training runs after evaluation in the same run (the WAF order,
 `docs/PHASE-B-WAF-BEHAVIOR.md` §28.7), a bounded number of values per run
 (`pw_baseline_values_per_run` = 100, the IPS batch idea, `backend/app/core/config.py:189`).
@@ -878,17 +921,23 @@ No verdict. Per bucket and value: events, the reading's measurement, share of **
 continuity). Requirement: none beyond the bucket existing. The table, the chart and the widget read
 the same bulk response (§G.11).
 
-### G.8.2 Output 4a: baseline deviation, three verdicts **[BUILT — PW-3a]**
+### G.8.2 Output 4a: baseline deviation, three verdicts **[BUILT — PW-3a] [BUILT — PW-3b]**
 
 > **As built.** One ordered precondition path fails closed on watch state, missing/uncollected
 > buckets, membership changes, a property that parsed on no event (`NOT_APPLICABLE`), thin or
 > incompatible cells and unknown readings. Maintenance is not a verdict exit (it only keeps a bucket
 > out of training; suppression is alerting's, PW-4). Consecutive-bucket confirmation of the spike
-> is the lifecycle's `anomaly_open_after_intervals` (PW-3b). A missing bucket inside the
+> is the lifecycle's `anomaly_open_after_intervals` (built in PW-3b, §G.8.0). A missing bucket inside the
 > disappearance window is `INSUFFICIENT_DATA`, never a broken streak. The
 > spike consumes the capability-granted increase-only scope; drop and disappearance never infer
 > absence from a lower bound. Disappearance reads an explicit sequence of exact, covered readings,
 > so an absent metric row becomes zero only through the PW-1 reading contract.
+
+> **[BUILT — PW-3b].** The engine feeds these three detectors the cell of the bucket's weekday and
+> hour, the value's reading (the §G.8.0 table through `facts.reading_for`), and the trailing
+> `pw_disappear_buckets` readings of the current `watch_version` only. Their thresholds come from
+> `PwAnomalyEngine._thresholds()`; a unit test fails if a `PwThresholds` field has no source in
+> the settings.
 
 All three read the value's `PW_VALUE_EVENTS_METRIC` cell for the bucket's weekday and hour.
 
@@ -912,12 +961,20 @@ is `scope_changed` (reason "membership changed"); the cell is missing or below
 `baseline_min_samples`; the value's measurement is unknown; then the detector's own guards. Each
 exit is `INSUFFICIENT_DATA` with a reason, never `NORMAL` and never zero.
 
-### G.8.3 Output 3: new-value detection **[BUILT — PW-3a]**
+### G.8.3 Output 3: new-value detection **[BUILT — PW-3a] [BUILT — PW-3b]**
 
 > **As built.** `verify_value_history` reports the first ordered completeness failure (missing or
 > duplicate buckets, width, `NOT_COLLECTED`, lower-bound discovery, truncated admission or another
 > watch version). The pure verdict then applies the learning, membership-change, pin, established,
 > history, appearance-flood and materiality exits without consulting storage.
+
+> **[BUILT — PW-3b].** The novelty facts (verified history, first-appearance bucket, events and
+> buckets with traffic since first appearance, materiality measurement, the watch's first
+> collected bucket, membership change around the first appearance) are built by the engine only
+> for values whose novelty window still covers a pending bucket, and only for watches that
+> selected a novelty detector. Values outside the window are passed an "established" fact the
+> detector leaves on at once. The watch's first collected bucket of the current version rides on
+> the pending-bucket read, so it costs no statement.
 
 `PW_NEW_VALUE`, the analogue of `WAF_NEW_ENDPOINT_ACCESS` (`docs/PHASE-B-WAF-BEHAVIOR.md` §30.5;
 spec `backend/app/anomaly/capabilities.py:394-414`; settings
@@ -1024,12 +1081,17 @@ B is noisier by construction (many pairs, sparse series, a high chance that some
 by accident) and has no precise claim to fail closed on. C is the better statistic and is blocked
 only by a missing marginal.
 
-### G.9.3 `PW_NEW_COMBINATION`, precisely **[BUILT — PW-3a]**
+### G.9.3 `PW_NEW_COMBINATION`, precisely **[BUILT — PW-3a] [BUILT — PW-3b]**
 
 > **As built.** Component histories are explicit pure inputs. A tracked occurrence in a
 > lower-bound bucket proves presence; a component that was not tracked, including one seen only
 > below admission, classifies conservatively as `PW_NEW_VALUE`. The two novelty verdicts are
 > mutually exclusive, and a one-property watch fails closed before combination evaluation.
+
+> **[BUILT — PW-3b].** The component lookup is the one conditional read: a single aggregated
+> statement (earliest counted occurrence of each component, per position and per bucket
+> measurement, before the tuple's first appearance), issued only while a tuple is inside its novelty
+> window. A test pins that it adds exactly one statement.
 
 On a 2-property watch every first-appearing tuple is classified once, at its first appearance, as
 exactly one of:
@@ -1075,7 +1137,7 @@ renamed host; the page does not claim intent (§G.2).
 
 ### G.10.1 Incident alerts (spike, drop, disappearance, new value, new combination)
 
-- **Fingerprint.** A new `pw_anomaly_fingerprint(instance_id, watch_id, detector_type, value_key)`
+- **Fingerprint. [BUILT — PW-4]** A new `pw_anomaly_fingerprint(instance_id, watch_id, detector_type, value_key)`
   beside `ips_anomaly_fingerprint` (`backend/app/alerts/fingerprint.py:125-144`), through
   `compute_fingerprint` with `source_type="pw_value"`, `condition="pw_anomaly"` and the detector
   type as `subtype` (`backend/app/alerts/fingerprint.py:35-50`). The natural key is the stable
@@ -1085,7 +1147,7 @@ renamed host; the page does not claim intent (§G.2).
   **not** in the fingerprint: bumping the version resolves the watch's open incidents and alerts
   (actor `pw-engine`, reason `watch definition changed`) because their values no longer exist under
   the new semantics (§G.3).
-- **Shadow mode.** `PW_COLLECTION_ENABLED` (default **false**, the family switch) and
+- **Shadow mode. [BUILT — PW-4]** `PW_COLLECTION_ENABLED` (default **false**, the family switch) and
   `PW_ALERTING_ENABLED` (default **false**), the IPS pair
   (`backend/app/core/config.py:171-173`). With alerting off, incidents are recorded and the engine
   opens, refreshes, resolves and enqueues nothing; turning it on is a decision taken after a live
@@ -1093,17 +1155,32 @@ renamed host; the page does not claim intent (§G.2).
   opens one alert, a still-anomalous incident refreshes it, RESOLVED resolves it with actor
   `pw-engine` and reason `condition recovered`, and notifications are enqueued per transition
   (`docs/PHASE-D-IPS-BEHAVIOR.md` D.10).
-- **Context.** Watch name, scope label, detector, severity (the watch's), the value text, the
+- **Context. [BUILT — PW-4]** Watch name, scope label, detector, severity (the watch's), the value text, the
   reading with its measurement, the band, the bucket bounds. The value text is in the alert context
   and so in notifications, the same exposure as an IPS entity's destination IP.
-- **Maintenance.** A `LOG_SOURCE` watch honours the source's maintenance state, stored on the
+- **Maintenance. [BUILT — PW-4]** A `LOG_SOURCE` watch honours the source's maintenance state, stored on the
   bucket as `in_maintenance` (`backend/app/custom_rules/loaders.py:207,294` read the same flag for
   WAF and IPS): nothing opens or refreshes, and following IPS a maintenance bucket does not resolve
   an alert (`docs/PHASE-D-IPS-BEHAVIOR.md` D.10). A group watch is in maintenance only when **every**
   resolved member is; a type watch has no maintenance state in v1 (the membership is decided on the
   appliance). That limitation is stated on the watch page.
 
-### G.10.2 Threshold alerts: the F.1 subject kind
+> **[BUILT — PW-4]** Built as written, with these decisions the text left open. A bucket in
+> maintenance still gets its verdict and its incident, but a verdict that would **resolve** an
+> incident is held (counters and watermark move, the state does not) until a bucket outside
+> maintenance, so an open alert is never stranded by a resolved incident. A version bump resolves
+> the alert whatever the bucket's maintenance flag. `DELETE` resolves the watch's open alerts
+> (actor: the deleting principal, reason `the watch was deleted`), found through the watch id in
+> the alert context, after the 409 check and in the delete's own transaction; a refused delete changes no alert.
+
+> **[BUILT — PW-3c].** A `PATCH` that turns `enabled` to false no longer leaves an incident
+> stranded either: in the disable's own transaction the route resolves the watch's OPEN and
+> RECOVERING incidents through the engine (`PwAnomalyEngine.resolve_watch_incidents`, reason
+> `watch disabled; no longer evaluated`) and their alerts through `resolve_watch_alerts` with the
+> changing principal as the actor. Enabling again starts fresh; a `PATCH` that leaves `enabled`
+> alone resolves nothing.
+
+### G.10.2 Threshold alerts: the F.1 subject kind **[BUILT — PW-6]**
 
 Threshold alerts are an F.1 rule, not a PW detector (user answer 1, "value DENY above 500 per
 bucket, sustained 3 buckets"). The extension, all additive:
@@ -1142,6 +1219,14 @@ bucket, sustained 3 buckets"). The extension, all additive:
   `watch_version` (scope or properties, §G.3) is refused with 409 while a rule pins one of the
   watch's values: the rule's value would stop receiving data under the old version. The operator
   detaches the rules or creates a new watch.
+- **[BUILT — PW-6b]** The F.1 preview (`custom_rules/preview.py`) reads a `PW_VALUE` rule through
+  `load_pw_values` with the engine's coverage floor, one metric statement; the bucket's stored
+  `in_maintenance` is its only maintenance. `PUT /property-watches/{id}/pins` returns
+  `rules: [{id, name, pw_value_id}]` (the rules that pin a value of the watch after the change).
+  A rule created after the 409 check reaches the database's `RESTRICT` key as a 409 (watch delete)
+  and a rule create or patch whose value row was deleted meanwhile is a 409 as well, never a 500.
+  `PropertyWatchOut.cadence_seconds` is the `PROPERTY_WATCH` family cadence, read once per request
+  (the widget's `stale` is older than twice this, §G.13.5).
 - The rule's fingerprint is unchanged, `custom_rule_breach_fingerprint(rule_id)`
   (`backend/app/alerts/fingerprint.py:155-167`), and its switches are the F.1 ones
   (`CUSTOM_RULES_ENABLED`, `CUSTOM_RULES_ALERTING_ENABLED`, `backend/app/core/config.py:545-551`).
@@ -1154,7 +1239,7 @@ bucket, sustained 3 buckets"). The extension, all additive:
 
 ---
 
-## G.11 Permissions, audit and API (question 10)
+## G.11 Permissions, audit and API (question 10) **[BUILT — PW-5, except what the note below defers]**
 
 **Permissions** (`backend/app/security/rbac.py`; `Principal.has` grants a permission by exact name,
 by its `prefix:*` wildcard, or by `admin:*`, `backend/app/security/rbac.py:33-38`):
@@ -1199,6 +1284,58 @@ with counts only. Reads are not audited.
 (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.7). A value outside an enum stays FastAPI's list 422. Errors
 never carry QRadar text, a console address or a secret (AGENTS.md rule 5).
 
+
+> **As built by PW-5** (`backend/app/api/routes/property_watches.py`,
+> `backend/app/services/property_watches.py`, `backend/app/schemas/property_watch.py`). Every
+> route above exists **except** `GET /property-watches/{id}/scope` and the resolved member count of
+> a group in `scope-options`: both need the pure scope resolver of PW-2b and come in **PW-5b**
+> (`scope-options` returns ids, names, a type's synced-source count and a group's path). Two parts of
+> `DELETE` wait for their owners: resolving open alerts first is **PW-4** (alerting does not exist),
+> and the 409 while an F.1 rule pins a value is **PW-6** (the column does not exist). Likewise
+> `PUT /pins` does not yet report the F.1 rules that depend on a pin (PW-6). The delete itself is
+> the cascade of the schema: every value, bucket, baseline and incident goes with the watch.
+>
+> Decisions the table leaves open: the optimistic token is `updated_at` (`expected_updated_at`,
+> 409 with `current_version` and `updated_by`), as for rules; `PUT /pins` replaces the whole list
+> and carries the same token; the scope travels as a unit in a `PATCH`; pins, severity, detectors
+> and `enabled` never bump `watch_version`. A `PATCH` or `PUT /pins` that makes an enabled watch
+> dearer re-runs the §G.14 checks. The enable 409s name the cap, the tick budget (with both
+> numbers) or the group that is too large; a group's size here comes from `resolve_groups`, the
+> minimum the API needs, until PW-5b swaps in the resolver. The preview sends the totals search and
+> then the grouped one under a two-search budget: a grouped result cut at the row limit is not
+> split (a split would be a third search), so its buckets read `NOT_COLLECTED` and the response
+> says so. It refuses (409) a group that is stale (`SCOPE_STALE`), empty (`SCOPE_EMPTY`) or wider
+> than one search chunk. It is limited by `rate_limit_search_execution` per client address. Audit
+> snapshots hold `pinned_count` and `pinned_digest` (`sha256:` plus the hex digest of the sorted
+> pins) and the scope as `KIND:id`; a preview's audit row holds counts and states only. `/anomalies`
+> gains `subject_kind=PW_VALUE`, `anomaly_type` accepting `PwAnomalyType`, a `property_watch_id`
+> filter and a `pw_value` object; `log_source_id` is `null` for a type- or group-scoped watch.
+> The anomaly histogram does not count PW incidents yet (its repository is outside PW-5).
+
+> **[BUILT — PW-5b: `GET /property-watches/{id}/scope` and the resolved member count of a
+> group in `scope-options`]** (`backend/app/api/routes/property_watches.py`,
+> `backend/app/services/property_watches.py`, `backend/app/schemas/property_watch.py`,
+> `backend/app/property_watch/scope.py`). PW-5's minimal `resolve_groups` is gone: the API, the
+> enable caps, the preview and the collector all resolve through PW-2b's pure resolver over the
+> one bulk inventory read (`resolve_subjects`), so they can never disagree about a scope, and a
+> group walk is computed before the freshness check, so an unresolved scope still carries the
+> `groups_walked`, `member_count` and `members` the last sync held. `GET /{id}/scope` answers with
+> the resolved `member_count`, the cycle-safe walk's group ids and names, the walked group rows'
+> oldest `synced_at` as the inventory age in seconds (UTC), the state (resolved, or `SCOPE_EMPTY`,
+> `SCOPE_STALE` or `SCOPE_TOO_LARGE`) and its reason, the stored membership changes of the watch's
+> current version (a stored bucket whose `scope_fingerprint` differs from the one before it,
+> newest first, with the count before and after and whether it is in the grace window; a
+> `NOT_COLLECTED` bucket is skipped), and up to `SCOPE_MEMBERS_LIMIT` (200) member names, sorted,
+> with the true total. A scope that does not resolve still returns the last sync's members, marked
+> with its state, never a zero (§G.4). `scope-options` reports a group's resolved member count and
+> a type's synced-source count through the same resolver; a group that is stale or too large shows
+> no count and names why in `scope_state`/`scope_reason`, while an empty group's measured zero is
+> reported as `0` with `SCOPE_EMPTY`. Every read is bulk and flat in size: `/{id}/scope` is a fixed
+> 6 statements for a group (4 for a source or a type), and `scope-options` 3 for groups and 2 for
+> types, at any number of groups or sources, one more when the caller does not name the instance
+> (rule 9). `property-options` for a group now takes the in-scope types
+> from the resolver's own walk (404 when the group row is absent, 409 when it does not resolve).
+
 ---
 
 ## G.12 Fail-closed rules, in one place
@@ -1240,7 +1377,7 @@ spacing or type literal; existing components only (`PageHeader`, `Tabs`, `Disclo
 `docs/PRODUCT-UX-GUIDELINES.md` §8). No dark theme switch, text-only navigation, no emoji, no
 gradients (AGENTS.md §3a).
 
-### G.13.1 Where things live
+### G.13.1 Where things live **[BUILT — PW-7]**
 
 **Navigation: the Behavior group**, not Detection. The group is the product's purpose, "detecting
 that a log source changed, and explaining what changed" (`frontend/src/lib/nav.ts:3-6`), and a
@@ -1259,7 +1396,7 @@ a watch's incidents go to `/anomalies`, which is in Behavior. One entry, **Prope
 | `/custom-rules/new` (existing) | the subject picker gains "Property watch value" (§G.10.2) |
 | `/admin/search-cadence` (existing) | lists the `PROPERTY_WATCH` family |
 
-### G.13.2 The list, `/behavior/watches`
+### G.13.2 The list, `/behavior/watches` **[BUILT — PW-7]**
 
 A table, no KPI row: Name, **Status and reason** (second column, as on `/custom-rules`), Scope
 ("Group, DMZ firewalls, 37 sources"), Properties ("Username x Action"), Coverage of the last bucket
@@ -1270,7 +1407,15 @@ it), Enabled. Rows needing attention (`OPEN`, `STALE`, `NOT_APPLICABLE`, `SCOPE_
 for alerting within seconds, use QRadar's own rules." Writers see **New watch**; others see the list
 and are told which permission would add it.
 
-### G.13.3 The watch page, `/behavior/watches/[id]`
+### G.13.3 The watch page, `/behavior/watches/[id]` **[BUILT — PW-7; completed by PW-7b]**
+
+> **[BUILT — PW-7b]** The Threshold rules tab (from `threshold_rules` on the single-watch read),
+> the generated AQL in collapsed read-only `CodePanel`s on the Definition tab (from
+> `GET /property-watches/{id}/aql`), the values table at 1024 px (baseline and incidents moved under
+> the value; a long value takes two lines with the full text behind a disclosure) and the
+> investigation view on the real `GET /anomalies/{id}` detail (the band as one rectangle, the
+> new-value figures with their units, `pw_value.value_id`). The `/custom-rules/new` link carries no
+> preselected kind: the rule editor's subject picker takes no query parameter.
 
 First screen, top to bottom:
 
@@ -1314,7 +1459,7 @@ markup). The bucket provenance lives under `TechnicalDetails`.
 Windows: 1 h, 6 h, 24 h, 7 d (the F.1 preview bound is 168 h, §G.11). All times show UTC; a relative
 age may follow.
 
-### G.13.4 The editor, `/behavior/watches/new` and the disclosure
+### G.13.4 The editor, `/behavior/watches/new` and the disclosure **[BUILT — PW-8]**
 
 One form, five labelled sections, with the preview beside it as the F.1 rule editor does:
 
@@ -1352,6 +1497,12 @@ new-combination detection on"), regenerated from the form, never free text. The 
 §G.13.2 appears once. There is **no AQL field anywhere** (AGENTS.md §2 rule 4).
 
 ### G.13.5 The widget
+
+> **[BUILT — PW-9]** `chart.property_watch` in `frontend/src/widgets/` (`PropertyWatchWidget.tsx`,
+> `pwWidgetState.ts`). Window fixed at 24 h. `forbidden` and a deleted watch use the widget's own note
+> body so the text names who grants `read:property_watches`; `sources` lists every path read.
+> **[BUILT — PW-7b]** `stale` is older than `2 x cadence_seconds` from the watch read (an 8-hour family
+> is not stale at 3 hours), no longer a fixed 2 hours.
 
 A configurable widget **`chart.property_watch`** in the registry
 (`frontend/src/widgets/registry.ts:62-76,105`, the `chart.search_results` precedent at `:365`,
@@ -1445,7 +1596,13 @@ for a group and 1 for a source or a type.
   and 6 globally (`backend/app/core/config.py:122,132`). PW never raises it.
 - **Preview:** two searches, rate-limited (§G.6).
 
-### G.14.2 Database
+### G.14.2 Database **[BUILT — PW-2b] [BUILT — PW-3b]**
+
+> **[BUILT — PW-3b].** Pinned by `tests/integration/test_pw_engine_scale.py`: collection plus
+> evaluation is 20 statements per tick at 1 and 10 watches and at 50 and 200 values (the number
+> is equal at every size; the ceiling is 40), the component lookup adds one statement only
+> while a tuple is in its window, and training is 5 statements per chunk of
+> `pw_baseline_values_per_run` values whatever the number of values.
 
 - **Statements per tick: a design target of at most 40**, **constant in the number of watches
   (1 against 10) and in the number of values (50 against 200)**, excluding opening an alert (a few
@@ -1589,6 +1746,13 @@ path, a database name or a venv.
 - Retention in bounded batches; a value row leaves after retirement and aging; deleting a watch
   removes every value and resolves its alerts; a startup validator refuses a novelty history at or
   above the retention.
+- **PW-3c follow-ups.** A retired value's incident and alert resolve (and shadow mode touches no
+  alert row); a `PATCH` disable resolves the watch's incident and alert as the principal, a `PATCH`
+  that leaves `enabled` alone resolves nothing, and re-enabling starts fresh; retention never
+  deletes a value whose incident is still OPEN or RECOVERING, and counts it; a stale baseline cell
+  is deleted while training stays a fixed per-chunk cost; the scope staleness reads the oldest
+  walked group at the resolver, the collector and `/scope`; `property-options` is flat at 2 and 20
+  groups and 10 and 200 sources.
 - **Privacy:** a value that never reached admission is found in no table; log capture and audit rows
   of a create, a preview and an incident contain no seeded value; `/anomalies` shows the value text to a `read:*` caller (D-22); the permission matrix
   (401/403/404/409/422) on every route; a test that every route on the PW router carries the mount

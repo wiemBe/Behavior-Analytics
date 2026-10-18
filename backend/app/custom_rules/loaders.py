@@ -12,6 +12,7 @@ no row is simply absent; the fold reads that as unmeasured, never as zero.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -21,10 +22,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.custom_rules.evaluate import BucketFacts
-from app.models.enums import BucketCompleteness, CustomRuleSubjectKind, SourceClass
+from app.models.enums import (
+    BucketCompleteness,
+    CustomRuleSubjectKind,
+    PwBucketMeasurement,
+    PwPinnedMeasurement,
+    SourceClass,
+)
 from app.models.fleet import LogSourceClassification
 from app.models.ips import IpsEntity, IpsEntityMetric, IpsSourceBucket
 from app.models.log_source import LogSource, LogSourceMetric
+from app.models.property_watch import PwBucket, PwValue, PwValueMetric
 from app.models.waf import WafEndpoint, WafEndpointMetric, WafSourceBucket
 
 _UNCLASSIFIED = SourceClass.UNCLASSIFIED.value
@@ -398,6 +406,175 @@ async def load_ips_sources(
     return _index(built)
 
 
+@dataclass(frozen=True)
+class PwValueBucket:
+    """One (pinned value, bucket) pair as the PW loader read it from the database."""
+
+    bucket_start: datetime
+    in_maintenance: bool
+    values_measurement: str
+    pinned_measurement: str
+    totals_complete: bool
+    total_events: int | None
+    parsed_events: int | None
+    #: ``pw_value_metric.events``; ``None`` when the value has no row in this bucket.
+    events: int | None
+    value_pinned: bool
+    tracked_since: datetime | None
+    tracked_until: datetime | None
+
+
+def _pw_coverage_ok(row: PwValueBucket, floor: float) -> bool:
+    """A zero is a zero of *parsed* events (design §G.5): unknown coverage proves nothing.
+
+    A scope that sent nothing is covered: no event went unparsed. A totals search that did not
+    complete leaves coverage unknown, which never reaches the floor.
+    """
+    if not row.totals_complete or row.total_events is None or row.parsed_events is None:
+        return False
+    if row.total_events == 0:
+        return True
+    return row.parsed_events / row.total_events >= floor
+
+
+def _pw_tracked_at(row: PwValueBucket) -> bool:
+    """The tracking window (WAF §29.4): outside it an absent row is not a zero."""
+    if row.tracked_since is None or row.bucket_start < row.tracked_since:
+        return False
+    return row.tracked_until is None or row.bucket_start <= row.tracked_until
+
+
+def pw_value_facts(row: PwValueBucket, *, coverage_floor: float) -> BucketFacts | None:
+    """What one bucket proves for one pinned value, or ``None`` when it proves nothing.
+
+    A row carries the value's count under the bucket's measurement: ``EXACT`` for a pinned value
+    whose small search was whole, else the grouped search's. No row is a **measured zero** only
+    for a pinned value, tracked at the bucket, in a bucket whose ``pinned_measurement`` is
+    ``EXACT`` and whose parsed share reaches the floor (design §G.8.0, §G.10.2). Every other
+    absence is unmeasured: ``None``, never a zero.
+    """
+    pinned_exact = row.value_pinned and row.pinned_measurement == PwPinnedMeasurement.EXACT.value
+    if row.events is not None:
+        if pinned_exact:
+            measurement = PwBucketMeasurement.EXACT.value
+        elif row.values_measurement in (
+            PwBucketMeasurement.EXACT.value,
+            PwBucketMeasurement.LOWER_BOUND.value,
+        ):
+            measurement = row.values_measurement
+        else:
+            # A count inside a bucket that measured nothing contradicts itself.
+            return None
+        return BucketFacts(
+            bucket_start=row.bucket_start,
+            present=True,
+            in_maintenance=row.in_maintenance,
+            events=row.events,
+            dimension_measurement=measurement,
+        )
+    if not (pinned_exact and _pw_tracked_at(row) and _pw_coverage_ok(row, coverage_floor)):
+        return None
+    return BucketFacts(
+        bucket_start=row.bucket_start,
+        present=True,
+        in_maintenance=row.in_maintenance,
+        events=0,
+        dimension_measurement=PwBucketMeasurement.EXACT.value,
+    )
+
+
+async def load_pw_values(
+    session: AsyncSession,
+    pw_value_ids: list[uuid.UUID],
+    *,
+    after: datetime,
+    through: datetime,
+    coverage_floor: float,
+) -> dict[str, dict[datetime, BucketFacts]]:
+    """Pinned-value counts joined to their watch's bucket row, one statement for every rule.
+
+    Unlike the IPS entity loader this reads the bucket for the buckets that have no metric row
+    too (an outer join from the bucket), because a measured zero is decided by the bucket. A
+    bucket stored under another ``watch_version`` than the value's is not the value's bucket.
+    """
+    if not pw_value_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(
+                PwValue.id,
+                PwValue.pinned,
+                PwValue.tracked_since,
+                PwValue.tracked_until,
+                PwBucket.bucket_start,
+                PwBucket.in_maintenance,
+                PwBucket.values_measurement,
+                PwBucket.pinned_measurement,
+                PwBucket.totals_complete,
+                PwBucket.total_events,
+                PwBucket.parsed_events,
+                PwValueMetric.events,
+            )
+            .select_from(PwValue)
+            .join(
+                PwBucket,
+                and_(
+                    PwBucket.watch_id == PwValue.watch_id,
+                    PwBucket.watch_version == PwValue.watch_version,
+                    PwBucket.bucket_start > after,
+                    PwBucket.bucket_start <= through,
+                ),
+            )
+            .outerjoin(
+                PwValueMetric,
+                and_(
+                    PwValueMetric.pw_value_id == PwValue.id,
+                    PwValueMetric.bucket_start == PwBucket.bucket_start,
+                    PwValueMetric.bucket_start > after,
+                    PwValueMetric.bucket_start <= through,
+                ),
+            )
+            .where(PwValue.id.in_(pw_value_ids))
+        )
+    ).all()
+    built: list[tuple[str, datetime, BucketFacts]] = []
+    for row in rows:
+        values: tuple[Any, ...] = tuple(row)
+        (
+            value_id,
+            pinned,
+            tracked_since,
+            tracked_until,
+            bucket_start,
+            in_maintenance,
+            values_measurement,
+            pinned_measurement,
+            totals_complete,
+            total_events,
+            parsed_events,
+            events,
+        ) = values
+        facts = pw_value_facts(
+            PwValueBucket(
+                bucket_start=bucket_start,
+                in_maintenance=bool(in_maintenance),
+                values_measurement=str(values_measurement),
+                pinned_measurement=str(pinned_measurement),
+                totals_complete=bool(totals_complete),
+                total_events=_optional_int(total_events),
+                parsed_events=_optional_int(parsed_events),
+                events=_optional_int(events),
+                value_pinned=bool(pinned),
+                tracked_since=tracked_since,
+                tracked_until=tracked_until,
+            ),
+            coverage_floor=coverage_floor,
+        )
+        if facts is not None:
+            built.append((str(value_id), bucket_start, facts))
+    return _index(built)
+
+
 def _text(value: object) -> str | None:
     if value is None:
         return None
@@ -413,10 +590,13 @@ def _optional_int(value: object) -> int | None:
 
 
 __all__ = [
+    "PwValueBucket",
     "implemented_loaders",
     "load_fleet_classes",
     "load_ips_entities",
     "load_ips_sources",
     "load_log_sources",
+    "load_pw_values",
     "load_waf_endpoints",
+    "pw_value_facts",
 ]

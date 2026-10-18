@@ -1,0 +1,10 @@
+Behavior Analytics
+Copyright 2026 The Behavior Analytics authors
+
+This product includes qradar-mcp (https://github.com/IBM/qradar-mcp), developed by IBM
+Corporation and licensed under the Apache License, Version 2.0. Its LICENSE and NOTICE are in
+the qradar-mcp/ directory.
+
+IBM and QRadar are trademarks of International Business Machines Corporation, registered in
+many jurisdictions worldwide. This project is not affiliated with, sponsored by or endorsed
+by IBM.

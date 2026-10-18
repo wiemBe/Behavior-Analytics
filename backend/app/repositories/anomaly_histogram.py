@@ -6,9 +6,9 @@ population `GET /anomalies` would list for the same `since`, `until` and
 complete count is what makes an empty hour a measured zero rather than "none
 seen on this page".
 
-T-085 (the IPS analyst read API) is merged; this module now includes the IPS
-branch alongside Phase A and WAF. A new family is one more branch here,
-nothing else.
+T-085 (the IPS analyst read API) is merged; this module includes the IPS branch
+alongside Phase A and WAF, and the property-watch branch (PW-5c). A new family is one more
+branch here, nothing else.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSourceAnomaly
+from app.models.property_watch import PwAnomaly
 from app.models.waf import WafAnomaly
 from app.repositories.anomaly import AnomalyRepository
 from app.schemas.anomaly import SubjectKind
@@ -158,6 +159,26 @@ def _ips_branch(
     )
 
 
+def _pw_branch(since: datetime, until: datetime) -> Select:
+    """Property-watch incidents grouped by hour and severity.
+
+    No join: the list's PW branch joins the watch only to name it, and `pw_anomaly.watch_id`
+    is a non-null cascading foreign key, so every incident has its watch.
+    """
+    a = PwAnomaly
+    hour = _hour_of(a.detected_at)
+    return (
+        select(
+            hour.label("hour"),
+            cast(literal_column("'PW_VALUE'"), String).label("family"),
+            a.severity.label("severity"),
+            func.count().label("anomalies"),
+        )
+        .where(a.detected_at >= since, a.detected_at < until)
+        .group_by(hour, a.severity)
+    )
+
+
 def fill_hours(
     span: list[datetime], counts: dict[datetime, dict[str, int]]
 ) -> list[HourCounts]:
@@ -209,6 +230,9 @@ async def histogram(
             families.append(subject_kind.value)
         else:
             families.extend([SubjectKind.IPS_ENTITY.value, SubjectKind.IPS_SOURCE.value])
+    if subject_kind in (None, SubjectKind.PW_VALUE):
+        branches.append(_pw_branch(since, until))
+        families.append(SubjectKind.PW_VALUE.value)
     span = hour_span(since, until)
     if not branches:
         # Reachable only if a future SubjectKind is added without a branch here.

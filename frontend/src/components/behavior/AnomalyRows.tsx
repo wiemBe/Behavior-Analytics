@@ -30,6 +30,8 @@ import "@/components/ips/ips.css";
 import { expectsNone, ipsFigures } from "@/components/ips/ipsDetectors";
 import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
+import { isPwRow, pwTypeLabel } from "@/components/propertywatch/pwFormat";
+import { valueText } from "@/components/propertywatch/WatchValuesTable";
 import { formatPercent, formatRequests, SINCE_UNIT } from "@/components/waf/wafFormat";
 import {
   endpointLabel,
@@ -39,6 +41,7 @@ import {
 } from "@/components/waf/wafLabels";
 import { isNewEndpointType, isRatioType } from "@/components/waf/wafSummary";
 
+import "@/components/propertywatch/propertywatch.css";
 import "@/components/ui/controls.css";
 
 /**
@@ -51,13 +54,32 @@ import "@/components/ui/controls.css";
  * separator the old single line carried is kept for assistive technology only.
  */
 function SubjectCell({ a }: { a: AnomalySummary }) {
-  const source = a.log_source_name ?? a.log_source_id;
+  // A property-watch row has no source of its own: its watch names it.
+  const source = a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? "Unnamed subject";
   // Below 1100 px the Started column folds under the subject.
   const started = (
     <span className="cell-sub cell-fold fold-sm fold-started">
       Started {formatDateTimeCompact(a.anomaly_start ?? a.detected_at)}
     </span>
   );
+  if (isPwRow(a) && a.pw_value) {
+    // The value (attacker-controlled text: rendered as text, wrapping anywhere), then the watch
+    // that tracks it. A watch scoped to a type or a group has no single source to name.
+    return (
+      <td className="cell-name cell-subject">
+        <span className="subject-endpoint pw-value-text">{valueText(a.pw_value)}</span>
+        <span className="sr-only"> · </span>
+        <a
+          className="subject-source"
+          href={`/behavior/watches/${a.pw_value.watch_id}`}
+          title={a.pw_value.watch_name}
+        >
+          {a.pw_value.watch_name}
+        </a>
+        {started}
+      </td>
+    );
+  }
   if (isIpsRow(a)) {
     // The entity, or "Source-level", then the IPS source. The source is plain text:
     // the page that administers it needs a grant the list cannot know the caller has.
@@ -75,9 +97,15 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
   if (!isWafRow(a) || !a.waf_endpoint) {
     return (
       <td className="cell-name cell-subject">
-        <a className="subject-source" href={`/behavior/sources/${a.log_source_id}`} title={source}>
-          {source}
-        </a>
+        {a.log_source_id ? (
+          <a className="subject-source" href={`/behavior/sources/${a.log_source_id}`} title={source}>
+            {source}
+          </a>
+        ) : (
+          <span className="subject-source" title={source}>
+            {source}
+          </span>
+        )}
         {started}
       </td>
     );
@@ -101,12 +129,38 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
   );
 }
 
+/** The PW detectors whose observed and expected are event counts per 5-minute bucket. */
+function isPwVolumeType(type: string): boolean {
+  return type === "PW_VALUE_SPIKE" || type === "PW_VALUE_DROP" || type === "PW_VALUE_DISAPPEARED";
+}
+
 /** The unit of a WAF volume figure in the list. The list does not carry the bucket
  *  width; every WAF bucket is five minutes (`bucket_seconds` defaults to 300). */
 export const WAF_LIST_UNIT = "req / 5 min";
 
 /** Observed → expected, each cell in the unit of its own row's detector. */
 function ObservedCell({ a }: { a: AnomalySummary }) {
+  if (isPwRow(a)) {
+    // Volume detectors count events per 5-minute bucket. The figure of a new-value detector has
+    // no unit this list knows, so it shows none rather than a number under a guessed one.
+    if (!isPwVolumeType(a.anomaly_type)) {
+      return (
+        <span className="muted">
+          —<span className="sr-only"> this detector has no per-bucket figure; open the incident</span>
+        </span>
+      );
+    }
+    return (
+      <>
+        <span className="ips-figures">
+          {formatRequests(a.observed_value, a.observed_measurement)}
+          <span className="muted"> → </span>
+          {formatRequests(a.expected_value)}
+        </span>
+        <span className="cell-sub ips-unit">events per 5 min</span>
+      </>
+    );
+  }
   if (isIpsRow(a)) {
     // The unit is the detector's own, from the table of IPS detectors; the list
     // does not carry the bucket width. A type with no known unit shows no figure
@@ -184,8 +238,8 @@ function ObservedCell({ a }: { a: AnomalySummary }) {
  * so a word there would read as something the analyst could ask for.
  */
 function EvidenceCell({ a }: { a: AnomalySummary }) {
-  if (isWafRow(a) || isIpsRow(a)) {
-    const meaning = `Evidence collection does not apply to ${isIpsRow(a) ? "IPS" : "WAF"} anomalies`;
+  if (isWafRow(a) || isIpsRow(a) || isPwRow(a)) {
+    const meaning = `Evidence collection does not apply to ${isPwRow(a) ? "property watch" : isIpsRow(a) ? "IPS" : "WAF"} anomalies`;
     return (
       <span className="muted" title={meaning}>
         —<span className="sr-only"> {meaning}</span>
@@ -218,7 +272,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
             <tr>
               <SubjectCell a={a} />
               <td className="cell-detector">
-                {rowTypeLabel(a)}
+                {isPwRow(a) ? pwTypeLabel(a.anomaly_type) : rowTypeLabel(a)}
                 {/* Below 1100 px severity folds under the detector. */}
                 <span className="cell-sub cell-fold fold-sm">Severity {a.severity}</span>
               </td>
@@ -227,7 +281,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                   {a.state}
                 </span>
                 {/* Up to 1280 px the Evidence column folds under the state. */}
-                {!isWafRow(a) && !isIpsRow(a) && (
+                {!isWafRow(a) && !isIpsRow(a) && !isPwRow(a) && (
                   <span className="cell-sub cell-fold fold-md">
                     Evidence: {evidenceLabel(a.evidence_status)}
                   </span>
@@ -260,9 +314,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                     type="button"
                     className="row-toggle"
                     aria-expanded={open}
-                    aria-label={`${open ? "Hide" : "Show"} technical detail for the ${rowTypeLabel(
-                      a,
-                    ).toLowerCase()} on ${isIpsRow(a) ? `${ipsSubjectText(a)} · ${a.log_source_name ?? a.log_source_id}` : subjectText(a)}`}
+                    aria-label={`${open ? "Hide" : "Show"} technical detail for the ${(isPwRow(a) ? pwTypeLabel(a.anomaly_type) : rowTypeLabel(a)).toLowerCase()} on ${isPwRow(a) && a.pw_value ? `${valueText(a.pw_value)} · ${a.pw_value.watch_name}` : isIpsRow(a) ? `${ipsSubjectText(a)} · ${a.log_source_name ?? a.log_source_id}` : subjectText(a)}`}
                     onClick={() => setExpanded(open ? null : a.id)}
                   >
                     {open ? "Less" : "More"}
@@ -278,7 +330,8 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                     {/* A ratio detector's delta is a share, not a count, and the
                         list does not carry its unit: the investigation page does. A
                         new endpoint expects none, so it has no delta against expected. */}
-                    {!(isWafRow(a) && (isRatioType(a.anomaly_type) || isNewEndpointType(a.anomaly_type))) &&
+                    {!(isPwRow(a) && !isPwVolumeType(a.anomaly_type)) &&
+                      !(isWafRow(a) && (isRatioType(a.anomaly_type) || isNewEndpointType(a.anomaly_type))) &&
                       !ipsDeltaHidden(a) && (
                       <div>
                         <dt>Absolute delta</dt>

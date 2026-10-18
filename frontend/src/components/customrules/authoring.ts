@@ -31,6 +31,7 @@ export const SUBJECT_KIND_LABELS: Record<CustomRuleSubjectKind, string> = {
   WAF_ENDPOINT: "WAF endpoint",
   IPS_ENTITY: "IPS entity",
   IPS_SOURCE: "IPS source",
+  PW_VALUE: "Property watch value",
 };
 
 /** A kind label inside a sentence. Acronyms stay uppercase; other labels take a lowercase first word. */
@@ -50,6 +51,7 @@ const METRIC_LABELS: Record<string, string> = {
   EVENTS: "event count",
   TOTAL_EVENTS: "total event count",
   BLOCKED_SHARE: "blocked share",
+  PW_VALUE_EVENTS: "property-watch value events",
 };
 
 const OPERATOR_WORDS: Record<string, string> = {
@@ -110,6 +112,7 @@ export interface EditorDraft {
   sourceClass: string;
   wafEndpointId: string;
   ipsEntityId: string;
+  pwValueId: string;
   metric: string;
   operator: string;
   threshold: string;
@@ -129,6 +132,7 @@ export function emptyDraft(catalog: CustomRuleCatalog): EditorDraft {
     sourceClass: "",
     wafEndpointId: "",
     ipsEntityId: "",
+    pwValueId: "",
     metric: catalog.metrics.find((metric) => metric.subject_kind === subjectKind)?.metric ?? "",
     operator: catalog.operators.includes("GT") ? "GT" : (catalog.operators[0] ?? "GT"),
     threshold: "",
@@ -148,6 +152,7 @@ export function draftFromRule(rule: CustomRule): EditorDraft {
     sourceClass: rule.source_class ?? "",
     wafEndpointId: rule.waf_endpoint_id ?? "",
     ipsEntityId: rule.ips_entity_id ?? "",
+    pwValueId: rule.pw_value_id ?? "",
     metric: rule.metric,
     operator: rule.operator,
     threshold: String(rule.threshold_value),
@@ -183,6 +188,8 @@ export function draftReason(draft: EditorDraft, metric: CustomRuleCatalogMetric 
         ? draft.wafEndpointId
         : draft.subjectKind === "IPS_ENTITY"
           ? draft.ipsEntityId
+        : draft.subjectKind === "PW_VALUE"
+          ? draft.pwValueId
           : draft.logSourceId;
   if (!selected) return `Choose a ${subjectKindInSentence(draft.subjectKind)}.`;
   if (!metric || metric.subject_kind !== draft.subjectKind) return "Choose a metric for this subject kind.";
@@ -205,6 +212,7 @@ export function previewBody(draft: EditorDraft): CustomRuleDraft {
     source_class: draft.subjectKind === "FLEET_CLASS" ? draft.sourceClass || null : null,
     waf_endpoint_id: draft.subjectKind === "WAF_ENDPOINT" ? draft.wafEndpointId || null : null,
     ips_entity_id: draft.subjectKind === "IPS_ENTITY" ? draft.ipsEntityId || null : null,
+    pw_value_id: draft.subjectKind === "PW_VALUE" ? draft.pwValueId || null : null,
     metric: draft.metric,
     operator: draft.operator,
     threshold_value: Number(draft.threshold),

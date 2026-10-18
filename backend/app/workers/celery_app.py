@@ -176,6 +176,17 @@ celery_app.conf.beat_schedule = {
         "task": "apply_ips_retention",
         "schedule": float(settings.ips_retention_interval_seconds),
     },
+    # --- Phase G -------------------------------------------------------------
+    "dispatch-property-watch-collection": {
+        # Claims PROPERTY_WATCH before it builds a provider, so a losing or early
+        # minute sends nothing to QRadar; a no-op while PW_COLLECTION_ENABLED is false.
+        "task": "dispatch_property_watch_collection",
+        "schedule": 60.0,
+    },
+    "apply-property-watch-retention": {
+        "task": "apply_property_watch_retention",
+        "schedule": float(settings.pw_retention_interval_seconds),
+    },
     # --- Phase F.2 -----------------------------------------------------------
     "apply-search-result-retention": {
         # Bounded delete of search_result_metric rows by bucket_start. Daily,

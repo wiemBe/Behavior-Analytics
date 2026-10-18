@@ -24,6 +24,10 @@ START_SECONDS=$SECONDS
 ENV_FILE=.env
 SAVED_ANSWERS=.secrets/install.answers
 TMP_DIR=.install-tmp
+# The repository was renamed on 2026-10-18 (wiemBe/Behavior-Analytics); releases from the next
+# one are pushed under the new prefix. The old one is used only by migrate_image_prefix.
+DEFAULT_IMAGE_PREFIX=ghcr.io/wiembe/behavior-analytics
+OLD_IMAGE_PREFIX=ghcr.io/wiembe/qradar-dashboard
 
 say() { printf '%s\n' "$*"; }
 info() { printf '[ ok ] %s\n' "$*"; }
@@ -203,7 +207,7 @@ apply_defaults() {
   : "${ANS[HTTPS_PORT]:=443}"
   : "${ANS[API_LOOPBACK_PORT]:=8000}"
   : "${ANS[UI_LOOPBACK_PORT]:=3000}"
-  : "${ANS[IMAGE_PREFIX]:=ghcr.io/wiembe/qradar-dashboard}"
+  : "${ANS[IMAGE_PREFIX]:=$DEFAULT_IMAGE_PREFIX}"
   : "${ANS[SECRETS_VOLUME]:=qradar-observability-secrets}"
   : "${ANS[PROXY_CERTS_VOLUME]:=qradar-observability-proxy-certs}"
   : "${ANS[EDGE_SUBNET]:=172.28.10.0/24}"
@@ -1898,7 +1902,7 @@ upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE
     return
   fi
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
-  : "${prefix:=ghcr.io/wiembe/qradar-dashboard}"
+  : "${prefix:=$DEFAULT_IMAGE_PREFIX}"
   for service in postgres backend frontend; do
     docker image inspect "$prefix/$service:$target" >/dev/null || return 1
   done
@@ -1915,7 +1919,7 @@ upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE
 read_target_release_notes() { # read_target_release_notes VERSION
   local target=$1 prefix notes fields version min_from
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
-  : "${prefix:=ghcr.io/wiembe/qradar-dashboard}"
+  : "${prefix:=$DEFAULT_IMAGE_PREFIX}"
   notes=$(docker run --rm --entrypoint cat "$prefix/backend:$target" \
     "/app/releases/$target.md") || return 1
   fields=$(release_notes_fields "$notes") || return 1
@@ -2009,7 +2013,7 @@ previous_images_are_local() { # previous_images_are_local MAP
 tag_previous_images() { # tag_previous_images MAP VERSION
   local map=$1 version=$2 prefix service digest
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
-  : "${prefix:=ghcr.io/wiembe/qradar-dashboard}"
+  : "${prefix:=$DEFAULT_IMAGE_PREFIX}"
   for service in postgres backend frontend proxy qradar-mcp; do
     digest=$(image_map_digest "$map" "$service" 2>/dev/null || true)
     [ -n "$digest" ] || continue
@@ -2060,6 +2064,74 @@ perform_rollback() { # backup old-version old-images from to at
   say "Rollback complete."
 }
 
+# The image prefix moves with the repository rename. It runs inside upgrade, after every refusal
+# that needs no registry and before anything is pulled or read from the target's images.
+# Only an exact old prefix (or an absent key, where the old compose default applied) moves; any
+# other value is the operator's own registry or mirror. Order: tag locally first, so a missing
+# image refuses the upgrade with nothing changed; then the answers file, then .env, so a failure
+# between the two leaves a state that a second run repairs.
+rewrite_prefix_file() { # rewrite_prefix_file FILE KEY NEWLINE-IF-ABSENT(yes|no)
+  local file=$1 key=$2 append=$3 tmp="$1.prefix.$$" count
+  count=$(grep -c "^$key=" "$file" 2>/dev/null || true)
+  [ "$count" -le 1 ] || {
+    fail "$file has more than one $key line"
+    return 1
+  }
+  umask 077
+  if [ "$count" -eq 1 ]; then
+    sed "s|^$key=.*|$key=$DEFAULT_IMAGE_PREFIX|" "$file" >"$tmp" || { rm -f -- "$tmp"; return 1; }
+  elif [ "$append" = yes ]; then
+    { cat -- "$file"; printf '%s=%s\n' "$key" "$DEFAULT_IMAGE_PREFIX"; } >"$tmp" \
+      || { rm -f -- "$tmp"; return 1; }
+  else
+    return 0
+  fi
+  if ! chmod 600 "$tmp" || ! mv -- "$tmp" "$file"; then
+    rm -f -- "$tmp"
+    fail "$file image prefix update failed; the previous file was kept"
+    return 1
+  fi
+}
+
+migrate_image_prefix() { # migrate_image_prefix INSTALLED_VERSION
+  local installed=$1 prefix service entry
+  local -a services=(postgres backend frontend)
+  [ -f "$ENV_FILE" ] || return 0
+  prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+  [ "$prefix" != "$DEFAULT_IMAGE_PREFIX" ] || return 0
+  if [ "$(grep -c '^QRADAR_DASH_IMAGE_PREFIX=' "$ENV_FILE" || true)" -gt 1 ]; then
+    fail "upgrade refused: $ENV_FILE has more than one QRADAR_DASH_IMAGE_PREFIX line; nothing was changed"
+    return 1
+  fi
+  if [ -n "$prefix" ] && [ "$prefix" != "$OLD_IMAGE_PREFIX" ]; then
+    say "Image prefix $prefix is not the old default; left as it is. The registry or mirror must carry the target's images under that prefix."
+    return 0
+  fi
+  if doctor_profile_enabled proxy; then services+=(proxy); fi
+  if doctor_profile_enabled mcp; then services+=(qradar-mcp); fi
+  for service in "${services[@]}"; do
+    docker image inspect "$OLD_IMAGE_PREFIX/$service:$installed" >/dev/null 2>&1 || {
+      fail "upgrade refused: the installed image $OLD_IMAGE_PREFIX/$service:$installed is not on this host, so the image prefix cannot move; nothing was changed"
+      return 1
+    }
+  done
+  for service in "${services[@]}"; do
+    docker tag "$OLD_IMAGE_PREFIX/$service:$installed" \
+      "$DEFAULT_IMAGE_PREFIX/$service:$installed" || {
+      fail "upgrade refused: tagging $service under $DEFAULT_IMAGE_PREFIX failed; nothing was changed"
+      return 1
+    }
+  done
+  if [ -f "$SAVED_ANSWERS" ]; then
+    entry=$(sed -n 's/^IMAGE_PREFIX=//p' "$SAVED_ANSWERS" | head -n1)
+    if [ "$entry" = "$OLD_IMAGE_PREFIX" ]; then
+      rewrite_prefix_file "$SAVED_ANSWERS" IMAGE_PREFIX no || return 1
+    fi
+  fi
+  rewrite_prefix_file "$ENV_FILE" QRADAR_DASH_IMAGE_PREFIX yes || return 1
+  say "Image prefix moved: $OLD_IMAGE_PREFIX -> $DEFAULT_IMAGE_PREFIX (the repository was renamed)."
+}
+
 cmd_upgrade() {
   local target="" offline=no installed min_from db_size backup_root old_images
   local backup_output backup at new_images old_env_version checkout_version
@@ -2108,6 +2180,7 @@ cmd_upgrade() {
     fail "upgrade refused: the last upgrade failed; run rollback or restore first"
     return 1
   fi
+  migrate_image_prefix "$installed" || return 1
   upgrade_pull_target "$target" "$offline" || {
     fail "upgrade refused: target images are unavailable; no container was stopped"
     return 1

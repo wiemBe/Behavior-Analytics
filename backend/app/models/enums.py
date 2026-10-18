@@ -289,6 +289,8 @@ class CustomRuleSubjectKind(StrEnum):
     WAF_ENDPOINT = "WAF_ENDPOINT"
     IPS_ENTITY = "IPS_ENTITY"
     IPS_SOURCE = "IPS_SOURCE"
+    #: A pinned value of a property watch (Phase G, design §G.10.2).
+    PW_VALUE = "PW_VALUE"
 
 
 class CustomRuleMetric(StrEnum):
@@ -322,6 +324,9 @@ class CustomRuleMetric(StrEnum):
     TOTAL_EVENTS = "total_events"
     #: IPS_SOURCE — blocked share of action events.
     BLOCKED_SHARE = "blocked_share"
+    #: PW_VALUE — events in the bucket for one pinned property-watch value
+    #: (`pw_value_metric.events`, Phase G design §G.10.2).
+    PW_VALUE_EVENTS = "pw_value_events"
 
 
 class WafLogicalField(StrEnum):

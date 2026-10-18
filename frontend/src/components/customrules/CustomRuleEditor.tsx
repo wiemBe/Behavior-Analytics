@@ -133,6 +133,7 @@ export function CustomRuleEditor({
       sourceClass: "",
       wafEndpointId: "",
       ipsEntityId: "",
+      pwValueId: "",
       metric: firstMetric,
     }));
     setSubjectLabel("");
@@ -178,6 +179,7 @@ export function CustomRuleEditor({
     sourceClass: draft.sourceClass,
     wafEndpointId: draft.wafEndpointId,
     ipsEntityId: draft.ipsEntityId,
+    pwValueId: draft.pwValueId,
   };
 
   return (

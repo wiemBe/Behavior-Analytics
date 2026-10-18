@@ -166,6 +166,8 @@ export function buildAttentionRows(
   for (const anomaly of anomalies) {
     // RESOLVED and NORMAL anomalies are history, not work.
     if (!["OPEN", "CANDIDATE", "RECOVERING"].includes(anomaly.state)) continue;
+    // A property-watch row has no source: it belongs to its watch, not to a source row here.
+    if (anomaly.log_source_id === null) continue;
     claimed.add(anomaly.log_source_id);
     rows.push({
       key: `anomaly:${anomaly.id}`,

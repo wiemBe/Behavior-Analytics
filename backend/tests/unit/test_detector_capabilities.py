@@ -19,6 +19,7 @@ from app.anomaly.capabilities import (
     IPS_BASELINE_METRICS,
     IPS_DETECTORS,
     LOG_SOURCE_DETECTORS,
+    PW_DETECTORS,
     SYNTHETIC_TELEMETRY,
     WAF_BASELINE_METRICS,
     WAF_DETECTORS,
@@ -44,9 +45,11 @@ from app.models.enums import (
     BucketCompleteness,
     DetectorSignal,
     IpsAnomalyType,
+    PwAnomalyType,
     WafAnomalyType,
     WafMeasurement,
 )
+from app.property_watch.detectors import PW_DETECTOR_FUNCTIONS
 from app.providers.base import LogSourceTelemetry as T
 from app.providers.mock import MockQRadarProvider
 from app.providers.qradar_rest import QRadarRestProvider
@@ -78,6 +81,11 @@ EXPECTED_STATUS = {
     "IPS_SOURCE_CONCENTRATION_SPIKE": DetectorStatus.OPERATIONAL,
     "IPS_PORT_FANOUT_SPIKE": DetectorStatus.OPERATIONAL,
     "IPS_BLOCK_RATIO_SHIFT": DetectorStatus.OPERATIONAL,
+    "PW_VALUE_SPIKE": DetectorStatus.OPERATIONAL,
+    "PW_VALUE_DROP": DetectorStatus.OPERATIONAL,
+    "PW_VALUE_DISAPPEARED": DetectorStatus.OPERATIONAL,
+    "PW_NEW_VALUE": DetectorStatus.OPERATIONAL,
+    "PW_NEW_COMBINATION": DetectorStatus.OPERATIONAL,
 }
 
 
@@ -95,6 +103,7 @@ def test_every_named_detector_has_a_spec() -> None:
     assert set(LOG_SOURCE_DETECTORS) == set(AnomalyType)
     assert set(WAF_DETECTORS) == set(WafAnomalyType)
     assert set(IPS_DETECTORS) == set(IpsAnomalyType)
+    assert set(PW_DETECTORS) == set(PwAnomalyType)
 
 
 def test_every_ips_detector_is_implemented_scheduled_and_gated() -> None:
@@ -154,6 +163,12 @@ def test_engine_and_registry_agree_on_what_is_executable() -> None:
         if detector_status(s) is DetectorStatus.OPERATIONAL
     }
     assert operational == {t.value for t in WAF_DETECTOR_FUNCTIONS}
+    pw_operational = {
+        spec.detector_type
+        for spec in PW_DETECTORS.values()
+        if detector_status(spec) is DetectorStatus.OPERATIONAL
+    }
+    assert pw_operational == {detector.value for detector in PW_DETECTOR_FUNCTIONS}
 
 
 def test_every_waf_baseline_metric_is_trained() -> None:
