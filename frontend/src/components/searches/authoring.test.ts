@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError, type ScheduledSearch, type SearchExecution, type SearchVersion } from "@/lib/api";
 import {
+  DEFAULT_SCHEDULE_CRON,
   SEARCH_LATENCY_STATEMENT,
   capMessage,
   classifySaveError,
@@ -107,6 +108,15 @@ describe("search access", () => {
 });
 
 describe("schedule options", () => {
+  it("defaults a new search to every five minutes (D-28)", () => {
+    expect(DEFAULT_SCHEDULE_CRON).toBe("*/5 * * * *");
+    expect(emptyDraft().cron).toBe(DEFAULT_SCHEDULE_CRON);
+    expect(scheduleOptions(DEFAULT_SCHEDULE_CRON, null)[0]).toEqual({
+      value: "*/5 * * * *",
+      label: "Every 5 min",
+    });
+  });
+
   it("offers the seven presets and keeps a custom cron as Custom", () => {
     const fresh = scheduleOptions("0 * * * *", null).map((option) => option.label);
     expect(fresh).toEqual([
@@ -160,7 +170,7 @@ describe("draft parsing", () => {
     expect(created.name).toBe("Nightly");
     expect(created.description).toBeNull();
     expect(created.aql_query).toBe("  SELECT 1  ");
-    expect(created.schedule_cron).toBe("0 * * * *");
+    expect(created.schedule_cron).toBe("*/5 * * * *");
     expect(created.threshold_value).toBeNull();
     expect(created).not.toHaveProperty("owner");
 

@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
-from app.models.enums import SearchCadence, SearchFamily
+from app.models.enums import DEFAULT_SEARCH_CADENCE, SearchCadence, SearchFamily
 from app.models.identity import AuditLog
 from app.models.search_cadence import SearchCadenceSetting
 from app.services.search_cadence import (
@@ -64,16 +64,16 @@ async def test_claim_restores_a_missing_seed_row_at_the_default(db_session) -> N
     await db_session.commit()
     row = await db_session.get(SearchCadenceSetting, SearchFamily.RULE_MATCH.value)
     assert row is not None
-    assert row.cadence_seconds == SearchCadence.ONE_HOUR
+    assert row.cadence_seconds == DEFAULT_SEARCH_CADENCE
 
 
-async def test_get_and_list_treat_missing_seed_rows_as_one_hour(db_session) -> None:
+async def test_get_and_list_treat_missing_seed_rows_as_the_default(db_session) -> None:
     service = SearchCadenceService(db_session, Settings(), lambda: T0)
     missing = await service.get(SearchFamily.WAF_COLLECTION)
-    assert missing.cadence_seconds == SearchCadence.ONE_HOUR
+    assert missing.cadence_seconds == DEFAULT_SEARCH_CADENCE
     rows = await service.list()
     assert [row.family for row in rows] == [family.value for family in SearchFamily]
-    assert all(row.cadence_seconds == SearchCadence.ONE_HOUR for row in rows)
+    assert all(row.cadence_seconds == DEFAULT_SEARCH_CADENCE for row in rows)
 
 
 async def test_exactly_one_concurrent_session_claims_a_slot(db_schema) -> None:

@@ -326,7 +326,8 @@ alert through `AlertService.apply_bulk` (`app/alerts/service.py:158`), noted as 
 **Caps (numbers).** `custom_rules_max_enabled` = **100** enabled rules; creating or enabling
 beyond it returns `409` with the limit named (the dashboard-limits precedent,
 `docs/UI-REDESIGN-PLAN.md` lines 1130-1139). `custom_rules_max_buckets_per_run` = 288. At the
-default 1 h cadences the whole tick judges 12 buckets per kind.
+default 5 min cadences the steady-state tick judges one bucket per kind; before D-28, the default
+1 h cadence made a tick judge 12 buckets per kind.
 
 ### F.4.3 Lifecycle: alerts and a breach record — not a fourth incident lifecycle (question 5)
 

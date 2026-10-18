@@ -803,6 +803,7 @@ class TestPermitAndWindow:
     ) -> None:
         settings = cfg(waf_max_groups_per_bucket=10, collection_max_backfill_intervals=3)
         provider = ScriptedWaf(traffic(40, flood_at=None, empty_at=None))
+        await pin_cadence(db_session, settings, 3600)  # pre-D-28 default
         _, source, instance, make = await make_source(db_session, provider, settings)
         await make(after(1)).collect(instance, log_source=source)
 
@@ -909,6 +910,7 @@ class TestEvaluationOfATick:
         provider = StubWafProvider(
             [batch(T0 + STEP * i, [("/portal/login", "POST", 100)]) for i in range(14)]
         )
+        await pin_cadence(db_session, settings, 3600)  # pre-D-28 default
         profile, _ = await source_with_profile(db_session, provider, settings)
         profile_id = profile.id
 

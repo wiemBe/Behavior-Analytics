@@ -53,7 +53,7 @@ describe("new search editor", () => {
     render(<SearchEditor mode="create" />);
     expect(screen.getAllByText(SEARCH_LATENCY_STATEMENT)).toHaveLength(1);
     expect(screen.queryByText(/Current:/)).toBeNull();
-    expect(screen.getByText(/Default:/)).toHaveTextContent("Every 1 h");
+    expect(screen.getByText(/Default:/)).toHaveTextContent("Every 5 min");
     const schedule = screen.getByRole("combobox", { name: "Schedule" });
     expect(within(schedule).getAllByRole("option").map((option) => option.textContent)).toEqual([
       "Every 5 min",
@@ -64,7 +64,7 @@ describe("new search editor", () => {
       "Every 4 h",
       "Every 8 h",
     ]);
-    expect((schedule as HTMLSelectElement).value).toBe("0 * * * *");
+    expect((schedule as HTMLSelectElement).value).toBe("*/5 * * * *");
   });
 
   it("saves a disabled definition and does not run the unsaved text", async () => {
@@ -80,7 +80,7 @@ describe("new search editor", () => {
     expect(body.enabled).toBe(false);
     expect(body.name).toBe("Nightly count");
     expect(body.aql_query).toBe("SELECT COUNT(*) FROM events");
-    expect(body.schedule_cron).toBe("0 * * * *");
+    expect(body.schedule_cron).toBe("*/5 * * * *");
     expect(body.threshold_value).toBeNull();
     expect(body.visualization_type).toBe("TABLE");
     expect(body).not.toHaveProperty("owner");

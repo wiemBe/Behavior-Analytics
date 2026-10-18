@@ -260,7 +260,8 @@ sources like any other. C.2b adds **who is feeding them**:
   only bootstraps `REVIEWED`, exactly as C.4 does. Reviewing or dismissing a sender is audited.
 
 **Collection.**
-- A new search family, `CATCHALL_SENDERS`, defaults to 1 h with the §SC.4 gate.
+- The `CATCHALL_SENDERS` search family defaults to 5 min with the §SC.4 gate; it defaulted to
+  1 h before D-28.
 - One keyed search runs per tick per instance, under the §SC.5 contract (split on truncation,
   time first; a bucket is never written from a truncated wide result; one bucket truncated gives
   `LOWER_BOUND` with the top kept).

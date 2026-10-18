@@ -298,4 +298,4 @@ class TestCadenceFamily:
         by_family = {item["family"]: item for item in body}
         assert body[-1]["family"] == "GEO_COLLECTION"
         assert by_family["GEO_COLLECTION"]["bucket_seconds"] == 300
-        assert by_family["GEO_COLLECTION"]["cadence_seconds"] == 3600
+        assert by_family["GEO_COLLECTION"]["cadence_seconds"] == 300
