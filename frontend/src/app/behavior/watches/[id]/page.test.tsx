@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import PropertyWatchPage from "./page";
 import {
-  bucket, catalog, incident, iso, paged, point, scope, series, value, watch, WATCH_ID,
+  aql, bucket, catalog, incident, iso, paged, point, scope, series, value, watch, WATCH_ID,
 } from "@/components/propertywatch/fixtures";
 import type { WatchWorkspaceProps } from "@/components/propertywatch/WatchWorkspace";
 import { ApiError, api } from "@/lib/api";
@@ -40,6 +40,7 @@ beforeEach(() => {
   vi.spyOn(api, "propertyWatchScope").mockResolvedValue(scope());
   vi.spyOn(api, "propertyWatchBuckets").mockResolvedValue([bucket(0), bucket(1)]);
   vi.spyOn(api, "propertyWatchValues").mockResolvedValue(values);
+  vi.spyOn(api, "propertyWatchAql").mockResolvedValue(aql());
   vi.spyOn(api, "propertyWatchSeries").mockResolvedValue({
     hours: 24,
     series: [series("id-p", "pin", [point(0)])],
@@ -165,6 +166,62 @@ describe("what the workspace is handed", () => {
     await renderPage();
     expect(given().initialSelected.length).toBeGreaterThan(0);
     expect(given().initialSeries).toEqual([]);
+  });
+});
+
+describe("the Definition and Threshold rules reads", () => {
+  it("hands the generated query text over, and nothing from the request goes into the read", async () => {
+    await renderPage();
+    expect(api.propertyWatchAql).toHaveBeenCalledWith(WATCH_ID);
+    expect(given().aql).toEqual({ kind: "ok", aql: aql() });
+  });
+
+  it("hands over the status of a refused or failed AQL read, not an empty text", async () => {
+    vi.spyOn(api, "propertyWatchAql").mockRejectedValue(new ApiError(403, "Forbidden"));
+    await renderPage();
+    expect(given().aql).toEqual({ kind: "error", status: 403 });
+    vi.spyOn(api, "propertyWatchAql").mockRejectedValue(new Error("down"));
+    await renderPage();
+    expect(given().aql).toEqual({ kind: "error", status: 0 });
+  });
+
+  it("maps a rule's pinned value from the page's own read, with no second read", async () => {
+    vi.spyOn(api, "propertyWatch").mockResolvedValue(
+      watch({ threshold_rules: [{ id: "r1", name: "Backup flood", pw_value_id: "id-p", enabled: true }] }),
+    );
+    await renderPage();
+    expect(given().ruleValues?.get("id-p")?.value_key).toBe("pin");
+    expect(api.propertyWatchValues).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes one wider read when a rule pins a value that is not on the page", async () => {
+    vi.spyOn(api, "propertyWatch").mockResolvedValue(
+      watch({ threshold_rules: [{ id: "r1", name: "Old", pw_value_id: "id-far", enabled: true }] }),
+    );
+    vi.mocked(api.propertyWatchValues).mockResolvedValueOnce(values);
+    vi.mocked(api.propertyWatchValues).mockResolvedValueOnce(paged([value("id-far", "far-away")]));
+    await renderPage();
+    expect(api.propertyWatchValues).toHaveBeenCalledTimes(2);
+    expect(api.propertyWatchValues).toHaveBeenLastCalledWith(WATCH_ID, { hours: 168, limit: 200 });
+    expect(given().ruleValues?.get("id-far")?.value_key).toBe("far-away");
+  });
+
+  it("makes no wider read when the watch has no rules", async () => {
+    await renderPage();
+    expect(api.propertyWatchValues).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells the workspace whether the caller may add a rule", async () => {
+    await renderPage();
+    expect(given().ruleAccess).toBe("reader");
+    vi.spyOn(api, "caller").mockResolvedValue({
+      subject: "e", email: null, permissions: ["custom_rule:write"], effective_permissions: ["custom_rule:write"],
+    });
+    await renderPage();
+    expect(given().ruleAccess).toBe("writer");
+    vi.spyOn(api, "caller").mockRejectedValue(new Error("x"));
+    await renderPage();
+    expect(given().ruleAccess).toBe("unknown");
   });
 });
 

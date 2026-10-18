@@ -31,6 +31,7 @@ import {
   buildCoverage,
   buildPwOption,
   PW_CATEGORY_TOKENS,
+  type DetectionBand,
   type PwPalette,
 } from "./pwChartOption";
 import { eventsUnit } from "./pwFormat";
@@ -81,6 +82,8 @@ export interface PropertyWatchSeriesChartProps {
    */
   coverage?: { buckets: PwBucket[]; floor: number | null } | null;
   incidents?: Array<{ start: string; end: string | null }>;
+  /** The detector's recorded expected range, as one rectangle over the incident. */
+  detectionBand?: DetectionBand | null;
   /** A widget body: the series panel alone, filling its container. */
   compact?: boolean;
   ariaLabel?: string;
@@ -96,6 +99,7 @@ export function PropertyWatchSeriesChart({
   collected,
   coverage = null,
   incidents = [],
+  detectionBand = null,
   compact = false,
   ariaLabel = "Events per bucket for the selected values, and the parsed share of the scope",
   emptyText = "No value is plotted.",
@@ -126,6 +130,7 @@ export function PropertyWatchSeriesChart({
         model,
         palette: readPwPalette(),
         incidents,
+        detectionBand,
         coverage: coverageModel,
         compact,
         reduceMotion,
@@ -137,7 +142,7 @@ export function PropertyWatchSeriesChart({
       observer.disconnect();
       chart.dispose();
     };
-  }, [model, coverageModel, incidents, compact, showCoverage]);
+  }, [model, coverageModel, incidents, detectionBand, compact, showCoverage]);
 
   if (model.lines.length === 0 && !showCoverage) {
     return (
@@ -200,6 +205,12 @@ export function PropertyWatchSeriesChart({
           <li>
             <span className="chart-key chart-key-gap" aria-hidden="true" />
             Not collected
+          </li>
+        )}
+        {detectionBand && model.lines.length > 0 && (
+          <li>
+            <span className="chart-key chart-key-band" aria-hidden="true" />
+            Expected range at detection
           </li>
         )}
         {incidents.length > 0 && (

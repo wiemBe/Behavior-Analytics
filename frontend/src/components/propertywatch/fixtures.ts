@@ -3,6 +3,9 @@
 
 import type {
   AnomalySummary,
+  PwAnomalyDetail,
+  PwDetectionDetail,
+  WatchAql,
   PagedPwValues,
   PropertyWatch,
   PropertyWatchCatalog,
@@ -43,7 +46,9 @@ export function watch(over: Partial<PropertyWatch> = {}): PropertyWatch {
     coverage: { bucket_start: iso(11), total_events: 1000, parsed_events: 960, ratio: 0.96, measurement: "EXACT" },
     open_incidents: 0,
     detector_states: [],
+    threshold_rules: [],
     alerting_mode: "shadow",
+    cadence_seconds: 3600,
     created_at: "2026-10-10T09:00:00Z",
     updated_at: "2026-10-11T09:00:00Z",
     created_by: "efe",
@@ -196,6 +201,7 @@ export function incident(over: Partial<AnomalySummary> = {}): AnomalySummary {
       properties: [{ kind: "NORMALIZED", name: "username" }],
       value_key: "svc-backup",
       components: ["svc-backup"],
+      value_id: "id-sb",
     },
     ...over,
   } as AnomalySummary;
@@ -224,6 +230,97 @@ export function scope(over: Partial<WatchScope> = {}): WatchScope {
     changes: [
       { bucket_start: iso(6), member_count_before: 37, member_count_after: 40, in_grace_window: true },
     ],
+    ...over,
+  };
+}
+
+/** A spike's detection block as PW-5c serves it: the band, the figures, no new-value fields. */
+export function spikeDetection(over: Partial<PwDetectionDetail> = {}): PwDetectionDetail {
+  return {
+    reason: "420 events is above the median 100.0 (+320, 4.20x); robust z=6.10 (threshold +3.5)",
+    expected_low: 80,
+    expected_high: 140,
+    threshold: 3.5,
+    baseline_sample_count: 36,
+    baseline_version: 2,
+    watch_version: 3,
+    observed_events: 420,
+    expected_median: 100,
+    metric_semantics: "events per bucket",
+    observed_measurement: "EXACT",
+    absolute_delta: 320,
+    ratio: 4.2,
+    ratio_basis: null,
+    robust_score_status: "OK",
+    robust_z: 6.1,
+    fallback_bound: null,
+    classification: null,
+    history_buckets_verified: null,
+    events_since_first_seen: null,
+    buckets_with_traffic: null,
+    claim: null,
+    ...over,
+  };
+}
+
+/** A new value's detection block: counts only, no band. */
+export function newValueDetection(over: Partial<PwDetectionDetail> = {}): PwDetectionDetail {
+  return spikeDetection({
+    reason: "at least 31 events across 3 buckets since first appearance",
+    expected_low: null,
+    expected_high: null,
+    threshold: 20,
+    baseline_sample_count: 2016,
+    observed_events: null,
+    expected_median: null,
+    observed_measurement: "LOWER_BOUND",
+    absolute_delta: null,
+    ratio: null,
+    robust_score_status: null,
+    robust_z: null,
+    classification: "PW_NEW_VALUE",
+    history_buckets_verified: 2016,
+    events_since_first_seen: 31,
+    buckets_with_traffic: 3,
+    claim: "the value stayed below 5 events in every bucket of the verified history",
+    ...over,
+  });
+}
+
+/** The detail read of a PW incident, as `GET /anomalies/{id}` serves it. */
+export function pwDetail(over: Partial<PwAnomalyDetail> = {}): PwAnomalyDetail {
+  return {
+    ...incident(),
+    baseline_version: 2,
+    policy_version: 1,
+    transitions: [
+      { from_state: null, to_state: "CANDIDATE", occurred_at: iso(7), bucket_start: iso(7), reason: "above band", actor: "engine", observed_value: 420, expected_value: 100 },
+      { from_state: "CANDIDATE", to_state: "OPEN", occurred_at: iso(9), bucket_start: iso(9), reason: "3 consecutive buckets", actor: "engine", observed_value: 420, expected_value: 100 },
+    ],
+    explanation_package: null,
+    detection: spikeDetection(),
+    ...over,
+  } as PwAnomalyDetail;
+}
+
+export function aql(over: Partial<WatchAql> = {}): WatchAql {
+  return {
+    watch_id: WATCH_ID,
+    watch_version: 3,
+    window_start: "2026-10-18T07:00:00Z",
+    window_end: "2026-10-18T08:00:00Z",
+    bucket_seconds: 300,
+    current: [
+      { search: "GROUPED", text: "SELECT \"username\" AS v, COUNT(*) AS c FROM events GROUP BY v ORDER BY c DESC LIMIT 50" },
+      { search: "TOTALS", text: "SELECT COUNT(*) AS total FROM events" },
+    ],
+    current_unavailable: null,
+    last_bucket: {
+      bucket_start: iso(11),
+      collected_at: iso(11),
+      watch_version: 3,
+      queries: [{ search: "GROUPED", text: "SELECT \"username\" AS v, COUNT(*) AS c FROM events GROUP BY v LIMIT 50" }],
+    },
     ...over,
   };
 }

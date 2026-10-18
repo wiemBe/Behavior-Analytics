@@ -20,6 +20,7 @@ import {
   type PropertyWatch,
   type PropertyWatchCatalog,
   type PwBucket,
+  type PwValue,
   type PwValueSeries,
   type WatchScope,
 } from "@/lib/api";
@@ -27,6 +28,8 @@ import {
 import { PropertyWatchSeriesChart } from "./PropertyWatchSeriesChart";
 import { honestyNotes, WatchHonesty } from "./WatchHonesty";
 import { WatchDefinition } from "./WatchDefinition";
+import type { AqlRead } from "./WatchAql";
+import { ThresholdRules, type RuleAccess } from "./ThresholdRules";
 import { WatchIncidents } from "./WatchIncidents";
 import {
   activeIncidentsByValue,
@@ -54,6 +57,12 @@ export interface WatchWorkspaceProps {
   incidentsTotal: number | null;
   /** The resolved membership, or null when it could not be read. */
   scope: WatchScope | null;
+  /** The generated query text; null when the read did not happen. */
+  aql?: AqlRead | null;
+  /** Tracked values by id, for the Threshold rules tab; null when they could not be read. */
+  ruleValues?: ReadonlyMap<string, PwValue> | null;
+  /** Whether the caller holds `custom_rule:write`. */
+  ruleAccess?: RuleAccess;
   initialSelected: string[];
   initialSeries: PwValueSeries[];
   /** The window the axis covers (ISO), taken once by the server so the page renders one view. */
@@ -298,9 +307,22 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
           ),
         },
         {
+          id: "rules",
+          label: watch.threshold_rules ? `Threshold rules (${watch.threshold_rules.length})` : "Threshold rules",
+          content: () => (
+            <ThresholdRules
+              rules={watch.threshold_rules ?? null}
+              values={props.ruleValues ?? null}
+              access={props.ruleAccess ?? "unknown"}
+            />
+          ),
+        },
+        {
           id: "definition",
           label: "Definition",
-          content: () => <WatchDefinition watch={watch} catalog={catalog} scope={props.scope} />,
+          content: () => (
+            <WatchDefinition watch={watch} catalog={catalog} scope={props.scope} aql={props.aql ?? null} />
+          ),
         },
       ]}
     />

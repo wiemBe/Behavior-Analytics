@@ -262,6 +262,21 @@ describe("chart.property_watch, the other states", () => {
     expect(drill()).toHaveAttribute("href", `/behavior/watches/${WATCH_ID}`);
   });
 
+  it("is not stale at 3 h old when the watch's cadence is 8 h, and is past 16 h", async () => {
+    vi.setSystemTime(new Date(Date.parse(iso(11)) + 3 * 3600_000));
+    world({ watch: watch({ cadence_seconds: 8 * 3600 }) });
+    renderWidget();
+    expect(await screen.findByText(/Last bucket/)).toBeInTheDocument();
+    expect(screen.queryByText(/Stale: the latest data is from/)).toBeNull();
+  });
+
+  it("is stale past twice an 8 h cadence", async () => {
+    vi.setSystemTime(new Date(Date.parse(iso(11)) + 17 * 3600_000));
+    world({ watch: watch({ cadence_seconds: 8 * 3600 }) });
+    renderWidget();
+    expect(await screen.findByText(/Stale: the latest data is from/)).toHaveTextContent("17 h old");
+  });
+
   it("stale by the backend's own STALE status, although the bucket is young", async () => {
     world({ watch: watch({ status: "STALE" }) });
     renderWidget();

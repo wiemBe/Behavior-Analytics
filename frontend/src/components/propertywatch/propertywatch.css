@@ -79,8 +79,27 @@ td.pw-value-cell {
 .pw-values td.num {
   white-space: nowrap;
 }
-.pw-values td:last-child {
-  min-width: 24ch;
+/* A long value is cut to two lines; the whole text is in the disclosure beneath it. */
+.pw-value-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.pw-value-full {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+.pw-value-full summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+.pw-value-full .pw-value-text {
+  display: block;
+  margin-top: var(--sp-1);
+  max-height: 12em;
+  overflow: auto;
 }
 .pw-values tr[aria-selected="true"] td {
   background: var(--surface-2);

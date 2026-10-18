@@ -161,8 +161,8 @@ export function pwTooltip(
 }
 
 type MarkAreaPair = [
-  { xAxis: number; itemStyle?: { color: string }; name?: string },
-  { xAxis: number },
+  { xAxis: number; yAxis?: number; itemStyle?: { color: string }; name?: string },
+  { xAxis: number; yAxis?: number },
 ];
 
 function areas(spans: Span[], color: string, name: string): MarkAreaPair[] {
@@ -177,9 +177,21 @@ export interface PwOptionInput {
   palette: PwPalette;
   /** Incident spans; an open one ends at the last slot. */
   incidents?: Array<{ start: string; end: string | null }>;
+  /**
+   * The expected range the detector recorded at detection, drawn as one rectangle over the
+   * incident's span (an open one ends at the last slot). Never three lines.
+   */
+  detectionBand?: DetectionBand | null;
   coverage?: CoverageModel | null;
   compact?: boolean;
   reduceMotion?: boolean;
+}
+
+export interface DetectionBand {
+  start: string;
+  end: string | null;
+  low: number;
+  high: number;
 }
 
 /** The option for the series chart, with the coverage panel beneath it on the same time axis. */
@@ -202,6 +214,21 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
   }));
   const gapAreas = areas(model.uncollected, c.gap, "not collected");
   const incidentAreas = areas(incidentSpans, c.anomaly, "incident");
+  const detected = input.detectionBand ?? null;
+  const detectionAreas: MarkAreaPair[] =
+    detected && model.lines.length > 0
+      ? [
+          [
+            {
+              xAxis: Date.parse(detected.start),
+              yAxis: detected.low,
+              itemStyle: { color: c.band },
+              name: "expected range at detection",
+            },
+            { xAxis: detected.end ? Date.parse(detected.end) : last, yAxis: detected.high },
+          ],
+        ]
+      : [];
 
   const single = model.lines.length === 1 ? model.lines[0] : null;
   const band = model.hasBand && single !== null;
@@ -226,8 +253,12 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
     itemStyle: { color: c.cat[i % c.cat.length] },
     z: 3,
     markArea:
-      i === 0 && gapAreas.length + incidentAreas.length > 0
-        ? { silent: true, label: { show: false }, data: [...gapAreas, ...incidentAreas] }
+      i === 0 && gapAreas.length + incidentAreas.length + detectionAreas.length > 0
+        ? {
+            silent: true,
+            label: { show: false },
+            data: [...gapAreas, ...incidentAreas, ...detectionAreas],
+          }
         : undefined,
   }));
 

@@ -4,6 +4,10 @@
 // Value text is attacker-controlled (a username from a log line). React renders every cell as
 // text; nothing here is markup. Numbers are right-aligned with tabular figures and carry their
 // unit in the column header. A reading that is not a number says what it is in words.
+//
+// The baseline state and the open incidents sit under the value, not in a column of their own:
+// at 1024 px a seventh column was clipped, and they describe the value, not a measurement.
+// A long value takes two lines; the full text is behind a disclosure, which a keyboard reaches.
 
 import type { AnomalySummary, PwBucket, PwValue } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
@@ -19,6 +23,9 @@ import {
   readingText,
   shareOfParsed,
 } from "./pwFormat";
+
+/** A value longer than this is cut to two lines in the cell and offered in full on request. */
+const FULL_VALUE_FROM = 60;
 
 export type ValueSort = "events" | "value" | "first_seen";
 
@@ -102,7 +109,6 @@ export function WatchValuesTable({
             Share of parsed events
           </th>
           {header("first_seen", "First seen (UTC)")}
-          <th scope="col">Baseline and incidents</th>
         </tr>
       </thead>
       <tbody>
@@ -122,10 +128,25 @@ export function WatchValuesTable({
                 />
               </td>
               <td className="cell-name pw-value-cell">
-                <span className="pw-value-text">{text}</span>
+                <span className="pw-value-text pw-value-clamp">{text}</span>
+                {text.length > FULL_VALUE_FROM && (
+                  <details className="pw-value-full">
+                    <summary>Show the full value</summary>
+                    {/* Attacker-controlled: rendered as text, never as markup. */}
+                    <span className="pw-value-text">{text}</span>
+                  </details>
+                )}
                 {v.pinned && <span className="cell-sub">pinned</span>}
                 {v.truncated && <span className="cell-sub">value text was cut at the length limit</span>}
                 {!v.active && <span className="cell-sub">no longer tracked</span>}
+                <span className="cell-sub">{baselineText(v)}</span>
+                {open.map((a) => (
+                  <span key={a.id} className="cell-sub">
+                    <span className={`pill pill-quiet ${stateTone(a.state)}`}>
+                      {pwTypeLabel(a.anomaly_type)} · {a.state}
+                    </span>
+                  </span>
+                ))}
               </td>
               <td className="num" title={readingMeaning(v.reading)}>
                 {readingText(v.reading, v.events, v.measurement)}
@@ -140,16 +161,6 @@ export function WatchValuesTable({
                 ) : (
                   "—"
                 )}
-              </td>
-              <td>
-                <span>{baselineText(v)}</span>
-                {open.map((a) => (
-                  <span key={a.id} className="cell-sub">
-                    <span className={`pill pill-quiet ${stateTone(a.state)}`}>
-                      {pwTypeLabel(a.anomaly_type)} · {a.state}
-                    </span>
-                  </span>
-                ))}
               </td>
             </tr>
           );

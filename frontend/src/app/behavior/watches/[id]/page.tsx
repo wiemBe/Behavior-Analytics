@@ -1,9 +1,8 @@
 // One property watch: what values does this property take on this scope, and has anything about
 // them changed?
 //
-// Read only. The first screen is the header, the series chart with the parsed share beneath it,
-// and the values table; the Incidents and Definition tabs follow. The Threshold rules tab needs
-// PW-6 and the Edit disclosure needs PW-8: neither is drawn until it exists.
+// The first screen is the header, the series chart with the parsed share beneath it, and the
+// values table; the Incidents, Threshold rules and Definition tabs follow.
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -12,6 +11,7 @@ import { PwStatus } from "@/components/propertywatch/PwStatus";
 import { PropertyWatchWriteNotice } from "@/components/propertywatch/PropertyWatchWriteNotice";
 import { WatchActions } from "@/components/propertywatch/WatchActions";
 import { WatchEditor } from "@/components/propertywatch/WatchEditor";
+import type { AqlRead } from "@/components/propertywatch/WatchAql";
 import { WatchWorkspace } from "@/components/propertywatch/WatchWorkspace";
 import {
   propertyWatchAccessFrom,
@@ -25,6 +25,7 @@ import {
   parsePwSort,
   VALUES_PAGE_SIZE,
 } from "@/components/propertywatch/pwRange";
+import { customRuleAccessFrom } from "@/components/customrules/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
   ApiError,
@@ -32,6 +33,7 @@ import {
   type AnomalySummary,
   type PagedPwValues,
   type PropertyWatch,
+  type PwValue,
   type PwValueSeries,
 } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
@@ -113,7 +115,7 @@ export default async function PropertyWatchPage({
   const since = new Date(end.getTime() - INCIDENT_DAYS * 86_400_000);
   // Each read below qualifies the page and none may blank it. A failure is `null`, which the
   // components word as "could not be loaded", never as "none".
-  const [catalog, scope, buckets, values, incidentPage] = await Promise.all([
+  const [catalog, scope, buckets, values, incidentPage, aql] = await Promise.all([
     api.propertyWatchCatalog().catch(() => null),
     api.propertyWatchScope(id).catch(() => null),
     api.propertyWatchBuckets(id, range.hours).catch(() => null),
@@ -129,11 +131,28 @@ export default async function PropertyWatchPage({
         limit: 50,
       })
       .catch(() => null),
+    // The generated query text. A refusal keeps its status so the tab can name the permission.
+    api
+      .propertyWatchAql(id)
+      .then((a): AqlRead => ({ kind: "ok", aql: a }))
+      .catch((err): AqlRead => ({ kind: "error", status: err instanceof ApiError ? err.status : 0 })),
   ]);
-  const access: PropertyWatchAccess = await api
-    .caller()
-    .then(propertyWatchAccessFrom)
-    .catch(() => "unknown" as const);
+  const caller = await api.caller().catch(() => null);
+  const access: PropertyWatchAccess = caller ? propertyWatchAccessFrom(caller) : "unknown";
+  const ruleAccess = caller ? customRuleAccessFrom(caller) : ("unknown" as const);
+
+  // The Threshold rules tab names each pinned value. Pinned values sort first, so the page's own
+  // read usually holds them; a rule whose value is not on this page costs one wider read, once.
+  const rules = watch.threshold_rules ?? [];
+  const known = new Map<string, PwValue>((values?.items ?? []).map((v) => [v.id, v]));
+  let ruleValues: Map<string, PwValue> | null = values ? known : null;
+  if (rules.some((r) => !known.has(r.pw_value_id))) {
+    const wide = await api
+      .propertyWatchValues(id, { hours: 168, limit: 200 })
+      .then((p) => p.items)
+      .catch(() => null as PwValue[] | null);
+    if (wide) ruleValues = new Map([...known, ...wide.map((v): [string, PwValue] => [v.id, v])]);
+  }
 
   const selection = defaultSelection(values?.items ?? [], asked);
   let initialSeries: PwValueSeries[] = [];
@@ -213,6 +232,9 @@ export default async function PropertyWatchPage({
         incidents={incidents}
         incidentsTotal={incidentPage ? incidentPage.total : null}
         scope={scope}
+        aql={aql}
+        ruleValues={ruleValues}
+        ruleAccess={ruleAccess}
         initialSelected={selection}
         initialSeries={initialSeries}
         windowStart={start.toISOString()}

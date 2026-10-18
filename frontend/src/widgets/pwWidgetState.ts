@@ -10,12 +10,24 @@ import { formatDateTime } from "@/lib/health";
 import type { WidgetState } from "./types";
 
 /**
- * A last bucket older than this is shown with its time and age. It is twice the default cadence
- * of the PROPERTY_WATCH family (1 h, `/admin/search-cadence`), a setting this widget cannot read
- * with `read:property_watches`; the backend's own `STALE` status, which knows the real cadence,
- * marks it as well. Either one is enough.
+ * The cadence of the PROPERTY_WATCH search family when a read does not carry one. It is the
+ * family's default (1 h, `/admin/search-cadence`); a watch read always carries the real value in
+ * `cadence_seconds`, so this is only the guard for a value that is missing or not positive.
  */
-export const PW_STALE_AFTER_SECONDS = 2 * 3600;
+export const PW_DEFAULT_CADENCE_SECONDS = 3600;
+
+/**
+ * A last bucket older than this is shown with its time and age: twice the family cadence the
+ * watch read carries (design §G.13.5), so an 8-hour family is not called stale after 2 hours.
+ * The backend's own `STALE` status marks it as well; either one is enough.
+ */
+export function staleAfterSeconds(cadenceSeconds: number | null | undefined): number {
+  const cadence =
+    typeof cadenceSeconds === "number" && Number.isFinite(cadenceSeconds) && cadenceSeconds > 0
+      ? cadenceSeconds
+      : PW_DEFAULT_CADENCE_SECONDS;
+  return 2 * cadence;
+}
 
 /** Statuses in which no bucket is being collected for a reason other than the watch's own state. */
 const NOT_COLLECTED_STATUSES: ReadonlySet<string> = new Set([
@@ -96,7 +108,10 @@ export function ageSeconds(lastBucket: string | null, now: Date): number | null 
   return age < 0 ? null : age;
 }
 
-/** True when the backend says STALE, or the last bucket is older than the limit above. */
-export function isStale(watch: Pick<PropertyWatch, "status">, age: number | null): boolean {
-  return watch.status === "STALE" || (age !== null && age > PW_STALE_AFTER_SECONDS);
+/** True when the backend says STALE, or the last bucket is older than twice the cadence. */
+export function isStale(
+  watch: Pick<PropertyWatch, "status" | "cadence_seconds">,
+  age: number | null,
+): boolean {
+  return watch.status === "STALE" || (age !== null && age > staleAfterSeconds(watch.cadence_seconds));
 }

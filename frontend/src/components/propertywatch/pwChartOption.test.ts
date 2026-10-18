@@ -197,3 +197,28 @@ describe("tokens", () => {
     }
   });
 });
+
+describe("the expected range at detection", () => {
+  it("is one rectangle over the incident with the low and high edge, never three lines", () => {
+    const model = buildPlot({
+      series: [series("id-1", "svc-backup", [point(0), point(1), point(2)])],
+      ...WINDOW,
+    });
+    const without = buildPwOption({ model, palette, incidents: [] });
+    const withBand = buildPwOption({
+      model,
+      palette,
+      incidents: [],
+      detectionBand: { start: iso(0), end: iso(2), low: 80, high: 140 },
+    });
+    const areaOf = (option: ReturnType<typeof buildPwOption>) =>
+      (option.series as Array<{ markArea?: { data: unknown[] } }>)[0].markArea?.data ?? [];
+    const data = areaOf(withBand) as Array<Array<{ xAxis: number; yAxis: number }>>;
+    expect(data).toHaveLength(areaOf(without).length + 1);
+    const rect = data[data.length - 1];
+    expect(rect[0]).toMatchObject({ xAxis: Date.parse(iso(0)), yAxis: 80 });
+    expect(rect[1]).toMatchObject({ xAxis: Date.parse(iso(2)), yAxis: 140 });
+    // No extra line series were added for the band.
+    expect((withBand.series as unknown[]).length).toBe((without.series as unknown[]).length);
+  });
+});

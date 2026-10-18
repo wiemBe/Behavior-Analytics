@@ -11,6 +11,7 @@ import type {
   MeasurementKind,
   PropertyWatch,
   PwAnomalyTypeName,
+  PwDetectionDetail,
   PwBucket,
   PwReadingLabel,
   PwScopeKind,
@@ -306,4 +307,50 @@ export function baselineText(value: PwValue): string {
     default:
       return "No baseline yet";
   }
+}
+
+// --- the detector's own figures, with what each counts ---------------------------
+//
+// The API declares no unit for the new-value figures (PwDetectionDetailOut), so each unit below
+// is the one the detector's code gives it:
+//   events_since_first_seen, observed_value  `_materiality` in app/property_watch/detectors.py
+//       compares `events` with `new_value_min_events`, and writes "{events} events across
+//       {buckets} buckets since first appearance": events.
+//   buckets_with_traffic  the `buckets` of that same sentence: buckets.
+//   history_buckets_verified, and baseline_sample_count of a new-value row  `history_buckets` is
+//       the verified history's length, `sample_count=novelty.history_buckets`: buckets.
+//   threshold of a new-value row  `float(thresholds.new_value_min_events)`: events.
+//   threshold of a volume row  `thresholds.deviation_z`, compared with the robust z: a z-score,
+//       which has no unit.
+//   baseline_sample_count of a volume row  the cell's retained bucket readings
+//       (`retained[key].append(float(reading.events))` in baseline.py): buckets.
+
+export interface PwFigure {
+  label: string;
+  /** The figure; null is "not recorded", never 0. */
+  value: number | null;
+  /** What it counts. `count` only where the code does not settle it. */
+  unit: string;
+  /** Shown beside the figure when it is a lower bound. */
+  lowerBound?: boolean;
+}
+
+const plural = (n: number | null, one: string, many: string) => (n === 1 ? one : many);
+
+/** The figure with its unit, or "not recorded"; `at least` for a lower bound. */
+export function figureText(f: PwFigure): string {
+  if (f.value === null || Number.isNaN(f.value)) return "not recorded";
+  const n = count(f.value);
+  const unit = f.unit === "events" ? plural(f.value, "event", "events") : f.unit === "buckets" ? plural(f.value, "bucket", "buckets") : f.unit;
+  return `${f.lowerBound ? "at least " : ""}${n}${unit ? ` ${unit}` : ""}`;
+}
+
+/** The new-value and new-combination figures, each with what it counts. */
+export function newValueFigures(d: PwDetectionDetail, lowerBound: boolean): PwFigure[] {
+  return [
+    { label: "Events since first seen", value: d.events_since_first_seen, unit: "events", lowerBound },
+    { label: "Buckets with traffic", value: d.buckets_with_traffic, unit: "buckets", lowerBound },
+    { label: "Minimum to report", value: d.threshold, unit: "events" },
+    { label: "History verified", value: d.history_buckets_verified, unit: "buckets" },
+  ];
 }
