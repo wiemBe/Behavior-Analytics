@@ -33,7 +33,6 @@ import {
   type AnomalySummary,
   type PagedPwValues,
   type PropertyWatch,
-  type PwValue,
   type PwValueSeries,
 } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
@@ -141,19 +140,6 @@ export default async function PropertyWatchPage({
   const access: PropertyWatchAccess = caller ? propertyWatchAccessFrom(caller) : "unknown";
   const ruleAccess = caller ? customRuleAccessFrom(caller) : ("unknown" as const);
 
-  // The Threshold rules tab names each pinned value. Pinned values sort first, so the page's own
-  // read usually holds them; a rule whose value is not on this page costs one wider read, once.
-  const rules = watch.threshold_rules ?? [];
-  const known = new Map<string, PwValue>((values?.items ?? []).map((v) => [v.id, v]));
-  let ruleValues: Map<string, PwValue> | null = values ? known : null;
-  if (rules.some((r) => !known.has(r.pw_value_id))) {
-    const wide = await api
-      .propertyWatchValues(id, { hours: 168, limit: 200 })
-      .then((p) => p.items)
-      .catch(() => null as PwValue[] | null);
-    if (wide) ruleValues = new Map([...known, ...wide.map((v): [string, PwValue] => [v.id, v])]);
-  }
-
   const selection = defaultSelection(values?.items ?? [], asked);
   let initialSeries: PwValueSeries[] = [];
   if (selection.length > 0) {
@@ -233,7 +219,6 @@ export default async function PropertyWatchPage({
         incidentsTotal={incidentPage ? incidentPage.total : null}
         scope={scope}
         aql={aql}
-        ruleValues={ruleValues}
         ruleAccess={ruleAccess}
         initialSelected={selection}
         initialSeries={initialSeries}

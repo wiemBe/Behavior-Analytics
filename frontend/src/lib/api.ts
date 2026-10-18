@@ -1570,6 +1570,8 @@ export interface PwPinRule {
   id: string;
   name: string;
   pw_value_id: string;
+  value_key: string;
+  components: string[];
   enabled: boolean;
 }
 

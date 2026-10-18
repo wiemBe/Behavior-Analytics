@@ -6,9 +6,8 @@
 import Link from "next/link";
 
 import type { PropertyWatch, PropertyWatchCatalog, WatchScope } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
-
-import { formatAge } from "@/lib/health";
+import { formatAge, formatDateTime } from "@/lib/health";
+import { formatDuration } from "@/lib/searchCadence";
 
 import { WatchAqlSection, type AqlRead } from "./WatchAql";
 import { pwTypeLabel, scopeKindLabel, scopeText, statusLabel, statusReason } from "./pwFormat";
@@ -122,8 +121,9 @@ export function WatchDefinition({
           <div>
             <dt>Cadence</dt>
             <dd>
-              Set for the whole PROPERTY_WATCH search family in{" "}
-              <Link href="/admin/search-cadence">Search cadence</Link>; buckets are five minutes wide.
+              Every {formatDuration(watch.cadence_seconds)} (the PROPERTY_WATCH family&apos;s setting
+              in <Link href="/admin/search-cadence">Search cadence</Link>); buckets are five minutes
+              wide.
             </dd>
           </div>
           <div>

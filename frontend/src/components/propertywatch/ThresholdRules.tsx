@@ -1,13 +1,13 @@
 // The Threshold rules tab (design §G.13.3): the custom rules that pin a value of this watch.
 //
-// `threshold_rules` carries the rule's id, name, enabled flag and the id of the value it pins;
-// the value's text is looked up in the values the page read. Rule names and values are
-// attacker-influenced text and are rendered as text. Creating a rule is the rule editor's job
-// and needs `custom_rule:write`; a reader sees the list and is told which permission adds it.
+// `threshold_rules` carries the rule and its pinned value's text from the same backend read.
+// Rule names and values are attacker-influenced text and are rendered as text. Creating a rule
+// is the rule editor's job and needs `custom_rule:write`; a reader sees the list and is told
+// which permission adds it.
 
 import Link from "next/link";
 
-import type { PwPinRule, PwValue } from "@/lib/api";
+import type { PwPinRule } from "@/lib/api";
 
 import { valueText } from "./WatchValuesTable";
 
@@ -17,13 +17,10 @@ export const RULE_WRITE_PERMISSION = "custom_rule:write";
 
 export function ThresholdRules({
   rules,
-  values,
   access,
 }: {
   /** null: the single-watch read did not carry the list. */
   rules: PwPinRule[] | null;
-  /** Every value the page could read, by id. */
-  values: ReadonlyMap<string, PwValue> | null;
   access: RuleAccess;
 }) {
   if (rules === null) {
@@ -79,30 +76,21 @@ export function ThresholdRules({
             </tr>
           </thead>
           <tbody>
-            {rules.map((r) => {
-              const v = values?.get(r.pw_value_id);
-              return (
-                <tr key={r.id}>
-                  <td className="cell-name">
-                    <Link href={`/custom-rules/${r.id}`}>{r.name}</Link>
-                  </td>
-                  <td className="pw-value-cell">
-                    {v ? (
-                      <span className="pw-value-text">{valueText(v)}</span>
-                    ) : (
-                      <span className="muted">
-                        not among the tracked values read; it may no longer be stored
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <span className={`pill pill-quiet ${r.enabled ? "ok" : ""}`}>
-                      {r.enabled ? "Enabled" : "Disabled"}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
+            {rules.map((r) => (
+              <tr key={r.id}>
+                <td className="cell-name">
+                  <Link href={`/custom-rules/${r.id}`}>{r.name}</Link>
+                </td>
+                <td className="pw-value-cell">
+                  <span className="pw-value-text">{valueText(r)}</span>
+                </td>
+                <td>
+                  <span className={`pill pill-quiet ${r.enabled ? "ok" : ""}`}>
+                    {r.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

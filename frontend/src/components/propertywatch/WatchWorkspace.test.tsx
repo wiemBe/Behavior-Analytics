@@ -38,7 +38,6 @@ function props(over: Partial<WatchWorkspaceProps> = {}): WatchWorkspaceProps {
     incidentsTotal: 0,
     scope: scope(),
     aql: { kind: "ok", aql: aql() },
-    ruleValues: new Map(),
     ruleAccess: "writer",
     initialSelected: ["id-a"],
     initialSeries: [s("a")],
@@ -203,14 +202,27 @@ describe("the tabs", () => {
   });
 
   it("lists the rules that pin a value of this watch on the Threshold rules tab", () => {
-    const rules = [{ id: "r1", name: "Backup flood", pw_value_id: "id-a", enabled: true }];
+    const rules = [
+      {
+        id: "r1",
+        name: "Backup flood",
+        pw_value_id: "id-outside-page",
+        value_key: "outside-page",
+        components: ["outside-page"],
+        enabled: true,
+      },
+    ];
     render(
       <WatchWorkspace
-        {...props({ watch: watch({ threshold_rules: rules }), ruleValues: new Map([["id-a", items[0]]]) })}
+        {...props({ watch: watch({ threshold_rules: rules }) })}
       />,
     );
     fireEvent.click(screen.getByRole("tab", { name: "Threshold rules (1)" }));
-    expect(screen.getByRole("link", { name: "Backup flood" })).toHaveAttribute("href", "/custom-rules/r1");
+    expect(screen.getByRole("link", { name: "Backup flood" })).toHaveAttribute(
+      "href",
+      "/custom-rules/r1",
+    );
+    expect(screen.getByText("outside-page")).toBeInTheDocument();
   });
 
   it("shows the generated query on the Definition tab", () => {
