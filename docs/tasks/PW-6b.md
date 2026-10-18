@@ -20,7 +20,11 @@ test rules, including the integration rules of 2026-10-17). Then read
 2. **`PinsOut.rules`** (PW-6 open point 5): on a successful `PUT /property-watches/{id}/pins`, the
    response lists the custom rules that pin a value of this watch after the change, as
    `[{"id", "name", "pw_value_id"}]`, read in one statement. The pins editor (PW-8) uses it to
-   show which pins a rule depends on.
+   show which pins a rule depends on. **Added 12:25 (sent to the running agent):** the single-watch
+   read (`GET /property-watches/{id}`, the one with `detector_states`) carries the same list as
+   `threshold_rules: [{"id", "name", "pw_value_id", "enabled"}]`, ordered by name, through the
+   same helper; absent on the list route, whose statement count does not change. It feeds the
+   watch page's Threshold rules tab (§G.13.3).
 3. **The race as 409, both sides** (PW-6 open point 6):
    - A watch `DELETE`, a scope or property `PATCH`, or a `PUT /pins` that removes a pin, whose
      database write fails on the `RESTRICT` foreign key because a rule on one of its values was
