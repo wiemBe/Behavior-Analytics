@@ -41,7 +41,7 @@ PW-8 sees the scope routes); `agent/pw4` @ `3dd3659` (= `agent/pw3b` + `agent/pw
 | **PW-5b** `/scope` | opencode DeepSeek free, unit `pw5b-ds-h`, handover ("review what you inherit"; r0 log `opencode-r0.log`) | `pw5b` / `qradar_obs_pw5b`, log `QRadar-Dash-work/pw5b/opencode.log` | 11:26 | "Rate limit exceeded" → Sonnet at once. |
 | **PW-9** widget | Sonnet sub-agent, handover | `pw9` | **done 11:32, accepted** after the PNGs (1440 two columns, 1024 one column, no overflow; units on the axis; hostile value as text; every state worded). The inherited code needed no change. Committed `agent/pw9` @ `e87fb13`, pushed. Lint/typecheck clean, vitest 305 files / 3,401, build OK, 10 break-its caught | Decisions on its open points: blank space under the state-only widgets → accepted (the dashboard grid owns the height); the fixed 24 h window → accepted (the title says "24 h"; the dashboard has no range selector); **the fixed 2 h stale limit is wrong for a non-default cadence** (§G.13.5 says twice the family cadence, D-7 allows 5 min–8 h) → **PW-6b** adds the family cadence to the watch read shape, **PW-7b** (UI follow-up, also wiring PW-7's investigation view to PW-5c's detail shape) uses 2 × cadence. |
 | **T-133** ([spec](tasks/T-133.md)) Apache-2.0, NOTICE, trademark line, mcp image labels (D-25) | opencode GLM 5.3 flash free, unit `t133-glmf` | `t133` (from `8b63d9b`; the orchestrator initialised the `qradar-mcp` submodule there) | 11:38 | Review. |
-| **OPS-17** ([spec](tasks/OPS-17.md)) image prefix → `ghcr.io/wiembe/behavior-analytics` (D-26) | Sonnet sub-agent | `ops17` (from `8b63d9b`) | 11:40 | Review; the mirror workflow runs at the next release. |
+| **OPS-17** ([spec](tasks/OPS-17.md)) image prefix → `ghcr.io/wiembe/behavior-analytics` (D-26) | Sonnet sub-agent | `ops17` | **done, accepted**, `agent/ops17` @ `790102c` (pushed). Reviewed the script diff: the move runs after every registry-free refusal, checks every installed image before tagging any, answers then `.env`, refuses on a duplicated key. Re-ran: prefix + upgrade + installer tests 137/0, ruff clean; its report: qradar_dash tests 204/0, unit 4,201 / 10 skipped, shellcheck clean, 6 guard mutations caught | Its open points: the mirror cannot run before `main` and was only YAML-parsed → **release checklist** (below); real Docker/registry untested → the fresh-VM check at the release; a failed upgrade after the move needs the mirror for a later pull → accepted (the mirror runs before the tag); its test imports sibling test modules → accepted; `docs/UI_Suggestions/` keeps the old name → historical, left. The in-process `umask 077` follows `set_env_version` and the backup's own `umask 077` → no change in behaviour. |
 | **PW-5c** API gaps | Sonnet sub-agent, handover (6 min of inherited work) | `pw5c` / `qradar_obs_pw5c` | 11:27 | Report → review. |
 | **PW-4** alerting | Sonnet sub-agent, fresh | `pw4` / `qradar_obs_pw4`, scratch `QRadar-Dash-work/pw4/` | 11:27 | Report → review. |
 
@@ -51,6 +51,12 @@ PW-8 sees the scope routes); `agent/pw4` @ `3dd3659` (= `agent/pw3b` + `agent/pw
 **User's answers 11:36:** only the repository was renamed (not the product); license Apache-2.0
 (D-25 → T-133); images move to the new name (D-26 → OPS-17). Not asked yet: the TimescaleDB
 license of the published `postgres` image (check before the next release).
+
+**Next-release checklist (D-26, from OPS-17):** `main` merge → run the **Mirror images** workflow
+(`0.1.0 0.1.1`) → check that the new packages pull anonymously (if private, the user makes them
+public in GHCR) → release notes carry OPS-17's paragraph (in its report) → tag → fresh-VM check
+(v0.1.1 from the old prefix → upgrade → the move → rollback → same-version install re-run). Also
+check the TimescaleDB license of the `postgres` image before the tag.
 
 **PW-6b** ([spec](tasks/PW-6b.md)): Sonnet sub-agent from 11:42, worktree `pw6b` (from
 `agent/pw6`), DB `qradar_obs_pw6b`, scratch `QRadar-Dash-work/pw6b/`.
