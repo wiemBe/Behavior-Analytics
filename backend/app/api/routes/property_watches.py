@@ -67,6 +67,7 @@ from app.schemas.property_watch import (
     PropertyWatchOut,
     PropertyWatchUpdate,
     ScopeOptionOut,
+    WatchAqlOut,
     WatchBucketOut,
     WatchCatalogOut,
     WatchScopeOut,
@@ -806,6 +807,18 @@ async def list_buckets(
     """Collected buckets, oldest first. A gap is an absent bucket, never a zero."""
     watch = await _load(session, watch_id)
     return await svc.watch_buckets(session, watch, hours=hours, now=datetime.now(UTC))
+
+
+@router.get("/{watch_id}/aql", response_model=WatchAqlOut)
+async def get_watch_aql(
+    watch_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+) -> WatchAqlOut:
+    """The generated AQL of the stored watch, read-only text.
+
+    No search runs; nothing is read from the request but the id.
+    """
+    watch = await _load(session, watch_id)
+    return await svc.watch_aql(session, watch, settings, datetime.now(UTC))
 
 
 @router.get("/{watch_id}/values", response_model=PagedWatchValues)

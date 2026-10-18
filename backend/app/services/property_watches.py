@@ -53,6 +53,7 @@ from app.models.property_watch import (
     PwValueBaseline,
     PwValueMetric,
 )
+from app.property_watch.aql import build_query, validate_query_inputs
 from app.property_watch.facts import (
     PwBucketFact,
     PwFactError,
@@ -68,6 +69,7 @@ from app.property_watch.keyed_search import (
     PwSearchBudget,
     PwSearchPlan,
     run_search,
+    search_row_cap,
 )
 from app.property_watch.reference import (
     PW_MAX_PROPERTIES,
@@ -93,6 +95,9 @@ from app.schemas.property_watch import (
     ScopeSummaryOut,
     SeriesPointOut,
     ValueSeriesOut,
+    WatchAqlLastBucketOut,
+    WatchAqlOut,
+    WatchAqlQueryOut,
     WatchBucketOut,
     WatchScopeOut,
     WatchValueOut,
@@ -971,9 +976,16 @@ async def list_values(
     )
     order: list[Any]
     if bucket_start is not None:
+        # Bounded by the watch: `pw_value_metric` carries no watch id, so the metric rows are
+        # joined to this watch's values of the current version before the page joins them.
         metric = (
             select(PwValueMetric.pw_value_id, PwValueMetric.events)
-            .where(PwValueMetric.bucket_start == bucket_start)
+            .join(PwValue, PwValue.id == PwValueMetric.pw_value_id)
+            .where(
+                PwValueMetric.bucket_start == bucket_start,
+                PwValue.watch_id == watch.id,
+                PwValue.watch_version == watch.watch_version,
+            )
             .subquery()
         )
         query = select(PwValue, metric.c.events).outerjoin(
@@ -1355,3 +1367,88 @@ def preview_audit_counts(preview: PreviewOut) -> dict[str, Any]:
         "parsed_events": preview.parsed_events,
         "property_parses": preview.property_parses,
     }
+
+
+# --------------------------------------------------------------------------- generated AQL
+async def watch_aql(
+    session: AsyncSession, watch: PropertyWatch, settings: Settings, now: datetime
+) -> WatchAqlOut:
+    """The generated AQL of a stored watch, read-only: no Ariel call, nothing accepted.
+
+    Statements: the scope resolution (one for a source, none for a type, two for a group) and
+    the newest bucket. The current text is the preview's generator over the preview window;
+    when the scope does not resolve, `current_unavailable` says why instead of a guess.
+    """
+    start, end, bucket_seconds = preview_window(settings, now)
+    current: list[WatchAqlQueryOut] = []
+    unavailable: str | None = None
+    try:
+        scope_ids = await preview_scope_ids(session, watch, settings, now)
+        scope_kind = PwScopeKind(str(watch.scope_kind))
+        properties = tuple((p["kind"], p["name"]) for p in watch.properties)
+        buckets = int((end - start).total_seconds()) // bucket_seconds
+        for kind in (PwSearchKind.GROUPED, PwSearchKind.TOTALS):
+            spec = validate_query_inputs(
+                kind,
+                scope_kind=scope_kind,
+                scope_ids=scope_ids,
+                properties=properties,
+                max_sources=settings.pw_max_sources_per_search,
+            )
+            text = build_query(
+                spec,
+                start_ms=int(start.timestamp() * 1000),
+                end_ms=int(end.timestamp() * 1000),
+                bucket_ms=bucket_seconds * 1000,
+                limit=search_row_cap(spec, buckets, settings.pw_max_rows_per_search) + 1,
+            )
+            current.append(WatchAqlQueryOut(search=kind.value, text=text))
+    except PreviewRefused as exc:
+        current, unavailable = [], str(exc)
+    except ValueError as exc:  # a stored reference the validators now refuse
+        current, unavailable = [], f"the stored watch cannot be searched: {exc}"
+    newest = (
+        await session.execute(
+            select(
+                PwBucket.bucket_start,
+                PwBucket.collected_at,
+                PwBucket.watch_version,
+                PwBucket.query_provenance,
+            )
+            .where(PwBucket.watch_id == watch.id)
+            .order_by(PwBucket.bucket_start.desc())
+            .limit(1)
+        )
+    ).first()
+    return WatchAqlOut(
+        watch_id=watch.id,
+        watch_version=int(watch.watch_version),
+        window_start=None if unavailable else start,
+        window_end=None if unavailable else end,
+        bucket_seconds=None if unavailable else bucket_seconds,
+        current=current,
+        current_unavailable=unavailable,
+        last_bucket=(
+            None
+            if newest is None
+            else WatchAqlLastBucketOut(
+                bucket_start=newest.bucket_start,
+                collected_at=newest.collected_at,
+                watch_version=int(newest.watch_version),
+                queries=_stored_queries(newest.query_provenance),
+            )
+        ),
+    )
+
+
+def _stored_queries(provenance: Any) -> list[WatchAqlQueryOut]:
+    """The query texts of a bucket's stored provenance, by named key; anything else is dropped."""
+    out: list[WatchAqlQueryOut] = []
+    if not isinstance(provenance, dict):
+        return out
+    for key, kind in (("grouped", "GROUPED"), ("totals", "TOTALS"), ("pinned", "PINNED")):
+        part = provenance.get(key)
+        text = part.get("query") if isinstance(part, dict) else None
+        if isinstance(text, str) and text:
+            out.append(WatchAqlQueryOut(search=kind, text=text))
+    return out

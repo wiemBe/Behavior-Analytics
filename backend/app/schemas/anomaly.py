@@ -100,6 +100,9 @@ class PwValueRefOut(BaseModel):
     properties: list[dict[str, str]]
     value_key: str
     components: list[str]
+    #: The tracked value's id, for the watch page's `?value=` selection. None once retention
+    #: deleted the value row: the incident outlives it, so the link then has no target.
+    value_id: uuid.UUID | None = None
 
 
 class MetricBucketOut(BaseModel):
@@ -479,6 +482,42 @@ class IpsDetectionDetailOut(BaseModel):
     fallback_bound: float | None = None
 
 
+class PwDetectionDetailOut(BaseModel):
+    """The property-watch detector's working, projected from the stored evidence by whitelist.
+
+    Same rule as the WAF and IPS projections: named keys only, from the two known levels of
+    the evidence dict (`details` and `details["extra"]`). A missing value is None, never 0.
+    The band is the seasonal cell's own range for this hour of the week, in events per
+    bucket; the new-value fields are counts, and the detector declares no unit for them.
+    """
+
+    reason: str | None = None
+    expected_low: float | None = None
+    expected_high: float | None = None
+    threshold: float | None = None
+    baseline_sample_count: int | None = None
+    baseline_version: int | None = None
+    watch_version: int | None = None
+    #: Events of the value in the anomalous bucket, and the cell median it was judged against.
+    observed_events: float | None = None
+    expected_median: float | None = None
+    metric_semantics: str | None = None
+    #: EXACT, or LOWER_BOUND when the observed value is "at least n".
+    observed_measurement: str | None = None
+    absolute_delta: float | None = None
+    ratio: float | None = None
+    ratio_basis: str | None = None
+    robust_score_status: RobustScoreStatus | None = None
+    robust_z: float | None = None
+    fallback_bound: float | None = None
+    #: New value and new combination only.
+    classification: str | None = None
+    history_buckets_verified: int | None = None
+    events_since_first_seen: float | None = None
+    buckets_with_traffic: int | None = None
+    claim: str | None = None
+
+
 class AnomalyDetailOut(AnomalyListItem):
     """Everything the investigation page needs for one anomaly."""
 
@@ -490,7 +529,13 @@ class AnomalyDetailOut(AnomalyListItem):
     #: None when the anomaly recorded no structured detector evidence. A WAF
     #: subject carries the WAF projection, an IPS subject the IPS one, and a log
     #: source the Phase A one.
-    detection: WafDetectionDetailOut | IpsDetectionDetailOut | DetectionDetailOut | None = None
+    detection: (
+        WafDetectionDetailOut
+        | IpsDetectionDetailOut
+        | PwDetectionDetailOut
+        | DetectionDetailOut
+        | None
+    ) = None
 
 
 class BehaviorSummaryOut(BaseModel):
@@ -709,6 +754,50 @@ def ips_detection_detail(details: dict[str, Any] | None) -> IpsDetectionDetailOu
         ),
         robust_z=_num(extra, "robust_z"),
         fallback_bound=_num(extra, "fallback_bound"),
+    )
+
+
+def _count(source: dict[str, Any], key: str) -> int | None:
+    value = _num(source, key)
+    return int(value) if value is not None else None
+
+
+def pw_detection_detail(details: dict[str, Any] | None) -> PwDetectionDetailOut | None:
+    """Project a stored property-watch evidence dict onto the typed detection block.
+
+    Reads named keys only, so a detector gaining an internal fact does not thereby publish
+    it. The value text is not among them: it travels as `pw_value`.
+    """
+    if not details:
+        return None
+    extra = _section(details, "extra")
+    status = _text(extra, "robust_score_status")
+    measurement = _text(extra, "observed_measurement") or _text(extra, "measurement")
+    return PwDetectionDetailOut(
+        reason=_text(details, "reason"),
+        expected_low=_num(details, "baseline_low"),
+        expected_high=_num(details, "baseline_high"),
+        threshold=_num(details, "threshold"),
+        baseline_sample_count=_count(details, "sample_count"),
+        baseline_version=_count(extra, "baseline_version"),
+        watch_version=_count(extra, "watch_version"),
+        observed_events=_num(extra, "observed_events"),
+        expected_median=_num(extra, "median"),
+        metric_semantics=_text(extra, "metric_semantics"),
+        observed_measurement=measurement if measurement in ("EXACT", "LOWER_BOUND") else None,
+        absolute_delta=_num(extra, "absolute_delta"),
+        ratio=_num(extra, "ratio"),
+        ratio_basis=_text(extra, "ratio_basis"),
+        robust_score_status=(
+            RobustScoreStatus(status) if status in set(RobustScoreStatus) else None
+        ),
+        robust_z=_num(extra, "robust_z"),
+        fallback_bound=_num(extra, "fallback_bound"),
+        classification=_text(extra, "classification"),
+        history_buckets_verified=_count(extra, "history_buckets_verified"),
+        events_since_first_seen=_num(extra, "events_since_first_seen"),
+        buckets_with_traffic=_count(extra, "buckets_with_traffic"),
+        claim=_text(extra, "claim"),
     )
 
 
@@ -955,10 +1044,10 @@ class AnomalyHistogramOut(BaseModel):
     bucket_seconds: int
     #: The anomaly families the totals cover, so a client knows what was counted.
     #: Ordering: with no `subject_kind`, the list is
-    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]; with
+    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE"]; with
     #: `subject_kind=IPS_ENTITY` it is ["IPS_ENTITY"]; with
-    #: `subject_kind=IPS_SOURCE` it is ["IPS_SOURCE"]; with `subject_kind=LOG_SOURCE`
-    #: or `WAF_ENDPOINT` it is the single corresponding family.
+    #: `subject_kind=IPS_SOURCE` it is ["IPS_SOURCE"]; with `subject_kind=LOG_SOURCE`,
+    #: `WAF_ENDPOINT` or `PW_VALUE` it is the single corresponding family.
     families: list[str]
     total: int
     #: Every hour of the range, in order, including the hours with no anomaly.

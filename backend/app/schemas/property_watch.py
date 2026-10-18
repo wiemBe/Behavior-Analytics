@@ -428,3 +428,42 @@ class PreviewOut(BaseModel):
     rows_measurement: Measurement | None = None
     rows: list[PreviewRowOut]
     queries: list[PreviewQueryOut]
+
+
+class WatchAqlQueryOut(BaseModel):
+    """One generated search, read-only text. Nothing here is ever accepted back."""
+
+    search: Literal["GROUPED", "TOTALS", "PINNED"]
+    text: str
+
+
+class WatchAqlLastBucketOut(BaseModel):
+    """The newest collected bucket's stored query provenance, by whitelist.
+
+    `queries` holds what the collector recorded for that bucket; a search that was not sent
+    (budget) or has no text is absent, never an empty string.
+    """
+
+    bucket_start: datetime
+    collected_at: datetime
+    watch_version: int
+    queries: list[WatchAqlQueryOut]
+
+
+class WatchAqlOut(BaseModel):
+    """The generated AQL of a stored watch (design §G.13.3, Definition tab). Text only.
+
+    `current` is what the preview's generator makes of the stored watch for the last closed
+    hour, with no Ariel call; the REST provider appends `START`/`STOP` when it runs one.
+    `current_unavailable` says why it could not be built (the scope does not resolve), and then
+    `current` is empty. `last_bucket` is None before the first collection.
+    """
+
+    watch_id: uuid.UUID
+    watch_version: int
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    bucket_seconds: int | None = None
+    current: list[WatchAqlQueryOut]
+    current_unavailable: str | None = None
+    last_bucket: WatchAqlLastBucketOut | None = None

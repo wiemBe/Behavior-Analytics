@@ -36,6 +36,7 @@ from app.models.enums import (
     IpsDimension,
     IpsProfileValidationStatus,
     PwAnomalyType,
+    PwScopeKind,
     Severity,
     WafAnomalyType,
     WafProfileValidationStatus,
@@ -49,6 +50,7 @@ from app.models.ips import (
     IpsSourceProfile,
 )
 from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
+from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.property_watch.facts import split_tuple_key
 from app.providers.base import LogSourceTelemetry
@@ -91,6 +93,7 @@ from app.schemas.anomaly import (
     WafValidationReportOut,
     detection_detail,
     ips_detection_detail,
+    pw_detection_detail,
     waf_detection_detail,
 )
 from app.schemas.ips_behavior import (
@@ -223,6 +226,7 @@ def _unified_item(row: dict) -> AnomalyListItem:
             properties=row["pw_properties"],
             value_key=row["pw_value_key"],
             components=split_tuple_key(row["pw_value_key"]),
+            value_id=row["pw_value_id"],
         )
     fields = {
         k: v
@@ -346,6 +350,9 @@ async def get_anomaly(anomaly_id: uuid.UUID, session: SessionDep) -> AnomalyDeta
         if ips is not None:
             anomaly_row, entity, transitions = ips
             return await _ips_detail(session, anomaly_row, entity, transitions)
+        pw = await repo.get_pw_detail(anomaly_id)
+        if pw is not None:
+            return _pw_detail(*pw)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
 
     detail = AnomalyDetailOut.model_validate(anomaly)
@@ -470,6 +477,61 @@ async def _ips_detail(
         transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
         explanation_package=None,
         detection=ips_detection_detail(anomaly.details),
+    )
+
+
+def _pw_detail(
+    anomaly: PwAnomaly,
+    watch: PropertyWatch,
+    source: LogSource | None,
+    transitions: list[PwAnomalyTransition],
+) -> AnomalyDetailOut:
+    """A property-watch incident as the shared detail shape.
+
+    `explanation_package` is None: a PW incident has no evidence package, and a fabricated
+    one would claim evidence nobody collected. The value text is shown to any `read:*`
+    caller (D-22) in `pw_value`, as in the list, and is never logged. A type- or
+    group-scoped watch has no single source, so `log_source_id` is None.
+    """
+    return AnomalyDetailOut(
+        id=anomaly.id,
+        subject_kind=SubjectKind.PW_VALUE,
+        log_source_id=watch.log_source_id,
+        log_source_name=source.name if source else None,
+        pw_value=PwValueRefOut(
+            watch_id=watch.id,
+            watch_name=watch.name,
+            watch_version=anomaly.watch_version,
+            scope_kind=PwScopeKind(str(watch.scope_kind)),
+            properties=watch.properties,
+            value_key=anomaly.value_key,
+            components=split_tuple_key(anomaly.value_key),
+            value_id=anomaly.pw_value_id,
+        ),
+        anomaly_type=PwAnomalyType(anomaly.detector_type),
+        state=anomaly.state,
+        severity=anomaly.severity,
+        observed_value=anomaly.observed_value,
+        expected_value=anomaly.expected_value,
+        deviation_ratio=anomaly.deviation_ratio,
+        robust_z=anomaly.robust_z,
+        absolute_delta=anomaly.absolute_delta,
+        consecutive_buckets=anomaly.consecutive_buckets,
+        confidence=anomaly.confidence,
+        detected_at=anomaly.detected_at,
+        opened_at=anomaly.opened_at,
+        anomaly_start=anomaly.anomaly_start,
+        anomaly_end=anomaly.anomaly_end,
+        resolved_at=anomaly.resolved_at,
+        evidence_status=anomaly.evidence_status,
+        suppressed=anomaly.suppressed,
+        observed_measurement=str(anomaly.observed_measurement),
+        explanation=anomaly.explanation,
+        baseline_version=anomaly.baseline_version,
+        policy_version=anomaly.policy_version,
+        transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
+        explanation_package=None,
+        detection=pw_detection_detail(anomaly.details),
     )
 
 
