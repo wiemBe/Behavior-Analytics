@@ -39,6 +39,7 @@ from app.custom_rules.loaders import (
     load_ips_entities,
     load_ips_sources,
     load_log_sources,
+    load_pw_values,
     load_waf_endpoints,
 )
 from app.models.enums import (
@@ -57,6 +58,7 @@ _FLEET = CustomRuleSubjectKind.FLEET_CLASS
 _WAF = CustomRuleSubjectKind.WAF_ENDPOINT
 _IPS_ENTITY = CustomRuleSubjectKind.IPS_ENTITY
 _IPS_SOURCE = CustomRuleSubjectKind.IPS_SOURCE
+_PW_VALUE = CustomRuleSubjectKind.PW_VALUE
 
 
 @dataclass(frozen=True)
@@ -204,6 +206,8 @@ async def replay(
     interval_seconds: int,
     now: datetime,
     name: str = "preview",
+    pw_value_id: uuid.UUID | None = None,
+    pw_coverage_floor: float | None = None,
 ) -> PreviewResult:
     """One bulk read of the window, then ``preview_from_readings``.
 
@@ -219,6 +223,7 @@ async def replay(
         source_class=source_class,
         waf_endpoint_id=waf_endpoint_id,
         ips_entity_id=ips_entity_id,
+        pw_value_id=pw_value_id,
     )
     loaded = await _load(
         session,
@@ -226,6 +231,7 @@ async def replay(
         key,
         after=after,
         through=through,
+        pw_coverage_floor=pw_coverage_floor,
     )
     source = await _maintenance_source(
         session,
@@ -333,7 +339,7 @@ def _completeness(metric: CustomRuleMetric, facts: BucketFacts) -> str | None:
         return facts.action_measurement
     if metric in (CustomRuleMetric.SERVER_ERROR_RATIO, CustomRuleMetric.CLIENT_ERROR_RATIO):
         return facts.response_code_measurement
-    if metric is CustomRuleMetric.EVENTS:
+    if metric in (CustomRuleMetric.EVENTS, CustomRuleMetric.PW_VALUE_EVENTS):
         return facts.dimension_measurement
     if metric is CustomRuleMetric.TOTAL_EVENTS:
         return BucketCompleteness.COMPLETE.value
@@ -347,6 +353,7 @@ def _subject_key(
     source_class: str | None,
     waf_endpoint_id: uuid.UUID | None,
     ips_entity_id: uuid.UUID | None,
+    pw_value_id: uuid.UUID | None = None,
 ) -> str | None:
     if kind in (_LOG_SOURCE, _IPS_SOURCE):
         return None if log_source_id is None else str(log_source_id)
@@ -356,6 +363,8 @@ def _subject_key(
         return None if waf_endpoint_id is None else str(waf_endpoint_id)
     if kind is _IPS_ENTITY:
         return None if ips_entity_id is None else str(ips_entity_id)
+    if kind is _PW_VALUE:
+        return None if pw_value_id is None else str(pw_value_id)
     return None
 
 
@@ -366,8 +375,12 @@ async def _load(
     *,
     after: datetime,
     through: datetime,
+    pw_coverage_floor: float | None = None,
 ) -> dict[str, dict[datetime, BucketFacts]]:
-    """The one metric statement for this preview. An empty key issues none."""
+    """The one metric statement for this preview. An empty key issues none.
+
+    A PW value without a coverage floor loads nothing, so it reads unmeasured (fail closed).
+    """
     if key is None:
         return {}
     if kind is _LOG_SOURCE:
@@ -388,6 +401,16 @@ async def _load(
         return await load_ips_sources(
             session, [uuid.UUID(key)], after=after, through=through
         )
+    if kind is _PW_VALUE:
+        if pw_coverage_floor is None:
+            return {}
+        return await load_pw_values(
+            session,
+            [uuid.UUID(key)],
+            after=after,
+            through=through,
+            coverage_floor=pw_coverage_floor,
+        )
     return {}
 
 
@@ -405,7 +428,8 @@ async def _maintenance_source(
     that owns the subject, which is also where collection stored its own
     maintenance flag for ``interpret`` to read.
     """
-    if kind is _FLEET:
+    if kind in (_FLEET, _PW_VALUE):
+        # A PW value has no live window; the bucket's stored flag is what interpret reads.
         return None
     source_id = log_source_id
     if kind is _WAF:
