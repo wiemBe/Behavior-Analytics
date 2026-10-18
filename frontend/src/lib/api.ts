@@ -1554,11 +1554,46 @@ export interface PropertyWatch {
   open_incidents: number;
   // Only on the single-watch read.
   detector_states: Array<{ detector_type: PwAnomalyTypeName; active_incidents: number }> | null;
+  // Only on the single-watch read: the custom rules that pin a value of this watch.
+  threshold_rules: PwPinRule[] | null;
   alerting_mode: "shadow" | "alerting";
+  // The PROPERTY_WATCH search-family cadence in seconds; the widget is stale after twice this.
+  cadence_seconds: number;
   created_at: string;
   updated_at: string;
   created_by: string | null;
   updated_by: string | null;
+}
+
+/** `PinRuleOut`: a custom rule that pins one value of the watch. */
+export interface PwPinRule {
+  id: string;
+  name: string;
+  pw_value_id: string;
+  enabled: boolean;
+}
+
+/** `WatchAqlQueryOut`: one generated search, read-only text. Nothing here is ever sent back. */
+export interface PwAqlQuery {
+  search: "GROUPED" | "TOTALS" | "PINNED";
+  text: string;
+}
+
+/** `WatchAqlOut` (`GET /property-watches/{id}/aql`). */
+export interface WatchAql {
+  watch_id: string;
+  watch_version: number;
+  window_start: string | null;
+  window_end: string | null;
+  bucket_seconds: number | null;
+  current: PwAqlQuery[];
+  current_unavailable: string | null;
+  last_bucket: {
+    bucket_start: string;
+    collected_at: string;
+    watch_version: number;
+    queries: PwAqlQuery[];
+  } | null;
 }
 
 export interface PropertyWatchCatalog {
@@ -1725,15 +1760,44 @@ export interface PwValueRef {
   properties: Array<{ kind: string; name: string }>;
   value_key: string;
   components: string[];
+  // The tracked value's id; null once retention deleted the value row (the incident is kept).
+  value_id: string | null;
 }
 
-/** A property-watch value's incident. The detail read does not serve it yet (see the
- *  PW-7 report), so the investigation view is built from the unified list item's shape. */
+/** `PwDetectionDetailOut`: the detector's working, projected by whitelist. A figure the detector
+ *  did not record is null, never 0. The band is in events per bucket; the new-value fields are
+ *  counts and the API declares no unit for them (see `pwNewValueFigures`). */
+export interface PwDetectionDetail {
+  reason: string | null;
+  expected_low: number | null;
+  expected_high: number | null;
+  threshold: number | null;
+  baseline_sample_count: number | null;
+  baseline_version: number | null;
+  watch_version: number | null;
+  observed_events: number | null;
+  expected_median: number | null;
+  metric_semantics: string | null;
+  observed_measurement: string | null;
+  absolute_delta: number | null;
+  ratio: number | null;
+  ratio_basis: string | null;
+  robust_score_status: string | null;
+  robust_z: number | null;
+  fallback_bound: number | null;
+  classification: string | null;
+  history_buckets_verified: number | null;
+  events_since_first_seen: number | null;
+  buckets_with_traffic: number | null;
+  claim: string | null;
+}
+
+/** A property-watch value's incident, as `GET /anomalies/{id}` serves it (PW-5c). */
 export interface PwAnomalyDetail
   extends Omit<AnomalyDetail, "detection" | "subject_kind" | "pw_value"> {
   subject_kind: "PW_VALUE";
   pw_value: PwValueRef;
-  detection: null;
+  detection: PwDetectionDetail | null;
 }
 
 export function isPwDetail(
@@ -2160,6 +2224,7 @@ export const api = {
   // --- Phase G: property watches. Read-only; the editor's writes are PW-8's. -------
   propertyWatches: () => request<PropertyWatch[]>("/property-watches"),
   propertyWatch: (id: string) => request<PropertyWatch>(`/property-watches/${id}`),
+  propertyWatchAql: (id: string) => request<WatchAql>(`/property-watches/${id}/aql`),
   propertyWatchScope: (id: string) => request<WatchScope>(`/property-watches/${id}/scope`),
   propertyWatchCatalog: () => request<PropertyWatchCatalog>("/property-watches/catalog"),
   propertyWatchScopeOptions: (kind: PwScopeKind, query = "", signal?: AbortSignal) =>

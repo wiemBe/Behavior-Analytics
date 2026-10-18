@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { catalog, iso, value, watch } from "@/components/propertywatch/fixtures";
 
-import { ageSeconds, earlyState, isStale, PW_STALE_AFTER_SECONDS, widgetSelection } from "./pwWidgetState";
+import { ageSeconds, earlyState, isStale, staleAfterSeconds, widgetSelection } from "./pwWidgetState";
 
 describe("earlyState", () => {
   it("lets a collected, applicable watch through", () => {
@@ -99,10 +99,33 @@ describe("staleness", () => {
     expect(ageSeconds(iso(10), now)).toBe(300);
   });
 
-  it("is stale past twice the default cadence, not at it, or when the backend says STALE", () => {
-    expect(isStale({ status: "OK" }, PW_STALE_AFTER_SECONDS)).toBe(false);
-    expect(isStale({ status: "OK" }, PW_STALE_AFTER_SECONDS + 1)).toBe(true);
-    expect(isStale({ status: "OK" }, null)).toBe(false);
-    expect(isStale({ status: "STALE" }, 60)).toBe(true);
+  const at = (status: "OK" | "STALE", cadence: number) => ({ status, cadence_seconds: cadence });
+  const MIN = 60;
+  const H = 3600;
+
+  it("is stale past twice the watch's own cadence, not at it", () => {
+    // 5-minute cadence: the limit is 10 minutes.
+    expect(isStale(at("OK", 5 * MIN), 10 * MIN)).toBe(false);
+    expect(isStale(at("OK", 5 * MIN), 10 * MIN + 1)).toBe(true);
+    // 1-hour cadence: the limit is 2 hours.
+    expect(isStale(at("OK", H), 2 * H)).toBe(false);
+    expect(isStale(at("OK", H), 2 * H + 1)).toBe(true);
+    // 8-hour cadence: a bucket 3 hours old is not stale; one past 16 hours is.
+    expect(isStale(at("OK", 8 * H), 3 * H)).toBe(false);
+    expect(isStale(at("OK", 8 * H), 16 * H)).toBe(false);
+    expect(isStale(at("OK", 8 * H), 16 * H + 1)).toBe(true);
+  });
+
+  it("is stale when the backend says STALE, whatever the age, and never from an unknown age", () => {
+    expect(isStale(at("STALE", 8 * H), 60)).toBe(true);
+    expect(isStale(at("OK", H), null)).toBe(false);
+  });
+
+  it("falls back to the family default for a cadence that is missing or not positive", () => {
+    expect(staleAfterSeconds(0)).toBe(2 * H);
+    expect(staleAfterSeconds(-5)).toBe(2 * H);
+    expect(staleAfterSeconds(null)).toBe(2 * H);
+    expect(staleAfterSeconds(Number.NaN)).toBe(2 * H);
+    expect(staleAfterSeconds(8 * H)).toBe(16 * H);
   });
 });

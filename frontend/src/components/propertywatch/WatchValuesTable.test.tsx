@@ -127,3 +127,57 @@ describe("the values table", () => {
     expect(screen.getByText("alice × DENY")).toBeInTheDocument();
   });
 });
+
+describe("the values table at width", () => {
+  const LONG = `svc-${"very-long-service-account-name-".repeat(3)}end@corp.example.internal`;
+
+  it("cuts a long value to two lines and keeps the whole text one disclosure away", () => {
+    table([value("l", LONG)]);
+    const cell = document.querySelector("td.pw-value-cell") as HTMLElement;
+    expect(cell.querySelector(".pw-value-clamp")).toHaveTextContent(LONG);
+    const details = cell.querySelector("details.pw-value-full") as HTMLElement;
+    expect(details).not.toHaveAttribute("open");
+    // A summary is focusable and opens from the keyboard; a title attribute is not enough.
+    expect(within(details).getByText("Show the full value").tagName).toBe("SUMMARY");
+    expect(details.querySelector(".pw-value-text")).toHaveTextContent(LONG);
+  });
+
+  it("offers no disclosure for a short value", () => {
+    table([value("s", "alice")]);
+    expect(document.querySelector("details.pw-value-full")).toBeNull();
+  });
+
+  it("renders a hostile long value as text in the cell and in the disclosure", () => {
+    const hostile = `${HOSTILE}${"x".repeat(80)}`;
+    const { container } = render(
+      <WatchValuesTable
+        values={[value("h", hostile)]}
+        latest={bucket(11)}
+        selected={new Set()}
+        maxSelected={5}
+        onToggle={() => {}}
+        incidents={new Map()}
+        sort="events"
+        sortHref={() => "/x"}
+      />,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("details.pw-value-full .pw-value-text")?.textContent).toBe(hostile);
+  });
+
+  it("has no column of its own for the baseline: every column fits at 1024 px", () => {
+    table();
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers).toEqual([
+      "Plot", "Value", "Events, latest bucket", "Expected range", "Share of parsed events", "First seen (UTC)",
+    ]);
+  });
+
+  it("keeps the baseline state and the open incidents under the value", () => {
+    const v = value("a", "alice");
+    table([v], { incidents: activeIncidentsByValue([incident({ pw_value: { ...incident().pw_value!, value_key: "alice" } })]) });
+    const cell = document.querySelector("td.pw-value-cell") as HTMLElement;
+    expect(cell).toHaveTextContent("Baseline reliable (168 of 168 cells)");
+    expect(cell).toHaveTextContent("Value spike · OPEN");
+  });
+});

@@ -1356,7 +1356,7 @@ spacing or type literal; existing components only (`PageHeader`, `Tabs`, `Disclo
 `docs/PRODUCT-UX-GUIDELINES.md` §8). No dark theme switch, text-only navigation, no emoji, no
 gradients (AGENTS.md §3a).
 
-### G.13.1 Where things live
+### G.13.1 Where things live **[BUILT — PW-7]**
 
 **Navigation: the Behavior group**, not Detection. The group is the product's purpose, "detecting
 that a log source changed, and explaining what changed" (`frontend/src/lib/nav.ts:3-6`), and a
@@ -1375,7 +1375,7 @@ a watch's incidents go to `/anomalies`, which is in Behavior. One entry, **Prope
 | `/custom-rules/new` (existing) | the subject picker gains "Property watch value" (§G.10.2) |
 | `/admin/search-cadence` (existing) | lists the `PROPERTY_WATCH` family |
 
-### G.13.2 The list, `/behavior/watches`
+### G.13.2 The list, `/behavior/watches` **[BUILT — PW-7]**
 
 A table, no KPI row: Name, **Status and reason** (second column, as on `/custom-rules`), Scope
 ("Group, DMZ firewalls, 37 sources"), Properties ("Username x Action"), Coverage of the last bucket
@@ -1386,7 +1386,15 @@ it), Enabled. Rows needing attention (`OPEN`, `STALE`, `NOT_APPLICABLE`, `SCOPE_
 for alerting within seconds, use QRadar's own rules." Writers see **New watch**; others see the list
 and are told which permission would add it.
 
-### G.13.3 The watch page, `/behavior/watches/[id]`
+### G.13.3 The watch page, `/behavior/watches/[id]` **[BUILT — PW-7; completed by PW-7b]**
+
+> **[BUILT — PW-7b]** The Threshold rules tab (from `threshold_rules` on the single-watch read),
+> the generated AQL in collapsed read-only `CodePanel`s on the Definition tab (from
+> `GET /property-watches/{id}/aql`), the values table at 1024 px (baseline and incidents moved under
+> the value; a long value takes two lines with the full text behind a disclosure) and the
+> investigation view on the real `GET /anomalies/{id}` detail (the band as one rectangle, the
+> new-value figures with their units, `pw_value.value_id`). The `/custom-rules/new` link carries no
+> preselected kind: the rule editor's subject picker takes no query parameter.
 
 First screen, top to bottom:
 
@@ -1472,6 +1480,8 @@ new-combination detection on"), regenerated from the form, never free text. The 
 > **[BUILT — PW-9]** `chart.property_watch` in `frontend/src/widgets/` (`PropertyWatchWidget.tsx`,
 > `pwWidgetState.ts`). Window fixed at 24 h. `forbidden` and a deleted watch use the widget's own note
 > body so the text names who grants `read:property_watches`; `sources` lists every path read.
+> **[BUILT — PW-7b]** `stale` is older than `2 x cadence_seconds` from the watch read (an 8-hour family
+> is not stale at 3 hours), no longer a fixed 2 hours.
 
 A configurable widget **`chart.property_watch`** in the registry
 (`frontend/src/widgets/registry.ts:62-76,105`, the `chart.search_results` precedent at `:365`,

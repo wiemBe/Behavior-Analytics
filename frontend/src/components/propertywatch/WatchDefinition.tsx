@@ -10,17 +10,21 @@ import { formatDateTime } from "@/lib/health";
 
 import { formatAge } from "@/lib/health";
 
+import { WatchAqlSection, type AqlRead } from "./WatchAql";
 import { pwTypeLabel, scopeKindLabel, scopeText, statusLabel, statusReason } from "./pwFormat";
 
 export function WatchDefinition({
   watch,
   catalog,
   scope,
+  aql = null,
 }: {
   watch: PropertyWatch;
   catalog: PropertyWatchCatalog | null;
   /** The resolved membership, or null when it could not be read. */
   scope: WatchScope | null;
+  /** The generated query text, or null when the read was not made or failed. */
+  aql?: AqlRead | null;
 }) {
   const caps = catalog
     ? [
@@ -145,6 +149,13 @@ export function WatchDefinition({
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section aria-labelledby="pw-def-aql">
+        <h2 id="pw-def-aql" className="section-title">
+          Generated query
+        </h2>
+        <WatchAqlSection read={aql} />
       </section>
 
       {caps.length > 0 && catalog && (

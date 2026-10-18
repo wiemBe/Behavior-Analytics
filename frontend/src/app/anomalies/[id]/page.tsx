@@ -185,9 +185,10 @@ async function canOpenIpsSource(): Promise<boolean> {
 const PW_SERIES_MAX_HOURS = 168;
 
 /**
- * What the property-watch view draws: the value's id (looked up by its text among the watch's
- * tracked values, never put in a URL), its series around the incident, and the watch's buckets.
- * Every part is optional: a failed read is `null` and the view says so, it is not "nothing".
+ * What the property-watch view draws: its series around the incident and the watch's buckets.
+ * The value's id comes from `GET /anomalies/{id}` (`pw_value.value_id`), never from a lookup by
+ * the value's text; it is null once retention deleted the value, and then there is no series to
+ * read. Every part is optional: a failed read is `null` and the view says so, it is not "nothing".
  */
 async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
   const anchor = Date.parse(anomaly.anomaly_start ?? anomaly.detected_at);
@@ -198,31 +199,23 @@ async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
   const base = { windowStart: windowStart.toISOString(), windowEnd: windowEnd.toISOString() };
   const hours = Math.ceil((now - windowStart.getTime()) / 3600_000);
   const watchId = anomaly.pw_value.watch_id;
+  const valueId = anomaly.pw_value.value_id;
 
-  let valueId: string | null = null;
-  try {
-    const page = await api.propertyWatchValues(watchId, { hours: PW_SERIES_MAX_HOURS, limit: 200 });
-    valueId = page.items.find((v) => v.value_key === anomaly.pw_value.value_key)?.id ?? null;
-  } catch {
-    valueId = null;
+  if (valueId === null) {
+    return {
+      ...base,
+      series: null,
+      buckets: null,
+      chartNote:
+        "This value is no longer stored (retention), so its series cannot be read and no chart is drawn. The incident's own figures and lifecycle are kept below.",
+    };
   }
   if (hours > PW_SERIES_MAX_HOURS) {
     return {
       ...base,
-      valueId,
       series: null,
       buckets: null,
       chartNote: `This incident is older than the ${PW_SERIES_MAX_HOURS / 24} days the series read covers, so its chart is not drawn. The incident's own figures and lifecycle are shown.`,
-    };
-  }
-  if (valueId === null) {
-    return {
-      ...base,
-      valueId,
-      series: null,
-      buckets: null,
-      chartNote:
-        "This value could not be found among the watch's tracked values, so its series is not drawn. It may have been retired, or the tracked values could not be read.",
     };
   }
   const [series, buckets] = await Promise.all([
@@ -234,7 +227,6 @@ async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
   ]);
   return {
     ...base,
-    valueId,
     series,
     buckets,
     chartNote:

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, api } from "@/lib/api";
 
-import { bucket, catalog, incident, iso, paged, point, scope, series, value, watch, WATCH_ID } from "./fixtures";
+import { aql, bucket, catalog, incident, iso, paged, point, scope, series, value, watch, WATCH_ID } from "./fixtures";
 import type { PropertyWatchSeriesChartProps } from "./PropertyWatchSeriesChart";
 import { WatchWorkspace, type WatchWorkspaceProps } from "./WatchWorkspace";
 
@@ -37,6 +37,9 @@ function props(over: Partial<WatchWorkspaceProps> = {}): WatchWorkspaceProps {
     incidents: [],
     incidentsTotal: 0,
     scope: scope(),
+    aql: { kind: "ok", aql: aql() },
+    ruleValues: new Map(),
+    ruleAccess: "writer",
     initialSelected: ["id-a"],
     initialSeries: [s("a")],
     windowStart: iso(0),
@@ -192,12 +195,28 @@ describe("the states of the values tab", () => {
 });
 
 describe("the tabs", () => {
-  it("opens on Values and offers Incidents and Definition, and no placeholder tabs", () => {
+  it("opens on Values and offers Incidents, Threshold rules and Definition", () => {
     render(<WatchWorkspace {...props()} />);
     const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["Values", "Incidents (0)", "Definition"]);
+    expect(tabs).toEqual(["Values", "Incidents (0)", "Threshold rules (0)", "Definition"]);
     expect(screen.getByRole("tab", { name: "Values" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByRole("tab", { name: /Threshold/ })).toBeNull();
+  });
+
+  it("lists the rules that pin a value of this watch on the Threshold rules tab", () => {
+    const rules = [{ id: "r1", name: "Backup flood", pw_value_id: "id-a", enabled: true }];
+    render(
+      <WatchWorkspace
+        {...props({ watch: watch({ threshold_rules: rules }), ruleValues: new Map([["id-a", items[0]]]) })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Threshold rules (1)" }));
+    expect(screen.getByRole("link", { name: "Backup flood" })).toHaveAttribute("href", "/custom-rules/r1");
+  });
+
+  it("shows the generated query on the Definition tab", () => {
+    render(<WatchWorkspace {...props()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Definition" }));
+    expect(screen.getByText(/Generated query text\. The collector adds the time range/)).toBeInTheDocument();
   });
 
   it("lists this watch's incidents with their lifecycle state", () => {
