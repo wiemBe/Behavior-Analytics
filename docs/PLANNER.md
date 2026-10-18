@@ -63,9 +63,8 @@ check the TimescaleDB license of the `postgres` image before the tag.
 **PW-6b** ([spec](tasks/PW-6b.md)): Sonnet sub-agent from 11:42, worktree `pw6b` (from
 `agent/pw6`), DB `qradar_obs_pw6b`, scratch `QRadar-Dash-work/pw6b/`.
 
-**Spec written:** [PW-7b](tasks/PW-7b.md) (launch on the merged tree). **Still to write:** PW-3c (backend follow-ups, after PW-4: engine, plus PW-5b's staleness rule and pin), PW-7b (UI follow-up after PW-5c and PW-6b: the investigation view on PW-5c's
-detail shape, the widget's stale limit as 2 × `cadence_seconds`; from the PW-8 PNGs: a long value wraps to eight lines in the values table, and at 1024 the table clips its last column), PW-10, PW-11.
-**Agents:** Codex fresh window from 11:25; Z.AI GLM until 2026-10-21 01:47; Grok done for the
+**PW-3c** ([spec](tasks/PW-3c.md)): opencode DeepSeek free, unit `pw3c-ds` from 12:43, worktree `pw3c` (from `agent/pw-merge`), DB `qradar_obs_pw3c`, log `QRadar-Dash-work/pw3c/opencode.log`. **Spec written:** [PW-7b](tasks/PW-7b.md) (launch on the merged tree after PW-6b). **Still to write:** PW-10 (live validation on the lab), PW-11 (docs; also the §G.10.1 sentence that a maintenance bucket holds a resolve).
+**Agents:** Codex out until **16:25** (limit hit 11:59); Z.AI GLM until 2026-10-21 01:47; Grok done for the
 week; Sonnet and the opencode free models available.
 
 ---
