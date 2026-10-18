@@ -147,3 +147,15 @@ every judgement writing a state, an incident and a transition.)
   setting, not measured on a console.
 - `workers/tasks.py` docstring of `dispatch_property_watch_collection` still says collection only.
 - No real QRadar, no worker/beat run: the pipeline was driven directly, not through Celery.
+
+## Orchestrator addendum (2026-10-18)
+
+- The whole integration run in §3 was cut by the 01:27 shutdown. The orchestrator re-ran it on
+  `qradar_obs_pw3b` (11:24–11:54, log `QRadar-Dash-work/pw3b/integ-rerun.log`): **1,396 passed,
+  1 failed, 0 skipped, 0 errors**. The failure was
+  `test_phase_a_api.py::TestDetectorCapabilities::test_every_named_detector_is_published_with_its_status`:
+  `all_detectors()` now publishes the five PW types and the test's exact set lacked them.
+- Review fix 1 (GLM 5.3 flash): the exact set gains `PwAnomalyType`, and each PW detector is pinned
+  `NOT_ENABLED` under the defaults (`pw_collection_enabled` is false; checked against
+  `detector_status`). The orchestrator re-ran the file: 51 passed, 0 failed; with
+  `PW_COLLECTION_ENABLED=true` the test fails (the pin holds). ruff clean.
