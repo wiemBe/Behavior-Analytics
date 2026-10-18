@@ -1617,6 +1617,9 @@ async def pinning_rules_by_watch(
     ).all()
     found: dict[uuid.UUID, list[PinningRule]] = {}
     for rule_id, name, value_id, enabled, watch_id in rows:
+        # The inner join makes a null value id unreachable; a row that has one is malformed.
+        if value_id is None:
+            continue
         found.setdefault(watch_id, []).append(
             PinningRule(id=rule_id, name=name, pw_value_id=value_id, enabled=bool(enabled))
         )
