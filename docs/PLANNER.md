@@ -28,9 +28,11 @@ Every merged `agent/*` branch, worktree and DB was removed (local and origin).
 worktree `pw7c` (from `0ae7b82`), DB `qradar_obs_pw7c`, log `QRadar-Dash-work/pw7c/codex.log`.
 Review: the backend fields, then the PNGs myself; then merge into `feat/phase-ce`.
 
+**PW-10** ([spec](tasks/PW-10.md)) **started 16:47** on a Sonnet sub-agent (dies with the chat): detached worktree `pw10` @ `9924ea9`, DB `qradar_obs_pw10`, scratch and report `QRadar-Dash-work/pw10/`. Shadow mode only. Scope decided from the code: the volume detectors need a week of seasonal samples and the new-value detectors ≥ 1 day of history, so a few-hour run shows collection, preview, the F.1 path live and the detectors' learning state; a 24-hour new-value run would be its own task. **If the chat dies:** `pgrep -af qradar_lab_loggen` and stop leftovers by PID; read the report; hand over.
+
 **Next:**
 1. PW-7c review and merge.
-2. **PW-10** live validation on the lab console (`qradarce2`), spec to write: a watch per scope
+2. **PW-10** (running) — was: a watch per scope
    kind over the lab's synthetic telemetry, preview against the real Ariel, a full collection →
    evaluation → training tick through Celery/beat, the training row volume (PW-3b), the alert
    path with `PW_ALERTING_ENABLED=true` on the lab only.
