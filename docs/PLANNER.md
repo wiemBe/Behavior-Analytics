@@ -60,6 +60,11 @@ license of the published `postgres` image (check before the next release).
 - **3.12 gate again on `9f073f0`** from 16:15 (container `gate-1018b`, dir `QRadar-Dash-work/gate-1018b/`).
 - **PW-7b**: the Sonnet run stopped ~12:55 on the session limit (reset 16:10); resumed 16:11 with "continue from where you stopped".
 
+**16:22 update.**
+- **PW-7b done and accepted 16:20** (Sonnet, resumed after the limit): `agent/pw7b` @ `bfbc753`; lint/typecheck clean, vitest 313 / 3,490, build OK; PNGs reviewed (investigation: units on every figure, the band at detection, lifecycle oldest first; values table at 1024: six columns, a long value cut to two lines with a keyboard-reachable full text; Definition AQL read-only with its window). Merged into `agent/pw-merge` = **`0ae7b82`** (frontend only; the backend is `9f073f0`'s). Decisions on its open points: **the Threshold rules tab looks a rule's value up in the page's own reads and can say "may no longer be stored", which is never true (`custom_rule.pw_value_id` is `RESTRICT`)** → **PW-7c** (the backend returns `value_key`/`components` on `PinRuleOut`; the tab uses them; the Definition tab states the cadence); no PW preselect on `/custom-rules/new` → accepted (one click); `cadence_seconds` missing → 1 h fallback, accepted (always present after PW-6b); the flat band at detection over a long incident → accepted (labelled); the minimal explanation panel → accepted (PW never produces one today).
+- **PW-7c** ([spec](tasks/PW-7c.md)): Codex, timer `pw7c-codex` at **16:26** (Codex back 16:25), worktree `pw7c` (from `0ae7b82`), DB `qradar_obs_pw7c`, ports 3116/8116/9116, log `QRadar-Dash-work/pw7c/codex.log`.
+- Frontend gate on `0ae7b82` running (unit `pwmerge-frontend`, log `QRadar-Dash-work/pwmerge/frontend-0ae7b82.log`).
+
 **Next-release checklist (D-26, from OPS-17):** `main` merge → run the **Mirror images** workflow
 (`0.1.0 0.1.1`) → check that the new packages pull anonymously (if private, the user makes them
 public in GHCR) → release notes carry OPS-17's paragraph (in its report) → tag → fresh-VM check
