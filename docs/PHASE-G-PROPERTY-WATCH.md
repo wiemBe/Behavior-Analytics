@@ -1198,6 +1198,14 @@ bucket, sustained 3 buckets"). The extension, all additive:
   `watch_version` (scope or properties, §G.3) is refused with 409 while a rule pins one of the
   watch's values: the rule's value would stop receiving data under the old version. The operator
   detaches the rules or creates a new watch.
+- **[BUILT — PW-6b]** The F.1 preview (`custom_rules/preview.py`) reads a `PW_VALUE` rule through
+  `load_pw_values` with the engine's coverage floor, one metric statement; the bucket's stored
+  `in_maintenance` is its only maintenance. `PUT /property-watches/{id}/pins` returns
+  `rules: [{id, name, pw_value_id}]` (the rules that pin a value of the watch after the change).
+  A rule created after the 409 check reaches the database's `RESTRICT` key as a 409 (watch delete)
+  and a rule create or patch whose value row was deleted meanwhile is a 409 as well, never a 500.
+  `PropertyWatchOut.cadence_seconds` is the `PROPERTY_WATCH` family cadence, read once per request
+  (the widget's `stale` is older than twice this, §G.13.5).
 - The rule's fingerprint is unchanged, `custom_rule_breach_fingerprint(rule_id)`
   (`backend/app/alerts/fingerprint.py:155-167`), and its switches are the F.1 ones
   (`CUSTOM_RULES_ENABLED`, `CUSTOM_RULES_ALERTING_ENABLED`, `backend/app/core/config.py:545-551`).

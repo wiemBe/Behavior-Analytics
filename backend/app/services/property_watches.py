@@ -47,6 +47,7 @@ from app.models.enums import (
     PwBucketMeasurement,
     PwPinnedMeasurement,
     PwScopeKind,
+    SearchFamily,
 )
 from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.log_source import LogSource
@@ -91,6 +92,7 @@ from app.schemas.property_watch import (
     BaselineState,
     CoverageOut,
     DetectorStateOut,
+    PinRuleOut,
     PreviewOut,
     PreviewQueryOut,
     PreviewRowOut,
@@ -108,6 +110,7 @@ from app.schemas.property_watch import (
     WatchScopeOut,
     WatchValueOut,
 )
+from app.services.search_cadence import SearchCadenceService
 
 #: Inclusive bounds of the `hours` query on the history reads and the default, as F.1's preview.
 HOURS_MIN = 1
@@ -766,6 +769,12 @@ async def watch_scope(
     )
 
 
+async def _property_watch_cadence(session: AsyncSession, settings: Settings) -> int:
+    """The family cadence, read once per request, as the collector reads it."""
+    row = await SearchCadenceService(session, settings).get(SearchFamily.PROPERTY_WATCH)
+    return int(row.cadence_seconds)
+
+
 async def watch_outs(
     session: AsyncSession,
     watches: Sequence[PropertyWatch],
@@ -780,6 +789,8 @@ async def watch_outs(
     as `/scope` (one more bulk read per instance).
     """
     ids = [w.id for w in watches]
+    cadence = await _property_watch_cadence(session, settings)
+    pinned_by = await pinning_rules_by_watch(session, ids) if detail else {}
     scopes = await _scope_summaries(session, watches, settings, with_members=detail)
     coverage = await _latest_coverage(session, ids)
     incidents = await _active_incidents(session, ids)
@@ -822,6 +833,17 @@ async def watch_outs(
                 open_incidents=sum(counts.values()),
                 detector_states=states,
                 alerting_mode="alerting" if alerting_mode == "alerting" else "shadow",
+                cadence_seconds=cadence,
+                threshold_rules=(
+                    [
+                        PinRuleOut(
+                            id=r.id, name=r.name, pw_value_id=r.pw_value_id, enabled=r.enabled
+                        )
+                        for r in pinned_by.get(watch.id, [])
+                    ]
+                    if detail
+                    else None
+                ),
                 created_at=watch.created_at,
                 updated_at=watch.updated_at,
                 created_by=watch.created_by,
@@ -1566,3 +1588,36 @@ async def resolve_watch_alerts(
         if enqueuer is not None:
             await enqueuer.enqueue(result.alert, result.transition)
     return count
+
+
+@dataclass(frozen=True)
+class PinningRule:
+    """A rule and the value it pins, for the pins editor and the watch's rules tab."""
+
+    id: uuid.UUID
+    name: str
+    pw_value_id: uuid.UUID
+    enabled: bool
+
+
+async def pinning_rules_by_watch(
+    session: AsyncSession, watch_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[PinningRule]]:
+    """Every F.1 rule that pins a value of each watch, ordered by name; one statement."""
+    if not watch_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(CustomRule.id, CustomRule.name, CustomRule.pw_value_id, CustomRule.enabled,
+                   PwValue.watch_id)
+            .join(PwValue, PwValue.id == CustomRule.pw_value_id)
+            .where(PwValue.watch_id.in_(list(watch_ids)))
+            .order_by(CustomRule.name.asc(), CustomRule.id.asc())
+        )
+    ).all()
+    found: dict[uuid.UUID, list[PinningRule]] = {}
+    for rule_id, name, value_id, enabled, watch_id in rows:
+        found.setdefault(watch_id, []).append(
+            PinningRule(id=rule_id, name=name, pw_value_id=value_id, enabled=bool(enabled))
+        )
+    return found

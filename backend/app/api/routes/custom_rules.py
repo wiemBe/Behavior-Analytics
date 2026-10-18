@@ -86,6 +86,7 @@ PREVIEW_HOURS_MAX = 168
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
 _NAME_CONSTRAINT = "uq_custom_rule_name"
+_PW_VALUE_FK_CONSTRAINT = "fk_custom_rule_pw_value_id_pw_value"
 _ENABLED_CAP_LOCK_KEY = 5_214_200_001
 _NULLABLE_PATCH = frozenset(
     {
@@ -552,6 +553,12 @@ async def _flush_name(session: AsyncSession, name: str) -> None:
         async with session.begin_nested():
             await session.flush()
     except IntegrityError as exc:
+        if _PW_VALUE_FK_CONSTRAINT in str(exc):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "the property-watch value no longer exists (its watch changed or was deleted "
+                "while the rule was saved); reload and choose a value again",
+            ) from exc
         if _NAME_CONSTRAINT not in str(exc):
             raise
         raise HTTPException(
@@ -731,6 +738,8 @@ async def preview_draft(
         interval_seconds=settings.collection_interval_seconds,
         now=datetime.now(UTC),
         name="preview",
+        pw_value_id=body.pw_value_id,
+        pw_coverage_floor=settings.pw_min_coverage,
     )
     return _preview_out(result)
 
@@ -873,6 +882,8 @@ async def preview_rule(
         interval_seconds=settings.collection_interval_seconds,
         now=datetime.now(UTC),
         name=rule.name,
+        pw_value_id=rule.pw_value_id,
+        pw_coverage_floor=settings.pw_min_coverage,
     )
     return _preview_out(result)
 

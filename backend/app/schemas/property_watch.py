@@ -193,6 +193,15 @@ class DetectorStateOut(BaseModel):
     active_incidents: int
 
 
+class PinRuleOut(BaseModel):
+    """A custom rule that pins one value of the watch (design §G.10.2)."""
+
+    id: uuid.UUID
+    name: str
+    pw_value_id: uuid.UUID
+    enabled: bool
+
+
 class PropertyWatchOut(BaseModel):
     id: uuid.UUID
     instance_id: uuid.UUID
@@ -220,7 +229,12 @@ class PropertyWatchOut(BaseModel):
     open_incidents: int = 0
     #: Only on the single-watch read.
     detector_states: list[DetectorStateOut] | None = None
+    #: Only on the single-watch read: the F.1 rules pinning a value of this watch, by name.
+    threshold_rules: list[PinRuleOut] | None = None
     alerting_mode: Literal["shadow", "alerting"]
+    #: The `PROPERTY_WATCH` search-family cadence in seconds (the same for every watch). The
+    #: widget's `stale` is "older than twice this" (design §G.13.5).
+    cadence_seconds: int
     created_at: datetime
     updated_at: datetime
     created_by: str | None = None
@@ -231,6 +245,8 @@ class PinsOut(BaseModel):
     watch: PropertyWatchOut
     added: int
     removed: int
+    #: The rules that pin a value of this watch after the change.
+    rules: list[PinRuleOut] = []
 
 
 # ------------------------------------------------------------------ editor reads

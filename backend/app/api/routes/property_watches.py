@@ -91,6 +91,7 @@ PrincipalDep = Annotated[Principal, Depends(get_principal)]
 HoursQuery = Annotated[int, Query(ge=svc.HOURS_MIN, le=svc.HOURS_MAX)]
 
 _NAME_CONSTRAINT = "uq_property_watch_name"
+_RULE_FK_CONSTRAINT = "fk_custom_rule_pw_value_id_pw_value"
 _ENABLED_CAP_LOCK_KEY = 5_214_200_003
 _NULLABLE_PATCH = frozenset(
     {"description", "log_source_id", "scope_type_id", "scope_group_id"}
@@ -186,16 +187,56 @@ async def _lock_enabled_cap(session: AsyncSession) -> None:
     await session.execute(select(func.pg_advisory_xact_lock(_ENABLED_CAP_LOCK_KEY)))
 
 
-async def _flush_name(session: AsyncSession, name: str) -> None:
+async def _flush_name(
+    session: AsyncSession, name: str, *, watch_id: uuid.UUID | None = None
+) -> None:
     try:
         async with session.begin_nested():
             await session.flush()
     except IntegrityError as exc:
+        if watch_id is not None and _RULE_FK_CONSTRAINT in str(exc):
+            raise await _rules_conflict(
+                session, watch_id, "change the scope, properties or pins", exc
+            ) from exc
         if _NAME_CONSTRAINT not in str(exc):
             raise
         raise HTTPException(
             status.HTTP_409_CONFLICT, f"a property watch named '{name}' already exists"
         ) from exc
+
+
+async def _rules_conflict(
+    session: AsyncSession, watch_id: uuid.UUID, action: str, exc: IntegrityError
+) -> HTTPException:
+    """The 409 for a rule that pinned a value after the PW-6 check (design §G.10.2).
+
+    The failed statement aborted the transaction (the flush that raised may sit outside any
+    savepoint), so it is rolled back first and the rules are re-read in a fresh one. Rules that
+    vanished again by now still refuse: the write failed on the foreign key, and the caller
+    reloads.
+    """
+    await session.rollback()
+    rules = await svc.dependent_rules(session, watch_id)
+    if rules:
+        return HTTPException(status.HTTP_409_CONFLICT, svc.dependency_refusal(rules, action))
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        {
+            "message": f"cannot {action}: a custom rule pinned a value of this watch while "
+            "the request ran; reload and try again",
+            "rules": [],
+        },
+    )
+
+
+async def _flush_refusing(session: AsyncSession, watch_id: uuid.UUID, action: str) -> None:
+    """Flush; the rule foreign key failing is a 409 naming the rules, anything else re-raises."""
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        if _RULE_FK_CONSTRAINT not in str(exc):
+            raise
+        raise await _rules_conflict(session, watch_id, action, exc) from exc
 
 
 async def _one_out(
@@ -786,7 +827,7 @@ async def update_watch(
         watch.watch_version = int(watch.watch_version) + 1
     watch.updated_by = principal.subject
     watch.updated_at = _bumped(_utc(watch.updated_at))
-    await _flush_name(session, watch.name)
+    await _flush_name(session, watch.name, watch_id=watch.id)
     if needs_capacity:
         capacity = await svc.enable_reasons(session, watch, settings)
         if capacity:
@@ -829,6 +870,7 @@ async def delete_watch(
     snapshot = svc.watch_snapshot(watch)
     key = str(watch.id)
     await session.delete(watch)
+    await _flush_refusing(session, watch.id, "delete the watch")
     await record_audit(
         session,
         action="property_watch.delete",
@@ -987,7 +1029,7 @@ async def put_pins(
         watch.pinned_values = wanted
         watch.updated_by = principal.subject
         watch.updated_at = _bumped(_utc(watch.updated_at))
-        await session.flush()
+        await _flush_refusing(session, watch.id, "unpin a value")
         if watch.enabled:
             capacity = await svc.enable_reasons(session, watch, settings)
             if capacity:
@@ -1000,6 +1042,6 @@ async def put_pins(
             object_id=str(watch.id),
             detail={"before": snapshot_before, "after": svc.watch_snapshot(watch)},
         )
-    return PinsOut(
-        watch=await _one_out(session, watch, settings, detail=True), added=added, removed=removed
-    )
+    out = await _one_out(session, watch, settings, detail=True)
+    # The detail read already holds the rules, read in one statement (design §G.13.3).
+    return PinsOut(watch=out, added=added, removed=removed, rules=out.threshold_rules or [])
