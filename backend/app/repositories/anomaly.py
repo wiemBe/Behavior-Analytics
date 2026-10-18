@@ -50,7 +50,7 @@ from app.models.log_source import (
     LogSourceBaseline,
     LogSourceMetric,
 )
-from app.models.property_watch import PropertyWatch, PwAnomaly
+from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
 from app.models.waf import (
     WafAnomaly,
     WafDetectorState,
@@ -192,6 +192,7 @@ class AnomalyRepository:
                 cast(null(), String).label("pw_scope_kind"),
                 cast(null(), JSONB).label("pw_properties"),
                 cast(null(), String).label("pw_value_key"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_value_id"),
                 a.anomaly_type.label("anomaly_type"),
                 a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
@@ -237,6 +238,7 @@ class AnomalyRepository:
                 cast(null(), String).label("pw_scope_kind"),
                 cast(null(), JSONB).label("pw_properties"),
                 cast(null(), String).label("pw_value_key"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_value_id"),
                 w.detector_type.label("anomaly_type"),
                 w.state, w.severity, w.observed_value, w.expected_value, w.deviation_ratio,
                 w.robust_z, w.absolute_delta, w.consecutive_buckets, w.confidence,
@@ -280,6 +282,7 @@ class AnomalyRepository:
                 cast(null(), String).label("pw_scope_kind"),
                 cast(null(), JSONB).label("pw_properties"),
                 cast(null(), String).label("pw_value_key"),
+                cast(null(), PgUUID(as_uuid=True)).label("pw_value_id"),
                 a.detector_type.label("anomaly_type"),
                 a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
@@ -319,6 +322,7 @@ class AnomalyRepository:
                 w.scope_kind.label("pw_scope_kind"),
                 w.properties.label("pw_properties"),
                 a.value_key.label("pw_value_key"),
+                a.pw_value_id.label("pw_value_id"),
                 a.detector_type.label("anomaly_type"),
                 a.state, a.severity, a.observed_value, a.expected_value, a.deviation_ratio,
                 a.robust_z, a.absolute_delta, a.consecutive_buckets, a.confidence,
@@ -724,6 +728,37 @@ class AnomalyRepository:
             ).all()
         )
         return row[0], row[1], transitions
+
+    # ------------------------------------------------------------- PW detail
+    async def get_pw_detail(
+        self, anomaly_id: uuid.UUID
+    ) -> tuple[PwAnomaly, PropertyWatch, LogSource | None, list[PwAnomalyTransition]] | None:
+        """One property-watch incident, its watch, its source and its lifecycle: three statements.
+
+        The incident joins its watch (the incident goes with the watch, so the join is inner)
+        and the watch's source when it has one; the transitions are read in their own
+        statement, oldest first. The PW models declare no relationships.
+        """
+        row = (
+            await self.session.execute(
+                select(PwAnomaly, PropertyWatch, LogSource)
+                .join(PropertyWatch, PropertyWatch.id == PwAnomaly.watch_id)
+                .outerjoin(LogSource, LogSource.id == PropertyWatch.log_source_id)
+                .where(PwAnomaly.id == anomaly_id)
+            )
+        ).first()
+        if row is None:
+            return None
+        transitions = list(
+            (
+                await self.session.scalars(
+                    select(PwAnomalyTransition)
+                    .where(PwAnomalyTransition.pw_anomaly_id == anomaly_id)
+                    .order_by(PwAnomalyTransition.occurred_at, PwAnomalyTransition.created_at)
+                )
+            ).all()
+        )
+        return row[0], row[1], row[2], transitions
 
     async def virtual_host_available(self, log_source_id: uuid.UUID) -> bool:
         """Whether the source's profile maps a virtual host property."""
