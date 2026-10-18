@@ -21,6 +21,7 @@ from tests.integration.pw_engine_support import (
     make_rig,
     plan_range,
 )
+from tests.integration.test_pw_collection import pin_cadence
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -234,6 +235,7 @@ async def test_a_missing_bucket_inside_the_window_is_not_a_zero(db_session) -> N
 # ------------------------------------------------------- failure never resolves
 async def test_a_failed_collection_never_resolves_and_evaluation_resumes(db_session) -> None:
     rig = await make_alice(db_session)
+    await pin_cadence(db_session, 3600)  # pre-D-28 default
     await add_cells(db_session, await rig.value("alice"))
     plan_range(rig.plan, 1, 3, {"alice": 500, "bob": 400})
     await tick_all(rig, 0, 3)
@@ -342,6 +344,7 @@ async def test_a_version_bump_resolves_the_old_incident_and_starts_fresh(db_sess
 
 async def test_a_value_is_not_judged_at_buckets_before_it_was_tracked(db_session) -> None:
     rig = await make_alice(db_session)
+    await pin_cadence(db_session, 3600)  # pre-D-28 default
     await add_cells(db_session, await rig.value("alice"))
     rig.plan[3] = {"alice": 100, "bob": 400, "dave": 50}
     await rig.collect(3)  # one run backfills buckets 0..3; dave is admitted at bucket 3 only

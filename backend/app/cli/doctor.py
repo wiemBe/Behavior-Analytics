@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Environment, Settings, get_settings
 from app.core.database import dispose_engine, get_sessionmaker
+from app.models.enums import DEFAULT_SEARCH_CADENCE
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
 from app.models.search_cadence import SearchCadenceSetting
@@ -498,16 +499,17 @@ class Doctor:
                 await provider.aclose()
 
     def _watermark_cadence(self, collector: str, cadences: dict[str, int]) -> int:
+        default = int(DEFAULT_SEARCH_CADENCE)
         if collector.startswith("waf_"):
-            return cadences.get("WAF_COLLECTION", 3600)
+            return cadences.get("WAF_COLLECTION", default)
         if collector.startswith("ips_"):
-            return cadences.get("IPS_COLLECTION", 3600)
+            return cadences.get("IPS_COLLECTION", default)
         if collector == "rule_match":
-            return cadences.get("RULE_MATCH", 3600)
+            return cadences.get("RULE_MATCH", default)
         if collector == "catchall_senders":
-            return cadences.get("CATCHALL_SENDERS", 3600)
+            return cadences.get("CATCHALL_SENDERS", default)
         if collector.startswith("geo_countries"):
-            return cadences.get("GEO_COLLECTION", 3600)
+            return cadences.get("GEO_COLLECTION", default)
         return {
             "log_source_metric": self.settings.collection_interval_seconds,
             "log_source_inventory": self.settings.log_source_sync_interval_seconds,

@@ -106,6 +106,7 @@ async def test_default_hour_cadence_adds_backfill_beyond_its_twelve_buckets(
     db_session,
 ) -> None:
     instance = await _seed_inventory(db_session)
+    await _set_phase_a_cadence(db_session, _settings(), 3600)  # pre-D-28 default
     settings = _settings(collection_max_backfill_intervals=3)
     first = datetime(2026, 7, 15, 8, 3, tzinfo=UTC)
     await MetricCollector(
@@ -160,6 +161,7 @@ async def _seed_watermark(session, instance, at: datetime) -> CollectionWatermar
 
 async def test_twelve_buckets_use_one_search(db_session) -> None:
     instance = await _seed_inventory(db_session)
+    await _set_phase_a_cadence(db_session, _settings(), 3600)  # pre-D-28 default
     boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
     await _seed_watermark(db_session, instance, boundary - timedelta(minutes=65))
     report = await MetricCollector(
@@ -176,6 +178,7 @@ async def test_twelve_buckets_use_one_search(db_session) -> None:
 
 async def test_truncation_splits_cover_window_without_overlap(db_session) -> None:
     instance = await _seed_inventory(db_session)
+    await _set_phase_a_cadence(db_session, _settings(), 3600)  # pre-D-28 default
     boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
     start = boundary - timedelta(hours=1)
     await _seed_watermark(db_session, instance, start - timedelta(minutes=5))
@@ -236,6 +239,7 @@ async def test_failed_single_bucket_keeps_prefix_and_holds_watermark_before_it(
     db_session,
 ) -> None:
     instance = await _seed_inventory(db_session)
+    await _set_phase_a_cadence(db_session, _settings(), 3600)  # pre-D-28 default
     boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
     start = boundary - timedelta(minutes=20)
     await _seed_watermark(db_session, instance, start - timedelta(minutes=5))
@@ -276,6 +280,7 @@ async def test_failed_single_bucket_keeps_prefix_and_holds_watermark_before_it(
 
 async def test_search_cap_keeps_only_contiguous_complete_prefix(db_session) -> None:
     instance = await _seed_inventory(db_session)
+    await _set_phase_a_cadence(db_session, _settings(), 3600)  # pre-D-28 default
     boundary = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
     start = boundary - timedelta(hours=1)
     await _seed_watermark(db_session, instance, start - timedelta(minutes=5))
@@ -323,6 +328,7 @@ async def test_bucketed_collection_matches_private_per_bucket_control_for_24_buc
     db_session,
 ) -> None:
     instance = await _seed_inventory(db_session)
+    await _set_phase_a_cadence(db_session, _settings(), 3600)  # pre-D-28 default
     provider = MockQRadarProvider(seed=1337)
     original = provider.get_log_source_metrics
 

@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import event, func, select, text
 
 from app.catchall.keyed_rows import parse_catchall_rows  # noqa: F401 (contract is exercised)
@@ -13,8 +14,9 @@ from app.collectors.catchall_collector import COLLECTOR_NAME, CatchallCollector
 from app.core.config import get_settings
 from app.models.alert import Alert
 from app.models.catchall import CatchallBucket, CatchallSender
-from app.models.enums import CatchallMeasurement, CatchallReviewStatus, Severity
+from app.models.enums import CatchallMeasurement, CatchallReviewStatus, SearchFamily, Severity
 from app.models.monitoring import CollectionWatermark
+from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import ProviderError
 from app.providers.mock import MockCatchallSearch, MockQRadarProvider
 from app.services.catchall_retention import CatchallRetention
@@ -24,6 +26,17 @@ pytestmark = pytest.mark.integration
 
 BUCKET = 300
 NOW = datetime(2026, 10, 13, 12, 10, tzinfo=UTC)
+
+
+@pytest_asyncio.fixture
+async def pin_cadence(db_session):  # type: ignore[no-untyped-def]
+    """The pre-D-28 one-hour cadence (12 buckets per tick) these scenarios were written for."""
+    db_session.add(
+        SearchCadenceSetting(
+            family=SearchFamily.CATCHALL_SENDERS.value, cadence_seconds=3600, updated_at=NOW
+        )
+    )
+    await db_session.commit()
 #: With the default 120 s settle, the run at NOW closes at 12:05, so its first-run
 #: window is the twelve buckets 11:05 .. 12:00.
 FIRST = datetime(2026, 10, 13, 11, 5, tzinfo=UTC)
@@ -103,6 +116,7 @@ def steady(sender_rows):  # type: ignore[no-untyped-def]
     return lambda start: sender_rows
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestBootstrap:
     async def test_the_first_run_leaves_no_new_sender(self, db_session) -> None:
         inst, _source, _ = await setup(db_session)
@@ -239,6 +253,7 @@ class TestAlerts:
         assert fp("i", "s", "fw") != fp("i", "t", "fw")
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestSplitAndFailure:
     async def test_a_truncated_wide_search_is_split_and_nothing_wide_is_kept(
         self, db_session
@@ -387,6 +402,7 @@ class TestSplitAndFailure:
         assert wm.watermark_at == FIRST + timedelta(seconds=5 * BUCKET)
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestUnsupportedAndLocked:
     async def test_a_provider_without_ariel_attempts_nothing(self, db_session, monkeypatch) -> None:
         inst, _source, _ = await setup(db_session)
@@ -413,6 +429,7 @@ class TestUnsupportedAndLocked:
         assert set(owners) == {source.id}
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestAdmissionPersistence:
     async def test_a_refused_sender_is_never_stored_by_name(self, db_session) -> None:
         inst, _source, _ = await setup(db_session)
@@ -503,6 +520,7 @@ class TestAdmissionPersistence:
         assert last.top_senders == [{"identifier": "watched", "events": 10}]
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestIdempotence:
     async def test_collecting_the_same_buckets_again_changes_nothing(self, db_session) -> None:
         inst, _source, _ = await setup(db_session)
@@ -550,6 +568,7 @@ class TestIdempotence:
         assert report.buckets_attempted == 0 and len(provider.catchall_searches) == sent
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestLifecycle:
     async def test_a_stale_sender_retires_and_a_new_sighting_reactivates_it(
         self, db_session
@@ -608,6 +627,7 @@ class TestLifecycle:
         assert found["b"].events_24h is None
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestConstantSql:
     async def _statements(self, session, count: int) -> int:  # type: ignore[no-untyped-def]
         inst, _source, _ = await setup(session)
@@ -667,6 +687,7 @@ class TestConstantSql:
         assert await later(40, True) - base <= 4 * 40
 
 
+@pytest.mark.usefixtures("pin_cadence")
 class TestRetention:
     async def test_old_buckets_and_long_retired_senders_go_and_nothing_else(
         self, db_session
@@ -780,12 +801,12 @@ class TestGate:
         finally:
             await engine.dispose()
 
-    async def test_the_family_has_a_default_hour_without_a_seed_row(self, db_session) -> None:
+    async def test_the_family_defaults_to_five_minutes_without_a_seed_row(self, db_session) -> None:
         from app.core.config import Settings
-        from app.models.enums import SearchCadence, SearchFamily
+        from app.models.enums import DEFAULT_SEARCH_CADENCE, SearchFamily
         from app.services.search_cadence import SearchCadenceService
 
         row = await SearchCadenceService(db_session, Settings(), lambda: NOW).get(
             SearchFamily.CATCHALL_SENDERS
         )
-        assert row.cadence_seconds == SearchCadence.ONE_HOUR
+        assert row.cadence_seconds == DEFAULT_SEARCH_CADENCE

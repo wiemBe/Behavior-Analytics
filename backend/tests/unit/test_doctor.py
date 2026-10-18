@@ -22,6 +22,7 @@ from app.cli.doctor import (
     render_text,
 )
 from app.core.config import Environment, Settings
+from app.models.enums import DEFAULT_SEARCH_CADENCE
 from app.providers.dto import InstanceInfoDTO
 
 
@@ -302,6 +303,23 @@ async def test_watermarks_pass_warn_and_fail(settings: Settings) -> None:
             settings, FakeSession(scalars_values=[[failed], [cadence]])
         ).check_watermarks()
     ).status is Status.FAIL
+
+
+@pytest.mark.parametrize(
+    "collector",
+    [
+        "waf_endpoint_metric:17",
+        "ips_collection:18",
+        "rule_match",
+        "catchall_senders",
+        "geo_countries_source",
+    ],
+)
+def test_watermark_family_fallbacks_use_the_default_cadence(
+    settings: Settings, collector: str
+) -> None:
+    doctor = make_doctor(settings)
+    assert doctor._watermark_cadence(collector, {}) == int(DEFAULT_SEARCH_CADENCE)
 
 
 @pytest.mark.asyncio

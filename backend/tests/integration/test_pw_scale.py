@@ -23,6 +23,7 @@ from tests.integration.test_pw_collection import (
     add_watch,
     cfg,
     collect,
+    pin_cadence,
 )
 from tests.integration.test_rule_match_collection import recorded_statements
 
@@ -110,6 +111,7 @@ async def count_statements(session, instance, provider) -> list[str]:  # type: i
 @pytest.mark.parametrize("kind", [PwScopeKind.LOG_SOURCE, PwScopeKind.LOG_SOURCE_GROUP])
 async def test_collection_at_the_default_ceiling_is_bulk(db_session, kind) -> None:
     counts: dict[tuple[int, int], int] = {}
+    await pin_cadence(db_session, 3600)  # pre-D-28 default
     for watches, values in ((1, 50), (10, 50), (1, 200), (10, 200)):
         instance, provider = await seeded(db_session, watches=watches, values=values, kind=kind)
         statements = await count_statements(db_session, instance, provider)

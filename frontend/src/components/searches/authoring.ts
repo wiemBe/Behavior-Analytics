@@ -23,8 +23,8 @@ export const SEARCH_LATENCY_STATEMENT =
 
 export const SEARCH_WRITE = "search:write";
 
-/** A new search defaults to hourly (§SC.6). */
-export const DEFAULT_SCHEDULE_CRON = "0 * * * *";
+/** A new search defaults to every five minutes (D-28). */
+export const DEFAULT_SCHEDULE_CRON = "*/5 * * * *";
 
 export const THRESHOLD_OPERATORS = ["GT", "GE", "LT", "LE", "EQ"] as const;
 

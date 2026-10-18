@@ -118,6 +118,9 @@ class SearchCadence(IntEnum):
     EIGHT_HOURS = 28800
 
 
+DEFAULT_SEARCH_CADENCE = SearchCadence.FIVE_MINUTES
+
+
 class AnomalyType(StrEnum):
     """Log-source anomaly taxonomy.
 

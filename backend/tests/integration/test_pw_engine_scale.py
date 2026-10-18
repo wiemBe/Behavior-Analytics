@@ -35,7 +35,7 @@ from tests.integration.pw_engine_support import (
     make_rig,
     plan_range,
 )
-from tests.integration.test_pw_collection import NOW, STEP, cfg, collect
+from tests.integration.test_pw_collection import NOW, STEP, cfg, collect, pin_cadence
 from tests.integration.test_pw_scale import START, seeded
 from tests.integration.test_rule_match_collection import recorded_statements
 
@@ -101,6 +101,7 @@ async def test_collection_plus_evaluation_is_bulk_at_every_required_size(
     db_session, capsys
 ) -> None:
     counts: dict[tuple[int, int], int] = {}
+    await pin_cadence(db_session, 3600)  # pre-D-28 default
     for watches, values in ((1, 50), (10, 50), (1, 200), (10, 200)):
         instance, provider = await seeded(
             db_session, watches=watches, values=values, kind=PwScopeKind.LOG_SOURCE
