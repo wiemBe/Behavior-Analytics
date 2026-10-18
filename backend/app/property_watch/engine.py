@@ -7,15 +7,17 @@ written once per lifecycle table.  No query is issued per watch, value or tuple.
 
 from __future__ import annotations
 
-import json
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.alerts.fingerprint import compute_fingerprint
+from app.alerts.dispatcher import AlertEnqueuer
+from app.alerts.fingerprint import pw_anomaly_fingerprint
+from app.alerts.service import AlertInput, AlertResolution, AlertService
 from app.anomaly.evidence import AnomalyEvidence
 from app.anomaly.lifecycle import LifecycleInput, advance_counters, next_state
 from app.core.config import Settings, get_settings
@@ -25,10 +27,14 @@ from app.models.enums import (
     PwAnomalyType,
     PwBucketMeasurement,
     PwPinnedMeasurement,
+    PwScopeKind,
     PwWatchStatus,
+    Severity,
     WafMeasurement,
 )
+from app.models.fleet import LogSourceGroup, LogSourceType
 from app.models.instance import QRadarInstance
+from app.models.log_source import LogSource
 from app.models.property_watch import (
     PropertyWatch,
     PwAnomaly,
@@ -47,7 +53,13 @@ from app.property_watch.detectors import (
     PwReadingPoint,
     PwThresholds,
 )
-from app.property_watch.facts import PwBucketFact, PwReading, PwReadingKind, reading_for
+from app.property_watch.facts import (
+    PwBucketFact,
+    PwReading,
+    PwReadingKind,
+    reading_for,
+    split_tuple_key,
+)
 from app.property_watch.history import verify_value_history
 from app.repositories.property_watch import PropertyWatchRepository
 from app.waf.inputs import HistoryFacts
@@ -112,10 +124,41 @@ class _History:
     membership_changed: bool
 
 
+@dataclass(frozen=True)
+class _AlertOpenOrUpdate:
+    """Open the incident's alert, or refresh it while the incident is still anomalous."""
+
+    watch: PropertyWatch
+    value_key: str
+    pw_value_id: uuid.UUID | None
+    detector: str
+    evidence: AnomalyEvidence[PwAnomalyType]
+    bucket: PwBucketFact
+    incident_id: uuid.UUID
+
+
+@dataclass(frozen=True)
+class _AlertResolve:
+    watch_id: uuid.UUID
+    value_key: str
+    detector: str
+    reason: str
+
+
+type _AlertAction = _AlertOpenOrUpdate | _AlertResolve
+
+#: The alert actor and the two reasons the engine resolves with (design §G.10.1).
+ALERT_ACTOR = "pw-engine"
+REASON_RECOVERED = "condition recovered"
+REASON_VERSION = "watch definition changed"
+
+
 @dataclass
 class _Writes:
     transitions: list[dict[str, object]] = field(default_factory=list)
     watches: dict[uuid.UUID, dict[str, object]] = field(default_factory=dict)
+    #: In the order the lifecycle produced them: a value can open and resolve in one run.
+    alerts: list[_AlertAction] = field(default_factory=list)
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -153,18 +196,6 @@ def _tracked_at(value: PwValue, at: datetime) -> bool:
     return start is not None and start <= at and (end is None or at <= end)
 
 
-def _fingerprint(instance_id: uuid.UUID, watch_id: uuid.UUID, value_key: str, detector: str) -> str:
-    natural_key = json.dumps(
-        [str(instance_id), str(watch_id), value_key], separators=(",", ":")
-    )
-    return compute_fingerprint(
-        source_type="pw_value",
-        source_id=natural_key,
-        condition="pw_anomaly",
-        subtype=detector,
-    )
-
-
 _DETECTOR_OWNED = frozenset({PwWatchStatus.OK, PwWatchStatus.OPEN, PwWatchStatus.RECOVERING})
 _NOVELTY = frozenset({PwAnomalyType.PW_NEW_VALUE, PwAnomalyType.PW_NEW_COMBINATION})
 
@@ -178,11 +209,19 @@ class PwAnomalyEngine:
         *,
         settings: Settings | None = None,
         clock: Callable[[], datetime] | None = None,
+        enqueuer: AlertEnqueuer | None = None,
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._enqueuer = enqueuer
         self.repo = PropertyWatchRepository(session)
+        self.alerts = AlertService(session, clock=self._clock)
+
+    @property
+    def _alerting(self) -> bool:
+        """Shadow mode is the default: an alert needs its own switch and the family's."""
+        return self.settings.pw_alerting_enabled and self.settings.pw_collection_enabled
 
     def _thresholds(self) -> PwThresholds:
         s = self.settings
@@ -301,6 +340,8 @@ class PwAnomalyEngine:
                 report,
             )
         await self._persist(states, incidents, writes)
+        if writes.alerts:
+            await self._apply_alert_actions(instance, by_watch, writes.alerts)
         return report
 
     def _novelty_candidates(
@@ -439,6 +480,17 @@ class PwAnomalyEngine:
                 )
                 report.resolved += 1
                 report.version_resolved += 1
+                if self._alerting and previous in (AnomalyState.OPEN, AnomalyState.RECOVERING):
+                    # The values no longer exist under the new semantics (design §G.3), and a
+                    # bucket in maintenance does not delay this: the definition is gone.
+                    writes.alerts.append(
+                        _AlertResolve(
+                            state.watch_id,
+                            str(incident.row["value_key"]),
+                            state.detector.value,
+                            REASON_VERSION,
+                        )
+                    )
             if (
                 state.state is not AnomalyState.RESOLVED
                 or state.active_anomaly_id is not None
@@ -863,10 +915,20 @@ class PwAnomalyEngine:
         )
         state.dirty = True
         target = decision.state
+        if bucket.in_maintenance and target is AnomalyState.RESOLVED:
+            # A bucket in maintenance never resolves (design §G.10.1): the counters and the
+            # watermark moved, the state did not, and the next bucket outside maintenance
+            # decides again. Resolving the incident here would strand its open alert.
+            return
+        alerting = self._alerting and not bucket.in_maintenance
         incident = incidents.get(state.active_anomaly_id) if state.active_anomaly_id else None
         if target is previous:
             if incident is not None and previous is AnomalyState.OPEN and evidence.is_anomalous:
                 self._touch(incident, state, bucket, evidence)
+                if alerting and evidence.is_anomalous:
+                    writes.alerts.append(
+                        self._open_action(watch, value, evidence, bucket, incident)
+                    )
             return
         state.state = target
         if target in (AnomalyState.CANDIDATE, AnomalyState.OPEN) and incident is None:
@@ -894,6 +956,8 @@ class PwAnomalyEngine:
             state.open_anomaly_id = incident.id
             self._touch(incident, state, bucket, evidence)
             report.opened += 1
+            if alerting:
+                writes.alerts.append(self._open_action(watch, value, evidence, bucket, incident))
         elif target is AnomalyState.RECOVERING:
             if incident is not None:
                 incident.row["anomaly_end"] = bucket.bucket_start
@@ -903,11 +967,175 @@ class PwAnomalyEngine:
             state.active_anomaly_id = None
             state.open_anomaly_id = None
             report.resolved += 1
+            if self._alerting:
+                writes.alerts.append(
+                    _AlertResolve(
+                        watch.id, value.value_key, evidence.anomaly_type.value, REASON_RECOVERED
+                    )
+                )
         elif target is AnomalyState.NORMAL:
             if incident is not None:
                 incident.row["anomaly_end"] = bucket.bucket_start
             state.active_anomaly_id = None
             state.open_anomaly_id = None
+
+    @staticmethod
+    def _open_action(
+        watch: PropertyWatch,
+        value: PwValue,
+        evidence: AnomalyEvidence[PwAnomalyType],
+        bucket: PwBucketFact,
+        incident: _Incident,
+    ) -> _AlertOpenOrUpdate:
+        return _AlertOpenOrUpdate(
+            watch=watch,
+            value_key=value.value_key,
+            pw_value_id=value.id,
+            detector=evidence.anomaly_type.value,
+            evidence=evidence,
+            bucket=bucket,
+            incident_id=incident.id,
+        )
+
+    async def _apply_alert_actions(
+        self,
+        instance: QRadarInstance,
+        watches: Mapping[uuid.UUID, PropertyWatch],
+        actions: Sequence[_AlertAction],
+    ) -> None:
+        """Hand the lifecycle's alert side effects to `AlertService.apply_bulk`.
+
+        The actions are applied in rounds: one round holds each fingerprint at most once, so
+        a value that opens and then resolves within one run (a catch-up of several buckets)
+        opens its alert in the first round and resolves it in the second, in that order.
+        A usual run is one round: one scope lookup, the active-alert lookup, and per new
+        alert a savepoint, an insert and a release (the ruled exception of design D.10).
+        """
+        scopes: dict[uuid.UUID, str] = {}
+        if any(isinstance(item, _AlertOpenOrUpdate) for item in actions):
+            scopes = await self._scope_labels(
+                {item.watch.id for item in actions if isinstance(item, _AlertOpenOrUpdate)}
+            )
+        for opens, resolves in self._rounds(instance.id, actions):
+            inputs = [
+                self._alert_input(instance, scopes.get(item.watch.id), item) for item in opens
+            ]
+            resolutions = [
+                AlertResolution(
+                    fingerprint=pw_anomaly_fingerprint(
+                        instance.id, item.watch_id, item.detector, item.value_key
+                    ),
+                    actor=ALERT_ACTOR,
+                    reason=item.reason,
+                )
+                for item in resolves
+            ]
+            opened_or_updated, resolved = await self.alerts.apply_bulk(inputs, resolutions)
+            if self._enqueuer is None:
+                continue
+            for result in [*opened_or_updated, *resolved]:
+                if result is not None and result.transition is not None:
+                    await self._enqueuer.enqueue(result.alert, result.transition)
+
+    @staticmethod
+    def _rounds(
+        instance_id: uuid.UUID, actions: Sequence[_AlertAction]
+    ) -> list[tuple[list[_AlertOpenOrUpdate], list[_AlertResolve]]]:
+        rounds: list[tuple[dict[str, _AlertOpenOrUpdate], dict[str, _AlertResolve]]] = []
+        current: tuple[dict[str, _AlertOpenOrUpdate], dict[str, _AlertResolve]] = ({}, {})
+        for item in actions:
+            watch_id = item.watch.id if isinstance(item, _AlertOpenOrUpdate) else item.watch_id
+            fingerprint = pw_anomaly_fingerprint(
+                instance_id, watch_id, item.detector, item.value_key
+            )
+            opens, resolves = current
+            if isinstance(item, _AlertOpenOrUpdate):
+                if fingerprint in resolves:
+                    rounds.append(current)
+                    current = opens, resolves = {}, {}
+                opens[fingerprint] = item  # the newest reading of a refreshed alert wins
+            else:
+                resolves[fingerprint] = item
+        rounds.append(current)
+        return [(list(o.values()), list(r.values())) for o, r in rounds if o or r]
+
+    async def _scope_labels(self, watch_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """The scope of each watch in words: one statement, only when an alert is opening."""
+        rows = await self.session.execute(
+            select(
+                PropertyWatch.id,
+                PropertyWatch.scope_kind,
+                LogSource.name,
+                LogSourceType.name,
+                LogSourceGroup.name,
+            )
+            .outerjoin(LogSource, LogSource.id == PropertyWatch.log_source_id)
+            .outerjoin(
+                LogSourceType,
+                (LogSourceType.instance_id == PropertyWatch.instance_id)
+                & (LogSourceType.type_id == PropertyWatch.scope_type_id),
+            )
+            .outerjoin(
+                LogSourceGroup,
+                (LogSourceGroup.instance_id == PropertyWatch.instance_id)
+                & (LogSourceGroup.qradar_id == PropertyWatch.scope_group_id),
+            )
+            .where(PropertyWatch.id.in_(watch_ids))
+        )
+        words = {
+            PwScopeKind.LOG_SOURCE: "log source",
+            PwScopeKind.LOG_SOURCE_TYPE: "log source type",
+            PwScopeKind.LOG_SOURCE_GROUP: "log source group",
+        }
+        out = {}
+        for watch_id, kind, source_name, type_name, group_name in rows.all():
+            scope_kind = PwScopeKind(str(kind))
+            name = source_name or type_name or group_name
+            out[watch_id] = f"{words[scope_kind]} {name}" if name else words[scope_kind]
+        return out
+
+    def _alert_input(
+        self, instance: QRadarInstance, scope: str | None, action: _AlertOpenOrUpdate
+    ) -> AlertInput:
+        watch, evidence, bucket = action.watch, action.evidence, action.bucket
+        severity = Severity(str(watch.severity))
+        shown = " | ".join(split_tuple_key(action.value_key))
+        context: dict[str, object] = {
+            "instance": instance.name,
+            "watch": watch.name,
+            "watch_id": str(watch.id),
+            "scope": scope,
+            "detector_type": action.detector,
+            "severity": severity.value,
+            "value": shown,
+            "bucket_start": bucket.bucket_start.isoformat(),
+            "bucket_end": (
+                bucket.bucket_start + timedelta(seconds=bucket.bucket_seconds)
+            ).isoformat(),
+        }
+        measurement = (evidence.extra or {}).get("observed_measurement")
+        for key, value in (
+            ("observed", evidence.observed_value),
+            ("expected", evidence.expected_value),
+            ("band_low", evidence.baseline_low),
+            ("band_high", evidence.baseline_high),
+            ("measurement", measurement),
+        ):
+            if value is not None:
+                context[key] = value
+        return AlertInput(
+            fingerprint=pw_anomaly_fingerprint(
+                instance.id, watch.id, action.detector, action.value_key
+            ),
+            title=f"{action.detector} on {watch.name}: {shown}",
+            severity=severity,
+            source_type="pw_value",
+            source_id=action.pw_value_id,
+            description=evidence.reason,
+            evidence=evidence.to_dict(),
+            source_anomaly_ids=[str(action.incident_id)],
+            context=context,
+        )
 
     def _new_incident(
         self,
@@ -925,8 +1153,8 @@ class PwAnomalyEngine:
             "pw_value_id": value.id,
             "value_key": value.value_key,
             "detector_type": evidence.anomaly_type.value,
-            "fingerprint": _fingerprint(
-                instance.id, watch.id, value.value_key, evidence.anomaly_type.value
+            "fingerprint": pw_anomaly_fingerprint(
+                instance.id, watch.id, evidence.anomaly_type.value, value.value_key
             ),
             "severity": str(watch.severity),
             "state": AnomalyState.CANDIDATE.value,

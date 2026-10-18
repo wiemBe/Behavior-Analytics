@@ -19,9 +19,9 @@ Validation is ``services.property_watches.validate_draft``. Every reason comes b
 The preview is one real bounded run of the **stored** watch: two searches through the
 provider, the rate limiter of a search, nothing stored. The browser sends no AQL.
 
-Deleting a watch deletes every value it holds (cascade in the schema). Resolving its open
-alerts first is PW-4's (alerting does not exist yet) and the 409 while an F.1 rule pins one
-of its values is PW-6's (the column does not exist yet).
+Deleting a watch deletes every value it holds (cascade in the schema). Its open alerts are
+resolved first, as the deleting principal, and the delete is refused with 409 while an F.1
+rule pins one of its values.
 """
 
 from __future__ import annotations
@@ -37,6 +37,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.alerts.dispatcher import NotificationDispatcher
+from app.alerts.routing import default_policy
 from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings, get_settings
 from app.core.rate_limit import limiter
@@ -817,6 +819,13 @@ async def delete_watch(
     _guard(principal)
     watch = await _locked(session, watch_id)
     await _refuse_if_pinned_by_rules(session, watch.id, "delete the watch")
+    # The principal resolves the watch's open alerts, then the watch goes (design §G.15).
+    await svc.resolve_watch_alerts(
+        session,
+        watch.id,
+        actor=principal.subject,
+        enqueuer=NotificationDispatcher(session, notifiers={}, policy=default_policy()),
+    )
     snapshot = svc.watch_snapshot(watch)
     key = str(watch.id)
     await session.delete(watch)

@@ -35,10 +35,14 @@ from typing import Any
 from sqlalchemy import and_, func, null, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.alerts.dispatcher import AlertEnqueuer
+from app.alerts.service import AlertResolution, AlertService
 from app.core.config import Settings
+from app.models.alert import Alert
 from app.models.custom_rule import CustomRule
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
+    AlertStatus,
     PwAnomalyType,
     PwBucketMeasurement,
     PwPinnedMeasurement,
@@ -1510,3 +1514,55 @@ def dependency_refusal(rules: Sequence[DependentRule], action: str) -> dict[str,
         ),
         "rules": [{"id": str(rule.id), "name": rule.name} for rule in rules],
     }
+
+
+# --------------------------------------------------------- alerts of a deleted watch (PW-4)
+ALERT_SOURCE_TYPE = "pw_value"
+REASON_WATCH_DELETED = "the watch was deleted"
+
+
+async def resolve_watch_alerts(
+    session: AsyncSession,
+    watch_id: uuid.UUID,
+    *,
+    actor: str,
+    enqueuer: AlertEnqueuer | None = None,
+    clock: Any = None,
+) -> int:
+    """Resolve every open alert of this watch before the watch row is deleted (design §G.15).
+
+    The alerts are found through the watch id the engine put in their context, not through the
+    incident rows, so an alert whose incident is gone is resolved too. The actor is the
+    deleting principal. Two statements and one flush however many alerts there are; none
+    open is a no-op and enqueues nothing. Returns the number resolved.
+    """
+    if not actor.strip():
+        raise ValueError("actor is required")
+    fingerprints = list(
+        (
+            await session.scalars(
+                select(Alert.dedup_key).where(
+                    Alert.source_type == ALERT_SOURCE_TYPE,
+                    Alert.status != AlertStatus.RESOLVED,
+                    Alert.context["watch_id"].astext == str(watch_id),
+                )
+            )
+        ).all()
+    )
+    if not fingerprints:
+        return 0
+    _, resolved = await AlertService(session, clock=clock).apply_bulk(
+        [],
+        [
+            AlertResolution(fingerprint=item, actor=actor, reason=REASON_WATCH_DELETED)
+            for item in fingerprints
+        ],
+    )
+    count = 0
+    for result in resolved:
+        if result is None or result.transition is None:
+            continue
+        count += 1
+        if enqueuer is not None:
+            await enqueuer.enqueue(result.alert, result.transition)
+    return count
