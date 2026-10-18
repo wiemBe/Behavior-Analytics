@@ -36,6 +36,7 @@ from app.models.enums import (
     IpsDimension,
     IpsProfileValidationStatus,
     PwAnomalyType,
+    PwScopeKind,
     Severity,
     WafAnomalyType,
     WafProfileValidationStatus,
@@ -49,6 +50,7 @@ from app.models.ips import (
     IpsSourceProfile,
 )
 from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
+from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.property_watch.facts import split_tuple_key
 from app.providers.base import LogSourceTelemetry
@@ -91,6 +93,7 @@ from app.schemas.anomaly import (
     WafValidationReportOut,
     detection_detail,
     ips_detection_detail,
+    pw_detection_detail,
     waf_detection_detail,
 )
 from app.schemas.ips_behavior import (

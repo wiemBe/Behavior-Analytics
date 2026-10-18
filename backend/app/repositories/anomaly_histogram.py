@@ -7,8 +7,8 @@ complete count is what makes an empty hour a measured zero rather than "none
 seen on this page".
 
 T-085 (the IPS analyst read API) is merged; this module includes the IPS branch
-alongside Phase A and WAF, and PW-5c added the property-watch branch. A new family is one more branch here,
-nothing else.
+alongside Phase A and WAF, and the property-watch branch (PW-5c). A new family is one more
+branch here, nothing else.
 """
 
 from __future__ import annotations
