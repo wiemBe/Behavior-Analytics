@@ -110,7 +110,7 @@ Verified on this branch, `file:line`. Facts about the QRadar console were settle
   `backend/app/providers/qradar_rest.py:1620-1622`).
 - A **`devicetype` filter** is in use by the catch-all senders search
   (`WHERE devicetype IN (…)`, `backend/app/providers/qradar_rest.py:1665-1670`; the device-type id
-  setting is described at `README.md:1019`). The lab probe ran `devicetype = <id>` together with a
+  setting is described at [CONFIGURATION.md](CONFIGURATION.md) "Catch-all senders"). The lab probe ran `devicetype = <id>` together with a
   quoted custom property and the bucket key in one query and lost no events (L3, `PW-0.report.md`).
 - `LIMIT` caps the **whole result, not each bucket** — there is no per-group top-N in AQL
   (`docs/SEARCH-CADENCE.md` §SC.2). `GROUP BY` a quoted custom property together with the bucket
@@ -665,7 +665,7 @@ watch's scope and properties over the last closed hour, plus the totals search (
 The browser submits no AQL and no unsaved draft: as with F.2's "Run now"
 (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.8.1), the editor first saves the watch **disabled**, then
 previews the stored version. The preview persists nothing, admits nothing and alerts nothing; it
-carries the tighter search limiter (`backend/app/core/rate_limit.py:1-8`, `README.md:210`); and it
+carries the tighter search limiter (`backend/app/core/rate_limit.py:1-8`, [CONFIGURATION.md](CONFIGURATION.md) "API, sessions and rate limits"); and it
 is audited as `property_watch.preview` with counts only (never the values). It answers, with real
 data, "does this property parse on this scope, and what are its current values" before the watch
 is ever enabled. It returns the same per-value rows, the coverage and the unparsed remainder the

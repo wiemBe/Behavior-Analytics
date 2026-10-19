@@ -101,7 +101,7 @@ first". D-27 (`PLANNER.md` §4) states the decision:
 | `docs/PHASE-G-PROPERTY-WATCH.md:1608-1620` (§G.14.1) | "Per watch per tick the cost is `chunks x (2 or 3)`", the static cost at enable | Steady-state cost, still true. A bootstrapping watch also draws on the history budget of §H.4.4 |
 | `backend/app/collectors/pw_collector.py:15-18` (module docstring) | "**The first run seeds the watermark at the latest closed bucket and replays nothing**" | Add: unless the watch is `READING` or `COMPLETE` history (§H.2.3) |
 | `docs/SEARCH-CADENCE.md` §SC.5 item 2 | the window of one tick is at most `cadence_seconds / bucket_seconds + collection_max_backfill_intervals` buckets | A history step is a deliberate, budgeted exception (§H.4.2). The 168 h per-search bound (`backend/app/collectors/bucketed_metrics.py:28`) still holds |
-| `README.md:1168` | "so an upgrade never replays history" | About F.1; stays true. The PW paragraph should say a bootstrapped bucket is not evaluated either |
+| [DATA-MODEL.md](DATA-MODEL.md) "Custom threshold rules" | "so an upgrade never replays history" | About F.1; stays true. The PW paragraph should say a bootstrapped bucket is not evaluated either |
 
 ---
 
