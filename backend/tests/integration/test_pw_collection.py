@@ -17,6 +17,7 @@ from app.collectors.pw_collector import PwCollector
 from app.core.config import Settings, get_settings
 from app.models.enums import (
     PwBucketMeasurement,
+    PwBucketOrigin,
     PwPinnedMeasurement,
     PwScopeKind,
     PwWatchStatus,
@@ -161,6 +162,7 @@ async def test_the_first_run_seeds_the_watermark_at_the_latest_closed_bucket(db_
     assert watch.collected_through == datetime(2026, 10, 13, 10, 0, tzinfo=UTC)
     assert report.buckets_written == 1 and report.watermarks_advanced == 1
     assert rows[0].values_measurement == PwBucketMeasurement.EXACT.value
+    assert rows[0].origin == PwBucketOrigin.LIVE.value
     assert rows[0].total_events == 10 and rows[0].parsed_events == 10
 
 
@@ -264,7 +266,11 @@ async def test_a_spent_budget_leaves_the_bucket_for_the_next_tick_and_no_zero(db
     first = await add_watch(db_session, instance)
     second = await add_watch(db_session, instance)
     provider = provider_with({"alice": 10})
-    tight = cfg(pw_max_searches_per_tick=3, pw_max_searches_per_watch_per_tick=3)
+    tight = cfg(
+        pw_max_searches_per_tick=3,
+        pw_max_searches_per_watch_per_tick=3,
+        pw_bootstrap_searches_per_tick=3,
+    )
     report = await collect(db_session, instance, provider, settings=tight)
     assert report.searches_sent == 3
     await reload(db_session, first)

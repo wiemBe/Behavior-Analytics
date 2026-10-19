@@ -40,6 +40,11 @@ def test_the_designed_defaults() -> None:
     assert (s.pw_disappear_min_median, s.pw_disappear_buckets) == (5.0, 6)
     assert (s.pw_new_value_history_days, s.pw_new_value_window_buckets) == (7, 12)
     assert (s.pw_new_value_min_events, s.pw_new_value_min_buckets) == (20, 2)
+    assert s.pw_bootstrap_enabled is True
+    assert (s.pw_bootstrap_days, s.pw_bootstrap_searches_per_tick) == (28, 12)
+    assert (s.pw_bootstrap_seconds_per_tick, s.pw_bootstrap_floor_margin_hours) == (180, 24)
+    assert (s.pw_bootstrap_max_hours, s.pw_bootstrap_max_failures) == (72, 3)
+    assert s.pw_bootstrap_max_lower_bound_share == 0.05
     assert (s.pw_metric_retention_days, s.pw_anomaly_retention_days) == (35, 180)
     assert (s.pw_retention_batch_size, s.pw_retention_max_batches) == (5000, 20)
     assert s.pw_retention_interval_seconds == 86400
@@ -78,6 +83,13 @@ def test_the_designed_defaults() -> None:
         ("pw_new_value_window_buckets", (0, 2017), (1, 2016)),
         ("pw_new_value_min_events", (0,), (1,)),
         ("pw_new_value_min_buckets", (0,), (1,)),
+        ("pw_bootstrap_days", (0,), (1,)),
+        ("pw_bootstrap_searches_per_tick", (0, 257), (1, 256)),
+        ("pw_bootstrap_seconds_per_tick", (9, 3601), (10, 3600)),
+        ("pw_bootstrap_floor_margin_hours", (0, 169), (1, 168)),
+        ("pw_bootstrap_max_hours", (0, 169), (1, 168)),
+        ("pw_bootstrap_max_failures", (0, 21), (1, 20)),
+        ("pw_bootstrap_max_lower_bound_share", (-0.01, 1.01), (0.0, 1.0)),
         ("pw_metric_retention_days", (1,), (2,)),
         ("pw_anomaly_retention_days", (1,), (2,)),
         ("pw_retention_batch_size", (99, 100_001), (100, 100_000)),
@@ -141,7 +153,68 @@ class TestCrossChecks:
         with pytest.raises(ValidationError, match="PW_NEW_VALUE_HISTORY_DAYS"):
             make(pw_collection_enabled=True, pw_new_value_history_days=35,
                  pw_metric_retention_days=35)
-        make(pw_collection_enabled=True, pw_new_value_history_days=34)
+        make(pw_collection_enabled=True, pw_new_value_history_days=34,
+             pw_bootstrap_days=34, pw_baseline_lookback_days=34,
+             pw_bootstrap_max_hours=1)
+
+    def test_bootstrap_days_must_cover_the_novelty_history(self) -> None:
+        with pytest.raises(ValidationError) as caught:
+            make(
+                pw_collection_enabled=True,
+                pw_new_value_history_days=8,
+                pw_bootstrap_days=7,
+            )
+        message = str(caught.value)
+        assert "PW_BOOTSTRAP_DAYS" in message and "7" in message
+        assert "PW_NEW_VALUE_HISTORY_DAYS" in message and "8" in message
+        make(pw_collection_enabled=True, pw_new_value_history_days=7, pw_bootstrap_days=7)
+
+    def test_bootstrap_days_must_not_exceed_the_baseline_lookback(self) -> None:
+        with pytest.raises(ValidationError) as caught:
+            make(
+                pw_collection_enabled=True,
+                pw_bootstrap_days=29,
+                pw_baseline_lookback_days=28,
+            )
+        message = str(caught.value)
+        assert "PW_BOOTSTRAP_DAYS" in message and "29" in message
+        assert "PW_BASELINE_LOOKBACK_DAYS" in message and "28" in message
+        make(pw_collection_enabled=True, pw_bootstrap_days=28, pw_baseline_lookback_days=28)
+
+    def test_bootstrap_searches_must_fit_the_tick_budget(self) -> None:
+        with pytest.raises(ValidationError) as caught:
+            make(
+                pw_collection_enabled=True,
+                pw_bootstrap_searches_per_tick=13,
+                pw_max_searches_per_tick=12,
+            )
+        message = str(caught.value)
+        assert "PW_BOOTSTRAP_SEARCHES_PER_TICK" in message and "13" in message
+        assert "PW_MAX_SEARCHES_PER_TICK" in message and "12" in message
+        make(
+            pw_collection_enabled=True,
+            pw_bootstrap_searches_per_tick=12,
+            pw_max_searches_per_tick=12,
+        )
+
+    def test_bootstrap_window_and_runtime_must_fit_strictly_inside_retention(self) -> None:
+        with pytest.raises(ValidationError) as caught:
+            make(
+                pw_collection_enabled=True,
+                pw_bootstrap_days=28,
+                pw_bootstrap_max_hours=72,
+                pw_metric_retention_days=31,
+            )
+        message = str(caught.value)
+        assert "PW_BOOTSTRAP_DAYS" in message and "28" in message
+        assert "PW_BOOTSTRAP_MAX_HOURS" in message and "72" in message
+        assert "PW_METRIC_RETENTION_DAYS" in message and "31" in message
+        make(
+            pw_collection_enabled=True,
+            pw_bootstrap_days=28,
+            pw_bootstrap_max_hours=71,
+            pw_metric_retention_days=31,
+        )
 
     def test_every_problem_is_reported_at_once(self) -> None:
         with pytest.raises(ValidationError) as caught:
@@ -155,5 +228,7 @@ class TestCrossChecks:
         settings = make(pw_baseline_min_visits=52, pw_baseline_lookback_days=90,
                         pw_new_value_history_days=50,
                         pw_max_searches_per_tick=5, pw_max_pinned_values=20,
-                        pw_max_active_values_per_watch=3)
+                        pw_max_active_values_per_watch=3, pw_bootstrap_days=1,
+                        pw_bootstrap_searches_per_tick=256, pw_bootstrap_max_hours=168,
+                        pw_metric_retention_days=2)
         assert settings.pw_collection_enabled is False

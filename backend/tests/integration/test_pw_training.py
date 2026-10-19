@@ -210,7 +210,13 @@ async def test_a_cell_the_rebuild_did_not_write_is_deleted(db_session) -> None:
 
 
 async def test_a_value_whose_readings_all_aged_out_loses_every_cell(db_session) -> None:
-    rig = await make_rig(db_session, values=("alice",), pw_baseline_lookback_days=1)
+    rig = await make_rig(
+        db_session,
+        values=("alice",),
+        pw_baseline_lookback_days=1,
+        pw_bootstrap_days=1,
+        pw_new_value_history_days=1,
+    )
     await rig.ticks(0, 12)
     await train(rig)
     assert await cells_of(rig, "alice")

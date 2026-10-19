@@ -250,6 +250,7 @@ def _bucket_row(
         "bucket_start": fact.bucket_start,
         "bucket_seconds": fact.bucket_seconds,
         "watch_version": fact.watch_version,
+        "origin": "LIVE",
         "total_events": fact.total_events,
         "parsed_events": fact.parsed_events,
         "unparsed_events": fact.unparsed_events,
