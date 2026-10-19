@@ -849,6 +849,8 @@ async def update_watch(
         # build (PW-13).
         watch.evaluated_through = watch.collected_through
         watch.collected_through = None
+        watch.last_status = None
+        watch.last_status_reason = None
     if was_enabled and not wants_enabled:
         # A disabled watch is no longer evaluated, so an incident open on it would never end
         # (design §G.10.1): resolve the watch's incidents and their alerts here, as the
@@ -863,6 +865,8 @@ async def update_watch(
             reason=svc.REASON_WATCH_DISABLED,
             enqueuer=NotificationDispatcher(session, notifiers={}, policy=default_policy()),
         )
+        watch.last_status = PwWatchStatus.DISABLED
+        watch.last_status_reason = f"disabled by {principal.subject}"
     action = (
         ("property_watch.enable" if watch.enabled else "property_watch.disable")
         if changed == {"enabled"}

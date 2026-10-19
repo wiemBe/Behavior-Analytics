@@ -22,7 +22,7 @@ from app.cli.doctor import (
     render_text,
 )
 from app.core.config import Environment, Settings
-from app.models.enums import DEFAULT_SEARCH_CADENCE, SearchFamily
+from app.models.enums import SearchFamily
 from app.providers.dto import InstanceInfoDTO
 
 
@@ -306,20 +306,20 @@ async def test_watermarks_pass_warn_and_fail(settings: Settings) -> None:
 
 
 @pytest.mark.parametrize(
-    "collector",
+    "collector, expected",
     [
-        "waf_endpoint_metric:17",
-        "ips_collection:18",
-        "rule_match",
-        "catchall_senders",
-        "geo_countries_source",
+        ("waf_endpoint_metric:17", 900),
+        ("ips_collection:18", 900),
+        ("rule_match", 300),
+        ("catchall_senders", 300),
+        ("geo_countries_source", 300),
     ],
 )
 def test_watermark_family_fallbacks_use_the_default_cadence(
-    settings: Settings, collector: str
+    settings: Settings, collector: str, expected: int
 ) -> None:
     doctor = make_doctor(settings)
-    assert doctor._watermark_cadence(collector, {}) == int(DEFAULT_SEARCH_CADENCE)
+    assert doctor._watermark_cadence(collector, {}) == expected
 
 
 @pytest.mark.asyncio

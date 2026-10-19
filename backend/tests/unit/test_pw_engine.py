@@ -64,6 +64,7 @@ def test_every_threshold_field_is_wired_from_settings() -> None:
         pw_new_value_min_events=29,
         pw_new_value_min_buckets=4,
         pw_min_admission_events=6,
+        pw_baseline_min_visits=3,
     )
     thresholds = PwAnomalyEngine(cast(AsyncSession, object()), settings=configured)._thresholds()
     expected = {
@@ -84,6 +85,7 @@ def test_every_threshold_field_is_wired_from_settings() -> None:
         "new_value_min_events": configured.pw_new_value_min_events,
         "new_value_min_buckets": configured.pw_new_value_min_buckets,
         "admission_min_events": configured.pw_min_admission_events,
+        "baseline_min_visits": configured.pw_baseline_min_visits,
     }
     assert {field.name for field in fields(PwThresholds)} == set(expected)
     assert {name: getattr(thresholds, name) for name in expected} == expected

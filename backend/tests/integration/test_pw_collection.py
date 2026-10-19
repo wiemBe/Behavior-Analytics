@@ -681,6 +681,7 @@ async def test_a_property_that_parsed_on_no_event_is_not_applicable_after_a_cade
     db_session,
 ) -> None:
     instance = await make_instance(db_session)
+    await pin_cadence(db_session, 3600)  # twelve buckets in one tick; the minimum is fixed at 12
     start = datetime(2026, 10, 13, 9, 0, tzinfo=UTC)
     watch = await add_watch(db_session, instance, through=start - STEP)
     provider = MockQRadarProvider(seed=1)

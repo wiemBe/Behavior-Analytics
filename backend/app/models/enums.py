@@ -118,7 +118,20 @@ class SearchCadence(IntEnum):
     EIGHT_HOURS = 28800
 
 
-DEFAULT_SEARCH_CADENCE = SearchCadence.FIVE_MINUTES
+#: D-28, amended 2026-10-18: WAF and IPS cost the most searches per source, so they default to
+#: 15 minutes; every other family defaults to 5.
+_FIFTEEN_MINUTE_FAMILIES = frozenset({SearchFamily.WAF_COLLECTION, SearchFamily.IPS_COLLECTION})
+
+
+def default_search_cadence(family: SearchFamily) -> SearchCadence:
+    """The cadence a family has when nobody has set one."""
+    if family in _FIFTEEN_MINUTE_FAMILIES:
+        return SearchCadence.FIFTEEN_MINUTES
+    return SearchCadence.FIVE_MINUTES
+
+
+#: A first run (no watermark) looks back this many buckets, whatever the cadence.
+FIRST_RUN_LOOKBACK_BUCKETS = 12
 
 
 class AnomalyType(StrEnum):

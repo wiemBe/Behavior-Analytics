@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Environment, Settings, get_settings
 from app.core.database import dispose_engine, get_sessionmaker
-from app.models.enums import DEFAULT_SEARCH_CADENCE, SearchFamily
+from app.models.enums import SearchFamily, default_search_cadence
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
 from app.models.search_cadence import SearchCadenceSetting
@@ -518,17 +518,19 @@ class Doctor:
                 await provider.aclose()
 
     def _watermark_cadence(self, collector: str, cadences: dict[str, int]) -> int:
-        default = int(DEFAULT_SEARCH_CADENCE)
+        def family_cadence(family: SearchFamily) -> int:
+            return cadences.get(family.value, int(default_search_cadence(family)))
+
         if collector.startswith("waf_"):
-            return cadences.get("WAF_COLLECTION", default)
+            return family_cadence(SearchFamily.WAF_COLLECTION)
         if collector.startswith("ips_"):
-            return cadences.get("IPS_COLLECTION", default)
+            return family_cadence(SearchFamily.IPS_COLLECTION)
         if collector == "rule_match":
-            return cadences.get("RULE_MATCH", default)
+            return family_cadence(SearchFamily.RULE_MATCH)
         if collector == "catchall_senders":
-            return cadences.get("CATCHALL_SENDERS", default)
+            return family_cadence(SearchFamily.CATCHALL_SENDERS)
         if collector.startswith("geo_countries"):
-            return cadences.get("GEO_COLLECTION", default)
+            return family_cadence(SearchFamily.GEO_COLLECTION)
         return {
             "log_source_metric": self.settings.collection_interval_seconds,
             "log_source_inventory": self.settings.log_source_sync_interval_seconds,

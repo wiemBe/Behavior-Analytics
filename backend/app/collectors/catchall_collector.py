@@ -47,6 +47,7 @@ from app.core.config import Settings, get_settings
 from app.ips.keyed_search import IpsSearchBudget
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.enums import (
+    FIRST_RUN_LOOKBACK_BUCKETS,
     CatchallMeasurement,
     CatchallReviewStatus,
     IpsCellState,
@@ -169,7 +170,7 @@ class CatchallCollector:
                     bucket_seconds,
                 ),
                 bucket_seconds,
-                first_run_buckets=cadence_buckets,
+                first_run_buckets=FIRST_RUN_LOOKBACK_BUCKETS,
                 max_buckets=cadence_buckets + settings.collection_max_backfill_intervals,
             )
 
@@ -222,7 +223,7 @@ class CatchallCollector:
         """Settled bucket starts after the watermark, oldest first, at most `max_buckets`."""
         step = timedelta(seconds=bucket_seconds)
         if watermark.watermark_at is None:
-            # First run: one cadence of buckets, never a backfill nobody asked for.
+            # First run: a fixed look-back (one hour at five-minute buckets), whatever the cadence.
             first = boundary - step * first_run_buckets
             limit = first_run_buckets
         else:

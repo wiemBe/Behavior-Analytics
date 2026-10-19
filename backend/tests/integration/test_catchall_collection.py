@@ -803,10 +803,10 @@ class TestGate:
 
     async def test_the_family_defaults_to_five_minutes_without_a_seed_row(self, db_session) -> None:
         from app.core.config import Settings
-        from app.models.enums import DEFAULT_SEARCH_CADENCE, SearchFamily
+        from app.models.enums import SearchFamily
         from app.services.search_cadence import SearchCadenceService
 
         row = await SearchCadenceService(db_session, Settings(), lambda: NOW).get(
             SearchFamily.CATCHALL_SENDERS
         )
-        assert row.cadence_seconds == DEFAULT_SEARCH_CADENCE
+        assert row.cadence_seconds == 300

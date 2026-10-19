@@ -65,7 +65,7 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 
 ## Search cadence and bucket collection
 
-Every QRadar search family defaults to a five-minute cadence. Operators can select 5 minutes,
+Every QRadar search family defaults to a five-minute cadence, except WAF and IPS, which default to fifteen minutes. Operators can select 5 minutes,
 15 minutes, 30 minutes, 1 hour, 2 hours, 4 hours or 8 hours. Cadence controls when a family
 searches; `COLLECTION_INTERVAL_SECONDS` controls bucket width. A tick may collect several complete
 buckets in one keyed search. Truncated multi-bucket results are split and are never stored as

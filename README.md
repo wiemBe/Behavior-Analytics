@@ -93,7 +93,7 @@ measurement semantics.
 ### From collection to investigation
 
 1. Inventory sync discovers QRadar instances, log sources, types, groups, offenses and rules.
-2. Each enabled search family claims its configured cadence slot—five minutes by default—and
+2. Each enabled search family claims its configured cadence slot—five minutes by default, fifteen for WAF and IPS—and
    requests complete time buckets through the direct REST/Ariel provider.
 3. Collectors validate fields, split truncated multi-bucket searches and fold raw rows into bounded
    aggregates. A failed or exhausted search leaves an explicit gap.
@@ -167,7 +167,7 @@ The complete operator runbook is [Operations](docs/OPERATIONS.md), which is writ
 
 Configuration comes from environment variables. The schema and defaults live in
 `backend/app/core/config.py`; `.env.example` is the deployment template. Every QRadar search family
-defaults to a **five-minute cadence**. Cadence controls when a family searches, while the collection
+defaults to a **five-minute cadence**, except WAF and IPS, which default to **fifteen minutes**. Cadence controls when a family searches, while the collection
 interval controls bucket width.
 
 Start here:
