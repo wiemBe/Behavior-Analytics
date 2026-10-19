@@ -68,8 +68,15 @@ async def load_log_sources(
     *,
     after: datetime,
     through: datetime,
+    include_history: bool = False,
 ) -> dict[str, dict[datetime, BucketFacts]]:
-    """``log_source_metric`` rows for the named sources in the open window."""
+    """``log_source_metric`` rows for the named sources in the open window.
+
+    A LIVE-only reader by default (HISTORY-BACKFILL §B.4.1, R5): a row read back from QRadar
+    history (`collection_source = 'ariel_history'`) is learning evidence, never a bucket an F.1
+    rule may breach on, also when the kind's watermark lies before it. Only the preview, which
+    replays and persists nothing, passes ``include_history=True``.
+    """
     if not log_source_ids:
         return {}
     rows = (
@@ -84,6 +91,7 @@ async def load_log_sources(
                 LogSourceMetric.log_source_id.in_(log_source_ids),
                 LogSourceMetric.bucket_start > after,
                 LogSourceMetric.bucket_start <= through,
+                *([] if include_history else [is_live_clause(LogSourceMetric)]),
             )
         )
     ).all()
@@ -111,8 +119,12 @@ async def load_fleet_classes(
     *,
     after: datetime,
     through: datetime,
+    include_history: bool = False,
 ) -> dict[str, dict[datetime, BucketFacts]]:
     """One ``GROUP BY class, bucket`` over enabled, monitored sources.
+
+    LIVE-only by default, like `load_log_sources`: a history row would add to a bucket's sum
+    and to its complete-source count. ``include_history=True`` is the preview's.
 
     The bucket is exact only when ``complete_sources == expected_sources``.
     Both the sum and the expected population exclude disabled and unmonitored
@@ -160,6 +172,7 @@ async def load_fleet_classes(
                 metric_class.in_(source_classes),
                 LogSourceMetric.bucket_start > after,
                 LogSourceMetric.bucket_start <= through,
+                *([] if include_history else [is_live_clause(LogSourceMetric)]),
             )
             .group_by(metric_class, LogSourceMetric.bucket_start, expected.c.expected_sources)
         )
