@@ -140,7 +140,8 @@ class TestCrossChecks:
         assert "PW_BASELINE_LOOKBACK_DAYS" in str(caught.value)
         make(pw_collection_enabled=True, pw_baseline_min_visits=4, pw_baseline_lookback_days=28)
         # a single visit asks for no recurrence, so any lookback holds it
-        make(pw_collection_enabled=True, pw_baseline_min_visits=1, pw_baseline_lookback_days=1)
+        make(pw_collection_enabled=True, pw_baseline_min_visits=1, pw_baseline_lookback_days=1,
+             pw_bootstrap_days=1, pw_new_value_history_days=1)
 
     def test_the_baseline_visits_are_bounded(self) -> None:
         for bad in (0, 53):
