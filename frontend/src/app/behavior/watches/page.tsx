@@ -11,6 +11,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
 import { PwStatus } from "@/components/propertywatch/PwStatus";
 import {
   propertyWatchAccessFrom,
@@ -18,7 +19,7 @@ import {
 } from "@/components/propertywatch/authoring";
 import {
   coverageText,
-  PW_LATENCY,
+  pwLatency,
   propertiesText,
   relativeAge,
   scopeText,
@@ -41,6 +42,7 @@ export default async function PropertyWatchesPage() {
   let forbidden = false;
   let failed = false;
   let access: PropertyWatchAccess = "unknown";
+  let canLink = false;
   try {
     watches = await api.propertyWatches();
   } catch (error) {
@@ -50,7 +52,9 @@ export default async function PropertyWatchesPage() {
   if (!failed && !forbidden) {
     // The switches only qualify the list: their failure must not blank it, and it is said.
     catalog = await api.propertyWatchCatalog().catch(() => null);
-    access = await api.caller().then(propertyWatchAccessFrom).catch(() => "unknown" as const);
+    const caller = await api.caller().catch(() => null);
+    access = caller ? propertyWatchAccessFrom(caller) : "unknown";
+    canLink = canReadSearchCadence(caller);
   }
   const now = new Date();
   const rows = sortWatches(watches);
@@ -116,7 +120,7 @@ export default async function PropertyWatchesPage() {
                 )}
               </>
             )}
-            <p className="pw-latency">{PW_LATENCY}</p>
+            <CadenceLatency className="pw-latency" parts={pwLatency()} canLink={canLink} />
             {access !== "writer" && (
               <p className="pw-write-note" role={access === "unknown" ? "alert" : undefined}>
                 {access === "unknown" ? "Permissions could not be read. " : ""}

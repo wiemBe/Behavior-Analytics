@@ -2,9 +2,10 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import CustomRulesPage from "./page";
-import { CUSTOM_RULE_LATENCY } from "@/components/customrules/authoring";
+import { customRuleLatency } from "@/components/customrules/authoring";
 import { catalog, reader, rule, writer } from "@/components/customrules/fixtures";
 import { resolveRuleSubjects } from "@/components/customrules/subjects";
+import { partsText } from "@/components/cadence/CadenceLatency";
 import { ApiError, api } from "@/lib/api";
 
 vi.mock("@/components/customrules/subjects", () => ({ resolveRuleSubjects: vi.fn() }));
@@ -54,7 +55,7 @@ describe("custom-rule list honesty", () => {
     render(await CustomRulesPage());
     expect(screen.getByText("CUSTOM_RULES_ENABLED").tagName).toBe("CODE");
     expect(screen.getByText("CUSTOM_RULES_ALERTING_ENABLED").tagName).toBe("CODE");
-    expect(screen.getAllByText(CUSTOM_RULE_LATENCY)).toHaveLength(1);
+    expect(screen.getAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(customRuleLatency()))).toHaveLength(1);
   });
 
   it("renders every evaluator status in words, with its recorded reason", async () => {

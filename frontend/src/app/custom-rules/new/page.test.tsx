@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import NewCustomRulePage from "./page";
-import { CUSTOM_RULE_LATENCY } from "@/components/customrules/authoring";
+import { customRuleLatency } from "@/components/customrules/authoring";
 import { catalog, reader, writer } from "@/components/customrules/fixtures";
+import { partsText } from "@/components/cadence/CadenceLatency";
 import { ApiError, api } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
@@ -21,7 +22,22 @@ describe("new custom rule page", () => {
     render(await NewCustomRulePage());
     expect(screen.getByRole("heading", { name: "New custom rule", level: 1 })).toBeInTheDocument();
     expect(screen.getByLabelText("custom rule editor")).toBeInTheDocument();
-    expect(screen.getAllByText(CUSTOM_RULE_LATENCY)).toHaveLength(1);
+    expect(screen.getAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(customRuleLatency()))).toHaveLength(1);
+  });
+
+  it("links Search cadence only to a reader of read:search_cadence", async () => {
+    render(await NewCustomRulePage());
+    expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
+    cleanup();
+    vi.spyOn(api, "caller").mockResolvedValue({
+      ...writer,
+      effective_permissions: [...writer.effective_permissions, "read:search_cadence"],
+    });
+    render(await NewCustomRulePage());
+    expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute(
+      "href",
+      "/admin/search-cadence",
+    );
   });
 
   it("hides the editor from a reader and names both granting roles", async () => {

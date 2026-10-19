@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import { SUBJECT_KIND_LABELS, subjectKindInSentence } from "@/components/customrules/authoring";
+import { pinAvailability } from "@/components/propertywatch/pwFormat";
 import {
   loadIpsEntities,
   loadIpsSources,
@@ -384,16 +385,14 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
                 pin the value first.
               </p>
               <p>
-                A new pin can be used in a rule after the next property-watch collection, within
-                about an hour.
+                A new pin can be used in a rule {pinAvailability()}.
               </p>
             </div>
           )}
           {watchId && pinnedValues.length > 0 && (
             <p className="field-hint">
               Only pinned values are listed. To use another value, <Link href={`/behavior/watches/${watchId}`}>pin it on the watch first</Link>.
-              A value pinned just now is listed after the next property-watch collection, within
-              about an hour.
+              A value pinned just now is listed {pinAvailability()}.
             </p>
           )}
         </>
