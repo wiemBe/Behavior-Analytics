@@ -57,8 +57,8 @@ and `C` is a property watch's scope chunks (1–4).
 
 Every family resumes from its own watermark (or `collected_through`) and takes only complete,
 settled buckets after it, so a tick that finds nothing new sends no search. A faster tick never
-re-searches a collected bucket. Neither the first run nor `NOT_APPLICABLE` depends on the cadence (T-138): the catch-all and geo
-first runs look back a fixed 12 buckets (1 h), and a property watch is marked `NOT_APPLICABLE`
+re-searches a collected bucket. Neither the first run nor `NOT_APPLICABLE` depends on the cadence (T-138): Phase A, WAF, IPS and the property watch read one interval (the latest closed
+bucket) on their first run, the catch-all and geo first runs look back a fixed 12 buckets (1 h), and a property watch is marked `NOT_APPLICABLE`
 after 12 consecutive collected buckets in which the property parsed on no event, counted across
 ticks (`pw_collector.py`).
 
@@ -113,7 +113,7 @@ source per hour replace 36–72.
 | Column | Type | Notes |
 |---|---|---|
 | `family` | `String(32)`, PK | A `SearchFamily` value. This is a new enum, not `AnomalyType`. |
-| `cadence_seconds` | `Integer`, NOT NULL | `CHECK cadence_seconds IN (300, 900, 1800, 3600, 7200, 14400, 28800)`. Seeded with `3600`. |
+| `cadence_seconds` | `Integer`, NOT NULL | `CHECK cadence_seconds IN (300, 900, 1800, 3600, 7200, 14400, 28800)`. A family's own migration seeds `3600`; migration `0028` moves an untouched seed row (`updated_by IS NULL`) to the D-28 default — `900` for WAF and IPS, `300` for every other family — and never touches an operator-set row. |
 | `last_slot_start` | `DateTime(tz)`, NULL | Start of the last cadence slot this family was dispatched for. |
 | `updated_at` | `DateTime(tz)`, NOT NULL | |
 | `updated_by` | `String(255)`, NULL | The principal's subject; NULL for the seed. |
@@ -318,7 +318,7 @@ QRadar, and what does that cost in latency?**
 - the cadence (a select of the seven presets);
 - the bucket width;
 - the worst-case detection delay, computed as `cadence + bucket + settle` and shown as text such
-  as "up to 1 h 7 min";
+  as "up to 12 min" at the default 5-minute cadence (22 min for WAF and IPS);
 - the last slot and the next slot (UTC);
 - the searches sent in the last run.
 

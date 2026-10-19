@@ -83,10 +83,11 @@ while no verdict of "normal" is ever drawn from one (`docs/PHASE-B-WAF-BEHAVIOR.
 
 ### F.1.3 Latency is the cadence, not seconds
 
-Collection runs at the D-7 cadence per family (default **1 h** for every family,
-`docs/SEARCH-CADENCE.md` lines 76-81) plus a settle delay (default 120 s, `docs/SEARCH-CADENCE.md`
-lines 121-123). A detection can therefore arrive up to *cadence + bucket + settle* late — about
-**1 h 7 min** at the defaults (`README.md` lines 887-888). F.1 rules read the same buckets, so
+Collection runs at the D-28 cadence per family (default **5 min**, and **15 min** for WAF and
+IPS; `default_search_cadence`, `backend/app/models/enums.py:126-130`, `docs/SEARCH-CADENCE.md`
+§SC.0) plus a settle delay (default 120 s, `docs/SEARCH-CADENCE.md` §SC.4). A detection can
+therefore arrive up to *cadence + bucket + settle* late — about **12 min** at the 5-minute default
+and **22 min** for WAF and IPS (`README.md` lines 96, 170). F.1 rules read the same buckets, so
 their alerts inherit exactly this delay, plus at most one evaluation beat (60 s,
 `app/workers/celery_app.py:42-46`). F.2 alerts arrive when the search's run completes: its cron
 interval plus the run's duration (timeout defaults to 300 s, `app/models/search.py:66`).
@@ -268,12 +269,13 @@ alert stays readable after an entity is retired or deleted.
 > `STALE` on every evaluable rule of that kind. The breach row stays open, the counters and
 > the watermark do not move, and the backlog is judged when rows return (F-1 review round 1,
 > `evaluate.py::stale_bound_seconds`). A disabled, retired or family-off rule keeps its own
-> status and does not take `STALE`. §F.4.4 adds the same terms up to "about 1 h 13 min".
-> One hour plus a 5-minute bucket, a 2-minute settle and at most one minute is 68 minutes.
-> The README's cadence line is that sum without the evaluation beat, about 1 h 7 min.
+> status and does not take `STALE`. §F.4.4 adds the same terms up to "about 13 min" at the
+> default 5-minute cadence (about 23 min for WAF and IPS at 15 minutes). Five minutes plus a
+> 5-minute bucket, a 2-minute settle and at most one minute is 13 minutes.
 > `/custom-rules` and `/custom-rules/new` show §F.12's sentence with "seconds-level" in place
-> of "real-time" (`frontend/src/components/customrules/authoring.ts`). The README quotes that
-> sentence.
+> of "real-time" (`frontend/src/components/customrules/authoring.ts`), which still says "about an
+> hour" and needs a code change. The README states the cadence, not that
+> sentence (lines 96, 170).
 
 ### F.4.1 Where it runs
 
@@ -367,10 +369,10 @@ principal), then cascades.
 
 ### F.4.4 Latency, stated once more (question 3)
 
-Worst case per family at the defaults: **1 h cadence + 5 min bucket + 2 min settle + ≤ 1 min
-evaluation = about 1 h 13 min** after the breaching bucket's events arrived; at a 5-minute
-cadence, about **13 minutes**. This is the platform's documented detection trade
-(`README.md` lines 887-888, `docs/SEARCH-CADENCE.md` §SC.8) and the UI states it in those terms.
+Worst case per family at the defaults: a **5-minute cadence + 5 min bucket + 2 min settle +
+≤ 1 min evaluation = about 13 minutes** after the breaching bucket's events arrived; WAF and IPS
+run at 15 minutes, about **23 minutes**. This is the platform's documented detection trade
+(`README.md` lines 96, 170, `docs/SEARCH-CADENCE.md` §SC.8) and the UI states it in those terms.
 
 ---
 
@@ -807,8 +809,8 @@ screenshots at 1440×900, 1280×800 and 1024×768 (AGENTS.md §3a).
 > show the evaluation tick and the non-opening and refresh alerting ticks are equal at 10 and
 > at 100 rules, and a tick that opens alerts inserts one row per new alert (§F.4's note).
 > Watermarks are one row per subject kind that has been seeded, and there are five kinds, not
-> three. The latency cell repeats §F.4.4's "about 1 h 13 min"; the terms in that sentence add
-> to 68 minutes.
+> three. The latency cell repeats §F.4.4's "about 13 min" (about 23 min for WAF and IPS); the
+> terms in that sentence add to 13 minutes at the 5-minute default.
 
 | | F.1 | F.2 |
 |---|---|---|
@@ -816,7 +818,7 @@ screenshots at 1440×900, 1280×800 and 1024×768 (AGENTS.md §3a).
 | DB per tick | ≤ ~20 statements at ≤ 100 rules, constant in rule count (§F.4.2) | Scheduler/executor as today |
 | Preview | 1 bounded read of stored buckets | 1 real bounded Ariel run (rate-limited), 0 persisted |
 | Storage | rules (rows ≤ 100) + breaches (≤ 1 live per rule, resolved aged at 180 d) + 3 watermark rows | `search_result_metric`, now retained at 90 d; ≤ ~1 + groups rows per run per search |
-| Latency | cadence + bucket + settle + ≤ 60 s (≈ 1 h 13 min worst case at defaults) | cron interval + run duration |
+| Latency | cadence + bucket + settle + ≤ 60 s (≈ 13 min at the 5-minute default; ≈ 23 min for WAF and IPS) | cron interval + run duration |
 
 ---
 

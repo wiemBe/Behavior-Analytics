@@ -309,8 +309,8 @@ log-source identifier.
 | `lab-fw-volume-01` | `10.20.0.11` | firewall (default for single-source scenarios) | **227** |
 | `lab-fw-volume-02` | `10.20.0.12` | firewall (default for `source-volume-silence`) | **262** |
 | `lab-fw-volume-03` | `10.20.0.13` | firewall | **263** |
-| `lab-waf-volume-01` | `10.20.0.21` | WAF |
-| `lab-ips-volume-01` | `10.20.0.31` | IPS |
+| `lab-waf-volume-01` | `10.20.0.21` | WAF | — |
+| `lab-ips-volume-01` | `10.20.0.31` | IPS | — |
 
 Multi-source scenarios always use `lab-fw-volume-01/02/03`, and only the first one changes rate.
 Silence defaults to `lab-fw-volume-02` so a silence run never erases the history of the source used

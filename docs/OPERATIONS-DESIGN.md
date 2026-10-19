@@ -379,13 +379,13 @@ What actually bounds the disk:
 | Phase A volume, one row per source per 300 s bucket | `collection_interval_seconds` default 300 (`backend/app/core/config.py:235`). 288 buckets/day. | **None.** `retention_enabled` defaults false (`backend/app/core/config.py:219-223`). The beat task `apply_timescale_policies` calls `apply_policies` (`backend/app/services/timescale.py`) once a day, so the policies exist as soon as the setting is on. Search-result retention's docstring names the policy as optional and off (`backend/app/services/search_result_retention.py:10-16`). |
 | WAF endpoint rows | Bucket width is the same 300 s (`backend/app/collectors/waf_endpoint_collector.py:367`). Cap 2,000 active endpoints per source (`backend/app/core/config.py:453`). | 35 days (`backend/app/core/config.py:486`), and only while `waf_retention_enabled` is true (default true, `:484`). Collection itself defaults **off** (`:410`). |
 | IPS entity rows | Cap 2,000 active entities per source per dimension (`backend/app/core/config.py:175-177`). | 35 days (`:182`). Collection defaults **off** (`:171`). |
-| Catch-all, geo | Cadence row inserted at 3,600 s (`backend/alembic/versions/0020_catchall_senders.py:135-137`, `0022_geo_collection.py:86-89`). | 35 days (`config.py:519`, `:537`). |
+| Catch-all, geo | Cadence row inserted at 3,600 s, moved to 300 s by `0028` (`backend/alembic/versions/0020_catchall_senders.py:135-137`, `0022_geo_collection.py:86-89`). | 35 days (`config.py:519`, `:537`). |
 | Scheduled-search aggregates | Separate deleter, 90 days (`config.py:153`, `search_result_retention.py:3-8`). | Not the Timescale policy. |
 | Custom-rule breaches | Resolved breaches older than `custom_rule_breach_retention_days` (`config.py:554-555`). The engine defaults **off** (`:545`). | 180 days. The deleter runs only while the engine is on. |
 | Offense snapshots | Every 300 s (`config.py:264`). | Timescale policy off with the rest of `retention_enabled`. |
 | Baseline lookback | WAF refuses to boot when metric retention is not longer than this while WAF collection and WAF retention are both on (`config.py:823-829`). | 28 days (`config.py:334`). The default WAF metric retention is 35 days (`:486`), so the default pair boots. |
 
-Search-family cadences are seeded at 3,600 s (`backend/alembic/versions/0013_search_cadence.py:46-50` and the inserts cited above). The 300 s figure is the bucket width, not how often a search is sent. A 1-hour cadence still stores each 5-minute bucket.
+Search-family cadences were seeded at 3,600 s (`backend/alembic/versions/0013_search_cadence.py:46-50` and the inserts cited above); migration `0028` (D-28, 2026-10-18) moves an untouched seed row to 300 s, or 900 s for WAF and IPS. The 300 s figure is the bucket width, not how often a search is sent. A cadence longer than the bucket still stores each 5-minute bucket.
 
 Row formula, per day:
 

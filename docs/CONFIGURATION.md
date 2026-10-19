@@ -73,7 +73,7 @@ complete data.
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| search-family cadence | `5 minutes` | Initial cadence for every family |
+| search-family cadence | `5 minutes` | Initial cadence; `15 minutes` for WAF and IPS |
 | `COLLECTION_INTERVAL_SECONDS` | `300` | Bucket width; it does not schedule collection |
 | `COLLECTION_BATCH_SIZE` | `50` | Sources handled in one collection batch |
 | `COLLECTION_MAX_BACKFILL_INTERVALS` | `12` | Buckets a metric run may backfill |

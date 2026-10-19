@@ -531,8 +531,10 @@ tick writes them by `executemany` in one statement per table (§H.5.6).
 
 ### H.4.6 Cadence
 
-D-28 makes 5 minutes the default for the family (the code seeds 1 h today:
-`backend/alembic/versions/0026_property_watch.py:258`, until T-134). The bootstrap advances once per
+D-28 makes 5 minutes the default for the family (the code seeded 1 h:
+`backend/alembic/versions/0026_property_watch.py:258`; T-134 and T-138 implemented D-28/D-28b via
+migration `0028_default_search_cadence.py`, which moves the untouched seed to 5 minutes). The
+bootstrap advances once per
 family slot (`claim_slot`, `search_cadence.py:61`): it does not add a task or search outside the
 cadence, so the operator's one control over Ariel schedule (D-7) holds. A longer cadence slows the
 bootstrap in proportion (table). A faster bootstrap than one step per slot is Q6.
@@ -1067,7 +1069,8 @@ what retention buckets exist (P-3 shows whether the API lists them) before the d
 9. **The PW dispatch has no advisory lock.** The other families hold one per instance or source
    (`workers/tasks.py:745,891`); `dispatch_property_watch_collection` (`:1394-1442`) relies on
    `claim_slot` alone. A history step is long enough to need the lock (§H.2.4).
-10. **The cadence default.** §G.3 and the 0026 seed say 1 h; D-28 says 5 minutes (T-134 pending).
+10. **The cadence default.** §G.3 and the 0026 seed say 1 h; D-28 says 5 minutes (T-134
+   implemented: migration `0028` moves the untouched seed).
 11. **The static enable cost counts steady state only** (`search_cost`,
     `services/property_watches.py:406-415`); a bootstrap's draw is outside it by design (§H.4.4).
 12. **Training loads ORM entities for up to 806,000 metric rows** (`training.py:77-80`); PW-3b
