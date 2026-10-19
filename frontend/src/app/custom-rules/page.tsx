@@ -1,9 +1,10 @@
 import Link from "next/link";
 
+import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
 import { RuleStatus } from "@/components/customrules/RuleStatus";
 import {
-  CUSTOM_RULE_LATENCY,
   conditionText,
+  customRuleLatency,
   customRuleAccessFrom,
   type CustomRuleAccess,
   SUBJECT_KIND_LABELS,
@@ -11,21 +12,25 @@ import {
 import { resolveRuleSubjects } from "@/components/customrules/subjects";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { ApiError, api, sevTone, type CustomRule, type CustomRuleCatalog } from "@/lib/api";
+import { ApiError, api, sevTone, type CallerInfo, type CustomRule, type CustomRuleCatalog } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
 
 export default async function CustomRulesPage() {
   let rules: CustomRule[] = [];
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
+  let canLink = false;
   let failed = false;
   let forbidden = false;
   try {
-    [rules, catalog, access] = await Promise.all([
+    let caller: CallerInfo | null = null;
+    [rules, catalog, caller] = await Promise.all([
       api.customRules(),
       api.customRuleCatalog(),
-      api.caller().then(customRuleAccessFrom).catch(() => "unknown" as const),
+      api.caller().catch(() => null),
     ]);
+    access = caller ? customRuleAccessFrom(caller) : "unknown";
+    canLink = canReadSearchCadence(caller);
   } catch (error) {
     forbidden = error instanceof ApiError && error.status === 403;
     failed = !forbidden;
@@ -67,7 +72,7 @@ export default async function CustomRulesPage() {
                 Breaches are recorded and nothing pages until <code>CUSTOM_RULES_ALERTING_ENABLED</code> is on.
               </div>
             )}
-            <p className="cr-latency">{CUSTOM_RULE_LATENCY}</p>
+            <CadenceLatency className="cr-latency" parts={customRuleLatency()} canLink={canLink} />
           </div>
 
           {rules.length === 0 ? (

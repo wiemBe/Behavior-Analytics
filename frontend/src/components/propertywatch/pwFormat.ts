@@ -18,12 +18,29 @@ import type {
   PwValue,
   PwWatchStatus,
 } from "@/lib/api";
+import { delayText, latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
 import { NOT_MEASURED } from "@/lib/behavior";
 import type { Tone } from "@/lib/health";
 
-/** Said once, on the list: the cadence is not a promise of speed. */
-export const PW_LATENCY =
-  "Watches are judged on collected 5-minute buckets, up to about an hour after the events arrive. This is not real-time correlation; for alerting within seconds, use QRadar's own rules.";
+/** Said once per page: the cadence is not a promise of speed. */
+export function pwLatency(cadence?: LatencyCadence | null): LatencyParts {
+  return latencyParts(
+    "Watches",
+    cadence,
+    "This is not real-time correlation; for alerting within seconds, use QRadar's own rules.",
+  );
+}
+
+/**
+ * When a new pin can be used in a rule. The number follows only when the cadence is known;
+ * otherwise nothing is promised beyond "the next collection".
+ */
+export function pinAvailability(cadence?: LatencyCadence | null): string {
+  const delay = delayText(cadence);
+  return delay
+    ? `after the next property-watch collection, which runs ${delay} after the events arrive`
+    : "after the next property-watch collection";
+}
 
 // --- statuses ------------------------------------------------------------------
 

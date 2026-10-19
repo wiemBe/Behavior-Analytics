@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import PropertyWatchesPage from "./page";
 import { catalog, iso, watch } from "@/components/propertywatch/fixtures";
-import { PW_LATENCY } from "@/components/propertywatch/pwFormat";
+import { pwLatency } from "@/components/propertywatch/pwFormat";
+import { partsText } from "@/components/cadence/CadenceLatency";
 import { ApiError, api, type PwWatchStatus } from "@/lib/api";
 
 beforeEach(() => {
@@ -87,9 +88,9 @@ describe("the notices", () => {
   it("states the latency once and never claims to be live", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     await renderPage();
-    expect(screen.getAllByText(PW_LATENCY)).toHaveLength(1);
+    expect(screen.getAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(pwLatency()))).toHaveLength(1);
     const text = document.body.textContent ?? "";
-    expect(text.replace(PW_LATENCY, "")).not.toMatch(/\blive\b|real-time/i);
+    expect(text.replace(partsText(pwLatency()), "")).not.toMatch(/\blive\b|real-time/i);
   });
 });
 

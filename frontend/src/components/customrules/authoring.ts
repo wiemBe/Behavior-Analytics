@@ -9,11 +9,18 @@ import {
   type CustomRuleSubjectKind,
   type CustomRuleUpdate,
 } from "@/lib/api";
+import { latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
 
 export const CUSTOM_RULE_WRITE = "custom_rule:write";
 
-export const CUSTOM_RULE_LATENCY =
-  "Rules are judged on collected 5-minute buckets, up to about an hour after the events arrive. This is not a seconds-level correlation engine — for alerting within seconds, use QRadar's own rules.";
+/** Said once per page. The delay is a number only when the page holds the family's cadence. */
+export function customRuleLatency(cadence?: LatencyCadence | null): LatencyParts {
+  return latencyParts(
+    "Rules",
+    cadence,
+    "This is not a seconds-level correlation engine — for alerting within seconds, use QRadar's own rules.",
+  );
+}
 
 export type CustomRuleAccess = "writer" | "reader" | "unknown";
 

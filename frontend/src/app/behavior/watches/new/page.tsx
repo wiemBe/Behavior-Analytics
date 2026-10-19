@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
 import { PropertyWatchWriteNotice } from "@/components/propertywatch/PropertyWatchWriteNotice";
 import { WatchEditor } from "@/components/propertywatch/WatchEditor";
 import {
   propertyWatchAccessFrom,
   type PropertyWatchAccess,
 } from "@/components/propertywatch/authoring";
-import { PW_LATENCY } from "@/components/propertywatch/pwFormat";
+import { pwLatency } from "@/components/propertywatch/pwFormat";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { ApiError, api, type PropertyWatchCatalog } from "@/lib/api";
+import { ApiError, api, type CallerInfo, type PropertyWatchCatalog } from "@/lib/api";
 
 import "@/components/ui/controls.css";
 
@@ -18,13 +19,17 @@ export const metadata: Metadata = { title: "New property watch" };
 export default async function NewPropertyWatchPage() {
   let catalog: PropertyWatchCatalog | null = null;
   let access: PropertyWatchAccess = "unknown";
+  let canLink = false;
   let forbidden = false;
   let failed = false;
   try {
-    [catalog, access] = await Promise.all([
+    let caller: CallerInfo | null = null;
+    [catalog, caller] = await Promise.all([
       api.propertyWatchCatalog(),
-      api.caller().then(propertyWatchAccessFrom).catch(() => "unknown" as const),
+      api.caller().catch(() => null),
     ]);
+    access = caller ? propertyWatchAccessFrom(caller) : "unknown";
+    canLink = canReadSearchCadence(caller);
   } catch (error) {
     forbidden = error instanceof ApiError && error.status === 403;
     failed = !forbidden;
@@ -51,7 +56,7 @@ export default async function NewPropertyWatchPage() {
         </div>
       ) : access === "writer" ? (
         <>
-          <p className="pw-latency">{PW_LATENCY}</p>
+          <CadenceLatency className="pw-latency" parts={pwLatency()} canLink={canLink} />
           <WatchEditor catalog={catalog} mode="create" />
         </>
       ) : (

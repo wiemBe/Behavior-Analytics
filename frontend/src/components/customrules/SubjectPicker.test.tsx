@@ -118,7 +118,7 @@ describe("custom-rule subject picker", () => {
     fireEvent.change(await screen.findByRole("combobox", { name: "Property watch" }), {
       target: { value: watch().id },
     });
-    expect(await screen.findByText(/new pin can be used in a rule after the next property-watch collection, within about an hour/)).toBeInTheDocument();
+    expect(await screen.findByText(/new pin can be used in a rule after the next property-watch collection\./)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the property watch/i })).toHaveAttribute(
       "href",
       `/behavior/watches/${watch().id}`,

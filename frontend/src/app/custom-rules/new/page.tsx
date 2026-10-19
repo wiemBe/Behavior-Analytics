@@ -2,20 +2,25 @@ import Link from "next/link";
 
 import { CustomRuleEditor } from "@/components/customrules/CustomRuleEditor";
 import { CustomRuleWriteNotice } from "@/components/customrules/CustomRuleWriteNotice";
-import { CUSTOM_RULE_LATENCY, customRuleAccessFrom, type CustomRuleAccess } from "@/components/customrules/authoring";
+import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
+import { customRuleAccessFrom, customRuleLatency, type CustomRuleAccess } from "@/components/customrules/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { ApiError, api, type CustomRuleCatalog } from "@/lib/api";
+import { ApiError, api, type CallerInfo, type CustomRuleCatalog } from "@/lib/api";
 
 export default async function NewCustomRulePage() {
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
+  let canLink = false;
   let forbidden = false;
   let failed = false;
   try {
-    [catalog, access] = await Promise.all([
+    let caller: CallerInfo | null = null;
+    [catalog, caller] = await Promise.all([
       api.customRuleCatalog(),
-      api.caller().then(customRuleAccessFrom).catch(() => "unknown" as const),
+      api.caller().catch(() => null),
     ]);
+    access = caller ? customRuleAccessFrom(caller) : "unknown";
+    canLink = canReadSearchCadence(caller);
   } catch (error) {
     forbidden = error instanceof ApiError && error.status === 403;
     failed = !forbidden;
@@ -36,7 +41,7 @@ export default async function NewCustomRulePage() {
         </div>
       ) : access === "writer" ? (
         <>
-          <p className="cr-latency">{CUSTOM_RULE_LATENCY}</p>
+          <CadenceLatency className="cr-latency" parts={customRuleLatency()} canLink={canLink} />
           <CustomRuleEditor catalog={catalog} mode="create" />
         </>
       ) : (

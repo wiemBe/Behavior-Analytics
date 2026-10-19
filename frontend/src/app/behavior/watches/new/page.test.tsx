@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { catalog } from "@/components/propertywatch/fixtures";
@@ -30,7 +30,24 @@ describe("new property-watch route", () => {
     await renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "New property watch" })).toBeInTheDocument();
     expect(screen.getByLabelText("property-watch editor")).toBeInTheDocument();
-    expect(screen.getAllByText(/Watches are judged on collected 5-minute buckets/)).toHaveLength(1);
+    expect(screen.getAllByText(/Watches are judged on collected 5-minute buckets, after each collection of their family/)).toHaveLength(1);
+  });
+
+  it("links Search cadence only to a reader of read:search_cadence", async () => {
+    await renderPage();
+    expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
+    cleanup();
+    vi.spyOn(api, "caller").mockResolvedValue({
+      subject: "engineer",
+      email: null,
+      permissions: ["property_watch:write", "read:*"],
+      effective_permissions: ["read:property_watches", "property_watch:write", "read:search_cadence"],
+    });
+    await renderPage();
+    expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute(
+      "href",
+      "/admin/search-cadence",
+    );
   });
 
   it("hides the editor from a reader and names property_watch:write", async () => {
