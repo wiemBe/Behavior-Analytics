@@ -23,6 +23,7 @@ from app.models.fleet import (
     LogSourceType,
 )
 from app.models.geo import GeoCountryBucket
+from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
 from app.models.identity import AuditLog, AuthSession, LdapConfig, Role, User, user_role
 from app.models.instance import QRadarInstance
 from app.models.ips import (
@@ -135,6 +136,8 @@ __all__ = [
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
     "GeoCountryBucket",
+    "HistoryBackfillDecision",
+    "HistoryBackfillScope",
     "IpsAnomaly",
     "IpsAnomalyTransition",
     "IpsDetectorState",

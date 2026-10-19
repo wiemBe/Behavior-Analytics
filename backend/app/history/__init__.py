@@ -5,6 +5,14 @@ floor, the steps and the window. Nothing here does I/O; the family adapters (HB-
 and the property-watch adapter (PW-13b) call it.
 """
 
+from app.history.families import (
+    FAMILY_SPECS,
+    FamilySpec,
+    FittedWindow,
+    family_spec,
+    fit_family_window,
+    history_search_budget,
+)
 from app.history.origin import (
     PHASE_A_HISTORY_SOURCE,
     HistoryOrigin,
@@ -23,6 +31,12 @@ from app.history.planner import (
     plan_step,
     settle_step,
 )
+from app.history.progress_codec import (
+    PROGRESS_VERSION,
+    ProgressCodecError,
+    decode_progress,
+    encode_progress,
+)
 from app.history.state import (
     HistoryFamily,
     HistoryState,
@@ -32,15 +46,25 @@ from app.history.state import (
 )
 
 __all__ = [
+    "FAMILY_SPECS",
     "PHASE_A_HISTORY_SOURCE",
+    "PROGRESS_VERSION",
+    "FamilySpec",
+    "FittedWindow",
     "HistoryFamily",
     "HistoryOrigin",
     "HistoryState",
     "HistoryTrigger",
     "IllegalTransitionError",
     "PlannerSettings",
+    "ProgressCodecError",
     "ScopeProgress",
+    "decode_progress",
+    "encode_progress",
+    "family_spec",
+    "fit_family_window",
     "fit_window",
+    "history_search_budget",
     "interpret_scan",
     "is_history_clause",
     "is_live_clause",

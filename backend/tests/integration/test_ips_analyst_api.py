@@ -164,6 +164,7 @@ def source_bucket(source_id, bucket_start, **kw) -> IpsSourceBucket:  # type: ig
         profile_version=2, normalizer_version=1, in_maintenance=False,
         collected_at=bucket_start, query_provenance={"queries": ["SELECT sourceip FROM events"]},
     )
+    defaults.setdefault("origin", "LIVE")
     defaults.update(kw)
     return IpsSourceBucket(**defaults)
 

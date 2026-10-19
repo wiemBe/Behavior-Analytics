@@ -86,6 +86,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.anomaly.seasonal import in_maintenance
 from app.collectors.metric_collector import floor_to_interval
 from app.core.config import Settings, get_settings
+from app.history import HistoryFamily, HistoryOrigin, marker_values
 from app.models.enums import (
     BucketCompleteness,
     SearchFamily,
@@ -945,6 +946,7 @@ class WafEndpointCollector:
             "log_source_id": log_source.id,
             "bucket_start": start,
             "bucket_seconds": bucket_seconds,
+            **marker_values(HistoryFamily.WAF, HistoryOrigin.LIVE),
             "profile_version": self.profile_version,
             "metric_semantics": semantics,
             "completeness": completeness,
@@ -1027,7 +1029,8 @@ class WafEndpointCollector:
             set_={
                 c: stmt_bucket.excluded[c]
                 for c in bucket_row
-                if c not in ("log_source_id", "bucket_start")
+                # A live write never changes the marker of an existing row.
+                if c not in ("log_source_id", "bucket_start", "origin")
             },
         )
         await self.session.execute(stmt_bucket)

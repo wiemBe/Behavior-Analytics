@@ -70,6 +70,7 @@ def source_bucket(
         log_source_id=source_id,
         bucket_start=start,
         bucket_seconds=300,
+        origin="LIVE",
         profile_version=1,
         metric_semantics=REQUEST_IDENTITY,
         completeness=BucketCompleteness.COMPLETE,

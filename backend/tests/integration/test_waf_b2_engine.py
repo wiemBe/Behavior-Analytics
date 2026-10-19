@@ -151,6 +151,7 @@ async def add_observation(
         log_source_id=endpoint.log_source_id,
         bucket_start=at,
         bucket_seconds=300,
+        origin="LIVE",
         profile_version=1,
         metric_semantics=REQUEST_SEMANTICS,
         completeness=BucketCompleteness.COMPLETE,

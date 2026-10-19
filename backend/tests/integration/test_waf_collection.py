@@ -217,6 +217,8 @@ class TestCollectionCompleteness:
         assert rows[0].completeness == BucketCompleteness.COMPLETE
         assert rows[0].request_count == 40
         assert report.endpoints_created == 1
+        bucket = (await db_session.scalars(select(WafSourceBucket))).one()
+        assert bucket.origin == "LIVE"
 
     async def test_low_endpoint_coverage_marks_the_bucket_partial(
         self, db_session: AsyncSession
@@ -400,6 +402,45 @@ class TestIdempotency:
         rows = (await db_session.scalars(select(WafEndpointMetric))).all()
         assert len(rows) == 1
         assert rows[0].request_count == 99
+
+    async def test_a_live_upsert_keeps_the_origin_of_an_existing_bucket(
+        self, db_session: AsyncSession
+    ) -> None:
+        from sqlalchemy import update
+
+        from app.models.monitoring import CollectionWatermark
+
+        instance = await make_instance(db_session)
+        source = await make_log_source(db_session, instance)
+        cfg = settings()
+        for count in (40, 99):
+            provider = StubProvider([batch([("/portal/login", "GET", count)])])
+            collector = WafEndpointCollector(
+                db_session, provider, mapping=LAB_MAPPING, profile_version=1,
+                settings=cfg,  # type: ignore[arg-type]
+                clock=lambda: BUCKET + timedelta(seconds=300),
+            )
+            await collector.collect(instance, log_source=source)
+            if count == 40:
+                assert (await db_session.scalars(select(WafSourceBucket))).one().origin == "LIVE"
+                # The row is later marked as history; a live re-collection must not undo that.
+                await db_session.execute(update(WafSourceBucket).values(origin="HISTORY"))
+                wm = await db_session.scalar(
+                    select(CollectionWatermark).where(
+                        CollectionWatermark.collector == watermark_collector(source)
+                    )
+                )
+                assert wm is not None
+                wm.watermark_at = None
+                await db_session.flush()
+
+        row = (
+            await db_session.scalars(
+                select(WafSourceBucket).execution_options(populate_existing=True)
+            )
+        ).one()
+        assert row.origin == "HISTORY"
+        assert row.total_events == 99  # the rest of the row was overwritten as before
 
     async def test_a_hostless_endpoint_does_not_multiply_across_buckets(
         self, db_session: AsyncSession

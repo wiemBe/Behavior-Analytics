@@ -110,6 +110,7 @@ def source_bucket(source_id, bucket_start, **kw) -> WafSourceBucket:  # type: ig
         in_maintenance=False, collection_source="TEST", query_provenance={"queries": ["AQL"]},
     )
     defaults.update(kw)
+    defaults.setdefault("origin", "LIVE")
     return WafSourceBucket(**defaults)
 
 

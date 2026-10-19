@@ -52,7 +52,7 @@ def sender(inst, source, name: str, *, status="REVIEWED", events=None, **kw) -> 
 
 def bucket(source, at: datetime, **kw) -> CatchallBucket:  # type: ignore[no-untyped-def]
     values = dict(
-        bucket_seconds=300, events=10, records=2, distinct_senders=1,
+        bucket_seconds=300, origin="LIVE", events=10, records=2, distinct_senders=1,
         distinct_senders_lower_bound=False, measurement="EXACT",
         top_senders=[{"identifier": "a", "events": 10}], admitted=1,
         below_admission_threshold=0, rejected_over_quota=0, untracked_senders=0,

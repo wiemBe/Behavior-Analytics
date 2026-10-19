@@ -28,6 +28,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.enums import CatchallMeasurement, CatchallReviewStatus
+from app.models.history_backfill import ORIGIN_CHECK
 
 
 class CatchallSender(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -94,6 +95,7 @@ class CatchallBucket(Base):
 
     __tablename__ = "catchall_bucket"
     __table_args__ = (
+        CheckConstraint(ORIGIN_CHECK, name="origin_known"),
         CheckConstraint("measurement IN ('EXACT', 'LOWER_BOUND')", name="measurement_known"),
         CheckConstraint("bucket_seconds > 0", name="bucket_seconds_positive"),
         CheckConstraint(
@@ -112,6 +114,9 @@ class CatchallBucket(Base):
     )
     bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     bucket_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: 'LIVE' for a row the cadence collection wrote, 'HISTORY' for one the history
+    #: backfill read (HISTORY-BACKFILL §B.4). No default: a writer must say which.
+    origin: Mapped[str] = mapped_column(String(8), nullable=False)
     events: Mapped[int] = mapped_column(BigInteger, nullable=False)
     records: Mapped[int] = mapped_column(BigInteger, nullable=False)
     distinct_senders: Mapped[int] = mapped_column(Integer, nullable=False)

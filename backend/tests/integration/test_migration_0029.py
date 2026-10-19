@@ -147,7 +147,9 @@ def test_0029_round_trip_carries_live_data_deletes_history_and_has_no_drift(
 
     config = _alembic_config(clean_db)
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["0029"]
+    heads = script.get_heads()
+    assert len(heads) == 1
+    assert "0029" in {item.revision for item in script.walk_revisions("base", heads[0])}
     revision = script.get_revision("0029")
     assert revision is not None and revision.down_revision == "0028"
 
@@ -160,7 +162,7 @@ def test_0029_round_trip_carries_live_data_deletes_history_and_has_no_drift(
         command.upgrade(config, "head")
         with engine.begin() as connection:
             context = MigrationContext.configure(connection)
-            assert context.get_current_revision() == "0029"
+            assert context.get_current_revision() == heads[0]
             old = connection.execute(
                 text(
                     "SELECT history_days, history_state, history_progress, origin "

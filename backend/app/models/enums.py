@@ -790,3 +790,17 @@ class AuthSource(StrEnum):
 
     LOCAL = "LOCAL"
     LDAP = "LDAP"
+
+
+class HistoryDecisionAnswer(StrEnum):
+    """The operator's one answer to "read QRadar's past?" (HISTORY-BACKFILL §B.7.1)."""
+
+    YES = "YES"
+    NO = "NO"
+
+
+class HistoryDecisionSource(StrEnum):
+    """Where an answer was recorded: the installer's CLI, or the admin UI (HB-8)."""
+
+    INSTALLER = "INSTALLER"
+    UI = "UI"

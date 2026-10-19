@@ -119,9 +119,9 @@ def test_0012_constraints_reject_unknown_values(clean_db: str) -> None:
             with engine.begin() as conn:
                 conn.execute(text(
                     "INSERT INTO rule_match_window (instance_id, window_start, window_seconds, "
-                    " status, rows_returned, row_cap, unknown_ids, query_version, collected_at, "
-                    " attempts) "
-                    "VALUES (CAST(:i AS uuid), now(), 3600, :s, :r, 100, 0, 'v', now(), 1)"
+                    " origin, status, rows_returned, row_cap, unknown_ids, query_version, "
+                    " collected_at, attempts) "
+                    "VALUES (CAST(:i AS uuid), now(), 3600, 'LIVE', :s, :r, 100, 0, 'v', now(), 1)"
                 ).bindparams(i=INSTANCE_ID, s=status, r=rows))
 
         with pytest.raises(IntegrityError, match="status_known"):

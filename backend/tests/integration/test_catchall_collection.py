@@ -273,6 +273,31 @@ class TestSplitAndFailure:
         assert {b.measurement for b in buckets} == {CatchallMeasurement.EXACT.value}
         assert {b.query_provenance["search_bucket_count"] for b in buckets} == {1}
         assert all(b.events == 10 for b in buckets)
+        assert {b.origin for b in buckets} == {"LIVE"}
+
+    async def test_a_live_upsert_keeps_the_origin_of_an_existing_bucket(
+        self, db_session
+    ) -> None:
+        from sqlalchemy import update
+
+        inst, _source, _ = await setup(db_session)
+        provider = Script(steady([row("a", 10)]))
+        await collector(db_session, provider).collect(inst)
+        await db_session.execute(update(CatchallBucket).values(origin="HISTORY"))
+        wm = await watermark(db_session, inst)
+        wm.watermark_at = FIRST + timedelta(seconds=3 * BUCKET)
+        await db_session.flush()
+
+        await collector(db_session, provider).collect(inst)
+
+        buckets = (
+            await db_session.scalars(
+                select(CatchallBucket).execution_options(populate_existing=True)
+            )
+        ).all()
+        # The re-collected buckets were rewritten and kept their marker; the rest never changed.
+        assert {b.origin for b in buckets} == {"HISTORY"}
+        assert len(buckets) == 12
 
     async def test_one_bucket_truncated_is_a_lower_bound_with_its_top_kept(
         self, db_session
@@ -700,7 +725,7 @@ class TestRetention:
                 CatchallBucket(
                     catchall_log_source_id=source.id,
                     bucket_start=old + timedelta(seconds=BUCKET * offset),
-                    bucket_seconds=BUCKET, events=1, records=1, distinct_senders=1,
+                    bucket_seconds=BUCKET, origin="LIVE", events=1, records=1, distinct_senders=1,
                     distinct_senders_lower_bound=False, measurement="EXACT", top_senders=[],
                     admitted=0, below_admission_threshold=0, rejected_over_quota=0,
                     untracked_senders=0, untracked_events=0, query_provenance={},
@@ -738,7 +763,7 @@ class TestRetention:
                 CatchallBucket(
                     catchall_log_source_id=source.id,
                     bucket_start=old + timedelta(seconds=BUCKET * offset),
-                    bucket_seconds=BUCKET, events=1, records=1, distinct_senders=1,
+                    bucket_seconds=BUCKET, origin="LIVE", events=1, records=1, distinct_senders=1,
                     distinct_senders_lower_bound=False, measurement="EXACT", top_senders=[],
                     admitted=0, below_admission_threshold=0, rejected_over_quota=0,
                     untracked_senders=0, untracked_events=0, query_provenance={},
