@@ -43,6 +43,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.history import HistoryFamily, HistoryOrigin, marker_values
 from app.models.enums import SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
@@ -287,9 +288,10 @@ class RuleMatchCollector:
         await self.session.execute(
             text(
                 "INSERT INTO rule_match_window (instance_id, window_start, window_seconds, "
-                " status, rows_returned, row_cap, unknown_ids, duration_ms, query_version, "
-                " collected_at, attempts, last_error) "
-                "SELECT CAST(:i AS uuid), gs, CAST(:w AS integer), 'FAILED', 0, "
+                " origin, status, rows_returned, row_cap, unknown_ids, duration_ms, "
+                " query_version, collected_at, attempts, last_error) "
+                "SELECT CAST(:i AS uuid), gs, CAST(:w AS integer), CAST(:origin AS varchar), "
+                " 'FAILED', 0, "
                 " CAST(:cap AS integer), 0, NULL, :qv, CAST(:now AS timestamptz), 0, :err "
                 "FROM generate_series(CAST(:first AS timestamptz), "
                 " CAST(:last AS timestamptz), make_interval(secs => CAST(:w AS double precision))"
@@ -302,6 +304,7 @@ class RuleMatchCollector:
                 qv=FAILED_QUERY_VERSION,
                 now=self._clock(),
                 err=SKIPPED_REASON,
+                origin=marker_values(HistoryFamily.RULE_MATCH, HistoryOrigin.LIVE)["origin"],
                 first=first,
                 last=last_skipped,
             )
@@ -526,6 +529,7 @@ class RuleMatchCollector:
             "instance_id": instance_id,
             "window_start": window.window_start,
             "window_seconds": window.window_seconds,
+            **marker_values(HistoryFamily.RULE_MATCH, HistoryOrigin.LIVE),
             "status": window.status,
             "rows_returned": window.rows_returned,
             "row_cap": window.row_cap,
@@ -538,7 +542,10 @@ class RuleMatchCollector:
         }
         stmt = pg_insert(RuleMatchWindow).values(values)
         update = {
-            k: stmt.excluded[k] for k in values if k not in ("instance_id", "window_start")
+            # A live write never changes the marker of an existing row.
+            k: stmt.excluded[k]
+            for k in values
+            if k not in ("instance_id", "window_start", "origin")
         }
         stmt = stmt.on_conflict_do_update(
             index_elements=["instance_id", "window_start"],

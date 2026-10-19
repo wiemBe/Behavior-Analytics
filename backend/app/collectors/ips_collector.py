@@ -29,6 +29,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from app.anomaly.seasonal import in_maintenance
 from app.collectors.metric_collector import floor_to_interval
 from app.core.config import Settings, get_settings
+from app.history import HistoryFamily, HistoryOrigin, marker_values
 from app.ips.collection_plan import plan_searches
 from app.ips.fold import (
     IpsActionFact,
@@ -564,7 +565,8 @@ class IpsCollector:
                 set_={
                     key: statement.excluded[key]
                     for key in bucket_rows[0]
-                    if key not in ("log_source_id", "bucket_start")
+                    # A live write never changes the marker of an existing row.
+                    if key not in ("log_source_id", "bucket_start", "origin")
                 },
             )
             await self.session.execute(statement)
@@ -765,6 +767,7 @@ class IpsCollector:
             "log_source_id": source.id,
             "bucket_start": bucket_start,
             "bucket_seconds": bucket_seconds,
+            **marker_values(HistoryFamily.IPS, HistoryOrigin.LIVE),
             "total_events": totals.events,
             "total_records": totals.records,
             "port_fanout_measurement": measurements[IpsDimension.PORT_FANOUT],

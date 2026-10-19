@@ -30,6 +30,7 @@ from app.models.enums import (
     RuleDependencyKind,
     RuleHealthStatus,
 )
+from app.models.history_backfill import ORIGIN_CHECK
 
 
 class AnalyticsRule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -291,6 +292,7 @@ class RuleMatchWindow(Base):
 
     __tablename__ = "rule_match_window"
     __table_args__ = (
+        CheckConstraint(ORIGIN_CHECK, name="origin_known"),
         CheckConstraint(
             "status IN ('COMPLETE', 'TRUNCATED', 'FAILED')", name="status_known"
         ),
@@ -307,6 +309,9 @@ class RuleMatchWindow(Base):
     )
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     window_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: 'LIVE' for a row the cadence collection wrote, 'HISTORY' for one the history
+    #: backfill read (HISTORY-BACKFILL §B.4). No default: a writer must say which.
+    origin: Mapped[str] = mapped_column(String(8), nullable=False)
     status: Mapped[RuleMatchWindowStatus] = mapped_column(String(16), nullable=False)
     rows_returned: Mapped[int] = mapped_column(Integer, nullable=False)
     row_cap: Mapped[int] = mapped_column(Integer, nullable=False)

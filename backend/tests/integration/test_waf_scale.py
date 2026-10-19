@@ -150,6 +150,7 @@ async def add_full_bucket(
                 log_source_id=source_id,
                 bucket_start=at,
                 bucket_seconds=300,
+                origin="LIVE",
                 profile_version=1,
                 metric_semantics=SEMANTICS,
                 completeness=BucketCompleteness.COMPLETE,

@@ -93,6 +93,7 @@ def source_bucket(
         "collection_source": "TEST",
         "query_provenance": {},
     }
+    values.setdefault("origin", "LIVE")
     values.update(overrides)
     return WafSourceBucket(**values)
 

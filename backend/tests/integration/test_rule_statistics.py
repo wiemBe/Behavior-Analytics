@@ -57,7 +57,8 @@ async def add_windows(
         session.add(
             RuleMatchWindow(
                 instance_id=inst.id, window_start=end - HOUR * i, window_seconds=3600,
-                status=status, rows_returned=1, row_cap=2000, unknown_ids=0, attempts=1,
+                origin="LIVE", status=status, rows_returned=1, row_cap=2000, unknown_ids=0,
+                attempts=1,
                 query_version="v1", collected_at=end,
             )
         )

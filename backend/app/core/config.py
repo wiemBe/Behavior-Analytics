@@ -688,6 +688,32 @@ class Settings(BaseSettings):
     pw_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     pw_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
+    # --- History backfill (HISTORY-BACKFILL §B.6.1) -------------------------
+    #: Kill switch for *reading*: off, no history step runs. Recording the operator's
+    #: answer does not depend on it.
+    history_backfill_enabled: bool = True
+    #: The window a Yes reads. The upper bound is static: 90 days is far past every
+    #: family's default window (28; rule health 30) and keeps a reading's search count
+    #: bounded; the per-family lookback and retention limits are applied at run time by
+    #: `app.history.families.fit_family_window`, never as a startup refusal, so a released
+    #: configuration keeps starting.
+    history_backfill_days: int = Field(default=28, ge=7, le=90)
+    #: Searches one history step may start; the sub-budget under the family's tick cap.
+    history_backfill_searches_per_tick: int = Field(default=10, ge=1, le=64)
+    #: No history search starts after this many seconds of a tick.
+    history_backfill_seconds_per_tick: int = Field(default=120, ge=10, le=600)
+    #: Longest wall time a reading may take; also the reading margin below retention.
+    history_backfill_max_hours: int = Field(default=72, ge=1, le=168)
+    history_backfill_floor_margin_hours: int = Field(default=24, ge=1, le=168)
+    #: Consecutive failures at the minimum width before the span becomes a gap.
+    history_backfill_max_failures: int = Field(default=3, ge=1, le=20)
+    #: The density gate (§B.6.4): the share of lower-bound buckets that ends a reading.
+    history_backfill_max_lower_bound_share: float = Field(default=0.05, ge=0.0, le=1.0)
+    #: Days of WAF breakdown history (§B.7.3).
+    history_backfill_waf_breakdown_days: int = Field(default=7, ge=1, le=90)
+    #: Phase A sources rebuilt per tick after a reading (§B.8.5).
+    history_backfill_baseline_sources_per_tick: int = Field(default=50, ge=1, le=5000)
+
     # --- Notifications ------------------------------------------------------
     notify_max_retries: int = Field(default=5, ge=0, le=20)
     notify_retry_base_seconds: float = Field(default=2.0, ge=0.1)
@@ -983,6 +1009,21 @@ class Settings(BaseSettings):
             )
         if problems:
             raise ValueError("; ".join(problems))
+        return self
+
+    @model_validator(mode="after")
+    def _history_backfill_bounds_are_consistent(self) -> Settings:
+        """Cross-checks among the history settings themselves.
+
+        Nothing here reads another family's settings: WAF, IPS, catch-all and Phase A are
+        released, and a refusal tied to their values could stop an install that starts
+        today. Those bounds are applied at run time (`fit_family_window`).
+        """
+        if self.history_backfill_waf_breakdown_days > self.history_backfill_days:
+            raise ValueError(
+                "HISTORY_BACKFILL_WAF_BREAKDOWN_DAYS must not exceed HISTORY_BACKFILL_DAYS "
+                f"({self.history_backfill_waf_breakdown_days} > {self.history_backfill_days})"
+            )
         return self
 
     @model_validator(mode="after")

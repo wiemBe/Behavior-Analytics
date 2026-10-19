@@ -44,6 +44,7 @@ from app.alerts.service import AlertInput, AlertService
 from app.catchall.fold import CatchallBucketFact, SenderLedger, fold_source_bucket
 from app.catchall.keyed_search import CatchallBucketOutcome, run_catchall_search
 from app.core.config import Settings, get_settings
+from app.history import HistoryFamily, HistoryOrigin, marker_values
 from app.ips.keyed_search import IpsSearchBudget
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.enums import (
@@ -360,6 +361,7 @@ class CatchallCollector:
             "catchall_log_source_id": source_id,
             "bucket_start": outcome.bucket_start,
             "bucket_seconds": bucket_seconds,
+            **marker_values(HistoryFamily.CATCHALL, HistoryOrigin.LIVE),
             "events": fact.events,
             "records": fact.records,
             "distinct_senders": fact.distinct_senders,
@@ -397,7 +399,8 @@ class CatchallCollector:
                 set_={
                     column: stmt.excluded[column]
                     for column in chunk[0]
-                    if column not in ("catchall_log_source_id", "bucket_start")
+                    # A live write never changes the marker of an existing row.
+                    if column not in ("catchall_log_source_id", "bucket_start", "origin")
                 },
             )
             await self.session.execute(stmt)

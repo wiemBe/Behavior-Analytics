@@ -130,6 +130,12 @@ PERM_CUSTOM_RULE_WRITE = "custom_rule:write"
 # `property_watch:write`. `admin:*` does, so the admin role does not list the string.
 PERM_PROPERTY_WATCH_READ = "read:property_watches"
 PERM_PROPERTY_WATCH_WRITE = "property_watch:write"
+# History backfill (HISTORY-BACKFILL §B.10.3). The admin page shows, per console and per
+# source, what was read from QRadar's past and what could not be, so reading it is `read:*`.
+# Recording the answer, starting or stopping a reading is an operational control that
+# spends Ariel searches: `read:*` does not grant `admin:history_backfill`, `admin:*` does.
+PERM_HISTORY_BACKFILL_READ = "read:history_backfill"
+PERM_HISTORY_BACKFILL_ADMIN = "admin:history_backfill"
 # Accounts and directory configuration. `admin:*` satisfies both. `read:*`
 # does not: a viewer can see the estate and cannot create a sign-in or point
 # the application at a directory.

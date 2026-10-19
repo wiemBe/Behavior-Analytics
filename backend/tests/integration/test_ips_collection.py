@@ -115,6 +115,7 @@ class TestFleetAndStates:
         }
         buckets = (await db_session.scalars(select(IpsSourceBucket))).all()
         assert {bucket.log_source_id for bucket in buckets} == {first.id, second.id}
+        assert {bucket.origin for bucket in buckets} == {"LIVE"}
         invalid_wm = await db_session.scalar(
             select(CollectionWatermark).where(
                 CollectionWatermark.collector == watermark_collector(414)
@@ -595,6 +596,36 @@ class TestAdmissionAndScale:
         )
         assert await db_session.get(IpsEntityMetric, (stale_id, bucket.bucket_start)) is None
         assert await db_session.get(IpsEntityMetric, (entity.id, bucket.bucket_start)) is not None
+
+    async def test_a_live_upsert_keeps_the_origin_of_an_existing_bucket(self, db_session) -> None:
+        from sqlalchemy import update
+
+        instance = await make_instance(db_session)
+        await add_source(db_session, instance, 412)
+        provider = MockQRadarProvider(now=NOW)
+        await IpsCollector(db_session, provider, settings=cfg(), clock=lambda: NOW).collect(
+            instance
+        )
+        assert (await db_session.scalars(select(IpsSourceBucket))).one().origin == "LIVE"
+        await db_session.execute(update(IpsSourceBucket).values(origin="HISTORY"))
+        watermark = await db_session.scalar(
+            select(CollectionWatermark).where(
+                CollectionWatermark.collector == watermark_collector(412)
+            )
+        )
+        watermark.watermark_at -= BUCKET
+        await db_session.flush()
+
+        await IpsCollector(db_session, provider, settings=cfg(), clock=lambda: NOW).collect(
+            instance
+        )
+
+        row = (
+            await db_session.scalars(
+                select(IpsSourceBucket).execution_options(populate_existing=True)
+            )
+        ).one()
+        assert row.origin == "HISTORY"
 
     @pytest.mark.parametrize(("sources", "seeded_entities"), [(2, 10), (20, 400)])
     async def test_statement_count_fixture(
