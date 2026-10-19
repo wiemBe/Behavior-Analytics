@@ -11,12 +11,18 @@ from __future__ import annotations
 
 import json
 import os
+import pty
 import shutil
 import stat
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests.unit import test_qradar_dash_upgrade as base_upgrade
+from tests.unit.test_qradar_dash_upgrade import TARGET_VERSION, UpgradeFixture, output
+
+upgrade = base_upgrade.upgrade
 
 REPO = Path(__file__).resolve().parents[3]
 SCRIPT = REPO / "qradar-dash"
@@ -895,3 +901,359 @@ def test_install_with_no_state_file_completes_at_any_checkout_version(
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert (inst.root / ".qradar-dash" / "state.json").is_file()
+
+
+# ---- HB-11: the installer asks about the history backfill once, on the first install ---------
+
+HB_DOCKER_STUB = INSTALL_FLOW_DOCKER_STUB.replace(
+    'case "$*" in\n',
+    'printf \'%s\\n\' "$*" >> "$HOME/docker.log"\ncase "$*" in\n',
+    1,
+).replace(
+    '  *" app.cli.qradar add "*)',
+    '  *" app.cli.history_backfill decide "*)\n'
+    '    [ -f "$HOME/hb_out" ] && cat "$HOME/hb_out"\n'
+    '    exit "$(rc hb_rc)" ;;\n'
+    '  *" app.cli.qradar add "*)',
+    1,
+)
+assert HB_DOCKER_STUB != INSTALL_FLOW_DOCKER_STUB and "docker.log" in HB_DOCKER_STUB
+
+DECIDE_TAIL = (
+    "run --rm --no-deps -T backend python -m app.cli.history_backfill decide "
+    "--instance qradar --answer {answer} --source installer"
+)
+RECORDED_YES = "qradar: recorded YES (28 days) from the installer"
+RECORDED_NO = "qradar: recorded NO (no history) from the installer"
+NOT_DECIDED = (
+    "History backfill   not decided; the first administrator sign-in will ask (WAF and IPS read\n"
+    "                    history for sources enabled after the answer)"
+)
+QUESTION = "14. Read the last 28 days of history from QRadar now"
+HB_KEEP_ON = "History backfill   not recorded (exit 1); the first administrator sign-in will ask"
+HB_WARNING = (
+    "history backfill: the answer was not recorded (exit 1); the console stays undecided "
+    "and the first administrator sign-in will ask"
+)
+
+
+@pytest.fixture
+def hb_path(flow_path: str) -> str:
+    _stub(Path(flow_path) / "docker", HB_DOCKER_STUB)
+    return flow_path
+
+
+def _docker_log(tmp_path: Path) -> list[str]:
+    log = tmp_path / "docker.log"
+    return log.read_text().splitlines() if log.exists() else []
+
+
+def _decide_calls(tmp_path: Path) -> list[str]:
+    return [x for x in _docker_log(tmp_path) if "history_backfill" in x]
+
+
+def _scripted(
+    inst: Install,
+    tmp_path: Path,
+    path: str,
+    *flags: str,
+    qr_rc: int = 0,
+    hb_rc: int = 0,
+    hb_out: str | None = None,
+    **answers: str | None,
+) -> subprocess.CompletedProcess[str]:
+    (tmp_path / "qr_rc").write_text(f"{qr_rc}\n")
+    (tmp_path / "hb_rc").write_text(f"{hb_rc}\n")
+    if hb_out is not None:
+        (tmp_path / "hb_out").write_text(hb_out + "\n")
+    return inst.run(
+        "install", "--non-interactive", str(inst.answers(**answers)), "--skip-qradar-check",
+        *flags, path=path,
+    )
+
+
+def _interactive(
+    inst: Install, path: str, replies: list[str], *flags: str
+) -> subprocess.CompletedProcess[str]:
+    """Run `install` with a terminal on stdin. Ctrl-D after the replies ends a stray question."""
+    master, slave = pty.openpty()
+    env = {
+        "HOME": str(inst.root.parent),
+        "PATH": path,
+        "QRADAR_DASH_MEMINFO_FILE": str(inst.meminfo),
+    }
+    bash = shutil.which("bash") or "/bin/bash"
+    try:
+        proc = subprocess.Popen(  # noqa: S603
+            [bash, str(inst.script), "install", "--skip-qradar-check", *flags],
+            cwd=inst.root,
+            env=env,
+            stdin=slave,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        os.close(slave)
+        os.write(master, ("".join(f"{r}\n" for r in replies)).encode() + b"\x04")
+        out, err = proc.communicate(timeout=60)
+    finally:
+        os.close(master)
+    return subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
+
+
+def _wizard_replies(inst: Install, *history: str) -> list[str]:
+    return [
+        "soc.example.test",  # 1. host name
+        "no",  # 3. own proxy
+        str(inst.files / "tls.crt"),  # 2. certificate
+        str(inst.files / "tls.key"),
+        "https://qradar.example.test",  # 4. URL
+        "qradar.example.test",  # 5. FQDN
+        "",  # 6. API version, default
+        str(inst.files / "token"),  # 7. token
+        str(inst.files / "ca.pem"),  # 8. CA
+        "",  # 9. AKI, default
+        "",  # 10. instance name, default
+        str(inst.files / "backups"),  # 11. backup directory
+        "",  # 12. registry user, none
+        "",  # 13. admin user, default
+        *history,
+    ]
+
+
+def _assert_decide_between_add_and_start(tmp_path: Path, answer: str) -> None:
+    log = _docker_log(tmp_path)
+    calls = _decide_calls(tmp_path)
+    assert len(calls) == 1, calls
+    assert calls[0].endswith(DECIDE_TAIL.format(answer=answer)), calls[0]
+    add = next(i for i, x in enumerate(log) if "app.cli.qradar add" in x)
+    start = next(i for i, x in enumerate(log) if "up -d --wait --wait-timeout 180 backend" in x)
+    assert add < log.index(calls[0]) < start
+
+
+def _state_exists(inst: Install) -> bool:
+    return (inst.root / ".qradar-dash" / "state.json").is_file()
+
+
+@pytest.mark.parametrize(
+    ("answer", "recorded"), [("yes", RECORDED_YES), ("no", RECORDED_NO)]
+)
+def test_first_interactive_install_asks_and_records_the_answer(
+    inst: Install, tmp_path: Path, hb_path: str, answer: str, recorded: str
+) -> None:
+    (tmp_path / "hb_out").write_text(recorded + "\n")
+
+    result = _interactive(inst, hb_path, _wizard_replies(inst, answer))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert QUESTION in result.stdout
+    assert "(yes/no)" in result.stdout.split(QUESTION, 1)[1].splitlines()[0]
+    assert "up to 3 days on a large one" in result.stdout
+    _assert_decide_between_add_and_start(tmp_path, answer)
+    assert f"History backfill   {recorded.split(': ', 1)[1]}\n" in result.stdout
+    saved = (inst.root / ".secrets" / "install.answers").read_text().splitlines()
+    assert f"HISTORY_BACKFILL={answer}" in saved
+    assert _state_exists(inst)
+
+
+def test_an_empty_reply_is_refused_once_and_the_next_answer_is_recorded(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    (tmp_path / "hb_out").write_text(RECORDED_YES + "\n")
+
+    result = _interactive(inst, hb_path, _wizard_replies(inst, "", "yes"))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    after = result.stdout.split(QUESTION, 1)[1]
+    assert after.count("an answer is required") == 1
+    assert "[" not in after.split("\n", 1)[0].split("(yes/no)", 1)[1]  # no default is offered
+    _assert_decide_between_add_and_start(tmp_path, "yes")
+
+
+def test_a_bad_reply_is_refused_with_the_reason(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    result = _interactive(inst, hb_path, _wizard_replies(inst, "maybe", "no"))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "must be yes or no" in result.stdout.split(QUESTION, 1)[1]
+    _assert_decide_between_add_and_start(tmp_path, "no")
+
+
+@pytest.mark.parametrize(
+    ("answer", "recorded"), [("yes", RECORDED_YES), ("no", RECORDED_NO)]
+)
+def test_scripted_answer_is_recorded_and_summarised(
+    inst: Install, tmp_path: Path, hb_path: str, answer: str, recorded: str
+) -> None:
+    result = _scripted(inst, tmp_path, hb_path, hb_out=recorded, HISTORY_BACKFILL=answer)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    _assert_decide_between_add_and_start(tmp_path, answer)
+    assert f"History backfill   {recorded.split(': ', 1)[1]}\n" in result.stdout
+    assert f"[ ok ] history backfill: {recorded}" in result.stdout
+    assert QUESTION not in result.stdout
+    assert _state_exists(inst)
+
+
+def test_a_decision_that_already_exists_is_reported_as_the_cli_reports_it(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    result = _scripted(
+        inst, tmp_path, hb_path, hb_out="qradar: already decided on 2026-10-19: NO",
+        HISTORY_BACKFILL="yes",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "History backfill   already decided on 2026-10-19: NO\n" in result.stdout
+
+
+def test_an_absent_key_is_not_asked_not_guessed_and_runs_no_decide(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    result = _scripted(inst, tmp_path, hb_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _decide_calls(tmp_path) == []
+    assert NOT_DECIDED in result.stdout
+    assert "HISTORY_BACKFILL" not in (inst.root / ".secrets" / "install.answers").read_text()
+    assert _state_exists(inst)
+
+
+def test_a_bad_value_in_the_answers_file_is_refused_and_nothing_is_written(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    result = _scripted(inst, tmp_path, hb_path, HISTORY_BACKFILL="maybe")
+
+    assert result.returncode == 2, result.stderr
+    assert "HISTORY_BACKFILL: must be yes or no" in result.stderr
+    assert "nothing was written" in result.stderr
+    # flow_path adds deploy/ to the checkout; nothing the installer writes may appear
+    assert sorted(p.name for p in inst.root.iterdir()) == ["deploy", "qradar-dash"]
+    assert _docker_log(tmp_path) == []
+
+
+def test_a_rerun_with_saved_answers_does_not_ask_and_passes_the_saved_answer_again(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    (tmp_path / "hb_out").write_text(RECORDED_YES + "\n")
+    first = _interactive(inst, hb_path, _wizard_replies(inst, "yes"))
+    assert first.returncode == 0, first.stdout + first.stderr
+    (tmp_path / "docker.log").unlink()
+    (tmp_path / "hb_out").write_text("qradar: already decided on 2026-10-19: YES\n")
+
+    again = inst.run("install", "--skip-qradar-check", path=hb_path)
+
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert "Re-run: reusing the saved answers" in again.stdout
+    assert QUESTION not in again.stdout
+    _assert_decide_between_add_and_start(tmp_path, "yes")
+    assert "History backfill   already decided on 2026-10-19: YES\n" in again.stdout
+
+
+def test_reconfigure_with_the_key_saved_does_not_ask_it_again(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    (tmp_path / "hb_out").write_text(RECORDED_NO + "\n")
+    first = _interactive(inst, hb_path, _wizard_replies(inst, "no"))
+    assert first.returncode == 0, first.stdout + first.stderr
+    # A first install that failed late leaves the saved answers and no state file.
+    (inst.root / ".qradar-dash" / "state.json").unlink()
+    (tmp_path / "docker.log").unlink()
+
+    again = _interactive(inst, hb_path, _wizard_replies(inst), "--reconfigure")
+
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert "1. Public host name" in again.stdout  # the wizard did run
+    assert QUESTION not in again.stdout
+    _assert_decide_between_add_and_start(tmp_path, "no")
+
+
+def test_reconfigure_on_a_site_with_a_state_file_and_no_saved_key_does_not_ask(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    before = _scripted(inst, tmp_path, hb_path)  # a site installed before the question existed
+    assert before.returncode == 0, before.stdout + before.stderr
+    assert _state_exists(inst)
+    (tmp_path / "docker.log").unlink()
+
+    again = _interactive(inst, hb_path, _wizard_replies(inst), "--reconfigure")
+
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert "1. Public host name" in again.stdout
+    assert QUESTION not in again.stdout
+    assert _decide_calls(tmp_path) == []
+    assert NOT_DECIDED in again.stdout
+
+
+def test_a_decide_failure_warns_and_the_install_goes_on(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    result = _scripted(inst, tmp_path, hb_path, hb_rc=1, HISTORY_BACKFILL="yes")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"[warn] {HB_WARNING}" in result.stderr
+    assert HB_KEEP_ON in result.stdout
+    assert len(_decide_calls(tmp_path)) == 1
+    assert any("up -d --wait --wait-timeout 180 backend" in x for x in _docker_log(tmp_path))
+    assert _state_exists(inst)
+
+
+def test_a_failed_qradar_check_still_records_the_answer(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    result = _scripted(inst, tmp_path, hb_path, qr_rc=3, hb_out=RECORDED_YES,
+                       HISTORY_BACKFILL="yes")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "QRadar connection  FAILED (exit 3)" in result.stdout
+    _assert_decide_between_add_and_start(tmp_path, "yes")
+    assert "History backfill   recorded YES (28 days) from the installer\n" in result.stdout
+    assert _state_exists(inst)
+
+
+def test_a_failed_qradar_check_and_a_decide_failure_still_start_the_services(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    result = _scripted(inst, tmp_path, hb_path, qr_rc=3, hb_rc=2, HISTORY_BACKFILL="no")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "the answer was not recorded (exit 2)" in result.stderr
+    assert "History backfill   not recorded (exit 2); the first administrator" in result.stdout
+    assert _state_exists(inst)
+
+
+def test_dry_run_runs_no_decide_and_writes_nothing(
+    inst: Install, tmp_path: Path, hb_path: str
+) -> None:
+    result = _scripted(inst, tmp_path, hb_path, "--dry-run", HISTORY_BACKFILL="yes")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Dry run: every check passed; nothing was written." in result.stdout
+    assert _decide_calls(tmp_path) == []
+    assert not (inst.root / ".env").exists()
+    assert not (inst.root / ".qradar-dash").exists()
+
+
+def test_upgrade_never_asks_and_never_calls_decide(upgrade: UpgradeFixture) -> None:
+    # A saved answers file that parse_answers would refuse (mode 0644): upgrade must not read it.
+    secrets = upgrade.root / ".secrets"
+    secrets.mkdir(mode=0o700)
+    answers = secrets / "install.answers"
+    answers.write_text("HISTORY_BACKFILL=yes\nNOT_A_KEY=1\n")
+    answers.chmod(0o644)
+
+    result = upgrade.run("upgrade", TARGET_VERSION)
+
+    assert result.returncode == 0, output(result)
+    assert "must be 0600" not in output(result)
+    assert QUESTION not in output(result)
+    assert "history_backfill" not in upgrade.action_text()
+    assert answers.read_text() == "HISTORY_BACKFILL=yes\nNOT_A_KEY=1\n"
+
+
+def test_the_upgrade_command_does_not_reach_the_wizard_or_the_answers_parser() -> None:
+    text = SCRIPT.read_text()
+    body = text.split("\ncmd_upgrade() {", 1)[1].split("\nupgrade_auto_rollback()", 1)[0]
+    for name in ("wizard", "parse_answers", "HISTORY_BACKFILL", "history_backfill"):
+        assert name not in body, name

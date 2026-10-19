@@ -86,7 +86,7 @@ ANSWER_KEYS="PUBLIC_HOSTNAME TLS_CERT_FILE TLS_KEY_FILE EXTERNAL_PROXY FORWARDED
 QRADAR_URL QRADAR_CONSOLE_FQDN QRADAR_API_VERSION QRADAR_TOKEN_FILE QRADAR_CA_FILE
 QRADAR_ALLOW_MISSING_AKI INSTANCE_NAME BACKUP_DIR GHCR_USER GHCR_TOKEN_FILE ADMIN_USERNAME
 HTTPS_PORT API_LOOPBACK_PORT UI_LOOPBACK_PORT IMAGE_PREFIX SECRETS_VOLUME PROXY_CERTS_VOLUME
-EDGE_SUBNET PROXY_EDGE_IP PROJECT_NAME"
+EDGE_SUBNET PROXY_EDGE_IP PROJECT_NAME HISTORY_BACKFILL"
 
 declare -A ANS=()
 ERRORS=()
@@ -111,7 +111,7 @@ check_value() {
     TLS_KEY_FILE)
       [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
       grep -q 'PRIVATE KEY' "$val" || { say "not a PEM private key: $val"; return 1; } ;;
-    EXTERNAL_PROXY | QRADAR_ALLOW_MISSING_AKI)
+    EXTERNAL_PROXY | QRADAR_ALLOW_MISSING_AKI | HISTORY_BACKFILL)
       [[ $val =~ ^(yes|no)$ ]] || { say "must be yes or no"; return 1; } ;;
     FORWARDED_ALLOW_IPS)
       [ "$val" != "*" ] || { say "must list the proxy address, not *"; return 1; }
@@ -320,6 +320,15 @@ wizard() {
     if [ -n "${ANS[GHCR_USER]:-}" ]; then ask GHCR_TOKEN_FILE "    Path to the read:packages token file"; fi
   fi
   ask ADMIN_USERNAME "13. Break-glass admin user name" "The password is generated and shown once."
+  # Asked once: never when the key is already set (a saved answer, also under --reconfigure),
+  # and never on a site that has a state file (it was installed before this question existed).
+  if [ -z "${ANS[HISTORY_BACKFILL]:-}" ] && [ ! -e .qradar-dash/state.json ] \
+    && [ ! -L .qradar-dash/state.json ]; then
+    say "    Nothing in the past raises an alert. It sends searches to QRadar for about 3 hours on"
+    say "    a small estate and up to 3 days on a large one (a large estate gets a shorter window"
+    say "    so that it fits 72 hours); the admin page shows the progress and the estimate."
+    ask HISTORY_BACKFILL "14. Read the last 28 days of history from QRadar now, so baselines are steadier from day 1? (yes/no)"
+  fi
 }
 
 # ---------------------------------------------------------------- preflight
@@ -785,6 +794,23 @@ cmd_install() {
     --token-file /run/secrets/qradar_sec_token --ca-file /run/secrets/qradar_ca.pem \
     --api-version "${ANS[QRADAR_API_VERSION]}" || qr_rc=$?
 
+  # 9b. Record the answer to "read QRadar's past?" before the first collection (step 10). It runs
+  # whatever step 9 returned: the instance row may exist after a failed QRadar check. A failure
+  # never stops the install; the console stays undecided and the first administrator sign-in asks.
+  HB_RC=""
+  HB_OUT=""
+  if [ -n "${ANS[HISTORY_BACKFILL]:-}" ]; then
+    HB_RC=0
+    HB_OUT=$(dc run --rm --no-deps -T backend python -m app.cli.history_backfill decide \
+      --instance "${ANS[INSTANCE_NAME]}" --answer "${ANS[HISTORY_BACKFILL]}" \
+      --source installer) || HB_RC=$?
+    if [ "$HB_RC" -eq 0 ]; then
+      info "history backfill: $HB_OUT"
+    else
+      warn "history backfill: the answer was not recorded (exit $HB_RC); the console stays undecided and the first administrator sign-in will ask"
+    fi
+  fi
+
   # 10. Start.
   if [ "${ANS[EXTERNAL_PROXY]}" = "yes" ]; then
     local f
@@ -818,7 +844,7 @@ cmd_install() {
 }
 
 summary() {
-  local qr_rc=$1 had=$2 origin
+  local qr_rc=$1 had=$2 origin hb_line
   origin=$(env_get PUBLIC_ORIGIN)
   say ""
   say "=============================== Install summary ==============================="
@@ -835,6 +861,15 @@ summary() {
   else
     say "QRadar connection  FAILED (exit $qr_rc). The instance row is stored; fix the console, token or"
     say "                    CA and run ./qradar-dash install again (qradar add updates the row)."
+  fi
+  if [ -z "${HB_RC:-}" ]; then
+    say "History backfill   not decided; the first administrator sign-in will ask (WAF and IPS read"
+    say "                    history for sources enabled after the answer)"
+  elif [ "$HB_RC" -eq 0 ]; then
+    hb_line=${HB_OUT##*$'\n'} # the CLI's last line, "NAME: recorded YES (28 days) ..."
+    say "History backfill   ${hb_line#*: }"
+  else
+    say "History backfill   not recorded (exit $HB_RC); the first administrator sign-in will ask"
   fi
   say "Left off           WAF, IPS, rule-match collection, custom rules (turn them on later)"
   say "Next               Sign in, then Directory ($origin/admin/directory) if AD is used,"

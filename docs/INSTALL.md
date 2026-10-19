@@ -83,6 +83,16 @@ The default release images are under `ghcr.io/wiembe/behavior-analytics/`. The i
 --skip-qradar-check      skip the QRadar TLS handshake check
 ```
 
+The last question of a first install asks whether to read the last 28 days of history from
+QRadar, so baselines are steadier from day 1 (nothing in the past raises an alert). It is asked
+once: a re-run, `--reconfigure` and a site that already has `.qradar-dash/state.json` do not ask it
+again, and `upgrade` never does. In an answers file the key is `HISTORY_BACKFILL`:
+
+- `yes` or `no` records that answer for the console, once, before the first collection. A decision
+  that already exists is never changed by the installer.
+- absent leaves the console undecided; nothing is guessed, and the first administrator sign-in
+  asks.
+
 After installation:
 
 ```bash
