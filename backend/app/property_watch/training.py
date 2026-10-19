@@ -74,7 +74,7 @@ class PwBaselineTrainer:
         end = max(ends.values())
         watch_ids = sorted({value.watch_id for value in values})
         buckets = await self.repo.buckets_between(watch_ids, start=start, end=end)
-        metrics = await self.repo.metrics_between(
+        metrics = await self.repo.training_metrics_between(
             [value.id for value in values], start=start, end=end
         )
         spans = await self.repo.active_incident_spans([value.id for value in values], end=end)
@@ -82,8 +82,8 @@ class PwBaselineTrainer:
         for bucket in buckets:
             by_watch.setdefault(bucket.watch_id, []).append(bucket)
         metric_map = {
-            (row.pw_value_id, _aware(row.bucket_start) or row.bucket_start): row.events
-            for row in metrics
+            (value_id, _aware(bucket_start) or bucket_start): events
+            for value_id, bucket_start, events in metrics
         }
         span_map: dict[uuid.UUID, list[tuple[datetime, datetime]]] = {}
         for value_id, detected_at, anomaly_end, resolved_at in spans:

@@ -26,6 +26,7 @@ from app.models.enums import (
     EvidenceStatus,
     PwAnomalyType,
     PwBucketMeasurement,
+    PwBucketOrigin,
     PwPinnedMeasurement,
     PwScopeKind,
     PwWatchStatus,
@@ -178,6 +179,7 @@ def _bucket_fact(row: PwBucket) -> PwBucketFact:
         totals_complete=row.totals_complete,
         values_measurement=PwBucketMeasurement(str(row.values_measurement)),
         pinned_measurement=PwPinnedMeasurement(str(row.pinned_measurement)),
+        origin=PwBucketOrigin(str(row.origin)),
         total_events=row.total_events,
         parsed_events=row.parsed_events,
         untracked_events=row.untracked_events,
@@ -373,7 +375,11 @@ class PwAnomalyEngine:
             earliest = earliest_by_watch.get(value.watch_id)
             if first is None or earliest is None or earliest >= first + window:
                 continue
-            if not set(self._selected(watches[value.watch_id])) & _NOVELTY:
+            watch = watches[value.watch_id]
+            history_end = _aware(watch.history_end)
+            if history_end is not None and first < history_end:
+                continue
+            if not set(self._selected(watch)) & _NOVELTY:
                 continue
             out.append(value)
         return out
@@ -786,6 +792,8 @@ class PwAnomalyEngine:
             # and the detector reads the gap as "not supplied", never as a zero.
             if bucket is None or bucket.watch_version != value.watch_version:
                 continue
+            if bucket.origin is not PwBucketOrigin.LIVE:
+                continue
             points.append(PwReadingPoint(bucket, self._reading(value, bucket, metrics)))
         return tuple(points)
 
@@ -830,6 +838,7 @@ class PwAnomalyEngine:
             history_end=first,
             bucket_seconds=current.bucket_seconds,
             watch_version=value.watch_version,
+            min_coverage=self.settings.pw_min_coverage,
         )
         appearance = buckets.get(first)
         if appearance is None:
@@ -855,16 +864,20 @@ class PwAnomalyEngine:
 
     @staticmethod
     def _established(
-        watch: PropertyWatch, value: PwValue, current: PwBucketFact
+        watch: PropertyWatch,
+        value: PwValue,
+        current: PwBucketFact,
     ) -> PwNoveltyFacts | None:
-        """Novelty facts of a value whose novelty window ended before every pending bucket.
+        """Novelty facts of a value established before every pending bucket.
 
-        The detectors leave at "established value" before reading anything else, so none of
-        the history is loaded or claimed for it.
+        That includes values first seen before the watch's history hand-off, whatever their
+        age. The candidate loader excludes those values, so none of their history is loaded
+        or claimed here.
         """
         first = _aware(value.first_seen_at)
         if first is None:
             return None
+        history_end = _aware(watch.history_end)
         return PwNoveltyFacts(
             first_seen_at=first,
             history=HistoryFacts(complete=False, reason="outside the novelty window"),
@@ -878,6 +891,9 @@ class PwAnomalyEngine:
             watch_first_collected_at=None,
             pinned=value.pinned,
             property_count=len(watch.properties),
+            established_at_hand_off=(
+                history_end if history_end is not None and first < history_end else None
+            ),
         )
 
     def _novelty(

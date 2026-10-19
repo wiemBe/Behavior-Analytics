@@ -32,7 +32,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from app.models.enums import PwBucketMeasurement, PwPinnedMeasurement, WafMeasurement
+from app.models.enums import (
+    PwBucketMeasurement,
+    PwBucketOrigin,
+    PwPinnedMeasurement,
+    WafMeasurement,
+)
 
 #: Joins the components of a combination watch's tuple key. A control character, which a
 #: sanitized value text cannot contain.
@@ -228,6 +233,7 @@ class PwBucketFact:
     totals_complete: bool
     values_measurement: PwBucketMeasurement
     pinned_measurement: PwPinnedMeasurement
+    origin: PwBucketOrigin = PwBucketOrigin.LIVE
     total_events: int | None = None
     parsed_events: int | None = None
     untracked_events: int | None = None

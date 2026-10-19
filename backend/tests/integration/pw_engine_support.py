@@ -15,7 +15,12 @@ from sqlalchemy import select
 
 from app.collectors.pw_collector import PwCollector
 from app.core.config import Settings
-from app.models.enums import PwAnomalyType, PwBucketMeasurement, PwPinnedMeasurement
+from app.models.enums import (
+    PwAnomalyType,
+    PwBucketMeasurement,
+    PwBucketOrigin,
+    PwPinnedMeasurement,
+)
 from app.models.instance import QRadarInstance
 from app.models.property_watch import (
     PropertyWatch,
@@ -280,6 +285,7 @@ async def history_buckets(
     stop: datetime,
     skip: Callable[[datetime], bool] = lambda at: False,
     measurement: PwBucketMeasurement = PwBucketMeasurement.EXACT,
+    origin: PwBucketOrigin = PwBucketOrigin.LIVE,
     events: int = 500,
 ) -> None:
     """Whole, exact bucket rows with no tracked values: the quiet history a novelty claim reads."""
@@ -292,6 +298,7 @@ async def history_buckets(
                     bucket_start=at,
                     bucket_seconds=300,
                     watch_version=watch.watch_version,
+                    origin=origin,
                     total_events=events,
                     parsed_events=events,
                     unparsed_events=0,

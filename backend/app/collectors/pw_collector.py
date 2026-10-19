@@ -36,6 +36,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from app.anomaly.seasonal import in_maintenance
 from app.collectors.metric_collector import floor_to_interval
 from app.core.config import Settings, get_settings
+from app.history.origin import is_live_clause
 from app.models.enums import (
     PwBucketMeasurement,
     PwPinnedMeasurement,
@@ -778,6 +779,7 @@ class PwCollector:
             .where(
                 PwBucket.watch_id.in_(list(watch_ids)),
                 PwBucket.watch_version == PropertyWatch.watch_version,
+                is_live_clause(PwBucket),
                 PwBucket.bucket_start <= PropertyWatch.collected_through,
                 PwBucket.bucket_start >= since,
             )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
-from app.models.enums import PwBucketMeasurement
+from app.models.enums import PwBucketMeasurement, PwBucketOrigin
 from app.property_watch.facts import PwBucketFact
 from app.waf.inputs import HistoryFacts
 
@@ -17,8 +17,11 @@ def verify_value_history(
     history_end: datetime,
     bucket_seconds: int,
     watch_version: int,
+    min_coverage: float,
 ) -> HistoryFacts:
     """Prove the pre-appearance window had whole discovery and admission."""
+    if not 0.0 <= min_coverage <= 1.0:
+        raise ValueError("coverage must be between zero and one")
     window_seconds = int((history_end - history_start).total_seconds())
     if bucket_seconds <= 0 or window_seconds <= 0 or window_seconds % bucket_seconds:
         return HistoryFacts(
@@ -79,4 +82,17 @@ def verify_value_history(
                     complete=False,
                     reason=f"history bucket {bucket.bucket_start.isoformat()} {wording}",
                 )
+    for bucket in ordered:
+        if (
+            bucket.origin is PwBucketOrigin.HISTORY
+            and bool(bucket.total_events)
+            and not bucket.coverage.reaches(min_coverage)
+        ):
+            return HistoryFacts(
+                complete=False,
+                reason=(
+                    f"history bucket {bucket.bucket_start.isoformat()} "
+                    "had parsing coverage below the floor"
+                ),
+            )
     return HistoryFacts(complete=True)

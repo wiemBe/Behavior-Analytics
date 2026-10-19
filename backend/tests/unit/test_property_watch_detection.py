@@ -21,6 +21,7 @@ from app.models.enums import (
     IpsAnomalyType,
     PwAnomalyType,
     PwBucketMeasurement,
+    PwBucketOrigin,
     PwPinnedMeasurement,
     PwWatchStatus,
     WafAnomalyType,
@@ -63,6 +64,7 @@ def bucket(
     maintenance: bool = False,
     admission_truncated: bool = False,
     rejected: int = 0,
+    origin: PwBucketOrigin = PwBucketOrigin.LIVE,
 ) -> PwBucketFact:
     collected = measurement is not PwBucketMeasurement.NOT_COLLECTED
     return PwBucketFact(
@@ -72,6 +74,7 @@ def bucket(
         totals_complete=collected,
         values_measurement=measurement,
         pinned_measurement=PwPinnedMeasurement.NOT_REQUESTED,
+        origin=origin,
         total_events=total if collected else None,
         parsed_events=parsed if collected else None,
         untracked_events=0 if measurement is PwBucketMeasurement.EXACT else None,
@@ -151,6 +154,7 @@ def novelty(
     membership_changed: bool = False,
     property_count: int = 1,
     components: tuple[PwComponentFact, ...] = (),
+    established_at_hand_off: datetime | None = None,
 ) -> PwNoveltyFacts:
     return PwNoveltyFacts(
         first_seen_at=first_seen,
@@ -167,6 +171,7 @@ def novelty(
         membership_changed=membership_changed,
         property_count=property_count,
         components=components,
+        established_at_hand_off=established_at_hand_off,
     )
 
 
@@ -354,11 +359,40 @@ class TestHistoryVerification:
             history_end=end,
             bucket_seconds=300,
             watch_version=1,
+            min_coverage=0.9,
         )
 
     def test_complete_history(self) -> None:
         _, _, rows = self._window()
         assert self.verify(rows).complete
+
+    def test_low_coverage_fails_history_but_does_not_change_live_history_rules(self) -> None:
+        _, _, rows = self._window()
+        low_history = replace(
+            rows[0],
+            origin=PwBucketOrigin.HISTORY,
+            total_events=100,
+            parsed_events=89,
+        )
+        failed = self.verify([low_history, *rows[1:]])
+        assert failed.complete is False
+        assert failed.reason == (
+            f"history bucket {low_history.bucket_start.isoformat()} "
+            "had parsing coverage below the floor"
+        )
+
+        low_live = replace(low_history, origin=PwBucketOrigin.LIVE)
+        assert self.verify([low_live, *rows[1:]]).complete
+
+    def test_silent_history_bucket_has_no_ratio_but_is_not_low_coverage(self) -> None:
+        _, _, rows = self._window()
+        silent = replace(
+            rows[0],
+            origin=PwBucketOrigin.HISTORY,
+            total_events=0,
+            parsed_events=0,
+        )
+        assert self.verify([silent, *rows[1:]]).complete
 
     @pytest.mark.parametrize(
         ("mutate", "reason"),
@@ -642,6 +676,20 @@ class TestNewValue:
     def test_material_new_value_fires(self) -> None:
         assert detect_new_value(novelty_context(novelty())).signal is DetectorSignal.ANOMALOUS
 
+    def test_history_hand_off_preserves_real_first_seen_inside_novelty_window(self) -> None:
+        first_seen = NOW - timedelta(minutes=5)
+        facts = novelty(first_seen=first_seen, established_at_hand_off=NOW)
+
+        established = detect_new_value(novelty_context(facts))
+        assert established.signal is DetectorSignal.HEALTHY
+        assert first_seen.isoformat() in established.evidence.reason
+        assert NOW.isoformat() in established.evidence.reason
+
+        live_path = detect_new_value(
+            novelty_context(replace(facts, established_at_hand_off=None))
+        )
+        assert live_path.signal is DetectorSignal.ANOMALOUS
+
 
 class TestNewCombination:
     def known(
@@ -836,6 +884,7 @@ class TestReviewedGaps:
             "history_end": NOW,
             "bucket_seconds": 300,
             "watch_version": 1,
+            "min_coverage": 0.9,
         }
         dup = verify_value_history([*rows, rows[0]], **kwargs)  # type: ignore[arg-type]
         assert not dup.complete and "bucket records" in (dup.reason or "")

@@ -14,19 +14,28 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import func, insert, select, update
 
-from app.models.enums import PwAnomalyType, PwScopeKind
+from app.models.enums import (
+    PwAnomalyType,
+    PwBucketMeasurement,
+    PwBucketOrigin,
+    PwPinnedMeasurement,
+    PwScopeKind,
+)
 from app.models.property_watch import (
     PropertyWatch,
     PwAnomaly,
     PwAnomalyTransition,
+    PwBucket,
     PwDetectorState,
     PwValue,
     PwValueBaseline,
+    PwValueMetric,
 )
 from app.property_watch.baseline import PW_VALUE_EVENTS_SEMANTICS
 from app.property_watch.engine import PwAnomalyEngine
 from app.property_watch.inputs import PW_VALUE_EVENTS_METRIC
 from app.property_watch.training import PwBaselineTrainer
+from app.repositories.property_watch import PropertyWatchRepository
 from tests.integration.pw_engine_support import (
     NEW_COMBINATION,
     T0,
@@ -188,6 +197,97 @@ async def test_training_scales_with_chunks_not_values(db_session) -> None:
     # upsert of the rebuilt cells, and the delete of the cells the rebuild did not write
     # (PW-3c item 3). Every one is bounded, so 50 values and 100 values cost the same.
     assert counts == {50: 6, 100: 6}
+
+
+async def test_training_100_values_by_288_buckets_keeps_six_statements_and_same_inputs(
+    db_session,
+) -> None:
+    """28,800 metric rows is the largest sub-minute fixture used for the PW-13c2 gate."""
+    instance, _ = await seeded(
+        db_session, watches=1, values=100, kind=PwScopeKind.LOG_SOURCE
+    )
+    watch = await db_session.scalar(
+        select(PropertyWatch).where(PropertyWatch.instance_id == instance.id)
+    )
+    assert watch is not None
+    values = list(
+        (
+            await db_session.scalars(
+                select(PwValue).where(PwValue.watch_id == watch.id).order_by(PwValue.id)
+            )
+        ).all()
+    )
+    end = NOW - timedelta(minutes=7)
+    starts = [end - STEP * index for index in reversed(range(288))]
+    await db_session.execute(
+        insert(PwBucket),
+        [
+            {
+                "watch_id": watch.id,
+                "bucket_start": at,
+                "bucket_seconds": 300,
+                "watch_version": 1,
+                "origin": PwBucketOrigin.HISTORY.value,
+                "total_events": 10_000,
+                "parsed_events": 10_000,
+                "unparsed_events": 0,
+                "untracked_events": 0,
+                "values_measurement": PwBucketMeasurement.EXACT.value,
+                "pinned_measurement": PwPinnedMeasurement.NOT_REQUESTED.value,
+                "totals_complete": True,
+                "observed_values": 100,
+                "tracked_values_observed": 100,
+                "admitted_values": 0,
+                "below_admission_threshold": 0,
+                "rejected_over_quota": 0,
+                "admission_truncated": False,
+                "scope_member_count": 1,
+                "scope_changed": False,
+                "in_maintenance": False,
+                "query_provenance": {"history": True},
+                "collected_at": NOW,
+            }
+            for at in starts
+        ],
+    )
+    await db_session.execute(
+        insert(PwValueMetric),
+        [
+            {
+                "pw_value_id": value.id,
+                "bucket_start": at,
+                "events": 10 + index,
+                "bucket_seconds": 300,
+            }
+            for index, value in enumerate(values)
+            for at in starts
+        ],
+    )
+    watch.collected_through = end
+    watch.evaluated_through = end
+    await db_session.commit()
+
+    repo = PropertyWatchRepository(db_session)
+    old_rows = await repo.metrics_between([value.id for value in values], start=starts[0], end=end)
+    compact_rows = await repo.training_metrics_between(
+        [value.id for value in values], start=starts[0], end=end
+    )
+    old_inputs = {
+        (row.pw_value_id, row.bucket_start, row.events)
+        for row in old_rows
+    }
+    assert old_inputs == set(compact_rows)
+    assert len(compact_rows) == 100 * 288
+
+    settings = scale_settings(pw_baseline_values_per_run=100)
+    with recorded_statements(db_session) as statements:
+        report = await PwBaselineTrainer(db_session, settings=settings).rebuild_due(
+            instance, now=NOW
+        )
+    assert report.values_rebuilt == 100 and report.cells_written > 0
+    assert len(statements) == 6
+    [metric_select] = [sql for sql in statements if "FROM pw_value_metric" in sql]
+    assert "pw_value_metric.bucket_seconds" not in metric_select
 
 
 async def test_the_component_lookup_costs_one_statement_only_when_a_tuple_is_in_its_window(
