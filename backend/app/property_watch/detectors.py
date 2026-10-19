@@ -88,6 +88,7 @@ class PwNoveltyFacts:
     membership_changed: bool = False
     property_count: int = 1
     components: tuple[PwComponentFact, ...] = ()
+    established_at_hand_off: datetime | None = None
 
 
 @dataclass
@@ -596,6 +597,12 @@ def _novelty_common(
     novelty = guard.ctx.novelty
     if novelty is None:
         return guard.insufficient("the value's first appearance was not established")
+    if novelty.established_at_hand_off is not None:
+        return guard.healthy(
+            f"established value: first seen {novelty.first_seen_at.isoformat()} in the "
+            "history read before the watch went live at "
+            f"{novelty.established_at_hand_off.isoformat()}"
+        )
     assert guard.bucket is not None
     thresholds = guard.thresholds
     window_end = novelty.first_seen_at + timedelta(

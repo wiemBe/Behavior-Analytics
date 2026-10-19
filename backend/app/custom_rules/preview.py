@@ -410,6 +410,7 @@ async def _load(
             after=after,
             through=through,
             coverage_floor=pw_coverage_floor,
+            include_history=True,
         )
     return {}
 

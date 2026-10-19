@@ -17,7 +17,7 @@ from sqlalchemy import select
 from app.custom_rules.evaluate import latest_closed_bucket
 from app.custom_rules.preview import replay
 from app.models.custom_rule import CustomRuleBreach
-from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind
+from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind, PwBucketOrigin
 from app.models.property_watch import PropertyWatch, PwValueMetric
 from tests.integration.factories import make_instance, make_log_source, utc
 from tests.integration.test_custom_rules_pw_value import (
@@ -106,6 +106,34 @@ async def test_the_preview_shows_the_breach_the_engine_opens_on_the_same_rows(db
     assert result.breach_intervals[0].start == stored.first_bucket_start
     assert result.breach_intervals[0].end == stored.last_bucket_start
     assert stored.state == "RESOLVED"
+
+
+async def test_history_is_hidden_from_f1_during_the_kind_watermark_race_but_previewed(
+    db_session,
+) -> None:
+    instance = await make_instance(db_session)
+    source = await make_log_source(db_session, instance, qradar_id=101, name="fw")
+    # The shared PW_VALUE watermark may have been advanced by a rule on another watch.
+    watch_b = await _watch(db_session, instance, source)
+    value_b = await _value(db_session, watch_b, key="B")
+    db_session.add(_rule("watch-b", value_b, threshold_value=1_000_000.0))
+    await _arm(db_session)  # 10:00, before watch A's last history bucket
+
+    watch_a = await _watch(db_session, instance, source)
+    value_a = await _value(db_session, watch_a, key="A")
+    db_session.add(_bucket(watch_a, 10, origin=PwBucketOrigin.HISTORY))
+    db_session.add(_metric(value_a, 10, 500))
+    db_session.add(_rule("created-during-reading", value_a, sustain_buckets=1))
+    await db_session.flush()
+
+    report = await _run(db_session)
+    assert report.opened == 0
+    assert await _breaches(db_session) == []
+
+    preview = await _replay(db_session, value_a, sustain_buckets=1)
+    point = next(bucket for bucket in preview.buckets if bucket.bucket_start == utc(h=10, mi=10))
+    assert point.value == 500.0 and point.measurement == "EXACT"
+    assert preview.fired_count == 1
 
 
 async def test_a_missing_bucket_a_lower_bound_and_maintenance(db_session) -> None:

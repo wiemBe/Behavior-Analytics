@@ -263,6 +263,7 @@ async def test_a_new_value_after_the_gap_is_insufficient_never_new(db_session) -
         history_end=first,
         bucket_seconds=300,
         watch_version=rig.watch.watch_version,
+        min_coverage=rig.settings.pw_min_coverage,
     )
     assert history.complete is False
     assert "was never collected" in (history.reason or ""), history.reason

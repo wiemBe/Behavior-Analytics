@@ -33,6 +33,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.history.origin import is_live_clause
 from app.models.enums import AnomalyState, PwBucketMeasurement
 from app.models.fleet import LogSourceGroup
 from app.models.log_source import LogSource
@@ -197,6 +198,7 @@ class PropertyWatchRepository:
                 PropertyWatch.instance_id == instance_id,
                 PropertyWatch.enabled.is_(True),
                 PwBucket.watch_version == PropertyWatch.watch_version,
+                is_live_clause(PwBucket),
                 PwBucket.bucket_start <= PropertyWatch.collected_through,
                 or_(
                     PropertyWatch.evaluated_through.is_(None),
@@ -260,6 +262,28 @@ class PropertyWatchRepository:
             .execution_options(populate_existing=True)
         )
         return list(rows.all())
+
+    async def training_metrics_between(
+        self, value_ids: Sequence[uuid.UUID], *, start: datetime, end: datetime
+    ) -> list[tuple[uuid.UUID, datetime, int]]:
+        """The three metric columns baseline training consumes, without ORM row overhead."""
+        if not value_ids:
+            return []
+        rows = await self.session.execute(
+            select(
+                PwValueMetric.pw_value_id,
+                PwValueMetric.bucket_start,
+                PwValueMetric.events,
+            ).where(
+                PwValueMetric.pw_value_id.in_(list(value_ids)),
+                PwValueMetric.bucket_start >= start,
+                PwValueMetric.bucket_start <= end,
+            )
+        )
+        return [
+            (value_id, bucket_start, int(events))
+            for value_id, bucket_start, events in rows.all()
+        ]
 
     async def baseline_cells(
         self,

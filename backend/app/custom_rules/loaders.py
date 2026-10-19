@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.custom_rules.evaluate import BucketFacts
+from app.history.origin import is_live_clause
 from app.models.enums import (
     BucketCompleteness,
     CustomRuleSubjectKind,
@@ -490,6 +491,7 @@ async def load_pw_values(
     after: datetime,
     through: datetime,
     coverage_floor: float,
+    include_history: bool = False,
 ) -> dict[str, dict[datetime, BucketFacts]]:
     """Pinned-value counts joined to their watch's bucket row, one statement for every rule.
 
@@ -523,6 +525,7 @@ async def load_pw_values(
                     PwBucket.watch_version == PwValue.watch_version,
                     PwBucket.bucket_start > after,
                     PwBucket.bucket_start <= through,
+                    *([] if include_history else [is_live_clause(PwBucket)]),
                 ),
             )
             .outerjoin(
@@ -532,6 +535,7 @@ async def load_pw_values(
                     PwValueMetric.bucket_start == PwBucket.bucket_start,
                     PwValueMetric.bucket_start > after,
                     PwValueMetric.bucket_start <= through,
+                    *([] if include_history else [is_live_clause(PwBucket)]),
                 ),
             )
             .where(PwValue.id.in_(pw_value_ids))
