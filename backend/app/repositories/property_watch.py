@@ -18,9 +18,11 @@ from datetime import datetime
 from typing import Any, cast
 
 from sqlalchemy import (
+    Boolean,
     Table,
     and_,
     bindparam,
+    case,
     delete,
     func,
     literal,
@@ -48,6 +50,21 @@ from app.models.property_watch import (
     PwValueMetric,
 )
 from app.property_watch.scope import GroupRow, ScopeRecord, SourceRow
+
+#: The columns only the history reading writes (the collector is their only writer), in
+#: addition to the watermark and status every row carries. `evaluated_through` is here
+#: because only the hand-off and a version restart move it from collection.
+HISTORY_WATCH_COLUMNS: tuple[str, ...] = (
+    "evaluated_through",
+    "history_state",
+    "history_target_start",
+    "history_floor",
+    "history_through",
+    "history_end",
+    "history_started_at",
+    "history_finished_at",
+    "history_progress",
+)
 
 
 class PropertyWatchRepository:
@@ -413,15 +430,28 @@ class PropertyWatchRepository:
     async def write_buckets(self, rows: list[dict[str, Any]]) -> None:
         if not rows:
             return
-        statement = pg_insert(cast(Table, PwBucket.__table__))
+        table = cast(Table, PwBucket.__table__)
+        statement = pg_insert(table)
+        set_: dict[str, Any] = {
+            key: statement.excluded[key]
+            for key in rows[0]
+            if key not in ("watch_id", "bucket_start")
+        }
+        if "origin" in set_:
+            # A write never changes the marker of a row of the same watch version: a live
+            # write onto a history row keeps HISTORY. A row of another version is replaced
+            # whole, marker included (PHASE-G §H.5.4: the new history overwrites old-version
+            # rows at the same `bucket_start`, which no reader uses).
+            set_["origin"] = case(
+                (
+                    table.c.watch_version.is_distinct_from(statement.excluded.watch_version),
+                    statement.excluded.origin,
+                ),
+                else_=table.c.origin,
+            )
         await self.session.execute(
             statement.on_conflict_do_update(
-                index_elements=["watch_id", "bucket_start"],
-                set_={
-                    key: statement.excluded[key]
-                    for key in rows[0]
-                    if key not in ("watch_id", "bucket_start")
-                },
+                index_elements=["watch_id", "bucket_start"], set_=set_
             ),
             rows,
         )
@@ -444,11 +474,37 @@ class PropertyWatchRepository:
     async def update_watches(self, rows: list[dict[str, Any]]) -> None:
         """Watermark and status of every watch of the tick, as one `executemany`.
 
-        Every row names the same columns (a different set would be a second statement).
+        Every row names the same columns (a different set would be a second statement). The
+        history columns (`HISTORY_WATCH_COLUMNS`) ride on the same statement: a row that
+        carries `history_state` writes all of them, every other row leaves them as they are
+        (a `CASE` on one flag, so a live watch's history columns are never rewritten from a
+        snapshot).
         """
         if not rows:
             return
         table = cast(Table, PropertyWatch.__table__)
+        writes_history = bindparam("history_write", type_=Boolean())
+        history_values = {
+            column: case(
+                (writes_history, bindparam(f"h_{column}", type_=table.c[column].type)),
+                else_=table.c[column],
+            )
+            for column in HISTORY_WATCH_COLUMNS
+        }
+        params: list[dict[str, Any]] = []
+        for row in rows:
+            flag = "history_state" in row
+            param = {
+                "watch_id": row["watch_id"],
+                "collected_through": row["collected_through"],
+                "last_status": row["last_status"],
+                "last_status_reason": row["last_status_reason"],
+                "last_run_at": row["last_run_at"],
+                "history_write": flag,
+            }
+            for column in HISTORY_WATCH_COLUMNS:
+                param[f"h_{column}"] = row.get(column) if flag else None
+            params.append(param)
         await self.session.execute(
             update(table)
             .where(table.c.id == bindparam("watch_id"))
@@ -457,8 +513,9 @@ class PropertyWatchRepository:
                 last_status=bindparam("last_status"),
                 last_status_reason=bindparam("last_status_reason"),
                 last_run_at=bindparam("last_run_at"),
+                **history_values,
             ),
-            rows,
+            params,
         )
 
     async def write_detector_states(self, rows: list[dict[str, Any]]) -> None:
