@@ -19,7 +19,7 @@ Dört kural her bölümde geçerlidir:
 4. [Yedek ve geri alma](#yedek-ve-geri-alma)
 5. [Tanı](#tanı)
 6. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R53; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R54; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
 `support-bundle` bugün çalışır. `bundle` (çevrimdışı paket) bu sürümde yoktur. `./qradar-dash bundle`
@@ -202,7 +202,7 @@ döngüsü yazılır ama hiçbir şey sayfa açmaz. Üst sınırlar: `PW_MAX_ENA
 `PW_MAX_SEARCHES_PER_TICK` 40, izleme başına `PW_MAX_SEARCHES_PER_WATCH_PER_TICK` 12, izleme başına
 etkin değer `PW_MAX_ACTIVE_VALUES_PER_WATCH` 200, sabitlenmiş (pinned) değer `PW_MAX_PINNED_VALUES`
 10. En yüksek sıklık `PROPERTY_WATCH` ailesine `/admin/search-cadence` sayfasından verilir (5 dk –
-8 sa, varsayılan 1 sa). Tüm `pw_*` ayarları ve varsayılanları README'deki "Property watches"
+8 sa, varsayılan 5 dk). Tüm `pw_*` ayarları ve varsayılanları README'deki "Property watches"
 bölümündedir.
 
 `.env` dosyası (izin `0600`) imaj geldikten sonra yazılır. `SECRET_KEY`, `ENCRYPTION_KEY` ve
@@ -1697,9 +1697,11 @@ için toplanmış kova yok.
 
 **Olası neden:** `PW_COLLECTION_ENABLED` varsayılanda false'tur; false iken
 `dispatch_property_watch_collection` görevi hiç oturum açmaz ve QRadar'a arama gitmez, bu yüzden
-ailenin `last_run_at` alanı NULL kalır. Kaydedilen bir izleme her zaman **devre dışıdır**; elle
-etkinleştirilmemiş bir izleme toplanmaz. `PROPERTY_WATCH` aile kadansı (varsayılan 1 sa) henüz
-dolmamışsa kova da yoktur.
+ailenin `last_run_at` alanı NULL kalır. Kaydedilen bir izleme her zaman **devre dışı** başlar ve
+çalışana kadar durum göstermez (`last_status` boştur); daha önce etkinleştirilip sonra kapatılan
+bir izleme `DISABLED` gösterir ve gerekçede onu kimin kapattığını söyler; hiç etkinleştirilmemiş
+bir izleme toplanmaz. `PROPERTY_WATCH` aile kadansı
+(varsayılan 5 dk) henüz dolmamışsa kova da yoktur.
 
 **Doğrulama:** `doctor` çıktısındaki `cadence` satırı `PROPERTY_WATCH` ailesini sayar ve
 `families_off` satırı `PW_COLLECTION_ENABLED` anahtarını gösterir. **Dikkat:** aile kapalıyken
@@ -1812,8 +1814,9 @@ yükselt. Sınırlar bilerek ayardır; yükseltmeden önce PW-10 lab ölçümün
 bazı değerler için "baseline: N of 168 hour-of-week cells reliable" satırındaki N düşük kalır.
 
 **Olası neden:** Her dedektörün kendi öğrenme gereksinimi vardır. Taban sapması (`PW_VALUE_SPIKE`,
-`PW_VALUE_DROP`) için bir hücrenin **8 temiz örnek** toplaması gerekir; aynı saat-hücresi haftada bir
-ziyaret edildiğinden ilk karar değer ilk izlendiğinden yaklaşık **bir hafta** sonra gelir.
+`PW_VALUE_DROP`) için bir hücrenin **8 temiz örnek** toplaması ve en az `PW_BASELINE_MIN_VISITS`
+(varsayılan 2) **farklı haftalık ziyaretten** gelmesi gerekir; aynı saat-hücresi haftada bir
+ziyaret edildiğinden ilk karar değer ilk izlendiğinden en erken **bir hafta** sonra gelir.
 `PW_VALUE_DISAPPEARED` hücre medyanının en az `PW_DISAPPEAR_MIN_MEDIAN` (5) olmasını ve
 `PW_DISAPPEAR_BUCKETS` (6) ardışık ölçülmüş sıfır bekler. `PW_NEW_VALUE` geçmiş penceresinin
 (`PW_NEW_VALUE_HISTORY_DAYS`, 7 gün) tam olmasını bekler. Kova `scope_changed` ise (bir üyelik
@@ -1832,7 +1835,8 @@ GET /api/v1/property-watches/{id}/buckets
 
 **Çözüm:** Bekle; öğrenme bir arıza değil, dürüst bir durumdur. Kova `scope_changed` ya da bakımda
 ise karar tutulur. Öğrenme hiç ilerlemiyorsa kapsamın trafik aldığını (`parsed_events` ve `coverage`)
-doğrula; kapsamda özellik hiç ayrıştırılmıyorsa izleme `NOT_APPLICABLE` olur (OPS-R7).
+doğrula; kapsamda özellik **12 ardışık toplanmış kovada** hiç ayrıştırılmıyorsa (tick'ler arasında
+sayılır, `total_events > 0` gerekir) izleme `NOT_APPLICABLE` olur (OPS-R7).
 
 ### OPS-R52. Olaylar kaydediliyor ama hiçbir şey sayfa açmıyor
 
@@ -1882,3 +1886,27 @@ PUT /api/v1/property-watches/{id}/pins
 **Çözüm:** Önce bağlı kuralı çöz ya da sil (`DELETE /api/v1/custom-rules/{id}`) ya da o değeri
 serbest bırak; sonra izlemeyi sil / değiştir. İzleme sayfasındaki "Threshold rules" sekmesi hangi
 kuralın hangi değeri tuttuğunu gösterir.
+
+### OPS-R54. İzleme `STALE` gösteriyor (en yeni arama başarısız oldu)
+
+**Belirti:** Bir izleme `STALE` gösteriyor; gerekçe, adı geçen kovayı `NOT_COLLECTED` olarak
+işaretliyor.
+
+**Olası neden:** En yeni kovanın araması başarısız oldu ya da zaman aşımına uğradı ve bu tick'te
+ondan yeni hiçbir kova toplanmadı. Kova depoya `NOT_COLLECTED` olarak yazılır; izleme okumaya devam
+etmez, `STALE` olur ve gerekçe başarısız kovayı adıyla söyler. Bu, sessiz bir `OK` değildir.
+
+**Doğrulama:** İzleme okuması `last_status`, `last_status_reason` ve son kova kayıtlarını verir;
+`doctor` `watermarks` ve `cadence` satırları son çalışmayı gösterir.
+
+```
+GET /api/v1/property-watches/{id}
+```
+
+```
+GET /api/v1/property-watches/{id}/buckets
+```
+
+**Çözüm:** QRadar'a erişimi ve aile anahtarını doğrula (OPS-R46). Sonraki toplanan kova durumu
+temizler; `STALE` yalnız bir sonraki kova yazılana kadar sürer. Başarısız aramaları `./qradar-dash
+logs` ile incele.

@@ -195,8 +195,10 @@ Verified on this branch, `file:line`. Facts about the QRadar console were settle
 - Every family claims its slot through `SearchCadenceService.claim_slot`
   (`backend/app/services/search_cadence.py:61`) and records its run (`:134`); the IPS dispatch is
   the template (`backend/app/workers/tasks.py:1335-1351`). The family set is
-  `SearchFamily` (`backend/app/models/enums.py:100-107`); families added later seed their row at
-  1 h in their own migration (`README.md:979-981`).
+  `SearchFamily` (`backend/app/models/enums.py:100-107`); a family added later seeds its row at
+  1 h in its own migration, and migration `0028` moves an untouched seed
+  (`updated_by IS NULL`) to the D-28 default
+  (`backend/alembic/versions/0028_default_search_cadence.py`).
 - The settle delay is 120 s (`backend/app/core/config.py:157-158`), the per-tick search budget 16
   (`backend/app/core/config.py:159`), the bucket width `collection_interval_seconds` = 300 s
   (`backend/app/core/config.py:237`). WAF's steady-state run costs a constant 36 SQL statements at 100 to 2,000 endpoints, measured on a
@@ -317,11 +319,12 @@ Design decisions, each against the facts of §G.1:
   atomically per slot (`backend/app/services/search_cadence.py:61`, `docs/SEARCH-CADENCE.md` §SC.4).
   A per-watch cadence would need a slot per watch and would let one watch multiply the Ariel
   schedule. The operator sets `PROPERTY_WATCH` on `/admin/search-cadence` (5 min to 8 h, default
-  1 h) and the watch page shows the cadence that applies. §G.17 Q13 asks whether that is enough.
+  5 min) and the watch page shows the cadence that applies. §G.17 Q13 asks whether that is enough.
 - **Status vocabulary** (`last_status`): `NOT_ENABLED` (family switch off), `DISABLED` (the
   watch's own switch), `SCOPE_EMPTY` (a group or type whose synced membership resolved to no
-  sources), `SCOPE_STALE` (§G.4), `SCOPE_TOO_LARGE` (§G.14), `NOT_APPLICABLE` (§G.5), `STALE` (no bucket stored for longer
-  than cadence + bucket + settle + 60 s — the F.1 rule, `README.md:1203`), `OPEN`/`RECOVERING`
+  sources), `SCOPE_STALE` (§G.4), `SCOPE_TOO_LARGE` (§G.14), `NOT_APPLICABLE` (§G.5), `STALE` (the
+  latest search failed and stored its bucket `NOT_COLLECTED`; the bucket is named in the reason, and
+  a later collected bucket clears the status), `OPEN`/`RECOVERING`
   (a live incident exists), `OK` (the last collected bucket was judged). A never-run watch is
   `NULL`, which is not `OK`. Every state is a reason, never silence — the detector-status contract
   (`backend/app/anomaly/capabilities.py:66-77`).
@@ -457,7 +460,8 @@ property never parsed.
     validation returns every reason at once (422, the F.1 pattern, `docs/PHASE-F-CUSTOM-DETECTIONS.md`
     §F.11) for malformed input only.
   - *Runtime*: a catalog row can be stale or the property can be typed outside the catalog. A watch
-    whose collected buckets carry `parsed_events = 0` across a full cadence window takes
+    whose collected buckets carry `parsed_events = 0` across 12 consecutive collected buckets
+    (counted across ticks) takes
     `NOT_APPLICABLE` — "the property parsed on no event in scope; the values below are not
     measured" — and every value verdict is `INSUFFICIENT_DATA`, never zero and never normal
     (AGENTS.md rule 8). The watch page shows the coverage per bucket precisely so a parsing break
@@ -517,7 +521,8 @@ style is the established machinery for exactly this shape of problem
 (`backend/app/ips/keyed_search.py:1-18`).
 
 **The family and the tick.** A new `SearchFamily.PROPERTY_WATCH` (`backend/app/models/enums.py:100-107`)
-is seeded at 1 h by Phase G's migration (the `IPS_COLLECTION` precedent, `README.md:980`). The
+is seeded at 1 h by Phase G's migration; migration `0028` moves that untouched seed to the D-28
+default of 5 minutes (the `IPS_COLLECTION` precedent). The
 dispatch task claims the slot (`backend/app/services/search_cadence.py:61`), is a no-op while
 `PW_COLLECTION_ENABLED` is false (the `IPS_COLLECTION_ENABLED` pattern,
 `backend/app/workers/tasks.py:1335-1339`), and per instance runs one plan: resolve every enabled
@@ -907,7 +912,9 @@ come from at least `pw_baseline_min_visits` (default 2) distinct weekly visits, 
 calendar dates of the bucket start (D-30): the 12 samples of one hour are correlated, not a baseline.
 The watch page shows, per value, "baseline: N of 168
 hour-of-week cells reliable", never a silent `NORMAL`. `PW_NEW_VALUE` has its own, shorter period
-(history, §G.8.3).
+(history, §G.8.3). This week-long wait is what the history bootstrap is designed to shorten: it
+reads past buckets from QRadar for learning only and it is being built, not shipped
+(`docs/PHASE-G-HISTORY-BOOTSTRAP.md`, D-27 and D-29; `docs/HISTORY-BACKFILL.md`, D-31 and D-32).
 
 **Lifecycle.** The shared contract: `INSUFFICIENT_DATA -> NORMAL -> CANDIDATE -> OPEN ->
 RECOVERING -> RESOLVED` with a transition row per change, one active incident per (watch,
@@ -1251,9 +1258,10 @@ bucket, sustained 3 buckets"). The extension, all additive:
   (`CUSTOM_RULES_ENABLED`, `CUSTOM_RULES_ALERTING_ENABLED`, `backend/app/core/config.py:545-551`).
   The F.1 engine seeds one watermark per subject kind that has an evaluable rule
   (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.4 note); `PW_VALUE` is a sixth.
-- Latency is the F.1 statement: the rule is judged on collected buckets, up to about an hour (plus
-  the PW cadence) after the events arrived; not a real-time engine
-  (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.12). The editor repeats that sentence.
+- Latency is the F.1 statement: the rule is judged on collected buckets, about 13 minutes at the
+  default 5-minute family cadence (about 23 minutes when the subject is a WAF or IPS metric)
+  (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.4.4); not a real-time engine
+  (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.12). The editor repeats the F.12 sentence.
 - **[BUILT — PW-6b]** One race remains and is accepted. A rule created on a value that is **unpinned
   between the 409 check and the create's commit** can pass the check; the engine then reads the value
   as no longer pinned and reports the rule `SUBJECT_RETIRED` with reason "the value is no longer
@@ -1378,11 +1386,12 @@ Every row is `INSUFFICIENT_DATA` or a named watch status with a reason. None is 
 | the scope needs more than `pw_max_chunks_per_watch` chunks | `SCOPE_TOO_LARGE` (§G.14); no bucket; the editor refuses to enable it and says to split the group |
 | the search budget is spent | remaining buckets `NOT_COLLECTED`; watermark holds |
 | a search failed or timed out | its buckets `NOT_COLLECTED`; not split; no incident resolves |
+| the latest search failed and stored its bucket `NOT_COLLECTED` | `STALE`, naming the bucket; cleared by the next collected bucket |
 | zero rows or an absent key from a search that did not complete, or was cut at `cap + 1` | unmeasured, never 0; only a `COMPLETED`, untruncated search yields a measured zero (§G.6 rule) |
 | a count that is not an integer-valued float | the whole search fails; unmeasured |
 | a multi-bucket search truncated | nothing kept; split by time; at one bucket stored as `LOWER_BOUND` |
 | bucket `LOWER_BOUND` | only spike and the F.1 `GT`/`GE` and the materiality inputs may use it; an absent tracked value is unknown |
-| `parsed_events = 0` with `total_events > 0` over a cadence window | `NOT_APPLICABLE`; every value verdict `INSUFFICIENT_DATA` |
+| `parsed_events = 0` with `total_events > 0` over 12 consecutive collected buckets (counted across ticks) | `NOT_APPLICABLE`; every value verdict `INSUFFICIENT_DATA` |
 | coverage below `pw_min_coverage` | drop, disappearance and "below" thresholds `INSUFFICIENT_DATA`; the bucket is not trained |
 | the bucket is `scope_changed` (the grace window) | spike, drop, disappearance, new value, new combination `INSUFFICIENT_DATA` ("membership changed"); not trained |
 | a cell below `baseline_min_samples` | `INSUFFICIENT_DATA` ("learning") |
@@ -1842,6 +1851,11 @@ then PW-4, PW-6 and PW-8, then PW-9, then PW-10, then PW-11. Each task touches t
 component PW-7 creates, which is why PW-8 and PW-9 wait for it. The longest chain is
 PW-1, PW-2a, PW-2b, PW-3b, PW-4, PW-10.
 
+**Measured in the lab, 2026-10-18, PW-10** (these real numbers replace §G.14's design estimates
+where they differ): a collecting tick's searches took 0.03–0.13 s; that tick ran 31–33 SQL
+statements with collection, evaluation and writes together; training wrote 7 statements in one
+chunk; and a run spent 50 of 80 searches and 6 of 40 GETs. The caps of §G.14 are unchanged.
+
 
 ---
 
@@ -1929,8 +1943,8 @@ a signal. A `PW_NEW_VALUE_FLOOD` detector over the counts already stored needs n
 alternative is Detection beside Custom rules, where the authoring lives. **Recommendation: Behavior**,
 because the page is about what the values did and its incidents are in `/anomalies`.
 
-**Q13. [default accepted (D-22)] Is a per-watch cadence needed?** (§G.3) D-7 puts cadence on the search family
-(`PROPERTY_WATCH`, default 1 hour); a watch cannot be faster than its family. **Recommendation: no;**
+**Q13. [default accepted (D-22)] Is a per-watch cadence needed?** (§G.3) D-28 puts cadence on the search family
+(`PROPERTY_WATCH`, default 5 minutes); a watch cannot be faster than its family. **Recommendation: no;**
 if one watch must be checked faster, put it in the 15-minute family setting for everyone and watch
 the Ariel budget.
 
