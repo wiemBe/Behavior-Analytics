@@ -34,8 +34,9 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 STATEMENT_CEILING = 40
 #: What one tick costs, pinned: the enabled watches, the cadence row, the sources, the groups
 #: (group scopes only), the tracked values, the scope history, and one write for each of
-#: values, buckets, metrics and the watches. Collection alone, so well under the ceiling.
-EXPECTED = {PwScopeKind.LOG_SOURCE: 9, PwScopeKind.LOG_SOURCE_GROUP: 10}
+#: values, buckets, metrics and the watches, and (T-138) the one bulk read of the unparsed
+#: streak behind NOT_APPLICABLE. Collection alone, so well under the ceiling.
+EXPECTED = {PwScopeKind.LOG_SOURCE: 10, PwScopeKind.LOG_SOURCE_GROUP: 11}
 #: Twelve buckets: one cadence window at the default.
 START = NOW - timedelta(hours=1, minutes=7)
 

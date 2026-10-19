@@ -133,11 +133,11 @@ recorded, the bucket's discovery is incomplete, and the fan-out detector (D.6) i
 Built by T-050b (migration `0018`): the split driver in `app/ips/keyed_search.py`, the per-tick
 plan in `app/ips/collection_plan.py`, the folds in `app/ips/fold.py`, the collector in
 `app/collectors/ips_collector.py` and the `dispatch_ips_collection` beat task. The family's
-cadence row was originally seeded at 1 h and D-28 moves its untouched default to 5 min. Collection
+cadence row was originally seeded at 1 h and D-28 moves its untouched default to 15 min. Collection
 is gated twice — `IPS_COLLECTION_ENABLED` (default
 false) and, per source, an enabled profile whose current version validated `VALID`.
 
-The `IPS_COLLECTION` family (cadence 5 min – 8 h, default 5 min; 1 h before D-28; §SC.4) drives it. Per tick,
+The `IPS_COLLECTION` family (cadence 5 min – 8 h, default 15 min; 1 h before D-28; §SC.4) drives it. Per tick,
 for every enabled, validated IPS source at once:
 
 | Search | AQL shape (bucket key `k = starttime / bucket_ms`) | Yields per (source, bucket) |

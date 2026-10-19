@@ -29,6 +29,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -43,7 +44,7 @@ from app.models.enums import (
     SearchFamily,
 )
 from app.models.instance import QRadarInstance
-from app.models.property_watch import PropertyWatch, PwValue
+from app.models.property_watch import PropertyWatch, PwBucket, PwValue
 from app.property_watch.admission import (
     AdmittedBucket,
     PwAdmissionPolicy,
@@ -86,8 +87,13 @@ _COLLECTION_STATUSES = frozenset(
         PwWatchStatus.SCOPE_STALE.value,
         PwWatchStatus.SCOPE_TOO_LARGE.value,
         PwWatchStatus.NOT_APPLICABLE.value,
+        PwWatchStatus.STALE.value,
     }
 )
+
+#: `NOT_APPLICABLE` needs this many consecutive collected buckets on which the property
+#: parsed on no event, counted across ticks, whatever the cadence.
+_NOT_APPLICABLE_MIN_BUCKETS = 12
 _NOT_APPLICABLE_REASON = (
     "the property parsed on no event in scope; the values are not measured"
 )
@@ -391,6 +397,13 @@ class PwCollector:
             since=(min(known) - step * (grace + 2)) if known else now,
         )
 
+        unparsed_before = await self._unparsed_streaks(
+            [p.watch.id for p in plans if p.watch.collected_through is not None],
+            since=(
+                (min(known) - step * (_NOT_APPLICABLE_MIN_BUCKETS + 2)) if known else now
+            ),
+        )
+
         budget = PwSearchBudget(
             self.settings.pw_max_searches_per_tick,
             max_per_watch=self.settings.pw_max_searches_per_watch_per_tick,
@@ -410,7 +423,7 @@ class PwCollector:
                 budget=budget,
                 writes=writes,
                 report=report,
-                cadence_buckets=max(1, cadence.cadence_seconds // interval),
+                unparsed_before=unparsed_before.get(plan.watch.id, 0),
             )
             report.watches.append(watch_report)
         report.searches_sent = budget.used
@@ -437,7 +450,7 @@ class PwCollector:
         budget: PwSearchBudget,
         writes: _Writes,
         report: PwCollectionReport,
-        cadence_buckets: int,
+        unparsed_before: int,
     ) -> PwWatchReport:
         watch = plan.watch
         settings = self.settings
@@ -497,7 +510,7 @@ class PwCollector:
                 now=now,
                 writes=writes,
                 status_row=status_row,
-                cadence_buckets=cadence_buckets,
+                unparsed_before=unparsed_before,
             )
         except ValueError as exc:
             # A corrupt stored watch: the class only, never the text (it may hold a value).
@@ -577,7 +590,7 @@ class PwCollector:
         now: datetime,
         writes: _Writes,
         status_row: dict[str, Any],
-        cadence_buckets: int,
+        unparsed_before: int,
     ) -> _Staged:
         watch = plan.watch
         settings = self.settings
@@ -622,6 +635,15 @@ class PwCollector:
                         collected_at=now,
                     )
                 )
+                if count == 0:
+                    # Nothing newer than the last evaluated bucket exists: the watch must not
+                    # keep reading OK. A later collected bucket clears this (STALE is one of
+                    # collection's own statuses).
+                    status_row["last_status"] = PwWatchStatus.STALE.value
+                    status_row["last_status_reason"] = (
+                        "the latest search failed; bucket "
+                        f"{grouped[held].bucket_start.isoformat()} is stored NOT_COLLECTED"
+                    )
         if count == 0:
             return _Staged()
 
@@ -710,7 +732,14 @@ class PwCollector:
                 writes.values.append(_value_row(watch.id, old_version, value))
         status_row["collected_through"] = reference
         status = status_row["last_status"]
-        if count >= cadence_buckets and all(f.property_not_parsed for f in collected_facts):
+        trailing = 0
+        for collected in reversed(collected_facts):
+            if not collected.property_not_parsed:
+                break
+            trailing += 1
+        if trailing == count:
+            trailing += unparsed_before
+        if trailing >= _NOT_APPLICABLE_MIN_BUCKETS:
             status_row["last_status"] = PwWatchStatus.NOT_APPLICABLE.value
             status_row["last_status_reason"] = _NOT_APPLICABLE_REASON
         elif status in _COLLECTION_STATUSES:
@@ -719,6 +748,55 @@ class PwCollector:
         return _Staged(
             admitted=sum(f.fact.admitted_values for f in facts), retired=len(retired)
         )
+
+    async def _unparsed_streaks(
+        self, watch_ids: Sequence[uuid.UUID], *, since: datetime
+    ) -> dict[uuid.UUID, int]:
+        """Per watch, how many of its newest stored buckets, at or before the watermark, in a
+        row hold events on which the property parsed on none (one statement for all watches).
+
+        A bucket that measured nothing ends the run. Only the current version counts. The
+        count is capped at what `NOT_APPLICABLE` needs, so the scan is bounded.
+        """
+        if not watch_ids:
+            return {}
+        depth = _NOT_APPLICABLE_MIN_BUCKETS - 1
+        ranked = (
+            select(
+                PwBucket.watch_id.label("watch_id"),
+                (
+                    (PwBucket.values_measurement == PwBucketMeasurement.EXACT.value)
+                    & (PwBucket.total_events > 0)
+                    & (PwBucket.parsed_events == 0)
+                ).label("unparsed"),
+                func.row_number()
+                .over(partition_by=PwBucket.watch_id, order_by=PwBucket.bucket_start.desc())
+                .label("rank"),
+            )
+            .join(PropertyWatch, PropertyWatch.id == PwBucket.watch_id)
+            .where(
+                PwBucket.watch_id.in_(list(watch_ids)),
+                PwBucket.watch_version == PropertyWatch.watch_version,
+                PwBucket.bucket_start <= PropertyWatch.collected_through,
+                PwBucket.bucket_start >= since,
+            )
+            .subquery()
+        )
+        rows = await self.session.execute(
+            select(ranked.c.watch_id, ranked.c.unparsed)
+            .where(ranked.c.rank <= depth)
+            .order_by(ranked.c.watch_id, ranked.c.rank)
+        )
+        streaks: dict[uuid.UUID, int] = {}
+        ended: set[uuid.UUID] = set()
+        for watch_id, unparsed in rows.all():
+            if watch_id in ended:
+                continue
+            if unparsed:
+                streaks[watch_id] = streaks.get(watch_id, 0) + 1
+            else:
+                ended.add(watch_id)
+        return streaks
 
     async def _persist(self, writes: _Writes, report: PwCollectionReport) -> None:
         # Values first: the metric rows reference them.

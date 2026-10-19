@@ -81,21 +81,21 @@ def test_0028_moves_only_untouched_defaults_and_audits_each_direction(clean_db: 
             rows = _cadences(connection)
             assert rows["PHASE_A_VOLUME"] == (3600, "operator")
             assert rows["WAF_COLLECTION"] == (7200, "operator")
-            moved = {family for family, value in rows.items() if value == (300, None)}
-            assert moved == {
+            five = {family for family, value in rows.items() if value == (300, None)}
+            assert five == {
                 "ANOMALY_EXPLANATION",
                 "CATCHALL_SENDERS",
                 "GEO_COLLECTION",
-                "IPS_COLLECTION",
                 "PROPERTY_WATCH",
                 "RULE_MATCH",
             }
+            assert rows["IPS_COLLECTION"] == (900, None)
+            moved = five | {"IPS_COLLECTION"}
             audits = _migration_audits(connection)
             assert {family for family, _detail in audits} == moved
-            assert all(
-                detail == {"old": 3600, "new": 300, "reason": "D-28 default"}
-                for _family, detail in audits
-            )
+            for family, detail in audits:
+                new = 900 if family == "IPS_COLLECTION" else 300
+                assert detail == {"old": 3600, "new": new, "reason": "D-28 default"}
 
         command.downgrade(config, "0027")
         with engine.connect() as connection:
@@ -107,17 +107,17 @@ def test_0028_moves_only_untouched_defaults_and_audits_each_direction(clean_db: 
             assert len(audits) == 12
             downgrade = audits[6:]
             assert {family for family, _detail in downgrade} == moved
-            assert all(
-                detail == {"old": 300, "new": 3600, "reason": "downgrade of 0028"}
-                for _family, detail in downgrade
-            )
+            for family, detail in downgrade:
+                old = 900 if family == "IPS_COLLECTION" else 300
+                assert detail == {"old": old, "new": 3600, "reason": "downgrade of 0028"}
 
         command.upgrade(config, "head")
         with engine.connect() as connection:
             rows = _cadences(connection)
             assert rows["PHASE_A_VOLUME"] == (3600, "operator")
             assert rows["WAF_COLLECTION"] == (7200, "operator")
-            assert all(rows[family] == (300, None) for family in moved)
+            assert all(rows[family] == (300, None) for family in five)
+            assert rows["IPS_COLLECTION"] == (900, None)
             assert len(_migration_audits(connection)) == 18
         try:
             command.check(config)
@@ -127,7 +127,7 @@ def test_0028_moves_only_untouched_defaults_and_audits_each_direction(clean_db: 
         engine.dispose()
 
 
-def test_fresh_install_has_all_eight_families_at_five_minutes(clean_db: str) -> None:
+def test_fresh_install_has_all_eight_families_at_their_default(clean_db: str) -> None:
     from alembic import command
 
     config = _alembic_config(clean_db)
@@ -147,7 +147,9 @@ def test_fresh_install_has_all_eight_families_at_five_minutes(clean_db: str) -> 
                 "CATCHALL_SENDERS",
                 "GEO_COLLECTION",
             }
-            assert all(value == (300, None) for value in rows.values())
+            for family, value in rows.items():
+                expected = 900 if family in {"WAF_COLLECTION", "IPS_COLLECTION"} else 300
+                assert value == (expected, None)
             audits = _migration_audits(connection)
             assert len(audits) == 8
             assert {family for family, _detail in audits} == set(rows)

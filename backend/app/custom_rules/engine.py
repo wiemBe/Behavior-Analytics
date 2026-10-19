@@ -67,12 +67,12 @@ from app.custom_rules.loaders import (
 )
 from app.models.custom_rule import CustomRule, CustomRuleBreach, CustomRuleWatermark
 from app.models.enums import (
-    DEFAULT_SEARCH_CADENCE,
     AnomalyState,
     CustomRuleMetric,
     CustomRuleSubjectKind,
     SearchFamily,
     WafMeasurement,
+    default_search_cadence,
 )
 from app.models.ips import IpsEntity
 from app.models.log_source import LogSource
@@ -341,10 +341,11 @@ class CustomRuleEngine:
     async def _cadence_seconds(self, kinds: list[str]) -> dict[str, int]:
         """One read of the cadence rows these kinds wait on.
 
-        A missing row is the migration seed, one hour, not the eight-hour
-        ceiling. The evaluator does not insert the seed: that write belongs
-        to the cadence service. ``create_all`` schemas have no seed, and the
-        same default is what the seed would have written.
+        A missing row is the migration seed (``default_search_cadence``: 15
+        minutes for WAF and IPS, 5 for the rest), not the eight-hour ceiling.
+        The evaluator does not insert the seed: that write belongs to the
+        cadence service. ``create_all`` schemas have no seed, and the same
+        default is what the seed would have written.
         """
         families = list(dict.fromkeys(_KIND_FAMILY[kind] for kind in kinds))
         rows = (
@@ -358,8 +359,12 @@ class CustomRuleEngine:
             )
         ).all()
         found = {str(family): int(seconds) for family, seconds in rows}
-        default = int(DEFAULT_SEARCH_CADENCE)
-        return {kind: found.get(_KIND_FAMILY[kind].value, default) for kind in kinds}
+        return {
+            kind: found.get(
+                _KIND_FAMILY[kind].value, int(default_search_cadence(_KIND_FAMILY[kind]))
+            )
+            for kind in kinds
+        }
 
     async def _load_metrics(
         self,

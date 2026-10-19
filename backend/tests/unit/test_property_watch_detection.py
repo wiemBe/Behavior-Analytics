@@ -321,6 +321,23 @@ class TestBaselineVisits:
         assert "weekly visits" in verdict.evidence.reason
         assert "below the minimum" not in verdict.evidence.reason
 
+    @pytest.mark.parametrize(
+        ("visits", "named"), [(2, "at least 2 different weeks"), (3, "at least 3 different weeks"),
+                              (1, "at least 1 different week")]
+    )
+    def test_the_reason_names_the_configured_number_of_visits(
+        self, visits: int, named: str
+    ) -> None:
+        verdict = detect_value_spike(
+            context(
+                baseline=cell(samples=12, reliable=False),
+                thresholds=PwThresholds(baseline_min_visits=visits),
+            )
+        )
+        assert verdict.signal is DetectorSignal.UNKNOWN
+        assert named in verdict.evidence.reason
+        assert "two different weeks" not in verdict.evidence.reason
+
 
 class TestHistoryVerification:
     @staticmethod

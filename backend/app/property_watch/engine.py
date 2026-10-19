@@ -246,6 +246,7 @@ class PwAnomalyEngine:
             new_value_min_events=s.pw_new_value_min_events,
             new_value_min_buckets=s.pw_new_value_min_buckets,
             admission_min_events=s.pw_min_admission_events,
+            baseline_min_visits=s.pw_baseline_min_visits,
         )
 
     async def evaluate(self, instance: QRadarInstance) -> PwEvaluationReport:
