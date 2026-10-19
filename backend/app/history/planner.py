@@ -279,6 +279,11 @@ def interpret_scan(
         raise PlannerInputError("the floor is already known; there is nothing to scan")
     if not results:
         return ScanDecision(ScanOutcome.RETRY, progress, "no scan result was provided")
+    # Every scan search that ran is a search spent, whatever it proved.
+    progress = replace(
+        progress,
+        searches=progress.searches + sum(r.status is not SearchStatus.NOT_RUN for r in results),
+    )
     for result in results:
         if result.span.start != cursor:
             raise PlannerInputError("scan results must be contiguous from the scan cursor")
@@ -513,6 +518,12 @@ class ChunkResult:
     rows: int = 0
     non_silent_buckets: int = 0
     lower_bound_buckets: int = 0
+    # Searches the family really spent on this chunk, its own truncation splits included.
+    searches: int = 1
+
+    def __post_init__(self) -> None:
+        if self.searches < 0:
+            raise PlannerInputError("a chunk cannot have spent a negative number of searches")
 
 
 @dataclass(frozen=True)
@@ -546,12 +557,12 @@ def settle_step(
     bucket = settings.bucket
     write: list[Span] = []
     through = progress.through
-    read = lb = rows = non_silent = searches = 0
+    read = lb = rows = non_silent = 0
+    # Every search that ran was spent, also those of chunks after the one that blocked.
+    searches = sum(r.searches for r in results if r.status is not SearchStatus.NOT_RUN)
     blocker: ChunkResult | None = None
     for result in results:
         n = result.span.buckets(settings)
-        if result.status is not SearchStatus.NOT_RUN:
-            searches += 1
         done = result.status is SearchStatus.COMPLETE or (
             result.status is SearchStatus.TRUNCATED and n == 1
         )

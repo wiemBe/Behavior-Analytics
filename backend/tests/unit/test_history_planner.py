@@ -607,3 +607,62 @@ def test_cost_edge_cases() -> None:
     assert searches_for(100, 10**9, SET) == 100  # a bucket denser than the cap: one per bucket
     with pytest.raises(PlannerInputError):
         ticks_for(10, 0)
+
+
+# ----------------------------------------------------------------------------- searches counted
+
+
+def test_settle_sums_the_searches_each_chunk_spent() -> None:
+    p = prog(floor=T0, through=None)
+    assert ChunkResult(Span(T0, T0 + B), SearchStatus.COMPLETE).searches == 1  # the default
+    one = ok(T0, 12)
+    # a chunk that split on truncation
+    two = ChunkResult(Span(T0 + 12 * B, T0 + 24 * B), SearchStatus.COMPLETE, searches=4)
+    out = settle_step(p, [one, two], end=END, settings=SET)
+    assert out.progress.searches == 1 + 4
+
+
+def test_settle_counts_a_failed_chunk_and_later_chunks_that_ran_but_not_not_run() -> None:
+    p = prog(floor=T0, through=None)
+    failed = ChunkResult(Span(T0, T0 + 12 * B), SearchStatus.FAILED, searches=2)
+    later = ChunkResult(Span(T0 + 12 * B, T0 + 24 * B), SearchStatus.COMPLETE, searches=3)
+    skipped = ChunkResult(Span(T0 + 24 * B, T0 + 36 * B), SearchStatus.NOT_RUN, searches=9)
+    out = settle_step(p, [failed, later, skipped], end=END, settings=SET)
+    assert out.progress.searches == 2 + 3 + 0
+
+
+def test_a_negative_chunk_search_count_is_refused() -> None:
+    with pytest.raises(PlannerInputError):
+        ChunkResult(Span(T0, T0 + B), SearchStatus.COMPLETE, searches=-1)
+
+
+def test_interpret_scan_counts_the_scan_searches_on_every_outcome() -> None:
+    from dataclasses import replace
+
+    p = replace(prog(), searches=5)
+    span = plan_scan(p, END, SET).span
+    assert span is not None
+    # FLOOR_FOUND
+    found = interpret_scan(p, [scan_ok(span, span.start)], END, SET)
+    assert found.outcome is ScanOutcome.FLOOR_FOUND and found.progress.searches == 6
+    # CONTINUE (an empty span)
+    nothing = interpret_scan(p, [scan_ok(span)], END, SET)
+    assert nothing.outcome is ScanOutcome.CONTINUE and nothing.progress.searches == 6
+    # RETRY for a failed search, and NOT_RUN adds nothing
+    failed = interpret_scan(p, [ScanSpanResult(span, SearchStatus.FAILED)], END, SET)
+    assert failed.outcome is ScanOutcome.RETRY and failed.progress.searches == 6
+    unrun = interpret_scan(p, [ScanSpanResult(span, SearchStatus.NOT_RUN)], END, SET)
+    assert unrun.outcome is ScanOutcome.RETRY and unrun.progress.searches == 5
+    # UNAVAILABLE: the last failure
+    last = replace(p, scan_failures=SET.max_failures - 1)
+    dead = interpret_scan(last, [ScanSpanResult(span, SearchStatus.FAILED)], END, SET)
+    assert dead.outcome is ScanOutcome.UNAVAILABLE and dead.progress.searches == 6
+    # UNAVAILABLE: no event in the whole window (one result reaching the end)
+    wide = replace(p, scan_cursor=END - 12 * B)
+    tail = Span(END - 12 * B, END)
+    over = interpret_scan(wide, [scan_ok(tail)], END, SET)
+    assert over.outcome is ScanOutcome.UNAVAILABLE and over.progress.searches == 6
+    # two results, two searches
+    two = interpret_scan(p, [scan_ok(span), scan_ok(Span(span.end, span.end + 12 * B))],
+                         END, SET)
+    assert two.progress.searches == 7
