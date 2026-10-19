@@ -103,3 +103,28 @@ def test_the_migration_literals_match_the_models_and_constants() -> None:
     assert ", ".join(f"'{f}'" for f in families) == migration._FAMILIES
     states = [s.value for s in HistoryState if s is not HistoryState.NOT_REQUESTED]
     assert ", ".join(f"'{s}'" for s in states) == migration._STATES
+
+
+def test_request_columns_and_checks_stay_in_parity_with_the_migration() -> None:
+    table = HistoryBackfillDecision.__table__  # type: ignore[attr-defined]
+    for name in ("start_requested_at", "start_requested_by", "stop_requested_at",
+                 "stop_requested_by"):
+        column = table.c[name]
+        assert column.nullable is True and column.default is None
+        assert column.server_default is None
+    assert _check(HistoryBackfillDecision, "start_request_pair") == (
+        "(start_requested_at IS NULL) = (start_requested_by IS NULL)"
+    )
+    assert _check(HistoryBackfillDecision, "stop_request_pair") == (
+        "(stop_requested_at IS NULL) = (stop_requested_by IS NULL)"
+    )
+    assert _check(HistoryBackfillDecision, "request_only_on_yes") == (
+        "answer = 'YES' OR (start_requested_at IS NULL AND stop_requested_at IS NULL)"
+    )
+    source = MIGRATION.read_text()
+    for literal in (
+        '"(start_requested_at IS NULL) = (start_requested_by IS NULL)"',
+        '"(stop_requested_at IS NULL) = (stop_requested_by IS NULL)"',
+        "\"answer = 'YES' OR (start_requested_at IS NULL AND stop_requested_at IS NULL)\"",
+    ):
+        assert literal in source

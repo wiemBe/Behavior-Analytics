@@ -4,7 +4,12 @@ ADDITIVE (HISTORY-BACKFILL §B.7.1). Revision 0030 revises 0029. Applying it sta
 history work: every existing row of the four tables is marked LIVE, no decision exists
 (undecided is not Yes), and no reader changes behaviour.
 
-* ``history_backfill_decision``: one row per console, the operator's answer.
+* ``history_backfill_decision``: one row per console, the operator's answer, and the
+  operator's two requests on a YES (HB-2b): ``start_requested_*`` ("Read history now") and
+  ``stop_requested_*`` ("Stop reading"). The API and the CLI write only this row; each
+  family adapter applies a request at its next tick, so the collector is the only writer of
+  the scope rows. The four request columns were added to this revision by editing it: it is
+  not on ``main`` and nothing is released with it (T-138 edited 0028 the same way).
 * ``history_backfill_scope``: one row per (console, family, scope key), the reading state.
 * ``origin`` on ``waf_source_bucket``, ``ips_source_bucket``, ``catchall_bucket`` and
   ``rule_match_window``. The server default ``'LIVE'`` fills existing rows and is dropped,
@@ -145,6 +150,10 @@ def upgrade() -> None:
         sa.Column("source", sa.String(length=16), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("updated_by", sa.String(length=255), nullable=True),
+        sa.Column("start_requested_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("start_requested_by", sa.String(length=255), nullable=True),
+        sa.Column("stop_requested_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("stop_requested_by", sa.String(length=255), nullable=True),
         sa.CheckConstraint(
             "answer IN ('YES', 'NO')", name=op.f("ck_history_backfill_decision_answer_known")
         ),
@@ -157,6 +166,18 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "days IS NULL OR days >= 7", name=op.f("ck_history_backfill_decision_days_minimum")
+        ),
+        sa.CheckConstraint(
+            "(start_requested_at IS NULL) = (start_requested_by IS NULL)",
+            name=op.f("ck_history_backfill_decision_start_request_pair"),
+        ),
+        sa.CheckConstraint(
+            "(stop_requested_at IS NULL) = (stop_requested_by IS NULL)",
+            name=op.f("ck_history_backfill_decision_stop_request_pair"),
+        ),
+        sa.CheckConstraint(
+            "answer = 'YES' OR (start_requested_at IS NULL AND stop_requested_at IS NULL)",
+            name=op.f("ck_history_backfill_decision_request_only_on_yes"),
         ),
         sa.ForeignKeyConstraint(
             ["instance_id"],

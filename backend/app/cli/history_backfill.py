@@ -19,10 +19,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -30,6 +29,7 @@ from app.core.database import get_sessionmaker
 from app.models.enums import HistoryDecisionAnswer, HistoryDecisionSource
 from app.models.history_backfill import HistoryBackfillDecision
 from app.repositories.audit import record_audit
+from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.instance_registry import InstanceNotFound, InstanceRegistry
 
 DECIDE_ACTION = "history_backfill.decide"
@@ -41,11 +41,9 @@ EXIT_REFUSED = 2
 
 
 async def _existing_decision(
-    session: AsyncSession, instance_id: object
+    session: AsyncSession, instance_id: uuid.UUID
 ) -> HistoryBackfillDecision | None:
-    return await session.scalar(
-        select(HistoryBackfillDecision).where(HistoryBackfillDecision.instance_id == instance_id)
-    )
+    return (await HistoryBackfillRepository(session).decisions([instance_id])).get(instance_id)
 
 
 def _already_decided(existing: HistoryBackfillDecision) -> str:
@@ -71,22 +69,18 @@ async def _decide(args: argparse.Namespace) -> int:
             print(f"{name}: {_already_decided(existing)}")
             return EXIT_OK
 
-        # ON CONFLICT DO NOTHING: two concurrent runs cannot both write, and a row that
-        # appears between the read above and this insert is never overwritten.
-        inserted = await session.execute(
-            pg_insert(HistoryBackfillDecision)
-            .values(
-                instance_id=instance_id,
-                answer=answer.value,
-                days=days,
-                decided_at=datetime.now(UTC),
-                decided_by=INSTALLER_ACTOR,
-                source=source.value,
-            )
-            .on_conflict_do_nothing(index_elements=["instance_id"])
-            .returning(HistoryBackfillDecision.instance_id)
+        # ON CONFLICT DO NOTHING inside the repository: two concurrent runs cannot both
+        # write, and a row that appears between the read above and the insert is never
+        # overwritten.
+        _, inserted = await HistoryBackfillRepository(session).record_decision(
+            instance_id,
+            answer=answer.value,
+            days=days,
+            source=source.value,
+            decided_by=INSTALLER_ACTOR,
+            at=datetime.now(UTC),
         )
-        if inserted.scalar_one_or_none() is None:
+        if not inserted:
             await session.rollback()
             current = await _existing_decision(session, instance_id)
             if current is None:  # pragma: no cover - deleted between the two statements
