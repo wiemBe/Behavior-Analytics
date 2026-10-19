@@ -516,3 +516,79 @@ def test_0030_origin_is_added_to_a_populated_uncompressed_hypertable(clean_db: s
         _migration_head_check(config)
     finally:
         engine.dispose()
+
+
+# --------------------------------------------------------------------------- HB-2b requests
+REQUEST_COLUMNS = ("start_requested_at", "start_requested_by", "stop_requested_at",
+                   "stop_requested_by")
+
+
+def test_0030_decision_requests_columns_checks_and_round_trip(clean_db: str) -> None:
+    from alembic import command
+
+    config = _alembic_config(clean_db)
+    command.upgrade(config, "head")
+    engine = create_engine(clean_db, future=True)
+    try:
+        with engine.begin() as connection:
+            _seed_sources(connection)
+            columns = {
+                row[0]: row[1:]
+                for row in connection.execute(
+                    text(
+                        "SELECT column_name, is_nullable, column_default, data_type, "
+                        "character_maximum_length FROM information_schema.columns "
+                        "WHERE table_name = 'history_backfill_decision'"
+                    )
+                )
+            }
+            for name in REQUEST_COLUMNS:
+                nullable, default, data_type, length = columns[name]
+                assert nullable == "YES" and default is None, name  # no server default
+                if name.endswith("_at"):
+                    assert data_type == "timestamp with time zone", name
+                else:
+                    assert (data_type, length) == ("character varying", 255), name
+
+        base = {"instance_id": INSTANCE, "decided_at": BASE, "decided_by": "installer",
+                "source": "INSTALLER"}
+        yes = {**base, "answer": "YES", "days": 28}
+        # each pair is set together or not at all
+        for values, constraint in (
+            ({"start_requested_at": BASE}, "start_request_pair"),
+            ({"start_requested_by": "a"}, "start_request_pair"),
+            ({"stop_requested_at": BASE}, "stop_request_pair"),
+            ({"stop_requested_by": "a"}, "stop_request_pair"),
+        ):
+            _expect_refused(engine, "history_backfill_decision",
+                            f"ck_history_backfill_decision_{constraint}", **yes, **values)
+        # a request exists only on a YES
+        for values in (
+            {"start_requested_at": BASE, "start_requested_by": "a"},
+            {"stop_requested_at": BASE, "stop_requested_by": "a"},
+        ):
+            _expect_refused(engine, "history_backfill_decision",
+                            "ck_history_backfill_decision_request_only_on_yes",
+                            **{**base, "answer": "NO", "days": None}, **values)
+        # a NO without requests is accepted; a YES may hold both requests
+        with engine.begin() as connection:
+            _row(connection, "history_backfill_decision", **{**base, "answer": "NO", "days": None})
+            connection.execute(text("DELETE FROM history_backfill_decision"))
+            _row(connection, "history_backfill_decision", **yes,
+                 start_requested_at=BASE, start_requested_by="ayse",
+                 stop_requested_at=BASE + timedelta(minutes=1), stop_requested_by="can")
+            assert connection.execute(
+                text("SELECT start_requested_by, stop_requested_by FROM history_backfill_decision")
+            ).one() == ("ayse", "can")
+
+        command.downgrade(config, "-1")
+        with engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT to_regclass('public.history_backfill_decision')")
+            ).scalar() is None
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert _count(connection, "history_backfill_decision") == 0
+        _migration_head_check(config)
+    finally:
+        engine.dispose()

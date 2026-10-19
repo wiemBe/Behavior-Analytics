@@ -49,6 +49,12 @@ DAYS_IFF_YES_CHECK = f"(answer = '{HistoryDecisionAnswer.YES.value}') = (days IS
 DAYS_MINIMUM_CHECK = f"days IS NULL OR days >= {MIN_DECISION_DAYS}"
 FAMILY_CHECK = f"family IN {_in_list(tuple(f.value for f in SCOPE_STORED_FAMILIES))}"
 STATE_CHECK = f"state IN {_in_list(tuple(s.value for s in SCOPE_STORED_STATES))}"
+START_REQUEST_PAIR_CHECK = "(start_requested_at IS NULL) = (start_requested_by IS NULL)"
+STOP_REQUEST_PAIR_CHECK = "(stop_requested_at IS NULL) = (stop_requested_by IS NULL)"
+REQUEST_ONLY_ON_YES_CHECK = (
+    f"answer = '{HistoryDecisionAnswer.YES.value}' OR "
+    "(start_requested_at IS NULL AND stop_requested_at IS NULL)"
+)
 SCOPE_KEY_CHECK = (
     f"(family IN {_in_list(tuple(f.value for f in PER_SOURCE_FAMILIES))}) = (scope_key <> '')"
 )
@@ -63,6 +69,9 @@ class HistoryBackfillDecision(Base):
         CheckConstraint(SOURCE_CHECK, name="source_known"),
         CheckConstraint(DAYS_IFF_YES_CHECK, name="days_iff_yes"),
         CheckConstraint(DAYS_MINIMUM_CHECK, name="days_minimum"),
+        CheckConstraint(START_REQUEST_PAIR_CHECK, name="start_request_pair"),
+        CheckConstraint(STOP_REQUEST_PAIR_CHECK, name="stop_request_pair"),
+        CheckConstraint(REQUEST_ONLY_ON_YES_CHECK, name="request_only_on_yes"),
     )
 
     instance_id: Mapped[uuid.UUID] = mapped_column(
@@ -80,6 +89,12 @@ class HistoryBackfillDecision(Base):
     #: A later NO-to-YES change (HB-8).
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[str | None] = mapped_column(String(255))
+    #: "Read history now" (HB-2b): a request, applied by each family's next tick.
+    start_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    start_requested_by: Mapped[str | None] = mapped_column(String(255))
+    #: "Stop reading" (HB-2b): a request, applied by each family's next tick.
+    stop_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stop_requested_by: Mapped[str | None] = mapped_column(String(255))
 
 
 class HistoryBackfillScope(Base):
