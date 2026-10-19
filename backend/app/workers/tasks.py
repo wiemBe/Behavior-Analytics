@@ -114,6 +114,7 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
     ) -> dict:
         assert provider is not None
         report = await MetricCollector(session, provider, settings=settings).collect(instance)
+        history = report.history
         return {
             "status": (
                 "skipped_locked"
@@ -127,6 +128,10 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
             "samples": report.samples_written,
             "watermark_at": report.watermark_at,
             "lag_seconds": report.lag_seconds,
+            # The Phase A history step (HB-3): its searches are Phase A volume searches
+            # against Ariel, so the cadence record below counts them with the live ones.
+            "history_searches": history.searches if history else 0,
+            "history_state": history.state if history else None,
         }
 
     try:
@@ -149,7 +154,10 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
             if any(status in {"partial", "skipped_locked"} for status in statuses)
             else "ok"
         )
-        searches = sum(item.get("searches_sent", 0) for item in result.get("results", []))
+        searches = sum(
+            item.get("searches_sent", 0) + item.get("history_searches", 0)
+            for item in result.get("results", [])
+        )
         buckets = sum(
             item.get("buckets_collected", 0) for item in result.get("results", [])
         )

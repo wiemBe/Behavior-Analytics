@@ -385,10 +385,12 @@ async def _load(
         return {}
     if kind is _LOG_SOURCE:
         return await load_log_sources(
-            session, [uuid.UUID(key)], after=after, through=through
+            session, [uuid.UUID(key)], after=after, through=through, include_history=True
         )
     if kind is _FLEET:
-        return await load_fleet_classes(session, [key], after=after, through=through)
+        return await load_fleet_classes(
+            session, [key], after=after, through=through, include_history=True
+        )
     if kind is _WAF:
         return await load_waf_endpoints(
             session, [uuid.UUID(key)], after=after, through=through

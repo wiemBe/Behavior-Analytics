@@ -66,6 +66,59 @@ HISTORY_TABLES = (
             "app.services.pw_retention.<module>": Reader("R7", ReaderKind.DELETE),
         },
     ),
+    HistoryTable(
+        model="LogSourceMetric",
+        sql_name="log_source_metric",
+        readers={
+            "app.anomaly.engine.AnomalyEngine.evaluate_pending": Reader(
+                "R1", ReaderKind.LIVE_ONLY, 2
+            ),
+            "app.anomaly.engine.AnomalyEngine.evaluate_latest": Reader(
+                "R1 (not in the design table: feeds a detector; no caller today)",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
+            "app.anomaly.engine.AnomalyEngine._preceding_empty_buckets": Reader(
+                "R2", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.anomaly.engine.AnomalyEngine._recent_signatures": Reader(
+                "R3", ReaderKind.EVIDENCE
+            ),
+            "app.anomaly.baseline.BaselineBuilder._load_clean_observations": Reader(
+                "R4", ReaderKind.EVIDENCE
+            ),
+            "app.collectors.metric_collector.MetricCollector._oldest_live_bucket": Reader(
+                "the anchor (§B.4.1 Guard 1): the oldest LIVE bucket, which history must end at",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
+            "app.custom_rules.loaders.load_log_sources": Reader("R5", ReaderKind.LIVE_ONLY, 1),
+            "app.custom_rules.loaders.load_fleet_classes": Reader(
+                "R5", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.fleet.series.build_fleet_eps_series": Reader("R6", ReaderKind.DISPLAY),
+            "app.fleet.summary.build_fleet_summary": Reader(
+                "R6 (not in the design table: fleet totals)", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.latest_bucket": Reader(
+                "R6 (not in the design table: the API's latest bucket)", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.latest_buckets": Reader(
+                "R6 (not in the design table: the API's latest buckets)", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.metric_history": Reader(
+                "R6", ReaderKind.DISPLAY
+            ),
+            "app.cli.doctor.Doctor.check_timescale": Reader(
+                "R7 (not in the design table: hypertable metadata, no rows)",
+                ReaderKind.DISPLAY,
+            ),
+            "app.cli.doctor.Doctor.check_retention_policy": Reader(
+                "R7 (not in the design table: retention policy metadata, no rows)",
+                ReaderKind.DISPLAY,
+            ),
+        },
+    ),
 )
 
 
