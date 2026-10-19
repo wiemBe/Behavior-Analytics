@@ -48,6 +48,8 @@ from app.models.enums import (
     EvidenceStatus,
     PwAnomalyType,
     PwBucketMeasurement,
+    PwBucketOrigin,
+    PwHistoryState,
     PwPinnedMeasurement,
     PwScopeKind,
     PwWatchStatus,
@@ -59,6 +61,8 @@ from app.models.waf import METRIC_SEMANTICS_LENGTH
 
 def _in_list(
     values: type[PwBucketMeasurement]
+    | type[PwBucketOrigin]
+    | type[PwHistoryState]
     | type[PwPinnedMeasurement]
     | type[PwWatchStatus]
     | type[Severity],
@@ -104,6 +108,8 @@ class PropertyWatch(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             f"last_status IS NULL OR last_status IN {_in_list(PwWatchStatus)}",
             name="last_status_known",
         ),
+        CheckConstraint(f"history_state IN {_in_list(PwHistoryState)}", name="history_state_known"),
+        CheckConstraint("history_days IS NULL OR history_days >= 0", name="history_days_range"),
         CheckConstraint("watch_version >= 1", name="watch_version_positive"),
         CheckConstraint("length(name) > 0", name="name_not_empty"),
         UniqueConstraint("name", name="uq_property_watch_name"),
@@ -149,6 +155,21 @@ class PropertyWatch(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     last_status_reason: Mapped[str | None] = mapped_column(Text)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    #: Requested bootstrap window. NULL means the watch has no history request.
+    history_days: Mapped[int | None] = mapped_column(Integer)
+    history_state: Mapped[PwHistoryState] = mapped_column(
+        String(16), default=PwHistoryState.NOT_REQUESTED, nullable=False
+    )
+    #: Fixed requested start, proved floor, resume point and first live bucket.
+    history_target_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    history_floor: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    history_through: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    history_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    history_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    history_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Bounded counters, gap descriptions and a value-free reason for the planner and API.
+    history_progress: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
+
     created_by: Mapped[str | None] = mapped_column(String(255))
     updated_by: Mapped[str | None] = mapped_column(String(255))
 
@@ -177,6 +198,7 @@ class PwBucket(Base):
             f"pinned_measurement IN {_in_list(PwPinnedMeasurement)}",
             name="pinned_measurement_known",
         ),
+        CheckConstraint(f"origin IN {_in_list(PwBucketOrigin)}", name="origin_known"),
         # An incomplete totals search leaves the totals unknown, never 0.
         CheckConstraint(
             "totals_complete OR (total_events IS NULL AND unparsed_events IS NULL)",
@@ -212,6 +234,9 @@ class PwBucket(Base):
     bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     bucket_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     watch_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    origin: Mapped[PwBucketOrigin] = mapped_column(
+        String(8), default=PwBucketOrigin.LIVE, nullable=False
+    )
 
     #: Every event in scope: its own ungrouped aggregate. NULL when the totals search
     #: did not complete.

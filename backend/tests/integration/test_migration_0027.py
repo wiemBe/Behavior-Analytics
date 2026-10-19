@@ -53,7 +53,10 @@ def clean_db() -> str:
     return sync_url
 
 
-def _seed(connection) -> None:  # type: ignore[no-untyped-def]
+def _seed(connection, *, history: bool = True) -> None:  # type: ignore[no-untyped-def]
+    """`history` is False below revision 0029, which adds two NOT NULL watch columns."""
+    new_columns = ", history_state, history_progress" if history else ""
+    new_values = ", 'NOT_REQUESTED', CAST('{}' AS jsonb)" if history else ""
     connection.execute(
         text(
             "INSERT INTO qradar_instance (id, name, console_host, api_version, verify_ssl, "
@@ -76,10 +79,12 @@ def _seed(connection) -> None:  # type: ignore[no-untyped-def]
     )
     connection.execute(
         text(
-            "INSERT INTO property_watch (id, instance_id, name, scope_kind, log_source_id, "
-            "properties, pinned_values, detectors, severity, watch_version, enabled) "
+            "INSERT INTO property_watch (id, instance_id, name, scope_kind, log_source_id, "  # noqa: S608 - constant column list only
+            "properties, pinned_values, detectors, severity, watch_version, enabled"
+            f"{new_columns}) "
             "VALUES (CAST(:w AS uuid), CAST(:i AS uuid), 'w', 'LOG_SOURCE', CAST(:s AS uuid), "
-            "CAST(:p AS jsonb), CAST('[]' AS jsonb), CAST('[]' AS jsonb), 'MEDIUM', 1, false)"
+            "CAST(:p AS jsonb), CAST('[]' AS jsonb), CAST('[]' AS jsonb), 'MEDIUM', 1, false"
+            f"{new_values})"
         ),
         {
             "w": WATCH,
@@ -142,7 +147,7 @@ def test_0027_round_trip_carries_data_and_has_no_drift(clean_db: str) -> None:
     try:
         command.upgrade(config, "0026")
         with engine.begin() as connection:
-            _seed(connection)
+            _seed(connection, history=False)
             connection.execute(
                 text(
                     "INSERT INTO custom_rule (name, subject_kind, log_source_id, metric, "

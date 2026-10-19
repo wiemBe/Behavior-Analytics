@@ -8,6 +8,8 @@ from app.models.enums import (
     IpsAnomalyType,
     PwAnomalyType,
     PwBucketMeasurement,
+    PwBucketOrigin,
+    PwHistoryState,
     PwPinnedMeasurement,
     PwReferenceKind,
     PwScopeKind,
@@ -15,6 +17,13 @@ from app.models.enums import (
     SearchFamily,
     WafAnomalyType,
 )
+from app.models.property_watch import PropertyWatch, PwBucket
+
+
+def _check(model: type[PropertyWatch] | type[PwBucket], name: str) -> str:
+    return str(
+        next(item.sqltext for item in model.__table__.constraints if item.name.endswith(name))
+    )
 
 
 def test_the_pw_taxonomy_is_its_own() -> None:
@@ -50,10 +59,25 @@ def test_the_vocabularies() -> None:
     assert [m.value for m in PwReferenceKind] == ["NORMALIZED", "CUSTOM_PROPERTY"]
     assert [m.value for m in PwBucketMeasurement] == ["EXACT", "LOWER_BOUND", "NOT_COLLECTED"]
     assert "NOT_REQUESTED" in {m.value for m in PwPinnedMeasurement}
+    assert [m.value for m in PwHistoryState] == [
+        "NOT_REQUESTED", "READING", "COMPLETE", "PARTIAL", "UNAVAILABLE",
+    ]
+    assert [m.value for m in PwBucketOrigin] == ["LIVE", "HISTORY"]
     assert {"NOT_ENABLED", "DISABLED", "SCOPE_EMPTY", "SCOPE_STALE", "SCOPE_TOO_LARGE",
-            "NOT_APPLICABLE", "STALE", "OPEN", "RECOVERING", "OK"} == {
+            "NOT_APPLICABLE", "READING_HISTORY", "STALE", "OPEN", "RECOVERING", "OK"} == {
         m.value for m in PwWatchStatus
     }
+
+
+def test_history_enum_check_literals_stay_in_parity() -> None:
+    history_states = "(" + ", ".join(f"'{m.value}'" for m in PwHistoryState) + ")"
+    bucket_origins = "(" + ", ".join(f"'{m.value}'" for m in PwBucketOrigin) + ")"
+    watch_statuses = "(" + ", ".join(f"'{m.value}'" for m in PwWatchStatus) + ")"
+    assert _check(PropertyWatch, "history_state_known") == f"history_state IN {history_states}"
+    assert _check(PwBucket, "origin_known") == f"origin IN {bucket_origins}"
+    assert _check(PropertyWatch, "last_status_known") == (
+        f"last_status IS NULL OR last_status IN {watch_statuses}"
+    )
 
 
 def test_the_tables_are_registered_and_two_are_hypertables() -> None:

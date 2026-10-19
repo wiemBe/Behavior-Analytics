@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
-from app.collectors.pw_collector import collected_prefix, not_collected_fact
+from app.collectors.pw_collector import _bucket_row, collected_prefix, not_collected_fact
 from app.models.enums import PwBucketMeasurement, PwPinnedMeasurement
 from app.property_watch.keyed_search import PwBucketOutcome, PwCellState
 from app.providers.dto import PwSearchKind
@@ -65,3 +66,10 @@ def test_a_gap_fact_carries_no_number_and_is_not_a_zero() -> None:
     assert fact.totals_complete is False and fact.values == ()
     plain = not_collected_fact(bucket_start=T0, bucket_seconds=300, watch_version=2, pinned=False)
     assert plain.pinned_measurement is PwPinnedMeasurement.NOT_REQUESTED
+
+
+def test_the_live_collector_states_its_bucket_origin_explicitly() -> None:
+    """PW-13a: the row builder names `LIVE`; the column default is not what marks live rows."""
+    fact = not_collected_fact(bucket_start=T0, bucket_seconds=300, watch_version=1, pinned=False)
+    row = _bucket_row(uuid.uuid4(), fact, provenance={}, collected_at=T0)
+    assert row["origin"] == "LIVE"

@@ -263,6 +263,23 @@ class PwPinnedMeasurement(StrEnum):
     NOT_REQUESTED = "NOT_REQUESTED"
 
 
+class PwHistoryState(StrEnum):
+    """How much of a property watch's requested history was read (design §H.3.4)."""
+
+    NOT_REQUESTED = "NOT_REQUESTED"
+    READING = "READING"
+    COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+class PwBucketOrigin(StrEnum):
+    """Whether a property-watch bucket came from cadence collection or bootstrap."""
+
+    LIVE = "LIVE"
+    HISTORY = "HISTORY"
+
+
 class PwWatchStatus(StrEnum):
     """`property_watch.last_status` (design §G.3). A never-run watch is NULL, not OK."""
 
@@ -272,6 +289,7 @@ class PwWatchStatus(StrEnum):
     SCOPE_STALE = "SCOPE_STALE"
     SCOPE_TOO_LARGE = "SCOPE_TOO_LARGE"
     NOT_APPLICABLE = "NOT_APPLICABLE"
+    READING_HISTORY = "READING_HISTORY"
     STALE = "STALE"
     OPEN = "OPEN"
     RECOVERING = "RECOVERING"

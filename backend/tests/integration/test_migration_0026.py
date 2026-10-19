@@ -66,13 +66,18 @@ def _seed_scope(connection) -> None:  # type: ignore[no-untyped-def]
     )
 
 
-def _watch_insert_sql() -> str:
+def _watch_insert_sql(*, history: bool = True) -> str:
+    """`history` is False below revision 0029, which adds the two NOT NULL columns."""
+    columns = ", history_state, history_progress" if history else ""
+    values = ", 'NOT_REQUESTED', CAST('{}' AS jsonb)" if history else ""
     return (
-        "INSERT INTO property_watch (id, instance_id, name, scope_kind, log_source_id, "
+        "INSERT INTO property_watch (id, instance_id, name, scope_kind, log_source_id, "  # noqa: S608 - constant column list only
         "scope_type_id, scope_group_id, properties, pinned_values, detectors, severity, "
-        "watch_version, enabled) VALUES (gen_random_uuid(), CAST(:instance AS uuid), :name, "
+        f"watch_version, enabled{columns}) "
+        "VALUES (gen_random_uuid(), CAST(:instance AS uuid), :name, "
         ":scope_kind, CAST(:log_source_id AS uuid), :scope_type_id, :scope_group_id, "
-        "CAST(:properties AS jsonb), CAST('[]' AS jsonb), CAST('[]' AS jsonb), 'MEDIUM', 1, false)"
+        "CAST(:properties AS jsonb), CAST('[]' AS jsonb), CAST('[]' AS jsonb), 'MEDIUM', 1, "
+        f"false{values})"
     )
 
 
@@ -158,7 +163,8 @@ def test_0026_round_trip_hypertables_seed_and_no_drift(clean_db: str) -> None:
             }
             assert hypertables == {"pw_bucket", "pw_value_metric"}
             connection.execute(
-                text(_watch_insert_sql()), _valid_watch_params("survives-first-upgrade")
+                text(_watch_insert_sql(history=False)),
+                _valid_watch_params("survives-first-upgrade"),
             )
 
         command.downgrade(config, "0025")

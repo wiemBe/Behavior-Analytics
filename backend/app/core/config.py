@@ -672,6 +672,15 @@ class Settings(BaseSettings):
     pw_new_value_window_buckets: int = Field(default=12, ge=1, le=2016)
     pw_new_value_min_events: int = Field(default=20, ge=1)
     pw_new_value_min_buckets: int = Field(default=2, ge=1)
+    #: One-time, learning-only history bootstrap (design §H.10; D-29 defaults it on).
+    pw_bootstrap_enabled: bool = True
+    pw_bootstrap_days: int = Field(default=28, ge=1)
+    pw_bootstrap_searches_per_tick: int = Field(default=12, ge=1, le=256)
+    pw_bootstrap_seconds_per_tick: int = Field(default=180, ge=10, le=3600)
+    pw_bootstrap_floor_margin_hours: int = Field(default=24, ge=1, le=168)
+    pw_bootstrap_max_hours: int = Field(default=72, ge=1, le=168)
+    pw_bootstrap_max_failures: int = Field(default=3, ge=1, le=20)
+    pw_bootstrap_max_lower_bound_share: float = Field(default=0.05, ge=0.0, le=1.0)
     pw_metric_retention_days: int = Field(default=35, ge=2)
     pw_anomaly_retention_days: int = Field(default=180, ge=2)
     pw_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
@@ -937,6 +946,30 @@ class Settings(BaseSettings):
             problems.append(
                 "PW_NEW_VALUE_HISTORY_DAYS must be below PW_METRIC_RETENTION_DAYS "
                 f"({self.pw_new_value_history_days} >= {self.pw_metric_retention_days})"
+            )
+        if self.pw_bootstrap_days < self.pw_new_value_history_days:
+            problems.append(
+                "PW_BOOTSTRAP_DAYS must not be below PW_NEW_VALUE_HISTORY_DAYS "
+                f"({self.pw_bootstrap_days} < {self.pw_new_value_history_days})"
+            )
+        if self.pw_bootstrap_days > self.pw_baseline_lookback_days:
+            problems.append(
+                "PW_BOOTSTRAP_DAYS must not exceed PW_BASELINE_LOOKBACK_DAYS "
+                f"({self.pw_bootstrap_days} > {self.pw_baseline_lookback_days})"
+            )
+        if self.pw_bootstrap_searches_per_tick > self.pw_max_searches_per_tick:
+            problems.append(
+                "PW_BOOTSTRAP_SEARCHES_PER_TICK must not exceed PW_MAX_SEARCHES_PER_TICK "
+                f"({self.pw_bootstrap_searches_per_tick} > {self.pw_max_searches_per_tick})"
+            )
+        bootstrap_hours = self.pw_bootstrap_days * 24 + self.pw_bootstrap_max_hours
+        retention_hours = self.pw_metric_retention_days * 24
+        if bootstrap_hours >= retention_hours:
+            problems.append(
+                "PW_BOOTSTRAP_DAYS and PW_BOOTSTRAP_MAX_HOURS must fit below "
+                "PW_METRIC_RETENTION_DAYS "
+                f"({self.pw_bootstrap_days} * 24 + {self.pw_bootstrap_max_hours} "
+                f">= {self.pw_metric_retention_days} * 24)"
             )
         if problems:
             raise ValueError("; ".join(problems))
