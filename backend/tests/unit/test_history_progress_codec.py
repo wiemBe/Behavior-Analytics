@@ -31,6 +31,7 @@ def _full() -> ScopeProgress:
         scan_failures=2,
         chunk_buckets=144,
         chunk_ceiling=288,
+        ceiling_successes=2,
         failures=1,
         searches=17,
         buckets_read=900,
@@ -70,6 +71,32 @@ def test_minimal_progress_round_trips_with_nulls() -> None:
     progress = ScopeProgress(target_start=T0, started_at=T0)
     stored = json.loads(json.dumps(encode_progress(progress)))
     assert decode_progress(stored) == (progress, {})
+    assert stored["progress"]["ceiling_successes"] == 0
+
+
+def _version_1(stored: dict) -> dict:
+    """The same progress as version 1 encoded it: no `ceiling_successes`."""
+    old = copy.deepcopy(stored)
+    old["version"] = 1
+    old["progress"].pop("ceiling_successes")
+    return old
+
+
+def test_version_2_round_trips_the_release_counter() -> None:
+    progress = _full()
+    assert progress.ceiling_successes == 2
+    stored = json.loads(json.dumps(encode_progress(progress)))
+    assert stored["version"] == 2
+    assert decode_progress(stored).progress.ceiling_successes == 2
+
+
+def test_a_version_1_dict_decodes_with_no_release_count() -> None:
+    stored = _version_1(json.loads(json.dumps(encode_progress(_full(), {"a": 1}))))
+    decoded = decode_progress(stored)
+    assert decoded.progress.ceiling_successes == 0
+    assert decoded.adapter == {"a": 1}
+    # every other field is the version-2 progress's field
+    assert dataclasses.replace(decoded.progress, ceiling_successes=2) == _full()
 
 
 def test_datetimes_are_iso_utc_and_decode_aware() -> None:
@@ -115,7 +142,7 @@ def _mutations() -> list[tuple[str, object]]:
         cases.append((label, stored))
 
     case("not an object", lambda s: s.clear())
-    case("wrong version", lambda s: s.__setitem__("version", 2))
+    case("wrong version", lambda s: s.__setitem__("version", 3))
     case("bool version", lambda s: s.__setitem__("version", True))
     case("missing version", lambda s: s.pop("version"))
     case("missing adapter", lambda s: s.pop("adapter"))
@@ -123,7 +150,17 @@ def _mutations() -> list[tuple[str, object]]:
     case("extra top key", lambda s: s.__setitem__("extra", 1))
     case("body not an object", lambda s: s.__setitem__("progress", []))
     case("missing field", lambda s: s["progress"].pop("searches"))
+    case("missing version-2 field", lambda s: s["progress"].pop("ceiling_successes"))
     case("unknown field", lambda s: s["progress"].__setitem__("surprise", 1))
+    case("negative release count", lambda s: s["progress"].__setitem__("ceiling_successes", -1))
+    case("bool release count", lambda s: s["progress"].__setitem__("ceiling_successes", False))
+    case(
+        "version 1 with a release count",
+        lambda s: (
+            s.__setitem__("version", 1),
+            s["progress"].__setitem__("ceiling_successes", 0),
+        ),
+    )
     case("naive datetime", lambda s: s["progress"].__setitem__("through", "2026-09-01T00:00:00"))
     case("garbage datetime", lambda s: s["progress"].__setitem__("floor", "yesterday"))
     case("datetime not a string", lambda s: s["progress"].__setitem__("floor", 5))

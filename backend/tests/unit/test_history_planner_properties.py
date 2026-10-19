@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.history.planner import (
+    CEILING_RELEASE_STEPS,
     ChunkResult,
     PlannerSettings,
     ScanOutcome,
@@ -135,6 +136,10 @@ def _drive(seed: int, *, moving_end: bool, split: bool):
                 break  # the driver stops at the first search that did not complete
         s = settle_step(progress, results, end=end, settings=st)
         progress = s.progress
+        # §B.6.3: the release counter is never negative, and is 0 when there is no ceiling.
+        assert progress.ceiling_successes >= 0
+        if progress.chunk_ceiling is None:
+            assert progress.ceiling_successes == 0
         # through moves only when a span was written, or a gap was recorded
         if s.write_spans or s.new_gap:
             assert progress.through is not None
@@ -218,15 +223,22 @@ def test_plan_step_invariants_over_random_progress() -> None:
         t0 = END0 - timedelta(days=rng.choice([2, 10, 28]))
         floor = t0 + st.bucket * rng.randint(0, 300)
         through = floor + st.bucket * rng.randint(0, 1000) if rng.random() < 0.6 else None
+        ceiling = rng.choice([None, 3, 50])
         p = replace(
             new_progress(t0, END0, st),
             floor=floor,
             through=through,
             chunk_buckets=rng.choice([None, 1, 7, 288, 5000]),
-            chunk_ceiling=rng.choice([None, 3, 50]),
+            chunk_ceiling=ceiling,
+            ceiling_successes=(
+                rng.randint(0, CEILING_RELEASE_STEPS - 1) if ceiling is not None else 0
+            ),
             rows_seen=rng.randint(0, 10_000),
             non_silent_buckets=rng.randint(0, 50),
         )
+        assert p.ceiling_successes >= 0
+        if p.chunk_ceiling is None:
+            assert p.ceiling_successes == 0
         budget = StepBudget(rng.randint(1, 64), 60)
         plan = plan_step(p, now=END0, end=END0, budget=budget, settings=st)
         if plan.action is not StepAction.READ:
