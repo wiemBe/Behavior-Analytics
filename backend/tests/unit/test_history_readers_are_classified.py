@@ -254,6 +254,9 @@ HISTORY_TABLES = (
         model="IpsSourceBucket",
         sql_name="ips_source_bucket",
         readers={
+            "app.services.history_backfill.HistoryBackfillService._entries": Reader(
+                "HB-8 later-Yes per source", ReaderKind.LIVE_ONLY, 1
+            ),
             "app.collectors.ips_collector.IpsCollector._apply_history_lifecycle": Reader(
                 "eligibility: a source with live buckets is not eligible", ReaderKind.LIVE_ONLY, 1
             ),
