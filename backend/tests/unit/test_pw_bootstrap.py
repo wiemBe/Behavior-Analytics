@@ -621,6 +621,25 @@ def test_history_budget_is_what_live_left_over() -> None:
     assert searches(9, 200).seconds_left < 0
 
 
+def test_the_smallest_step_of_a_reading_costs_two_or_three_searches() -> None:
+    """TOTALS and one GROUPED, and PINNED with it (design §H.4.4)."""
+    assert bs.history_step_searches(False) == 2
+    assert bs.history_step_searches(True) == 3
+    assert bs.history_step_parts(2) == "TOTALS and one GROUPED"
+    assert bs.history_step_parts(3) == "TOTALS, PINNED and one GROUPED"
+
+
+def test_the_sentence_that_names_the_setting_says_what_a_step_needs() -> None:
+    assert bs.history_budget_sentence(3, setting=2) == (
+        "PW_BOOTSTRAP_SEARCHES_PER_TICK is 2; reading history for this watch needs at least 3 "
+        "searches per tick (TOTALS, PINNED and one GROUPED)"
+    )
+    assert bs.history_budget_sentence(2, setting=1) == (
+        "PW_BOOTSTRAP_SEARCHES_PER_TICK is 1; reading history for this watch needs at least 2 "
+        "searches per tick (TOTALS and one GROUPED)"
+    )
+
+
 # --------------------------------------------------------------------------- whole reading
 
 

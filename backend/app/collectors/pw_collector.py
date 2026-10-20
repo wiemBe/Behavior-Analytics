@@ -75,11 +75,14 @@ from app.property_watch.admission import (
 from app.property_watch.aql import pinned_rows_per_bucket, validate_query_inputs
 from app.property_watch.bootstrap import (
     UNREADABLE_PROGRESS,
+    WAITING_FOR_BUDGET,
     BootstrapStateError,
     apply_trigger,
     begin_reading,
     handoff_columns,
+    history_budget_sentence,
     history_columns,
+    history_step_searches,
     plan_pw_step,
     pw_history_budget,
     pw_planner_settings,
@@ -1031,11 +1034,25 @@ class PwCollector:
             chunks_per_search = max(1, len(scope.chunks))
             trigger: HistoryTrigger | None = None
             reason = ""
+            waiting = False
             staged = _Staged()
             written = 0
             scan: ScanSpanResult | None = None
             scan_outcomes: list[PwBucketOutcome] = []
+            # The smallest step of this watch (design §H.4.4): TOTALS, one GROUPED and, with
+            # pins, PINNED. A tick gives a reading `min(setting, what live left over)`
+            # searches; when the setting is the smaller of the two and cannot pay for one
+            # step, the reading waits for a budget that never comes.
+            needed = history_step_searches(bool(pinned))
+            setting = settings.pw_bootstrap_searches_per_tick
+            starved_by_setting = setting < needed and setting <= budget.remaining
             while True:
+                if starved_by_setting:
+                    # The setting is the limit: the reading waits and says why. It is not
+                    # ended here; the time limit still hands it off `PARTIAL` (§H.4.4).
+                    reason = history_budget_sentence(needed, setting=setting)
+                    waiting = True
+                    break
                 plan = plan_pw_step(
                     progress,
                     now=now,
@@ -1056,6 +1073,7 @@ class PwCollector:
                     break
                 if action is StepAction.WAIT:
                     reason = plan.step.reason
+                    waiting = True
                     break
                 if action is StepAction.SCAN:
                     assert plan.totals_span is not None
@@ -1075,7 +1093,8 @@ class PwCollector:
                         else (),
                     )
                     if result.status is SearchStatus.NOT_RUN:
-                        reason = "waiting for search budget"
+                        reason = WAITING_FOR_BUDGET
+                        waiting = True
                         break
                     decision = interpret_scan(progress, [result], boundary, planner)
                     # `interpret_scan` counts one search per scan span; a scope of several
@@ -1197,7 +1216,7 @@ class PwCollector:
         spent[0] = step_budget.used
         if trigger is not None:
             outcome = "handed_off"
-        elif reason == "waiting for search budget":
+        elif waiting:
             outcome = "waiting"
         else:
             outcome = "history"

@@ -899,6 +899,74 @@ async def test_a_reading_watch_is_also_asked_for_a_step_at_enable(
     assert refused.status_code == 409 and "free searches per tick" in refused.json()["detail"]
 
 
+# ------------------------------------------------- the history sub-budget of a tick (T-152)
+def _sub_budget(tick: int, history: int) -> dict[str, object]:
+    """A tick of `tick` searches whose history sub-budget is `history` searches."""
+    return {
+        "pw_max_searches_per_tick": tick,
+        "pw_max_searches_per_watch_per_tick": 3,
+        "pw_bootstrap_searches_per_tick": history,
+    }
+
+
+async def test_a_pinned_watch_needs_a_history_budget_that_pays_for_its_step(
+    db_session, db_schema: str
+) -> None:
+    """A pinned step costs 3 searches a tick; a sub-budget of 2 can never pay for it.
+
+    The 409 names the setting that binds, so the operator knows what to raise.
+    """
+    await _seed(db_session)
+    thin = _engineer(db_schema, **_sub_budget(6, 2))
+    made = _create(thin, "pin-thin", history_days=28, pinned_values=[["alice"]])
+    refused = _enable(thin, made)
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["codes"] == ["HISTORY_BUDGET"]
+    detail = refused.json()["detail"]
+    assert "PW_BOOTSTRAP_SEARCHES_PER_TICK is 2" in detail
+    assert "at least 3 searches per tick" in detail
+    assert "TOTALS, PINNED and one GROUPED" in detail
+    assert (await _row(db_session, made["id"])).enabled is False
+    roomy = _engineer(db_schema, **_sub_budget(6, 3))
+    ok = _enable(roomy, _create(roomy, "pin-roomy", history_days=28, pinned_values=[["alice"]]))
+    assert ok.status_code == 200, ok.text
+
+
+async def test_a_watch_without_pins_needs_two_searches_of_history_budget(
+    db_session, db_schema: str
+) -> None:
+    """The same bound without pins: a step costs TOTALS and one GROUPED, so 2 is enough."""
+    await _seed(db_session)
+    two = _engineer(db_schema, **_sub_budget(6, 2))
+    made = _create(two, "plain-two", history_days=28)
+    assert _enable(two, made).status_code == 200
+    one = _engineer(db_schema, **_sub_budget(6, 1))
+    refused = _enable(one, _create(one, "plain-one", history_days=28))
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["codes"] == ["HISTORY_BUDGET"]
+    assert "PW_BOOTSTRAP_SEARCHES_PER_TICK is 1" in refused.json()["detail"]
+    assert "at least 2 searches per tick" in refused.json()["detail"]
+
+
+async def test_the_history_request_sees_the_history_budget_too(
+    db_session, db_schema: str
+) -> None:
+    """`POST .../history` refuses with the reason the enable does (T-152)."""
+    await _seed(db_session)
+    thin = _engineer(db_schema, **_sub_budget(6, 2))
+    made = _create(thin, "ask-thin", history_days=0, pinned_values=[["alice"]])
+    assert _enable(thin, made).status_code == 200
+    refused = thin.post(f"{PREFIX}/{made['id']}/history", json={"history_days": 14})
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["codes"] == ["HISTORY_BUDGET"]
+    assert "PW_BOOTSTRAP_SEARCHES_PER_TICK is 2" in refused.json()["detail"]
+    assert (await _row(db_session, made["id"])).history_days == 0
+    roomy = _engineer(db_schema, **_sub_budget(6, 3))
+    ok = roomy.post(f"{PREFIX}/{made['id']}/history", json={"history_days": 14})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["history"]["days_requested"] == 14
+
+
 # ---------------------------------------------------------------- the codes of a 409 (T-145)
 async def test_the_history_budget_refusal_carries_its_code(
     db_session, db_schema: str

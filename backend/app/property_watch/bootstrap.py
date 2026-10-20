@@ -9,7 +9,8 @@ only what the shared planner does not know about a watch:
   (`settle_pw_step`);
 * the watch's own columns and states (`history_columns`, `read_progress`, `apply_trigger`,
   `begin_reading`, `handoff_columns`, `restart_columns`);
-* the history sub-budget of a tick (`pw_history_budget`).
+* the history sub-budget of a tick (`pw_history_budget`), the searches a step needs and the
+  sentence that names the limit that binds (`history_step_searches`, `history_budget_sentence`).
 
 Pure: no database, no provider, no clock. Callers pass `now` and the boundary. Only words
 reach the stored reason, never a value text, a property value or AQL (repository rule 3).
@@ -511,6 +512,34 @@ def pw_history_budget(
     )
 
 
+def history_step_searches(pinned: bool) -> int:
+    """The searches one step of a reading costs at its minimum (design §H.4.4).
+
+    TOTALS, one GROUPED and, with pins, PINNED: 2 searches without pins, 3 with them. The
+    floor scan of the first tick is the TOTALS of that tick, so the minimum holds for that
+    tick too: a reading can never progress on less.
+    """
+    return 3 if pinned else 2
+
+
+def history_step_parts(needed: int) -> str:
+    """The searches of a step in words, for the reasons that name them."""
+    return "TOTALS, PINNED and one GROUPED" if needed >= 3 else "TOTALS and one GROUPED"
+
+
+def history_budget_sentence(needed: int, *, setting: int) -> str:
+    """The reason that names the setting as the limit (design §H.9.1).
+
+    The setting is the history sub-budget of §H.4.4: a tick gives a reading at most
+    `pw_bootstrap_searches_per_tick` searches. When that is below the smallest step of the
+    watch, the reading waits for a budget that never comes, and the reason says so.
+    """
+    return (
+        f"PW_BOOTSTRAP_SEARCHES_PER_TICK is {setting}; reading history for this watch needs at "
+        f"least {needed} searches per tick ({history_step_parts(needed)})"
+    )
+
+
 __all__ = [
     "INITIAL_CHUNK_BUCKETS",
     "MAX_GAPS",
@@ -525,7 +554,10 @@ __all__ = [
     "begin_reading",
     "from_history_state",
     "handoff_columns",
+    "history_budget_sentence",
     "history_columns",
+    "history_step_parts",
+    "history_step_searches",
     "plan_pw_step",
     "pw_history_budget",
     "pw_planner_settings",
