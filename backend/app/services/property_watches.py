@@ -65,6 +65,9 @@ from app.property_watch.aql import build_query, pinned_rows_per_bucket, validate
 from app.property_watch.bootstrap import (
     UNREADABLE_PROGRESS,
     BootstrapStateError,
+    history_budget_sentence,
+    history_step_parts,
+    history_step_searches,
     pw_planner_settings,
     read_progress,
 )
@@ -558,19 +561,29 @@ def _history_budget_reasons(
 
     A step is TOTALS, one GROUPED and, with pins, PINNED: 3 searches with pins, 2 without.
     The enabled watches' static live cost goes first (§H.4.4), so what is left after it must
-    cover the smallest step. A watch that does not read history is not asked.
+    cover the smallest step; the history sub-budget of the same section caps that again, so a
+    reading gets `min(pw_bootstrap_searches_per_tick, free)` searches a tick. A watch that
+    does not read history is not asked. The reason names the limit that binds.
     """
     if not settings.pw_bootstrap_enabled or not watch_reads_history(watch):
         return []
-    needed = 3 if watch.pinned_values else 2
+    needed = history_step_searches(bool(watch.pinned_values))
     free = max(0, settings.pw_max_searches_per_tick - live_total)
-    if free >= needed:
+    setting = settings.pw_bootstrap_searches_per_tick
+    if min(setting, free) >= needed:
         return []
+    if setting <= free:
+        # The setting binds: the history sub-budget of a tick cannot pay for one step.
+        return [
+            CapacityReason(
+                CAP_HISTORY_BUDGET, history_budget_sentence(needed, setting=setting)
+            )
+        ]
     return [
         CapacityReason(
             CAP_HISTORY_BUDGET,
             f"reading history needs at least {needed} free searches per tick "
-            f"({'TOTALS, PINNED and one GROUPED' if needed == 3 else 'TOTALS and one GROUPED'}), "
+            f"({history_step_parts(needed)}), "
             f"but {free} are left after the enabled watches' live cost of {live_total} of "
             f"{settings.pw_max_searches_per_tick}",
         )

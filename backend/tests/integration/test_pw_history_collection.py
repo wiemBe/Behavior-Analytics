@@ -443,6 +443,71 @@ async def test_live_watches_spend_first_and_a_starved_reading_waits(db_session) 
     assert await history_rows(db_session, reading) == []
 
 
+async def test_a_pinned_reading_that_cannot_pay_for_its_step_says_which_limit_starves_it(
+    db_session,
+) -> None:
+    """A pinned step needs 3 searches a tick; at 2 the reading waits and says so (T-152).
+
+    The reading is not ended: it keeps waiting, and the time limit still hands it off.
+    """
+    instance = await make_instance(db_session)
+    reading = await add_watch(db_session, instance, history_days=2, pinned=(("alice",),))
+    # a reading under way: the floor is known, nothing is read yet
+    seed_reading(
+        reading,
+        target=BOUNDARY - 2 * DAY,
+        floor=BOUNDARY - 2 * DAY,
+        through=None,
+        started=NOW - timedelta(hours=1),
+    )
+    await db_session.commit()
+    provider = flat_provider()
+
+    # the setting is below the step: the reading waits, spends nothing, and says why
+    thin = hcfg(pw_bootstrap_searches_per_tick=2)
+    report = await tick(db_session, instance, provider, settings=thin)
+    await reload(db_session, reading)
+    assert report.history_searches == 0
+    assert provider.pw_searches == [], "a starved reading spends no search"
+    assert state_of(reading) is PwHistoryState.READING, "the reading is not ended"
+    progress, reason = progress_of(reading)
+    assert "PW_BOOTSTRAP_SEARCHES_PER_TICK is 2" in reason
+    assert "at least 3 searches per tick" in reason
+    assert progress.buckets_read == 0, "the reading stands where it was"
+
+    # a budget that pays for the step lets the reading go on
+    roomy = hcfg(pw_bootstrap_searches_per_tick=3)
+    report = await tick(db_session, instance, provider, now=NOW + STEP, settings=roomy)
+    await reload(db_session, reading)
+    assert report.history_searches == 3, "the TOTALS, the PINNED and one grouped chunk"
+    progress, _ = progress_of(reading)
+    assert progress.buckets_read == 288
+    assert state_of(reading) is PwHistoryState.READING
+
+
+async def test_a_reading_that_cannot_pay_for_its_step_spends_no_floor_scan(
+    db_session,
+) -> None:
+    """A reading that has not found its floor yet spends nothing either (T-152).
+
+    The scan would find the floor, but the setting cannot pay for the step that follows, so
+    the reading waits for the operator instead of spending a search a tick.
+    """
+    instance = await make_instance(db_session)
+    reading = await add_watch(db_session, instance, history_days=2, pinned=(("alice",),))
+    provider = flat_provider()
+    thin = hcfg(pw_bootstrap_searches_per_tick=2)
+    report = await tick(db_session, instance, provider, settings=thin)
+    await reload(db_session, reading)
+    assert report.history_searches == 0
+    assert provider.pw_searches == [], "not even the floor scan"
+    assert state_of(reading) is PwHistoryState.READING
+    progress, reason = progress_of(reading)
+    assert progress.floor is None
+    assert "PW_BOOTSTRAP_SEARCHES_PER_TICK is 2" in reason
+    assert "at least 3 searches per tick" in reason
+
+
 async def test_the_seconds_per_tick_budget_stops_new_searches(db_session) -> None:
     instance = await make_instance(db_session)
     reading = await add_watch(db_session, instance, history_days=1)
