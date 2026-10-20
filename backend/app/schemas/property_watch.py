@@ -324,6 +324,19 @@ class PinsOut(BaseModel):
     rules: list[PinRuleOut] = []
 
 
+class CapacityConflictOut(BaseModel):
+    """The 409 of a capacity refusal (design §G.14, T-145).
+
+    `detail` is the reason text, every reason joined into one sentence, exactly as the
+    refusal has always read. `codes` is one stable code per reason, in the same order:
+    `ENABLED_CAP`, `GROUP_TOO_LARGE`, `WATCH_SEARCH_LIMIT`, `TICK_BUDGET` or
+    `HISTORY_BUDGET`. The browser branches on the code, never on the wording.
+    """
+
+    detail: str
+    codes: list[str] = Field(default_factory=list)
+
+
 # ------------------------------------------------------------------ editor reads
 class HistoryCatalogOut(BaseModel):
     """The history bounds of the editor (design §H.9.1)."""

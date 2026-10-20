@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { api, type PropertyWatch, type PropertyWatchCatalog } from "@/lib/api";
 
-import { classifyWatchError } from "./authoring";
+import { classifyWatchError, onlyHistoryBudget } from "./authoring";
 
 import "./propertywatch.css";
 
@@ -66,12 +66,9 @@ export function WatchActions({
       router.refresh();
     } catch (caught) {
       const refusal = classifyWatchError(caught);
-      if (
-        enabled &&
-        refusal.kind === "conflict" &&
-        /history/i.test(refusal.detail) &&
-        /(budget|free|search)/i.test(refusal.detail)
-      ) {
+      // The offer is made on the code, never on the wording: only the history budget alone
+      // can be dropped (T-145). Another reason refuses the same attempt.
+      if (enabled && refusal.kind === "conflict" && onlyHistoryBudget(refusal.codes)) {
         setHistoryBudgetRefusal(true);
       }
       setConfirming(null);

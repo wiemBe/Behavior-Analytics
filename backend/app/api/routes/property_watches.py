@@ -10,7 +10,11 @@ grant; ``admin:*`` does, so the admin role does not list the string.
 
 Validation is ``services.property_watches.validate_draft``. Every reason comes back in one
 422, the F.11 shape ``{"message", "reasons"}``. The caps of design §G.14 on enabling are
-409 and name their numbers. A watch is always created disabled.
+409 and name their numbers; such a refusal carries one stable code per reason beside its
+text (``codes``), so the browser never reads the wording. A refusal is raised as
+``CapacityConflict``, not returned: the session dependency rolls the transaction back on the
+exception, so a refusal changes whatever the route had already written. A watch is always
+created disabled.
 
 ``property_watch`` carries ``watch_version`` for the semantics of its values and uses
 ``updated_at`` as the optimistic token, as ``custom_rule`` does: a patch carries
@@ -30,7 +34,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
@@ -61,6 +65,7 @@ from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider_for_instance
 from app.repositories.audit import record_audit
 from app.schemas.property_watch import (
+    CapacityConflictOut,
     HistoryRequestIn,
     PagedWatchValues,
     PinsIn,
@@ -101,6 +106,39 @@ _NULLABLE_PATCH = frozenset(
     {"description", "log_source_id", "scope_type_id", "scope_group_id"}
 )
 _SCOPE_FIELDS = frozenset({"scope_kind", "log_source_id", "scope_type_id", "scope_group_id"})
+
+#: The 409 of a capacity refusal, in the OpenAPI document of the three routes that raise it.
+_CAPACITY_CONFLICT: dict[int | str, dict[str, Any]] = {
+    status.HTTP_409_CONFLICT: {
+        "model": CapacityConflictOut,
+        "description": (
+            "A capacity refusal: `detail` names every reason and `codes` carries one stable "
+            "code per reason, in the same order. A version conflict answers with "
+            "`current_version` and `updated_by` instead."
+        ),
+    }
+}
+
+
+class CapacityConflict(HTTPException):
+    """The 409 of a capacity refusal: the reason text and a stable code per reason (T-145).
+
+    ``detail`` is the text the refusal has always carried, every reason joined into one
+    sentence; ``codes`` is one code per reason, in the same order, so the browser never has
+    to read the wording.
+
+    It is an exception, not a returned response: the session dependency rolls the
+    transaction back on it, so a refusal changes nothing — the route does not have to
+    remember to roll back the write it had already made. ``app.main`` renders the body.
+    """
+
+    def __init__(self, reasons: list[svc.CapacityReason]) -> None:
+        self.codes: list[str] = [reason.code for reason in reasons]
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="; ".join(reason.message for reason in reasons),
+        )
+
 
 ProviderFactory = Callable[[QRadarInstance], QRadarProvider]
 
@@ -785,7 +823,7 @@ def _label(kind: PwScopeKind, source: object, type_id: object, group_id: object)
     return f"{kind.value}:{group_id}"
 
 
-@router.patch("/{watch_id}", response_model=PropertyWatchOut)
+@router.patch("/{watch_id}", response_model=PropertyWatchOut, responses=_CAPACITY_CONFLICT)
 async def update_watch(
     watch_id: uuid.UUID,
     payload: PropertyWatchUpdate,
@@ -910,7 +948,7 @@ async def update_watch(
     if needs_capacity:
         capacity = await svc.enable_reasons(session, watch, settings)
         if capacity:
-            raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(capacity))
+            raise CapacityConflict(capacity)
     if wants_enabled and not was_enabled:
         # A re-enable starts fresh, exactly as a first enable does: a NULL `collected_through`
         # makes the collector's first-run rule seed at the latest closed bucket
@@ -1107,7 +1145,7 @@ async def preview_watch(
 
 
 # --------------------------------------------------------------------------------- pins
-@router.put("/{watch_id}/pins", response_model=PinsOut)
+@router.put("/{watch_id}/pins", response_model=PinsOut, responses=_CAPACITY_CONFLICT)
 async def put_pins(
     watch_id: uuid.UUID,
     payload: PinsIn,
@@ -1165,7 +1203,7 @@ async def put_pins(
         if watch.enabled:
             capacity = await svc.enable_reasons(session, watch, settings)
             if capacity:
-                raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(capacity))
+                raise CapacityConflict(capacity)
         await record_audit(
             session,
             action="property_watch.update",
@@ -1180,7 +1218,7 @@ async def put_pins(
 
 
 # ------------------------------------------------------------------------------ history
-@router.post("/{watch_id}/history", response_model=PropertyWatchOut)
+@router.post("/{watch_id}/history", response_model=PropertyWatchOut, responses=_CAPACITY_CONFLICT)
 async def request_history(
     watch_id: uuid.UUID,
     payload: HistoryRequestIn,
@@ -1214,7 +1252,7 @@ async def request_history(
     if watch.enabled:
         capacity = await svc.history_budget_reasons(session, watch, settings)
         if capacity:
-            raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(capacity))
+            raise CapacityConflict(capacity)
     watch.updated_by = principal.subject
     watch.updated_at = _bumped(_utc(watch.updated_at))
     await session.flush()

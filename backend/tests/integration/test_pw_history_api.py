@@ -899,6 +899,52 @@ async def test_a_reading_watch_is_also_asked_for_a_step_at_enable(
     assert refused.status_code == 409 and "free searches per tick" in refused.json()["detail"]
 
 
+# ---------------------------------------------------------------- the codes of a 409 (T-145)
+async def test_the_history_budget_refusal_carries_its_code(
+    db_session, db_schema: str
+) -> None:
+    """The 409 names its reason and codes it, so the browser never reads the wording."""
+    await _seed(db_session)
+    tight = _engineer(db_schema, **_budget(3))
+    made = _create(tight, "coded-history", history_days=28)
+    refused = _enable(tight, made)
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["codes"] == ["HISTORY_BUDGET"]
+    assert "at least 2 free searches per tick" in refused.json()["detail"]
+    assert (await _row(db_session, made["id"])).enabled is False
+
+
+async def test_a_tick_budget_and_a_history_budget_refusal_carry_both_codes(
+    db_session, db_schema: str
+) -> None:
+    await _seed(db_session)
+    tight = _engineer(db_schema, **_budget(3))
+    quiet = _create(tight, "coded-quiet", history_days=0)
+    assert _enable(tight, quiet).status_code == 200
+    # The pair is over the tick's budget and the history step has nothing free: both reasons,
+    # in the order the service produces them.
+    asking = _create(tight, "coded-both", history_days=28)
+    refused = _enable(tight, asking)
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["codes"] == ["TICK_BUDGET", "HISTORY_BUDGET"]
+    assert "searches per tick against a budget of 3" in refused.json()["detail"]
+    assert "free searches per tick" in refused.json()["detail"]
+
+
+async def test_the_history_request_refusal_carries_the_history_code(
+    db_session, db_schema: str
+) -> None:
+    await _seed(db_session)
+    tight = _engineer(db_schema, **_budget(3))
+    made = _create(tight, "coded-request", history_days=0)
+    assert _enable(tight, made).status_code == 200
+    refused = tight.post(f"{PREFIX}/{made['id']}/history", json={"history_days": 14})
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["codes"] == ["HISTORY_BUDGET"]
+    assert "at least 2 free searches" in refused.json()["detail"]
+    assert (await _row(db_session, made["id"])).history_days == 0
+
+
 # ---------------------------------------------------------------- the history is the collector's
 async def test_disabling_and_enabling_a_reading_watch_leaves_every_history_column(
     db_session, db_schema: str

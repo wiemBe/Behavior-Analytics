@@ -419,6 +419,26 @@ def group_path(group_id: int, groups: dict[int, LogSourceGroup]) -> str:
 
 
 # ---------------------------------------------------------------------------- capacity
+#: The stable codes of the capacity refusals (T-145). The browser branches on the code, never
+#: on the message: a reworded reason must not change what the operator is offered.
+CAP_ENABLED = "ENABLED_CAP"
+CAP_GROUP_TOO_LARGE = "GROUP_TOO_LARGE"
+CAP_WATCH_SEARCH_LIMIT = "WATCH_SEARCH_LIMIT"
+CAP_TICK_BUDGET = "TICK_BUDGET"
+CAP_HISTORY_BUDGET = "HISTORY_BUDGET"
+
+
+@dataclass(frozen=True)
+class CapacityReason:
+    """One capacity refusal: the code the browser branches on and the sentence it shows.
+
+    The code is stable; the message names the numbers, as every reason of design §G.14 does.
+    """
+
+    code: str
+    message: str
+
+
 def search_cost(
     scope_kind: PwScopeKind, member_count: int, *, pinned: bool, max_sources: int
 ) -> int:
@@ -462,11 +482,12 @@ async def enabled_cost_total(session: AsyncSession, settings: Settings) -> tuple
 
 async def enable_reasons(
     session: AsyncSession, watch: PropertyWatch, settings: Settings
-) -> list[str]:
+) -> list[CapacityReason]:
     """Why this watch cannot be enabled as it stands: the caps of design §G.14.
 
     Called with the watch's *new* state applied (not flushed) under the enabled-cap lock.
-    Every reason names its number, so the 409 tells the operator what to change.
+    Every reason names its number, so the 409 tells the operator what to change, and carries
+    the stable code the browser branches on (T-145).
     """
     others = list(
         (
@@ -477,10 +498,14 @@ async def enable_reasons(
             )
         ).all()
     )
-    reasons: list[str] = []
+    reasons: list[CapacityReason] = []
     if len(others) + 1 > settings.pw_max_enabled_watches:
         reasons.append(
-            f"at most {settings.pw_max_enabled_watches} property watches may be enabled at once"
+            CapacityReason(
+                CAP_ENABLED,
+                f"at most {settings.pw_max_enabled_watches} property watches may be "
+                "enabled at once",
+            )
         )
     costs = await static_costs(session, [*others, watch], settings)
     own_cost, members = costs[watch.id]
@@ -488,20 +513,29 @@ async def enable_reasons(
     cap = settings.pw_max_chunks_per_watch * settings.pw_max_sources_per_search
     if kind is PwScopeKind.LOG_SOURCE_GROUP and members > cap:
         reasons.append(
-            f"the group resolves to {members} sources, above the limit of {cap} "
-            f"({settings.pw_max_chunks_per_watch} searches of {settings.pw_max_sources_per_search}"
-            "); split the group"
+            CapacityReason(
+                CAP_GROUP_TOO_LARGE,
+                f"the group resolves to {members} sources, above the limit of {cap} "
+                f"({settings.pw_max_chunks_per_watch} searches of "
+                f"{settings.pw_max_sources_per_search}); split the group",
+            )
         )
     if own_cost > settings.pw_max_searches_per_watch_per_tick:
         reasons.append(
-            f"this watch needs {own_cost} searches per tick, above the per-watch limit of "
-            f"{settings.pw_max_searches_per_watch_per_tick}"
+            CapacityReason(
+                CAP_WATCH_SEARCH_LIMIT,
+                f"this watch needs {own_cost} searches per tick, above the per-watch limit of "
+                f"{settings.pw_max_searches_per_watch_per_tick}",
+            )
         )
     total = own_cost + sum(costs[o.id][0] for o in others)
     if total > settings.pw_max_searches_per_tick:
         reasons.append(
-            f"the enabled watches would need {total} searches per tick against a budget of "
-            f"{settings.pw_max_searches_per_tick} (this watch needs {own_cost})"
+            CapacityReason(
+                CAP_TICK_BUDGET,
+                f"the enabled watches would need {total} searches per tick against a budget of "
+                f"{settings.pw_max_searches_per_tick} (this watch needs {own_cost})",
+            )
         )
     reasons.extend(_history_budget_reasons(watch, total, settings))
     return reasons
@@ -517,7 +551,9 @@ def watch_reads_history(watch: PropertyWatch) -> bool:
     )
 
 
-def _history_budget_reasons(watch: PropertyWatch, live_total: int, settings: Settings) -> list[str]:
+def _history_budget_reasons(
+    watch: PropertyWatch, live_total: int, settings: Settings
+) -> list[CapacityReason]:
     """The 409 for a full tick budget (design §H.9.1): a history step needs searches left.
 
     A step is TOTALS, one GROUPED and, with pins, PINNED: 3 searches with pins, 2 without.
@@ -531,16 +567,19 @@ def _history_budget_reasons(watch: PropertyWatch, live_total: int, settings: Set
     if free >= needed:
         return []
     return [
-        f"reading history needs at least {needed} free searches per tick "
-        f"({'TOTALS, PINNED and one GROUPED' if needed == 3 else 'TOTALS and one GROUPED'}), "
-        f"but {free} are left after the enabled watches' live cost of {live_total} of "
-        f"{settings.pw_max_searches_per_tick}"
+        CapacityReason(
+            CAP_HISTORY_BUDGET,
+            f"reading history needs at least {needed} free searches per tick "
+            f"({'TOTALS, PINNED and one GROUPED' if needed == 3 else 'TOTALS and one GROUPED'}), "
+            f"but {free} are left after the enabled watches' live cost of {live_total} of "
+            f"{settings.pw_max_searches_per_tick}",
+        )
     ]
 
 
 async def history_budget_reasons(
     session: AsyncSession, watch: PropertyWatch, settings: Settings
-) -> list[str]:
+) -> list[CapacityReason]:
     """Only the history reason, for a request made on a watch that is already enabled.
 
     Called under the enabled-cap lock with the watch's new `history_days` applied.

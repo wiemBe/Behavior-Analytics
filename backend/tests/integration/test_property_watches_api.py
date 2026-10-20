@@ -208,6 +208,12 @@ async def _audits(session, action: str | None = None) -> list[AuditLog]:  # type
     return list((await session.scalars(query)).all())
 
 
+async def _row(session, watch_id: str) -> PropertyWatch:  # type: ignore[no-untyped-def]
+    """The stored row, read fresh: what the route's transaction left behind."""
+    session.expire_all()
+    return await session.get(PropertyWatch, uuid.UUID(watch_id))
+
+
 async def _count(session, model) -> int:  # type: ignore[no-untyped-def]
     session.expire_all()
     return int(await session.scalar(select(func.count()).select_from(model)) or 0)
@@ -587,6 +593,117 @@ async def test_a_group_larger_than_the_chunk_limit_cannot_be_enabled(
                      json={"expected_updated_at": group["updated_at"], "enabled": True})
     assert ok.status_code == 200 and ok.json()["enabled"] is True
     assert ok.json()["scope"]["detail"] == "Edge"
+
+
+# ------------------------------------------------------------------- the codes of a 409
+async def test_the_enabled_cap_refusal_carries_its_code(
+    db_session, db_schema: str
+) -> None:
+    """The 409 names its reason and codes it, so the browser never reads the wording (T-145)."""
+    await _seed(db_session)
+    client = _client(db_schema, _principal("detection_engineer"), pw_max_enabled_watches=1)
+    one, two = _create(client, "coded-cap-1"), _create(client, "coded-cap-2")
+    on = client.patch(f"{PREFIX}/{one['id']}",
+                      json={"expected_updated_at": one["updated_at"], "enabled": True})
+    assert on.status_code == 200, on.text
+    refused = client.patch(f"{PREFIX}/{two['id']}",
+                           json={"expected_updated_at": two["updated_at"], "enabled": True})
+    assert refused.status_code == 409
+    assert refused.json()["codes"] == ["ENABLED_CAP"]
+    assert "at most 1 property watches may be enabled at once" in refused.json()["detail"]
+    assert client.get(f"{PREFIX}/{two['id']}").json()["enabled"] is False, "a 409 changes nothing"
+
+
+async def test_the_group_too_large_refusal_carries_its_code(
+    db_session, db_schema: str
+) -> None:
+    await _seed(db_session)
+    client = _client(
+        db_schema, _principal("detection_engineer"),
+        pw_max_sources_per_search=1, pw_max_chunks_per_watch=1,
+    )
+    group = _create(client, "coded-group", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                    scope_group_id=GROUP_ID)
+    refused = client.patch(f"{PREFIX}/{group['id']}",
+                           json={"expected_updated_at": group["updated_at"], "enabled": True})
+    assert refused.status_code == 409
+    assert refused.json()["codes"] == ["GROUP_TOO_LARGE"]
+    assert "resolves to 2 sources, above the limit of 1" in refused.json()["detail"]
+
+
+async def test_the_per_watch_search_limit_refusal_carries_its_code(
+    db_session, db_schema: str
+) -> None:
+    await _seed(db_session)
+    # Two sources in one search of one: two chunks, four searches per tick, above three.
+    client = _client(
+        db_schema, _principal("detection_engineer"),
+        pw_max_sources_per_search=1, pw_max_chunks_per_watch=2,
+        pw_max_searches_per_watch_per_tick=3,
+    )
+    group = _create(client, "coded-limit", scope_kind="LOG_SOURCE_GROUP", scope_type_id=None,
+                    scope_group_id=GROUP_ID)
+    refused = client.patch(f"{PREFIX}/{group['id']}",
+                           json={"expected_updated_at": group["updated_at"], "enabled": True})
+    assert refused.status_code == 409
+    assert refused.json()["codes"] == ["WATCH_SEARCH_LIMIT"]
+    assert "4 searches per tick, above the per-watch limit of 3" in refused.json()["detail"]
+
+
+async def test_the_tick_budget_refusal_carries_its_code(
+    db_session, db_schema: str
+) -> None:
+    await _seed(db_session)
+    client = _client(
+        db_schema, _principal("detection_engineer"),
+        pw_max_searches_per_tick=3, pw_max_searches_per_watch_per_tick=3,
+    )
+    # Neither watch reads history, so the budget is the only reason.
+    one = _create(client, "coded-budget-1", history_days=0)
+    two = _create(client, "coded-budget-2", history_days=0)
+    on = client.patch(f"{PREFIX}/{one['id']}",
+                      json={"expected_updated_at": one["updated_at"], "enabled": True})
+    assert on.status_code == 200, on.text
+    refused = client.patch(f"{PREFIX}/{two['id']}",
+                           json={"expected_updated_at": two["updated_at"], "enabled": True})
+    assert refused.status_code == 409
+    assert refused.json()["codes"] == ["TICK_BUDGET"]
+    assert "4 searches per tick against a budget of 3" in refused.json()["detail"]
+    assert client.get(f"{PREFIX}/{two['id']}").json()["enabled"] is False, "a 409 changes nothing"
+
+
+# --------------------------------------------------------------- the refusal changes nothing
+async def test_a_capacity_refusal_leaves_the_stored_row_unchanged(
+    db_session, db_schema: str
+) -> None:
+    """A refusal is an exception, so the session dependency rolls the route's write back.
+
+    The route writes the new name, the enabled flag and the optimistic token, and flushes
+    them, before it asks the caps; a refusal must leave the stored row exactly as it was and
+    write no audit row. The rollback is the dependency's, on the exception: the route does
+    not roll back itself (T-145, round 1). The other refusals that change nothing are
+    `test_enable_409s_name_the_cap_the_budget_and_the_scope`,
+    `test_the_enabled_cap_refusal_carries_its_code` and
+    `test_the_tick_budget_refusal_carries_its_code`.
+    """
+    await _seed(db_session)
+    client = _client(db_schema, _principal("detection_engineer"), pw_max_enabled_watches=1)
+    one, two = _create(client, "rollback-cap-1"), _create(client, "rollback-cap-2")
+    on = client.patch(f"{PREFIX}/{one['id']}",
+                      json={"expected_updated_at": one["updated_at"], "enabled": True})
+    assert on.status_code == 200, on.text
+    token = two["updated_at"]
+    refused = client.patch(
+        f"{PREFIX}/{two['id']}",
+        json={"expected_updated_at": token, "enabled": True, "name": "rollback-renamed"},
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["codes"] == ["ENABLED_CAP"]
+    row = await _row(db_session, two["id"])
+    assert row.name == "rollback-cap-2", "the route's write must not survive the refusal"
+    assert row.enabled is False
+    assert _same_instant(row.updated_at.isoformat(), token), "the token must not move"
+    assert await _audits(db_session, "property_watch.update") == []
 
 
 # --------------------------------------------------------------------------- the audit

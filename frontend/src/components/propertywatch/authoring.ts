@@ -249,8 +249,23 @@ export type WatchWriteRefusal =
   | { kind: "version"; currentVersion: string; updatedBy: string | null }
   | { kind: "dependencies"; message: string; rules: Array<{ id: string; name: string }> }
   | { kind: "rate"; detail: string }
-  | { kind: "conflict"; detail: string }
+  | { kind: "conflict"; detail: string; codes: string[] }
   | { kind: "error"; detail: string };
+
+/** The code of the capacity refusal that only the history budget causes (T-145). */
+export const HISTORY_BUDGET_CODE = "HISTORY_BUDGET";
+
+/**
+ * Whether the refusal is the history budget and nothing else.
+ *
+ * Only then can the operator enable the watch without history: another reason (the tick
+ * budget, the enabled-watch cap) refuses the same attempt, and the offer would fail
+ * again. The codes are read, never the wording, so a reworded reason cannot change what
+ * the operator is offered. A refusal without codes (an older server) is never one.
+ */
+export function onlyHistoryBudget(codes: string[]): boolean {
+  return codes.length === 1 && codes[0] === HISTORY_BUDGET_CODE;
+}
 
 export function classifyWatchError(error: unknown): WatchWriteRefusal {
   if (!(error instanceof ApiError)) {
@@ -284,6 +299,6 @@ export function classifyWatchError(error: unknown): WatchWriteRefusal {
   }
   const text = typeof error.detail === "string" ? error.detail : error.message;
   if (error.status === 429) return { kind: "rate", detail: text };
-  if (error.status === 409) return { kind: "conflict", detail: text };
+  if (error.status === 409) return { kind: "conflict", detail: text, codes: error.codes };
   return { kind: "error", detail: "The property watch could not be saved. Check the backend, then try again." };
 }
