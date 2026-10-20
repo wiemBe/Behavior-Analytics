@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 
 import pytest
 
@@ -250,20 +251,26 @@ def test_span_is_bounded_by_168h_and_by_the_search_budget() -> None:
     assert small.span is not None and small.span.buckets(SET) == 1000
 
 
-def test_chunk_width_follows_density_and_the_failure_ceiling() -> None:
-    dense = prog(floor=T0, rows_seen=1000, non_silent_buckets=10)  # 100 rows per bucket
-    plan = plan_step(dense, now=STARTED, end=END, budget=BUDGET, settings=SET)
-    assert plan.chunk_buckets == row_fit_buckets(100, SET) == 32
-    assert all(c.buckets(SET) * 100 <= SET.row_target_rows for c in plan.chunks)
+def test_chunk_width_is_the_stored_width_bounded_by_the_failure_ceiling() -> None:
+    # T-149: the width follows the density of the last settled step, and that width is
+    # stored. The whole reading's mean is never applied again: one dense stretch must
+    # not keep the width narrow for the rest of the reading.
+    stored = prog(floor=T0, chunk_buckets=32, rows_seen=1000, non_silent_buckets=10)
+    plan = plan_step(stored, now=STARTED, end=END, budget=BUDGET, settings=SET)
+    assert plan.chunk_buckets == 32  # the mean of 100 rows a bucket does not narrow it
     ceil = prog(floor=T0, chunk_buckets=500, chunk_ceiling=40)
     plan = plan_step(ceil, now=STARTED, end=END, budget=BUDGET, settings=SET)
     assert plan.chunk_buckets == 40
 
 
 def test_a_bucket_denser_than_the_cap_still_reads_one_bucket_at_a_time() -> None:
-    p = prog(floor=T0, rows_seen=9000, non_silent_buckets=1)
-    plan = plan_step(p, now=STARTED, end=END, budget=BUDGET, settings=SET)
+    # A step that saw 9 000 rows in one bucket sizes the width to that one bucket.
+    p = prog(floor=T0)
+    s = settle_step(p, [ok(T0, 1, rows=9000, ns=1)], end=END, settings=SET)
+    assert s.progress.chunk_buckets == 1
+    plan = plan_step(s.progress, now=STARTED, end=END, budget=BUDGET, settings=SET)
     assert plan.chunk_buckets == 1
+    assert all(c.buckets(SET) == 1 for c in plan.chunks)
 
 
 def test_last_span_stops_at_the_moving_end() -> None:
@@ -664,6 +671,239 @@ def test_split_on_truncation_halves_left_first_and_stops_at_one_bucket() -> None
     left, right = split_on_truncation(Span(T0, T0 + 7 * B), SET) or (None, None)
     assert left == Span(T0, T0 + 3 * B) and right == Span(T0 + 3 * B, T0 + 7 * B)
     assert split_on_truncation(Span(T0, T0 + B), SET) is None
+
+
+# ----------------------------------------------------------------- the width (T-149, HB-12 D4)
+
+# The lab's IPS shape: a burst day of 28 non-silent buckets with 5 845 rows (208.75 rows
+# a non-silent bucket), then a long quiet tail in which a handful of buckets hold one
+# row. The IPS path reads one chunk a tick and one search a dimension.
+IPS_DENSE_BUCKETS = 28
+IPS_DENSE_ROWS = 5845
+IPS_TAIL_BUCKETS = 1595
+IPS_SPARSE_AT = (0, 300, 600, 900, 1200)
+IPS_DIMENSIONS = 6
+# What the tail cost before T-149, measured with the code of that day: the width stayed
+# at 15 buckets (the fit of the whole reading's mean) and the tail cost 98 chunk-searches,
+# 588 searches with the six dimensions of an IPS chunk.
+OLD_IPS_TAIL_CHUNKS = 98
+OLD_IPS_TAIL_SEARCHES = OLD_IPS_TAIL_CHUNKS * IPS_DIMENSIONS
+# The tail that lets the width grow all the way to the maximum span.
+IPS_TAIL_TO_THE_MAXIMUM = 5841  # 15 + 30 + 60 + 120 + 240 + 480 + 960 + 1920 + 2016
+
+
+def _ips_tail(tail_buckets: int) -> tuple[list[int], int]:
+    """The widths and the chunk-searches of the lab's IPS shape, read from the burst on."""
+    p = prog(
+        floor=T0,
+        through=T0 + (IPS_DENSE_BUCKETS - 1) * B,
+        rows_seen=IPS_DENSE_ROWS,
+        non_silent_buckets=IPS_DENSE_BUCKETS,
+        chunk_buckets=15,  # the width the burst day left
+    )
+    end = T0 + (IPS_DENSE_BUCKETS + tail_buckets) * B
+    widths: list[int] = []
+    chunks = 0
+    while True:
+        plan = plan_step(p, now=STARTED, end=end, budget=StepBudget(1, 120), settings=SET)
+        if plan.action is StepAction.FINISH:
+            break
+        assert plan.action is StepAction.READ and plan.chunks
+        chunk = plan.chunks[0]
+        widths.append(chunk.buckets(SET))
+        first = (chunk.start - T0) // B - IPS_DENSE_BUCKETS
+        sparse = sum(1 for i in range(chunk.buckets(SET)) if first + i in IPS_SPARSE_AT)
+        p = settle_step(
+            p,
+            [ChunkResult(chunk, SearchStatus.COMPLETE, rows=sparse, non_silent_buckets=sparse)],
+            end=end,
+            settings=SET,
+        ).progress
+        chunks += 1
+    return widths, chunks
+
+
+def test_the_width_recovers_after_a_dense_stretch_and_the_tail_costs_far_less() -> None:
+    widths, chunks = _ips_tail(IPS_TAIL_BUCKETS)
+    # The width follows the quiet tail: it grows at most double per step.
+    assert widths == [15, 30, 60, 120, 240, 480, 650]
+    # The tail cost seven chunk-searches where the planner of that day spent 98.
+    assert chunks == 7
+    assert chunks * IPS_DIMENSIONS == 42
+    assert chunks < OLD_IPS_TAIL_CHUNKS
+    assert chunks * IPS_DIMENSIONS < OLD_IPS_TAIL_SEARCHES
+
+
+def test_the_whole_lab_reading_costs_a_fraction_of_the_old_one() -> None:
+    # The burst day then the tail, read from the first step on. The planner of before
+    # T-149 read it in 85 chunks (510 searches at six a chunk), measured with that code.
+    p = prog(floor=T0)
+    end = T0 + (IPS_DENSE_BUCKETS + IPS_TAIL_BUCKETS) * B
+    widths: list[int] = []
+    while True:
+        plan = plan_step(p, now=STARTED, end=end, budget=StepBudget(1, 120), settings=SET)
+        if plan.action is StepAction.FINISH:
+            break
+        chunk = plan.chunks[0]
+        n = chunk.buckets(SET)
+        first = (chunk.start - T0) // B
+        if first < IPS_DENSE_BUCKETS:
+            burst = min(n, IPS_DENSE_BUCKETS - first)
+            rows, non_silent = round(IPS_DENSE_ROWS * burst / IPS_DENSE_BUCKETS), burst
+        else:
+            rows = non_silent = sum(
+                1 for i in range(n) if first - IPS_DENSE_BUCKETS + i in IPS_SPARSE_AT
+            )
+        widths.append(n)
+        res = ChunkResult(chunk, SearchStatus.COMPLETE, rows=rows, non_silent_buckets=non_silent)
+        p = settle_step(p, [res], end=end, settings=SET).progress
+    assert widths == [288, 15, 30, 60, 120, 240, 480, 390]
+    assert len(widths) * IPS_DIMENSIONS == 48
+    assert len(widths) < 85 and len(widths) * IPS_DIMENSIONS < 510
+
+
+@pytest.mark.parametrize(
+    ("rows_per_bucket", "widths"),
+    [(1, [288, 2016, 696]), (3, [288, 1066, 1066, 580]), (100, [288] + [32] * 85)],
+)
+def test_a_smooth_source_reads_exactly_as_before_the_change(
+    rows_per_bucket: int, widths: list[int]
+) -> None:
+    # Constant density: the widths are the ones the planner of before T-149 chose
+    # (pinned from that code). The last of the dense run is the remainder.
+    p = prog(floor=T0)
+    end = T0 + 3000 * B
+    got: list[int] = []
+    while True:
+        plan = plan_step(p, now=STARTED, end=end, budget=StepBudget(1, 120), settings=SET)
+        if plan.action is StepAction.FINISH:
+            break
+        n = plan.chunks[0].buckets(SET)
+        got.append(n)
+        res = ok(plan.chunks[0].start, n, rows=rows_per_bucket * n)
+        p = settle_step(p, [res], end=end, settings=SET).progress
+    if rows_per_bucket == 100:
+        assert got[:-1] == widths[:-1] and len(got) == 86
+    else:
+        assert got == widths
+
+
+def test_the_width_recovers_to_the_maximum_over_a_long_quiet_tail() -> None:
+    widths, chunks = _ips_tail(IPS_TAIL_TO_THE_MAXIMUM)
+    assert widths == [15, 30, 60, 120, 240, 480, 960, 1920, 2016]
+    assert widths[-1] == SET.max_span_buckets
+    assert chunks == 9
+    for before, after in pairwise(widths):
+        assert after <= 2 * before  # the growth is bounded
+
+
+def test_a_quiet_stretch_doubles_the_width_at_most_per_step() -> None:
+    # A reading that has already sized its width: a quiet step doubles it, at most.
+    p = prog(floor=T0, chunk_buckets=100)
+    widths: list[int] = []
+    start = T0
+    for _ in range(12):
+        plan = plan_step(p, now=STARTED, end=END, budget=StepBudget(1, 120), settings=SET)
+        if plan.action is StepAction.FINISH:
+            break
+        assert plan.action is StepAction.READ and plan.chunks
+        assert plan.chunk_buckets is not None
+        widths.append(plan.chunk_buckets)
+        s = settle_step(p, [ok(start, plan.chunk_buckets, rows=0, ns=0)], end=END, settings=SET)
+        p = s.progress
+        assert p.through is not None
+        start = p.through + B
+    assert widths == [100, 200, 400, 800, 1600, 2016, 2016, 2016]
+    for before, after in pairwise(widths):
+        assert after <= 2 * before  # the growth is bounded
+
+
+def test_the_initial_width_is_a_placeholder_the_first_density_sizes_directly() -> None:
+    # A reading that has not sized its width yet reads its first step at the initial
+    # width. A quiet first step doubles it, like any quiet step; the first density
+    # observed is the width, as before T-149, not a doubling of the placeholder.
+    quiet = settle_step(prog(floor=T0), [ok(T0, 288, rows=0, ns=0)], end=END, settings=SET)
+    assert quiet.progress.recent_rows_per_bucket is None
+    assert quiet.progress.chunk_buckets == 2 * SET.initial_chunk_buckets == 576
+    sparse = settle_step(prog(floor=T0), [ok(T0, 288, rows=288, ns=288)], end=END, settings=SET)
+    assert sparse.progress.chunk_buckets == row_fit_buckets(1, SET) == SET.max_span_buckets
+
+
+def test_a_dense_step_narrows_the_width_at_once() -> None:
+    # The burst day: 28 non-silent buckets with 5 845 rows is 208.75 rows a bucket, and
+    # the width that fits the row target is 15 buckets.
+    p = prog(floor=T0)
+    s = settle_step(p, [ok(T0, 28, rows=IPS_DENSE_ROWS, ns=IPS_DENSE_BUCKETS)], end=END,
+                    settings=SET)
+    assert s.progress.recent_rows_per_bucket == IPS_DENSE_ROWS / IPS_DENSE_BUCKETS
+    assert s.progress.chunk_buckets == row_fit_buckets(208.75, SET) == 15
+    # and the next step reads at that width
+    plan = plan_step(s.progress, now=STARTED, end=END, budget=BUDGET, settings=SET)
+    assert plan.chunk_buckets == 15
+
+
+def _read_chunk(span: Span, rows_per_bucket: int) -> list[ChunkResult]:
+    """One chunk as a family reads it: a dense span is split in time and re-read."""
+    n = span.buckets(SET)
+    if rows_per_bucket * n <= SET.row_target_rows:
+        return [
+            ChunkResult(
+                span,
+                SearchStatus.COMPLETE,
+                rows=rows_per_bucket * n,
+                non_silent_buckets=n if rows_per_bucket else 0,
+            )
+        ]
+    halves = split_on_truncation(span, SET)
+    if halves is None:
+        return [
+            ChunkResult(
+                span,
+                SearchStatus.TRUNCATED,
+                rows=SET.row_target_rows,
+                non_silent_buckets=1,
+                lower_bound_buckets=1,
+            )
+        ]
+    out: list[ChunkResult] = []
+    for half in halves:
+        out += _read_chunk(half, rows_per_bucket)
+    return out
+
+
+def test_a_wide_span_that_turns_dense_is_split_and_the_spans_still_tile() -> None:
+    # The reverse of the lab's shape: a long quiet stretch grows the width to the maximum
+    # and then a dense day arrives. The wide search is truncated, split in time and
+    # re-read (§B.6.3): truncation is not a failure, and the written spans still tile
+    # [F, e) exactly.
+    quiet_widths = [288, 576, 1152, 2016, 2016]
+    quiet = sum(quiet_widths)
+    end = T0 + (quiet + 2016) * B
+    dense_from = T0 + quiet * B
+    p = prog(floor=T0)
+    written: list[Span] = []
+    for _ in range(20):
+        plan = plan_step(p, now=STARTED, end=end, budget=StepBudget(1, 120), settings=SET)
+        if plan.action is StepAction.FINISH:
+            break
+        assert plan.action is StepAction.READ and plan.chunks
+        chunk = plan.chunks[0]
+        rows_per_bucket = 100 if chunk.start >= dense_from else 0
+        results = _read_chunk(chunk, rows_per_bucket)
+        s = settle_step(p, results, end=end, settings=SET)
+        p = s.progress
+        written.extend(s.write_spans)
+    # the quiet stretch grew the width to the maximum of a span
+    assert [span.buckets(SET) for span in written[: len(quiet_widths)]] == quiet_widths
+    # the dense day was read in pieces, and the written spans tile [F, e) exactly
+    pieces = written[len(quiet_widths) :]
+    assert len(pieces) == 64  # the wide search was split in time and re-read
+    assert sum(span.buckets(SET) for span in pieces) == 2016
+    covered = [span.start for span in written] + [end]
+    assert covered[0] == T0 and covered[-1] == end
+    assert covered == sorted(covered)
+    assert p.through == end - B
+    assert not p.gaps
 
 
 # ----------------------------------------------------------------------------- window fit

@@ -183,6 +183,11 @@ class ScopeProgress:
     lower_bound_buckets: int = 0
     rows_seen: int = 0
     non_silent_buckets: int = 0
+    # The density of the last settled step (T-149): the rows of its non-silent buckets
+    # over their number, None when the step had none. The width follows this and not
+    # the whole reading's mean, or one dense stretch would keep the width narrow for
+    # the rest of the reading.
+    recent_rows_per_bucket: float | None = None
     density_checked: bool = False
     gaps: tuple[Gap, ...] = field(default_factory=tuple)
 
@@ -409,11 +414,13 @@ class StepPlan:
 
 
 def chunk_width(progress: ScopeProgress, settings: PlannerSettings) -> int:
-    """W for the next step: the stored width, the density fit and the failure ceiling."""
+    """W for the next step: the stored width, bounded by the failure ceiling.
+
+    The width was sized for the density of the last settled step (`settle_step`), and it
+    is never narrowed by the whole reading's mean again (T-149): one dense stretch must
+    not keep the width narrow for the rest of the reading.
+    """
     width = progress.chunk_buckets or settings.initial_chunk_buckets
-    rho = progress.rows_per_bucket
-    if rho is not None:
-        width = min(width, row_fit_buckets(rho, settings))
     if progress.chunk_ceiling is not None:
         width = min(width, progress.chunk_ceiling)
     return max(settings.min_chunk_buckets, min(width, settings.max_span_buckets))
@@ -543,6 +550,72 @@ class StepSettlement:
     new_gap: Gap | None = None
 
 
+def _width_after_step(
+    progress: ScopeProgress,
+    *,
+    current: int,
+    settings: PlannerSettings,
+) -> tuple[ScopeProgress, str]:
+    """The progress and the note after a step that read what it could.
+
+    The width follows the density of the step that just ended (T-149): a dense stretch
+    narrows it at once, to the row fit, and a quiet one lets it grow, at most double per
+    step. The failure ceiling still caps it and is released at the row fit after
+    `CEILING_RELEASE_STEPS` clean steps (§B.6.3).
+    """
+    recent = progress.recent_rows_per_bucket
+    if recent is None:
+        # The step held no non-silent bucket: it says nothing about the density, so the
+        # width grows, double at most. The release target is the initial width, as for a
+        # reading that has no density evidence at all (§B.6.3).
+        fit = settings.initial_chunk_buckets
+        target = 2 * current
+    elif progress.chunk_buckets is None:
+        # The width was never sized from a density: the initial width was a placeholder
+        # ("one day of buckets, until a density is observed"). The first density observed
+        # is the width, as before T-149.
+        fit = row_fit_buckets(recent, settings)
+        target = fit
+    else:
+        fit = row_fit_buckets(recent, settings)
+        target = min(fit, 2 * current)
+    ceiling = progress.chunk_ceiling
+    successes = progress.ceiling_successes
+    note = ""
+    if ceiling is not None:
+        successes += 1
+        if successes >= CEILING_RELEASE_STEPS:
+            successes = 0
+            if 2 * ceiling >= fit:
+                ceiling = None
+                # The released width is the fit, and the fit is at most twice the current
+                # width: the growth bound holds here too.
+                width = min(fit, 2 * current)
+                note = (
+                    f"{CEILING_RELEASE_STEPS} clean steps brought the failure ceiling to "
+                    f"the row fit of {fit}; the ceiling is released"
+                )
+            else:
+                ceiling = 2 * ceiling
+                width = min(target, ceiling)
+                note = (
+                    f"{CEILING_RELEASE_STEPS} clean steps doubled the failure ceiling to "
+                    f"{ceiling}"
+                )
+        else:
+            width = min(target, ceiling)
+    else:
+        width = target
+    width = max(settings.min_chunk_buckets, min(width, settings.max_span_buckets))
+    updated = replace(
+        progress,
+        chunk_ceiling=ceiling,
+        ceiling_successes=successes,
+        chunk_buckets=width,
+    )
+    return updated, note
+
+
 def settle_step(
     progress: ScopeProgress,
     results: Sequence[ChunkResult],
@@ -592,6 +665,8 @@ def settle_step(
         lower_bound_buckets=progress.lower_bound_buckets + lb,
         rows_seen=progress.rows_seen + rows,
         non_silent_buckets=progress.non_silent_buckets + non_silent,
+        # The density of this step: what the width follows (T-149).
+        recent_rows_per_bucket=rows / non_silent if non_silent else None,
     )
     reasons: list[str] = []
     new_gap: Gap | None = None
@@ -600,44 +675,14 @@ def settle_step(
     if blocker is None:
         updated = replace(updated, failures=0)
         reasons.append(f"read {read} bucket(s)")
-        rho = updated.rows_per_bucket
-        # The width density alone would choose. Before any non-silent bucket there is no
-        # density fit yet, so the initial width is the target.
-        fit = settings.initial_chunk_buckets if rho is None else row_fit_buckets(rho, settings)
-        ceiling = updated.chunk_ceiling
-        successes = updated.ceiling_successes
-        if ceiling is not None:
-            successes += 1
-            if successes >= CEILING_RELEASE_STEPS:
-                successes = 0
-                if 2 * ceiling >= fit:
-                    ceiling = None
-                    reasons.append(
-                        f"{CEILING_RELEASE_STEPS} clean steps brought the failure ceiling to "
-                        f"the row fit of {fit}; the ceiling is released"
-                    )
-                else:
-                    ceiling = 2 * ceiling
-                    reasons.append(
-                        f"{CEILING_RELEASE_STEPS} clean steps doubled the failure ceiling to "
-                        f"{ceiling}"
-                    )
-        # A released ceiling hands the width back to the fit, also when there is no density
-        # evidence yet (the fit is then the initial width): a failure in a silent span must not
-        # cap the width for the rest of the reading.
-        if rho is not None or ceiling is not None or updated.chunk_ceiling is not None:
-            updated = replace(
-                updated,
-                chunk_ceiling=ceiling,
-                ceiling_successes=successes,
-                chunk_buckets=fit if ceiling is None else min(fit, ceiling),
-            )
-        else:
-            updated = replace(
-                updated,
-                chunk_ceiling=ceiling,
-                ceiling_successes=successes,
-            )
+        updated, note = _width_after_step(
+            updated,
+            current=chunk_width(progress, settings),
+            settings=settings,
+        )
+        if note:
+            reasons.append(note)
+        reasons.append(f"the width is {updated.chunk_buckets} bucket(s)")
     else:
         n = blocker.span.buckets(settings)
         if blocker.status is SearchStatus.FAILED:
@@ -685,6 +730,17 @@ def settle_step(
             )
         else:
             reasons.append("the budget ended before this span was searched")
+            if read:
+                # The step read a prefix before the budget ran out: the width follows the
+                # density it observed, as after a clean step.
+                updated, note = _width_after_step(
+                    updated,
+                    current=chunk_width(progress, settings),
+                    settings=settings,
+                )
+                if note:
+                    reasons.append(note)
+                reasons.append(f"the width is {updated.chunk_buckets} bucket(s)")
 
     if trigger is None and not updated.density_checked and updated.buckets_read > 0:
         updated = replace(updated, density_checked=True)

@@ -10,26 +10,32 @@ a defaulted `through` or `failures` would make the planner read a span twice or 
 
 Shape::
 
-    {"version": 2, "progress": {<every ScopeProgress field>}, "adapter": {...}}
+    {"version": 3, "progress": {<every ScopeProgress field>}, "adapter": {...}}
 
 Version 1 has the same shape without `ceiling_successes`; it is still read, with the counter
-as 0, because lab and test databases hold version-1 rows. `adapter` is opaque to the core:
-the family adapters keep their own state there (per-source floors for Phase A and catch-all),
-and it is returned untouched. Pure: no database.
+as 0, because lab and test databases hold version-1 rows. Version 2 has the counter but no
+`recent_rows_per_bucket` (the density of the last settled step, T-149); it is still read, with
+the density as None. `adapter` is opaque to the core: the family adapters keep their own state
+there (per-source floors for Phase A and catch-all), and it is returned untouched. Pure: no
+database.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
 from app.history.planner import Gap, ScopeProgress
 
-PROGRESS_VERSION = 2
+PROGRESS_VERSION = 3
 # Version 1 encoded every field but `ceiling_successes`; it decodes with the counter at 0.
 _VERSION_1_ABSENT = ("ceiling_successes",)
+# Version 2 encoded every field but `recent_rows_per_bucket`; it decodes with the density
+# as None (the width then follows the first step it settles).
+_VERSION_2_ABSENT = ("recent_rows_per_bucket",)
 
 _DATETIME_FIELDS = (
     "target_start",
@@ -52,6 +58,7 @@ _INT_FIELDS = (
     "non_silent_buckets",
 )
 _OPTIONAL_INTS = ("chunk_buckets", "chunk_ceiling")
+_FLOAT_FIELDS = ("recent_rows_per_bucket",)
 _BOOL_FIELDS = ("density_checked",)
 _GAP_KEYS = ("start", "end", "reason")
 
@@ -96,6 +103,28 @@ def _decode_count(value: object, name: str) -> int:
     return count
 
 
+def _encode_float(value: float | None, name: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ProgressCodecError(f"{name} must be a number or null")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ProgressCodecError(f"{name} must be a finite number")
+    return number
+
+
+def _decode_float(value: object, name: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ProgressCodecError(f"{name} must be a number or null")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ProgressCodecError(f"{name} must be a finite number")
+    return number
+
+
 def encode_progress(
     progress: ScopeProgress, adapter: Mapping[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -115,6 +144,8 @@ def encode_progress(
                 }
                 for gap in value
             ]
+        elif name in _FLOAT_FIELDS:
+            body[name] = _encode_float(value, name)
         else:
             body[name] = value
     return {"version": PROGRESS_VERSION, "progress": body, "adapter": dict(adapter or {})}
@@ -129,9 +160,9 @@ def decode_progress(data: object) -> DecodedProgress:
             f"progress keys are {sorted(data)}, expected ['adapter', 'progress', 'version']"
         )
     version = data["version"]
-    if isinstance(version, bool) or version not in (1, PROGRESS_VERSION):
+    if isinstance(version, bool) or version not in (1, 2, PROGRESS_VERSION):
         raise ProgressCodecError(
-            f"progress version {version!r} is not 1 or {PROGRESS_VERSION}"
+            f"progress version {version!r} is not 1, 2 or {PROGRESS_VERSION}"
         )
     adapter = data["adapter"]
     if not isinstance(adapter, Mapping):
@@ -141,7 +172,12 @@ def decode_progress(data: object) -> DecodedProgress:
         raise ProgressCodecError("progress body must be an object")
 
     names = {item.name for item in dataclasses.fields(ScopeProgress)}
-    expected = names if version == PROGRESS_VERSION else names - set(_VERSION_1_ABSENT)
+    if version == 1:
+        expected = names - set(_VERSION_1_ABSENT)
+    elif version == 2:
+        expected = names - set(_VERSION_2_ABSENT)
+    else:
+        expected = names
     if set(body) != expected:
         missing = sorted(expected - set(body))
         extra = sorted(set(body) - expected)
@@ -162,6 +198,8 @@ def decode_progress(data: object) -> DecodedProgress:
     values["ceiling_successes"] = (
         0 if version == 1 else _decode_count(body["ceiling_successes"], "ceiling_successes")
     )
+    for name in _FLOAT_FIELDS:
+        values[name] = None if version < 3 else _decode_float(body[name], name)
     for name in _BOOL_FIELDS:
         raw = body[name]
         if not isinstance(raw, bool):

@@ -38,6 +38,7 @@ def _full() -> ScopeProgress:
         lower_bound_buckets=4,
         rows_seen=12345,
         non_silent_buckets=800,
+        recent_rows_per_bucket=15.43125,
         density_checked=True,
         gaps=(
             Gap(T0 + timedelta(hours=6), T0 + timedelta(hours=7), "search failed"),
@@ -82,21 +83,44 @@ def _version_1(stored: dict) -> dict:
     return old
 
 
-def test_version_2_round_trips_the_release_counter() -> None:
+def _version_2(stored: dict) -> dict:
+    """The same progress as version 2 encoded it: no `recent_rows_per_bucket`."""
+    old = copy.deepcopy(stored)
+    old["version"] = 2
+    old["progress"].pop("recent_rows_per_bucket")
+    return old
+
+
+def test_version_3_round_trips_the_release_counter_and_the_recent_density() -> None:
     progress = _full()
     assert progress.ceiling_successes == 2
+    assert progress.recent_rows_per_bucket == 15.43125
     stored = json.loads(json.dumps(encode_progress(progress)))
-    assert stored["version"] == 2
-    assert decode_progress(stored).progress.ceiling_successes == 2
+    assert stored["version"] == 3 == PROGRESS_VERSION
+    decoded = decode_progress(stored).progress
+    assert decoded.ceiling_successes == 2
+    assert decoded.recent_rows_per_bucket == 15.43125
 
 
 def test_a_version_1_dict_decodes_with_no_release_count() -> None:
     stored = _version_1(json.loads(json.dumps(encode_progress(_full(), {"a": 1}))))
     decoded = decode_progress(stored)
     assert decoded.progress.ceiling_successes == 0
+    assert decoded.progress.recent_rows_per_bucket is None
     assert decoded.adapter == {"a": 1}
-    # every other field is the version-2 progress's field
-    assert dataclasses.replace(decoded.progress, ceiling_successes=2) == _full()
+    # every other field is the version-3 progress's field
+    assert dataclasses.replace(
+        decoded.progress, ceiling_successes=2, recent_rows_per_bucket=15.43125
+    ) == _full()
+
+
+def test_a_version_2_dict_decodes_with_no_recent_density() -> None:
+    stored = _version_2(json.loads(json.dumps(encode_progress(_full(), {"a": 1}))))
+    decoded = decode_progress(stored)
+    assert decoded.progress.ceiling_successes == 2
+    assert decoded.progress.recent_rows_per_bucket is None
+    assert decoded.adapter == {"a": 1}
+    assert dataclasses.replace(decoded.progress, recent_rows_per_bucket=15.43125) == _full()
 
 
 def test_datetimes_are_iso_utc_and_decode_aware() -> None:
@@ -142,7 +166,7 @@ def _mutations() -> list[tuple[str, object]]:
         cases.append((label, stored))
 
     case("not an object", lambda s: s.clear())
-    case("wrong version", lambda s: s.__setitem__("version", 3))
+    case("wrong version", lambda s: s.__setitem__("version", 4))
     case("bool version", lambda s: s.__setitem__("version", True))
     case("missing version", lambda s: s.pop("version"))
     case("missing adapter", lambda s: s.pop("adapter"))
@@ -151,6 +175,7 @@ def _mutations() -> list[tuple[str, object]]:
     case("body not an object", lambda s: s.__setitem__("progress", []))
     case("missing field", lambda s: s["progress"].pop("searches"))
     case("missing version-2 field", lambda s: s["progress"].pop("ceiling_successes"))
+    case("missing version-3 field", lambda s: s["progress"].pop("recent_rows_per_bucket"))
     case("unknown field", lambda s: s["progress"].__setitem__("surprise", 1))
     case("negative release count", lambda s: s["progress"].__setitem__("ceiling_successes", -1))
     case("bool release count", lambda s: s["progress"].__setitem__("ceiling_successes", False))
@@ -160,6 +185,25 @@ def _mutations() -> list[tuple[str, object]]:
             s.__setitem__("version", 1),
             s["progress"].__setitem__("ceiling_successes", 0),
         ),
+    )
+    case(
+        "version 2 with a recent density",
+        lambda s: (
+            s.__setitem__("version", 2),
+            s["progress"].__setitem__("recent_rows_per_bucket", 1.0),
+        ),
+    )
+    case(
+        "string for the density",
+        lambda s: s["progress"].__setitem__("recent_rows_per_bucket", "x"),
+    )
+    case(
+        "bool for the density",
+        lambda s: s["progress"].__setitem__("recent_rows_per_bucket", True),
+    )
+    case(
+        "not a finite density",
+        lambda s: s["progress"].__setitem__("recent_rows_per_bucket", float("inf")),
     )
     case("naive datetime", lambda s: s["progress"].__setitem__("through", "2026-09-01T00:00:00"))
     case("garbage datetime", lambda s: s["progress"].__setitem__("floor", "yesterday"))
