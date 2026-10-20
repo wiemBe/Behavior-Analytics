@@ -30,6 +30,28 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+
+  /**
+   * The stable codes of a capacity refusal (T-145), read from the body: `ENABLED_CAP`,
+   * `GROUP_TOO_LARGE`, `WATCH_SEARCH_LIMIT`, `TICK_BUDGET` or `HISTORY_BUDGET`. Empty when
+   * the body carries none — a server that sends no code must not be guessed at from the
+   * wording.
+   */
+  get codes(): string[] {
+    return capacityCodes(this.body);
+  }
+}
+
+/**
+ * The codes a failure body carries, or none. A body that names no code carries none.
+ */
+function capacityCodes(body: unknown): string[] {
+  const record =
+    typeof body === "object" && body !== null && !Array.isArray(body)
+      ? (body as { codes?: unknown })
+      : null;
+  if (!Array.isArray(record?.codes)) return [];
+  return record.codes.filter((code): code is string => typeof code === "string");
 }
 
 /**

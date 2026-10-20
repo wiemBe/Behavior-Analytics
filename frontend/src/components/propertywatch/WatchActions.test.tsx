@@ -39,7 +39,15 @@ describe("property-watch enable, disable and delete", () => {
   it("offers enable without history after a history-budget 409 and sends zero with enable", async () => {
     vi.spyOn(api, "updatePropertyWatch")
       .mockRejectedValueOnce(
-        new ApiError(409, "Conflict", "history needs 3 searches per tick but only 1 is free in the budget"),
+        new ApiError(
+          409,
+          "Conflict",
+          "history needs 3 searches per tick but only 1 is free in the budget",
+          {
+            detail: "history needs 3 searches per tick but only 1 is free in the budget",
+            codes: ["HISTORY_BUDGET"],
+          },
+        ),
       )
       .mockResolvedValueOnce(watch({ enabled: true }));
     render(<WatchActions watch={watch({ enabled: false })} catalog={catalog()} />);
@@ -54,6 +62,38 @@ describe("property-watch enable, disable and delete", () => {
       watch().id,
       { expected_updated_at: watch().updated_at, history_days: 0, enabled: true },
     ]);
+  });
+
+  it("offers enable without history only when the history budget is the sole reason", async () => {
+    const detail =
+      "the enabled watches would need 42 searches per tick against a budget of 40; " +
+      "reading history needs at least 2 free searches per tick, but 0 are left";
+    vi.spyOn(api, "updatePropertyWatch").mockRejectedValue(
+      new ApiError(409, "Conflict", detail, {
+        detail,
+        codes: ["TICK_BUDGET", "HISTORY_BUDGET"],
+      }),
+    );
+    render(<WatchActions watch={watch({ enabled: false })} catalog={catalog()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Enable" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enable watch" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("42 searches per tick");
+    expect(screen.queryByRole("group", { name: "Enable without history" })).toBeNull();
+  });
+
+  it("offers enable without history to no refusal that carries no code", async () => {
+    vi.spyOn(api, "updatePropertyWatch").mockRejectedValue(
+      new ApiError(
+        409,
+        "Conflict",
+        "reading history needs at least 2 free searches per tick, but 1 are left",
+      ),
+    );
+    render(<WatchActions watch={watch({ enabled: false })} catalog={catalog()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Enable" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enable watch" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("free searches per tick");
+    expect(screen.queryByRole("group", { name: "Enable without history" })).toBeNull();
   });
 
   it("requests history only before collection and shows 409 and 422 text verbatim", async () => {

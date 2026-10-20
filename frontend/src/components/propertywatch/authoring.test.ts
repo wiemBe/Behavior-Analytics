@@ -9,6 +9,7 @@ import {
   createWatchBody,
   draftFromWatch,
   draftReasons,
+  onlyHistoryBudget,
   pinReason,
   propertyApplicability,
   propertyWatchAccessFrom,
@@ -141,11 +142,37 @@ describe("property-watch API refusals", () => {
     expect(classifyWatchError(new ApiError(409, "cap", "at most 10 watches"))).toEqual({
       kind: "conflict",
       detail: "at most 10 watches",
+      codes: [],
     });
     expect(classifyWatchError(new ApiError(429, "Too Many Requests", "5 per 1 minute"))).toEqual({
       kind: "rate",
       detail: "5 per 1 minute",
     });
+  });
+
+  it("carries the codes of a capacity refusal and never guesses one from the wording", () => {
+    const refusal = classifyWatchError(
+      new ApiError(409, "Conflict", "the enabled watches would need 42 searches per tick", {
+        detail: "the enabled watches would need 42 searches per tick",
+        codes: ["TICK_BUDGET", "HISTORY_BUDGET"],
+      }),
+    );
+    expect(refusal).toEqual({
+      kind: "conflict",
+      detail: "the enabled watches would need 42 searches per tick",
+      codes: ["TICK_BUDGET", "HISTORY_BUDGET"],
+    });
+    expect(
+      classifyWatchError(new ApiError(409, "Conflict", "reading history needs 2 free searches")),
+    ).toMatchObject({ codes: [] });
+  });
+
+  it("offers the history-free enable only when the history budget is the sole reason", () => {
+    expect(onlyHistoryBudget(["HISTORY_BUDGET"])).toBe(true);
+    expect(onlyHistoryBudget(["TICK_BUDGET", "HISTORY_BUDGET"])).toBe(false);
+    expect(onlyHistoryBudget(["HISTORY_BUDGET", "TICK_BUDGET"])).toBe(false);
+    expect(onlyHistoryBudget(["TICK_BUDGET"])).toBe(false);
+    expect(onlyHistoryBudget([])).toBe(false);
   });
 });
 

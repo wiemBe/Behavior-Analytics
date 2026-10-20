@@ -6,16 +6,19 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from app.api.routes.property_watches import CapacityConflict
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.rate_limit import limiter
 from app.core.version import read_version
+from app.schemas.property_watch import CapacityConflictOut
 from app.security.csrf import request_refusal
 
 logger = logging.getLogger("app")
@@ -100,6 +103,18 @@ def create_app() -> FastAPI:
     async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
         return JSONResponse(
             status_code=429, content={"detail": "rate limit exceeded", "limit": str(exc.limit)}
+        )
+
+    @app.exception_handler(CapacityConflict)
+    async def _capacity_conflict_handler(request: Request, exc: CapacityConflict) -> JSONResponse:
+        """The 409 of a capacity refusal: the reason text and one stable code per reason.
+
+        The refusal is an exception, so the session dependency has already rolled the
+        route's half-applied write back: a refusal changes nothing (T-145).
+        """
+        body = CapacityConflictOut(detail=str(exc.detail), codes=exc.codes)
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT, content=jsonable_encoder(body)
         )
 
     app.include_router(_build_router(), prefix=settings.api_prefix)
