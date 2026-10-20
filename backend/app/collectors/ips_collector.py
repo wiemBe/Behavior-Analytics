@@ -1406,7 +1406,7 @@ class IpsCollector:
             )
         if entity_upserts:
             values = list(entity_upserts.values())
-            statement = pg_insert(IpsEntity).values(values)
+            statement = pg_insert(cast(Table, IpsEntity.__table__))
             statement = statement.on_conflict_do_update(
                 constraint="uq_ips_entity_natural_key",
                 set_={
@@ -1421,9 +1421,9 @@ class IpsCollector:
                     "normalizer_version": statement.excluded.normalizer_version,
                 },
             )
-            await self.session.execute(statement)
+            await self.session.execute(statement, values)
         if metric_rows:
-            statement = pg_insert(IpsEntityMetric).values(metric_rows)
+            statement = pg_insert(cast(Table, IpsEntityMetric.__table__))
             statement = statement.on_conflict_do_update(
                 index_elements=["ips_entity_id", "bucket_start"],
                 set_={
@@ -1431,10 +1431,10 @@ class IpsCollector:
                     "bucket_seconds": statement.excluded.bucket_seconds,
                 },
             )
-            await self.session.execute(statement)
+            await self.session.execute(statement, metric_rows)
             report.entity_rows_written = len(metric_rows)
         if bucket_rows:
-            statement = pg_insert(IpsSourceBucket).values(bucket_rows)
+            statement = pg_insert(cast(Table, IpsSourceBucket.__table__))
             statement = statement.on_conflict_do_update(
                 index_elements=["log_source_id", "bucket_start"],
                 set_={
@@ -1444,9 +1444,9 @@ class IpsCollector:
                     if key not in ("log_source_id", "bucket_start", "origin")
                 },
             )
-            await self.session.execute(statement)
+            await self.session.execute(statement, bucket_rows)
         if watermark_values:
-            statement = pg_insert(CollectionWatermark).values(watermark_values)
+            statement = pg_insert(cast(Table, CollectionWatermark.__table__))
             statement = statement.on_conflict_do_update(
                 constraint="uq_collection_watermark_key",
                 set_={
@@ -1459,7 +1459,7 @@ class IpsCollector:
                     "collection_metadata": statement.excluded.collection_metadata,
                 },
             )
-            await self.session.execute(statement)
+            await self.session.execute(statement, watermark_values)
         if source_uuids:
             cutoff = now - timedelta(days=self.settings.ips_entity_active_days)
             retired = await self.session.execute(

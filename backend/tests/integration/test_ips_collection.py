@@ -7,11 +7,17 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import event, insert, select, text
+from sqlalchemy import event, func, insert, select, text
 
-from app.collectors.ips_collector import IpsCollector, watermark_collector
+from app.collectors.ips_collector import (
+    IpsCollectionReport,
+    IpsCollector,
+    _Source,
+    watermark_collector,
+)
 from app.core.config import Settings, get_settings
-from app.ips.profile import IPS_PRESETS
+from app.ips.keyed_search import IpsCellOutcome
+from app.ips.profile import IPS_PRESETS, IpsFieldMapping
 from app.models.enums import (
     IpsCellState,
     IpsDimension,
@@ -21,6 +27,7 @@ from app.models.enums import (
 from app.models.ips import IpsEntity, IpsEntityMetric, IpsSourceBucket, IpsSourceProfile
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError, ProviderQueryRejectedError
+from app.providers.dto import IpsKeyedRow
 from app.providers.mock import MockQRadarProvider
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key
@@ -660,3 +667,240 @@ class TestAdmissionAndScale:
         # Two versus twenty sources and ten versus four hundred entities: the
         # same fixed load/write/lock shape, with no query per source or entity.
         assert len(statements) == 12
+
+
+def _outcome(
+    source_id: int,
+    start: datetime,
+    dimension: IpsDimension,
+    rows: list[IpsKeyedRow],
+) -> IpsCellOutcome:
+    return IpsCellOutcome(
+        dimension=dimension,
+        qradar_log_source_id=source_id,
+        bucket_start=start,
+        state=IpsCellState.COMPLETE,
+        rows=tuple(rows),
+    )
+
+
+def _totals(source_id: int, start: datetime) -> IpsCellOutcome:
+    return _outcome(
+        source_id,
+        start,
+        IpsDimension.TOTALS,
+        [
+            IpsKeyedRow(
+                qradar_log_source_id=source_id,
+                bucket_start=start,
+                events=10_000,
+                records=10_000,
+            )
+        ],
+    )
+
+
+class TestLiveWriterBindLimits:
+    async def test_source_bucket_writer_exceeds_the_old_bind_limit(self, db_session) -> None:
+        instance = await make_instance(db_session)
+        profile, source = await add_source(db_session, instance, 412)
+        columns = len(IpsSourceBucket.__table__.columns)
+        row_count = 32_767 // columns + 1
+        start = NOW - row_count * BUCKET
+        outcomes = {
+            (source.qradar_id, at, IpsDimension.TOTALS): _totals(source.qradar_id, at)
+            for at in (start + index * BUCKET for index in range(row_count))
+        }
+        planned = _Source(
+            profile,
+            source,
+            IpsFieldMapping.from_profile(profile),
+            (start, start + row_count * BUCKET),
+        )
+        collector = IpsCollector(
+            db_session,
+            MockQRadarProvider(now=NOW),
+            settings=cfg(collection_max_backfill_intervals=row_count),
+            clock=lambda: NOW,
+        )
+        report = IpsCollectionReport(instance.id)
+
+        with counting(db_session) as statements:
+            await collector._persist(
+                instance, [planned], outcomes, {}, [], NOW, 300, report, {}
+            )
+
+        assert row_count * columns > 32_767
+        assert await db_session.scalar(select(func.count()).select_from(IpsSourceBucket)) == (
+            row_count
+        )
+        assert sum("INSERT INTO ips_source_bucket " in sql for sql in statements) == 1
+
+    async def test_entity_writer_exceeds_the_old_bind_limit(self, db_session) -> None:
+        instance = await make_instance(db_session)
+        profile, source = await add_source(db_session, instance, 412)
+        # The two timestamp columns have server defaults and are not bound by this writer.
+        columns = len(IpsEntity.__table__.columns) - 2
+        row_count = 32_767 // columns + 1
+        starts = [NOW - 3 * BUCKET + index * BUCKET for index in range(3)]
+        outcomes = {}
+        first_port = 1
+        for start in starts:
+            count = min(1000, row_count - first_port + 1)
+            outcomes[(source.qradar_id, start, IpsDimension.TOTALS)] = _totals(
+                source.qradar_id, start
+            )
+            outcomes[(source.qradar_id, start, IpsDimension.DESTINATION_PORT)] = _outcome(
+                source.qradar_id,
+                start,
+                IpsDimension.DESTINATION_PORT,
+                [
+                    IpsKeyedRow(
+                        qradar_log_source_id=source.qradar_id,
+                        bucket_start=start,
+                        events=5,
+                        records=5,
+                        destination_port=port,
+                        protocol_id=6,
+                    )
+                    for port in range(first_port, first_port + count)
+                ],
+            )
+            first_port += count
+        planned = _Source(
+            profile,
+            source,
+            IpsFieldMapping.from_profile(profile),
+            (starts[0], starts[-1] + BUCKET),
+        )
+        collector = IpsCollector(
+            db_session,
+            MockQRadarProvider(now=NOW),
+            settings=cfg(
+                ips_max_entities_per_bucket=1000,
+                ips_max_new_entities_per_bucket=1000,
+                ips_max_active_entities_per_source_dimension=5000,
+            ),
+            clock=lambda: NOW,
+        )
+        report = IpsCollectionReport(instance.id)
+
+        with counting(db_session) as statements:
+            await collector._persist(
+                instance, [planned], outcomes, {}, [], NOW, 300, report, {}
+            )
+
+        assert row_count * columns > 32_767
+        assert await db_session.scalar(select(func.count()).select_from(IpsEntity)) == row_count
+        assert sum("INSERT INTO ips_entity " in sql for sql in statements) == 1
+
+    async def test_entity_metric_writer_exceeds_the_old_bind_limit(self, db_session) -> None:
+        instance = await make_instance(db_session)
+        profile, source = await add_source(db_session, instance, 412)
+        entity_count = 1000
+        entity_ids = [uuid.uuid4() for _ in range(entity_count)]
+        await db_session.execute(
+            insert(IpsEntity),
+            [
+                {
+                    "id": entity_ids[index],
+                    "instance_id": instance.id,
+                    "log_source_id": source.id,
+                    "dimension": IpsDimension.DESTINATION_PORT.value,
+                    "value_key": f"{index + 1}/tcp",
+                    "first_seen_at": NOW - timedelta(days=1),
+                    "last_seen_at": NOW - BUCKET,
+                    "active": True,
+                    "normalizer_version": 1,
+                }
+                for index in range(entity_count)
+            ],
+        )
+        await db_session.flush()
+        columns = len(IpsEntityMetric.__table__.columns)
+        bucket_count = 32_767 // (columns * entity_count) + 1
+        starts = [NOW - bucket_count * BUCKET + index * BUCKET for index in range(bucket_count)]
+        outcomes = {}
+        for start in starts:
+            outcomes[(source.qradar_id, start, IpsDimension.TOTALS)] = _totals(
+                source.qradar_id, start
+            )
+            outcomes[(source.qradar_id, start, IpsDimension.DESTINATION_PORT)] = _outcome(
+                source.qradar_id,
+                start,
+                IpsDimension.DESTINATION_PORT,
+                [
+                    IpsKeyedRow(
+                        qradar_log_source_id=source.qradar_id,
+                        bucket_start=start,
+                        events=5,
+                        records=5,
+                        destination_port=index + 1,
+                        protocol_id=6,
+                    )
+                    for index in range(entity_count)
+                ],
+            )
+        planned = _Source(
+            profile,
+            source,
+            IpsFieldMapping.from_profile(profile),
+            (starts[0], starts[-1] + BUCKET),
+        )
+        collector = IpsCollector(
+            db_session,
+            MockQRadarProvider(now=NOW),
+            settings=cfg(ips_max_entities_per_bucket=entity_count),
+            clock=lambda: NOW,
+        )
+        report = IpsCollectionReport(instance.id)
+
+        with counting(db_session) as statements:
+            await collector._persist(
+                instance, [planned], outcomes, {}, [], NOW, 300, report, {}
+            )
+
+        row_count = entity_count * bucket_count
+        assert row_count * columns > 32_767
+        assert await db_session.scalar(select(func.count()).select_from(IpsEntityMetric)) == (
+            row_count
+        )
+        assert sum("INSERT INTO ips_entity_metric " in sql for sql in statements) == 1
+
+    async def test_watermark_writer_exceeds_the_old_bind_limit(self, db_session) -> None:
+        instance = await make_instance(db_session)
+        profile, _source = await add_source(db_session, instance, 412)
+        mapping = IpsFieldMapping.from_profile(profile)
+        # The two timestamp columns have server defaults and are not bound by this writer.
+        columns = len(CollectionWatermark.__table__.columns) - 2
+        row_count = 32_767 // columns + 1
+        sources = [
+            _Source(
+                profile,
+                type(_source)(
+                    id=uuid.uuid4(),
+                    instance_id=instance.id,
+                    qradar_id=10_000 + index,
+                    name=f"transient-{index}",
+                ),
+                mapping,
+                (NOW, NOW),
+            )
+            for index in range(row_count)
+        ]
+        collector = IpsCollector(
+            db_session, MockQRadarProvider(now=NOW), settings=cfg(), clock=lambda: NOW
+        )
+        report = IpsCollectionReport(instance.id)
+
+        with counting(db_session) as statements:
+            await collector._persist(
+                instance, sources, {}, {}, [], NOW, 300, report, {}
+            )
+
+        assert row_count * columns > 32_767
+        assert (
+            await db_session.scalar(select(func.count()).select_from(CollectionWatermark))
+            == row_count
+        )
+        assert sum("INSERT INTO collection_watermark " in sql for sql in statements) == 1

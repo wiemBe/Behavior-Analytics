@@ -5,8 +5,9 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 
-from sqlalchemy import or_, select
+from sqlalchemy import Table, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -194,7 +195,7 @@ async def classify_sources(
         applied[source.id] = AppliedClassification(result, review_status)
 
     if values:
-        statement = pg_insert(LogSourceClassification).values(values)
+        statement = pg_insert(cast(Table, LogSourceClassification.__table__))
         updated = {
             "source_class": statement.excluded.source_class,
             "basis": statement.excluded.basis,
@@ -214,7 +215,7 @@ async def classify_sources(
         statement = statement.on_conflict_do_update(
             index_elements=[LogSourceClassification.log_source_id], set_=updated
         )
-        await session.execute(statement)
+        await session.execute(statement, values)
     return applied
 
 

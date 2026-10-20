@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import event, insert, select
+from sqlalchemy import event, func, insert, select
 
 from app.collectors.waf_endpoint_collector import (
     WafCollectionReport,
@@ -1107,6 +1107,66 @@ async def test_history_writer_statement_count_is_constant_at_scale(db_session) -
         "12_buckets": 4,
         "2016_buckets": 4,
     }
+
+
+async def test_history_writer_upserts_more_endpoints_than_one_statement_can_bind(
+    db_session,
+) -> None:  # type: ignore[no-untyped-def]
+    settings = cfg(
+        waf_max_new_endpoints_per_bucket=1000,
+        waf_max_active_endpoints_per_source=5000,
+        waf_min_admission_requests=1,
+    )
+    provider = ScriptedWaf({})
+    _profile, source, _instance, collector_factory = await make_source(
+        db_session, provider, settings
+    )
+    # The two timestamp columns have server defaults and are not bound by this writer.
+    columns = len(WafEndpoint.__table__.columns) - 2
+    row_count = 32_767 // columns + 1
+    values = []
+    remaining = row_count
+    bucket_index = 0
+    endpoint_index = 0
+
+    def endpoint_path(index: int) -> str:
+        letters = ""
+        value = index
+        while True:
+            value, remainder = divmod(value, 26)
+            letters = chr(ord("a") + remainder) + letters
+            if value == 0:
+                return f"/bulk/item{letters}"
+
+    while remaining:
+        in_bucket = min(1000, remaining)
+        start = T0 + bucket_index * STEP
+        values.append(
+            HistoryVolumeBucket(
+                batch=batch(
+                    start,
+                    [
+                        (endpoint_path(index), "GET", 10)
+                        for index in range(endpoint_index, endpoint_index + in_bucket)
+                    ],
+                ),
+                collected_at=T0 + timedelta(days=8),
+            )
+        )
+        endpoint_index += in_bucket
+        remaining -= in_bucket
+        bucket_index += 1
+
+    with recorded_statements(db_session) as statements:
+        folded = await collector_factory(T0 + timedelta(days=8)).persist_history_volume(
+            source, values, floor=T0
+        )
+        await db_session.flush()
+
+    assert row_count * columns > 32_767
+    assert folded.endpoints_created == row_count
+    assert await db_session.scalar(select(func.count()).select_from(WafEndpoint)) == row_count
+    assert sum("INSERT INTO waf_endpoint " in sql for sql in statements) == 1
 
 
 async def test_empty_history_handoff_keeps_null_watermarks_then_live_seeds(db_session) -> None:  # type: ignore[no-untyped-def]

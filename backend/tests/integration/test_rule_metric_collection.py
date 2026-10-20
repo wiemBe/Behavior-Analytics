@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import event, func, insert, select
 
 from app.collectors.rule_metric_collector import RuleMetricCollector
 from app.core.config import get_settings
@@ -19,6 +20,21 @@ from tests.integration.factories import make_instance
 pytestmark = pytest.mark.integration
 
 NOW = datetime(2026, 7, 31, 12, 0, tzinfo=UTC)
+
+
+@contextmanager
+def recorded_statements(session):  # type: ignore[no-untyped-def]
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, params, context, executemany):  # type: ignore[no-untyped-def]
+        statements.append(statement)
+
+    engine = session.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        yield statements
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
 
 
 async def add_rule(session, instance, qradar_id: int) -> AnalyticsRule:
@@ -102,6 +118,50 @@ async def test_second_run_is_idempotent(db_session) -> None:
     metric = await db_session.scalar(select(RuleMetric))
     assert metric is not None
     assert metric.fire_count == 1
+
+
+@pytest.mark.asyncio
+async def test_tick_writes_more_rule_metrics_than_one_statement_can_bind(db_session) -> None:
+    instance = await make_instance(db_session)
+    columns = len(RuleMetric.__table__.columns)
+    row_count = 32_767 // columns + 1
+    await db_session.execute(
+        insert(AnalyticsRule),
+        [
+            {
+                "instance_id": instance.id,
+                "qradar_id": index,
+                "name": f"Rule {index}",
+                "enabled": True,
+                "is_building_block": False,
+                "first_seen_at": NOW - timedelta(days=90),
+            }
+            for index in range(1, row_count + 1)
+        ],
+    )
+    await db_session.execute(
+        insert(OffenseSnapshot),
+        [
+            {
+                "instance_id": instance.id,
+                "qradar_offense_id": index,
+                "captured_at": NOW - timedelta(hours=1),
+                "start_time": NOW - timedelta(hours=2),
+                "status": "OPEN",
+                "rule_ids": [index],
+            }
+            for index in range(1, row_count + 1)
+        ],
+    )
+    await db_session.flush()
+
+    with recorded_statements(db_session) as statements:
+        report = await collector(db_session).collect(instance)
+
+    assert row_count * columns > 32_767
+    assert report.metrics_written == row_count
+    assert await db_session.scalar(select(func.count()).select_from(RuleMetric)) == row_count
+    assert sum("INSERT INTO rule_metric " in sql for sql in statements) == 1
 
 
 @pytest.mark.asyncio
