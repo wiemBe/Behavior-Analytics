@@ -66,6 +66,21 @@ HISTORY_TABLES = (
             "app.services.pw_retention.<module>": Reader("R7", ReaderKind.DELETE),
         },
     ),
+    HistoryTable(
+        model="CatchallBucket",
+        sql_name="catchall_bucket",
+        readers={
+            "app.api.routes.catchall.list_buckets": Reader("R6", ReaderKind.DISPLAY),
+            "app.api.routes.catchall.list_sources": Reader("R6", ReaderKind.DISPLAY),
+            "app.collectors.catchall_collector.CatchallCollector._live_anchor": Reader(
+                "R1", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.collectors.catchall_collector.CatchallCollector._refresh_events_24h": Reader(
+                "R6", ReaderKind.DISPLAY
+            ),
+            "app.services.catchall_retention.<module>": Reader("R7", ReaderKind.DELETE),
+        },
+    ),
 )
 
 
