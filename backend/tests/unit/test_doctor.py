@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import ast
 import asyncio
+import json
+import pathlib
 import ssl
+import sys
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
@@ -24,6 +28,32 @@ from app.cli.doctor import (
 from app.core.config import Environment, Settings
 from app.models.enums import SearchFamily
 from app.providers.dto import InstanceInfoDTO
+
+#: The `app/` package, for the source sweep that keeps the doctor's known-name set honest.
+APP = pathlib.Path(__file__).resolve().parents[2] / "app"
+
+
+def _collector_name_constants(paths: list[pathlib.Path]) -> list[tuple[str, str]]:
+    """Every module-level `COLLECTOR_NAME` / `*_COLLECTOR` string constant: (label, value)."""
+    found: list[tuple[str, str]] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant):
+                continue
+            value = node.value.value
+            if not isinstance(value, str):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and (
+                    target.id == "COLLECTOR_NAME" or target.id.endswith("COLLECTOR")
+                ):
+                    found.append((f"{path.name}:{target.id}", value))
+    return found
+
+
+async def _dispose_nothing() -> None:
+    """The doctor's engine disposal: a unit test holds no engine to dispose."""
 
 
 class FakeScalars:
@@ -349,6 +379,91 @@ async def test_failing_watermark_names_print_unredacted_but_secrets_stay_masked(
     assert secret not in result.message
     assert "planted-password" not in result.message
     assert "***redacted***" in result.message
+
+    # The output layer redacts the message a second time, so the name has to survive that
+    # pass too: the operator reads the printed line, not the check result.
+    rendered = render_text([result]) + render_json([result])
+    assert "geo_countries_destination" in rendered
+    assert secret not in rendered
+    assert "planted-password" not in rendered
+
+
+def test_doctor_cli_prints_a_known_watermark_name_and_masks_a_token(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The operator's path: `python -m app.cli.doctor` prints the failing collectors."""
+    from app.collectors.geo_collector import watermark_name
+    from app.geo.fold import GeoDirection
+
+    secret = "Zk9qL2mPx7VbN4cRt8YwHs3Qa1b"  # 30 characters, not a known collector name
+    names = [
+        watermark_name(GeoDirection.SOURCE),
+        watermark_name(GeoDirection.DESTINATION),
+        "waf_endpoint_evaluation:17",
+    ]
+    rows = [
+        SimpleNamespace(collector=name, consecutive_failures=3, last_error=None, lag_seconds=None)
+        for name in [*names, secret]
+    ]
+    cadence = SimpleNamespace(family="PHASE_A_VOLUME", cadence_seconds=300)
+
+    def build_doctor() -> Doctor:
+        doctor = make_doctor(settings, FakeSession(scalars_values=[rows, [cadence]]))
+        for check_id, _runbook in doctor_module._CHECK_RUNBOOKS:
+            if check_id == "watermarks":
+                continue
+            monkeypatch.setattr(
+                doctor,
+                f"check_{check_id}",
+                AsyncMock(return_value=CheckResult(check_id, Status.PASS, "healthy")),
+            )
+        return doctor
+
+    monkeypatch.setattr(doctor_module, "Doctor", build_doctor)
+    monkeypatch.setattr(doctor_module, "dispose_engine", _dispose_nothing)
+
+    monkeypatch.setattr(sys, "argv", ["doctor"])
+    assert doctor_module.main() == 2
+    printed = capsys.readouterr().out
+    for name in names:
+        assert name in printed
+    assert secret not in printed
+    assert "***redacted***" in printed
+
+    monkeypatch.setattr(sys, "argv", ["doctor", "--json"])
+    assert doctor_module.main() == 2
+    printed = capsys.readouterr().out
+    payload = json.loads(printed)
+    watermarks = next(row for row in payload if row["id"] == "watermarks")
+    for name in names:
+        assert name in watermarks["message"]
+    assert secret not in watermarks["message"]
+    assert secret not in printed
+
+
+def test_watermark_names_cover_every_collector_name_the_code_defines() -> None:
+    """The doctor's known-name set cannot drift from the collectors the code defines."""
+    from app.collectors.geo_collector import watermark_name
+    from app.geo.fold import GeoDirection
+
+    constants = _collector_name_constants(sorted(APP.rglob("*.py")))
+    assert constants, "the scanner found no collector constant: it proves nothing"
+    names = {value for _label, value in constants}
+    names.update(watermark_name(direction) for direction in GeoDirection)
+    missing = sorted(names - set(doctor_module._WATERMARK_NAMES))
+    assert not missing, f"the doctor would mask these collector names: {missing}"
+
+
+def test_the_collector_name_scanner_finds_a_constant(tmp_path: pathlib.Path) -> None:
+    """The scanner must actually find something, or the guard above proves nothing."""
+    sample = tmp_path / "sample.py"
+    sample.write_text('COLLECTOR_NAME = "some_collector"\n', encoding="utf-8")
+    assert _collector_name_constants([sample]) == [("sample.py:COLLECTOR_NAME", "some_collector")]
+    empty = tmp_path / "empty.py"
+    empty.write_text("VALUE = 1\n", encoding="utf-8")
+    assert _collector_name_constants([empty]) == []
 
 
 @pytest.mark.asyncio
