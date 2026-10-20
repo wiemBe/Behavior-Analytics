@@ -179,6 +179,12 @@ else of the bootstrap: the collector starts the reading at its next tick and own
 history column. The same value as stored is a 200 with no audit row. The request is audited as
 `property_watch.history_request` with the day count, never a value.
 
+A capacity refusal is a 409 whose body is `{"detail": "...", "codes": ["..."]}`: `detail` is the
+reason text, every reason joined into one sentence, and `codes` carries one stable code per reason,
+in the same order. The codes are `ENABLED_CAP`, `GROUP_TOO_LARGE`, `WATCH_SEARCH_LIMIT`,
+`TICK_BUDGET` and `HISTORY_BUDGET`. A client branches on the code, never on the wording; a body
+that carries no code carries none.
+
 ## History backfill
 
 All paths below are under `/admin/history-backfill`. The router requires `read:history_backfill`;
@@ -215,8 +221,10 @@ The console entry holds the decision (`answer`, `days`, who recorded it and when
 requests), the mode (`UNDECIDED`, `NO`, `ACTIVE` or `STOPPED`) and one family per reading family:
 the family's collection switch and the reason for it, the fitted window (`days_requested`,
 `days`, `available`, `limited_by`, `reason`) and its scopes. A scope carries its state, the days
-asked for and the days that fit, the start of the window, the floor (`floor_proved` says whether
-QRadar proved it or whether it is only where the read started), the resume point, the anchor,
+asked for and the days that fit, the start of the window, the floor (`floor_proved` is true only
+when the family proves a scope-wide floor **and** the row carries one: a row with no floor at all —
+a `NOT_ELIGIBLE` one, or one whose floor was never proved — says false; for source volume and
+catch-all the floor is only where the read started), the resume point, the anchor,
 the counters (`searches`, `buckets_read`, `days_read`), the gaps and the reason. A counter that
 was not measured is `null`, never a zero, and `progress_unreadable` says that a stored progress
 did not read back.

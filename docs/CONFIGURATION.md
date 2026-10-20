@@ -258,10 +258,10 @@ answer itself does not depend on them: recording the answer is separate from rea
 | Setting | Default | Meaning |
 |---|---:|---|
 | `HISTORY_BACKFILL_ENABLED` | `true` | Kill switch for reading. Off: no history step runs, and a scope that was reading hands off `PARTIAL` with "history reading was switched off" |
-| `HISTORY_BACKFILL_DAYS` | `28` | The window a Yes reads. `7`–`90`; the per-family window is smaller when the family's own lookback or its retention allows fewer days |
+| `HISTORY_BACKFILL_DAYS` | `28` | The window a Yes reads. `7`–`90`; the per-family window is smaller when the family's own lookback or its retention allows fewer days, and every scope fits its window to the budget |
 | `HISTORY_BACKFILL_SEARCHES_PER_TICK` | `10` | Searches one history step may start, under the family's tick cap. `1`–`64`; the history sub-budget is the smaller of this and what the live pass left of `SEARCH_CADENCE_MAX_SEARCHES_PER_TICK` |
 | `HISTORY_BACKFILL_SECONDS_PER_TICK` | `120` | No history search starts after this many seconds of a tick. `10`–`600` |
-| `HISTORY_BACKFILL_MAX_HOURS` | `72` | The longest wall time a reading may take, and the time the window must leave below the family's retention. `1`–`168`; the window is fitted so that `days x 24 + this` stays below the retention of the family |
+| `HISTORY_BACKFILL_MAX_HOURS` | `72` | The longest wall time a reading may take, and the time the window must leave below the family's retention. `1`–`168`; the window is fitted so that `days x 24 + this` stays below the retention of the family, and so that the reading ends inside this many hours |
 | `HISTORY_BACKFILL_FLOOR_MARGIN_HOURS` | `24` | The margin before the start of the window, where the floor of a scope is proved. `1`–`168` |
 | `HISTORY_BACKFILL_MAX_FAILURES` | `3` | Consecutive failures at the minimum width before a span becomes a recorded gap. `1`–`20` |
 | `HISTORY_BACKFILL_MAX_LOWER_BOUND_SHARE` | `0.05` | The density gate: the share of lower-bound buckets that ends a reading `PARTIAL`. `0.0`–`1.0` |
@@ -281,6 +281,18 @@ a scope is proved; the failure and lower-bound settings decide when a reading st
 gap; the WAF breakdown days are the dominant cost of the WAF family; the baseline batch size
 decides how long the baseline rebuild after a reading takes.
 
+Every scope fits its window to that budget. Source volume, catch-all senders and rule matches fit
+one window for the console; the catch-all fits after its first step, from the density that step
+observed, and reads the whole asked window until it has one. A WAF or an IPS source fits its own,
+before its first search: a WAF source from the endpoints its profile tracks and the searches one
+source may start in a tick, an IPS source from the entities its profile admits and a fair share of
+the searches its tick shares between its sources. A window that does not fit is shortened and the
+scope says why ("window reduced from 28 to 20 days: the estimate exceeded 72 hours"); below seven
+days the scope is `UNAVAILABLE` — and every family but the catch-all makes no search at all, because
+its window is fitted before the first one. A source with nothing to fit yet — a WAF profile that
+tracks no endpoint yet, an IPS profile that admits no entity yet — is fitted with one and says so
+("fitted with no tracked endpoint yet; the 72-hour limit still bounds the reading").
+
 ## Property-watch history bootstrap
 
 A property watch may ask for its own history, separate from the console-wide answer. These
@@ -289,8 +301,8 @@ settings govern that bootstrap.
 | Setting | Default | Meaning |
 |---|---:|---|
 | `PW_BOOTSTRAP_ENABLED` | `true` | Kill switch for the bootstrap. Off: a watch that asks for history starts live and says so |
-| `PW_BOOTSTRAP_DAYS` | `28` | The largest window a watch may ask for, and the default of a new watch. `>= 1` |
-| `PW_BOOTSTRAP_SEARCHES_PER_TICK` | `12` | Searches one history step may start, under the property-watch tick budget. `1`–`256`; must not exceed `PW_MAX_SEARCHES_PER_TICK` |
+| `PW_BOOTSTRAP_DAYS` | `28` | The largest window a watch may ask for, and the default of a new watch. `>= 1`. A watch judges its volume from the hand-off only after `7 x PW_BASELINE_MIN_VISITS` days of history (14 days at the default of two visits); a shorter history keeps the spike, drop and disappearance detectors at `INSUFFICIENT_DATA` until the live buckets add the missing visits |
+| `PW_BOOTSTRAP_SEARCHES_PER_TICK` | `12` | Searches one history step may start, under the property-watch tick budget. `1`–`256`; must not exceed `PW_MAX_SEARCHES_PER_TICK`. A step of a reading costs 2 searches (TOTALS and one GROUPED) and 3 with a pinned value (TOTALS, PINNED and one GROUPED): a smaller setting refuses the watch with `HISTORY_BUDGET`, and a reading that is already running waits and says so |
 | `PW_BOOTSTRAP_SECONDS_PER_TICK` | `180` | No history search starts after this many seconds of a tick. `10`–`3600` |
 | `PW_BOOTSTRAP_FLOOR_MARGIN_HOURS` | `24` | The margin before the start of the window, where the floor of the scope is proved. `1`–`168` |
 | `PW_BOOTSTRAP_MAX_HOURS` | `72` | The longest wall time a bootstrap may take. `1`–`168` |

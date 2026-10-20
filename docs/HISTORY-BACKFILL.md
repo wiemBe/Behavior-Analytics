@@ -453,6 +453,16 @@ boundary** for WAF and IPS (the closed-bucket boundary of the finishing tick). "
 Phase A, catch-all and rule matches are planned from the **anchor**: a scope that has no live bucket is
 `WAITING` (one tick). WAF and IPS scopes are planned at their first collection.
 
+> **As built.** Step 6 follows the density of the **step that just ended**, not the mean of the whole
+> reading: a dense stretch narrows the width at once to the row fit
+> (`floor(0.8 x row_cap / (1.25 x the rows of that step's non-silent buckets))`, clamped between the
+> family's minimum width and the 168-hour span), and a quiet one lets it grow, at most doubled per
+> step. A step that held no non-silent bucket says nothing about the density, so the width doubles at
+> most and the fit it would return is the initial width of one day. The first density a reading
+> observes is the width itself. A failed search halves the width and puts a ceiling on it; three
+> clean steps release that ceiling at the row fit, or double it when the fit is still below twice the
+> ceiling.
+
 ### B.6.3 Failure is not truncation **[BUILT]**
 
 The family drivers' rules are kept: a **truncated** multi-bucket search keeps nothing and is split in time; at
@@ -478,16 +488,29 @@ volume).
 > `UNAVAILABLE` with the reason in words. The estimate of §B.8 then fits the window to the budget:
 > source volume, catch-all and rule matches reduce it to the largest `D'` whose estimate fits
 > `history_backfill_max_hours` ("window reduced from 28 to 20 days: the estimate exceeded 72 hours")
-> and refuse below seven days. WAF and IPS bound the window by the lookback and the retention only;
-> their reading reaches a moving boundary, so a window that is too wide for the budget ends
-> `PARTIAL` with "the reading did not finish in 72 h" rather than being shortened. The admin page
-> says which window each family may read.
+> and refuse below seven days. **WAF and IPS fit their window too, per source, at the scope's first
+> step**: a WAF source is fitted with the endpoints its profile tracks and the searches one source
+> may start in a tick; an IPS source is fitted with the entities its profile admits and a fair share
+> of the searches its tick shares between its sources. A window that does not fit is reduced and the
+> scope's reason says "window reduced from 28 to 20 days: the estimate exceeded 72 hours"; below
+> seven days the scope is `UNAVAILABLE` with the estimate and **no search is made**. A source with
+> nothing to fit yet (a WAF profile that tracks no endpoint yet, an IPS profile that admits no entity
+> yet) is fitted with one and the scope says so ("fitted with no tracked endpoint yet; the 72-hour
+> limit still bounds the reading", "fitted with no admitted entity yet; the 72-hour limit still
+> bounds the reading"). The estimate of §B.10.2 models WAF and IPS per source and reports the
+> smallest fitted window of the sources. The admin page says which window each family may read.
 
-At planning, the planner computes the estimate of §B.8 for the scope from the first span's observed density.
+At the scope's first step the estimate of §B.8 is computed for that scope, from the shape it has:
+the monitored sources of Phase A, the endpoints a WAF profile tracks, the entities an IPS profile
+admits, the enabled rules of the console. The catch-all is the exception: it fits its window after
+its first step, from the density that step observed, and reads the whole asked window until it has
+one.
 If `ceil(searches / sub-budget) x cadence > history_backfill_max_hours`, the window is **reduced to the largest
-`D'` that fits**, never below 7 days (one visit per hour-of-week), and `history_reason` says "window reduced from
-28 to 20 days: the estimate exceeded 72 hours". Below 7 days the scope is `UNAVAILABLE` with the estimate. The
-reduced window always ends at the anchor or the moving boundary, so what is read is the **newest** `D'` days.
+`D'` that fits**, never below 7 days (one visit per hour-of-week), and the scope's reason says "window reduced from
+28 to 20 days: the estimate exceeded 72 hours". Below 7 days the scope is `UNAVAILABLE` with the estimate. Every
+family but the catch-all fits its window before its first search, so nothing is searched at all; the catch-all
+ends the same way after that step. The reduced window always ends at the anchor or the moving boundary, so what is
+read is the **newest** `D'` days.
 
 ## B.7 State, resumption and idempotence **[BUILT]**
 
@@ -635,12 +658,16 @@ or per-source statement**.
 
 | Family | How training runs | Ticks after hand-off (small / typical / large) |
 |---|---|---|
-| Phase A | a rebuild for the sources just read, `history_backfill_baseline_sources_per_tick` (50) per tick, scheduled by the hand-off (`baseline.py:96-137` is per source) | 1 / 2 / 20 |
+| Phase A | a rebuild for the sources just read, `history_backfill_baseline_sources_per_tick` (50) per tick, scheduled by the hand-off; a source's cells are written in one statement | 1 / 2 / 20 |
 | WAF | `waf_baseline_endpoints_per_run` = 50 per run (`config.py:482`) | 1 / 6 / 120 |
 | IPS | `ips_baseline_rebuild_batch_size` = 50 (`config.py:189`) | 1 / 6 / 40 |
 | Catch-all, rule matches | no training | 0 |
 
 Until a value is trained its verdict is `INSUFFICIENT_DATA` (learning), never a guess.
+
+The Phase A rebuild writes a source's cells in **one** statement (a bulk `INSERT ... ON CONFLICT DO
+UPDATE`, the version computed in SQL), not one statement per cell: a source costs two reads (its
+buckets and its anomalies) and that one write, whatever the number of cells.
 
 ## B.9 The installer asks once **[BUILT]**
 
@@ -849,7 +876,11 @@ None of them takes an AQL or a window from the browser; `days` is the stored set
 > decision recorded in the meantime, and "Read history now" or "Stop reading" on a console with no
 > `YES` ("record Yes first"). The decision returns 201 when the row was created and 200 when it
 > already existed or was upgraded; the two requests change no scope row and say so in their
-> message.
+> message. A restarted scope keeps the earlier reading's window and evidence (`days_target`,
+> `target_start`, `floor`, `through`) until its first step replaces them, so the row shows the
+> state "Reading", the reason "read history now: topping up", the previous window and floor, and
+> no counter at all (the new reading has searched nothing yet): a counter that was not measured is
+> `null`, never a zero.
 
 ## B.11 Relation to the property-watch bootstrap **[BUILT]**
 
@@ -1017,7 +1048,18 @@ sign-in. The alternative (Escape means No) would silently remove the only entry 
     (`custom_rules/engine.py:266-282`); a kind that has one reads every row after it, history included,
     unless the loader excludes it.
 
-### B.14.4 Live validation (HB-12), the checks
+### B.14.4 Live validation (HB-12), the checks **[BUILT]**
+
+> **As built.** Validated on the lab console on 2026-10-20. Phase A, catch-all, WAF and IPS read their
+> past and handed off with no gap and no overlap. A second source that already had live buckets was
+> `NOT_ELIGIBLE`. Nothing older than a scope's hand-off was judged: the console held 5 source-volume
+> anomalies, 1 custom-rule breach and 2 alerts, and none of them was before its scope's hand-off. A
+> worker restart between two ticks gave the same 82,625 rows as an uninterrupted reading. Rule-match
+> history was refused by the console's parser (QRadar 7.6.0 rejects the ordered floor-scan query);
+> the query was changed and the family reads again. The measured Ariel cost on that console was about
+> 0.06 s per hour of span. The reading's searches against the estimate of §B.8: Phase A 66 of 113, WAF
+> 5 of 69, catch-all 22 against an estimated 5 to 6 (its senders are spiky), rule matches 6 of 175.
+> The estimate is a model, not a promise.
 
 - history rows carry the marker; contiguous 5-minute starts from the floor to the anchor, no duplicate; the first
   live bucket starts at the anchor;
