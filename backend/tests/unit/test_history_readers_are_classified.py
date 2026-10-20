@@ -63,6 +63,11 @@ HISTORY_TABLES = (
             "app.services.property_watches.value_series": Reader("R6", ReaderKind.DISPLAY),
             "app.services.property_watches.watch_buckets": Reader("R6", ReaderKind.DISPLAY),
             "app.services.property_watches.watch_aql": Reader("R6", ReaderKind.DISPLAY),
+            # PW-13d: counts every stored bucket of the current version, history included,
+            # to refuse a history request that would prepend (§H.5.5).
+            "app.services.property_watches.history_change_reasons": Reader(
+                "R6 (PW-13d)", ReaderKind.DISPLAY
+            ),
             "app.services.pw_retention.<module>": Reader("R7", ReaderKind.DELETE),
         },
     ),

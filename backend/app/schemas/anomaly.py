@@ -513,6 +513,10 @@ class PwDetectionDetailOut(BaseModel):
     #: New value and new combination only.
     classification: str | None = None
     history_buckets_verified: int | None = None
+    #: Of those, the buckets read from QRadar's past, and the floor that reading proved.
+    #: `None` for an incident stored before the bootstrap: never a zero.
+    history_buckets_from_history: int | None = None
+    history_floor: datetime | None = None
     events_since_first_seen: float | None = None
     buckets_with_traffic: int | None = None
     claim: str | None = None
@@ -762,6 +766,17 @@ def _count(source: dict[str, Any], key: str) -> int | None:
     return int(value) if value is not None else None
 
 
+def _moment(source: dict[str, Any], key: str) -> datetime | None:
+    """An ISO timestamp stored in the evidence, or None when absent or not one."""
+    value = source.get(key)
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 def pw_detection_detail(details: dict[str, Any] | None) -> PwDetectionDetailOut | None:
     """Project a stored property-watch evidence dict onto the typed detection block.
 
@@ -795,6 +810,8 @@ def pw_detection_detail(details: dict[str, Any] | None) -> PwDetectionDetailOut 
         fallback_bound=_num(extra, "fallback_bound"),
         classification=_text(extra, "classification"),
         history_buckets_verified=_count(extra, "history_buckets_verified"),
+        history_buckets_from_history=_count(extra, "history_buckets_from_history"),
+        history_floor=_moment(extra, "history_floor"),
         events_since_first_seen=_num(extra, "events_since_first_seen"),
         buckets_with_traffic=_count(extra, "buckets_with_traffic"),
         claim=_text(extra, "claim"),

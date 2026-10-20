@@ -45,6 +45,7 @@ from app.core.rate_limit import limiter
 from app.custom_rules.alerts import alerting_mode
 from app.models.enums import (
     PwAnomalyType,
+    PwHistoryState,
     PwReferenceKind,
     PwScopeKind,
     PwWatchStatus,
@@ -60,6 +61,7 @@ from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider_for_instance
 from app.repositories.audit import record_audit
 from app.schemas.property_watch import (
+    HistoryRequestIn,
     PagedWatchValues,
     PinsIn,
     PinsOut,
@@ -247,6 +249,18 @@ async def _one_out(
     return (await svc.watch_outs(session, [watch], settings, alerting_mode=mode, detail=detail))[0]
 
 
+def _create_history_days(body: PropertyWatchCreate, settings: Settings) -> int | None:
+    """What the new watch asks for: its own value, else the setting (design D-29).
+
+    Omitted, the request is `pw_bootstrap_days` while history reading is on and none while it
+    is off (a default request would only produce a `PARTIAL` "switched off"). An explicit value
+    is stored as asked even with the switch off; the collector then reports it.
+    """
+    if "history_days" in body.model_fields_set:
+        return body.history_days
+    return settings.pw_bootstrap_days if settings.pw_bootstrap_enabled else None
+
+
 def _raw_properties(refs: list) -> list[dict[str, str]]:
     return [{"kind": r.kind.value, "name": r.name} for r in refs]
 
@@ -256,6 +270,7 @@ def _raw_properties(refs: list) -> list[dict[str, str]]:
 async def get_catalog(session: SessionDep, settings: SettingsDep) -> WatchCatalogOut:
     """The editor's switches and bounds. Registered before ``/{watch_id}``."""
     enabled, used = await svc.enabled_cost_total(session, settings)
+    reading = await svc.reading_count(session)
     return WatchCatalogOut(
         collection_enabled=settings.pw_collection_enabled,
         alerting_mode=alerting_mode(settings.pw_alerting_enabled),
@@ -280,6 +295,11 @@ async def get_catalog(session: SessionDep, settings: SettingsDep) -> WatchCatalo
         hours_default=svc.HOURS_DEFAULT,
         preview_searches=svc.PREVIEW_SEARCHES,
         preview_rate_limit=settings.rate_limit_search_execution,
+        history=svc.history_catalog(
+            settings,
+            reading=reading,
+            searches_free=settings.pw_max_searches_per_tick - used,
+        ),
     )
 
 
@@ -543,6 +563,14 @@ async def create_watch(
         detectors=detectors,
     )
     reasons = svc.validate_draft(draft, max_pinned=settings.pw_max_pinned_values)
+    history_days = _create_history_days(body, settings)
+    if "history_days" in body.model_fields_set and body.history_days is None:
+        reasons.append("history_days must not be null; use 0 for no history")
+    elif history_days is not None:
+        day_reasons = svc.history_days_reasons(history_days, settings)
+        reasons.extend(day_reasons)
+        if history_days >= 1 and not day_reasons:
+            reasons.extend(await svc.pinned_rows_reasons(session, draft, settings))
     instance_id: uuid.UUID | None = None
     if body.scope_kind is PwScopeKind.LOG_SOURCE and body.log_source_id is not None:
         source = await session.get(LogSource, body.log_source_id)
@@ -578,6 +606,7 @@ async def create_watch(
         pinned_values=[list(p) for p in body.pinned_values],
         detectors=detectors,
         severity=body.severity,
+        history_days=history_days,
         watch_version=1,
         enabled=False,
         created_by=principal.subject,
@@ -638,6 +667,7 @@ def _editable(watch: PropertyWatch) -> dict[str, object]:
         "detectors": [str(d) for d in watch.detectors],
         "severity": str(watch.severity),
         "enabled": bool(watch.enabled),
+        "history_days": watch.history_days,
     }
 
 
@@ -656,6 +686,7 @@ class _Merged:
     detectors: list[str]
     severity: Severity
     enabled: bool
+    history_days: int | None
 
 
 def _merge(watch: PropertyWatch, payload: PropertyWatchUpdate) -> _Merged:
@@ -700,6 +731,11 @@ def _merge(watch: PropertyWatch, payload: PropertyWatchUpdate) -> _Merged:
             payload.enabled
             if "enabled" in present and payload.enabled is not None
             else bool(watch.enabled)
+        ),
+        history_days=(
+            payload.history_days
+            if "history_days" in present and payload.history_days is not None
+            else watch.history_days
         ),
     )
 
@@ -754,6 +790,9 @@ async def update_watch(
     )
     reasons = svc.validate_draft(draft, max_pinned=settings.pw_max_pinned_values)
     before = _editable(watch)
+    days_changed = merged.history_days != watch.history_days
+    if days_changed and merged.history_days is not None:
+        reasons.extend(svc.history_days_reasons(merged.history_days, settings))
     after_scope = _label(kind, merged.log_source_id, merged.scope_type_id, merged.scope_group_id)
     scope_changed = after_scope != before["scope"]
     instance_id = watch.instance_id
@@ -776,10 +815,24 @@ async def update_watch(
         "detectors": merged.detectors,
         "severity": merged.severity.value,
         "enabled": merged.enabled,
+        "history_days": merged.history_days,
     }
     changed = {key for key in after if after[key] != before[key]}
     if not changed:
         return await _one_out(session, watch, settings, detail=True)
+    if "history_days" in changed:
+        blockers = await svc.history_change_reasons(session, watch)
+        if blockers:
+            raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(blockers))
+    reads_history = (
+        merged.history_days is not None
+        and merged.history_days >= 1
+        and PwHistoryState(str(watch.history_state))
+        in (PwHistoryState.NOT_REQUESTED, PwHistoryState.READING)
+    )
+    if reads_history and changed & {"history_days", "pinned_values", "properties"}:
+        # The pins a reading would search for must fit one search (decision of 2026-10-19).
+        _reject(await svc.pinned_rows_reasons(session, draft, settings))
     new_name = merged.name
     if "name" in changed:
         taken = await session.scalar(
@@ -795,7 +848,8 @@ async def update_watch(
     wants_enabled = merged.enabled
     # Enabling, or changing what an enabled watch costs, takes one of the capped slots.
     needs_capacity = wants_enabled and (
-        not was_enabled or bool(changed & {"scope", "properties", "pinned_values"})
+        not was_enabled
+        or bool(changed & {"scope", "properties", "pinned_values", "history_days"})
     )
     if needs_capacity:
         await _lock_enabled_cap(session)
@@ -823,6 +877,7 @@ async def update_watch(
     watch.detectors = list(draft.detectors)
     watch.severity = merged.severity
     watch.enabled = wants_enabled
+    watch.history_days = merged.history_days
     if changed & {"scope", "properties"}:
         # The semantics identity (design §G.3): values never compare across it.
         watch.watch_version = int(watch.watch_version) + 1
@@ -1055,6 +1110,22 @@ async def put_pins(
         "unpin a value",
         value_keys=svc.removed_pin_keys(watch.pinned_values, payload.pinned_values),
     )
+    if svc.watch_reads_history(watch):
+        _reject(
+            await svc.pinned_rows_reasons(
+                session,
+                svc.WatchDraft(
+                    scope_kind=PwScopeKind(str(watch.scope_kind)),
+                    log_source_id=watch.log_source_id,
+                    scope_type_id=watch.scope_type_id,
+                    scope_group_id=watch.scope_group_id,
+                    properties=[dict(p) for p in watch.properties],
+                    pinned_values=payload.pinned_values,
+                    detectors=[str(d) for d in watch.detectors],
+                ),
+                settings,
+            )
+        )
     current = {tuple(p) for p in watch.pinned_values}
     wanted = [list(p) for p in payload.pinned_values]
     incoming = {tuple(p) for p in wanted}
@@ -1080,3 +1151,51 @@ async def put_pins(
     out = await _one_out(session, watch, settings, detail=True)
     # The detail read already holds the rules, read in one statement (design §G.13.3).
     return PinsOut(watch=out, added=added, removed=removed, rules=out.threshold_rules or [])
+
+
+# ------------------------------------------------------------------------------ history
+@router.post("/{watch_id}/history", response_model=PropertyWatchOut)
+async def request_history(
+    watch_id: uuid.UUID,
+    payload: HistoryRequestIn,
+    session: SessionDep,
+    principal: PrincipalDep,
+    settings: SettingsDep,
+) -> PropertyWatchOut:
+    """Ask for `history_days` of QRadar's past, read once by the collector (design §H.5.5).
+
+    The route writes the request and nothing else of the bootstrap: the collector begins the
+    reading at its next tick and owns every other ``history_*`` column. Allowed only before
+    anything was read (409 otherwise, naming why). The same value as stored is a 200 with no
+    audit row. The body takes no AQL, window or boundary: unknown keys are refused.
+    """
+    _guard(principal)
+    watch = await _locked(session, watch_id)
+    _reject(svc.history_days_reasons(payload.history_days, settings))
+    previous = watch.history_days
+    if payload.history_days == previous:
+        return await _one_out(session, watch, settings, detail=True)
+    blockers = await svc.history_change_reasons(session, watch)
+    if blockers:
+        raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(blockers))
+    if payload.history_days >= 1:
+        _reject(await svc.pinned_rows_reasons(session, watch, settings))
+    if watch.enabled:
+        await _lock_enabled_cap(session)
+    watch.history_days = payload.history_days
+    if watch.enabled:
+        capacity = await svc.history_budget_reasons(session, watch, settings)
+        if capacity:
+            raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(capacity))
+    watch.updated_by = principal.subject
+    watch.updated_at = _bumped(_utc(watch.updated_at))
+    await session.flush()
+    await record_audit(
+        session,
+        action="property_watch.history_request",
+        actor=principal.subject,
+        object_type="property_watch",
+        object_id=str(watch.id),
+        detail={"history_days": payload.history_days, "previous": previous},
+    )
+    return await _one_out(session, watch, settings, detail=True)
