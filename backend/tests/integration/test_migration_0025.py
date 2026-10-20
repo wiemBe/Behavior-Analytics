@@ -61,7 +61,9 @@ def test_0025_disables_the_seed_admin_and_round_trips(clean_db: str) -> None:
 
     config = _alembic_config(clean_db)
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["0025"]
+    heads = script.get_heads()
+    assert len(heads) == 1
+    assert "0025" in {item.revision for item in script.walk_revisions("base", heads[0])}
     revision = script.get_revision("0025")
     assert revision is not None
     assert revision.down_revision == "0024"

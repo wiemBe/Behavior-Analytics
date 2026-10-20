@@ -28,6 +28,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.history.origin import HistoryOrigin
 from app.models.rule import (
     AnalyticsRule,
     RuleMatchMetric,
@@ -103,7 +104,7 @@ class RuleStatisticsService:
         span_start = floor_to_window(settled_until - timedelta(days=days), ws)
 
         counts = await self._counts(instance_id)
-        coverage = await self._coverage(instance_id, span_start, now)
+        coverage, history_windows = await self._coverage(instance_id, span_start, now)
         window = StatisticsWindow(
             days=days,
             span_start=span_start,
@@ -112,6 +113,7 @@ class RuleStatisticsService:
             window_seconds=ws,
             expected_windows=coverage.expected,
             complete_windows=coverage.complete,
+            history_windows=history_windows,
             truncated_windows=coverage.truncated,
             failed_windows=coverage.failed,
             missing_windows=coverage.missing,
@@ -193,7 +195,14 @@ class RuleStatisticsService:
     # -------------------------------------------------------------- coverage
     async def _coverage(
         self, instance_id: uuid.UUID, span_start: datetime, now: datetime
-    ) -> MatchCoverage:
+    ) -> tuple[MatchCoverage, int]:
+        """The span's coverage, and how many of its COMPLETE windows came from history.
+
+        The marker rides the same select as the window rows (§B.4.5), so the
+        count costs no statement. `assess_coverage` stays pure and untouched:
+        the history windows are assessed by the same function, over the history
+        rows alone, which counts exactly the grid windows the backfill read.
+        """
         ever = (
             await self.session.scalar(
                 select(RuleMatchWindow.instance_id)
@@ -201,27 +210,44 @@ class RuleStatisticsService:
                 .limit(1)
             )
         ) is not None
-        rows: list[tuple[datetime, int, str]] = []
+        rows: list[tuple[datetime, int, str, str | None]] = []
         if ever:
             result = await self.session.execute(
                 select(
                     RuleMatchWindow.window_start,
                     RuleMatchWindow.window_seconds,
                     RuleMatchWindow.status,
+                    RuleMatchWindow.origin,
                 ).where(
                     RuleMatchWindow.instance_id == instance_id,
                     RuleMatchWindow.window_start >= span_start,
                 )
             )
-            rows = [(start, secs, str(status)) for start, secs, status in result.all()]
-        return assess_coverage(
-            rows,
+            rows = [
+                (start, secs, str(status), origin)
+                for start, secs, status, origin in result.all()
+            ]
+        coverage = assess_coverage(
+            [(start, secs, status) for start, secs, status, _origin in rows],
             evaluation_start=span_start,
             now=now,
             window_seconds=self.settings.rule_match_window_seconds,
             settle_seconds=self.settings.rule_match_settle_lag_seconds,
             ever_collected=ever,
         )
+        history = assess_coverage(
+            [
+                (start, secs, status)
+                for start, secs, status, origin in rows
+                if origin == HistoryOrigin.HISTORY.value
+            ],
+            evaluation_start=span_start,
+            now=now,
+            window_seconds=self.settings.rule_match_window_seconds,
+            settle_seconds=self.settings.rule_match_settle_lag_seconds,
+            ever_collected=ever,
+        )
+        return coverage, history.complete
 
     # ---------------------------------------------------------------- silent
     async def _silent(

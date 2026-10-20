@@ -199,6 +199,7 @@ class WafAnomalyEngine:
             WafAnomalyType, Callable[[WafDetectionContext], WafSpikeVerdict]
         ] | None = None,
         enqueuer: AlertEnqueuer | None = None,
+        history_end: datetime | None = None,
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
@@ -206,6 +207,7 @@ class WafAnomalyEngine:
         self.detectors = detectors if detectors is not None else WAF_DETECTOR_FUNCTIONS
         self.alerts = AlertService(session, clock=self._clock)
         self._enqueuer = enqueuer
+        self.history_end = history_end
 
     def _thresholds(self) -> WafThresholds:
         s = self.settings
@@ -490,11 +492,15 @@ class WafAnomalyEngine:
         window_ends: dict[uuid.UUID, datetime] = {}
         for subject in subjects:
             endpoint, obs = subject.endpoint, subject.observation
+            hand_off = self.history_end
             window_end = endpoint.first_seen_at + timedelta(
                 seconds=thresholds.new_endpoint_window_buckets * obs.bucket_seconds
             )
             window_ends[endpoint.id] = window_end
-            if obs.bucket_start >= window_end:
+            established_at_hand_off = (
+                hand_off is not None and endpoint.first_seen_at < hand_off
+            )
+            if established_at_hand_off or obs.bucket_start >= window_end:
                 result[endpoint.id] = NoveltyFacts(
                     first_seen_at=endpoint.first_seen_at,
                     window_end=window_end,
@@ -503,7 +509,9 @@ class WafAnomalyEngine:
                         complete=False, reason="history was not loaded for an established endpoint"
                     ),
                     history_start=endpoint.first_seen_at - history_delta,
-                    history_end=endpoint.first_seen_at,
+                    history_end=(
+                        hand_off if hand_off is not None else endpoint.first_seen_at
+                    ),
                     history_buckets=0,
                     appearance_flood=None,
                     requests_since_first_seen=0,

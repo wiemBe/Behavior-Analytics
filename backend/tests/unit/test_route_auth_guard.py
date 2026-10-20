@@ -138,6 +138,22 @@ _BODIES: dict[tuple[str, str], dict] = {
     ("PATCH", "/api/v1/custom-rules/{rule_id}"): {
         "expected_updated_at": "2026-01-01T00:00:00Z",
     },
+    # Property watches check `property_watch:write` in the handler, after validation. The
+    # preview takes no body; its permission is the handler's, not the mount's.
+    ("POST", "/api/v1/property-watches"): {
+        "name": "guard",
+        "scope_kind": "LOG_SOURCE_TYPE",
+        "scope_type_id": 1,
+        "properties": [{"kind": "NORMALIZED", "name": "username"}],
+    },
+    ("PATCH", "/api/v1/property-watches/{watch_id}"): {
+        "expected_updated_at": "2026-01-01T00:00:00Z",
+    },
+    ("PUT", "/api/v1/property-watches/{watch_id}/pins"): {
+        "expected_updated_at": "2026-01-01T00:00:00Z",
+        "pinned_values": [],
+    },
+    ("POST", "/api/v1/property-watches/{watch_id}/history"): {"history_days": 7},
     # Auth administration. The read-only principal is refused by the router
     # guard; the bodies are valid so a body-first failure cannot hide that.
     ("POST", "/api/v1/auth/password"): {
@@ -169,6 +185,9 @@ _BODIES: dict[tuple[str, str], dict] = {
     },
     ("PUT", "/api/v1/users/{user_id}/roles"): {"roles": []},
     ("POST", "/api/v1/users/{user_id}/reset-password"): {"password": "guard-password-12"},
+    # History backfill: the three writes check `admin:history_backfill` in the
+    # handler, after body validation, so the guard needs a body that passes it.
+    ("PUT", "/api/v1/admin/history-backfill/{instance_id}"): {"answer": "YES"},
 }
 
 _ID = str(uuid.uuid4())

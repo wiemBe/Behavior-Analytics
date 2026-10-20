@@ -141,3 +141,19 @@ def test_settle_setting_is_bounded_and_explanation_beat_ticks_every_minute() -> 
     with pytest.raises(ValueError):
         Settings(search_cadence_settle_seconds=901)
     assert celery_app.conf.beat_schedule["collect-anomaly-explanations"]["schedule"] == 60.0
+
+
+def test_bucket_seconds_is_none_only_for_a_family_with_no_buckets() -> None:
+    from app.core.config import get_settings
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import bucket_seconds
+
+    settings = get_settings().model_copy(
+        update={"collection_interval_seconds": 900, "rule_match_window_seconds": 3600}
+    )
+    assert bucket_seconds(SearchFamily.ANOMALY_EXPLANATION, settings) is None
+    assert bucket_seconds(SearchFamily.PROPERTY_WATCH, settings) == 900
+    assert bucket_seconds(SearchFamily.RULE_MATCH, settings) == 3600
+    for family in SearchFamily:
+        if family is not SearchFamily.ANOMALY_EXPLANATION:
+            assert bucket_seconds(family, settings) is not None

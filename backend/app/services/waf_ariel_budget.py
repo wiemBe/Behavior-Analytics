@@ -26,7 +26,10 @@ does nothing else.
   * *Bounded wait.* Acquisition polls every `WAF_ARIEL_PERMIT_POLL_SECONDS` for
     at most `WAF_ARIEL_PERMIT_WAIT_SECONDS`. It never queues behind a lock.
   * *Observable.* Held slots are visible in `pg_locks`; `active_permits` counts
-    them.
+    them in this database. Advisory locks are scoped to their database, and
+    `pg_locks` lists every database on the server, so the count is restricted
+    to the current database: a permit held by another installation that shares
+    the server is not this installation's.
 
 On a non-PostgreSQL bind (the SQLite unit suite) the budget is unbounded, as
 `CollectorAdvisoryLock` is.
@@ -130,17 +133,21 @@ class WafArielBudget:
             await self._sleep(self.poll_seconds)
 
     async def active_permits(self, session: AsyncSession) -> int | None:
-        """Slots currently held by any backend. None when not enforced.
+        """Slots currently held in this database. None when not enforced.
 
         Counts slots below the *configured* limit only; a slot above it would
-        belong to a worker still running with a larger, older setting.
+        belong to a worker still running with a larger, older setting. Permits
+        in another database on the same server are not counted: the advisory
+        locks behind them are scoped to that database.
         """
         if not self.enforced:
             return None
         count = await session.scalar(
             text(
                 "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted "
-                "AND objsubid = 2 AND classid = :ns AND objid < :limit"
+                "AND objsubid = 2 AND classid = :ns AND objid < :limit "
+                "AND database = (SELECT oid FROM pg_database "
+                "WHERE datname = current_database())"
             ).bindparams(ns=self.namespace, limit=self.limit)
         )
         return int(count or 0)

@@ -139,6 +139,7 @@ export function SourceEps({
             <SourceEpsChart
               buckets={buckets}
               lookup={lookup}
+              labelled={expanded}
               ariaLabel={`${label ?? "Log source"} EPS against the expected range, last ${RANGE_TEXT[window]}`}
               textSummary={`${complete} of ${buckets.length} stored buckets were fully collected in the last ${RANGE_TEXT[window]}.`}
             />

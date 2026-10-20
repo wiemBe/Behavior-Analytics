@@ -29,17 +29,21 @@ import { VolumeChart } from "@/components/behavior/VolumeChart";
 import { AnomalyTabs } from "@/components/behavior/AnomalyTabs";
 import { detectorSpec } from "@/components/ips/ipsDetectors";
 import { IpsInvestigation, type IpsSeriesData } from "@/components/ips/IpsInvestigation";
+import { PwInvestigation, type PwInvestigationData } from "@/components/propertywatch/PwInvestigation";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WafInvestigation } from "@/components/waf/WafInvestigation";
 import {
   ApiError,
   api,
   isIpsDetail,
+  isPwDetail,
   isWafDetail,
   type AnomalyDetail,
   type IpsAnomalyDetail,
   type IpsBaselineCell,
   type MetricBucket,
+  type PwAnomalyDetail,
+  type PwValueSeries,
   type WafAnomalyDetail,
   type WafBaselineCell,
   type WafMetricBucket,
@@ -128,6 +132,7 @@ async function ipsSeries(anomaly: IpsAnomalyDetail): Promise<IpsSeriesData | nul
       const page = await api.ipsEntityMetrics(anomaly.ips_entity.id, window);
       return { kind: "entity", buckets: page.items };
     }
+    if (anomaly.log_source_id === null) return null;
     const page = await api.ipsSourceMetrics(anomaly.log_source_id, window);
     return { kind: "source", buckets: page.items };
   } catch {
@@ -176,6 +181,61 @@ async function canOpenIpsSource(): Promise<boolean> {
   }
 }
 
+/** The series read serves at most this many hours back from now. */
+const PW_SERIES_MAX_HOURS = 168;
+
+/**
+ * What the property-watch view draws: its series around the incident and the watch's buckets.
+ * The value's id comes from `GET /anomalies/{id}` (`pw_value.value_id`), never from a lookup by
+ * the value's text; it is null once retention deleted the value, and then there is no series to
+ * read. Every part is optional: a failed read is `null` and the view says so, it is not "nothing".
+ */
+async function pwData(anomaly: PwAnomalyDetail): Promise<PwInvestigationData> {
+  const anchor = Date.parse(anomaly.anomaly_start ?? anomaly.detected_at);
+  const end = Date.parse(anomaly.anomaly_end ?? anomaly.resolved_at ?? anomaly.detected_at);
+  const now = Date.now();
+  const windowStart = new Date(anchor - CONTEXT_HOURS * 3600_000);
+  const windowEnd = new Date(Math.min(now, Math.max(end, anchor) + CONTEXT_HOURS * 3600_000));
+  const base = { windowStart: windowStart.toISOString(), windowEnd: windowEnd.toISOString() };
+  const hours = Math.ceil((now - windowStart.getTime()) / 3600_000);
+  const watchId = anomaly.pw_value.watch_id;
+  const valueId = anomaly.pw_value.value_id;
+
+  if (valueId === null) {
+    return {
+      ...base,
+      series: null,
+      buckets: null,
+      chartNote:
+        "This value is no longer stored (retention), so its series cannot be read and no chart is drawn. The incident's own figures and lifecycle are kept below.",
+    };
+  }
+  if (hours > PW_SERIES_MAX_HOURS) {
+    return {
+      ...base,
+      series: null,
+      buckets: null,
+      chartNote: `This incident is older than the ${PW_SERIES_MAX_HOURS / 24} days the series read covers, so its chart is not drawn. The incident's own figures and lifecycle are shown.`,
+    };
+  }
+  const [series, buckets] = await Promise.all([
+    api
+      .propertyWatchSeries(watchId, [valueId], hours)
+      .then((r) => r.series[0] ?? null)
+      .catch(() => null as PwValueSeries | null),
+    api.propertyWatchBuckets(watchId, hours).catch(() => null),
+  ]);
+  return {
+    ...base,
+    series,
+    buckets,
+    chartNote:
+      series === null
+        ? "The series of this value could not be loaded. The rest of this investigation is unaffected, but the chart is absent rather than empty."
+        : null,
+  };
+}
+
 export default async function AnomalyDetailPage({
   params,
 }: {
@@ -183,7 +243,7 @@ export default async function AnomalyDetailPage({
 }) {
   const { id } = await params;
 
-  let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | null = null;
+  let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | null = null;
   let status = 0;
   try {
     loaded = await api.anomaly(id);
@@ -213,6 +273,10 @@ export default async function AnomalyDetailPage({
     );
   }
 
+  // A property-watch value is investigated against its own watch's series, in events per bucket.
+  if (isPwDetail(loaded)) {
+    return <PwInvestigation anomaly={loaded} data={await pwData(loaded)} />;
+  }
   // A WAF endpoint is investigated against its own request buckets, in requests
   // rather than EPS, so it has its own view; the Phase A page below is unchanged.
   if (isWafDetail(loaded)) {
@@ -256,6 +320,7 @@ export default async function AnomalyDetailPage({
   let buckets: MetricBucket[] = [];
   let bucketsFailed = false;
   try {
+    if (anomaly.log_source_id === null) throw new Error("no source");
     buckets = await api.sourceMetrics(anomaly.log_source_id, { since, until, limit: 2000 });
   } catch {
     bucketsFailed = true;

@@ -623,6 +623,97 @@ class Settings(BaseSettings):
     waf_new_endpoint_min_requests: int = Field(default=20, ge=1)
     waf_new_endpoint_min_buckets: int = Field(default=2, ge=1)
 
+    # --- Phase G property watches (design §G.14.3) ---------------------------
+    #: Family kill switch: the PROPERTY_WATCH dispatch is a no-op while false.
+    pw_collection_enabled: bool = False
+    #: Shadow mode: incidents are recorded and nothing opens an alert while false.
+    pw_alerting_enabled: bool = False
+    #: Enabled watches; enabling beyond it is refused.
+    pw_max_enabled_watches: int = Field(default=10, ge=1, le=100)
+    #: Searches one instance may send per tick, and one watch within it.
+    pw_max_searches_per_tick: int = Field(default=40, ge=1, le=256)
+    pw_max_searches_per_watch_per_tick: int = Field(default=12, ge=1, le=256)
+    #: Sources per search (`logsourceid IN (...)`); a larger group is chunked.
+    pw_max_sources_per_search: int = Field(default=50, ge=1, le=500)
+    #: Chunks per watch; a scope needing more is SCOPE_TOO_LARGE.
+    pw_max_chunks_per_watch: int = Field(default=4, ge=1, le=20)
+    #: Rows per search; one more than this is read so a cut is visible (L8).
+    pw_max_rows_per_search: int = Field(default=5000, ge=1, le=100_000)
+    #: Untracked values the fold keeps per bucket after its top-N cut.
+    pw_max_values_per_bucket: int = Field(default=50, ge=1, le=5000)
+    pw_max_new_values_per_bucket: int = Field(default=20, ge=0, le=1000)
+    pw_max_active_values_per_watch: int = Field(default=200, ge=1, le=5000)
+    #: Pinned values per watch. The pinned search reads at most this many squared
+    #: tuples a bucket, so the bound keeps it inside `pw_max_rows_per_search`.
+    pw_max_pinned_values: int = Field(default=10, ge=1, le=20)
+    #: The stored width of a value text; longer text is cut by the fold.
+    pw_value_max_length: int = Field(default=255, ge=1, le=255)
+    pw_min_admission_events: int = Field(default=3, ge=1)
+    pw_value_active_days: int = Field(default=7, ge=1, le=90)
+    pw_min_coverage: float = Field(default=0.90, ge=0.0, le=1.0)
+    pw_scope_stale_after_hours: int = Field(default=24, ge=1, le=720)
+    pw_scope_change_grace_buckets: int = Field(default=12, ge=0, le=2016)
+    pw_baseline_lookback_days: int = Field(default=28, ge=1)
+    pw_baseline_min_visits: int = Field(default=2, ge=1, le=52)
+    pw_baseline_values_per_run: int = Field(default=100, ge=1, le=5000)
+    pw_max_evaluation_buckets_per_run: int = Field(default=24, ge=1, le=2016)
+    #: Spike: minimum multiple of the median, absolute rise and bucket population.
+    pw_spike_ratio: float = Field(default=2.0, gt=1.0)
+    pw_min_absolute_delta_events: float = Field(default=50.0, ge=0.0)
+    pw_min_bucket_events: float = Field(default=20.0, ge=0.0)
+    #: Drop: the median a value needs to be judged, and the fraction of it that is a drop.
+    pw_drop_min_median: float = Field(default=20.0, ge=0.0)
+    pw_drop_ratio: float = Field(default=0.5, gt=0.0, lt=1.0)
+    #: Disappearance: the median a value needs and the measured-zero buckets in a row.
+    pw_disappear_min_median: float = Field(default=5.0, ge=0.0)
+    pw_disappear_buckets: int = Field(default=6, ge=1, le=2016)
+    #: New value: the history that must be complete, the window it stays new for, and
+    #: the materiality floors. The history must stay below metric retention.
+    pw_new_value_history_days: int = Field(default=7, ge=1, le=60)
+    pw_new_value_window_buckets: int = Field(default=12, ge=1, le=2016)
+    pw_new_value_min_events: int = Field(default=20, ge=1)
+    pw_new_value_min_buckets: int = Field(default=2, ge=1)
+    #: One-time, learning-only history bootstrap (design §H.10; D-29 defaults it on).
+    pw_bootstrap_enabled: bool = True
+    pw_bootstrap_days: int = Field(default=28, ge=1)
+    pw_bootstrap_searches_per_tick: int = Field(default=12, ge=1, le=256)
+    pw_bootstrap_seconds_per_tick: int = Field(default=180, ge=10, le=3600)
+    pw_bootstrap_floor_margin_hours: int = Field(default=24, ge=1, le=168)
+    pw_bootstrap_max_hours: int = Field(default=72, ge=1, le=168)
+    pw_bootstrap_max_failures: int = Field(default=3, ge=1, le=20)
+    pw_bootstrap_max_lower_bound_share: float = Field(default=0.05, ge=0.0, le=1.0)
+    pw_metric_retention_days: int = Field(default=35, ge=2)
+    pw_anomaly_retention_days: int = Field(default=180, ge=2)
+    pw_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    pw_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    pw_retention_interval_seconds: int = Field(default=86400, ge=3600)
+
+    # --- History backfill (HISTORY-BACKFILL §B.6.1) -------------------------
+    #: Kill switch for *reading*: off, no history step runs. Recording the operator's
+    #: answer does not depend on it.
+    history_backfill_enabled: bool = True
+    #: The window a Yes reads. The upper bound is static: 90 days is far past every
+    #: family's default window (28; rule health 30) and keeps a reading's search count
+    #: bounded; the per-family lookback and retention limits are applied at run time by
+    #: `app.history.families.fit_family_window`, never as a startup refusal, so a released
+    #: configuration keeps starting.
+    history_backfill_days: int = Field(default=28, ge=7, le=90)
+    #: Searches one history step may start; the sub-budget under the family's tick cap.
+    history_backfill_searches_per_tick: int = Field(default=10, ge=1, le=64)
+    #: No history search starts after this many seconds of a tick.
+    history_backfill_seconds_per_tick: int = Field(default=120, ge=10, le=600)
+    #: Longest wall time a reading may take; also the reading margin below retention.
+    history_backfill_max_hours: int = Field(default=72, ge=1, le=168)
+    history_backfill_floor_margin_hours: int = Field(default=24, ge=1, le=168)
+    #: Consecutive failures at the minimum width before the span becomes a gap.
+    history_backfill_max_failures: int = Field(default=3, ge=1, le=20)
+    #: The density gate (§B.6.4): the share of lower-bound buckets that ends a reading.
+    history_backfill_max_lower_bound_share: float = Field(default=0.05, ge=0.0, le=1.0)
+    #: Days of WAF breakdown history (§B.7.3).
+    history_backfill_waf_breakdown_days: int = Field(default=7, ge=1, le=90)
+    #: Phase A sources rebuilt per tick after a reading (§B.8.5).
+    history_backfill_baseline_sources_per_tick: int = Field(default=50, ge=1, le=5000)
+
     # --- Notifications ------------------------------------------------------
     notify_max_retries: int = Field(default=5, ge=0, le=20)
     notify_retry_base_seconds: float = Field(default=2.0, ge=0.1)
@@ -844,6 +935,94 @@ class Settings(BaseSettings):
             raise ValueError(
                 "WAF_NEW_ENDPOINT_HISTORY_DAYS must be below WAF_METRIC_RETENTION_DAYS "
                 f"({self.waf_new_endpoint_history_days} >= {self.waf_metric_retention_days})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _pw_bounds_are_consistent(self) -> Settings:
+        """Property-watch settings that contradict one another fail closed at startup.
+
+        Refused only where PW collection is on, like the WAF checks above: a deployment
+        that does not collect property watches must not be refused startup over a setting
+        it does not use.
+        """
+        if not self.pw_collection_enabled:
+            return self
+        problems: list[str] = []
+        if self.pw_max_rows_per_search > self.ariel_multi_bucket_max_rows:
+            problems.append(
+                "PW_MAX_ROWS_PER_SEARCH must not exceed ARIEL_MULTI_BUCKET_MAX_ROWS "
+                f"({self.pw_max_rows_per_search} > {self.ariel_multi_bucket_max_rows})"
+            )
+        if self.pw_max_searches_per_watch_per_tick > self.pw_max_searches_per_tick:
+            problems.append(
+                "PW_MAX_SEARCHES_PER_WATCH_PER_TICK must not exceed PW_MAX_SEARCHES_PER_TICK "
+                f"({self.pw_max_searches_per_watch_per_tick} > {self.pw_max_searches_per_tick})"
+            )
+        if self.pw_max_pinned_values > self.pw_max_active_values_per_watch:
+            problems.append(
+                "PW_MAX_PINNED_VALUES must not exceed PW_MAX_ACTIVE_VALUES_PER_WATCH "
+                f"({self.pw_max_pinned_values} > {self.pw_max_active_values_per_watch})"
+            )
+        if self.pw_baseline_lookback_days > self.pw_metric_retention_days:
+            problems.append(
+                "PW_BASELINE_LOOKBACK_DAYS must not exceed PW_METRIC_RETENTION_DAYS "
+                f"({self.pw_baseline_lookback_days} > {self.pw_metric_retention_days})"
+            )
+        # One visit asks for no recurrence, so it needs no week of lookback.
+        if (
+            self.pw_baseline_min_visits > 1
+            and self.pw_baseline_min_visits * 7 > self.pw_baseline_lookback_days
+        ):
+            problems.append(
+                "PW_BASELINE_MIN_VISITS weekly visits must fit in PW_BASELINE_LOOKBACK_DAYS "
+                f"({self.pw_baseline_min_visits} x 7 > {self.pw_baseline_lookback_days})"
+            )
+        if self.pw_new_value_history_days >= self.pw_metric_retention_days:
+            problems.append(
+                "PW_NEW_VALUE_HISTORY_DAYS must be below PW_METRIC_RETENTION_DAYS "
+                f"({self.pw_new_value_history_days} >= {self.pw_metric_retention_days})"
+            )
+        if self.pw_bootstrap_days < self.pw_new_value_history_days:
+            problems.append(
+                "PW_BOOTSTRAP_DAYS must not be below PW_NEW_VALUE_HISTORY_DAYS "
+                f"({self.pw_bootstrap_days} < {self.pw_new_value_history_days})"
+            )
+        if self.pw_bootstrap_days > self.pw_baseline_lookback_days:
+            problems.append(
+                "PW_BOOTSTRAP_DAYS must not exceed PW_BASELINE_LOOKBACK_DAYS "
+                f"({self.pw_bootstrap_days} > {self.pw_baseline_lookback_days})"
+            )
+        if self.pw_bootstrap_searches_per_tick > self.pw_max_searches_per_tick:
+            problems.append(
+                "PW_BOOTSTRAP_SEARCHES_PER_TICK must not exceed PW_MAX_SEARCHES_PER_TICK "
+                f"({self.pw_bootstrap_searches_per_tick} > {self.pw_max_searches_per_tick})"
+            )
+        bootstrap_hours = self.pw_bootstrap_days * 24 + self.pw_bootstrap_max_hours
+        retention_hours = self.pw_metric_retention_days * 24
+        if bootstrap_hours >= retention_hours:
+            problems.append(
+                "PW_BOOTSTRAP_DAYS and PW_BOOTSTRAP_MAX_HOURS must fit below "
+                "PW_METRIC_RETENTION_DAYS "
+                f"({self.pw_bootstrap_days} * 24 + {self.pw_bootstrap_max_hours} "
+                f">= {self.pw_metric_retention_days} * 24)"
+            )
+        if problems:
+            raise ValueError("; ".join(problems))
+        return self
+
+    @model_validator(mode="after")
+    def _history_backfill_bounds_are_consistent(self) -> Settings:
+        """Cross-checks among the history settings themselves.
+
+        Nothing here reads another family's settings: WAF, IPS, catch-all and Phase A are
+        released, and a refusal tied to their values could stop an install that starts
+        today. Those bounds are applied at run time (`fit_family_window`).
+        """
+        if self.history_backfill_waf_breakdown_days > self.history_backfill_days:
+            raise ValueError(
+                "HISTORY_BACKFILL_WAF_BREAKDOWN_DAYS must not exceed HISTORY_BACKFILL_DAYS "
+                f"({self.history_backfill_waf_breakdown_days} > {self.history_backfill_days})"
             )
         return self
 

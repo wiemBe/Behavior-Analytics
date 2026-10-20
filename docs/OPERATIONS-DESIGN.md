@@ -7,19 +7,19 @@ from this document, the runbook it specifies, `./qradar-dash`, and the logs.
 Binding decisions, already made by the user, are marked **[user]**. Decisions this design
 makes are marked **[design]**.
 
-**[user]** D-16. Images are pulled from GHCR. A local build remains the fallback. One
+**[user], 2026-10-15.** Images are pulled from GHCR. A local build remains the fallback. One
 script, `./qradar-dash`, provides `install`, `upgrade <version>`, `rollback`, `backup`,
 `restore`, `status`, `logs`, `doctor` and `support-bundle`. `upgrade` takes a backup
 before migrating. Rollback is the previous image digests plus that backup. An Alembic
 downgrade is not the rollback path: a downgrade drops what that revision added
-(`README.md:704-706`). A few minutes of downtime per upgrade is acceptable. The database
+([INSTALL.md](INSTALL.md) "Upgrade, backup and recovery"). A few minutes of downtime per upgrade is acceptable. The database
 survives every upgrade.
 
-**[user]** D-18. The cut that must land by about 2026-10-30 is the minimum that makes
+**[user], 2026-10-16.** The cut that must land by about 2026-10-30 is the minimum that makes
 install, upgrade, backup/rollback and diagnosis safe. Polish is named in §10 and is not
 in that cut.
 
-**[user]** D-19. Local accounts and AD password over LDAPS. No group is read from AD.
+**[user], 2026-10-16.** Local accounts and AD password over LDAPS. No group is read from AD.
 Roles are assigned in the app. The runbook `docs/OPERATIONS.md` is Turkish. Commands,
 log lines, `doctor` output and file names stay English.
 
@@ -28,7 +28,7 @@ a bind template or a CA. It creates the break-glass local admin and nothing else
 the directory.
 
 **[user]** The production host can reach `ghcr.io`. The repository
-`wiemBe/QRadar-Dashboard` is public today and is designed for as private. A
+`wiemBe/Behavior-Analytics` (renamed from `wiemBe/QRadar-Dashboard` on 2026-10-18) is public today and is designed for as private. A
 `read:packages` token lives under `.secrets/` and is used by `docker login ghcr.io`.
 An offline `docker save` / `docker load` bundle and a `--build` fallback both stay.
 
@@ -37,7 +37,7 @@ Engine and Compose v2, HTTPS 443 in, QRadar 443 and AD 636 out, `ghcr.io` and Gi
 out, NTP, a DNS name and a TLS certificate for the app, the QRadar CA, a read-only
 QRadar token, a backup directory. Sizes are in §3.1.
 
-The code this design is written against is this branch. Migration head is `0025`
+The code this design is written against is this release. Migration head is `0025`
 (`backend/alembic/versions/0025_auth_sessions.py:28-29`). AUTH-1, AUTH-2 and Phase F
 are in the tree. The frontend lockfile pins `postcss` to `8.5.30`
 (`frontend/package.json:35-37`).
@@ -90,7 +90,7 @@ There is no `latest` tag. `upgrade` takes an explicit version.
 | backend (also migrate, celery-worker, celery-beat) | `ARG APP_VERSION`, `ARG GIT_SHA`. OCI labels `org.opencontainers.image.version` and `org.opencontainers.image.revision`. The file `VERSION` is copied into the image at `/app/VERSION`. |
 | frontend | same labels. `NEXT_PUBLIC_APP_VERSION` is inlined at build the same way the API base is (§2.3). |
 | postgres | labels carry the app version and the base `2.17.2-pg16`. |
-| qradar-mcp | labels carry the app version and the pin `b8f6a4a3fe901eac4f55e4ca5d146d952f55db51` (`README.md:234-235`). |
+| qradar-mcp | labels carry the app version and the pin `b8f6a4a3fe901eac4f55e4ca5d146d952f55db51` ([INSTALL.md](INSTALL.md) "Clone the repository"). |
 | proxy (§3.4) | labels carry the app version. |
 
 **[as built, OPS-B1]** The postgres and proxy Dockerfiles declare the same two args and
@@ -164,11 +164,11 @@ they change what the analyst sees after the upgrade.
 New file `.github/workflows/release.yml`. Trigger: a tag `v*`. The workflow:
 
 1. Checks out the tag with submodules. `qradar-mcp` is a submodule of the public
-   IBM repository (`.gitmodules:1-3`), pinned (`README.md:234-235`). The workflow
+   IBM repository (`.gitmodules:1-3`), pinned ([INSTALL.md](INSTALL.md) "Clone the repository"). The workflow
    checks `git submodule status` and fails if the recorded pin is not
    `b8f6a4a3fe901eac4f55e4ca5d146d952f55db51` unless the release notes say the pin
    changed. A pin bump is a reviewed change to the allowlist
-   (`README.md:255-257`), not a side effect of a release.
+   ([INSTALL.md](INSTALL.md) "Clone the repository"), not a side effect of a release.
 2. Fails if the tag does not equal `v` + `VERSION`.
 3. Runs the gates. Backend, from `backend/`: ruff, `mypy app` (the result must be
    zero errors; today's CI swallows mypy with `|| true` at
@@ -188,16 +188,18 @@ New file `.github/workflows/release.yml`. Trigger: a tag `v*`. The workflow:
 
 | Compose service | Image | Notes |
 |---|---|---|
-| backend, migrate, celery-worker, celery-beat | `ghcr.io/wiembe/qradar-dashboard/backend` | One image. Migrate is `alembic upgrade head` (`docker-compose.yml:137-143`). Worker and beat are the same image with other commands (`docker-compose.yml:145-179`). |
-| frontend | `ghcr.io/wiembe/qradar-dashboard/frontend` | Built with `NEXT_PUBLIC_API_BASE_URL=/api/v1` (§2.3). |
-| postgres | `ghcr.io/wiembe/qradar-dashboard/postgres` | Built from `deploy/postgres/Dockerfile:10-12` on `timescale/timescaledb:2.17.2-pg16`. Also tagged `2.17.2-pg16` when the Dockerfile has not changed. |
-| qradar-mcp | `ghcr.io/wiembe/qradar-dashboard/qradar-mcp` | Built from the pinned submodule. Not started unless the `mcp` profile is requested (`docker-compose.yml:121`). |
-| proxy | `ghcr.io/wiembe/qradar-dashboard/proxy` | New. Nginx config baked into the image (§3.4). |
+| backend, migrate, celery-worker, celery-beat | `ghcr.io/wiembe/behavior-analytics/backend` | One image. Migrate is `alembic upgrade head` (`docker-compose.yml:137-143`). Worker and beat are the same image with other commands (`docker-compose.yml:145-179`). |
+| frontend | `ghcr.io/wiembe/behavior-analytics/frontend` | Built with `NEXT_PUBLIC_API_BASE_URL=/api/v1` (§2.3). |
+| postgres | `ghcr.io/wiembe/behavior-analytics/postgres` | Built from `deploy/postgres/Dockerfile:10-12` on `timescale/timescaledb:2.17.2-pg16`. Also tagged `2.17.2-pg16` when the Dockerfile has not changed. |
+| qradar-mcp | `ghcr.io/wiembe/behavior-analytics/qradar-mcp` | Built from the pinned submodule. Not started unless the `mcp` profile is requested (`docker-compose.yml:121`). |
+| proxy | `ghcr.io/wiembe/behavior-analytics/proxy` | New. Nginx config baked into the image (§3.4). |
 | redis | `redis:7.4-alpine@sha256:<digest>` | Not built. The release resolves the digest and the production compose file pins it. Today's file floats on the tag (`docker-compose.yml:71`). |
 
 GHCR lowercases the owner and the image name. The repository is
-`wiemBe/QRadar-Dashboard`, so the image prefix is
-`ghcr.io/wiembe/qradar-dashboard/`.
+`wiemBe/Behavior-Analytics`, so the image prefix is
+`ghcr.io/wiembe/behavior-analytics/`. Releases `0.1.0` and `0.1.1` were pushed under the earlier
+name `ghcr.io/wiembe/qradar-dashboard/` and stay there; `upgrade` moves an installed site to the
+new prefix (OPS-17).
 
 The production compose file sets `image:` to those names and keeps `build:` so
 `--build` still works. `docker compose pull` is the default. `docker compose build`
@@ -222,7 +224,7 @@ Production CORS allows the configured public origin only
 (`backend/app/main.py:74-85`). In production that origin must be `https` with a
 host and no path (`backend/app/core/config.py:893-906`). A browser on
 `https://soc.example` calling `http://localhost:8000` is refused. The README
-already states this (`README.md:563-600`).
+already states this ([INSTALL.md](INSTALL.md) "One origin in production").
 
 **[design]** The frontend Dockerfile gains
 
@@ -348,8 +350,8 @@ compiler). The production path is the pull.
 The human sequence is:
 
 ```bash
-git clone --recurse-submodules https://github.com/wiemBe/QRadar-Dashboard.git
-cd QRadar-Dashboard
+git clone --recurse-submodules https://github.com/wiemBe/Behavior-Analytics.git
+cd Behavior-Analytics
 ./qradar-dash install
 ```
 
@@ -377,13 +379,13 @@ What actually bounds the disk:
 | Phase A volume, one row per source per 300 s bucket | `collection_interval_seconds` default 300 (`backend/app/core/config.py:235`). 288 buckets/day. | **None.** `retention_enabled` defaults false (`backend/app/core/config.py:219-223`). The beat task `apply_timescale_policies` calls `apply_policies` (`backend/app/services/timescale.py`) once a day, so the policies exist as soon as the setting is on. Search-result retention's docstring names the policy as optional and off (`backend/app/services/search_result_retention.py:10-16`). |
 | WAF endpoint rows | Bucket width is the same 300 s (`backend/app/collectors/waf_endpoint_collector.py:367`). Cap 2,000 active endpoints per source (`backend/app/core/config.py:453`). | 35 days (`backend/app/core/config.py:486`), and only while `waf_retention_enabled` is true (default true, `:484`). Collection itself defaults **off** (`:410`). |
 | IPS entity rows | Cap 2,000 active entities per source per dimension (`backend/app/core/config.py:175-177`). | 35 days (`:182`). Collection defaults **off** (`:171`). |
-| Catch-all, geo | Cadence row inserted at 3,600 s (`backend/alembic/versions/0020_catchall_senders.py:135-137`, `0022_geo_collection.py:86-89`). | 35 days (`config.py:519`, `:537`). |
+| Catch-all, geo | Cadence row inserted at 3,600 s, moved to 300 s by `0028` (`backend/alembic/versions/0020_catchall_senders.py:135-137`, `0022_geo_collection.py:86-89`). | 35 days (`config.py:519`, `:537`). |
 | Scheduled-search aggregates | Separate deleter, 90 days (`config.py:153`, `search_result_retention.py:3-8`). | Not the Timescale policy. |
 | Custom-rule breaches | Resolved breaches older than `custom_rule_breach_retention_days` (`config.py:554-555`). The engine defaults **off** (`:545`). | 180 days. The deleter runs only while the engine is on. |
 | Offense snapshots | Every 300 s (`config.py:264`). | Timescale policy off with the rest of `retention_enabled`. |
 | Baseline lookback | WAF refuses to boot when metric retention is not longer than this while WAF collection and WAF retention are both on (`config.py:823-829`). | 28 days (`config.py:334`). The default WAF metric retention is 35 days (`:486`), so the default pair boots. |
 
-Search-family cadences are seeded at 3,600 s (`backend/alembic/versions/0013_search_cadence.py:46-50` and the inserts cited above). The 300 s figure is the bucket width, not how often a search is sent. A 1-hour cadence still stores each 5-minute bucket.
+Search-family cadences were seeded at 3,600 s (`backend/alembic/versions/0013_search_cadence.py:46-50` and the inserts cited above); migration `0028` (2026-10-18) moves an untouched seed row to 300 s, or 900 s for WAF and IPS. The 300 s figure is the bucket width, not how often a search is sent. A cadence longer than the bucket still stores each 5-minute bucket.
 
 Row formula, per day:
 
@@ -451,11 +453,11 @@ Preflight changes nothing. Any failure stops the script before `.env` is written
 | SELinux | `getenforce` printed | Never changed. `Enforcing` is a normal result. The script must not `setenforce`, must not pass `:z` or `:Z`, and must not bind-mount the checkout into a container. Secrets go through `deploy/load-secrets.sh` (`deploy/load-secrets.sh:4-9`, `deploy/postgres/Dockerfile:1-9`). |
 | Clock | `timedatectl show` reports NTP synchronized, or the Ubuntu equivalent | Warn if not synchronized. Collection, Beat and sessions use UTC (`backend/app/workers/celery_app.py:26-27`). A skewed host moves watermarks and makes `TIMESTAMP_DELAY` fire for a clock rather than a source (`backend/app/models/enums.py:133`). |
 | Timezone | printed | The app stores UTC. The host zone is the operator's. The runbook tells them to read UI times as UTC. |
-| QRadar TCP | `openssl s_client -connect <host>:443 -CAfile <ca> -verify_return_error` as the README already does (`README.md:314-317`) | Fail on a verify error other than the AKI case in §8 symptom 3. This sends no token and no AQL. |
+| QRadar TCP | `openssl s_client -connect <host>:443 -CAfile <ca> -verify_return_error` as the README already does ([INSTALL.md](INSTALL.md) "QRadar credentials and CA bundle") | Fail on a verify error other than the AKI case in §8 symptom 3. This sends no token and no AQL. |
 | Backup directory | exists or can be created, mode will be `0700`, not inside the git checkout | Fail if it cannot be created. |
 
 `docker-compose.override.yml` is gitignored (`.gitignore:45`) and is how a lab
-attaches the libvirt macvlan (`README.md:350-360`). Preflight prints whether
+attaches the libvirt macvlan ([INSTALL.md](INSTALL.md) "QRadar running on a libvirt network"). Preflight prints whether
 that file exists. It does not delete it. A production host that can route to
 QRadar:443 does not need it.
 
@@ -471,7 +473,7 @@ Asked, in this order:
    to the QRadar secrets volume, which the backend mounts
    (`docker-compose.yml:40`). The backend has no need of the app's private key.
 3. External proxy, yes or no. Default no. Yes skips the bundled proxy and
-   prints the host nginx shape from `README.md:608-632`, with
+   prints the host nginx shape from (the README section on the example host nginx configuration, removed in DOC-1), with
    `FORWARDED_ALLOW_IPS` still required (§3.4).
 4. QRadar base URL (`https://...`). Rejected otherwise
    (`backend/app/core/config.py:782-788`).
@@ -479,13 +481,13 @@ Asked, in this order:
    service cannot share `QRADAR_BASE_URL` (`docker-compose.yml:95-97`). Asked
    even though MCP is off, so a later profile enable has the value.
 6. API version. Default `20.0` (`backend/app/core/config.py:113`). The lab
-   command in the README uses `29.0` (`README.md:374`). The wizard says so and
+   command in the README uses `29.0` ([INSTALL.md](INSTALL.md) "Register a console manually"). The wizard says so and
    does not guess.
 7. Path to the SEC token file. The script copies it to `.secrets/qradar.sec`
-   mode `0600` the way the README does (`README.md:288-290`). The token is not
+   mode `0600` the way the README does ([INSTALL.md](INSTALL.md) "QRadar credentials and CA bundle"). The token is not
    typed into the shell and not written into `.env`.
 8. Path to the QRadar CA bundle. Copied to `.secrets/qradar-ca.pem`. The bundle
-   has to contain the root and the intermediate (`README.md:293-296`,
+   has to contain the root and the intermediate ([INSTALL.md](INSTALL.md) "QRadar credentials and CA bundle",
    `backend/app/providers/tls.py:25-28`).
 9. `QRADAR_TLS_ALLOW_MISSING_AKI`, default false. The wizard asks only as a
    yes/no after explaining symptom 3. The app sets `VERIFY_X509_STRICT` itself
@@ -498,7 +500,7 @@ Asked, in this order:
 13. Break-glass admin username. The password is not asked. `create-admin`
     generates it (`backend/app/cli/users.py:30-34`, `:101-103`).
 
-Not asked: LDAP (D-19, UI), detector thresholds, family enablement, SMTP,
+Not asked: LDAP in the UI (decided on 2026-10-16), detector thresholds, family enablement, SMTP,
 webhooks, LLM. WAF, IPS, rule-match collection and custom rules stay at their
 defaults, which are off (`backend/app/core/config.py:171`, `:276`, `:410`,
 `:545`). Catch-all and geo default on (`:496`, `:527`). Leaving them on matches
@@ -544,17 +546,17 @@ Postgres init scripts are baked (`deploy/postgres/Dockerfile:1-9`): a bind
 mount of the checkout is `user_home_t` on an enforcing host and the container
 cannot read it.
 
-The config is the README's example (`README.md:608-632`): `/api/` proxies to
+The config is the README's example (the README section on the example host nginx configuration, removed in DOC-1): `/api/` proxies to
 `http://backend:8000`, everything else to `http://frontend:3000`, with `Host`,
 `X-Forwarded-For` and `X-Forwarded-Proto`. It does not add or hide the security
-headers the backend sets (`README.md:603-606`). Certificates are read from the
+headers the backend sets ([INSTALL.md](INSTALL.md) "One origin in production"). Certificates are read from the
 proxy volume at fixed paths.
 
 `backend/app/core/rate_limit.py:16` sets `key_func=get_remote_address`
 (imported at `:11`). The README identifies that function as
-`request.client.host` (`README.md:635-638`). Uvicorn is started with
+`request.client.host` (`README.md` "Proxy headers and the rate limiter"). Uvicorn is started with
 `--proxy-headers` (`docker-compose.yml:126`) and trusts
-`FORWARDED_ALLOW_IPS`, defaulting to `127.0.0.1` (`README.md:635-660`). A
+`FORWARDED_ALLOW_IPS`, defaulting to `127.0.0.1` (`README.md` "Proxy headers and the rate limiter"). A
 container on the bridge is not `127.0.0.1`, so without an explicit peer every
 analyst shares one rate-limit bucket.
 
@@ -568,7 +570,7 @@ forwarded path.
 External-proxy mode does not publish 443. The operator's proxy on the host
 dials `127.0.0.1:8000` and `127.0.0.1:3000`. The peer Uvicorn sees is then a
 Docker bridge address, which the README tells the operator to measure
-(`README.md:662-678`). The wizard prints that paragraph and leaves
+(`README.md` "Proxy headers and the rate limiter"). The wizard prints that paragraph and leaves
 `FORWARDED_ALLOW_IPS` for them to fill before the backend is started. Install
 refuses to start the backend in external-proxy mode while the value is empty
 or `*`.
@@ -748,7 +750,7 @@ change a recorded version: with `.qradar-dash/state.json` present, it refuses (a
    connection failure rather than a half-working UI. The README's rule is the
    reason: a migration adds `NOT NULL` columns and drops the backfill default,
    so an old process still inserting fails or, worse, writes a shape the new
-   code does not expect (`README.md:690-694`).
+   code does not expect ([INSTALL.md](INSTALL.md) "Upgrade, backup and recovery").
 3. Backup (§5), reason `pre-upgrade`, including the scratch restore test.
    A failed test aborts the upgrade. Writers stay stopped only for the
    duration; on abort they are started again on the **old** digests.
@@ -777,7 +779,7 @@ after a rollback, is a silent mismatch. Beat's schedule file lives on the
 container's `/tmp` (`docker-compose.yml:170`) and is recreated on start. The
 flush drops in-flight jobs. Work that matters is in Postgres and will be
 picked up by the next beat tick. This is acceptable because collection is
-watermarked and a failed run does not advance the watermark (`README.md:402-403`).
+watermarked and a failed run does not advance the watermark ([INSTALL.md](INSTALL.md) "Local collection and verification").
 
 ### 4.3 Automatic rollback
 
@@ -999,7 +1001,7 @@ No argument. It uses `previous_images` and `last_upgrade.backup`.
 6. Record `outcome=rolled_back`.
 
 `rollback` does not run `alembic downgrade`. Downgrade drops columns and
-tables (`README.md:704-706`). The restored dump is already at the old head.
+tables ([INSTALL.md](INSTALL.md) "Upgrade, backup and recovery"). The restored dump is already at the old head.
 
 **As built (OPS-6).** Rollback validates the complete backup and every recorded local image ID
 before it stops a service, and it never pulls. It calls OPS-5's `restore_swap_database`, restores
@@ -1100,7 +1102,7 @@ Connection errors name the host and the exception class, not the password.
 Exit 0 on all PASS, 1 on any WARN with no FAIL, 2 on any FAIL.
 
 The process does not call a write method on the provider. The provider
-interface has none (`AGENTS.md` §2). The one QRadar call is `GET /system/about`
+interface has none. The one QRadar call is `GET /system/about`
 through `validate_connection` (`backend/app/providers/qradar_rest.py:482-487`).
 A separate TLS handshake to the console uses the CA bundle and sends no
 `SEC` header, so certificate expiry can be read without presenting the token.
@@ -1274,7 +1276,7 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
 
 2. **OPS-R2. `unable to get issuer certificate`.** Cause: the CA file has the
    intermediate and not the root. QRadar sends only the leaf (`tls.py:25-28`,
-   `README.md:293-296`). Confirm: `qradar_tls` FAIL, and the openssl command
+   [INSTALL.md](INSTALL.md) "QRadar credentials and CA bundle"). Confirm: `qradar_tls` FAIL, and the openssl command
    in §3.2 fails the same way. Fix: concatenate root then intermediate into
    `.secrets/qradar-ca.pem` and re-run `load-secrets.sh` and `qradar add`.
 
@@ -1282,13 +1284,13 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
    `VERIFY_X509_STRICT` itself on every interpreter, including the 3.12 of the
    image (`backend/Dockerfile:1`), and the QRadar certificate has an SKI and no
    AKI (`tls.py`). Confirm: the exception text,
-   while `openssl s_client` with the same CA succeeds (`README.md:332-341`).
+   while `openssl s_client` with the same CA succeeds ([INSTALL.md](INSTALL.md) "QRadar credentials and CA bundle").
    Fix: reissue the console certificate. Until then
    `QRADAR_TLS_ALLOW_MISSING_AKI=true`, which does not turn verification off
    (`tls.py:46-51`). `doctor` WARNs while the flag is on.
 
 4. **OPS-R4. The host reaches QRadar and the container does not.** Cause: a libvirt
-   bridge rejecting forwarded traffic (`README.md:343-360`). Confirm: from the
+   bridge rejecting forwarded traffic ([INSTALL.md](INSTALL.md) "QRadar running on a libvirt network"). Confirm: from the
    host, the openssl command works; from `docker compose exec backend`, a TCP
    connect to the same host fails. `qradar_tls` FAIL with a network class.
    The provider maps transport errors to `Could not reach QRadar`
@@ -1345,7 +1347,7 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
 
 11. **OPS-R11. The app is up and writes fail, or `doctor` says the head does not match.**
     Cause: migrate did not run, or old workers were still up across a migration
-    (`README.md:690-694`). Confirm: `migration_head` FAIL. Fix: stop writers,
+    ([INSTALL.md](INSTALL.md) "Upgrade, backup and recovery"). Confirm: `migration_head` FAIL. Fix: stop writers,
     `run --rm migrate` on the image that matches `VERSION`, start writers. If
     the database is **newer** than the image, do not downgrade. Restore the
     backup that matches the image (§5.4).
@@ -1416,7 +1418,7 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
 
 21. **OPS-R21. One analyst's traffic makes the API return 429 for everyone.** Cause:
     `FORWARDED_ALLOW_IPS` does not include the proxy, so every client shares
-    the bridge address (`README.md:650-660`). The default limit is 120/minute
+    the bridge address (`README.md` "Proxy headers and the rate limiter"). The default limit is 120/minute
     (`config.py:660`). Confirm: backend logs show one client address for
     distinct browsers, and `FORWARDED_ALLOW_IPS` is empty or `127.0.0.1`.
     Fix: set it to the proxy address in §3.4. Do not set `*`.
@@ -1457,7 +1459,7 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
     (`auth_login.py:257-265`). That `User()` call sets no roles. `User.roles`
     is the relationship at `identity.py:98-100`, through `user_role`
     (`identity.py:34-41`), and it stays empty. Roles are not read from AD
-    (D-19). Confirm: `/admin/users`
+    (decided on 2026-10-16). Confirm: `/admin/users`
     shows the user with no role, and `/me` succeeds. Fix: an admin assigns a
     role. There is no AD group to fix.
 
@@ -1494,7 +1496,7 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
     family, then symptoms 5, 6, 7 and 9.
 
 31. **OPS-R31. `network qradar-vmnet not found`.** Cause: a stale macvlan after a
-    daemon restart (`README.md:559-561`). Confirm: compose names that network
+    daemon restart ([OPERATIONS.md](OPERATIONS.md) "OPS-R31. `network qradar-vmnet not found`"). Confirm: compose names that network
     and `docker network ls` does not. Fix: the README's recreate command.
     A production install that never created the override will not see this.
 
@@ -1509,7 +1511,7 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
     `upgrade` does.
 
 34. **OPS-R34. Someone ran `alembic downgrade` and rows are gone.** Cause: downgrade
-    drops the revision's tables (`README.md:704-706`). Confirm: `migration_head`
+    drops the revision's tables ([INSTALL.md](INSTALL.md) "Upgrade, backup and recovery"). Confirm: `migration_head`
     moved backwards and a table the previous version had is gone. Fix:
     `restore` of the pre-upgrade backup. Do not run downgrade to "finish" the
     rollback.
@@ -1598,26 +1600,26 @@ No Prometheus exporter in this cut. The surfaces above plus `doctor` are the dai
 
 ## 10. Task split
 
-Target: the safety cut done by 2026-10-30, starting 2026-10-17. Each task is one agent. The orchestrator reviews OPS-4, OPS-5 and OPS-6 before merge, because a bug there destroys a database. No task commits except as the orchestrator already does. No task runs anything against QRadar. Integration tests use the `TEST_DATABASE_URL` the orchestrator assigns.
+Target: the safety cut done by 2026-10-30, starting 2026-10-17. OPS-4, OPS-5 and OPS-6 are reviewed before merge, because a bug there destroys a database. No task runs anything against QRadar. Integration tests use a database of their own, given by `TEST_DATABASE_URL`.
 
-| Task | When | Agent | Depends on | What |
-|---|---|---|---|---|
-| OPS-1 | 10-17 | Grok | — | `VERSION`, the CI equality check, `GET /api/v1/version`, a `version` field on the frontend health probe, the account menu and the sign-in page. |
-| OPS-2 | 10-17 | Grok | — | pip-tools locks, Dockerfile and CI install from the lock, `mypy` no longer hidden by `\|\| true`. |
-| OPS-3 | 10-18, 10-19 | Grok | OPS-1, OPS-2 | `release.yml`, GHCR push, frontend build arg, wget in the frontend runner, prod compose `image:` keys, redis digest pin. |
-| OPS-4 | 10-20 to 10-22 | Grok | OPS-3 for the pull path. The script can land `--build` first. | `./qradar-dash` preflight, wizard, `--non-interactive`, `--offline`, `--build`, `--external-proxy`, secrets, migrate, `create-admin`, `has-admin`, `qradar add`, proxy image, pinned edge IP, summary, idempotent re-run. |
-| OPS-5 | 10-23, 10-24 | Grok | OPS-4 | backup, verify-restore, retention of backups, disk guard, systemd timer, and the daily task that calls `apply_policies`. |
-| OPS-6 | 10-25, 10-26 | Grok | OPS-3, OPS-5 | `upgrade` and `rollback`, state file, Redis flush, automatic rollback triggers, rehearsal that records downtime. |
-| OPS-7 | 10-27 | Grok | OPS-1, OPS-4 | `python -m app.cli.doctor`, beat heartbeat, host wrapper, exit codes. |
-| OPS-8 | 10-28 | Grok | OPS-7 | `support-bundle` and the fixture test in §7.2. |
-| OPS-9 | 10-29 | Grok | OPS-4 through OPS-8, so the commands exist | `docs/OPERATIONS.md` in Turkish from §8. Commands copied, not rewritten. |
-| OPS-10 | 10-30 | orchestrator | OPS-4 at minimum; OPS-6 if it has landed | Fresh-VM install test (§10.1). |
+| Task | When | Depends on | What |
+|---|---|---|---|
+| OPS-1 | 10-17 | — | `VERSION`, the CI equality check, `GET /api/v1/version`, a `version` field on the frontend health probe, the account menu and the sign-in page. |
+| OPS-2 | 10-17 | — | pip-tools locks, Dockerfile and CI install from the lock, `mypy` no longer hidden by `\|\| true`. |
+| OPS-3 | 10-18, 10-19 | OPS-1, OPS-2 | `release.yml`, GHCR push, frontend build arg, wget in the frontend runner, prod compose `image:` keys, redis digest pin. |
+| OPS-4 | 10-20 to 10-22 | OPS-3 for the pull path. The script can land `--build` first. | `./qradar-dash` preflight, wizard, `--non-interactive`, `--offline`, `--build`, `--external-proxy`, secrets, migrate, `create-admin`, `has-admin`, `qradar add`, proxy image, pinned edge IP, summary, idempotent re-run. |
+| OPS-5 | 10-23, 10-24 | OPS-4 | backup, verify-restore, retention of backups, disk guard, systemd timer, and the daily task that calls `apply_policies`. |
+| OPS-6 | 10-25, 10-26 | OPS-3, OPS-5 | `upgrade` and `rollback`, state file, Redis flush, automatic rollback triggers, rehearsal that records downtime. |
+| OPS-7 | 10-27 | OPS-1, OPS-4 | `python -m app.cli.doctor`, beat heartbeat, host wrapper, exit codes. |
+| OPS-8 | 10-28 | OPS-7 | `support-bundle` and the fixture test in §7.2. |
+| OPS-9 | 10-29 | OPS-4 through OPS-8, so the commands exist | `docs/OPERATIONS.md` in Turkish from §8. Commands copied, not rewritten. |
+| OPS-10 | 10-30 | OPS-4 at minimum; OPS-6 if it has landed | Fresh-VM install test (§10.1). |
 
 OPS-1 and OPS-2 run in parallel. OPS-9 can be drafted from §8 before OPS-8 merges and corrected the same day if a command name moved. Nothing else overlaps on the same files: OPS-4 owns `qradar-dash` and the prod compose file, OPS-5 adds backup subcommands to that script, OPS-6 adds upgrade and rollback. They are sequential on purpose.
 
 ### 10.1 OPS-10 acceptance
 
-A clean RHEL/Rocky/Alma 9 or Ubuntu 22.04/24.04 VM, x86_64, with only Docker Engine, the Compose v2 plugin, git and a TLS certificate. SELinux left at its default. No QRadar token is required for the count if the test uses a mock only when the orchestrator says so. The production-shaped test uses a lab token the orchestrator already holds, read by the Sonnet path the planner already uses for lab tokens, and this design does not change that rule.
+A clean RHEL/Rocky/Alma 9 or Ubuntu 22.04/24.04 VM, x86_64, with only Docker Engine, the Compose v2 plugin, git and a TLS certificate. SELinux left at its default. The count needs no QRadar token when the test uses a mock. The production-shaped test uses a lab token, read as the lab's token always is; this design does not change that rule.
 
 Record:
 
@@ -1636,9 +1638,9 @@ A failure is a report, not a quiet fix inside OPS-10.
 - **OPS-5.** Round-trip: dump a migrated database, restore into a new database, `alembic_version` and a known row survive. The disk guard refuses when the fixture filesystem is small. `apply_policies` runs from the beat task and a test sees a retention job. The timer unit is installed by the script and is not enabled in CI.
 - **OPS-6.** A migrate failure on a fixture restores the previous digest and the previous row count. A health timeout does the same. A QRadar `FAIL` does not. Downtime is written into the OPS-6 report.
 - **OPS-7.** Every id in §6 has a test that forces PASS and a test that forces FAIL or WARN. Output fixtures contain a planted token and the test asserts it is absent. No test opens a socket to a QRadar host.
-- **OPS-8.** The §7.2 fixture test. Breaking the scrub fails the test; that failure is confirmed and the scrub restored, per `AGENTS.md` §4.
-- **OPS-9.** Every symptom id OPS-R1 through OPS-R42 appears. A Turkish paragraph and an English command. A second reader (the orchestrator) checks five commands against this document.
-- **OPS-10.** The numbers in §10.1, written in `docs/tasks/OPS-10.report.md`.
+- **OPS-8.** The §7.2 fixture test. Breaking the scrub fails the test; that failure is confirmed and the scrub restored.
+- **OPS-9.** Every symptom id OPS-R1 through OPS-R42 appears. A Turkish paragraph and an English command. A second reader checks five commands against this document.
+- **OPS-10.** The numbers of §10.1, recorded.
 
 ### 10.3 After 2026-10-30
 
@@ -1663,7 +1665,7 @@ These do not block OPS-1. The default is what the tasks will do if the user does
 
 3. **Off-host backups in this cut.** §5 keeps backups on a directory the operator names, and recommends a second filesystem. A copy to another machine is OPS-14. Say if OPS-14 has to move into the two-week cut. Default: it stays after 2026-10-30.
 
-Language and who operates are decided (D-19). The registry is decided (private-shaped, `ghcr.io` reachable). LDAP at install time is decided (not asked).
+Language and who operates are decided (2026-10-16). The registry is decided (private-shaped, `ghcr.io` reachable). LDAP at install time is decided (not asked).
 
 ---
 

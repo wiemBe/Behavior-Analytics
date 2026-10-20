@@ -49,6 +49,7 @@ describe("widget registry", () => {
       "waf.endpoint_traffic",
       "chart.eps_observed_expected",
       "chart.search_results",
+      "chart.property_watch",
       "ips.source_anomalies",
     ]);
     expect(WIDGETS.filter((w) => w.status === "blocked").map((w) => w.type)).toEqual([

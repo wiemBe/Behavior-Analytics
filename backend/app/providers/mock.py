@@ -29,10 +29,11 @@ from app.ips.keyed_rows import (
     validate_ips_fields,
     validate_ips_sources,
 )
-from app.models.enums import IpsDimension
+from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.base import (
     IPS_NORMALIZED_FIELD_ALLOWLIST,
     PROPERTY_NAME_PATTERN,
+    ConsoleEventTotals,
     LogSourceTelemetry,
     ProviderCapability,
     QRadarProvider,
@@ -58,6 +59,8 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    PwKeyedResult,
+    PwSearchKind,
     RuleMatchBatch,
     RuleMatchRow,
     WafBreakdownBatch,
@@ -161,6 +164,26 @@ IpsTruncation = Callable[[MockIpsSearch], bool]
 
 
 @dataclass(frozen=True)
+class MockPwSearch:
+    """One property-watch search the mock was asked for, kept so tests can read the split."""
+
+    search: PwSearchKind
+    scope_kind: PwScopeKind
+    scope_ids: tuple[int, ...]
+    window_start: datetime
+    window_end: datetime
+
+
+#: A fault hook: given a search, an exception to raise for it, or None.
+PwFault = Callable[[MockPwSearch], Exception | None]
+#: A truncation hook: True forces the search to read as truncated.
+PwTruncation = Callable[[MockPwSearch], bool]
+#: Replaces the synthetic events of a bucket: given the bucket key and the property names,
+#: ``{"values": {name: value or None}, "events": n}`` dicts.
+PwScript = Callable[[int, tuple[str, ...]], list[dict]]
+
+
+@dataclass(frozen=True)
 class MockCatchallSearch:
     """One catch-all senders search the mock was asked for, kept so tests can read the split."""
 
@@ -252,9 +275,11 @@ class MockQRadarProvider(QRadarProvider):
         seed: int = 1337,
         now: datetime | None = None,
         ips_max_sources_per_search: int = 50,
+        pw_max_sources_per_search: int = 50,
     ) -> None:
         self._seed = seed
         self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
+        self._pw_max_sources_per_search = max(1, int(pw_max_sources_per_search))
         #: Every keyed IPS search asked for, in order.
         self.ips_searches: list[MockIpsSearch] = []
         #: Test hooks, so the real driver and fold run on a failure or a
@@ -262,6 +287,12 @@ class MockQRadarProvider(QRadarProvider):
         #: naturally whenever a search has more rows than `max_rows`.
         self.ips_fault: IpsFault | None = None
         self.ips_force_truncated: IpsTruncation | None = None
+        #: The same hooks for the property-watch searches, plus a script that replaces the
+        #: synthetic events. Rows still pass the real parser and the real query builder.
+        self.pw_searches: list[MockPwSearch] = []
+        self.pw_fault: PwFault | None = None
+        self.pw_force_truncated: PwTruncation | None = None
+        self.pw_script: PwScript | None = None
         #: The same hooks for the catch-all senders search, plus a script that
         #: replaces the synthetic senders. Rows still pass the real parser.
         self.catchall_searches: list[MockCatchallSearch] = []
@@ -592,6 +623,39 @@ class MockQRadarProvider(QRadarProvider):
             truncated=raw_total > max(1, max_rows),
             row_cap=max(1, max_rows),
             query=f"MOCK creEventList WINDOWED LIMIT {max(1, max_rows) + 1}",
+        )
+
+    async def get_console_event_totals(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+    ) -> ConsoleEventTotals:
+        """Deterministic console-wide events: a positive total per bucket.
+
+        Seeded from the bucket start, so the floor scan finds its first event
+        at the first bucket of every window and two calls agree exactly. Only
+        buckets with events are returned, as the REST query returns them.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        step = timedelta(seconds=bucket_seconds)
+        totals: dict[datetime, int] = {}
+        cursor = start
+        while cursor < end:
+            rng = random.Random(  # noqa: S311 - deterministic fixture, not crypto
+                f"console-totals:{int(cursor.timestamp())}"
+            )
+            totals[cursor] = int(rng.random() * 900) + 100
+            cursor += step
+        return ConsoleEventTotals(
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            totals=totals,
+            query_version="mock_console_event_totals/v1",
+            query="MOCK console event totals",
         )
 
     #: Endpoints the mock WAF source publishes. Mirrors the shape the lab
@@ -1084,6 +1148,138 @@ class MockQRadarProvider(QRadarProvider):
             rows=parsed,
             truncated=truncated,
             query=f"MOCK IPS {dimension.value}",
+        )
+
+    def _pw_events(self, scope_id: int, key: int, names: tuple[str, ...]) -> list[dict]:
+        """The synthetic events of one scope id and bucket: deterministic.
+
+        A property's values are ``<name>-v0`` .. ``<name>-v7``; some events carry none
+        (NULL) or an empty string, the unparsed remainder a real property leaves.
+        """
+        rng = random.Random(f"{self._seed}:pw:{scope_id}:{key}")  # noqa: S311
+        out: list[dict] = []
+        for index in range(rng.randint(0, 20)):
+            events = rng.randint(1, 300)
+            values: dict[str, str | None] = {}
+            for name in names:
+                # One stream per property, so the events do not change with the names asked
+                # for and the totals search sees the very events the grouped search groups.
+                roll_rng = random.Random(f"{self._seed}:pw:{scope_id}:{key}:{index}:{name}")  # noqa: S311
+                roll = roll_rng.random()
+                values[name] = (
+                    None
+                    if roll < 0.08
+                    else ""
+                    if roll < 0.12
+                    else f"{name}-v{roll_rng.randint(0, 7)}"
+                )
+            out.append({"values": values, "events": events})
+        return out
+
+    async def get_pw_keyed(
+        self,
+        search: PwSearchKind,
+        *,
+        scope_kind: PwScopeKind,
+        scope_ids: Sequence[int],
+        properties: Sequence[tuple[str, str]],
+        pinned: Sequence[Sequence[str]] = (),
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> PwKeyedResult:
+        """The keyed property-watch result, aggregated here and parsed by the real parser."""
+        # Imported here: `app.property_watch.reference` imports `app.providers.base`, and
+        # the providers package imports this module, so a top-level import is circular.
+        from app.property_watch.aql import build_query, pinned_components, validate_query_inputs
+        from app.property_watch.keyed_rows import parse_pw_keyed_rows
+
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        spec = validate_query_inputs(
+            search,
+            scope_kind=scope_kind,
+            scope_ids=scope_ids,
+            properties=properties,
+            pinned=pinned,
+            max_sources=self._pw_max_sources_per_search,
+        )
+        if max_rows < 1:
+            raise ValueError("property-watch row limit must be positive")
+        mock_search = MockPwSearch(
+            spec.search, spec.scope_kind, spec.scope_ids, start, end
+        )
+        self.pw_searches.append(mock_search)
+        if self.pw_fault is not None and (fault := self.pw_fault(mock_search)) is not None:
+            raise fault
+
+        totals = spec.search is PwSearchKind.TOTALS
+        names = tuple(reference.name for reference in spec.properties)
+        allowed = (
+            [set(components) for components in pinned_components(spec)]
+            if spec.search is PwSearchKind.PINNED
+            else None
+        )
+        first = int(start.timestamp()) // bucket_seconds
+        last = int(end.timestamp()) // bucket_seconds
+        groups: dict[tuple, dict] = {}
+        for key in range(first, last):
+            if self.pw_script is not None:
+                events = self.pw_script(key, names)
+            else:
+                events = [
+                    e for sid in spec.scope_ids for e in self._pw_events(sid, key, names)
+                ]
+            for event in events:
+                values = () if totals else tuple(event["values"][name] for name in names)
+                if any(value is None for value in values):
+                    continue  # `"x" IS NOT NULL`: only the unparsed remainder is NULL
+                if allowed is not None and any(
+                    value not in allowed[index] for index, value in enumerate(values)
+                ):
+                    continue
+                group = groups.setdefault(
+                    (key, *values),
+                    {
+                        "k": key,
+                        "events": 0,
+                        **{f"p{i}": value for i, value in enumerate(values)},
+                    },
+                )
+                group["events"] += event["events"]
+        ordered = sorted(
+            groups.values(),
+            key=lambda g: (-g["events"], g["k"], *(str(g.get(f"p{i}")) for i in range(2))),
+        )
+        parsed, truncated = parse_pw_keyed_rows(
+            ordered[: max_rows + 1],
+            property_count=len(names) if not totals else 0,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=max_rows,
+        )
+        if self.pw_force_truncated is not None and self.pw_force_truncated(mock_search):
+            truncated = True
+        # The real builder, so the mock refuses what REST refuses and carries real provenance.
+        query = build_query(
+            spec,
+            start_ms=int(start.timestamp() * 1000),
+            end_ms=int(end.timestamp() * 1000),
+            bucket_ms=bucket_seconds * 1000,
+            limit=max_rows + 1,
+        )
+        return PwKeyedResult(
+            search=spec.search,
+            scope_kind=spec.scope_kind,
+            scope_ids=spec.scope_ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=parsed,
+            truncated=truncated,
+            query=query,
         )
 
     def _catchall_events(self, source_id: int, key: int) -> list[dict]:

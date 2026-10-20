@@ -27,6 +27,8 @@ from app.anomaly.capabilities import (
 )
 from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
+from app.history.origin import origin_of
+from app.history.state import HistoryFamily
 from app.models.enums import (
     AnomalyState,
     AnomalyType,
@@ -35,6 +37,8 @@ from app.models.enums import (
     IpsAnomalyType,
     IpsDimension,
     IpsProfileValidationStatus,
+    PwAnomalyType,
+    PwScopeKind,
     Severity,
     WafAnomalyType,
     WafProfileValidationStatus,
@@ -48,7 +52,9 @@ from app.models.ips import (
     IpsSourceProfile,
 )
 from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
+from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
+from app.property_watch.facts import split_tuple_key
 from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
 from app.repositories.anomaly_histogram import BUCKET_SECONDS, check_range, histogram
@@ -73,6 +79,7 @@ from app.schemas.anomaly import (
     PagedWafEndpoints,
     PagedWafMetrics,
     PagedWafSources,
+    PwValueRefOut,
     SourceBehaviorOut,
     SubjectKind,
     WafAdmissionOverflowOut,
@@ -88,6 +95,7 @@ from app.schemas.anomaly import (
     WafValidationReportOut,
     detection_detail,
     ips_detection_detail,
+    pw_detection_detail,
     waf_detection_detail,
 )
 from app.schemas.ips_behavior import (
@@ -145,10 +153,15 @@ async def list_anomalies(
     settings: SettingsDep,
     log_source_id: uuid.UUID | None = Query(default=None),
     instance_id: uuid.UUID | None = Query(default=None),
-    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType | None = Query(default=None),
+    anomaly_type: AnomalyType
+    | WafAnomalyType
+    | IpsAnomalyType
+    | PwAnomalyType
+    | None = Query(default=None),
     subject_kind: SubjectKind | None = Query(default=None),
     waf_endpoint_id: uuid.UUID | None = Query(default=None),
     ips_entity_id: uuid.UUID | None = Query(default=None),
+    property_watch_id: uuid.UUID | None = Query(default=None),
     state: AnomalyState | None = Query(default=None),
     severity: Severity | None = Query(default=None),
     evidence_status: EvidenceStatus | None = Query(default=None),
@@ -166,6 +179,7 @@ async def list_anomalies(
         subject_kind=subject_kind,
         waf_endpoint_id=waf_endpoint_id,
         ips_entity_id=ips_entity_id,
+        pw_watch_id=property_watch_id,
         log_source_id=log_source_id,
         instance_id=instance_id,
         anomaly_type=anomaly_type.value if anomaly_type is not None else None,
@@ -204,13 +218,27 @@ def _unified_item(row: dict) -> AnomalyListItem:
             value_key=row["entity_value_key"],
             display_name=row["entity_display_name"],
         )
+    pw_value = None
+    if row["pw_watch_id"] is not None:
+        pw_value = PwValueRefOut(
+            watch_id=row["pw_watch_id"],
+            watch_name=row["pw_watch_name"],
+            watch_version=row["pw_watch_version"],
+            scope_kind=row["pw_scope_kind"],
+            properties=row["pw_properties"],
+            value_key=row["pw_value_key"],
+            components=split_tuple_key(row["pw_value_key"]),
+            value_id=row["pw_value_id"],
+        )
     fields = {
         k: v
         for k, v in row.items()
-        if not k.startswith(("endpoint_", "entity_"))
+        if not k.startswith(("endpoint_", "entity_", "pw_"))
         and k not in ("waf_endpoint_id", "ips_entity_id")
     }
-    return AnomalyListItem(**fields, waf_endpoint=waf_endpoint, ips_entity=ips_entity)
+    return AnomalyListItem(
+        **fields, waf_endpoint=waf_endpoint, ips_entity=ips_entity, pw_value=pw_value
+    )
 
 
 async def _list_items(
@@ -324,6 +352,9 @@ async def get_anomaly(anomaly_id: uuid.UUID, session: SessionDep) -> AnomalyDeta
         if ips is not None:
             anomaly_row, entity, transitions = ips
             return await _ips_detail(session, anomaly_row, entity, transitions)
+        pw = await repo.get_pw_detail(anomaly_id)
+        if pw is not None:
+            return _pw_detail(*pw)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "anomaly not found")
 
     detail = AnomalyDetailOut.model_validate(anomaly)
@@ -448,6 +479,61 @@ async def _ips_detail(
         transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
         explanation_package=None,
         detection=ips_detection_detail(anomaly.details),
+    )
+
+
+def _pw_detail(
+    anomaly: PwAnomaly,
+    watch: PropertyWatch,
+    source: LogSource | None,
+    transitions: list[PwAnomalyTransition],
+) -> AnomalyDetailOut:
+    """A property-watch incident as the shared detail shape.
+
+    `explanation_package` is None: a PW incident has no evidence package, and a fabricated
+    one would claim evidence nobody collected. The value text is shown to any `read:*`
+    caller (D-22) in `pw_value`, as in the list, and is never logged. A type- or
+    group-scoped watch has no single source, so `log_source_id` is None.
+    """
+    return AnomalyDetailOut(
+        id=anomaly.id,
+        subject_kind=SubjectKind.PW_VALUE,
+        log_source_id=watch.log_source_id,
+        log_source_name=source.name if source else None,
+        pw_value=PwValueRefOut(
+            watch_id=watch.id,
+            watch_name=watch.name,
+            watch_version=anomaly.watch_version,
+            scope_kind=PwScopeKind(str(watch.scope_kind)),
+            properties=watch.properties,
+            value_key=anomaly.value_key,
+            components=split_tuple_key(anomaly.value_key),
+            value_id=anomaly.pw_value_id,
+        ),
+        anomaly_type=PwAnomalyType(anomaly.detector_type),
+        state=anomaly.state,
+        severity=anomaly.severity,
+        observed_value=anomaly.observed_value,
+        expected_value=anomaly.expected_value,
+        deviation_ratio=anomaly.deviation_ratio,
+        robust_z=anomaly.robust_z,
+        absolute_delta=anomaly.absolute_delta,
+        consecutive_buckets=anomaly.consecutive_buckets,
+        confidence=anomaly.confidence,
+        detected_at=anomaly.detected_at,
+        opened_at=anomaly.opened_at,
+        anomaly_start=anomaly.anomaly_start,
+        anomaly_end=anomaly.anomaly_end,
+        resolved_at=anomaly.resolved_at,
+        evidence_status=anomaly.evidence_status,
+        suppressed=anomaly.suppressed,
+        observed_measurement=str(anomaly.observed_measurement),
+        explanation=anomaly.explanation,
+        baseline_version=anomaly.baseline_version,
+        policy_version=anomaly.policy_version,
+        transitions=[AnomalyTransitionOut.model_validate(t) for t in transitions],
+        explanation_package=None,
+        detection=pw_detection_detail(anomaly.details),
     )
 
 
@@ -576,7 +662,18 @@ async def source_metrics(
     )
     out: list[MetricBucketOut] = []
     for row in rows:
-        item = MetricBucketOut.model_validate(row)
+        # Phase A keeps no `origin` column: the marker lives in the row's
+        # `collection_source` (§B.4.1), and the shared helper owns that spelling.
+        item = MetricBucketOut(
+            bucket_start=row.bucket_start,
+            bucket_seconds=row.bucket_seconds,
+            event_count=row.event_count,
+            average_eps=row.average_eps,
+            peak_eps=row.peak_eps,
+            completeness=row.completeness,
+            last_event_at=row.last_event_at,
+            origin=origin_of(HistoryFamily.PHASE_A, row.collection_source),
+        )
         telemetry = bucket_telemetry(row.collection_source, row.query_provenance)
         if LogSourceTelemetry.PEAK_RATE not in telemetry:
             item.peak_eps = None
@@ -764,6 +861,7 @@ async def _waf_source_rows(
                         bucket_start=bucket.bucket_start,
                         bucket_seconds=bucket.bucket_seconds,
                         completeness=str(bucket.completeness),
+                        origin=origin_of(HistoryFamily.WAF, bucket.origin),
                         endpoint_coverage_ratio=bucket.endpoint_coverage_ratio,
                         coverage_measurement=str(bucket.coverage_measurement),
                         request_count_measurement=str(bucket.request_count_measurement),
@@ -961,6 +1059,11 @@ async def waf_endpoint_metrics(
                     str(bucket.request_count_measurement) if bucket is not None else None
                 ),
                 completeness=str(metric.completeness),
+                # The endpoint metric row carries no marker of its own: the
+                # source's bucket record does (§B.4.2).
+                origin=(
+                    origin_of(HistoryFamily.WAF, bucket.origin) if bucket is not None else None
+                ),
                 partial=metric.completeness == BucketCompleteness.PARTIAL,
                 endpoint_coverage_ratio=metric.endpoint_coverage_ratio,
                 in_maintenance=bucket.in_maintenance if bucket is not None else None,
@@ -1116,6 +1219,7 @@ def _ips_source_row(
                 total_events=bucket.total_events,
                 total_records=bucket.total_records,
                 in_maintenance=bucket.in_maintenance,
+                origin=origin_of(HistoryFamily.IPS, bucket.origin),
                 dimensions=_bucket_dimensions(bucket),
                 admission=_bucket_admission(bucket),
             )
@@ -1261,6 +1365,11 @@ async def ips_entity_metrics(
                 bucket_start=metric.bucket_start,
                 bucket_seconds=metric.bucket_seconds,
                 events=metric.events,
+                # The entity metric row carries no marker of its own: the
+                # source's bucket record does (§B.4.3).
+                origin=(
+                    origin_of(HistoryFamily.IPS, bucket.origin) if bucket is not None else None
+                ),
                 measurement=coverage.measurement if coverage is not None else None,
                 coverage_ratio=coverage.coverage_ratio if coverage is not None else None,
                 coverage_lower_bound=(
@@ -1343,6 +1452,7 @@ async def ips_source_metrics(
             total_events=b.total_events,
             total_records=b.total_records,
             in_maintenance=b.in_maintenance,
+            origin=origin_of(HistoryFamily.IPS, b.origin),
             dimensions=_bucket_dimensions(b),
             source_events=b.source_events,
             distinct_sources=b.distinct_sources,

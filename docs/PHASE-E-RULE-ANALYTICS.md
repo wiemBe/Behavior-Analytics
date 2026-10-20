@@ -1,8 +1,8 @@
 # Phase E — rule analytics (goal G3)
 
-Status: **design, 2026-10-12**. Written by the orchestrator. It rests on the live facts measured
-in [`tasks/T-015.report.md`](tasks/T-015.report.md) §8–§11, and serves goal G3 in
-[`PLANNER.md`](PLANNER.md) §0.
+Status: **design, 2026-10-12**. It rests on the live facts measured on the lab console on
+2026-10-12 (§E.1), and serves goal G3, rule analytics: how much each rule fires, how much EPS it
+costs, and how many rules are active or passive.
 
 ## E.0 What the user asked for
 
@@ -55,7 +55,7 @@ FROM events GROUP BY creEventList ORDER BY records DESC
 LIMIT <cap> START '<window start>' STOP '<window end>'
 ```
 
-The AQL is stored and versioned, never built from user input (AGENTS.md rule 4). A full page,
+The AQL is stored and versioned, never built from user input. A full page,
 `rows == cap`, makes the window **TRUNCATED**.
 
 **Storage.** A migration adds:
@@ -116,7 +116,7 @@ An API, then a UI after T-021:
   EPS does this rule consume";
 - capacity history, stored only when `capacity_timestamp` changes.
 
-## E.4 AI rule analysis (E.3) — open decision D-5
+## E.4 AI rule analysis (E.3) — an open question, deferred
 
 The context package is the rule metadata, the measured statistics, the health and the
 dependencies. **Rule logic cannot be read from QRadar over GET.** The options are:
@@ -127,7 +127,7 @@ This is the user's decision, and it is deferred until E.3.
 
 ## E.5 Task split
 
-| Task | Agent | Content |
-|---|---|---|
-| T-025 | Sonnet | E.2: provider method, collector, migration, `match_evidence`, rule-health integration, Celery beat entry |
-| later | — | E.3 statistics API, then UI; flows search; per-source breakdown (`creEventList, logsourceid`) |
+| Task | Content |
+|---|---|
+| T-025 | E.2: provider method, collector, migration, `match_evidence`, rule-health integration, Celery beat entry |
+| later | E.3 statistics API, then UI; flows search; per-source breakdown (`creEventList, logsourceid`) |

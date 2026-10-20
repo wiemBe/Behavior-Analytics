@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker, create_async_engine
 
 from app.models.monitoring import CollectionWatermark
@@ -45,6 +47,14 @@ def budget_settings(**overrides):  # type: ignore[no-untyped-def]
         waf_ariel_permit_poll_seconds=0.05,
         **overrides,
     )
+
+
+def assigned_database_url() -> str:
+    """The database this suite was given, to derive its server's neighbour from."""
+    value = os.environ.get("TEST_DATABASE_URL")
+    if not value:
+        pytest.skip("TEST_DATABASE_URL not set")
+    return value
 
 
 @asynccontextmanager
@@ -108,6 +118,56 @@ class TestPermits:
                     assert freed is not None and freed.slot == 0
         finally:
             await engine.dispose()
+
+    async def test_a_permit_in_another_database_is_not_counted(
+        self, db_session, db_schema
+    ) -> None:
+        """Advisory locks are per database; the count must be too."""
+        settings = budget_settings(limit=3)
+        ns = settings.waf_ariel_permit_lock_namespace
+        assigned = make_url(assigned_database_url())
+        assert assigned.database is not None
+        # Another database on the same server: the server's maintenance
+        # database, derived from the URL this suite was given.
+        elsewhere = create_async_engine(assigned.set(database="postgres"))
+        local = WafArielBudget.for_session(db_session, settings)
+        try:
+            async with (
+                holder(db_schema, ns, 0),
+                elsewhere.connect() as conn,
+            ):
+                await conn.execution_options(isolation_level="AUTOCOMMIT")
+                slot: int | None = None
+                for candidate in range(settings.waf_ariel_max_concurrent_sources):
+                    if await conn.scalar(
+                        text("SELECT pg_try_advisory_lock(:ns, :s)").bindparams(
+                            ns=ns, s=candidate
+                        )
+                    ):
+                        slot = candidate
+                        break
+                assert slot is not None
+                try:
+                    # Both locks are held in the same namespace, below the
+                    # limit: an unfiltered pg_locks count sees both.
+                    both = await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+                            "AND granted AND objsubid = 2 AND classid = :ns "
+                            "AND objid < :limit"
+                        ).bindparams(ns=ns, limit=settings.waf_ariel_max_concurrent_sources)
+                    )
+                    assert int(both or 0) >= 2
+                    # Only this database's permit is the budget's.
+                    assert await local.active_permits(db_session) == 1
+                finally:
+                    await conn.execute(
+                        text("SELECT pg_advisory_unlock(:ns, :s)").bindparams(
+                            ns=ns, s=slot
+                        )
+                    )
+        finally:
+            await elsewhere.dispose()
 
     async def test_a_dropped_connection_releases_its_permit(self, db_schema) -> None:
         settings = budget_settings(limit=1)

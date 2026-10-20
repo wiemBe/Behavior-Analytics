@@ -1,10 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import CustomRulesPage from "./page";
-import { CUSTOM_RULE_LATENCY } from "@/components/customrules/authoring";
+import { customRuleLatency } from "@/components/customrules/authoring";
 import { catalog, reader, rule, writer } from "@/components/customrules/fixtures";
 import { resolveRuleSubjects } from "@/components/customrules/subjects";
+import { partsText } from "@/components/cadence/CadenceLatency";
 import { ApiError, api } from "@/lib/api";
 
 vi.mock("@/components/customrules/subjects", () => ({ resolveRuleSubjects: vi.fn() }));
@@ -47,6 +48,53 @@ describe("custom-rule list states", () => {
   });
 });
 
+describe("custom-rule list latency figure", () => {
+  const kinds = [
+    { subject_kind: "LOG_SOURCE" as const, column: "log_source_id", search_family: "PHASE_A_VOLUME" as const },
+    { subject_kind: "PW_VALUE" as const, column: "pw_value_id", search_family: "PROPERTY_WATCH" as const },
+  ];
+  const timing = (family: "PHASE_A_VOLUME" | "PROPERTY_WATCH", cadence: number) => ({
+    family, cadence_seconds: cadence, bucket_seconds: 300, settle_seconds: 120,
+  });
+  const sentence = () =>
+    screen.getAllByText((_, el) => el?.tagName === "P" && (el.textContent ?? "").startsWith("Rules are judged"));
+
+  it("names each subject kind's figure from its family's cadence", async () => {
+    vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
+      catalog({ subject_kinds: kinds, cadences: [timing("PHASE_A_VOLUME", 900), timing("PROPERTY_WATCH", 3600)] }),
+    );
+    vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
+    render(await CustomRulesPage());
+    expect(sentence()).toHaveLength(1);
+    expect(sentence()[0]).toHaveTextContent("Log source: up to 22 min; Property watch value: up to 1 h 7 min");
+  });
+
+  it("names no number when a kind's family is missing from the cadences", async () => {
+    vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
+      catalog({ subject_kinds: kinds, cadences: [timing("PHASE_A_VOLUME", 900)] }),
+    );
+    vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
+    render(await CustomRulesPage());
+    expect(sentence()[0]).toHaveTextContent("after each collection of their family");
+    expect(sentence()[0].textContent).not.toMatch(/up to \d/);
+  });
+
+  it("links Search cadence only for read:search_cadence", async () => {
+    vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
+      catalog({ subject_kinds: kinds, cadences: [timing("PHASE_A_VOLUME", 900), timing("PROPERTY_WATCH", 900)] }),
+    );
+    vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
+    vi.spyOn(api, "caller").mockResolvedValue({ ...reader, permissions: [] });
+    render(await CustomRulesPage());
+    expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
+    cleanup();
+    vi.spyOn(api, "caller").mockResolvedValue({ ...reader, permissions: [], effective_permissions: [...reader.effective_permissions, "read:search_cadence"] });
+    render(await CustomRulesPage());
+    expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute("href", "/admin/search-cadence");
+    expect(sentence()[0]).toHaveTextContent("collected 5-minute buckets, up to 22 min after the events arrive");
+  });
+});
+
 describe("custom-rule list honesty", () => {
   it("names evaluation-off and shadow-mode settings and states latency once", async () => {
     vi.spyOn(api, "customRuleCatalog").mockResolvedValue(catalog({ evaluation_enabled: false, alerting_mode: "shadow" }));
@@ -54,7 +102,7 @@ describe("custom-rule list honesty", () => {
     render(await CustomRulesPage());
     expect(screen.getByText("CUSTOM_RULES_ENABLED").tagName).toBe("CODE");
     expect(screen.getByText("CUSTOM_RULES_ALERTING_ENABLED").tagName).toBe("CODE");
-    expect(screen.getAllByText(CUSTOM_RULE_LATENCY)).toHaveLength(1);
+    expect(screen.getAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(customRuleLatency()))).toHaveLength(1);
   });
 
   it("renders every evaluator status in words, with its recorded reason", async () => {

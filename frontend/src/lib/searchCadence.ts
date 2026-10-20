@@ -80,6 +80,10 @@ export const FAMILY_INFO: Record<SearchFamily, { name: string; scope: string }> 
     name: "Geography",
     scope: "Events per country, by source and destination address",
   },
+  PROPERTY_WATCH: {
+    name: "Property watches",
+    scope: "Event count per watched property value",
+  },
 };
 
 /** Name and scope for a family. An unknown family keeps its raw key. */

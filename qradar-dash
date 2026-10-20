@@ -24,6 +24,10 @@ START_SECONDS=$SECONDS
 ENV_FILE=.env
 SAVED_ANSWERS=.secrets/install.answers
 TMP_DIR=.install-tmp
+# The repository was renamed on 2026-10-18 (wiemBe/Behavior-Analytics); releases from the next
+# one are pushed under the new prefix. The old one is used only by migrate_image_prefix.
+DEFAULT_IMAGE_PREFIX=ghcr.io/wiembe/behavior-analytics
+OLD_IMAGE_PREFIX=ghcr.io/wiembe/qradar-dashboard
 
 say() { printf '%s\n' "$*"; }
 info() { printf '[ ok ] %s\n' "$*"; }
@@ -82,7 +86,7 @@ ANSWER_KEYS="PUBLIC_HOSTNAME TLS_CERT_FILE TLS_KEY_FILE EXTERNAL_PROXY FORWARDED
 QRADAR_URL QRADAR_CONSOLE_FQDN QRADAR_API_VERSION QRADAR_TOKEN_FILE QRADAR_CA_FILE
 QRADAR_ALLOW_MISSING_AKI INSTANCE_NAME BACKUP_DIR GHCR_USER GHCR_TOKEN_FILE ADMIN_USERNAME
 HTTPS_PORT API_LOOPBACK_PORT UI_LOOPBACK_PORT IMAGE_PREFIX SECRETS_VOLUME PROXY_CERTS_VOLUME
-EDGE_SUBNET PROXY_EDGE_IP PROJECT_NAME"
+EDGE_SUBNET PROXY_EDGE_IP PROJECT_NAME HISTORY_BACKFILL"
 
 declare -A ANS=()
 ERRORS=()
@@ -107,7 +111,7 @@ check_value() {
     TLS_KEY_FILE)
       [ -r "$val" ] && [ -f "$val" ] || { say "file not readable: $val"; return 1; }
       grep -q 'PRIVATE KEY' "$val" || { say "not a PEM private key: $val"; return 1; } ;;
-    EXTERNAL_PROXY | QRADAR_ALLOW_MISSING_AKI)
+    EXTERNAL_PROXY | QRADAR_ALLOW_MISSING_AKI | HISTORY_BACKFILL)
       [[ $val =~ ^(yes|no)$ ]] || { say "must be yes or no"; return 1; } ;;
     FORWARDED_ALLOW_IPS)
       [ "$val" != "*" ] || { say "must list the proxy address, not *"; return 1; }
@@ -203,7 +207,7 @@ apply_defaults() {
   : "${ANS[HTTPS_PORT]:=443}"
   : "${ANS[API_LOOPBACK_PORT]:=8000}"
   : "${ANS[UI_LOOPBACK_PORT]:=3000}"
-  : "${ANS[IMAGE_PREFIX]:=ghcr.io/wiembe/qradar-dashboard}"
+  : "${ANS[IMAGE_PREFIX]:=$DEFAULT_IMAGE_PREFIX}"
   : "${ANS[SECRETS_VOLUME]:=qradar-observability-secrets}"
   : "${ANS[PROXY_CERTS_VOLUME]:=qradar-observability-proxy-certs}"
   : "${ANS[EDGE_SUBNET]:=172.28.10.0/24}"
@@ -316,6 +320,15 @@ wizard() {
     if [ -n "${ANS[GHCR_USER]:-}" ]; then ask GHCR_TOKEN_FILE "    Path to the read:packages token file"; fi
   fi
   ask ADMIN_USERNAME "13. Break-glass admin user name" "The password is generated and shown once."
+  # Asked once: never when the key is already set (a saved answer, also under --reconfigure),
+  # and never on a site that has a state file (it was installed before this question existed).
+  if [ -z "${ANS[HISTORY_BACKFILL]:-}" ] && [ ! -e .qradar-dash/state.json ] \
+    && [ ! -L .qradar-dash/state.json ]; then
+    say "    Nothing in the past raises an alert. It sends searches to QRadar for about 3 hours on"
+    say "    a small estate and up to 3 days on a large one (a large estate gets a shorter window"
+    say "    so that it fits 72 hours); the admin page shows the progress and the estimate."
+    ask HISTORY_BACKFILL "14. Read the last 28 days of history from QRadar now, so baselines are steadier from day 1? (yes/no)"
+  fi
 }
 
 # ---------------------------------------------------------------- preflight
@@ -400,25 +413,29 @@ preflight_network() {
       if port_free "$p"; then info "port $p is free"; else fail "port $p is already in use"; bad=1; fi
     done
   fi
-  backup_free=$(free_kb "${ANS[BACKUP_DIR]}" || true)
-  if [ -z "$backup_free" ]; then
-    warn "cannot read the free space of ${ANS[BACKUP_DIR]}"
-  elif [ "$backup_free" -lt "$BACKUP_MIN_KB" ]; then
-    fail "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}; at least 20 GiB is required"; bad=1
-  else
-    info "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}"
-  fi
+  local dir_ok=yes
   if [ -e "${ANS[BACKUP_DIR]}" ] && [ ! -d "${ANS[BACKUP_DIR]}" ]; then
-    fail "${ANS[BACKUP_DIR]} exists and is not a directory"; bad=1
+    fail "${ANS[BACKUP_DIR]} exists and is not a directory"; bad=1; dir_ok=no
   elif [ -d "${ANS[BACKUP_DIR]}" ]; then
     if [ ! -w "${ANS[BACKUP_DIR]}" ] || [ ! -x "${ANS[BACKUP_DIR]}" ]; then
-      fail "the backup directory ${ANS[BACKUP_DIR]} is not writable by this account; give it to this account (see docs/OPERATIONS.md, Kurulum)"; bad=1
+      fail "the backup directory ${ANS[BACKUP_DIR]} is not writable by this account; give it to this account (see docs/OPERATIONS.md, Kurulum)"; bad=1; dir_ok=no
     fi
   elif [ ! -e "${ANS[BACKUP_DIR]}" ]; then
     local parent=${ANS[BACKUP_DIR]}
     while [ ! -e "$parent" ] && [ "$parent" != "/" ]; do parent=$(dirname "$parent"); done
     if [ ! -d "$parent" ] || [ ! -w "$parent" ] || [ ! -x "$parent" ]; then
-      fail "cannot create the backup directory ${ANS[BACKUP_DIR]}: $parent is not writable by this account; create it first (see docs/OPERATIONS.md, Kurulum)"; bad=1
+      fail "cannot create the backup directory ${ANS[BACKUP_DIR]}: $parent is not writable by this account; create it first (see docs/OPERATIONS.md, Kurulum)"; bad=1; dir_ok=no
+    fi
+  fi
+  # Free space is reported only for a directory the checks above accepted.
+  if [ "$dir_ok" = yes ]; then
+    backup_free=$(free_kb "${ANS[BACKUP_DIR]}" || true)
+    if [ -z "$backup_free" ]; then
+      warn "cannot read the free space of ${ANS[BACKUP_DIR]}"
+    elif [ "$backup_free" -lt "$BACKUP_MIN_KB" ]; then
+      fail "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}; at least 20 GiB is required"; bad=1
+    else
+      info "$((backup_free / 1024 / 1024)) GiB free for backups at ${ANS[BACKUP_DIR]}"
     fi
   fi
   local root_dev backup_dev
@@ -777,6 +794,23 @@ cmd_install() {
     --token-file /run/secrets/qradar_sec_token --ca-file /run/secrets/qradar_ca.pem \
     --api-version "${ANS[QRADAR_API_VERSION]}" || qr_rc=$?
 
+  # 9b. Record the answer to "read QRadar's past?" before the first collection (step 10). It runs
+  # whatever step 9 returned: the instance row may exist after a failed QRadar check. A failure
+  # never stops the install; the console stays undecided and the first administrator sign-in asks.
+  HB_RC=""
+  HB_OUT=""
+  if [ -n "${ANS[HISTORY_BACKFILL]:-}" ]; then
+    HB_RC=0
+    HB_OUT=$(dc run --rm --no-deps -T backend python -m app.cli.history_backfill decide \
+      --instance "${ANS[INSTANCE_NAME]}" --answer "${ANS[HISTORY_BACKFILL]}" \
+      --source installer) || HB_RC=$?
+    if [ "$HB_RC" -eq 0 ]; then
+      info "history backfill: $HB_OUT"
+    else
+      warn "history backfill: the answer was not recorded (exit $HB_RC); the console stays undecided and the first administrator sign-in will ask"
+    fi
+  fi
+
   # 10. Start.
   if [ "${ANS[EXTERNAL_PROXY]}" = "yes" ]; then
     local f
@@ -810,7 +844,7 @@ cmd_install() {
 }
 
 summary() {
-  local qr_rc=$1 had=$2 origin
+  local qr_rc=$1 had=$2 origin hb_line
   origin=$(env_get PUBLIC_ORIGIN)
   say ""
   say "=============================== Install summary ==============================="
@@ -827,6 +861,15 @@ summary() {
   else
     say "QRadar connection  FAILED (exit $qr_rc). The instance row is stored; fix the console, token or"
     say "                    CA and run ./qradar-dash install again (qradar add updates the row)."
+  fi
+  if [ -z "${HB_RC:-}" ]; then
+    say "History backfill   not decided; the first administrator sign-in will ask (WAF and IPS read"
+    say "                    history for sources enabled after the answer)"
+  elif [ "$HB_RC" -eq 0 ]; then
+    hb_line=${HB_OUT##*$'\n'} # the CLI's last line, "NAME: recorded YES (28 days) ..."
+    say "History backfill   ${hb_line#*: }"
+  else
+    say "History backfill   not recorded (exit $HB_RC); the first administrator sign-in will ask"
   fi
   say "Left off           WAF, IPS, rule-match collection, custom rules (turn them on later)"
   say "Next               Sign in, then Directory ($origin/admin/directory) if AD is used,"
@@ -866,7 +909,9 @@ cmd_status() {
     say "Image $service: $digest"
   done < <(printf '%s\n' "${STATE_IMAGES//,/$'\n'}")
   if [ "$STATE_LAST_PRESENT" = yes ]; then
-    if age=$(state_age "$STATE_LAST_AT" 2>/dev/null); then :; else age=unknown; fi
+    # The age is the backup's own: `last_upgrade.at` is the time of the last event, and a
+    # rollback rewrites it, which made a backup taken minutes earlier look 0 min old.
+    if age=$(backup_stamp_age "$STATE_LAST_BACKUP" 2>/dev/null); then :; else age=unknown; fi
     say "Last upgrade: $STATE_LAST_OUTCOME, $STATE_LAST_FROM -> $STATE_LAST_TO at $STATE_LAST_AT"
     say "Last upgrade backup: $STATE_LAST_BACKUP (age $age)"
   else
@@ -1311,6 +1356,12 @@ write_restore_state() { # write_restore_state BACKUP_DIRECTORY
   fi
   write_state "$version" "$images" "$previous" "$at" "$from" "$to" \
     "$outcome" "$recorded_backup" "$backup"
+}
+
+backup_stamp_age() { # backup_stamp_age DIR: age from the UTC stamp in the directory name
+  local stamp=${1##*/}
+  [[ $stamp =~ ^qradar-dash-([0-9]{8})T([0-9]{2})([0-9]{2})([0-9]{2})Z- ]] || return 1
+  state_age "${BASH_REMATCH[1]:0:4}-${BASH_REMATCH[1]:4:2}-${BASH_REMATCH[1]:6:2}T${BASH_REMATCH[2]}:${BASH_REMATCH[3]}:${BASH_REMATCH[4]}Z"
 }
 
 state_age() {
@@ -1886,7 +1937,7 @@ upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE
     return
   fi
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
-  : "${prefix:=ghcr.io/wiembe/qradar-dashboard}"
+  : "${prefix:=$DEFAULT_IMAGE_PREFIX}"
   for service in postgres backend frontend; do
     docker image inspect "$prefix/$service:$target" >/dev/null || return 1
   done
@@ -1903,7 +1954,7 @@ upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE
 read_target_release_notes() { # read_target_release_notes VERSION
   local target=$1 prefix notes fields version min_from
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
-  : "${prefix:=ghcr.io/wiembe/qradar-dashboard}"
+  : "${prefix:=$DEFAULT_IMAGE_PREFIX}"
   notes=$(docker run --rm --entrypoint cat "$prefix/backend:$target" \
     "/app/releases/$target.md") || return 1
   fields=$(release_notes_fields "$notes") || return 1
@@ -1997,7 +2048,7 @@ previous_images_are_local() { # previous_images_are_local MAP
 tag_previous_images() { # tag_previous_images MAP VERSION
   local map=$1 version=$2 prefix service digest
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
-  : "${prefix:=ghcr.io/wiembe/qradar-dashboard}"
+  : "${prefix:=$DEFAULT_IMAGE_PREFIX}"
   for service in postgres backend frontend proxy qradar-mcp; do
     digest=$(image_map_digest "$map" "$service" 2>/dev/null || true)
     [ -n "$digest" ] || continue
@@ -2048,6 +2099,74 @@ perform_rollback() { # backup old-version old-images from to at
   say "Rollback complete."
 }
 
+# The image prefix moves with the repository rename. It runs inside upgrade, after every refusal
+# that needs no registry and before anything is pulled or read from the target's images.
+# Only an exact old prefix (or an absent key, where the old compose default applied) moves; any
+# other value is the operator's own registry or mirror. Order: tag locally first, so a missing
+# image refuses the upgrade with nothing changed; then the answers file, then .env, so a failure
+# between the two leaves a state that a second run repairs.
+rewrite_prefix_file() { # rewrite_prefix_file FILE KEY NEWLINE-IF-ABSENT(yes|no)
+  local file=$1 key=$2 append=$3 tmp="$1.prefix.$$" count
+  count=$(grep -c "^$key=" "$file" 2>/dev/null || true)
+  [ "$count" -le 1 ] || {
+    fail "$file has more than one $key line"
+    return 1
+  }
+  umask 077
+  if [ "$count" -eq 1 ]; then
+    sed "s|^$key=.*|$key=$DEFAULT_IMAGE_PREFIX|" "$file" >"$tmp" || { rm -f -- "$tmp"; return 1; }
+  elif [ "$append" = yes ]; then
+    { cat -- "$file"; printf '%s=%s\n' "$key" "$DEFAULT_IMAGE_PREFIX"; } >"$tmp" \
+      || { rm -f -- "$tmp"; return 1; }
+  else
+    return 0
+  fi
+  if ! chmod 600 "$tmp" || ! mv -- "$tmp" "$file"; then
+    rm -f -- "$tmp"
+    fail "$file image prefix update failed; the previous file was kept"
+    return 1
+  fi
+}
+
+migrate_image_prefix() { # migrate_image_prefix INSTALLED_VERSION
+  local installed=$1 prefix service entry
+  local -a services=(postgres backend frontend)
+  [ -f "$ENV_FILE" ] || return 0
+  prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+  [ "$prefix" != "$DEFAULT_IMAGE_PREFIX" ] || return 0
+  if [ "$(grep -c '^QRADAR_DASH_IMAGE_PREFIX=' "$ENV_FILE" || true)" -gt 1 ]; then
+    fail "upgrade refused: $ENV_FILE has more than one QRADAR_DASH_IMAGE_PREFIX line; nothing was changed"
+    return 1
+  fi
+  if [ -n "$prefix" ] && [ "$prefix" != "$OLD_IMAGE_PREFIX" ]; then
+    say "Image prefix $prefix is not the old default; left as it is. The registry or mirror must carry the target's images under that prefix."
+    return 0
+  fi
+  if doctor_profile_enabled proxy; then services+=(proxy); fi
+  if doctor_profile_enabled mcp; then services+=(qradar-mcp); fi
+  for service in "${services[@]}"; do
+    docker image inspect "$OLD_IMAGE_PREFIX/$service:$installed" >/dev/null 2>&1 || {
+      fail "upgrade refused: the installed image $OLD_IMAGE_PREFIX/$service:$installed is not on this host, so the image prefix cannot move; nothing was changed"
+      return 1
+    }
+  done
+  for service in "${services[@]}"; do
+    docker tag "$OLD_IMAGE_PREFIX/$service:$installed" \
+      "$DEFAULT_IMAGE_PREFIX/$service:$installed" || {
+      fail "upgrade refused: tagging $service under $DEFAULT_IMAGE_PREFIX failed; nothing was changed"
+      return 1
+    }
+  done
+  if [ -f "$SAVED_ANSWERS" ]; then
+    entry=$(sed -n 's/^IMAGE_PREFIX=//p' "$SAVED_ANSWERS" | head -n1)
+    if [ "$entry" = "$OLD_IMAGE_PREFIX" ]; then
+      rewrite_prefix_file "$SAVED_ANSWERS" IMAGE_PREFIX no || return 1
+    fi
+  fi
+  rewrite_prefix_file "$ENV_FILE" QRADAR_DASH_IMAGE_PREFIX yes || return 1
+  say "Image prefix moved: $OLD_IMAGE_PREFIX -> $DEFAULT_IMAGE_PREFIX (the repository was renamed)."
+}
+
 cmd_upgrade() {
   local target="" offline=no installed min_from db_size backup_root old_images
   local backup_output backup at new_images old_env_version checkout_version
@@ -2096,6 +2215,7 @@ cmd_upgrade() {
     fail "upgrade refused: the last upgrade failed; run rollback or restore first"
     return 1
   fi
+  migrate_image_prefix "$installed" || return 1
   upgrade_pull_target "$target" "$offline" || {
     fail "upgrade refused: target images are unavailable; no container was stopped"
     return 1

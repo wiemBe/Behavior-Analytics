@@ -1,0 +1,446 @@
+"""Guard every reader of a table that can contain learning-only history (§B.4.7)."""
+
+from __future__ import annotations
+
+import ast
+import re
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+
+
+class ReaderKind(StrEnum):
+    LIVE_ONLY = "LIVE-only"
+    EVIDENCE = "EVIDENCE"
+    DISPLAY = "DISPLAY"
+    DELETE = "DELETE"
+
+
+@dataclass(frozen=True)
+class Reader:
+    reference: str
+    kind: ReaderKind
+    live_clause_calls: int = 0
+
+
+@dataclass(frozen=True)
+class HistoryTable:
+    model: str
+    sql_name: str
+    readers: dict[str, Reader]
+
+
+# Registering a table here is an adapter's phase 1: its reader inventory and guards land
+# before its history writer. HB-3 through HB-7 extend this tuple without changing the scanner.
+HISTORY_TABLES = (
+    HistoryTable(
+        model="PwBucket",
+        sql_name="pw_bucket",
+        readers={
+            "app.collectors.pw_collector.PwCollector._unparsed_streaks": Reader(
+                "R1 (T-138 streak)", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.custom_rules.loaders.load_pw_values": Reader(
+                "R5", ReaderKind.LIVE_ONLY, 2
+            ),
+            "app.repositories.property_watch.PropertyWatchRepository.scope_history": Reader(
+                "R4", ReaderKind.EVIDENCE
+            ),
+            "app.repositories.property_watch.PropertyWatchRepository.pending_buckets": Reader(
+                "R1", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.repositories.property_watch.PropertyWatchRepository.buckets_between": Reader(
+                "R2", ReaderKind.EVIDENCE
+            ),
+            "app.repositories.property_watch.PropertyWatchRepository.component_occurrences": Reader(
+                "R3", ReaderKind.EVIDENCE
+            ),
+            "app.services.property_watches._latest_coverage": Reader(
+                "R6", ReaderKind.DISPLAY
+            ),
+            "app.services.property_watches._scope_changes": Reader("R6", ReaderKind.DISPLAY),
+            "app.services.property_watches.list_values": Reader("R6", ReaderKind.DISPLAY),
+            "app.services.property_watches.value_series": Reader("R6", ReaderKind.DISPLAY),
+            "app.services.property_watches.watch_buckets": Reader("R6", ReaderKind.DISPLAY),
+            "app.services.property_watches.watch_aql": Reader("R6", ReaderKind.DISPLAY),
+            # PW-13d: counts every stored bucket of the current version, history included,
+            # to refuse a history request that would prepend (§H.5.5).
+            "app.services.property_watches.history_change_reasons": Reader(
+                "R6 (PW-13d)", ReaderKind.DISPLAY
+            ),
+            "app.services.pw_retention.<module>": Reader("R7", ReaderKind.DELETE),
+        },
+    ),
+    HistoryTable(
+        model="LogSourceMetric",
+        sql_name="log_source_metric",
+        readers={
+            "app.anomaly.engine.AnomalyEngine.evaluate_pending": Reader(
+                "R1", ReaderKind.LIVE_ONLY, 2
+            ),
+            "app.anomaly.engine.AnomalyEngine.evaluate_latest": Reader(
+                "R1 (not in the design table: feeds a detector; no caller today)",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
+            "app.anomaly.engine.AnomalyEngine._preceding_empty_buckets": Reader(
+                "R2", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.anomaly.engine.AnomalyEngine._recent_signatures": Reader(
+                "R3", ReaderKind.EVIDENCE
+            ),
+            "app.anomaly.baseline.BaselineBuilder._load_clean_observations": Reader(
+                "R4", ReaderKind.EVIDENCE
+            ),
+            "app.collectors.metric_collector.MetricCollector._oldest_live_bucket": Reader(
+                "the anchor (§B.4.1 Guard 1): the oldest LIVE bucket, which history must end at",
+                ReaderKind.LIVE_ONLY,
+                1,
+            ),
+            "app.custom_rules.loaders.load_log_sources": Reader("R5", ReaderKind.LIVE_ONLY, 1),
+            "app.custom_rules.loaders.load_fleet_classes": Reader(
+                "R5", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.fleet.series.build_fleet_eps_series": Reader("R6", ReaderKind.DISPLAY),
+            "app.fleet.summary.build_fleet_summary": Reader(
+                "R6 (not in the design table: fleet totals)", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.latest_bucket": Reader(
+                "R6 (not in the design table: the API's latest bucket)", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.latest_buckets": Reader(
+                "R6 (not in the design table: the API's latest buckets)", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.metric_history": Reader(
+                "R6", ReaderKind.DISPLAY
+            ),
+            "app.cli.doctor.Doctor.check_timescale": Reader(
+                "R7 (not in the design table: hypertable metadata, no rows)",
+                ReaderKind.DISPLAY,
+            ),
+            "app.cli.doctor.Doctor.check_retention_policy": Reader(
+                "R7 (not in the design table: retention policy metadata, no rows)",
+                ReaderKind.DISPLAY,
+            ),
+        },
+    ),
+    HistoryTable(
+        model="WafSourceBucket",
+        sql_name="waf_source_bucket",
+        readers={
+            "app.collectors.waf_endpoint_collector.WafEndpointCollector._persist_interval": Reader(
+                "collection replacement", ReaderKind.DELETE
+            ),
+            (
+                "app.collectors.waf_endpoint_collector.WafEndpointCollector."
+                "persist_history_breakdowns"
+            ): Reader("history breakdown enrichment", ReaderKind.EVIDENCE),
+            "app.custom_rules.loaders.load_waf_endpoints": Reader(
+                "F.1", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_latest_buckets": Reader(
+                "investigation", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_admission_overflow": Reader(
+                "investigation", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_metrics_page": Reader(
+                "investigation", ReaderKind.DISPLAY
+            ),
+            "app.services.waf_pipeline.WafSourcePipeline._evaluate": Reader(
+                "pending evaluation", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.services.waf_pipeline.WafSourcePipeline._history_scope": Reader(
+                "eligibility", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.services.waf_pipeline.WafSourcePipeline._train": Reader(
+                "baseline boundary", ReaderKind.EVIDENCE
+            ),
+            "app.services.waf_retention.<module>": Reader("retention", ReaderKind.DELETE),
+            "app.services.waf_status.waf_source_statuses": Reader(
+                "source status", ReaderKind.DISPLAY
+            ),
+            # HB-8r1: the admin page's "has this source collected live data?" question
+            # (§B.5), which decides `later_yes` per configured source. History rows are
+            # not live data, so the question is live-only even though the page displays
+            # the answer.
+            "app.services.history_backfill.HistoryBackfillService._entries": Reader(
+                "HB-8 later-Yes per source", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.waf.baseline.WafBaselineBuilder.source_bucket_facts": Reader(
+                "baseline", ReaderKind.EVIDENCE
+            ),
+            "app.waf.engine.WafAnomalyEngine._load_novelty_traffic": Reader(
+                "novelty evidence", ReaderKind.EVIDENCE
+            ),
+            "app.waf.engine.WafAnomalyEngine._load_novelty": Reader(
+                "novelty history", ReaderKind.EVIDENCE
+            ),
+        },
+    ),
+    HistoryTable(
+        model="RuleMatchWindow",
+        sql_name="rule_match_window",
+        readers={
+            # §B.4.5: rule health judges now from the stored windows and has no
+            # alert path, so its readers read both (EVIDENCE or DISPLAY).
+            "app.collectors.rule_match_collector.RuleMatchCollector._oldest_live_window": Reader(
+                "HB-5 anchor", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.collectors.rule_match_collector.RuleMatchCollector._prior_attempts": Reader(
+                "HB-5 retries", ReaderKind.EVIDENCE
+            ),
+            "app.services.rule_health.RuleHealthEvaluator._match_coverage": Reader(
+                "R2 (rule health)", ReaderKind.EVIDENCE
+            ),
+            "app.services.rule_statistics.RuleStatisticsService._coverage": Reader(
+                "R6 (rule statistics)", ReaderKind.DISPLAY
+            ),
+            "app.services.rule_statistics.RuleStatisticsService._top": Reader(
+                "R6 (rule statistics)", ReaderKind.DISPLAY
+            ),
+        },
+    ),
+    HistoryTable(
+        model="CatchallBucket",
+        sql_name="catchall_bucket",
+        readers={
+            "app.api.routes.catchall.list_buckets": Reader("R6", ReaderKind.DISPLAY),
+            "app.api.routes.catchall.list_sources": Reader("R6", ReaderKind.DISPLAY),
+            "app.collectors.catchall_collector.CatchallCollector._live_anchor": Reader(
+                "R1", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.collectors.catchall_collector.CatchallCollector._refresh_events_24h": Reader(
+                "R6", ReaderKind.DISPLAY
+            ),
+            "app.services.catchall_retention.<module>": Reader("R7", ReaderKind.DELETE),
+            # HB-8r1: the estimate's senders per bucket, over the live buckets only. A
+            # history bucket is evidence, not a live measurement of today's senders.
+            "app.services.history_backfill.HistoryBackfillService._counts": Reader(
+                "HB-8 estimate density", ReaderKind.LIVE_ONLY, 1
+            ),
+        },
+    ),
+    HistoryTable(
+        model="WafEndpointMetric",
+        sql_name="waf_endpoint_metric",
+        readers={
+            "app.collectors.waf_endpoint_collector.WafEndpointCollector._persist_interval": Reader(
+                "collection replacement", ReaderKind.DELETE
+            ),
+            (
+                "app.collectors.waf_endpoint_collector.WafEndpointCollector."
+                "persist_history_breakdowns"
+            ): Reader("history breakdown enrichment", ReaderKind.EVIDENCE),
+            "app.custom_rules.loaders.load_waf_endpoints": Reader(
+                "F.1 through live source bucket", ReaderKind.LIVE_ONLY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_metrics_page": Reader(
+                "investigation", ReaderKind.DISPLAY
+            ),
+            "app.services.waf_retention.<module>": Reader("retention", ReaderKind.DELETE),
+            "app.waf.baseline.WafBaselineBuilder._rows": Reader(
+                "baseline", ReaderKind.EVIDENCE
+            ),
+            "app.waf.engine.WafAnomalyEngine._load_subjects": Reader(
+                "bucket evaluation", ReaderKind.LIVE_ONLY
+            ),
+            "app.waf.engine.WafAnomalyEngine._load_novelty_traffic": Reader(
+                "novelty evidence", ReaderKind.EVIDENCE
+            ),
+        },
+    ),
+    HistoryTable(
+        model="IpsSourceBucket",
+        sql_name="ips_source_bucket",
+        readers={
+            "app.services.history_backfill.HistoryBackfillService._entries": Reader(
+                "HB-8 later-Yes per source", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.collectors.ips_collector.IpsCollector._apply_history_lifecycle": Reader(
+                "eligibility: a source with live buckets is not eligible", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.collectors.ips_collector.IpsCollector._persist": Reader(
+                "collector replacement", ReaderKind.DELETE
+            ),
+            "app.collectors.ips_collector.IpsCollector._persist_history": Reader(
+                "history writer: writes HISTORY rows, replaces no live row", ReaderKind.DELETE
+            ),
+            "app.custom_rules.loaders.load_ips_entities": Reader(
+                "R5 entity join", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.custom_rules.loaders.load_ips_sources": Reader(
+                "R5 source", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.ips.baseline.IpsBaselineBuilder._source_buckets": Reader(
+                "baseline", ReaderKind.EVIDENCE
+            ),
+            "app.ips.engine.IpsAnomalyEngine._load_novelty": Reader(
+                "novelty history", ReaderKind.EVIDENCE
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.latest_buckets": Reader(
+                "latest status", ReaderKind.DISPLAY
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.entity_metrics_page": Reader(
+                "entity series", ReaderKind.DISPLAY
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.source_metrics_page": Reader(
+                "source series", ReaderKind.DISPLAY
+            ),
+            "app.services.ips_pipeline.IpsInstancePipeline.run": Reader(
+                "training eligibility", ReaderKind.EVIDENCE
+            ),
+            "app.services.ips_pipeline.IpsInstancePipeline._evaluate": Reader(
+                "pending evaluation", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.services.ips_retention.<module>": Reader("retention", ReaderKind.DELETE),
+        },
+    ),
+    HistoryTable(
+        model="IpsEntityMetric",
+        sql_name="ips_entity_metric",
+        readers={
+            "app.collectors.ips_collector.IpsCollector._persist": Reader(
+                "collector replacement", ReaderKind.DELETE
+            ),
+            "app.collectors.ips_collector.IpsCollector._persist_history": Reader(
+                "history writer: writes HISTORY rows, replaces no live row", ReaderKind.DELETE
+            ),
+            "app.custom_rules.loaders.load_ips_entities": Reader(
+                "R5 through the LIVE source-bucket join", ReaderKind.LIVE_ONLY
+            ),
+            "app.ips.baseline.IpsBaselineBuilder._entity_rows": Reader(
+                "baseline", ReaderKind.EVIDENCE
+            ),
+            "app.ips.engine.IpsAnomalyEngine._load_subjects": Reader(
+                "current LIVE bucket supplied by the guarded pipeline", ReaderKind.LIVE_ONLY
+            ),
+            "app.ips.engine.IpsAnomalyEngine._load_novelty": Reader(
+                "novelty history", ReaderKind.EVIDENCE
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.entity_metrics_page": Reader(
+                "entity series", ReaderKind.DISPLAY
+            ),
+            "app.services.ips_retention.<module>": Reader("retention", ReaderKind.DELETE),
+        },
+    ),
+)
+
+
+@dataclass(frozen=True)
+class FoundReader:
+    name: str
+    live_clause_calls: int
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _contains_select(node: ast.AST) -> bool:
+    return any(
+        isinstance(child, ast.Call) and _call_name(child) == "select"
+        for child in ast.walk(node)
+    )
+
+
+def _names(node: ast.AST) -> set[str]:
+    return {child.id for child in ast.walk(node) if isinstance(child, ast.Name)}
+
+
+def _live_clause_calls(node: ast.AST, model: str) -> int:
+    count = 0
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call) or _call_name(child) != "is_live_clause":
+            continue
+        if len(child.args) == 1 and isinstance(child.args[0], ast.Name):
+            count += child.args[0].id == model
+    return count
+
+
+def _raw_sql_mentions(node: ast.AST, table: str) -> bool:
+    pattern = re.compile(rf"\b(?:SELECT|DELETE)\b.*\b{re.escape(table)}\b", re.I | re.S)
+    return any(
+        isinstance(child, ast.Constant)
+        and isinstance(child.value, str)
+        and pattern.search(child.value) is not None
+        for child in ast.walk(node)
+    )
+
+
+class _FunctionCollector(ast.NodeVisitor):
+    def __init__(self, module: str, table: HistoryTable) -> None:
+        self.module = module
+        self.table = table
+        self.scope: list[str] = []
+        self.readers: list[FoundReader] = []
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.scope.append(node.name)
+        self.generic_visit(node)
+        self.scope.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        name = ".".join((self.module, *self.scope, node.name))
+        orm_read = self.table.model in _names(node) and _contains_select(node)
+        if orm_read or _raw_sql_mentions(node, self.table.sql_name):
+            self.readers.append(
+                FoundReader(name, _live_clause_calls(node, self.table.model))
+            )
+        self.scope.append(node.name)
+        self.generic_visit(node)
+        self.scope.pop()
+
+
+def _module_node_without_functions(tree: ast.Module) -> ast.Module:
+    return ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        ],
+        type_ignores=[],
+    )
+
+
+def _find_readers(app: Path, table: HistoryTable) -> dict[str, FoundReader]:
+    found: list[FoundReader] = []
+    for path in sorted(app.rglob("*.py")):
+        module = ".".join(path.relative_to(app.parent).with_suffix("").parts)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        visitor = _FunctionCollector(module, table)
+        visitor.visit(tree)
+        found.extend(visitor.readers)
+        module_body = _module_node_without_functions(tree)
+        if _raw_sql_mentions(module_body, table.sql_name):
+            found.append(FoundReader(f"{module}.<module>", 0))
+    return {reader.name: reader for reader in found}
+
+
+def test_history_readers_are_classified_and_live_readers_use_the_helper() -> None:
+    app = Path(__file__).parents[2] / "app"
+    for table in HISTORY_TABLES:
+        found = _find_readers(app, table)
+        classified = table.readers
+        assert found.keys() == classified.keys(), (
+            f"{table.sql_name} readers changed; registering a table or reader is the "
+            f"adapter's phase 1. unclassified={sorted(found.keys() - classified.keys())}, "
+            f"missing={sorted(classified.keys() - found.keys())}"
+        )
+        for name, reader in classified.items():
+            if reader.kind is not ReaderKind.LIVE_ONLY:
+                continue
+            assert found[name].live_clause_calls >= reader.live_clause_calls, (
+                f"{name} ({reader.reference}) is {reader.kind.value} and must use "
+                f"is_live_clause({table.model}) {reader.live_clause_calls} time(s)"
+            )

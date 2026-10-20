@@ -14,8 +14,8 @@ Companion documents:
 [Behavioral Analytics Architecture](BEHAVIORAL-ANALYTICS-ARCHITECTURE.md) for
 the engine, lifecycle and explanation model;
 [Phase A design](PHASE-A-SOURCE-VOLUME-ANOMALY.md) for the source-volume
-detector; [UI redesign plan](UI-REDESIGN-PLAN.md) for the charcoal system, the
-widget Dashboard and the rulings (UR.9, decision D-11) behind §3, §8 and §11.
+detector; UI redesign plan for the charcoal system, the
+widget Dashboard and the rulings of 2026-10-14 (UR.9) behind §3, §8 and §11.
 
 ---
 
@@ -38,8 +38,7 @@ Everything else the interface carries — offenses, rules, coverage, inventory �
 is a supporting capability. Supporting routes must not be given the visual
 weight, the hierarchy, or the development attention of the behavioral ones.
 
-The Dashboard at `/` is the one cross-cutting surface (the user's decision
-D-11). It is a home over behavior, fleet, offenses and alerts, not a behavioral
+The Dashboard at `/` is the one cross-cutting surface (decided on 2026-10-14). It is a home over behavior, fleet, offenses and alerts, not a behavioral
 route: `/behavior` keeps the behavioral triage job and its pinned tests. The
 weight rule holds on the Dashboard too — behavioral widgets take the larger
 area, and each supporting capability appears at a lower weight (on the default
@@ -117,7 +116,7 @@ Answers *"what needs me now, across the platform?"*.
   `/?dashboard=<id>`), or the dashboard marked default, or the unsaved SOC
   Overview template when there is none. Dashboards are persisted per owner;
   the template is shown unsaved and says so.
-- Cross-cutting by decision D-11: behavior, fleet, offenses and alerts in one
+- Cross-cutting (decided on 2026-10-14): behavior, fleet, offenses and alerts in one
   view. Behavioral widgets get the larger area; supporting capabilities appear
   at a lower weight (§1).
 - Widgets are registered, catalog-driven and configurable within enumerated
@@ -460,7 +459,7 @@ attribute at all. A detail route marks its owning section, never that section's
 path prefix. Link names must be accessible and unambiguous: no two destinations
 may share an accessible name. The shell holds no heading element.
 
-Navigation is **text only** (decision D-11): no icons, no glyphs. An entry
+Navigation is **text only** (decided on 2026-10-14): no icons, no glyphs. An entry
 exists only where a page exists — a destination with nothing behind it spends
 the analyst's attention and delivers nothing. The Dashboard sits alone at the
 top; the Behavior group leads the labelled groups. The active item is shown by
@@ -813,7 +812,7 @@ The rules below are contracts with regression coverage. This repository has
 ## 11. Tokens and colour
 
 The palette is charcoal, defined once in `frontend/src/app/tokens.css`. The
-product is **dark only** (decision D-11): `color-scheme: dark`, no light theme,
+product is **dark only** (decided on 2026-10-14): `color-scheme: dark`, no light theme,
 no `prefers-color-scheme` rule. Charts read their colours once, at creation
 (`lib/chartPalette.ts`, `lib/home/chartPalette.ts`), so a second theme is not
 one token block away, and no theme switch exists.
@@ -862,9 +861,9 @@ one token block away, and no theme switch exists.
   it on their tinted fills; the chart categories are at least 3:1 on
   `--surface`.
 
-### The D-11 contrast exception, and its exact bounds
+### The contrast exception of 2026-10-14, and its exact bounds
 
-Decision D-11 (the user, 2026-10-14) keeps two palette values although they are
+The decision of 2026-10-14 keeps two palette values although they are
 below the WCAG thresholds: `--text-3 = #73757B` is below AA 4.5:1 on every
 surface, and `--border-strong = #35363A` is below the 3:1 non-text minimum for
 an input boundary. The exception covers **exactly these two values and nothing

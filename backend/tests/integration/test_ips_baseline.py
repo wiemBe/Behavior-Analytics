@@ -138,6 +138,7 @@ async def add_bucket(
         "in_maintenance": False,
         "collected_at": at + timedelta(hours=1),
     }
+    values.setdefault("origin", "LIVE")
     values.update(overrides)
     result = IpsSourceBucket(**values)  # type: ignore[arg-type]
     session.add(result)

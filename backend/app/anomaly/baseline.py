@@ -21,8 +21,10 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
-from sqlalchemy import select
+from sqlalchemy import Table, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.anomaly.seasonal import (
@@ -119,9 +121,8 @@ class BaselineBuilder:
         # when both clear the minimum sample count.
         completeness = retained_fraction(len(observations), candidates)
 
-        written = 0
-        for (metric, weekday, hour), values in cells.items():
-            await self._upsert_cell(
+        rows = [
+            self._cell_row(
                 log_source.id,
                 metric,
                 weekday,
@@ -132,9 +133,10 @@ class BaselineBuilder:
                 completeness=completeness,
                 tally=tally,
             )
-            written += 1
-        await self.session.flush()
-        return written
+            for (metric, weekday, hour), values in cells.items()
+        ]
+        await self._upsert_cells(rows)
+        return len(rows)
 
     async def _load_clean_observations(
         self, log_source: LogSource, start: datetime, end: datetime
@@ -255,7 +257,7 @@ class BaselineBuilder:
             return False
         return log_source.business_hours_start <= when.hour < log_source.business_hours_end
 
-    async def _upsert_cell(
+    def _cell_row(
         self,
         log_source_id: uuid.UUID,
         metric: str,
@@ -267,55 +269,84 @@ class BaselineBuilder:
         *,
         completeness: float,
         tally: ExclusionTally,
-    ) -> None:
+    ) -> dict[str, object]:
+        """One cell of the bulk upsert, with every column the rebuild sets."""
         cell = summarize_cell(values, min_samples=self.settings.baseline_min_samples)
-        med, mad_value, p05, p95 = cell.median, cell.mad, cell.p05, cell.p95
-        reliable = cell.is_reliable
-        stored_obs = cell.observations
+        return {
+            "id": uuid.uuid4(),
+            "log_source_id": log_source_id,
+            "metric_name": metric,
+            "weekday": weekday,
+            "hour": hour,
+            "median": cell.median,
+            "mad": cell.mad,
+            "p05": cell.p05,
+            "p95": cell.p95,
+            "sample_count": len(values),
+            "is_reliable": cell.is_reliable,
+            "window_start": window_start,
+            "window_end": window_end,
+            "computed_at": window_end,
+            "baseline_version": 1,
+            "observations": cell.observations,
+            "completeness": completeness,
+            "excluded_sample_count": tally.total,
+            "exclusion_counts": tally.as_dict(),
+            # The mixins' Python-side defaults do not run on a Core insert, so
+            # the primary key and both timestamps are set here. `created_at` is
+            # deliberately absent from the conflict update below: it must keep
+            # its original value, while `updated_at` must move.
+            "created_at": window_end,
+            "updated_at": window_end,
+        }
 
-        existing = await self.session.scalar(
-            select(LogSourceBaseline).where(
-                LogSourceBaseline.log_source_id == log_source_id,
-                LogSourceBaseline.metric_name == metric,
-                LogSourceBaseline.weekday == weekday,
-                LogSourceBaseline.hour == hour,
-            )
+    async def _upsert_cells(self, rows: list[dict[str, object]]) -> None:
+        """Write a source's cells in one statement.
+
+        One prepared INSERT, executed once per cell by the driver: the shape the
+        WAF and IPS baseline writers use, and one statement whatever the number
+        of cells. The rows travel as typed binds -- 168 cells x 2 Phase A
+        metrics x 21 columns is 7,056 parameters, far below PostgreSQL's
+        65,535 -- so a JSON document (as the WAF history path uses) would buy
+        nothing.
+
+        `baseline_version` is 1 on insert and the stored value + 1 on update, in
+        SQL, so no per-cell read is needed. A cell that exists but has no
+        observation this time is not in `rows` and is left untouched.
+        """
+        if not rows:
+            return
+        table = cast(Table, LogSourceBaseline.__table__)
+        statement = pg_insert(table)
+        # Columns the insert owns: the key, the version (computed below) and the
+        # creation time (which keeps its original value on update).
+        insert_only = {
+            "id",
+            "log_source_id",
+            "metric_name",
+            "weekday",
+            "hour",
+            "baseline_version",
+            "created_at",
+        }
+        replaced = {
+            name: statement.excluded[name] for name in rows[0] if name not in insert_only
+        }
+        statement = statement.on_conflict_do_update(
+            constraint="uq_log_source_baseline_cell",
+            set_={
+                **replaced,
+                "baseline_version": table.c.baseline_version + 1,
+                "updated_at": statement.excluded.updated_at,
+            },
         )
-        if existing is None:
-            self.session.add(
-                LogSourceBaseline(
-                    log_source_id=log_source_id,
-                    metric_name=metric,
-                    weekday=weekday,
-                    hour=hour,
-                    median=med,
-                    mad=mad_value,
-                    p05=p05,
-                    p95=p95,
-                    sample_count=len(values),
-                    is_reliable=reliable,
-                    window_start=window_start,
-                    window_end=window_end,
-                    computed_at=window_end,
-                    baseline_version=1,
-                    observations=stored_obs,
-                    completeness=completeness,
-                    excluded_sample_count=tally.total,
-                    exclusion_counts=tally.as_dict(),
-                )
-            )
-        else:
-            existing.median = med
-            existing.mad = mad_value
-            existing.p05 = p05
-            existing.p95 = p95
-            existing.sample_count = len(values)
-            existing.is_reliable = reliable
-            existing.window_start = window_start
-            existing.window_end = window_end
-            existing.computed_at = window_end
-            existing.baseline_version += 1
-            existing.observations = stored_obs
-            existing.completeness = completeness
-            existing.excluded_sample_count = tally.total
-            existing.exclusion_counts = tally.as_dict()
+        await self.session.execute(statement, rows)
+        # A Core statement bypasses the ORM, so an object already loaded for this
+        # source would keep its old values in the identity map, and a read
+        # through this same session would return them. Neither caller loads a
+        # baseline into its session (the collector tick and the nightly task
+        # read only sources and metrics), but a caller that does must not be
+        # served the values the bulk write just replaced.
+        for obj in list(self.session.identity_map.values()):
+            if isinstance(obj, LogSourceBaseline):
+                self.session.expire(obj)

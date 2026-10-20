@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import { SUBJECT_KIND_LABELS, subjectKindInSentence } from "@/components/customrules/authoring";
+import { latencyCadence } from "@/components/cadence/CadenceLatency";
+import { pinAvailability } from "@/components/propertywatch/pwFormat";
 import {
   loadIpsEntities,
   loadIpsSources,
@@ -26,6 +28,7 @@ interface SubjectValue {
   sourceClass: string;
   wafEndpointId: string;
   ipsEntityId: string;
+  pwValueId: string;
 }
 
 export interface SubjectPickerProps {
@@ -53,6 +56,7 @@ function entityLabel(entity: IpsEntityInventory): string {
 }
 
 export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel }: SubjectPickerProps) {
+  const pinCadence = latencyCadence(catalog.cadences?.find((c) => c.family === "PROPERTY_WATCH"));
   const kindId = useId();
   const searchId = useId();
   const parentId = useId();
@@ -65,6 +69,9 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
   const [parentSourceId, setParentSourceId] = useState("");
   const [endpoints, setEndpoints] = useState<WafEndpointInventory[]>([]);
   const [entities, setEntities] = useState<IpsEntityInventory[]>([]);
+  const [watches, setWatches] = useState<Awaited<ReturnType<typeof api.propertyWatches>>>([]);
+  const [watchId, setWatchId] = useState("");
+  const [pinnedValues, setPinnedValues] = useState<Awaited<ReturnType<typeof api.propertyWatchValues>>["items"]>([]);
 
   useEffect(() => {
     let current = true;
@@ -83,6 +90,9 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
         } else if (kind === "IPS_SOURCE" || kind === "IPS_ENTITY") {
           const rows = await loadIpsSources();
           if (current) setIpsSources(rows);
+        } else if (kind === "PW_VALUE") {
+          const rows = await api.propertyWatches();
+          if (current) setWatches(rows);
         }
         if (current) setState("ready");
       } catch {
@@ -119,6 +129,24 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
     };
   }, [kind, parentSourceId]);
 
+  useEffect(() => {
+    if (kind !== "PW_VALUE" || !watchId) return;
+    let current = true;
+    setState("loading");
+    api.propertyWatchValues(watchId, { limit: 50, offset: 0 })
+      .then((page) => {
+        if (!current) return;
+        setPinnedValues(page.items.filter((item) => item.pinned));
+        setState("ready");
+      })
+      .catch(() => {
+        if (current) setState("error");
+      });
+    return () => {
+      current = false;
+    };
+  }, [kind, watchId]);
+
   const filteredSources = useMemo(
     () => sources.filter((source) => contains(source.name, query)),
     [query, sources],
@@ -126,6 +154,10 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
   const filteredIpsSources = useMemo(
     () => ipsSources.filter((source) => contains(source.log_source_name, query)),
     [ipsSources, query],
+  );
+  const filteredWatches = useMemo(
+    () => watches.filter((watch) => contains(watch.name, query)),
+    [query, watches],
   );
 
   function setLogSource(id: string, label: string) {
@@ -173,13 +205,19 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
         </div>
       ) : (
         <div className="cr-field">
-          <label htmlFor={searchId}>Find {subjectKindInSentence(kind)}</label>
+          <label htmlFor={searchId}>
+            Find {kind === "PW_VALUE" ? "property watch" : subjectKindInSentence(kind)}
+          </label>
           <input
             id={searchId}
             className="field"
             type="search"
             value={query}
-            placeholder="Filter the existing source list"
+            placeholder={
+              kind === "PW_VALUE"
+                ? "Filter existing property watches"
+                : "Filter the existing source list"
+            }
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
@@ -294,6 +332,70 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
                 Conditions the platform does not collect belong in a <Link href="/searches/new">custom search</Link>.
               </p>
             </div>
+          )}
+        </>
+      )}
+
+      {kind === "PW_VALUE" && (
+        <>
+          <div className="cr-field">
+            <label htmlFor={parentId}>Property watch</label>
+            <select
+              id={parentId}
+              className="select-control"
+              value={watchId}
+              disabled={loading && watches.length === 0}
+              onChange={(event) => {
+                setWatchId(event.target.value);
+                setPinnedValues([]);
+                onChange({ ...value, pwValueId: "" });
+                onLabel("");
+              }}
+            >
+              <option value="">Choose a property watch first</option>
+              {filteredWatches.map((watch) => (
+                <option key={watch.id} value={watch.id}>{watch.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="cr-field">
+            <label htmlFor={subjectId}>Pinned value</label>
+            <select
+              id={subjectId}
+              className="select-control"
+              value={value.pwValueId}
+              disabled={!watchId || loading}
+              onChange={(event) => {
+                const chosen = pinnedValues.find((item) => item.id === event.target.value);
+                onChange({ ...value, pwValueId: event.target.value });
+                onLabel(chosen?.components.join(" × ") ?? "");
+              }}
+            >
+              <option value="">
+                {!watchId ? "Choose a property watch first" : loading ? "Loading pinned values…" : "Choose a pinned value"}
+              </option>
+              {pinnedValues.map((item) => (
+                <option key={item.id} value={item.id}>{item.components.join(" × ") || item.value_key}</option>
+              ))}
+            </select>
+          </div>
+          {watchId && !loading && pinnedValues.length === 0 && (
+            <div className="notice cr-empty-subject">
+              <p>
+                No pinned value is available. Automatic values are not offered to a threshold
+                rule: <Link href={`/behavior/watches/${watchId}`}>open the property watch</Link> and
+                pin the value first.
+              </p>
+              <p>
+                A new pin can be used in a rule {pinAvailability(pinCadence)}.
+              </p>
+            </div>
+          )}
+          {watchId && pinnedValues.length > 0 && (
+            <p className="field-hint">
+              Only pinned values are listed. To use another value, <Link href={`/behavior/watches/${watchId}`}>pin it on the watch first</Link>.
+              A value pinned just now is listed {pinAvailability(pinCadence)}.
+            </p>
           )}
         </>
       )}

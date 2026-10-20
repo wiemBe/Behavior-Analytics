@@ -47,6 +47,7 @@ from app.models.enums import (
     WafProfileValidationStatus,
     WafTelemetryStatus,
 )
+from app.models.history_backfill import ORIGIN_CHECK
 
 #: Width of a metric-semantics identity. See app/waf/semantics.py.
 METRIC_SEMANTICS_LENGTH = 160
@@ -168,6 +169,7 @@ class WafSourceBucket(Base):
 
     __tablename__ = "waf_source_bucket"
     __table_args__ = (
+        CheckConstraint(ORIGIN_CHECK, name="origin_known"),
         CheckConstraint(
             "endpoint_coverage_ratio >= 0.0 AND endpoint_coverage_ratio <= 1.0",
             name="coverage_ratio_range",
@@ -201,6 +203,9 @@ class WafSourceBucket(Base):
         DateTime(timezone=True), primary_key=True
     )
     bucket_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: 'LIVE' for a row the cadence collection wrote, 'HISTORY' for one the history
+    #: backfill read (HISTORY-BACKFILL §B.4). No default: a writer must say which.
+    origin: Mapped[str] = mapped_column(String(8), nullable=False)
     profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
     metric_semantics: Mapped[str] = mapped_column(
         String(METRIC_SEMANTICS_LENGTH), nullable=False

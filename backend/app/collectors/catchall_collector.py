@@ -30,12 +30,12 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import literal_column, select, text, update
+from sqlalchemy import func, literal_column, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,20 +44,68 @@ from app.alerts.service import AlertInput, AlertService
 from app.catchall.fold import CatchallBucketFact, SenderLedger, fold_source_bucket
 from app.catchall.keyed_search import CatchallBucketOutcome, run_catchall_search
 from app.core.config import Settings, get_settings
+from app.history import HistoryFamily, HistoryOrigin
+from app.history.catchall import (
+    CatchallChunk,
+    CatchallHistoryFold,
+    CatchallSource,
+    CatchallStep,
+    SenderTouch,
+    bucket_row,
+    catchall_finish,
+    catchall_history_budget,
+    catchall_planner_settings,
+    catchall_window_fit,
+    fold_chunk,
+    merge_touches,
+    reading_progress,
+    scope_row,
+    sender_rows,
+)
+from app.history.families import fit_family_window
+from app.history.lifecycle import (
+    ActionKind,
+    ConsoleMode,
+    DecisionView,
+    LifecycleError,
+    ScopeAction,
+    ScopeRowView,
+    bounded_reason,
+    console_mode,
+    decode_scope,
+    new_scope_row,
+    scope_action,
+    transition_row,
+)
+from app.history.origin import is_live_clause
+from app.history.planner import (
+    ChunkResult,
+    ScopeProgress,
+    Span,
+    StepAction,
+    plan_step,
+    settle_step,
+)
+from app.history.progress_codec import ProgressCodecError, encode_progress
+from app.history.source_floors import SourceFloors
+from app.history.state import HistoryState, HistoryTrigger, next_state
 from app.ips.keyed_search import IpsSearchBudget
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.enums import (
+    FIRST_RUN_LOOKBACK_BUCKETS,
     CatchallMeasurement,
     CatchallReviewStatus,
     IpsCellState,
     SearchFamily,
     Severity,
 )
+from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderCapability, QRadarProvider
 from app.providers.dto import CatchallSenderRow
+from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.waf.admission import AdmissionPolicy
@@ -70,6 +118,16 @@ BOOTSTRAPPED_KEY = "bootstrapped"
 #: Rows per bulk statement. Bounds the bind parameters (asyncpg allows 32767).
 _BUCKET_CHUNK = 1000
 _SENDER_CHUNK = 2000
+#: The reason a scope whose stored progress cannot be read back ends (§B.4.4).
+UNREADABLE_PROGRESS = "the stored history progress could not be read back"
+#: The console-wide scope of this family: one row for the console (§B.5).
+SCOPE_KEY = ""
+#: The states in which a scope no longer reads (§B.4.4 "The hold").
+_FINISHED_SCOPES = (
+    HistoryState.COMPLETE,
+    HistoryState.PARTIAL,
+    HistoryState.UNAVAILABLE,
+)
 
 
 @dataclass
@@ -101,6 +159,14 @@ class CatchallCollectionReport:
     error: str | None = None
     duration_ms: int = 0
     watermark_at: datetime | None = None
+    #: The catch-all history scope's state after this tick (None: no scope).
+    history_scope_state: HistoryState | None = None
+    #: Buckets a history step wrote.
+    history_buckets_written: int = 0
+    #: Senders a history step wrote.
+    history_senders_written: int = 0
+    #: Searches a history step sent.
+    history_searches: int = 0
 
 
 @dataclass
@@ -157,7 +223,14 @@ class CatchallCollector:
 
             bucket_seconds = settings.collection_interval_seconds
             watermark = await self._get_or_create_watermark(instance)
+            # The operator's answer and this console's scope row: two statements.
+            decision, scope = await self._history_scope(instance.id)
+            # Guard 3 (§B.4.4 "The hold"): while the history reads, the live run
+            # is a bootstrap run, so a sender first seen live is REVIEWED.
+            hold = self._history_hold(decision, scope)
             report.bootstrap = not (watermark.collection_metadata or {}).get(BOOTSTRAPPED_KEY)
+            if hold:
+                report.bootstrap = True
             cadence = await SearchCadenceService(self.session, settings, self._clock).get(
                 SearchFamily.CATCHALL_SENDERS
             )
@@ -169,7 +242,7 @@ class CatchallCollector:
                     bucket_seconds,
                 ),
                 bucket_seconds,
-                first_run_buckets=cadence_buckets,
+                first_run_buckets=FIRST_RUN_LOOKBACK_BUCKETS,
                 max_buckets=cadence_buckets + settings.collection_max_backfill_intervals,
             )
 
@@ -178,17 +251,29 @@ class CatchallCollector:
                 await self._collect_window(
                     instance, watermark, starts, bucket_seconds, started, report
                 )
+            # The history step, after the live pass, under the same lock (§B.6.2).
+            report.history_scope_state = await self._history_step(
+                instance, report, decision=decision, scope=scope, tick_started=started
+            )
             watermark.last_run_at = started
             if watermark.watermark_at is not None:
                 end_of_last = watermark.watermark_at + timedelta(seconds=bucket_seconds)
                 watermark.lag_seconds = max(0, int((started - end_of_last).total_seconds()))
             measured = report.buckets_complete + report.buckets_lower_bound
+            finished = report.history_scope_state in _FINISHED_SCOPES
             watermark.collection_metadata = {
                 "bucket_seconds": bucket_seconds,
                 "device_type_ids": sorted(set(settings.catchall_type_ids)),
-                # Bootstrap ends with the first run that measured everything it searched.
-                BOOTSTRAPPED_KEY: not report.bootstrap
-                or (report.buckets_attempted > 0 and report.buckets_attempted == measured),
+                # Bootstrap ends with the first run that measured everything it searched,
+                # and never while the history is reading (§B.4.4 "The hold").
+                BOOTSTRAPPED_KEY: finished
+                or (
+                    not hold
+                    and (
+                        not report.bootstrap
+                        or (report.buckets_attempted > 0 and report.buckets_attempted == measured)
+                    )
+                ),
             }
             report.watermark_at = watermark.watermark_at
             await self.session.flush()
@@ -222,7 +307,7 @@ class CatchallCollector:
         """Settled bucket starts after the watermark, oldest first, at most `max_buckets`."""
         step = timedelta(seconds=bucket_seconds)
         if watermark.watermark_at is None:
-            # First run: one cadence of buckets, never a backfill nobody asked for.
+            # First run: a fixed look-back (one hour at five-minute buckets), whatever the cadence.
             first = boundary - step * first_run_buckets
             limit = first_run_buckets
         else:
@@ -249,7 +334,7 @@ class CatchallCollector:
         sources = await self._catchall_sources(instance.id)
         by_qradar = {source.qradar_id: source for source in sources}
         state = _RunState()
-        known = await self._load_senders(instance.id, state)
+        known = await self._load_senders(instance.id, state.ledgers)
 
         budget = IpsSearchBudget(settings.search_cadence_max_searches_per_tick)
         outcomes = await run_catchall_search(
@@ -355,28 +440,15 @@ class CatchallCollector:
         bucket_seconds: int,
         now: datetime,
     ) -> dict:
-        assert outcome.provenance is not None
-        return {
-            "catchall_log_source_id": source_id,
-            "bucket_start": outcome.bucket_start,
-            "bucket_seconds": bucket_seconds,
-            "events": fact.events,
-            "records": fact.records,
-            "distinct_senders": fact.distinct_senders,
-            "distinct_senders_lower_bound": fact.distinct_senders_lower_bound,
-            "measurement": fact.measurement.value,
-            "top_senders": [
-                {"identifier": identifier, "events": events}
-                for identifier, events in fact.top_senders
-            ],
-            "admitted": fact.admitted,
-            "below_admission_threshold": fact.below_admission_threshold,
-            "rejected_over_quota": fact.rejected_over_quota,
-            "untracked_senders": fact.untracked_senders,
-            "untracked_events": fact.untracked_events,
-            "query_provenance": outcome.provenance.as_json(),
-            "collected_at": now,
-        }
+        """The live bucket row; the history path writes the same columns."""
+        return bucket_row(
+            source_id,
+            outcome,
+            fact,
+            bucket_seconds=bucket_seconds,
+            now=now,
+            origin=HistoryOrigin.LIVE,
+        )
 
     # ------------------------------------------------------------------ writes
     async def _write(
@@ -397,7 +469,8 @@ class CatchallCollector:
                 set_={
                     column: stmt.excluded[column]
                     for column in chunk[0]
-                    if column not in ("catchall_log_source_id", "bucket_start")
+                    # A live write never changes the marker of an existing row.
+                    if column not in ("catchall_log_source_id", "bucket_start", "origin")
                 },
             )
             await self.session.execute(stmt)
@@ -558,6 +631,455 @@ class CatchallCollector:
             watermark.consecutive_failures = 0
             watermark.last_error = None
 
+    # ----------------------------------------------------------------- history
+    async def _history_scope(
+        self, instance_id: uuid.UUID
+    ) -> tuple[DecisionView | None, HistoryBackfillScope | None]:
+        """The console's answer and its catch-all scope row: two statements."""
+        repository = HistoryBackfillRepository(self.session)
+        decisions = await repository.decisions([instance_id])
+        scopes = await repository.scopes(instance_id, HistoryFamily.CATCHALL.value)
+        decision = decisions.get(instance_id)
+        return (None if decision is None else _decision_view(decision), scopes.get(SCOPE_KEY))
+
+    def _history_hold(
+        self, decision: DecisionView | None, scope: HistoryBackfillScope | None
+    ) -> bool:
+        """Whether the live run must be a bootstrap run (Guard 3, §B.4.4 "The hold").
+
+        While the console's catch-all history reads (or waits for its anchor), a
+        sender first seen live is `REVIEWED`, not `NEW`: the history may know it
+        already, and a `NEW` sender would send the analyst after a device the
+        console has seen for weeks.
+        """
+        if not self.settings.history_backfill_enabled:
+            return False
+        if scope is None:
+            # The scope is created at this tick and starts reading: hold from now on.
+            return console_mode(decision) is ConsoleMode.ACTIVE
+        return HistoryState(scope.state) in (HistoryState.WAITING, HistoryState.READING)
+
+    async def _live_anchor(self, instance_id: uuid.UUID) -> datetime | None:
+        """The oldest live bucket of the console: the anchor the history ends at."""
+        sources = select(LogSource.id).where(LogSource.instance_id == instance_id)
+        return await self.session.scalar(
+            select(func.min(CatchallBucket.bucket_start)).where(
+                is_live_clause(CatchallBucket),
+                CatchallBucket.catchall_log_source_id.in_(sources),
+            )
+        )
+
+    async def _history_step(
+        self,
+        instance: QRadarInstance,
+        report: CatchallCollectionReport,
+        *,
+        decision: DecisionView | None,
+        scope: HistoryBackfillScope | None,
+        tick_started: datetime,
+    ) -> HistoryState | None:
+        """The history step of this tick (§B.4.4, §B.6.2).
+
+        The decision and the scope row go through the repository, the state
+        through the shared lifecycle, and the reading through the shared planner.
+        The scope's state after the tick is returned; `None` when the console has
+        no scope at all (no answer, or nothing to do).
+        """
+        settings = self.settings
+        now = self._clock()
+        repository = HistoryBackfillRepository(self.session)
+        view = _scope_view(scope)
+        anchor = await self._live_anchor(instance.id)
+        action = scope_action(
+            family=HistoryFamily.CATCHALL,
+            mode=console_mode(decision),
+            decision=decision,
+            row=view,
+            has_live_data=anchor is not None,
+            live_anchor=anchor,
+            switch_on=settings.history_backfill_enabled,
+        )
+        if action.kind is ActionKind.NONE:
+            return view.state if view is not None else None
+        if action.kind is ActionKind.CREATE:
+            assert decision is not None
+            await repository.write_scopes(
+                [
+                    new_scope_row(
+                        action,
+                        instance_id=instance.id,
+                        family=HistoryFamily.CATCHALL,
+                        scope_key=SCOPE_KEY,
+                        decision=decision,
+                        at=now,
+                    )
+                ]
+            )
+            return action.state
+        if action.kind is ActionKind.TRANSITION:
+            assert decision is not None and view is not None
+            await repository.write_scopes(
+                [
+                    transition_row(
+                        action,
+                        instance_id=instance.id,
+                        family=HistoryFamily.CATCHALL,
+                        scope_key=SCOPE_KEY,
+                        row=view,
+                        decision=decision,
+                        at=now,
+                    )
+                ]
+            )
+            return action.state
+        assert view is not None and decision is not None
+        if anchor is None:
+            # The scope reads, but the live buckets it ended at are gone: the
+            # history has no end to read up to, so the reading stops here.
+            return await self._finish_history(
+                instance,
+                report,
+                decision=decision,
+                view=view,
+                progress=None,
+                trigger=HistoryTrigger.FINISHED_PARTIAL,
+                reason="the live anchor is gone: the history has no end to read up to",
+                now=now,
+            )
+        return await self._read_history(
+            instance,
+            report,
+            decision=decision,
+            view=view,
+            anchor=anchor,
+            now=now,
+            elapsed=(now - tick_started).total_seconds(),
+        )
+
+    async def _read_history(
+        self,
+        instance: QRadarInstance,
+        report: CatchallCollectionReport,
+        *,
+        decision: DecisionView,
+        view: ScopeRowView,
+        anchor: datetime,
+        now: datetime,
+        elapsed: float,
+    ) -> HistoryState:
+        """One reading step: the plan, the read, the fold and the writes."""
+        settings = self.settings
+        bucket_seconds = settings.collection_interval_seconds
+        cadence = await SearchCadenceService(self.session, settings, self._clock).get(
+            SearchFamily.CATCHALL_SENDERS
+        )
+        planner = catchall_planner_settings(settings, cadence_seconds=cadence.cadence_seconds)
+        try:
+            decoded = decode_scope(view)
+        except (LifecycleError, ProgressCodecError) as exc:
+            logger.warning("the catch-all history progress cannot be read: %s", exc)
+            return await self._finish_history(
+                instance,
+                report,
+                decision=decision,
+                view=view,
+                progress=None,
+                trigger=HistoryTrigger.FINISHED_PARTIAL,
+                reason=UNREADABLE_PROGRESS,
+                now=now,
+            )
+        progress = decoded.progress if decoded is not None else None
+        floors = SourceFloors.decode(decoded.adapter) if decoded is not None else SourceFloors()
+        # A restarted row still holds the earlier reading's days_target until this step
+        # writes its own, so the first step takes the window's days from its own progress.
+        first_step = progress is None
+        if progress is None:
+            # A reading that has not searched: the window is the family's own.
+            fitted = fit_family_window(HistoryFamily.CATCHALL, settings)
+            days = fitted.days
+            if days is None:
+                return await self._finish_history(
+                    instance,
+                    report,
+                    decision=decision,
+                    view=view,
+                    progress=None,
+                    trigger=HistoryTrigger.WINDOW_TOO_SMALL,
+                    reason=fitted.reason or "the window is too small to read history",
+                    now=now,
+                )
+            progress = reading_progress(anchor - timedelta(days=days), now, planner)
+        budget = catchall_history_budget(
+            settings, used=report.searches_sent, seconds_since_tick_start=elapsed
+        )
+        plan = plan_step(progress, now=now, end=anchor, budget=budget, settings=planner)
+        if plan.action is StepAction.WAIT:
+            # No search budget left this tick: the reading waits for the next one.
+            return HistoryState.READING
+        if plan.action is StepAction.FINISH:
+            assert plan.trigger is not None
+            return await self._finish_history(
+                instance,
+                report,
+                decision=decision,
+                view=self._with_own_days(view, first_step, anchor, progress),
+                progress=progress,
+                trigger=plan.trigger,
+                reason=plan.reason,
+                now=now,
+            )
+        if plan.action is StepAction.SCAN:
+            # The catch-all floor is "where the read starts"; a scan would mean
+            # the stored progress lost it.
+            return await self._finish_history(
+                instance,
+                report,
+                decision=decision,
+                view=view,
+                progress=progress,
+                trigger=HistoryTrigger.FINISHED_PARTIAL,
+                reason=UNREADABLE_PROGRESS,
+                now=now,
+            )
+        sources = await self._catchall_sources(instance.id)
+        catchall_sources = [
+            CatchallSource(id=source.id, qradar_id=source.qradar_id) for source in sources
+        ]
+        ledgers: dict[uuid.UUID, SenderLedger] = {}
+        # The ledger is seeded with the currently active senders (§B.4.4).
+        await self._load_senders(instance.id, ledgers)
+        fold = CatchallHistoryFold(ledgers=ledgers, floors=floors)
+        step = CatchallStep(
+            target_start=progress.target_start,
+            margin=planner.margin,
+            read_start=progress.floor or progress.target_start - planner.margin,
+            bucket_seconds=bucket_seconds,
+            top_n=settings.catchall_top_senders,
+        )
+        policy = AdmissionPolicy(
+            max_new_per_bucket=settings.catchall_max_new_senders_per_bucket,
+            max_active=settings.catchall_max_active_senders_per_source,
+            min_requests=settings.catchall_min_admission_events,
+        )
+        history_budget = IpsSearchBudget(budget.searches)
+        chunks: list[CatchallChunk] = []
+        results: list[ChunkResult] = []
+        for chunk in plan.chunks:
+            before = history_budget.used
+            outcomes = await run_catchall_search(
+                self.provider,
+                settings.catchall_type_ids,
+                (chunk.start, chunk.end),
+                bucket_seconds,
+                max_rows=settings.catchall_max_rows_per_search,
+                budget=history_budget,
+            )
+            folded = fold_chunk(
+                outcomes,
+                sources=catchall_sources,
+                fold=fold,
+                policy=policy,
+                step=step,
+                now=now,
+                searches=history_budget.used - before,
+            )
+            chunks.append(folded)
+            results.extend(folded.results)
+        report.history_searches = history_budget.used
+        settlement = settle_step(progress, results, end=anchor, settings=planner)
+        new_progress = settlement.progress
+        # The window is fitted to the budget from the density the read observed
+        # (§B.6.5). A shorter window is read from its new start, so nothing of
+        # the old one is written.
+        fit = catchall_window_fit(
+            new_progress, anchor=anchor, planner=planner, settings=settings
+        )
+        if fit is not None and fit.refused:
+            return await self._finish_history(
+                instance,
+                report,
+                decision=decision,
+                view=view,
+                progress=None,
+                trigger=HistoryTrigger.WINDOW_TOO_SMALL,
+                reason=fit.reason,
+                now=now,
+            )
+        if fit is not None and fit.target_start is not None and fit.target_start > (
+            new_progress.target_start
+        ):
+            read_start = fit.target_start - planner.margin
+            new_progress = replace(
+                new_progress,
+                target_start=fit.target_start,
+                floor=read_start,
+                through=None,
+                scan_cursor=read_start,
+            )
+            writable: set[datetime] = set()
+        else:
+            # Only the contiguous completed prefix is written (§B.6.2 step 4).
+            writable = _bucket_starts(settlement.write_spans, bucket_seconds)
+        rows = [
+            row for chunk in chunks for row in chunk.rows if row["bucket_start"] in writable
+        ]
+        touches = merge_touches((chunk.touches for chunk in chunks), buckets=writable)
+        report.history_buckets_written = await self._write_history_buckets(rows)
+        report.history_senders_written = await self._write_history_senders(
+            touches, instance=instance, anchor=anchor, now=now
+        )
+        if settlement.trigger is not None:
+            trigger, reason = catchall_finish(
+                settlement.trigger,
+                settlement.reason,
+                fold.floors,
+                known=[source.key for source in catchall_sources],
+                target_start=progress.target_start,
+                margin=planner.margin,
+                bucket=planner.bucket,
+            )
+            return await self._finish_history(
+                instance,
+                report,
+                decision=decision,
+                view=self._with_own_days(view, first_step, anchor, new_progress),
+                progress=new_progress,
+                floors=fold.floors,
+                trigger=trigger,
+                reason=reason,
+                now=now,
+            )
+        new_view = replace(
+            view,
+            state=HistoryState.READING,
+            days_target=(
+                _days_between(anchor, new_progress.target_start)
+                if first_step
+                else view.days_target or _days_between(anchor, new_progress.target_start)
+            ),
+            target_start=new_progress.target_start,
+            floor=new_progress.floor,
+            through=new_progress.through,
+            progress=encode_progress(new_progress, adapter=fold.floors.encode()),
+        )
+        await HistoryBackfillRepository(self.session).write_scopes(
+            [
+                scope_row(
+                    new_view,
+                    instance_id=instance.id,
+                    family=HistoryFamily.CATCHALL,
+                    scope_key=SCOPE_KEY,
+                    reason=settlement.reason,
+                )
+            ]
+        )
+        return HistoryState.READING
+
+    @staticmethod
+    def _with_own_days(
+        view: ScopeRowView, first_step: bool, anchor: datetime, progress: ScopeProgress
+    ) -> ScopeRowView:
+        """The view whose days_target agrees with the progress a first step just planned."""
+        if not first_step:
+            return view
+        return replace(view, days_target=_days_between(anchor, progress.target_start))
+
+    async def _finish_history(
+        self,
+        instance: QRadarInstance,
+        report: CatchallCollectionReport,
+        *,
+        decision: DecisionView,
+        view: ScopeRowView,
+        progress: ScopeProgress | None,
+        trigger: HistoryTrigger,
+        reason: str,
+        now: datetime,
+        floors: SourceFloors | None = None,
+    ) -> HistoryState:
+        """End the reading: the scope's state, its reason and its row."""
+        change = next_state(view.state, trigger)
+        action = ScopeAction(
+            ActionKind.TRANSITION, change.state, trigger, bounded_reason(reason)
+        )
+        new_view = replace(
+            view,
+            state=change.state,
+            target_start=progress.target_start if progress is not None else view.target_start,
+            floor=progress.floor if progress is not None else view.floor,
+            through=progress.through if progress is not None else view.through,
+            progress=(
+                encode_progress(progress, adapter=(floors or SourceFloors()).encode())
+                if progress is not None
+                else view.progress
+            ),
+        )
+        await HistoryBackfillRepository(self.session).write_scopes(
+            [
+                transition_row(
+                    action,
+                    instance_id=instance.id,
+                    family=HistoryFamily.CATCHALL,
+                    scope_key=SCOPE_KEY,
+                    row=new_view,
+                    decision=decision,
+                    at=now,
+                )
+            ]
+        )
+        return change.state
+
+    async def _write_history_buckets(self, rows: list[dict[str, Any]]) -> int:
+        """The history buckets, in chunks; a live bucket is never replaced."""
+        for offset in range(0, len(rows), _BUCKET_CHUNK):
+            chunk = rows[offset : offset + _BUCKET_CHUNK]
+            statement = pg_insert(CatchallBucket).values(chunk)
+            statement = statement.on_conflict_do_nothing(
+                index_elements=["catchall_log_source_id", "bucket_start"]
+            )
+            await self.session.execute(statement)
+        return len(rows)
+
+    async def _write_history_senders(
+        self,
+        touches: Mapping[tuple[uuid.UUID, str], SenderTouch],
+        *,
+        instance: QRadarInstance,
+        anchor: datetime,
+        now: datetime,
+    ) -> int:
+        """The senders a history step touched.
+
+        A sender a history step creates is `REVIEWED` by 'history' (Guard 1). An
+        existing row keeps its review state and its `active` flag: history never
+        reactivates a retired sender, and it never demotes a `NEW` one
+        (§B.4.4 "Order-dependent admission").
+        """
+        rows = sender_rows(
+            touches,
+            instance_id=instance.id,
+            anchor=anchor,
+            active_days=self.settings.catchall_sender_active_days,
+            now=now,
+        )
+        for offset in range(0, len(rows), _SENDER_CHUNK):
+            chunk = [{"id": uuid.uuid4(), **row} for row in rows[offset : offset + _SENDER_CHUNK]]
+            insert = pg_insert(CatchallSender).values(chunk)
+            upsert = insert.on_conflict_do_update(
+                constraint="uq_catchall_sender_key",
+                set_={
+                    "first_seen_at": text(
+                        "LEAST(catchall_sender.first_seen_at, excluded.first_seen_at)"
+                    ),
+                    "last_seen_at": text(
+                        "GREATEST(catchall_sender.last_seen_at, excluded.last_seen_at)"
+                    ),
+                    "updated_at": now,
+                },
+            )
+            await self.session.execute(upsert)
+        return len(rows)
+
     # ------------------------------------------------------------------- loads
     async def _catchall_sources(self, instance_id: uuid.UUID) -> list[LogSource]:
         """The inventory's catch-all sources: the only ones a bucket row is written for."""
@@ -570,7 +1092,7 @@ class CatchallCollector:
         return list(rows.all())
 
     async def _load_senders(
-        self, instance_id: uuid.UUID, state: _RunState
+        self, instance_id: uuid.UUID, ledgers: dict[uuid.UUID, SenderLedger]
     ) -> dict[tuple[uuid.UUID, str], bool]:
         """Every known sender of the instance: seeds the ledgers with the active ones."""
         known: dict[tuple[uuid.UUID, str], bool] = {}
@@ -584,7 +1106,7 @@ class CatchallCollector:
         for source_id, identifier, active in rows.tuples().all():
             known[(source_id, identifier)] = active
             if active:
-                state.ledgers.setdefault(source_id, SenderLedger()).active.add(identifier)
+                ledgers.setdefault(source_id, SenderLedger()).active.add(identifier)
         return known
 
     async def _get_or_create_watermark(self, instance: QRadarInstance) -> CollectionWatermark:
@@ -599,3 +1121,50 @@ class CatchallCollector:
             self.session.add(watermark)
             await self.session.flush()
         return watermark
+
+
+def _decision_view(row: HistoryBackfillDecision) -> DecisionView:
+    """The decision row as the lifecycle reads it; never an ORM object."""
+    return DecisionView(
+        answer=row.answer,
+        days=row.days,
+        start_requested_at=row.start_requested_at,
+        start_requested_by=row.start_requested_by,
+        stop_requested_at=row.stop_requested_at,
+        stop_requested_by=row.stop_requested_by,
+    )
+
+
+def _scope_view(row: HistoryBackfillScope | None) -> ScopeRowView | None:
+    """The scope row as the lifecycle reads it; never an ORM object."""
+    if row is None:
+        return None
+    return ScopeRowView(
+        state=HistoryState(row.state),
+        days_requested=row.days_requested,
+        days_target=row.days_target,
+        target_start=row.target_start,
+        floor=row.floor,
+        through=row.through,
+        anchor=row.anchor,
+        started_at=row.started_at,
+        finished_at=row.finished_at,
+        reason=row.reason,
+        progress=row.progress,
+    )
+
+
+def _bucket_starts(spans: Sequence[Span], bucket_seconds: int) -> set[datetime]:
+    """The bucket starts of the spans the planner allows to write."""
+    starts: set[datetime] = set()
+    for span in spans:
+        cursor = span.start
+        while cursor < span.end:
+            starts.add(cursor)
+            cursor += timedelta(seconds=bucket_seconds)
+    return starts
+
+
+def _days_between(end: datetime, start: datetime) -> int:
+    """The whole days between two times."""
+    return max(0, round((end - start).total_seconds() / 86400))

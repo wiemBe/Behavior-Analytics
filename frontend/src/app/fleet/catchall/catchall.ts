@@ -6,6 +6,7 @@
 // measured bucket nothing is claimed at all; the page says how far collection
 // got instead.
 
+import { historyIntervals } from "@/components/behavior/historyOrigin";
 import {
   ApiError,
   actionErrorMessage,
@@ -198,6 +199,24 @@ export function gapRuns(slots: Slot[]): Array<[number, number]> {
  */
 export function gapBand(slots: Slot[], max: number): Array<number | null> {
   return slots.map((s) => (s.state === "gap" ? max : null));
+}
+
+/**
+ * The spans of buckets read from QRadar's past, as the first and last category of each span
+ * (the chart's categories are the slot times). Contiguous history buckets are one span; a live
+ * bucket, an unmeasured slot or a gap between two history buckets splits it.
+ */
+export function historySpans(slots: Slot[]): Array<[string, string]> {
+  const rows = slots.flatMap((s) => (s.bucket ? [s.bucket] : []));
+  const width = (rows[0]?.bucket_seconds ?? 0) * 1000;
+  return historyIntervals(rows).map(
+    (span): [string, string] => [String(span.start), String(span.end - width)],
+  );
+}
+
+/** How many measured buckets of the range were read from QRadar's past. */
+export function historyCount(slots: Slot[]): number {
+  return slots.filter((s) => s.bucket?.origin === "HISTORY").length;
 }
 
 /** A round axis maximum at or above `value`, so the shading and the axis agree. */

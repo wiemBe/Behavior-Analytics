@@ -47,3 +47,15 @@ docker-compose.override.yml
 # Installer: the answers file and the generated edge/backup state
 install.answers
 .install-tmp/
+.qradar-dash/
+
+# Internal orchestration files: kept on the orchestrator's machine, never pushed (user, 2026-10-18)
+AGENTS.md
+docs/tasks/
+docs/PLANNER.md
+docs/NEXT-SESSION-PROMPT.md
+docs/PHASE2-HANDOFF.md
+docs/PHASE3-HANDOFF.md
+docs/UI_Suggestions/
+docs/UI-REDESIGN-PLAN.md
+docs/UI-WORKSTREAM-COMPLETION.md

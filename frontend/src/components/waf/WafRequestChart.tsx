@@ -30,6 +30,15 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef } from "react";
 
+import { HistoryKey, HistoryText } from "@/components/behavior/HistoryKey";
+import {
+  historyIntervals,
+  historyMarkAreas,
+  originByTime,
+  originText,
+  readHistoryShade,
+  withoutLabels,
+} from "@/components/behavior/historyOrigin";
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { WafMetricBucket } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
@@ -86,6 +95,7 @@ export function WafRequestChart({
   ratio = null,
   baseline,
   compact = false,
+  historyLabel = !compact,
 }: {
   buckets: WafMetricBucket[];
   expected: number | null;
@@ -115,6 +125,8 @@ export function WafRequestChart({
    * honesty rules above are unchanged.
    */
   compact?: boolean;
+  /** The history words inside the chart. Default: the full-size chart has them, the tile does not. */
+  historyLabel?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -126,6 +138,8 @@ export function WafRequestChart({
     () => (ratio ? wafRatioUnobserved(buckets, ratio) : wafUnobserved(buckets)),
     [buckets, ratio],
   );
+  const history = useMemo(() => historyIntervals(buckets), [buckets]);
+  const origins = useMemo(() => originByTime(buckets), [buckets]);
   const scale = ratio ? 100 : 1;
   const seasonal = baseline != null;
   const lookup = useMemo(
@@ -178,6 +192,7 @@ export function WafRequestChart({
           { xAxis: u.end },
         ],
       );
+      const historyAreas = historyMarkAreas(history, readHistoryShade(), historyLabel);
       const anomalyAreas: MarkAreaPair[] = anomalies.map(
         (a): MarkAreaPair => [
           { xAxis: Date.parse(a.start), itemStyle: { color: c.anomaly }, name: "anomaly" },
@@ -271,6 +286,7 @@ export function WafRequestChart({
               band,
               coverage,
               `Collection: ${kindMeaning(p.kind)}`,
+              originText(origins.get(p.t)),
             ]
               .filter(Boolean)
               .join("<br/>");
@@ -358,8 +374,8 @@ export function WafRequestChart({
                 }
               : undefined,
             markArea:
-              gapAreas.length + anomalyAreas.length
-                ? { ...quiet, data: [...gapAreas, ...anomalyAreas] }
+              gapAreas.length + anomalyAreas.length + historyAreas.length
+                ? { ...quiet, data: [...gapAreas, ...historyAreas, ...anomalyAreas] }
                 : undefined,
             markLine: transitions.length
               ? {
@@ -432,7 +448,10 @@ export function WafRequestChart({
                   showSymbol: false,
                   lineStyle: { color: c.expected, width: 1.5 },
                   itemStyle: { color: c.expected },
-                  markArea: gapAreas.length ? { ...quiet, data: gapAreas } : undefined,
+                  markArea:
+                    gapAreas.length + historyAreas.length
+                      ? { ...quiet, data: [...gapAreas, ...withoutLabels(historyAreas)] }
+                      : undefined,
                 },
               ]),
         ],
@@ -456,6 +475,9 @@ export function WafRequestChart({
     bandLabel,
     medianLabel,
     compact,
+    history,
+    origins,
+    historyLabel,
   ]);
 
   useEffect(() => {
@@ -492,6 +514,7 @@ export function WafRequestChart({
         aria-label={ariaLabel}
       />
       {textSummary && <p className="sr-only">{textSummary}</p>}
+      <HistoryText rows={buckets} />
       <ul className="chart-legend" aria-label="Chart key">
         <li>
           <span className="chart-key chart-key-observed" aria-hidden="true" />
@@ -533,6 +556,7 @@ export function WafRequestChart({
             Lifecycle transition
           </li>
         )}
+        {history.length > 0 && <HistoryKey />}
       </ul>
       <p className={compact ? "sr-only" : "subtitle chart-note"}>
         {ratio

@@ -161,6 +161,28 @@ describe("cadence label", () => {
       name: "Catch-all senders",
       scope: "Senders feeding SIM Generic and the Universal DSMs",
     });
-    expect(Object.keys(FAMILY_INFO).slice(-2)).toEqual(["CATCHALL_SENDERS", "GEO_COLLECTION"]);
+    expect(Object.keys(FAMILY_INFO).slice(-3)).toEqual([
+      "CATCHALL_SENDERS",
+      "GEO_COLLECTION",
+      "PROPERTY_WATCH",
+    ]);
+  });
+});
+
+describe("history buckets", () => {
+  it("makes one span of adjacent history buckets and splits it at a live bucket", async () => {
+    const { buildSlots, historySpans, historyCount } = await import("./catchall");
+    const { bucket } = await import("./fixtures");
+    const T = (m: number) => Date.UTC(2026, 9, 13, 10, m);
+    const h = (m: number) => bucket(m, { origin: "HISTORY" });
+    const adjacent = buildSlots([h(0), h(5), bucket(10)], T(0), T(15));
+    expect(historySpans(adjacent.slots)).toEqual([[String(T(0)), String(T(5))]]);
+    expect(historyCount(adjacent.slots)).toBe(2);
+    const split = buildSlots([h(0), bucket(5, { origin: "LIVE" }), h(10)], T(0), T(15));
+    expect(historySpans(split.slots)).toEqual([
+      [String(T(0)), String(T(0))],
+      [String(T(10)), String(T(10))],
+    ]);
+    expect(historySpans(buildSlots([bucket(0)], T(0), T(5)).slots)).toEqual([]);
   });
 });

@@ -1,9 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AdminPage from "./page";
 import { StaticSession, type SessionValue } from "@/components/auth/session";
-import type { CallerInfo } from "@/lib/api";
+import { ApiError, api, type CallerInfo } from "@/lib/api";
+import { consoleOf, decision } from "@/components/history/fixtures";
 
 // The hub is an index. With no session it fails closed and lists the five
 // ungated destinations. Users and Directory appear only for a ready session
@@ -70,6 +71,11 @@ function names(): string[] {
     .getAllByRole("link")
     .map((link) => link.textContent ?? "");
 }
+
+beforeEach(() => {
+  // The notice reads the history-backfill status for a caller who may read it.
+  vi.spyOn(api, "historyBackfill").mockResolvedValue([]);
+});
 
 describe("administration hub", () => {
   it("has exactly one h1, named Administration, and states what the page controls", () => {
@@ -145,7 +151,44 @@ describe("administration hub", () => {
         <AdminPage />
       </StaticSession>,
     );
-    expect(names()).toEqual([...SECTIONS.map((section) => section.name), "Users", "Directory"]);
+    expect(names()).toEqual([
+      ...SECTIONS.map((section) => section.name),
+      "History backfill",
+      "Users",
+      "Directory",
+    ]);
+  });
+
+  it("adds History backfill only for read:history_backfill, which read:* and admin:* grant", () => {
+    const { unmount } = render(
+      <StaticSession value={ready(["read:history_backfill"])}>
+        <AdminPage />
+      </StaticSession>,
+    );
+    expect(names()).toEqual([...SECTIONS.map((section) => section.name), "History backfill"]);
+    expect(screen.getByRole("link", { name: "History backfill" })).toHaveAttribute(
+      "href",
+      "/admin/history-backfill",
+    );
+    unmount();
+    render(
+      <StaticSession value={ready(["read:*"])}>
+        <AdminPage />
+      </StaticSession>,
+    );
+    expect(names()).toContain("History backfill");
+  });
+
+  it("hides History backfill from an account that cannot read it, and from an unknown session", () => {
+    const { unmount } = render(
+      <StaticSession value={ready(["admin:users"])}>
+        <AdminPage />
+      </StaticSession>,
+    );
+    expect(screen.queryByRole("link", { name: "History backfill" })).not.toBeInTheDocument();
+    unmount();
+    render(<AdminPage />);
+    expect(screen.queryByRole("link", { name: "History backfill" })).not.toBeInTheDocument();
   });
 
   it("adds neither for a read permission", () => {
@@ -155,5 +198,52 @@ describe("administration hub", () => {
       </StaticSession>,
     );
     expect(names()).toEqual(SECTIONS.map((section) => section.name));
+  });
+});
+
+describe("administration hub: the history-backfill notice", () => {
+  const NOTICE = "History backfill is not decided.";
+
+  function renderFor(permissions: string[]) {
+    return render(
+      <StaticSession value={ready(permissions)}>
+        <AdminPage />
+      </StaticSession>,
+    );
+  }
+
+  it("says so, with a link, while a console is undecided and the caller can read it", async () => {
+    vi.spyOn(api, "historyBackfill").mockResolvedValue([consoleOf()]);
+    renderFor(["read:history_backfill"]);
+    expect(await screen.findByText(NOTICE)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open History backfill" })).toHaveAttribute(
+      "href",
+      "/admin/history-backfill",
+    );
+  });
+
+  it("is silent once every console has decided", async () => {
+    const read = vi.spyOn(api, "historyBackfill").mockResolvedValue([
+      consoleOf({ decision: decision(), mode: "ACTIVE" }),
+    ]);
+    renderFor(["read:history_backfill"]);
+    await waitFor(() => expect(read).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText(NOTICE)).not.toBeInTheDocument());
+  });
+
+  it("is never asked for, and never shown, to a caller who cannot read it", async () => {
+    const read = vi.spyOn(api, "historyBackfill").mockResolvedValue([consoleOf()]);
+    renderFor(["admin:users"]);
+    render(<AdminPage />);
+    expect(read).not.toHaveBeenCalled();
+    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+  });
+
+  it("shows nothing when the status cannot be read", async () => {
+    const read = vi.spyOn(api, "historyBackfill").mockRejectedValue(new ApiError(500, "boom"));
+    renderFor(["read:history_backfill"]);
+    await waitFor(() => expect(read).toHaveBeenCalled());
+    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

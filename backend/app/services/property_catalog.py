@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from app.core.config import get_settings
@@ -22,6 +23,27 @@ from app.providers.dto import CustomPropertyDTO
 from app.schemas.property_catalog import PropertyCatalogItemOut, PropertyCatalogOut
 
 logger = logging.getLogger(__name__)
+
+_UNAVAILABLE = (
+    "{error}: the property list could not be read from QRadar. Property names can still be typed."
+)
+
+
+@dataclass(frozen=True)
+class TypedCatalogItem:
+    name: str
+    property_type: str | None
+    name_allowed: bool
+    #: The requested types that define this property, sorted. Empty: none does.
+    defined_on_type_ids: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class TypedCatalog:
+    status: str
+    fetched_at: datetime | None
+    properties: list[TypedCatalogItem]
+    detail: str | None
 
 
 class PropertyCatalogService:
@@ -42,17 +64,15 @@ class PropertyCatalogService:
             return entry
         return None
 
-    async def catalog(
+    async def _load(
         self,
-        *,
         instance_id: object,
         provider_factory: Callable[[], QRadarProvider],
-        source_type_id: int | None,
-        refresh: bool = False,
-    ) -> PropertyCatalogOut:
-        """The catalog for one log source's type (`None`: type unknown).
+        refresh: bool,
+    ) -> tuple[tuple[datetime, list[CustomPropertyDTO]] | None, str | None]:
+        """The cached entry, or `(None, error class name)` when the console read failed.
 
-        The provider is built, and closed, only on a cache miss.
+        Every failure degrades; none leaks. Only the class name travels on.
         """
         lock = self._locks.setdefault(instance_id, asyncio.Lock())
         async with lock:
@@ -65,21 +85,65 @@ class PropertyCatalogService:
                         "property catalog unavailable",
                         extra={"instance_id": str(instance_id), "error_class": type(exc).__name__},
                     )
-                    return PropertyCatalogOut(
-                        status="UNAVAILABLE",
-                        filtered_by_source_type=False,
-                        properties=[],
-                        detail=(
-                            f"{type(exc).__name__}: the property list could not be read from "
-                            "QRadar. Property names can still be typed."
-                        ),
-                    )
+                    return None, type(exc).__name__
+        return entry, None
+
+    async def catalog(
+        self,
+        *,
+        instance_id: object,
+        provider_factory: Callable[[], QRadarProvider],
+        source_type_id: int | None,
+        refresh: bool = False,
+    ) -> PropertyCatalogOut:
+        """The catalog for one log source's type (`None`: type unknown).
+
+        The provider is built, and closed, only on a cache miss.
+        """
+        entry, error = await self._load(instance_id, provider_factory, refresh)
+        if entry is None:
+            return PropertyCatalogOut(
+                status="UNAVAILABLE",
+                filtered_by_source_type=False,
+                properties=[],
+                detail=_UNAVAILABLE.format(error=error),
+            )
         fetched_at, properties = entry
         return PropertyCatalogOut(
             status="AVAILABLE",
             fetched_at=fetched_at,
             filtered_by_source_type=source_type_id is not None,
             properties=_for_source_type(properties, source_type_id),
+        )
+
+    async def catalog_for_types(
+        self,
+        *,
+        instance_id: object,
+        provider_factory: Callable[[], QRadarProvider],
+        source_type_ids: Sequence[int],
+        refresh: bool = False,
+    ) -> TypedCatalog:
+        """The catalog filtered by many log-source types (a group or a type scope).
+
+        Every property comes back with the scope's types that define it; a property none of
+        them defines is still listed with an empty set, because the catalog is a suggestion
+        and never a gate. Same cache, same fixed failure sentence as `catalog`.
+        """
+        entry, error = await self._load(instance_id, provider_factory, refresh)
+        if entry is None:
+            return TypedCatalog(
+                status="UNAVAILABLE",
+                fetched_at=None,
+                properties=[],
+                detail=_UNAVAILABLE.format(error=error),
+            )
+        fetched_at, properties = entry
+        return TypedCatalog(
+            status="AVAILABLE",
+            fetched_at=fetched_at,
+            properties=_for_source_types(properties, source_type_ids),
+            detail=None,
         )
 
     async def _fetch(
@@ -110,6 +174,23 @@ def _for_source_type(
         for p in properties
     ]
     items.sort(key=lambda i: (i.applies_to_source_type is not True, i.name.lower(), i.name))
+    return items
+
+
+def _for_source_types(
+    properties: list[CustomPropertyDTO], source_type_ids: Sequence[int]
+) -> list[TypedCatalogItem]:
+    wanted = sorted(set(source_type_ids))
+    items = [
+        TypedCatalogItem(
+            name=p.name,
+            property_type=p.property_type,
+            name_allowed=p.name_allowed,
+            defined_on_type_ids=tuple(t for t in wanted if t in p.log_source_type_ids),
+        )
+        for p in properties
+    ]
+    items.sort(key=lambda i: (not i.defined_on_type_ids, i.name.lower(), i.name))
     return items
 
 

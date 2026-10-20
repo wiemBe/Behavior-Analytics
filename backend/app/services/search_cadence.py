@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.models.enums import SearchCadence, SearchFamily
+from app.models.enums import SearchCadence, SearchFamily, default_search_cadence
 from app.models.search_cadence import SearchCadenceSetting
 from app.repositories.audit import record_audit
 
@@ -21,6 +21,22 @@ logger = logging.getLogger("app.search_cadence")
 
 class InvalidSearchCadenceError(ValueError):
     """A cadence value is not one of the operator-visible presets."""
+
+
+def bucket_seconds(family: SearchFamily, settings: Settings) -> int | None:
+    """Return the stored bucket width a search family collects, if it has one."""
+    if family in {
+        SearchFamily.PHASE_A_VOLUME,
+        SearchFamily.WAF_COLLECTION,
+        SearchFamily.IPS_COLLECTION,
+        SearchFamily.PROPERTY_WATCH,
+        SearchFamily.CATCHALL_SENDERS,
+        SearchFamily.GEO_COLLECTION,
+    }:
+        return settings.collection_interval_seconds
+    if family == SearchFamily.RULE_MATCH:
+        return settings.rule_match_window_seconds
+    return None
 
 
 def slot_start(now: datetime, cadence_seconds: int, settle_seconds: int) -> datetime:
@@ -69,7 +85,7 @@ class SearchCadenceService:
                 "search cadence seed row missing; restoring default",
                 extra={"family": family.value},
             )
-            cadence_seconds = int(SearchCadence.ONE_HOUR)
+            cadence_seconds = int(default_search_cadence(family))
             await self.session.execute(
                 insert(SearchCadenceSetting)
                 .values(
@@ -178,6 +194,6 @@ class SearchCadenceService:
         )
         return SearchCadenceSetting(
             family=family.value,
-            cadence_seconds=int(SearchCadence.ONE_HOUR),
+            cadence_seconds=int(default_search_cadence(family)),
             updated_at=self._clock(),
         )

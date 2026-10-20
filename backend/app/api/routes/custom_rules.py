@@ -41,6 +41,7 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.custom_rules.alerts import alerting_mode, resolve_deleted_rule_alert
 from app.custom_rules.catalog import CUSTOM_RULE_METRICS, catalog_entry
+from app.custom_rules.engine import _KIND_FAMILY
 from app.custom_rules.preview import PreviewResult, replay
 from app.custom_rules.validation import (
     _SUBJECT_COLUMNS,
@@ -52,7 +53,9 @@ from app.models.custom_rule import CustomRule, CustomRuleBreach
 from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind, SourceClass
 from app.models.ips import IpsEntity
 from app.models.log_source import LogSource
+from app.models.property_watch import PropertyWatch, PwValue
 from app.models.waf import WafEndpoint
+from app.property_watch.facts import split_tuple_key
 from app.repositories.audit import record_audit
 from app.schemas.custom_rule import (
     BreachIntervalOut,
@@ -67,6 +70,7 @@ from app.schemas.custom_rule import (
     PreviewBucketOut,
     PreviewOut,
 )
+from app.schemas.search_cadence import CadenceOut
 from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_CUSTOM_RULE_WRITE,
@@ -74,6 +78,7 @@ from app.security.rbac import (
     Principal,
     require_permission,
 )
+from app.services.search_cadence import SearchCadenceService, bucket_seconds
 
 router = APIRouter(prefix="/custom-rules", tags=["custom-rules"])
 
@@ -84,9 +89,17 @@ PREVIEW_HOURS_MAX = 168
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
 _NAME_CONSTRAINT = "uq_custom_rule_name"
+_PW_VALUE_FK_CONSTRAINT = "fk_custom_rule_pw_value_id_pw_value"
 _ENABLED_CAP_LOCK_KEY = 5_214_200_001
 _NULLABLE_PATCH = frozenset(
-    {"description", "log_source_id", "source_class", "waf_endpoint_id", "ips_entity_id"}
+    {
+        "description",
+        "log_source_id",
+        "source_class",
+        "waf_endpoint_id",
+        "ips_entity_id",
+        "pw_value_id",
+    }
 )
 _SOURCE_KINDS = frozenset(
     {CustomRuleSubjectKind.LOG_SOURCE, CustomRuleSubjectKind.IPS_SOURCE}
@@ -165,6 +178,7 @@ def _snapshot(rule: CustomRule) -> dict[str, object]:
         "source_class": rule.source_class,
         "waf_endpoint_id": None if rule.waf_endpoint_id is None else str(rule.waf_endpoint_id),
         "ips_entity_id": None if rule.ips_entity_id is None else str(rule.ips_entity_id),
+        "pw_value_id": None if rule.pw_value_id is None else str(rule.pw_value_id),
         "metric": _as_str(rule.metric),
         "operator": rule.operator,
         "threshold_value": float(rule.threshold_value),
@@ -187,6 +201,7 @@ def _draft_from_create(body: CustomRuleCreate | CustomRulePreviewIn) -> CustomRu
         source_class=body.source_class,
         waf_endpoint_id=body.waf_endpoint_id,
         ips_entity_id=body.ips_entity_id,
+        pw_value_id=body.pw_value_id,
         enabled=body.enabled,
     )
 
@@ -202,6 +217,7 @@ def _draft_from_patch(rule: CustomRule, payload: CustomRuleUpdate) -> CustomRule
     source_class = rule.source_class
     waf_endpoint_id = rule.waf_endpoint_id
     ips_entity_id = rule.ips_entity_id
+    pw_value_id = rule.pw_value_id
     enabled = bool(rule.enabled)
     present = payload.model_fields_set
     if "subject_kind" in present and payload.subject_kind is not None:
@@ -224,6 +240,8 @@ def _draft_from_patch(rule: CustomRule, payload: CustomRuleUpdate) -> CustomRule
         waf_endpoint_id = payload.waf_endpoint_id
     if "ips_entity_id" in present:
         ips_entity_id = payload.ips_entity_id
+    if "pw_value_id" in present:
+        pw_value_id = payload.pw_value_id
     if "enabled" in present and payload.enabled is not None:
         enabled = payload.enabled
     return CustomRuleDraft(
@@ -237,6 +255,7 @@ def _draft_from_patch(rule: CustomRule, payload: CustomRuleUpdate) -> CustomRule
         source_class=source_class,
         waf_endpoint_id=waf_endpoint_id,
         ips_entity_id=ips_entity_id,
+        pw_value_id=pw_value_id,
         enabled=enabled,
     )
 
@@ -254,7 +273,7 @@ def _merged(rule: CustomRule, payload: CustomRuleUpdate) -> dict[str, object]:
     present = payload.model_fields_set - {"expected_updated_at"}
     for name in present:
         value = getattr(payload, name)
-        if name in {"log_source_id", "waf_endpoint_id", "ips_entity_id"}:
+        if name in {"log_source_id", "waf_endpoint_id", "ips_entity_id", "pw_value_id"}:
             merged[name] = None if value is None else str(value)
         elif name == "threshold_value" and value is not None:
             merged[name] = float(value)
@@ -285,6 +304,8 @@ def _apply(rule: CustomRule, payload: CustomRuleUpdate) -> None:
         rule.waf_endpoint_id = payload.waf_endpoint_id
     if "ips_entity_id" in present:
         rule.ips_entity_id = payload.ips_entity_id
+    if "pw_value_id" in present:
+        rule.pw_value_id = payload.pw_value_id
     if "metric" in present and payload.metric is not None:
         rule.metric = payload.metric
     if "operator" in present and payload.operator is not None:
@@ -345,6 +366,7 @@ def _rule_out(
         source_class=rule.source_class,
         waf_endpoint_id=rule.waf_endpoint_id,
         ips_entity_id=rule.ips_entity_id,
+        pw_value_id=rule.pw_value_id,
         metric=_as_str(rule.metric),
         operator=rule.operator,
         threshold_value=float(rule.threshold_value),
@@ -434,7 +456,13 @@ def _catalog_subject_kinds() -> list[CatalogSubjectKindOut]:
         # One column per kind. A longer pairing must not lose a name on the wire.
         if len(columns) != 1:
             raise RuntimeError(f"{kind.value} pairs with {list(columns)}")
-        rows.append(CatalogSubjectKindOut(subject_kind=kind.value, column=columns[0]))
+        rows.append(
+            CatalogSubjectKindOut(
+                subject_kind=kind.value,
+                column=columns[0],
+                search_family=_KIND_FAMILY[kind.value],
+            )
+        )
     return rows
 
 
@@ -453,6 +481,7 @@ def _catalog_operators() -> list[str]:
 
 def build_custom_rule_catalog(
     *,
+    cadences: list[CadenceOut],
     evaluation_enabled: bool,
     alerting_enabled: bool,
     max_enabled: int,
@@ -462,6 +491,7 @@ def build_custom_rule_catalog(
     return CustomRuleCatalogOut(
         metrics=_catalog_metrics(),
         subject_kinds=_catalog_subject_kinds(),
+        cadences=cadences,
         source_classes=_catalog_source_classes(),
         operators=_catalog_operators(),
         evaluation_enabled=evaluation_enabled,
@@ -473,8 +503,35 @@ def build_custom_rule_catalog(
     )
 
 
+async def _pw_value_reason(session: AsyncSession, draft: CustomRuleDraft) -> str | None:
+    """A rule pins a pinned property-watch value only (design §G.10.2).
+
+    A value that is not pinned can retire by idleness and has no provable zero, and a rule
+    must not depend on the value ceiling. The analyst pins it first. Both the value's own
+    flag and the watch's list must say pinned: a flag the collector has not yet cleared is
+    not a pin the operator still holds.
+    """
+    if draft.pw_value_id is None:
+        return None
+    value = await session.get(PwValue, draft.pw_value_id)
+    if value is None:
+        return f"property-watch value {draft.pw_value_id} does not exist"
+    watch = await session.get(PropertyWatch, value.watch_id)
+    held = watch is not None and any(
+        split_tuple_key(value.value_key) == tuple(pin) for pin in watch.pinned_values
+    )
+    if value.pinned and held:
+        return None
+    return (
+        f"property-watch value {draft.pw_value_id} is not pinned; a rule can watch only a "
+        "pinned value, so pin it on its property watch first"
+    )
+
+
 async def _subject_reason(session: AsyncSession, draft: CustomRuleDraft) -> str | None:
     """The subject row is missing. A null id is the pairing reason, already listed."""
+    if draft.subject_kind is CustomRuleSubjectKind.PW_VALUE:
+        return await _pw_value_reason(session, draft)
     if draft.subject_kind in _SOURCE_KINDS:
         if draft.log_source_id is None:
             return None
@@ -507,6 +564,12 @@ async def _flush_name(session: AsyncSession, name: str) -> None:
         async with session.begin_nested():
             await session.flush()
     except IntegrityError as exc:
+        if _PW_VALUE_FK_CONSTRAINT in str(exc):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "the property-watch value no longer exists (its watch changed or was deleted "
+                "while the rule was saved); reload and choose a value again",
+            ) from exc
         if _NAME_CONSTRAINT not in str(exc):
             raise
         raise HTTPException(
@@ -621,6 +684,7 @@ async def create_rule(
         source_class=body.source_class,
         waf_endpoint_id=body.waf_endpoint_id,
         ips_entity_id=body.ips_entity_id,
+        pw_value_id=body.pw_value_id,
         metric=body.metric,
         operator=body.operator,
         threshold_value=body.threshold_value,
@@ -685,6 +749,8 @@ async def preview_draft(
         interval_seconds=settings.collection_interval_seconds,
         now=datetime.now(UTC),
         name="preview",
+        pw_value_id=body.pw_value_id,
+        pw_coverage_floor=settings.pw_min_coverage,
     )
     return _preview_out(result)
 
@@ -696,7 +762,19 @@ async def get_catalog(session: SessionDep, settings: SettingsDep) -> CustomRuleC
     Registered before ``/{rule_id}`` so ``catalog`` is not parsed as a UUID.
     One count statement supplies ``enabled_count``; the rest is in-process.
     """
+    cadence_rows = {row.family: row for row in await SearchCadenceService(session, settings).list()}
+    families = dict.fromkeys(_KIND_FAMILY[kind.value] for kind in CustomRuleSubjectKind)
+    cadences = [
+        CadenceOut(
+            family=family,
+            cadence_seconds=cadence_rows[family.value].cadence_seconds,
+            bucket_seconds=bucket_seconds(family, settings),
+            settle_seconds=settings.search_cadence_settle_seconds,
+        )
+        for family in families
+    ]
     return build_custom_rule_catalog(
+        cadences=cadences,
         evaluation_enabled=settings.custom_rules_enabled,
         alerting_enabled=settings.custom_rules_alerting_enabled,
         max_enabled=settings.custom_rules_max_enabled,
@@ -827,6 +905,8 @@ async def preview_rule(
         interval_seconds=settings.collection_interval_seconds,
         now=datetime.now(UTC),
         name=rule.name,
+        pw_value_id=rule.pw_value_id,
+        pw_coverage_floor=settings.pw_min_coverage,
     )
     return _preview_out(result)
 

@@ -42,11 +42,11 @@ import json
 import logging
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import AlertEnqueuer
@@ -56,12 +56,38 @@ from app.collectors.waf_endpoint_collector import (
     watermark_collector,
 )
 from app.core.config import Settings, get_settings
+from app.history import (
+    ActionKind,
+    ConsoleMode,
+    DecisionView,
+    HistoryFamily,
+    HistoryState,
+    ScopeRowView,
+    console_mode,
+    decode_progress,
+    decode_scope,
+    encode_progress,
+    fit_family_window,
+    fit_window,
+    history_search_budget,
+    is_live_clause,
+    new_progress,
+    new_scope_row,
+    next_state,
+    scope_action,
+    transition_row,
+    waf_source_searches,
+)
+from app.history.state import HistoryTrigger
+from app.history.waf import waf_planner_settings
 from app.models.enums import SearchFamily, WafBreakdown
+from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafEndpoint, WafSourceBucket, WafSourceProfile
 from app.providers.base import ProviderError, QRadarProvider
+from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
@@ -71,6 +97,8 @@ from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 from app.waf.profile import WafFieldMapping, breakdown_plan, collection_ineligibility
 
 logger = logging.getLogger("app.waf.pipeline")
+
+_KEEP = object()
 
 EVALUATION_COLLECTOR = "waf_endpoint_evaluation"
 SCHEDULING_RECORD = "waf_scheduling"
@@ -114,6 +142,12 @@ class WafPipelineReport:
     evaluated_through: datetime | None = None
     baseline_endpoints_rebuilt: int = 0
     baseline_train_through: datetime | None = None
+    history_state: str | None = None
+    history_reason: str | None = None
+    history_searches: int = 0
+    history_rows_written: int = 0
+    history_breakdown_buckets: int = 0
+    history_breakdown_metrics: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         c = self.collection
@@ -149,6 +183,12 @@ class WafPipelineReport:
             "baseline_train_through": (
                 self.baseline_train_through.isoformat() if self.baseline_train_through else None
             ),
+            "history_state": self.history_state,
+            "history_reason": self.history_reason,
+            "history_searches": self.history_searches,
+            "history_rows_written": self.history_rows_written,
+            "history_breakdown_buckets": self.history_breakdown_buckets,
+            "history_breakdown_metrics": self.history_breakdown_metrics,
         }
 
 
@@ -227,6 +267,16 @@ class WafSourcePipeline:
                 ariel_budget=self.ariel_budget,
                 breakdowns=plan,
             )
+            history_scope = await self._history_scope(instance, log_source)
+            if history_scope is not None:
+                report.history_state = history_scope.state
+                report.history_reason = history_scope.reason
+            if history_scope is not None and history_scope.state == HistoryState.READING.value:
+                await self._run_history_volume(
+                    instance, log_source, collector, history_scope, report
+                )
+                return report
+
             report.collection = await collector.collect(instance, log_source=log_source)
             if report.collection.skipped_locked:
                 report.status = "locked"
@@ -245,7 +295,13 @@ class WafSourcePipeline:
             evaluation_wm = await _watermark(
                 self.session, instance.id, evaluation_collector(log_source)
             )
-            await self._evaluate(log_source, collection_wm, evaluation_wm, report)
+            await self._evaluate(
+                log_source,
+                collection_wm,
+                evaluation_wm,
+                report,
+                history_end=history_scope.anchor if history_scope is not None else None,
+            )
             await self._train(
                 log_source,
                 evaluation_wm,
@@ -256,8 +312,405 @@ class WafSourcePipeline:
                 },
                 report,
             )
+            if (
+                history_scope is not None
+                and HistoryState(history_scope.state)
+                in (HistoryState.COMPLETE, HistoryState.PARTIAL)
+                and history_scope.anchor is not None
+            ):
+                await self._run_history_breakdown(
+                    log_source,
+                    collector,
+                    history_scope,
+                    used=report.collection.searches_sent,
+                    report=report,
+                )
             await self.session.flush()
         return report
+
+    async def _history_scope(
+        self, instance: QRadarInstance, log_source: LogSource
+    ) -> HistoryBackfillScope | None:
+        """Apply the source lifecycle before its live pass and return its scope.
+
+        ``has_live_data`` is read before collection, so the first live bucket cannot make
+        an eligible new source ineligible.  While the resulting scope is READING the
+        caller runs history instead of the live collector.
+        """
+        repository = HistoryBackfillRepository(self.session)
+        decision_row = (await repository.decisions([instance.id])).get(instance.id)
+        decision = self._decision_view(decision_row)
+        if console_mode(decision) in (ConsoleMode.UNDECIDED, ConsoleMode.NO):
+            # No Yes: the lifecycle does nothing and creates nothing, so a source of a
+            # console that never asked for history costs one statement per tick.
+            return None
+        scope_key = str(log_source.qradar_id)
+        row = (
+            await repository.scopes(instance.id, HistoryFamily.WAF.value, [scope_key])
+        ).get(scope_key)
+        # The lifecycle reads ``has_live_data`` of a per-source family only when it
+        # decides to CREATE (a source with live buckets is NOT_ELIGIBLE): with a row it
+        # is never read, so the EXISTS is skipped (the ``_needs_anchor`` shape of HB-3).
+        has_live = False
+        if row is None:
+            has_live = bool(
+                await self.session.scalar(
+                    select(
+                        exists().where(
+                            WafSourceBucket.log_source_id == log_source.id,
+                            is_live_clause(WafSourceBucket),
+                        )
+                    )
+                )
+            )
+        action = scope_action(
+            family=HistoryFamily.WAF,
+            mode=console_mode(decision),
+            decision=decision,
+            row=self._scope_view(row),
+            has_live_data=has_live,
+            live_anchor=None,
+            switch_on=self.settings.history_backfill_enabled,
+        )
+        if action.kind is ActionKind.NONE or decision is None:
+            return row
+        now = self._clock()
+        if action.kind is ActionKind.CREATE:
+            values = new_scope_row(
+                action,
+                instance_id=instance.id,
+                family=HistoryFamily.WAF,
+                scope_key=scope_key,
+                decision=decision,
+                at=now,
+            )
+        elif action.kind is ActionKind.TRANSITION:
+            assert row is not None
+            row_view = self._scope_view(row)
+            assert row_view is not None
+            values = transition_row(
+                action,
+                instance_id=instance.id,
+                family=HistoryFamily.WAF,
+                scope_key=scope_key,
+                row=row_view,
+                decision=decision,
+                at=now,
+            )
+            if row.state == HistoryState.READING.value:
+                await self._seed_history_handoff(
+                    instance,
+                    log_source,
+                    boundary=self._boundary(now),
+                    settled=row.through is not None,
+                )
+                values["anchor"] = self._boundary(now)
+        else:
+            return row
+        await repository.write_scopes([values])
+        await self.session.flush()
+        if row is not None:
+            return row
+        return (
+            await repository.scopes(instance.id, HistoryFamily.WAF.value, [scope_key])
+        )[scope_key]
+
+    async def _run_history_volume(
+        self,
+        instance: QRadarInstance,
+        log_source: LogSource,
+        collector: WafEndpointCollector,
+        scope: HistoryBackfillScope,
+        report: WafPipelineReport,
+    ) -> None:
+        now = self._clock()
+        boundary = self._boundary(now)
+        cadence = await SearchCadenceService(self.session, self.settings).get(
+            SearchFamily.WAF_COLLECTION
+        )
+        planner = waf_planner_settings(
+            self.settings, cadence_seconds=cadence.cadence_seconds
+        )
+        scope_view = self._scope_view(scope)
+        assert scope_view is not None
+        decoded = decode_scope(scope_view)
+        fit_reason: str | None = None
+        days_target: int | None
+        budget = history_search_budget(self.settings, used=0)
+        if decoded is None:
+            fitted = fit_family_window(HistoryFamily.WAF, self.settings)
+            if fitted.days is None:
+                change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
+                values = self._scope_values(
+                    scope,
+                    state=change.state,
+                    reason=fitted.reason or change.reason,
+                    finished_at=now,
+                    anchor=boundary,
+                )
+                await HistoryBackfillRepository(self.session).write_scopes([values])
+                report.history_state = change.state.value
+                report.history_reason = str(values["reason"])
+                return
+            endpoints = int(
+                await self.session.scalar(
+                    select(func.count(WafEndpoint.id)).where(
+                        WafEndpoint.log_source_id == log_source.id,
+                        WafEndpoint.is_active.is_(True),
+                    )
+                )
+                or 0
+            )
+            fit = fit_window(
+                fitted.days,
+                lambda days: waf_source_searches(
+                    max(1, endpoints),
+                    days,
+                    int(self.settings.history_backfill_waf_breakdown_days),
+                    planner,
+                ),
+                end=boundary,
+                settings=planner,
+                searches_per_tick=max(1, budget),
+            )
+            zero_reason = (
+                f"fitted with no tracked endpoint yet; the "
+                f"{self.settings.history_backfill_max_hours}-hour limit still bounds the reading"
+                if endpoints == 0
+                else None
+            )
+            fit_reason = "; ".join(
+                part
+                for part in (
+                    fitted.reason,
+                    fit.reason if fit.reduced or fit.refused else None,
+                    zero_reason,
+                )
+                if part
+            ) or None
+            if fit.refused or fit.days_fitted is None or fit.target_start is None:
+                change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
+                values = self._scope_values(
+                    scope,
+                    state=change.state,
+                    reason=fit_reason or fit.reason,
+                    finished_at=now,
+                    anchor=boundary,
+                )
+                await HistoryBackfillRepository(self.session).write_scopes([values])
+                report.history_state = change.state.value
+                report.history_reason = str(values["reason"])
+                return
+            progress = new_progress(fit.target_start, scope.started_at or now, planner)
+            adapter = {"fit_reason": fit_reason} if fit_reason else {}
+            days_target = fit.days_fitted
+        else:
+            progress, adapter = decoded.progress, decoded.adapter
+            stored_reason = adapter.get("fit_reason")
+            fit_reason = stored_reason if isinstance(stored_reason, str) else None
+            days_target = scope.days_target
+
+        outcome = await collector.history_volume_step(
+            log_source,
+            progress,
+            boundary=boundary,
+            search_budget=budget,
+            seconds_left=float(self.settings.history_backfill_seconds_per_tick),
+            cadence_seconds=cadence.cadence_seconds,
+        )
+        state = HistoryState.READING
+        finished_at: datetime | None = None
+        anchor: datetime | None = scope.anchor
+        if outcome.trigger is not None:
+            change = next_state(HistoryState.READING, outcome.trigger)
+            state = change.state
+            finished_at = now
+            anchor = boundary
+            await self._seed_history_handoff(
+                instance,
+                log_source,
+                boundary=boundary,
+                settled=outcome.progress.through is not None,
+            )
+        reason = "; ".join(part for part in (fit_reason, outcome.reason) if part)
+        values = self._scope_values(
+            scope,
+            state=state,
+            reason=reason,
+            progress=outcome.progress,
+            adapter=adapter,
+            days_target=days_target,
+            finished_at=finished_at,
+            anchor=anchor,
+        )
+        await HistoryBackfillRepository(self.session).write_scopes([values])
+        report.status = "history_reading" if state is HistoryState.READING else "history_handoff"
+        report.history_state = state.value
+        report.history_reason = reason
+        report.history_searches = outcome.searches
+        report.history_rows_written = outcome.rows_written
+
+    async def _seed_history_handoff(
+        self,
+        instance: QRadarInstance,
+        log_source: LogSource,
+        *,
+        boundary: datetime,
+        settled: bool,
+    ) -> None:
+        collection = await _watermark(
+            self.session, instance.id, watermark_collector(log_source)
+        )
+        evaluation = await _watermark(
+            self.session, instance.id, evaluation_collector(log_source)
+        )
+        handoff = boundary - timedelta(seconds=self.settings.collection_interval_seconds)
+        collection.watermark_at = handoff if settled else None
+        evaluation.watermark_at = handoff if settled else None
+
+    async def _run_history_breakdown(
+        self,
+        log_source: LogSource,
+        collector: WafEndpointCollector,
+        scope: HistoryBackfillScope,
+        *,
+        used: int,
+        report: WafPipelineReport,
+    ) -> None:
+        """Run the post-hand-off enrichment without changing the volume state."""
+        if not collector.planned_breakdowns() or scope.floor is None or scope.anchor is None:
+            return
+        scope_view = self._scope_view(scope)
+        assert scope_view is not None
+        decoded = decode_scope(scope_view)
+        if decoded is None:
+            return
+        outer_adapter = dict(decoded.adapter)
+        stored = outer_adapter.get("breakdown")
+        now = self._clock()
+        cadence = await SearchCadenceService(self.session, self.settings).get(
+            SearchFamily.WAF_COLLECTION
+        )
+        planner = waf_planner_settings(
+            self.settings, cadence_seconds=cadence.cadence_seconds
+        )
+        if stored is None:
+            target = max(
+                scope.anchor
+                - timedelta(days=self.settings.history_backfill_waf_breakdown_days),
+                scope.floor,
+            )
+            breakdown_progress = replace(
+                new_progress(target, now, planner),
+                floor=target,
+                scan_cursor=None,
+            )
+        else:
+            nested = decode_progress(stored)
+            if nested.adapter.get("done") is True:
+                return
+            breakdown_progress = nested.progress
+        outcome = await collector.history_breakdown_step(
+            log_source,
+            breakdown_progress,
+            boundary=scope.anchor,
+            search_budget=history_search_budget(self.settings, used=used),
+            seconds_left=float(self.settings.history_backfill_seconds_per_tick),
+            cadence_seconds=cadence.cadence_seconds,
+        )
+        outer_adapter["breakdown"] = encode_progress(
+            outcome.progress,
+            adapter={"done": outcome.trigger is not None, "reason": outcome.reason},
+        )
+        values = self._scope_values(
+            scope,
+            state=HistoryState(scope.state),
+            reason=scope.reason or "history volume pass finished",
+            progress=decoded.progress,
+            adapter=outer_adapter,
+            finished_at=scope.finished_at,
+        )
+        await HistoryBackfillRepository(self.session).write_scopes([values])
+        report.history_searches += outcome.searches
+        report.history_breakdown_buckets = outcome.buckets_updated
+        report.history_breakdown_metrics = outcome.metrics_updated
+
+    def _boundary(self, now: datetime) -> datetime:
+        seconds = self.settings.collection_interval_seconds
+        return datetime.fromtimestamp(int(now.timestamp()) // seconds * seconds, tz=UTC)
+
+    @staticmethod
+    def _decision_view(row: HistoryBackfillDecision | None) -> DecisionView | None:
+        if row is None:
+            return None
+        return DecisionView(
+            answer=row.answer,
+            days=row.days,
+            start_requested_at=row.start_requested_at,
+            start_requested_by=row.start_requested_by,
+            stop_requested_at=row.stop_requested_at,
+            stop_requested_by=row.stop_requested_by,
+        )
+
+    @staticmethod
+    def _scope_view(row: HistoryBackfillScope | None) -> ScopeRowView | None:
+        if row is None:
+            return None
+        return ScopeRowView(
+            state=HistoryState(row.state),
+            days_requested=row.days_requested,
+            days_target=row.days_target,
+            target_start=row.target_start,
+            floor=row.floor,
+            through=row.through,
+            anchor=row.anchor,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            reason=row.reason,
+            progress=row.progress,
+        )
+
+    @staticmethod
+    def _scope_values(
+        row: HistoryBackfillScope,
+        *,
+        state: HistoryState,
+        reason: str,
+        progress: Any | None = None,
+        adapter: Mapping[str, Any] | None = None,
+        days_target: int | None = None,
+        finished_at: datetime | None | object = _KEEP,
+        anchor: datetime | None = None,
+    ) -> dict[str, Any]:
+        encoded = row.progress
+        target_start, floor, through, started_at = (
+            row.target_start,
+            row.floor,
+            row.through,
+            row.started_at,
+        )
+        if progress is not None:
+            encoded = encode_progress(progress, adapter=adapter)
+            target_start = progress.target_start
+            floor = progress.floor
+            through = progress.through
+            started_at = progress.started_at
+        return {
+            "instance_id": row.instance_id,
+            "family": row.family,
+            "scope_key": row.scope_key,
+            "state": state.value,
+            "days_requested": row.days_requested,
+            "days_target": days_target if days_target is not None else row.days_target,
+            "target_start": target_start,
+            "floor": floor,
+            "through": through,
+            "anchor": anchor if anchor is not None else row.anchor,
+            "started_at": started_at,
+            "finished_at": row.finished_at if finished_at is _KEEP else finished_at,
+            "reason": reason[:255],
+            "progress": encoded,
+        }
 
     async def _evaluate(
         self,
@@ -265,6 +718,8 @@ class WafSourcePipeline:
         collection_wm: CollectionWatermark,
         evaluation_wm: CollectionWatermark,
         report: WafPipelineReport,
+        *,
+        history_end: datetime | None = None,
     ) -> None:
         now = self._clock()
         report.evaluated_through = evaluation_wm.watermark_at
@@ -273,6 +728,7 @@ class WafSourcePipeline:
         query = select(WafSourceBucket).where(
             WafSourceBucket.log_source_id == log_source.id,
             WafSourceBucket.bucket_start <= collection_wm.watermark_at,
+            is_live_clause(WafSourceBucket),
         )
         if evaluation_wm.watermark_at is not None:
             query = query.where(WafSourceBucket.bucket_start > evaluation_wm.watermark_at)
@@ -304,6 +760,7 @@ class WafSourcePipeline:
             settings=self.settings,
             clock=self._clock,
             enqueuer=self._enqueuer,
+            history_end=history_end,
         )
         for bucket in buckets:
             result = await engine.evaluate_bucket(log_source, bucket)

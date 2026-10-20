@@ -23,6 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from app.history.origin import HistoryOrigin
 from app.models.enums import (
     AnomalyState,
     AnomalyType,
@@ -31,6 +32,8 @@ from app.models.enums import (
     EvidenceStatus,
     IpsAnomalyType,
     IpsDimension,
+    PwAnomalyType,
+    PwScopeKind,
     RobustScoreStatus,
     Severity,
     WafAnomalyType,
@@ -49,6 +52,9 @@ class SubjectKind(StrEnum):
     WAF_ENDPOINT = "WAF_ENDPOINT"
     IPS_ENTITY = "IPS_ENTITY"
     IPS_SOURCE = "IPS_SOURCE"
+    #: A tracked value of a property watch (Phase G). Its row is `pw_anomaly`; the value text
+    #: is shown to every caller who can read the list (design §G.7.2, D-22).
+    PW_VALUE = "PW_VALUE"
 
 
 class WafEndpointRefOut(BaseModel):
@@ -80,6 +86,26 @@ class IpsEntityRefOut(BaseModel):
     display_name: str | None = None
 
 
+class PwValueRefOut(BaseModel):
+    """The property-watch value an anomaly is about.
+
+    Clear text by decision (D-22): anyone who reads `/anomalies` reads the value, as an
+    offense's usernames. `components` is the value split per watched property.
+    """
+
+    watch_id: uuid.UUID
+    watch_name: str
+    watch_version: int
+    scope_kind: PwScopeKind
+    #: The watched properties, in order: `[{"kind", "name"}, ...]`.
+    properties: list[dict[str, str]]
+    value_key: str
+    components: list[str]
+    #: The tracked value's id, for the watch page's `?value=` selection. None once retention
+    #: deleted the value row: the incident outlives it, so the link then has no target.
+    value_id: uuid.UUID | None = None
+
+
 class MetricBucketOut(BaseModel):
     """One time bucket of observed volume."""
 
@@ -95,6 +121,11 @@ class MetricBucketOut(BaseModel):
     peak_eps: float | None = None
     completeness: BucketCompleteness
     last_event_at: datetime | None = None
+    #: LIVE when the cadence collection wrote the bucket, HISTORY when the
+    #: history backfill read it from QRadar's past (HISTORY-BACKFILL §B.4.1).
+    #: Phase A keeps no `origin` column, so the route derives this from the
+    #: row's `collection_source`.
+    origin: HistoryOrigin
 
 
 class InputRequirementOut(BaseModel):
@@ -201,8 +232,9 @@ class AnomalyListItem(BaseModel):
     id: uuid.UUID
     #: What the anomaly is about. Phase A rows are LOG_SOURCE.
     subject_kind: SubjectKind = SubjectKind.LOG_SOURCE
-    #: For a WAF_ENDPOINT subject, the WAF log source that carries the endpoint.
-    log_source_id: uuid.UUID
+    #: For a WAF_ENDPOINT subject, the WAF log source that carries the endpoint. `None` for
+    #: a PW_VALUE subject whose watch is scoped to a type or a group, not one source.
+    log_source_id: uuid.UUID | None = None
     #: Resolved by the route from the owning source. None only when the source
     #: row is gone, which the UI renders as the id rather than as a blank cell.
     log_source_name: str | None = None
@@ -211,8 +243,10 @@ class AnomalyListItem(BaseModel):
     #: Set for an IPS_ENTITY subject, otherwise None. An IPS_SOURCE subject has
     #: none: the anomaly is about the log source itself.
     ips_entity: IpsEntityRefOut | None = None
-    #: A Phase A type, or for a WAF or IPS subject the row's detector type.
-    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType
+    #: Set for a PW_VALUE subject, otherwise None.
+    pw_value: PwValueRefOut | None = None
+    #: A Phase A type, or for a WAF, IPS or property-watch subject the row's detector type.
+    anomaly_type: AnomalyType | WafAnomalyType | IpsAnomalyType | PwAnomalyType
     state: AnomalyState
     severity: Severity
     observed_value: float | None = None
@@ -454,6 +488,46 @@ class IpsDetectionDetailOut(BaseModel):
     fallback_bound: float | None = None
 
 
+class PwDetectionDetailOut(BaseModel):
+    """The property-watch detector's working, projected from the stored evidence by whitelist.
+
+    Same rule as the WAF and IPS projections: named keys only, from the two known levels of
+    the evidence dict (`details` and `details["extra"]`). A missing value is None, never 0.
+    The band is the seasonal cell's own range for this hour of the week, in events per
+    bucket; the new-value fields are counts, and the detector declares no unit for them.
+    """
+
+    reason: str | None = None
+    expected_low: float | None = None
+    expected_high: float | None = None
+    threshold: float | None = None
+    baseline_sample_count: int | None = None
+    baseline_version: int | None = None
+    watch_version: int | None = None
+    #: Events of the value in the anomalous bucket, and the cell median it was judged against.
+    observed_events: float | None = None
+    expected_median: float | None = None
+    metric_semantics: str | None = None
+    #: EXACT, or LOWER_BOUND when the observed value is "at least n".
+    observed_measurement: str | None = None
+    absolute_delta: float | None = None
+    ratio: float | None = None
+    ratio_basis: str | None = None
+    robust_score_status: RobustScoreStatus | None = None
+    robust_z: float | None = None
+    fallback_bound: float | None = None
+    #: New value and new combination only.
+    classification: str | None = None
+    history_buckets_verified: int | None = None
+    #: Of those, the buckets read from QRadar's past, and the floor that reading proved.
+    #: `None` for an incident stored before the bootstrap: never a zero.
+    history_buckets_from_history: int | None = None
+    history_floor: datetime | None = None
+    events_since_first_seen: float | None = None
+    buckets_with_traffic: int | None = None
+    claim: str | None = None
+
+
 class AnomalyDetailOut(AnomalyListItem):
     """Everything the investigation page needs for one anomaly."""
 
@@ -465,7 +539,13 @@ class AnomalyDetailOut(AnomalyListItem):
     #: None when the anomaly recorded no structured detector evidence. A WAF
     #: subject carries the WAF projection, an IPS subject the IPS one, and a log
     #: source the Phase A one.
-    detection: WafDetectionDetailOut | IpsDetectionDetailOut | DetectionDetailOut | None = None
+    detection: (
+        WafDetectionDetailOut
+        | IpsDetectionDetailOut
+        | PwDetectionDetailOut
+        | DetectionDetailOut
+        | None
+    ) = None
 
 
 class BehaviorSummaryOut(BaseModel):
@@ -687,6 +767,63 @@ def ips_detection_detail(details: dict[str, Any] | None) -> IpsDetectionDetailOu
     )
 
 
+def _count(source: dict[str, Any], key: str) -> int | None:
+    value = _num(source, key)
+    return int(value) if value is not None else None
+
+
+def _moment(source: dict[str, Any], key: str) -> datetime | None:
+    """An ISO timestamp stored in the evidence, or None when absent or not one."""
+    value = source.get(key)
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def pw_detection_detail(details: dict[str, Any] | None) -> PwDetectionDetailOut | None:
+    """Project a stored property-watch evidence dict onto the typed detection block.
+
+    Reads named keys only, so a detector gaining an internal fact does not thereby publish
+    it. The value text is not among them: it travels as `pw_value`.
+    """
+    if not details:
+        return None
+    extra = _section(details, "extra")
+    status = _text(extra, "robust_score_status")
+    measurement = _text(extra, "observed_measurement") or _text(extra, "measurement")
+    return PwDetectionDetailOut(
+        reason=_text(details, "reason"),
+        expected_low=_num(details, "baseline_low"),
+        expected_high=_num(details, "baseline_high"),
+        threshold=_num(details, "threshold"),
+        baseline_sample_count=_count(details, "sample_count"),
+        baseline_version=_count(extra, "baseline_version"),
+        watch_version=_count(extra, "watch_version"),
+        observed_events=_num(extra, "observed_events"),
+        expected_median=_num(extra, "median"),
+        metric_semantics=_text(extra, "metric_semantics"),
+        observed_measurement=measurement if measurement in ("EXACT", "LOWER_BOUND") else None,
+        absolute_delta=_num(extra, "absolute_delta"),
+        ratio=_num(extra, "ratio"),
+        ratio_basis=_text(extra, "ratio_basis"),
+        robust_score_status=(
+            RobustScoreStatus(status) if status in set(RobustScoreStatus) else None
+        ),
+        robust_z=_num(extra, "robust_z"),
+        fallback_bound=_num(extra, "fallback_bound"),
+        classification=_text(extra, "classification"),
+        history_buckets_verified=_count(extra, "history_buckets_verified"),
+        history_buckets_from_history=_count(extra, "history_buckets_from_history"),
+        history_floor=_moment(extra, "history_floor"),
+        events_since_first_seen=_num(extra, "events_since_first_seen"),
+        buckets_with_traffic=_count(extra, "buckets_with_traffic"),
+        claim=_text(extra, "claim"),
+    )
+
+
 # ------------------------------------------------------------ WAF behavior
 class WafLatestBucketOut(BaseModel):
     """The most recent bucket a WAF source collected, and how whole it was."""
@@ -694,6 +831,9 @@ class WafLatestBucketOut(BaseModel):
     bucket_start: datetime
     bucket_seconds: int
     completeness: str
+    #: LIVE when the cadence collection wrote the bucket, HISTORY when the
+    #: history backfill read it from QRadar's past (HISTORY-BACKFILL §B.4.2).
+    origin: HistoryOrigin
     #: Share of the source's events that carried a parseable endpoint.
     endpoint_coverage_ratio: float
     #: LOWER_BOUND when grouping was truncated: the ratio is then itself a floor.
@@ -835,6 +975,10 @@ class WafMetricBucketOut(BaseModel):
     #: From the source's bucket record. None when that record is missing.
     request_count_measurement: str | None = None
     completeness: str
+    #: LIVE or HISTORY: the marker of the source's bucket record. The endpoint
+    #: metric row carries none of its own, so None when that record is missing
+    #: (HISTORY-BACKFILL §B.4.2).
+    origin: HistoryOrigin | None = None
     #: PARTIAL buckets are displayable but never train or judge a baseline.
     partial: bool
     endpoint_coverage_ratio: float | None = None
@@ -930,10 +1074,10 @@ class AnomalyHistogramOut(BaseModel):
     bucket_seconds: int
     #: The anomaly families the totals cover, so a client knows what was counted.
     #: Ordering: with no `subject_kind`, the list is
-    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]; with
+    #: ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE"]; with
     #: `subject_kind=IPS_ENTITY` it is ["IPS_ENTITY"]; with
-    #: `subject_kind=IPS_SOURCE` it is ["IPS_SOURCE"]; with `subject_kind=LOG_SOURCE`
-    #: or `WAF_ENDPOINT` it is the single corresponding family.
+    #: `subject_kind=IPS_SOURCE` it is ["IPS_SOURCE"]; with `subject_kind=LOG_SOURCE`,
+    #: `WAF_ENDPOINT` or `PW_VALUE` it is the single corresponding family.
     families: list[str]
     total: int
     #: Every hour of the range, in order, including the hours with no anomaly.

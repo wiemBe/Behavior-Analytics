@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Environment, Settings, get_settings
 from app.core.database import dispose_engine, get_sessionmaker
+from app.models.enums import SearchFamily, default_search_cadence
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
 from app.models.search_cadence import SearchCadenceSetting
@@ -102,6 +103,34 @@ def _safe_text(value: object) -> str:
     return _TOKENISH_RE.sub(replace_tokenish, cleaned)[:500]
 
 
+#: Collector names that `CollectionWatermark.collector` can hold. They are a fixed, known set of
+#: code constants, never operator or QRadar text, so they print as they are. The token heuristic
+#: in `_safe_text` would mask a long one (`geo_countries_destination` is 25 characters).
+_WATERMARK_NAMES = frozenset(
+    {
+        "offense_snapshot",
+        "ips_collection",
+        "ips_evaluation",
+        "rule_inventory",
+        "rule_metric",
+        "rule_match",
+        "log_source_metric",
+        "log_source_inventory",
+        "geo_countries_source",
+        "geo_countries_destination",
+        "waf_endpoint_metric",
+        "waf_endpoint_evaluation",
+        "anomaly_explanation",
+        "catchall_senders",
+    }
+)
+
+
+def _watermark_list(names: Sequence[str]) -> str:
+    """Collector names for output: a known name as is, anything else redacted."""
+    return ", ".join(n if n in _WATERMARK_NAMES else _safe_text(n) for n in names)[:500]
+
+
 def _host_from_url(value: str, fallback: str) -> str:
     return urlsplit(value).hostname or fallback
 
@@ -156,6 +185,25 @@ def _worst(results: Sequence[CheckResult]) -> Status:
 
 def exit_code(results: Sequence[CheckResult]) -> int:
     return {Status.PASS: 0, Status.WARN: 1, Status.FAIL: 2}[_worst(results)]
+
+
+#: Every search family that has an off switch, mapped to the setting that is it. A family
+#: absent here (only `PHASE_A_VOLUME`) has no switch: the log-source volume collector is the
+#: always-on core of the platform. `test_doctor` fails if a new `SearchFamily` member appears
+#: in neither this map nor `_FAMILIES_WITHOUT_SWITCH`, so the two cannot drift.
+_FAMILY_SWITCHES: dict[str, str] = {
+    SearchFamily.WAF_COLLECTION.value: "waf_collection_enabled",
+    SearchFamily.ANOMALY_EXPLANATION.value: "explanation_enabled",
+    SearchFamily.RULE_MATCH.value: "rule_match_collection_enabled",
+    SearchFamily.IPS_COLLECTION.value: "ips_collection_enabled",
+    SearchFamily.PROPERTY_WATCH.value: "pw_collection_enabled",
+    SearchFamily.CATCHALL_SENDERS.value: "catchall_collection_enabled",
+    SearchFamily.GEO_COLLECTION.value: "geo_collection_enabled",
+}
+
+#: The families with no off switch, listed so the drift test can tell "deliberately switchless"
+#: from "forgotten". `PHASE_A_VOLUME` is the only one.
+_FAMILIES_WITHOUT_SWITCH = frozenset({SearchFamily.PHASE_A_VOLUME.value})
 
 
 class Doctor:
@@ -470,16 +518,19 @@ class Doctor:
                 await provider.aclose()
 
     def _watermark_cadence(self, collector: str, cadences: dict[str, int]) -> int:
+        def family_cadence(family: SearchFamily) -> int:
+            return cadences.get(family.value, int(default_search_cadence(family)))
+
         if collector.startswith("waf_"):
-            return cadences.get("WAF_COLLECTION", 3600)
+            return family_cadence(SearchFamily.WAF_COLLECTION)
         if collector.startswith("ips_"):
-            return cadences.get("IPS_COLLECTION", 3600)
+            return family_cadence(SearchFamily.IPS_COLLECTION)
         if collector == "rule_match":
-            return cadences.get("RULE_MATCH", 3600)
+            return family_cadence(SearchFamily.RULE_MATCH)
         if collector == "catchall_senders":
-            return cadences.get("CATCHALL_SENDERS", 3600)
+            return family_cadence(SearchFamily.CATCHALL_SENDERS)
         if collector.startswith("geo_countries"):
-            return cadences.get("GEO_COLLECTION", 3600)
+            return family_cadence(SearchFamily.GEO_COLLECTION)
         return {
             "log_source_metric": self.settings.collection_interval_seconds,
             "log_source_inventory": self.settings.log_source_sync_interval_seconds,
@@ -509,7 +560,7 @@ class Doctor:
                 return CheckResult(
                     "watermarks",
                     Status.FAIL,
-                    f"{len(failed)} watermark(s) failed: {_safe_text(', '.join(failed))}",
+                    f"{len(failed)} watermark(s) failed: {_watermark_list(failed)}",
                     "OPS-R30",
                 )
             if late:
@@ -517,7 +568,7 @@ class Doctor:
                     "watermarks",
                     Status.WARN,
                     f"{len(late)} watermark(s) exceed twice their cadence: "
-                    f"{_safe_text(', '.join(late))}",
+                    f"{_watermark_list(late)}",
                     "OPS-R30",
                 )
             return CheckResult(
@@ -532,13 +583,11 @@ class Doctor:
             )
 
     def _family_enabled(self, family: str) -> bool:
-        return {
-            "WAF_COLLECTION": self.settings.waf_collection_enabled,
-            "IPS_COLLECTION": self.settings.ips_collection_enabled,
-            "RULE_MATCH": self.settings.rule_match_collection_enabled,
-            "CATCHALL_SENDERS": self.settings.catchall_collection_enabled,
-            "GEO_COLLECTION": self.settings.geo_collection_enabled,
-        }.get(family, True)
+        attribute = _FAMILY_SWITCHES.get(family)
+        if attribute is None:
+            # `PHASE_A_VOLUME`, and anything unknown: no switch, so treat it as enabled.
+            return True
+        return bool(getattr(self.settings, attribute))
 
     async def check_cadence(self) -> CheckResult:
         try:
@@ -559,7 +608,7 @@ class Doctor:
                 return CheckResult(
                     "cadence",
                     Status.WARN,
-                    f"enabled families late or never run: {_safe_text(', '.join(late))}",
+                    f"enabled families late or never run: {_watermark_list(late)}",
                     "OPS-R30",
                 )
             return CheckResult(
@@ -574,12 +623,13 @@ class Doctor:
             )
 
     async def check_families_off(self) -> CheckResult:
+        # Every family switch in `_FAMILY_SWITCHES` order, then the custom-rule engine's switch
+        # (F.1), which is not a `SearchFamily`. The environment name is the field's upper case.
         flags = {
-            "WAF_COLLECTION_ENABLED": self.settings.waf_collection_enabled,
-            "IPS_COLLECTION_ENABLED": self.settings.ips_collection_enabled,
-            "RULE_MATCH_COLLECTION_ENABLED": self.settings.rule_match_collection_enabled,
-            "CUSTOM_RULES_ENABLED": self.settings.custom_rules_enabled,
+            attribute.upper(): bool(getattr(self.settings, attribute))
+            for attribute in _FAMILY_SWITCHES.values()
         }
+        flags["CUSTOM_RULES_ENABLED"] = self.settings.custom_rules_enabled
         summary = ", ".join(
             f"{name}={'on' if enabled else 'off'}" for name, enabled in flags.items()
         )

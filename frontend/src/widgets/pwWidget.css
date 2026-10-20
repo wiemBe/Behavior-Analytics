@@ -1,0 +1,28 @@
+/* chart.property_watch: layout only. The chart fills the panel body; the notes sit under it. */
+
+.pww {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--widget-gap);
+}
+.pww-chart {
+  /* No height of its own: the wrapper is as tall as the chart's minimum plus its key, so a
+     panel shorter than its content grows instead of laying the key over the axis. */
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.pww-chart .pw-chart {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+.pww-chart .pw-chart-compact {
+  flex: 1 1 auto;
+  height: auto;
+}
+.pww-age {
+  white-space: nowrap;
+}

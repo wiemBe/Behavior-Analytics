@@ -47,6 +47,7 @@ from app.anomaly.seasonal import in_maintenance
 from app.anomaly.thresholds import ThresholdResolver
 from app.core.config import Settings, get_settings
 from app.fleet.outage_policy import ResolvedOutage, resolve
+from app.history.origin import is_live_clause
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     AnomalyState,
@@ -155,7 +156,10 @@ class AnomalyEngine:
     async def evaluate_latest(self, log_source: LogSource) -> EvaluationReport:
         metric = await self.session.scalar(
             select(LogSourceMetric)
-            .where(LogSourceMetric.log_source_id == log_source.id)
+            .where(
+                LogSourceMetric.log_source_id == log_source.id,
+                is_live_clause(LogSourceMetric),
+            )
             .order_by(LogSourceMetric.bucket_start.desc())
             .limit(1)
         )
@@ -174,7 +178,10 @@ class AnomalyEngine:
         if watermark is None:
             metric = await self.session.scalar(
                 select(LogSourceMetric)
-                .where(LogSourceMetric.log_source_id == log_source.id)
+                .where(
+                    LogSourceMetric.log_source_id == log_source.id,
+                    is_live_clause(LogSourceMetric),
+                )
                 .order_by(LogSourceMetric.bucket_start.desc())
                 .limit(1)
             )
@@ -210,6 +217,7 @@ class AnomalyEngine:
                     .where(
                         LogSourceMetric.log_source_id == log_source.id,
                         LogSourceMetric.bucket_start > watermark.evaluated_through,
+                        is_live_clause(LogSourceMetric),
                     )
                     .order_by(LogSourceMetric.bucket_start.asc())
                     .limit(self.settings.anomaly_max_buckets_per_evaluation)
@@ -331,6 +339,9 @@ class AnomalyEngine:
     ) -> int:
         """Consecutive empty buckets immediately before this one.
 
+        The streak counts live rows only (HISTORY-BACKFILL §B.4.1): a silence claim built
+        partly from QRadar history would lean on an old event.
+
         Only complete buckets count towards the streak. A gap we failed to
         collect is not evidence that the source was silent, and letting it
         extend the streak would make a collector outage graduate into NO_EVENTS.
@@ -342,6 +353,7 @@ class AnomalyEngine:
                     .where(
                         LogSourceMetric.log_source_id == log_source_id,
                         LogSourceMetric.bucket_start < metric.bucket_start,
+                        is_live_clause(LogSourceMetric),
                     )
                     .order_by(LogSourceMetric.bucket_start.desc())
                     .limit(limit)

@@ -72,6 +72,7 @@ name is a default here.
 from __future__ import annotations
 
 import dataclasses
+import json
 import time
 import uuid
 from collections.abc import Callable
@@ -79,13 +80,43 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.anomaly.seasonal import in_maintenance
 from app.collectors.metric_collector import floor_to_interval
 from app.core.config import Settings, get_settings
+from app.history import (
+    HistoryFamily,
+    HistoryOrigin,
+    is_history_clause,
+    marker_values,
+)
+from app.history.planner import (
+    ChunkResult,
+    ScanOutcome,
+    ScanSpanResult,
+    ScopeProgress,
+    SearchStatus,
+    Span,
+    StepAction,
+    StepBudget,
+    interpret_scan,
+    plan_step,
+    settle_step,
+)
+from app.history.state import HistoryTrigger
+
+# The WAF adapter is imported from its submodule: ``app.history`` must not re-export it
+# (``app.models.history_backfill`` imports ``app.history`` while ``app.models`` loads).
+from app.history.waf import (
+    HistoryEndpoint,
+    HistoryVolumeBucket,
+    WafHistoryFold,
+    fold_volume_history,
+    waf_planner_settings,
+)
 from app.models.enums import (
     BucketCompleteness,
     SearchFamily,
@@ -184,6 +215,27 @@ class WafCollectionReport:
     #: Breakdown -> buckets in which its search was truncated or failed.
     breakdown_lower_bound_buckets: dict[str, list[str]] = field(default_factory=dict)
     breakdown_failed_buckets: dict[str, list[str]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WafHistoryStep:
+    progress: ScopeProgress
+    reason: str
+    trigger: HistoryTrigger | None = None
+    rows_written: int = 0
+    searches: int = 0
+    permit_unavailable: bool = False
+
+
+@dataclass(frozen=True)
+class WafBreakdownHistoryStep:
+    progress: ScopeProgress
+    reason: str
+    trigger: HistoryTrigger | None = None
+    searches: int = 0
+    buckets_updated: int = 0
+    metrics_updated: int = 0
+    permit_unavailable: bool = False
 
 
 @dataclass(frozen=True)
@@ -945,6 +997,7 @@ class WafEndpointCollector:
             "log_source_id": log_source.id,
             "bucket_start": start,
             "bucket_seconds": bucket_seconds,
+            **marker_values(HistoryFamily.WAF, HistoryOrigin.LIVE),
             "profile_version": self.profile_version,
             "metric_semantics": semantics,
             "completeness": completeness,
@@ -1027,10 +1080,637 @@ class WafEndpointCollector:
             set_={
                 c: stmt_bucket.excluded[c]
                 for c in bucket_row
-                if c not in ("log_source_id", "bucket_start")
+                # A live write never changes the marker of an existing row.
+                if c not in ("log_source_id", "bucket_start", "origin")
             },
         )
         await self.session.execute(stmt_bucket)
+
+    async def persist_history_volume(
+        self,
+        log_source: LogSource,
+        buckets: list[HistoryVolumeBucket],
+        *,
+        floor: datetime,
+    ) -> WafHistoryFold:
+        """Fold and persist one history step with one statement per WAF table.
+
+        The endpoint ledger is loaded once for the source, including retired endpoints,
+        then ``fold_volume_history`` replays admission and per-bucket retirement in
+        memory.  Bucket and metric conflicts do nothing: history can never replace a
+        live row.  The surrounding pipeline transaction writes scope progress beside
+        these rows, so a worker failure commits neither.
+        """
+        stored = (
+            await self.session.scalars(
+                select(WafEndpoint).where(
+                    WafEndpoint.log_source_id == log_source.id,
+                    WafEndpoint.normalizer_version == ENDPOINT_NORMALIZER_VERSION,
+                )
+            )
+        ).all()
+        existing = [
+            HistoryEndpoint(
+                id=row.id,
+                instance_id=row.instance_id,
+                log_source_id=row.log_source_id,
+                virtual_host=row.virtual_host,
+                endpoint=row.normalized_endpoint,
+                method=row.http_method,
+                first_seen_at=row.first_seen_at,
+                last_seen_at=row.last_seen_at,
+                active=row.is_active,
+                retired_at=row.retired_at,
+                tracked_since=row.tracked_since,
+                tracked_until=row.tracked_until,
+                baseline_rebuilt_at=row.baseline_rebuilt_at,
+            )
+            for row in stored
+        ]
+        folded = fold_volume_history(
+            buckets,
+            existing,
+            instance_id=log_source.instance_id,
+            log_source_id=log_source.id,
+            profile_version=self.profile_version,
+            metric_semantics=self.metric_semantics,
+            collection_source=(
+                "mock_history" if "mock" in type(self.provider).__name__.lower()
+                else "ariel_history"
+            ),
+            floor=floor,
+            policy=AdmissionPolicy(
+                max_new_per_bucket=self.settings.waf_max_new_endpoints_per_bucket,
+                max_active=self.settings.waf_max_active_endpoints_per_source,
+                min_requests=self.settings.waf_min_admission_requests,
+            ),
+            min_coverage=self.settings.waf_min_endpoint_coverage,
+            active_days=self.settings.waf_endpoint_active_days,
+            maintenance=lambda at: in_maintenance(
+                at,
+                maintenance_mode=log_source.maintenance_mode,
+                maintenance_until=log_source.maintenance_until,
+            ),
+            id_factory=uuid.uuid4,
+        )
+
+        if folded.endpoints:
+            endpoint_insert = pg_insert(WafEndpoint).values(list(folded.endpoints))
+            await self.session.execute(
+                endpoint_insert.on_conflict_do_update(
+                    constraint="uq_waf_endpoint_natural_key",
+                    set_={
+                        "first_seen_at": func.least(
+                            WafEndpoint.first_seen_at, endpoint_insert.excluded.first_seen_at
+                        ),
+                        "last_seen_at": func.greatest(
+                            WafEndpoint.last_seen_at, endpoint_insert.excluded.last_seen_at
+                        ),
+                        "is_active": endpoint_insert.excluded.is_active,
+                        "retired_at": endpoint_insert.excluded.retired_at,
+                        "tracked_since": endpoint_insert.excluded.tracked_since,
+                        "tracked_until": endpoint_insert.excluded.tracked_until,
+                        "baseline_rebuilt_at": endpoint_insert.excluded.baseline_rebuilt_at,
+                    },
+                )
+            )
+        if folded.buckets:
+            await self._history_insert_jsonb(
+                "waf_source_bucket",
+                list(folded.buckets),
+                conflict="ON CONFLICT (log_source_id, bucket_start) DO NOTHING",
+            )
+        if folded.metrics:
+            await self._history_insert_jsonb(
+                "waf_endpoint_metric",
+                list(folded.metrics),
+                conflict="ON CONFLICT (waf_endpoint_id, bucket_start) DO NOTHING",
+            )
+        return folded
+
+    async def _history_insert_jsonb(
+        self,
+        table: str,
+        rows: list[dict[str, object]],
+        *,
+        conflict: str,
+    ) -> None:
+        """Insert an arbitrary-size aggregate payload as one PostgreSQL statement."""
+        if not rows:
+            return
+        allowed = {
+            (
+                "waf_source_bucket",
+                "ON CONFLICT (log_source_id, bucket_start) DO NOTHING",
+            ),
+            (
+                "waf_endpoint_metric",
+                "ON CONFLICT (waf_endpoint_id, bucket_start) DO NOTHING",
+            ),
+        }
+        if (table, conflict) not in allowed:
+            raise ValueError("unsupported WAF history bulk target")
+        tables = {
+            "waf_source_bucket": WafSourceBucket.__table__,
+            "waf_endpoint_metric": WafEndpointMetric.__table__,
+        }
+        names = tuple(rows[0])
+        if any(tuple(row) != names for row in rows):
+            raise ValueError("history bulk rows must have identical columns")
+        # The column names become SQL identifiers. Accept only names the target model
+        # declares, so a fold that grows a key fails here instead of at the server.
+        known_columns = set(tables[table].columns.keys())
+        for name in names:
+            if name not in known_columns:
+                raise ValueError(
+                    f"history bulk column {name!r} is not a column of {table}"
+                )
+        columns = ", ".join(f'"{name}"' for name in names)
+        selected = ", ".join(f'history_rows."{name}"' for name in names)
+        # The table and the conflict clause come from the closed set above, and every
+        # column name from the model; only the JSON document is a bound value.
+        statement = text(
+            f'INSERT INTO "{table}" ({columns}) '  # noqa: S608
+            f"SELECT {selected} "
+            f"FROM jsonb_populate_recordset(NULL::{table}, CAST(:history_rows AS jsonb)) "
+            f"AS history_rows {conflict}"
+        )
+        await self.session.execute(
+            statement,
+            {"history_rows": json.dumps(rows, default=self._history_json_default)},
+        )
+
+    @staticmethod
+    def _history_json_default(value: object) -> str:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, uuid.UUID):
+            return str(value)
+        raise TypeError(f"unsupported history payload value {type(value).__name__}")
+
+    async def history_volume_step(
+        self,
+        log_source: LogSource,
+        progress: ScopeProgress,
+        *,
+        boundary: datetime,
+        search_budget: int,
+        seconds_left: float,
+        cadence_seconds: int,
+    ) -> WafHistoryStep:
+        """Run one core-planned volume step under the global Ariel permit.
+
+        The floor scan is the ordinary keyed volume search: its totals are the second
+        statement of that search, and when it finds the floor its grouped buckets are
+        reused immediately.  No separate floor query is issued.
+        """
+        planner = waf_planner_settings(self.settings, cadence_seconds=cadence_seconds)
+        plan = plan_step(
+            progress,
+            now=self._clock(),
+            end=boundary,
+            budget=StepBudget(search_budget, seconds_left),
+            settings=planner,
+        )
+        if plan.action is StepAction.FINISH:
+            return WafHistoryStep(progress, plan.reason, plan.trigger)
+        if plan.action is StepAction.WAIT:
+            return WafHistoryStep(progress, plan.reason)
+
+        async def run() -> WafHistoryStep:
+            if plan.action is StepAction.SCAN:
+                assert plan.scan_span is not None
+                status, keyed, _ = await self._history_volume_search(
+                    log_source, plan.scan_span, planner.bucket_seconds
+                )
+                totals: tuple[tuple[datetime, int], ...] = ()
+                if keyed is not None:
+                    totals = tuple(
+                        (start, batch.total_events)
+                        for start, batch in sorted(keyed.buckets.items())
+                    )
+                decision = interpret_scan(
+                    progress,
+                    [ScanSpanResult(plan.scan_span, status, totals)],
+                    boundary,
+                    planner,
+                )
+                updated = decision.progress
+                if (
+                    decision.outcome is not ScanOutcome.FLOOR_FOUND
+                    or keyed is None
+                    or updated.floor is None
+                    or updated.floor >= plan.scan_span.end
+                ):
+                    return WafHistoryStep(
+                        updated,
+                        decision.reason,
+                        decision.trigger,
+                        searches=1 if status is not SearchStatus.NOT_RUN else 0,
+                    )
+                reuse_span = Span(updated.floor, plan.scan_span.end)
+                result = self._history_chunk_result(
+                    reuse_span, keyed, SearchStatus.COMPLETE, searches=0
+                )
+                settled = settle_step(updated, [result], end=boundary, settings=planner)
+                scan_values = self._history_volume_buckets(keyed, (reuse_span,))
+                folded = await self.persist_history_volume(
+                    log_source, scan_values, floor=updated.floor
+                )
+                return WafHistoryStep(
+                    settled.progress,
+                    f"{decision.reason}; {settled.reason}",
+                    settled.trigger,
+                    rows_written=len(folded.metrics),
+                    searches=1,
+                )
+
+            results: list[ChunkResult] = []
+            keyed_by_span: dict[Span, WafObservationBucketBatch] = {}
+            began = time.monotonic()
+            for chunk in plan.chunks:
+                if time.monotonic() - began >= seconds_left:
+                    break
+                status, keyed, searches = await self._history_volume_search(
+                    log_source, chunk, planner.bucket_seconds
+                )
+                results.append(self._history_chunk_result(chunk, keyed, status, searches))
+                if keyed is not None and status is SearchStatus.COMPLETE:
+                    keyed_by_span[chunk] = keyed
+                if status in (SearchStatus.FAILED, SearchStatus.TRUNCATED):
+                    break
+            if not results:
+                return WafHistoryStep(progress, "waiting for the history time budget")
+            settled = settle_step(progress, results, end=boundary, settings=planner)
+            step_values: list[HistoryVolumeBucket] = []
+            for span in settled.write_spans:
+                keyed = keyed_by_span.get(span)
+                if keyed is not None:
+                    step_values.extend(self._history_volume_buckets(keyed, (span,)))
+            rows = 0
+            if step_values:
+                assert settled.progress.floor is not None
+                folded = await self.persist_history_volume(
+                    log_source, step_values, floor=settled.progress.floor
+                )
+                rows = len(folded.metrics)
+            return WafHistoryStep(
+                settled.progress,
+                settled.reason,
+                settled.trigger,
+                rows_written=rows,
+                searches=sum(result.searches for result in results),
+            )
+
+        if self.ariel_budget is None:
+            return await run()
+        async with self.ariel_budget.permit() as permit:
+            if permit is None:
+                return WafHistoryStep(
+                    progress,
+                    "waiting for a global WAF Ariel permit",
+                    permit_unavailable=True,
+                )
+            return await run()
+
+    async def history_breakdown_step(
+        self,
+        log_source: LogSource,
+        progress: ScopeProgress,
+        *,
+        boundary: datetime,
+        search_budget: int,
+        seconds_left: float,
+        cadence_seconds: int,
+    ) -> WafBreakdownHistoryStep:
+        """Enrich finished HISTORY buckets, oldest first, with the core planner.
+
+        §B.7.3 originally says newest first, but HB-6 deliberately uses the shared
+        planner's oldest-first order.  Width adaptation, retries, gaps, the density gate,
+        and time limits then stay common to every family.  No value depends on order; if
+        time cuts the pass short, its older days are enriched rather than its newest.
+        """
+        kinds = tuple(sorted(self.planned_breakdowns()))
+        if not kinds:
+            return WafBreakdownHistoryStep(
+                progress,
+                "the profile plans no WAF breakdown history",
+                HistoryTrigger.FINISHED_COMPLETE,
+            )
+        planner = waf_planner_settings(self.settings, cadence_seconds=cadence_seconds)
+        # Each chunk costs one search per planned breakdown.  Let the core plan only
+        # the number of chunks that fits the real search sub-budget.
+        chunk_budget = search_budget // len(kinds)
+        plan = plan_step(
+            progress,
+            now=self._clock(),
+            end=boundary,
+            budget=StepBudget(chunk_budget, seconds_left),
+            settings=planner,
+        )
+        if plan.action is StepAction.FINISH:
+            return WafBreakdownHistoryStep(progress, plan.reason, plan.trigger)
+        if plan.action is StepAction.WAIT:
+            return WafBreakdownHistoryStep(progress, plan.reason)
+        if plan.action is StepAction.SCAN:
+            raise ValueError("breakdown progress must start with its floor already known")
+
+        async def run() -> WafBreakdownHistoryStep:
+            began = time.monotonic()
+            chunk_results: list[ChunkResult] = []
+            completed: dict[Span, dict[datetime, dict[WafBreakdown, _BreakdownResult]]] = {}
+            for chunk in plan.chunks:
+                if time.monotonic() - began >= seconds_left:
+                    break
+                by_bucket: dict[datetime, dict[WafBreakdown, _BreakdownResult]] = {}
+                status = SearchStatus.COMPLETE
+                spent = 0
+                rows = 0
+                lower_bound_starts: set[datetime] = set()
+                count = chunk.buckets(planner)
+                for kind in kinds:
+                    results, truncated, _ = await self._breakdown_search(
+                        log_source,
+                        chunk.start,
+                        chunk.end,
+                        planner.bucket_seconds,
+                        count,
+                        kind,
+                    )
+                    spent += 1
+                    if truncated:
+                        status = SearchStatus.TRUNCATED
+                        break
+                    if any(
+                        result.status is WafTelemetryStatus.FAILED
+                        for result in results.values()
+                    ):
+                        status = SearchStatus.FAILED
+                        break
+                    for start, result in results.items():
+                        by_bucket.setdefault(start, {})[kind] = result
+                        if result.batch is not None:
+                            rows += len(result.batch.groups)
+                            if result.status is WafTelemetryStatus.LOWER_BOUND:
+                                lower_bound_starts.add(start)
+                chunk_results.append(
+                    ChunkResult(
+                        chunk,
+                        status,
+                        rows=rows,
+                        non_silent_buckets=sum(bool(items) for items in by_bucket.values()),
+                        lower_bound_buckets=len(lower_bound_starts),
+                        searches=spent,
+                    )
+                )
+                if status is SearchStatus.COMPLETE:
+                    completed[chunk] = by_bucket
+                else:
+                    break
+            if not chunk_results:
+                return WafBreakdownHistoryStep(
+                    progress, "waiting for the history time budget"
+                )
+            settled = settle_step(progress, chunk_results, end=boundary, settings=planner)
+            ready: dict[datetime, dict[WafBreakdown, _BreakdownResult]] = {}
+            for span in settled.write_spans:
+                ready.update(completed.get(span, {}))
+            bucket_count = metric_count = 0
+            if ready:
+                bucket_count, metric_count = await self.persist_history_breakdowns(
+                    log_source, ready
+                )
+            return WafBreakdownHistoryStep(
+                settled.progress,
+                settled.reason,
+                settled.trigger,
+                searches=sum(item.searches for item in chunk_results),
+                buckets_updated=bucket_count,
+                metrics_updated=metric_count,
+            )
+
+        if self.ariel_budget is None:
+            return await run()
+        async with self.ariel_budget.permit() as permit:
+            if permit is None:
+                return WafBreakdownHistoryStep(
+                    progress,
+                    "waiting for a global WAF Ariel permit",
+                    permit_unavailable=True,
+                )
+            return await run()
+
+    async def persist_history_breakdowns(
+        self,
+        log_source: LogSource,
+        results: dict[datetime, dict[WafBreakdown, _BreakdownResult]],
+    ) -> tuple[int, int]:
+        """Bulk-update only breakdown columns of HISTORY rows.
+
+        Endpoints are loaded once for the whole step.  A breakdown value is written only
+        to an existing metric whose endpoint was tracked at that bucket.  Both UPDATEs
+        join back to a HISTORY source bucket, so neither a conflicting live bucket nor a
+        live metric at the same time can be changed.
+        """
+        if not results:
+            return 0, 0
+        starts = sorted(results)
+        stored = (
+            await self.session.execute(
+                select(WafEndpoint, WafEndpointMetric)
+                .join(
+                    WafEndpointMetric,
+                    WafEndpointMetric.waf_endpoint_id == WafEndpoint.id,
+                )
+                .join(
+                    WafSourceBucket,
+                    (WafSourceBucket.log_source_id == WafEndpoint.log_source_id)
+                    & (WafSourceBucket.bucket_start == WafEndpointMetric.bucket_start),
+                )
+                .where(
+                    WafEndpoint.log_source_id == log_source.id,
+                    WafEndpointMetric.bucket_start.in_(starts),
+                    is_history_clause(WafSourceBucket),
+                )
+            )
+        ).all()
+        by_bucket: dict[datetime, list[tuple[WafEndpoint, WafEndpointMetric]]] = {}
+        for endpoint, metric in stored:
+            if endpoint.tracked_at(metric.bucket_start):
+                by_bucket.setdefault(metric.bucket_start, []).append((endpoint, metric))
+
+        bucket_rows: list[dict[str, object]] = []
+        metric_rows: list[dict[str, object]] = []
+        for start in starts:
+            per_kind = results[start]
+            folded = self._fold_breakdowns(per_kind)
+            bucket_rows.append(
+                {
+                    "log_source_id": log_source.id,
+                    "bucket_start": start,
+                    **self._breakdown_bucket_facts(per_kind),
+                }
+            )
+            for endpoint, metric in by_bucket.get(start, []):
+                key = (
+                    endpoint.virtual_host,
+                    endpoint.normalized_endpoint,
+                    endpoint.http_method,
+                )
+                metric_rows.append(
+                    {
+                        "waf_endpoint_id": metric.waf_endpoint_id,
+                        "bucket_start": start,
+                        **self._breakdown_values(key, folded),
+                    }
+                )
+
+        if bucket_rows:
+            await self.session.execute(
+                text(
+                    "UPDATE waf_source_bucket AS target SET "
+                    "action_measurement = data.action_measurement, "
+                    "action_semantics = data.action_semantics, "
+                    "action_events = data.action_events, "
+                    "response_code_measurement = data.response_code_measurement, "
+                    "response_code_semantics = data.response_code_semantics, "
+                    "response_code_events = data.response_code_events, "
+                    "client_measurement = data.client_measurement, "
+                    "client_semantics = data.client_semantics, "
+                    "client_events = data.client_events "
+                    "FROM jsonb_populate_recordset(NULL::waf_source_bucket, "
+                    "CAST(:history_rows AS jsonb)) AS data "
+                    "WHERE target.log_source_id = data.log_source_id "
+                    "AND target.bucket_start = data.bucket_start "
+                    "AND target.origin = 'HISTORY'"
+                ),
+                {
+                    "history_rows": json.dumps(
+                        bucket_rows, default=self._history_json_default
+                    )
+                },
+            )
+        if metric_rows:
+            await self.session.execute(
+                text(
+                    "UPDATE waf_endpoint_metric AS target SET "
+                    "action_events = data.action_events, "
+                    "blocked_count = data.blocked_count, "
+                    "unmapped_action_count = data.unmapped_action_count, "
+                    "response_code_events = data.response_code_events, "
+                    "client_error_count = data.client_error_count, "
+                    "server_error_count = data.server_error_count, "
+                    "unclassified_response_count = data.unclassified_response_count, "
+                    "client_events = data.client_events, "
+                    "top1_client_requests = data.top1_client_requests, "
+                    "top5_client_requests = data.top5_client_requests, "
+                    "client_sources = data.client_sources, "
+                    "top_clients = data.top_clients "
+                    "FROM jsonb_populate_recordset(NULL::waf_endpoint_metric, "
+                    "CAST(:history_rows AS jsonb)) AS data "
+                    "WHERE target.waf_endpoint_id = data.waf_endpoint_id "
+                    "AND target.bucket_start = data.bucket_start "
+                    "AND EXISTS (SELECT 1 FROM waf_endpoint AS endpoint "
+                    "JOIN waf_source_bucket AS bucket "
+                    "ON bucket.log_source_id = endpoint.log_source_id "
+                    "AND bucket.bucket_start = target.bucket_start "
+                    "WHERE endpoint.id = target.waf_endpoint_id "
+                    "AND bucket.origin = 'HISTORY')"
+                ),
+                {
+                    "history_rows": json.dumps(
+                        metric_rows, default=self._history_json_default
+                    )
+                },
+            )
+        return len(bucket_rows), len(metric_rows)
+
+    async def _history_volume_search(
+        self, log_source: LogSource, span: Span, bucket_seconds: int
+    ) -> tuple[SearchStatus, WafObservationBucketBatch | None, int]:
+        try:
+            if span.end - span.start == timedelta(seconds=bucket_seconds):
+                batch = await self._observations_one(log_source, span.start, span.end)
+                return (
+                    SearchStatus.COMPLETE,
+                    WafObservationBucketBatch(
+                        buckets={span.start: batch},
+                        rows_returned=len(batch.groups) + int(batch.total_events > 0),
+                        query=batch.query,
+                        total_query=batch.total_query,
+                        ariel_searches=batch.ariel_searches,
+                    ),
+                    1,
+                )
+            keyed = await self._observations_keyed(
+                log_source, span.start, span.end, bucket_seconds
+            )
+        except ProviderError:
+            return SearchStatus.FAILED, None, 1
+        if keyed.truncated:
+            return SearchStatus.TRUNCATED, None, 1
+        return SearchStatus.COMPLETE, keyed, 1
+
+    def _history_chunk_result(
+        self,
+        span: Span,
+        keyed: WafObservationBucketBatch | None,
+        status: SearchStatus,
+        searches: int,
+    ) -> ChunkResult:
+        if keyed is None:
+            return ChunkResult(span, status, searches=searches)
+        buckets = {
+            start: batch
+            for start, batch in keyed.buckets.items()
+            if span.start <= start < span.end
+        }
+        rows = sum(len(batch.groups) for batch in buckets.values())
+        non_silent = sum(
+            bool(batch.groups or batch.total_events) for batch in buckets.values()
+        )
+        lower_bound = 0
+        for batch in buckets.values():
+            parsed = sum(group.request_count for group in batch.groups)
+            coverage = parsed / batch.total_events if batch.total_events > 0 else 1.0
+            if batch.truncated or coverage < self.settings.waf_min_endpoint_coverage:
+                lower_bound += 1
+        return ChunkResult(
+            span,
+            status,
+            rows=rows,
+            non_silent_buckets=non_silent,
+            lower_bound_buckets=lower_bound,
+            searches=searches,
+        )
+
+    def _history_volume_buckets(
+        self, keyed: WafObservationBucketBatch, spans: tuple[Span, ...]
+    ) -> list[HistoryVolumeBucket]:
+        collected_at = self._clock()
+        out: list[HistoryVolumeBucket] = []
+        for start, batch in sorted(keyed.buckets.items()):
+            if not any(span.start <= start < span.end for span in spans):
+                continue
+            out.append(
+                HistoryVolumeBucket(
+                    batch=batch,
+                    collected_at=collected_at,
+                    search_provenance={
+                        "search_window_start": min(span.start for span in spans).isoformat(),
+                        "search_window_end": max(span.end for span in spans).isoformat(),
+                        "search_bucket_count": sum(
+                            int((span.end - span.start).total_seconds())
+                            // self.settings.collection_interval_seconds
+                            for span in spans
+                        ),
+                        "bucket_key": (
+                            f"starttime / {self.settings.collection_interval_seconds * 1000}"
+                        ),
+                    },
+                )
+            )
+        return out
 
     def _fold_breakdowns(self, results: dict[WafBreakdown, _BreakdownResult]) -> _Folded:
         folded = _Folded()
@@ -1084,20 +1764,20 @@ class WafEndpointCollector:
         self, results: dict[WafBreakdown, _BreakdownResult]
     ) -> dict[str, object]:
         out: dict[str, object] = {}
-        for breakdown, column in (
+        for breakdown, prefix in (
             (WafBreakdown.ACTION, "action"),
             (WafBreakdown.RESPONSE_CODE, "response_code"),
             (WafBreakdown.SOURCE_IP, "client"),
         ):
             result = results.get(breakdown)
             batch = result.batch if result is not None else None
-            out[f"{column}_measurement"] = (
+            out[f"{prefix}_measurement"] = (
                 result.status if result is not None else WafTelemetryStatus.NOT_COLLECTED
             )
-            out[f"{column}_semantics"] = (
+            out[f"{prefix}_semantics"] = (
                 self.breakdown_semantics(breakdown) if batch is not None else None
             )
-            out[f"{column}_events"] = (
+            out[f"{prefix}_events"] = (
                 sum(g.request_count for g in batch.groups) if batch is not None else None
             )
         return out

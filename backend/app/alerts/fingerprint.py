@@ -144,6 +144,35 @@ def ips_anomaly_fingerprint(
     )
 
 
+def pw_anomaly_fingerprint(
+    instance_id: str | uuid.UUID,
+    watch_id: str | uuid.UUID,
+    detector_type: str,
+    value_key: str,
+) -> str:
+    """Identity of one property-watch detector condition on one value (design §G.10.1).
+
+    The natural key is ``(instance, watch, value_key)``, never a row id, so an incident
+    survives its value being retired and reactivated. ``watch_version`` is deliberately not
+    in it: a version bump resolves the watch's alerts instead. The value text enters only as
+    its SHA-256 (hashed here, before ``compute_fingerprint`` lower-cases its parts, because
+    two values that differ only by case are two values), so the fingerprint, which is logged
+    and stored on the alert, never carries it.
+    """
+    if not value_key:
+        raise ValueError("value_key is required")
+    natural_key = json.dumps(
+        [str(instance_id), str(watch_id), hashlib.sha256(value_key.encode()).hexdigest()],
+        separators=(",", ":"),
+    )
+    return compute_fingerprint(
+        source_type="pw_value",
+        source_id=natural_key,
+        condition="pw_anomaly",
+        subtype=detector_type,
+    )
+
+
 def search_threshold_fingerprint(search_id: str | uuid.UUID) -> str:
     return compute_fingerprint(
         source_type="scheduled_search",

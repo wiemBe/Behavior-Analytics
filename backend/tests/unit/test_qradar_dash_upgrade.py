@@ -8,6 +8,7 @@ import shutil
 import stat
 import subprocess
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -869,6 +870,34 @@ def test_status_prints_state_version_digests_and_last_upgrade(
     assert f"Image backend: {OLD_IMAGES['backend']}" in result.stdout
     assert "Last upgrade: success, 0.1.0 -> 0.2.0" in result.stdout
     assert f"Last upgrade backup: {backup}" in result.stdout
+
+
+def test_status_age_is_the_backups_not_the_last_events(upgrade: UpgradeFixture) -> None:
+    # The fixture's date stub pins "now"; this test needs the real clock.
+    upgrade._stub("date", f'#!/bin/sh\nexec {shutil.which("date")} "$@"\n')
+    now = datetime.now(UTC)
+    stamp = (now - timedelta(minutes=4, seconds=20)).strftime("%Y%m%dT%H%M%SZ")
+    backup = upgrade.backup_root / f"qradar-dash-{stamp}-pre-upgrade"
+    backup.mkdir(mode=0o700)
+    upgrade.write_state(previous=None, outcome="rolled_back", backup=backup)
+    path = upgrade.state_dir / "state.json"
+    state = json.loads(path.read_text())
+    state["last_upgrade"]["at"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")  # the rollback just ran
+    path.write_text(json.dumps(state) + "\n")
+
+    result = upgrade.run("status")
+
+    assert f"Last upgrade backup: {backup} (age 4 min)" in result.stdout, output(result)
+
+
+def test_status_age_is_unknown_for_a_backup_name_without_a_stamp(
+    upgrade: UpgradeFixture,
+) -> None:
+    upgrade.write_state(previous=OLD_IMAGES, outcome="success", backup=upgrade.backup_root / "x")
+
+    result = upgrade.run("status")
+
+    assert "(age unknown)" in result.stdout, output(result)
 
 
 @pytest.mark.parametrize(

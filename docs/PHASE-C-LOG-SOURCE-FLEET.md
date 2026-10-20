@@ -1,8 +1,8 @@
 # Phase C — log-source fleet: inventory, classification, new sources (goal G1)
 
-Status: **design, 2026-10-12**. Written by the orchestrator. It rests on the live facts measured
-in [`tasks/T-015.report.md`](tasks/T-015.report.md), and serves goal G1 in
-[`PLANNER.md`](PLANNER.md) §0.
+Status: **design, 2026-10-12**. It rests on the live facts measured on the lab console on
+2026-10-12 — 51 log sources, of which only 4 delivered events in the last hour — and serves goal
+G1, log-source fleet monitoring.
 
 ## C.0 What the user asked for
 
@@ -40,9 +40,9 @@ C.2 builds per-class outage policy and SIM Generic tracking.
 
 ## C.2 Data model [DECISION]
 
-Additive only (AGENTS.md rule 7). `log_source` is the Phase 1 inventory table: it gains nullable
+Additive only. `log_source` is the Phase 1 inventory table: it gains nullable
 inventory facts. **No Phase A detector, baseline, state or anomaly table, and no Phase A enum,
-changes** (rule 6). Classification and review get their own table, so their lifecycle is
+changes**. Classification and review get their own table, so their lifecycle is
 auditable and separate from inventory.
 
 | Object | Change |
@@ -112,8 +112,8 @@ their own.
   - DNS: types with "DNS" in the name.
   - DATABASE, EMAIL, IDENTITY, CLOUD, ENDPOINT: their common DSMs.
 
-  **The seed list is a deliverable that gets reviewed.** The implementing agent proposes it
-  from the live type names and a known-DSM list, and the orchestrator reviews it.
+  **The seed list is a deliverable that gets reviewed.** It is proposed from the live type names
+  and a known-DSM list, and reviewed against them.
 - `NAME_REGEX`, reflecting the site convention (case-insensitive, with word boundaries, so
   `dmz-ips-01` matches):
   - `waf`→WAF;
@@ -160,13 +160,14 @@ so this residual ReDoS risk is accepted on the basis of admin-only authorship, a
 alerts carry `source_class` in their context. This is the hook C.2's per-class outage policy
 builds on.
 
-**UI** comes after the T-021 quality pass, as its own task under AGENTS.md §3a.
+**UI** comes after the T-021 quality pass, as its own task under the frontend quality bar
+([`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md)).
 
 ## C.6 Task split
 
-| Task | Agent | Content |
+| Task | Depends on | Content |
 |---|---|---|
-| T-022 | Codex | C.2 model, migration `0011`, provider/DTO enrichment (log-source facts, types with `internal`, groups), bulk inventory sync, `classify()` with seed rules, re-classification after sync, new-source detection and alert |
+| T-022 | — | C.2 model, migration `0011`, provider/DTO enrichment (log-source facts, types with `internal`, groups), bulk inventory sync, `classify()` with seed rules, re-classification after sync, new-source detection and alert |
 | T-023 | after T-022 | C.5 APIs, and routing by class |
 | T-024 | after T-021 | Fleet UI |
 
@@ -174,11 +175,12 @@ builds on.
 
 # Part 2 (Phase C.2): outage policy and catch-all senders
 
-Status: **design, 2026-10-13 (sixth session).** Written by the orchestrator. Live facts:
-[`tasks/T-063.report.md`](tasks/T-063.report.md). It covers the two G1 gaps C.1 left: "be alerted
+Status: **design, 2026-10-13 (sixth session).** Live facts from the lab: a sender on a catch-all
+source is told apart by `logsourceidentifier`, not `sourceip`, and the SIM Generic marker is
+`qid = 18750001`. It covers the two G1 gaps C.1 left: "be alerted
 when **selected** sources stop" and "track SIM Generic Log".
 
-## C.7 Outage alert policy [DECISION, default open to the user as D-9]
+## C.7 Outage alert policy [DECISION, 2026-10-13]
 
 **Today.** Every monitored source (`monitoring_enabled`) that goes silent opens a `NO_EVENTS`
 anomaly, and the engine opens an alert for it. Maintenance windows are the only exception. Which
@@ -210,8 +212,8 @@ today's behaviour on upgrade). The class is the source's effective class from C.
   the anomaly does. The policy never mass-resolves alerts.
 - `silence_grace_buckets` changes when `NO_EVENTS` fires for that scope.
 - `VOLUME_DROP` and `VOLUME_SPIKE` are not touched. "Outage" means `NO_EVENTS`.
-- Fingerprints and Phase A tables do not change (AGENTS.md rule 6). The engine loads the policy
-  once per evaluation run, in one statement (rule 9).
+- Fingerprints and Phase A tables do not change. The engine loads the policy
+  once per evaluation run, in one statement.
 
 **API:** `GET/PUT/DELETE /api/v1/outage-policy` (class rows and source rows), under a new
 permission `admin:outage`. Every change is audited. `GET /fleet/summary` gains each class's
@@ -247,8 +249,7 @@ sources like any other. C.2b adds **who is feeding them**:
   - total events and records;
   - `distinct_senders`, a lower bound when truncated;
   - the measurement (`EXACT` / `LOWER_BOUND` / `FAILED` / `NOT_COLLECTED`);
-  - the top senders, at most 20 `(identifier, events)` (a bounded contributor list, AGENTS.md
-    rule 3);
+  - the top senders, at most 20 `(identifier, events)` (a bounded contributor list);
   - `untracked_senders` and `untracked_events`;
   - `query_provenance`.
 - **Admission** bounds what an attacker-controlled hostname can do. It reuses the WAF/IPS
@@ -260,7 +261,8 @@ sources like any other. C.2b adds **who is feeding them**:
   only bootstraps `REVIEWED`, exactly as C.4 does. Reviewing or dismissing a sender is audited.
 
 **Collection.**
-- A new search family, `CATCHALL_SENDERS`, defaults to 1 h with the §SC.4 gate.
+- The `CATCHALL_SENDERS` search family defaults to 5 min with the §SC.4 gate; it defaulted to
+  1 h until 2026-10-18.
 - One keyed search runs per tick per instance, under the §SC.5 contract (split on truncation,
   time first; a bucket is never written from a truncated wide result; one bucket truncated gives
   `LOWER_BOUND` with the top kept).
@@ -276,9 +278,9 @@ the per-bucket honesty states, and review and dismiss actions.
 
 ## C.9 Part 2 task split
 
-| Task | Agent | Content |
-|---|---|---|
-| T-068 | Sonnet or Codex | C.7 backend: `outage_alert_policy`, migration, the engine hook (one load per run), the API, `admin:outage`, audit, the `fleet/summary` field |
-| T-069 | Codex or Sonnet | C.8 backend: the provider keyed search and fold, tables, admission, collector, the `CATCHALL_SENDERS` family and gate, alerts, the review API |
-| T-070 | Sonnet | UI: `/admin/outage-policy` and `/fleet/catchall` (§3a, screenshots) |
-| T-071 | Sonnet | Live validation: a T-063-style sender at ≤ 2 EPS shows up as a `NEW` sender; a `RECORD_ONLY` class silences its outage alert while the anomaly is still recorded |
+| Task | Content |
+|---|---|
+| T-068 | C.7 backend: `outage_alert_policy`, migration, the engine hook (one load per run), the API, `admin:outage`, audit, the `fleet/summary` field |
+| T-069 | C.8 backend: the provider keyed search and fold, tables, admission, collector, the `CATCHALL_SENDERS` family and gate, alerts, the review API |
+| T-070 | UI: `/admin/outage-policy` and `/fleet/catchall`, with screenshots at three viewports |
+| T-071 | Live validation: a T-063-style sender at ≤ 2 EPS shows up as a `NEW` sender; a `RECORD_ONLY` class silences its outage alert while the anomaly is still recorded |

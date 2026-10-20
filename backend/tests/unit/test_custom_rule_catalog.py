@@ -31,6 +31,7 @@ _LEGAL_READS = frozenset(
         "ips_source_bucket.blocked_events",
         "ips_source_bucket.allowed_events",
         "ips_source_bucket.unmapped_events",
+        "pw_value_metric.events",
     }
 )
 
@@ -54,7 +55,7 @@ _RATIOS = frozenset(
 
 def test_catalog_has_one_entry_per_metric_and_nothing_else() -> None:
     assert set(CUSTOM_RULE_METRICS) == set(CustomRuleMetric)
-    assert len(CUSTOM_RULE_METRICS) == 10
+    assert len(CUSTOM_RULE_METRICS) == 11  # the ten of §F.1.1 and Phase G's PW_VALUE_EVENTS
 
 
 def test_every_metric_declares_kind_unit_reader_measurement_and_loader() -> None:

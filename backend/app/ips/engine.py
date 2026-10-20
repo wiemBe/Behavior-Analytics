@@ -179,6 +179,7 @@ class IpsAnomalyEngine:
         self.detectors = detectors if detectors is not None else IPS_DETECTOR_FUNCTIONS
         self.alerts = AlertService(session, clock=self._clock)
         self._enqueuer = enqueuer
+        self.history_end: datetime | None = None
 
     def _thresholds(self) -> IpsThresholds:
         settings = self.settings
@@ -346,6 +347,17 @@ class IpsAnomalyEngine:
                         extra={"log_source_id": str(source.id)},
                     )
                 )
+                if (
+                    detector_type is IpsAnomalyType.IPS_NEW_DESTINATION_PORT
+                    and subject.entity is not None
+                    and self.history_end is not None
+                    and subject.entity.first_seen_at < self.history_end
+                ):
+                    verdict.evidence.reason = (
+                        "established port: first admitted "
+                        f"{subject.entity.first_seen_at.isoformat()}, before history hand-off "
+                        f"{self.history_end.isoformat()}"
+                    )
                 state = states[(subject.kind, subject.subject_id, detector_type.value)]
                 if self._apply_hysteresis(
                     source,
@@ -516,6 +528,31 @@ class IpsAnomalyEngine:
         for subject in ports:
             assert subject.entity is not None
             bucket = subject.observation.bucket
+            if (
+                self.history_end is not None
+                and subject.entity.first_seen_at < self.history_end
+            ):
+                result[subject.entity.id] = IpsNoveltyFacts(
+                    first_seen_at=subject.entity.first_seen_at,
+                    window_end=self.history_end,
+                    within_window=False,
+                    readmitted=False,
+                    history=HistoryFacts(
+                        complete=True,
+                        reason=(
+                            "the port was first admitted before the history hand-off at "
+                            f"{self.history_end.isoformat()}"
+                        ),
+                    ),
+                    history_start=subject.entity.first_seen_at,
+                    history_end=self.history_end,
+                    history_buckets=0,
+                    appearance_flood=None,
+                    events_since_first_seen=0,
+                    buckets_with_traffic=0,
+                    lower_bound=False,
+                )
+                continue
             window_end = subject.entity.first_seen_at + timedelta(
                 seconds=thresholds.new_port_window_buckets * bucket.bucket_seconds
             )

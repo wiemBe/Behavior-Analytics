@@ -19,6 +19,8 @@ import type {
 import { completenessMeaning, formatMetric } from "@/lib/behavior";
 import { formatDateTime } from "@/lib/health";
 
+import { OriginMarker } from "./HistoryKey";
+
 /** Buckets shown in the table. The chart covers the whole window. */
 const BUCKET_ROWS = 60;
 
@@ -187,6 +189,7 @@ export function SourceAdvanced({
                       >
                         {b.completeness}
                       </span>
+                      <OriginMarker origin={b.origin} />
                     </td>
                     <td className="num">{formatDateTime(b.last_event_at)}</td>
                   </tr>

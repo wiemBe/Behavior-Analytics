@@ -17,14 +17,16 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import exists, select
+from sqlalchemy import String, cast, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import AlertEnqueuer
 from app.core.config import Settings, get_settings
+from app.history import is_live_clause
 from app.ips.baseline import IpsBaselineBuilder
 from app.ips.engine import IpsAnomalyEngine
 from app.models.enums import SearchFamily
+from app.models.history_backfill import HistoryBackfillScope
 from app.models.instance import QRadarInstance
 from app.models.ips import IpsSourceBucket, IpsSourceProfile
 from app.models.log_source import LogSource
@@ -145,8 +147,17 @@ class IpsInstancePipeline:
         report = IpsPipelineReport(instance.id)
         rows = (
             await self.session.execute(
-                select(IpsSourceProfile, LogSource)
+                select(IpsSourceProfile, LogSource, HistoryBackfillScope)
                 .join(LogSource, LogSource.id == IpsSourceProfile.log_source_id)
+                .outerjoin(
+                    HistoryBackfillScope,
+                    (HistoryBackfillScope.instance_id == IpsSourceProfile.instance_id)
+                    & (HistoryBackfillScope.family == "IPS")
+                    & (
+                        HistoryBackfillScope.scope_key
+                        == cast(LogSource.qradar_id, String)
+                    ),
+                )
                 .where(
                     IpsSourceProfile.instance_id == instance.id,
                     exists(
@@ -160,7 +171,15 @@ class IpsInstancePipeline:
         ).all()
         if not rows:
             return report
-        sources = [source for _profile, source in rows]
+        sources = [source for _profile, source, _scope in rows]
+        history_ends = {
+            source.id: (
+                scope.anchor
+                if scope is not None and scope.through is not None
+                else None
+            )
+            for _profile, source, scope in rows
+        }
         watermarks = await self._load_watermarks(instance.id, sources)
         cadence = await SearchCadenceService(self.session, self.settings).get(
             SearchFamily.IPS_COLLECTION
@@ -184,7 +203,12 @@ class IpsInstancePipeline:
             try:
                 async with self.session.begin_nested():
                     await self._evaluate(
-                        source, collection_wm, evaluation_wm, source_report, per_run
+                        source,
+                        collection_wm,
+                        evaluation_wm,
+                        source_report,
+                        per_run,
+                        history_end=history_ends[source.id],
                     )
                     evaluation_wm.consecutive_failures = 0
                     evaluation_wm.last_error = None
@@ -253,6 +277,8 @@ class IpsInstancePipeline:
         evaluation_wm: CollectionWatermark,
         report: IpsSourcePipelineReport,
         per_run: int,
+        *,
+        history_end: datetime | None = None,
     ) -> None:
         report.evaluated_through = evaluation_wm.watermark_at
         if collection_wm is None or collection_wm.watermark_at is None:
@@ -260,6 +286,7 @@ class IpsInstancePipeline:
         query = select(IpsSourceBucket).where(
             IpsSourceBucket.log_source_id == source.id,
             IpsSourceBucket.bucket_start <= collection_wm.watermark_at,
+            is_live_clause(IpsSourceBucket),
         )
         if evaluation_wm.watermark_at is not None:
             query = query.where(IpsSourceBucket.bucket_start > evaluation_wm.watermark_at)
@@ -280,6 +307,7 @@ class IpsInstancePipeline:
                 clock=self._clock,
                 enqueuer=self._enqueuer,
             )
+        engine.history_end = history_end
         for bucket in buckets:
             result = await engine.evaluate_bucket(source, bucket)
             report.subjects_evaluated += len(result.subject_reports)

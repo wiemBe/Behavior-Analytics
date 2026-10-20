@@ -34,10 +34,13 @@ from app.ips.inputs import input_measurement as ips_input_measurement
 from app.models.enums import (
     AnomalyType,
     IpsAnomalyType,
+    PwAnomalyType,
     WafAnomalyType,
     WafBreakdown,
     WafMeasurement,
 )
+from app.property_watch.inputs import PW_VALUE_EVENTS_METRIC, PwInput, PwObservation
+from app.property_watch.inputs import input_measurement as pw_input_measurement
 from app.providers.base import LogSourceTelemetry as T
 from app.waf.baseline import (
     BLOCK_RATIO_METRIC,
@@ -61,6 +64,7 @@ class BehaviorDomain(StrEnum):
     WAF_ENDPOINT = "WAF_ENDPOINT"
     IPS_ENTITY = "IPS_ENTITY"
     IPS_SOURCE = "IPS_SOURCE"
+    PW_VALUE = "PW_VALUE"
 
 
 class DetectorStatus(StrEnum):
@@ -100,6 +104,10 @@ IPS_BASELINE_METRICS = frozenset(
 )
 
 
+#: Every baseline metric the property-watch builder trains (design §G.8.0).
+PW_BASELINE_METRICS = frozenset({PW_VALUE_EVENTS_METRIC})
+
+
 @dataclass(frozen=True)
 class InputRequirement:
     """What one measured input of a WAF or IPS detector must be for a verdict.
@@ -108,7 +116,7 @@ class InputRequirement:
     numerator may prove an increase as a lower bound, its denominator may not.
     """
 
-    input: WafInput | IpsInput
+    input: WafInput | IpsInput | PwInput
     #: The input's role, e.g. "numerator" or "denominator".
     role: str
     requirement: WafMeasurementRequirement
@@ -644,6 +652,146 @@ def ips_input_scope(
     return narrowest(decisions)
 
 
+_PW_TASK = "dispatch_property_watch_collection"
+
+
+def _pw(
+    detector_type: PwAnomalyType,
+    *,
+    baselines: set[str],
+    inputs: tuple[InputRequirement, ...],
+    measurement: WafMeasurementRequirement | None = None,
+) -> DetectorSpec:
+    return DetectorSpec(
+        domain=BehaviorDomain.PW_VALUE,
+        detector_type=detector_type.value,
+        telemetry=frozenset(),
+        baseline_metrics=frozenset(baselines),
+        scheduled_task=_PW_TASK,
+        enabling_setting="pw_collection_enabled",
+        measurement=measurement,
+        inputs=inputs,
+    )
+
+
+_PW_COVERAGE = InputRequirement(
+    PwInput.COVERAGE,
+    "coverage",
+    _INCREASE,
+    "coverage only has to reach its floor, and a lower bound that reaches the floor "
+    "proves true coverage does",
+)
+
+
+PW_DETECTORS: dict[PwAnomalyType, DetectorSpec] = {
+    PwAnomalyType.PW_VALUE_SPIKE: _pw(
+        PwAnomalyType.PW_VALUE_SPIKE,
+        baselines={PW_VALUE_EVENTS_METRIC},
+        measurement=_INCREASE,
+        inputs=(
+            InputRequirement(
+                PwInput.VALUE_EVENTS,
+                "volume",
+                _INCREASE,
+                "minimum events, ratio, absolute delta, robust z and the degenerate-MAD "
+                "band are all non-decreasing in the value's event count",
+            ),
+        ),
+    ),
+    PwAnomalyType.PW_VALUE_DROP: _pw(
+        PwAnomalyType.PW_VALUE_DROP,
+        baselines={PW_VALUE_EVENTS_METRIC},
+        measurement=_EXACT,
+        inputs=(
+            InputRequirement(
+                PwInput.VALUE_EVENTS,
+                "volume",
+                _EXACT,
+                "an undercount cannot prove that a value's traffic dropped",
+            ),
+            _PW_COVERAGE,
+        ),
+    ),
+    PwAnomalyType.PW_VALUE_DISAPPEARED: _pw(
+        PwAnomalyType.PW_VALUE_DISAPPEARED,
+        baselines={PW_VALUE_EVENTS_METRIC},
+        measurement=_EXACT,
+        inputs=(
+            InputRequirement(
+                PwInput.VALUE_EVENTS,
+                "volume",
+                _EXACT,
+                "disappearance is an absence claim and therefore needs exact counts",
+            ),
+            _PW_COVERAGE,
+        ),
+    ),
+    PwAnomalyType.PW_NEW_VALUE: _pw(
+        PwAnomalyType.PW_NEW_VALUE,
+        baselines=set(),
+        inputs=(
+            InputRequirement(
+                PwInput.VALUE_HISTORY,
+                "history",
+                _EXACT,
+                "absence before first appearance needs every history bucket recorded with "
+                "whole discovery and admission under the same watch version",
+            ),
+            InputRequirement(
+                PwInput.MATERIALITY,
+                "materiality",
+                _INCREASE,
+                "minimum events and buckets with traffic are non-decreasing in the counts",
+            ),
+        ),
+    ),
+    PwAnomalyType.PW_NEW_COMBINATION: _pw(
+        PwAnomalyType.PW_NEW_COMBINATION,
+        baselines=set(),
+        inputs=(
+            InputRequirement(
+                PwInput.VALUE_HISTORY,
+                "tuple history",
+                _EXACT,
+                "never together is an absence claim and needs complete tuple history",
+            ),
+            InputRequirement(
+                PwInput.COMPONENT_HISTORY,
+                "components known",
+                _INCREASE,
+                "a counted occurrence, including one in a lower-bound bucket, proves presence",
+            ),
+            InputRequirement(
+                PwInput.MATERIALITY,
+                "materiality",
+                _INCREASE,
+                "minimum events and buckets with traffic are non-decreasing in the counts",
+            ),
+        ),
+    ),
+}
+
+
+def pw_input_scope(
+    detector_type: PwAnomalyType, observation: PwObservation
+) -> ScopeDecision:
+    """Apply one PW detector's declared input requirements to an observation."""
+    spec = PW_DETECTORS[detector_type]
+    if not spec.inputs:
+        return verdict_scope(
+            spec.measurement or WafMeasurementRequirement.EXACT,
+            pw_input_measurement(PwInput.VALUE_EVENTS, observation),
+        )
+    decisions: list[ScopeDecision] = []
+    for req in spec.inputs:
+        assert isinstance(req.input, PwInput), req.input
+        decision = verdict_scope(req.requirement, pw_input_measurement(req.input, observation))
+        if decision.reason is not None:
+            decision = ScopeDecision(decision.scope, f"{req.role}: {decision.reason}")
+        decisions.append(decision)
+    return narrowest(decisions)
+
+
 def bucket_telemetry(
     collection_source: str | None, query_provenance: Mapping[str, Any] | None
 ) -> frozenset[T]:
@@ -686,6 +834,18 @@ def waf_verdict_scope(
 
 def detector_status(spec: DetectorSpec, settings: Any | None = None) -> DetectorStatus:
     """What the code supports, and -- given `settings` -- what this deployment runs."""
+    if spec.domain is BehaviorDomain.PW_VALUE:
+        if not spec.implemented or not spec.baseline_metrics <= PW_BASELINE_METRICS:
+            return DetectorStatus.UNSUPPORTED
+        if not spec.scheduled_task:
+            return DetectorStatus.NOT_SCHEDULED
+        if (
+            settings is not None
+            and spec.enabling_setting is not None
+            and not getattr(settings, spec.enabling_setting)
+        ):
+            return DetectorStatus.NOT_ENABLED
+        return DetectorStatus.OPERATIONAL
     if spec.domain in (BehaviorDomain.IPS_ENTITY, BehaviorDomain.IPS_SOURCE):
         if not spec.implemented or not spec.baseline_metrics <= IPS_BASELINE_METRICS:
             return DetectorStatus.UNSUPPORTED
@@ -722,4 +882,9 @@ def detector_status(spec: DetectorSpec, settings: Any | None = None) -> Detector
 
 
 def all_detectors() -> list[DetectorSpec]:
-    return [*LOG_SOURCE_DETECTORS.values(), *WAF_DETECTORS.values(), *IPS_DETECTORS.values()]
+    return [
+        *LOG_SOURCE_DETECTORS.values(),
+        *WAF_DETECTORS.values(),
+        *IPS_DETECTORS.values(),
+        *PW_DETECTORS.values(),
+    ]

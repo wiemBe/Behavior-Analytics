@@ -45,6 +45,8 @@ export const NAV: NavGroup[] = [
       { href: "/behavior/sources", label: "Sources" },
       // Under /behavior like Sources, so it too wins by longest match.
       { href: "/behavior/waf", label: "WAF behavior" },
+      // Under /behavior like Sources and WAF, so it too wins by longest match.
+      { href: "/behavior/watches", label: "Property watches" },
     ],
   },
   {
@@ -83,6 +85,7 @@ export const NAV: NavGroup[] = [
       { href: "/admin/outage-policy", label: "Outage alerts" },
       { href: "/admin/waf-sources", label: "WAF sources" },
       { href: "/admin/ips-sources", label: "IPS sources" },
+      { href: "/admin/history-backfill", label: "History backfill", permission: "read:history_backfill" },
       { href: "/admin/users", label: "Users", permission: "admin:users" },
       { href: "/admin/directory", label: "Directory", permission: "admin:auth" },
     ],

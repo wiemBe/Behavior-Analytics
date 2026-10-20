@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { UndecidedNotice } from "@/components/history/UndecidedNotice";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 import { AdminIndex } from "./AdminIndex";
@@ -17,6 +18,7 @@ export default function Page() {
         title="Administration"
         description="Settings that control collection, source classification and outage alerting."
       />
+      <UndecidedNotice />
       <AdminIndex />
     </>
   );

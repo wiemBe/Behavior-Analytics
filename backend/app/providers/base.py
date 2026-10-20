@@ -19,11 +19,12 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from app.models.enums import IpsDimension
+from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.dto import (
     AnalyticsRuleDTO,
     ArielSearchHandleDTO,
@@ -42,6 +43,8 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    PwKeyedResult,
+    PwSearchKind,
     RuleMatchBatch,
     WafBreakdownBatch,
     WafBreakdownBucketBatch,
@@ -144,6 +147,27 @@ class LogSourceTelemetry(StrEnum):
     COLLECTION_ERRORS = "COLLECTION_ERRORS"
     #: Hash of a representative payload.
     PAYLOAD_SIGNATURE = "PAYLOAD_SIGNATURE"
+
+
+@dataclass(frozen=True)
+class ConsoleEventTotals:
+    """Console-wide events per bucket, the rule-match floor proof (§B.3.2).
+
+    One entry per bucket in which the console held an event. A bucket with no
+    entry held none: the floor scan reads a missing bucket as measured silence,
+    which is exactly what it asks. Totals are `SUM(eventcount)` over every event
+    in the bucket, with no log-source or rule filter, so they can say that the
+    console held an hour even though the per-rule `creEventList` read cannot.
+
+    Read-only (repository rule 1): one REST/Ariel aggregate, never MCP.
+    """
+
+    window_start: datetime
+    window_end: datetime
+    bucket_seconds: int
+    totals: dict[datetime, int]
+    query_version: str
+    query: str = ""
 
 
 class ProviderError(RuntimeError):
@@ -337,6 +361,33 @@ class QRadarProvider(ABC):
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError
 
+    async def get_console_event_totals(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+    ) -> ConsoleEventTotals:
+        """Console-wide `SUM(eventcount)` per bucket over one bounded window.
+
+        The proof a per-scope keyed read cannot give: that QRadar held an event
+        in a bucket at all (`HISTORY-BACKFILL` §B.3.2). It is deliberately
+        unfiltered -- no log source, no rule -- and is the only search that
+        proves a rule-match history window is measurable rather than silent.
+
+        The span must be epoch-aligned whole buckets of at most 168 hours, the
+        same bound `validate_bucketed_metric_window` applies. Requires
+        AQL_EXECUTION, so it never runs through MCP. Read-only: one aggregate
+        over ``events``, no raw event kept.
+
+        A bucket absent from `ConsoleEventTotals.totals` held no event. An
+        implementation that cannot answer every bucket must raise, never omit
+        one: a missing bucket would let the floor scan mistake a held hour for
+        silence.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
     async def get_waf_observations(
         self,
         *,
@@ -507,6 +558,37 @@ class QRadarProvider(ABC):
         `max_rows` are kept. A key outside the span, a non-integer key or a
         log source that was not asked for fails the whole search with a
         ProviderError.
+
+        Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_pw_keyed(
+        self,
+        search: PwSearchKind,
+        *,
+        scope_kind: PwScopeKind,
+        scope_ids: Sequence[int],
+        properties: Sequence[tuple[str, str]],
+        pinned: Sequence[Sequence[str]] = (),
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> PwKeyedResult:
+        """One keyed property-watch search: grouped, totals or pinned (design §G.6).
+
+        The scope is a source id, a type id or one chunk of a group's source ids
+        (`pw_max_sources_per_search`); `properties` are one or two ``(kind, name)``
+        references and `pinned` the pinned tuples of a PINNED search. Every one of them
+        is validated again here before it is quoted: a name against the allowlist or
+        `PROPERTY_NAME_PATTERN`, a pinned value against `PW_PINNED_VALUE_PATTERN`.
+        The span must be whole epoch-aligned `bucket_seconds` buckets. Rows carry the
+        bucket start, the raw property values and ``SUM(eventcount)``, ordered by volume;
+        more than `max_rows` rows set ``truncated`` and only the first `max_rows` are
+        kept. A key outside the span, a non-integer key or a count that is not an
+        integer-valued number fails the whole search with a ProviderError.
 
         Requires AQL_EXECUTION, so this never runs through MCP. Read-only.
         """

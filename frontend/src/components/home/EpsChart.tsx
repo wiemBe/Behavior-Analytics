@@ -26,9 +26,12 @@ import { homeReads, type FleetEpsSeries } from "@/lib/api";
 import { epsChartModel, epsSummaryText, windowText, type EpsChartModel } from "@/lib/home/epsChart";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import { badgeText } from "@/lib/home/qualifiers";
-import { useEffectiveRange, type RangedProps } from "@/widgets/runtime";
+import { useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
+
+import { HistoryKey } from "@/components/behavior/HistoryKey";
 
 import { buildEpsOption, EXPECTED_NAME } from "./chartOptions";
+import { epsHistory, epsHistorySummary, type EpsHistory } from "./epsHistory";
 import { useEChart } from "./useEChart";
 import { WidgetFrame } from "./WidgetFrame";
 
@@ -47,9 +50,15 @@ const EXPECTED_MEANING =
   "The sum of every source's expected EPS, drawn only where every source has a reliable baseline. It is not a range.";
 
 function Chart({ series, model }: { series: FleetEpsSeries; model: EpsChartModel }) {
+  const expanded = useExpanded();
+  // The tile is too small to hold the words clear of the line; the key, tooltip and text say it.
+  const history = useMemo(() => epsHistory(series, expanded), [series, expanded]);
   const option = useMemo(
-    () => (model.measured > 0 ? (p: HomePalette) => buildEpsOption(model, p) : null),
-    [model],
+    () =>
+      model.measured > 0
+        ? (p: HomePalette) => buildEpsOption(model, p, undefined, history)
+        : null,
+    [model, history],
   );
   const ref = useEChart(option);
   const label = `Fleet EPS, ${windowText(series.window)}`;
@@ -67,13 +76,13 @@ function Chart({ series, model }: { series: FleetEpsSeries; model: EpsChartModel
   return (
     <>
       <div ref={ref} className="hc-chart" role="img" aria-label={label} />
-      <p className="sr-only">{epsSummaryText(series, model)}</p>
-      <Key model={model} />
+      <p className="sr-only">{[epsSummaryText(series, model), epsHistorySummary(history)].filter(Boolean).join(" ")}</p>
+      <Key model={model} history={history} />
     </>
   );
 }
 
-function Key({ model }: { model: EpsChartModel }) {
+function Key({ model, history }: { model: EpsChartModel; history: EpsHistory }) {
   if (model.measured === 0) return <span />;
   return (
     <ul className="hc-key-list" aria-label="Chart key">
@@ -93,6 +102,7 @@ function Key({ model }: { model: EpsChartModel }) {
           Not measured
         </li>
       )}
+      {history.spans.length > 0 && <HistoryKey />}
     </ul>
   );
 }

@@ -64,16 +64,30 @@ async def test_claim_restores_a_missing_seed_row_at_the_default(db_session) -> N
     await db_session.commit()
     row = await db_session.get(SearchCadenceSetting, SearchFamily.RULE_MATCH.value)
     assert row is not None
-    assert row.cadence_seconds == SearchCadence.ONE_HOUR
+    assert row.cadence_seconds == 300
 
 
-async def test_get_and_list_treat_missing_seed_rows_as_one_hour(db_session) -> None:
+async def test_claim_restores_waf_and_ips_seed_rows_at_fifteen_minutes(db_session) -> None:
+    service = SearchCadenceService(db_session, Settings(), lambda: T0)
+    for family in (SearchFamily.WAF_COLLECTION, SearchFamily.IPS_COLLECTION):
+        await service.claim_slot(family)
+        await db_session.commit()
+        row = await db_session.get(SearchCadenceSetting, family.value)
+        assert row is not None
+        assert row.cadence_seconds == 900
+
+
+async def test_get_and_list_treat_missing_seed_rows_as_the_default(db_session) -> None:
     service = SearchCadenceService(db_session, Settings(), lambda: T0)
     missing = await service.get(SearchFamily.WAF_COLLECTION)
-    assert missing.cadence_seconds == SearchCadence.ONE_HOUR
+    assert missing.cadence_seconds == 900
     rows = await service.list()
     assert [row.family for row in rows] == [family.value for family in SearchFamily]
-    assert all(row.cadence_seconds == SearchCadence.ONE_HOUR for row in rows)
+    assert {row.family: row.cadence_seconds for row in rows} == {
+        family.value: 900 if family in (SearchFamily.WAF_COLLECTION, SearchFamily.IPS_COLLECTION)
+        else 300
+        for family in SearchFamily
+    }
 
 
 async def test_exactly_one_concurrent_session_claims_a_slot(db_schema) -> None:

@@ -23,6 +23,7 @@ from app.models.fleet import (
     LogSourceType,
 )
 from app.models.geo import GeoCountryBucket
+from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
 from app.models.identity import AuditLog, AuthSession, LdapConfig, Role, User, user_role
 from app.models.instance import QRadarInstance
 from app.models.ips import (
@@ -47,6 +48,16 @@ from app.models.log_source import (
 from app.models.monitoring import AnomalyEvaluationWatermark, CollectionWatermark
 from app.models.offense import OffenseSnapshot
 from app.models.outage import OutageAlertPolicy
+from app.models.property_watch import (
+    PropertyWatch,
+    PwAnomaly,
+    PwAnomalyTransition,
+    PwBucket,
+    PwDetectorState,
+    PwValue,
+    PwValueBaseline,
+    PwValueMetric,
+)
 from app.models.rule import (
     AnalyticsRule,
     DetectionCoverage,
@@ -94,6 +105,8 @@ HYPERTABLES: dict[str, str] = {
     "geo_country_bucket": "bucket_start",
     "ips_source_bucket": "bucket_start",
     "ips_entity_metric": "bucket_start",
+    "pw_bucket": "bucket_start",
+    "pw_value_metric": "bucket_start",
 }
 
 __all__ = [
@@ -123,6 +136,8 @@ __all__ = [
     "DetectionCoverage",
     "DetectionCoverageSnapshot",
     "GeoCountryBucket",
+    "HistoryBackfillDecision",
+    "HistoryBackfillScope",
     "IpsAnomaly",
     "IpsAnomalyTransition",
     "IpsDetectorState",
@@ -143,6 +158,14 @@ __all__ = [
     "LogSourceType",
     "OffenseSnapshot",
     "OutageAlertPolicy",
+    "PropertyWatch",
+    "PwAnomaly",
+    "PwAnomalyTransition",
+    "PwBucket",
+    "PwDetectorState",
+    "PwValue",
+    "PwValueBaseline",
+    "PwValueMetric",
     "QRadarInstance",
     "Role",
     "RuleCapacitySample",

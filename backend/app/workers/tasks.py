@@ -62,6 +62,8 @@ from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
 from app.services.ips_profiles import IpsProfileService
 from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
+from app.services.pw_pipeline import PwInstancePipeline
+from app.services.pw_retention import PwRetention
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
 from app.services.search_result_retention import SearchResultRetention
@@ -112,6 +114,7 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
     ) -> dict:
         assert provider is not None
         report = await MetricCollector(session, provider, settings=settings).collect(instance)
+        history = report.history
         return {
             "status": (
                 "skipped_locked"
@@ -125,6 +128,10 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
             "samples": report.samples_written,
             "watermark_at": report.watermark_at,
             "lag_seconds": report.lag_seconds,
+            # The Phase A history step (HB-3): its searches are Phase A volume searches
+            # against Ariel, so the cadence record below counts them with the live ones.
+            "history_searches": history.searches if history else 0,
+            "history_state": history.state if history else None,
         }
 
     try:
@@ -147,7 +154,10 @@ async def collect_metrics(instance_name: str | None = None) -> dict:
             if any(status in {"partial", "skipped_locked"} for status in statuses)
             else "ok"
         )
-        searches = sum(item.get("searches_sent", 0) for item in result.get("results", []))
+        searches = sum(
+            item.get("searches_sent", 0) + item.get("history_searches", 0)
+            for item in result.get("results", [])
+        )
         buckets = sum(
             item.get("buckets_collected", 0) for item in result.get("results", [])
         )
@@ -1388,6 +1398,71 @@ async def apply_ips_retention() -> dict:
         return (await IpsRetention(session).run()).as_dict()
 
 
+# ------------------------------------------------------- property watches (G.6)
+async def dispatch_property_watch_collection(instance_name: str | None = None) -> dict:
+    """Run one property-watch plan per instance after claiming its cadence slot.
+
+    The plan is the whole pipeline: collect, then evaluate, then train (design §G.6), all in
+    one call to `PwInstancePipeline`. A no-op while `PW_COLLECTION_ENABLED` is false, and the
+    slot is claimed before any provider is built, so a losing or early minute sends nothing
+    to QRadar.
+    """
+    settings = get_settings()
+    if not settings.pw_collection_enabled:
+        return {"status": "disabled", "instances": 0, "results": []}
+
+    from app.models.enums import SearchFamily
+    from app.services.search_cadence import SearchCadenceService
+
+    family = SearchFamily.PROPERTY_WATCH
+    maker = get_sessionmaker()
+    async with maker() as cadence_session:
+        cadence = SearchCadenceService(cadence_session, settings)
+        claimed = await cadence.claim_slot(family)
+        await cadence_session.commit()
+    if claimed is None:
+        return {"status": "not_due", "family": family.value}
+
+    async def run(
+        session: AsyncSession, instance: QRadarInstance, provider: QRadarProvider | None
+    ) -> dict:
+        assert provider is not None
+        pipeline = await PwInstancePipeline(session, provider, settings=settings).run(instance)
+        return pipeline.as_dict()
+
+    result = await _for_each_instance(run, instance_name)
+    statuses = [item.get("status") for item in result.get("results", [])]
+    failed = any(status == "failed" for status in statuses)
+    searches = None if failed else sum(
+        int(item.get("searches_sent", 0)) for item in result.get("results", [])
+    )
+    buckets = None if failed else sum(
+        int(item.get("buckets_written", 0)) for item in result.get("results", [])
+    )
+    async with maker() as cadence_session:
+        await SearchCadenceService(cadence_session, settings).record_run(
+            family,
+            # A lock skip is not a failure (the geo and metric dispatches record it
+            # `partial`): another worker holds the run, so the tick simply moves on.
+            outcome=(
+                "failed"
+                if failed
+                else "partial" if "skipped_locked" in statuses else "ok"
+            ),
+            searches=searches,
+            buckets=buckets,
+            splits=None,
+        )
+        await cadence_session.commit()
+    return result
+
+
+async def apply_property_watch_retention() -> dict:
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await PwRetention(session).run()).as_dict()
+
+
 async def apply_search_result_retention() -> dict:
     maker = get_sessionmaker()
     async with maker() as session:
@@ -1568,6 +1643,16 @@ def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_ips_retention")
 def apply_ips_retention_task() -> dict:
     return _run(apply_ips_retention())
+
+
+@celery_app.task(name="dispatch_property_watch_collection")
+def dispatch_property_watch_collection_task(instance_name: str | None = None) -> dict:
+    return _run(dispatch_property_watch_collection(instance_name))
+
+
+@celery_app.task(name="apply_property_watch_retention")
+def apply_property_watch_retention_task() -> dict:
+    return _run(apply_property_watch_retention())
 
 
 @celery_app.task(name="apply_search_result_retention")

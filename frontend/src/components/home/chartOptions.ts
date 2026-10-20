@@ -17,6 +17,9 @@ import type { SeverityPerHour } from "@/lib/home/severityPerHour";
 import { formatDateTime } from "@/lib/health";
 import { NOT_MEASURED } from "@/lib/behavior";
 import { formatEpsValue } from "@/lib/fleet";
+import { historyMarkAreas, readHistoryShade } from "@/components/behavior/historyOrigin";
+
+import { epsHistoryLine, type EpsHistory } from "./epsHistory";
 
 import type { EChartsOption } from "echarts";
 
@@ -49,7 +52,7 @@ const eps = (v: number | null | undefined) => formatEpsValue(v) ?? NOT_MEASURED;
 // --- fleet EPS line -----------------------------------------------------------
 
 /** The tooltip for one step: the value, or why there is none. */
-export function epsTooltip(model: EpsChartModel, index: number): string {
+export function epsTooltip(model: EpsChartModel, index: number, history?: EpsHistory): string {
   const s = model.steps[index];
   if (!s) return "";
   const lines = [formatDateTime(new Date(s.t).toISOString())];
@@ -59,6 +62,8 @@ export function epsTooltip(model: EpsChartModel, index: number): string {
       : `Observed: not measured (${gapText(s)})`,
   );
   if (s.expected !== null) lines.push(`${EXPECTED_NAME}: ${eps(s.expected)} EPS`);
+  const fromHistory = epsHistoryLine(history, s.t);
+  if (fromHistory) lines.push(fromHistory);
   return lines.join("<br/>");
 }
 
@@ -78,8 +83,11 @@ export function buildEpsOption(
   model: EpsChartModel,
   p: HomePalette,
   reduceMotion = prefersReducedMotion(),
+  history?: EpsHistory,
 ): EChartsOption {
   const text = { color: p.label, fontFamily: p.font };
+  const historyAreas =
+    history && history.spans.length ? historyMarkAreas(history.spans, readHistoryShade(), history.labelled) : [];
   const observed = model.steps.map((s) => [s.t, s.eps] as [number, number | null]);
   const expected = model.steps.map((s) => [s.t, s.expected] as [number, number | null]);
   return {
@@ -93,7 +101,7 @@ export function buildEpsOption(
       formatter: (params: unknown) => {
         const list = Array.isArray(params) ? params : [params];
         const first = list[0] as { dataIndex?: number } | undefined;
-        return first?.dataIndex != null ? epsTooltip(model, first.dataIndex) : "";
+        return first?.dataIndex != null ? epsTooltip(model, first.dataIndex, history) : "";
       },
     },
     xAxis: {
@@ -139,14 +147,21 @@ export function buildEpsOption(
               })),
             }
           : undefined,
-        markArea: model.gaps.length
-          ? {
-              silent: true,
-              label: { show: false },
-              itemStyle: { color: p.gap },
-              data: model.gaps.map((g) => [{ xAxis: g.start }, { xAxis: g.end }]),
-            }
-          : undefined,
+        markArea:
+          model.gaps.length + historyAreas.length
+            ? {
+                silent: true,
+                label: { show: false },
+                itemStyle: { color: p.gap },
+                data: [
+                  ...model.gaps.map((g): [{ xAxis: number }, { xAxis: number }] => [
+                    { xAxis: g.start },
+                    { xAxis: g.end },
+                  ]),
+                  ...historyAreas,
+                ],
+              }
+            : undefined,
       },
       // One dashed line, only where a step carries a sum of expected. No range series.
       ...(model.hasExpected

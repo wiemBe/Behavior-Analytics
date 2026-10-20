@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import event, func, select
+from sqlalchemy import event, func, select, update
 
 from app.collectors.rule_match_collector import COLLECTOR_NAME, RuleMatchCollector
 from app.core.config import get_settings
@@ -154,6 +154,7 @@ class TestCollector:
         assert (window.rows_returned, window.unknown_ids, window.row_cap) == (3, 1, 100)
         assert window.query_version == "rule_match/v1"
         assert window.window_seconds == 3600
+        assert window.origin == "LIVE"
         metrics = {
             m.rule_id: (m.match_records, m.matched_events, m.bucket_seconds)
             for m in (await db_session.scalars(select(RuleMatchMetric))).all()
@@ -211,6 +212,24 @@ class TestCollector:
         (window,) = await windows(db_session, inst)
         assert window.status == RuleMatchWindowStatus.COMPLETE
         assert await metric_count(db_session) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_live_upsert_keeps_the_origin_of_an_existing_window(self, db_session) -> None:
+        inst = await make_instance(db_session)
+        await add_rule(db_session, inst, 100)
+        await collector(db_session, ScriptedProvider({100: (1, 1)})).collect(inst)
+        await db_session.execute(update(RuleMatchWindow).values(origin="HISTORY"))
+        wm = await db_session.scalar(
+            select(CollectionWatermark).where(CollectionWatermark.collector == COLLECTOR_NAME)
+        )
+        wm.watermark_at = None
+        await db_session.flush()
+
+        await collector(db_session, ScriptedProvider({100: (2, 2)})).collect(inst)
+
+        (window,) = await windows(db_session, inst)
+        assert window.origin == "HISTORY"
+        assert window.status == RuleMatchWindowStatus.COMPLETE
 
     @pytest.mark.asyncio
     async def test_a_failed_retry_never_downgrades_a_complete_window(self, db_session) -> None:
@@ -418,6 +437,8 @@ class TestLiveness:
             and w.last_error == "skipped: beyond the catch-up horizon"
             for w in skipped
         )
+        # The skipped-window records are a raw INSERT: they state their origin too.
+        assert {w.origin for w in skipped} == {"LIVE"}
         assert skipped[0].window_start == horizon - 10 * HOUR
         assert skipped[-1].window_start == horizon - HOUR
         # Nothing was searched for them, and nothing is written as zero.
@@ -482,7 +503,9 @@ def evaluator(session, **cfg) -> RuleHealthEvaluator:
     return RuleHealthEvaluator(session, settings=settings, clock=lambda: EVAL_NOW)
 
 
-async def fill_windows(session, instance, *, overrides: dict[int, str] | None = None):
+async def fill_windows(
+    session, instance, *, overrides: dict[int, str] | None = None, origin: str = "LIVE"
+):
     """Every window of the 24 h span ending at 11:00 (23 of them), COMPLETE unless told."""
     overrides = overrides or {}
     first = EVAL_NOW - timedelta(days=1)
@@ -492,6 +515,7 @@ async def fill_windows(session, instance, *, overrides: dict[int, str] | None = 
                 instance_id=instance.id,
                 window_start=first + i * HOUR,
                 window_seconds=3600,
+                origin=origin,
                 status=overrides.get(i, RuleMatchWindowStatus.COMPLETE),
                 rows_returned=0,
                 row_cap=100,

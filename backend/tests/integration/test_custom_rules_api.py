@@ -35,13 +35,17 @@ from app.models.enums import (
     ClassificationReviewStatus,
     CustomRuleMetric,
     CustomRuleSubjectKind,
+    SearchFamily,
     Severity,
     SourceClass,
+    default_search_cadence,
 )
 from app.models.fleet import LogSourceClassification
 from app.models.identity import AuditLog
+from app.schemas.search_cadence import CadenceOut
 from app.security.auth import get_principal
 from app.security.rbac import Principal
+from app.services.search_cadence import bucket_seconds
 from app.services.seed import _ROLES
 from tests.integration.factories import add_metric, make_instance, make_log_source, utc
 from tests.integration.test_waf_scale import counting
@@ -153,7 +157,22 @@ def _catalog_body(enabled_count: int, **overrides: object) -> dict[str, object]:
     updates: dict[str, object] = {"collection_interval_seconds": 300}
     updates.update(overrides)
     settings = get_settings().model_copy(update=updates)
+    families = (
+        SearchFamily.PHASE_A_VOLUME,
+        SearchFamily.WAF_COLLECTION,
+        SearchFamily.IPS_COLLECTION,
+        SearchFamily.PROPERTY_WATCH,
+    )
     built = build_custom_rule_catalog(
+        cadences=[
+            CadenceOut(
+                family=family,
+                cadence_seconds=int(default_search_cadence(family)),
+                bucket_seconds=bucket_seconds(family, settings),
+                settle_seconds=settings.search_cadence_settle_seconds,
+            )
+            for family in families
+        ],
         evaluation_enabled=settings.custom_rules_enabled,
         alerting_enabled=settings.custom_rules_alerting_enabled,
         max_enabled=settings.custom_rules_max_enabled,

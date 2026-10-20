@@ -32,6 +32,7 @@ import httpx
 
 from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import (
+    _integer_bucket_key,
     fold_log_source_metric_buckets,
     validate_bucketed_metric_window,
 )
@@ -41,12 +42,13 @@ from app.ips.keyed_rows import (
     validate_ips_fields,
     validate_ips_sources,
 )
-from app.models.enums import IpsDimension
+from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.base import (
     IPS_NORMALIZED_FIELD_ALLOWLIST,
     IPS_PROBE_MAX_WINDOW_SECONDS,
     PROPERTY_NAME_PATTERN,
     WAF_PROBE_MAX_WINDOW_SECONDS,
+    ConsoleEventTotals,
     LogSourceTelemetry,
     ProviderAuthError,
     ProviderCapability,
@@ -76,6 +78,8 @@ from app.providers.dto import (
     LogSourceMetricSample,
     LogSourceTypeDTO,
     OffenseDTO,
+    PwKeyedResult,
+    PwSearchKind,
     RuleMatchBatch,
     RuleMatchRow,
     WafBreakdownBatch,
@@ -128,6 +132,9 @@ RULE_MATCH_QUERY_VERSION = "rule_match/v1"
 #: The keyed multi-window form of the same query (T-037). Its text differs, so
 #: its windows carry their own version.
 RULE_MATCH_WINDOWED_QUERY_VERSION = "rule_match/v2"
+#: The console-wide floor proof of the rule-match history backfill (HB-5). One
+#: row per bucket with events; the text is stored here, never built by a caller.
+CONSOLE_EVENT_TOTALS_QUERY_VERSION = "console_event_totals/v1"
 
 
 def _rule_id(value: Any) -> int | None:
@@ -244,6 +251,7 @@ class QRadarRestProvider(QRadarProvider):
         ariel_stop_pad_seconds: int = 0,
         clock: Callable[[], datetime] | None = None,
         ips_max_sources_per_search: int = 50,
+        pw_max_sources_per_search: int = 50,
     ) -> None:
         if not verify_ssl:
             # Hard failure, not a warning. See config._production_hardening.
@@ -262,6 +270,7 @@ class QRadarRestProvider(QRadarProvider):
         self._sleep = sleep or asyncio.sleep
         self._ariel_stop_pad_seconds = max(0, int(ariel_stop_pad_seconds))
         self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
+        self._pw_max_sources_per_search = max(1, int(pw_max_sources_per_search))
         self._clock = clock or (lambda: datetime.now(UTC))
 
         if client is not None:
@@ -1046,6 +1055,63 @@ class QRadarRestProvider(QRadarProvider):
             ariel_searches=1,
         )
 
+    # ------------------------------------------------------------ history (HB-5)
+    async def get_console_event_totals(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+    ) -> ConsoleEventTotals:
+        """One console-wide aggregate of `SUM(eventcount)` per whole bucket.
+
+        The stored, versioned query text lives here and nowhere else. Only the
+        validated epochs and bucket width reach it; it has no log-source or rule
+        filter, which is what lets it prove the console held a bucket at all
+        (`HISTORY-BACKFILL` §B.3.2). Read-only: one Ariel search over ``events``.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        bucket_ms = bucket_seconds * 1000
+        buckets = int((end - start).total_seconds()) // bucket_seconds
+        aql = (
+            f'SELECT starttime / {bucket_ms} AS "k", '  # noqa: S608 - validated integers only
+            'SUM(eventcount) AS "events" FROM events '
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY starttime / {bucket_ms} "
+            # No ORDER BY: a QRadar 7.6.0 console answers "invalid" when the grouped
+            # expression is ordered, so the sort is not worth it. The reader keys the
+            # rows by "k" and `max_rows` bounds them at buckets + 1, hence an unordered
+            # whole answer is exactly as checkable as an ordered one.
+            f"{self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=buckets + 1)
+        if len(raw) > buckets:
+            # One row per bucket means more rows cannot be a whole answer.
+            raise ProviderError("QRadar console event totals returned more rows than buckets")
+        totals: dict[datetime, int] = {}
+        for row in raw:
+            key = _integer_bucket_key(row.get("k"))
+            events = as_int(row.get("events"))
+            if key is None or events is None or events < 0:
+                raise ProviderError("QRadar console event total row is malformed")
+            bucket = datetime.fromtimestamp(key * bucket_seconds, tz=UTC)
+            if not start <= bucket < end:
+                raise ProviderError("QRadar console event total row is outside the window")
+            if bucket in totals:
+                raise ProviderError("QRadar console event totals repeat a bucket")
+            totals[bucket] = events
+        return ConsoleEventTotals(
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            totals=totals,
+            query_version=CONSOLE_EVENT_TOTALS_QUERY_VERSION,
+            query=aql,
+        )
+
     # ------------------------------------------------------------ WAF (Phase B)
     #: Custom-property names are site-authored and reach the query text, so they
     #: are validated against this before interpolation. QRadar property names are
@@ -1647,6 +1713,74 @@ class QRadarRestProvider(QRadarProvider):
         return IpsKeyedResult(
             dimension=dimension,
             qradar_log_source_ids=ids,
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            rows=rows,
+            truncated=truncated,
+            query=aql,
+        )
+
+    async def get_pw_keyed(
+        self,
+        search: PwSearchKind,
+        *,
+        scope_kind: PwScopeKind,
+        scope_ids: Sequence[int],
+        properties: Sequence[tuple[str, str]],
+        pinned: Sequence[Sequence[str]] = (),
+        window_start: datetime,
+        window_end: datetime,
+        bucket_seconds: int,
+        max_rows: int,
+    ) -> PwKeyedResult:
+        """One keyed property-watch search (design §G.6); see the base class.
+
+        ``LIMIT cap + 1`` with ``cap = _keyed_row_cap(max_rows)``; volume is
+        ``SUM(eventcount)``. Read-only: an Ariel search over ``events``. The query text
+        comes from `app.property_watch.aql`, which re-validates every reference and pin.
+        """
+        # Imported here: `app.property_watch.reference` imports `app.providers.base`, and
+        # the providers package imports this module, so a top-level import is circular.
+        from app.property_watch.aql import build_query, validate_query_inputs
+        from app.property_watch.keyed_rows import parse_pw_keyed_rows
+
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        spec = validate_query_inputs(
+            search,
+            scope_kind=scope_kind,
+            scope_ids=scope_ids,
+            properties=properties,
+            pinned=pinned,
+            max_sources=self._pw_max_sources_per_search,
+        )
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        cap = self._keyed_row_cap(max_rows)
+        aql = (
+            build_query(
+                spec,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                bucket_ms=int(bucket_seconds) * 1000,
+                limit=cap + 1,
+            )
+            + f" {self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=cap + 1)
+        rows, truncated = parse_pw_keyed_rows(
+            raw,
+            property_count=0 if spec.search is PwSearchKind.TOTALS else len(spec.properties),
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            max_rows=cap,
+        )
+        return PwKeyedResult(
+            search=spec.search,
+            scope_kind=spec.scope_kind,
+            scope_ids=spec.scope_ids,
             window_start=start,
             window_end=end,
             bucket_seconds=bucket_seconds,

@@ -51,6 +51,9 @@ NOBODY = Principal(subject="nobody", permissions=frozenset())
 H0 = datetime(2026, 10, 13, 8, 0, tzinfo=UTC)
 
 
+ALL_FAMILIES = ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE", "PW_VALUE"]
+
+
 def at(hours: float, minutes: int = 0, seconds: int = 0) -> datetime:
     return H0 + timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
@@ -141,7 +144,7 @@ def test_the_hours_carry_their_counts_in_order(db_schema) -> None:  # type: igno
     run(world)
     body = histogram(Client(READER), rng(5))
     assert body["bucket_seconds"] == 3600
-    assert body["families"] == ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]
+    assert body["families"] == ALL_FAMILIES
     assert body["since"] == _iso(H0) and body["until"] == _iso(at(5))
     assert [hour["start"] for hour in body["hours"]] == [_iso(at(i)) for i in range(5)]
     by_start = {hour["start"]: hour for hour in body["hours"]}
@@ -206,7 +209,7 @@ def test_an_empty_range_is_all_measured_zeros(db_schema) -> None:  # type: ignor
     assert body["total"] == 0
     # The families are the population the zeros are measured over, present even
     # when nothing was counted.
-    assert body["families"] == ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]
+    assert body["families"] == ALL_FAMILIES
     assert len(body["hours"]) == 4
     assert all(hour["counts"] == {} and hour["total"] == 0 for hour in body["hours"])
 
@@ -417,7 +420,7 @@ def test_ips_total_equals_list_for_same_range_no_subject_kind(db_schema) -> None
     assert listed["total"] == 11  # 6 original (4 Phase A + 2 WAF) + 5 IPS (3 entity + 2 source)
     assert body["total"] == listed["total"]
     assert sum(hour["total"] for hour in body["hours"]) == listed["total"]
-    assert body["families"] == ["LOG_SOURCE", "WAF_ENDPOINT", "IPS_ENTITY", "IPS_SOURCE"]
+    assert body["families"] == ALL_FAMILIES
 
 
 def test_ips_total_equals_list_for_ips_entity_subject_kind(db_schema) -> None:  # type: ignore[no-untyped-def]

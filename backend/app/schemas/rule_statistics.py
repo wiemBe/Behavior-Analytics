@@ -32,6 +32,9 @@ class StatisticsWindow(BaseModel):
     window_seconds: int
     expected_windows: int
     complete_windows: int
+    #: Of `complete_windows`, how many the history backfill read from QRadar's
+    #: past rather than the cadence collection (HISTORY-BACKFILL §B.4.5, R6).
+    history_windows: int
     truncated_windows: int
     failed_windows: int
     missing_windows: int

@@ -163,6 +163,7 @@ export function WafEndpointTraffic({
             ) : null}
             <WafRequestChart
               compact
+              historyLabel={expanded}
               buckets={buckets}
               expected={null}
               expectedLow={null}
