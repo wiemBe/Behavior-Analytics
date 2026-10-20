@@ -18,8 +18,9 @@ Dört kural her bölümde geçerlidir:
 3. [Yükseltme](#yükseltme)
 4. [Yedek ve geri alma](#yedek-ve-geri-alma)
 5. [Tanı](#tanı)
-6. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R54; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+6. [Geçmiş okuma](#geçmiş-okuma)
+7. [Belirtiler](#belirtiler)
+   (OPS-R1 ... OPS-R60; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
 `support-bundle` bugün çalışır. `bundle` (çevrimdışı paket) bu sürümde yoktur. `./qradar-dash bundle`
@@ -191,6 +192,11 @@ Sorular şu sırayla sorulur:
 12. GHCR kullanıcı adı ve `read:packages` token dosyasının yolu. `--offline` ve `--build` için
     atlanır.
 13. Acil durum (break-glass) yönetici kullanıcı adı. Parola sorulmaz, `create-admin` üretir.
+14. QRadar'ın sakladığı geçmişin okunup okunmayacağı. "Read the last 28 days of history from QRadar
+    now, so baselines are steadier from day 1? (yes/no)". Soru yalnız ilk kurulumda sorulur: kayıtlı
+    yanıt varsa ya da sitede `.qradar-dash/state.json` varsa sorulmaz. Yanıt dosyasındaki anahtar
+    `HISTORY_BACKFILL` olup `yes` ya da `no` değerini alır; dosyada yoksa konsol kararsız kalır ve
+    ilk yönetici oturum açmasında soru sorulur. Ayrıntı: [Geçmiş okuma](#geçmiş-okuma).
 
 Sorulmayanlar: LDAP (arayüzden yapılır), dedektör eşikleri, aile etkinleştirme, SMTP, webhook, LLM.
 WAF, IPS, kural eşleşmesi toplama, özel kurallar ve mülk izleme (property watch) varsayılanda
@@ -203,7 +209,8 @@ döngüsü yazılır ama hiçbir şey sayfa açmaz. Üst sınırlar: `PW_MAX_ENA
 etkin değer `PW_MAX_ACTIVE_VALUES_PER_WATCH` 200, sabitlenmiş (pinned) değer `PW_MAX_PINNED_VALUES`
 10. En yüksek sıklık `PROPERTY_WATCH` ailesine `/admin/search-cadence` sayfasından verilir (5 dk –
 8 sa, varsayılan 5 dk). Tüm `pw_*` ayarları ve varsayılanları README'deki "Property watches"
-bölümündedir.
+bölümündedir. Bir izleme kendi geçmişini ayrıca isteyebilir; bunun anahtarı `PW_BOOTSTRAP_ENABLED`
+(varsayılan **true**), ayrıntı [Geçmiş okuma](#geçmiş-okuma).
 
 `.env` dosyası (izin `0600`) imaj geldikten sonra yazılır. `SECRET_KEY`, `ENCRYPTION_KEY` ve
 `POSTGRES_PASSWORD` üretilir. `QRADAR_API_TOKEN_FILE=/run/secrets/qradar_sec_token` bir yoldur;
@@ -248,6 +255,18 @@ token değeri `.env` içinde yoktur.
    döner. Kurulum devam eder, özette FAIL yazar ve zaten yazdırılmış yönetici parolasını kaybetmez.
    Ortamdaki token da gereklidir: üretimde `rest` sağlayıcı token'sız açılmaz. İki kopya da gerekir.
 
+8b. Geçmiş sorusunun yanıtını kaydet (yalnız `HISTORY_BACKFILL` yanıtı verildiyse):
+
+    ```bash
+    docker compose run --rm --no-deps -T backend \
+      python -m app.cli.history_backfill decide \
+        --instance <name> --answer yes --source installer
+    ```
+
+    Bu adım ilk toplamadan önce çalışır, böylece ilk tick kararı görür. Başarısız olursa kurulum
+    **durmaz**: konsol kararsız kalır, özet "not recorded (exit N)" yazar ve ilk yönetici oturum
+    açmasında soru sorulur. Kayıtlı bir karar varsa komut onu değiştirmez.
+
 9. Vekil (harici değilse), backend, frontend, `celery-worker` ve `celery-beat` başlar. `mcp` profili
    başlamaz.
 10. Bu servislerin sağlıklı olması (migrate için 0 koduyla çıkması) beklenir. Bekleme süresi 180 sn.
@@ -259,8 +278,10 @@ Bir test VM'de ilk kurulum toplam 1 dk 40 sn sürdü (QRadar erişilemezken). Bu
 ### Özet ve ilk oturum açma
 
 Özet en sonda yazdırılır: URL `https://<ad>/`, oturum açma yolu `/login`, yönetici kullanıcı adı ve
-"parola yukarıda yazdırıldı ve saklanmıyor" cümlesi, QRadar bağlantı sonucu, kapalı aileler (WAF,
-IPS, kural eşleşmeleri, özel kurallar), yedek dizini ve bu kılavuzun yolu `docs/OPERATIONS.md`.
+"parola yukarıda yazdırıldı ve saklanmıyor" cümlesi, QRadar bağlantı sonucu, geçmiş okuma yanıtı
+(kaydedildiyse yanıtın kendisi, kaydedilmediyse "not decided; the first administrator sign-in will
+ask"), kapalı aileler (WAF, IPS, kural eşleşmeleri, özel kurallar), yedek dizini ve bu kılavuzun
+yolu `docs/OPERATIONS.md`.
 
 - Çıkış kodu 0: yığın sağlıklı ve yönetici var.
 - Çıkış kodu 1: QRadar kontrolü başarısız ya da bir servis hiç sağlıklı olmadı. Parola bu çıkıştan
@@ -852,6 +873,232 @@ olmayan kontroldür. Bu sürümde Prometheus dışa aktarıcısı yoktur.
 
 ---
 
+## Geçmiş okuma
+
+Platform, kurulumda bir kez sorulan bir soruyla QRadar'ın sakladığı geçmişi okuyabilir: "geçmiş
+okunsun mu?". Okunan kovalar **yalnız öğrenme** içindir. Hiçbir olay, ihlal ya da uyarı, bir
+kapsamın devralma anından önceki bir aralığa işaret etmez.
+
+### Anahtarlar
+
+| Ayar | Varsayılan | Anlamı |
+|---|---|---|
+| `HISTORY_BACKFILL_ENABLED` | `true` | Konsolun geçmişi okumasını açıp kapatan anahtar. Kapalıyken hiçbir geçmiş adımı çalışmaz; okuyan bir kapsam `PARTIAL` olur, gerekçesi "history reading was switched off" |
+| `PW_BOOTSTRAP_ENABLED` | `true` | Mülk izlemelerinin kendi geçmiş okumasının anahtarı. Kapalıyken izleme canlı başlar ve bunu söyler |
+
+Diğer bütün ayarlar, varsayılanları ve sınırları `docs/CONFIGURATION.md` dosyasının "History
+backfill" ve "Property-watch history bootstrap" bölümlerindedir. Pencere 72 saatlik bütçeye
+sığmıyorsa kısalır: büyük bir ortam daha az gün okur, kapsamın gerekçesi "window reduced from N
+to D days" der. Yedi günden azına inen bir aile `UNAVAILABLE` olur; okuma hiç başlamaz.
+
+### Karar
+
+Kurulum sihirbazı soruyu ilk kurulumda bir kez sorar ve yanıtı konsol adına, ilk toplamadan önce
+kaydeder. Yanıt dosyasındaki anahtar `HISTORY_BACKFILL` olup `yes` ya da `no` değerini alır; dosyada
+yoksa konsol kararsız kalır ve **ilk yönetici oturum açmasında** soru sorulur. Karar bir yönde
+bir kez yazılır: kayıtlı bir kararı kuran değiştirmez. Yönetim arayüzünde bir `No` sonradan `Yes`
+olabilir; bir `Yes` asla geri alınamaz, okuma durdurulabilir.
+
+Cevaplar:
+
+- **Yes** — her aile, kendi ilk canlı verisinden önceki günleri kendi toplama adımında okur: kaynak
+  hacmi, catch-all gönderen adları ve kural eşleşmeleri her zaman; bir WAF ya da IPS kaynağı
+  yalnızca henüz canlı veri toplamamışsa.
+- **No** — QRadar'ın geçmişi hiç okunmaz.
+
+### Yönetim sayfası
+
+Sayfa `/admin/history-backfill` yolundadır. Her konsol için iki bölüm vardır: **karar bloğu** (yanıt,
+kim, ne zaman) ve **tablo** (aile, kapsam, durum, istenen pencere, kanıtlanan taban, okunan gün ya
+da kova, arama sayısı, son adım, gerekçe, "sonradan Yes mümkün mü"). Okunmayan bir sayı `null`
+gösterilir, sıfır değil; hiç ölçülmemiş bir sayaç asla sıfır okunmaz.
+
+Kapsamın durumu:
+
+| Durum | Anlamı | Ne yapılır |
+|---|---|---|
+| `WAITING` | Kapsam kendi ilk canlı kovasını bekliyor | Bekle. Konsolun hiç canlı verisi yoksa tek tick bekler |
+| `READING` | Okuma sürüyor; sayılan gün ve kova artıyor | İzle. `history_backfill_max_hours` (varsayılan 72 saat) aşılırsa okuma `PARTIAL` biter |
+| `COMPLETE` | İstenen pencere tam okundu, boşluk yok | Başka iş yok |
+| `PARTIAL` | QRadar istenenden az tutuyor, ya da bir boşluk var, ya da süre, bütçe ya da anahtar durdurdu | Gerekçeyi oku. Gerekçe sayı verir, kaynak adı vermez |
+| `UNAVAILABLE` | Pencerede hiç olay yok, taban taraması yapılamadı ya da en kısa pencerede bile tahmin süre sınırını aşıyor | Bu bir hata değil. O kapsam için geçmiş yok |
+| `NOT_ELIGIBLE` | Bu kaynak zaten canlı veri toplamış; geçmişi onun önüne konulamaz | Profili kapat ve yeniden oluştur; sonra okur |
+
+Sayfa "Read history now" ve "Stop reading" düğmelerini sunar:
+
+- **Read history now** — her aileye bir sonraki toplamasında geçmişi yeniden okumasını söyler.
+  Konsol düzeyinde okuma bitmişse kapsam yeniden başlar ve yalnız konsol düzeyindeki aileler
+  (kaynak hacmi, catch-all, kural eşleşmeleri) yeniden okur; WAF ve IPS için yalnız henüz toplamamış
+  kaynaklar okur. Hiçbir şey anında okunmaz, hiçbir eski olay uyarı açmaz.
+- **Stop reading** — okuyan her kapsamı `PARTIAL` bitirir, gerekçesi "stopped by <kullanıcı>" olur.
+  Okunan veriler kalır ve öğrenmede kullanılır; hiçbir şey silinmez. "Read history now" yeniden
+  başlatır.
+
+İki düğme de kapsam satırını anında değiştirmez; istek karar satırına yazılır ve her aile kendi
+bir sonraki toplamasında uygular.
+
+### Takılı bir okumanın belirtileri
+
+- `READING` durumu `history_backfill_max_hours` (varsayılan 72 saat) boyunca değişmiyorsa okuma
+  zaman sınırına dayanmıştır; kendiliğinden `PARTIAL` olur ve gerekçesi "the reading did not finish
+  in 72 h" der.
+- Okunan gün sayısı ilerlemiyorsa canlı geçiş tick'in arama bütçesini tüketmiştir: geçmiş
+  adımı, canlı geçişin bıraktığı boşluğu harcar, kendi bütçesi yetmezse hiç arama yapmaz.
+- Gerekçede art arda "boşluk" varsa sağlayıcı aramaları başarısız oluyordur; `./qradar-dash logs`
+  ile bak.
+- Kapsam hiç `READING` olmuyorsa ailenin kendi toplama anahtarı kapalıdır ya da konsolun `No`
+  yanıtı vardır.
+
+Çözüm sırası: ailenin kadansını `/admin/search-cadence` sayfasından doğrula, QRadar erişimini ve
+token'ı denetle, gerekirse `HISTORY_BACKFILL_SEARCHES_PER_TICK` ile `HISTORY_BACKFILL_SECONDS_PER_TICK`
+değerlerini büyüt. Hiçbiri işe yaramazsa "Stop reading" ile durdur: okunan veriler kalır, okuma
+`PARTIAL` biter.
+
+### Komut satırı
+
+Kurulum bu yanıtı şu komutla kaydeder:
+
+```bash
+docker compose run --rm --no-deps -T backend \
+  python -m app.cli.history_backfill decide \
+    --instance <konsol-adı> --answer yes --source installer
+```
+
+| Çıkış kodu | Anlamı |
+|---:|---|
+| `0` | Yanıt kaydedildi ya da bir karar zaten vardı ve olduğu gibi bırakıldı |
+| `1` | Veritabanı başarısız; hiçbir şey kaydedilmedi |
+| `2` | Konsol kayıtlı değil ya da argümanlar geçersiz; hiçbir şey kaydedilmedi |
+
+Komut kayıtlı bir kararı asla değiştirmez ve QRadar'a arama yapmaz.
+
+### Sınırlar
+
+- **Okunan geçmiş hiç yargılanmaz.** Okunan bir kovanın aralığı, hiçbir olayın, ihlalin ya da
+  uyarının konusu olamaz; yalnız taban çizgisi ve öğrenme için kanıttır. Grafikler bu kovaları
+  metinle etiketler ("read from QRadar history, not judged").
+- **WAF ve IPS yalnız yanıttan sonra ilk kez toplanan kaynaklar için geçmiş okur.** Zaten canlı
+  kovası olan bir kaynak `NOT_ELIGIBLE` olur: geçmiş onun önüne konulamaz. Profili kapatıp yeniden
+  oluşturmak okumasını sağlar.
+- **Faz A'nın çapasından sonra eklenen ya da izlemeye alınan bir kaynağın geçmişi yoktur.** Okuma
+  konsolun en eski canlı kovasında biter; sonradan eklenen bir kaynağın o noktadan önce olayı
+  yoktur. Böyle bir kaynak "sessiz" sayılır ve okuma `PARTIAL` biter, gerekçesi "N sources had no
+  event in the window" olur. İzlemeye alınmamış bir kaynağa ilk okumada geçmiş satırı yazılmaz;
+  "Read history now" ile yeniden okuma, artık izlenen kaynaklar için satır yazabilir.
+- **24 saatlik bazı sayılar geçmiş kovalarını da sayar.** Catch-all gönderenlerinin `events_24h`
+  değeri ve WAF durumunun son 24 saatteki kesik ve alt sınır kova sayıları, geçmişten okunan
+  kovaları da kapsar; bu sayılar yalnız gösterim içindir, hiçbir kararı beslemez.
+- **Pencere küçülürse yazılmış satırlar kalır.** Bir adımda pencere daralırsa daha önce yazılmış
+  satırlar silinmez; tabloda kapsamın `days_target` değerinden daha fazla gün olabilir. Yazılan
+  satırlar gerçek ölçümlerdir.
+- **`0030` migrasyonunun downgrade'u geri alınamaz.** İndirme, geçmişten okunmuş satırlarla eğitilmiş
+  taban çizgilerini bırakır. Alembic downgrade hiçbir zaman kullanılmaz (bkz. OPS-R34).
+- **Üretim konsolunda geçmişe güvenmeden önce konsolun sahibinden saklama kovalarını doğrula.**
+  Laboratuvar konsolunda saklama kovaları okunamadı; hangi kovaların hangi süreyle tutulduğu ve
+  silmenin kova içinde en eskiden yeniye mi yapıldığı konsoldan doğrulanmalıdır. Bu doğrulanmadan
+  geçmiş okumaya dayalı bir taban çizgisine güvenme.
+
+### Mülk izlemesinin kendi geçmişi
+
+Konsol düzeyindeki okumadan ayrı olarak, tek bir mülk izlemesi kendi geçmişini isteyebilir.
+Böyle bir okuma konsolun "geçmiş okunsun mu" kararından bağımsızdır: kendi anahtarı, kendi
+penceresi ve kendi gerekçesi vardır. `/admin/history-backfill` sayfasında görünmez, izleme
+sayfasında yaşar. Okunan kovalar yine de yalnız öğrenme içindir: hiçbir olay, ihlal ya da uyarı
+bu aralığa işaret etmez.
+
+**Anahtar ve kapalıyken ne olur.** `PW_BOOTSTRAP_ENABLED` (varsayılan **true**). Kapalıyken:
+
+- Yeni bir izleme `history_days` verilmeden oluşturulursa geçmiş istemez. Verilen değer yine de
+  saklanır, toplayıcı bunu bildirir.
+- Geçmiş isteyen ama henüz okumamış bir izleme kendi bir sonraki tick'inde `PARTIAL` olur,
+  gerekçesi "history reading is switched off". O tick'ten itibaren yalnız canlı toplar; geçmişten
+  hiçbir kova yazılmaz.
+- Okuyan bir izleme kendi bir sonraki tick'inde `PARTIAL` olur, gerekçesi "history reading was
+  switched off". Okunmuş kovalar kalır.
+- Düzenleyicinin "5. History" bölümü "History reading is switched off on this server" notuyla
+  kapanır ve sayfa "Read history" düğmesini göstermez.
+- Tick bütçesinin 409'u uygulanmaz. Yine de bir geçmiş isteği kabul edilir ve bir sonraki
+  tick'te `PARTIAL` ile kapanır.
+
+**İstek.** İstenen gün sayısı 0 ya da `PW_NEW_VALUE_HISTORY_DAYS` (7) ile `PW_BOOTSTRAP_DAYS`
+(28) arasında olmalı; başka bir değer 422 alır. Anahtar açıkken yeni bir izleme `PW_BOOTSTRAP_DAYS`
+gün ister. Bir izlemenin geçmişi yalnız bir kez istenebilir: okuma başlamış ya da bitmiş bir
+izlemede `history_days` değiştirmek 409 alır ("history is COMPLETE on this watch and cannot be
+requested again; create a new watch to read history"). Aynı 409, izleme zaten kova toplamışsa ya da
+kendi sürümünde kova tutuyorsa gelir. İstek yalnız kaydeder; okumayı bir sonraki tick'teki
+toplayıcı başlatır ve gerekçesi "history was requested, and the scope can be planned at its next
+collection" olur.
+
+**Okuma durumları.**
+
+| Durum | Anlamı | Ne yapılır |
+|---|---|---|
+| `NOT_REQUESTED` | Bu izleme geçmiş istemedi | — |
+| `READING` | Okuma sürüyor | İzle |
+| `COMPLETE` | İstenen pencere tam okundu, boşluk yok | Başka iş yok |
+| `PARTIAL` | Pencere tam okunmadı ya da bir boşluk var | Gerekçeyi oku |
+| `UNAVAILABLE` | QRadar bu kapsamda hiç olay tutmuyor | Bu bir hata değil; izleme ileriye doğru öğrenir |
+
+`UNAVAILABLE` üç durumda çıkar: pencerede hiç olay yok, ilk olay kanıtlanan tabandan daha yeni
+(taban payı `PW_BOOTSTRAP_FLOOR_MARGIN_HOURS`, varsayılan 24 saat), ya da taban taraması
+`PW_BOOTSTRAP_MAX_FAILURES` kez başarısız oldu.
+
+Bir izlemenin `WAITING` ya da `NOT_ELIGIBLE` durumu yoktur: izleme hareketli bir sonla okur,
+çapası gerekmez. Okuma sürerken izlemenin durumu `READING_HISTORY` olur (rozet "Reading history")
+ve durumun gerekçesi ilerlemeyi söyler: "Reading history from QRadar: 3.2 of 28.0 days; nothing is
+judged until it finishes". Devralma anında bu durum temizlenir.
+
+**Analist nerede görür.**
+
+- İzleme sayfası `/behavior/watches/<id>`: "History" bölümü. Durum, istenen gün sayısı, istenen
+  pencere, QRadar'dan okunan aralık, kanıtlanan taban ve boşluklar burada listelenir.
+- Sayfanın başlığı: durum rozeti ve "3.2 of 28.0 days read. Nothing is judged until it finishes"
+  satırı.
+- Dürüstlük paneli: "READING HISTORY" notu, her boşluk için bir "HISTORY GAP" notu ve saklanan
+  ilerleme okunamadıysa "HISTORY PROGRESS UNREADABLE" notu ("This is not zero days read").
+- API: her izleme okumasında bir `history` bloğu gelir: durum, istenen gün, pencerenin başı,
+  kanıtlanan taban, okunan aralık, okunan gün, arama sayısı, okunan kova sayısı, boşluklar,
+  gerekçe, başlangıç ve bitiş saati, bitmemiş bir istekte tahmin. Ölçülmemiş bir sayı `null`
+  olur, sıfır değil. Tahmin bir vaat değildir, planlayıcının aritmetiğidir; süre garantisi yoktur.
+
+**Takılı bir okumanın belirtileri.**
+
+- **Zaman sınırı.** Okuma `PW_BOOTSTRAP_MAX_HOURS` (varsayılan 72 saat) boyunca sürerse kendiliğinden
+  `PARTIAL` olur, gerekçesi "the reading did not finish in 72 h". Okuma bitmiştir, izleme canlı
+  toplamaya devam eder. Yeniden okumak isteyen operatör yeni bir izleme kurar.
+- **En dar genişlikteki başarısızlıklar.** Bir arama başarısız olunca genişlik yarıya iner. En dar
+  genişlik 12 kovadır (5 dakikalık kovalarda bir saat). En dar genişlikte üst üste
+  `PW_BOOTSTRAP_MAX_FAILURES` (varsayılan 3) başarısızlık olunca o aralık bir boşluk olur:
+  "search failed 3 times at the minimum width"; daha önce her denemede "a search failed at the
+  minimum width (1 of 3); the same span is tried again" yazılır. Boşluklar 20'yi aşarsa okuma
+  `PARTIAL` olur: "more than 20 unreadable spans". Gerekçe bir aramanın başarısız olduğunu
+  söyler: QRadar erişimini ve token'ı denetle (OPS-R1 ... OPS-R4), `./qradar-dash logs` ile arama
+  hatalarına bak. Boşluklar aralıklarıyla listelenir; okunan diğer kovalar geçerlidir.
+- **Yoğunluk kapısı.** Okunan kovaların alt sınır olanlarının payı
+  `PW_BOOTSTRAP_MAX_LOWER_BOUND_SHARE` (varsayılan %5) sınırını aşarsa okuma `PARTIAL` olur: "12%
+  of the buckets read are lower bounds (limit 5%): too many distinct values per bucket, so history
+  would be lower bounds". Alt sınır, tek kovada satır tavanına çarpmış bir aramanın sonucudur:
+  saklanan satırlar tamdır, kuyruğu eksiktir; sayı bir alt sınırdır, sıfır değil. Bu bir arıza
+  değildir: `PW_BOOTSTRAP_MAX_LOWER_BOUND_SHARE` (0.0 - 1.0) ile kapı gevşetilebilir ya da daha dar
+  kapsamlı yeni bir izleme kurulabilir.
+- **Tick'in arama bütçesi.** Canlı toplama tick'in bütçesini önce harcar, geçmiş adımı kalanı
+  alır. Boş kalan arama sayısı bir adımın maliyetinden azsa adım hiç arama yapmaz, gerekçesi
+  "waiting for search budget" olur. Etkin izleme sayısını azalt ya da `PW_MAX_SEARCHES_PER_TICK`
+  (40), `PW_BOOTSTRAP_SEARCHES_PER_TICK` (12) ya da `PW_BOOTSTRAP_SECONDS_PER_TICK` (180)
+  değerlerini büyüt.
+- **Bütçe 409'u.** İstek daha ilk adımda reddedilebilir. Bir adım sabitlenmiş (pinned) değer varsa
+  üç arama (TOTALS, PINNED, bir GROUPED), yoksa iki arama tutar; canlı toplamanın payı
+  düşüldükten sonra kalan arama sayısı bundan azsa istek 409 alır: "reading history needs at
+  least 3 free searches per tick (TOTALS, PINNED and one GROUPED), but 1 are left after the enabled
+  watches' live cost of 39 of 40". Bir izlemeyi devre dışı bırak ya da `PW_MAX_SEARCHES_PER_TICK`
+  değerini büyüt; olmuyorsa izleme sayfasındaki "Enable without history" düğmesi izlemeyi geçmişsiz
+  etkinleştirir: izleme yalnız ileriye doğru öğrenir, QRadar'ın geçmişi okunmaz.
+- **Okunmayan ilerleme.** Saklanan ilerleme geri okunamazsa okuma `PARTIAL` olur, gerekçesi "the
+  stored history progress could not be read back". Sayılar `null` olur, sıfır değil. Arayüzden
+  onarılacak bir şey yoktur: okuma kapanmıştır, izleme canlı toplamaya devam eder.
+
+---
+
 ## Belirtiler
 
 Her giriş dört bölümden oluşur: **Belirti**, **Olası neden**, **Doğrulama**, **Çözüm**. Doğrulama
@@ -1320,7 +1567,7 @@ oturum açmasıdır; 503 değildir.
 **Belirti:** Bir dizin kullanıcısı oturum açıyor ve her sayfa yasak.
 
 **Olası neden:** Satır yoksa ilk başarılı bind kullanıcıyı oluşturur ve rol atamaz. `User.roles`
-boş kalır. Roller AD'den okunmaz (D-19).
+boş kalır. Roller AD'den okunmaz (üretim girişi, 2026-10-16: yerel hesaplar ve AD LDAP üzerinden; roller uygulamada atanır).
 
 **Doğrulama:** `/admin/users` kullanıcıyı rolsüz gösterir ve `/me` başarılı olur.
 
@@ -1910,3 +2157,139 @@ GET /api/v1/property-watches/{id}/buckets
 **Çözüm:** QRadar'a erişimi ve aile anahtarını doğrula (OPS-R46). Sonraki toplanan kova durumu
 temizler; `STALE` yalnız bir sonraki kova yazılana kadar sürer. Başarısız aramaları `./qradar-dash
 logs` ile incele.
+
+### OPS-R55. Geçmiş okuması takılı görünüyor
+
+**Belirti:** `/admin/history-backfill` sayfasında bir kapsam `READING` durumunda ama okunan gün ya
+da kova sayısı ilerlemiyor; ya da sayfa "not decided" deyip duruyor.
+
+**Olası neden:** Üç ayrı durum aynı görüntüyü verir. Birincisi: konsolun kararı yoktur; kurulum
+soruyu sormadıysa ya da yanıt dosyasında `HISTORY_BACKFILL` anahtarı yoksa ilk yönetici oturum
+açmasında sorulur. İkincisi: canlı geçiş tick'in arama bütçesini tüketmiştir, geçmiş adımı başlayacak
+boşluk bulamamıştır. Üçüncüsü: ailenin kendi toplama anahtarı kapalıdır, ya da konsolun `No` yanıtı
+vardır. `READING` `history_backfill_max_hours` (varsayılan 72 saat) boyunca sürerse okuma kendiliğinden
+`PARTIAL` olur.
+
+**Doğrulama:** Sayfa her konsol için kararı, kapsam durumunu, gerekçeyi ve "sonradan Yes mümkün
+mü" satırını gösterir. Karar satırındaki `No` ya da eksik kayıt sorunun kendisidir.
+
+```
+GET /api/v1/admin/history-backfill
+```
+
+**Çözüm:** Karar yoksa ilk yönetici oturum açmasında soruyu yanıtla. Bütçe dolarsa ailenin
+kadansını `/admin/search-cadence` sayfasından doğrula ve `HISTORY_BACKFILL_SEARCHES_PER_TICK` ile
+`HISTORY_BACKFILL_SECONDS_PER_TICK` değerlerini büyüt. Aile anahtarı kapalıysa
+`WAF_COLLECTION_ENABLED`, `IPS_COLLECTION_ENABLED`, `CATCHALL_COLLECTION_ENABLED` ya da
+`RULE_MATCH_COLLECTION_ENABLED` değerini aç. Hiçbiri işe yaramazsa "Stop reading" ile durdur; okunan
+veriler kalır.
+
+### OPS-R56. Bir WAF ya da IPS kaynağı `NOT_ELIGIBLE` gösteriyor
+
+**Belirti:** Kaynak satırı `NOT_ELIGIBLE` durumunda ve gerekçesi "this source already collected
+live data; history cannot be read before it".
+
+**Olası neden:** WAF ve IPS kaynaklarının geçmişi, kendi canlı verilerinin önüne konulamaz: bir
+endpointin ilk görülme zamanı, değerlendirilmiş kovalarda ve açık olaylarda kullanılıyor olurdu.
+Kaynak yanıttan **önce** toplamaya başladıysa geçmişi okunamaz.
+
+**Doğrulama:** Sayfadaki "sonradan Yes mümkün mü" sütunu bunu söyler: "not possible: this source
+already collected".
+
+```
+GET /api/v1/admin/history-backfill
+```
+
+**Çözüm:** Profili devre dışı bırak, sonra yeniden oluştur; yeni profil kendi ilk toplamasında
+geçmişi okur. Kaynak başka bir profille çalışıyorsa o profil için de aynısı geçerlidir.
+
+### OPS-R57. Okuma `PARTIAL` bitti ve gerekçede "had no event in the window" var
+
+**Belirti:** Kaynak hacmi ya da catch-all okuması `PARTIAL` bitiyor, gerekçe "N sources had no
+event in the window" diyor.
+
+**Olası neden:** Okuma konsolun en eski **canlı** kovasında biter. O andan sonra eklenen bir kaynağın
+ya da o andan sonra izlemeye alınan bir kaynağın, pencerede hiç olayı yoktur; bu bir sessiz kaynak
+sayılır ve okumayı `PARTIAL` yapar. Gerekçe yalnız sayı verir, kaynak adı vermez.
+
+**Doğrulama:** Sayfa kapsamın okunan günlerini ve gerekçesini gösterir. Çapa, konsolun en eski canlı
+kovasıdır.
+
+**Çözüm:** Bu bir arıza değil, dürüst bir durumdur. Kaynağın pencerede olayı yoksa geçmişi yoktur.
+Okuma bittikten sonra "Read history now" ile yeniden okutmak, konsol düzeyindeki ailelerde yeni
+satırlar getirir; WAF ve IPS için yalnız henüz toplamamış kaynaklar okur.
+
+### OPS-R58. Kurulum geçmiş yanıtını kaydetmedi
+
+**Belirti:** Kurulum özeti "History backfill not recorded (exit N)" diyor; konsol kararsız kalıyor.
+
+**Olası neden:** `python -m app.cli.history_backfill decide` komutu başarısız oldu. Çıkış kodu `1`
+veritabanı hatası, `2` konsolun kayıtlı olmaması ya da argüman hatasıdır. Kurulum bu hatada durmaz;
+karar kaydedilmemiş olarak kalır ve ilk yönetici oturum açmasında soru sorulur.
+
+**Doğrulama:** Komutu elle çalıştırıp çıkış kodunu oku:
+
+```bash
+docker compose run --rm --no-deps -T backend \
+  python -m app.cli.history_backfill decide \
+    --instance <konsol-adı> --answer yes --source installer
+```
+
+**Çözüm:** Veritabanının hazır olduğundan ve konsol adının `qradar add` ile kaydedilmiş olduğundan
+emin ol, sonra komutu yeniden çalıştır. Kayıtlı bir karar varsa komut onu değiştirmez, "already
+decided on <tarih>: <yanıt>" yazar ve 0 ile çıkar.
+
+### OPS-R59. Mülk izlemesinin geçmiş okuması ilerlemiyor
+
+**Belirti:** İzleme sayfasında (`/behavior/watches/<id>`) izleme "Reading history" durumunda ama
+"History" bölümündeki okunan gün sayısı ilerlemiyor; durumun yanındaki satır "X of Y days read"
+diyor ve sayı değişmiyor. "History gaps" listesi boş da olabilir.
+
+**Olası neden:** Dört ayrı neden aynı görüntüyü verir. Birincisi: canlı toplama tick'in arama
+bütçesini tüketmiştir, geçmiş adımı arama yapacak boşluk bulamamıştır; gerekçesi "waiting for
+search budget" olur. İkincisi: sağlayıcı aramaları başarısız oluyordur; genişlik her başarısızlıkta
+yarıya iner, en dar genişlikte (12 kova) `PW_BOOTSTRAP_MAX_FAILURES` (varsayılan 3) kez
+başarısız olunca o aralık boşluğa dönüşür ("search failed 3 times at the minimum width"). Üçüncüsü:
+yoğunluk kapısı okumayı kapattı ("% of the buckets read are lower bounds"). Dördüncüsü: okuma
+`PW_BOOTSTRAP_MAX_HOURS` (varsayılan 72 saat) sınırına dayandı; okuma `PARTIAL` olur ve gerekçesi
+"the reading did not finish in 72 h" der.
+
+**Doğrulama:** Sayfanın "History" bölümü durumu, istenen pencereyi, okunan aralığı ve boşlukları
+gösterir; durumun yanındaki satır okunan gün sayısını verir. API'nin `history` bloğu aynı
+sayıları ve gerekçeyi verir.
+
+```
+GET /api/v1/property-watches/{id}
+```
+
+**Çözüm:** Bütçe bittiyse etkin izleme sayısını azalt ya da `PW_MAX_SEARCHES_PER_TICK` (40),
+`PW_BOOTSTRAP_SEARCHES_PER_TICK` (12) ya da `PW_BOOTSTRAP_SECONDS_PER_TICK` (180) değerlerini
+büyüt. Aramalar başarısız oluyorsa QRadar erişimini ve token'ı denetle (OPS-R1 ... OPS-R4) ve
+`./qradar-dash logs` ile arama hatalarına bak. Yoğunluk kapısı ve zaman sınırı bir arıza değildir;
+ikisi de okumayı `PARTIAL` bitirir ve izleme canlı toplamaya devam eder. Bir izlemenin geçmişi
+yalnız bir kez istenebilir: yeniden okumak isteyen operatör yeni bir izleme kurar.
+
+### OPS-R60. Geçmiş isteği 409 ile reddediliyor
+
+**Belirti:** Geçmiş isteyen etkin bir izlemeyi etkinleştirmek 409 döndürüyor; gerekçe "reading
+history needs at least 3 free searches per tick (TOTALS, PINNED and one GROUPED), but 1 are left
+after the enabled watches' live cost of 39 of 40" diyor. Aynı 409, etkin bir izlemede "Read
+history" düğmesine basınca da gelir. Etkinleştirme reddedildiğinde sayfa "Enable without history"
+düğmesini gösteriyor.
+
+**Olası neden:** Canlı toplama, tick'in arama bütçesini (`PW_MAX_SEARCHES_PER_TICK`, 40) önce
+harcar; geçmiş adımı kalan boşluğu harcar. Bir adım sabitlenmiş (pinned) değer varsa üç arama
+(TOTALS, PINNED, bir GROUPED), yoksa iki arama tutar. Canlı maliyet düşüldükten sonra kalan arama
+sayısı bu maliyetten azsa istek reddedilir.
+
+**Doğrulama:** 409 yanıtının metni gerekli arama sayısını, kalan sayıyı ve canlı maliyeti söyler.
+Aynı sebep düzenleyicide de görünür: "History needs 3 free searches per tick for this watch; 1 is
+free."
+
+```
+POST /api/v1/property-watches/{id}/history
+```
+
+**Çözüm:** Bir izlemeyi devre dışı bırak (canlı maliyeti düşer) ya da `PW_MAX_SEARCHES_PER_TICK`
+değerini büyüt. Olmuyorsa "Enable without history" düğmesine bas: izleme `history_days = 0` ile
+etkinleşir, yalnız ileriye doğru öğrenir ve QRadar'ın geçmişi okunmaz.

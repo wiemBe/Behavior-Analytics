@@ -1,11 +1,12 @@
 # History backfill: every baseline reads its past from Ariel once, for learning only
 
-Status: **design, 2026-10-18.** Not built. It generalises [`PHASE-G-HISTORY-BOOTSTRAP.md`](PHASE-G-HISTORY-BOOTSTRAP.md)
+Status: **built, 2026-10-20.** The design is implemented: the shared core, the five family
+adapters, the admin API, the installer question and the admin page. It generalises
+[`PHASE-G-HISTORY-BOOTSTRAP.md`](PHASE-G-HISTORY-BOOTSTRAP.md)
 (cited as §H.n, the model for property watches) to the platform-wide baselines, and changes none of its text.
 It rests on [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (§SC.5, §SC.6, the 5-minute default), on
-[`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md) (§4, §6, §8, §10) and on decision D-31.
-Every claim about the code carries a `file:line` citation checked on this branch (`agent/hb0`, from
-`feat/phase-ce`) on 2026-10-18. Where the code and a family's design text disagree, the code wins and the
+[`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md) (§4, §6, §8, §10) and on the 2026-10-18 decision to ask once, right after installation, whether the past is read.
+Every claim about the code carries a `file:line` citation checked on 2026-10-18. Where the code and a family's design text disagree, the code wins and the
 disagreement is listed in §B.14.3. Facts that only the console can give are not asserted: each has a
 probe in §B.3.5 and is marked **[C-n]**.
 
@@ -28,25 +29,25 @@ probe in §B.3.5 and is marked **[C-n]**.
 > buckets, C-2)** — the console's retention endpoint was not reached; confirm it with the production
 > console's owner before relying on history there.
 
-## B.0 What was asked, and what the backfill is not
+## B.0 What was asked, and what the backfill is not **[BUILT]**
 
 The operator is asked once, right after installation, whether the platform should search the past so
 that baselines and robust deviation (MAD) are steadier from day one. No: nothing changes. Yes: every
 baseline family fills its **existing** window from QRadar's stored history, for learning only.
 
-| # | Decision (D-31, 2026-10-18) | Where |
+| # | Decision (2026-10-18) | Where |
 |---|---|---|
 | B1 | The windows do not change. The backfill fills `baseline_lookback_days` (28, `backend/app/core/config.py:336`), `ips_baseline_lookback_days` (28, `:187`) and the rule-health window (30, `:298`) at once. Reading further back is wasted: retention would delete it (35 days for WAF, IPS, catch-all, `:488,:182,:521`) | §B.3.1 |
 | B2 | The answer is **No / Yes, where Yes reads the last 28 days**. There is no month choice. A family whose own window is not 28 days reads its own window (rule analytics: 30) | §B.3.1 |
 | B3 | Two places ask: **`./qradar-dash install`, once, on the first install**, and the admin UI (a first-run dialog when the installer did not ask, and an admin page for later) | §B.9, §B.10 |
 | B4 | Every baseline takes part: source volume (Phase A), WAF, IPS, the catch-all known-senders list, and rule matches. Geo is left out, with a reason | §B.2 |
 | B5 | A history row is **learning only**: never evaluated, never opens an incident, a breach or an alert. Each family has three independent guards (§B.4) | §B.4 |
-| B6 | Property watches keep their own per-watch bootstrap (D-29). The platform answer does not govern them. They share the core of this design | §B.11 |
+| B6 | Property watches keep their own per-watch bootstrap (the user's choice, 2026-10-18). The platform answer does not govern them. They share the core of this design | §B.11 |
 | B7 | The reading is oldest first, in bounded steps, inside the family's own task and lock, after the live pass, on what is left of the tick budget (live first) | §B.6 |
 | B8 | How far back Ariel holds a scope is proved, not assumed (§B.3.2). Nothing before the proved floor is written: not a zero, not a placeholder row | §B.3 |
 | B9 | A later Yes is decided per family (§B.5): allowed for Phase A, catch-all and rule matches (no verdict depends on admission order); for WAF and IPS only for a scope with no live bucket yet | §B.5 |
 
-### B.0.1 What it is not
+### B.0.1 What it is not **[BUILT]**
 
 - **Not an evaluation of the past.** No detector, lifecycle, rule-health flap counter or custom rule
   judges a history bucket. The rule of [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) §SC.6 ("an upgrade must not
@@ -61,7 +62,7 @@ baseline family fills its **existing** window from QRadar's stored history, for 
   from stored templates (repository rule 1, 2, 4). No AQL comes from the browser.
 - **Not raw storage.** Rule 3 is unchanged: only the aggregates each family already persists leave the folds.
 
-## B.1 The model in one picture
+## B.1 The model in one picture **[BUILT]**
 
 ```text
 decision (per console)   NO | YES(28 d)   recorded by the installer, or by an admin in the UI, write-once per answer
@@ -72,7 +73,7 @@ marker on every row      origin = 'HISTORY'  (Phase A: collection_source = 'arie
 anchor / hand-off        the first LIVE bucket of the scope; history ends exactly there: zero gap, zero overlap
 ```
 
-## B.2 Which families take part, and which do not
+## B.2 Which families take part, and which do not **[BUILT]**
 
 | Family | In? | Why |
 |---|---|---|
@@ -84,9 +85,9 @@ anchor / hand-off        the first LIVE bucket of the scope; history ends exactl
 | **Geo** | **no** | `geo_country_bucket` has no baseline, no detector, no admission and no verdict: it is a display aggregate (`app/collectors/geo_collector.py:1-30`, `docs/DATA-MODEL.md` "Geography"; the widget that consumes it is not built, PRODUCT-UX-GUIDELINES §11). History would only fill a chart. It is also the heaviest search shape (a whole-estate `GEO::LOOKUP`, unmeasured at 28 days). Left out; one line on the admin page says so. Open question Q8 |
 | **Property watches** | own bootstrap | §B.11 |
 
-## B.3 The window and the floor proof
+## B.3 The window and the floor proof **[BUILT]**
 
-### B.3.1 How many days
+### B.3.1 How many days **[BUILT]**
 
 `history_backfill_days` is 28 by default and is bounded by the family's own lookback and retention:
 
@@ -113,7 +114,7 @@ Three hard bounds apply to every family:
 3. **120 s per search.** The poll loops end at 120 one-second polls and cancel
    (`app/providers/qradar_rest.py:760-767`, `:2114-2121`). Wide windows must stay below it **[C-5]**.
 
-### B.3.2 How the design knows, read-only, how far back Ariel holds a scope
+### B.3.2 How the design knows, read-only, how far back Ariel holds a scope **[BUILT]**
 
 The question and the rule are those of §H.3.2: a bucket with no row in a whole search is either measured
 silence or aged out, and the two look the same. **A bucket is history only if an event of the same scope
@@ -155,18 +156,18 @@ Rules:
 | A4: counts equal at search time and at original collection | A late event changes an old bucket | none needed: history is read once |
 | A5: today's mapping applies to the past | A profile, a field mapping or a catch-all type set changed since | stated limitation; history buckets carry the **current** `profile_version` (§B.7.1) |
 
-### B.3.3 Where the proof is stored
+### B.3.3 Where the proof is stored **[BUILT]**
 
 `history_floor` per scope (for Phase A and catch-all, per source in `history_progress.floors`, a bounded
 map, never a value text), `history_target_start` (`T0`), counts in `history_progress` (§B.7.1).
 
-### B.3.4 Asked days versus proved days
+### B.3.4 Asked days versus proved days **[BUILT]**
 
 `COMPLETE`: `F <= T0 + one bucket` for every scope and no hole. `PARTIAL`: Ariel holds less than asked, or a
 hole exists, or the reading stopped on a limit or the switch. `UNAVAILABLE`: no event in the window, or the
 floor scan could not be done. None of the three is an error and none is health.
 
-### B.3.5 Probes: the console facts this design cannot assert
+### B.3.5 Probes: the console facts this design cannot assert **[BUILT — the read-only lab probe of 2026-10-18; A1 is still open]**
 
 One read-only lab task (HB-9, §B.13), a throwaway script outside the repository, the REST provider, MCP
 never, sequential, at most 60 Ariel searches and 8 other GETs. It extends the probes of §H.3.5 (P-1 to
@@ -186,7 +187,7 @@ P-8) with the scope kinds of this design:
 
 Outputs are counts, seconds, row counts and dates. No value text enters the report.
 
-## B.4 Learning only: the marker and the guards, per family
+## B.4 Learning only: the marker and the guards, per family **[BUILT]**
 
 The rule of §H.2 applies to every family: a history row is evidence for later verdicts about live buckets and
 nothing else. Each family gets (1) a **marker**, (2) three independent guards, (3) a classification of every
@@ -197,7 +198,7 @@ table may change, and `collection_source = 'ariel_history'` for Phase A**, whose
 (repository rule 6). A shared helper, `app/history/origin.py`, owns the two spellings (`is_history_clause(model)`),
 so a reader never writes either by hand and a guard test can find them (§B.4.7).
 
-### B.4.1 Phase A
+### B.4.1 Phase A **[BUILT]**
 
 - **What fills:** `log_source_metric`, one row per source and 5-minute bucket from `F_s`, with exactly the
   columns the live keyed path measures (`metric_collector.py:301-404`; the telemetry the live path declares,
@@ -245,7 +246,7 @@ so a reader never writes either by hand and a guard test can find them (§B.4.7)
 - **After the reading:** a baseline rebuild for the sources just read, in chunks per tick (§B.8.5), because the
   daily beat (`celery_app.py:69-73`, 86 400 s) would otherwise make the history useless for a day.
 
-### B.4.2 WAF
+### B.4.2 WAF **[BUILT]**
 
 - **What fills:** `waf_source_bucket` (one per bucket), `waf_endpoint_metric` (sparse), `waf_endpoint` rows, in
   two passes (§B.7.3).
@@ -281,7 +282,7 @@ so a reader never writes either by hand and a guard test can find them (§B.4.7)
   produced. Without this a 28-day read keeps long-dead endpoints against the 2 000 ceiling
   (`config.py:455`) and the ceiling binds early.
 
-### B.4.3 IPS
+### B.4.3 IPS **[BUILT]**
 
 - **What fills:** `ips_source_bucket` (with the contributor lists, a bounded top list by rule 3),
   `ips_entity_metric`, `ips_entity`.
@@ -301,13 +302,13 @@ so a reader never writes either by hand and a guard test can find them (§B.4.7)
   (`ips_collector.py:227-311`). History is planned per **group** of sources that share a plan, so a group of
   new sources reads together; a group is at most `ips_max_sources_per_search` (50, `config.py:171`).
 
-### B.4.4 Catch-all senders
+### B.4.4 Catch-all senders **[BUILT]**
 
 - **What fills:** `catchall_bucket` (counts and a bounded `top_senders` list) and `catchall_sender` rows.
 - **Marker:** `catchall_bucket.origin`; a sender row has no bucket provenance, so it carries
   `reviewed_by = 'history'` (existing column, `models/catchall.py`) beside the existing `'bootstrap'`.
 - **What "evaluation" is here:** nothing reads catch-all history as a verdict. The only consequence is a
-  **NEW** sender, which raises an alert only when `catchall_new_sender_alerts_enabled` (off by default, D-9,
+  **NEW** sender, which raises an alert only when `catchall_new_sender_alerts_enabled` (off by default, decided on 2026-10-13,
   `config.py:517`) and only in `_write` for senders inserted in that run (`catchall_collector.py:420-456`).
 - **Guard 1, the status.** Every sender admitted from history is `REVIEWED`, never `NEW`. The code already has
   this switch: `report.bootstrap` (`:157`, `:419-420`). History forces it on.
@@ -329,7 +330,7 @@ so a reader never writes either by hand and a guard test can find them (§B.4.7)
   not hold ceiling slots, and the retention task (`services/catchall_retention.py:34-48`) later deletes
   inactive rows by `retired_at`.
 
-### B.4.5 Rule matches
+### B.4.5 Rule matches **[BUILT]**
 
 - **What fills:** `rule_match_window` (one per hour: status, `rows_returned`) and `rule_match_metric` (sparse).
 - **Marker:** `rule_match_window.origin`. The metric rows are read through their window.
@@ -349,14 +350,14 @@ so a reader never writes either by hand and a guard test can find them (§B.4.7)
 - **Order-dependent admission: none.**
 - **COMMON rules** keep their meaning (a lower bound, never silence) because the fold is the live one.
 
-### B.4.6 What the readers of every history table share
+### B.4.6 What the readers of every history table share **[BUILT]**
 
 A history row is **evidence**. A reader falls into exactly one kind: LIVE-only (a pending read, a streak, an F.1
 loader), EVIDENCE (a baseline builder, a novelty history, a component lookup), DISPLAY (an API that labels
 `origin`), DELETE (retention). The classification of each family is in its own subsection; §B.4.7 turns it into
 a test.
 
-### B.4.7 The guard test
+### B.4.7 The guard test **[BUILT]**
 
 `tests/unit/test_history_readers_are_classified.py` scans the repository for every `select` over the history
 tables (`log_source_metric`, `waf_source_bucket`, `waf_endpoint_metric`, `ips_source_bucket`,
@@ -365,7 +366,7 @@ list or a LIVE-only reader lacks the helper clause. It is in the shape of `imple
 (`custom_rules/loaders.py:41`). Phase 1 of each adapter adds its readers to the list **before** the history
 writer exists, so the guards precede the data.
 
-## B.5 When the backfill may run, and a later Yes
+## B.5 When the backfill may run, and a later Yes **[BUILT]**
 
 The installer asks before the first collection (§B.9), but a Yes can also come later from the UI (§B.10), and a
 site that skipped the installer prompt has live data already. The rule is per family, and it follows one
@@ -378,7 +379,7 @@ question: **does any verdict depend on the order in which admission saw the data
 | Rule matches | no admission | same | **allowed, prepends** | Windows are independent; absence is a measured `missing` |
 | **WAF** | **yes**: novelty, `first_seen_at`, `tracked_since`, the active ceiling | the scope does not exist yet: it is created by a profile; reads at its first collection | **only for a source with no live bucket** (a profile created after the Yes, or one never collected) | A prepend would move `first_seen_at` of endpoints used by evaluated buckets and by open incidents (§H.0.3) |
 | **IPS** | **yes**, as WAF | same | **only for a source with no live bucket** | same |
-| Property watches | yes | own rule (D-29) | own rule | §B.11 |
+| Property watches | yes | own rule (2026-10-18) | own rule | §B.11 |
 
 What this gives the operator, in the installer-Yes case: WAF and IPS collection are **off by default**
 (`config.py`; the installer summary says "Left off WAF, IPS, rule-match collection", `qradar-dash:839`), so no
@@ -394,9 +395,9 @@ design (Q3).
 A "No" can be turned into a "Yes" at any time, and a "Yes" can be stopped (the reading ends `PARTIAL`, reason
 "stopped by <user>"); a "Yes" is never reversed (history rows are not deleted by this feature).
 
-## B.6 The budget: live first, then history
+## B.6 The budget: live first, then history **[BUILT]**
 
-### B.6.1 Inside the family's own task and lock
+### B.6.1 Inside the family's own task and lock **[BUILT]**
 
 Each family already runs in a task that holds an advisory lock for its scope, takes one cadence slot and has a
 per-tick search cap (`search_cadence_max_searches_per_tick`, 16, `config.py:159`). The history step runs
@@ -410,7 +411,7 @@ per-tick search cap (`search_cadence_max_searches_per_tick`, 16, `config.py:159`
 | Catch-all | `collect_catchall_senders` | (instance, `catchall_senders`) | 1 | same |
 | Rule matches | `collect_rule_matches` | (instance, `rule_match`) | 1 | same |
 
-Reasons: (1) the operator's one control over Ariel schedule (D-7, the cadence) holds with no new task and no
+Reasons: (1) the operator's one control over Ariel schedule (the cadence decision of 2026-10-12) holds with no new task and no
 new `SearchFamily`; (2) **live first** is true by construction: a history step only spends what the live pass
 left; (3) one lock per scope means a history step and a live run of the same scope can never overlap, which the
 property-watch dispatch lacked (`workers/tasks.py:1394-1442`, §H.14.3 item 9).
@@ -429,7 +430,7 @@ Settings (all in `config.py`; validated only when the family's own collection sw
 | `history_backfill_max_lower_bound_share` | 0.05 | the density gate (§B.6.4) |
 | `history_backfill_waf_breakdown_days` | 7 | days of breakdown history (§B.7.3) |
 
-### B.6.2 A step, per family, in one rule
+### B.6.2 A step, per family, in one rule **[BUILT]**
 
 Every family's step is the same pure function of `(state, boundary, anchor, budget, settings)` in
 `app/history/planner.py`:
@@ -452,7 +453,7 @@ boundary** for WAF and IPS (the closed-bucket boundary of the finishing tick). "
 Phase A, catch-all and rule matches are planned from the **anchor**: a scope that has no live bucket is
 `WAITING` (one tick). WAF and IPS scopes are planned at their first collection.
 
-### B.6.3 Failure is not truncation
+### B.6.3 Failure is not truncation **[BUILT]**
 
 The family drivers' rules are kept: a **truncated** multi-bucket search keeps nothing and is split in time; at
 one bucket the result is a lower bound (`ips/keyed_search.py` docstring, `metric_collector.py:247-257`,
@@ -462,14 +463,25 @@ the load). In history a failed span halves `W` for the next tick (a timeout is a
 at most 20 entries, no value text), no row is written for it, `J` moves past it, and the state ends `PARTIAL`.
 A gap fails every novelty or `COMPLETE` coverage claim across it through its missing buckets.
 
-### B.6.4 The density gate
+### B.6.4 The density gate **[BUILT]**
 
 After the first span, if more than `history_backfill_max_lower_bound_share` of the buckets read came back as
 lower bounds (a bucket with more rows than the cap even alone), the scope ends `PARTIAL` with "more than N
 distinct values per 5-minute bucket: history would be lower bounds". The buckets read stay (valid evidence for
 volume).
 
-### B.6.5 The window is fitted to the budget
+### B.6.5 The window is fitted to the budget **[BUILT]**
+
+> **As built.** Every family first bounds its window with `fit_family_window`: the smallest of
+> `history_backfill_days`, the family's own lookback and the largest `d` with
+> `d x 24 + history_backfill_max_hours < retention x 24`. Below seven days the family is
+> `UNAVAILABLE` with the reason in words. The estimate of §B.8 then fits the window to the budget:
+> source volume, catch-all and rule matches reduce it to the largest `D'` whose estimate fits
+> `history_backfill_max_hours` ("window reduced from 28 to 20 days: the estimate exceeded 72 hours")
+> and refuse below seven days. WAF and IPS bound the window by the lookback and the retention only;
+> their reading reaches a moving boundary, so a window that is too wide for the budget ends
+> `PARTIAL` with "the reading did not finish in 72 h" rather than being shortened. The admin page
+> says which window each family may read.
 
 At planning, the planner computes the estimate of §B.8 for the scope from the first span's observed density.
 If `ceil(searches / sub-budget) x cadence > history_backfill_max_hours`, the window is **reduced to the largest
@@ -477,9 +489,9 @@ If `ceil(searches / sub-budget) x cadence > history_backfill_max_hours`, the win
 28 to 20 days: the estimate exceeded 72 hours". Below 7 days the scope is `UNAVAILABLE` with the estimate. The
 reduced window always ends at the anchor or the moving boundary, so what is read is the **newest** `D'` days.
 
-## B.7 State, resumption and idempotence
+## B.7 State, resumption and idempotence **[BUILT]**
 
-### B.7.1 Tables (additive migration after `0029`)
+### B.7.1 Tables (additive migration after `0029`) **[BUILT]**
 
 Migration `0030_history_backfill` (the number follows the property-watch foundations' `0029`, which is being
 built; the order is an assumption stated in §B.13).
@@ -495,6 +507,13 @@ built; the order is an assumption stated in §B.13).
 | `decided_by` | `String(255)` | the principal subject, or `installer` |
 | `source` | `String(16)` `CHECK IN ('INSTALLER','UI')` | |
 | `updated_at`, `updated_by` | | a later NO to YES change |
+| `start_requested_at`, `start_requested_by` | `DateTime(tz) NULL`, `String(255) NULL` | "Read history now": the operator's request, applied by each family's next tick |
+| `stop_requested_at`, `stop_requested_by` | `DateTime(tz) NULL`, `String(255) NULL` | "Stop reading": the same, the other way |
+
+> **As built.** The four request columns were added to the migration after the first revision; the
+> decision row is the only one the API and the CLI write. A request exists only on a `YES`, the two
+> columns of a request are set together, and the API never changes a scope row: each family's
+> collector applies the request at its next tick.
 
 **`history_backfill_scope`** (one row per console, family and scope key; created lazily when a scope becomes
 eligible):
@@ -520,14 +539,14 @@ Upgrade, downgrade and upgrade again with data carried; `alembic check` reports 
 downgrade deletes `origin = 'HISTORY'` rows of the four tables and the history `log_source_metric` rows
 (`collection_source = 'ariel_history'`) first, because they are not reproducible without the columns.
 
-### B.7.2 Resumption and idempotence
+### B.7.2 Resumption and idempotence **[BUILT]**
 
 `through` and `progress` are written in the same transaction as the rows (the instance's one transaction,
 `workers/tasks.py:206-210`), so they are exactly as far as the stored rows. A tick that fails writes nothing and
 the next one re-plans from `through`. Every write is an upsert or `DO NOTHING` keyed by the table's primary key,
 and `DO NOTHING` never replaces a live row. A restart of the worker mid-step is the same case.
 
-### B.7.3 WAF in two passes
+### B.7.3 WAF in two passes **[BUILT]**
 
 The volume pass (28 d, `waf_endpoint_metric`, `waf_source_bucket` with the three breakdown measurements set to
 `NOT_COLLECTED`) is the one that decides admission and `first_seen_at`. The **breakdown pass** then reads
@@ -538,17 +557,17 @@ the bounded top lists. A bucket whose breakdown was not read stays `NOT_COLLECTE
 already read as no verdict. Why two passes: the breakdown searches are the dominant cost (§B.8.2) and admission
 does not depend on them.
 
-## B.8 Cost
+## B.8 Cost **[BUILT]**
 
-### B.8.1 The model
+### B.8.1 The model **[BUILT]**
 
 Assumptions, each stated: 5-minute buckets; window 28 d plus the 24 h margin = **8 352** buckets (rule matches:
 hourly windows, 30 d plus 1 d = **744**); `rho` is the number of rows one non-silent bucket returns; a span of
 `W = floor(0.8 x row cap / rho)` buckets capped at 2 016; the sub-budget is 10 searches per tick; the cadence is
-5 minutes (D-28). **Measured Ariel time per search is 0.03 to 0.13 s for one bucket (PW-10 section 8), 0.37 s
+5 minutes (the default since 2026-10-18). **Measured Ariel time per search is 0.03 to 0.13 s for one bucket (PW-10 section 8), 0.37 s
 for 12 buckets of Phase A, 0.61 s for an 8-hour Phase A window and about 2.2 s for 8 hours in T-040, 3.5 s for the
 slowest first call ([`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) §SC.2, §SC.10), and 3.7 s for a 30-day aggregate with
-no bucket key (PW-10 `probe.log`).** It is **unmeasured** above 8 hours of grouped data with a custom
+no bucket key (the PW-10 probe).** It is **unmeasured** above 8 hours of grouped data with a custom
 property **[C-5]**. The "Ariel time" column uses 1 to 3.5 s per search and is an order of magnitude, not a promise.
 
 Three install shapes (assumed; the column `rho` names the assumption):
@@ -559,7 +578,7 @@ Three install shapes (assumed; the column `rho` names the assumption):
 | Typical | 100 | 3 (100) | 5 (same) | 150 | 80 |
 | Large | 1 000 | 20 (300) | 30 (same) | 800 | 150 |
 
-### B.8.2 Searches
+### B.8.2 Searches **[BUILT]**
 
 | Family | Formula | Small | Typical | Large |
 |---|---|---:|---:|---:|
@@ -572,7 +591,7 @@ Three install shapes (assumed; the column `rho` names the assumption):
 | Rule matches (744 windows, row cap 4 000, plus 1 console total) | `ceil(744 / (4000 / rho)) + 1` | **7** | **16** | **30** |
 | **All families** | | **703** | **4 759** | **65 785** |
 
-### B.8.3 Ticks and wall time
+### B.8.3 Ticks and wall time **[BUILT]**
 
 Ticks are per family at 10 history searches per tick (WAF: 2 concurrent sources under the global permit,
 `waf_ariel_max_concurrent_sources`, `config.py:569`, so 20 per tick). Families run in parallel; the wall time is
@@ -593,7 +612,7 @@ prints the estimate before Yes, and the reduction is on the admin page after. Ra
 `history_backfill_searches_per_tick` or `ariel_multi_bucket_max_rows` (up to 100 000, `config.py:162`) shortens
 it at the operator's choice and the console's expense.
 
-### B.8.4 Database cost
+### B.8.4 Database cost **[BUILT]**
 
 Per-run SQL stays constant (repository rule 9): the history writers add **no per-bucket, per-endpoint, per-value
 or per-source statement**.
@@ -612,7 +631,7 @@ or per-source statement**.
 - Rows written (equal to the steady state at day 28, reached at day 0; PHASE-B §29.8 sizes it at 173 B per slim
   row): Phase A 161 k / 806 k / 8.1 M rows; WAF endpoint metrics at most 0.24 M / 2.4 M / 48 M rows.
 
-### B.8.5 Training after the reading
+### B.8.5 Training after the reading **[BUILT]**
 
 | Family | How training runs | Ticks after hand-off (small / typical / large) |
 |---|---|---|
@@ -623,9 +642,9 @@ or per-source statement**.
 
 Until a value is trained its verdict is `INSUFFICIENT_DATA` (learning), never a guess.
 
-## B.9 The installer asks once
+## B.9 The installer asks once **[BUILT]**
 
-### B.9.1 Where the question goes
+### B.9.1 Where the question goes **[BUILT]**
 
 `./qradar-dash install` (`qradar-dash`, `cmd_install` at `:650`) collects answers in `ANS`, an answers file is
 read with `parse_answers` (`:166`), keys are listed in `ANSWER_KEYS` (`:84-90`), validated in `check_value`
@@ -645,7 +664,19 @@ summary, then write_install_state         :815-816
 The services that collect (`celery-worker`, `celery-beat`) start only at step 10. **So the decision can be
 written before the first collection**: a new step 9b runs after `qradar add` and before step 10.
 
-### B.9.2 The prompt
+### B.9.2 The prompt **[BUILT]**
+
+> **As built.** The prompt is the question below, and the note above it is:
+>
+> ```text
+>     Nothing in the past raises an alert. It sends searches to QRadar for about 3 hours on
+>     a small estate and up to 3 days on a large one (a large estate gets a shorter window
+>     so that it fits 72 hours); the admin page shows the progress and the estimate.
+> 14. Read the last 28 days of history from QRadar now, so baselines are steadier from day 1? (yes/no):
+> ```
+>
+> The 28 days of the text is the default of the setting; the answer that is recorded is the
+> window the setting holds at the moment of the decision.
 
 A new answer key `HISTORY_BACKFILL` (`yes` or `no`). In `wizard`, after the existing question 13:
 
@@ -667,7 +698,7 @@ A new answer key `HISTORY_BACKFILL` (`yes` or `no`). In `wizard`, after the exis
 - `save_answers` writes the key (it writes every key in `ANSWER_KEYS`), so the answer is also the "asked" marker
   of a failed first install that is re-run.
 
-### B.9.3 The non-interactive answer
+### B.9.3 The non-interactive answer **[BUILT]**
 
 An answers file takes `HISTORY_BACKFILL=yes` or `HISTORY_BACKFILL=no` (a non-secret, like every other key;
 `parse_answers` refuses a key that looks like a secret, `:189`). **An absent key is not asked and not guessed:
@@ -677,7 +708,7 @@ entry point (§B.9.5). Rationale: a silent default of Yes spends Ariel searches 
 silent No loses the history for the families that cannot prepend. Open question Q1 recommends keeping the key
 optional.
 
-### B.9.4 Where the answer is recorded
+### B.9.4 Where the answer is recorded **[BUILT]**
 
 A new CLI, `backend/app/cli/history_backfill.py`, in the pattern of `app.cli.qradar` (`add`, idempotent by name,
 `backend/app/cli/qradar.py:27,106-135`):
@@ -708,7 +739,7 @@ Because the row exists before step 10, the first collection tick sees it:
 - **WAF, IPS:** nothing exists yet. When the operator enables a source, its scope row is created `READING`
   and the first step runs in its first collection (§B.5).
 
-### B.9.5 What the admin UI shows after the installer
+### B.9.5 What the admin UI shows after the installer **[BUILT]**
 
 The admin page (§B.10.3) reads the decision: **"History backfill: Yes, read 28 days. Recorded by the installer
 on 2026-10-19 12:04 UTC."** or the same for No. The first-run dialog does **not** appear for a console that has a
@@ -719,7 +750,7 @@ decision. Per family it shows state and progress, and whether a later Yes is sti
 | Yes | reading, progress | "waiting for the source to be enabled", or reading, or complete |
 | No | "a later Yes is possible: reads before the first live bucket" | "a later Yes is possible while this source has not been collected; after that it is not" |
 
-### B.9.6 When the installer is skipped
+### B.9.6 When the installer is skipped **[BUILT]**
 
 The development compose stack, a site installed before this feature, and a scripted install without the key have
 no decision. The first-run dialog (§B.10.1) is the **only** entry point. It states, in plain words, what the
@@ -729,13 +760,13 @@ nothing; the order-dependent families lose only sources that already collected. 
 a mock console (`seed`, `docs/INSTALL.md`), for which the dialog works and reads the mock provider's
 deterministic history (`mock_history`).
 
-## B.10 The dialog and the admin page
+## B.10 The dialog and the admin page **[BUILT]**
 
 All UI follows `PRODUCT-UX-GUIDELINES` (the standing rules of the frontend quality bar): existing components and
 tokens, no inline styles, text-only, every state designed, UTC with the zone, no "live"/"real-time", no
 exclamation marks.
 
-### B.10.1 The first-run dialog
+### B.10.1 The first-run dialog **[BUILT]**
 
 - **To whom:** a principal holding `admin:history_backfill` (new permission, `app/security/rbac.py`, satisfied by
   `admin:*`; `read:*` does not grant it, the pattern of `admin:search_cadence`, `rbac.py:92-93`). The shell
@@ -769,13 +800,13 @@ exclamation marks.
   recorded in the meantime: shows it).
 - **Not asked:** which families, which month. The user decided (B2).
 
-### B.10.2 The estimate must be honest
+### B.10.2 The estimate must be honest **[BUILT]**
 
 The estimate is a design-model figure (the table of §B.8), labelled "estimate", with the assumption stated
 ("5-minute buckets, 10 searches per tick, QRadar time per search not yet measured on your console"). **No ETA**
 is promised; after reading starts, the page shows what was read, not a time of completion (as §H.9.1).
 
-### B.10.3 The admin page
+### B.10.3 The admin page **[BUILT]**
 
 `/admin/history-backfill`, linked from the admin index (`frontend/src/app/admin/AdminIndex.tsx`), under
 `PageHeader` (title "History backfill", description a fact: the window and the time zone). The question it
@@ -812,7 +843,15 @@ API (all additive; `app/api/routes/history_backfill.py`):
 
 None of them takes an AQL or a window from the browser; `days` is the stored setting.
 
-## B.11 Relation to the property-watch bootstrap (PW-13)
+> **As built.** An unknown or disabled console is a 404 that names nothing but the console. A
+> refused write is a 409 that says why and returns the console's current state: a `NO` on a
+> console that already answered `YES` ("a Yes is never reversed; stop the reading instead"), a
+> decision recorded in the meantime, and "Read history now" or "Stop reading" on a console with no
+> `YES` ("record Yes first"). The decision returns 201 when the row was created and 200 when it
+> already existed or was upgraded; the two requests change no scope row and say so in their
+> message.
+
+## B.11 Relation to the property-watch bootstrap **[BUILT]**
 
 **Yes: they should share one core.** The property-watch bootstrap (§H) and this design solve the same problem
 in the same way, and four things in §H are already generic:
@@ -824,11 +863,11 @@ in the same way, and four things in §H are already generic:
 | the **floor proof** (derived from the read, margin, nothing before the floor) | §H.3.2 | §B.3.2, per scope kind |
 | the **state machine and budget** (live first, sub-budget, seconds, max hours, fit the window) | §H.4.4, §H.5 | §B.6, §B.7 |
 
-What stays different: property watches ask per watch (`history_days` on the watch, D-29), with a `NOT_REQUESTED`
+What stays different: property watches ask per watch (`history_days` on the watch, the user's 2026-10-18 choice), with a `NOT_REQUESTED`
 state, a version-bump restart (§H.5.4) and the F.1 `include_history` flag; their tables are `property_watch`
 columns, not `history_backfill_scope` rows. The platform answer does **not** govern them, and the dialog says so
 in one line ("Property watches ask for history when you create the watch"). Their kill switch
-(`pw_bootstrap_enabled`, default true by D-29) is unchanged.
+(`pw_bootstrap_enabled`, on by default since 2026-10-18) is unchanged.
 
 ### B.11.1 What changes in the PW-13 build order
 
@@ -846,7 +885,7 @@ in parallel -> HB-9 probe before any default is flipped -> HB-10 live validation
 PW is HB-1 before PW-13b. If the user prefers not to hold PW-13b, the fallback is to build PW-13b as designed and
 refactor it into `app/history` when HB-1 starts: the cost is one rewrite of an already tested module (Q7).
 
-## B.12 Fail closed, in one table
+## B.12 Fail closed, in one table **[BUILT]**
 
 Every row is `INSUFFICIENT_DATA`, a gap, a named state with a reason, or no row. None is a zero, none is
 `NORMAL`, none grants a detector lower-bound reasoning (repository rule 8); a detector's scope still comes from
@@ -874,23 +913,23 @@ Every row is `INSUFFICIENT_DATA`, a gap, a named state with a reason, or no row.
 ## B.13 The build
 
 Sizes: S under half a day, M about a day, L two days. All wait for the user's review of this file, and the
-backfill defaults stay as described until HB-9 has been read. Agent kinds: Codex for migrations and SQL-heavy cores, Sonnet for the rest.
+backfill defaults stay as described until HB-9 has been read.
 
-| ID | Task | Agent | Size | Files | Depends on | Tests |
-|---|---|---|---|---|---|---|
-| **HB-1** | The shared pure core: planner (`scan` interpretation, span sizing, density adaptation, halving, gaps, density gate, completion, window fitting), the state machine and enums (`HistoryFamily`, `HistoryState`, `HistoryOrigin`), `origin` helper | Sonnet | M | new `backend/app/history/{planner,state,origin}.py` and unit tests | none | property tests: spans tile `[F, end)` exactly; a failed or truncated search never advances `through`; no row before `F`; the window fits or is refused; no I/O |
-| **HB-2** | Foundations: migration `0030` (two tables, `origin` on four tables, enums), models, settings with validators, `HistoryFamily` registry, the `decide` CLI, RBAC permissions, audit | Codex | M | `alembic/versions/0030_history_backfill.py`, `app/models/history_backfill.py`, `models/{waf,ips,catchall,rule}.py`, `core/config.py`, `security/rbac.py`, `cli/history_backfill.py` | HB-1 (enums), PW-13a (migration `0029`) | migration round trip with data, `alembic check`, no server default left, CLI write-once on every path including the audit row and the missing-instance warning |
-| **HB-3** | Phase A adapter and guards: scope planner (`WAITING` until a live bucket), history step in `collect_metrics`, `ariel_history` writer with `DO NOTHING`, per-source floor and zero-fill from `F_s`, the guards of §B.4.1 (both `evaluate_pending` branches, streak, F.1 loaders), baseline rebuild trigger, retention check | Codex | L | `collectors/metric_collector.py`, `anomaly/engine.py`, `custom_rules/loaders.py`, `workers/tasks.py`, new `history/phase_a.py` | HB-1, HB-2 | equivalence (live bucket by bucket vs history in chunks, equal except marker and provenance); history never pending (watermark NULL, after, predicate removed on purpose); first-run branch; run through `collect_metrics` on every exit path; statement count constant in sources and buckets |
-| **HB-4** | Catch-all adapter: ledger-seeded history, per-source floor, forced `REVIEWED`, bootstrap hold while `READING`, `origin` | Codex | M | `collectors/catchall_collector.py`, new `history/catchall.py` | HB-1, HB-2 | equivalence; no alert from a history step even with alerts on; a live sender during the reading is `REVIEWED`; prepend with existing live senders; retirement at write |
-| **HB-5** | Rule-match adapter: console-total floor, history windows `DO NOTHING`, replacement of the skipped-window `FAILED` records | Sonnet | M | `collectors/rule_match_collector.py`, new `history/rule_match.py` | HB-1, HB-2 | equivalence; coverage `COMPLETE` after a full read; a gap stays `missing`; `COMMON` stays a lower bound |
-| **HB-6** | WAF adapter: bulk history persist (in-memory admission, per-bucket retirement, one statement per table), two passes, hand-off with the two watermarks, evaluation and F.1 guards, the `first_seen_at < history_end` rule | Codex | L | `collectors/waf_endpoint_collector.py`, `services/waf_pipeline.py`, `waf/engine.py`, `waf/detector.py`, `custom_rules/loaders.py`, new `history/waf.py` | HB-1, HB-2 | equivalence against the live persist with the same scripted provider; guards 1 to 3 with breaking each on purpose; statement-count pin (§B.8.4); novelty: history-time first appearance is `HEALTHY`/established; a flood in history blocks novelty for 7 days; resume after a worker restart |
-| **HB-7** | IPS adapter: group-level history, hand-off, per-bucket retirement, guards, novelty rule | Codex | L | `collectors/ips_collector.py`, `services/ips_pipeline.py`, `ips/engine.py`, `custom_rules/loaders.py`, new `history/ips.py` | HB-1, HB-2 | as HB-6 for IPS |
-| **HB-8** | API and service: the five routes, estimate, audit, permissions, eligibility per family (§B.5) | Sonnet | M | `api/routes/history_backfill.py`, `services/history_backfill.py`, `schemas/history_backfill.py` | HB-2 | permission matrix 401/403/404/409/422; write-once; NO to YES; start and stop; eligibility of a WAF source with live buckets |
-| **HB-9** | **Lab probe** (read-only, §B.3.5): P-1 to P-9, at most 60 searches and 8 GETs; throwaway script outside the repository (the read-only rule applies: read only); a report with raw results and the verdict on A1 to A5 and the cost model | Sonnet | S | none in the repository; a report | none | the report states each **[C-n]** answered or not |
-| **HB-10** | UI: first-run dialog, admin page, admin index link, states | Sonnet | L | `frontend/src/app/admin/history-backfill/**`, `frontend/src/components/history/*`, `frontend/src/components/auth/AppFrame.tsx`, `frontend/src/lib/api.ts` | HB-8 | Vitest for every state of §B.10; the colour-literal test; the three-viewport screenshots (the frontend quality bar) |
-| **HB-11** | Installer: the question, the key, `check_value`, the non-interactive key, `HISTORY_BACKFILL` in the saved answers, step 9b, the summary line, docs | Sonnet | M | `qradar-dash`, `backend/tests/unit/test_qradar_dash_installer.py` and a new CLI test | HB-2 | the installer tests run `cmd_install` on every path: first install interactive yes and no, scripted yes, no, absent; a re-run with a different file never changes a decision; `--reconfigure` does not ask again; an upgrade never asks; a failing CLI warns and continues |
-| **HB-12** | Live validation on the lab: Phase A, catch-all and a WAF/IPS source from the installer Yes path and the UI Yes path; the SQL check "no incident, breach, alert or transition with an interval before `history_end`"; hand-off with no gap and no overlap; a worker restart mid-reading; measured seconds per search | Sonnet | M | none; a report | HB-3..HB-11, HB-9 | the checks of §B.14.4 |
-| **HB-13** | Docs: README and `INSTALL.md`, `CONFIGURATION.md`, `OPERATIONS.md`, `DATA-MODEL.md`, `API.md`, `SEARCH-CADENCE.md` §SC.6 | opencode free model | S | those files | all | none |
+| ID | Task | Size | Files | Depends on | Tests |
+|---|---|---|---|---|---|
+| **HB-1** | The shared pure core: planner (`scan` interpretation, span sizing, density adaptation, halving, gaps, density gate, completion, window fitting), the state machine and enums (`HistoryFamily`, `HistoryState`, `HistoryOrigin`), `origin` helper | M | new `backend/app/history/{planner,state,origin}.py` and unit tests | none | property tests: spans tile `[F, end)` exactly; a failed or truncated search never advances `through`; no row before `F`; the window fits or is refused; no I/O |
+| **HB-2** | Foundations: migration `0030` (two tables, `origin` on four tables, enums), models, settings with validators, `HistoryFamily` registry, the `decide` CLI, RBAC permissions, audit | M | `alembic/versions/0030_history_backfill.py`, `app/models/history_backfill.py`, `models/{waf,ips,catchall,rule}.py`, `core/config.py`, `security/rbac.py`, `cli/history_backfill.py` | HB-1 (enums), PW-13a (migration `0029`) | migration round trip with data, `alembic check`, no server default left, CLI write-once on every path including the audit row and the missing-instance warning |
+| **HB-3** | Phase A adapter and guards: scope planner (`WAITING` until a live bucket), history step in `collect_metrics`, `ariel_history` writer with `DO NOTHING`, per-source floor and zero-fill from `F_s`, the guards of §B.4.1 (both `evaluate_pending` branches, streak, F.1 loaders), baseline rebuild trigger, retention check | L | `collectors/metric_collector.py`, `anomaly/engine.py`, `custom_rules/loaders.py`, `workers/tasks.py`, new `history/phase_a.py` | HB-1, HB-2 | equivalence (live bucket by bucket vs history in chunks, equal except marker and provenance); history never pending (watermark NULL, after, predicate removed on purpose); first-run branch; run through `collect_metrics` on every exit path; statement count constant in sources and buckets |
+| **HB-4** | Catch-all adapter: ledger-seeded history, per-source floor, forced `REVIEWED`, bootstrap hold while `READING`, `origin` | M | `collectors/catchall_collector.py`, new `history/catchall.py` | HB-1, HB-2 | equivalence; no alert from a history step even with alerts on; a live sender during the reading is `REVIEWED`; prepend with existing live senders; retirement at write |
+| **HB-5** | Rule-match adapter: console-total floor, history windows `DO NOTHING`, replacement of the skipped-window `FAILED` records | M | `collectors/rule_match_collector.py`, new `history/rule_match.py` | HB-1, HB-2 | equivalence; coverage `COMPLETE` after a full read; a gap stays `missing`; `COMMON` stays a lower bound |
+| **HB-6** | WAF adapter: bulk history persist (in-memory admission, per-bucket retirement, one statement per table), two passes, hand-off with the two watermarks, evaluation and F.1 guards, the `first_seen_at < history_end` rule | L | `collectors/waf_endpoint_collector.py`, `services/waf_pipeline.py`, `waf/engine.py`, `waf/detector.py`, `custom_rules/loaders.py`, new `history/waf.py` | HB-1, HB-2 | equivalence against the live persist with the same scripted provider; guards 1 to 3 with breaking each on purpose; statement-count pin (§B.8.4); novelty: history-time first appearance is `HEALTHY`/established; a flood in history blocks novelty for 7 days; resume after a worker restart |
+| **HB-7** | IPS adapter: group-level history, hand-off, per-bucket retirement, guards, novelty rule | L | `collectors/ips_collector.py`, `services/ips_pipeline.py`, `ips/engine.py`, `custom_rules/loaders.py`, new `history/ips.py` | HB-1, HB-2 | as HB-6 for IPS |
+| **HB-8** | API and service: the five routes, estimate, audit, permissions, eligibility per family (§B.5) | M | `api/routes/history_backfill.py`, `services/history_backfill.py`, `schemas/history_backfill.py` | HB-2 | permission matrix 401/403/404/409/422; write-once; NO to YES; start and stop; eligibility of a WAF source with live buckets |
+| **HB-9** | **Lab probe** (read-only, §B.3.5): P-1 to P-9, at most 60 searches and 8 GETs; throwaway script outside the repository (the read-only rule applies: read only); a report with raw results and the verdict on A1 to A5 and the cost model | S | none in the repository; a report | none | the report states each **[C-n]** answered or not |
+| **HB-10** | UI: first-run dialog, admin page, admin index link, states | L | `frontend/src/app/admin/history-backfill/**`, `frontend/src/components/history/*`, `frontend/src/components/auth/AppFrame.tsx`, `frontend/src/lib/api.ts` | HB-8 | Vitest for every state of §B.10; the colour-literal test; the three-viewport screenshots (the frontend quality bar) |
+| **HB-11** | Installer: the question, the key, `check_value`, the non-interactive key, `HISTORY_BACKFILL` in the saved answers, step 9b, the summary line, docs | M | `qradar-dash`, `backend/tests/unit/test_qradar_dash_installer.py` and a new CLI test | HB-2 | the installer tests run `cmd_install` on every path: first install interactive yes and no, scripted yes, no, absent; a re-run with a different file never changes a decision; `--reconfigure` does not ask again; an upgrade never asks; a failing CLI warns and continues |
+| **HB-12** | Live validation on the lab: Phase A, catch-all and a WAF/IPS source from the installer Yes path and the UI Yes path; the SQL check "no incident, breach, alert or transition with an interval before `history_end`"; hand-off with no gap and no overlap; a worker restart mid-reading; measured seconds per search | M | none; a report | HB-3..HB-11, HB-9 | the checks of §B.14.4 |
+| **HB-13** | Docs: README and `INSTALL.md`, `CONFIGURATION.md`, `OPERATIONS.md`, `DATA-MODEL.md`, `API.md`, `SEARCH-CADENCE.md` §SC.6 | S | those files | all | none |
 
 Order: HB-1 and PW-13a and HB-9 in parallel; then HB-2; then HB-3..HB-8 and HB-11 in parallel; then HB-10; then HB-12;
 then HB-13. The longest chain is HB-1, HB-2, HB-6, HB-8, HB-10, HB-12.

@@ -3,7 +3,7 @@
 Behavior Analytics stores inventory, aggregates, baselines, incidents and operational state in
 PostgreSQL. Time-series tables use TimescaleDB. It does not persist raw QRadar events.
 
-At this revision the SQLAlchemy metadata contains 77 tables. Fifteen are TimescaleDB hypertables:
+At this revision the SQLAlchemy metadata contains 78 tables. Fifteen are TimescaleDB hypertables:
 
 - `log_source_metric`
 - `search_result_metric`
@@ -52,6 +52,10 @@ QRadar-owned values refreshed by sync.
 use median and median absolute deviation for each weekday-and-hour cell. The supported direct-REST
 source-volume findings are `NO_EVENTS`, `VOLUME_DROP` and `VOLUME_SPIKE`.
 
+A bucket read from QRadar's past is marked in `collection_source` (`ariel_history`, or
+`mock_history` from the mock provider). The column keeps its live values for live rows
+(`ariel_aggregate`, `mock`); the marker is the only difference between the two provenances.
+
 `log_source_anomaly`, detector state and transition rows hold the incident lifecycle. Explanations
 store bounded aggregate contributors and per-dimension completeness; raw events do not leave the
 folding functions.
@@ -69,6 +73,13 @@ Collection reads only the profile version that is enabled and valid.
 measurement and completeness; `waf_endpoint_metric` is sparse and exists where endpoint traffic was
 observed. Seasonal endpoint baselines, detector state, incidents and transitions are stored in
 their own WAF tables.
+
+`waf_source_bucket.origin` is `LIVE` or `HISTORY`: a bucket read from QRadar's past carries
+`HISTORY`. The endpoint metric rows of a history bucket are marked by their source bucket, not by
+a column of their own.
+
+The WAF status counts the truncated and the lower-bound buckets of the last 24 hours without an
+origin condition, so a history bucket of the last day counts into them.
 
 The WAF detectors cover request-rate spikes, blocked-share spikes, server- and client-error share
 spikes, client concentration and newly accessed endpoints. Each requires the corresponding
@@ -88,6 +99,9 @@ Destination ports, destinations and signatures are admitted entities with sparse
 seasonal cells. Source IP concentration, port fan-out and action share are source-level facts.
 `ips_source_bucket` carries totals, completeness, coverage and bounded contributor facts;
 `ips_entity_metric` carries per-entity aggregate observations.
+
+`ips_source_bucket.origin` is `LIVE` or `HISTORY`, as for the other families. The entity metric
+rows of a history bucket are marked by their source bucket.
 
 Detector state and incidents cover port and destination rate spikes, signature bursts, new
 destination ports, source concentration, port fan-out and block-share shifts. Collection,
@@ -109,6 +123,12 @@ minimum event count, per-bucket new-name quota and per-source active ceiling. `c
 stores totals, distinct-sender count and a bounded top-sender list. An absent bucket is unknown;
 truncation makes its counts lower bounds.
 
+`catchall_bucket.origin` is `LIVE` or `HISTORY`.
+
+`catchall_sender.events_24h` is recomputed from the stored top-sender lists of every bucket of the
+last 24 hours, whatever its origin, so a history bucket of the last day counts into it. A sender
+no stored top list named in that window has `NULL`, never zero.
+
 ## Rules and coverage
 
 QRadar's analytics-rule inventory does not expose a reliable last-triggered timestamp or complete
@@ -119,6 +139,9 @@ can support a zero-window claim.
 Measured rule-match windows, rule metrics, state transitions and health snapshots remain separate
 from the inventory. ATT&CK coverage likewise reports `NOT_EVALUATED` rather than zero percent when
 technique mappings are unavailable.
+
+`rule_match_window.origin` is `LIVE` or `HISTORY`; a window read from QRadar's past is `HISTORY`
+and its `rule_match_metric` rows hang on it.
 
 ## Scheduled searches
 
@@ -167,6 +190,24 @@ Each bucket stores total events, parsed events and the unparsed remainder. Cover
 `parsed / total`; the remainder is not admitted as a value. Absence-based findings require exact
 measurement and sufficient coverage.
 
+`pw_bucket.origin` is `LIVE` or `HISTORY`. A watch that asked for a history read keeps its state
+and its progress on the watch row itself:
+
+| Column | Meaning |
+|---|---|
+| `history_days` | days requested; NULL when no history was requested |
+| `history_state` | `NOT_REQUESTED`, `READING`, `COMPLETE`, `PARTIAL` or `UNAVAILABLE` |
+| `history_target_start` | the start of the window, fixed at the first step |
+| `history_floor` | the proved start of what QRadar holds for this scope |
+| `history_through` | the start of the last history bucket written; the resume point |
+| `history_end` | the boundary at hand-off; nothing is proved past `history_through` up to it |
+| `history_started_at`, `history_finished_at` | wall clock |
+| `history_progress` | the planner's counters and the bounded gap list, as JSON |
+
+A history bucket is evidence for the learning detectors and is never a judged interval. A
+threshold rule on a pinned value does not read it either, so a bootstrapped bucket is never
+evaluated.
+
 Property-watch findings cover a value spike, drop, disappearance, newly admitted value and a new
 combination on a two-property watch. Novelty claims are limited to complete recorded history at the
 admission threshold; the platform does not claim that a value has never existed.
@@ -174,6 +215,47 @@ admission threshold; the platform does not claim that a value has never existed.
 A threshold rule may point only to a pinned watch value. This prevents a rule from depending on an
 automatic value that could retire under the active-value ceiling. The foreign key restricts a
 watch change or deletion while such a rule exists.
+
+## History backfill
+
+The operator answers once per console whether the platform may search QRadar's stored past. Two
+tables hold that answer and the state of each reading.
+
+`history_backfill_decision` is one row per console:
+
+| Column | Meaning |
+|---|---|
+| `instance_id` | the console |
+| `answer` | `YES` or `NO` |
+| `days` | the window a Yes reads; NULL for a No |
+| `decided_at`, `decided_by` | when and by whom; `installer` or a principal subject |
+| `source` | `INSTALLER` or `UI` |
+| `updated_at`, `updated_by` | a later change from No to Yes |
+| `start_requested_at`, `start_requested_by` | "Read history now" |
+| `stop_requested_at`, `stop_requested_by` | "Stop reading" |
+
+The two requests exist only on a `YES`. The installer writes this row once and never changes it;
+the admin API may change a `NO` into a `YES` and never reverses a `YES`.
+
+`history_backfill_scope` is one row per console, family and scope key. The key is empty for a
+console-wide family (source volume, catch-all senders, rule matches) and is the QRadar log-source
+id for WAF and IPS, which read per source:
+
+| Column | Meaning |
+|---|---|
+| `state` | `WAITING`, `READING`, `COMPLETE`, `PARTIAL`, `UNAVAILABLE` or `NOT_ELIGIBLE` |
+| `days_requested`, `days_target` | the window asked for and the window that fits |
+| `target_start`, `floor`, `through`, `anchor` | the start of the window, the floor, the resume point and the end |
+| `started_at`, `finished_at` | wall clock |
+| `reason` | words, never a value text |
+| `progress` | the planner's counters, the bounded gap list and the per-source floors, as JSON |
+
+`floor` means different things per family and the API says which: for WAF, IPS and rule matches it
+is the floor QRadar's own read proved, so nothing before it is written; for source volume and
+catch-all it is only where the read started, and the real per-source floors live in `progress`.
+
+The collector is the only writer of the scope rows. The API and the CLI write only the decision
+row; each family applies a request at its next collection.
 
 ## Geography
 
@@ -211,6 +293,10 @@ General Timescale chunk retention is disabled unless the operator enables it and
 day counts. WAF, IPS, catch-all, geography, search-result, custom-rule and property-watch families
 have separate bounded batch-retention settings. A retention task never interprets a missing bucket
 as an observation.
+
+Retention deletes a bucket by age whatever its origin, so a history bucket is deleted with the
+live ones of the same age. The history tables themselves (`history_backfill_decision`,
+`history_backfill_scope`) are not deleted by age.
 
 Property-watch resolved-incident retention is declared in configuration but is not currently
 applied by a task; those incident rows accumulate until that implementation exists.

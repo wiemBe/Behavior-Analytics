@@ -84,14 +84,56 @@ The default release images are under `ghcr.io/wiembe/behavior-analytics/`. The i
 ```
 
 The last question of a first install asks whether to read the last 28 days of history from
-QRadar, so baselines are steadier from day 1 (nothing in the past raises an alert). It is asked
-once: a re-run, `--reconfigure` and a site that already has `.qradar-dash/state.json` do not ask it
-again, and `upgrade` never does. In an answers file the key is `HISTORY_BACKFILL`:
+QRadar, so baselines are steadier from day 1. It is asked once: a re-run, `--reconfigure` and a
+site that already has `.qradar-dash/state.json` do not ask it again, and `upgrade` never does. The
+question and the note above it are:
+
+```text
+    Nothing in the past raises an alert. It sends searches to QRadar for about 3 hours on
+    a small estate and up to 3 days on a large one (a large estate gets a shorter window
+    so that it fits 72 hours); the admin page shows the progress and the estimate.
+14. Read the last 28 days of history from QRadar now, so baselines are steadier from day 1? (yes/no):
+```
+
+In an answers file the key is `HISTORY_BACKFILL`:
 
 - `yes` or `no` records that answer for the console, once, before the first collection. A decision
   that already exists is never changed by the installer.
 - absent leaves the console undecided; nothing is guessed, and the first administrator sign-in
   asks.
+
+The answer is write-once per direction. The installer records it with
+
+```bash
+python -m app.cli.history_backfill decide \
+  --instance <console-name> --answer yes --source installer
+```
+
+and the command never changes a decision that already exists:
+
+| Exit code | Meaning |
+|---:|---|
+| `0` | The answer was recorded, or a decision already existed and was left as it is |
+| `1` | The database failed; nothing was recorded |
+| `2` | The console is not registered, or the arguments are invalid; nothing was recorded |
+
+The installer runs the command right after it registers the console. A failure never stops the
+installation: the console stays undecided and the first administrator sign-in asks. The install
+summary then prints either the recorded answer or `not recorded (exit N)`.
+
+What the two answers do:
+
+- **Yes** — the console may read QRadar's stored past. Each family reads the days before its
+  first live data at its next collection: source volume, catch-all senders and rule matches
+  always, and a WAF or IPS source only when it has not collected anything yet. Nothing in the past
+  is judged: no incident, no breach and no alert refers to an interval before the reading's
+  hand-off. A Yes is never reversed; the reading can be stopped instead.
+- **No** — nothing is read from QRadar's past. The answer can still be changed to Yes later by an
+  administrator on the history backfill page.
+
+The window and the cost of the reading are governed by the `HISTORY_BACKFILL_*` settings; see
+[`CONFIGURATION.md`](CONFIGURATION.md#history-backfill). The progress and the estimate are on
+`/admin/history-backfill`.
 
 After installation:
 

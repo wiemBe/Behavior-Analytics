@@ -1,6 +1,6 @@
 # Phase D — IPS traffic behavior (goal G2)
 
-Status: **design, 2026-10-13.** The orchestrator owns this file. It builds on the WAF architecture
+Status: **design, 2026-10-13.** It builds on the WAF architecture
 ([`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md) §27–§30), the search cadence
 ([`SEARCH-CADENCE.md`](SEARCH-CADENCE.md)) and the field-mapping contract
 ([`FIELD-MAPPING.md`](FIELD-MAPPING.md) §FM.9).
@@ -9,7 +9,7 @@ Status: **design, 2026-10-13.** The orchestrator owns this file. It builds on th
 
 Following the convention of WAF §27, each design item below is marked **[BUILT]** (exists in the
 code) or **[DESIGN]** (specified here, not built), with a short note where the built thing
-differs from the design. Status was checked against the code on this branch.
+differs from the design. Status was checked against the code in this release.
 
 Of §D.13: **built** — T-049 (§D.3 profile, `/ips` admin API), T-050 (§D.5 collection, §D.4
 admission, §D.9 persistence), T-051a (§D.6 pure detectors), T-051b (detection tables `0021`, the
@@ -24,7 +24,7 @@ built** — T-054 (§D.12 live validation).
 G2 (2026-10-12): detect whether the ports, IPs and endpoints seen on the IPS and the WAF arrive at
 their normal rates, and alert on a deviation. For the IPS: track **ports and IPs**. Production IPS
 is **Cisco Firepower Threat Defense** and **Palo Alto (THREAT logs)**. On 2026-10-12 the user also
-asked (D-8) that field names be changeable from the UI, "the same for some IPS".
+asked that field names be changeable from the UI, "the same for some IPS".
 
 ## D.1 Facts that constrain the design
 
@@ -39,7 +39,7 @@ T-041 (property catalog and AQL syntax):
   `protocolid` are populated on 100 % of FTD and PAN events; the signature resolves through
   `qid` / `QIDNAME(qid)`; `severity` is normalized.
 - **No action anywhere.** Neither DSM separates block from allow in a property, the QID or the
-  severity. A block ratio needs an operator-authored custom property (D-8).
+  severity. A block ratio needs an operator-authored custom property, mapped from the UI.
 - **Absent values are not NULL** (T-027): an absent port is `0`, an absent protocol is `255`;
   `UNIQUECOUNT` counts the `0`; internal events carry loopback IPs. Population is a `> 0` share.
 - **Ariel forms measured accepted:** `SUM(eventcount)`, `COUNT(*)`, `UNIQUECOUNT`, `MAX`,
@@ -52,13 +52,13 @@ T-041 (property catalog and AQL syntax):
 
 **In:** per-IPS-source behavior of destination ports, destination IPs, signatures, source-IP
 concentration, port fan-out (scans), and — only once an action property is mapped — the block
-ratio. Seasonal baselines, the WAF lifecycle and alerting, the D-8 profile and editor.
+ratio. Seasonal baselines, the WAF lifecycle and alerting, the field-mapping profile and editor.
 
 **Out:** whole-source event volume (Phase A already judges it on IPS sources); per-source-IP
 baselines (cardinality is unbounded; T-027 §4); intent claims (a port sweep is a composition, not
 an attack verdict); flows; correlation with offenses.
 
-## D.3 The IPS source profile (D-8) **[BUILT]**
+## D.3 The IPS source profile **[BUILT]**
 
 Built by T-049: migration `0017`, the mapping contract in `app/ips/profile.py`, validation in
 `app/ips/validation.py`, upsert and lifecycle in `app/services/ips_profiles.py`. Administration
@@ -133,11 +133,11 @@ recorded, the bucket's discovery is incomplete, and the fan-out detector (D.6) i
 Built by T-050b (migration `0018`): the split driver in `app/ips/keyed_search.py`, the per-tick
 plan in `app/ips/collection_plan.py`, the folds in `app/ips/fold.py`, the collector in
 `app/collectors/ips_collector.py` and the `dispatch_ips_collection` beat task. The family's
-cadence row was originally seeded at 1 h and D-28 moves its untouched default to 15 min. Collection
+cadence row was originally seeded at 1 h and the 2026-10-18 default moves an untouched row to 15 min. Collection
 is gated twice — `IPS_COLLECTION_ENABLED` (default
 false) and, per source, an enabled profile whose current version validated `VALID`.
 
-The `IPS_COLLECTION` family (cadence 5 min – 8 h, default 15 min; 1 h before D-28; §SC.4) drives it. Per tick,
+The `IPS_COLLECTION` family (cadence 5 min – 8 h, default 15 min; 1 h before 2026-10-18; §SC.4) drives it. Per tick,
 for every enabled, validated IPS source at once:
 
 | Search | AQL shape (bucket key `k = starttime / bucket_ms`) | Yields per (source, bucket) |
@@ -181,8 +181,7 @@ built (T-051c: `IpsAnomalyEngine` in `app/ips/engine.py`, `IpsInstancePipeline` 
 `IPS_COLLECTION_ENABLED` is true and `NOT_ENABLED` otherwise (the default).
 
 Every detector is pure, has a `DetectorSpec` in `app/anomaly/capabilities.py` declaring its inputs,
-and fails closed (D.8). A new `IpsAnomalyType` (never `AnomalyType` or `WafAnomalyType`, AGENTS.md
-rule 6).
+and fails closed (D.8). A new `IpsAnomalyType` (never `AnomalyType` or `WafAnomalyType`).
 
 | Type | Subject | Claim | Generator scenario |
 |---|---|---|---|
@@ -235,8 +234,7 @@ Additive migration; Phase A and WAF tables untouched. Mirrors WAF:
 completeness and coverage, concentration and fan-out facts, contributors ≤ 10, truncation flags),
 `ips_entity`, `ips_entity_metric` (hypertable), `ips_entity_baseline`, `ips_detector_state`,
 `ips_anomaly`, `ips_anomaly_transition`; a seeded `search_cadence` row for `IPS_COLLECTION`.
-Retention follows WAF's settings pattern. Per-run SQL stays constant (bulk loaders, AGENTS.md
-rule 9 applies to IPS as to WAF).
+Retention follows WAF's settings pattern. Per-run SQL stays constant (bulk loaders, as WAF).
 
 ## D.10 Alerting **[BUILT]**
 
@@ -257,7 +255,7 @@ Two ruled differences from WAF:
 
 ## D.11 API and UI
 
-1. **Profile administration** (§D.3) — **[BUILT]** API and `/admin/ips-sources`, from the D-8
+1. **Profile administration** (§D.3) — **[BUILT]** API and `/admin/ips-sources`, from the field-mapping
    components (T-049, T-053; per-field status on `/ips/sources` from T-078).
 2. **Analyst view** — API **[BUILT]** (T-085), UI **[DESIGN]**. With the WAF analyst API and UI
    (design §27.14–§27.15), one subject model: anomaly list with `subject_kind` `IPS_ENTITY`/`IPS_SOURCE`, investigation
@@ -277,14 +275,14 @@ can create; it is skipped until then.
 
 ## D.13 Task split
 
-| ID | Task | Agent |
-|---|---|---|
-| T-049 | D.3 profile: model, migration, service (upsert, validate async, enable), the `/ips` admin API, presets, IPS validation semantics — **[BUILT]** | Codex |
-| T-050 | D.5 collection: provider keyed fleet searches (base, REST, mock), folds, the time-then-source split, `IPS_COLLECTION` family and gate, buckets, entities, admission, metrics — **[BUILT]** | Codex or Sonnet |
-| T-051 | D.6–D.7 baselines and detectors, capability specs, engine with bulk loaders, lifecycle — **[BUILT]**: T-051a pure detectors, T-051b tables `0021`, baseline builder and fingerprint, T-051c engine, lifecycle and pipeline step, T-051d per-source training bound | Sonnet |
-| T-052 | D.10 alerting — **[BUILT]** | Sonnet |
-| T-053 | `/admin/ips-sources` UI from the D-8 components; screenshots — **[BUILT]** | Sonnet |
-| T-054 | D.12 live validation — **[DESIGN]** | Sonnet |
-| T-055 | Docs: README, this design's [BUILT] markers — **[BUILT]** (this revision) | opencode free model |
+| ID | Task |
+|---|---|
+| T-049 | D.3 profile: model, migration, service (upsert, validate async, enable), the `/ips` admin API, presets, IPS validation semantics — **[BUILT]** |
+| T-050 | D.5 collection: provider keyed fleet searches (base, REST, mock), folds, the time-then-source split, `IPS_COLLECTION` family and gate, buckets, entities, admission, metrics — **[BUILT]** |
+| T-051 | D.6–D.7 baselines and detectors, capability specs, engine with bulk loaders, lifecycle — **[BUILT]**: T-051a pure detectors, T-051b tables `0021`, baseline builder and fingerprint, T-051c engine, lifecycle and pipeline step, T-051d per-source training bound |
+| T-052 | D.10 alerting — **[BUILT]** |
+| T-053 | `/admin/ips-sources` UI from the field-mapping components; screenshots — **[BUILT]** |
+| T-054 | D.12 live validation — **[DESIGN]** |
+| T-055 | Docs: README, this design's [BUILT] markers — **[BUILT]** (this revision) |
 
 Order: T-049 → T-050 → T-051 → T-052; T-053 after T-049; T-054 last.

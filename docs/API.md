@@ -35,6 +35,7 @@ capability or `admin:*`.
 | `/dashboards` | `read:dashboards` | `dashboard:write`; sharing needs `admin:dashboards` |
 | `/custom-rules` | `read:custom_rules` | `custom_rule:write` |
 | `/property-watches` | `read:property_watches` | `property_watch:write` |
+| `/admin/history-backfill` | `read:history_backfill` | `admin:history_backfill` |
 | `/auth/admin` | `admin:auth` | same administrative capability |
 | `/users` | `admin:users` | same administrative capability |
 
@@ -76,6 +77,7 @@ capability.
 | `/custom-rules/new` | Which stored aggregate should a new threshold rule judge? |
 | `/custom-rules/[id]` | What did a stored rule read, and what is its breach history? |
 | `/admin` | Which collection and policy surfaces can this administrator control? |
+| `/admin/history-backfill` | What has been read from QRadar's past, what could not be, and what may still be read? |
 | `/admin/search-cadence` | How often should each QRadar search family run? |
 | `/admin/classification-rules` | How are log sources assigned to fleet classes? |
 | `/admin/waf-sources` | Which WAF sources have valid, enabled field mappings? |
@@ -142,9 +144,107 @@ All paths below are under `/property-watches`.
 | `GET /{id}/series` | Bulk series for at most twelve values |
 | `POST /{id}/preview` | Run one bounded, rate-limited Ariel preview |
 | `PUT /{id}/pins` | Replace pinned values and report dependent threshold rules |
+| `POST /{id}/history` | Ask for a history read of `history_days` days |
 
 Preview history is limited to 1–168 hours and defaults to 24 hours. Audit records store counts and
 digests of pinned values, never the values themselves.
+
+### The history block of a watch
+
+Every watch read carries a `history` object:
+
+| Field | Meaning |
+|---|---|
+| `state` | `NOT_REQUESTED`, `READING`, `COMPLETE`, `PARTIAL` or `UNAVAILABLE` |
+| `days_requested` | the days asked for; `null` when no history was requested |
+| `target_start`, `floor`, `through`, `end` | the start of the window, the proved floor, the resume point and the boundary at hand-off |
+| `days_read` | whole buckets read, one decimal; `null` when nothing was measured |
+| `searches`, `buckets_read` | the counters of the reading; `null` when nothing was measured |
+| `gaps` | the spans that could not be read, with their reason |
+| `reason` | words, never a value |
+| `progress_unreadable` | true when the stored progress did not read back; the counters are then `null`, never zero |
+| `started_at`, `finished_at` | wall clock |
+| `estimate` | the cost of the request, on a single-watch read of a watch that asked and has not finished |
+
+There is no ETA: the estimate is the planner's arithmetic on the stored pins, not a promise.
+
+`history_days` is an optional field of the create and patch bodies. Omitted on a create, it is
+`PW_BOOTSTRAP_DAYS` while history reading is on and none while it is off; `0` asks for none and an
+explicit `null` is refused. `POST /property-watches/{id}/history` takes `{"history_days": n}` and
+asks for a read of that many days; `0` means no history. The value must be `0` or between
+`PW_NEW_VALUE_HISTORY_DAYS` and `PW_BOOTSTRAP_DAYS`; anything else is a 422 with the reason. The
+request is allowed only on a watch that has never read, holds no bucket of its current version and
+has no watermark; otherwise it is a 409 naming the reason. The route writes the request and nothing
+else of the bootstrap: the collector starts the reading at its next tick and owns every other
+history column. The same value as stored is a 200 with no audit row. The request is audited as
+`property_watch.history_request` with the day count, never a value.
+
+## History backfill
+
+All paths below are under `/admin/history-backfill`. The router requires `read:history_backfill`;
+the three writes require `admin:history_backfill` as well. `read:*` does not grant the write.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /admin/history-backfill` | One entry per enabled console: the decision, the mode and every family's scopes |
+| `GET /admin/history-backfill/estimate` | The cost model per console and family |
+| `PUT /admin/history-backfill/{instance_id}` | Record the answer (`{"answer": "YES" \| "NO"}`) |
+| `POST /admin/history-backfill/{instance_id}/start` | Ask every family to read history now |
+| `POST /admin/history-backfill/{instance_id}/stop` | Ask every family that is reading to stop |
+
+The body of the decision takes `answer` and nothing else: `days` is always the stored setting, and
+no route takes an AQL, a window or a number of days from the browser. The answer is written once
+per direction. A `NO` may become a `YES` later; a `YES` is never reversed. The writes are audited
+as `history_backfill.decide`, `history_backfill.start` and `history_backfill.stop`.
+
+The decision returns the console entry again, with `201` when the row was created and `200` when
+it already existed or was upgraded. The two requests return the console entry with a `message`
+that says what was recorded; they change no scope row, because each family applies the request at
+its next collection.
+
+An unknown or disabled console is a 404 (`console not found`). A refused write is a 409 whose body
+carries the reason and the console's current state:
+
+| Refusal | Reason |
+|---|---|
+| A `NO` on a console that already answered `YES` | "a Yes is never reversed; stop the reading instead" |
+| A decision recorded in the meantime | "a decision was recorded in the meantime; it is shown here" |
+| "Read history now" or "Stop reading" on a console with no `YES` | "record Yes first: the console has no Yes answer to start or stop" |
+
+The console entry holds the decision (`answer`, `days`, who recorded it and when, and the two
+requests), the mode (`UNDECIDED`, `NO`, `ACTIVE` or `STOPPED`) and one family per reading family:
+the family's collection switch and the reason for it, the fitted window (`days_requested`,
+`days`, `available`, `limited_by`, `reason`) and its scopes. A scope carries its state, the days
+asked for and the days that fit, the start of the window, the floor (`floor_proved` says whether
+QRadar proved it or whether it is only where the read started), the resume point, the anchor,
+the counters (`searches`, `buckets_read`, `days_read`), the gaps and the reason. A counter that
+was not measured is `null`, never a zero, and `progress_unreadable` says that a stored progress
+did not read back.
+
+The estimate is a model of the cost, not a measurement: searches, ticks and hours per family,
+with the assumptions it rests on. A family whose count the model needs is missing answers with no
+figure and a reason.
+
+### Which bucket came from the past
+
+Every family that stores buckets says, per bucket, whether it was read from QRadar's past or
+collected by the cadence. The field is `origin`, with the values `LIVE` and `HISTORY`. A bucket
+that was read from the past is used for learning and is never judged.
+
+| Response | Where `origin` is |
+|---|---|
+| `GET /behavior/sources/{log_source_id}/metrics` | every bucket |
+| `GET /behavior/waf/sources`, `GET /behavior/waf/sources/{log_source_id}` | the source's latest bucket |
+| `GET /behavior/waf/endpoints/{endpoint_id}/metrics` | every bucket |
+| `GET /behavior/ips/sources` | the source's latest bucket |
+| `GET /behavior/ips/sources/{log_source_id}/metrics` | every bucket |
+| `GET /behavior/ips/entities/{entity_id}/metrics` | every bucket |
+| `GET /fleet/catchall/buckets` | every bucket |
+| `GET /property-watches/{id}/buckets`, `GET /property-watches/{id}/series` | every bucket and every point |
+| `GET /rules/statistics` | `history_windows`: how many of the complete windows came from the past |
+
+The endpoint and entity metric rows of a WAF or IPS bucket carry the marker of their source
+bucket, so a metric row without a source bucket has no origin at all.
 
 ## Custom threshold rules
 

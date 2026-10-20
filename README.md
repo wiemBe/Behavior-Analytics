@@ -67,6 +67,20 @@ A property watch tracks one or two QRadar property values over a source, source 
 group. It can detect value spikes, drops, disappearance, newly admitted values and new combinations.
 Coverage, scope changes, admission and learning progress remain visible to the analyst.
 
+### History backfill
+
+Baselines are steadier when the platform learns from QRadar's stored past as well as from the
+current collection. The operator answers once per console whether the past may be read, and a
+property watch may ask for its own history separately. A bucket read from the past is marked, is
+used for learning only, and never opens an incident, a breach or an alert: nothing in the past is
+judged.
+
+The decision, the reading progress and the estimate are on `/admin/history-backfill`, and the
+first administrator sign-in asks the question when the installer did not. The reading is switched
+on and off with `HISTORY_BACKFILL_ENABLED` and `PW_BOOTSTRAP_ENABLED`; every other setting of the
+feature, its defaults and its bounds are in the
+[configuration reference](docs/CONFIGURATION.md#history-backfill).
+
 ## Honest about missing data
 
 Every reading says whether it is **measured**, a **lower bound**, or **not collected**. A missing,
@@ -238,6 +252,7 @@ The upstream MCP tool audit is published in the
 | [Rule analytics](docs/PHASE-E-RULE-ANALYTICS.md) | Measured rule matches, statistics and health limitations |
 | [Custom detections](docs/PHASE-F-CUSTOM-DETECTIONS.md) | Aggregate threshold rules and guarded custom searches |
 | [History bootstrap](docs/PHASE-G-HISTORY-BOOTSTRAP.md) | Bounded bootstrap design for property-watch history |
+| [History backfill](docs/HISTORY-BACKFILL.md) | The platform-wide history read: the answer, the window, the cost and the guards |
 | [Property watches](docs/PHASE-G-PROPERTY-WATCH.md) | Scope, values, coverage, detection and alerting |
 | [Product UX guidelines](docs/PRODUCT-UX-GUIDELINES.md) | Normative analyst-interface and accessibility rules |
 | [Search cadence](docs/SEARCH-CADENCE.md) | Search families, scheduling, split behavior and cost |
@@ -255,6 +270,8 @@ The upstream MCP tool audit is published in the
 - Geography stores country aggregates only. Private, internal and unknown addresses share the same
   unresolved remainder because QRadar does not distinguish them in this lookup.
 - The synthetic telemetry generator is never started by the backend, workers, Compose or tests.
+- A history read fills the baselines; it never judges the past. A source that already collected
+  live data cannot read its own past: its scope is `NOT_ELIGIBLE`.
 
 ## License
 
