@@ -1,0 +1,18 @@
+/* Buckets read from QRadar's past (HB-10b): the key swatch of the neutral span the charts
+   shade. The fill is the neutral status fill, not a status hue. */
+.chart-key-history {
+  height: 10px;
+  background: var(--neutral-bg);
+  border: 1px dashed var(--neutral-border);
+}
+.history-marker {
+  display: inline-block;
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--neutral-text);
+  background: var(--neutral-bg);
+  border: 1px solid var(--neutral-border);
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+}

@@ -30,6 +30,15 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef } from "react";
 
+import { HistoryKey, HistoryText } from "@/components/behavior/HistoryKey";
+import {
+  historyIntervals,
+  historyMarkAreas,
+  originByTime,
+  originText,
+  readHistoryShade,
+  type OriginRow,
+} from "@/components/behavior/historyOrigin";
 import { readChartPalette } from "@/lib/chartPalette";
 import { formatDateTime } from "@/lib/health";
 import { bucketWidth } from "@/components/waf/wafFormat";
@@ -111,7 +120,7 @@ export function IpsSeriesChart({
 }: {
   points: IpsPoint[];
   /** The stored bucket rows behind `points`, for the marked intervals. */
-  rows: Array<{ bucket_start: string; bucket_seconds: number }>;
+  rows: OriginRow[];
   unit: IpsUnit;
   /** The measured quantity in words, for the key and the tooltip. */
   quantity: string;
@@ -136,6 +145,8 @@ export function IpsSeriesChart({
 
   const scale = unit === "share" ? 100 : 1;
   const marks = useMemo(() => ipsMarkedIntervals(rows, points), [rows, points]);
+  const history = useMemo(() => historyIntervals(rows), [rows]);
+  const origins = useMemo(() => originByTime(rows), [rows]);
   const seasonal = baseline != null;
   const lookup = useMemo(() => (baseline ? buildIpsBaselineLookup(baseline) : null), [baseline]);
   // Per bucket, from the cell of that bucket's weekday and hour. A gap point and a
@@ -191,6 +202,7 @@ export function IpsSeriesChart({
           { xAxis: m.end },
         ];
       });
+      const historyAreas = historyMarkAreas(history, readHistoryShade());
       const anomalyAreas: MarkAreaPair[] = anomalies.map(
         (a): MarkAreaPair => [
           { xAxis: Date.parse(a.start), itemStyle: { color: c.anomaly }, name: "anomaly" },
@@ -272,6 +284,7 @@ export function IpsSeriesChart({
               `Measurement: ${measurementMeaning(p.measurement)}`,
               p.maintenance ? "In maintenance: not judged by the engine" : "",
               p.admissionTruncated ? "Entity admission was truncated in this bucket" : "",
+              originText(origins.get(p.t)),
             ]
               .filter(Boolean)
               .join("<br/>");
@@ -320,8 +333,8 @@ export function IpsSeriesChart({
                 }
               : undefined,
             markArea:
-              markAreas.length + anomalyAreas.length
-                ? { ...quiet, data: [...markAreas, ...anomalyAreas] }
+              markAreas.length + anomalyAreas.length + historyAreas.length
+                ? { ...quiet, data: [...markAreas, ...historyAreas, ...anomalyAreas] }
                 : undefined,
             markLine: transitions.length
               ? {
@@ -393,6 +406,8 @@ export function IpsSeriesChart({
     quantity,
     bandLabel,
     medianLabel,
+    history,
+    origins,
   ]);
 
   useEffect(() => {
@@ -417,6 +432,7 @@ export function IpsSeriesChart({
     <>
       <div ref={containerRef} className="chart chart-ips" role="img" aria-label={ariaLabel} />
       {textSummary && <p className="sr-only">{textSummary}</p>}
+      <HistoryText rows={rows} />
       <ul className="chart-legend" aria-label="Chart key">
         <li>
           <span className="chart-key chart-key-observed" aria-hidden="true" />
@@ -458,6 +474,7 @@ export function IpsSeriesChart({
             Lifecycle transition
           </li>
         )}
+        {history.length > 0 && <HistoryKey />}
       </ul>
       <p className="subtitle chart-note">
         Gaps in the line are buckets that were not stored or not measured. They are not{" "}

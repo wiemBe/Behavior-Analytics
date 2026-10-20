@@ -20,6 +20,7 @@
 import { BarChart } from "echarts/charts";
 import {
   GridComponent,
+  MarkAreaComponent,
   MarkLineComponent,
   TooltipComponent,
 } from "echarts/components";
@@ -27,10 +28,25 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef } from "react";
 
+import { HistoryText } from "@/components/behavior/HistoryKey";
+import {
+  historyMarkArea,
+  originText,
+  readHistoryShade,
+} from "@/components/behavior/historyOrigin";
 import { readChartPalette } from "@/lib/chartPalette";
 import { formatDateTime } from "@/lib/health";
 
-import { axisLabel, barValue, bucketUnit, formatCount, gapBand, niceMax, type Slot } from "./catchall";
+import {
+  axisLabel,
+  barValue,
+  bucketUnit,
+  formatCount,
+  gapBand,
+  historySpans,
+  niceMax,
+  type Slot,
+} from "./catchall";
 
 import type { EChartsOption } from "echarts";
 
@@ -38,6 +54,7 @@ echarts.use([
   BarChart,
   GridComponent,
   TooltipComponent,
+  MarkAreaComponent,
   MarkLineComponent,
   CanvasRenderer,
 ]);
@@ -70,6 +87,11 @@ export function BucketChart({
       const categories = slots.map((s) => String(s.t));
       const yMax = niceMax(Math.max(0, ...slots.map((s) => barValue(s) ?? 0)));
       const band = gapBand(slots, yMax);
+      const shade = readHistoryShade();
+      // One span per run of contiguous history buckets, on the shading series, behind the bars.
+      const pastAreas = historySpans(slots).map(([first, last], i) =>
+        historyMarkArea(first, last, shade, i === 0),
+      );
       const reduceMotion =
         typeof window !== "undefined" &&
         typeof window.matchMedia === "function" &&
@@ -109,6 +131,7 @@ export function BucketChart({
                 b.distinct_senders,
               )}`,
               atLeast ? "Truncated search: more events may exist" : "",
+              originText(b.origin),
             ]
               .filter(Boolean)
               .join("<br/>");
@@ -147,6 +170,9 @@ export function BucketChart({
             barCategoryGap: 0,
             itemStyle: { color: c.gap, borderColor: c.gap, borderWidth: 1 },
             z: 1,
+            markArea: pastAreas.length
+              ? { silent: true, label: { show: false }, data: pastAreas }
+              : undefined,
           },
           {
             type: "bar",
@@ -203,6 +229,9 @@ export function BucketChart({
     <>
       <div ref={containerRef} className="chart" role="img" aria-label={ariaLabel} />
       <p className="sr-only">{textSummary}</p>
+      <HistoryText
+        rows={slots.flatMap((s) => (s.bucket ? [s.bucket] : []))}
+      />
     </>
   );
 }

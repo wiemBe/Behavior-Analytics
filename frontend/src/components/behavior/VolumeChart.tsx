@@ -41,6 +41,15 @@ import {
   unobservedIntervals,
 } from "@/lib/timeseries";
 
+import { HistoryKey, HistoryText } from "./HistoryKey";
+import {
+  historyIntervals,
+  historyMarkAreas,
+  originByTime,
+  originText,
+  readHistoryShade,
+} from "./historyOrigin";
+
 import type { EChartsOption } from "echarts";
 
 // Modular registration rather than the full `echarts` bundle: this needs one
@@ -125,6 +134,9 @@ export function VolumeChart({
   const points = useMemo(() => buildSeries(buckets), [buckets]);
   const unobserved = useMemo(() => unobservedIntervals(buckets), [buckets]);
   const hasBand = expectedLow != null && expectedHigh != null;
+  // Buckets read from QRadar's past: shaded in the neutral span and named in text.
+  const history = useMemo(() => historyIntervals(buckets), [buckets]);
+  const origins = useMemo(() => originByTime(buckets), [buckets]);
 
   // Built from the tokens, so it can only run in the browser. Everything that
   // needs a colour lives in here.
@@ -162,6 +174,7 @@ export function VolumeChart({
             { xAxis: m.end },
           ],
         ),
+        ...historyMarkAreas(history, readHistoryShade()),
       ];
 
       // Honour the OS-level preference: the CSS guard cannot reach a canvas
@@ -217,6 +230,7 @@ export function VolumeChart({
               band,
               `Collection: ${kindMeaning(p.kind)}`,
               inAnomaly ? `Anomalous interval: ${inAnomaly.label ?? "anomaly"}` : "",
+              originText(origins.get(p.t)),
             ]
               .filter(Boolean)
               .join("<br/>");
@@ -328,7 +342,7 @@ export function VolumeChart({
         ],
       };
     };
-  }, [points, unobserved, expected, expectedLow, expectedHigh, hasBand, anomalies, transitions]);
+  }, [points, unobserved, expected, expectedLow, expectedHigh, hasBand, anomalies, transitions, history, origins]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -363,6 +377,7 @@ export function VolumeChart({
       {/* The chart's content as prose. A canvas is opaque to a screen reader,
           so without this the series, the band and the gaps are unreachable. */}
       {textSummary && <p className="sr-only">{textSummary}</p>}
+      <HistoryText rows={buckets} />
       {/* A key for the marks that were actually drawn, and nothing else. */}
       <ul className="chart-legend" aria-label="Chart key">
         <li>
@@ -399,6 +414,7 @@ export function VolumeChart({
             Lifecycle transition
           </li>
         )}
+        {history.length > 0 && <HistoryKey />}
       </ul>
       <p className="subtitle chart-note">
         Gaps in the observed line are intervals that were not fully collected.

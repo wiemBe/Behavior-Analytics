@@ -18,6 +18,15 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useMemo } from "react";
 
+import { HistoryKey, HistoryText } from "@/components/behavior/HistoryKey";
+import {
+  historyIntervals,
+  historyMarkAreas,
+  originByTime,
+  originText,
+  readHistoryShade,
+  type HistoryInterval,
+} from "@/components/behavior/historyOrigin";
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import { useEChart } from "@/components/home/useEChart";
 import type { MetricBucket } from "@/lib/api";
@@ -52,9 +61,18 @@ export interface SourceEpsModel {
   cells: Array<SeasonalValue | null>;
   hasBand: boolean;
   hasMedian: boolean;
+  /** Spans of buckets read from QRadar's past: shaded, never judged. */
+  history: HistoryInterval[];
+  /** Words inside the chart: only where the chart is large enough to keep them off the line. */
+  labelled: boolean;
+  origins: ReturnType<typeof originByTime>;
 }
 
-export function sourceEpsModel(buckets: MetricBucket[], lookup: BaselineLookup | null): SourceEpsModel {
+export function sourceEpsModel(
+  buckets: MetricBucket[],
+  lookup: BaselineLookup | null,
+  labelled = true,
+): SourceEpsModel {
   const points = buildSeries(buckets);
   const cells = points.map((p) => (lookup && p.kind !== "GAP" ? lookup(p.t) : null));
   return {
@@ -63,6 +81,9 @@ export function sourceEpsModel(buckets: MetricBucket[], lookup: BaselineLookup |
     cells,
     hasBand: cells.some((c) => c?.low != null && c.high != null),
     hasMedian: cells.some((c) => c != null),
+    history: historyIntervals(buckets),
+    labelled,
+    origins: originByTime(buckets),
   };
 }
 
@@ -89,6 +110,7 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
       { xAxis: g.end },
     ],
   );
+  const historyAreas = historyMarkAreas(m.history, readHistoryShade(), m.labelled);
   const lone = isolatedPoints(points);
   const fmt = (v: number) => v.toFixed(2);
 
@@ -123,6 +145,7 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
             ? `Expected range: ${fmt(cell.low)} – ${fmt(cell.high)} ${UNIT}`
             : "Expected range: no reliable baseline for this weekday and hour",
           `Collection: ${kindMeaning(p.kind)}`,
+          originText(m.origins.get(p.t)),
         ]
           .filter(Boolean)
           .join("<br/>");
@@ -168,9 +191,10 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
               })),
             }
           : undefined,
-        markArea: gapAreas.length
-          ? { silent: true, label: { show: false }, data: gapAreas }
-          : undefined,
+        markArea:
+          gapAreas.length + historyAreas.length
+            ? { silent: true, label: { show: false }, data: [...gapAreas, ...historyAreas] }
+            : undefined,
       },
       {
         type: "line",
@@ -218,14 +242,17 @@ export function SourceEpsChart({
   lookup,
   ariaLabel,
   textSummary,
+  labelled = false,
 }: {
   buckets: MetricBucket[];
   /** The seasonal cells; null when they could not be read (no band is drawn). */
   lookup: BaselineLookup | null;
   ariaLabel: string;
   textSummary: string;
+  /** The history words inside the chart (the expanded widget); the tile leaves them to the key. */
+  labelled?: boolean;
 }) {
-  const model = useMemo(() => sourceEpsModel(buckets, lookup), [buckets, lookup]);
+  const model = useMemo(() => sourceEpsModel(buckets, lookup, labelled), [buckets, lookup, labelled]);
   const build = useMemo(
     () => (model.points.length > 0 ? (p: HomePalette) => buildSourceEpsOption(model, p) : null),
     [model],
@@ -235,6 +262,7 @@ export function SourceEpsChart({
     <>
       <div ref={ref} className="hc-chart cw-tall" role="img" aria-label={ariaLabel} />
       <p className="sr-only">{textSummary}</p>
+      <HistoryText rows={buckets} />
       <ul className="hc-key-list" aria-label="Chart key">
         <li>
           <span className="chart-key chart-key-observed" aria-hidden="true" />
@@ -258,6 +286,7 @@ export function SourceEpsChart({
             Not measured
           </li>
         )}
+        {model.history.length > 0 && <HistoryKey />}
       </ul>
     </>
   );

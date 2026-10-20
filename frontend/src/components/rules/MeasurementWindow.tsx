@@ -15,6 +15,7 @@ import {
 export function MeasurementWindow({ window: w }: { window: RuleStatisticsWindow }) {
   const state = windowState(w);
   const requested = `${w.days} ${daysLabel(w.days)}`;
+  const fromHistory = w.history_windows ?? 0;
 
   return (
     <p
@@ -36,6 +37,12 @@ export function MeasurementWindow({ window: w }: { window: RuleStatisticsWindow 
               : "No complete rule-match window exists in the requested span.")}
         </>
       )}{" "}
+      {fromHistory > 0 && (
+        <>
+          {fromHistory.toLocaleString("en-US")} of {w.complete_windows.toLocaleString("en-US")}{" "}
+          complete windows were read from QRadar history, not judged.{" "}
+        </>
+      )}
       Times are UTC.
     </p>
   );

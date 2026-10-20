@@ -24,8 +24,6 @@ export const KNOWN_PERMISSIONS = [
   "read:alerts",
   "read:search_cadence",
   "admin:search_cadence",
-  "read:history_backfill",
-  "admin:history_backfill",
   "read:fleet",
   "admin:classification",
   "admin:outage",

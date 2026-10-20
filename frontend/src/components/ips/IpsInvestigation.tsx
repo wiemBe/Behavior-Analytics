@@ -31,6 +31,7 @@ import {
 import { IpsDetectionBlock } from "./IpsDetectionBlock";
 import { IpsIncidentHeader } from "./IpsIncidentHeader";
 import { IpsIncidentMetrics } from "./IpsIncidentMetrics";
+import type { OriginRow } from "@/components/behavior/historyOrigin";
 import { IpsSeriesChart } from "./IpsSeriesChart";
 import { summarizeIpsAnomaly } from "./ipsSummary";
 
@@ -43,7 +44,7 @@ export type IpsSeriesData =
 
 interface Plan {
   points: IpsPoint[];
-  rows: Array<{ bucket_start: string; bucket_seconds: number }>;
+  rows: OriginRow[];
 }
 
 /**

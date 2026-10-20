@@ -12,6 +12,9 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { ApiError, catchallApi, type CatchallSourceList } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
 
+import { HistoryKey } from "@/components/behavior/HistoryKey";
+import { originMarker } from "@/components/behavior/historyOrigin";
+
 import { BucketChart } from "./BucketChart";
 import { SenderId } from "./SenderId";
 import {
@@ -20,6 +23,7 @@ import {
   admissionSentences,
   buildSlots,
   bucketUnit,
+  historyCount,
   collectedUpTo,
   formatCount,
   latestMeasuredIndex,
@@ -205,6 +209,7 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
                 Not measured
               </li>
             )}
+            {historyCount(series.slots) > 0 && <HistoryKey />}
           </ul>
 
           <div className="bucket-nav" role="group" aria-label="Choose a bucket">
@@ -260,6 +265,14 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
                         )}
                       </dd>
                     </div>
+                    {originMarker(slot.bucket.origin) && (
+                      <div>
+                        <dt>Origin</dt>
+                        <dd>
+                          <span className="pill">{originMarker(slot.bucket.origin)}</span>
+                        </dd>
+                      </div>
+                    )}
                     <div>
                       <dt>Events</dt>
                       <dd className="num">
