@@ -1,10 +1,24 @@
 """The shared pure core of the history backfill (HISTORY-BACKFILL §B.11).
 
 `origin` says how a row is marked, `state` is the state machine, `planner` decides the
-floor, the steps and the window. Nothing here does I/O; the family adapters (HB-3 to HB-7)
-and the property-watch adapter (PW-13b) call it.
+floor, the steps and the window, `estimate` is the static cost model of §B.8. Nothing
+here does I/O; the family adapters (HB-3 to HB-7) and the property-watch adapter
+(PW-13b) call it.
 """
 
+from app.history.estimate import (
+    FamilyEstimate,
+    IpsGroup,
+    catchall_searches,
+    estimate_family,
+    ips_group_searches,
+    ips_searches,
+    not_estimable,
+    phase_a_searches,
+    rule_match_searches,
+    waf_searches,
+    waf_source_searches,
+)
 from app.history.families import (
     FAMILY_SPECS,
     FamilySpec,
@@ -74,6 +88,7 @@ __all__ = [
     "ActionKind",
     "ConsoleMode",
     "DecisionView",
+    "FamilyEstimate",
     "FamilySpec",
     "FittedWindow",
     "HistoryFamily",
@@ -81,6 +96,7 @@ __all__ = [
     "HistoryState",
     "HistoryTrigger",
     "IllegalTransitionError",
+    "IpsGroup",
     "LifecycleError",
     "PlannerSettings",
     "ProgressCodecError",
@@ -90,27 +106,36 @@ __all__ = [
     "SourceFloorError",
     "SourceFloors",
     "bounded_reason",
+    "catchall_searches",
     "console_mode",
     "decode_progress",
     "decode_scope",
     "encode_progress",
+    "estimate_family",
     "family_spec",
     "finish_with_sources",
     "fit_family_window",
     "fit_window",
     "history_search_budget",
     "interpret_scan",
+    "ips_group_searches",
+    "ips_searches",
     "is_history_clause",
     "is_live_clause",
     "marker_values",
     "new_progress",
     "new_scope_row",
     "next_state",
+    "not_estimable",
     "origin_of",
+    "phase_a_searches",
     "plan_scan",
     "plan_step",
+    "rule_match_searches",
     "scope_action",
     "scope_progress",
     "settle_step",
     "transition_row",
+    "waf_searches",
+    "waf_source_searches",
 ]

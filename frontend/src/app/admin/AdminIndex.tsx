@@ -43,6 +43,12 @@ const SECTIONS: readonly Section[] = [
     description: "Which QRadar properties each IPS source is read from",
   },
   {
+    name: "History backfill",
+    href: "/admin/history-backfill",
+    description: "What has been read from QRadar's past for the baselines, and what can still be",
+    permission: "read:history_backfill",
+  },
+  {
     name: "Users",
     href: "/admin/users",
     description: "Who can sign in, and the roles an administrator assigned",

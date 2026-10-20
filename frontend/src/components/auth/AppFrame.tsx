@@ -12,6 +12,7 @@ import { NoRole } from "./NoRole";
 import { PasswordChange } from "./PasswordChange";
 import { useSession } from "./session";
 import styles from "./auth.module.css";
+import { HistoryFirstRun } from "@/components/history/HistoryFirstRun";
 import { AppNav } from "@/components/shell/AppNav";
 import { TopBar } from "@/components/shell/TopBar";
 import { NAV } from "@/lib/nav";
@@ -97,6 +98,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
           <div className="page">{children}</div>
         </main>
       </div>
+      <HistoryFirstRun />
     </>
   );
 }

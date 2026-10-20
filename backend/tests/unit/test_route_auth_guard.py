@@ -185,6 +185,9 @@ _BODIES: dict[tuple[str, str], dict] = {
     },
     ("PUT", "/api/v1/users/{user_id}/roles"): {"roles": []},
     ("POST", "/api/v1/users/{user_id}/reset-password"): {"password": "guard-password-12"},
+    # History backfill: the three writes check `admin:history_backfill` in the
+    # handler, after body validation, so the guard needs a body that passes it.
+    ("PUT", "/api/v1/admin/history-backfill/{instance_id}"): {"answer": "YES"},
 }
 
 _ID = str(uuid.uuid4())
