@@ -66,6 +66,18 @@ class TestRestProvider:
         assert f"WHERE starttime >= {start_ms} AND starttime < {end_ms}" in query
         assert "GROUP BY starttime / 3600000" in query
         assert f"START {start_ms} STOP {end_ms}" in query
+        # QRadar 7.6.0 answers "invalid" when the grouped bucket expression is
+        # ordered (the lab probe, HB-12 D1), so the AQL must never carry an
+        # ORDER BY: the reader keys the rows by "k" and bounds them at
+        # buckets + 1, hence the order carries no meaning.
+        assert "ORDER BY" not in query
+        assert query == (
+            'SELECT starttime / 3600000 AS "k", '  # noqa: S608 - pinned AQL, integers only
+            'SUM(eventcount) AS "events" FROM events '
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            "GROUP BY starttime / 3600000 "
+            f"START {start_ms} STOP {end_ms}"
+        )
         # Unfiltered: the proof is that the console held a bucket at all.
         assert "logsourceid" not in query
         assert "creEventList" not in query

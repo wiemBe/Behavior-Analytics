@@ -702,6 +702,53 @@ async def test_the_page_says_which_family_floor_is_proved(db_session, db_schema)
         assert scope["days_read"] == days, family
 
 
+async def test_a_proving_family_without_a_floor_proves_nothing(  # type: ignore[no-untyped-def]
+    db_session, db_schema
+) -> None:
+    """`floor_proved` needs a proving family AND a floor on the row (lab HB-12 D3).
+
+    On the lab an IPS `NOT_ELIGIBLE` and a rule-match `UNAVAILABLE` row answered
+    `floor_proved: true` with `floor: null`: the family alone is not evidence.
+    The with-floor side of a proving family is pinned in
+    `test_the_page_says_which_family_floor_is_proved`, as is the with-floor
+    `false` for Phase A and catch-all (one console-wide row per family, so the
+    two cases cannot share one console).
+    """
+    instance = await make_instance(db_session)
+    db_session.add_all(
+        [
+            scope_row(instance.id, "WAF", "7"),
+            scope_row(instance.id, "WAF", "11", floor=START, through=START),
+            scope_row(instance.id, "IPS", "9", state="NOT_ELIGIBLE"),
+            scope_row(instance.id, "IPS", "13", floor=START, through=START),
+            scope_row(instance.id, "RULE_MATCH", "", state="UNAVAILABLE"),
+            scope_row(instance.id, "PHASE_A", ""),
+            scope_row(instance.id, "CATCHALL", ""),
+        ]
+    )
+    await db_session.commit()
+    console = Client(db_schema, READER).get(BASE).json()[0]
+
+    def scope_of(family: str, key: str) -> dict:
+        return next(s for s in family_of(console, family)["scopes"] if s["scope_key"] == key)
+
+    # A proving family with `floor` = null answers false: it never searched, or
+    # its read ended before any floor was proved (NOT_ELIGIBLE, UNAVAILABLE).
+    for family, key in (("WAF", "7"), ("IPS", "9"), ("RULE_MATCH", "")):
+        scope = scope_of(family, key)
+        assert scope["floor"] is None, family
+        assert scope["floor_proved"] is False, family
+    # The same families with a floor on the row answer true.
+    for family, key in (("WAF", "11"), ("IPS", "13")):
+        assert scope_of(family, key)["floor"] is not None
+        assert scope_of(family, key)["floor_proved"] is True, family
+    # Phase A and catch-all never prove a scope-wide floor, floor or no floor.
+    for family in ("PHASE_A", "CATCHALL"):
+        scope = scope_of(family, "")
+        assert scope["floor"] is None, family
+        assert scope["floor_proved"] is False, family
+
+
 async def test_a_family_that_is_switched_off_is_a_row_not_an_absence(  # type: ignore[no-untyped-def]
     db_session, db_schema
 ) -> None:
