@@ -22,6 +22,7 @@ from app.history.waf import HistoryVolumeBucket
 from app.models.enums import (
     CustomRuleSubjectKind,
     DetectorSignal,
+    SearchFamily,
     WafAnomalyType,
     WafBreakdown,
     WafMeasurement,
@@ -33,6 +34,7 @@ from app.models.waf import WafEndpoint, WafEndpointMetric, WafSourceBucket
 from app.providers.dto import WafBreakdownBatch, WafBreakdownGroup
 from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.locks import collector_lock_key
+from app.services.search_cadence import SearchCadenceService
 from app.services.waf_pipeline import (
     WafPipelineReport,
     WafSourcePipeline,
@@ -42,6 +44,7 @@ from app.services.waf_pipeline import (
 from app.waf import engine as engine_module
 from app.waf.behavior import detect_new_endpoint_access
 from tests.integration.factories import make_log_source
+from tests.integration.test_history_backfill_api import READER, Client
 from tests.integration.test_waf_ariel_budget import holder
 from tests.integration.test_waf_breakdown_collection import OUTCOMES_ON
 from tests.integration.test_waf_keyed_collection import ScriptedWaf, make_source
@@ -68,6 +71,27 @@ def recorded_statements(session):  # type: ignore[no-untyped-def]
         yield statements
     finally:
         event.remove(engine, "before_cursor_execute", record)
+
+
+async def add_active_endpoints(session, instance_id, source_id, count: int) -> None:  # type: ignore[no-untyped-def]
+    session.add_all(
+        [
+            WafEndpoint(
+                instance_id=instance_id,
+                log_source_id=source_id,
+                virtual_host=None,
+                normalized_endpoint=f"/fit/{index}",
+                http_method="GET",
+                normalizer_version=1,
+                first_seen_at=T0 - timedelta(days=30),
+                last_seen_at=T0,
+                is_active=True,
+                tracked_since=T0 - timedelta(days=30),
+            )
+            for index in range(count)
+        ]
+    )
+    await session.flush()
 
 
 async def test_history_volume_and_breakdown_are_bulk_and_history_only(db_session) -> None:  # type: ignore[no-untyped-def]
@@ -207,6 +231,7 @@ async def test_pipeline_applies_yes_and_live_ineligibility_before_collection(db_
     )
     assert scope is not None
     assert scope.state == HistoryState.READING.value
+    assert "fitted with no tracked endpoint yet" in (scope.reason or "")
 
     # A separate source that already has a LIVE row is classified before its next
     # collection attempt, so history cannot be placed in front of that row.
@@ -237,6 +262,197 @@ async def test_pipeline_applies_yes_and_live_ineligibility_before_collection(db_
     assert scope_2 is not None
     assert scope_2.state == HistoryState.NOT_ELIGIBLE.value
     assert "already collected live data" in (scope_2.reason or "")
+
+
+async def test_waf_fits_once_and_the_estimate_route_matches_the_adapter(
+    db_session, db_schema,  # type: ignore[no-untyped-def]
+) -> None:
+    settings = cfg(
+        history_backfill_days=28,
+        history_backfill_max_hours=24,
+        history_backfill_searches_per_tick=1,
+        history_backfill_max_lower_bound_share=1.0,
+    )
+    boundary = T0 + STEP
+    target = boundary - timedelta(days=15)
+    provider = ScriptedWaf({target - timedelta(hours=24): [("/floor", "GET", 40)]})
+    profile, source, instance, _ = await make_source(db_session, provider, settings)
+    await add_active_endpoints(db_session, instance.id, source.id, 50)
+    await SearchCadenceService(db_session, settings).set_cadence(
+        SearchFamily.WAF_COLLECTION, 300, actor="test", source_ip=None
+    )
+    await HistoryBackfillRepository(db_session).record_decision(
+        instance.id,
+        answer="YES",
+        days=28,
+        source="UI",
+        decided_by="operator",
+        at=T0,
+    )
+    await db_session.commit()
+
+    await run_waf_source(
+        db_session,
+        profile.id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: boundary + timedelta(seconds=5),
+    )
+    scope = await db_session.get(
+        HistoryBackfillScope,
+        (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
+    )
+    assert scope is not None
+    assert scope.days_target == 15 and scope.target_start == target
+    assert "window reduced from 28 to 15 days" in (scope.reason or "")
+    assert provider.calls[0][2] == target - timedelta(hours=24)
+    starts = (
+        await db_session.scalars(
+            select(WafSourceBucket.bucket_start).where(
+                WafSourceBucket.log_source_id == source.id,
+                WafSourceBucket.origin == "HISTORY",
+            )
+        )
+    ).all()
+    assert not starts or min(starts) >= target
+
+    route = Client(
+        db_schema,
+        READER,
+        settings_update={
+            "waf_collection_enabled": True,
+            "history_backfill_days": 28,
+            "history_backfill_max_hours": 24,
+            "history_backfill_searches_per_tick": 1,
+        },
+    )
+    estimates = {
+        item["family"]: item
+        for item in route.get("/api/v1/admin/history-backfill/estimate").json()[0]["families"]
+    }
+    assert estimates["WAF"]["days_fitted"] == scope.days_target
+
+    # A resumed scope keeps its stored fit even when a new fit would now refuse it.
+    changed = settings.model_copy(
+        update={
+            "history_backfill_max_hours": 1,
+            "history_backfill_searches_per_tick": 64,
+        }
+    )
+    calls = len(provider.calls)
+    for _ in range(5):
+        await run_waf_source(
+            db_session,
+            profile.id,
+            provider_factory=lambda _instance: provider,
+            settings=changed,
+            clock=lambda: boundary + timedelta(seconds=5),
+        )
+        await db_session.refresh(scope)
+        if scope.state != HistoryState.READING.value:
+            break
+    assert scope.days_target == 15 and scope.target_start == target
+    assert "window reduced from 28 to 15 days" in (scope.reason or "")
+    assert len(provider.calls) > calls
+    assert scope.state == HistoryState.COMPLETE.value
+
+
+async def test_waf_refuses_below_seven_days_without_an_ariel_search(db_session) -> None:  # type: ignore[no-untyped-def]
+    settings = cfg(
+        history_backfill_days=28,
+        history_backfill_max_hours=1,
+        history_backfill_searches_per_tick=1,
+    )
+    provider = ScriptedWaf({T0: [("/live", "GET", 40)]})
+    profile, source, instance, _ = await make_source(db_session, provider, settings)
+    await add_active_endpoints(db_session, instance.id, source.id, 50)
+    await SearchCadenceService(db_session, settings).set_cadence(
+        SearchFamily.WAF_COLLECTION, 300, actor="test", source_ip=None
+    )
+    await HistoryBackfillRepository(db_session).record_decision(
+        instance.id,
+        answer="YES",
+        days=28,
+        source="UI",
+        decided_by="operator",
+        at=T0,
+    )
+    await db_session.commit()
+
+    result = await run_waf_source(
+        db_session,
+        profile.id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: T0 + STEP + timedelta(seconds=5),
+    )
+    scope = await db_session.get(
+        HistoryBackfillScope,
+        (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
+    )
+    assert scope is not None and scope.state == HistoryState.UNAVAILABLE.value
+    assert "even 7 days" in (scope.reason or "")
+    assert result["history_searches"] == 0 and provider.calls == []
+
+    live = await run_waf_source(
+        db_session,
+        profile.id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: T0 + STEP + timedelta(seconds=5),
+    )
+    assert live["intervals_collected"] == 1
+
+
+async def test_waf_first_step_adds_one_count_statement_and_later_steps_add_none(
+    db_session,  # type: ignore[no-untyped-def]
+) -> None:
+    settings = cfg(
+        history_backfill_days=7,
+        history_backfill_searches_per_tick=1,
+        history_backfill_max_lower_bound_share=1.0,
+    )
+    boundary = T0 + STEP
+    target = boundary - timedelta(days=7)
+    provider = ScriptedWaf(
+        {
+            target - timedelta(hours=24): [("/floor", "GET", 40)],
+            target: [("/history", "GET", 40)],
+        }
+    )
+    profile, source, instance, _ = await make_source(db_session, provider, settings)
+    await add_active_endpoints(db_session, instance.id, source.id, 1)
+    await HistoryBackfillRepository(db_session).record_decision(
+        instance.id,
+        answer="YES",
+        days=7,
+        source="UI",
+        decided_by="operator",
+        at=T0,
+    )
+    await db_session.commit()
+
+    with recorded_statements(db_session) as first:
+        await run_waf_source(
+            db_session,
+            profile.id,
+            provider_factory=lambda _instance: provider,
+            settings=settings,
+            clock=lambda: boundary + timedelta(seconds=5),
+        )
+    with recorded_statements(db_session) as later:
+        await run_waf_source(
+            db_session,
+            profile.id,
+            provider_factory=lambda _instance: provider,
+            settings=settings,
+            clock=lambda: boundary + timedelta(seconds=5),
+        )
+
+    count_sql = [sql for sql in first if "count(waf_endpoint.id)" in sql.lower()]
+    assert len(count_sql) == 1
+    assert not [sql for sql in later if "count(waf_endpoint.id)" in sql.lower()]
+    assert (len(first), len(later)) == (16, 16)
 
 
 async def test_history_rows_are_not_pending_or_f1_but_preview_can_read_them(db_session) -> None:  # type: ignore[no-untyped-def]

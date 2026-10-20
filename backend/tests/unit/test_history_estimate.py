@@ -13,6 +13,7 @@ from app.history.estimate import (
     IpsGroup,
     catchall_searches,
     estimate_family,
+    estimate_source_family,
     ips_group_searches,
     ips_searches,
     not_estimable,
@@ -262,3 +263,56 @@ def test_a_count_that_is_missing_gives_no_numbers_not_zeros() -> None:
     assert (estimate.searches, estimate.ticks, estimate.hours, estimate.days_fitted) == (
         None, None, None, None)
     assert estimate.reason == "no estimate: x" and not estimate.reduced and not estimate.refused
+
+
+def test_per_source_fit_reports_the_smallest_window_and_console_total() -> None:
+    ps = PlannerSettings(row_cap=5000, max_hours=24, cadence_seconds=300)
+    estimate = estimate_source_family(
+        "WAF",
+        [
+            lambda days: waf_source_searches(1, days, 7, ps),
+            lambda days: waf_source_searches(50, days, 7, ps),
+        ],
+        days_requested=28,
+        end=END,
+        ps=ps,
+        source_searches_per_tick=1,
+        family_searches_per_tick=2,
+        assumptions=["per source"],
+    )
+
+    assert estimate.days_fitted == 15
+    assert estimate.reduced and not estimate.refused
+    assert estimate.searches == (
+        waf_source_searches(1, 28, 7, ps) + waf_source_searches(50, 15, 7, ps)
+    )
+    assert "window reduced from 28 to 15 days" in estimate.reason
+
+
+def test_per_source_fit_refuses_the_family_only_when_every_source_is_refused() -> None:
+    ps = PlannerSettings(row_cap=5000, max_hours=1, cadence_seconds=300)
+    mixed = estimate_source_family(
+        "IPS",
+        [lambda _days: 1, lambda _days: 1000],
+        days_requested=28,
+        end=END,
+        ps=ps,
+        source_searches_per_tick=1,
+        family_searches_per_tick=2,
+        assumptions=[],
+    )
+    all_refused = estimate_source_family(
+        "IPS",
+        [lambda _days: 1000, lambda _days: 2000],
+        days_requested=28,
+        end=END,
+        ps=ps,
+        source_searches_per_tick=1,
+        family_searches_per_tick=2,
+        assumptions=[],
+    )
+
+    assert mixed.days_fitted == 28 and not mixed.refused
+    assert "1 of 2 sources are unavailable" in mixed.reason
+    assert all_refused.days_fitted is None and all_refused.refused
+    assert "all 2 sources are unavailable" in all_refused.reason
