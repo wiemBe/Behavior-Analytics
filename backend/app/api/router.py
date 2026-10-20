@@ -17,6 +17,7 @@ from app.api.routes import (
     fleet,
     geo,
     health,
+    history_backfill,
     ips,
     log_sources,
     me,
@@ -42,6 +43,7 @@ from app.security.rbac import (
     PERM_DASHBOARD_READ,
     PERM_FLEET_READ,
     PERM_GEO_READ,
+    PERM_HISTORY_BACKFILL_READ,
     PERM_IPS_ADMIN,
     PERM_LOG_SOURCE_READ,
     PERM_OFFENSE_READ,
@@ -85,6 +87,12 @@ api_router.include_router(alerts.router, dependencies=[Depends(requires(PERM_ALE
 api_router.include_router(
     search_cadence.router,
     dependencies=[Depends(requires(PERM_SEARCH_CADENCE_READ))],
+)
+# History backfill admin page: reads need `read:history_backfill`; the three writes add
+# `admin:history_backfill` on the route.
+api_router.include_router(
+    history_backfill.router,
+    dependencies=[Depends(requires(PERM_HISTORY_BACKFILL_READ))],
 )
 # --- Phase 3 ---
 # Guarded at the router. These endpoints expose offence records (parsed
