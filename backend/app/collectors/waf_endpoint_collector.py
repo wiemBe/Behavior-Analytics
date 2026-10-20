@@ -78,9 +78,9 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import Table, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1155,7 +1155,7 @@ class WafEndpointCollector:
         )
 
         if folded.endpoints:
-            endpoint_insert = pg_insert(WafEndpoint).values(list(folded.endpoints))
+            endpoint_insert = pg_insert(cast(Table, WafEndpoint.__table__))
             await self.session.execute(
                 endpoint_insert.on_conflict_do_update(
                     constraint="uq_waf_endpoint_natural_key",
@@ -1172,7 +1172,8 @@ class WafEndpointCollector:
                         "tracked_until": endpoint_insert.excluded.tracked_until,
                         "baseline_rebuilt_at": endpoint_insert.excluded.baseline_rebuilt_at,
                     },
-                )
+                ),
+                list(folded.endpoints),
             )
         if folded.buckets:
             await self._history_insert_jsonb(

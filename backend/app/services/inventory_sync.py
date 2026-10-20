@@ -10,7 +10,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import cast
 
+from sqlalchemy import Table
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -87,19 +89,18 @@ class InventorySyncService:
             for dto in type_dtos
         ]
         if type_rows:
-            type_statement = pg_insert(LogSourceType).values(
-                [
-                    {
-                        "instance_id": row.instance_id,
-                        "type_id": row.type_id,
-                        "name": row.name,
-                        "internal": row.internal,
-                        "custom": row.custom,
-                        "synced_at": row.synced_at,
-                    }
-                    for row in type_rows
-                ]
-            )
+            type_values = [
+                {
+                    "instance_id": row.instance_id,
+                    "type_id": row.type_id,
+                    "name": row.name,
+                    "internal": row.internal,
+                    "custom": row.custom,
+                    "synced_at": row.synced_at,
+                }
+                for row in type_rows
+            ]
+            type_statement = pg_insert(cast(Table, LogSourceType.__table__))
             type_statement = type_statement.on_conflict_do_update(
                 index_elements=[LogSourceType.instance_id, LogSourceType.type_id],
                 set_={
@@ -109,7 +110,7 @@ class InventorySyncService:
                     "synced_at": type_statement.excluded.synced_at,
                 },
             )
-            await self.session.execute(type_statement)
+            await self.session.execute(type_statement, type_values)
 
         group_rows = [
             LogSourceGroup(
@@ -124,20 +125,19 @@ class InventorySyncService:
             for dto in group_dtos
         ]
         if group_rows:
-            group_statement = pg_insert(LogSourceGroup).values(
-                [
-                    {
-                        "instance_id": row.instance_id,
-                        "qradar_id": row.qradar_id,
-                        "name": row.name,
-                        "description": row.description,
-                        "parent_qradar_id": row.parent_qradar_id,
-                        "assignable": row.assignable,
-                        "synced_at": row.synced_at,
-                    }
-                    for row in group_rows
-                ]
-            )
+            group_values = [
+                {
+                    "instance_id": row.instance_id,
+                    "qradar_id": row.qradar_id,
+                    "name": row.name,
+                    "description": row.description,
+                    "parent_qradar_id": row.parent_qradar_id,
+                    "assignable": row.assignable,
+                    "synced_at": row.synced_at,
+                }
+                for row in group_rows
+            ]
+            group_statement = pg_insert(cast(Table, LogSourceGroup.__table__))
             group_statement = group_statement.on_conflict_do_update(
                 index_elements=[LogSourceGroup.instance_id, LogSourceGroup.qradar_id],
                 set_={
@@ -148,7 +148,7 @@ class InventorySyncService:
                     "synced_at": group_statement.excluded.synced_at,
                 },
             )
-            await self.session.execute(group_statement)
+            await self.session.execute(group_statement, group_values)
 
         existing_by_qradar_id = await self.repo.by_qradar_id(instance.id)
         bootstrap = not existing_by_qradar_id

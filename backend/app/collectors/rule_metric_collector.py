@@ -20,8 +20,9 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
-from sqlalchemy import select
+from sqlalchemy import Table, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,7 +161,7 @@ class RuleMetricCollector:
                 for (rule_id, bucket), count in counts.items()
             ]
             if rows:
-                stmt = pg_insert(RuleMetric).values(rows)
+                stmt = pg_insert(cast(Table, RuleMetric.__table__))
                 stmt = stmt.on_conflict_do_update(
                     index_elements=["rule_id", "bucket_start"],
                     set_={
@@ -175,7 +176,7 @@ class RuleMetricCollector:
                         "inferred": stmt.excluded.inferred,
                     },
                 )
-                await self.session.execute(stmt)
+                await self.session.execute(stmt, rows)
 
             totals: dict[uuid.UUID, int] = defaultdict(int)
             for (rule_id, _), count in counts.items():
