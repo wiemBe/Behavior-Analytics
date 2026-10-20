@@ -88,24 +88,11 @@ class TlsProbe:
     expires_at: datetime
 
 
-def _safe_text(value: object) -> str:
-    """Redact untrusted text before it can reach terminal or JSON output."""
-    cleaned = str(redact(str(value))).replace("\r", " ").replace("\n", " ")
-    cleaned = _CREDENTIAL_URL_RE.sub(r"\1<redacted>@", cleaned)
-    cleaned = _SECRET_ASSIGNMENT_RE.sub(r"\1=<redacted>", cleaned)
-
-    def replace_tokenish(match: re.Match[str]) -> str:
-        candidate = match.group(0)
-        if "_" in candidate and candidate.upper() == candidate:
-            return candidate
-        return "***redacted***"
-
-    return _TOKENISH_RE.sub(replace_tokenish, cleaned)[:500]
-
-
-#: Collector names that `CollectionWatermark.collector` can hold. They are a fixed, known set of
-#: code constants, never operator or QRadar text, so they print as they are. The token heuristic
-#: in `_safe_text` would mask a long one (`geo_countries_destination` is 25 characters).
+#: Every collector name the code defines: the values `CollectionWatermark.collector` can hold
+#: (`geo_countries_destination`) and the advisory-lock names the same code uses (`geo_countries`,
+#: `property_watch`, `anomaly_explanation`). They are a fixed, known set of code constants, never
+#: operator or QRadar text, so they print as they are. The token heuristic in `_safe_text` would
+#: mask a long one (`geo_countries_destination` is 25 characters).
 _WATERMARK_NAMES = frozenset(
     {
         "offense_snapshot",
@@ -116,14 +103,36 @@ _WATERMARK_NAMES = frozenset(
         "rule_match",
         "log_source_metric",
         "log_source_inventory",
+        "geo_countries",
         "geo_countries_source",
         "geo_countries_destination",
         "waf_endpoint_metric",
         "waf_endpoint_evaluation",
         "anomaly_explanation",
         "catchall_senders",
+        "property_watch",
     }
 )
+
+
+def _safe_text(value: object) -> str:
+    """Redact untrusted text before it can reach terminal or JSON output."""
+    cleaned = str(redact(str(value))).replace("\r", " ").replace("\n", " ")
+    cleaned = _CREDENTIAL_URL_RE.sub(r"\1<redacted>@", cleaned)
+    cleaned = _SECRET_ASSIGNMENT_RE.sub(r"\1=<redacted>", cleaned)
+
+    def replace_tokenish(match: re.Match[str]) -> str:
+        candidate = match.group(0)
+        # A known collector name is a code constant, not a secret. The output layer redacts
+        # every message a second time, so without this the name would be masked here and the
+        # operator would never learn which collector failed.
+        if candidate in _WATERMARK_NAMES:
+            return candidate
+        if "_" in candidate and candidate.upper() == candidate:
+            return candidate
+        return "***redacted***"
+
+    return _TOKENISH_RE.sub(replace_tokenish, cleaned)[:500]
 
 
 def _watermark_list(names: Sequence[str]) -> str:
