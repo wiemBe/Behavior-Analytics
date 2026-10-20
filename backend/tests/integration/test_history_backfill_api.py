@@ -869,10 +869,10 @@ async def test_the_estimate_hours_follow_the_family_cadence(db_session, db_schem
     assert "one tick every 1 hour" in " ".join(phase_a["assumptions"])
 
 
-async def test_the_waf_estimate_says_the_adapter_does_not_fit_the_window(
+async def test_the_waf_estimate_describes_the_same_fitted_window_as_the_adapter(
     db_session, db_schema
 ) -> None:
-    """Item 4: HB-6 reads the whole window and stops at the limit; the estimate says so."""
+    """HB-15 removes the old warning because the adapter now applies this fit."""
     instance = await make_instance(db_session)
     for index in (1, 2, 3):
         await make_log_source(db_session, instance, qradar_id=index, name=f"src-{index}")
@@ -896,18 +896,10 @@ async def test_the_waf_estimate_says_the_adapter_does_not_fit_the_window(
         for item in client.get(f"{BASE}/estimate").json()[0]["families"]
     }
     waf = estimates["WAF"]
-    # The model does not fit this window in an hour at one search per tick.
     assert waf["refused"] or waf["reduced"]
-    # ... and the route says what the reading will really do instead of leaving the
-    # model's verdict to read as the adapter's (`waf_pipeline.py:439` does not fit).
-    assert "the WAF reading does not apply it" in waf["reason"]
-    assert "does not shorten its window or refuse it" in waf["reason"]
-    assert "ends PARTIAL" in waf["reason"]
-    assert "72-hour" not in waf["reason"]
-    assert "1-hour limit" in waf["reason"]
-    # History is not unavailable: the adapter reads it and stops at the limit.
-    assert "history is unavailable" not in waf["reason"]
-    # A family whose adapter does apply the fit keeps the model's plain wording.
+    assert "the WAF reading does not apply it" not in waf["reason"]
+    assert "does not shorten its window or refuse it" not in waf["reason"]
+    assert "per-source" in waf["reason"]
     assert "does not shorten" not in estimates["PHASE_A"]["reason"]
 
 

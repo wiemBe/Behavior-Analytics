@@ -46,7 +46,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import exists, select, text
+from sqlalchemy import exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import AlertEnqueuer
@@ -68,6 +68,7 @@ from app.history import (
     decode_scope,
     encode_progress,
     fit_family_window,
+    fit_window,
     history_search_budget,
     is_live_clause,
     new_progress,
@@ -75,6 +76,7 @@ from app.history import (
     next_state,
     scope_action,
     transition_row,
+    waf_source_searches,
 )
 from app.history.state import HistoryTrigger
 from app.history.waf import waf_planner_settings
@@ -436,8 +438,11 @@ class WafSourcePipeline:
         scope_view = self._scope_view(scope)
         assert scope_view is not None
         decoded = decode_scope(scope_view)
-        fitted = fit_family_window(HistoryFamily.WAF, self.settings)
+        fit_reason: str | None = None
+        days_target: int | None
+        budget = history_search_budget(self.settings, used=0)
         if decoded is None:
+            fitted = fit_family_window(HistoryFamily.WAF, self.settings)
             if fitted.days is None:
                 change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
                 values = self._scope_values(
@@ -451,16 +456,64 @@ class WafSourcePipeline:
                 report.history_state = change.state.value
                 report.history_reason = str(values["reason"])
                 return
-            progress = new_progress(
-                boundary - timedelta(days=fitted.days),
-                scope.started_at or now,
-                planner,
+            endpoints = int(
+                await self.session.scalar(
+                    select(func.count(WafEndpoint.id)).where(
+                        WafEndpoint.log_source_id == log_source.id,
+                        WafEndpoint.is_active.is_(True),
+                    )
+                )
+                or 0
             )
-            adapter: dict[str, Any] = {}
+            fit = fit_window(
+                fitted.days,
+                lambda days: waf_source_searches(
+                    max(1, endpoints),
+                    days,
+                    int(self.settings.history_backfill_waf_breakdown_days),
+                    planner,
+                ),
+                end=boundary,
+                settings=planner,
+                searches_per_tick=max(1, budget),
+            )
+            zero_reason = (
+                f"fitted with no tracked endpoint yet; the "
+                f"{self.settings.history_backfill_max_hours}-hour limit still bounds the reading"
+                if endpoints == 0
+                else None
+            )
+            fit_reason = "; ".join(
+                part
+                for part in (
+                    fitted.reason,
+                    fit.reason if fit.reduced or fit.refused else None,
+                    zero_reason,
+                )
+                if part
+            ) or None
+            if fit.refused or fit.days_fitted is None or fit.target_start is None:
+                change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
+                values = self._scope_values(
+                    scope,
+                    state=change.state,
+                    reason=fit_reason or fit.reason,
+                    finished_at=now,
+                    anchor=boundary,
+                )
+                await HistoryBackfillRepository(self.session).write_scopes([values])
+                report.history_state = change.state.value
+                report.history_reason = str(values["reason"])
+                return
+            progress = new_progress(fit.target_start, scope.started_at or now, planner)
+            adapter = {"fit_reason": fit_reason} if fit_reason else {}
+            days_target = fit.days_fitted
         else:
             progress, adapter = decoded.progress, decoded.adapter
+            stored_reason = adapter.get("fit_reason")
+            fit_reason = stored_reason if isinstance(stored_reason, str) else None
+            days_target = scope.days_target
 
-        budget = history_search_budget(self.settings, used=0)
         outcome = await collector.history_volume_step(
             log_source,
             progress,
@@ -483,20 +536,21 @@ class WafSourcePipeline:
                 boundary=boundary,
                 settled=outcome.progress.through is not None,
             )
+        reason = "; ".join(part for part in (fit_reason, outcome.reason) if part)
         values = self._scope_values(
             scope,
             state=state,
-            reason=outcome.reason,
+            reason=reason,
             progress=outcome.progress,
             adapter=adapter,
-            days_target=fitted.days if decoded is None else scope.days_target,
+            days_target=days_target,
             finished_at=finished_at,
             anchor=anchor,
         )
         await HistoryBackfillRepository(self.session).write_scopes([values])
         report.status = "history_reading" if state is HistoryState.READING else "history_handoff"
         report.history_state = state.value
-        report.history_reason = outcome.reason
+        report.history_reason = reason
         report.history_searches = outcome.searches
         report.history_rows_written = outcome.rows_written
 

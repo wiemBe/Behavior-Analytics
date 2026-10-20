@@ -35,8 +35,10 @@ from datetime import datetime
 
 from app.history.planner import (
     PlannerSettings,
+    WindowFit,
     fit_window,
     searches_for,
+    ticks_for,
     window_buckets,
 )
 
@@ -181,6 +183,85 @@ def estimate_family(
         reduced=fit.reduced,
         refused=fit.refused,
         reason=fit.reason,
+        assumptions=tuple(assumptions),
+    )
+
+
+def estimate_source_family(
+    family: str,
+    searches_for_sources: Sequence[Callable[[int], int]],
+    *,
+    days_requested: int,
+    end: datetime,
+    ps: PlannerSettings,
+    source_searches_per_tick: int,
+    family_searches_per_tick: int,
+    assumptions: Sequence[str],
+) -> FamilyEstimate:
+    """Fit independent per-source plans and summarize their console-wide cost.
+
+    WAF and IPS store one scope per source.  Each scope consequently fits against the
+    searches it will really run and the share of the tick it can use.  The admin route
+    still presents one family row, so its window is the smallest accepted source window
+    and its search total is the sum of the independently fitted plans.
+    """
+    fits: tuple[WindowFit, ...] = tuple(
+        fit_window(
+            days_requested,
+            searches_for_days,
+            end=end,
+            settings=ps,
+            searches_per_tick=source_searches_per_tick,
+        )
+        for searches_for_days in searches_for_sources
+    )
+    accepted = tuple(fit for fit in fits if not fit.refused)
+    refused = len(fits) - len(accepted)
+    all_refused = not accepted
+    costed = fits if all_refused else accepted
+    searches = sum(fit.searches for fit in costed)
+    ticks = ticks_for(searches, family_searches_per_tick)
+    hours = ticks * ps.cadence_seconds / 3600
+    reduced = any(fit.reduced for fit in fits)
+    days_fitted = None if all_refused else min(
+        fit.days_fitted for fit in accepted if fit.days_fitted is not None
+    )
+
+    if all_refused:
+        minimum_days = min(days_requested, 7)
+        reason = (
+            f"all {len(fits)} sources are unavailable: even {minimum_days} "
+            f"days exceed the {ps.max_hours}-hour per-source limit"
+        )
+    elif refused:
+        reason = (
+            f"{refused} of {len(fits)} sources are unavailable because even 7 days exceed "
+            f"the {ps.max_hours}-hour per-source limit; the remaining source windows fit"
+        )
+        if reduced:
+            reason += f", with the smallest reduced from {days_requested} to {days_fitted} days"
+    elif reduced:
+        reason = (
+            f"window reduced from {days_requested} to {days_fitted} days for the smallest "
+            f"per-source fit: the estimate exceeded {ps.max_hours} hours"
+        )
+    elif len(fits) == 1:
+        reason = fits[0].reason
+    else:
+        reason = (
+            f"all {len(fits)} per-source {days_requested}-day windows fit; the console total "
+            f"is an estimated {hours:.1f} hours"
+        )
+    return FamilyEstimate(
+        family=family,
+        searches=searches,
+        ticks=ticks,
+        hours=hours,
+        days_requested=days_requested,
+        days_fitted=days_fitted,
+        reduced=reduced,
+        refused=all_refused,
+        reason=reason,
         assumptions=tuple(assumptions),
     )
 

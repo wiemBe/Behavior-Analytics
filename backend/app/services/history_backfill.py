@@ -31,16 +31,22 @@ from app.history.estimate import (
     IpsGroup,
     catchall_searches,
     estimate_family,
-    ips_searches,
+    estimate_source_family,
+    ips_group_searches,
     not_estimable,
     phase_a_searches,
     rule_match_searches,
-    waf_searches,
+    waf_source_searches,
 )
-from app.history.families import FAMILY_SPECS, FamilySpec, fit_family_window
+from app.history.families import (
+    FAMILY_SPECS,
+    FamilySpec,
+    fit_family_window,
+    history_search_budget,
+)
 from app.history.lifecycle import DecisionView, console_mode
 from app.history.origin import is_live_clause
-from app.history.planner import DEFAULT_MIN_WINDOW_DAYS, PlannerInputError, PlannerSettings
+from app.history.planner import PlannerInputError, PlannerSettings
 from app.history.progress_codec import ProgressCodecError, decode_progress
 from app.history.state import SCOPE_TABLE_FAMILIES, HistoryFamily, HistoryState
 from app.models.catchall import CatchallBucket
@@ -307,9 +313,36 @@ def floor_to_bucket(now: datetime, bucket_seconds: int) -> datetime:
 
 
 def group_sources(keys: Sequence[int], size: int) -> list[list[int]]:
-    """Sources in plans of at most `size` (`ips_max_sources_per_search`), in a fixed order."""
+    """Retained compatibility helper; IPS history estimation no longer groups sources."""
     ordered = sorted(keys)
     return [ordered[i : i + size] for i in range(0, len(ordered), size)]
+
+
+SearchFactory = Callable[[PlannerSettings], Callable[[int], int]]
+
+
+@dataclass(frozen=True)
+class _EstimateShape:
+    """Cost functions and words derived from one family's counted source shape."""
+
+    searches: tuple[SearchFactory, ...]
+    assumptions: tuple[str, ...]
+    per_source: bool = False
+    empty_sources: int = 0
+
+
+def _waf_search_factory(endpoints: int, breakdown_days: int) -> SearchFactory:
+    def factory(ps: PlannerSettings) -> Callable[[int], int]:
+        return lambda days: waf_source_searches(endpoints, days, breakdown_days, ps)
+
+    return factory
+
+
+def _ips_search_factory(group: IpsGroup) -> SearchFactory:
+    def factory(ps: PlannerSettings) -> Callable[[int], int]:
+        return lambda days: ips_group_searches(group, days, ps)
+
+    return factory
 
 
 def duration_words(seconds: int) -> str:
@@ -799,22 +832,30 @@ class HistoryBackfillService:
         spec = FAMILY_SPECS[family]
         requested = int(settings.history_backfill_days)
         cadence = int(cadences.get(spec.search_family, 300))
-        per_tick = int(settings.history_backfill_searches_per_tick)
+        configured_per_tick = int(settings.history_backfill_searches_per_tick)
+        adapter_per_tick = history_search_budget(settings, used=0)
+        family_per_tick = configured_per_tick
         if family is HistoryFamily.WAF:
-            per_tick *= int(settings.waf_ariel_max_concurrent_sources)
+            family_per_tick = adapter_per_tick * int(settings.waf_ariel_max_concurrent_sources)
+        elif family is HistoryFamily.IPS:
+            family_per_tick = adapter_per_tick
         bucket = bucket_seconds_of(family, settings)
         shape = (
             "hourly windows"
             if family is HistoryFamily.RULE_MATCH
             else f"{bucket // 60}-minute buckets"
         )
+        if family is HistoryFamily.WAF:
+            budget_words = (
+                f"{adapter_per_tick} history searches per source tick times "
+                f"{settings.waf_ariel_max_concurrent_sources} sources at once"
+            )
+        elif family is HistoryFamily.IPS:
+            budget_words = f"{adapter_per_tick} history searches shared per tick"
+        else:
+            budget_words = f"{configured_per_tick} history searches per tick"
         assumptions = [
-            f"{shape}, {settings.history_backfill_searches_per_tick} history searches per tick"
-            + (
-                f" times {settings.waf_ariel_max_concurrent_sources} sources at once"
-                if family is HistoryFamily.WAF
-                else ""
-            ),
+            f"{shape}, {budget_words}",
             f"one tick every {duration_words(cadence)} (the family's Search cadence)",
             "QRadar time per search not measured on this console",
         ]
@@ -840,40 +881,44 @@ class HistoryBackfillService:
             lookup = self._shape(family, instance_id, counts, settings)
             if isinstance(lookup, str):
                 return none(lookup)
-            searches_for_days, extra = lookup
-            assumptions.extend(extra)
+            assumptions.extend(lookup.assumptions)
             assert fitted.days is not None
-            result = estimate_family(
-                family.value,
-                searches_for_days(ps),
-                days_requested=fitted.days,
-                end=end,
-                ps=ps,
-                searches_per_tick=per_tick,
-                assumptions=assumptions,
-            )
+            if lookup.per_source:
+                source_per_tick = adapter_per_tick
+                if family is HistoryFamily.IPS:
+                    source_per_tick = max(1, adapter_per_tick // len(lookup.searches))
+                    assumptions.append(
+                        f"each per-source plan is fitted with a fair share of {source_per_tick} "
+                        f"of the {adapter_per_tick} shared searches per tick"
+                    )
+                result = estimate_source_family(
+                    family.value,
+                    [factory(ps) for factory in lookup.searches],
+                    days_requested=fitted.days,
+                    end=end,
+                    ps=ps,
+                    source_searches_per_tick=max(1, source_per_tick),
+                    family_searches_per_tick=max(1, family_per_tick),
+                    assumptions=assumptions,
+                )
+            else:
+                result = estimate_family(
+                    family.value,
+                    lookup.searches[0](ps),
+                    days_requested=fitted.days,
+                    end=end,
+                    ps=ps,
+                    searches_per_tick=family_per_tick,
+                    assumptions=assumptions,
+                )
         except PlannerInputError as exc:
             return none(f"no estimate: the planner refused the settings ({exc})")
         reason = result.reason
-        # HB-6's adapter does not fit this window: `WafSourcePipeline._run_history_volume`
-        # (`app/services/waf_pipeline.py:439`) bounds the days by the family's window only,
-        # and the planner ends the scope PARTIAL at `max_hours` (`app/history/planner.py:465`).
-        # Where the model would shorten or refuse the window, say what the reading will
-        # really do rather than leaving the model's verdict to read as the adapter's.
-        if family is HistoryFamily.WAF and (result.reduced or result.refused):
-            assert fitted.days is not None
-            if result.refused:
-                covered = DEFAULT_MIN_WINDOW_DAYS
-            else:
-                assert result.days_fitted is not None
-                covered = result.days_fitted
+        if lookup.empty_sources:
+            noun = "tracked endpoint" if family is HistoryFamily.WAF else "admitted entity"
             reason = (
-                "this figure is the model's, and the WAF reading does not apply it: it "
-                "does not shorten its window or refuse it. It reads the "
-                f"{fitted.days}-day window and ends PARTIAL when the "
-                f"{settings.history_backfill_max_hours}-hour limit is reached. The model "
-                f"needs {covered} days in about {result.hours:.1f} hours "
-                f"({result.searches} searches, {result.ticks} ticks)"
+                f"{reason}; {lookup.empty_sources} source(s) fitted with no {noun} yet; "
+                f"the {settings.history_backfill_max_hours}-hour limit still bounds the reading"
             )
         reduced = result.reduced
         if fitted.days is not None and fitted.days < requested:
@@ -898,60 +943,60 @@ class HistoryBackfillService:
         instance_id: uuid.UUID,
         counts: dict[str, Any],
         settings: Settings,
-    ) -> str | tuple[Callable[[PlannerSettings], Callable[[int], int]], list[str]]:
+    ) -> str | _EstimateShape:
         """The searches-by-days function for a family, or the reason there is no count."""
         mine = counts.get(family.value, {})
         if family is HistoryFamily.PHASE_A:
             sources = mine.get(instance_id, 0)
             if sources < 1:
                 return "no estimate: the console has no monitored log source yet"
-            return (
-                lambda ps: lambda days: phase_a_searches(sources, days, ps),
-                [f"{sources} monitored sources, one row each per bucket"],
+            return _EstimateShape(
+                (lambda ps: lambda days: phase_a_searches(sources, days, ps),),
+                (f"{sources} monitored sources, one row each per bucket",),
             )
         if family is HistoryFamily.WAF:
             endpoints = list(mine.get(instance_id, {}).values())
             if not endpoints:
                 return "no estimate: no WAF source is enabled on this console"
-            if min(endpoints) < 1:
-                return "no estimate: an enabled WAF source has no tracked endpoint yet"
             breakdown = int(settings.history_backfill_waf_breakdown_days)
-            return (
-                lambda ps: lambda days: waf_searches(endpoints, days, breakdown, ps),
-                [
+            searches: list[SearchFactory] = []
+            for endpoint_count in endpoints:
+                fitted_count = max(1, endpoint_count)
+                searches.append(_waf_search_factory(fitted_count, breakdown))
+            return _EstimateShape(
+                tuple(searches),
+                (
                     f"{len(endpoints)} WAF sources with {sum(endpoints)} tracked endpoints",
                     f"action, response code and source IP read over {breakdown} days only",
-                ],
+                ),
+                per_source=True,
+                empty_sources=sum(count == 0 for count in endpoints),
             )
         if family is HistoryFamily.IPS:
             sources_dims: dict[int, dict[str, int]] = mine.get(instance_id, {})
             if not sources_dims:
                 return "no estimate: no IPS source is enabled on this console"
-            if any(not dims for dims in sources_dims.values()):
-                return "no estimate: an enabled IPS source has no admitted entity yet"
-            groups = [
+            groups = tuple(
                 IpsGroup(
-                    sources=len(members),
-                    ports=sum(sources_dims[k].get("DESTINATION_PORT", 0) for k in members),
-                    ips=sum(sources_dims[k].get("DESTINATION_IP", 0) for k in members),
-                    signatures=sum(sources_dims[k].get("SIGNATURE", 0) for k in members),
-                    source_ips=IPS_SOURCE_IPS_PER_SOURCE * len(members),
+                    sources=1,
+                    ports=max(1, dimensions.get("DESTINATION_PORT", 0)),
+                    ips=max(1, dimensions.get("DESTINATION_IP", 0)),
+                    signatures=max(1, dimensions.get("SIGNATURE", 0)),
+                    source_ips=IPS_SOURCE_IPS_PER_SOURCE,
                 )
-                for members in group_sources(
-                    list(sources_dims), int(settings.ips_max_sources_per_search)
-                )
-            ]
-            return (
-                lambda ps: lambda days: ips_searches(groups, days, ps),
-                [
-                    f"{len(sources_dims)} IPS sources in "
-                    f"{plural(len(groups), 'plan')} of at most "
-                    f"{settings.ips_max_sources_per_search}",
+                for dimensions in sources_dims.values()
+            )
+            return _EstimateShape(
+                tuple(_ips_search_factory(group) for group in groups),
+                (
+                    f"{len(sources_dims)} IPS sources in {plural(len(groups), 'per-source plan')}",
                     f"{IPS_SOURCE_IPS_PER_SOURCE} source IPs, "
                     f"{IPS_ACTION_VALUES_PER_SOURCE} action values and "
                     f"{IPS_FANOUT_ROWS_PER_SOURCE} port fan-out rows per source and bucket "
                     "assumed",
-                ],
+                ),
+                per_source=True,
+                empty_sources=sum(not dimensions for dimensions in sources_dims.values()),
             )
         if family is HistoryFamily.CATCHALL:
             measured = mine.get(instance_id)
@@ -961,21 +1006,21 @@ class HistoryBackfillService:
                     f"{CATCHALL_SENDER_DAYS} days"
                 )
             senders, buckets = measured
-            return (
-                lambda ps: lambda days: catchall_searches(senders, days, ps),
-                [
+            return _EstimateShape(
+                (lambda ps: lambda days: catchall_searches(senders, days, ps),),
+                (
                     f"{senders} senders per bucket (the mean of {plural(buckets, 'live bucket')} "
                     f"of the last {CATCHALL_SENDER_DAYS} days)",
                     f"{settings.catchall_max_rows_per_search} rows per search",
-                ],
+                ),
             )
         rules = mine.get(instance_id, 0)
         if rules < 1:
             return "no estimate: the console has no enabled rule"
-        return (
-            lambda ps: lambda days: rule_match_searches(rules, days, ps),
-            [
+        return _EstimateShape(
+            (lambda ps: lambda days: rule_match_searches(rules, days, ps),),
+            (
                 f"{rules} enabled rules, every one assumed to match in each window",
                 f"{settings.rule_match_max_rows} rows per search, plus one console total",
-            ],
+            ),
         )

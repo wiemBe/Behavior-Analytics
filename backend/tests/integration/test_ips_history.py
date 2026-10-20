@@ -27,6 +27,7 @@ from app.models.enums import (
     CustomRuleMetric,
     CustomRuleSubjectKind,
     IpsDimension,
+    SearchFamily,
     Severity,
 )
 from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
@@ -47,7 +48,9 @@ from app.services.ips_pipeline import (
     ips_pipeline_lock_key,
 )
 from app.services.locks import collector_lock_key
+from app.services.search_cadence import SearchCadenceService
 from tests.integration.factories import make_instance
+from tests.integration.test_history_backfill_api import READER, Client
 from tests.integration.test_ips_baseline import add_bucket as ips_bucket
 from tests.integration.test_ips_baseline import add_source as ips_source
 from tests.integration.test_ips_baseline import settings as ips_settings
@@ -154,6 +157,30 @@ async def record_yes(
             decided_by="test",
             source="UI",
         )
+    )
+    await session.flush()
+
+
+async def add_active_entities(session, instance_id, source_id, count: int) -> None:  # type: ignore[no-untyped-def]
+    session.add_all(
+        [
+            IpsEntity(
+                instance_id=instance_id,
+                log_source_id=source_id,
+                dimension=dimension,
+                value_key=f"{dimension.value}-{index}",
+                first_seen_at=NOW - timedelta(days=30),
+                last_seen_at=NOW,
+                active=True,
+                normalizer_version=1,
+            )
+            for dimension in (
+                IpsDimension.DESTINATION_PORT,
+                IpsDimension.DESTINATION_IP,
+                IpsDimension.SIGNATURE,
+            )
+            for index in range(count)
+        ]
     )
     await session.flush()
 
@@ -276,6 +303,7 @@ class TestReading:
         assert scope.state == "COMPLETE"
         assert scope.days_target == WINDOW_DAYS
         assert scope.target_start == target
+        assert "fitted with no admitted entity yet" in (scope.reason or "")
         assert scope.floor == target
         assert scope.progress  # the scope has searched
         # The reading ends at the boundary of the tick that finished it.
@@ -399,6 +427,164 @@ class TestReading:
         await collect(db_session, instance, provider, hcfg(), NOW)
 
         assert await scope_of(db_session, instance, str(SOURCE_ID)) is None
+
+    async def test_ips_fits_once_and_the_estimate_route_matches_the_adapter(
+        self, db_session, db_schema
+    ) -> None:
+        settings = hcfg(
+            history_backfill_days=28,
+            history_backfill_max_hours=8,
+            history_backfill_searches_per_tick=1,
+        )
+        instance = await make_instance(db_session)
+        _, source = await add_source(db_session, instance, SOURCE_ID)
+        await add_active_entities(db_session, instance.id, source.id, 30)
+        await record_yes(db_session, instance, days=28)
+        await SearchCadenceService(db_session, settings).set_cadence(
+            SearchFamily.IPS_COLLECTION, 300, actor="test", source_ip=None
+        )
+        boundary = boundary_of(NOW)
+        target = boundary - timedelta(days=7)
+        provider = ScriptedIpsProvider(
+            window_events(target - MARGIN, boundary), now=NOW
+        )
+        await db_session.commit()
+
+        await collect(db_session, instance, provider, settings, NOW)
+        scope = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert scope is not None
+        assert scope.days_target == 7 and scope.target_start == target
+        assert "window reduced from 28 to 7 days" in (scope.reason or "")
+        # One search cannot fund a seven-dimension read chunk.  The fit is stored
+        # nevertheless; a later tick with room for a chunk must use that same fit.
+        assert provider.ips_searches == []
+
+        reading_settings = settings.model_copy(
+            update={"history_backfill_searches_per_tick": 7}
+        )
+        await collect(db_session, instance, provider, reading_settings, NOW)
+        assert provider.ips_searches[0].window_start == target - MARGIN
+        starts = (
+            await db_session.scalars(
+                select(IpsSourceBucket.bucket_start).where(
+                    IpsSourceBucket.log_source_id == source.id,
+                    IpsSourceBucket.origin == "HISTORY",
+                )
+            )
+        ).all()
+        assert not starts or min(starts) >= target
+
+        route = Client(
+            db_schema,
+            READER,
+            settings_update={
+                "ips_collection_enabled": True,
+                "history_backfill_days": 28,
+                "history_backfill_max_hours": 8,
+                "history_backfill_searches_per_tick": 1,
+            },
+        )
+        estimates = {
+            item["family"]: item
+            for item in route.get("/api/v1/admin/history-backfill/estimate").json()[0][
+                "families"
+            ]
+        }
+        assert estimates["IPS"]["days_fitted"] == scope.days_target
+
+        # The stored plan wins after settings and counts change.
+        calls = len(provider.ips_searches)
+        changed = reading_settings.model_copy(
+            update={
+                "history_backfill_max_hours": 1,
+                "history_backfill_searches_per_tick": 64,
+            }
+        )
+        await collect(db_session, instance, provider, changed, NOW)
+        scope = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert scope is not None
+        assert scope.days_target == 7 and scope.target_start == target
+        assert "window reduced from 28 to 7 days" in (scope.reason or "")
+        assert len(provider.ips_searches) > calls
+        assert scope.state == "COMPLETE"
+
+    async def test_ips_refuses_below_seven_days_without_an_ariel_search(
+        self, db_session
+    ) -> None:
+        settings = hcfg(
+            history_backfill_days=28,
+            history_backfill_max_hours=1,
+            history_backfill_searches_per_tick=1,
+        )
+        instance = await make_instance(db_session)
+        _, source = await add_source(db_session, instance, SOURCE_ID)
+        await add_active_entities(db_session, instance.id, source.id, 30)
+        await record_yes(db_session, instance, days=28)
+        await SearchCadenceService(db_session, settings).set_cadence(
+            SearchFamily.IPS_COLLECTION, 300, actor="test", source_ip=None
+        )
+        provider = ScriptedIpsProvider({}, now=NOW)
+        await db_session.commit()
+
+        report = await collect(db_session, instance, provider, settings, NOW)
+        scope = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert scope is not None and scope.state == "UNAVAILABLE"
+        assert "even 7 days" in (scope.reason or "")
+        assert report.history_searches == 0 and provider.ips_searches == []
+        collection = await watermark_of(
+            db_session, instance, watermark_collector(SOURCE_ID)
+        )
+        evaluation = await watermark_of(
+            db_session, instance, evaluation_collector(SOURCE_ID)
+        )
+        assert collection is not None and collection.watermark_at is None
+        assert evaluation is not None and evaluation.watermark_at is None
+
+    async def test_ips_estimate_and_adapters_use_the_same_fair_share(
+        self, db_session, db_schema
+    ) -> None:
+        settings = hcfg(
+            history_backfill_days=28,
+            history_backfill_max_hours=4,
+            history_backfill_searches_per_tick=10,
+        )
+        instance = await make_instance(db_session)
+        for source_id in (500, 501):
+            _, source = await add_source(db_session, instance, source_id)
+            await add_active_entities(db_session, instance.id, source.id, 30)
+        await record_yes(db_session, instance, days=28)
+        await SearchCadenceService(db_session, settings).set_cadence(
+            SearchFamily.IPS_COLLECTION, 300, actor="test", source_ip=None
+        )
+        await db_session.commit()
+
+        await collect(db_session, instance, ScriptedIpsProvider({}, now=NOW), settings, NOW)
+        scopes = [
+            await scope_of(db_session, instance, str(source_id))
+            for source_id in (500, 501)
+        ]
+        assert all(scope is not None and scope.days_target == 20 for scope in scopes)
+        assert all("fair share of 5 of the 10" in (scope.reason or "") for scope in scopes)
+
+        route = Client(
+            db_schema,
+            READER,
+            settings_update={
+                "ips_collection_enabled": True,
+                "history_backfill_days": 28,
+                "history_backfill_max_hours": 4,
+                "history_backfill_searches_per_tick": 10,
+            },
+        )
+        ips = next(
+            item
+            for item in route.get("/api/v1/admin/history-backfill/estimate").json()[0][
+                "families"
+            ]
+            if item["family"] == "IPS"
+        )
+        assert ips["days_fitted"] == 20
+        assert "fair share of 5 of the 10" in " ".join(ips["assumptions"])
 
 
 class TestFloor:
@@ -595,8 +781,9 @@ class TestStatementCount:
     async def test_the_count_is_equal_for_one_and_ten_reading_sources(
         self, db_session
     ) -> None:
-        """The tick that writes the rows costs the same for one and for ten sources."""
-        counts = {}
+        """Starting adds one bulk count; later work stays constant at fleet scale."""
+        first_counts = {}
+        later_counts = {}
         for sources in (1, 10):
             instance = await make_instance(db_session)
             source_ids = []
@@ -609,13 +796,24 @@ class TestStatementCount:
             provider = ScriptedIpsProvider(
                 window_events(target - MARGIN, boundary), now=NOW
             )
-            # The first tick creates the scopes and proves the floors.
-            await collect(db_session, instance, provider, hcfg(), NOW)
+            # The first tick creates the scopes, counts every source in one statement,
+            # and proves the floors.
+            with self._counting(db_session) as first:
+                await collect(db_session, instance, provider, hcfg(), NOW)
+            first_counts[sources] = len(first)
+            entity_counts = [
+                sql
+                for sql in first
+                if "count(ips_entity.id)" in sql.lower()
+                and "group by ips_entity.log_source_id" in sql.lower()
+            ]
+            assert len(entity_counts) == 1
             # The second tick reads and writes: one statement per table for the
             # whole fleet, whatever the fleet's size.
             with self._counting(db_session) as statements:
                 await collect(db_session, instance, provider, hcfg(), NOW)
-            counts[sources] = len(statements)
+            later_counts[sources] = len(statements)
+            assert not [sql for sql in statements if "count(ips_entity.id)" in sql.lower()]
             rows = (
                 await db_session.scalars(
                     select(IpsSourceBucket).where(
@@ -625,9 +823,8 @@ class TestStatementCount:
                 )
             ).all()
             assert rows, "the counted tick wrote no history row"
-        assert counts[1] == counts[10], counts
-        # Pinned: the reading tick of a fleet of IPS sources.
-        assert counts[1] == 12, counts
+        assert first_counts == {1: 9, 10: 9}
+        assert later_counts == {1: 12, 10: 12}
 
     async def test_the_count_does_not_grow_with_the_span(self, db_session) -> None:
         """A twelve-bucket step and a 2,016-bucket step cost the same statements."""
@@ -659,7 +856,7 @@ class TestStatementCount:
             counts[buckets_written] = len(statements)
         assert counts[12] == counts[2016], counts
         # Pinned: the whole reading of one source, scan tick and reading tick.
-        assert counts[12] == 22, counts
+        assert counts[12] == 23, counts
 
     async def test_the_count_does_not_grow_with_the_number_of_entities(
         self, db_session
@@ -705,7 +902,7 @@ class TestStatementCount:
             counts[entities] = len(statements)
         assert counts[1] == counts[22], counts
         # Pinned: the same reading, with one entity per bucket and with many.
-        assert counts[1] == 22, counts
+        assert counts[1] == 23, counts
 
     async def test_a_step_writes_more_rows_than_the_bind_limit_allows(
         self, db_session

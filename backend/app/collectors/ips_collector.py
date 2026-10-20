@@ -38,13 +38,16 @@ from app.history import (
     HistoryOrigin,
     HistoryState,
     HistoryTrigger,
+    IpsGroup,
     ScopeRowView,
     bounded_reason,
     console_mode,
     decode_progress,
     encode_progress,
     fit_family_window,
+    fit_window,
     history_search_budget,
+    ips_group_searches,
     is_live_clause,
     marker_values,
     new_progress,
@@ -53,6 +56,7 @@ from app.history import (
     scope_action,
     transition_row,
 )
+from app.history.estimate import IPS_SOURCE_IPS_PER_SOURCE
 from app.history.ips import (
     HistoryIpsBucket,
     HistoryIpsEntity,
@@ -61,6 +65,7 @@ from app.history.ips import (
 )
 from app.history.planner import (
     ChunkResult,
+    PlannerSettings,
     ScanSpanResult,
     SearchStatus,
     Span,
@@ -234,6 +239,12 @@ def _scan_status(state: IpsCellState) -> SearchStatus:
     if state is IpsCellState.NOT_COLLECTED:
         return SearchStatus.NOT_RUN
     return SearchStatus.FAILED
+
+
+def _ips_search_estimator(
+    group: IpsGroup, settings: PlannerSettings
+) -> Callable[[int], int]:
+    return lambda days: ips_group_searches(group, days, settings)
 
 
 class _IpsFleetLocks:
@@ -687,7 +698,19 @@ class IpsCollector:
             remaining,
             time.monotonic() + float(self.settings.history_backfill_seconds_per_tick),
         )
-        fitted = fit_family_window(HistoryFamily.IPS, self.settings)
+        fair_share = max(1, remaining // max(1, len(sources)))
+        starting = []
+        for item in sources:
+            stored = scope_values[item.log_source.qradar_id]["progress"]
+            assert isinstance(stored, dict)
+            if not stored:
+                starting.append(item)
+        fitted = fit_family_window(HistoryFamily.IPS, self.settings) if starting else None
+        entity_counts = (
+            await self._history_entity_counts(starting)
+            if starting and fitted is not None and fitted.available
+            else {}
+        )
         writes: list[_HistoryWrite] = []
         handoffs: dict[int, bool] = {}
 
@@ -695,32 +718,83 @@ class IpsCollector:
             source_id = item.log_source.qradar_id
             values = scope_values[source_id]
             report.history_sources += 1
-            if not fitted.available:
-                change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
-                values.update(
-                    state=change.state.value,
-                    anchor=boundary,
-                    finished_at=now,
-                    reason=bounded_reason(fitted.reason or change.reason),
-                )
-                handoffs[source_id] = False
-                report.history_states[str(source_id)] = change.state.value
-                continue
-
             stored = values["progress"]
             assert isinstance(stored, dict)
+            fit_reason: str | None = None
             if stored:
-                progress = decode_progress(stored).progress
+                decoded = decode_progress(stored)
+                progress = decoded.progress
+                adapter = decoded.adapter
+                stored_reason = adapter.get("fit_reason")
+                fit_reason = stored_reason if isinstance(stored_reason, str) else None
             else:
-                assert fitted.days is not None
+                assert fitted is not None
+                if not fitted.available or fitted.days is None:
+                    change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
+                    values.update(
+                        state=change.state.value,
+                        anchor=boundary,
+                        finished_at=now,
+                        reason=bounded_reason(fitted.reason or change.reason),
+                    )
+                    handoffs[source_id] = False
+                    report.history_states[str(source_id)] = change.state.value
+                    continue
+                counts = entity_counts.get(item.log_source.id, {})
+                no_entities = not any(counts.values())
+                group = IpsGroup(
+                    sources=1,
+                    ports=max(1, counts.get(IpsDimension.DESTINATION_PORT, 0)),
+                    ips=max(1, counts.get(IpsDimension.DESTINATION_IP, 0)),
+                    signatures=max(1, counts.get(IpsDimension.SIGNATURE, 0)),
+                    source_ips=IPS_SOURCE_IPS_PER_SOURCE,
+                )
+                fit = fit_window(
+                    fitted.days,
+                    _ips_search_estimator(group, planner),
+                    end=boundary,
+                    settings=planner,
+                    searches_per_tick=fair_share,
+                )
+                zero_reason = (
+                    f"fitted with no admitted entity yet; the "
+                    f"{self.settings.history_backfill_max_hours}-hour limit still bounds "
+                    "the reading"
+                    if no_entities
+                    else None
+                )
+                fair_reason = (
+                    f"fitted with a fair share of {fair_share} of the {remaining} shared "
+                    "history searches per tick"
+                )
+                fit_reason = "; ".join(
+                    part
+                    for part in (
+                        fitted.reason,
+                        fit.reason if fit.reduced or fit.refused else None,
+                        zero_reason,
+                        fair_reason,
+                    )
+                    if part
+                )
+                if fit.refused or fit.days_fitted is None or fit.target_start is None:
+                    change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
+                    values.update(
+                        state=change.state.value,
+                        anchor=boundary,
+                        finished_at=now,
+                        reason=bounded_reason(fit_reason),
+                    )
+                    handoffs[source_id] = False
+                    report.history_states[str(source_id)] = change.state.value
+                    continue
                 started_at = values.get("started_at")
                 assert isinstance(started_at, datetime)
-                progress = new_progress(
-                    boundary - timedelta(days=fitted.days), started_at, planner
-                )
+                progress = new_progress(fit.target_start, started_at, planner)
+                adapter = {"fit_reason": fit_reason}
                 values.update(
-                    days_target=fitted.days,
-                    target_start=progress.target_start,
+                    days_target=fit.days_fitted,
+                    target_start=fit.target_start,
                 )
 
             dimensions = self._history_dimensions(item)
@@ -776,10 +850,11 @@ class IpsCollector:
                         assert updated.floor is not None
                         writes.append(_HistoryWrite(item, updated.floor, tuple(ready)))
 
+            reason = "; ".join(part for part in (fit_reason, reason) if part)
             values.update(
                 floor=updated.floor,
                 through=updated.through,
-                progress=encode_progress(updated),
+                progress=encode_progress(updated, adapter=adapter),
                 reason=bounded_reason(reason),
             )
             if trigger is not None:
@@ -799,6 +874,26 @@ class IpsCollector:
         if writes:
             await self._persist_history(instance, writes, now=now, interval=interval, report=report)
         return handoffs
+
+    async def _history_entity_counts(
+        self, sources: Sequence[_Source]
+    ) -> dict[uuid.UUID, dict[IpsDimension, int]]:
+        """Active entity counts for every starting source in one bulk statement."""
+        source_ids = [item.log_source.id for item in sources]
+        rows = await self.session.execute(
+            select(IpsEntity.log_source_id, IpsEntity.dimension, func.count(IpsEntity.id))
+            .where(
+                IpsEntity.log_source_id.in_(source_ids),
+                IpsEntity.active.is_(True),
+            )
+            .group_by(IpsEntity.log_source_id, IpsEntity.dimension)
+        )
+        counts: dict[uuid.UUID, dict[IpsDimension, int]] = {
+            source_id: {} for source_id in source_ids
+        }
+        for source_id, dimension, entities in rows:
+            counts[source_id][IpsDimension(str(dimension))] = int(entities)
+        return counts
 
     def _history_dimensions(self, source: _Source) -> tuple[IpsDimension, ...]:
         """The dimensions one source's keyed searches read, in the plan's order.
