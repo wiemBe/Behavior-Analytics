@@ -93,7 +93,7 @@ first". The decision of 2026-10-18, then:
 |---|---|---|
 | `docs/PHASE-G-PROPERTY-WATCH.md:530-533` (§G.6) | "the **first run seeds the watermark at the latest closed bucket and replays no history** [...] it learns forward and never backfills" | A watch without a history request still does this. A watch with one reads its past, learning only (this file); the SC.6 rule is the reason both are safe |
 | `docs/PHASE-G-PROPERTY-WATCH.md:1921` (§G.17 limitations) | "No backfill: a watch learns forward from its first bucket (§G.6)." | "A watch learns forward unless history was requested (PHASE-G-HISTORY-BOOTSTRAP.md)" |
-| `docs/PHASE-G-PROPERTY-WATCH.md:890-893` (§G.8.0) | "the first verdict on a cell comes **one week after the value was first tracked**" | True for a watch without history. After a bootstrap of D >= 7 days the cells are judged at hand-off (§H.8.2) |
+| `docs/PHASE-G-PROPERTY-WATCH.md:890-893` (§G.8.0) | "the first verdict on a cell comes **one week after the value was first tracked**" | True for a watch without history. After a bootstrap of `7 x pw_baseline_min_visits` days (14 at the default) the cells are judged at hand-off (§H.8.2) |
 | `docs/PHASE-G-PROPERTY-WATCH.md:1000-1002` (§G.8.3) | "Learning period: `pw_new_value_history_days` from the watch's first collected bucket" | The first collected bucket is the oldest history bucket, so the period is already over at hand-off if the window was read (§H.1.1) |
 | `docs/PHASE-G-PROPERTY-WATCH.md:1485` (§G.13.4) and `frontend/src/components/propertywatch/authoring.ts:40-60` | "needs 7 days of history", "Needs a week of reliable baselines", "Needs 7 days of complete novelty history" | Conditional on the history option (§H.9.4) |
 | `docs/PHASE-G-PROPERTY-WATCH.md:1608-1620` (§G.14.1) | "Per watch per tick the cost is `chunks x (2 or 3)`", the static cost at enable | Steady-state cost, still true. A bootstrapping watch also draws on the history budget of §H.4.4 |
@@ -114,7 +114,7 @@ bootstrap changes no detector. It supplies, earlier, the inputs they already req
 |---|---|---|---|
 | **`PW_NEW_VALUE`** | For a value first admitted at `first`: every bucket of `[first - pw_new_value_history_days, first)` exists, with the same `watch_version`, none `NOT_COLLECTED`, none `LOWER_BOUND`, none with `admission_truncated` or `rejected_over_quota > 0` (`backend/app/property_watch/history.py:12-82`); and `first >= watch_first_collected_at + pw_new_value_history_days` (`backend/app/property_watch/detectors.py:598-612`), where that first-collected time is the oldest stored bucket of the version (`backend/app/repositories/property_watch.py:178-186`) | The whole window as history buckets from `F` (§H.3.1). With `D >= 7` days read and no hole, every first appearance **after hand-off** has a complete 7-day history, and the learning period is over at hand-off | Sightings below `pw_min_admission_events` (3 events in one bucket) were never stored, so "never seen" is still not claimed (§G.8.3). A bucket whose admission was truncated or whose search was cut blocks the claim for the 7 days after it. Events whose property was not parsed (§H.6, row 2). The scope as it was then (§H.6, row 4) |
 | **`PW_NEW_COMBINATION`** | The tuple history above, plus, per component, an earlier counted occurrence (a presence claim, `LOWER_BOUND` suffices) (`backend/app/anomaly/capabilities.py:748-775`, `backend/app/repositories/property_watch.py:306-361`) | The component occurrences of the whole window: `component_occurrences` reads `pw_value_metric` joined to `pw_bucket` with no origin condition, and history is exactly the evidence it wants | Components seen only below the admission threshold are not known (§G.9.3); same limits as `PW_NEW_VALUE` |
-| **`PW_VALUE_SPIKE`** | A reliable cell: `baseline_min_samples` (8, `backend/app/core/config.py:335`) clean samples in the weekday x hour cell | After training at hand-off, one visit of an hour-of-week gives up to 12 samples (§H.8.2). `D = 7` makes every cell reliable at once; `D = 28` gives four visits and up to 48 samples | A week-to-week variation that one visit cannot show (the samples of one visit are correlated). Values admitted late in the window have fewer visits |
+| **`PW_VALUE_SPIKE`** | A reliable cell: `baseline_min_samples` (8, `backend/app/core/config.py:335`) clean samples **and** `pw_baseline_min_visits` (2, `backend/app/core/config.py:657`) distinct weekly visits in the weekday x hour cell | After training at hand-off, one visit of an hour-of-week gives up to 12 samples (§H.8.2). A cell is reliable after `7 x pw_baseline_min_visits` days: `D = 14` gives two visits and up to 24 samples, `D = 28` four visits and up to 48 | A week-to-week variation that one visit cannot show (the samples of one visit are correlated). Values admitted late in the window have fewer visits |
 | **`PW_VALUE_DROP`** | The same cell, `EXACT` counts, coverage at the floor | The same | The same; and it never reads a `LOWER_BOUND` bucket (a lower bound cannot prove a drop, §G.8.2) |
 | **`PW_VALUE_DISAPPEARED`** | A cell median >= 5, then `pw_disappear_buckets` (6) consecutive **measured zeros** in evaluated buckets | The cell. The zeros must be live (§H.1.3) | Whether a gap in history was silence: only buckets after `F` are zeros (§H.3.2) |
 | **F.1 threshold rules** on a pinned value | Nothing: "no learning period: a rule needs no baseline" (§G.8.4) | Nothing | See §H.1.2 |
@@ -254,17 +254,24 @@ live:                                                      [ boundary ....      
   `history_through`. Another tick between two of its steps changes nothing: each step is read from
   the stored `history_through`, and its writes are idempotent upserts. A second tick *overlapping*
   the first (a tick longer than the cadence slot: `claim_slot` lets the next slot start,
-  `backend/app/services/search_cadence.py:83-95`) is prevented by a per-watch
-  `pg_try_advisory_xact_lock` taken before the first search of the step; a tick that does not get
-  it skips the watch (the live dispatch has no such lock today: `workers/tasks.py:1394-1442`; a
-  history step is long enough to need one). All writes of a step, including `history_through` and,
-  on the last step, the two watermarks, are in the instance's one transaction
-  (`workers/tasks.py:206-210`): a crash rolls the whole step back.
+  `backend/app/services/search_cadence.py:83-95`) is prevented by an advisory lock taken before the
+  first search of the step; a tick that does not get it skips the watch (the live dispatch has no
+  such lock today: `workers/tasks.py:1394-1442`; a history step is long enough to need one). All
+  writes of a step, including `history_through` and, on the last step, the two watermarks, are in
+  the instance's one transaction (`workers/tasks.py:206-210`): a crash rolls the whole step back.
 - **The moving end costs a blind period, not a hole.** The buckets between enable and hand-off are
   history, not live: nothing is evaluated for the watch in them. For a 6-value watch that is
   minutes; for a 200-value watch it can be hours (§H.4.5). The page says "reading history: n of m
   days" for as long as it lasts, and the alternative (a fixed end, a catch-up burst of live buckets
   evaluated late) was rejected in §H.0.3.
+
+> **As built.** The lock is **not** a per-watch lock: the whole property-watch pipeline of an
+> instance (collect, evaluate, train) runs under one instance-wide `CollectorAdvisoryLock` of
+> `(instance, "property_watch")` (`backend/app/services/pw_pipeline.py:95-101`,
+> `backend/app/services/locks.py:38-77`). It is taken before the first search of the tick and
+> released at its end; a tick that does not get it does nothing and says so (`skipped_locked`).
+> Two ticks of the same instance therefore never overlap, whichever watch they would read; the
+> price is that one long history step holds the other watches of the same instance until it ends.
 
 ### H.2.5 Equivalence: a history bucket is what live collection would have written **[BUILT]**
 
@@ -730,24 +737,37 @@ which is the last history bucket at hand-off, so the first training pass uses th
 
 ### H.8.2 When the seasonal cells become reliable **[BUILT]**
 
-A cell is reliable when it has at least `baseline_min_samples` = 8 clean samples (`config.py:335`).
+> **As built.** A cell needs **two** things: at least `baseline_min_samples` = 8 clean samples
+> (`config.py:335`) **and** at least `pw_baseline_min_visits` = 2 distinct weekly visits
+> (`config.py:657`). A visit is the UTC calendar date of the bucket start, and the twelve
+> five-minute samples of one visit are correlated, not a baseline
+> (`property_watch/baseline.py:123,137`). The spike, drop and disappearance detectors read a cell
+> only when it is reliable (`property_watch/detectors.py:237-254`); until then they answer
+> `INSUFFICIENT_DATA`, with the reason "the value-events baseline has N sample(s), but they come
+> from too few separate weekly visits of this weekday and hour: a baseline needs the same hour
+> from at least 2 different weeks" when the samples are enough but the visits are not.
+> **A cell is therefore judged from the hand-off only after
+> `7 x pw_baseline_min_visits` days of history** — 14 days at the default of two visits, 28 days
+> at four visits. A shorter history keeps the volume detectors at `INSUFFICIENT_DATA` until the
+> live buckets have added the missing visits.
+
 A visit to an hour-of-week supplies up to 12 five-minute samples. Counting a visit's samples as
 available only where the value was tracked and the reading was exact, covered and not excluded
-(`baseline.py:92-113`):
+(`property_watch/baseline.py:101-124`):
 
-| Window read | Visits per cell | Samples per cell (max) | Reliable at hand-off |
+| Window read | Visits per cell | Samples per cell (max) | Reliable at hand-off (two visits by default) |
 |---|---|---|---|
-| 7 days | 1 | 12 | yes, for every hour-of-week where the value was tracked and at least 8 of its 12 buckets were clean |
-| 14 days | 2 | 24 | yes |
+| 7 days | 1 | 12 | no: one visit is not two, so the cell stays unreliable |
+| 14 days | 2 | 24 | yes, for every hour-of-week where the value was tracked and at least 8 of its 24 buckets were clean |
 | 28 days | 4 | 48 | yes, with the spread of four weeks |
 
-So **a cell is judged from hand-off after a bootstrap of 7 days or more**, where §G.8.0 says one
-week after first tracking. The weaker claim at 7 days is statistical, not a gate: the 12 samples of
-one visit are correlated and understate the week-to-week spread, which raises the chance of a false
-spike or drop for the first weeks. That is why the default window is 28 days and why the lab may
-use 7 for speed. A value admitted late in the window has fewer visits; `observations` and
-`sample_count` are stored per cell and the page's "baseline: N of 168 cells reliable" reads them
-(`baseline.py`, §G.8.0).
+So **a cell is judged from hand-off after a bootstrap of `7 x pw_baseline_min_visits` days or
+more** (14 days at the default setting), where §G.8.0 says one week after first tracking. A shorter
+history is not a weaker claim but no claim: the detectors wait for the visits. That is why the
+default window is 28 days — four visits, the spread of four weeks — and why a lab run that only
+wants the history read, not a verdict, may use 7. A value admitted late in the window has fewer
+visits; `observations` and `sample_count` are stored per cell and the page's "baseline: N of 168
+cells reliable" reads them (`baseline.py`, §G.8.0).
 
 ---
 
@@ -904,7 +924,14 @@ adds one.
 
 ---
 
-## H.12 The lab demonstration: a new value judged against bootstrapped history, in about an hour
+## H.12 The lab demonstration: a new value judged against bootstrapped history, in about an hour **[BUILT]**
+
+> **As built.** Validated on the lab console on 2026-10-20. The reading wrote 1,504 history buckets,
+> contiguous from the floor to the hand-off; the first live bucket started at the hand-off, with no
+> gap and no overlap; nothing was judged before it. A new value opened an incident and an alert
+> record, with the history verified (864 of 864 buckets). A process killed in the middle of a step
+> resumed and wrote the same rows as an uninterrupted run. Training over 100 values x 8,064
+> buckets (806,400 rows) took 14.6 s, 584 MB of peak memory and 6 statements.
 
 ### H.12.1 What it must show, and what decides if it can
 
@@ -955,12 +982,22 @@ tick as PW-10 does (`ticks.jsonl`).
 | history buckets in `pw_bucket` | `origin = 'HISTORY'`, contiguous 5-minute starts from `F` to `history_end - 5 min`, no duplicate |
 | first live bucket | starts at `history_end`, `origin = 'LIVE'` |
 | rows judged in history | **none**: no `pw_anomaly`, `pw_anomaly_transition` or alert with an interval before `history_end` (SQL, asserted) |
-| the six users after training | `NORMAL`/`HEALTHY` with reliable cells (`D >= 7`); the pinned value exact |
+| the six users after training | `NORMAL`/`HEALTHY` once their cells are reliable, which needs `7 x pw_baseline_min_visits` days (14 at the default): after a 7-day bootstrap they read `INSUFFICIENT_DATA` ("learning") until the live buckets add the second visit; the pinned value exact |
 | optional second run: an established user stops after hand-off (S1 with five users from t = 25) | `PW_VALUE_DISAPPEARED` opens at the 7th live bucket, not before (the live-only streak of §H.1.3) |
 | `newuser.demo` | `PW_NEW_VALUE` `ANOMALOUS` with the history window verified, "N of N history buckets read from QRadar history" in the evidence |
 | a deliberately flooded bucket (a second run with `PW_MAX_NEW_VALUES_PER_BUCKET=1`) | the bucket has `rejected_over_quota > 0`; a first appearance in the 7 days after it is `INSUFFICIENT_DATA` |
 | a worker restart between the two history ticks (`PW_BOOTSTRAP_SEARCHES_PER_TICK=2` makes the reading last four ticks) | resumes at `history_through`; the final rows are the same as an uninterrupted run |
 | a tick run by hand between two scheduled ones | no gap, no overlap, no second advisory-lock holder |
+
+> **As built.** The row about `PW_BOOTSTRAP_SEARCHES_PER_TICK=2` holds only for a watch **without** a
+> pinned value. The smallest step of a reading is 2 searches (TOTALS and one GROUPED) and **3** with
+> a pinned value (TOTALS, PINNED and one GROUPED)
+> (`backend/app/property_watch/bootstrap.py:515-522`). A setting below the smallest step of the
+> watch is refused: the enable answers 409 with the code `HISTORY_BUDGET` ("PW_BOOTSTRAP_SEARCHES_PER_TICK
+> is 2; reading history for this watch needs at least 3 searches per tick (TOTALS, PINNED and one
+> GROUPED)"), and a reading that is already running waits and says the same
+> (`backend/app/collectors/pw_collector.py:1046-1055`). The watch of the lab run (§H.12.2) has a
+> pinned value, so a setting of 2 would have refused it.
 
 The lab run also measures what the cost table assumed: seconds per history search by window, rows
 per sub-window, the 806,000-row training read (§H.8.1), and the statement count of a history tick.

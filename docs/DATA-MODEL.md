@@ -252,7 +252,13 @@ id for WAF and IPS, which read per source:
 
 `floor` means different things per family and the API says which: for WAF, IPS and rule matches it
 is the floor QRadar's own read proved, so nothing before it is written; for source volume and
-catch-all it is only where the read started, and the real per-source floors live in `progress`.
+catch-all it is only where the read started, and the real per-source floors live in `progress`. A
+null `floor` proves nothing at all, whatever the family: the API's `floor_proved` is then false.
+
+A scope that is read again ("Read history now") keeps the earlier reading's `days_target`,
+`target_start`, `floor` and `through` until its first step replaces them. A stop before that step
+therefore cannot erase what the aggregate tables still hold, and the scope's own counters read
+`null` until the new reading has searched something.
 
 The collector is the only writer of the scope rows. The API and the CLI write only the decision
 row; each family applies a request at its next collection.
