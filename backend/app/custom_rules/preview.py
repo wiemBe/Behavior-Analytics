@@ -393,7 +393,11 @@ async def _load(
         )
     if kind is _WAF:
         return await load_waf_endpoints(
-            session, [uuid.UUID(key)], after=after, through=through
+            session,
+            [uuid.UUID(key)],
+            after=after,
+            through=through,
+            include_history=True,
         )
     if kind is _IPS_ENTITY:
         return await load_ips_entities(

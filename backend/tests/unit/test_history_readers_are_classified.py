@@ -125,6 +125,53 @@ HISTORY_TABLES = (
         },
     ),
     HistoryTable(
+        model="WafSourceBucket",
+        sql_name="waf_source_bucket",
+        readers={
+            "app.collectors.waf_endpoint_collector.WafEndpointCollector._persist_interval": Reader(
+                "collection replacement", ReaderKind.DELETE
+            ),
+            (
+                "app.collectors.waf_endpoint_collector.WafEndpointCollector."
+                "persist_history_breakdowns"
+            ): Reader("history breakdown enrichment", ReaderKind.EVIDENCE),
+            "app.custom_rules.loaders.load_waf_endpoints": Reader(
+                "F.1", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_latest_buckets": Reader(
+                "investigation", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_admission_overflow": Reader(
+                "investigation", ReaderKind.DISPLAY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_metrics_page": Reader(
+                "investigation", ReaderKind.DISPLAY
+            ),
+            "app.services.waf_pipeline.WafSourcePipeline._evaluate": Reader(
+                "pending evaluation", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.services.waf_pipeline.WafSourcePipeline._history_scope": Reader(
+                "eligibility", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.services.waf_pipeline.WafSourcePipeline._train": Reader(
+                "baseline boundary", ReaderKind.EVIDENCE
+            ),
+            "app.services.waf_retention.<module>": Reader("retention", ReaderKind.DELETE),
+            "app.services.waf_status.waf_source_statuses": Reader(
+                "source status", ReaderKind.DISPLAY
+            ),
+            "app.waf.baseline.WafBaselineBuilder.source_bucket_facts": Reader(
+                "baseline", ReaderKind.EVIDENCE
+            ),
+            "app.waf.engine.WafAnomalyEngine._load_novelty_traffic": Reader(
+                "novelty evidence", ReaderKind.EVIDENCE
+            ),
+            "app.waf.engine.WafAnomalyEngine._load_novelty": Reader(
+                "novelty history", ReaderKind.EVIDENCE
+            ),
+        },
+    ),
+    HistoryTable(
         model="RuleMatchWindow",
         sql_name="rule_match_window",
         readers={
@@ -160,6 +207,35 @@ HISTORY_TABLES = (
                 "R6", ReaderKind.DISPLAY
             ),
             "app.services.catchall_retention.<module>": Reader("R7", ReaderKind.DELETE),
+        },
+    ),
+    HistoryTable(
+        model="WafEndpointMetric",
+        sql_name="waf_endpoint_metric",
+        readers={
+            "app.collectors.waf_endpoint_collector.WafEndpointCollector._persist_interval": Reader(
+                "collection replacement", ReaderKind.DELETE
+            ),
+            (
+                "app.collectors.waf_endpoint_collector.WafEndpointCollector."
+                "persist_history_breakdowns"
+            ): Reader("history breakdown enrichment", ReaderKind.EVIDENCE),
+            "app.custom_rules.loaders.load_waf_endpoints": Reader(
+                "F.1 through live source bucket", ReaderKind.LIVE_ONLY
+            ),
+            "app.repositories.anomaly.AnomalyRepository.waf_metrics_page": Reader(
+                "investigation", ReaderKind.DISPLAY
+            ),
+            "app.services.waf_retention.<module>": Reader("retention", ReaderKind.DELETE),
+            "app.waf.baseline.WafBaselineBuilder._rows": Reader(
+                "baseline", ReaderKind.EVIDENCE
+            ),
+            "app.waf.engine.WafAnomalyEngine._load_subjects": Reader(
+                "bucket evaluation", ReaderKind.LIVE_ONLY
+            ),
+            "app.waf.engine.WafAnomalyEngine._load_novelty_traffic": Reader(
+                "novelty evidence", ReaderKind.EVIDENCE
+            ),
         },
     ),
 )

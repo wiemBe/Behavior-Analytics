@@ -202,6 +202,7 @@ async def load_waf_endpoints(
     *,
     after: datetime,
     through: datetime,
+    include_history: bool = False,
 ) -> dict[str, dict[datetime, BucketFacts]]:
     """Endpoint metrics joined to the source bucket that says what they prove.
 
@@ -210,37 +211,42 @@ async def load_waf_endpoints(
     """
     if not endpoint_ids:
         return {}
+    statement = (
+        select(
+            WafEndpointMetric.waf_endpoint_id,
+            WafEndpointMetric.bucket_start,
+            WafEndpointMetric.request_count,
+            WafEndpointMetric.blocked_count,
+            WafEndpointMetric.action_events,
+            WafEndpointMetric.unmapped_action_count,
+            WafEndpointMetric.server_error_count,
+            WafEndpointMetric.client_error_count,
+            WafEndpointMetric.response_code_events,
+            WafEndpointMetric.unclassified_response_count,
+            WafSourceBucket.request_count_measurement,
+            WafSourceBucket.action_measurement,
+            WafSourceBucket.response_code_measurement,
+            WafSourceBucket.in_maintenance,
+        )
+        .join(WafEndpoint, WafEndpoint.id == WafEndpointMetric.waf_endpoint_id)
+        .join(
+            WafSourceBucket,
+            and_(
+                WafSourceBucket.log_source_id == WafEndpoint.log_source_id,
+                WafSourceBucket.bucket_start == WafEndpointMetric.bucket_start,
+            ),
+        )
+        .where(
+            WafEndpointMetric.waf_endpoint_id.in_(endpoint_ids),
+            WafEndpointMetric.bucket_start > after,
+            WafEndpointMetric.bucket_start <= through,
+        )
+    )
+    if not include_history:
+        statement = statement.where(is_live_clause(WafSourceBucket))
     rows = (
         await session.execute(
-            select(
-                WafEndpointMetric.waf_endpoint_id,
-                WafEndpointMetric.bucket_start,
-                WafEndpointMetric.request_count,
-                WafEndpointMetric.blocked_count,
-                WafEndpointMetric.action_events,
-                WafEndpointMetric.unmapped_action_count,
-                WafEndpointMetric.server_error_count,
-                WafEndpointMetric.client_error_count,
-                WafEndpointMetric.response_code_events,
-                WafEndpointMetric.unclassified_response_count,
-                WafSourceBucket.request_count_measurement,
-                WafSourceBucket.action_measurement,
-                WafSourceBucket.response_code_measurement,
-                WafSourceBucket.in_maintenance,
-            )
-            .join(WafEndpoint, WafEndpoint.id == WafEndpointMetric.waf_endpoint_id)
-            .join(
-                WafSourceBucket,
-                and_(
-                    WafSourceBucket.log_source_id == WafEndpoint.log_source_id,
-                    WafSourceBucket.bucket_start == WafEndpointMetric.bucket_start,
-                ),
-            )
-            .where(
-                WafEndpointMetric.waf_endpoint_id.in_(endpoint_ids),
-                WafEndpointMetric.bucket_start > after,
-                WafEndpointMetric.bucket_start <= through,
-            )
+            statement
         )
     ).all()
     built: list[tuple[str, datetime, BucketFacts]] = []
