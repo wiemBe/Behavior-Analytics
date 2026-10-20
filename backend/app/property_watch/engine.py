@@ -122,6 +122,8 @@ class _History:
     facts: HistoryFacts
     start: datetime
     buckets: int
+    #: Of those buckets, how many were read from QRadar's past (`origin = HISTORY`).
+    from_history: int
     appearance: PwBucketFact
     first_collected: datetime | None
     membership_changed: bool
@@ -857,6 +859,7 @@ class PwAnomalyEngine:
             facts=facts,
             start=history_start,
             buckets=len(before),
+            from_history=sum(b.origin is PwBucketOrigin.HISTORY for b in before),
             appearance=appearance,
             first_collected=first_collected.get((value.watch_id, value.watch_version)),
             membership_changed=membership_changed,
@@ -884,6 +887,8 @@ class PwAnomalyEngine:
             history_start=first,
             history_end=first,
             history_buckets=0,
+            history_buckets_from_history=0,
+            history_floor=_aware(watch.history_floor),
             appearance_bucket=current,
             events_since_first_seen=0,
             buckets_with_traffic=0,
@@ -970,6 +975,8 @@ class PwAnomalyEngine:
             history_start=history.start,
             history_end=first,
             history_buckets=history.buckets,
+            history_buckets_from_history=history.from_history,
+            history_floor=_aware(watch.history_floor),
             appearance_bucket=history.appearance,
             events_since_first_seen=events,
             buckets_with_traffic=traffic,

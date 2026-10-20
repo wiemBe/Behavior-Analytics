@@ -153,6 +153,7 @@ _BODIES: dict[tuple[str, str], dict] = {
         "expected_updated_at": "2026-01-01T00:00:00Z",
         "pinned_values": [],
     },
+    ("POST", "/api/v1/property-watches/{watch_id}/history"): {"history_days": 7},
     # Auth administration. The read-only principal is refused by the router
     # guard; the bodies are valid so a body-first failure cannot hide that.
     ("POST", "/api/v1/auth/password"): {

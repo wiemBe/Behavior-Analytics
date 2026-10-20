@@ -89,6 +89,9 @@ class PwNoveltyFacts:
     property_count: int = 1
     components: tuple[PwComponentFact, ...] = ()
     established_at_hand_off: datetime | None = None
+    #: Of `history_buckets`, those read from QRadar's past, and the floor the reading proved.
+    history_buckets_from_history: int = 0
+    history_floor: datetime | None = None
 
 
 @dataclass
@@ -670,6 +673,10 @@ def _materiality(
         "history_start": novelty.history_start.isoformat(),
         "history_end": novelty.history_end.isoformat(),
         "history_buckets_verified": novelty.history_buckets,
+        "history_buckets_from_history": novelty.history_buckets_from_history,
+        "history_floor": (
+            novelty.history_floor.isoformat() if novelty.history_floor is not None else None
+        ),
         "events_since_first_seen": events,
         "buckets_with_traffic": buckets,
         "measurement": novelty.materiality_measurement.value,

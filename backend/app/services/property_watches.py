@@ -30,7 +30,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
-from typing import Any
+from typing import Any, Literal, cast
 
 from sqlalchemy import and_, func, null, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +45,8 @@ from app.models.enums import (
     AlertStatus,
     PwAnomalyType,
     PwBucketMeasurement,
+    PwBucketOrigin,
+    PwHistoryState,
     PwPinnedMeasurement,
     PwScopeKind,
     SearchFamily,
@@ -59,7 +61,14 @@ from app.models.property_watch import (
     PwValueBaseline,
     PwValueMetric,
 )
-from app.property_watch.aql import build_query, validate_query_inputs
+from app.property_watch.aql import build_query, pinned_rows_per_bucket, validate_query_inputs
+from app.property_watch.bootstrap import (
+    UNREADABLE_PROGRESS,
+    BootstrapStateError,
+    pw_planner_settings,
+    read_progress,
+)
+from app.property_watch.estimate import estimate_history
 from app.property_watch.facts import (
     PwBucketFact,
     PwFactError,
@@ -92,6 +101,9 @@ from app.schemas.property_watch import (
     BaselineState,
     CoverageOut,
     DetectorStateOut,
+    HistoryCatalogOut,
+    HistoryEstimateOut,
+    HistoryGapOut,
     PinRuleOut,
     PreviewOut,
     PreviewQueryOut,
@@ -107,6 +119,7 @@ from app.schemas.property_watch import (
     WatchAqlOut,
     WatchAqlQueryOut,
     WatchBucketOut,
+    WatchHistoryOut,
     WatchScopeOut,
     WatchValueOut,
 )
@@ -308,6 +321,7 @@ def watch_snapshot(watch: PropertyWatch) -> dict[str, Any]:
         "severity": str(watch.severity),
         "enabled": bool(watch.enabled),
         "watch_version": int(watch.watch_version),
+        "history_days": watch.history_days,
         "pinned_count": len(watch.pinned_values),
         "pinned_digest": pinned_digest(watch.pinned_values),
     }
@@ -488,7 +502,152 @@ async def enable_reasons(
             f"the enabled watches would need {total} searches per tick against a budget of "
             f"{settings.pw_max_searches_per_tick} (this watch needs {own_cost})"
         )
+    reasons.extend(_history_budget_reasons(watch, total, settings))
     return reasons
+
+
+def watch_reads_history(watch: PropertyWatch) -> bool:
+    """A watch that asked for history and has not finished reading it (design §H.4.4)."""
+    return (
+        watch.history_days is not None
+        and watch.history_days >= 1
+        and PwHistoryState(str(watch.history_state))
+        in (PwHistoryState.NOT_REQUESTED, PwHistoryState.READING)
+    )
+
+
+def _history_budget_reasons(watch: PropertyWatch, live_total: int, settings: Settings) -> list[str]:
+    """The 409 for a full tick budget (design §H.9.1): a history step needs searches left.
+
+    A step is TOTALS, one GROUPED and, with pins, PINNED: 3 searches with pins, 2 without.
+    The enabled watches' static live cost goes first (§H.4.4), so what is left after it must
+    cover the smallest step. A watch that does not read history is not asked.
+    """
+    if not settings.pw_bootstrap_enabled or not watch_reads_history(watch):
+        return []
+    needed = 3 if watch.pinned_values else 2
+    free = max(0, settings.pw_max_searches_per_tick - live_total)
+    if free >= needed:
+        return []
+    return [
+        f"reading history needs at least {needed} free searches per tick "
+        f"({'TOTALS, PINNED and one GROUPED' if needed == 3 else 'TOTALS and one GROUPED'}), "
+        f"but {free} are left after the enabled watches' live cost of {live_total} of "
+        f"{settings.pw_max_searches_per_tick}"
+    ]
+
+
+async def history_budget_reasons(
+    session: AsyncSession, watch: PropertyWatch, settings: Settings
+) -> list[str]:
+    """Only the history reason, for a request made on a watch that is already enabled.
+
+    Called under the enabled-cap lock with the watch's new `history_days` applied.
+    """
+    if not settings.pw_bootstrap_enabled or not watch_reads_history(watch):
+        return []
+    others = list(
+        (
+            await session.scalars(
+                select(PropertyWatch).where(
+                    PropertyWatch.enabled.is_(True), PropertyWatch.id != watch.id
+                )
+            )
+        ).all()
+    )
+    costs = await static_costs(session, [*others, watch], settings)
+    total = costs[watch.id][0] + sum(costs[o.id][0] for o in others)
+    return _history_budget_reasons(watch, total, settings)
+
+
+# ---------------------------------------------------------------- history requests
+REASON_HISTORY_SWITCHED_OFF = "history reading is switched off"
+REASON_HISTORY_STARTS = "the reading starts at the next collection"
+
+
+def history_days_reasons(days: int, settings: Settings) -> list[str]:
+    """422 reasons for a `history_days` value: `0`, or `pw_new_value_history_days` to
+    `pw_bootstrap_days` inclusive (design §H.6 row 13)."""
+    low, high = settings.pw_new_value_history_days, settings.pw_bootstrap_days
+    if days == 0 or low <= days <= high:
+        return []
+    return [f"history_days must be 0 (no history) or between {low} and {high}, not {days}"]
+
+
+def pinned_rows(watch_like: PropertyWatch | WatchDraft, settings: Settings) -> int | None:
+    """The most rows one bucket of the pinned search can return; 0 without pins.
+
+    `None` when the stored watch does not validate (a read must then say nothing, not guess).
+    The scope id is irrelevant to the count, so a placeholder stands in for it.
+    """
+    if not watch_like.pinned_values:
+        return 0
+    properties = tuple((str(p["kind"]), str(p["name"])) for p in watch_like.properties)
+    try:
+        spec = validate_query_inputs(
+            PwSearchKind.PINNED,
+            scope_kind=PwScopeKind(str(watch_like.scope_kind)),
+            scope_ids=(0,),
+            properties=properties,
+            pinned=watch_like.pinned_values,
+            max_sources=settings.pw_max_sources_per_search,
+        )
+    except ValueError:
+        return None
+    return pinned_rows_per_bucket(spec)
+
+
+async def pinned_rows_reasons(
+    session: AsyncSession, watch_like: PropertyWatch | WatchDraft, settings: Settings
+) -> list[str]:
+    """422 when the pinned search could return more rows per bucket than a search may carry.
+
+    Such a watch would end `PARTIAL` with every span a gap (PW-13b open point 5): refused
+    here, with both numbers, before it asks for history.
+    """
+    rows = pinned_rows(watch_like, settings)
+    if rows is None:
+        return []
+    cadence = await _property_watch_cadence(session, settings)
+    target = pw_planner_settings(settings, cadence_seconds=cadence).row_target_rows
+    if rows <= target:
+        return []
+    return [
+        f"the pinned values can return up to {rows} rows per bucket, above the {target} rows "
+        "one history search may carry; unpin values or request no history"
+    ]
+
+
+async def history_change_reasons(session: AsyncSession, watch: PropertyWatch) -> list[str]:
+    """409 reasons against changing `history_days` (design §H.5.5): empty when it may change.
+
+    Only a watch that never read, holds no bucket of its current version and has no watermark
+    can ask. Anything else would prepend history to values and incidents already in use.
+    """
+    advice = "create a new watch to read history"
+    state = PwHistoryState(str(watch.history_state))
+    if state is not PwHistoryState.NOT_REQUESTED:
+        return [f"history is {state.value} on this watch and cannot be requested again; {advice}"]
+    marks = [
+        name
+        for name in ("collected_through", "evaluated_through")
+        if getattr(watch, name) is not None
+    ]
+    if marks:
+        return [f"this watch has already collected ({' and '.join(marks)} set); {advice}"]
+    stored = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(PwBucket)
+            .where(PwBucket.watch_id == watch.id, PwBucket.watch_version == watch.watch_version)
+        )
+        or 0
+    )
+    if stored:
+        return [
+            f"this watch holds {stored} stored bucket(s) of its current version; {advice}"
+        ]
+    return []
 
 
 # ----------------------------------------------------------------------------- reads
@@ -775,6 +934,146 @@ async def _property_watch_cadence(session: AsyncSession, settings: Settings) -> 
     return int(row.cadence_seconds)
 
 
+def days_read(
+    floor: datetime | None, through: datetime | None, bucket_seconds: int
+) -> float | None:
+    """Whole buckets from `floor` through `through` (the last bucket written), in days.
+
+    One decimal. None when either end is missing or `through` precedes `floor`: a
+    measurement that is not there is not zero. Never read from `history_end`, and never an
+    ETA. The same rule as the platform families' `days_read`.
+    """
+    if floor is None or through is None:
+        return None
+    floor_at, through_at = _as_utc(floor), _as_utc(through)
+    if through_at < floor_at:
+        return None
+    buckets = int((through_at - floor_at).total_seconds() // bucket_seconds) + 1
+    return round(buckets * bucket_seconds / 86400, 1)
+
+
+def watch_history(
+    watch: PropertyWatch,
+    settings: Settings,
+    *,
+    estimate: HistoryEstimateOut | None = None,
+) -> WatchHistoryOut:
+    """The history block of a watch, from its stored columns and `history_progress`.
+
+    No statement: the columns are on the row. A progress that does not read back answers
+    `None` counters with `progress_unreadable`, never a zero (AGENTS.md rule 8). The reason of
+    a switched-off reading is not stored: `PARTIAL` with `{}` and no target is the only state
+    `begin_reading` writes with the switch off, so it is derived here.
+    """
+    state = PwHistoryState(str(watch.history_state))
+    searches: int | None = None
+    buckets_read: int | None = None
+    gaps: list[HistoryGapOut] | None = None
+    reason: str | None = None
+    unreadable = False
+    try:
+        stored = read_progress(cast(Any, watch))
+    except BootstrapStateError:
+        stored = None
+        unreadable = True
+        reason = UNREADABLE_PROGRESS
+    if unreadable:
+        pass
+    elif stored is None:
+        if state is PwHistoryState.PARTIAL and watch.history_target_start is None:
+            reason = REASON_HISTORY_SWITCHED_OFF
+        elif state is PwHistoryState.READING:
+            reason = REASON_HISTORY_STARTS
+    else:
+        progress, reason = stored
+        searches = progress.searches
+        buckets_read = progress.buckets_read
+        gaps = [HistoryGapOut(start=g.start, end=g.end, reason=g.reason) for g in progress.gaps]
+    return WatchHistoryOut(
+        state=state.value,
+        days_requested=watch.history_days,
+        target_start=watch.history_target_start,
+        floor=watch.history_floor,
+        through=watch.history_through,
+        end=watch.history_end,
+        days_read=(
+            None
+            if unreadable
+            else days_read(
+                watch.history_floor, watch.history_through, settings.collection_interval_seconds
+            )
+        ),
+        searches=searches,
+        buckets_read=buckets_read,
+        gaps=gaps,
+        reason=reason,
+        progress_unreadable=unreadable,
+        started_at=watch.history_started_at,
+        finished_at=watch.history_finished_at,
+        estimate=estimate,
+    )
+
+
+def history_estimate(
+    watch: PropertyWatch, settings: Settings, *, cadence_seconds: int
+) -> HistoryEstimateOut | None:
+    """The planner's own cost of the request, for a watch that asked and has not finished.
+
+    `None` otherwise, and when the figure cannot be given (the stored pins do not validate,
+    or the reading would not hand off): no estimate is better than a guess.
+    """
+    days = watch.history_days
+    if days is None or not watch_reads_history(watch):
+        return None
+    rows = pinned_rows(watch, settings)
+    if rows is None:
+        return None
+    found = estimate_history(
+        days=days,
+        pinned_rows_per_bucket=rows,
+        settings=settings,
+        cadence_seconds=cadence_seconds,
+    )
+    if found is None:
+        return None
+    return HistoryEstimateOut(
+        searches_min=found.searches_min,
+        searches_max=found.searches_max,
+        ticks_min=found.ticks_min,
+        ticks_max=found.ticks_max,
+        cadence_seconds=found.cadence_seconds,
+        assumptions=found.assumptions,
+    )
+
+
+async def reading_count(session: AsyncSession) -> int:
+    """Watches that are reading history right now: one statement."""
+    return int(
+        await session.scalar(
+            select(func.count())
+            .select_from(PropertyWatch)
+            .where(PropertyWatch.history_state == PwHistoryState.READING.value)
+        )
+        or 0
+    )
+
+
+def history_catalog(
+    settings: Settings, *, reading: int, searches_free: int
+) -> HistoryCatalogOut:
+    """The history bounds; `searches_free` is `search_budget - budget_used`."""
+    return HistoryCatalogOut(
+        enabled=settings.pw_bootstrap_enabled,
+        days_default=settings.pw_bootstrap_days,
+        days_min=settings.pw_new_value_history_days,
+        days_max=settings.pw_bootstrap_days,
+        searches_per_tick=settings.pw_bootstrap_searches_per_tick,
+        seconds_per_tick=settings.pw_bootstrap_seconds_per_tick,
+        reading_count=reading,
+        searches_free=searches_free,
+    )
+
+
 async def watch_outs(
     session: AsyncSession,
     watches: Sequence[PropertyWatch],
@@ -834,6 +1133,15 @@ async def watch_outs(
                 detector_states=states,
                 alerting_mode="alerting" if alerting_mode == "alerting" else "shadow",
                 cadence_seconds=cadence,
+                history=watch_history(
+                    watch,
+                    settings,
+                    estimate=(
+                        history_estimate(watch, settings, cadence_seconds=cadence)
+                        if detail
+                        else None
+                    ),
+                ),
                 threshold_rules=(
                     [
                         PinRuleOut(
@@ -858,11 +1166,17 @@ async def watch_outs(
     return rendered
 
 
+def origin_label(origin: object) -> Literal["LIVE", "HISTORY"]:
+    """`HISTORY` for a bucket read from QRadar's past, `LIVE` for every other one."""
+    return "HISTORY" if str(origin) == PwBucketOrigin.HISTORY.value else "LIVE"
+
+
 def bucket_out(row: PwBucket) -> WatchBucketOut:
     return WatchBucketOut(
         bucket_start=row.bucket_start,
         bucket_seconds=row.bucket_seconds,
         watch_version=row.watch_version,
+        origin=origin_label(row.origin),
         total_events=row.total_events,
         parsed_events=row.parsed_events,
         unparsed_events=row.unparsed_events,
@@ -1123,6 +1437,7 @@ async def value_series(
                 PwBucket.bucket_start,
                 PwBucket.bucket_seconds,
                 PwBucket.watch_version,
+                PwBucket.origin,
                 PwBucket.totals_complete,
                 PwBucket.values_measurement,
                 PwBucket.pinned_measurement,
@@ -1164,6 +1479,7 @@ async def value_series(
             points.append(
                 SeriesPointOut(
                     bucket_start=bucket.bucket_start,
+                    origin=origin_label(bucket.origin),
                     reading=reading.kind.value,
                     events=reading.events,
                     measurement=_measurement_label(reading.measurement),

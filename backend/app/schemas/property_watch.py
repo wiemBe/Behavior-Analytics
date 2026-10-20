@@ -31,6 +31,8 @@ PwReadingLabel = Literal[
     "COUNT", "MEASURED_ZERO", "UNKNOWN", "NOT_AN_OBSERVATION", "NO_BUCKET"
 ]
 Measurement = Literal["EXACT", "LOWER_BOUND"]
+BucketOrigin = Literal["LIVE", "HISTORY"]
+HistoryStateName = Literal["NOT_REQUESTED", "READING", "COMPLETE", "PARTIAL", "UNAVAILABLE"]
 BaselineState = Literal["RELIABLE", "LEARNING", "NONE"]
 
 
@@ -63,6 +65,10 @@ class PropertyWatchCreate(BaseModel):
     #: Omitted: every detector that applies to the property count.
     detectors: list[PwAnomalyType] | None = None
     severity: Severity = Severity.MEDIUM
+    #: Days of QRadar's past to read once (design §H.9.1). Omitted: `pw_bootstrap_days` while
+    #: history reading is on, none while it is off. `0` asks for none; an explicit `null` is
+    #: refused (use `0`).
+    history_days: int | None = None
 
 
 class PropertyWatchUpdate(BaseModel):
@@ -88,6 +94,8 @@ class PropertyWatchUpdate(BaseModel):
     detectors: list[PwAnomalyType] | None = None
     severity: Severity | None = None
     enabled: bool | None = None
+    #: Omitted: unchanged. Changeable only before any history was read (design §H.5.5).
+    history_days: int | None = None
 
     @field_validator("expected_updated_at")
     @classmethod
@@ -95,6 +103,17 @@ class PropertyWatchUpdate(BaseModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("expected_updated_at must include a timezone")
         return value.astimezone(UTC)
+
+
+class HistoryRequestIn(BaseModel):
+    """`POST /property-watches/{id}/history`: the days to read, and nothing else.
+
+    No AQL, window or boundary travels from the browser: the unknown keys are refused.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    history_days: int
 
 
 class PinsIn(BaseModel):
@@ -204,6 +223,57 @@ class PinRuleOut(BaseModel):
     enabled: bool
 
 
+class HistoryGapOut(BaseModel):
+    """A span of the reading that could not be read. Words and times, never a value."""
+
+    start: datetime
+    end: datetime
+    reason: str
+
+
+class HistoryEstimateOut(BaseModel):
+    """What reading the request would cost, from the planner's own arithmetic. Not a promise.
+
+    The low figure assumes one row per pinned value per bucket, the high one the active-value
+    ceiling. `assumptions` says what is not modelled; there is no ETA.
+    """
+
+    searches_min: int
+    searches_max: int
+    ticks_min: int
+    ticks_max: int
+    cadence_seconds: int
+    assumptions: str
+
+
+class WatchHistoryOut(BaseModel):
+    """What was asked of QRadar's past and how much of it was read (design §H.9.1).
+
+    Every figure comes from the stored columns and `history_progress`. A counter that was not
+    measured is `None`, never 0: `progress_unreadable` says a stored progress did not read
+    back. `days_read` counts whole buckets from `floor` to `through`; there is no ETA and no
+    target, so the page writes "n of `days_requested` days".
+    """
+
+    state: HistoryStateName
+    days_requested: int | None = None
+    target_start: datetime | None = None
+    floor: datetime | None = None
+    through: datetime | None = None
+    #: The boundary at hand-off; the reading proves nothing past `through` up to here.
+    end: datetime | None = None
+    days_read: float | None = None
+    searches: int | None = None
+    buckets_read: int | None = None
+    gaps: list[HistoryGapOut] | None = None
+    reason: str | None = None
+    progress_unreadable: bool = False
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    #: Only on a single-watch read of a watch that has asked and not finished.
+    estimate: HistoryEstimateOut | None = None
+
+
 class PropertyWatchOut(BaseModel):
     id: uuid.UUID
     instance_id: uuid.UUID
@@ -237,6 +307,7 @@ class PropertyWatchOut(BaseModel):
     #: The `PROPERTY_WATCH` search-family cadence in seconds (the same for every watch). The
     #: widget's `stale` is "older than twice this" (design §G.13.5).
     cadence_seconds: int
+    history: WatchHistoryOut
     created_at: datetime
     updated_at: datetime
     created_by: str | None = None
@@ -252,6 +323,21 @@ class PinsOut(BaseModel):
 
 
 # ------------------------------------------------------------------ editor reads
+class HistoryCatalogOut(BaseModel):
+    """The history bounds of the editor (design §H.9.1)."""
+
+    enabled: bool
+    days_default: int
+    days_min: int
+    days_max: int
+    searches_per_tick: int
+    seconds_per_tick: int
+    #: Watches reading right now.
+    reading_count: int
+    #: `search_budget - budget_used`: what the enabled watches' live cost leaves a tick.
+    searches_free: int
+
+
 class WatchCatalogOut(BaseModel):
     """The editor's switches and bounds."""
 
@@ -279,6 +365,7 @@ class WatchCatalogOut(BaseModel):
     hours_default: int
     preview_searches: int
     preview_rate_limit: str
+    history: HistoryCatalogOut
 
 
 class ScopeOptionOut(BaseModel):
@@ -326,6 +413,8 @@ class WatchBucketOut(BaseModel):
     bucket_start: datetime
     bucket_seconds: int
     watch_version: int
+    #: `HISTORY`: read from QRadar's past, learned from and never judged.
+    origin: BucketOrigin
     total_events: int | None = None
     parsed_events: int | None = None
     unparsed_events: int | None = None
@@ -381,6 +470,7 @@ class PagedWatchValues(BaseModel):
 
 class SeriesPointOut(BaseModel):
     bucket_start: datetime
+    origin: BucketOrigin
     reading: PwReadingLabel
     events: int | None = None
     measurement: Measurement | None = None
