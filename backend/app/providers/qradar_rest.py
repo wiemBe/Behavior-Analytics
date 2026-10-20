@@ -1081,7 +1081,10 @@ class QRadarRestProvider(QRadarProvider):
             'SUM(eventcount) AS "events" FROM events '
             f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
             f"GROUP BY starttime / {bucket_ms} "
-            f"ORDER BY starttime / {bucket_ms} "
+            # No ORDER BY: a QRadar 7.6.0 console answers "invalid" when the grouped
+            # expression is ordered, so the sort is not worth it. The reader keys the
+            # rows by "k" and `max_rows` bounds them at buckets + 1, hence an unordered
+            # whole answer is exactly as checkable as an ordered one.
             f"{self._ariel_scope(start_ms, end_ms)}"
         )
         raw = await self._run_bounded_aggregate(aql, max_rows=buckets + 1)

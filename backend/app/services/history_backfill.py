@@ -260,7 +260,9 @@ def scope_out(
         days_target=row.days_target,
         target_start=row.target_start,
         floor=row.floor,
-        floor_proved=family in PROVED_FLOOR_FAMILIES,
+        # The family must prove a scope-wide floor AND the row must carry one: a
+        # `NOT_ELIGIBLE` or `UNAVAILABLE` row has `floor` null and so proved nothing.
+        floor_proved=family in PROVED_FLOOR_FAMILIES and row.floor is not None,
         through=row.through,
         anchor=row.anchor,
         started_at=row.started_at,

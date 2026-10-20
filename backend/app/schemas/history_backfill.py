@@ -69,7 +69,9 @@ class ScopeOut(BaseModel):
     #: - Phase A and catch-all: only where the read started, `T0 - m`. Their real floors
     #:   are per source, in the progress (§B.3.2); a scope-wide column cannot hold them.
     floor: datetime | None
-    #: True when `floor` is the floor QRadar proved; false when it is only the read start.
+    #: True when the row carries the floor QRadar proved for this scope; false when
+    #: `floor` is only the read start (Phase A, catch-all) or when the row has no
+    #: floor to prove (`NOT_ELIGIBLE`, `UNAVAILABLE`): neither reading applies.
     floor_proved: bool
     through: datetime | None
     anchor: datetime | None
