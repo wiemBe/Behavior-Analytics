@@ -5,7 +5,7 @@ adapters, the admin API, the installer question and the admin page. It generalis
 [`PHASE-G-HISTORY-BOOTSTRAP.md`](PHASE-G-HISTORY-BOOTSTRAP.md)
 (cited as §H.n, the model for property watches) to the platform-wide baselines, and changes none of its text.
 It rests on [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (§SC.5, §SC.6, the 5-minute default), on
-[`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md) (§4, §6, §8, §10) and on decision D-31.
+[`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md) (§4, §6, §8, §10) and on the 2026-10-18 decision to ask once, right after installation, whether the past is read.
 Every claim about the code carries a `file:line` citation checked on 2026-10-18. Where the code and a family's design text disagree, the code wins and the
 disagreement is listed in §B.14.3. Facts that only the console can give are not asserted: each has a
 probe in §B.3.5 and is marked **[C-n]**.
@@ -35,14 +35,14 @@ The operator is asked once, right after installation, whether the platform shoul
 that baselines and robust deviation (MAD) are steadier from day one. No: nothing changes. Yes: every
 baseline family fills its **existing** window from QRadar's stored history, for learning only.
 
-| # | Decision (D-31, 2026-10-18) | Where |
+| # | Decision (2026-10-18) | Where |
 |---|---|---|
 | B1 | The windows do not change. The backfill fills `baseline_lookback_days` (28, `backend/app/core/config.py:336`), `ips_baseline_lookback_days` (28, `:187`) and the rule-health window (30, `:298`) at once. Reading further back is wasted: retention would delete it (35 days for WAF, IPS, catch-all, `:488,:182,:521`) | §B.3.1 |
 | B2 | The answer is **No / Yes, where Yes reads the last 28 days**. There is no month choice. A family whose own window is not 28 days reads its own window (rule analytics: 30) | §B.3.1 |
 | B3 | Two places ask: **`./qradar-dash install`, once, on the first install**, and the admin UI (a first-run dialog when the installer did not ask, and an admin page for later) | §B.9, §B.10 |
 | B4 | Every baseline takes part: source volume (Phase A), WAF, IPS, the catch-all known-senders list, and rule matches. Geo is left out, with a reason | §B.2 |
 | B5 | A history row is **learning only**: never evaluated, never opens an incident, a breach or an alert. Each family has three independent guards (§B.4) | §B.4 |
-| B6 | Property watches keep their own per-watch bootstrap (D-29). The platform answer does not govern them. They share the core of this design | §B.11 |
+| B6 | Property watches keep their own per-watch bootstrap (the user's choice, 2026-10-18). The platform answer does not govern them. They share the core of this design | §B.11 |
 | B7 | The reading is oldest first, in bounded steps, inside the family's own task and lock, after the live pass, on what is left of the tick budget (live first) | §B.6 |
 | B8 | How far back Ariel holds a scope is proved, not assumed (§B.3.2). Nothing before the proved floor is written: not a zero, not a placeholder row | §B.3 |
 | B9 | A later Yes is decided per family (§B.5): allowed for Phase A, catch-all and rule matches (no verdict depends on admission order); for WAF and IPS only for a scope with no live bucket yet | §B.5 |
@@ -308,7 +308,7 @@ so a reader never writes either by hand and a guard test can find them (§B.4.7)
 - **Marker:** `catchall_bucket.origin`; a sender row has no bucket provenance, so it carries
   `reviewed_by = 'history'` (existing column, `models/catchall.py`) beside the existing `'bootstrap'`.
 - **What "evaluation" is here:** nothing reads catch-all history as a verdict. The only consequence is a
-  **NEW** sender, which raises an alert only when `catchall_new_sender_alerts_enabled` (off by default, D-9,
+  **NEW** sender, which raises an alert only when `catchall_new_sender_alerts_enabled` (off by default, decided on 2026-10-13,
   `config.py:517`) and only in `_write` for senders inserted in that run (`catchall_collector.py:420-456`).
 - **Guard 1, the status.** Every sender admitted from history is `REVIEWED`, never `NEW`. The code already has
   this switch: `report.bootstrap` (`:157`, `:419-420`). History forces it on.
@@ -379,7 +379,7 @@ question: **does any verdict depend on the order in which admission saw the data
 | Rule matches | no admission | same | **allowed, prepends** | Windows are independent; absence is a measured `missing` |
 | **WAF** | **yes**: novelty, `first_seen_at`, `tracked_since`, the active ceiling | the scope does not exist yet: it is created by a profile; reads at its first collection | **only for a source with no live bucket** (a profile created after the Yes, or one never collected) | A prepend would move `first_seen_at` of endpoints used by evaluated buckets and by open incidents (§H.0.3) |
 | **IPS** | **yes**, as WAF | same | **only for a source with no live bucket** | same |
-| Property watches | yes | own rule (D-29) | own rule | §B.11 |
+| Property watches | yes | own rule (2026-10-18) | own rule | §B.11 |
 
 What this gives the operator, in the installer-Yes case: WAF and IPS collection are **off by default**
 (`config.py`; the installer summary says "Left off WAF, IPS, rule-match collection", `qradar-dash:839`), so no
@@ -411,7 +411,7 @@ per-tick search cap (`search_cadence_max_searches_per_tick`, 16, `config.py:159`
 | Catch-all | `collect_catchall_senders` | (instance, `catchall_senders`) | 1 | same |
 | Rule matches | `collect_rule_matches` | (instance, `rule_match`) | 1 | same |
 
-Reasons: (1) the operator's one control over Ariel schedule (D-7, the cadence) holds with no new task and no
+Reasons: (1) the operator's one control over Ariel schedule (the cadence decision of 2026-10-12) holds with no new task and no
 new `SearchFamily`; (2) **live first** is true by construction: a history step only spends what the live pass
 left; (3) one lock per scope means a history step and a live run of the same scope can never overlap, which the
 property-watch dispatch lacked (`workers/tasks.py:1394-1442`, §H.14.3 item 9).
@@ -564,10 +564,10 @@ does not depend on them.
 Assumptions, each stated: 5-minute buckets; window 28 d plus the 24 h margin = **8 352** buckets (rule matches:
 hourly windows, 30 d plus 1 d = **744**); `rho` is the number of rows one non-silent bucket returns; a span of
 `W = floor(0.8 x row cap / rho)` buckets capped at 2 016; the sub-budget is 10 searches per tick; the cadence is
-5 minutes (D-28). **Measured Ariel time per search is 0.03 to 0.13 s for one bucket (PW-10 section 8), 0.37 s
+5 minutes (the default since 2026-10-18). **Measured Ariel time per search is 0.03 to 0.13 s for one bucket (PW-10 section 8), 0.37 s
 for 12 buckets of Phase A, 0.61 s for an 8-hour Phase A window and about 2.2 s for 8 hours in T-040, 3.5 s for the
 slowest first call ([`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) §SC.2, §SC.10), and 3.7 s for a 30-day aggregate with
-no bucket key (PW-10 `probe.log`).** It is **unmeasured** above 8 hours of grouped data with a custom
+no bucket key (the PW-10 probe).** It is **unmeasured** above 8 hours of grouped data with a custom
 property **[C-5]**. The "Ariel time" column uses 1 to 3.5 s per search and is an order of magnitude, not a promise.
 
 Three install shapes (assumed; the column `rho` names the assumption):
@@ -863,11 +863,11 @@ in the same way, and four things in §H are already generic:
 | the **floor proof** (derived from the read, margin, nothing before the floor) | §H.3.2 | §B.3.2, per scope kind |
 | the **state machine and budget** (live first, sub-budget, seconds, max hours, fit the window) | §H.4.4, §H.5 | §B.6, §B.7 |
 
-What stays different: property watches ask per watch (`history_days` on the watch, D-29), with a `NOT_REQUESTED`
+What stays different: property watches ask per watch (`history_days` on the watch, the user's 2026-10-18 choice), with a `NOT_REQUESTED`
 state, a version-bump restart (§H.5.4) and the F.1 `include_history` flag; their tables are `property_watch`
 columns, not `history_backfill_scope` rows. The platform answer does **not** govern them, and the dialog says so
 in one line ("Property watches ask for history when you create the watch"). Their kill switch
-(`pw_bootstrap_enabled`, default true by D-29) is unchanged.
+(`pw_bootstrap_enabled`, on by default since 2026-10-18) is unchanged.
 
 ### B.11.1 What changes in the PW-13 build order
 
@@ -913,23 +913,23 @@ Every row is `INSUFFICIENT_DATA`, a gap, a named state with a reason, or no row.
 ## B.13 The build
 
 Sizes: S under half a day, M about a day, L two days. All wait for the user's review of this file, and the
-backfill defaults stay as described until HB-9 has been read. Agent kinds: Codex for migrations and SQL-heavy cores, Sonnet for the rest.
+backfill defaults stay as described until HB-9 has been read.
 
-| ID | Task | Agent | Size | Files | Depends on | Tests |
-|---|---|---|---|---|---|---|
-| **HB-1** | The shared pure core: planner (`scan` interpretation, span sizing, density adaptation, halving, gaps, density gate, completion, window fitting), the state machine and enums (`HistoryFamily`, `HistoryState`, `HistoryOrigin`), `origin` helper | Sonnet | M | new `backend/app/history/{planner,state,origin}.py` and unit tests | none | property tests: spans tile `[F, end)` exactly; a failed or truncated search never advances `through`; no row before `F`; the window fits or is refused; no I/O |
-| **HB-2** | Foundations: migration `0030` (two tables, `origin` on four tables, enums), models, settings with validators, `HistoryFamily` registry, the `decide` CLI, RBAC permissions, audit | Codex | M | `alembic/versions/0030_history_backfill.py`, `app/models/history_backfill.py`, `models/{waf,ips,catchall,rule}.py`, `core/config.py`, `security/rbac.py`, `cli/history_backfill.py` | HB-1 (enums), PW-13a (migration `0029`) | migration round trip with data, `alembic check`, no server default left, CLI write-once on every path including the audit row and the missing-instance warning |
-| **HB-3** | Phase A adapter and guards: scope planner (`WAITING` until a live bucket), history step in `collect_metrics`, `ariel_history` writer with `DO NOTHING`, per-source floor and zero-fill from `F_s`, the guards of §B.4.1 (both `evaluate_pending` branches, streak, F.1 loaders), baseline rebuild trigger, retention check | Codex | L | `collectors/metric_collector.py`, `anomaly/engine.py`, `custom_rules/loaders.py`, `workers/tasks.py`, new `history/phase_a.py` | HB-1, HB-2 | equivalence (live bucket by bucket vs history in chunks, equal except marker and provenance); history never pending (watermark NULL, after, predicate removed on purpose); first-run branch; run through `collect_metrics` on every exit path; statement count constant in sources and buckets |
-| **HB-4** | Catch-all adapter: ledger-seeded history, per-source floor, forced `REVIEWED`, bootstrap hold while `READING`, `origin` | Codex | M | `collectors/catchall_collector.py`, new `history/catchall.py` | HB-1, HB-2 | equivalence; no alert from a history step even with alerts on; a live sender during the reading is `REVIEWED`; prepend with existing live senders; retirement at write |
-| **HB-5** | Rule-match adapter: console-total floor, history windows `DO NOTHING`, replacement of the skipped-window `FAILED` records | Sonnet | M | `collectors/rule_match_collector.py`, new `history/rule_match.py` | HB-1, HB-2 | equivalence; coverage `COMPLETE` after a full read; a gap stays `missing`; `COMMON` stays a lower bound |
-| **HB-6** | WAF adapter: bulk history persist (in-memory admission, per-bucket retirement, one statement per table), two passes, hand-off with the two watermarks, evaluation and F.1 guards, the `first_seen_at < history_end` rule | Codex | L | `collectors/waf_endpoint_collector.py`, `services/waf_pipeline.py`, `waf/engine.py`, `waf/detector.py`, `custom_rules/loaders.py`, new `history/waf.py` | HB-1, HB-2 | equivalence against the live persist with the same scripted provider; guards 1 to 3 with breaking each on purpose; statement-count pin (§B.8.4); novelty: history-time first appearance is `HEALTHY`/established; a flood in history blocks novelty for 7 days; resume after a worker restart |
-| **HB-7** | IPS adapter: group-level history, hand-off, per-bucket retirement, guards, novelty rule | Codex | L | `collectors/ips_collector.py`, `services/ips_pipeline.py`, `ips/engine.py`, `custom_rules/loaders.py`, new `history/ips.py` | HB-1, HB-2 | as HB-6 for IPS |
-| **HB-8** | API and service: the five routes, estimate, audit, permissions, eligibility per family (§B.5) | Sonnet | M | `api/routes/history_backfill.py`, `services/history_backfill.py`, `schemas/history_backfill.py` | HB-2 | permission matrix 401/403/404/409/422; write-once; NO to YES; start and stop; eligibility of a WAF source with live buckets |
-| **HB-9** | **Lab probe** (read-only, §B.3.5): P-1 to P-9, at most 60 searches and 8 GETs; throwaway script outside the repository (the read-only rule applies: read only); a report with raw results and the verdict on A1 to A5 and the cost model | Sonnet | S | none in the repository; a report | none | the report states each **[C-n]** answered or not |
-| **HB-10** | UI: first-run dialog, admin page, admin index link, states | Sonnet | L | `frontend/src/app/admin/history-backfill/**`, `frontend/src/components/history/*`, `frontend/src/components/auth/AppFrame.tsx`, `frontend/src/lib/api.ts` | HB-8 | Vitest for every state of §B.10; the colour-literal test; the three-viewport screenshots (the frontend quality bar) |
-| **HB-11** | Installer: the question, the key, `check_value`, the non-interactive key, `HISTORY_BACKFILL` in the saved answers, step 9b, the summary line, docs | Sonnet | M | `qradar-dash`, `backend/tests/unit/test_qradar_dash_installer.py` and a new CLI test | HB-2 | the installer tests run `cmd_install` on every path: first install interactive yes and no, scripted yes, no, absent; a re-run with a different file never changes a decision; `--reconfigure` does not ask again; an upgrade never asks; a failing CLI warns and continues |
-| **HB-12** | Live validation on the lab: Phase A, catch-all and a WAF/IPS source from the installer Yes path and the UI Yes path; the SQL check "no incident, breach, alert or transition with an interval before `history_end`"; hand-off with no gap and no overlap; a worker restart mid-reading; measured seconds per search | Sonnet | M | none; a report | HB-3..HB-11, HB-9 | the checks of §B.14.4 |
-| **HB-13** | Docs: README and `INSTALL.md`, `CONFIGURATION.md`, `OPERATIONS.md`, `DATA-MODEL.md`, `API.md`, `SEARCH-CADENCE.md` §SC.6 | opencode free model | S | those files | all | none |
+| ID | Task | Size | Files | Depends on | Tests |
+|---|---|---|---|---|---|
+| **HB-1** | The shared pure core: planner (`scan` interpretation, span sizing, density adaptation, halving, gaps, density gate, completion, window fitting), the state machine and enums (`HistoryFamily`, `HistoryState`, `HistoryOrigin`), `origin` helper | M | new `backend/app/history/{planner,state,origin}.py` and unit tests | none | property tests: spans tile `[F, end)` exactly; a failed or truncated search never advances `through`; no row before `F`; the window fits or is refused; no I/O |
+| **HB-2** | Foundations: migration `0030` (two tables, `origin` on four tables, enums), models, settings with validators, `HistoryFamily` registry, the `decide` CLI, RBAC permissions, audit | M | `alembic/versions/0030_history_backfill.py`, `app/models/history_backfill.py`, `models/{waf,ips,catchall,rule}.py`, `core/config.py`, `security/rbac.py`, `cli/history_backfill.py` | HB-1 (enums), PW-13a (migration `0029`) | migration round trip with data, `alembic check`, no server default left, CLI write-once on every path including the audit row and the missing-instance warning |
+| **HB-3** | Phase A adapter and guards: scope planner (`WAITING` until a live bucket), history step in `collect_metrics`, `ariel_history` writer with `DO NOTHING`, per-source floor and zero-fill from `F_s`, the guards of §B.4.1 (both `evaluate_pending` branches, streak, F.1 loaders), baseline rebuild trigger, retention check | L | `collectors/metric_collector.py`, `anomaly/engine.py`, `custom_rules/loaders.py`, `workers/tasks.py`, new `history/phase_a.py` | HB-1, HB-2 | equivalence (live bucket by bucket vs history in chunks, equal except marker and provenance); history never pending (watermark NULL, after, predicate removed on purpose); first-run branch; run through `collect_metrics` on every exit path; statement count constant in sources and buckets |
+| **HB-4** | Catch-all adapter: ledger-seeded history, per-source floor, forced `REVIEWED`, bootstrap hold while `READING`, `origin` | M | `collectors/catchall_collector.py`, new `history/catchall.py` | HB-1, HB-2 | equivalence; no alert from a history step even with alerts on; a live sender during the reading is `REVIEWED`; prepend with existing live senders; retirement at write |
+| **HB-5** | Rule-match adapter: console-total floor, history windows `DO NOTHING`, replacement of the skipped-window `FAILED` records | M | `collectors/rule_match_collector.py`, new `history/rule_match.py` | HB-1, HB-2 | equivalence; coverage `COMPLETE` after a full read; a gap stays `missing`; `COMMON` stays a lower bound |
+| **HB-6** | WAF adapter: bulk history persist (in-memory admission, per-bucket retirement, one statement per table), two passes, hand-off with the two watermarks, evaluation and F.1 guards, the `first_seen_at < history_end` rule | L | `collectors/waf_endpoint_collector.py`, `services/waf_pipeline.py`, `waf/engine.py`, `waf/detector.py`, `custom_rules/loaders.py`, new `history/waf.py` | HB-1, HB-2 | equivalence against the live persist with the same scripted provider; guards 1 to 3 with breaking each on purpose; statement-count pin (§B.8.4); novelty: history-time first appearance is `HEALTHY`/established; a flood in history blocks novelty for 7 days; resume after a worker restart |
+| **HB-7** | IPS adapter: group-level history, hand-off, per-bucket retirement, guards, novelty rule | L | `collectors/ips_collector.py`, `services/ips_pipeline.py`, `ips/engine.py`, `custom_rules/loaders.py`, new `history/ips.py` | HB-1, HB-2 | as HB-6 for IPS |
+| **HB-8** | API and service: the five routes, estimate, audit, permissions, eligibility per family (§B.5) | M | `api/routes/history_backfill.py`, `services/history_backfill.py`, `schemas/history_backfill.py` | HB-2 | permission matrix 401/403/404/409/422; write-once; NO to YES; start and stop; eligibility of a WAF source with live buckets |
+| **HB-9** | **Lab probe** (read-only, §B.3.5): P-1 to P-9, at most 60 searches and 8 GETs; throwaway script outside the repository (the read-only rule applies: read only); a report with raw results and the verdict on A1 to A5 and the cost model | S | none in the repository; a report | none | the report states each **[C-n]** answered or not |
+| **HB-10** | UI: first-run dialog, admin page, admin index link, states | L | `frontend/src/app/admin/history-backfill/**`, `frontend/src/components/history/*`, `frontend/src/components/auth/AppFrame.tsx`, `frontend/src/lib/api.ts` | HB-8 | Vitest for every state of §B.10; the colour-literal test; the three-viewport screenshots (the frontend quality bar) |
+| **HB-11** | Installer: the question, the key, `check_value`, the non-interactive key, `HISTORY_BACKFILL` in the saved answers, step 9b, the summary line, docs | M | `qradar-dash`, `backend/tests/unit/test_qradar_dash_installer.py` and a new CLI test | HB-2 | the installer tests run `cmd_install` on every path: first install interactive yes and no, scripted yes, no, absent; a re-run with a different file never changes a decision; `--reconfigure` does not ask again; an upgrade never asks; a failing CLI warns and continues |
+| **HB-12** | Live validation on the lab: Phase A, catch-all and a WAF/IPS source from the installer Yes path and the UI Yes path; the SQL check "no incident, breach, alert or transition with an interval before `history_end`"; hand-off with no gap and no overlap; a worker restart mid-reading; measured seconds per search | M | none; a report | HB-3..HB-11, HB-9 | the checks of §B.14.4 |
+| **HB-13** | Docs: README and `INSTALL.md`, `CONFIGURATION.md`, `OPERATIONS.md`, `DATA-MODEL.md`, `API.md`, `SEARCH-CADENCE.md` §SC.6 | S | those files | all | none |
 
 Order: HB-1 and PW-13a and HB-9 in parallel; then HB-2; then HB-3..HB-8 and HB-11 in parallel; then HB-10; then HB-12;
 then HB-13. The longest chain is HB-1, HB-2, HB-6, HB-8, HB-10, HB-12.

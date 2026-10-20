@@ -1,26 +1,26 @@
-# Search cadence — how often the platform searches QRadar (D-7, D-28)
+# Search cadence — how often the platform searches QRadar (2026-10-12, amended 2026-10-18)
 
 Status: **built on `feat/phase-ce`, 2026-10-12** (T-033 to T-039). **Live validation (T-040)
-is pending.** Written by the orchestrator. It rests on the live facts measured
-in `tasks/T-032.report.md` and records decision D-7 in
-`PLANNER.md` §4.
+is pending.** It rests on the live facts measured on the lab console on 2026-10-12: one search
+returns every 5-minute bucket of its window (`starttime/300000` as the key), and an 8-hour Phase A
+window of 184 rows takes 0.61 s.
 
 ## SC.0 What the user asked for
 
-**D-28 (2026-10-18) replaces D-7's default:** every search family now defaults to **5 min**,
+**The decision of 2026-10-18 replaces the 2026-10-12 default:** every search family now defaults to **5 min**,
 except `WAF_COLLECTION` and `IPS_COLLECTION`, which default to **15 min** (amended 2026-10-18: at
 5 min WAF costs 36–72 searches per source an hour). A new operator-defined search still defaults to
 the 5 min schedule preset. The migration moves only the untouched 1 h seed rows
 (`updated_by IS NULL`), to 15 min for WAF and IPS and to 5 min for every other family; an
 operator-set cadence stays as set. Cadence
 still changes only when QRadar is searched. Bucket widths, rule-match windows and every learning
-period are unchanged. The 1 h statements below remain as the history of D-7 and are marked as
-replaced where they described a default.
+period are unchanged. The 1 h statements below remain as the history of the 2026-10-12 decision and
+are marked as replaced where they described a default.
 
 The platform must not flood QRadar with Ariel searches. The user's requirements:
 - Operators choose how often each search family runs: **5 min, 15 min, 30 min, 1 h, 2 h, 4 h or
   8 h**.
-- **Historical D-7 default, replaced by D-28:** 1 h for every family, Phase A included.
+- **Historical default (2026-10-12), replaced on 2026-10-18:** 1 h for every family, Phase A included.
 - Each family is set separately, from the UI, with no restart.
 - Every change is audited.
 
@@ -36,7 +36,7 @@ The search families are:
 | `RULE_MATCH` | `GROUP BY creEventList` (T-025) | 1 per window |
 | Scheduled searches | Operator AQL | Each search's own cron |
 
-### D-28 search count at the two defaults
+### Search count at the two defaults
 
 Steady-state counts below come from the current dispatch and collection paths. They exclude
 truncation splits and retries; the formula or configured cap is shown where a fleet shape changes
@@ -113,7 +113,7 @@ source per hour replace 36–72.
 | Column | Type | Notes |
 |---|---|---|
 | `family` | `String(32)`, PK | A `SearchFamily` value. This is a new enum, not `AnomalyType`. |
-| `cadence_seconds` | `Integer`, NOT NULL | `CHECK cadence_seconds IN (300, 900, 1800, 3600, 7200, 14400, 28800)`. A family's own migration seeds `3600`; migration `0028` moves an untouched seed row (`updated_by IS NULL`) to the D-28 default — `900` for WAF and IPS, `300` for every other family — and never touches an operator-set row. |
+| `cadence_seconds` | `Integer`, NOT NULL | `CHECK cadence_seconds IN (300, 900, 1800, 3600, 7200, 14400, 28800)`. A family's own migration seeds `3600`; migration `0028` moves an untouched seed row (`updated_by IS NULL`) to the 2026-10-18 default — `900` for WAF and IPS, `300` for every other family — and never touches an operator-set row. |
 | `last_slot_start` | `DateTime(tz)`, NULL | Start of the last cadence slot this family was dispatched for. |
 | `updated_at` | `DateTime(tz)`, NOT NULL | |
 | `updated_by` | `String(255)`, NULL | The principal's subject; NULL for the seed. |
@@ -130,7 +130,7 @@ Migration `0013` (T-034) creates `search_cadence`. Migration `0014` (T-035) crea
 | `evaluated_through` | `DateTime(tz)`, NOT NULL | Bucket start of the last evaluated bucket. |
 | `updated_at` | `DateTime(tz)`, NOT NULL | |
 
-This is a new table, so Phase A tables stay as they are (AGENTS.md rule 6).
+This is a new table, so Phase A tables stay as they are.
 
 **The rest of the model:**
 - The allowed cadences live in one place: a `SearchCadence` `IntEnum` in `app/models/enums.py`.
@@ -211,7 +211,7 @@ T-034 therefore gates only `ANOMALY_EXPLANATION`, which has no buckets.
    - The searches of one tick are capped by `search_cadence_max_searches_per_tick`, default 16.
      On reaching the cap, the collector stops. Its watermark stays at the last contiguous complete
      bucket, and the next slot resumes.
-   - A bucket is never written from a truncated result (AGENTS.md rule 8).
+   - A bucket is never written from a truncated result.
 4. **Fold.** A pure function maps rows to buckets.
    - It rejects any `k` outside the window. A malformed key fails the whole search.
    - **Equivalence is the acceptance bar:** for any window, the persisted rows per bucket equal,
@@ -294,8 +294,8 @@ progress. In that case, give Phase A the same split-on-failure, bounded by
 `search_cadence_max_searches_per_tick`.
 
 **Scheduled searches**
-- The editor offers the seven presets as cron. Under D-28 a new search defaults to 5 min; before
-  D-28 it defaulted to 1 h. An existing search keeps its stored cron.
+- The editor offers the seven presets as cron. Under the 2026-10-18 default a new search defaults
+  to 5 min; before it, 1 h. An existing search keeps its stored cron.
 
   | Preset | Cron |
   |---|---|
@@ -379,7 +379,7 @@ QRadar, and what does that cost in latency?**
 - The table is read-only for a principal without `admin:search_cadence`.
 
 **Rules:**
-- AGENTS.md §3a applies in full.
+- The frontend quality bar ([`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md)) applies in full.
 - No KPI cards. Numbers right-aligned in tabular figures. Times in UTC.
 - Designed states: loading, error, and "not run since upgrade".
 
@@ -390,19 +390,19 @@ QRadar, and what does that cost in latency?**
 - The threshold column says "no verdict" for a truncated run that did not breach, instead of the
   "—" a run within its threshold also shows.
 - The `total` trend now has no point for a truncated run. The chart must draw a gap there,
-  never a zero (AGENTS.md §3a).
+  never a zero (the frontend guidelines).
 
 ## SC.9 Tasks
 
-| ID | Task | Agent | Depends on |
-|---|---|---|---|
-| T-033 | **Defect:** `get_ariel_search_results` can never report truncation, so a scheduled search capped at `max_result_rows` is recorded as complete. Reproduce first. Then fetch `max_rows + 1` and keep `max_rows`. Audit every caller. | Sonnet | — |
-| T-034 | Cadence core: `SearchFamily`/`SearchCadence` enums, migration `0013` (seeded), `SearchCadenceService` (`claim_slot`, `record_run`, get/set), the gate helper, API and permissions, audit. Gates `ANOMALY_EXPLANATION` only. | Codex | T-025 merged |
-| T-035 | Phase A: keyed multi-bucket collection, split on truncation, equivalence tests, evaluation watermark (migration `0014`), and Phase A's gate | Sonnet | T-033, T-034 |
-| T-036 | WAF: keyed endpoint, totals and breakdown searches, per-bucket top-N in the fold, split, equivalence tests, and the WAF gate | Codex | T-033, T-034 |
-| T-037 | Rule matches: keyed multi-window search, with per-run caps sized to the cadence, and the rule-match gate | Sonnet | T-025, T-034 |
-| T-038 | UI: cadence admin page and the scheduled-search preset picker, with screenshots at three viewports | Sonnet | T-034 |
-| T-039 | Docs: README configuration table, upgrade note, deprecated settings | opencode free | T-034 |
+| ID | Task | Depends on |
+|---|---|---|
+| T-033 | **Defect:** `get_ariel_search_results` can never report truncation, so a scheduled search capped at `max_result_rows` is recorded as complete. Reproduce first. Then fetch `max_rows + 1` and keep `max_rows`. Audit every caller. | — |
+| T-034 | Cadence core: `SearchFamily`/`SearchCadence` enums, migration `0013` (seeded), `SearchCadenceService` (`claim_slot`, `record_run`, get/set), the gate helper, API and permissions, audit. Gates `ANOMALY_EXPLANATION` only. | T-025 merged |
+| T-035 | Phase A: keyed multi-bucket collection, split on truncation, equivalence tests, evaluation watermark (migration `0014`), and Phase A's gate | T-033, T-034 |
+| T-036 | WAF: keyed endpoint, totals and breakdown searches, per-bucket top-N in the fold, split, equivalence tests, and the WAF gate | T-033, T-034 |
+| T-037 | Rule matches: keyed multi-window search, with per-run caps sized to the cadence, and the rule-match gate | T-025, T-034 |
+| T-038 | UI: cadence admin page and the scheduled-search preset picker, with screenshots at three viewports | T-034 |
+| T-039 | Docs: README configuration table, upgrade note, deprecated settings | T-034 |
 
 **Live validation after the build:** run a 1-hour and an 8-hour cadence on the lab. Confirm one
 Phase A search per tick, the per-bucket rows equal a per-bucket control run, and the alerts still

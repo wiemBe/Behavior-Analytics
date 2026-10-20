@@ -7,7 +7,7 @@ from this document, the runbook it specifies, `./qradar-dash`, and the logs.
 Binding decisions, already made by the user, are marked **[user]**. Decisions this design
 makes are marked **[design]**.
 
-**[user]** D-16. Images are pulled from GHCR. A local build remains the fallback. One
+**[user], 2026-10-15.** Images are pulled from GHCR. A local build remains the fallback. One
 script, `./qradar-dash`, provides `install`, `upgrade <version>`, `rollback`, `backup`,
 `restore`, `status`, `logs`, `doctor` and `support-bundle`. `upgrade` takes a backup
 before migrating. Rollback is the previous image digests plus that backup. An Alembic
@@ -15,11 +15,11 @@ downgrade is not the rollback path: a downgrade drops what that revision added
 ([INSTALL.md](INSTALL.md) "Upgrade, backup and recovery"). A few minutes of downtime per upgrade is acceptable. The database
 survives every upgrade.
 
-**[user]** D-18. The cut that must land by about 2026-10-30 is the minimum that makes
+**[user], 2026-10-16.** The cut that must land by about 2026-10-30 is the minimum that makes
 install, upgrade, backup/rollback and diagnosis safe. Polish is named in §10 and is not
 in that cut.
 
-**[user]** D-19. Local accounts and AD password over LDAPS. No group is read from AD.
+**[user], 2026-10-16.** Local accounts and AD password over LDAPS. No group is read from AD.
 Roles are assigned in the app. The runbook `docs/OPERATIONS.md` is Turkish. Commands,
 log lines, `doctor` output and file names stay English.
 
@@ -385,7 +385,7 @@ What actually bounds the disk:
 | Offense snapshots | Every 300 s (`config.py:264`). | Timescale policy off with the rest of `retention_enabled`. |
 | Baseline lookback | WAF refuses to boot when metric retention is not longer than this while WAF collection and WAF retention are both on (`config.py:823-829`). | 28 days (`config.py:334`). The default WAF metric retention is 35 days (`:486`), so the default pair boots. |
 
-Search-family cadences were seeded at 3,600 s (`backend/alembic/versions/0013_search_cadence.py:46-50` and the inserts cited above); migration `0028` (D-28, 2026-10-18) moves an untouched seed row to 300 s, or 900 s for WAF and IPS. The 300 s figure is the bucket width, not how often a search is sent. A cadence longer than the bucket still stores each 5-minute bucket.
+Search-family cadences were seeded at 3,600 s (`backend/alembic/versions/0013_search_cadence.py:46-50` and the inserts cited above); migration `0028` (2026-10-18) moves an untouched seed row to 300 s, or 900 s for WAF and IPS. The 300 s figure is the bucket width, not how often a search is sent. A cadence longer than the bucket still stores each 5-minute bucket.
 
 Row formula, per day:
 
@@ -500,7 +500,7 @@ Asked, in this order:
 13. Break-glass admin username. The password is not asked. `create-admin`
     generates it (`backend/app/cli/users.py:30-34`, `:101-103`).
 
-Not asked: LDAP (D-19, UI), detector thresholds, family enablement, SMTP,
+Not asked: LDAP in the UI (decided on 2026-10-16), detector thresholds, family enablement, SMTP,
 webhooks, LLM. WAF, IPS, rule-match collection and custom rules stay at their
 defaults, which are off (`backend/app/core/config.py:171`, `:276`, `:410`,
 `:545`). Catch-all and geo default on (`:496`, `:527`). Leaving them on matches
@@ -1102,7 +1102,7 @@ Connection errors name the host and the exception class, not the password.
 Exit 0 on all PASS, 1 on any WARN with no FAIL, 2 on any FAIL.
 
 The process does not call a write method on the provider. The provider
-interface has none (`AGENTS.md` §2). The one QRadar call is `GET /system/about`
+interface has none. The one QRadar call is `GET /system/about`
 through `validate_connection` (`backend/app/providers/qradar_rest.py:482-487`).
 A separate TLS handshake to the console uses the CA bundle and sends no
 `SEC` header, so certificate expiry can be read without presenting the token.
@@ -1459,7 +1459,7 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
     (`auth_login.py:257-265`). That `User()` call sets no roles. `User.roles`
     is the relationship at `identity.py:98-100`, through `user_role`
     (`identity.py:34-41`), and it stays empty. Roles are not read from AD
-    (D-19). Confirm: `/admin/users`
+    (decided on 2026-10-16). Confirm: `/admin/users`
     shows the user with no role, and `/me` succeeds. Fix: an admin assigns a
     role. There is no AD group to fix.
 
@@ -1600,26 +1600,26 @@ No Prometheus exporter in this cut. The surfaces above plus `doctor` are the dai
 
 ## 10. Task split
 
-Target: the safety cut done by 2026-10-30, starting 2026-10-17. Each task is one agent. The orchestrator reviews OPS-4, OPS-5 and OPS-6 before merge, because a bug there destroys a database. No task commits except as the orchestrator already does. No task runs anything against QRadar. Integration tests use the `TEST_DATABASE_URL` the orchestrator assigns.
+Target: the safety cut done by 2026-10-30, starting 2026-10-17. OPS-4, OPS-5 and OPS-6 are reviewed before merge, because a bug there destroys a database. No task runs anything against QRadar. Integration tests use a database of their own, given by `TEST_DATABASE_URL`.
 
-| Task | When | Agent | Depends on | What |
-|---|---|---|---|---|
-| OPS-1 | 10-17 | Grok | — | `VERSION`, the CI equality check, `GET /api/v1/version`, a `version` field on the frontend health probe, the account menu and the sign-in page. |
-| OPS-2 | 10-17 | Grok | — | pip-tools locks, Dockerfile and CI install from the lock, `mypy` no longer hidden by `\|\| true`. |
-| OPS-3 | 10-18, 10-19 | Grok | OPS-1, OPS-2 | `release.yml`, GHCR push, frontend build arg, wget in the frontend runner, prod compose `image:` keys, redis digest pin. |
-| OPS-4 | 10-20 to 10-22 | Grok | OPS-3 for the pull path. The script can land `--build` first. | `./qradar-dash` preflight, wizard, `--non-interactive`, `--offline`, `--build`, `--external-proxy`, secrets, migrate, `create-admin`, `has-admin`, `qradar add`, proxy image, pinned edge IP, summary, idempotent re-run. |
-| OPS-5 | 10-23, 10-24 | Grok | OPS-4 | backup, verify-restore, retention of backups, disk guard, systemd timer, and the daily task that calls `apply_policies`. |
-| OPS-6 | 10-25, 10-26 | Grok | OPS-3, OPS-5 | `upgrade` and `rollback`, state file, Redis flush, automatic rollback triggers, rehearsal that records downtime. |
-| OPS-7 | 10-27 | Grok | OPS-1, OPS-4 | `python -m app.cli.doctor`, beat heartbeat, host wrapper, exit codes. |
-| OPS-8 | 10-28 | Grok | OPS-7 | `support-bundle` and the fixture test in §7.2. |
-| OPS-9 | 10-29 | Grok | OPS-4 through OPS-8, so the commands exist | `docs/OPERATIONS.md` in Turkish from §8. Commands copied, not rewritten. |
-| OPS-10 | 10-30 | orchestrator | OPS-4 at minimum; OPS-6 if it has landed | Fresh-VM install test (§10.1). |
+| Task | When | Depends on | What |
+|---|---|---|---|
+| OPS-1 | 10-17 | — | `VERSION`, the CI equality check, `GET /api/v1/version`, a `version` field on the frontend health probe, the account menu and the sign-in page. |
+| OPS-2 | 10-17 | — | pip-tools locks, Dockerfile and CI install from the lock, `mypy` no longer hidden by `\|\| true`. |
+| OPS-3 | 10-18, 10-19 | OPS-1, OPS-2 | `release.yml`, GHCR push, frontend build arg, wget in the frontend runner, prod compose `image:` keys, redis digest pin. |
+| OPS-4 | 10-20 to 10-22 | OPS-3 for the pull path. The script can land `--build` first. | `./qradar-dash` preflight, wizard, `--non-interactive`, `--offline`, `--build`, `--external-proxy`, secrets, migrate, `create-admin`, `has-admin`, `qradar add`, proxy image, pinned edge IP, summary, idempotent re-run. |
+| OPS-5 | 10-23, 10-24 | OPS-4 | backup, verify-restore, retention of backups, disk guard, systemd timer, and the daily task that calls `apply_policies`. |
+| OPS-6 | 10-25, 10-26 | OPS-3, OPS-5 | `upgrade` and `rollback`, state file, Redis flush, automatic rollback triggers, rehearsal that records downtime. |
+| OPS-7 | 10-27 | OPS-1, OPS-4 | `python -m app.cli.doctor`, beat heartbeat, host wrapper, exit codes. |
+| OPS-8 | 10-28 | OPS-7 | `support-bundle` and the fixture test in §7.2. |
+| OPS-9 | 10-29 | OPS-4 through OPS-8, so the commands exist | `docs/OPERATIONS.md` in Turkish from §8. Commands copied, not rewritten. |
+| OPS-10 | 10-30 | OPS-4 at minimum; OPS-6 if it has landed | Fresh-VM install test (§10.1). |
 
 OPS-1 and OPS-2 run in parallel. OPS-9 can be drafted from §8 before OPS-8 merges and corrected the same day if a command name moved. Nothing else overlaps on the same files: OPS-4 owns `qradar-dash` and the prod compose file, OPS-5 adds backup subcommands to that script, OPS-6 adds upgrade and rollback. They are sequential on purpose.
 
 ### 10.1 OPS-10 acceptance
 
-A clean RHEL/Rocky/Alma 9 or Ubuntu 22.04/24.04 VM, x86_64, with only Docker Engine, the Compose v2 plugin, git and a TLS certificate. SELinux left at its default. No QRadar token is required for the count if the test uses a mock only when the orchestrator says so. The production-shaped test uses a lab token the orchestrator already holds, read by the Sonnet path the planner already uses for lab tokens, and this design does not change that rule.
+A clean RHEL/Rocky/Alma 9 or Ubuntu 22.04/24.04 VM, x86_64, with only Docker Engine, the Compose v2 plugin, git and a TLS certificate. SELinux left at its default. The count needs no QRadar token when the test uses a mock. The production-shaped test uses a lab token, read as the lab's token always is; this design does not change that rule.
 
 Record:
 
@@ -1638,9 +1638,9 @@ A failure is a report, not a quiet fix inside OPS-10.
 - **OPS-5.** Round-trip: dump a migrated database, restore into a new database, `alembic_version` and a known row survive. The disk guard refuses when the fixture filesystem is small. `apply_policies` runs from the beat task and a test sees a retention job. The timer unit is installed by the script and is not enabled in CI.
 - **OPS-6.** A migrate failure on a fixture restores the previous digest and the previous row count. A health timeout does the same. A QRadar `FAIL` does not. Downtime is written into the OPS-6 report.
 - **OPS-7.** Every id in §6 has a test that forces PASS and a test that forces FAIL or WARN. Output fixtures contain a planted token and the test asserts it is absent. No test opens a socket to a QRadar host.
-- **OPS-8.** The §7.2 fixture test. Breaking the scrub fails the test; that failure is confirmed and the scrub restored, per `AGENTS.md` §4.
-- **OPS-9.** Every symptom id OPS-R1 through OPS-R42 appears. A Turkish paragraph and an English command. A second reader (the orchestrator) checks five commands against this document.
-- **OPS-10.** The numbers in §10.1, written in `docs/tasks/OPS-10.report.md`.
+- **OPS-8.** The §7.2 fixture test. Breaking the scrub fails the test; that failure is confirmed and the scrub restored.
+- **OPS-9.** Every symptom id OPS-R1 through OPS-R42 appears. A Turkish paragraph and an English command. A second reader checks five commands against this document.
+- **OPS-10.** The numbers of §10.1, recorded.
 
 ### 10.3 After 2026-10-30
 
@@ -1665,7 +1665,7 @@ These do not block OPS-1. The default is what the tasks will do if the user does
 
 3. **Off-host backups in this cut.** §5 keeps backups on a directory the operator names, and recommends a second filesystem. A copy to another machine is OPS-14. Say if OPS-14 has to move into the two-week cut. Default: it stays after 2026-10-30.
 
-Language and who operates are decided (D-19). The registry is decided (private-shaped, `ghcr.io` reachable). LDAP at install time is decided (not asked).
+Language and who operates are decided (2026-10-16). The registry is decided (private-shaped, `ghcr.io` reachable). LDAP at install time is decided (not asked).
 
 ---
 

@@ -1,14 +1,14 @@
-# Phase F — custom detections and custom AQL (D-15)
+# Phase F — custom detections and custom AQL (2026-10-15)
 
 Status: **built, 2026-10-16** (designed 2026-10-15 by T-108). F-1 through F-7 and F-6a are built
 and their sections are marked **[BUILT]**. An "As built" note under a section marks where the
 code differs from the design text. It follows the shape of
 [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and rests
-on [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (D-7), [`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md)
-§29 (measurement semantics, admission, bulk loaders), `UI-REDESIGN-PLAN.md`
-§UR.5 (the widget system) and [`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md). The design's
+on [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (the search cadence), [`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md)
+§29 (measurement semantics, admission, bulk loaders), the dashboard's widget system and
+[`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md). The design's
 `file:line` citations were written against the pre-build tree; the "As built" notes cite the built
-files (`PLANNER.md` §4 D-15, D-17).
+files.
 
 ---
 
@@ -20,8 +20,8 @@ files (`PLANNER.md` §4 D-15, D-17).
 
 Three wants: an option to write custom AQL; charts built from it; and custom incident logic —
 user-written rules such as "alert when this log source exceeds this EPS" and "alert when this URI
-gets this many requests". The "how" was left to the orchestrator (decision D-15,
-`PLANNER.md` §4).
+gets this many requests". The "how" was decided on 2026-10-15: two tools on one alert pipeline
+(§F.0a).
 
 ## F.0a The decision in one table
 
@@ -33,7 +33,7 @@ Two tools, one alert pipeline:
 | Mechanism | A rule naming a subject, a metric, an operator, a threshold, a sustain and a recovery, evaluated in a DB-only tick | The existing scheduled searches: stored, validated, versioned AQL with a threshold alert |
 | New Ariel searches | **Zero.** Rules read stored aggregates only | The search's own runs, under the existing Ariel budget and new caps (§F.8.2) |
 | Fail-closed | As the detectors: unmeasured is `INSUFFICIENT_DATA`, never "below"; a `LOWER_BOUND` count proves "above" only | As today: a truncated run never resolves a threshold alert (`app/alerts/search_alerts.py:81-88`) |
-| Alerts | `AlertService`, a new fingerprint kind, new enums — `AnomalyType` is not extended (AGENTS.md rule 6) | The existing `search_threshold` and `search_failure` alerts (`app/alerts/search_alerts.py:6-14`) |
+| Alerts | `AlertService`, a new fingerprint kind, new enums — `AnomalyType` is not extended | The existing `search_threshold` and `search_failure` alerts (`app/alerts/search_alerts.py:6-14`) |
 | What is missing | Everything: model, evaluator, API, UI | Only the UI and the charts: `/searches` is read-only today (`frontend/src/app/searches/page.tsx:6-65`) and no widget plots a search's results |
 
 ---
@@ -83,7 +83,7 @@ while no verdict of "normal" is ever drawn from one (`docs/PHASE-B-WAF-BEHAVIOR.
 
 ### F.1.3 Latency is the cadence, not seconds
 
-Collection runs at the D-28 cadence per family (default **5 min**, and **15 min** for WAF and
+Collection runs at each family's cadence (default **5 min**, and **15 min** for WAF and
 IPS; `default_search_cadence`, `backend/app/models/enums.py:126-130`, `docs/SEARCH-CADENCE.md`
 §SC.0) plus a settle delay (default 120 s, `docs/SEARCH-CADENCE.md` §SC.4). A detection can
 therefore arrive up to *cadence + bucket + settle* late — about **12 min** at the 5-minute default
@@ -141,8 +141,7 @@ Everything server-side exists and is tested:
 1. **`/searches` is read-only in the UI** — a catalog table and a detail page that renders the AQL
    in a `CodePanel` marked read-only (`frontend/src/app/searches/page.tsx:6-65`,
    `frontend/src/app/searches/[id]/page.tsx:75`). No editor, no create, no enable/disable.
-2. **No widget plots a search's results.** The initial widget catalog has no search widget
-   (`docs/UI-REDESIGN-PLAN.md` lines 958-985).
+2. **No widget plots a search's results.** The initial widget catalog has no search widget.
 3. **F.1 does not exist at all.**
 
 ---
@@ -155,8 +154,8 @@ chart's parity on `/searches/[id]`; caps and retention for both.
 
 **Out:** free-text URI or pattern subjects (§F.3.3 explains why the WAF subject is a pinned
 endpoint); rule templates or sharing between users; AI-assisted rule writing (Phase E is out of
-scope, D-14); alerting within seconds (QRadar's own rules); correlation across rules; any new
-Ariel search for F.1; executing frontend-supplied AQL (AGENTS.md rule 4 — never).
+scope, decided on 2026-10-15); alerting within seconds (QRadar's own rules); correlation across rules; any new
+Ariel search for F.1; executing frontend-supplied AQL (never).
 
 ---
 
@@ -211,7 +210,7 @@ kind, unit, the columns it reads, its measurement rule (`EXACT_ONLY` or
 `LOWER_BOUND_PROVES_INCREASE` — reusing the requirement vocabulary of
 `app/anomaly/capabilities.py:246-247`), and its bulk loader (§F.4.2). This is the F.1 analogue of
 `DetectorSpec` (`app/anomaly/capabilities.py:119-147`): the rule's verdict scope comes from the
-catalog, never from the evaluator's own reasoning (AGENTS.md rule 8, second half).
+catalog, never from the evaluator's own reasoning.
 
 ### F.3.3 WAF and IPS subjects: admission and pinning (question 2)
 
@@ -229,14 +228,14 @@ Why, against the three options the task lists:
   but useless, and a trap for the operator. The editor therefore offers only endpoints that
   exist, via the existing paged endpoint list `GET /behavior/waf/sources/{id}/endpoints`
   (`app/api/routes/anomalies.py:863-865`); a search that finds no endpoint explains *why*
-  (admission is bounded per source and per bucket, AGENTS.md rule 9) and points at F.2 as the
+  (admission is bounded per source and per bucket) and points at F.2 as the
   tool for conditions the platform does not collect. IPS entities pin the same way, by
   `ips_entity_id` (`app/models/ips.py:211-217`), from the existing entity inventory API.
 - *Pin the endpoint inside the existing bounds* — pinning to the entity id (not to the natural
   key) is what keeps evaluation **constant SQL**: the bulk loader joins `waf_endpoint_metric` to
   `waf_source_bucket` for the union of rule endpoints in one statement (§F.4.2), never a query per
-  endpoint. AGENTS.md rule 9 and §29.11's "never a query inside the detector loop"
-  (`docs/PHASE-B-WAF-BEHAVIOR.md` lines 3173-3185) apply verbatim.
+  endpoint. §29.11's "never a query inside the detector loop"
+  (`docs/PHASE-B-WAF-BEHAVIOR.md` lines 3173-3185) applies verbatim.
 - *Say "not collected"* — that is the **runtime** answer, not the authoring answer, for the two
   cases that can only appear after authoring:
   - the endpoint **retires** (`waf_endpoint.is_active = false`, `app/models/waf.py:366`): the
@@ -326,9 +325,8 @@ alert through `AlertService.apply_bulk` (`app/alerts/service.py:158`), noted as 
 `docs/PHASE-D-IPS-BEHAVIOR.md` D.10 (lines 250-253).
 
 **Caps (numbers).** `custom_rules_max_enabled` = **100** enabled rules; creating or enabling
-beyond it returns `409` with the limit named (the dashboard-limits precedent,
-`docs/UI-REDESIGN-PLAN.md` lines 1130-1139). `custom_rules_max_buckets_per_run` = 288. At the
-default 5 min cadences the steady-state tick judges one bucket per kind; before D-28, the default
+beyond it returns `409` with the limit named (the dashboard-limits precedent). `custom_rules_max_buckets_per_run` = 288. At the
+default 5 min cadences the steady-state tick judges one bucket per kind; before 2026-10-18, the default
 1 h cadence made a tick judge 12 buckets per kind.
 
 ### F.4.3 Lifecycle: alerts and a breach record — not a fourth incident lifecycle (question 5)
@@ -415,7 +413,7 @@ run at 15 minutes, about **23 minutes**. This is the platform's documented detec
    applies.
 5. **The rule never grants itself scope.** Which metrics may conclude what from a `LOWER_BOUND`
    comes from the catalog entry (§F.3.2), the way a detector's verdict scope comes from its
-   `DetectorSpec` (AGENTS.md rule 8, `app/anomaly/capabilities.py:131-134`).
+   `DetectorSpec` (`app/anomaly/capabilities.py:131-134`).
 6. **Evaluation is idempotent.** `last_evaluated_bucket_start` makes re-processing a bucket a
    no-op (the pattern of `app/models/log_source.py:296` and
    `app/models/waf.py:617-619`).
@@ -424,14 +422,14 @@ run at 15 minutes, about **23 minutes**. This is the platform's documented detec
    shows the state (the detector-status contract, `app/anomaly/capabilities.py:66-77`,
    published by `GET /behavior/detectors`, `app/api/routes/anomalies.py:595-604`).
 8. **Nothing raw is persisted.** Rules read aggregates that already exist; breach rows store
-   counts, shares and labels only (AGENTS.md rule 3).
+   counts, shares and labels only.
 
 ---
 
 ## F.6 F.1 — alerting **[BUILT]**
 
 > **As built** (`backend/app/custom_rules/alerts.py`, `backend/app/alerts/fingerprint.py`,
-> `backend/app/custom_rules/engine.py`; D-17 answer 1): shadow mode ships.
+> `backend/app/custom_rules/engine.py`; the user's answer of 2026-10-16): shadow mode ships.
 > `CUSTOM_RULES_ALERTING_ENABLED` (default false) gates paging while `CUSTOM_RULES_ENABLED`
 > gates evaluation. With evaluation on and alerting off, breach rows and rule state are
 > written and the evaluator opens, refreshes, resolves and enqueues nothing — including a
@@ -514,17 +512,17 @@ rule over collected buckets and sends nothing to QRadar.
 > A cron-floor refusal is 422 with a string detail, not that object. A patch whose only
 > counted field is `enabled` (`change_note` does not count) is audited
 > `search.enable`/`search.disable`. `search:write` is also on `detection_engineer`, not only
-> on admin (§F.8.2's "admin only today" is the pre-D-17 text). The editor creates with
+> on admin (§F.8.2's "admin only today" is the text from before 2026-10-16). The editor creates with
 > `enabled: false`, keeps a non-preset cron verbatim as Custom, and previews with Run now on
 > the stored draft. Its latency statement is the search-specific sentence ("This search runs
 > in QRadar on its schedule; …"), not §F.12's custom-rules sentence (F-5 review round 1).
 
 ### F.8.1 The authoring flow
 
-The browser never runs AQL (AGENTS.md rule 4). It submits text to be **validated and stored as a
+The browser never runs AQL. It submits text to be **validated and stored as a
 version**; only stored versions run.
 
-1. **Write.** `/searches/new` (and edit on `/searches/[id]`) offers the AQL text, the seven D-7
+1. **Write.** `/searches/new` (and edit on `/searches/[id]`) offers the AQL text, the seven
    cron presets (5 min … 8 h, `docs/SEARCH-CADENCE.md` lines 235-243), the threshold with
    operator and severity, the guardrails, and `visualization_type` (§F.9.2's set).
 2. **Save as a disabled version.** The editor saves with `enabled=false` (the create schema
@@ -547,13 +545,13 @@ version**; only stored versions run.
 (`app/schemas/search.py:64-68`). Phase F returns the reasons as a list in the 422 detail (the
 string kept for compatibility) and the editor renders them as an inline list under the editor,
 each reason addressable, alongside the threshold-reachability reason. No reason is paraphrased
-into something vague (AGENTS.md §3a bans "Something went wrong" copy).
+into something vague (the frontend guidelines ban "Something went wrong" copy).
 
 ### F.8.2 Cost guards (question 7)
 
 | Guard | Value | Mechanism |
 |---|---|---|
-| Enabled custom searches | **25** (`scheduled_searches_max_enabled`, new) | Refuse at create/enable with `409` naming the limit (the dashboard-limits pattern, `docs/UI-REDESIGN-PLAN.md` lines 1130-1139) |
+| Enabled custom searches | **25** (`scheduled_searches_max_enabled`, new) | Refuse at create/enable with `409` naming the limit (the dashboard-limits pattern) |
 | Minimum cadence | **5 min** | The editor offers only the seven presets; a new or changed cron must fire at least 300 s apart, checked by computing successive fires with the scheduler's `CronTrigger` (`app/services/search_scheduler.py:9-12`). An existing cron that matches no preset is shown as **Custom** and kept verbatim (`docs/SEARCH-CADENCE.md` line 245) |
 | Per-search window and rows | defaults 24 h / 10,000 rows | Existing columns (`app/models/search.py:67-68`), clamped by the platform caps 168 h / 10,000 (`app/core/config.py:124-125`) |
 | Timeout | default 300 s, ≤ 900 s | Existing (`app/models/search.py:66`; `app/core/config.py:123`) |
@@ -594,7 +592,7 @@ The executor stores two shapes (`app/services/search_executor.py:216-243`):
 So `visualization_type` maps: `LINE` → the per-`metric_key` series; `TABLE` → the top-N table;
 `SINGLE_VALUE` → the latest total; `BAR` → the series as bars. `PIE` and `HEATMAP` exist in the
 enum (`app/models/enums.py:531-538`) but are **not offered** by the editor: a pie over an
-unbounded GROUP BY would break the five-slice rule (AGENTS.md §3a) and no heatmap shape is
+unbounded GROUP BY would break the five-slice rule and no heatmap shape is
 defined. An existing search stored with `PIE`/`HEATMAP` renders as `TABLE` with a note saying so —
 rendered, never hidden.
 
@@ -603,17 +601,16 @@ rendered, never hidden.
 A new configurable widget `chart.search_results` in the registry
 (`frontend/src/widgets/registry.ts:40-93`): `requires: ["read:searches"]`,
 `sources: ["/searches/{id}/results"]`, `config: { search_id, metric_key }` — both **enumerated**
-options (the registry rule: pickers over ids, never free text reaching the server as a query,
-`docs/UI-REDESIGN-PLAN.md` lines 949-953). It renders per the search's `visualization_type`
-mapping above. Every `WidgetState` kind is designed and tested
-(`docs/UI-REDESIGN-PLAN.md` lines 1055-1070):
+options (the registry rule: pickers over ids, never free text reaching the server as a query).
+It renders per the search's `visualization_type`
+mapping above. Every `WidgetState` kind is designed and tested:
 
 | State | Rendering |
 |---|---|
 | `ok` | the series/table with unit on the axis, tabular figures, UTC times |
 | `empty` — never run | "This search has never run since it was created" + when it was created and how to run it now |
 | `ok` + TRUNCATED qualifier | a truncated run stored no total (`app/services/search_executor.py:222-233`), so the point is **absent** — a gap in the line, never a zero (`docs/SEARCH-CADENCE.md` §SC.8, lines 296-302); the table shows "≥ n" for a truncated count and "no verdict" beside the threshold |
-| `ok` + stale | the last successful run is older than twice the search's own schedule interval (derived from `last_run_at`/`next_run_at`; the UR.5.4 stale rule, `docs/UI-REDESIGN-PLAN.md` lines 1068-1069) — say so, with the age |
+| `ok` + stale | the last successful run is older than twice the search's own schedule interval (derived from `last_run_at`/`next_run_at`; the widget system's stale rule) — say so, with the age |
 | `error` — last run failed | the failure's `error_type` in words, the consecutive-failure count against `search_failure_alert_after` (3), and what to do: inspect the execution, edit the query, or wait for the retry |
 | `forbidden` | names `read:searches` and says who can grant it |
 | `loading` | the text-only placeholder |
@@ -637,7 +634,7 @@ apart — one component, two mounts.
 > chain head on this branch is `0025`.
 
 One migration, `0024_custom_rules`, chained after the current head `0023_dashboards`
-(`alembic/versions/0023_dashboards.py`). **Additive only** (AGENTS.md rule 7): three new tables —
+(`alembic/versions/0023_dashboards.py`). **Additive only**: three new tables —
 `custom_rule` (§F.3.1), `custom_rule_breach` (§F.4.3), `custom_rule_watermark` (§F.4.1) — no
 Phase A, WAF, IPS, catch-all, geo or dashboard table or enum is touched. F.2 needs **no new
 tables**: `scheduled_search`, `search_query_version`, `search_execution` and
@@ -676,7 +673,7 @@ convention, `README.md` lines 683-699, needs no writer stop beyond it).
 > Audit actions are `custom_rule.create|update|delete|enable|disable` with before/after
 > snapshots; enable and disable are used only when `enabled` is the only snapshot field that
 > changed, and a rule created already enabled stays `custom_rule.create`. Previews are not
-> audited. The `detection_engineer` role (D-17 answer 3) is the analyst list plus
+> audited. The `detection_engineer` role (the user's answer of 2026-10-16) is the analyst list plus
 > `search:write` and `custom_rule:write`; `admin` keeps `admin:*`, which already satisfies the
 > write, so the admin role does not list the string. `GET /custom-rules/catalog` is registered
 > before `/{rule_id}` (`backend/app/api/routes/custom_rules.py`). The body is
@@ -786,7 +783,7 @@ preset picker (Custom kept verbatim), and the preview's result chart.
 This is not a real-time correlation engine — for alerting within seconds, use QRadar's own
 rules."
 
-**States every view designs** (AGENTS.md §3a; the widget adds UR.5.4's): loading; empty (no rules
+**States every view designs** (the frontend guidelines; a widget adds the stale state): loading; empty (no rules
 yet — says what a rule is and that none exist; never-run search); error (what failed, what the
 analyst can do); forbidden (`custom_rule:write` missing — the editor is hidden and the page says
 who can grant it; the catalog is visible read-only); and the honesty states — `NOT_COLLECTED`
@@ -795,7 +792,7 @@ who can grant it; the catalog is visible read-only); and the honesty states — 
 count), `LOWER_BOUND` readings ("at least n"), TRUNCATED results (§F.9.2), stale. Numbers carry
 their unit, use tabular figures and right-align in tables; times show UTC
 (`docs/PRODUCT-UX-GUIDELINES.md` §7-§9). Vitest covers each state, and acceptance needs
-screenshots at 1440×900, 1280×800 and 1024×768 (AGENTS.md §3a).
+screenshots at 1440×900, 1280×800 and 1024×768.
 
 ---
 
@@ -862,7 +859,7 @@ qualifiers (§F.9.2); the preview chart's gap handling (`connectNulls: false`, n
 unmeasured bucket), threshold line with unit, breach shading, "at least n" rendering; the AQL
 editor's reason list from a 422; the latency statement present.
 
-Every new test is checked by breaking the code on purpose (AGENTS.md §4).
+Every new test is checked by breaking the code on purpose.
 
 ---
 
@@ -875,18 +872,18 @@ Every new test is checked by breaking the code on purpose (AGENTS.md §4).
 > F-2 as the table below splits it (§F.10's note). The live lab validation remains the
 > follow-up this section describes.
 
-In the PLANNER's style (`docs/PLANNER.md` §3). Phase F tasks are numbered F-1 to F-8 (F-1 to F-4 went to other work on 2026-10-15).
+Phase F tasks are numbered F-1 to F-8 (F-1 to F-4 went to other work on 2026-10-15).
 
-| ID | Task | Agent | Depends on |
-|---|---|---|---|
-| F-1 | F.1 core: enums, `custom_rule`/`custom_rule_breach`/`custom_rule_watermark`, migration `0024`, the metric catalog, the pure evaluator fold, `evaluate_custom_rules` beat task behind `CUSTOM_RULES_ENABLED`, per-rule status | Codex | Phase 5 on `main` |
-| F-2 | F.1 alerting: `custom_rule_breach_fingerprint`, `AlertService` wiring, maintenance suppression, breach retention task | Sonnet | F-1 |
-| F-3 | F.1 API: CRUD + preview replay + breaches, `read:custom_rules`/`custom_rule:write`, router guard, audit, caps | Sonnet | F-1 (preview needs the fold; alerts after F-2) |
-| F-4 | F.2 backend guards: enabled-search cap (409), cron floor via `CronTrigger`, 422 `reasons[]`, `search.enable`/`disable` audit split, `search_result_metric` retention | Codex | Phase 5 on `main` |
-| F-5 | F.2 UI: `/searches/new` + edit flow, preset picker, inline validation reasons, preview = Run now on the stored draft, enable; screenshots at three viewports | Sonnet | F-4 |
-| F-6 | F.1 UI: `/custom-rules` list, editor with subject/metric pickers and live preview chart, rule detail with breaches; the latency statement; screenshots | Sonnet | F-3 |
-| F-7 | `chart.search_results` widget (config `search_id`/`metric_key`), registry + catalog entry, `ResultTrend` metric_key selector and top-N table parity on `/searches/[id]` | Sonnet | F-5 |
-| F-8 | Docs: README routes/data-model/settings, this file's [BUILT] markers, PLANNER board | opencode free model | F-1–F-7 |
+| ID | Task | Depends on |
+|---|---|---|
+| F-1 | F.1 core: enums, `custom_rule`/`custom_rule_breach`/`custom_rule_watermark`, migration `0024`, the metric catalog, the pure evaluator fold, `evaluate_custom_rules` beat task behind `CUSTOM_RULES_ENABLED`, per-rule status | Phase 5 on `main` |
+| F-2 | F.1 alerting: `custom_rule_breach_fingerprint`, `AlertService` wiring, maintenance suppression, breach retention task | F-1 |
+| F-3 | F.1 API: CRUD + preview replay + breaches, `read:custom_rules`/`custom_rule:write`, router guard, audit, caps | F-1 (preview needs the fold; alerts after F-2) |
+| F-4 | F.2 backend guards: enabled-search cap (409), cron floor via `CronTrigger`, 422 `reasons[]`, `search.enable`/`disable` audit split, `search_result_metric` retention | Phase 5 on `main` |
+| F-5 | F.2 UI: `/searches/new` + edit flow, preset picker, inline validation reasons, preview = Run now on the stored draft, enable; screenshots at three viewports | F-4 |
+| F-6 | F.1 UI: `/custom-rules` list, editor with subject/metric pickers and live preview chart, rule detail with breaches; the latency statement; screenshots | F-3 |
+| F-7 | `chart.search_results` widget (config `search_id`/`metric_key`), registry + catalog entry, `ResultTrend` metric_key selector and top-N table parity on `/searches/[id]` | F-5 |
+| F-8 | Docs: README routes/data-model/settings, this file's [BUILT] markers | F-1–F-7 |
 
 Order: F-1 → F-2 → F-3 → F-6; F-4 → F-5 → F-7; F-8 last. Live validation of F.1
 on the lab (a generator-driven EPS spike firing a rule end to end) is a follow-up task to be
@@ -896,7 +893,7 @@ scheduled with the Phase D/F validation batch, not part of this split.
 
 ## F.16 Open questions for the user
 
-**Answered by the user on 2026-10-16 (PLANNER D-17); these answers are binding and override the
+**Answered by the user on 2026-10-16; these answers are binding and override the
 text below where they differ:**
 1. Shadow mode first: `CUSTOM_RULES_ALERTING_ENABLED`, default false, beside
    `CUSTOM_RULES_ENABLED`. Breaches are recorded; nothing pages until it is turned on.

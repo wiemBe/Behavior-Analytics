@@ -3371,7 +3371,7 @@ breakdown also records its own metric-semantics identity (`*_semantics`, built b
 `ACTION` and `RESPONSE_CODE` searches; `WAF_CLIENT_COLLECTION_ENABLED` (default false) gates the
 `SOURCE_IP` search. Turning one on is an explicit decision to spend Ariel budget, and the engine
 runs the detectors that read a breakdown only while its setting is on. A detector that reads only
-data already collected needs no such setting (§30.5, decision D-4). `breakdown_plan()` fails closed,
+data already collected needs no such setting (§30.5, decided 2026-10-12). `breakdown_plan()` fails closed,
 and every condition must hold for the profile's current version:
 
 - `ACTION` needs the setting, an action property mapped and validated `AVAILABLE` for the current
@@ -3458,7 +3458,7 @@ is part of the contract operators read: `unfinished`, `incompatible_semantics`, 
 | `incomplete` | the breakdown is a `LOWER_BOUND` |
 | `uncertain_values` | any unmapped action or unclassified response exists |
 | `inexact_request_count` | the endpoint's request count is a lower bound |
-| `low_source_coverage` | fewer than `WAF_MIN_ENDPOINT_COVERAGE` of the **source's** events parsed to an endpoint (decision D-3, §30.6) |
+| `low_source_coverage` | fewer than `WAF_MIN_ENDPOINT_COVERAGE` of the **source's** events parsed to an endpoint (decided 2026-10-12, §30.6) |
 | `immaterial` | the population is empty (a sparse exact breakdown reconstructs 0/0 for an absent endpoint, which is no ratio population, not a zero proportion), or below the minimum denominator |
 | `low_coverage` | the breakdown covers fewer than `WAF_MIN_ENDPOINT_COVERAGE` of the endpoint's visible requests |
 | `known_anomaly` | it lies inside an incident span |
@@ -3475,7 +3475,7 @@ of `WAF_BASELINE_REBUILD_CHUNK_SIZE` endpoints, never with endpoints or metrics 
 | `WAF_ERROR_RATIO_SPIKE` | built | 5xx share of requests carrying a response code | `WAF_OUTCOME_COLLECTION_ENABLED` |
 | `WAF_CLIENT_ERROR_RATIO_SPIKE` | built | 4xx share of requests carrying a response code | `WAF_OUTCOME_COLLECTION_ENABLED` |
 | `WAF_CLIENT_CONCENTRATION_SPIKE` | built | largest source IP's share of attributed requests | `WAF_CLIENT_COLLECTION_ENABLED` |
-| `WAF_NEW_ENDPOINT_ACCESS` | built | material traffic to an endpoint absent from a verified history (§30.5) | none (D-4) |
+| `WAF_NEW_ENDPOINT_ACCESS` | built | material traffic to an endpoint absent from a verified history (§30.5) | none (decided 2026-10-12) |
 | `WAF_CLIENT_ENDPOINT_FANOUT_SPIKE` | **named only** | not built; `UNSUPPORTED` | — |
 
 All are scheduled by `dispatch_waf_collection` and evaluated in the same engine pass as
@@ -3556,7 +3556,7 @@ minimum), otherwise `MEDIUM`; novelty is always `MEDIUM`.
 
 - *Ratios:* the breakdown was `NOT_COLLECTED` or `FAILED` (the reason names the breakdown and says
   the value is "unavailable, not zero"); the scope is `NONE`; fewer than the coverage floor of the
-  **source's** events parsed to an endpoint (D-3); the breakdown covers fewer than the floor of the
+  **source's** events parsed to an endpoint (decided 2026-10-12); the breakdown covers fewer than the floor of the
   endpoint's requests; the baseline cell is missing, incompatible, below its minimum sample count or
   has no pooled denominator; fewer than the minimum denominator. Below the minimum **numerator**,
   or short of the rise, multiple or robust score, the verdict is `HEALTHY` under `FULL` scope and
@@ -3622,7 +3622,7 @@ per chunk of up to 5,000 endpoint ids). An evaluation with no in-window endpoint
 I/O at all. Pinned by `test_novelty_cost_is_constant_with_and_without_in_window_endpoints`
 (§30.9).
 
-**Decision D-4 [DECISION], 2026-10-12: `WAF_NEW_ENDPOINT_ACCESS` has no enabling setting.** The
+**Decision (2026-10-12): `WAF_NEW_ENDPOINT_ACCESS` has no enabling setting.** The
 B.2 enabling settings exist because they gate Ariel spend, and this detector adds no search: it
 reads data already collected. It is `OPERATIONAL` whenever WAF collection runs. The decision is
 pinned by `test_the_detector_has_no_enabling_setting_and_is_registered`. It is revisited if
@@ -3630,7 +3630,7 @@ operators need a per-detector mute now that alerting exists (§30.7, §30.13). A
 refuses `WAF_NEW_ENDPOINT_HISTORY_DAYS` at or above `WAF_METRIC_RETENTION_DAYS` when WAF collection
 is on, because such a history could never be complete.
 
-### 30.6 Decision D-3 — source-level coverage on the ratio paths **[DECISION]**
+### 30.6 Source-level coverage on the ratio paths **[DECISION]**
 
 **Decision (2026-10-12): the ratio and concentration paths require source-level coverage, in both
 training and detection** (T-017; fail closed).
@@ -3796,13 +3796,13 @@ at `head`, where 0010's NOT NULL columns reject them. It is now pinned to revisi
 backfilled values, the rejected unknown measurement values, no leftover column default, a
 downgrade to `0009`, an upgrade to `head`, and no drift. **Rolling-deploy risk:** a 0009-era writer
 running against a 0010 schema fails on the NOT NULL measurement columns. That risk applies to every
-migration that adds a NOT NULL column under this convention and is tracked as an operations item
-in `docs/PLANNER.md`, not solved here.
+migration that adds a NOT NULL column under this convention and is tracked as an operations item,
+not solved here.
 
 ### 30.11 Behaviour changes, stated explicitly
 
 1. Five detectors exist where B.1.5 had one. Four are `NOT_ENABLED` by default and collect nothing
-   until their setting is on; `WAF_NEW_ENDPOINT_ACCESS` runs whenever WAF collection runs (D-4).
+   until their setting is on; `WAF_NEW_ENDPOINT_ACCESS` runs whenever WAF collection runs (decided 2026-10-12).
 2. A bucket now records one completeness per breakdown. A truncated or failed breakdown never fails
    the bucket; it makes only its own detectors `INSUFFICIENT_DATA`.
 3. An unmapped action value or a non-three-digit response code makes the numerator a lower bound. It
@@ -3810,7 +3810,7 @@ in `docs/PLANNER.md`, not solved here.
    training (`uncertain_values`).
 4. **Supersedes §29.11 and §29.16:** ratio detectors do not require every input `EXACT`. The
    numerator may be a lower bound; the denominator and coverage input must be exact.
-5. **Source-level coverage (D-3):** a ratio or concentration verdict, and a ratio training sample,
+5. **Source-level coverage (decided 2026-10-12):** a ratio or concentration verdict, and a ratio training sample,
    now require at least `WAF_MIN_ENDPOINT_COVERAGE` of the source's events to have parsed to an
    endpoint. Below it: `INSUFFICIENT_DATA`, and `low_source_coverage` in the exclusion tally.
 6. Response-code digits are ASCII only, and an unparseable source IP is unattributed (T-013). Both
@@ -3835,7 +3835,7 @@ detector-capability fields.
 
 ### 30.12 Gates
 
-Measured by the orchestrator on `feat/phase-b2` immediately before the merge to `main`
+Measured on `feat/phase-b2` immediately before the merge to `main`
 (2026-10-12), on fresh databases:
 
 | Gate | Result |
@@ -3864,12 +3864,12 @@ Measured by the orchestrator on `feat/phase-b2` immediately before the merge to 
    it.
    Coalescing changes the fixed fingerprint identity and is separate design work. Stage thresholds
    and routing with `WAF_ALERTING_ENABLED=false` before enabling paging.
-4. **Novelty alerts a deployment as readily as a probe.** The evidence says so, but D-4 leaves no
+4. **Novelty alerts a deployment as readily as a probe.** The evidence says so, but the 2026-10-12 decision leaves no
    per-detector mute. Revisit when alerting is live.
 5. **Source-IP identity.** Behind a proxy, load balancer or NAT the dominant source IP is the
    intermediary, which can raise or hide concentration. The evidence labels it.
 6. **Coverage floors may starve a source.** A source whose events mostly do not parse to an
-   endpoint never trains a ratio cell and never gets a ratio verdict (D-3). Visible in the
+   endpoint never trains a ratio cell and never gets a ratio verdict (decided 2026-10-12). Visible in the
    exclusion tally; relaxed only with live evidence.
 7. **Contributors are not an attribution.** A block or 5xx incident's contributor list covers all
    of the endpoint's requests, not the blocked ones.

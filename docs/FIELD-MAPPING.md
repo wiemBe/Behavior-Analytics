@@ -1,6 +1,6 @@
-# Field mappings editable in the UI — WAF now, IPS with Phase D (D-8)
+# Field mappings editable in the UI — WAF now, IPS with Phase D (2026-10-12)
 
-Status: **design, 2026-10-12.** The orchestrator owns this file. Tasks T-041 to T-045 build it.
+Status: **design, 2026-10-12.** Tasks T-041 to T-045 build it.
 
 ## FM.0 What the user asked
 
@@ -42,7 +42,7 @@ across many sources of the same environment without retyping it (§FM.7).
    validates `VALID`. The UI says so *before* the operator saves.
 2. **Nothing reaches AQL unvalidated.** A property name reaches query text only after it matches
    `PROPERTY_NAME_PATTERN` (server-side; the client check is a convenience). A name is an
-   identifier, not AQL; the platform still never executes frontend-supplied AQL (AGENTS.md rule 4).
+   identifier, not AQL; the platform still never executes frontend-supplied AQL.
 3. **Read-only against QRadar.** Saving a mapping writes only the application's database.
    Validation and the property catalog are GETs and bounded Ariel searches.
 4. **Audited.** Every create, change, validation request, validation result, enable and disable is
@@ -266,7 +266,7 @@ A bulk "apply to many sources" is deferred: each source must validate on its own
 
 ## FM.8 UI
 
-Read `AGENTS.md` §3a, `docs/PRODUCT-UX-GUIDELINES.md` and `frontend/src/app/tokens.css` first. No
+Read `docs/PRODUCT-UX-GUIDELINES.md` and `frontend/src/app/tokens.css` first. No
 new framework, no new colour or spacing literal, every state designed.
 
 **Navigation.** The sidebar's admin group gains **WAF sources** beside **Search cadence**.
@@ -367,7 +367,7 @@ these differences (T-030 and T-041 confirmed the syntax and the population):
   prefill, never trusted: the profile still validates.
 - **Validation semantics differ** (T-027): an absent port is `0`, not NULL, so population is a
   `> 0` share; `UNIQUECOUNT` counts the 0; internal events carry loopback IPs.
-- `ips_source_profile` is its own table (Phase A and WAF tables stay as they are, AGENTS.md rule 6),
+- `ips_source_profile` is its own table (Phase A and WAF tables stay as they are),
   with the same version, validation, pending and audit columns as the WAF profile.
 - The UI route is `/admin/ips-sources`, built from the §FM.8 components.
 
@@ -386,10 +386,10 @@ these differences (T-030 and T-041 confirmed the syntax and the population):
 
 ## FM.11 Tasks
 
-| ID | Task | Owner |
-|---|---|---|
-| T-041 | Live research: custom-property catalog endpoints, type join, quoted normalized fields | Sonnet |
-| T-042 | Backend: §FM.4 API (without the catalog), §FM.5 async validation and migration 0015, tests | Codex |
-| T-043 | Backend: §FM.6 provider catalog method, cache and route (after T-041) | Sonnet |
-| T-044 | Frontend: §FM.8 routes and the generic components, against a fixture API; §3a screenshots | Sonnet |
-| T-045 | Docs: README admin section; WAF design §27.2 rule 6 and §27.14 point here | opencode free model |
+| ID | Task |
+|---|---|
+| T-041 | Live research: custom-property catalog endpoints, type join, quoted normalized fields |
+| T-042 | Backend: §FM.4 API (without the catalog), §FM.5 async validation and migration 0015, tests |
+| T-043 | Backend: §FM.6 provider catalog method, cache and route (after T-041) |
+| T-044 | Frontend: §FM.8 routes and the generic components, against a fixture API; screenshots at three viewports |
+| T-045 | Docs: README admin section; WAF design §27.2 rule 6 and §27.14 point here |

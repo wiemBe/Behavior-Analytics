@@ -1,20 +1,18 @@
-# Phase G — property watches: track any property's values on a scope (D-21)
+# Phase G — property watches: track any property's values on a scope (2026-10-17)
 
-Status: **building, 2026-10-17** (designed by T-125; PW-1 foundations built). The orchestrator
-owns this file. The build (PW-1…, §G.16) starts only after the operations work (OPS-5, OPS-6,
-OPS-9 round 2, OPS-10), by the user's order
-(D-21 item 4, `PLANNER.md` §4 D-21). It follows the shape of
+Status: **building, 2026-10-17** (designed by T-125; PW-1 foundations built). The build
+(PW-1…, §G.16) starts only after the operations work (OPS-5, OPS-6,
+OPS-9 round 2, OPS-10), by the user's order of 2026-10-17 (§G.16). It follows the shape of
 [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and
 [`PHASE-F-CUSTOM-DETECTIONS.md`](PHASE-F-CUSTOM-DETECTIONS.md) and rests on
-[`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (D-7), [`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md)
-§29–§30 (measurement semantics, admission, novelty, bulk loaders),
-`UI-REDESIGN-PLAN.md` §UR.5 (the widget system) and
-[`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md). Every claim about the code carries a
-`file:line` citation checked on this branch (`agent/t125`) on 2026-10-17.
+[`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (the search cadence), [`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md)
+§29–§30 (measurement semantics, admission, novelty, bulk loaders), the dashboard's widget system
+and [`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md). Every claim about the code carries a
+`file:line` citation checked on 2026-10-17.
 
 ---
 
-## G.0 What the user asked (2026-10-17, D-21)
+## G.0 What the user asked (2026-10-17)
 
 > "operöttörün herhangi bir log source veya log source type veya log group'u seçip şu custom
 > property değerini veya değerlerini takip et diyebilir miyiz bence deriz altyapı hazır"
@@ -22,7 +20,7 @@ OPS-9 round 2, OPS-10), by the user's order
 The operator picks any **log source**, **log source type** or **log source group**, and says "track
 this custom property's value, or values". The user believes the infrastructure is ready.
 
-The user's answers at 12:55 (binding, `PLANNER.md` §4 D-21):
+The user's answers at 12:55 on 2026-10-17 (binding):
 
 1. **Outputs: all four.** The per-value distribution (a table, a time-series chart on the watch's
    page and a dashboard widget); **threshold alerts** as a new F.1 subject kind ("value DENY above
@@ -47,7 +45,7 @@ collector, the detectors, the API and the UI (§G.16 builds exactly those).
 ## G.1 Facts that constrain the design
 
 Verified on this branch, `file:line`. Facts about the QRadar console were settled by the PW-0 lab probe
-(L1 to L8, `PW-0.report.md`, summarised in §G.17).
+(L1 to L8, summarised in §G.17).
 
 ### G.1.1 The inventory already knows sources, types and groups
 
@@ -111,25 +109,25 @@ Verified on this branch, `file:line`. Facts about the QRadar console were settle
 - A **`devicetype` filter** is in use by the catch-all senders search
   (`WHERE devicetype IN (…)`, `backend/app/providers/qradar_rest.py:1665-1670`; the device-type id
   setting is described at [CONFIGURATION.md](CONFIGURATION.md) "Catch-all senders"). The lab probe ran `devicetype = <id>` together with a
-  quoted custom property and the bucket key in one query and lost no events (L3, `PW-0.report.md`).
+  quoted custom property and the bucket key in one query and lost no events (L3).
 - `LIMIT` caps the **whole result, not each bucket** — there is no per-group top-N in AQL
   (`docs/SEARCH-CADENCE.md` §SC.2). `GROUP BY` a quoted custom property together with the bucket
   key works live (`docs/SEARCH-CADENCE.md` §SC.10).
-- **Group filter (L1, `PW-0.report.md`).** The repository generates only `logsourceid`
+- **Group filter (L1).** The repository generates only `logsourceid`
   (`backend/app/providers/qradar_rest.py:1589`) and `devicetype`
   (`backend/app/providers/qradar_rest.py:1668`) filters. The lab accepted
   `WHERE LOGSOURCEGROUPNAME(logsourceid) = '<name>'` (by group **name**; five other forms were
   rejected). §G.4 keeps the inventory-resolved `logsourceid IN (…)` as the design anyway.
-- **String literals (L4, `PW-0.report.md`).** Equality and `IN ('a','b')` against a string custom property are
+- **String literals (L4).** Equality and `IN ('a','b')` against a string custom property are
   accepted and exact on the lab. A backslash escape is rejected; a doubled quote is accepted but
   whether it matches a real value containing a quote is unproven. §G.6 therefore generates `IN`
   and refuses, rather than escapes, a pinned value that contains a quote, a backslash or a control
   character. The only literal in the generated AQL today is the IPS loopback filter `!= '::1'` on an
   IP-typed field (`backend/app/providers/qradar_rest.py:1494-1497`).
-- **A `LIMIT` cut is invisible (L8, `PW-0.report.md`).** A search cut by `LIMIT` finishes `COMPLETED` with no
+- **A `LIMIT` cut is invisible (L8).** A search cut by `LIMIT` finishes `COMPLETED` with no
   truncation flag; the only signal is `rows == LIMIT`. Every PW search therefore carries
   `LIMIT cap + 1`, and more than `cap` rows is `truncated` (§G.6).
-- **Counts arrive as floats (L6, `PW-0.report.md`).** The lab returns `SUM(eventcount)` and `COUNT(*)` as JSON
+- **Counts arrive as floats (L6).** The lab returns `SUM(eventcount)` and `COUNT(*)` as JSON
   floats. The §G.6 fold accepts only integer-valued floats.
 
 ### G.1.5 Bounded admission, bounded contributor lists and measured zeros are solved problems
@@ -157,8 +155,7 @@ Verified on this branch, `file:line`. Facts about the QRadar console were settle
 - `DetectorSpec` declares a detector's telemetry, baseline metrics, schedule, per-input
   measurement requirements and limitation, and `DetectorStatus` publishes the deployment truth
   (`backend/app/anomaly/capabilities.py:66-77,103-147`). A verdict is only as strong as the
-  narrowest input; the engine computes the scope, the detector never grants it to itself
-  (AGENTS.md rule 8).
+  narrowest input; the engine computes the scope, the detector never grants it to itself.
 - The incident lifecycle `CANDIDATE → OPEN → RECOVERING → RESOLVED` with per-transition rows and
   an UNKNOWN bucket holding state is the Phase A/WAF/IPS contract
   (`docs/PHASE-A-SOURCE-VOLUME-ANOMALY.md` §5).
@@ -182,7 +179,7 @@ Verified on this branch, `file:line`. Facts about the QRadar console were settle
   family (design Phase D: IPS subjects) adds a member and a branch in the repository's union"
   (`backend/app/schemas/anomaly.py:40-51`; the query filter at
   `backend/app/api/routes/anomalies.py:149`). F.1 breaches deliberately stay **out** of
-  `/anomalies` (D-17 answer 5, `docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.16).
+  `/anomalies` (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.16, decided 2026-10-16).
 - F.2 scheduled searches store validated, versioned AQL (`backend/app/models/search.py:29-110`;
   the validator's banned-keyword and dataset rules at
   `backend/app/services/aql_validator.py:32-40`) and store aggregated results only
@@ -197,12 +194,12 @@ Verified on this branch, `file:line`. Facts about the QRadar console were settle
   the template (`backend/app/workers/tasks.py:1335-1351`). The family set is
   `SearchFamily` (`backend/app/models/enums.py:100-107`); a family added later seeds its row at
   1 h in its own migration, and migration `0028` moves an untouched seed
-  (`updated_by IS NULL`) to the D-28 default
+  (`updated_by IS NULL`) to the 5-minute default
   (`backend/alembic/versions/0028_default_search_cadence.py`).
 - The settle delay is 120 s (`backend/app/core/config.py:157-158`), the per-tick search budget 16
   (`backend/app/core/config.py:159`), the bucket width `collection_interval_seconds` = 300 s
   (`backend/app/core/config.py:237`). WAF's steady-state run costs a constant 36 SQL statements at 100 to 2,000 endpoints, measured on a
-  test database with no Ariel time (`docs/PHASE-B-WAF-BEHAVIOR.md` §29.7) — the bar a PW run must meet (AGENTS.md rule 9).
+  test database with no Ariel time (`docs/PHASE-B-WAF-BEHAVIOR.md` §29.7) — the bar a PW run must meet.
 - The migration head on this branch is `0025_auth_sessions` (`backend/alembic/versions/`); Phase G
   takes the next number at build time.
 
@@ -217,10 +214,10 @@ chart, widget); baseline deviation per value (spike, drop, disappearance); new-v
 new-combination detection as the bounded v1 correlation; F.1 threshold rules on a watch value;
 shadow-mode alerting; the API, permissions and audit; the UI and the widget; retention.
 
-**Out:** raw events (AGENTS.md rule 3 — only value aggregates and the bounded lists leave the
-folds); frontend-supplied AQL (rule 4 — the server generates every query from validated
-parameters); extending `AnomalyType` (rule 6 — a new `PwAnomalyType`); QRadar-side correlation
-rules, reference-set logic or any write to QRadar (rule 1); per-source-IP or unbounded-cardinality
+**Out:** raw events (only value aggregates and the bounded lists leave the
+folds); frontend-supplied AQL (the server generates every query from validated
+parameters); extending `AnomalyType` (a new `PwAnomalyType`); QRadar-side correlation
+rules, reference-set logic or any write to QRadar; per-source-IP or unbounded-cardinality
 subjects (the same exclusion as IPS, `docs/PHASE-D-IPS-BEHAVIOR.md` D.2); intent claims — a new
 value may be a deployment, a new combination may be a role change; alerting within seconds
 (the cadence trade, `docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.1.3); co-movement across watches
@@ -315,7 +312,7 @@ Design decisions, each against the facts of §G.1:
   ceiling computable (§G.14). A per-watch override would let one watch quietly consume the tick's
   search budget.
 - **Cadence is the family's, not the watch's.** The task lists cadence among the watch fields, but
-  D-7 puts cadence on the search *family*, one row in `search_cadence` per family, claimed
+  Cadence is set on the search *family* (decided 2026-10-12), one row in `search_cadence` per family, claimed
   atomically per slot (`backend/app/services/search_cadence.py:61`, `docs/SEARCH-CADENCE.md` §SC.4).
   A per-watch cadence would need a slot per watch and would let one watch multiply the Ariel
   schedule. The operator sets `PROPERTY_WATCH` on `/admin/search-cadence` (5 min to 8 h, default
@@ -352,14 +349,14 @@ builds the searches of §G.6:
 | `LOG_SOURCE_GROUP` | member `qradar_id`s from the synced inventory: every `LogSource` of the instance whose `group_ids` (`backend/app/models/log_source.py:73`) contains the group id **or the id of any descendant group** (the tree is `LogSourceGroup.parent_qradar_id`, `backend/app/models/fleet.py:36-49`; descendants are computed in memory from the one groups read) | `WHERE logsourceid IN (<ids>)`, chunked |
 
 The descendant rule is a choice made under uncertainty: the lab could not show whether QRadar lists
-a parent group in a source's `group_ids` (L2, `PW-0.report.md`: not testable, indicative no). Including
+a parent group in a source's `group_ids` (L2: not testable, indicative no). Including
 descendants is correct either way, and the editor shows the resolved member count and names the
 groups it walked. **The walk is cycle-safe**: it keeps a visited set of group ids. The lab's own two
 groups name each other as parent (id 1 has parent 0, id 0 has parent 1), and id 0 is both a real group
 and a `parent_id` value; an unguarded walk would never end. The group must exist in the synced
 inventory when the watch is saved and when it runs; a vanished group id is `SCOPE_EMPTY` (below).
 
-- **Groups: resolved from the inventory, by id (L1, `PW-0.report.md`).** The lab accepts
+- **Groups: resolved from the inventory, by id (L1).** The lab accepts
   `WHERE LOGSOURCEGROUPNAME(logsourceid) = '<name>'` and rejects five other forms, but it matches by
   **name** (not unique, broken by a rename), and the lab has one populated group so it cannot show
   nested or multi-group behaviour. The default is therefore the inventory-resolved
@@ -376,7 +373,7 @@ inventory when the watch is saved and when it runs; a vanished group id is `SCOP
   is a `LOWER_BOUND` (a chunk's missing tail can only add events). A type scope is one filter and is
   never chunked. A scope that outgrows the cap therefore costs more searches, never wrong numbers.
   Whether one `IN (…)` list of 50 ids is the right size on the lab console is
-  The lab accepted a 54-id list of 453 characters (L7, `PW-0.report.md`); the setting is the knob.
+  The lab accepted a 54-id list of 453 characters (L7); the setting is the knob.
 - **Membership churn.** A source gained or lost by the group changes the population the watch
   measures. That is honest: the watch measures the scope *as currently synced*. It must not look like
   behavior, though. The bucket row stores `scope_member_count` and `scope_fingerprint` (a hash of
@@ -437,7 +434,7 @@ property never parsed.
   measurement: exact when the grouped search was whole, an upper bound when it was a lower bound
   (a truncated grouped search under-counts `parsed`, so the subtraction over-states the remainder).
   It is never emitted as a value row, never admitted, and never used as a denominator for a share
-  — the same "bounds nothing" reasoning as decision D-3
+  — the same "bounds nothing" reasoning as the ratio-coverage decision of 2026-10-12
   (`docs/PHASE-B-WAF-BEHAVIOR.md` §30.6).
 - **Which verdicts low coverage blocks:** any verdict that reads an **absence** as evidence —
   disappearance, a drop towards zero, a "below" threshold, a `NORMAL` verdict — additionally
@@ -463,8 +460,8 @@ property never parsed.
     whose collected buckets carry `parsed_events = 0` across 12 consecutive collected buckets
     (counted across ticks) takes
     `NOT_APPLICABLE` — "the property parsed on no event in scope; the values below are not
-    measured" — and every value verdict is `INSUFFICIENT_DATA`, never zero and never normal
-    (AGENTS.md rule 8). The watch page shows the coverage per bucket precisely so a parsing break
+    measured" — and every value verdict is `INSUFFICIENT_DATA`, never zero and never normal.
+    The watch page shows the coverage per bucket precisely so a parsing break
     is visible as a coverage collapse, not as a fleet of disappearing values. `NOT_APPLICABLE` needs
     `total_events > 0`: a scope that sent nothing is a silent scope (its buckets are `COMPLETE`
     with zero events), not a property that fails to parse.
@@ -521,8 +518,8 @@ style is the established machinery for exactly this shape of problem
 (`backend/app/ips/keyed_search.py:1-18`).
 
 **The family and the tick.** A new `SearchFamily.PROPERTY_WATCH` (`backend/app/models/enums.py:100-107`)
-is seeded at 1 h by Phase G's migration; migration `0028` moves that untouched seed to the D-28
-default of 5 minutes (the `IPS_COLLECTION` precedent). The
+is seeded at 1 h by Phase G's migration; migration `0028` moves that untouched seed to the 5-minute
+default (decided 2026-10-18; the `IPS_COLLECTION` precedent). The
 dispatch task claims the slot (`backend/app/services/search_cadence.py:61`), is a no-op while
 `PW_COLLECTION_ENABLED` is false (the `IPS_COLLECTION_ENABLED` pattern,
 `backend/app/workers/tasks.py:1335-1339`), and per instance runs one plan: resolve every enabled
@@ -567,10 +564,10 @@ buckets, not values x buckets x members (§G.4). With `k = starttime / bucket_ms
    (`backend/app/providers/qradar_rest.py:1505`). `LIMIT` caps the whole result, not each bucket
    (`docs/SEARCH-CADENCE.md` §SC.2), so a busy bucket can crowd a quiet one out of the result: that
    is what the truncation split below is for. A `LIMIT` cut is invisible on the console (status
-   `COMPLETED`, no flag; L8, `PW-0.report.md`), so truncation is detected **only** by the `cap + 1`
+   `COMPLETED`, no flag; L8), so truncation is detected **only** by the `cap + 1`
    construction above: more than `pw_max_rows_per_search` rows means truncated. The same
    construction is on the totals and pinned searches (their own caps, below). An unparsed property
-   comes back as NULL in a `GROUP BY` (L5, `PW-0.report.md`; no empty strings seen); the fold counts NULL as
+   comes back as NULL in a `GROUP BY` (L5; no empty strings seen); the fold counts NULL as
    unparsed and also counts an empty string as unparsed, never as a value.
 2. **Totals search** (always): the same scope and window with no property condition, `GROUP BY k`:
    the exact denominator of every coverage claim (`LIMIT` buckets + 1: one row per bucket). It is not redundant, for the reason the WAF
@@ -599,7 +596,7 @@ buckets, not values x buckets x members (§G.4). With `k = starttime / bucket_ms
 So: **2 searches per watch per tick, 3 when values are pinned**, plus splits (§G.14).
 
 **The measured-zero rule (stated once; everything else refers here).** An aggregate that matches
-nothing returns **zero rows**, not a row holding 0 (the lab saw this, `PW-0.report.md` "Surprises" 3). So the
+nothing returns **zero rows**, not a row holding 0 (the lab saw this). So the
 collector applies exactly this: **zero rows, or an absent key, from a search that ended `COMPLETED`
 and was not truncated (at most `cap` rows) is a measured zero** for whatever that search was asked
 about (a total of 0 events in a bucket, a pinned value's 0, a tracked value's 0 in an `EXACT`
@@ -617,13 +614,13 @@ real, exact count of that value; only the tail is missing. The bucket is then st
 understate, never overstate, `docs/PHASE-B-WAF-BEHAVIOR.md` §29.2 "Lower-bound guarantee") and an
 absent tracked value is *unknown*, not zero. A failed search is not split; the buckets it covered
 are `NOT_COLLECTED` and the watermark holds. **A bucket is never written from a truncated
-multi-bucket search** (AGENTS.md rule 8). The pure split driver is `keyed_search.py`'s shape
+multi-bucket search**. The pure split driver is `keyed_search.py`'s shape
 applied to a scope key instead of a source group; reusing its budget class under a PW name is
 PW-2's decision, and the contract (time first, never zero) is fixed here.
 
 **The fold. [BUILT — PW-2a, `app/property_watch/fold.py`.]** A pure function (the `app/ips/fold.py` /
-`app/waf/breakdown.py` layer) maps rows to buckets and values. Raw values never leave it except as the bounded lists the design allows
-(AGENTS.md rule 3). Per bucket it:
+`app/waf/breakdown.py` layer) maps rows to buckets and values. Raw values never leave it except as the bounded lists the design allows.
+Per bucket it:
 
 - validates the bucket key (a key outside the span fails the whole search,
   `backend/app/providers/base.py:506-509`) and every count: the console returns counts as floats
@@ -662,7 +659,7 @@ PW-2's decision, and the contract (time first, never zero) is fixed here.
   search's own state, so a whole pinned search still proves a pinned value's zero.
 - *A combination pin* keeps only the pinned tuples: the `IN` x `IN` cross terms are dropped.
 
-**Preview (D-17 item 4).** `POST /api/v1/property-watches/{id}/preview` runs **one real bounded
+**Preview (decided 2026-10-16).** `POST /api/v1/property-watches/{id}/preview` runs **one real bounded
 Ariel search of the stored watch**, enabled or not: the grouped search of this section with the
 watch's scope and properties over the last closed hour, plus the totals search (two searches).
 The browser submits no AQL and no unsaved draft: as with F.2's "Run now"
@@ -689,8 +686,7 @@ page shows, marked `PREVIEW`, plus the generated AQL text read-only. It needs `p
 
 Values become **aggregate keys**, as IPS entities and WAF endpoints already are
 (`backend/app/models/ips.py:206-241`, `backend/app/models/waf.py:217-231`). The tables mirror the
-Phase D set (`docs/PHASE-D-IPS-BEHAVIOR.md` D.9), additive, Phase A, WAF and IPS tables untouched
-(AGENTS.md rule 6, rule 7):
+Phase D set (`docs/PHASE-D-IPS-BEHAVIOR.md` D.9), additive, Phase A, WAF and IPS tables untouched:
 
 | Table | Holds | Mirrors |
 |---|---|---|
@@ -718,7 +714,7 @@ The only value texts that persist are admitted values and pinned values.
 
 A property such as `Username` carries personal data, and a free-text field can carry worse: a
 user who types a password into a username box on a failed login produces a "username" that is a
-secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in clear text and readable by anyone with `read:*`, as offenses are.** The bounds that remain:
+secret. **The user chose option (b) on 2026-10-17: values are stored in clear text and readable by anyone with `read:*`, as offenses are.** The bounds that remain:
 
 - **Length.** At most `pw_value_max_length` = 255 characters, the stored width of
   `ips_entity.value_key` and the sender identifier (`backend/app/models/ips.py:233`,
@@ -742,7 +738,7 @@ secret. **The user chose option (b) on 2026-10-17 (D-22): values are stored in c
   as an offense's usernames.
 - **Who reads values.** Anyone holding `read:property_watches`, which `read:*` satisfies, exactly as
   offenses carry usernames to any `read:*` holder (`backend/app/security/rbac.py:48-54`). There is
-  **no separate values permission** (user decision, D-22): the viewer, analyst, detection-engineer
+  **no separate values permission** (decided 2026-10-17): the viewer, analyst, detection-engineer
   and admin roles all see value text.
 - **Never in logs or audit.** Logs and audit rows name a watch by id. An audit snapshot of a watch
   stores the number of pinned values and a SHA-256 digest of the sorted pinned list, so a change is
@@ -803,7 +799,7 @@ One additive migration, number "next at build time" (head is `0025_auth_sessions
 only check is on the cadence value, `backend/app/models/search_cadence.py:14-25`), and, for the F.1
 extension of §G.10, **adds** `pw_value_id` to `custom_rule` and **drops and recreates** the
 subject-pairing `CHECK` with the new kind. Recreating a constraint in a *new* migration does not
-edit `0024`, which stays as it is (AGENTS.md rule 7). It must upgrade, downgrade and upgrade
+edit `0024`, which stays as it is. It must upgrade, downgrade and upgrade
 again, and `alembic check` must report no drift; the F.1 migration test is the template
 (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.14, `test_migration_0024`). The split of this migration over
 PW-1 and PW-6 is in §G.16.
@@ -855,7 +851,7 @@ PW-1 and PW-6 is in §G.16.
 > each run in a savepoint, so a failure keeps what collection stored. `PW_DETECTORS` are in `all_detectors()` now that
 > `dispatch_property_watch_collection` is scheduled.
 
-**New enums, `AnomalyType` untouched** (AGENTS.md rule 6; the reason is stated at
+**New enums, `AnomalyType` untouched** (the reason is stated at
 `backend/app/models/enums.py:139-145` for WAF and `:172-179` for IPS):
 
 - `PwAnomalyType`: `PW_VALUE_SPIKE`, `PW_VALUE_DROP`, `PW_VALUE_DISAPPEARED`, `PW_NEW_VALUE`,
@@ -875,7 +871,7 @@ PW-1 and PW-6 is in §G.16.
   `narrowest` and `ScopeDecision` (`backend/app/waf/measurement.py:28-83`), exactly as the IPS
   specs do (`backend/app/anomaly/capabilities.py:467-491,512-685`). The engine computes the scope from the
   spec and passes it to the pure detector; a detector never grants itself lower-bound reasoning
-  (AGENTS.md rule 8; `backend/app/anomaly/capabilities.py:1-14`).
+  (`backend/app/anomaly/capabilities.py:1-14`).
 
 **What one (value, bucket) reading is.** The measurement of a reading is decided by the bucket
 and by how the value was searched, never by the detector:
@@ -912,12 +908,12 @@ an hour-of-week gives up to 12 five-minute samples, but the same cell is visited
 first verdict on a cell comes **one week after the value was first tracked**, and a value is fully
 judged after a week of recurring hours. A cell is also reliable only when its retained samples
 come from at least `pw_baseline_min_visits` (default 2) distinct weekly visits, counted as UTC
-calendar dates of the bucket start (D-30): the 12 samples of one hour are correlated, not a baseline.
+calendar dates of the bucket start (decided 2026-10-18): the 12 samples of one hour are correlated, not a baseline.
 The watch page shows, per value, "baseline: N of 168
 hour-of-week cells reliable", never a silent `NORMAL`. `PW_NEW_VALUE` has its own, shorter period
 (history, §G.8.3). This week-long wait is what the history bootstrap is designed to shorten: it
 reads past buckets from QRadar for learning only
-(`docs/PHASE-G-HISTORY-BOOTSTRAP.md`, D-27 and D-29; `docs/HISTORY-BACKFILL.md`, D-31 and D-32).
+(`docs/PHASE-G-HISTORY-BOOTSTRAP.md` and `docs/HISTORY-BACKFILL.md`; decided 2026-10-18: learning only, never evaluated).
 **This is the wait of a watch without a history request.** After a bootstrap of at least 7 days the
 cells are judged at the hand-off, because the history window already holds the visits
 (`docs/PHASE-G-HISTORY-BOOTSTRAP.md` §H.8.2).
@@ -934,10 +930,9 @@ settings `anomaly_open_after_intervals` (2) and `anomaly_resolve_after_intervals
 **baseline and novelty incidents**, the same class as WAF and IPS incidents, and they appear in
 `/anomalies` through a new `SubjectKind.PW_VALUE` (the extension point is documented at
 `backend/app/schemas/anomaly.py:40-51`; the list filter at `backend/app/api/routes/anomalies.py:149`
-gains `PwAnomalyType` in its `anomaly_type` union). F.1 **threshold breaches stay out**, as D-17
-answer 5 decided (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.16, §F.4.3): "the platform's detectors found
+gains `PwAnomalyType` in its `anomaly_type` union). F.1 **threshold breaches stay out**, as decided on 2026-10-16 (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.16, §F.4.3): "the platform's detectors found
 this" and "my number crossed my line" stay separate. A `PW_VALUE` row carries the value text and is shown to every caller who can read `/anomalies`,
-the same as an offense's usernames (D-22).
+the same as an offense's usernames (decided 2026-10-17).
 
 ### G.8.1 Output 1: the value distribution **[BUILT — PW-2b: the bucket and value reads; PW-7 and PW-9: the table, chart and widget]**
 
@@ -979,7 +974,7 @@ What a `LOWER_BOUND` bucket may prove: **only the spike**. It can never prove a 
 disappearance or normal behaviour, because the hidden events may be exactly the ones that make the
 bucket normal. In a lower-bound bucket the drop and the disappearance are `INSUFFICIENT_DATA` with
 the reason from `verdict_scope` ("the detector needs exact counts and this count is a lower bound",
-`backend/app/waf/measurement.py:65-67`). These are the defaults a build agent may tune against the
+`backend/app/waf/measurement.py:65-67`). These are the defaults a build may tune against the
 lab; the names follow `ips_spike_ratio` and its neighbours
 (`backend/app/core/config.py:193-195`).
 
@@ -1021,7 +1016,7 @@ default, `backend/app/core/config.py:618`); the window divides by the bucket wid
 bucket exists; none has `admission_truncated` or an incomplete discovery (`values_measurement` and
 the quota counters); every bucket carries the same `watch_version`; none is `NOT_COLLECTED`. A
 startup validator refuses a history at or above `pw_metric_retention_days`, because such a history
-could never be complete (WAF D-4, `backend/app/core/config.py:843-846`). A reactivated value keeps
+could never be complete (the WAF no-extra-search decision of 2026-10-12, `backend/app/core/config.py:843-846`). A reactivated value keeps
 its `first_seen_at` and is established, not new. **Pinned values are never "new"**: the operator
 named them, and an F.1 threshold is the tool for "alert when DENY appears".
 
@@ -1046,7 +1041,7 @@ otherwise `ANOMALOUS`.
 `LOWER_BOUND_PROVES_INCREASE` (minimum events and buckets are non-decreasing in the counts). So a
 `LOWER_BOUND` bucket may prove that a new value is material ("at least 40 events") and can never
 prove that it is not new. No enabling setting beyond `pw_collection_enabled`: it adds no search
-(WAF D-4, `docs/PHASE-B-WAF-BEHAVIOR.md` §30.5).
+(the WAF no-extra-search decision of 2026-10-12, `docs/PHASE-B-WAF-BEHAVIOR.md` §30.5).
 
 **The flood is a signal, not a hole.** A spray of 300 new usernames in five minutes leaves 20
 admitted and 280 refused; the detector correctly refuses to call any of them new. The bucket row
@@ -1100,7 +1095,7 @@ Ariel search and without leaving read-only:
 | **A. New combination** | the pair (a, b) never occurred together in the history window, although a and b each occurred before | the tuple series of a 2-property watch, the component index of §G.7 | **0 Ariel**, +1 DB statement when some tuple is in its window | **v1** |
 | B. Co-movement | two watches' value series rise and fall together in the same buckets | two existing series per pair | 0 Ariel, but pairs grow with the square of the series, and a bounded pair list needs its own admission | open question (§G.17 Q2) |
 | C. Conditional shift | the share of b among a's events moved (`DENY` 5% to 60% for `alice`) | tuple counts **and** the exact marginal of a | needs the marginal series (Q4) | after Q4, not v1 |
-| D. QRadar's own correlation | "A then B within N minutes", stateful, per offense | QRadar's CRE and reference data | none here | **stays out**: QRadar does it in real time and on raw events; this platform is read-only (AGENTS.md rule 1) and aggregates only (rule 3); `docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.12 already sends "alerting within seconds" to QRadar's own rules |
+| D. QRadar's own correlation | "A then B within N minutes", stateful, per offense | QRadar's CRE and reference data | none here | **stays out**: QRadar does it in real time and on raw events; this platform is read-only against QRadar and aggregates only; `docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.12 already sends "alerting within seconds" to QRadar's own rules |
 
 **Why A.** It is the classic behaviour signal (a known user on a host never used before; a known
 account performing an action never performed), it needs only data a combination watch already
@@ -1153,7 +1148,7 @@ nothing to combine, and `detectors` may not list it for such a watch).
 statement per evaluation run, and only when some tuple is inside its window, loads the known
 components of every in-window tuple of every watch in one bulk read over the component indexes
 (the shape of WAF's "+2 statements only when some endpoint is inside its window",
-`docs/PHASE-B-WAF-BEHAVIOR.md` §30.5). Never a query per tuple (AGENTS.md rule 9).
+`docs/PHASE-B-WAF-BEHAVIOR.md` §30.5). Never a query per tuple.
 
 **Wording** (`docs/PRODUCT-UX-GUIDELINES.md` §7): the evidence says "`alice` and `10.1.4.7` were each
 observed before; this pair was not observed together in the 7 days before 2026-10-20 09:05 UTC",
@@ -1181,7 +1176,7 @@ renamed host; the page does not claim intent (§G.2).
   `PW_ALERTING_ENABLED` (default **false**), the IPS pair
   (`backend/app/core/config.py:171-173`). With alerting off, incidents are recorded and the engine
   opens, refreshes, resolves and enqueues nothing; turning it on is a decision taken after a live
-  validation (the D-17 answer 1 pattern, `docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.16). An OPEN incident
+  validation (the shadow-mode-first pattern of 2026-10-16, `docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.16). An OPEN incident
   opens one alert, a still-anomalous incident refreshes it, RESOLVED resolves it with actor
   `pw-engine` and reason `condition recovered`, and notifications are enqueued per transition
   (`docs/PHASE-D-IPS-BEHAVIOR.md` D.10).
@@ -1238,8 +1233,7 @@ bucket, sustained 3 buckets"). The extension, all additive:
   not name (`backend/app/custom_rules/engine.py:643-652`), so an unhandled `PW_VALUE` would be
   evaluated while `pw_collection_enabled` is off; and `_retired`/`_label`
   (`backend/app/custom_rules/engine.py:655-698`) need the value's branch. Both are pinned by a
-  guard test that every subject kind has a family branch, a retirement branch and a label
-  (AGENTS.md rule 8).
+  guard test that every subject kind has a family branch, a retirement branch and a label.
 - **A rule pins a pinned value only.** The rule editor's subject picker lists pinned values; to
   alert on an automatic value, the analyst pins it first (one `PATCH` of the watch, shown in the
   editor as a step). Reasons: a pinned value is never retired, so the rule cannot go
@@ -1324,7 +1318,7 @@ with counts only. Reads are not audited.
 
 `hours` is 1 to 168 with default 24, the F.1 preview bound
 (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.7). A value outside an enum stays FastAPI's list 422. Errors
-never carry QRadar text, a console address or a secret (AGENTS.md rule 5).
+never carry QRadar text, a console address or a secret.
 
 
 > **As built by PW-5** (`backend/app/api/routes/property_watches.py`,
@@ -1383,7 +1377,7 @@ never carry QRadar text, a console address or a secret (AGENTS.md rule 5).
 ## G.12 Fail-closed rules, in one place **[BUILT — the rules of §G.3, §G.4, §G.6, §G.8 and §G.10]**
 
 Every row is `INSUFFICIENT_DATA` or a named watch status with a reason. None is a zero, none is
-`NORMAL`, none lets a detector grant itself lower-bound reasoning (AGENTS.md rule 8).
+`NORMAL`, none lets a detector grant itself lower-bound reasoning.
 
 | Condition | Result |
 |---|---|
@@ -1418,7 +1412,7 @@ Every row is `INSUFFICIENT_DATA` or a named watch status with a reason. None is 
 spacing or type literal; existing components only (`PageHeader`, `Tabs`, `Disclosure`, `CodePanel`,
 `TableScroll`, `EvidenceBanner`, `LoadingState`/`ErrorState`, `WidgetFrame`;
 `docs/PRODUCT-UX-GUIDELINES.md` §8). No dark theme switch, text-only navigation, no emoji, no
-gradients (AGENTS.md §3a).
+gradients.
 
 ### G.13.1 Where things live **[BUILT — PW-7]**
 
@@ -1470,8 +1464,7 @@ First screen, top to bottom:
    (`docs/PRODUCT-UX-GUIDELINES.md` §11; `frontend/src/app/tokens.css:218-223`). The axis carries its
    unit, "events per 5 min". The default selection is the pinned values, then the top values of the
    latest bucket. **The expected range is one band, and only for a single selected value**: five
-   overlapping bands are unreadable, and "expected ranges render as a band, not as three lines"
-   (AGENTS.md §3a). With several values selected the band is off and the line beneath says so. The
+   overlapping bands are unreadable. With several values selected the band is off and the line beneath says so. The
    mechanics are those of `VolumeChart` and `WafRequestChart`
    (`frontend/src/components/behavior/VolumeChart.tsx:250,306-326`,
    `frontend/src/components/waf/WafRequestChart.tsx:107-154`): `connectNulls: false` so an
@@ -1539,7 +1532,7 @@ One form, five labelled sections, with the preview beside it as the F.1 rule edi
 A deterministic summary sentence sits above the actions ("Tracks Username x Action on the 37 sources
 of group DMZ firewalls, counted every hour; 2 values always counted; deviation, new-value and
 new-combination detection on"), regenerated from the form, never free text. The latency sentence of
-§G.13.2 appears once. There is **no AQL field anywhere** (AGENTS.md §2 rule 4).
+§G.13.2 appears once. There is **no AQL field anywhere**.
 
 ### G.13.5 The widget
 
@@ -1576,8 +1569,7 @@ honesty states `INSUFFICIENT_DATA`, `PARTIAL`, `TRUNCATED`, `NOT_COLLECTED` (gui
 and forbidden for writers (the editor hidden, the permission named). The words "live" and
 "real-time" appear nowhere except in the sentence that denies it. Acceptance needs Vitest for each
 state, §9 (no page overflow at 1440x900, 1280x800 and 1024x768) and §10, and screenshots of every
-changed route at the three viewports against a deterministic fixture API
-(`docs/UI-WORKSTREAM-COMPLETION.md` §4; AGENTS.md §3a).
+changed route at the three viewports against a deterministic fixture API.
 
 
 ---
@@ -1660,7 +1652,7 @@ its history also draws on the history budget of §H.4.4 of the bootstrap design
   values and their latest state for all watches, baseline cells for the current hour of the week,
   detector states, the novelty history and the component lookup. The writes are one statement per
   table per tick: buckets, values, metrics, states, anomalies, transitions, watch status
-  (AGENTS.md rule 9; the bulk loaders of `docs/PHASE-B-WAF-BEHAVIOR.md` §29.5, §29.11). Never a query
+  (the bulk loaders of `docs/PHASE-B-WAF-BEHAVIOR.md` §29.5, §29.11). Never a query
   per watch, per value or per tuple. The number is pinned by a test in the
   `test_collection_at_the_default_ceiling_is_bulk` style (`docs/PHASE-B-WAF-BEHAVIOR.md` §30.9) and
   is **a target until that test exists**.
@@ -1735,7 +1727,7 @@ Retention is one bounded daily task, `apply_pw_retention`, on the beat entry pat
 
 ## G.15 The tests that pin it
 
-Every new test is checked by breaking the code on purpose (AGENTS.md §4); none is hard-coded to a
+Every new test is checked by breaking the code on purpose; none is hard-coded to a
 path, a database name or a venv.
 
 **Backend unit.**
@@ -1802,7 +1794,7 @@ path, a database name or a venv.
   walked group at the resolver, the collector and `/scope`; `property-options` is flat at 2 and 20
   groups and 10 and 200 sources.
 - **Privacy:** a value that never reached admission is found in no table; log capture and audit rows
-  of a create, a preview and an incident contain no seeded value; `/anomalies` shows the value text to a `read:*` caller (D-22); the permission matrix
+  of a create, a preview and an incident contain no seeded value; `/anomalies` shows the value text to a `read:*` caller (decided 2026-10-17); the permission matrix
   (401/403/404/409/422) on every route; a test that every route on the PW router carries the mount
   guard.
 - The preview sends exactly two searches, persists nothing, is audited with counts only and is
@@ -1828,38 +1820,36 @@ dashboard holding the widget, with `scrollWidth === clientWidth` (guidelines §9
 
 ## G.16 Task split (question 12)
 
-In the PLANNER's style (`docs/PLANNER.md` §3), named PW-1 and on because `G-` is geo's. Agent kinds
-are the ones the PLANNER uses today: Codex for migrations and SQL-heavy cores, Sonnet for the rest,
-an opencode free model for documents.
+Named PW-1 and on because `G-` is geo's.
 
-**Precondition, from the user (D-21 item 4, `docs/PLANNER.md` §4): no PW task starts until OPS-5,
-OPS-6, OPS-9 round 2 and OPS-10 are accepted.** **PW-0 is the one exception and runs now (user decision, D-22, Q14):** it is read-only, lab only, a
+**Precondition, from the user on 2026-10-17: no PW task starts until OPS-5,
+OPS-6, OPS-9 round 2 and OPS-10 are accepted.** **PW-0 is the one exception and runs now (the user's
+answer of 2026-10-17, Q14):** it is read-only, lab only, a
 throwaway script outside the repository.
 
 **Migration order.** The head today is `0025_auth_sessions`. PW-1 takes the next number **at build
 time** (whatever the head then is), PW-6 the number after it. Only these two tasks add migrations,
 and they are sequential; no other PW task may.
 
-| ID | Task | Agent | Depends on | Parallel with |
-|---|---|---|---|---|
-| PW-0 | Lab probe (read-only): **DONE 2026-10-17** (report): the L1 to L8 list of §G.17: group filter, `devicetype` with a quoted property, string equality and `IN`, empty versus NULL for an unparsed property, descendant groups in `group_ids`, the `IN` list size, `GROUP BY username`. A throwaway script outside the repository; a report with the raw results | Sonnet | none (runs now, D-22) | OPS work |
-| PW-1 | Foundations: enums, models, the first migration (tables of §G.7, family seed, hypertables), all `pw_*` settings with validators, the pure fact dataclasses (the contract PW-2 and PW-3 build against), `PW_PINNED_VALUE_PATTERN` and the reference validation | Codex | OPS-5, OPS-6, OPS-9 r2, OPS-10 | none |
-| PW-2a | Provider: the keyed `get_pw_values` and totals/pinned searches on the base, REST and mock providers; the AQL generator; the pure fold; the time-first split driver and budget | Sonnet | PW-1, PW-0 | PW-3a, PW-5 |
-| PW-2b | Collection: scope resolution (pure, then the one bulk read), admission, persistence by bulk statements, the `dispatch_property_watch_collection` task behind the family gate and `PW_COLLECTION_ENABLED`, the retention task, the statement-count pins | Codex | PW-2a | PW-3b |
-| PW-3a | Detection (pure): `PW_VALUE_EVENTS_METRIC` baseline builder, the five detectors, capability specs and `detector_status`, history verification, the monotonicity property tests | Sonnet | PW-1 | PW-2a, PW-5 |
-| PW-3b | Detection (engine): bulk loaders, the lifecycle, the pipeline step (collect, evaluate, train), `watch_version` handling, cost pins | Codex | PW-2b, PW-3a | PW-5, PW-7 |
-| PW-4 | Alerting: `pw_anomaly_fingerprint`, shadow mode, `AlertService` wiring, maintenance rules, resolution on version bump and delete | Sonnet | PW-3b | PW-6, PW-7 |
-| PW-5 | API: the router and its guard, `property_watch:write`, audit, the catalog, scope and property options (the many-types catalog filter), values and series reads, preview, pins, the `PW_VALUE` subject kind in `/anomalies` | Sonnet | PW-1 (the preview needs PW-2a) | PW-2a, PW-3a, PW-3b |
-| PW-6 | F.1 extension: `PW_VALUE` subject kind and metric, the second migration (column and recreated `CHECK`), the loader with measured zeros for pinned values, the engine branches and their guard test, the pin-only rule | Codex | PW-2b, PW-5 | PW-4, PW-7 |
-| PW-7 | UI read side: nav entry, `/behavior/watches` list, the watch page (chart, values, coverage, honesty line, tabs), the `/anomalies` filter and PW investigation view; every state; screenshots at three viewports | Sonnet | PW-5 | PW-3b, PW-4, PW-6 |
-| PW-8 | UI editor: scope picker, property picker with applicability, pins, detectors, preview panel, the F.1 subject-picker kind; every state; screenshots | Sonnet | PW-5, PW-7 (shared chart component); PW-6 for the picker | PW-4 |
-| PW-9 | Widget `chart.property_watch`: registry entry, option source, states, tests, screenshot on a dashboard | Sonnet | PW-5, PW-7 | PW-8 |
-| PW-10 | Live validation on the lab: shadow mode, a generator-driven value change firing each detector, a new value, a new combination, an F.1 threshold; measure the real Ariel time and the statement counts; turn alerting on only if the user says so | Sonnet | PW-4, PW-6, PW-8, PW-9 | none |
-| PW-11 | Docs: README routes, data model and settings, this file's `[BUILT]` markers, the PLANNER board | opencode free model | PW-1 to PW-10 | none |
+| ID | Task | Depends on | Parallel with |
+|---|---|---|---|
+| PW-0 | Lab probe (read-only): **DONE 2026-10-17**: the L1 to L8 list of §G.17: group filter, `devicetype` with a quoted property, string equality and `IN`, empty versus NULL for an unparsed property, descendant groups in `group_ids`, the `IN` list size, `GROUP BY username`. A throwaway script outside the repository; a report with the raw results | none (runs now, decided 2026-10-17) | OPS work |
+| PW-1 | Foundations: enums, models, the first migration (tables of §G.7, family seed, hypertables), all `pw_*` settings with validators, the pure fact dataclasses (the contract PW-2 and PW-3 build against), `PW_PINNED_VALUE_PATTERN` and the reference validation | OPS-5, OPS-6, OPS-9 r2, OPS-10 | none |
+| PW-2a | Provider: the keyed `get_pw_values` and totals/pinned searches on the base, REST and mock providers; the AQL generator; the pure fold; the time-first split driver and budget | PW-1, PW-0 | PW-3a, PW-5 |
+| PW-2b | Collection: scope resolution (pure, then the one bulk read), admission, persistence by bulk statements, the `dispatch_property_watch_collection` task behind the family gate and `PW_COLLECTION_ENABLED`, the retention task, the statement-count pins | PW-2a | PW-3b |
+| PW-3a | Detection (pure): `PW_VALUE_EVENTS_METRIC` baseline builder, the five detectors, capability specs and `detector_status`, history verification, the monotonicity property tests | PW-1 | PW-2a, PW-5 |
+| PW-3b | Detection (engine): bulk loaders, the lifecycle, the pipeline step (collect, evaluate, train), `watch_version` handling, cost pins | PW-2b, PW-3a | PW-5, PW-7 |
+| PW-4 | Alerting: `pw_anomaly_fingerprint`, shadow mode, `AlertService` wiring, maintenance rules, resolution on version bump and delete | PW-3b | PW-6, PW-7 |
+| PW-5 | API: the router and its guard, `property_watch:write`, audit, the catalog, scope and property options (the many-types catalog filter), values and series reads, preview, pins, the `PW_VALUE` subject kind in `/anomalies` | PW-1 (the preview needs PW-2a) | PW-2a, PW-3a, PW-3b |
+| PW-6 | F.1 extension: `PW_VALUE` subject kind and metric, the second migration (column and recreated `CHECK`), the loader with measured zeros for pinned values, the engine branches and their guard test, the pin-only rule | PW-2b, PW-5 | PW-4, PW-7 |
+| PW-7 | UI read side: nav entry, `/behavior/watches` list, the watch page (chart, values, coverage, honesty line, tabs), the `/anomalies` filter and PW investigation view; every state; screenshots at three viewports | PW-5 | PW-3b, PW-4, PW-6 |
+| PW-8 | UI editor: scope picker, property picker with applicability, pins, detectors, preview panel, the F.1 subject-picker kind; every state; screenshots | PW-5, PW-7 (shared chart component); PW-6 for the picker | PW-4 |
+| PW-9 | Widget `chart.property_watch`: registry entry, option source, states, tests, screenshot on a dashboard | PW-5, PW-7 | PW-8 |
+| PW-10 | Live validation on the lab: shadow mode, a generator-driven value change firing each detector, a new value, a new combination, an F.1 threshold; measure the real Ariel time and the statement counts; turn alerting on only if the user says so | PW-4, PW-6, PW-8, PW-9 | none |
+| PW-11 | Docs: README routes, data model and settings, this file's `[BUILT]` markers | PW-1 to PW-10 | none |
 
 Order: PW-1, then PW-2a, PW-3a and PW-5 in parallel, then PW-2b, then PW-3b with PW-7 starting,
-then PW-4, PW-6 and PW-8, then PW-9, then PW-10, then PW-11. Each task touches the files it names
-(`AGENTS.md` §1); PW-7, PW-8 and PW-9 own different frontend directories and share only the chart
+then PW-4, PW-6 and PW-8, then PW-9, then PW-10, then PW-11. Each task touches the files it names; PW-7, PW-8 and PW-9 own different frontend directories and share only the chart
 component PW-7 creates, which is why PW-8 and PW-9 wait for it. The longest chain is
 PW-1, PW-2a, PW-2b, PW-3b, PW-4, PW-10.
 
@@ -1873,9 +1863,9 @@ chunk; and a run spent 50 of 80 searches and 6 of 40 GETs. The caps of §G.14 ar
 
 ## G.17 Open questions for the user
 
-The user answered four questions on 2026-10-17 (D-21, §G.0); those answers are binding.
+The user answered four questions on 2026-10-17 (the property-watch request, §G.0); those answers are binding.
 
-**Answered on 2026-10-17 ~13:35 (D-22):**
+**Answered on 2026-10-17 ~13:35:**
 
 | Question | Answer |
 |---|---|
@@ -1884,85 +1874,85 @@ The user answered four questions on 2026-10-17 (D-21, §G.0); those answers are 
 | Q3 properties per watch | **Two** |
 | Q14 PW-0 lab probe | **Runs now**, before the OPS work: read-only, lab only, a throwaway script outside the repository (§G.16) |
 
-**Q4 to Q13 and Q15: default accepted (D-22)**, each as the recommendation printed with it below.
+**Q4 to Q13 and Q15: default accepted (2026-10-17)**, each as the recommendation printed with it below.
 
 ### What the lab probe answered (PW-0)
 
-PW-0 ran on 2026-10-17; each row states the lab's answer and points at its report. The lab could not show nested or multi-group behaviour or the semantics of a doubled quote.
+PW-0 ran on 2026-10-17; each row states the lab's answer. The lab could not show nested or multi-group behaviour or the semantics of a doubled quote.
 
 | # | Fact | Lab answer |
 |---|---|---|
-| L1 | Native AQL filter by log-source group | **Yes, by name only** (`LOGSOURCEGROUPNAME(logsourceid) = '<name>'`; five other forms rejected). Design keeps the inventory-resolved `IN (<ids>)`; the function is a possible later optimisation. `PW-0.report.md` L1 |
-| L2 | Does a parent group appear in a source's `group_ids` | **Not testable** on this lab (indicative no). The lab's two groups name each other as parent (a cycle), so the descendant walk is cycle-safe (§G.4, §G.15). `PW-0.report.md` L2 |
-| L3 | `devicetype = <id>` with a quoted custom property | **Yes**; no events lost. No type-scope fallback needed. `PW-0.report.md` L3 |
-| L4 | String equality, `IN`, escaping | **Equality and `IN` work.** Backslash escape rejected; a doubled quote accepted, matching unproven. Pins use `IN`; a pin with a quote stays refused (Q8). `PW-0.report.md` L4 |
-| L5 | Unparsed property in a `GROUP BY` | **NULL** (no empty strings seen); the fold counts NULL and `''` as unparsed. `PW-0.report.md` L5 |
-| L6 | `GROUP BY username` and `QIDNAME(qid)` with the bucket key | **Yes, both.** Counts come back as floats: the fold accepts only integer-valued floats. `PW-0.report.md` L6 |
-| L7 | A 50-id `IN` list | **Yes** (54 ids, 453 characters). The cap stays a setting. `PW-0.report.md` L7 |
-| L8 | Real Ariel time and rows | **About 1 s per search** at about 240k events/hour; production not measured (PW-10). **A `LIMIT` cut is invisible**, so `cap + 1` detection is mandatory. `PW-0.report.md` L8 |
+| L1 | Native AQL filter by log-source group | **Yes, by name only** (`LOGSOURCEGROUPNAME(logsourceid) = '<name>'`; five other forms rejected). Design keeps the inventory-resolved `IN (<ids>)`; the function is a possible later optimisation. |
+| L2 | Does a parent group appear in a source's `group_ids` | **Not testable** on this lab (indicative no). The lab's two groups name each other as parent (a cycle), so the descendant walk is cycle-safe (§G.4, §G.15). |
+| L3 | `devicetype = <id>` with a quoted custom property | **Yes**; no events lost. No type-scope fallback needed. |
+| L4 | String equality, `IN`, escaping | **Equality and `IN` work.** Backslash escape rejected; a doubled quote accepted, matching unproven. Pins use `IN`; a pin with a quote stays refused (Q8). |
+| L5 | Unparsed property in a `GROUP BY` | **NULL** (no empty strings seen); the fold counts NULL and `''` as unparsed. |
+| L6 | `GROUP BY username` and `QIDNAME(qid)` with the bucket key | **Yes, both.** Counts come back as floats: the fold accepts only integer-valued floats. |
+| L7 | A 50-id `IN` list | **Yes** (54 ids, 453 characters). The cap stays a setting. |
+| L8 | Real Ariel time and rows | **About 1 s per search** at about 240k events/hour; production not measured (PW-10). **A `LIMIT` cut is invisible**, so `cap + 1` detection is mandatory. |
 
 
 ### Questions
 
-**Q1. Value privacy: answered (D-22), option (b).** Clear text, readable by anyone with `read:*` as offenses are; no separate permission. Retained bounds: admission after three events in one bucket, 35 days of metrics, deletion with the watch (§G.7.2).
+**Q1. Value privacy: answered (2026-10-17), option (b).** Clear text, readable by anyone with `read:*` as offenses are; no separate permission. Retained bounds: admission after three events in one bucket, 35 days of metrics, deletion with the watch (§G.7.2).
 
-**Q2. Correlation: answered (D-22).** New combination only in v1 (§G.9). Co-movement and the conditional shift stay out of v1.
+**Q2. Correlation: answered (2026-10-17).** New combination only in v1 (§G.9). Co-movement and the conditional shift stay out of v1.
 
-**Q3. Properties per watch: answered (D-22).** Two (§G.3).
+**Q3. Properties per watch: answered (2026-10-17).** Two (§G.3).
 
-**Q4. [default accepted (D-22)] Should a combination watch also keep a series for each component (a "marginal")?** (§G.6,
+**Q4. [default accepted (2026-10-17)] Should a combination watch also keep a series for each component (a "marginal")?** (§G.6,
 §G.9) It would allow pinning "every `Action` of `alice`" and the conditional shift of Q2, at the cost
 of a second series and a second admission per watch. **Recommendation: not in v1.** A pin is a full
 tuple; revisit with Q2.
 
-**Q5. [default accepted (D-22)] Do the baseline and novelty incidents appear in `/anomalies`, and does alerting start in
+**Q5. [default accepted (2026-10-17)] Do the baseline and novelty incidents appear in `/anomalies`, and does alerting start in
 shadow mode?** (§G.8, §G.10) The design says yes to both: PW incidents join the unified list as
 `PW_VALUE`, the value shown as in any list a `read:*` caller sees; F.1
-threshold breaches stay out as D-17 decided; `PW_ALERTING_ENABLED` defaults to false. **Recommendation:
+threshold breaches stay out as decided on 2026-10-16; `PW_ALERTING_ENABLED` defaults to false. **Recommendation:
 confirm both.**
 
-**Q6. [default accepted (D-22)] The caps.** (§G.14) Ten enabled watches, a tick budget of 40 searches, 200 tracked values and
+**Q6. [default accepted (2026-10-17)] The caps.** (§G.14) Ten enabled watches, a tick budget of 40 searches, 200 tracked values and
 10 pinned values per watch, 35 days of retention, 180 days of resolved incidents. **Recommendation:
 accept as the setting defaults;** they are settings, and PW-10 measures the real cost before anything
 is raised.
 
-**Q7. [default accepted (D-22)] May a watch have more than one scope?** (§G.3) The user said "a log source or a type or a
+**Q7. [default accepted (2026-10-17)] May a watch have more than one scope?** (§G.3) The user said "a log source or a type or a
 group". One scope per watch keeps resolution, membership churn and the cost bound simple; a group is
 already the way to name several sources. **Recommendation: one scope per watch in v1.**
 
-**Q8. [default accepted (D-22)] May a pinned value contain a quote?** (§G.6) Today no: `O'Brien` is refused because the
+**Q8. [default accepted (2026-10-17)] May a pinned value contain a quote?** (§G.6) Today no: `O'Brien` is refused because the
 repository has no proven escape for a string literal; PW-0 (L4) showed a doubled quote is accepted but
 not that it matches. **Recommendation: refuse until a value containing a quote is shown to match,** then widen the pattern in one place.
 
-**Q9. [default accepted (D-22)] Which other normalized fields besides `username`?** (§G.3) `event_name` (`QIDNAME(qid)`) is a
+**Q9. [default accepted (2026-10-17)] Which other normalized fields besides `username`?** (§G.3) `event_name` (`QIDNAME(qid)`) is a
 string and useful; it is an expression; the lab accepted it with the bucket key (L6), but its population filter is unproven. Numeric and
 IP-typed fields stay out. **Recommendation: `username` only in v1; add `event_name` in a v1.1 after
 PW-0.**
 
-**Q10. [default accepted (D-22)] After a group's membership changes, should the baselines be thrown away?** (§G.4) The design
+**Q10. [default accepted (2026-10-17)] After a group's membership changes, should the baselines be thrown away?** (§G.4) The design
 skips verdicts for 12 buckets and then judges against the old baselines, so a large membership
 change keeps showing as a shift until the cells retrain. Alternative: a per-watch "relearn on
 membership change" switch that discards the baselines and starts a new learning period.
 **Recommendation: the default as designed, with the switch added only if the lab shows churn that
 makes the old baselines misleading.**
 
-**Q11. [default accepted (D-22)] Should a flood of new values raise its own incident?** (§G.8.3) At the admission quota the
+**Q11. [default accepted (2026-10-17)] Should a flood of new values raise its own incident?** (§G.8.3) At the admission quota the
 detector refuses to call any value new (correct), but a spray of hundreds of new usernames is itself
 a signal. A `PW_NEW_VALUE_FLOOD` detector over the counts already stored needs no new search.
 **Recommendation: yes, in v1.1,** once the lab shows what a normal admission rate is.
 
-**Q12. [default accepted (D-22)] Navigation group.** (§G.13.1) The design puts **Property watches** under Behavior; the
+**Q12. [default accepted (2026-10-17)] Navigation group.** (§G.13.1) The design puts **Property watches** under Behavior; the
 alternative is Detection beside Custom rules, where the authoring lives. **Recommendation: Behavior**,
 because the page is about what the values did and its incidents are in `/anomalies`.
 
-**Q13. [default accepted (D-22)] Is a per-watch cadence needed?** (§G.3) D-28 puts cadence on the search family
-(`PROPERTY_WATCH`, default 5 minutes); a watch cannot be faster than its family. **Recommendation: no;**
+**Q13. [default accepted (2026-10-17)] Is a per-watch cadence needed?** (§G.3) Cadence is set on the search family (`PROPERTY_WATCH`, default 5 minutes, decided 2026-10-18);
+a watch cannot be faster than its family. **Recommendation: no;**
 if one watch must be checked faster, put it in the 15-minute family setting for everyone and watch
 the Ariel budget.
 
-**Q14. PW-0: answered (D-22).** It runs now, before the OPS work, read-only on the lab (§G.16).
+**Q14. PW-0: answered (2026-10-17).** It runs now, before the OPS work, read-only on the lab (§G.16).
 
-**Q15. [default accepted (D-22)] A share-based threshold ("`DENY` above 20 % of parsed events") in F.1?** (§G.8.4) It needs
+**Q15. [default accepted (2026-10-17)] A share-based threshold ("`DENY` above 20 % of parsed events") in F.1?** (§G.8.4) It needs
 an exact denominator and a ratio metric, and the user's example is a count. **Recommendation: not in
 v1;** add `PW_VALUE_SHARE` to the catalog in v1.1 if analysts ask.
 
