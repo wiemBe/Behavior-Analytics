@@ -139,6 +139,21 @@ describe("property-watch save and preview", () => {
     expect(await screen.findByText(/saved disabled and the stored definition was previewed/)).toBeInTheDocument();
   });
 
+  it("sends an explicit zero after the operator turns history off", async () => {
+    render(<WatchEditor catalog={catalog()} mode="create" />);
+    const history = screen.getByRole("checkbox", {
+      name: /Read history from QRadar \(used only for learning\)/,
+    });
+    expect(history).toBeChecked();
+    fireEvent.click(history);
+    fireEvent.change(screen.getByRole("textbox", { name: "Watch name" }), { target: { value: "Forward only" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose fixture scope" }));
+    await save();
+    expect(api.createPropertyWatch).toHaveBeenCalledWith(
+      expect.objectContaining({ history_days: 0 }),
+    );
+  });
+
   it("patches with expected_updated_at before previewing an edit", async () => {
     render(<WatchEditor catalog={catalog()} mode="edit" watch={watch()} initialScope={scope()} />);
     await save();
@@ -209,6 +224,48 @@ describe("property-watch save and preview", () => {
     await save();
     expect(screen.getAllByText(words).length).toBeGreaterThan(0);
     expect(screen.queryByText(/chart/i)).toBeNull();
+  });
+});
+
+describe("property-watch history controls", () => {
+  it("states the server switch reason and disables the request", () => {
+    render(
+      <WatchEditor
+        catalog={catalog({ history: { ...catalog().history, enabled: false } })}
+        mode="create"
+      />,
+    );
+    expect(screen.getByRole("checkbox", { name: /Read history from QRadar/ })).toBeDisabled();
+    expect(screen.getByText("History reading is switched off on this server.")).toBeInTheDocument();
+  });
+
+  it("states the free and needed searches for pinned and unpinned watches", () => {
+    const low = catalog({ history: { ...catalog().history, searches_free: 1 } });
+    const first = render(<WatchEditor catalog={low} mode="create" />);
+    expect(screen.getByText("History needs 2 free searches per tick for this watch; 1 is free.")).toBeInTheDocument();
+    first.unmount();
+    render(<WatchEditor catalog={low} mode="edit" watch={watch({ coverage: null, collected_through: null, evaluated_through: null })} initialScope={scope()} />);
+    expect(screen.getByText("History needs 3 free searches per tick for this watch; 1 is free.")).toBeInTheDocument();
+  });
+
+  it("shows unchecked, says nothing of history and sends zero when the budget is short", async () => {
+    const low = catalog({ history: { ...catalog().history, searches_free: 1 } });
+    render(<WatchEditor catalog={low} mode="create" />);
+    expect(screen.getByRole("checkbox", { name: /Read history from QRadar/ })).not.toBeChecked();
+    expect(document.querySelector(".pw-editor-summary")?.textContent).not.toMatch(/history/);
+    fireEvent.change(screen.getByRole("textbox", { name: "Watch name" }), { target: { value: "Budget" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose fixture scope" }));
+    await save();
+    expect(api.createPropertyWatch).toHaveBeenCalledWith(expect.objectContaining({ history_days: 0 }));
+  });
+
+  it("locks an existing watch after collection and states all three limitations", () => {
+    render(<WatchEditor catalog={catalog()} mode="edit" watch={watch()} initialScope={scope()} />);
+    expect(screen.getByRole("checkbox", { name: /Read history from QRadar/ })).toBeDisabled();
+    expect(screen.getByText(/cannot change after history or collected buckets exist/)).toBeInTheDocument();
+    expect(screen.getByText(/Events whose property was not parsed then/)).toBeInTheDocument();
+    expect(screen.getByText(/membership of a group is today's/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is judged until the reading finishes/)).toBeInTheDocument();
   });
 });
 

@@ -11,6 +11,7 @@ import { formatDuration } from "@/lib/searchCadence";
 
 import { WatchAqlSection, type AqlRead } from "./WatchAql";
 import { pwTypeLabel, scopeKindLabel, scopeText, statusLabel, statusReason } from "./pwFormat";
+import { historyGapText, historyHeaderText } from "./history";
 
 export function WatchDefinition({
   watch,
@@ -149,6 +150,62 @@ export function WatchDefinition({
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section aria-labelledby="pw-def-history">
+        <h2 id="pw-def-history" className="section-title">
+          History
+        </h2>
+        <dl className="dimension-meta pw-dl">
+          <div>
+            <dt>State</dt>
+            <dd>{historyHeaderText(watch.history)}</dd>
+          </div>
+          <div>
+            <dt>Requested</dt>
+            <dd className="num">
+              {watch.history.days_requested === null
+                ? "No history requested"
+                : `${watch.history.days_requested} days`}
+            </dd>
+          </div>
+          <div>
+            <dt>Requested window</dt>
+            <dd className="num">
+              {watch.history.target_start && watch.history.end
+                ? `${formatDateTime(watch.history.target_start)} → ${formatDateTime(watch.history.end)}`
+                : "not recorded"}
+            </dd>
+          </div>
+          <div>
+            <dt>Read from QRadar</dt>
+            <dd className="num">
+              {watch.history.floor && watch.history.through
+                ? `${formatDateTime(watch.history.floor)} → ${formatDateTime(watch.history.through)}`
+                : "no readable span recorded"}
+            </dd>
+          </div>
+          <div>
+            <dt>History floor</dt>
+            <dd className="num">
+              {watch.history.floor ? formatDateTime(watch.history.floor) : "not recorded"}
+            </dd>
+          </div>
+          <div>
+            <dt>Membership basis</dt>
+            <dd>The membership of a group is today&apos;s, not as it was.</dd>
+          </div>
+        </dl>
+        {(watch.history.gaps ?? []).length > 0 && (
+          <div>
+            <h3 className="pw-subtitle">History gaps</h3>
+            <ul className="pw-def-changes" aria-label="History gaps">
+              {(watch.history.gaps ?? []).map((gap) => (
+                <li key={`${gap.start}-${gap.end}`}>{historyGapText(gap)}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="pw-def-aql">

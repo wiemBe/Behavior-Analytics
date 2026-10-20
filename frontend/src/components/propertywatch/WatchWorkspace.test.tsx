@@ -301,3 +301,16 @@ describe("the tabs", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("cardinality caps could not be read");
   });
 });
+
+describe("the window line when only history was read", () => {
+  it("says the latest bucket was read from history, not collected", () => {
+    render(<WatchWorkspace {...props({ buckets: [{ ...bucket(0), origin: "HISTORY" }] })} />);
+    expect(screen.getByText(/Latest bucket read from QRadar history/)).toBeInTheDocument();
+  });
+
+  it("keeps the plain wording for a live bucket", () => {
+    render(<WatchWorkspace {...props({ buckets: [{ ...bucket(0), origin: "LIVE" }] })} />);
+    expect(screen.queryByText(/read from QRadar history/)).toBeNull();
+    expect(screen.getByText(/Latest bucket/)).toBeInTheDocument();
+  });
+});

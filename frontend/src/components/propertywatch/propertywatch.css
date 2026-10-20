@@ -50,6 +50,11 @@
   border: 1.5px solid var(--text-2);
   border-radius: var(--r-pill);
 }
+.pw-key-history {
+  height: 10px;
+  background: var(--neutral-bg);
+  border: 1px solid var(--neutral-border);
+}
 .pw-key-label {
   min-width: 0;
   max-width: 32ch;
@@ -355,6 +360,15 @@ td.pw-value-cell {
   color: var(--crit-text);
   font-size: var(--fs-sm);
 }
+.pw-history-limits {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding-left: var(--sp-5);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+}
 .pw-inline-action {
   display: block;
   margin-top: var(--sp-2);
@@ -412,6 +426,16 @@ td.pw-value-cell {
   flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--sp-2);
+}
+.pw-history-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.pw-history-action label {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
 }
 .pw-action-confirm {
   flex-basis: 100%;

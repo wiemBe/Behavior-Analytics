@@ -96,6 +96,19 @@ describe("PropertyWatchSeriesChart", () => {
     expect(screen.getByText("Incident")).toBeInTheDocument();
   });
 
+  it("labels history points and provides their spans in a text table", () => {
+    render(
+      <PropertyWatchSeriesChart
+        series={[series("h", "history", [point(0, { origin: "HISTORY" }), point(1)])]}
+        {...W}
+      />,
+    );
+    expect(screen.getAllByText("Read from QRadar history, not judged")).toHaveLength(2);
+    const table = screen.getByRole("table", { name: "QRadar history shown in the chart" });
+    expect(table).toHaveTextContent("Read from QRadar history, not judged");
+    expect(table).toHaveTextContent(iso(0));
+  });
+
   it("says a gap is not zero, as text", () => {
     render(<PropertyWatchSeriesChart series={[s(1)]} {...W} />);
     expect(screen.getByText(/not zero events; a line at 0 is a measured zero/)).toBeInTheDocument();

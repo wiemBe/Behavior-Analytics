@@ -99,6 +99,20 @@ describe("the header", () => {
     expect(meta).toHaveTextContent("The last collected bucket was judged.");
     expect(meta.querySelector("time")).toHaveAttribute("datetime", iso(11));
     expect(meta).toHaveTextContent("UTC");
+    expect(meta).toHaveTextContent("History not requested");
+  });
+
+  it("shows reading progress in the header", async () => {
+    const base = watch();
+    vi.spyOn(api, "propertyWatch").mockResolvedValue(
+      watch({
+        status: "READING_HISTORY",
+        history: { ...base.history, state: "READING", days_requested: 28, days_read: 9 },
+      }),
+    );
+    const { container } = await renderPage();
+    expect(container.querySelector(".page-meta")).toHaveTextContent("9 of 28 days read. Nothing is judged until it finishes.");
+    expect(container.querySelector(".page-meta")?.textContent?.match(/Reading history/g)).toHaveLength(1);
   });
 
   it("hides editing from readers and names the writer permission", async () => {

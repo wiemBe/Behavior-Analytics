@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, api } from "@/lib/api";
@@ -34,6 +34,50 @@ describe("property-watch enable, disable and delete", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enable" }));
     fireEvent.click(screen.getByRole("button", { name: "Enable watch" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("42 of the 40-search tick budget");
+  });
+
+  it("offers enable without history after a history-budget 409 and sends zero with enable", async () => {
+    vi.spyOn(api, "updatePropertyWatch")
+      .mockRejectedValueOnce(
+        new ApiError(409, "Conflict", "history needs 3 searches per tick but only 1 is free in the budget"),
+      )
+      .mockResolvedValueOnce(watch({ enabled: true }));
+    render(<WatchActions watch={watch({ enabled: false })} catalog={catalog()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Enable" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enable watch" }));
+    expect(await screen.findByRole("group", { name: "Enable without history" })).toHaveTextContent(
+      "learns forward only",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Enable without history" }));
+    await waitFor(() => expect(api.updatePropertyWatch).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.updatePropertyWatch).mock.calls[1]).toEqual([
+      watch().id,
+      { expected_updated_at: watch().updated_at, history_days: 0, enabled: true },
+    ]);
+  });
+
+  it("requests history only before collection and shows 409 and 422 text verbatim", async () => {
+    const eligible = watch({
+      enabled: false,
+      coverage: null,
+      collected_through: null,
+      evaluated_through: null,
+    });
+    vi.spyOn(api, "requestPropertyWatchHistory").mockRejectedValueOnce(
+      new ApiError(422, "invalid", { message: "invalid", reasons: ["pins need 51 rows, limit is 50"] }),
+    );
+    const first = render(<WatchActions watch={eligible} catalog={catalog()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Read history" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("pins need 51 rows, limit is 50");
+    first.unmount();
+    vi.spyOn(api, "requestPropertyWatchHistory").mockRejectedValueOnce(
+      new ApiError(409, "Conflict", "history state is COMPLETE; history cannot change"),
+    );
+    render(<WatchActions watch={eligible} catalog={catalog()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Read history" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "history state is COMPLETE; history cannot change",
+    );
   });
 
   it("disables with the optimistic token", async () => {

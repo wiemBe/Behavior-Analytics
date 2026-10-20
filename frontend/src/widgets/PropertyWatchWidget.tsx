@@ -146,10 +146,18 @@ export function PropertyWatchWidget({
   const plotted = useMemo(() => {
     if (!seriesData || !items) return null;
     const labels = new Map(items.map((v) => [v.id, valueText(v)]));
-    return seriesData.series.map((s) => ({ ...s, value_key: labels.get(s.value_id) ?? s.value_key }));
+    return seriesData.series.map((s) => ({
+      ...s,
+      value_key: labels.get(s.value_id) ?? s.value_key,
+      points: s.points.filter((point) => point.origin === "LIVE"),
+    }));
   }, [seriesData, items]);
   const bucketData = bucketsS.status === "ok" ? bucketsS.data : null;
-  const collected = useMemo(() => bucketData?.map((b) => b.bucket_start) ?? null, [bucketData]);
+  const liveBuckets = useMemo(
+    () => bucketData?.filter((bucket) => bucket.origin === "LIVE") ?? null,
+    [bucketData],
+  );
+  const collected = useMemo(() => liveBuckets?.map((b) => b.bucket_start) ?? null, [liveBuckets]);
   const win = useMemo(() => {
     if (!seriesAt) return null;
     const end = new Date(seriesAt);
@@ -240,6 +248,12 @@ export function PropertyWatchWidget({
   }
   if (read.error) return frame(read.error, { windowed: true });
   if (valuesS.status !== "ok" || bucketsS.status !== "ok") return frame({ kind: "loading" });
+  if (liveBuckets !== null && liveBuckets.length === 0) {
+    return frame({
+      kind: "empty",
+      reason: `No collected bucket exists after the history hand-off. ${watch.history.reason ?? "The watch has not collected its first current bucket yet."} Open the watch to inspect the history read.`,
+    });
+  }
   if (items === null || items.length === 0) {
     return frame(
       {
@@ -265,7 +279,7 @@ export function PropertyWatchWidget({
 
   const lastBucket = watch?.coverage?.bucket_start ?? null;
   if (watch === null || lastBucket === null) return frame({ kind: "loading" });
-  const bucketSeconds = bucketsS.data[bucketsS.data.length - 1]?.bucket_seconds ?? 300;
+  const bucketSeconds = liveBuckets?.[liveBuckets.length - 1]?.bucket_seconds ?? 300;
   const drawn: Drawn = {
     lines: plotted,
     bucketSeconds,
@@ -273,7 +287,7 @@ export function PropertyWatchWidget({
     windowStart: win.start,
     windowEnd: win.end,
     collected,
-    qualifiers: qualifiersOf(bucketsS.data, hours),
+    qualifiers: qualifiersOf(liveBuckets ?? [], hours),
     lastBucket,
     refreshFailed: [watchS, valuesS, bucketsS, seriesS].some(
       (s) => s.status === "ok" && s.refreshFailed !== null,

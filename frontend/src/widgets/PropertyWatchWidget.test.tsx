@@ -238,6 +238,47 @@ describe("chart.property_watch, qualifiers", () => {
 });
 
 describe("chart.property_watch, the other states", () => {
+  it("is empty while reading history and does not request chart data", async () => {
+    const base = watch();
+    world({
+      watch: watch({
+        status: "READING_HISTORY",
+        coverage: null,
+        collected_through: null,
+        history: { ...base.history, state: "READING", days_requested: 28, days_read: 9 },
+      }),
+    });
+    renderWidget();
+    expect(await screen.findByText(/Reading history from QRadar: 9 of 28 days/)).toBeInTheDocument();
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(api.propertyWatchBuckets).not.toHaveBeenCalled();
+    expect(drill()).toBeInTheDocument();
+  });
+
+  it("becomes ok after hand-off and never plots a history point", async () => {
+    const base = watch();
+    world({
+      watch: watch({ history: { ...base.history, state: "COMPLETE", days_requested: 28, days_read: 28 } }),
+      buckets: [bucket(0, { origin: "HISTORY" }), ...fullDay()],
+    });
+    vi.spyOn(api, "propertyWatchSeries").mockResolvedValue({
+      hours: 24,
+      series: [series(vid(1), "svc-backup", [
+        point(0, { origin: "HISTORY", events: 777 }),
+        point(11, { origin: "LIVE", events: 111 }),
+      ], true)],
+    });
+    renderWidget();
+    expect(await screen.findByRole("img")).toBeInTheDocument();
+    await waitFor(() => expect(setOption).toHaveBeenCalled());
+    const option = setOption.mock.calls[0][0] as {
+      series: Array<{ name: string; data: Array<{ value: [number, number | null] }> }>;
+    };
+    const line = option.series.find((item) => item.name === "svc-backup");
+    expect(line?.data.map((item) => item.value[1])).toContain(111);
+    expect(line?.data.map((item) => item.value[1])).not.toContain(777);
+  });
+
   it("is not configured: says so, and links to the list", () => {
     world();
     renderWidget({ watch_id: null });

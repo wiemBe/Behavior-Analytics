@@ -30,6 +30,21 @@ describe("the gap rules", () => {
     expect(plot.uncollected).toEqual([{ start: Date.parse(iso(1)), end: Date.parse(iso(5)) }]);
   });
 
+  it("keeps and merges the origin of history points", () => {
+    const plot = buildPlot({
+      series: [series("a", "alice", [
+        point(0, { origin: "HISTORY" }),
+        point(1, { origin: "HISTORY" }),
+        point(2),
+      ])],
+      ...WINDOW,
+    });
+    expect(plot.lines[0].points.slice(0, 3).map((point) => point.origin)).toEqual([
+      "HISTORY", "HISTORY", "LIVE",
+    ]);
+    expect(plot.history).toEqual([{ start: Date.parse(iso(0)), end: Date.parse(iso(2)) }]);
+  });
+
   it("draws an UNKNOWN reading as a gap, not a zero", () => {
     const l = line(1, [point(0, { reading: "UNKNOWN", events: null, measurement: null })]);
     expect(l.points[0].value).toBeNull();

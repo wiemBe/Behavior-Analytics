@@ -30,6 +30,14 @@ describe("property-watch authoring semantics", () => {
     );
   });
 
+  it("states requested history deterministically and says nothing about it when off", () => {
+    const without = draftFromWatch(watch());
+    expect(watchSummary(without)).not.toContain("history first");
+    expect(watchSummary({ ...without, historyDays: 28 })).toContain(
+      "reads 28 days of history first",
+    );
+  });
+
   it("creates only a disabled definition and never accepts AQL", () => {
     const body = createWatchBody(draftFromWatch(watch()));
     expect(body).not.toHaveProperty("enabled");
@@ -37,6 +45,19 @@ describe("property-watch authoring semantics", () => {
     expect(JSON.stringify(body).toLowerCase()).not.toContain("select ");
     expect(updateWatchBody(draftFromWatch(watch({ enabled: true })), watch({ enabled: true }))).toEqual(
       expect.objectContaining({ expected_updated_at: watch().updated_at, enabled: false }),
+    );
+  });
+
+  it("omits untouched history but sends zero or days after the field is touched", () => {
+    const draft = draftFromWatch(watch());
+    expect(createWatchBody(draft)).not.toHaveProperty("history_days");
+    expect(createWatchBody({ ...draft, historyDays: 0, historyTouched: true })).toHaveProperty(
+      "history_days",
+      0,
+    );
+    expect(createWatchBody({ ...draft, historyDays: 14, historyTouched: true })).toHaveProperty(
+      "history_days",
+      14,
     );
   });
 

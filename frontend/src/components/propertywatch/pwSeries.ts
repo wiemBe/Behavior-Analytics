@@ -39,6 +39,7 @@ export interface PlotPoint {
   low: number | null;
   median: number | null;
   high: number | null;
+  origin: "LIVE" | "HISTORY" | null;
 }
 
 export interface PlotLine {
@@ -60,6 +61,8 @@ export interface PlotModel {
   lines: PlotLine[];
   /** Slots known not to have been collected, merged into spans. */
   uncollected: Span[];
+  /** QRadar-history buckets, merged into spans and drawn neutrally. */
+  history: Span[];
   /** How many slots lie in the window and how many of them were collected. */
   collectedSlots: number | null;
   windowSlots: number;
@@ -162,6 +165,7 @@ export function buildPlot(input: PlotInput): PlotModel {
             low: null,
             median: null,
             high: null,
+            origin: null,
           };
         }
         const { kind, value } = pointKind(p);
@@ -176,6 +180,7 @@ export function buildPlot(input: PlotInput): PlotModel {
           low: reliable ? p.expected_low : null,
           median: reliable ? p.expected_median : null,
           high: reliable ? p.expected_high : null,
+          origin: p.origin,
         };
       }),
     };
@@ -186,11 +191,19 @@ export function buildPlot(input: PlotInput): PlotModel {
     ? gridInWindow.filter((t) => !collectedTimes.has(t))
     : [];
   const single = lines.length === 1 ? lines[0] : null;
+  const historyStarts = [
+    ...new Set(
+      lines.flatMap((line) =>
+        line.points.filter((point) => point.origin === "HISTORY").map((point) => point.t),
+      ),
+    ),
+  ].sort((a, b) => a - b);
   return {
     slots,
     bucketMs,
     lines,
     uncollected: mergeSpans(uncollectedStarts, bucketMs),
+    history: mergeSpans(historyStarts, bucketMs),
     collectedSlots: collectionKnown ? gridInWindow.filter((t) => collectedTimes.has(t)).length : null,
     windowSlots: gridInWindow.length,
     hasBand: single !== null && single.points.some((p) => p.low !== null && p.high !== null),

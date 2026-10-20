@@ -49,6 +49,23 @@ export function watch(over: Partial<PropertyWatch> = {}): PropertyWatch {
     threshold_rules: [],
     alerting_mode: "shadow",
     cadence_seconds: 3600,
+    history: {
+      state: "NOT_REQUESTED",
+      days_requested: null,
+      target_start: null,
+      floor: null,
+      through: null,
+      end: null,
+      days_read: null,
+      searches: null,
+      buckets_read: null,
+      gaps: null,
+      reason: null,
+      progress_unreadable: false,
+      started_at: null,
+      finished_at: null,
+      estimate: null,
+    },
     created_at: "2026-10-10T09:00:00Z",
     updated_at: "2026-10-11T09:00:00Z",
     created_by: "efe",
@@ -88,6 +105,16 @@ export function catalog(over: Partial<PropertyWatchCatalog> = {}): PropertyWatch
     hours_default: 24,
     preview_searches: 2,
     preview_rate_limit: "5/minute",
+    history: {
+      enabled: true,
+      days_default: 28,
+      days_min: 7,
+      days_max: 28,
+      searches_per_tick: 12,
+      seconds_per_tick: 3600,
+      reading_count: 0,
+      searches_free: 16,
+    },
     ...over,
   };
 }
@@ -95,6 +122,7 @@ export function catalog(over: Partial<PropertyWatchCatalog> = {}): PropertyWatch
 export function bucket(n: number, over: Partial<PwBucket> = {}): PwBucket {
   return {
     bucket_start: iso(n),
+    origin: "LIVE",
     bucket_seconds: 300,
     watch_version: 3,
     total_events: 1000,
@@ -152,6 +180,7 @@ export function paged(items: PwValue[]): PagedPwValues {
 export function point(n: number, over: Partial<PwSeriesPoint> = {}): PwSeriesPoint {
   return {
     bucket_start: iso(n),
+    origin: "LIVE",
     reading: "COUNT",
     events: 100,
     measurement: "EXACT",
@@ -256,6 +285,8 @@ export function spikeDetection(over: Partial<PwDetectionDetail> = {}): PwDetecti
     fallback_bound: null,
     classification: null,
     history_buckets_verified: null,
+    history_buckets_from_history: null,
+    history_floor: null,
     events_since_first_seen: null,
     buckets_with_traffic: null,
     claim: null,

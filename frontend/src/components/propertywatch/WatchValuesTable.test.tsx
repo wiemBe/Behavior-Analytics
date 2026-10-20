@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { bucket, HOSTILE, incident, value } from "./fixtures";
+import { bucket, HOSTILE, incident, value, watch } from "./fixtures";
 import { activeIncidentsByValue, WatchValuesTable } from "./WatchValuesTable";
 
 function table(
@@ -56,6 +56,17 @@ describe("the values table", () => {
     expect(screen.getByRole("columnheader", { name: "Expected range" })).toHaveClass("num");
     expect(screen.getByRole("table").querySelector("caption")).toHaveTextContent("events per 5 min");
     expect(within(row("alice")).getByText("120").closest("td")).toHaveClass("num");
+  });
+
+  it("names history and its floor in the first-seen caption", () => {
+    const base = watch();
+    table(undefined, {
+      history: { ...base.history, state: "COMPLETE", floor: "2026-10-10T09:00:00Z" },
+    });
+    expect(screen.getByRole("table").querySelector("caption")).toHaveTextContent(
+      "history read from QRadar, from 2026-10-10 09:00:00 UTC",
+    );
+    expect(screen.getByRole("columnheader", { name: /First seen \(UTC; history read from 2026-/ })).toBeInTheDocument();
   });
 
   it("marks sort state and links the sortable headers", () => {

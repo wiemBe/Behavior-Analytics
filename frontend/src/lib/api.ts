@@ -1551,6 +1551,7 @@ export type PwWatchStatus =
   | "SCOPE_TOO_LARGE"
   | "NOT_APPLICABLE"
   | "STALE"
+  | "READING_HISTORY"
   | "OPEN"
   | "RECOVERING"
   | "OK";
@@ -1655,6 +1656,46 @@ export interface PwCoverage {
   measurement: string;
 }
 
+export type PwHistoryState =
+  | "NOT_REQUESTED"
+  | "READING"
+  | "COMPLETE"
+  | "PARTIAL"
+  | "UNAVAILABLE";
+
+export interface PwHistoryGap {
+  start: string;
+  end: string;
+  reason: string;
+}
+
+export interface PwHistoryEstimate {
+  searches_min: number;
+  searches_max: number;
+  ticks_min: number;
+  ticks_max: number;
+  cadence_seconds: number;
+  assumptions: string;
+}
+
+export interface PwWatchHistory {
+  state: PwHistoryState;
+  days_requested: number | null;
+  target_start: string | null;
+  floor: string | null;
+  through: string | null;
+  end: string | null;
+  days_read: number | null;
+  searches: number | null;
+  buckets_read: number | null;
+  gaps: PwHistoryGap[] | null;
+  reason: string | null;
+  progress_unreadable: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  estimate: PwHistoryEstimate | null;
+}
+
 export interface PropertyWatch {
   id: string;
   instance_id: string;
@@ -1686,6 +1727,7 @@ export interface PropertyWatch {
   alerting_mode: "shadow" | "alerting";
   // The PROPERTY_WATCH search-family cadence in seconds; the widget is stale after twice this.
   cadence_seconds: number;
+  history: PwWatchHistory;
   // The same family's bucket and settle time, for the latency sentence.
   cadence?: Cadence;
   created_at: string;
@@ -1752,11 +1794,22 @@ export interface PropertyWatchCatalog {
   hours_default: number;
   preview_searches: number;
   preview_rate_limit: string;
+  history: {
+    enabled: boolean;
+    days_default: number;
+    days_min: number;
+    days_max: number;
+    searches_per_tick: number;
+    seconds_per_tick: number;
+    reading_count: number;
+    searches_free: number;
+  };
   cadence?: Cadence;
 }
 
 export interface PwBucket {
   bucket_start: string;
+  origin: "LIVE" | "HISTORY";
   bucket_seconds: number;
   watch_version: number;
   total_events: number | null;
@@ -1812,6 +1865,7 @@ export interface PagedPwValues {
 
 export interface PwSeriesPoint {
   bucket_start: string;
+  origin: "LIVE" | "HISTORY";
   reading: PwReadingLabel;
   events: number | null;
   measurement: MeasurementKind | null;
@@ -1845,6 +1899,7 @@ export interface PropertyWatchCreate {
   pinned_values: string[][];
   detectors: PwAnomalyTypeName[];
   severity: string;
+  history_days?: number;
 }
 
 export type PropertyWatchUpdate = Partial<PropertyWatchCreate> & {
@@ -1919,6 +1974,8 @@ export interface PwDetectionDetail {
   fallback_bound: number | null;
   classification: string | null;
   history_buckets_verified: number | null;
+  history_buckets_from_history: number | null;
+  history_floor: string | null;
   events_since_first_seen: number | null;
   buckets_with_traffic: number | null;
   claim: string | null;
@@ -2430,6 +2487,11 @@ export const api = {
     request<void>(`/property-watches/${id}`, { method: "DELETE" }),
   previewPropertyWatch: (id: string) =>
     request<PwPreview>(`/property-watches/${id}/preview`, { method: "POST" }),
+  requestPropertyWatchHistory: (id: string, historyDays: number) =>
+    request<PropertyWatch>(`/property-watches/${id}/history`, {
+      method: "POST",
+      body: JSON.stringify({ history_days: historyDays }),
+    }),
   customRules: () => request<CustomRule[]>("/custom-rules"),
   customRule: (id: string) => request<CustomRule>(`/custom-rules/${id}`),
   customRuleCatalog: () => request<CustomRuleCatalog>("/custom-rules/catalog"),

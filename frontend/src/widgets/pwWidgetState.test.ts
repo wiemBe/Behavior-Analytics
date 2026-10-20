@@ -36,6 +36,27 @@ describe("earlyState", () => {
     expect(s && "reason" in s && s.reason).toContain("2026-10-10 09:00:00 UTC");
   });
 
+  it("maps a history read to empty with progress and no stale claim", () => {
+    const base = watch();
+    const s = earlyState(
+      watch({
+        status: "READING_HISTORY",
+        coverage: null,
+        history: {
+          ...base.history,
+          state: "READING",
+          days_requested: 28,
+          days_read: 9,
+        },
+      }),
+      catalog(),
+    );
+    expect(s?.kind).toBe("empty");
+    expect(s && "reason" in s && s.reason).toBe(
+      "Reading history from QRadar: 9 of 28 days. Nothing is judged until it finishes.",
+    );
+  });
+
   it("NOT_APPLICABLE with a bucket is no_data and carries the coverage", () => {
     const s = earlyState(
       watch({

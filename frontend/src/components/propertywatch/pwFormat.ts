@@ -58,6 +58,7 @@ const STATUS_LABELS: Record<PwWatchStatus, string> = {
   SCOPE_TOO_LARGE: "Scope too large",
   NOT_APPLICABLE: "Not applicable",
   STALE: "Stale",
+  READING_HISTORY: "Reading history",
   OPEN: "Incident open",
   RECOVERING: "Recovering",
   OK: "OK",
@@ -75,6 +76,7 @@ const STATUS_MEANING: Record<PwWatchStatus, string> = {
   NOT_APPLICABLE:
     "The property parsed on no event in scope. The values are not measured and no verdict is given.",
   STALE: "No bucket has been stored for longer than the cadence allows.",
+  READING_HISTORY: "Reading history from QRadar. Nothing is judged until it finishes.",
   OPEN: "An incident is open on one of its values.",
   RECOVERING: "An incident is recovering and is held open until it is confirmed.",
   OK: "The last collected bucket was judged.",
@@ -105,6 +107,7 @@ export function statusTone(status: PwWatchStatus | null): Tone | "info" {
     case "OPEN":
       return "crit";
     case "STALE":
+    case "READING_HISTORY":
     case "NOT_APPLICABLE":
     case "SCOPE_STALE":
     case "SCOPE_TOO_LARGE":

@@ -145,6 +145,32 @@ describe("a property-watch incident", () => {
     expect(figure("History verified")).toHaveTextContent("not recorded");
   });
 
+  it("states which verified buckets came from QRadar history and were not judged", async () => {
+    vi.spyOn(api, "anomaly").mockResolvedValue(
+      detail({
+        anomaly_type: "PW_NEW_VALUE",
+        anomaly_start: "2026-10-20T09:05:00Z",
+        detection: newValueDetection({
+          history_buckets_from_history: 2016,
+          history_floor: "2026-10-13T09:05:00Z",
+        }),
+      }),
+    );
+    await renderPage();
+    expect(screen.getByText(/The 7 days before 2026-10-20 09:05:00 UTC were verified/)).toHaveTextContent(
+      "2,016 buckets, of which 2,016 were read from QRadar history from 2026-10-13 09:05:00 UTC and not judged",
+    );
+  });
+
+  it("keeps the existing sentence when bootstrap evidence is absent", async () => {
+    vi.spyOn(api, "anomaly").mockResolvedValue(
+      detail({ anomaly_type: "PW_NEW_VALUE", detection: newValueDetection() }),
+    );
+    await renderPage();
+    expect(screen.queryByText(/were read from QRadar history/)).toBeNull();
+    expect(screen.getByText(/verified history/)).toBeInTheDocument();
+  });
+
   it("says there is no detector working when the detail carries none, and does not invent a band", async () => {
     vi.spyOn(api, "anomaly").mockResolvedValue(detail({ detection: null }));
     await renderPage();

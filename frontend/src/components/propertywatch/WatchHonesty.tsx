@@ -8,6 +8,7 @@ import type { PropertyWatch, PropertyWatchCatalog, PwBucket } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
 
 import { statusLabel, statusReason } from "./pwFormat";
+import { historyGapText, historyStateText } from "./history";
 
 export interface HonestyNote {
   /** The word that names the condition, so colour is never the only carrier. */
@@ -28,13 +29,32 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
 /** The notes for a window of `hours`, from the watch, the switches and the stored buckets. */
 export function honestyNotes(input: {
-  watch: Pick<PropertyWatch, "status" | "status_reason">;
+  watch: Pick<PropertyWatch, "status" | "status_reason" | "history">;
   catalog: Pick<PropertyWatchCatalog, "collection_enabled"> | null;
   buckets: PwBucket[] | null;
   hours: number;
 }): HonestyNote[] {
   const { watch, catalog, buckets, hours } = input;
   const notes: HonestyNote[] = [];
+
+  const historyText = historyStateText(watch.history);
+  if (historyText) {
+    notes.push({
+      label: watch.history.state === "READING" ? "READING HISTORY" : `HISTORY ${watch.history.state}`,
+      tone: watch.history.state === "COMPLETE" ? "" : "warn",
+      text: historyText,
+    });
+  }
+  for (const gap of watch.history.gaps ?? []) {
+    notes.push({ label: "HISTORY GAP", tone: "warn", text: historyGapText(gap) });
+  }
+  if (watch.history.progress_unreadable) {
+    notes.push({
+      label: "HISTORY PROGRESS UNREADABLE",
+      tone: "warn",
+      text: "Stored history progress could not be read, so no progress figure is shown. This is not zero days read.",
+    });
+  }
 
   if (catalog && !catalog.collection_enabled) {
     notes.push({

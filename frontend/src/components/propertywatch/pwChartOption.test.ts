@@ -21,6 +21,7 @@ const palette: PwPalette = {
   band: "#band",
   gap: "#gap",
   anomaly: "#anomaly",
+  history: "#history",
   marker: "#m",
   expected: "#e",
   tooltipBg: "#tb",
@@ -107,6 +108,16 @@ describe("the option", () => {
     const { option } = build(one, { incidents: [{ start: iso(1), end: null }] });
     const areas = option.series[0].markArea!.data as Array<[{ name: string }, unknown]>;
     expect(areas.map((a) => a[0].name).sort()).toEqual(["incident", "not collected", "not collected"]);
+  });
+
+  it("shades history points neutrally and labels their origin in the tooltip", () => {
+    const historical = [series("a", "alice", [point(0, { origin: "HISTORY" }), point(1)])];
+    const { option } = build(historical);
+    const areas = option.series[0].markArea!.data as Array<[{ name: string }, unknown]>;
+    expect(areas.map((area) => area[0].name)).toContain("read from QRadar history, not judged");
+    expect(option.tooltip.formatter([{ dataIndex: 0 }])).toContain(
+      "read from QRadar history, not judged",
+    );
   });
 
   it("adds the parsed-share panel on the same time axis, with one labelled floor line", () => {

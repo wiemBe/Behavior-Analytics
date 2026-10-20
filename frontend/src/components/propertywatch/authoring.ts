@@ -72,6 +72,9 @@ export interface WatchDraft {
   pins: string[][];
   detectors: PwAnomalyTypeName[];
   severity: string;
+  /** Zero means learn forward only. Untouched lets create retain the server's default. */
+  historyDays: number;
+  historyTouched: boolean;
 }
 
 export function emptyWatchDraft(catalog: PropertyWatchCatalog): WatchDraft {
@@ -88,6 +91,8 @@ export function emptyWatchDraft(catalog: PropertyWatchCatalog): WatchDraft {
       (d): d is PwAnomalyTypeName => d in DETECTORS && d !== "PW_NEW_COMBINATION",
     ),
     severity: "MEDIUM",
+    historyDays: catalog.history.enabled ? catalog.history.days_default : 0,
+    historyTouched: false,
   };
 }
 
@@ -111,6 +116,8 @@ export function draftFromWatch(watch: PropertyWatch): WatchDraft {
     pins: watch.pinned_values.map((pin) => [...pin]),
     detectors: [...watch.detectors],
     severity: watch.severity,
+    historyDays: watch.history.days_requested ?? 0,
+    historyTouched: false,
   };
 }
 
@@ -192,7 +199,7 @@ export function draftReasons(draft: WatchDraft, catalog: PropertyWatchCatalog): 
 
 export function createWatchBody(draft: WatchDraft): PropertyWatchCreate {
   const numeric = draft.scopeId === "" ? null : Number(draft.scopeId);
-  return {
+  const body: PropertyWatchCreate = {
     name: draft.name.trim(),
     description: draft.description.trim() || null,
     scope_kind: draft.scopeKind,
@@ -204,6 +211,8 @@ export function createWatchBody(draft: WatchDraft): PropertyWatchCreate {
     detectors: draft.detectors,
     severity: draft.severity,
   };
+  if (draft.historyTouched) body.history_days = draft.historyDays;
+  return body;
 }
 
 export function updateWatchBody(draft: WatchDraft, watch: PropertyWatch): PropertyWatchUpdate {
@@ -215,7 +224,8 @@ export function watchSummary(draft: WatchDraft): string {
   const scope = draft.scopeLabel || `an unselected ${SCOPE_KIND_LABELS[draft.scopeKind].toLowerCase()}`;
   const count = draft.scopeCount === null ? "" : ` (${draft.scopeCount.toLocaleString("en-US")} sources)`;
   const detection = draft.detectors.map((d) => DETECTORS[d].label.toLowerCase()).join(", ") || "no";
-  return `Tracks ${properties} on ${scope}${count}, counted on collected 5-minute buckets; ${draft.pins.length} ${draft.pins.length === 1 ? "value" : "values"} always counted; ${detection} detection on.`;
+  const history = draft.historyDays > 0 ? ` reads ${draft.historyDays} days of history first;` : "";
+  return `Tracks ${properties} on ${scope}${count}, counted on collected 5-minute buckets;${history} ${draft.pins.length} ${draft.pins.length === 1 ? "value" : "values"} always counted; ${detection} detection on.`;
 }
 
 export function propertyApplicability(
