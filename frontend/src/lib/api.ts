@@ -337,7 +337,17 @@ export type SearchFamily =
   | "RULE_MATCH"
   | "IPS_COLLECTION"
   | "CATCHALL_SENDERS"
-  | "GEO_COLLECTION";
+  | "GEO_COLLECTION"
+  | "PROPERTY_WATCH";
+
+// Mirrors CadenceOut: one family's timing, as the Search cadence route computes it. A null bucket
+// is a family with no buckets (evidence only), never zero.
+export interface Cadence {
+  family: SearchFamily;
+  cadence_seconds: number;
+  bucket_seconds: number | null;
+  settle_seconds: number;
+}
 
 // Mirrors SearchCadenceLastRunOut. `searches_sent` is null for a family that
 // does not count its searches yet: that is "not counted", never zero.
@@ -1559,6 +1569,8 @@ export interface PropertyWatch {
   alerting_mode: "shadow" | "alerting";
   // The PROPERTY_WATCH search-family cadence in seconds; the widget is stale after twice this.
   cadence_seconds: number;
+  // The same family's bucket and settle time, for the latency sentence.
+  cadence?: Cadence;
   created_at: string;
   updated_at: string;
   created_by: string | null;
@@ -1623,6 +1635,7 @@ export interface PropertyWatchCatalog {
   hours_default: number;
   preview_searches: number;
   preview_rate_limit: string;
+  cadence?: Cadence;
 }
 
 export interface PwBucket {
@@ -2081,7 +2094,13 @@ export interface CustomRuleCatalogMetric {
 
 export interface CustomRuleCatalog {
   metrics: CustomRuleCatalogMetric[];
-  subject_kinds: Array<{ subject_kind: CustomRuleSubjectKind; column: string }>;
+  subject_kinds: Array<{
+    subject_kind: CustomRuleSubjectKind;
+    column: string;
+    search_family?: SearchFamily;
+  }>;
+  // One per search family a subject kind is collected under.
+  cadences?: Cadence[];
   source_classes: string[];
   operators: string[];
   evaluation_enabled: boolean;

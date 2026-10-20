@@ -78,6 +78,7 @@ from app.schemas.property_watch import (
     WatchScopeOut,
     WatchSeriesOut,
 )
+from app.schemas.search_cadence import CadenceOut
 from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_PROPERTY_WATCH_WRITE,
@@ -243,10 +244,24 @@ async def _flush_refusing(session: AsyncSession, watch_id: uuid.UUID, action: st
 
 
 async def _one_out(
-    session: AsyncSession, watch: PropertyWatch, settings: Settings, *, detail: bool = False
+    session: AsyncSession,
+    watch: PropertyWatch,
+    settings: Settings,
+    *,
+    detail: bool = False,
+    cadence: CadenceOut | None = None,
 ) -> PropertyWatchOut:
     mode = alerting_mode(settings.pw_alerting_enabled)
-    return (await svc.watch_outs(session, [watch], settings, alerting_mode=mode, detail=detail))[0]
+    return (
+        await svc.watch_outs(
+            session,
+            [watch],
+            settings,
+            alerting_mode=mode,
+            detail=detail,
+            cadence=cadence,
+        )
+    )[0]
 
 
 def _create_history_days(body: PropertyWatchCreate, settings: Settings) -> int | None:
@@ -271,6 +286,7 @@ async def get_catalog(session: SessionDep, settings: SettingsDep) -> WatchCatalo
     """The editor's switches and bounds. Registered before ``/{watch_id}``."""
     enabled, used = await svc.enabled_cost_total(session, settings)
     reading = await svc.reading_count(session)
+    cadence = await svc.property_watch_cadence(session, settings)
     return WatchCatalogOut(
         collection_enabled=settings.pw_collection_enabled,
         alerting_mode=alerting_mode(settings.pw_alerting_enabled),
@@ -300,6 +316,7 @@ async def get_catalog(session: SessionDep, settings: SettingsDep) -> WatchCatalo
             reading=reading,
             searches_free=settings.pw_max_searches_per_tick - used,
         ),
+        cadence=cadence,
     )
 
 
@@ -563,6 +580,7 @@ async def create_watch(
         detectors=detectors,
     )
     reasons = svc.validate_draft(draft, max_pinned=settings.pw_max_pinned_values)
+    cadence: CadenceOut | None = None
     history_days = _create_history_days(body, settings)
     if "history_days" in body.model_fields_set and body.history_days is None:
         reasons.append("history_days must not be null; use 0 for no history")
@@ -570,7 +588,10 @@ async def create_watch(
         day_reasons = svc.history_days_reasons(history_days, settings)
         reasons.extend(day_reasons)
         if history_days >= 1 and not day_reasons:
-            reasons.extend(await svc.pinned_rows_reasons(session, draft, settings))
+            cadence = await svc.property_watch_cadence(session, settings)
+            reasons.extend(
+                await svc.pinned_rows_reasons(session, draft, settings, cadence=cadence)
+            )
     instance_id: uuid.UUID | None = None
     if body.scope_kind is PwScopeKind.LOG_SOURCE and body.log_source_id is not None:
         source = await session.get(LogSource, body.log_source_id)
@@ -624,7 +645,7 @@ async def create_watch(
         object_id=str(watch.id),
         detail={"before": None, "after": svc.watch_snapshot(watch)},
     )
-    return await _one_out(session, watch, settings, detail=True)
+    return await _one_out(session, watch, settings, detail=True, cadence=cadence)
 
 
 @router.get("/{watch_id}", response_model=PropertyWatchOut)
@@ -818,6 +839,7 @@ async def update_watch(
         "history_days": merged.history_days,
     }
     changed = {key for key in after if after[key] != before[key]}
+    cadence: CadenceOut | None = None
     if not changed:
         return await _one_out(session, watch, settings, detail=True)
     if "history_days" in changed:
@@ -832,7 +854,8 @@ async def update_watch(
     )
     if reads_history and changed & {"history_days", "pinned_values", "properties"}:
         # The pins a reading would search for must fit one search (decision of 2026-10-19).
-        _reject(await svc.pinned_rows_reasons(session, draft, settings))
+        cadence = await svc.property_watch_cadence(session, settings)
+        _reject(await svc.pinned_rows_reasons(session, draft, settings, cadence=cadence))
     new_name = merged.name
     if "name" in changed:
         taken = await session.scalar(
@@ -935,7 +958,7 @@ async def update_watch(
         object_id=str(watch.id),
         detail={"before": snapshot_before, "after": svc.watch_snapshot(watch)},
     )
-    return await _one_out(session, watch, settings, detail=True)
+    return await _one_out(session, watch, settings, detail=True, cadence=cadence)
 
 
 @router.delete("/{watch_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1110,7 +1133,9 @@ async def put_pins(
         "unpin a value",
         value_keys=svc.removed_pin_keys(watch.pinned_values, payload.pinned_values),
     )
+    cadence: CadenceOut | None = None
     if svc.watch_reads_history(watch):
+        cadence = await svc.property_watch_cadence(session, settings)
         _reject(
             await svc.pinned_rows_reasons(
                 session,
@@ -1124,6 +1149,7 @@ async def put_pins(
                     detectors=[str(d) for d in watch.detectors],
                 ),
                 settings,
+                cadence=cadence,
             )
         )
     current = {tuple(p) for p in watch.pinned_values}
@@ -1148,7 +1174,7 @@ async def put_pins(
             object_id=str(watch.id),
             detail={"before": snapshot_before, "after": svc.watch_snapshot(watch)},
         )
-    out = await _one_out(session, watch, settings, detail=True)
+    out = await _one_out(session, watch, settings, detail=True, cadence=cadence)
     # The detail read already holds the rules, read in one statement (design §G.13.3).
     return PinsOut(watch=out, added=added, removed=removed, rules=out.threshold_rules or [])
 
@@ -1172,6 +1198,7 @@ async def request_history(
     _guard(principal)
     watch = await _locked(session, watch_id)
     _reject(svc.history_days_reasons(payload.history_days, settings))
+    cadence: CadenceOut | None = None
     previous = watch.history_days
     if payload.history_days == previous:
         return await _one_out(session, watch, settings, detail=True)
@@ -1179,7 +1206,8 @@ async def request_history(
     if blockers:
         raise HTTPException(status.HTTP_409_CONFLICT, "; ".join(blockers))
     if payload.history_days >= 1:
-        _reject(await svc.pinned_rows_reasons(session, watch, settings))
+        cadence = await svc.property_watch_cadence(session, settings)
+        _reject(await svc.pinned_rows_reasons(session, watch, settings, cadence=cadence))
     if watch.enabled:
         await _lock_enabled_cap(session)
     watch.history_days = payload.history_days
@@ -1198,4 +1226,4 @@ async def request_history(
         object_id=str(watch.id),
         detail={"history_days": payload.history_days, "previous": previous},
     )
-    return await _one_out(session, watch, settings, detail=True)
+    return await _one_out(session, watch, settings, detail=True, cadence=cadence)

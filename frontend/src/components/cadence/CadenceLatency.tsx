@@ -7,23 +7,37 @@
 import Link from "next/link";
 
 import { holds } from "@/components/auth/access";
-import type { CallerInfo } from "@/lib/api";
+import type { Cadence, CallerInfo } from "@/lib/api";
 import { worstCaseDelay } from "@/lib/searchCadence";
 
 export const READ_SEARCH_CADENCE = "read:search_cadence";
 
-/** What `worstCaseDelay` needs for one family. All three or none: a part is never guessed. */
+/**
+ * What `worstCaseDelay` needs for one family. All three or none: a part is never guessed. A null
+ * bucket is a family with no buckets: the figure then bounds when evidence arrives.
+ */
 export interface LatencyCadence {
   cadenceSeconds: number;
-  bucketSeconds: number;
+  bucketSeconds: number | null;
   settleSeconds: number;
+}
+
+/** The API's cadence as the sentence needs it; null when the page was sent none. */
+export function latencyCadence(cadence: Cadence | null | undefined): LatencyCadence | null {
+  if (!cadence) return null;
+  return {
+    cadenceSeconds: cadence.cadence_seconds,
+    bucketSeconds: cadence.bucket_seconds,
+    settleSeconds: cadence.settle_seconds,
+  };
 }
 
 /** `up to 22 min`, or null when the cadence is not known on the page. */
 export function delayText(cadence: LatencyCadence | null | undefined): string | null {
   if (!cadence) return null;
   const { cadenceSeconds, bucketSeconds, settleSeconds } = cadence;
-  if (![cadenceSeconds, bucketSeconds, settleSeconds].every(Number.isFinite)) return null;
+  if (![cadenceSeconds, settleSeconds].every(Number.isFinite)) return null;
+  if (bucketSeconds !== null && !Number.isFinite(bucketSeconds)) return null;
   return worstCaseDelay(cadenceSeconds, bucketSeconds, settleSeconds).text;
 }
 

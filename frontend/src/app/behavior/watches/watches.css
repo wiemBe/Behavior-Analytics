@@ -1,5 +1,11 @@
 /* Property watches: layout of the list and the watch page. Tokens only. */
 
+/* These routes put their fact line in the body. The shared header reserves a description's
+   height (`min-height: var(--header-h)`), which sat empty under the title. */
+.pw-route > .page-header {
+  min-height: 0;
+}
+
 .pw-notices {
   display: flex;
   flex-direction: column;

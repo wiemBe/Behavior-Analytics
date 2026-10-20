@@ -8,7 +8,7 @@ import {
   propertyWatchAccessFrom,
   type PropertyWatchAccess,
 } from "@/components/propertywatch/authoring";
-import { pwLatency } from "@/components/propertywatch/pwFormat";
+import { pwLatencyFrom } from "@/components/propertywatch/pwFormat";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApiError, api, type CallerInfo, type PropertyWatchCatalog } from "@/lib/api";
 
@@ -56,7 +56,7 @@ export default async function NewPropertyWatchPage() {
         </div>
       ) : access === "writer" ? (
         <>
-          <CadenceLatency className="pw-latency" parts={pwLatency()} canLink={canLink} />
+          <CadenceLatency className="pw-latency" parts={pwLatencyFrom(catalog.cadence)} canLink={canLink} />
           <WatchEditor catalog={catalog} mode="create" />
         </>
       ) : (

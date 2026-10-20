@@ -9,7 +9,7 @@ import {
   type CustomRuleSubjectKind,
   type CustomRuleUpdate,
 } from "@/lib/api";
-import { latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
+import { delayText, latencyCadence, latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
 
 export const CUSTOM_RULE_WRITE = "custom_rule:write";
 
@@ -18,8 +18,38 @@ export function customRuleLatency(cadence?: LatencyCadence | null): LatencyParts
   return latencyParts(
     "Rules",
     cadence,
-    "This is not a seconds-level correlation engine — for alerting within seconds, use QRadar's own rules.",
+    RULE_CLOSING,
   );
+}
+
+const RULE_CLOSING =
+  "This is not a seconds-level correlation engine — for alerting within seconds, use QRadar's own rules.";
+
+/**
+ * The sentence for a catalog: each subject kind's delay comes from the cadence of the family it is
+ * collected under. When every kind gives one figure it is said once; when they differ, each figure
+ * names its kinds. A kind whose family has no cadence in the catalog makes the whole sentence
+ * figure-free: a number is never guessed for it.
+ */
+export function customRuleLatencyFor(catalog: CustomRuleCatalog | null): LatencyParts {
+  const cadences = catalog?.cadences;
+  const kinds = catalog?.subject_kinds ?? [];
+  if (!cadences || kinds.length === 0) return customRuleLatency();
+  const groups = new Map<string, string[]>();
+  for (const kind of kinds) {
+    const cadence = cadences.find((c) => c.family === kind.search_family);
+    const delay = delayText(latencyCadence(cadence));
+    if (!delay) return customRuleLatency();
+    groups.set(delay, [...(groups.get(delay) ?? []), SUBJECT_KIND_LABELS[kind.subject_kind]]);
+  }
+  if (groups.size === 1) {
+    return customRuleLatency(latencyCadence(cadences.find((c) => c.family === kinds[0].search_family)));
+  }
+  const by = [...groups].map(([delay, labels]) => `${labels.join(", ")}: ${delay}`).join("; ");
+  return {
+    lead: `Rules are judged on collected 5-minute buckets, by subject — ${by} — after the events arrive (the schedule is set on `,
+    tail: `). ${RULE_CLOSING}`,
+  };
 }
 
 export type CustomRuleAccess = "writer" | "reader" | "unknown";

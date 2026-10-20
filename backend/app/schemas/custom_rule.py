@@ -16,7 +16,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.custom_rules.catalog import MeasurementRule
-from app.models.enums import CustomRuleSubjectKind, Severity
+from app.models.enums import CustomRuleSubjectKind, SearchFamily, Severity
+from app.schemas.search_cadence import CadenceOut
 
 MeasurementLabel = Literal["EXACT", "LOWER_BOUND", "NOT_MEASURED"]
 
@@ -205,6 +206,7 @@ class CatalogSubjectKindOut(BaseModel):
 
     subject_kind: str
     column: str
+    search_family: SearchFamily
 
 
 class CustomRuleCatalogOut(BaseModel):
@@ -218,6 +220,7 @@ class CustomRuleCatalogOut(BaseModel):
 
     metrics: list[CatalogMetricOut]
     subject_kinds: list[CatalogSubjectKindOut]
+    cadences: list[CadenceOut]
     source_classes: list[str]
     operators: list[str]
     evaluation_enabled: bool

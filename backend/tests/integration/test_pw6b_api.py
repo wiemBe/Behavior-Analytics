@@ -26,6 +26,7 @@ from app.core.config import get_settings
 from app.core.database import get_session
 from app.main import create_app
 from app.models.custom_rule import CustomRule
+from app.models.enums import SearchFamily, default_search_cadence
 from app.models.identity import AuditLog
 from app.models.property_watch import PropertyWatch, PwValue
 from app.models.search_cadence import SearchCadenceSetting
@@ -57,7 +58,7 @@ FK = "fk_custom_rule_pw_value_id_pw_value"
 HOSTILE = '<img src=x onerror="alert(1)">'
 
 
-def _counted_client(db_url: str):  # type: ignore[no-untyped-def]
+def _counted_client(db_url: str, **overrides: object):  # type: ignore[no-untyped-def]
     """A client whose engine is exposed, so the test can count its statements."""
     engine = create_async_engine(db_url, future=True, poolclass=NullPool)
     maker = async_sessionmaker(engine, expire_on_commit=False)
@@ -71,7 +72,9 @@ def _counted_client(db_url: str):  # type: ignore[no-untyped-def]
                 await session.rollback()
                 raise
 
-    settings = get_settings().model_copy(update={"collection_interval_seconds": 300})
+    settings = get_settings().model_copy(
+        update={"collection_interval_seconds": 300, **overrides}
+    )
     app = create_app()
     app.dependency_overrides[get_session] = _session
     app.dependency_overrides[get_settings] = lambda: settings
@@ -408,6 +411,108 @@ async def test_a_missing_family_row_serves_the_default_cadence(
     await db_session.commit()
     # the same default the collector uses when the seed row is missing
     assert client.get(f"{WATCH_PREFIX}/{watch.id}").json()["cadence_seconds"] == 300
+    await engine.dispose()
+
+
+async def test_the_watch_routes_carry_the_family_timing(db_session, db_schema: str) -> None:
+    """T-140: the figure's three inputs, from the cadence table and the settings, once a read."""
+    client, engine = _counted_client(
+        db_schema, collection_interval_seconds=900, search_cadence_settle_seconds=600
+    )
+    instance = await make_instance(db_session)
+    source = await make_log_source(db_session, instance, qradar_id=43, name="fw")
+    db_session.add(
+        SearchCadenceSetting(family="PROPERTY_WATCH", cadence_seconds=1800, updated_at=utc(h=9))
+    )
+    first = await _watch(db_session, instance, source)
+    await _watch(db_session, instance, source)
+    await db_session.commit()
+    timing = {
+        "family": "PROPERTY_WATCH",
+        "cadence_seconds": 1800,
+        "bucket_seconds": 900,
+        "settle_seconds": 600,
+    }
+
+    with _statements(engine) as listing:
+        listed = client.get(WATCH_PREFIX)
+    assert [w["cadence"] for w in listed.json()] == [timing, timing]
+    assert [w["cadence_seconds"] for w in listed.json()] == [1800, 1800]
+    assert client.get(f"{WATCH_PREFIX}/{first.id}").json()["cadence"] == timing
+    with _statements(engine) as catalog:
+        served = client.get(f"{WATCH_PREFIX}/catalog")
+    assert served.status_code == 200, served.text
+    assert served.json()["cadence"] == timing
+    assert sum("search_cadence" in s for s in listing) == 1
+    assert sum("search_cadence" in s for s in catalog) == 1
+    await engine.dispose()
+
+
+async def test_a_missing_family_row_serves_the_default_timing(db_session, db_schema: str) -> None:
+    client, engine = _counted_client(db_schema)
+    served = client.get(f"{WATCH_PREFIX}/catalog").json()["cadence"]
+    settings = get_settings()
+    assert served == {
+        "family": "PROPERTY_WATCH",
+        "cadence_seconds": 300,
+        "bucket_seconds": 300,
+        "settle_seconds": settings.search_cadence_settle_seconds,
+    }
+    await engine.dispose()
+
+
+async def test_the_rule_catalog_carries_one_timing_per_family_with_one_read(
+    db_session, db_schema: str
+) -> None:
+    client, engine = _counted_client(
+        db_schema, collection_interval_seconds=900, search_cadence_settle_seconds=600
+    )
+    db_session.add_all(
+        [
+            SearchCadenceSetting(
+                family="PHASE_A_VOLUME", cadence_seconds=3600, updated_at=utc(h=9)
+            ),
+            SearchCadenceSetting(
+                family="PROPERTY_WATCH", cadence_seconds=1800, updated_at=utc(h=9)
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    with _statements(engine) as seen:
+        response = client.get(f"{PREFIX}/catalog")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    by_family = {c["family"]: c for c in body["cadences"]}
+    assert set(by_family) == {
+        "PHASE_A_VOLUME",
+        "WAF_COLLECTION",
+        "IPS_COLLECTION",
+        "PROPERTY_WATCH",
+    }
+    assert len(body["cadences"]) == 4
+    assert by_family["PHASE_A_VOLUME"] == {
+        "family": "PHASE_A_VOLUME",
+        "cadence_seconds": 3600,
+        "bucket_seconds": 900,
+        "settle_seconds": 600,
+    }
+    assert by_family["PROPERTY_WATCH"]["cadence_seconds"] == 1800
+    # a family with no row serves the default, as the collector does
+    assert by_family["WAF_COLLECTION"]["cadence_seconds"] == int(
+        default_search_cadence(SearchFamily.WAF_COLLECTION)
+    )
+    families = {row["subject_kind"]: row["search_family"] for row in body["subject_kinds"]}
+    assert families == {
+        "LOG_SOURCE": "PHASE_A_VOLUME",
+        "FLEET_CLASS": "PHASE_A_VOLUME",
+        "WAF_ENDPOINT": "WAF_COLLECTION",
+        "IPS_ENTITY": "IPS_COLLECTION",
+        "IPS_SOURCE": "IPS_COLLECTION",
+        "PW_VALUE": "PROPERTY_WATCH",
+    }
+    assert {c["family"] for c in body["cadences"]} == set(families.values())
+    assert sum("search_cadence" in s for s in seen) == 1
     await engine.dispose()
 
 

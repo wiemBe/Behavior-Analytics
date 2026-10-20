@@ -123,7 +123,8 @@ from app.schemas.property_watch import (
     WatchScopeOut,
     WatchValueOut,
 )
-from app.services.search_cadence import SearchCadenceService
+from app.schemas.search_cadence import CadenceOut
+from app.services.search_cadence import SearchCadenceService, bucket_seconds
 
 #: Inclusive bounds of the `hours` query on the history reads and the default, as F.1's preview.
 HOURS_MIN = 1
@@ -598,7 +599,11 @@ def pinned_rows(watch_like: PropertyWatch | WatchDraft, settings: Settings) -> i
 
 
 async def pinned_rows_reasons(
-    session: AsyncSession, watch_like: PropertyWatch | WatchDraft, settings: Settings
+    session: AsyncSession,
+    watch_like: PropertyWatch | WatchDraft,
+    settings: Settings,
+    *,
+    cadence: CadenceOut | None = None,
 ) -> list[str]:
     """422 when the pinned search could return more rows per bucket than a search may carry.
 
@@ -608,8 +613,11 @@ async def pinned_rows_reasons(
     rows = pinned_rows(watch_like, settings)
     if rows is None:
         return []
-    cadence = await _property_watch_cadence(session, settings)
-    target = pw_planner_settings(settings, cadence_seconds=cadence).row_target_rows
+    if cadence is None:
+        cadence = await property_watch_cadence(session, settings)
+    target = pw_planner_settings(
+        settings, cadence_seconds=cadence.cadence_seconds
+    ).row_target_rows
     if rows <= target:
         return []
     return [
@@ -928,10 +936,16 @@ async def watch_scope(
     )
 
 
-async def _property_watch_cadence(session: AsyncSession, settings: Settings) -> int:
-    """The family cadence, read once per request, as the collector reads it."""
-    row = await SearchCadenceService(session, settings).get(SearchFamily.PROPERTY_WATCH)
-    return int(row.cadence_seconds)
+async def property_watch_cadence(session: AsyncSession, settings: Settings) -> CadenceOut:
+    """The family timing, read once per request, as the collector reads it."""
+    family = SearchFamily.PROPERTY_WATCH
+    row = await SearchCadenceService(session, settings).get(family)
+    return CadenceOut(
+        family=family,
+        cadence_seconds=int(row.cadence_seconds),
+        bucket_seconds=bucket_seconds(family, settings),
+        settle_seconds=settings.search_cadence_settle_seconds,
+    )
 
 
 def days_read(
@@ -1081,14 +1095,17 @@ async def watch_outs(
     *,
     alerting_mode: str,
     detail: bool = False,
+    cadence: CadenceOut | None = None,
 ) -> list[PropertyWatchOut]:
     """The watches as the API serves them: three bulk statements plus up to three for names.
 
     A detail read additionally resolves each scope's member count, through the same resolver
-    as `/scope` (one more bulk read per instance).
+    as `/scope` (one more bulk read per instance). A caller that already needed the cadence
+    for validation passes it in, keeping one cadence-table read for the whole request.
     """
     ids = [w.id for w in watches]
-    cadence = await _property_watch_cadence(session, settings)
+    if cadence is None:
+        cadence = await property_watch_cadence(session, settings)
     pinned_by = await pinning_rules_by_watch(session, ids) if detail else {}
     scopes = await _scope_summaries(session, watches, settings, with_members=detail)
     coverage = await _latest_coverage(session, ids)
@@ -1132,16 +1149,19 @@ async def watch_outs(
                 open_incidents=sum(counts.values()),
                 detector_states=states,
                 alerting_mode="alerting" if alerting_mode == "alerting" else "shadow",
-                cadence_seconds=cadence,
+                cadence_seconds=cadence.cadence_seconds,
                 history=watch_history(
                     watch,
                     settings,
                     estimate=(
-                        history_estimate(watch, settings, cadence_seconds=cadence)
+                        history_estimate(
+                            watch, settings, cadence_seconds=cadence.cadence_seconds
+                        )
                         if detail
                         else None
                     ),
                 ),
+                cadence=cadence,
                 threshold_rules=(
                     [
                         PinRuleOut(

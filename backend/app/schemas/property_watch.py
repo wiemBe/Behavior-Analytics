@@ -26,6 +26,7 @@ from app.models.enums import (
     PwWatchStatus,
     Severity,
 )
+from app.schemas.search_cadence import CadenceOut
 
 PwReadingLabel = Literal[
     "COUNT", "MEASURED_ZERO", "UNKNOWN", "NOT_AN_OBSERVATION", "NO_BUCKET"
@@ -308,6 +309,7 @@ class PropertyWatchOut(BaseModel):
     #: widget's `stale` is "older than twice this" (design §G.13.5).
     cadence_seconds: int
     history: WatchHistoryOut
+    cadence: CadenceOut
     created_at: datetime
     updated_at: datetime
     created_by: str | None = None
@@ -366,6 +368,7 @@ class WatchCatalogOut(BaseModel):
     preview_searches: int
     preview_rate_limit: str
     history: HistoryCatalogOut
+    cadence: CadenceOut
 
 
 class ScopeOptionOut(BaseModel):

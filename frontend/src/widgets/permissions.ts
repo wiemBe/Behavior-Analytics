@@ -45,6 +45,9 @@ export const KNOWN_PERMISSIONS = [
   // authoring, enabling, pinning, deleting and previewing one is a write `read:*` does not grant.
   "read:property_watches",
   "property_watch:write",
+  // History backfill spends Ariel searches: `read:*` does not grant the admin one, `admin:*` does.
+  "read:history_backfill",
+  "admin:history_backfill",
 ] as const;
 
 export type KnownPermission = (typeof KNOWN_PERMISSIONS)[number];

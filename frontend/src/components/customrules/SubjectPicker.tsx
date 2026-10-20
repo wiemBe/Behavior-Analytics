@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import { SUBJECT_KIND_LABELS, subjectKindInSentence } from "@/components/customrules/authoring";
+import { latencyCadence } from "@/components/cadence/CadenceLatency";
 import { pinAvailability } from "@/components/propertywatch/pwFormat";
 import {
   loadIpsEntities,
@@ -55,6 +56,7 @@ function entityLabel(entity: IpsEntityInventory): string {
 }
 
 export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel }: SubjectPickerProps) {
+  const pinCadence = latencyCadence(catalog.cadences?.find((c) => c.family === "PROPERTY_WATCH"));
   const kindId = useId();
   const searchId = useId();
   const parentId = useId();
@@ -385,14 +387,14 @@ export function SubjectPicker({ catalog, kind, value, onKind, onChange, onLabel 
                 pin the value first.
               </p>
               <p>
-                A new pin can be used in a rule {pinAvailability()}.
+                A new pin can be used in a rule {pinAvailability(pinCadence)}.
               </p>
             </div>
           )}
           {watchId && pinnedValues.length > 0 && (
             <p className="field-hint">
               Only pinned values are listed. To use another value, <Link href={`/behavior/watches/${watchId}`}>pin it on the watch first</Link>.
-              A value pinned just now is listed {pinAvailability()}.
+              A value pinned just now is listed {pinAvailability(pinCadence)}.
             </p>
           )}
         </>

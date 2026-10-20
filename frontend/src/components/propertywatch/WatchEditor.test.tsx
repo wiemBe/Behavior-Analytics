@@ -92,6 +92,32 @@ async function save() {
   await waitFor(() => expect(api.previewPropertyWatch).toHaveBeenCalled());
 }
 
+describe("the pin sentence", () => {
+  const cadence = { family: "PROPERTY_WATCH" as const, cadence_seconds: 3600, bucket_seconds: 300, settle_seconds: 120 };
+
+  it("promises no number without a cadence", () => {
+    render(<WatchEditor catalog={catalog()} mode="create" />);
+    expect(screen.getByText(/A new pin can be used in a rule after the next property-watch collection\./)).toBeInTheDocument();
+  });
+
+  it("states the figure from the catalog's cadence", () => {
+    render(<WatchEditor catalog={catalog({ cadence })} mode="create" />);
+    expect(screen.getByText(/which runs up to 1 h 7 min after the events arrive/)).toBeInTheDocument();
+  });
+
+  it("prefers the watch's own cadence", () => {
+    render(
+      <WatchEditor
+        catalog={catalog({ cadence })}
+        mode="edit"
+        watch={watch({ cadence: { ...cadence, cadence_seconds: 900 } })}
+        initialScope={scope()}
+      />,
+    );
+    expect(screen.getByText(/which runs up to 22 min after the events arrive/)).toBeInTheDocument();
+  });
+});
+
 describe("property-watch save and preview", () => {
   it("takes the operator create path: saves disabled parameters, then previews the stored id", async () => {
     render(<WatchEditor catalog={catalog()} mode="create" />);

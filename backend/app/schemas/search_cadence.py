@@ -21,12 +21,17 @@ class SearchCadenceLastRunOut(BaseModel):
     split_count: int | None
 
 
-class SearchCadenceOut(BaseModel):
+class CadenceOut(BaseModel):
+    """The timing fields another API needs to state its collection delay."""
+
     family: SearchFamily
     cadence_seconds: int
-    allowed_cadences_seconds: list[int]
     bucket_seconds: int | None
     settle_seconds: int
+
+
+class SearchCadenceOut(CadenceOut):
+    allowed_cadences_seconds: list[int]
     last_slot_start: datetime | None
     next_dispatch_at: datetime
     updated_at: datetime

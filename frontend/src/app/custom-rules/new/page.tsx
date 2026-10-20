@@ -3,7 +3,7 @@ import Link from "next/link";
 import { CustomRuleEditor } from "@/components/customrules/CustomRuleEditor";
 import { CustomRuleWriteNotice } from "@/components/customrules/CustomRuleWriteNotice";
 import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
-import { customRuleAccessFrom, customRuleLatency, type CustomRuleAccess } from "@/components/customrules/authoring";
+import { customRuleAccessFrom, customRuleLatencyFor, type CustomRuleAccess } from "@/components/customrules/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApiError, api, type CallerInfo, type CustomRuleCatalog } from "@/lib/api";
 
@@ -41,7 +41,7 @@ export default async function NewCustomRulePage() {
         </div>
       ) : access === "writer" ? (
         <>
-          <CadenceLatency className="cr-latency" parts={customRuleLatency()} canLink={canLink} />
+          <CadenceLatency className="cr-latency" parts={customRuleLatencyFor(catalog)} canLink={canLink} />
           <CustomRuleEditor catalog={catalog} mode="create" />
         </>
       ) : (
