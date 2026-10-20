@@ -23,6 +23,22 @@ class InvalidSearchCadenceError(ValueError):
     """A cadence value is not one of the operator-visible presets."""
 
 
+def bucket_seconds(family: SearchFamily, settings: Settings) -> int | None:
+    """Return the stored bucket width a search family collects, if it has one."""
+    if family in {
+        SearchFamily.PHASE_A_VOLUME,
+        SearchFamily.WAF_COLLECTION,
+        SearchFamily.IPS_COLLECTION,
+        SearchFamily.PROPERTY_WATCH,
+        SearchFamily.CATCHALL_SENDERS,
+        SearchFamily.GEO_COLLECTION,
+    }:
+        return settings.collection_interval_seconds
+    if family == SearchFamily.RULE_MATCH:
+        return settings.rule_match_window_seconds
+    return None
+
+
 def slot_start(now: datetime, cadence_seconds: int, settle_seconds: int) -> datetime:
     """Return the settled epoch-aligned cadence slot containing ``now``."""
     if now.tzinfo is None or now.utcoffset() is None:

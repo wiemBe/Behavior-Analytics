@@ -256,6 +256,7 @@ def _raw_properties(refs: list) -> list[dict[str, str]]:
 async def get_catalog(session: SessionDep, settings: SettingsDep) -> WatchCatalogOut:
     """The editor's switches and bounds. Registered before ``/{watch_id}``."""
     enabled, used = await svc.enabled_cost_total(session, settings)
+    cadence = await svc.property_watch_cadence(session, settings)
     return WatchCatalogOut(
         collection_enabled=settings.pw_collection_enabled,
         alerting_mode=alerting_mode(settings.pw_alerting_enabled),
@@ -280,6 +281,7 @@ async def get_catalog(session: SessionDep, settings: SettingsDep) -> WatchCatalo
         hours_default=svc.HOURS_DEFAULT,
         preview_searches=svc.PREVIEW_SEARCHES,
         preview_rate_limit=settings.rate_limit_search_execution,
+        cadence=cadence,
     )
 
 

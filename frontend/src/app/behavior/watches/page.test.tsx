@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import PropertyWatchesPage from "./page";
@@ -90,7 +90,55 @@ describe("the notices", () => {
     await renderPage();
     expect(screen.getAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(pwLatency()))).toHaveLength(1);
     const text = document.body.textContent ?? "";
-    expect(text.replace(partsText(pwLatency()), "")).not.toMatch(/\blive\b|real-time/i);
+    expect(text).not.toMatch(/\blive\b|real-time/i);
+  });
+});
+
+describe("the latency figure", () => {
+  const cadence = { family: "PROPERTY_WATCH" as const, cadence_seconds: 3600, bucket_seconds: 300, settle_seconds: 120 };
+  const sentence = () =>
+    screen.getAllByText((_, el) => el?.tagName === "P" && (el.textContent ?? "").startsWith("Watches are judged"));
+
+  it("comes from the catalog's cadence, bucket and settle time", async () => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
+    vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(catalog({ cadence }));
+    await renderPage();
+    expect(sentence()).toHaveLength(1);
+    expect(sentence()[0]).toHaveTextContent("collected 5-minute buckets, up to 1 h 7 min after the events arrive");
+    expect(sentence()[0]).not.toHaveTextContent("after each collection of their family");
+  });
+
+  it("follows a non-default settle time", async () => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
+    vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(
+      catalog({ cadence: { ...cadence, cadence_seconds: 900, settle_seconds: 600 } }),
+    );
+    await renderPage();
+    expect(sentence()[0]).toHaveTextContent("up to 30 min after the events arrive");
+  });
+
+  it("names no number when the catalog has no cadence, or none could be read", async () => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
+    await renderPage();
+    expect(sentence()[0]).toHaveTextContent("after each collection of their family");
+    expect(sentence()[0].textContent).not.toMatch(/up to \d/);
+  });
+
+  it("links Search cadence only for read:search_cadence, figure or not", async () => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
+    vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(catalog({ cadence }));
+    vi.spyOn(api, "caller").mockResolvedValue({
+      subject: "analyst", email: null, permissions: [], effective_permissions: ["read:property_watches"],
+    });
+    await renderPage();
+    expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
+    cleanup();
+    vi.spyOn(api, "caller").mockResolvedValue({
+      subject: "analyst", email: null, permissions: [], effective_permissions: ["read:property_watches", "read:search_cadence"],
+    });
+    await renderPage();
+    expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute("href", "/admin/search-cadence");
+    expect(sentence()[0]).toHaveTextContent("up to 1 h 7 min");
   });
 });
 

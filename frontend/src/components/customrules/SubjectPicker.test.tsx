@@ -102,6 +102,27 @@ describe("custom-rule subject picker", () => {
     );
   });
 
+  it("states the figure from the PROPERTY_WATCH cadence in the catalog", async () => {
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
+    vi.spyOn(api, "propertyWatchValues").mockResolvedValue(paged([]));
+    render(
+      <SubjectPicker
+        catalog={catalog({
+          cadences: [{ family: "PROPERTY_WATCH", cadence_seconds: 3600, bucket_seconds: 300, settle_seconds: 120 }],
+        })}
+        kind="PW_VALUE"
+        value={{ logSourceId: "", sourceClass: "", wafEndpointId: "", ipsEntityId: "", pwValueId: "" }}
+        onKind={vi.fn()}
+        onChange={vi.fn()}
+        onLabel={vi.fn()}
+      />,
+    );
+    fireEvent.change(await screen.findByRole("combobox", { name: "Property watch" }), {
+      target: { value: watch().id },
+    });
+    expect(await screen.findByText(/which runs up to 1 h 7 min after the events arrive/)).toBeInTheDocument();
+  });
+
   it("explains that a fresh pin waits for the next collection tick", async () => {
     vi.spyOn(api, "propertyWatches").mockResolvedValue([watch()]);
     vi.spyOn(api, "propertyWatchValues").mockResolvedValue(paged([]));

@@ -16,27 +16,13 @@ from app.schemas.search_cadence import (
     SearchCadenceUpdate,
 )
 from app.security.rbac import PERM_SEARCH_CADENCE_ADMIN, Principal
-from app.services.search_cadence import SearchCadenceService
+from app.services.search_cadence import SearchCadenceService, bucket_seconds
 
 router = APIRouter(prefix="/admin/search-cadence", tags=["search-cadence"])
 
 AdminPrincipalDep = Annotated[
     Principal, Depends(requires(PERM_SEARCH_CADENCE_ADMIN))
 ]
-
-
-def _bucket_seconds(family: SearchFamily, settings: SettingsDep) -> int | None:
-    if family in {
-        SearchFamily.PHASE_A_VOLUME,
-        SearchFamily.WAF_COLLECTION,
-        SearchFamily.IPS_COLLECTION,
-        SearchFamily.CATCHALL_SENDERS,
-        SearchFamily.GEO_COLLECTION,
-    }:
-        return settings.collection_interval_seconds
-    if family == SearchFamily.RULE_MATCH:
-        return settings.rule_match_window_seconds
-    return None
 
 
 def _as_out(
@@ -60,7 +46,7 @@ def _as_out(
         family=family,
         cadence_seconds=row.cadence_seconds,
         allowed_cadences_seconds=[int(cadence) for cadence in SearchCadence],
-        bucket_seconds=_bucket_seconds(family, settings),
+        bucket_seconds=bucket_seconds(family, settings),
         settle_seconds=settings.search_cadence_settle_seconds,
         last_slot_start=row.last_slot_start,
         next_dispatch_at=service.next_dispatch_at(row, now),

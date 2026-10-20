@@ -4,7 +4,7 @@ import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/Caden
 import { RuleStatus } from "@/components/customrules/RuleStatus";
 import {
   conditionText,
-  customRuleLatency,
+  customRuleLatencyFor,
   customRuleAccessFrom,
   type CustomRuleAccess,
   SUBJECT_KIND_LABELS,
@@ -72,7 +72,7 @@ export default async function CustomRulesPage() {
                 Breaches are recorded and nothing pages until <code>CUSTOM_RULES_ALERTING_ENABLED</code> is on.
               </div>
             )}
-            <CadenceLatency className="cr-latency" parts={customRuleLatency()} canLink={canLink} />
+            <CadenceLatency className="cr-latency" parts={customRuleLatencyFor(catalog)} canLink={canLink} />
           </div>
 
           {rules.length === 0 ? (

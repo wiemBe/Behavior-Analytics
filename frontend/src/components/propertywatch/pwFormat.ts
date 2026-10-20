@@ -8,6 +8,7 @@
 
 import type {
   AnomalySummary,
+  Cadence,
   MeasurementKind,
   PropertyWatch,
   PwAnomalyTypeName,
@@ -18,7 +19,7 @@ import type {
   PwValue,
   PwWatchStatus,
 } from "@/lib/api";
-import { delayText, latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
+import { delayText, latencyCadence, latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
 import { NOT_MEASURED } from "@/lib/behavior";
 import type { Tone } from "@/lib/health";
 
@@ -27,8 +28,13 @@ export function pwLatency(cadence?: LatencyCadence | null): LatencyParts {
   return latencyParts(
     "Watches",
     cadence,
-    "This is not real-time correlation; for alerting within seconds, use QRadar's own rules.",
+    "This is not a seconds-level correlation engine — for alerting within seconds, use QRadar's own rules.",
   );
+}
+
+/** The latency sentence from an API cadence, or the figure-free one when the API sent none. */
+export function pwLatencyFrom(cadence: Cadence | null | undefined): LatencyParts {
+  return pwLatency(latencyCadence(cadence));
 }
 
 /**

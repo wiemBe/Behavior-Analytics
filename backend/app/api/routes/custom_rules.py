@@ -41,6 +41,7 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.custom_rules.alerts import alerting_mode, resolve_deleted_rule_alert
 from app.custom_rules.catalog import CUSTOM_RULE_METRICS, catalog_entry
+from app.custom_rules.engine import _KIND_FAMILY
 from app.custom_rules.preview import PreviewResult, replay
 from app.custom_rules.validation import (
     _SUBJECT_COLUMNS,
@@ -69,6 +70,7 @@ from app.schemas.custom_rule import (
     PreviewBucketOut,
     PreviewOut,
 )
+from app.schemas.search_cadence import CadenceOut
 from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_CUSTOM_RULE_WRITE,
@@ -76,6 +78,7 @@ from app.security.rbac import (
     Principal,
     require_permission,
 )
+from app.services.search_cadence import SearchCadenceService, bucket_seconds
 
 router = APIRouter(prefix="/custom-rules", tags=["custom-rules"])
 
@@ -453,7 +456,13 @@ def _catalog_subject_kinds() -> list[CatalogSubjectKindOut]:
         # One column per kind. A longer pairing must not lose a name on the wire.
         if len(columns) != 1:
             raise RuntimeError(f"{kind.value} pairs with {list(columns)}")
-        rows.append(CatalogSubjectKindOut(subject_kind=kind.value, column=columns[0]))
+        rows.append(
+            CatalogSubjectKindOut(
+                subject_kind=kind.value,
+                column=columns[0],
+                search_family=_KIND_FAMILY[kind.value],
+            )
+        )
     return rows
 
 
@@ -472,6 +481,7 @@ def _catalog_operators() -> list[str]:
 
 def build_custom_rule_catalog(
     *,
+    cadences: list[CadenceOut],
     evaluation_enabled: bool,
     alerting_enabled: bool,
     max_enabled: int,
@@ -481,6 +491,7 @@ def build_custom_rule_catalog(
     return CustomRuleCatalogOut(
         metrics=_catalog_metrics(),
         subject_kinds=_catalog_subject_kinds(),
+        cadences=cadences,
         source_classes=_catalog_source_classes(),
         operators=_catalog_operators(),
         evaluation_enabled=evaluation_enabled,
@@ -751,7 +762,19 @@ async def get_catalog(session: SessionDep, settings: SettingsDep) -> CustomRuleC
     Registered before ``/{rule_id}`` so ``catalog`` is not parsed as a UUID.
     One count statement supplies ``enabled_count``; the rest is in-process.
     """
+    cadence_rows = {row.family: row for row in await SearchCadenceService(session, settings).list()}
+    families = dict.fromkeys(_KIND_FAMILY[kind.value] for kind in CustomRuleSubjectKind)
+    cadences = [
+        CadenceOut(
+            family=family,
+            cadence_seconds=cadence_rows[family.value].cadence_seconds,
+            bucket_seconds=bucket_seconds(family, settings),
+            settle_seconds=settings.search_cadence_settle_seconds,
+        )
+        for family in families
+    ]
     return build_custom_rule_catalog(
+        cadences=cadences,
         evaluation_enabled=settings.custom_rules_enabled,
         alerting_enabled=settings.custom_rules_alerting_enabled,
         max_enabled=settings.custom_rules_max_enabled,

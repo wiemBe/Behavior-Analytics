@@ -110,7 +110,8 @@ from app.schemas.property_watch import (
     WatchScopeOut,
     WatchValueOut,
 )
-from app.services.search_cadence import SearchCadenceService
+from app.schemas.search_cadence import CadenceOut
+from app.services.search_cadence import SearchCadenceService, bucket_seconds
 
 #: Inclusive bounds of the `hours` query on the history reads and the default, as F.1's preview.
 HOURS_MIN = 1
@@ -769,10 +770,16 @@ async def watch_scope(
     )
 
 
-async def _property_watch_cadence(session: AsyncSession, settings: Settings) -> int:
-    """The family cadence, read once per request, as the collector reads it."""
-    row = await SearchCadenceService(session, settings).get(SearchFamily.PROPERTY_WATCH)
-    return int(row.cadence_seconds)
+async def property_watch_cadence(session: AsyncSession, settings: Settings) -> CadenceOut:
+    """The family timing, read once per request, as the collector reads it."""
+    family = SearchFamily.PROPERTY_WATCH
+    row = await SearchCadenceService(session, settings).get(family)
+    return CadenceOut(
+        family=family,
+        cadence_seconds=int(row.cadence_seconds),
+        bucket_seconds=bucket_seconds(family, settings),
+        settle_seconds=settings.search_cadence_settle_seconds,
+    )
 
 
 async def watch_outs(
@@ -789,7 +796,7 @@ async def watch_outs(
     as `/scope` (one more bulk read per instance).
     """
     ids = [w.id for w in watches]
-    cadence = await _property_watch_cadence(session, settings)
+    cadence = await property_watch_cadence(session, settings)
     pinned_by = await pinning_rules_by_watch(session, ids) if detail else {}
     scopes = await _scope_summaries(session, watches, settings, with_members=detail)
     coverage = await _latest_coverage(session, ids)
@@ -833,7 +840,8 @@ async def watch_outs(
                 open_incidents=sum(counts.values()),
                 detector_states=states,
                 alerting_mode="alerting" if alerting_mode == "alerting" else "shadow",
-                cadence_seconds=cadence,
+                cadence_seconds=cadence.cadence_seconds,
+                cadence=cadence,
                 threshold_rules=(
                     [
                         PinRuleOut(

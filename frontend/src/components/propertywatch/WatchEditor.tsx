@@ -31,6 +31,7 @@ import {
   type WatchDraft,
 } from "./authoring";
 import { WatchPropertyPicker, WatchScopePicker } from "./WatchPickers";
+import { latencyCadence } from "@/components/cadence/CadenceLatency";
 import { pinAvailability } from "./pwFormat";
 
 import "./propertywatch.css";
@@ -529,7 +530,7 @@ export function WatchEditor({
           </div>
           <p className="field-hint">
             Threshold alerts are <Link href="/custom-rules/new">custom rules</Link> on a pinned
-            value. A new pin can be used in a rule {pinAvailability()}.
+            value. A new pin can be used in a rule {pinAvailability(latencyCadence(watch?.cadence ?? catalog.cadence))}.
           </p>
         </fieldset>
 

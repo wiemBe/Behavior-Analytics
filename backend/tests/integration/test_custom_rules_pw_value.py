@@ -427,7 +427,11 @@ async def test_a_rule_pins_a_pinned_value_only(db_session, db_schema: str) -> No
     again = client.get(f"{PREFIX}/{ok.json()['id']}")
     assert again.json()["subject_kind"] == "PW_VALUE"
     catalog = client.get(f"{PREFIX}/catalog").json()
-    assert {"subject_kind": "PW_VALUE", "column": "pw_value_id"} in catalog["subject_kinds"]
+    assert {
+        "subject_kind": "PW_VALUE",
+        "column": "pw_value_id",
+        "search_family": "PROPERTY_WATCH",
+    } in catalog["subject_kinds"]
     assert any(m["metric"] == "pw_value_events" for m in catalog["metrics"])
 
 

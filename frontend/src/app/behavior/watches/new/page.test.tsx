@@ -33,6 +33,15 @@ describe("new property-watch route", () => {
     expect(screen.getAllByText(/Watches are judged on collected 5-minute buckets, after each collection of their family/)).toHaveLength(1);
   });
 
+  it("states the figure from the catalog's cadence, and the old words without one", async () => {
+    vi.spyOn(api, "propertyWatchCatalog").mockResolvedValue(
+      catalog({ cadence: { family: "PROPERTY_WATCH", cadence_seconds: 900, bucket_seconds: 300, settle_seconds: 120 } }),
+    );
+    await renderPage();
+    expect(screen.getAllByText(/Watches are judged on collected 5-minute buckets, up to 22 min after the events arrive/)).toHaveLength(1);
+    expect(screen.queryByText(/after each collection of their family/)).toBeNull();
+  });
+
   it("links Search cadence only to a reader of read:search_cadence", async () => {
     await renderPage();
     expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();

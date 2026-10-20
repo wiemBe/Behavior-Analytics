@@ -19,7 +19,7 @@ import {
 } from "@/components/propertywatch/authoring";
 import {
   coverageText,
-  pwLatency,
+  pwLatencyFrom,
   propertiesText,
   relativeAge,
   scopeText,
@@ -120,7 +120,7 @@ export default async function PropertyWatchesPage() {
                 )}
               </>
             )}
-            <CadenceLatency className="pw-latency" parts={pwLatency()} canLink={canLink} />
+            <CadenceLatency className="pw-latency" parts={pwLatencyFrom(catalog?.cadence)} canLink={canLink} />
             {access !== "writer" && (
               <p className="pw-write-note" role={access === "unknown" ? "alert" : undefined}>
                 {access === "unknown" ? "Permissions could not be read. " : ""}

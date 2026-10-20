@@ -25,6 +25,18 @@ describe("new custom rule page", () => {
     expect(screen.getAllByText((_, el) => el?.tagName === "P" && el.textContent === partsText(customRuleLatency()))).toHaveLength(1);
   });
 
+  it("states the figure from the catalog's cadences", async () => {
+    vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
+      catalog({
+        subject_kinds: [{ subject_kind: "WAF_ENDPOINT", column: "waf_endpoint_id", search_family: "WAF_COLLECTION" }],
+        cadences: [{ family: "WAF_COLLECTION", cadence_seconds: 300, bucket_seconds: 300, settle_seconds: 120 }],
+      }),
+    );
+    render(await NewCustomRulePage());
+    expect(screen.getByText(/Rules are judged on collected 5-minute buckets, up to 12 min after the events arrive/)).toBeInTheDocument();
+    expect(screen.queryByText(/after each collection of their family/)).toBeNull();
+  });
+
   it("links Search cadence only to a reader of read:search_cadence", async () => {
     render(await NewCustomRulePage());
     expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();

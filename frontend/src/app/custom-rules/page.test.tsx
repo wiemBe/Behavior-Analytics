@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import CustomRulesPage from "./page";
@@ -45,6 +45,53 @@ describe("custom-rule list states", () => {
     render(await CustomRulesPage());
     expect(screen.getByRole("link", { name: "New rule" })).toHaveAttribute("href", "/custom-rules/new");
     expect(screen.getByRole("link", { name: "Create the first rule" })).toHaveAttribute("href", "/custom-rules/new");
+  });
+});
+
+describe("custom-rule list latency figure", () => {
+  const kinds = [
+    { subject_kind: "LOG_SOURCE" as const, column: "log_source_id", search_family: "PHASE_A_VOLUME" as const },
+    { subject_kind: "PW_VALUE" as const, column: "pw_value_id", search_family: "PROPERTY_WATCH" as const },
+  ];
+  const timing = (family: "PHASE_A_VOLUME" | "PROPERTY_WATCH", cadence: number) => ({
+    family, cadence_seconds: cadence, bucket_seconds: 300, settle_seconds: 120,
+  });
+  const sentence = () =>
+    screen.getAllByText((_, el) => el?.tagName === "P" && (el.textContent ?? "").startsWith("Rules are judged"));
+
+  it("names each subject kind's figure from its family's cadence", async () => {
+    vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
+      catalog({ subject_kinds: kinds, cadences: [timing("PHASE_A_VOLUME", 900), timing("PROPERTY_WATCH", 3600)] }),
+    );
+    vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
+    render(await CustomRulesPage());
+    expect(sentence()).toHaveLength(1);
+    expect(sentence()[0]).toHaveTextContent("Log source: up to 22 min; Property watch value: up to 1 h 7 min");
+  });
+
+  it("names no number when a kind's family is missing from the cadences", async () => {
+    vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
+      catalog({ subject_kinds: kinds, cadences: [timing("PHASE_A_VOLUME", 900)] }),
+    );
+    vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
+    render(await CustomRulesPage());
+    expect(sentence()[0]).toHaveTextContent("after each collection of their family");
+    expect(sentence()[0].textContent).not.toMatch(/up to \d/);
+  });
+
+  it("links Search cadence only for read:search_cadence", async () => {
+    vi.spyOn(api, "customRuleCatalog").mockResolvedValue(
+      catalog({ subject_kinds: kinds, cadences: [timing("PHASE_A_VOLUME", 900), timing("PROPERTY_WATCH", 900)] }),
+    );
+    vi.spyOn(api, "customRules").mockResolvedValue([rule()]);
+    vi.spyOn(api, "caller").mockResolvedValue({ ...reader, permissions: [] });
+    render(await CustomRulesPage());
+    expect(screen.queryByRole("link", { name: "Search cadence" })).toBeNull();
+    cleanup();
+    vi.spyOn(api, "caller").mockResolvedValue({ ...reader, permissions: [], effective_permissions: [...reader.effective_permissions, "read:search_cadence"] });
+    render(await CustomRulesPage());
+    expect(screen.getByRole("link", { name: "Search cadence" })).toHaveAttribute("href", "/admin/search-cadence");
+    expect(sentence()[0]).toHaveTextContent("collected 5-minute buckets, up to 22 min after the events arrive");
   });
 });
 

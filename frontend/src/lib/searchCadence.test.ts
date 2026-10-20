@@ -113,6 +113,10 @@ describe("schedule presets", () => {
 describe("familyInfo", () => {
   it("names the four seeded families", () => {
     expect(familyInfo("RULE_MATCH").name).toBe("Rule matches");
+    expect(familyInfo("PROPERTY_WATCH")).toEqual({
+      name: "Property watches",
+      scope: "Event count per watched property value",
+    });
     expect(familyInfo("ANOMALY_EXPLANATION").scope).toMatch(/evidence/i);
   });
 

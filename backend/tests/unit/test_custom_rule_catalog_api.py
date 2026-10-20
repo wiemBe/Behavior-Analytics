@@ -19,10 +19,28 @@ from app.custom_rules.validation import (
     validate_rule_draft,
 )
 from app.main import create_app
-from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind, SourceClass
+from app.models.enums import CustomRuleMetric, CustomRuleSubjectKind, SearchFamily, SourceClass
 from app.schemas.custom_rule import CatalogMetricOut, CustomRuleCatalogOut
+from app.schemas.search_cadence import CadenceOut
 
 _COLUMNS = ("log_source_id", "source_class", "waf_endpoint_id", "ips_entity_id", "pw_value_id")
+
+
+def _cadences() -> list[CadenceOut]:
+    return [
+        CadenceOut(
+            family=family,
+            cadence_seconds=900,
+            bucket_seconds=300,
+            settle_seconds=120,
+        )
+        for family in (
+            SearchFamily.PHASE_A_VOLUME,
+            SearchFamily.WAF_COLLECTION,
+            SearchFamily.IPS_COLLECTION,
+            SearchFamily.PROPERTY_WATCH,
+        )
+    ]
 
 
 def _catalog(
@@ -33,6 +51,7 @@ def _catalog(
     enabled_count: int = 0,
 ) -> CustomRuleCatalogOut:
     return build_custom_rule_catalog(
+        cadences=_cadences(),
         evaluation_enabled=evaluation_enabled,
         alerting_enabled=alerting_enabled,
         max_enabled=max_enabled,
@@ -109,6 +128,16 @@ def test_catalog_subject_kinds_match_the_validator_pairing() -> None:
     for row, kind in pairs:
         assert _SUBJECT_COLUMNS[kind] == (row.column,)
         assert validate_rule_draft(_paired(kind, row.column)) == []
+
+    assert {row.subject_kind: row.search_family for row in catalog.subject_kinds} == {
+        "LOG_SOURCE": SearchFamily.PHASE_A_VOLUME,
+        "FLEET_CLASS": SearchFamily.PHASE_A_VOLUME,
+        "WAF_ENDPOINT": SearchFamily.WAF_COLLECTION,
+        "IPS_ENTITY": SearchFamily.IPS_COLLECTION,
+        "IPS_SOURCE": SearchFamily.IPS_COLLECTION,
+        "PW_VALUE": SearchFamily.PROPERTY_WATCH,
+    }
+    assert catalog.cadences == _cadences()
 
 
 def test_catalog_source_classes_are_what_validation_accepts() -> None:
