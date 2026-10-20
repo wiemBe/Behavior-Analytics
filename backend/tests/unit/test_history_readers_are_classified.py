@@ -160,6 +160,13 @@ HISTORY_TABLES = (
             "app.services.waf_status.waf_source_statuses": Reader(
                 "source status", ReaderKind.DISPLAY
             ),
+            # HB-8r1: the admin page's "has this source collected live data?" question
+            # (§B.5), which decides `later_yes` per configured source. History rows are
+            # not live data, so the question is live-only even though the page displays
+            # the answer.
+            "app.services.history_backfill.HistoryBackfillService._entries": Reader(
+                "HB-8 later-Yes per source", ReaderKind.LIVE_ONLY, 1
+            ),
             "app.waf.baseline.WafBaselineBuilder.source_bucket_facts": Reader(
                 "baseline", ReaderKind.EVIDENCE
             ),
@@ -207,6 +214,11 @@ HISTORY_TABLES = (
                 "R6", ReaderKind.DISPLAY
             ),
             "app.services.catchall_retention.<module>": Reader("R7", ReaderKind.DELETE),
+            # HB-8r1: the estimate's senders per bucket, over the live buckets only. A
+            # history bucket is evidence, not a live measurement of today's senders.
+            "app.services.history_backfill.HistoryBackfillService._counts": Reader(
+                "HB-8 estimate density", ReaderKind.LIVE_ONLY, 1
+            ),
         },
     ),
     HistoryTable(

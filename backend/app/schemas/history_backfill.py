@@ -56,11 +56,21 @@ class GapOut(BaseModel):
 
 class ScopeOut(BaseModel):
     scope_key: str
+    #: The QRadar log source's name for a WAF or IPS scope row; None for a console-wide
+    #: row and for a source that is no longer known.
+    name: str | None
     state: str
     days_requested: int | None
     days_target: int | None
     target_start: datetime | None
+    #: What `floor` is depends on the family (`floor_proved` says which):
+    #: - WAF, IPS and rule matches: the floor QRadar's own read proved for this scope
+    #:   (§B.3.2), so nothing before it may be written;
+    #: - Phase A and catch-all: only where the read started, `T0 - m`. Their real floors
+    #:   are per source, in the progress (§B.3.2); a scope-wide column cannot hold them.
     floor: datetime | None
+    #: True when `floor` is the floor QRadar proved; false when it is only the read start.
+    floor_proved: bool
     through: datetime | None
     anchor: datetime | None
     started_at: datetime | None
@@ -69,7 +79,9 @@ class ScopeOut(BaseModel):
     #: From the decoded progress; None for a `{}` progress or one that does not decode.
     searches: int | None
     buckets_read: int | None
-    #: Whole buckets from `floor` through `through`, per day, one decimal; never an ETA.
+    #: Whole buckets from the family's proven read start through `through`, per day, one
+    #: decimal; never an ETA. Phase A and catch-all count from `max(floor, target_start)`:
+    #: their `floor` is the read start, which is earlier than anything they could prove.
     days_read: float | None
     gaps: list[GapOut] | None
     #: True when the stored progress did not decode: the three fields above are None.
