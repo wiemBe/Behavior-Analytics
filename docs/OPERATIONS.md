@@ -20,7 +20,7 @@ Dört kural her bölümde geçerlidir:
 5. [Tanı](#tanı)
 6. [Geçmiş okuma](#geçmiş-okuma)
 7. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R58; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R60; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
 `support-bundle` bugün çalışır. `bundle` (çevrimdışı paket) bu sürümde yoktur. `./qradar-dash bundle`
@@ -997,6 +997,105 @@ Komut kayıtlı bir kararı asla değiştirmez ve QRadar'a arama yapmaz.
   Laboratuvar konsolunda saklama kovaları okunamadı; hangi kovaların hangi süreyle tutulduğu ve
   silmenin kova içinde en eskiden yeniye mi yapıldığı konsoldan doğrulanmalıdır. Bu doğrulanmadan
   geçmiş okumaya dayalı bir taban çizgisine güvenme.
+
+### Mülk izlemesinin kendi geçmişi
+
+Konsol düzeyindeki okumadan ayrı olarak, tek bir mülk izlemesi kendi geçmişini isteyebilir.
+Böyle bir okuma konsolun "geçmiş okunsun mu" kararından bağımsızdır: kendi anahtarı, kendi
+penceresi ve kendi gerekçesi vardır. `/admin/history-backfill` sayfasında görünmez, izleme
+sayfasında yaşar. Okunan kovalar yine de yalnız öğrenme içindir: hiçbir olay, ihlal ya da uyarı
+bu aralığa işaret etmez.
+
+**Anahtar ve kapalıyken ne olur.** `PW_BOOTSTRAP_ENABLED` (varsayılan **true**). Kapalıyken:
+
+- Yeni bir izleme `history_days` verilmeden oluşturulursa geçmiş istemez. Verilen değer yine de
+  saklanır, toplayıcı bunu bildirir.
+- Geçmiş isteyen ama henüz okumamış bir izleme kendi bir sonraki tick'inde `PARTIAL` olur,
+  gerekçesi "history reading is switched off". O tick'ten itibaren yalnız canlı toplar; geçmişten
+  hiçbir kova yazılmaz.
+- Okuyan bir izleme kendi bir sonraki tick'inde `PARTIAL` olur, gerekçesi "history reading was
+  switched off". Okunmuş kovalar kalır.
+- Düzenleyicinin "5. History" bölümü "History reading is switched off on this server" notuyla
+  kapanır ve sayfa "Read history" düğmesini göstermez.
+- Tick bütçesinin 409'u uygulanmaz. Yine de bir geçmiş isteği kabul edilir ve bir sonraki
+  tick'te `PARTIAL` ile kapanır.
+
+**İstek.** İstenen gün sayısı 0 ya da `PW_NEW_VALUE_HISTORY_DAYS` (7) ile `PW_BOOTSTRAP_DAYS`
+(28) arasında olmalı; başka bir değer 422 alır. Anahtar açıkken yeni bir izleme `PW_BOOTSTRAP_DAYS`
+gün ister. Bir izlemenin geçmişi yalnız bir kez istenebilir: okuma başlamış ya da bitmiş bir
+izlemede `history_days` değiştirmek 409 alır ("history is COMPLETE on this watch and cannot be
+requested again; create a new watch to read history"). Aynı 409, izleme zaten kova toplamışsa ya da
+kendi sürümünde kova tutuyorsa gelir. İstek yalnız kaydeder; okumayı bir sonraki tick'teki
+toplayıcı başlatır ve gerekçesi "history was requested, and the scope can be planned at its next
+collection" olur.
+
+**Okuma durumları.**
+
+| Durum | Anlamı | Ne yapılır |
+|---|---|---|
+| `NOT_REQUESTED` | Bu izleme geçmiş istemedi | — |
+| `READING` | Okuma sürüyor | İzle |
+| `COMPLETE` | İstenen pencere tam okundu, boşluk yok | Başka iş yok |
+| `PARTIAL` | Pencere tam okunmadı ya da bir boşluk var | Gerekçeyi oku |
+| `UNAVAILABLE` | QRadar bu kapsamda hiç olay tutmuyor | Bu bir hata değil; izleme ileriye doğru öğrenir |
+
+`UNAVAILABLE` üç durumda çıkar: pencerede hiç olay yok, ilk olay kanıtlanan tabandan daha yeni
+(taban payı `PW_BOOTSTRAP_FLOOR_MARGIN_HOURS`, varsayılan 24 saat), ya da taban taraması
+`PW_BOOTSTRAP_MAX_FAILURES` kez başarısız oldu.
+
+Bir izlemenin `WAITING` ya da `NOT_ELIGIBLE` durumu yoktur: izleme hareketli bir sonla okur,
+çapası gerekmez. Okuma sürerken izlemenin durumu `READING_HISTORY` olur (rozet "Reading history")
+ve durumun gerekçesi ilerlemeyi söyler: "Reading history from QRadar: 3.2 of 28.0 days; nothing is
+judged until it finishes". Devralma anında bu durum temizlenir.
+
+**Analist nerede görür.**
+
+- İzleme sayfası `/behavior/watches/<id>`: "History" bölümü. Durum, istenen gün sayısı, istenen
+  pencere, QRadar'dan okunan aralık, kanıtlanan taban ve boşluklar burada listelenir.
+- Sayfanın başlığı: durum rozeti ve "3.2 of 28.0 days read. Nothing is judged until it finishes"
+  satırı.
+- Dürüstlük paneli: "READING HISTORY" notu, her boşluk için bir "HISTORY GAP" notu ve saklanan
+  ilerleme okunamadıysa "HISTORY PROGRESS UNREADABLE" notu ("This is not zero days read").
+- API: her izleme okumasında bir `history` bloğu gelir: durum, istenen gün, pencerenin başı,
+  kanıtlanan taban, okunan aralık, okunan gün, arama sayısı, okunan kova sayısı, boşluklar,
+  gerekçe, başlangıç ve bitiş saati, bitmemiş bir istekte tahmin. Ölçülmemiş bir sayı `null`
+  olur, sıfır değil. Tahmin bir vaat değildir, planlayıcının aritmetiğidir; süre garantisi yoktur.
+
+**Takılı bir okumanın belirtileri.**
+
+- **Zaman sınırı.** Okuma `PW_BOOTSTRAP_MAX_HOURS` (varsayılan 72 saat) boyunca sürerse kendiliğinden
+  `PARTIAL` olur, gerekçesi "the reading did not finish in 72 h". Okuma bitmiştir, izleme canlı
+  toplamaya devam eder. Yeniden okumak isteyen operatör yeni bir izleme kurar.
+- **En dar genişlikteki başarısızlıklar.** Bir arama başarısız olunca genişlik yarıya iner. En dar
+  genişlik 12 kovadır (5 dakikalık kovalarda bir saat). En dar genişlikte üst üste
+  `PW_BOOTSTRAP_MAX_FAILURES` (varsayılan 3) başarısızlık olunca o aralık bir boşluk olur:
+  "search failed 3 times at the minimum width"; daha önce her denemede "a search failed at the
+  minimum width (1 of 3); the same span is tried again" yazılır. Boşluklar 20'yi aşarsa okuma
+  `PARTIAL` olur: "more than 20 unreadable spans". Gerekçe bir aramanın başarısız olduğunu
+  söyler: QRadar erişimini ve token'ı denetle (OPS-R1 ... OPS-R4), `./qradar-dash logs` ile arama
+  hatalarına bak. Boşluklar aralıklarıyla listelenir; okunan diğer kovalar geçerlidir.
+- **Yoğunluk kapısı.** Okunan kovaların alt sınır olanlarının payı
+  `PW_BOOTSTRAP_MAX_LOWER_BOUND_SHARE` (varsayılan %5) sınırını aşarsa okuma `PARTIAL` olur: "12%
+  of the buckets read are lower bounds (limit 5%): too many distinct values per bucket, so history
+  would be lower bounds". Alt sınır, tek kovada satır tavanına çarpmış bir aramanın sonucudur:
+  saklanan satırlar tamdır, kuyruğu eksiktir; sayı bir alt sınırdır, sıfır değil. Bu bir arıza
+  değildir: `PW_BOOTSTRAP_MAX_LOWER_BOUND_SHARE` (0.0 - 1.0) ile kapı gevşetilebilir ya da daha dar
+  kapsamlı yeni bir izleme kurulabilir.
+- **Tick'in arama bütçesi.** Canlı toplama tick'in bütçesini önce harcar, geçmiş adımı kalanı
+  alır. Boş kalan arama sayısı bir adımın maliyetinden azsa adım hiç arama yapmaz, gerekçesi
+  "waiting for search budget" olur. Etkin izleme sayısını azalt ya da `PW_MAX_SEARCHES_PER_TICK`
+  (40), `PW_BOOTSTRAP_SEARCHES_PER_TICK` (12) ya da `PW_BOOTSTRAP_SECONDS_PER_TICK` (180)
+  değerlerini büyüt.
+- **Bütçe 409'u.** İstek daha ilk adımda reddedilebilir. Bir adım sabitlenmiş (pinned) değer varsa
+  üç arama (TOTALS, PINNED, bir GROUPED), yoksa iki arama tutar; canlı toplamanın payı
+  düşüldükten sonra kalan arama sayısı bundan azsa istek 409 alır: "reading history needs at
+  least 3 free searches per tick (TOTALS, PINNED and one GROUPED), but 1 are left after the enabled
+  watches' live cost of 39 of 40". Bir izlemeyi devre dışı bırak ya da `PW_MAX_SEARCHES_PER_TICK`
+  değerini büyüt; olmuyorsa izleme sayfasındaki "Enable without history" düğmesi izlemeyi geçmişsiz
+  etkinleştirir: izleme yalnız ileriye doğru öğrenir, QRadar'ın geçmişi okunmaz.
+- **Okunmayan ilerleme.** Saklanan ilerleme geri okunamazsa okuma `PARTIAL` olur, gerekçesi "the
+  stored history progress could not be read back". Sayılar `null` olur, sıfır değil. Arayüzden
+  onarılacak bir şey yoktur: okuma kapanmıştır, izleme canlı toplamaya devam eder.
 
 ---
 
@@ -2139,3 +2238,58 @@ docker compose run --rm --no-deps -T backend \
 **Çözüm:** Veritabanının hazır olduğundan ve konsol adının `qradar add` ile kaydedilmiş olduğundan
 emin ol, sonra komutu yeniden çalıştır. Kayıtlı bir karar varsa komut onu değiştirmez, "already
 decided on <tarih>: <yanıt>" yazar ve 0 ile çıkar.
+
+### OPS-R59. Mülk izlemesinin geçmiş okuması ilerlemiyor
+
+**Belirti:** İzleme sayfasında (`/behavior/watches/<id>`) izleme "Reading history" durumunda ama
+"History" bölümündeki okunan gün sayısı ilerlemiyor; durumun yanındaki satır "X of Y days read"
+diyor ve sayı değişmiyor. "History gaps" listesi boş da olabilir.
+
+**Olası neden:** Dört ayrı neden aynı görüntüyü verir. Birincisi: canlı toplama tick'in arama
+bütçesini tüketmiştir, geçmiş adımı arama yapacak boşluk bulamamıştır; gerekçesi "waiting for
+search budget" olur. İkincisi: sağlayıcı aramaları başarısız oluyordur; genişlik her başarısızlıkta
+yarıya iner, en dar genişlikte (12 kova) `PW_BOOTSTRAP_MAX_FAILURES` (varsayılan 3) kez
+başarısız olunca o aralık boşluğa dönüşür ("search failed 3 times at the minimum width"). Üçüncüsü:
+yoğunluk kapısı okumayı kapattı ("% of the buckets read are lower bounds"). Dördüncüsü: okuma
+`PW_BOOTSTRAP_MAX_HOURS` (varsayılan 72 saat) sınırına dayandı; okuma `PARTIAL` olur ve gerekçesi
+"the reading did not finish in 72 h" der.
+
+**Doğrulama:** Sayfanın "History" bölümü durumu, istenen pencereyi, okunan aralığı ve boşlukları
+gösterir; durumun yanındaki satır okunan gün sayısını verir. API'nin `history` bloğu aynı
+sayıları ve gerekçeyi verir.
+
+```
+GET /api/v1/property-watches/{id}
+```
+
+**Çözüm:** Bütçe bittiyse etkin izleme sayısını azalt ya da `PW_MAX_SEARCHES_PER_TICK` (40),
+`PW_BOOTSTRAP_SEARCHES_PER_TICK` (12) ya da `PW_BOOTSTRAP_SECONDS_PER_TICK` (180) değerlerini
+büyüt. Aramalar başarısız oluyorsa QRadar erişimini ve token'ı denetle (OPS-R1 ... OPS-R4) ve
+`./qradar-dash logs` ile arama hatalarına bak. Yoğunluk kapısı ve zaman sınırı bir arıza değildir;
+ikisi de okumayı `PARTIAL` bitirir ve izleme canlı toplamaya devam eder. Bir izlemenin geçmişi
+yalnız bir kez istenebilir: yeniden okumak isteyen operatör yeni bir izleme kurar.
+
+### OPS-R60. Geçmiş isteği 409 ile reddediliyor
+
+**Belirti:** Geçmiş isteyen etkin bir izlemeyi etkinleştirmek 409 döndürüyor; gerekçe "reading
+history needs at least 3 free searches per tick (TOTALS, PINNED and one GROUPED), but 1 are left
+after the enabled watches' live cost of 39 of 40" diyor. Aynı 409, etkin bir izlemede "Read
+history" düğmesine basınca da gelir. Etkinleştirme reddedildiğinde sayfa "Enable without history"
+düğmesini gösteriyor.
+
+**Olası neden:** Canlı toplama, tick'in arama bütçesini (`PW_MAX_SEARCHES_PER_TICK`, 40) önce
+harcar; geçmiş adımı kalan boşluğu harcar. Bir adım sabitlenmiş (pinned) değer varsa üç arama
+(TOTALS, PINNED, bir GROUPED), yoksa iki arama tutar. Canlı maliyet düşüldükten sonra kalan arama
+sayısı bu maliyetten azsa istek reddedilir.
+
+**Doğrulama:** 409 yanıtının metni gerekli arama sayısını, kalan sayıyı ve canlı maliyeti söyler.
+Aynı sebep düzenleyicide de görünür: "History needs 3 free searches per tick for this watch; 1 is
+free."
+
+```
+POST /api/v1/property-watches/{id}/history
+```
+
+**Çözüm:** Bir izlemeyi devre dışı bırak (canlı maliyeti düşer) ya da `PW_MAX_SEARCHES_PER_TICK`
+değerini büyüt. Olmuyorsa "Enable without history" düğmesine bas: izleme `history_days = 0` ile
+etkinleşir, yalnız ileriye doğru öğrenir ve QRadar'ın geçmişi okunmaz.
