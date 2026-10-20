@@ -5,6 +5,14 @@ This product includes qradar-mcp (https://github.com/IBM/qradar-mcp), developed 
 Corporation and licensed under the Apache License, Version 2.0. Its LICENSE and NOTICE are in
 the qradar-mcp/ directory.
 
+The postgres image published with this project is built on timescale/timescaledb (TimescaleDB
+2.17.2). TimescaleDB's core is licensed under the Apache License, Version 2.0. Its community
+features, which this project uses (compression, compression policies and retention policies),
+are licensed under the Timescale License (TSL), which is source-available and not an
+open-source licence: https://github.com/timescale/timescaledb/blob/2.17.2/tsl/LICENSE-TIMESCALE
+The TSL Licensed Software may be used under that agreement without charge, and no fee is due
+for this use. This project's own code remains under the Apache License, Version 2.0.
+
 IBM and QRadar are trademarks of International Business Machines Corporation, registered in
 many jurisdictions worldwide. This project is not affiliated with, sponsored by or endorsed
 by IBM.
