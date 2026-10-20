@@ -1,0 +1,262 @@
+/* The history backfill: the admin page's decision block and table, and the first-run dialog.
+ * Built from tokens only; nothing here carries a colour, a size or a space of its own. */
+
+.hb-console {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+.hb-console + .hb-console {
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--border);
+}
+.hb-console-name {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+
+/* The decision block: the answer, who and when, then the two things the mode allows. */
+.hb-decision {
+  display: grid;
+  gap: var(--sp-3);
+  max-width: var(--admin-form-max);
+}
+.hb-decision-line {
+  margin: 0;
+  font-size: var(--fs-base);
+  color: var(--text);
+  line-height: var(--lh-base);
+}
+.hb-decision-sub {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.hb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+}
+.hb-confirm {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  max-width: var(--admin-form-max);
+}
+.hb-confirm p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.hb-confirm-title {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+.hb-message {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--ok-text);
+  max-width: var(--admin-form-max);
+}
+.hb-message.crit {
+  color: var(--crit-text);
+}
+
+/* The table. Ten columns: the cells are one step smaller than the page text so the row stays
+   whole on a wide screen; a text column keeps a floor so a word never shrinks to one letter. */
+.hb-table td {
+  font-size: var(--fs-sm);
+}
+.hb-table tbody th.hb-family {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  white-space: nowrap;
+}
+.hb-table tbody tr:hover th.hb-family {
+  background: var(--surface-3);
+}
+.hb-table .cell-name {
+  min-width: 12ch;
+}
+.hb-table .hb-read {
+  min-width: 8ch;
+}
+.hb-table .hb-when {
+  min-width: 13ch;
+}
+.hb-table .hb-reason {
+  min-width: 20ch;
+  max-width: 30ch;
+  color: var(--text-2);
+}
+.hb-table .hb-later {
+  min-width: 12ch;
+  max-width: 20ch;
+  color: var(--text-2);
+}
+.hb-lead {
+  margin: 0 0 2px;
+}
+.hb-gaps {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+
+/* --- the first-run dialog (a native <dialog>, as the widget Catalog and Expand) ------------ */
+
+dialog.hb-dialog {
+  width: min(var(--admin-form-max), calc(100vw - 2 * var(--sp-5)));
+  max-height: calc(100vh - 2 * var(--sp-5));
+  margin: auto;
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+}
+dialog.hb-dialog:not([open]) {
+  display: none;
+}
+dialog.hb-dialog::backdrop {
+  background: var(--scrim);
+}
+.hb-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.hb-dialog-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+/* The estimate and its words scroll; the title and the two answers stay in view. */
+.hb-dialog-body {
+  display: grid;
+  gap: var(--sp-4);
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
+}
+.hb-dialog-lead,
+.hb-dialog-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.hb-dialog-lead strong {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+.hb-dialog-section {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.hb-dialog-console {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+.hb-families {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.hb-families th,
+.hb-families td {
+  padding: var(--sp-2) var(--sp-3) var(--sp-2) 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+.hb-families thead th {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text-3);
+}
+.hb-families tbody th {
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.hb-families .hb-est {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.hb-assumptions {
+  list-style: disc;
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-5);
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  line-height: var(--lh-base);
+}
+.hb-assumptions-title {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.hb-decisions {
+  display: grid;
+  gap: var(--sp-3);
+  flex: 0 0 auto;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.hb-decision-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  justify-content: space-between;
+}
+.hb-decision-row-name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  overflow-wrap: anywhere;
+}
+.hb-decision-buttons {
+  display: flex;
+  gap: var(--sp-3);
+}
+.hb-decision-buttons button.action {
+  min-width: 6rem;
+}
+.hb-row-status {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-prose);
+  color: var(--text-2);
+}
+.hb-row-status.crit {
+  color: var(--crit-text);
+}
+.hb-row-status.ok {
+  color: var(--ok-text);
+}

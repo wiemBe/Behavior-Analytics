@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppFrame } from "./AppFrame";
 import { StaticSession, type SessionValue } from "./session";
-import type { CallerInfo } from "@/lib/api";
+import { api, type CallerInfo } from "@/lib/api";
+import { consoleOf, estimateOf } from "@/components/history/fixtures";
 
 const nav = vi.hoisted(() => ({ pathname: "/behavior" }));
 vi.mock("next/navigation", () => ({
@@ -67,6 +68,8 @@ function frame(value: SessionValue) {
 
 beforeEach(() => {
   nav.pathname = "/behavior";
+  // The first-run history-backfill dialog asks the status of an administrator; nothing to ask here.
+  vi.spyOn(api, "historyBackfill").mockResolvedValue([]);
 });
 
 describe("AppFrame", () => {
@@ -130,5 +133,45 @@ describe("AppFrame", () => {
     frame(session({ status: "anonymous", me: null }));
     expect(screen.getByText("page body")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
+  });
+
+  describe("the first-run history-backfill dialog", () => {
+    beforeEach(() => {
+      window.sessionStorage.clear();
+      HTMLDialogElement.prototype.showModal = function showModal() {
+        this.setAttribute("open", "");
+      };
+      HTMLDialogElement.prototype.close = function close() {
+        this.removeAttribute("open");
+      };
+      vi.spyOn(api, "historyBackfill").mockResolvedValue([consoleOf()]);
+      vi.spyOn(api, "historyBackfillEstimate").mockResolvedValue([estimateOf()]);
+    });
+
+    it("opens over the first page for an administrator when a console is undecided", async () => {
+      frame(session());
+      expect(await screen.findByRole("dialog", { name: /Read the last 28 days/ })).toBeInTheDocument();
+      expect(screen.getByText("page body")).toBeInTheDocument();
+    });
+
+    it("is not mounted for an account without admin:history_backfill", async () => {
+      frame(session({ me: me({ permissions: ["read:*"], effective_permissions: ["read:*"] }) }));
+      await act(async () => {});
+      expect(api.historyBackfill).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("is not mounted on the sign-in page", async () => {
+      nav.pathname = "/login";
+      frame(session());
+      await act(async () => {});
+      expect(api.historyBackfill).not.toHaveBeenCalled();
+    });
+
+    it("is not mounted while a password change is required", async () => {
+      frame(session({ me: me({ must_change_password: true }) }));
+      await act(async () => {});
+      expect(api.historyBackfill).not.toHaveBeenCalled();
+    });
   });
 });

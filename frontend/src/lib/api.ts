@@ -25,6 +25,8 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public detail?: unknown,
+    /** The whole JSON body of the failed response, when it had one: a conflict may carry state. */
+    public body?: unknown,
   ) {
     super(message);
   }
@@ -164,8 +166,10 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText;
     let raw: unknown;
+    let body: unknown;
     try {
-      raw = (await res.json()).detail;
+      body = await res.json();
+      raw = (body as { detail?: unknown } | null)?.detail;
       if (typeof raw === "string") detail = raw;
     } catch {
       /* non-JSON error body */
@@ -186,11 +190,124 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
         }
       }
     }
-    throw new ApiError(res.status, detail, raw);
+    throw new ApiError(res.status, detail, raw, body);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+// --- history backfill (HISTORY-BACKFILL §B.10) ------------------------------
+// Mirrors `app/schemas/history_backfill.py`. A measurement that is missing is `null`, never zero.
+export type HistoryFamilyKey = "PHASE_A" | "WAF" | "IPS" | "CATCHALL" | "RULE_MATCH";
+export type HistoryConsoleMode = "UNDECIDED" | "NO" | "ACTIVE" | "STOPPED";
+export type HistoryState =
+  | "NOT_REQUESTED"
+  | "WAITING"
+  | "READING"
+  | "COMPLETE"
+  | "PARTIAL"
+  | "UNAVAILABLE"
+  | "NOT_ELIGIBLE";
+
+export interface HistoryDecision {
+  answer: "YES" | "NO";
+  days: number | null;
+  decided_at: string;
+  decided_by: string;
+  source: string;
+  updated_at: string | null;
+  updated_by: string | null;
+  start_requested_at: string | null;
+  start_requested_by: string | null;
+  stop_requested_at: string | null;
+  stop_requested_by: string | null;
+}
+
+export interface HistoryWindow {
+  days_requested: number;
+  days: number | null;
+  available: boolean;
+  limited_by: string[];
+  reason: string | null;
+}
+
+export interface HistoryGap {
+  start: string;
+  end: string;
+  reason: string;
+}
+
+export interface HistoryScope {
+  scope_key: string;
+  /** The log source's name for a WAF or IPS scope row; null for a console-wide row. */
+  name?: string | null;
+  state: HistoryState | string;
+  days_requested: number | null;
+  days_target: number | null;
+  target_start: string | null;
+  floor: string | null;
+  /** True when `floor` is the floor QRadar proved; false when it is only where reading started. */
+  floor_proved: boolean;
+  through: string | null;
+  anchor: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  reason: string | null;
+  searches: number | null;
+  buckets_read: number | null;
+  days_read: number | null;
+  gaps: HistoryGap[] | null;
+  progress_unreadable: boolean;
+  later_yes: string;
+}
+
+export interface HistorySource {
+  scope_key: string;
+  name: string;
+  profile_enabled: boolean;
+  later_yes: string;
+}
+
+export interface HistoryFamily {
+  family: HistoryFamilyKey | string;
+  collection_enabled: boolean;
+  collection_reason: string;
+  window: HistoryWindow;
+  scopes: HistoryScope[];
+  sources: HistorySource[] | null;
+  later_yes: string | null;
+}
+
+export interface HistoryConsole {
+  instance_id: string;
+  name: string;
+  decision: HistoryDecision | null;
+  mode: HistoryConsoleMode;
+  families: HistoryFamily[];
+  message: string | null;
+}
+
+export interface HistoryFamilyEstimate {
+  family: HistoryFamilyKey | string;
+  searches: number | null;
+  ticks: number | null;
+  hours: number | null;
+  days_requested: number;
+  days_fitted: number | null;
+  reduced: boolean;
+  refused: boolean;
+  reason: string;
+  assumptions: string[];
+}
+
+export interface HistoryConsoleEstimate {
+  instance_id: string;
+  name: string;
+  kind: "estimate";
+  families: HistoryFamilyEstimate[];
+}
+
+export type HistoryAnswer = "YES" | "NO";
 
 // --- types mirror the backend Pydantic response schemas -------------------
 export interface SocOverview {
@@ -2164,6 +2281,18 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ cadence_seconds: cadenceSeconds }),
     }),
+  historyBackfill: () => request<HistoryConsole[]>("/admin/history-backfill"),
+  historyBackfillEstimate: () =>
+    request<HistoryConsoleEstimate[]>("/admin/history-backfill/estimate"),
+  decideHistoryBackfill: (instanceId: string, answer: HistoryAnswer) =>
+    request<HistoryConsole>(`/admin/history-backfill/${instanceId}`, {
+      method: "PUT",
+      body: JSON.stringify({ answer }),
+    }),
+  startHistoryBackfill: (instanceId: string) =>
+    request<HistoryConsole>(`/admin/history-backfill/${instanceId}/start`, { method: "POST" }),
+  stopHistoryBackfill: (instanceId: string) =>
+    request<HistoryConsole>(`/admin/history-backfill/${instanceId}/stop`, { method: "POST" }),
   setSearchSchedule: (id: string, scheduleCron: string) =>
     request<ScheduledSearch>(`/searches/${id}`, {
       method: "PATCH",
