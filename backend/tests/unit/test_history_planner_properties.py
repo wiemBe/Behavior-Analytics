@@ -28,6 +28,7 @@ from app.history.planner import (
     new_progress,
     plan_scan,
     plan_step,
+    row_fit_buckets,
     settle_step,
     split_on_truncation,
     window_buckets,
@@ -74,7 +75,13 @@ def _run_chunk(rng, span, p_fail, p_trunc, st, split: bool) -> list[ChunkResult]
             rng, halves[1], p_fail, p_trunc, st, split
         )
     rows = n * rng.randint(0, 6)
-    return [ChunkResult(span, SearchStatus.COMPLETE, rows=rows, non_silent_buckets=n)]
+    # A bucket with no event is not a non-silent bucket: the density of the step is the
+    # rows of its non-silent buckets over their number.
+    return [
+        ChunkResult(
+            span, SearchStatus.COMPLETE, rows=rows, non_silent_buckets=n if rows else 0
+        )
+    ]
 
 
 def _drive(seed: int, *, moving_end: bool, split: bool):
@@ -94,6 +101,8 @@ def _drive(seed: int, *, moving_end: bool, split: bool):
     written: list[Span] = []
     gaps: list[Span] = []
     final = None
+    previous_width: int | None = None  # the width of the last planned step
+    clean_last = False  # the last settled step read everything it planned
     for _ in range(40_000):
         if moving_end and rng.random() < 0.5:
             end += bucket * rng.randint(1, 3)
@@ -118,17 +127,27 @@ def _drive(seed: int, *, moving_end: bool, split: bool):
         # READ
         before = progress
         assert plan.span is not None and plan.chunk_buckets is not None
+        width = plan.chunk_buckets
         floor = progress.floor
         assert floor is not None
         assert plan.span.start >= floor  # no span starts before F
         assert plan.span.buckets(st) <= st.max_span_buckets  # never more than 168 h
         assert len(plan.chunks) <= budget.searches
-        rho = progress.rows_per_bucket
+        # T-149: the width follows the density of the last settled step, and it grows at
+        # most double per step. The step that sizes it for the first time is the
+        # exception: the initial width was only a placeholder.
+        if previous_width is not None:
+            assert width <= 2 * previous_width
+        if before.chunk_buckets is not None:
+            previous_width = width
+        recent = progress.recent_rows_per_bucket
+        if clean_last and recent is not None and recent > 0:
+            # the width is sized for the density of the last settled step, so the rows
+            # it asks for stay inside the row target
+            assert width <= row_fit_buckets(recent, st)
         for c in plan.chunks:
             n = c.buckets(st)
-            assert n <= plan.chunk_buckets
-            if rho is not None and n > st.min_chunk_buckets:
-                assert n * rho <= st.row_target_rows  # values x buckets <= the row target
+            assert n <= width
         results: list[ChunkResult] = []
         for c in plan.chunks:
             results += _run_chunk(rng, c, p_fail, p_trunc, st, split)
@@ -136,6 +155,7 @@ def _drive(seed: int, *, moving_end: bool, split: bool):
                 break  # the driver stops at the first search that did not complete
         s = settle_step(progress, results, end=end, settings=st)
         progress = s.progress
+        clean_last = all(r.status is SearchStatus.COMPLETE for r in results)
         # §B.6.3: the release counter is never negative, and is 0 when there is no ceiling.
         assert progress.ceiling_successes >= 0
         if progress.chunk_ceiling is None:
@@ -252,12 +272,15 @@ def test_plan_step_invariants_over_random_progress() -> None:
             assert a.end == b.start
         assert plan.span is not None and plan.span.buckets(st) <= 2016
         assert len(plan.chunks) <= budget.searches
-        rho = p.rows_per_bucket
+        # T-149: the planned width is the stored one, bounded by the failure ceiling;
+        # the whole reading's mean is never applied again.
+        width = plan.chunk_buckets
+        assert width is not None
+        assert st.min_chunk_buckets <= width <= st.max_span_buckets
         for c in plan.chunks:
             n = c.buckets(st)
+            assert n <= width
             assert n <= max(p.chunk_ceiling or n, st.min_chunk_buckets)
-            if rho is not None and n > st.min_chunk_buckets:
-                assert n * rho <= st.row_target_rows
 
 
 def test_the_window_fits_the_budget_or_is_refused_with_its_reason() -> None:
