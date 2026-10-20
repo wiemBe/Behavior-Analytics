@@ -7,7 +7,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import MetaData, Table, create_engine, insert, text
+from sqlalchemy import JSON, MetaData, Table, create_engine, insert, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 
 from app.history.origin import PHASE_A_HISTORY_SOURCES, HistoryOrigin
@@ -65,7 +66,15 @@ def _row(connection, table: str, **values: object) -> None:  # type: ignore[no-u
     for column in reflected.columns:
         if column.name in row or column.nullable or column.server_default is not None:
             continue
-        row[column.name] = _FILL[column.type.python_type]()
+        if isinstance(column.type, (JSON, JSONB)):
+            row[column.name] = {}
+            continue
+        try:
+            row[column.name] = _FILL[column.type.python_type]()
+        except KeyError as exc:
+            raise KeyError(
+                f"table={table}, column={column.name}, type={column.type.python_type!r}"
+            ) from exc
     connection.execute(insert(reflected).values(**row))
 
 
