@@ -119,6 +119,29 @@ HISTORY_TABLES = (
             ),
         },
     ),
+    HistoryTable(
+        model="RuleMatchWindow",
+        sql_name="rule_match_window",
+        readers={
+            # §B.4.5: rule health judges now from the stored windows and has no
+            # alert path, so its readers read both (EVIDENCE or DISPLAY).
+            "app.collectors.rule_match_collector.RuleMatchCollector._oldest_live_window": Reader(
+                "HB-5 anchor", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.collectors.rule_match_collector.RuleMatchCollector._prior_attempts": Reader(
+                "HB-5 retries", ReaderKind.EVIDENCE
+            ),
+            "app.services.rule_health.RuleHealthEvaluator._match_coverage": Reader(
+                "R2 (rule health)", ReaderKind.EVIDENCE
+            ),
+            "app.services.rule_statistics.RuleStatisticsService._coverage": Reader(
+                "R6 (rule statistics)", ReaderKind.DISPLAY
+            ),
+            "app.services.rule_statistics.RuleStatisticsService._top": Reader(
+                "R6 (rule statistics)", ReaderKind.DISPLAY
+            ),
+        },
+    ),
 )
 
 

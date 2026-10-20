@@ -19,7 +19,7 @@ Guarantees:
     `duration_ms` and the query version of a multi-window search differ). A
     truncated search keeps nothing; its halves are searched instead.
   * A constant number of statements per window, whatever the number of rules
-    that matched: one delete, one bulk upsert, one window upsert.
+    that matched: one SQL deletion, one bulk upsert, one window upsert.
   * Idempotent: re-collecting a window replaces its rows rather than adding to
     them.
   * Every attempted window leaves a `rule_match_window` row. A provider failure
@@ -31,19 +31,70 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 import uuid
 from collections import deque
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.history import HistoryFamily, HistoryOrigin, marker_values
+from app.history import (
+    ActionKind,
+    ConsoleMode,
+    DecisionView,
+    HistoryFamily,
+    HistoryOrigin,
+    HistoryState,
+    HistoryTrigger,
+    LifecycleError,
+    ScopeAction,
+    ScopeRowView,
+    bounded_reason,
+    console_mode,
+    encode_progress,
+    fit_family_window,
+    history_search_budget,
+    interpret_scan,
+    is_live_clause,
+    marker_values,
+    new_progress,
+    new_scope_row,
+    next_state,
+    scope_action,
+    scope_progress,
+    transition_row,
+)
+from app.history.planner import (
+    PlannerInputError,
+    ScanOutcome,
+    ScopeProgress,
+    SearchStatus,
+    Span,
+    StepAction,
+    StepBudget,
+    plan_step,
+    settle_step,
+)
+from app.history.progress_codec import ProgressCodecError
+from app.history.rule_match import (
+    RULE_MATCH_SCOPE_KEY,
+    ChunkFold,
+    failed_chunk,
+    failed_scan,
+    fitted_window,
+    fold_chunk,
+    planner_settings,
+    scan_result,
+    scope_base,
+    step_scope_row,
+)
 from app.models.enums import SearchFamily
 from app.models.instance import QRadarInstance
 from app.models.monitoring import CollectionWatermark
@@ -54,6 +105,7 @@ from app.models.rule import (
     RuleMatchWindowStatus,
 )
 from app.providers.base import ProviderCapability, ProviderError, QRadarProvider
+from app.repositories.history_backfill import HistoryBackfillRepository
 from app.rules.matches import (
     MatchFold,
     MatchRowToWrite,
@@ -100,9 +152,56 @@ class RuleMatchCollectionReport:
     skipped_locked: bool = False
     unsupported: bool = False
     partial_failure: bool = False
+    #: The history step's outcome, which never changes the live report's status.
+    history_state: str | None = None
+    history_reason: str | None = None
+    history_searches: int = 0
+    history_windows_written: int = 0
+    history_rows_written: int = 0
+    history_error: str | None = None
     error: str | None = None
     duration_ms: int = 0
     watermark_at: datetime | None = None
+
+
+def _value(row: object, name: str) -> object:
+    if isinstance(row, Mapping):
+        return row[name]
+    return getattr(row, name)
+
+
+def _decision_view(row: object | None) -> DecisionView | None:
+    """The lifecycle's view of a decision row, never the ORM object itself."""
+    if row is None:
+        return None
+    return DecisionView(
+        answer=str(_value(row, "answer")),
+        days=_value(row, "days"),  # type: ignore[arg-type]
+        start_requested_at=_value(row, "start_requested_at"),  # type: ignore[arg-type]
+        start_requested_by=_value(row, "start_requested_by"),  # type: ignore[arg-type]
+        stop_requested_at=_value(row, "stop_requested_at"),  # type: ignore[arg-type]
+        stop_requested_by=_value(row, "stop_requested_by"),  # type: ignore[arg-type]
+    )
+
+
+def _scope_view(row: object | None) -> ScopeRowView | None:
+    """The lifecycle's view of a scope row, whether stored or newly built."""
+    if row is None:
+        return None
+    progress = _value(row, "progress")
+    return ScopeRowView(
+        state=HistoryState(str(_value(row, "state"))),
+        days_requested=_value(row, "days_requested"),  # type: ignore[arg-type]
+        days_target=_value(row, "days_target"),  # type: ignore[arg-type]
+        target_start=_value(row, "target_start"),  # type: ignore[arg-type]
+        floor=_value(row, "floor"),  # type: ignore[arg-type]
+        through=_value(row, "through"),  # type: ignore[arg-type]
+        anchor=_value(row, "anchor"),  # type: ignore[arg-type]
+        started_at=_value(row, "started_at"),  # type: ignore[arg-type]
+        finished_at=_value(row, "finished_at"),  # type: ignore[arg-type]
+        reason=_value(row, "reason"),  # type: ignore[arg-type]
+        progress=dict(progress) if isinstance(progress, Mapping) else {},
+    )
 
 
 class RuleMatchCollector:
@@ -158,11 +257,13 @@ class RuleMatchCollector:
             )
             prior_attempts = await self._prior_attempts(instance.id, starts)
             # One lookup serves the whole run; the inventory does not change
-            # between windows of one run in any way that matters here.
-            rule_ids = await self._rule_id_map(instance.id) if starts else {}
+            # between windows of one run in any way that matters here. The
+            # history step reuses it, or loads it when the live pass had no
+            # window to collect.
+            rule_ids = await self._rule_id_map(instance.id) if starts else None
 
             async with aclosing(
-                self._search_windows(starts, window_seconds, rule_ids, report)
+                self._search_windows(starts, window_seconds, rule_ids or {}, report)
             ) as outcomes:
                 async for outcome in outcomes:
                     start = outcome.start
@@ -224,6 +325,16 @@ class RuleMatchCollector:
                 "settle_lag_seconds": self.settings.rule_match_settle_lag_seconds,
             }
             report.watermark_at = watermark.watermark_at
+            # History runs after the live pass, under the same lock and in the
+            # same transaction, and never touches the live report's status.
+            await self._history_step(
+                instance,
+                started,
+                report,
+                window_seconds=window_seconds,
+                cadence_seconds=cadence.cadence_seconds,
+                rule_ids=rule_ids,
+            )
             await self.session.flush()
 
         report.duration_ms = int((self._clock() - started).total_seconds() * 1000)
@@ -238,9 +349,530 @@ class RuleMatchCollector:
                 "rows_written": report.rows_written,
                 "unknown_ids": report.unknown_ids,
                 "duration_ms": report.duration_ms,
+                "history_state": report.history_state,
+                "history_searches": report.history_searches,
+                "history_windows_written": report.history_windows_written,
             },
         )
         return report
+
+    # ------------------------------------------------------------------ history
+
+    async def _history_step(
+        self,
+        instance: QRadarInstance,
+        now: datetime,
+        report: RuleMatchCollectionReport,
+        *,
+        window_seconds: int,
+        cadence_seconds: int,
+        rule_ids: dict[int, uuid.UUID] | None,
+    ) -> None:
+        """Run one history step after the live pass, in the same lock and transaction.
+
+        The console-wide scope follows the shared lifecycle: it waits for its
+        first live window, then reads `[T0, anchor)` where the anchor is the
+        oldest live window of the console. Nothing here can fail the live run:
+        an unreadable scope row or a planner refusal is recorded on the report
+        and the next tick retries from `through`.
+        """
+        repository = HistoryBackfillRepository(self.session)
+        decision_row = (await repository.decisions([instance.id])).get(instance.id)
+        decision = _decision_view(decision_row)
+        mode = console_mode(decision)
+        if decision is None or mode in (ConsoleMode.UNDECIDED, ConsoleMode.NO):
+            report.history_reason = "the console has no Yes answer"
+            return
+
+        live_anchor = await self._oldest_live_window(instance.id)
+        # The anchor is the oldest live window; align it down so a changed
+        # window width can never make an already-recorded live window overlap
+        # the span history writes.
+        anchor = (
+            None if live_anchor is None else floor_to_window(live_anchor, window_seconds)
+        )
+        scopes = await repository.scopes(
+            instance.id, HistoryFamily.RULE_MATCH.value, [RULE_MATCH_SCOPE_KEY]
+        )
+        scope_row = scopes.get(RULE_MATCH_SCOPE_KEY)
+        row = _scope_view(scope_row)
+        action = scope_action(
+            family=HistoryFamily.RULE_MATCH,
+            mode=mode,
+            decision=decision,
+            row=row,
+            has_live_data=anchor is not None,
+            live_anchor=anchor,
+            switch_on=bool(self.settings.history_backfill_enabled),
+        )
+        if row is not None:
+            report.history_state = row.state.value
+        report.history_reason = action.reason
+
+        if action.kind is ActionKind.NONE:
+            return
+        if action.kind is ActionKind.CREATE:
+            values = new_scope_row(
+                action,
+                instance_id=instance.id,
+                family=HistoryFamily.RULE_MATCH,
+                scope_key=RULE_MATCH_SCOPE_KEY,
+                decision=decision,
+                at=now,
+            )
+            await repository.write_scopes([values])
+            row = _scope_view(values)
+            report.history_state = action.state.value if action.state else None
+            if action.state is not HistoryState.READING:
+                return
+        elif action.kind is ActionKind.TRANSITION:
+            if row is None:  # pragma: no cover - scope_action cannot transition a missing row
+                return
+            values = transition_row(
+                action,
+                instance_id=instance.id,
+                family=HistoryFamily.RULE_MATCH,
+                scope_key=RULE_MATCH_SCOPE_KEY,
+                row=row,
+                decision=decision,
+                at=now,
+            )
+            await repository.write_scopes([values])
+            row = _scope_view(values)
+            report.history_state = action.state.value if action.state else None
+            report.history_reason = action.reason
+            if action.state is not HistoryState.READING:
+                return
+
+        # `ActionKind.STEP`, or a create/transition that just put the scope in
+        # READING: both plan a step against the live anchor.
+        if row is None or anchor is None:  # pragma: no cover - READING implies both
+            return
+        try:
+            await self._read_history(
+                instance,
+                row,
+                decision,
+                anchor,
+                now,
+                report,
+                window_seconds=window_seconds,
+                cadence_seconds=cadence_seconds,
+                rule_ids=rule_ids,
+            )
+        except (PlannerInputError, LifecycleError, ProgressCodecError) as exc:
+            # A scope row that cannot be read back is a bug or a manual edit,
+            # not a reason to lose the live pass. Stop this step; the next tick
+            # retries, and the operator sees the reason on the scope row.
+            report.history_error = f"{type(exc).__name__}: {exc}"[:512]
+            logger.warning(
+                "rule match history step failed",
+                extra={
+                    "instance_id": str(instance.id),
+                    "error_class": type(exc).__name__,
+                },
+            )
+
+    async def _read_history(
+        self,
+        instance: QRadarInstance,
+        row: ScopeRowView,
+        decision: DecisionView,
+        anchor: datetime,
+        now: datetime,
+        report: RuleMatchCollectionReport,
+        *,
+        window_seconds: int,
+        cadence_seconds: int,
+        rule_ids: dict[int, uuid.UUID] | None,
+    ) -> None:
+        """One scan or read step: plan, search, settle and write the scope row."""
+        settings = planner_settings(
+            self.settings, window_seconds=window_seconds, cadence_seconds=cadence_seconds
+        )
+        begin = time.monotonic()
+        limit_seconds = float(self.settings.history_backfill_seconds_per_tick)
+
+        progress = scope_progress(row)
+        days_target = row.days_target
+        target_start = row.target_start
+        started_at = row.started_at
+        fit_reason: str | None = None
+
+        if progress is None:
+            # A fresh window (§B.6.5): the family's own lookback, reduced to
+            # what the time budget allows, always ending at the anchor.
+            family = fit_family_window(HistoryFamily.RULE_MATCH, self.settings)
+            if not family.available or family.days is None:
+                await self._finish_history(
+                    instance,
+                    row,
+                    decision,
+                    report,
+                    state=next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL).state,
+                    trigger=HistoryTrigger.WINDOW_TOO_SMALL,
+                    reason=family.reason or "history is unavailable for this console",
+                    now=now,
+                    progress=None,
+                )
+                return
+            fitted = fitted_window(family.days, anchor=anchor, settings=settings)
+            if fitted.refused or fitted.days_fitted is None or fitted.target_start is None:
+                await self._finish_history(
+                    instance,
+                    row,
+                    decision,
+                    report,
+                    state=next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL).state,
+                    trigger=HistoryTrigger.WINDOW_TOO_SMALL,
+                    reason=fitted.reason,
+                    now=now,
+                    progress=None,
+                )
+                return
+            days_target = fitted.days_fitted
+            target_start = fitted.target_start
+            started_at = started_at or now
+            progress = new_progress(target_start, started_at, settings)
+            fit_reason = fitted.reason
+
+        # A scan may be followed by a read in the same tick, while budget and
+        # time remain; a read ends the step.
+        for _ in range(2):
+            seconds_left = limit_seconds - (time.monotonic() - begin)
+            budget = history_search_budget(
+                self.settings, used=report.searches_sent + report.history_searches
+            )
+            plan = plan_step(
+                progress,
+                now=now,
+                end=anchor,
+                budget=StepBudget(searches=budget, seconds_left=seconds_left),
+                settings=settings,
+                enabled=bool(self.settings.history_backfill_enabled),
+            )
+            if plan.action is StepAction.WAIT:
+                report.history_reason = self._with_fit(fit_reason, plan.reason)
+                return
+            if plan.action is StepAction.FINISH:
+                trigger = plan.trigger or HistoryTrigger.FINISHED_PARTIAL
+                await self._finish_history(
+                    instance,
+                    row,
+                    decision,
+                    report,
+                    state=next_state(HistoryState.READING, trigger).state,
+                    trigger=trigger,
+                    reason=self._with_fit(fit_reason, plan.reason),
+                    now=now,
+                    progress=progress,
+                    days_target=days_target,
+                    target_start=target_start,
+                    started_at=started_at,
+                )
+                return
+
+            if plan.action is StepAction.SCAN:
+                span = plan.scan_span
+                if span is None:  # pragma: no cover - SCAN always names a span
+                    return
+                report.history_searches += 1
+                try:
+                    totals = await self.provider.get_console_event_totals(
+                        span.start, span.end, bucket_seconds=window_seconds
+                    )
+                    result = scan_result(span, totals, settings)
+                except ProviderError:
+                    result = failed_scan(span)
+                scan = interpret_scan(progress, [result], end=anchor, settings=settings)
+                progress = scan.progress
+                report.history_reason = self._with_fit(fit_reason, scan.reason)
+                progress_json = encode_progress(progress)
+                if scan.trigger is not None:
+                    await self._finish_history(
+                        instance,
+                        row,
+                        decision,
+                        report,
+                        state=next_state(HistoryState.READING, scan.trigger).state,
+                        trigger=scan.trigger,
+                        reason=report.history_reason,
+                        now=now,
+                        progress=progress,
+                        days_target=days_target,
+                        target_start=target_start,
+                        started_at=started_at,
+                    )
+                    return
+                await self._write_history_scope(
+                    instance,
+                    row,
+                    decision,
+                    state=HistoryState.READING,
+                    trigger=None,
+                    reason=report.history_reason,
+                    now=now,
+                    progress=progress,
+                    days_target=days_target,
+                    target_start=target_start,
+                    started_at=started_at,
+                )
+                if scan.outcome is not ScanOutcome.FLOOR_FOUND:
+                    report.history_state = HistoryState.READING.value
+                    return
+                refreshed = _scope_view(
+                    {
+                        **scope_base(
+                            instance_id=instance.id,
+                            family=HistoryFamily.RULE_MATCH,
+                            scope_key=RULE_MATCH_SCOPE_KEY,
+                            row=row,
+                        ),
+                        "state": HistoryState.READING.value,
+                        "days_target": days_target,
+                        "target_start": target_start,
+                        "floor": progress.floor,
+                        "through": progress.through,
+                        "started_at": started_at,
+                        "progress": progress_json,
+                    }
+                )
+                if refreshed is None:  # pragma: no cover - the mapping is never None
+                    return
+                row = refreshed
+                continue
+
+            # READ: one keyed search per planned chunk, oldest first.
+            results = []
+            folds: dict[Span, ChunkFold] = {}
+            for chunk in plan.chunks:
+                if limit_seconds - (time.monotonic() - begin) <= 0:
+                    break
+                mapping = rule_ids
+                if mapping is None:
+                    mapping = await self._rule_id_map(instance.id)
+                    rule_ids = mapping
+                report.history_searches += 1
+                begun = self._clock()
+                try:
+                    batch = await self.provider.get_rule_matches_windowed(
+                        chunk.start,
+                        chunk.end,
+                        window_seconds=window_seconds,
+                        max_rows=self.settings.rule_match_max_rows,
+                    )
+                    fold = fold_chunk(
+                        batch,
+                        mapping,
+                        span=chunk,
+                        settings=settings,
+                        duration_ms=int((self._clock() - begun).total_seconds() * 1000),
+                        collected_at=self._clock(),
+                    )
+                except ProviderError:
+                    results.append(failed_chunk(chunk))
+                    break
+                folds[chunk] = fold
+                results.append(fold.result)
+                done = fold.result.status is SearchStatus.COMPLETE or (
+                    fold.result.status is SearchStatus.TRUNCATED
+                    and chunk.buckets(settings) == 1
+                )
+                if not done:
+                    # A failed or truncated multi-window search keeps nothing:
+                    # stop here, so no search is spent beyond the blocker.
+                    break
+
+            floor = progress.floor
+            assert floor is not None
+            settlement = settle_step(progress, results, end=anchor, settings=settings)
+            window_rows: list[dict[str, Any]] = []
+            metric_rows: list[dict[str, Any]] = []
+            for span in settlement.write_spans:
+                written = folds.get(span)
+                if written is None:  # pragma: no cover - a written span was searched
+                    continue
+                window_rows.extend(written.window_rows(instance.id, floor=floor))
+                metric_rows.extend(written.metric_rows(floor=floor))
+            await self._write_history_rows(window_rows, metric_rows)
+            report.history_windows_written += len(window_rows)
+            report.history_rows_written += len(metric_rows)
+            report.history_reason = self._with_fit(fit_reason, settlement.reason)
+
+            if settlement.trigger is not None:
+                await self._finish_history(
+                    instance,
+                    row,
+                    decision,
+                    report,
+                    state=next_state(HistoryState.READING, settlement.trigger).state,
+                    trigger=settlement.trigger,
+                    reason=report.history_reason,
+                    now=now,
+                    progress=settlement.progress,
+                    days_target=days_target,
+                    target_start=target_start,
+                    started_at=started_at,
+                )
+            else:
+                await self._write_history_scope(
+                    instance,
+                    row,
+                    decision,
+                    state=HistoryState.READING,
+                    trigger=None,
+                    reason=report.history_reason,
+                    now=now,
+                    progress=settlement.progress,
+                    days_target=days_target,
+                    target_start=target_start,
+                    started_at=started_at,
+                )
+                report.history_state = HistoryState.READING.value
+            return
+
+    async def _finish_history(
+        self,
+        instance: QRadarInstance,
+        row: ScopeRowView,
+        decision: DecisionView,
+        report: RuleMatchCollectionReport,
+        *,
+        state: HistoryState,
+        trigger: HistoryTrigger,
+        reason: str,
+        now: datetime,
+        progress: ScopeProgress | None,
+        days_target: int | None = None,
+        target_start: datetime | None = None,
+        started_at: datetime | None = None,
+    ) -> None:
+        """End the reading with a lifecycle state and its full scope row."""
+        await self._write_history_scope(
+            instance,
+            row,
+            decision,
+            state=state,
+            trigger=trigger,
+            reason=reason,
+            now=now,
+            progress=progress,
+            days_target=days_target,
+            target_start=target_start,
+            started_at=started_at,
+        )
+        report.history_state = state.value
+        report.history_reason = reason
+
+    async def _write_history_scope(
+        self,
+        instance: QRadarInstance,
+        row: ScopeRowView,
+        decision: DecisionView,
+        *,
+        state: HistoryState,
+        trigger: HistoryTrigger | None,
+        reason: str,
+        now: datetime,
+        progress: ScopeProgress | None,
+        days_target: int | None,
+        target_start: datetime | None,
+        started_at: datetime | None,
+    ) -> None:
+        """Write the scope row: the lifecycle's columns, then the planner's fields."""
+        if trigger is None:
+            scope_values = scope_base(
+                instance_id=instance.id,
+                family=HistoryFamily.RULE_MATCH,
+                scope_key=RULE_MATCH_SCOPE_KEY,
+                row=row,
+            )
+        else:
+            scope_values = transition_row(
+                ScopeAction(
+                    ActionKind.TRANSITION,
+                    state,
+                    trigger,
+                    bounded_reason(reason),
+                ),
+                instance_id=instance.id,
+                family=HistoryFamily.RULE_MATCH,
+                scope_key=RULE_MATCH_SCOPE_KEY,
+                row=row,
+                decision=decision,
+                at=now,
+            )
+        if progress is None:
+            scope_values.update(state=state.value, reason=bounded_reason(reason))
+        else:
+            scope_values = step_scope_row(
+                scope_values,
+                state=state,
+                days_target=days_target,
+                target_start=target_start,
+                floor=progress.floor,
+                through=progress.through,
+                started_at=started_at,
+                finished_at=now if trigger is not None else None,
+                reason=reason,
+                progress=encode_progress(progress),
+            )
+        await HistoryBackfillRepository(self.session).write_scopes([scope_values])
+
+    async def _write_history_rows(
+        self,
+        window_rows: list[dict[str, Any]],
+        metric_rows: list[dict[str, Any]],
+    ) -> None:
+        """One `INSERT ... ON CONFLICT DO NOTHING` statement per table, whatever the span.
+
+        The rows go through `executemany` (statement first, rows second, as
+        `PwRepository.write_buckets` does): a multi-VALUES `.values(rows)` insert
+        would bind one parameter per cell of every row of the step, and a large
+        step (a week of windows times the rules that matched) exceeds asyncpg's
+        32,767-parameter ceiling for one query. Every column is written exactly
+        as before.
+
+        There is deliberately no `DO UPDATE` for a skipped `FAILED` live window
+        (`_skip_beyond_horizon`): those records are written only after the first
+        live window, so a reading of `[T0, anchor)` never meets one. Repairing
+        skipped windows after the anchor is a separate design (HB-5 decision,
+        2026-10-19). `DO NOTHING` is also the whole live guard: a history insert
+        can never replace a measured live window or one of its metric rows.
+        """
+        if window_rows:
+            await self.session.execute(
+                pg_insert(RuleMatchWindow).on_conflict_do_nothing(
+                    index_elements=["instance_id", "window_start"]
+                ),
+                window_rows,
+            )
+        if metric_rows:
+            await self.session.execute(
+                pg_insert(RuleMatchMetric).on_conflict_do_nothing(
+                    index_elements=["rule_id", "bucket_start"]
+                ),
+                metric_rows,
+            )
+
+    @staticmethod
+    def _with_fit(fit_reason: str | None, step_reason: str) -> str:
+        """The window's reason once, followed by this step's reason."""
+        if fit_reason is None:
+            return step_reason
+        return f"{fit_reason}; {step_reason}"
+
+    async def _oldest_live_window(self, instance_id: uuid.UUID) -> datetime | None:
+        """The anchor: the oldest live `rule_match_window`, whatever its status."""
+        return await self.session.scalar(
+            select(RuleMatchWindow.window_start)
+            .where(
+                RuleMatchWindow.instance_id == instance_id,
+                is_live_clause(RuleMatchWindow),
+            )
+            .order_by(RuleMatchWindow.window_start)
+            .limit(1)
+        )
 
     def _first_start(self, watermark: CollectionWatermark, window_seconds: int) -> datetime | None:
         """The window after the watermark, or None on a first run."""
