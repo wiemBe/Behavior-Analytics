@@ -24,6 +24,8 @@ from app.alerts.routing import RoutingPolicy, RoutingRule
 from app.anomaly import capabilities
 from app.anomaly.capabilities import BehaviorDomain, DetectorSpec
 from app.anomaly.evidence import healthy
+from app.history import HistoryFamily, HistoryState, encode_progress
+from app.history.planner import ScopeProgress
 from app.models.alert import Alert
 from app.models.enums import (
     BucketCompleteness,
@@ -40,6 +42,7 @@ from app.models.waf import (
     WafEndpointMetric,
     WafSourceBucket,
 )
+from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.waf_pipeline import run_waf_source
 from app.waf import engine as engine_module
 from app.waf.baseline import WafBaselineBuilder
@@ -219,6 +222,72 @@ class TestStatementCounts:
         # Twenty times the endpoints, the same statements.
         assert per_run[60] == per_run[1200]
         assert max(per_run[1200]) <= 40, per_run
+        print(f"no-decision scheduled-run statements: {per_run}")
+
+    async def test_a_run_for_a_yes_console_with_a_finished_scope_does_not_grow(
+        self, db_session
+    ) -> None:
+        """The history lifecycle of an active Yes costs the same at 60 and 1,200 endpoints.
+
+        The decision and the scope row are read; the live-bucket EXISTS is not, because a
+        source with a row never needs it.
+        """
+        settings = settings_for_scale()
+        instance = await make_instance(db_session)
+        repository = HistoryBackfillRepository(db_session)
+        await repository.record_decision(
+            instance.id, answer="YES", days=7, source="UI", decided_by="operator",
+            at=T0 - timedelta(days=3),
+        )
+        small = await seeded(db_session, instance, 312, 60, settings)
+        large = await seeded(db_session, instance, 313, 1200, settings)
+        for source_id in (small[1], large[1]):
+            qradar_id = await db_session.scalar(
+                select(LogSource.qradar_id).where(LogSource.id == source_id)
+            )
+            await repository.write_scopes([{
+                "instance_id": instance.id,
+                "family": HistoryFamily.WAF.value,
+                "scope_key": str(qradar_id),
+                "state": HistoryState.COMPLETE.value,
+                "days_requested": 7,
+                "days_target": 7,
+                "target_start": T0 - timedelta(days=8),
+                "floor": T0 - timedelta(days=8),
+                "through": T0 - timedelta(days=1),
+                "anchor": T0 - timedelta(days=1),
+                "started_at": T0 - timedelta(days=2),
+                "finished_at": T0 - timedelta(days=2),
+                "reason": "test: a finished reading",
+                "progress": encode_progress(
+                    ScopeProgress(
+                        target_start=T0 - timedelta(days=8),
+                        started_at=T0 - timedelta(days=2),
+                        floor=T0 - timedelta(days=8),
+                        through=T0 - timedelta(days=1),
+                        scan_cursor=None,
+                    )
+                ),
+            }])
+        await db_session.commit()
+
+        per_run: dict[int, list[int]] = {}
+        for size, (profile_id, _source_id, provider) in ((60, small), (1200, large)):
+            await run(db_session, profile_id, provider, settings, 0)
+            await run(db_session, profile_id, provider, settings, 1)
+            counts = []
+            for k in (2, 3):
+                with counting(db_session) as statements:
+                    result = await run(db_session, profile_id, provider, settings, k)
+                assert result["status"] == "ok"
+                assert result["history_state"] == HistoryState.COMPLETE.value
+                counts.append(len(statements))
+            per_run[size] = counts
+
+        assert per_run[60] == per_run[1200], per_run
+        # The decision, the scope row and nothing more than the no-decision run plus them.
+        assert max(per_run[1200]) <= 41, per_run
+        print(f"active-Yes COMPLETE-scope statements: {per_run}")
 
     async def test_evaluation_does_not_multiply_by_endpoints_times_detectors(
         self, db_session, monkeypatch: pytest.MonkeyPatch

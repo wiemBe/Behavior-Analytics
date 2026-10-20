@@ -653,6 +653,18 @@ def detect_new_endpoint_access(ctx: WafDetectionContext) -> WafSpikeVerdict:
     if not isinstance(novelty, NoveltyFacts):
         return g.insufficient("the endpoint's first appearance was not established")
     if not novelty.within_window:
+        if novelty.history_end > novelty.first_seen_at:
+            # The engine carries the source's history hand-off in ``history_end``; an
+            # endpoint first seen before it is established whatever its age. The reason
+            # names both real times and never invents an older first sighting.
+            return _result(dt, healthy(
+                dt, interval_start=obs.bucket_start, interval_end=obs.bucket_end,
+                observed=None, expected=None,
+                reason=(
+                    f"established endpoint: first admitted {novelty.first_seen_at.isoformat()} "
+                    f"before the history hand-off {novelty.history_end.isoformat()}"
+                ),
+            ))
         return _result(dt, healthy(
             dt, interval_start=obs.bucket_start, interval_end=obs.bucket_end,
             observed=None, expected=None,

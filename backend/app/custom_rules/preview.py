@@ -391,7 +391,11 @@ async def _load(
         return await load_fleet_classes(session, [key], after=after, through=through)
     if kind is _WAF:
         return await load_waf_endpoints(
-            session, [uuid.UUID(key)], after=after, through=through
+            session,
+            [uuid.UUID(key)],
+            after=after,
+            through=through,
+            include_history=True,
         )
     if kind is _IPS_ENTITY:
         return await load_ips_entities(
