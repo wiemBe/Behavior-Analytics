@@ -197,6 +197,8 @@ T-034 therefore gates only `ANOMALY_EXPLANATION`, which has no buckets.
      tick.
    - The backfill cap now counts **beyond** one cadence. Today 12 buckets of backfill would not
      even cover a 2-hour cadence.
+   - A history step is a deliberate exception to this bound: it reads the past, not the buckets
+     the cadence is late for. It is bounded by its own budget (item 7) instead.
 3. **Row budget and truncation.**
    - The AQL carries `LIMIT n + 1`, and the results read requests `n + 1` rows (after T-033).
      Here `n` is the new setting `ariel_multi_bucket_max_rows`, default 5,000, the largest value
@@ -222,6 +224,20 @@ T-034 therefore gates only `ANOMALY_EXPLANATION`, which has no buckets.
    - `split_depth`.
 6. **Mock provider.** It implements the same multi-bucket methods, so unit tests and the lab
    profile exercise the real fold.
+7. **The history step.** A family that was asked to read QRadar's past runs a history step inside
+   its own task, after the live pass, under the same advisory lock. It is bounded by three
+   budgets, never by the window bound of item 2:
+   - **Searches.** The sub-budget is `min(history_backfill_searches_per_tick,
+     search_cadence_max_searches_per_tick - searches the live pass already used)`. Live first is
+     true by construction: a history step spends only what the live pass left, and a tick whose
+     live pass used the whole cap runs no history search at all.
+   - **Time.** No history search starts after `history_backfill_seconds_per_tick` seconds of the
+     tick.
+   - **Span.** One search never covers more than 168 hours, whatever the rows, and a search that
+     returns more rows than the family's row cap is split as in item 3.
+   The step resumes at its next tick from the stored progress, so the reading is spread over the
+   ticks of the family's cadence rather than run in one burst. The rows it writes are marked as
+   read from the past and are never judged (§SC.6, per family).
 
 ## SC.6 Per family
 
@@ -248,6 +264,15 @@ T-034 therefore gates only `ANOMALY_EXPLANATION`, which has no buckets.
 - The bucket's single Ariel permit becomes one permit per source per tick.
 - WAF already evaluates per bucket through its own `evaluated_through` watermark. Verify it walks
   every new bucket in order, and pin that with a test at 12 buckets per tick.
+
+**`IPS_COLLECTION`**
+- Per source per tick, one keyed search per planned dimension over the source's own scope.
+- The source's entities are the scope: destination ports, destinations, signatures, source
+  concentration, port fan-out and action share.
+
+**`CATCHALL_SENDERS`**
+- Per console per tick, one keyed search over the configured device types, folded into
+  per-source sender counts.
 
 **`ANOMALY_EXPLANATION`**
 - Only gated. The number of searches per anomaly is unchanged, and evidence arrives up to one
@@ -284,6 +309,33 @@ progress. In that case, give Phase A the same split-on-failure, bounded by
 
 - An existing cron that matches no preset shows as **Custom** and is kept verbatim.
 - The API is unchanged; `schedule_cron` stays authoritative.
+
+### The history step, per family
+
+A family that was asked to read QRadar's past runs one history step per tick, after its live
+pass, under the same lock. The step is bounded by the budgets of §SC.5 item 7. What differs per
+family is the scope, the end of the window and what the step writes.
+
+| Family | Scope | End of the window | What the step writes |
+|---|---|---|---|
+| `PHASE_A_VOLUME` | The whole console, one row per monitored source | The console's oldest live bucket (the anchor) | `log_source_metric` rows marked `collection_source = 'ariel_history'`, zero-filled from each source's own floor |
+| `WAF_COLLECTION` | One WAF source | The moving boundary of the finishing tick | `waf_source_bucket` rows marked `origin = 'HISTORY'`, then the breakdown rows over `history_backfill_waf_breakdown_days` |
+| `IPS_COLLECTION` | One IPS source | The moving boundary of the finishing tick | `ips_source_bucket` rows marked `origin = 'HISTORY'` |
+| `CATCHALL_SENDERS` | The whole console, one row per catch-all source | The console's oldest live bucket | `catchall_bucket` rows marked `origin = 'HISTORY'`, and sender rows recorded as reviewed by the history |
+| `RULE_MATCH` | The whole console, one window per rule | The console's oldest live bucket | `rule_match_window` rows marked `origin = 'HISTORY'` |
+| `PROPERTY_WATCH` | One watch | The moving boundary of the finishing tick | `pw_bucket` rows marked `origin = 'HISTORY'` |
+
+The end of the window matters: the console-wide families read the days before the anchor, so
+their reading is complete in one direction; WAF, IPS and a property watch read towards a moving
+boundary, so a long reading is cut short by the time limit.
+
+A family whose scope is still waiting for its first live bucket runs no history search. A WAF or
+IPS source that already collected live data never reads its past. A property watch reads its own
+past only when it asked for it, with the sub-budget of the tick that is left after the enabled
+watches' live cost.
+
+Nothing a history step writes is judged. The rows carry the marker that says so, and every
+detector's live-only readers exclude them.
 
 ## SC.7 API and permissions
 

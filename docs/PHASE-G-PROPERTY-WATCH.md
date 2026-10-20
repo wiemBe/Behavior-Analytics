@@ -539,7 +539,10 @@ it measures (`docs/SEARCH-CADENCE.md` §SC.1). Watermarks: `collected_through` a
 buckets that completed; the **first run seeds the watermark at the latest closed bucket and replays no history** (the
 rule Phase A states for its evaluation watermark, `docs/SEARCH-CADENCE.md` §SC.6, lines 199-201:
 "An upgrade must not replay history into alerts"). A new watch has no baseline anyway, so its
-first buckets are judged `INSUFFICIENT_DATA` (§G.8); it learns forward and never backfills.
+first buckets are judged `INSUFFICIENT_DATA` (§G.8). **A watch without a history request learns
+forward and never backfills.** A watch that asked for one reads its past from Ariel, for learning
+only (`docs/PHASE-G-HISTORY-BOOTSTRAP.md`); the §SC.6 rule is the reason both are safe: nothing
+read from the past is judged.
 Settle: 120 s (`backend/app/core/config.py:157-158`), the family default.
 
 **The searches.** Per watch per tick, over every complete bucket since its watermark. None of
@@ -913,8 +916,11 @@ calendar dates of the bucket start (D-30): the 12 samples of one hour are correl
 The watch page shows, per value, "baseline: N of 168
 hour-of-week cells reliable", never a silent `NORMAL`. `PW_NEW_VALUE` has its own, shorter period
 (history, §G.8.3). This week-long wait is what the history bootstrap is designed to shorten: it
-reads past buckets from QRadar for learning only and it is being built, not shipped
+reads past buckets from QRadar for learning only
 (`docs/PHASE-G-HISTORY-BOOTSTRAP.md`, D-27 and D-29; `docs/HISTORY-BACKFILL.md`, D-31 and D-32).
+**This is the wait of a watch without a history request.** After a bootstrap of at least 7 days the
+cells are judged at the hand-off, because the history window already holds the visits
+(`docs/PHASE-G-HISTORY-BOOTSTRAP.md` §H.8.2).
 
 **Lifecycle.** The shared contract: `INSUFFICIENT_DATA -> NORMAL -> CANDIDATE -> OPEN ->
 RECOVERING -> RESOLVED` with a transition row per change, one active incident per (watch,
@@ -1023,7 +1029,9 @@ named them, and an F.1 threshold is the tool for "alert when DENY appears".
 history is recorded, every first appearance is `INSUFFICIENT_DATA` ("learning: day 3 of 7"), so a
 fresh watch cannot report its entire vocabulary as new. A membership change inside the grace window
 (§G.4) around the first appearance is `INSUFFICIENT_DATA` too: the value may have come with the new
-source.
+source. **When the window was read from QRadar's past, the first collected bucket is the oldest
+history bucket, so the period is already over at the hand-off**
+(`docs/PHASE-G-HISTORY-BOOTSTRAP.md` §H.1.1).
 
 **Exits, in order:** (1) first appearance not established; (2) the bucket is at or past
 `first_seen_at + pw_new_value_window_buckets` (12): `HEALTHY`, "established value"; (3) history
@@ -1518,7 +1526,9 @@ One form, five labelled sections, with the preview beside it as the F.1 rule edi
    5 minutes and 200 in total", the numbers taken from the catalog response.
 4. **Detection.** The detectors this watch evaluates (checkboxes, with a one-line claim each and
    "needs 7 days of history" or "needs a week of baselines") and the incident severity. The
-   threshold alerts are a link: "Threshold alerts are custom rules on a pinned value."
+   threshold alerts are a link: "Threshold alerts are custom rules on a pinned value." **Those
+   claims are conditional on the history option**: without it a watch learns forward and waits a
+   week; with it the history is read first (`docs/PHASE-G-HISTORY-BOOTSTRAP.md` §H.9.3).
 5. **Preview.** "Save as disabled and preview" stores the watch and runs the one real bounded
    search of §G.6 over the last closed hour. The result is what the page will show: the values found
    with their counts, the **coverage and the unparsed remainder**, the per-type reading ("`Username`
@@ -1590,7 +1600,9 @@ about 600 bytes per bucket record). PW-10 (§G.16) measures the real ones on the
 
 Per watch per tick the cost is `chunks x (2 or 3)`: the grouped search, the totals search, and the
 pinned search when values are pinned (§G.6), where `chunks = ceil(members / pw_max_sources_per_search)`
-for a group and 1 for a source or a type.
+for a group and 1 for a source or a type. This is the steady-state cost. A watch that is reading
+its history also draws on the history budget of §H.4.4 of the bootstrap design
+(`docs/PHASE-G-HISTORY-BOOTSTRAP.md`).
 
 | Watch | Searches per tick |
 |---|---|
@@ -1959,7 +1971,9 @@ v1;** add `PW_VALUE_SHARE` to the catalog in v1.1 if analysts ask.
 - No intent claim: a spike, a new value or a new combination is described, never explained
   (`docs/PRODUCT-UX-GUIDELINES.md` §7).
 - No per-source breakdown of a value in v1: the searches do not group by source (§G.4).
-- No backfill: a watch learns forward from its first bucket (§G.6).
+- A watch learns forward from its first bucket unless history was requested
+  (`docs/PHASE-G-HISTORY-BOOTSTRAP.md`); a history read is for learning only and is never judged
+  (§G.6).
 - A type watch has no maintenance state and a group watch only when every member is in maintenance
   (§G.10.1).
 - A bucket is 5 minutes and the family's cadence decides only when the platform looks; an incident

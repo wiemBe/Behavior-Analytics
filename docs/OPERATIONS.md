@@ -18,8 +18,9 @@ Dört kural her bölümde geçerlidir:
 3. [Yükseltme](#yükseltme)
 4. [Yedek ve geri alma](#yedek-ve-geri-alma)
 5. [Tanı](#tanı)
-6. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R54; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+6. [Geçmiş okuma](#geçmiş-okuma)
+7. [Belirtiler](#belirtiler)
+   (OPS-R1 ... OPS-R58; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
 `support-bundle` bugün çalışır. `bundle` (çevrimdışı paket) bu sürümde yoktur. `./qradar-dash bundle`
@@ -191,6 +192,11 @@ Sorular şu sırayla sorulur:
 12. GHCR kullanıcı adı ve `read:packages` token dosyasının yolu. `--offline` ve `--build` için
     atlanır.
 13. Acil durum (break-glass) yönetici kullanıcı adı. Parola sorulmaz, `create-admin` üretir.
+14. QRadar'ın sakladığı geçmişin okunup okunmayacağı. "Read the last 28 days of history from QRadar
+    now, so baselines are steadier from day 1? (yes/no)". Soru yalnız ilk kurulumda sorulur: kayıtlı
+    yanıt varsa ya da sitede `.qradar-dash/state.json` varsa sorulmaz. Yanıt dosyasındaki anahtar
+    `HISTORY_BACKFILL` olup `yes` ya da `no` değerini alır; dosyada yoksa konsol kararsız kalır ve
+    ilk yönetici oturum açmasında soru sorulur. Ayrıntı: [Geçmiş okuma](#geçmiş-okuma).
 
 Sorulmayanlar: LDAP (arayüzden yapılır), dedektör eşikleri, aile etkinleştirme, SMTP, webhook, LLM.
 WAF, IPS, kural eşleşmesi toplama, özel kurallar ve mülk izleme (property watch) varsayılanda
@@ -203,7 +209,8 @@ döngüsü yazılır ama hiçbir şey sayfa açmaz. Üst sınırlar: `PW_MAX_ENA
 etkin değer `PW_MAX_ACTIVE_VALUES_PER_WATCH` 200, sabitlenmiş (pinned) değer `PW_MAX_PINNED_VALUES`
 10. En yüksek sıklık `PROPERTY_WATCH` ailesine `/admin/search-cadence` sayfasından verilir (5 dk –
 8 sa, varsayılan 5 dk). Tüm `pw_*` ayarları ve varsayılanları README'deki "Property watches"
-bölümündedir.
+bölümündedir. Bir izleme kendi geçmişini ayrıca isteyebilir; bunun anahtarı `PW_BOOTSTRAP_ENABLED`
+(varsayılan **true**), ayrıntı [Geçmiş okuma](#geçmiş-okuma).
 
 `.env` dosyası (izin `0600`) imaj geldikten sonra yazılır. `SECRET_KEY`, `ENCRYPTION_KEY` ve
 `POSTGRES_PASSWORD` üretilir. `QRADAR_API_TOKEN_FILE=/run/secrets/qradar_sec_token` bir yoldur;
@@ -248,6 +255,18 @@ token değeri `.env` içinde yoktur.
    döner. Kurulum devam eder, özette FAIL yazar ve zaten yazdırılmış yönetici parolasını kaybetmez.
    Ortamdaki token da gereklidir: üretimde `rest` sağlayıcı token'sız açılmaz. İki kopya da gerekir.
 
+8b. Geçmiş sorusunun yanıtını kaydet (yalnız `HISTORY_BACKFILL` yanıtı verildiyse):
+
+    ```bash
+    docker compose run --rm --no-deps -T backend \
+      python -m app.cli.history_backfill decide \
+        --instance <name> --answer yes --source installer
+    ```
+
+    Bu adım ilk toplamadan önce çalışır, böylece ilk tick kararı görür. Başarısız olursa kurulum
+    **durmaz**: konsol kararsız kalır, özet "not recorded (exit N)" yazar ve ilk yönetici oturum
+    açmasında soru sorulur. Kayıtlı bir karar varsa komut onu değiştirmez.
+
 9. Vekil (harici değilse), backend, frontend, `celery-worker` ve `celery-beat` başlar. `mcp` profili
    başlamaz.
 10. Bu servislerin sağlıklı olması (migrate için 0 koduyla çıkması) beklenir. Bekleme süresi 180 sn.
@@ -259,8 +278,10 @@ Bir test VM'de ilk kurulum toplam 1 dk 40 sn sürdü (QRadar erişilemezken). Bu
 ### Özet ve ilk oturum açma
 
 Özet en sonda yazdırılır: URL `https://<ad>/`, oturum açma yolu `/login`, yönetici kullanıcı adı ve
-"parola yukarıda yazdırıldı ve saklanmıyor" cümlesi, QRadar bağlantı sonucu, kapalı aileler (WAF,
-IPS, kural eşleşmeleri, özel kurallar), yedek dizini ve bu kılavuzun yolu `docs/OPERATIONS.md`.
+"parola yukarıda yazdırıldı ve saklanmıyor" cümlesi, QRadar bağlantı sonucu, geçmiş okuma yanıtı
+(kaydedildiyse yanıtın kendisi, kaydedilmediyse "not decided; the first administrator sign-in will
+ask"), kapalı aileler (WAF, IPS, kural eşleşmeleri, özel kurallar), yedek dizini ve bu kılavuzun
+yolu `docs/OPERATIONS.md`.
 
 - Çıkış kodu 0: yığın sağlıklı ve yönetici var.
 - Çıkış kodu 1: QRadar kontrolü başarısız ya da bir servis hiç sağlıklı olmadı. Parola bu çıkıştan
@@ -849,6 +870,133 @@ gecikmesini göstermez. `UNKNOWN` yeşil değildir.
 yapılandırılan sayıdan sonra arama hataları, davranışsal uyarılar) yapılandırılan bildirim
 kanallarına düşer. Boş webhook ayarı kanalın kapalı olduğu anlamına gelir. `doctor` kanala bağlı
 olmayan kontroldür. Bu sürümde Prometheus dışa aktarıcısı yoktur.
+
+---
+
+## Geçmiş okuma
+
+Platform, kurulumda bir kez sorulan bir soruyla QRadar'ın sakladığı geçmişi okuyabilir: "geçmiş
+okunsun mu?". Okunan kovalar **yalnız öğrenme** içindir. Hiçbir olay, ihlal ya da uyarı, bir
+kapsamın devralma anından önceki bir aralığa işaret etmez.
+
+### Anahtarlar
+
+| Ayar | Varsayılan | Anlamı |
+|---|---|---|
+| `HISTORY_BACKFILL_ENABLED` | `true` | Konsolun geçmişi okumasını açıp kapatan anahtar. Kapalıyken hiçbir geçmiş adımı çalışmaz; okuyan bir kapsam `PARTIAL` olur, gerekçesi "history reading was switched off" |
+| `PW_BOOTSTRAP_ENABLED` | `true` | Mülk izlemelerinin kendi geçmiş okumasının anahtarı. Kapalıyken izleme canlı başlar ve bunu söyler |
+
+Diğer bütün ayarlar, varsayılanları ve sınırları `docs/CONFIGURATION.md` dosyasının "History
+backfill" ve "Property-watch history bootstrap" bölümlerindedir. Pencere 72 saatlik bütçeye
+sığmıyorsa kısalır: büyük bir ortam daha az gün okur, kapsamın gerekçesi "window reduced from N
+to D days" der. Yedi günden azına inen bir aile `UNAVAILABLE` olur; okuma hiç başlamaz.
+
+### Karar
+
+Kurulum sihirbazı soruyu ilk kurulumda bir kez sorar ve yanıtı konsol adına, ilk toplamadan önce
+kaydeder. Yanıt dosyasındaki anahtar `HISTORY_BACKFILL` olup `yes` ya da `no` değerini alır; dosyada
+yoksa konsol kararsız kalır ve **ilk yönetici oturum açmasında** soru sorulur. Karar bir yönde
+bir kez yazılır: kayıtlı bir kararı kuran değiştirmez. Yönetim arayüzünde bir `No` sonradan `Yes`
+olabilir; bir `Yes` asla geri alınamaz, okuma durdurulabilir.
+
+Cevaplar:
+
+- **Yes** — her aile, kendi ilk canlı verisinden önceki günleri kendi toplama adımında okur: kaynak
+  hacmi, catch-all gönderen adları ve kural eşleşmeleri her zaman; bir WAF ya da IPS kaynağı
+  yalnızca henüz canlı veri toplamamışsa.
+- **No** — QRadar'ın geçmişi hiç okunmaz.
+
+### Yönetim sayfası
+
+Sayfa `/admin/history-backfill` yolundadır. Her konsol için iki bölüm vardır: **karar bloğu** (yanıt,
+kim, ne zaman) ve **tablo** (aile, kapsam, durum, istenen pencere, kanıtlanan taban, okunan gün ya
+da kova, arama sayısı, son adım, gerekçe, "sonradan Yes mümkün mü"). Okunmayan bir sayı `null`
+gösterilir, sıfır değil; hiç ölçülmemiş bir sayaç asla sıfır okunmaz.
+
+Kapsamın durumu:
+
+| Durum | Anlamı | Ne yapılır |
+|---|---|---|
+| `WAITING` | Kapsam kendi ilk canlı kovasını bekliyor | Bekle. Konsolun hiç canlı verisi yoksa tek tick bekler |
+| `READING` | Okuma sürüyor; sayılan gün ve kova artıyor | İzle. `history_backfill_max_hours` (varsayılan 72 saat) aşılırsa okuma `PARTIAL` biter |
+| `COMPLETE` | İstenen pencere tam okundu, boşluk yok | Başka iş yok |
+| `PARTIAL` | QRadar istenenden az tutuyor, ya da bir boşluk var, ya da süre, bütçe ya da anahtar durdurdu | Gerekçeyi oku. Gerekçe sayı verir, kaynak adı vermez |
+| `UNAVAILABLE` | Pencerede hiç olay yok, taban taraması yapılamadı ya da en kısa pencerede bile tahmin süre sınırını aşıyor | Bu bir hata değil. O kapsam için geçmiş yok |
+| `NOT_ELIGIBLE` | Bu kaynak zaten canlı veri toplamış; geçmişi onun önüne konulamaz | Profili kapat ve yeniden oluştur; sonra okur |
+
+Sayfa "Read history now" ve "Stop reading" düğmelerini sunar:
+
+- **Read history now** — her aileye bir sonraki toplamasında geçmişi yeniden okumasını söyler.
+  Konsol düzeyinde okuma bitmişse kapsam yeniden başlar ve yalnız konsol düzeyindeki aileler
+  (kaynak hacmi, catch-all, kural eşleşmeleri) yeniden okur; WAF ve IPS için yalnız henüz toplamamış
+  kaynaklar okur. Hiçbir şey anında okunmaz, hiçbir eski olay uyarı açmaz.
+- **Stop reading** — okuyan her kapsamı `PARTIAL` bitirir, gerekçesi "stopped by <kullanıcı>" olur.
+  Okunan veriler kalır ve öğrenmede kullanılır; hiçbir şey silinmez. "Read history now" yeniden
+  başlatır.
+
+İki düğme de kapsam satırını anında değiştirmez; istek karar satırına yazılır ve her aile kendi
+bir sonraki toplamasında uygular.
+
+### Takılı bir okumanın belirtileri
+
+- `READING` durumu `history_backfill_max_hours` (varsayılan 72 saat) boyunca değişmiyorsa okuma
+  zaman sınırına dayanmıştır; kendiliğinden `PARTIAL` olur ve gerekçesi "the reading did not finish
+  in 72 h" der.
+- Okunan gün sayısı ilerlemiyorsa canlı geçiş tick'in arama bütçesini tüketmiştir: geçmiş
+  adımı, canlı geçişin bıraktığı boşluğu harcar, kendi bütçesi yetmezse hiç arama yapmaz.
+- Gerekçede art arda "boşluk" varsa sağlayıcı aramaları başarısız oluyordur; `./qradar-dash logs`
+  ile bak.
+- Kapsam hiç `READING` olmuyorsa ailenin kendi toplama anahtarı kapalıdır ya da konsolun `No`
+  yanıtı vardır.
+
+Çözüm sırası: ailenin kadansını `/admin/search-cadence` sayfasından doğrula, QRadar erişimini ve
+token'ı denetle, gerekirse `HISTORY_BACKFILL_SEARCHES_PER_TICK` ile `HISTORY_BACKFILL_SECONDS_PER_TICK`
+değerlerini büyüt. Hiçbiri işe yaramazsa "Stop reading" ile durdur: okunan veriler kalır, okuma
+`PARTIAL` biter.
+
+### Komut satırı
+
+Kurulum bu yanıtı şu komutla kaydeder:
+
+```bash
+docker compose run --rm --no-deps -T backend \
+  python -m app.cli.history_backfill decide \
+    --instance <konsol-adı> --answer yes --source installer
+```
+
+| Çıkış kodu | Anlamı |
+|---:|---|
+| `0` | Yanıt kaydedildi ya da bir karar zaten vardı ve olduğu gibi bırakıldı |
+| `1` | Veritabanı başarısız; hiçbir şey kaydedilmedi |
+| `2` | Konsol kayıtlı değil ya da argümanlar geçersiz; hiçbir şey kaydedilmedi |
+
+Komut kayıtlı bir kararı asla değiştirmez ve QRadar'a arama yapmaz.
+
+### Sınırlar
+
+- **Okunan geçmiş hiç yargılanmaz.** Okunan bir kovanın aralığı, hiçbir olayın, ihlalin ya da
+  uyarının konusu olamaz; yalnız taban çizgisi ve öğrenme için kanıttır. Grafikler bu kovaları
+  metinle etiketler ("read from QRadar history, not judged").
+- **WAF ve IPS yalnız yanıttan sonra ilk kez toplanan kaynaklar için geçmiş okur.** Zaten canlı
+  kovası olan bir kaynak `NOT_ELIGIBLE` olur: geçmiş onun önüne konulamaz. Profili kapatıp yeniden
+  oluşturmak okumasını sağlar.
+- **Faz A'nın çapasından sonra eklenen ya da izlemeye alınan bir kaynağın geçmişi yoktur.** Okuma
+  konsolun en eski canlı kovasında biter; sonradan eklenen bir kaynağın o noktadan önce olayı
+  yoktur. Böyle bir kaynak "sessiz" sayılır ve okuma `PARTIAL` biter, gerekçesi "N sources had no
+  event in the window" olur. İzlemeye alınmamış bir kaynağa ilk okumada geçmiş satırı yazılmaz;
+  "Read history now" ile yeniden okuma, artık izlenen kaynaklar için satır yazabilir.
+- **24 saatlik bazı sayılar geçmiş kovalarını da sayar.** Catch-all gönderenlerinin `events_24h`
+  değeri ve WAF durumunun son 24 saatteki kesik ve alt sınır kova sayıları, geçmişten okunan
+  kovaları da kapsar; bu sayılar yalnız gösterim içindir, hiçbir kararı beslemez.
+- **Pencere küçülürse yazılmış satırlar kalır.** Bir adımda pencere daralırsa daha önce yazılmış
+  satırlar silinmez; tabloda kapsamın `days_target` değerinden daha fazla gün olabilir. Yazılan
+  satırlar gerçek ölçümlerdir.
+- **`0030` migrasyonunun downgrade'u geri alınamaz.** İndirme, geçmişten okunmuş satırlarla eğitilmiş
+  taban çizgilerini bırakır. Alembic downgrade hiçbir zaman kullanılmaz (bkz. OPS-R34).
+- **Üretim konsolunda geçmişe güvenmeden önce konsolun sahibinden saklama kovalarını doğrula.**
+  Laboratuvar konsolunda saklama kovaları okunamadı; hangi kovaların hangi süreyle tutulduğu ve
+  silmenin kova içinde en eskiden yeniye mi yapıldığı konsoldan doğrulanmalıdır. Bu doğrulanmadan
+  geçmiş okumaya dayalı bir taban çizgisine güvenme.
 
 ---
 
@@ -1910,3 +2058,84 @@ GET /api/v1/property-watches/{id}/buckets
 **Çözüm:** QRadar'a erişimi ve aile anahtarını doğrula (OPS-R46). Sonraki toplanan kova durumu
 temizler; `STALE` yalnız bir sonraki kova yazılana kadar sürer. Başarısız aramaları `./qradar-dash
 logs` ile incele.
+
+### OPS-R55. Geçmiş okuması takılı görünüyor
+
+**Belirti:** `/admin/history-backfill` sayfasında bir kapsam `READING` durumunda ama okunan gün ya
+da kova sayısı ilerlemiyor; ya da sayfa "not decided" deyip duruyor.
+
+**Olası neden:** Üç ayrı durum aynı görüntüyü verir. Birincisi: konsolun kararı yoktur; kurulum
+soruyu sormadıysa ya da yanıt dosyasında `HISTORY_BACKFILL` anahtarı yoksa ilk yönetici oturum
+açmasında sorulur. İkincisi: canlı geçiş tick'in arama bütçesini tüketmiştir, geçmiş adımı başlayacak
+boşluk bulamamıştır. Üçüncüsü: ailenin kendi toplama anahtarı kapalıdır, ya da konsolun `No` yanıtı
+vardır. `READING` `history_backfill_max_hours` (varsayılan 72 saat) boyunca sürerse okuma kendiliğinden
+`PARTIAL` olur.
+
+**Doğrulama:** Sayfa her konsol için kararı, kapsam durumunu, gerekçeyi ve "sonradan Yes mümkün
+mü" satırını gösterir. Karar satırındaki `No` ya da eksik kayıt sorunun kendisidir.
+
+```
+GET /api/v1/admin/history-backfill
+```
+
+**Çözüm:** Karar yoksa ilk yönetici oturum açmasında soruyu yanıtla. Bütçe dolarsa ailenin
+kadansını `/admin/search-cadence` sayfasından doğrula ve `HISTORY_BACKFILL_SEARCHES_PER_TICK` ile
+`HISTORY_BACKFILL_SECONDS_PER_TICK` değerlerini büyüt. Aile anahtarı kapalıysa
+`WAF_COLLECTION_ENABLED`, `IPS_COLLECTION_ENABLED`, `CATCHALL_COLLECTION_ENABLED` ya da
+`RULE_MATCH_COLLECTION_ENABLED` değerini aç. Hiçbiri işe yaramazsa "Stop reading" ile durdur; okunan
+veriler kalır.
+
+### OPS-R56. Bir WAF ya da IPS kaynağı `NOT_ELIGIBLE` gösteriyor
+
+**Belirti:** Kaynak satırı `NOT_ELIGIBLE` durumunda ve gerekçesi "this source already collected
+live data; history cannot be read before it".
+
+**Olası neden:** WAF ve IPS kaynaklarının geçmişi, kendi canlı verilerinin önüne konulamaz: bir
+endpointin ilk görülme zamanı, değerlendirilmiş kovalarda ve açık olaylarda kullanılıyor olurdu.
+Kaynak yanıttan **önce** toplamaya başladıysa geçmişi okunamaz.
+
+**Doğrulama:** Sayfadaki "sonradan Yes mümkün mü" sütunu bunu söyler: "not possible: this source
+already collected".
+
+```
+GET /api/v1/admin/history-backfill
+```
+
+**Çözüm:** Profili devre dışı bırak, sonra yeniden oluştur; yeni profil kendi ilk toplamasında
+geçmişi okur. Kaynak başka bir profille çalışıyorsa o profil için de aynısı geçerlidir.
+
+### OPS-R57. Okuma `PARTIAL` bitti ve gerekçede "had no event in the window" var
+
+**Belirti:** Kaynak hacmi ya da catch-all okuması `PARTIAL` bitiyor, gerekçe "N sources had no
+event in the window" diyor.
+
+**Olası neden:** Okuma konsolun en eski **canlı** kovasında biter. O andan sonra eklenen bir kaynağın
+ya da o andan sonra izlemeye alınan bir kaynağın, pencerede hiç olayı yoktur; bu bir sessiz kaynak
+sayılır ve okumayı `PARTIAL` yapar. Gerekçe yalnız sayı verir, kaynak adı vermez.
+
+**Doğrulama:** Sayfa kapsamın okunan günlerini ve gerekçesini gösterir. Çapa, konsolun en eski canlı
+kovasıdır.
+
+**Çözüm:** Bu bir arıza değil, dürüst bir durumdur. Kaynağın pencerede olayı yoksa geçmişi yoktur.
+Okuma bittikten sonra "Read history now" ile yeniden okutmak, konsol düzeyindeki ailelerde yeni
+satırlar getirir; WAF ve IPS için yalnız henüz toplamamış kaynaklar okur.
+
+### OPS-R58. Kurulum geçmiş yanıtını kaydetmedi
+
+**Belirti:** Kurulum özeti "History backfill not recorded (exit N)" diyor; konsol kararsız kalıyor.
+
+**Olası neden:** `python -m app.cli.history_backfill decide` komutu başarısız oldu. Çıkış kodu `1`
+veritabanı hatası, `2` konsolun kayıtlı olmaması ya da argüman hatasıdır. Kurulum bu hatada durmaz;
+karar kaydedilmemiş olarak kalır ve ilk yönetici oturum açmasında soru sorulur.
+
+**Doğrulama:** Komutu elle çalıştırıp çıkış kodunu oku:
+
+```bash
+docker compose run --rm --no-deps -T backend \
+  python -m app.cli.history_backfill decide \
+    --instance <konsol-adı> --answer yes --source installer
+```
+
+**Çözüm:** Veritabanının hazır olduğundan ve konsol adının `qradar add` ile kaydedilmiş olduğundan
+emin ol, sonra komutu yeniden çalıştır. Kayıtlı bir karar varsa komut onu değiştirmez, "already
+decided on <tarih>: <yanıt>" yazar ve 0 ile çıkar.

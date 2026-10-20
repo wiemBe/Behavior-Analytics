@@ -249,6 +249,66 @@ Custom rules evaluate aggregates already stored by the platform. They never add 
 | `PW_RETENTION_MAX_BATCHES` | `20` | Batches per retention run |
 | `PW_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule |
 
+## History backfill
+
+The operator answers once per console whether the platform may search QRadar's stored past. The
+settings below govern that reading. They change nothing until an answer is recorded, and the
+answer itself does not depend on them: recording the answer is separate from reading.
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `HISTORY_BACKFILL_ENABLED` | `true` | Kill switch for reading. Off: no history step runs, and a scope that was reading hands off `PARTIAL` with "history reading was switched off" |
+| `HISTORY_BACKFILL_DAYS` | `28` | The window a Yes reads. `7`–`90`; the per-family window is smaller when the family's own lookback or its retention allows fewer days |
+| `HISTORY_BACKFILL_SEARCHES_PER_TICK` | `10` | Searches one history step may start, under the family's tick cap. `1`–`64`; the history sub-budget is the smaller of this and what the live pass left of `SEARCH_CADENCE_MAX_SEARCHES_PER_TICK` |
+| `HISTORY_BACKFILL_SECONDS_PER_TICK` | `120` | No history search starts after this many seconds of a tick. `10`–`600` |
+| `HISTORY_BACKFILL_MAX_HOURS` | `72` | The longest wall time a reading may take, and the time the window must leave below the family's retention. `1`–`168`; the window is fitted so that `days x 24 + this` stays below the retention of the family |
+| `HISTORY_BACKFILL_FLOOR_MARGIN_HOURS` | `24` | The margin before the start of the window, where the floor of a scope is proved. `1`–`168` |
+| `HISTORY_BACKFILL_MAX_FAILURES` | `3` | Consecutive failures at the minimum width before a span becomes a recorded gap. `1`–`20` |
+| `HISTORY_BACKFILL_MAX_LOWER_BOUND_SHARE` | `0.05` | The density gate: the share of lower-bound buckets that ends a reading `PARTIAL`. `0.0`–`1.0` |
+| `HISTORY_BACKFILL_WAF_BREAKDOWN_DAYS` | `7` | Days of WAF breakdown history (action, response code and source IP). `1`–`90`; must not exceed `HISTORY_BACKFILL_DAYS` |
+| `HISTORY_BACKFILL_BASELINE_SOURCES_PER_TICK` | `50` | Source-volume baselines rebuilt per tick after a reading. `1`–`5000` |
+
+The only cross-check among them is `HISTORY_BACKFILL_WAF_BREAKDOWN_DAYS <=
+HISTORY_BACKFILL_DAYS`; a larger value is refused at startup. The bounds of the other families
+(WAF, IPS, catch-all, source volume) are applied when the reading is planned, not at startup, so
+a released configuration keeps starting.
+
+What each costs: the days decide how much of the past is read; the two per-tick settings decide
+how many searches that reading may spend per tick and for how long; the max-hours setting decides
+whether the window has to shrink (a large estate reads fewer days and the scope says "window
+reduced from N to D days"); the floor margin is the time read before the window, where the floor of
+a scope is proved; the failure and lower-bound settings decide when a reading stops early with a
+gap; the WAF breakdown days are the dominant cost of the WAF family; the baseline batch size
+decides how long the baseline rebuild after a reading takes.
+
+## Property-watch history bootstrap
+
+A property watch may ask for its own history, separate from the console-wide answer. These
+settings govern that bootstrap.
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `PW_BOOTSTRAP_ENABLED` | `true` | Kill switch for the bootstrap. Off: a watch that asks for history starts live and says so |
+| `PW_BOOTSTRAP_DAYS` | `28` | The largest window a watch may ask for, and the default of a new watch. `>= 1` |
+| `PW_BOOTSTRAP_SEARCHES_PER_TICK` | `12` | Searches one history step may start, under the property-watch tick budget. `1`–`256`; must not exceed `PW_MAX_SEARCHES_PER_TICK` |
+| `PW_BOOTSTRAP_SECONDS_PER_TICK` | `180` | No history search starts after this many seconds of a tick. `10`–`3600` |
+| `PW_BOOTSTRAP_FLOOR_MARGIN_HOURS` | `24` | The margin before the start of the window, where the floor of the scope is proved. `1`–`168` |
+| `PW_BOOTSTRAP_MAX_HOURS` | `72` | The longest wall time a bootstrap may take. `1`–`168` |
+| `PW_BOOTSTRAP_MAX_FAILURES` | `3` | Consecutive failures at the minimum width before a span becomes a recorded gap. `1`–`20` |
+| `PW_BOOTSTRAP_MAX_LOWER_BOUND_SHARE` | `0.05` | The density gate: the share of lower-bound buckets that ends a reading `PARTIAL`. `0.0`–`1.0` |
+
+Where `PW_COLLECTION_ENABLED` is on, these are refused at startup when they contradict each other
+or another property-watch setting:
+
+- `PW_BOOTSTRAP_DAYS` must not be below `PW_NEW_VALUE_HISTORY_DAYS` and must not exceed
+  `PW_BASELINE_LOOKBACK_DAYS`;
+- `PW_BOOTSTRAP_SEARCHES_PER_TICK` must not exceed `PW_MAX_SEARCHES_PER_TICK`;
+- `PW_BOOTSTRAP_DAYS x 24 + PW_BOOTSTRAP_MAX_HOURS` must stay below `PW_METRIC_RETENTION_DAYS x 24`,
+  so that the history a bootstrap reads is still there when it is judged.
+
+The sub-window width, the 80 % row target and the one-hour floor of the planner are constants, not
+settings.
+
 ## Scheduled searches and result retention
 
 | Setting | Default | Meaning |
