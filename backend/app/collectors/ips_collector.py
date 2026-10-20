@@ -15,13 +15,15 @@ searched is transient, so its bucket is not written and the watermark holds.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
-from sqlalchemy import delete, exists, func, select, text, tuple_, update
+from sqlalchemy import Table, delete, exists, func, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
@@ -29,8 +31,46 @@ from sqlalchemy.orm.attributes import set_committed_value
 from app.anomaly.seasonal import in_maintenance
 from app.collectors.metric_collector import floor_to_interval
 from app.core.config import Settings, get_settings
-from app.history import HistoryFamily, HistoryOrigin, marker_values
-from app.ips.collection_plan import plan_searches
+from app.history import (
+    ActionKind,
+    DecisionView,
+    HistoryFamily,
+    HistoryOrigin,
+    HistoryState,
+    HistoryTrigger,
+    ScopeRowView,
+    bounded_reason,
+    console_mode,
+    decode_progress,
+    encode_progress,
+    fit_family_window,
+    history_search_budget,
+    is_live_clause,
+    marker_values,
+    new_progress,
+    new_scope_row,
+    next_state,
+    scope_action,
+    transition_row,
+)
+from app.history.ips import (
+    HistoryIpsBucket,
+    HistoryIpsEntity,
+    fold_ips_history,
+    ips_planner_settings,
+)
+from app.history.planner import (
+    ChunkResult,
+    ScanSpanResult,
+    SearchStatus,
+    Span,
+    StepAction,
+    StepBudget,
+    interpret_scan,
+    plan_step,
+    settle_step,
+)
+from app.ips.collection_plan import IpsSourceGroup, plan_searches
 from app.ips.fold import (
     IpsActionFact,
     IpsEntityBucketFact,
@@ -50,6 +90,7 @@ from app.models.enums import (
     IpsProfileValidationStatus,
     SearchFamily,
 )
+from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
 from app.models.instance import QRadarInstance
 from app.models.ips import (
     IPS_NORMALIZER_VERSION,
@@ -61,6 +102,7 @@ from app.models.ips import (
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import QRadarProvider
+from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key
 from app.services.search_cadence import SearchCadenceService
@@ -95,6 +137,10 @@ class IpsCollectionReport:
     entities_retired: int = 0
     watermarks_advanced: int = 0
     budget_blocked_windows: list[dict[str, object]] = field(default_factory=list)
+    history_sources: int = 0
+    history_searches: int = 0
+    history_buckets_written: int = 0
+    history_states: dict[str, str] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -111,6 +157,10 @@ class IpsCollectionReport:
             "entities_retired": self.entities_retired,
             "watermarks_advanced": self.watermarks_advanced,
             "budget_blocked_windows": self.budget_blocked_windows,
+            "history_sources": self.history_sources,
+            "history_searches": self.history_searches,
+            "history_buckets_written": self.history_buckets_written,
+            "history_states": self.history_states,
         }
 
 
@@ -149,6 +199,41 @@ class _SearchResult:
     outcomes: dict[tuple[int, datetime, IpsDimension], IpsCellOutcome]
     budget_blocked_reasons: dict[int, str]
     budget_blocked_windows: list[dict[str, object]]
+
+
+@dataclass(frozen=True)
+class _HistoryWrite:
+    source: _Source
+    floor: datetime
+    buckets: tuple[HistoryIpsBucket, ...]
+
+
+class _TimedIpsSearchBudget(IpsSearchBudget):
+    """An IPS budget that also refuses searches after the history time deadline."""
+
+    def __init__(self, max_searches: int, deadline: float) -> None:
+        super().__init__(max_searches)
+        self.deadline = deadline
+
+    def try_take(self) -> bool:
+        if time.monotonic() >= self.deadline:
+            return False
+        return super().try_take()
+
+
+def _scan_status(state: IpsCellState) -> SearchStatus:
+    """How a cell's state reads as the result of one floor-scan span.
+
+    A span that was not searched, failed or truncated proves nothing, so the scan is
+    retried; only a whole, complete span may prove the floor.
+    """
+    if state is IpsCellState.COMPLETE:
+        return SearchStatus.COMPLETE
+    if state is IpsCellState.LOWER_BOUND:
+        return SearchStatus.TRUNCATED
+    if state is IpsCellState.NOT_COLLECTED:
+        return SearchStatus.NOT_RUN
+    return SearchStatus.FAILED
 
 
 class _IpsFleetLocks:
@@ -235,8 +320,12 @@ class IpsCollector:
         boundary = floor_to_interval(now, interval)
         rows = (
             await self.session.execute(
-                select(IpsSourceProfile, LogSource)
+                select(IpsSourceProfile, LogSource, HistoryBackfillDecision)
                 .join(LogSource, LogSource.id == IpsSourceProfile.log_source_id)
+                .outerjoin(
+                    HistoryBackfillDecision,
+                    HistoryBackfillDecision.instance_id == IpsSourceProfile.instance_id,
+                )
                 .where(IpsSourceProfile.instance_id == instance.id)
                 .order_by(LogSource.qradar_id)
             )
@@ -246,11 +335,14 @@ class IpsCollector:
         )
         max_buckets = max(1, cadence.cadence_seconds // interval)
         max_buckets += self.settings.collection_max_backfill_intervals
-        watermark_rows = await self._load_watermarks(instance, [source for _, source in rows])
+        watermark_rows = await self._load_watermarks(
+            instance, [source for _, source, _decision in rows]
+        )
+        decision_row = rows[0][2] if rows else None
 
-        eligible: list[_Source] = []
+        candidates: list[_Source] = []
         skipped_rows: list[dict[str, object]] = []
-        for profile, source in rows:
+        for profile, source, _decision in rows:
             reason = self._ineligibility(profile, source)
             mapping: IpsFieldMapping | None = None
             if reason is None:
@@ -279,28 +371,67 @@ class IpsCollector:
                 else boundary - timedelta(seconds=interval)
             )
             end = min(boundary, start + timedelta(seconds=interval * max_buckets))
-            if start >= end:
-                continue
-            eligible.append(_Source(profile, source, mapping, (start, end)))
+            candidates.append(_Source(profile, source, mapping, (start, end)))
 
-        report.sources_planned = len(eligible)
+        # The ordinary collection path must retain its established 12-statement
+        # bound. The decision was folded into the fleet query above; without a
+        # Yes, no scope or live-data query is useful, so history stops here.
+        has_yes = decision_row is not None and decision_row.answer == "YES"
+        lock_candidates = candidates if has_yes else [
+            item for item in candidates if item.window[0] < item.window[1]
+        ]
+        report.sources_planned = len(lock_candidates)
         async with _IpsFleetLocks(
             self.session,
             self.settings,
             instance.id,
-            [item.log_source.qradar_id for item in eligible],
+            [item.log_source.qradar_id for item in lock_candidates],
         ) as acquired:
-            locked = [item for item in eligible if item.log_source.qradar_id in acquired]
-            report.sources_locked = len(eligible) - len(locked)
+            locked = [
+                item for item in lock_candidates if item.log_source.qradar_id in acquired
+            ]
+            report.sources_locked = len(lock_candidates) - len(locked)
             if report.sources_locked:
                 report.skipped["source locked"] = report.sources_locked
+
+            scope_values: dict[int, dict[str, object]] = {}
+            handoffs: dict[int, bool] = {}
+            history_sources: list[_Source] = []
+            live_sources = [item for item in locked if item.window[0] < item.window[1]]
+            if has_yes and decision_row is not None:
+                live_sources, history_sources, scope_values, handoffs = (
+                    await self._apply_history_lifecycle(
+                        instance, locked, decision_row, now=now
+                    )
+                )
+                if handoffs:
+                    await self._write_handoff_watermarks(
+                        instance,
+                        {item.log_source.qradar_id: item.log_source for item in locked},
+                        handoffs,
+                        boundary=boundary,
+                        now=now,
+                        interval=interval,
+                    )
+                    # A settled hand-off already owns the last bucket before this
+                    # boundary. An empty hand-off deliberately lets the ordinary
+                    # first-live window run now.
+                    live_sources = [
+                        replace(item, window=(boundary, boundary))
+                        if handoffs.get(item.log_source.qradar_id)
+                        else item
+                        for item in live_sources
+                    ]
+                    handoffs = {}
+                live_sources = [item for item in live_sources if item.window[0] < item.window[1]]
+
             budget = IpsSearchBudget(self.settings.search_cadence_max_searches_per_tick)
-            search_result = await self._search(locked, interval, budget)
+            search_result = await self._search(live_sources, interval, budget)
             report.searches_sent = budget.used
             report.budget_blocked_windows.extend(search_result.budget_blocked_windows)
             await self._persist(
                 instance,
-                locked,
+                live_sources,
                 search_result.outcomes,
                 watermark_rows,
                 skipped_rows,
@@ -309,6 +440,32 @@ class IpsCollector:
                 report,
                 search_result.budget_blocked_reasons,
             )
+            if history_sources:
+                new_handoffs = await self._run_history(
+                    instance,
+                    history_sources,
+                    scope_values,
+                    boundary=boundary,
+                    now=now,
+                    interval=interval,
+                    cadence_seconds=cadence.cadence_seconds,
+                    live_searches=budget.used,
+                    report=report,
+                )
+                handoffs.update(new_handoffs)
+            if scope_values:
+                await HistoryBackfillRepository(self.session).write_scopes(
+                    list(scope_values.values())
+                )
+            if handoffs:
+                await self._write_handoff_watermarks(
+                    instance,
+                    {item.log_source.qradar_id: item.log_source for item in locked},
+                    handoffs,
+                    boundary=boundary,
+                    now=now,
+                    interval=interval,
+                )
         return report
 
     def _ineligibility(self, profile: IpsSourceProfile, source: LogSource) -> str | None:
@@ -342,6 +499,629 @@ class IpsCollector:
             for source in sources
             if (row := by_name.get(watermark_collector(source.qradar_id))) is not None
         }
+
+    async def _apply_history_lifecycle(
+        self,
+        instance: QRadarInstance,
+        sources: Sequence[_Source],
+        decision_row: HistoryBackfillDecision,
+        *,
+        now: datetime,
+    ) -> tuple[
+        list[_Source],
+        list[_Source],
+        dict[int, dict[str, object]],
+        dict[int, bool],
+    ]:
+        """Apply every eligible source's lifecycle before the live fleet plan.
+
+        The reads are bulk and happen only for a Yes decision: one scope read and one
+        live-source read, independent of fleet size. Decisions without a Yes stay on
+        the pre-HB-7 statement shape in ``collect``.
+        """
+        if not sources:
+            return [], [], {}, {}
+        repository = HistoryBackfillRepository(self.session)
+        keys = [str(item.log_source.qradar_id) for item in sources]
+        scopes = await repository.scopes(instance.id, HistoryFamily.IPS.value, keys)
+        # The lifecycle reads `has_live_data` only to decide whether a scope may be
+        # created, so the live-bucket read happens only for a source that has no scope
+        # row yet. It is one bulk statement whatever the fleet size, and it looks at
+        # live buckets only: a source whose only rows are history is still eligible.
+        live_ids: set[uuid.UUID] = set()
+        fresh = [item for item in sources if str(item.log_source.qradar_id) not in scopes]
+        if fresh:
+            source_ids = [item.log_source.id for item in fresh]
+            live_ids = set(
+                (
+                    await self.session.scalars(
+                        select(IpsSourceBucket.log_source_id)
+                        .where(
+                            IpsSourceBucket.log_source_id.in_(source_ids),
+                            is_live_clause(IpsSourceBucket),
+                        )
+                        .distinct()
+                    )
+                ).all()
+            )
+        decision = self._decision_view(decision_row)
+        live: list[_Source] = []
+        reading: list[_Source] = []
+        values_by_source: dict[int, dict[str, object]] = {}
+        handoffs: dict[int, bool] = {}
+        mode = console_mode(decision)
+
+        for item in sources:
+            qradar_id = item.log_source.qradar_id
+            key = str(qradar_id)
+            row = scopes.get(key)
+            row_view = self._scope_view(row)
+            action = scope_action(
+                family=HistoryFamily.IPS,
+                mode=mode,
+                decision=decision,
+                row=row_view,
+                has_live_data=item.log_source.id in live_ids,
+                live_anchor=None,
+                switch_on=self.settings.history_backfill_enabled,
+            )
+            values: dict[str, object] | None = None
+            if action.kind is ActionKind.CREATE:
+                values = new_scope_row(
+                    action,
+                    instance_id=instance.id,
+                    family=HistoryFamily.IPS,
+                    scope_key=key,
+                    decision=decision,
+                    at=now,
+                )
+            elif action.kind is ActionKind.TRANSITION:
+                assert row is not None and row_view is not None
+                values = transition_row(
+                    action,
+                    instance_id=instance.id,
+                    family=HistoryFamily.IPS,
+                    scope_key=key,
+                    row=row_view,
+                    decision=decision,
+                    at=now,
+                )
+                if row.state == HistoryState.READING.value:
+                    handoffs[qradar_id] = row.through is not None
+            elif row is not None:
+                values = self._scope_values(row)
+
+            # Act on the mapping just built, never on the identity-mapped row the
+            # repository upsert will leave stale (HB-7's written-row decision).
+            state = None if values is None else str(values["state"])
+            if state == HistoryState.READING.value:
+                assert values is not None
+                reading.append(item)
+                values_by_source[qradar_id] = values
+            else:
+                live.append(item)
+                if action.kind in (ActionKind.CREATE, ActionKind.TRANSITION):
+                    assert values is not None
+                    values_by_source[qradar_id] = values
+        reading.sort(
+            key=lambda item: (
+                values_by_source[item.log_source.qradar_id].get("started_at") or now,
+                item.log_source.qradar_id,
+            )
+        )
+        return live, reading, values_by_source, handoffs
+
+    @staticmethod
+    def _decision_view(row: HistoryBackfillDecision) -> DecisionView:
+        return DecisionView(
+            answer=row.answer,
+            days=row.days,
+            start_requested_at=row.start_requested_at,
+            start_requested_by=row.start_requested_by,
+            stop_requested_at=row.stop_requested_at,
+            stop_requested_by=row.stop_requested_by,
+        )
+
+    @staticmethod
+    def _scope_view(row: HistoryBackfillScope | None) -> ScopeRowView | None:
+        if row is None:
+            return None
+        return ScopeRowView(
+            state=HistoryState(row.state),
+            days_requested=row.days_requested,
+            days_target=row.days_target,
+            target_start=row.target_start,
+            floor=row.floor,
+            through=row.through,
+            anchor=row.anchor,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            reason=row.reason,
+            progress=row.progress,
+        )
+
+    @staticmethod
+    def _scope_values(row: HistoryBackfillScope) -> dict[str, object]:
+        return {
+            "instance_id": row.instance_id,
+            "family": row.family,
+            "scope_key": row.scope_key,
+            "state": row.state,
+            "days_requested": row.days_requested,
+            "days_target": row.days_target,
+            "target_start": row.target_start,
+            "floor": row.floor,
+            "through": row.through,
+            "anchor": row.anchor,
+            "started_at": row.started_at,
+            "finished_at": row.finished_at,
+            "reason": row.reason,
+            "progress": dict(row.progress),
+        }
+
+    async def _run_history(
+        self,
+        instance: QRadarInstance,
+        sources: Sequence[_Source],
+        scope_values: dict[int, dict[str, object]],
+        *,
+        boundary: datetime,
+        now: datetime,
+        interval: int,
+        cadence_seconds: int,
+        live_searches: int,
+        report: IpsCollectionReport,
+    ) -> dict[int, bool]:
+        """Advance independent source scopes under one oldest-first sub-budget.
+
+        IPS history is deliberately per source: a shared keyed search returns roughly
+        one source's rows times the group size, while coupling unrelated floors and
+        failures. Sources share only this tick's search and time budgets.
+
+        One chunk costs one search per planned dimension, so the planner is given the
+        number of chunks the sub-budget can pay for, not the number of searches.
+        """
+        planner = ips_planner_settings(self.settings, cadence_seconds=cadence_seconds)
+        remaining = history_search_budget(self.settings, live_searches)
+        budget = _TimedIpsSearchBudget(
+            remaining,
+            time.monotonic() + float(self.settings.history_backfill_seconds_per_tick),
+        )
+        fitted = fit_family_window(HistoryFamily.IPS, self.settings)
+        writes: list[_HistoryWrite] = []
+        handoffs: dict[int, bool] = {}
+
+        for item in sources:
+            source_id = item.log_source.qradar_id
+            values = scope_values[source_id]
+            report.history_sources += 1
+            if not fitted.available:
+                change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
+                values.update(
+                    state=change.state.value,
+                    anchor=boundary,
+                    finished_at=now,
+                    reason=bounded_reason(fitted.reason or change.reason),
+                )
+                handoffs[source_id] = False
+                report.history_states[str(source_id)] = change.state.value
+                continue
+
+            stored = values["progress"]
+            assert isinstance(stored, dict)
+            if stored:
+                progress = decode_progress(stored).progress
+            else:
+                assert fitted.days is not None
+                started_at = values.get("started_at")
+                assert isinstance(started_at, datetime)
+                progress = new_progress(
+                    boundary - timedelta(days=fitted.days), started_at, planner
+                )
+                values.update(
+                    days_target=fitted.days,
+                    target_start=progress.target_start,
+                )
+
+            dimensions = self._history_dimensions(item)
+            chunk_budget = max(0, budget.remaining // max(1, len(dimensions)))
+            plan = plan_step(
+                progress,
+                now=now,
+                end=boundary,
+                budget=StepBudget(
+                    chunk_budget,
+                    max(0.0, budget.deadline - time.monotonic()),
+                ),
+                settings=planner,
+            )
+            reason = plan.reason
+            trigger = plan.trigger
+            updated = progress
+            if plan.action is StepAction.SCAN:
+                assert plan.scan_span is not None
+                status, totals = await self._history_scan(
+                    item, plan.scan_span, interval, budget
+                )
+                decision = interpret_scan(
+                    progress,
+                    [ScanSpanResult(plan.scan_span, status, totals)],
+                    boundary,
+                    planner,
+                )
+                updated = decision.progress
+                reason = decision.reason
+                trigger = decision.trigger
+            elif plan.action is StepAction.READ:
+                results: list[ChunkResult] = []
+                completed: dict[Span, dict[tuple[int, datetime, IpsDimension], IpsCellOutcome]] = {}
+                for chunk in plan.chunks:
+                    outcome_map, result = await self._history_search_span(
+                        item, chunk, interval, budget
+                    )
+                    results.append(result)
+                    if result.status is SearchStatus.COMPLETE:
+                        completed[chunk] = outcome_map
+                    else:
+                        break
+                if results:
+                    settled = settle_step(progress, results, end=boundary, settings=planner)
+                    updated = settled.progress
+                    reason = settled.reason
+                    trigger = settled.trigger
+                    ready: list[HistoryIpsBucket] = []
+                    for span in settled.write_spans:
+                        ready.extend(self._history_buckets(item, (span,), completed[span]))
+                    if ready:
+                        assert updated.floor is not None
+                        writes.append(_HistoryWrite(item, updated.floor, tuple(ready)))
+
+            values.update(
+                floor=updated.floor,
+                through=updated.through,
+                progress=encode_progress(updated),
+                reason=bounded_reason(reason),
+            )
+            if trigger is not None:
+                change = next_state(HistoryState.READING, trigger)
+                values.update(
+                    state=change.state.value,
+                    anchor=boundary,
+                    finished_at=now,
+                )
+                handoffs[source_id] = (
+                    updated.through is not None
+                    and change.state is not HistoryState.UNAVAILABLE
+                )
+            report.history_states[str(source_id)] = str(values["state"])
+
+        report.history_searches = budget.used
+        if writes:
+            await self._persist_history(instance, writes, now=now, interval=interval, report=report)
+        return handoffs
+
+    def _history_dimensions(self, source: _Source) -> tuple[IpsDimension, ...]:
+        """The dimensions one source's keyed searches read, in the plan's order.
+
+        A chunk of history costs one search per dimension, so this is also what
+        converts the tick's search sub-budget into a number of chunks.
+        """
+        plan = plan_searches(
+            [(source.log_source.qradar_id, source.mapping)],
+            max_sources_per_search=self.settings.ips_max_sources_per_search,
+        )
+        return tuple(search.dimension for search in plan)
+
+    async def _history_scan(
+        self,
+        source: _Source,
+        span: Span,
+        interval: int,
+        budget: IpsSearchBudget,
+    ) -> tuple[SearchStatus, tuple[tuple[datetime, int], ...]]:
+        """The floor proof: the `TOTALS` dimension of one span, and nothing else.
+
+        The proof comes from the read itself, so it costs the one search it proves
+        the floor with (§B.3.2). A bucket before the floor is never written, so the
+        scan writes nothing itself.
+        """
+        group = IpsSourceGroup(fields=(), source_ids=(source.log_source.qradar_id,))
+        cells = await run_dimension(
+            self.provider,
+            IpsDimension.TOTALS,
+            group,
+            (span.start, span.end),
+            interval,
+            max_rows=self.settings.ariel_multi_bucket_max_rows,
+            budget=budget,
+        )
+        totals: list[tuple[datetime, int]] = []
+        status = SearchStatus.COMPLETE
+        for cell in cells:
+            if cell.state is IpsCellState.COMPLETE:
+                fact = fold_outcome(
+                    cell,
+                    mapping=source.mapping,
+                    max_entities=self.settings.ips_max_entities_per_bucket,
+                )
+                if isinstance(fact, IpsTotalsFact):
+                    totals.append((cell.bucket_start, fact.events))
+                continue
+            status = _scan_status(cell.state)
+            break
+        return status, tuple(totals)
+
+    async def _history_search_span(
+        self,
+        source: _Source,
+        span: Span,
+        interval: int,
+        budget: IpsSearchBudget,
+    ) -> tuple[
+        dict[tuple[int, datetime, IpsDimension], IpsCellOutcome],
+        ChunkResult,
+    ]:
+        before = budget.used
+        searched = await self._search(
+            [replace(source, window=(span.start, span.end))], interval, budget
+        )
+        spent = budget.used - before
+        result = self._history_chunk_result(source, span, searched.outcomes, searches=spent)
+        return searched.outcomes, result
+
+    def _history_chunk_result(
+        self,
+        source: _Source,
+        span: Span,
+        outcomes: dict[tuple[int, datetime, IpsDimension], IpsCellOutcome],
+        *,
+        searches: int,
+    ) -> ChunkResult:
+        planned = self._history_dimensions(source)
+        status = SearchStatus.COMPLETE
+        rows = non_silent = lower_bound = 0
+        cursor = span.start
+        while cursor < span.end:
+            cells = {
+                dimension: outcomes.get((source.log_source.qradar_id, cursor, dimension))
+                for dimension in planned
+            }
+            if any(
+                cell is None or cell.state is IpsCellState.NOT_COLLECTED
+                for cell in cells.values()
+            ):
+                status = SearchStatus.NOT_RUN
+                break
+            totals = cells.get(IpsDimension.TOTALS)
+            if totals is None or totals.state is IpsCellState.FAILED:
+                status = SearchStatus.FAILED
+                break
+            if totals.state is not IpsCellState.COMPLETE:
+                status = SearchStatus.TRUNCATED
+                break
+            # The row cap binds one search, so the density of a bucket is its
+            # busiest dimension, not the sum over the dimensions.
+            busiest = max(
+                (len(cell.rows) for cell in cells.values() if cell is not None),
+                default=0,
+            )
+            rows += busiest
+            non_silent += int(bool(busiest))
+            lower_bound += int(
+                any(
+                    cell is not None and cell.state is IpsCellState.LOWER_BOUND
+                    for cell in cells.values()
+                )
+            )
+            cursor += timedelta(seconds=self.settings.collection_interval_seconds)
+        return ChunkResult(
+            span,
+            status,
+            rows=rows,
+            non_silent_buckets=non_silent,
+            lower_bound_buckets=lower_bound,
+            searches=searches,
+        )
+
+    @staticmethod
+    def _history_buckets(
+        source: _Source,
+        spans: Sequence[Span],
+        outcomes: dict[tuple[int, datetime, IpsDimension], IpsCellOutcome],
+    ) -> tuple[HistoryIpsBucket, ...]:
+        buckets: list[HistoryIpsBucket] = []
+        for span in spans:
+            starts = sorted(
+                {
+                    start
+                    for qradar_id, start, _dimension in outcomes
+                    if qradar_id == source.log_source.qradar_id
+                    and span.start <= start < span.end
+                }
+            )
+            for start in starts:
+                cells = {
+                    dimension: outcome
+                    for (qradar_id, bucket, dimension), outcome in outcomes.items()
+                    if qradar_id == source.log_source.qradar_id and bucket == start
+                }
+                totals = cells.get(IpsDimension.TOTALS)
+                # Only a whole, complete bucket is written: a bucket whose totals did
+                # not come back whole proves nothing.
+                if totals is None or totals.state is not IpsCellState.COMPLETE:
+                    continue
+                buckets.append(HistoryIpsBucket(start, cells))
+        return tuple(buckets)
+
+    async def _persist_history(
+        self,
+        instance: QRadarInstance,
+        writes: Sequence[_HistoryWrite],
+        *,
+        now: datetime,
+        interval: int,
+        report: IpsCollectionReport,
+    ) -> None:
+        """Fold the fleet, then executemany each table once (constant SQL cost)."""
+        source_ids = [write.source.log_source.id for write in writes]
+        stored = (
+            await self.session.scalars(
+                select(IpsEntity).where(IpsEntity.log_source_id.in_(source_ids))
+            )
+        ).all()
+        by_source: dict[uuid.UUID, list[HistoryIpsEntity]] = defaultdict(list)
+        for row in stored:
+            by_source[row.log_source_id].append(
+                HistoryIpsEntity(
+                    row.id,
+                    row.instance_id,
+                    row.log_source_id,
+                    IpsDimension(str(row.dimension)),
+                    row.value_key,
+                    row.display_name,
+                    row.first_seen_at,
+                    row.last_seen_at,
+                    row.active,
+                    row.retired_at,
+                    row.normalizer_version,
+                )
+            )
+        entity_rows: list[dict[str, object]] = []
+        bucket_rows: list[dict[str, object]] = []
+        metric_rows: list[dict[str, object]] = []
+        for write in writes:
+            source = write.source.log_source
+
+            def maintenance(at: datetime, source: LogSource = source) -> bool:
+                return in_maintenance(
+                    at,
+                    maintenance_mode=source.maintenance_mode,
+                    maintenance_until=source.maintenance_until,
+                )
+
+            folded = fold_ips_history(
+                write.buckets,
+                by_source[source.id],
+                instance_id=instance.id,
+                log_source_id=source.id,
+                mapping=write.source.mapping,
+                profile_version=write.source.profile.profile_version,
+                bucket_seconds=interval,
+                floor=write.floor,
+                collected_at=now,
+                max_entities_per_bucket=self.settings.ips_max_entities_per_bucket,
+                policy=AdmissionPolicy(
+                    max_new_per_bucket=self.settings.ips_max_new_entities_per_bucket,
+                    max_active=self.settings.ips_max_active_entities_per_source_dimension,
+                    min_requests=self.settings.ips_min_admission_events,
+                ),
+                active_days=self.settings.ips_entity_active_days,
+                maintenance=maintenance,
+                id_factory=uuid.uuid4,
+            )
+            entity_rows.extend(folded.entities)
+            bucket_rows.extend(folded.buckets)
+            metric_rows.extend(folded.metrics)
+            report.entities_admitted += folded.admitted
+            report.entities_reactivated += folded.reactivated
+            report.entities_retired += folded.retired
+
+        if entity_rows:
+            entity_insert = pg_insert(cast(Table, IpsEntity.__table__))
+            await self.session.execute(
+                entity_insert.on_conflict_do_update(
+                    constraint="uq_ips_entity_natural_key",
+                    set_={
+                        "display_name": func.coalesce(
+                            entity_insert.excluded.display_name, IpsEntity.display_name
+                        ),
+                        "first_seen_at": func.least(
+                            entity_insert.excluded.first_seen_at, IpsEntity.first_seen_at
+                        ),
+                        "last_seen_at": func.greatest(
+                            entity_insert.excluded.last_seen_at, IpsEntity.last_seen_at
+                        ),
+                        "active": entity_insert.excluded.active,
+                        "retired_at": entity_insert.excluded.retired_at,
+                        "normalizer_version": entity_insert.excluded.normalizer_version,
+                    },
+                ),
+                entity_rows,
+            )
+        if bucket_rows:
+            bucket_insert = pg_insert(cast(Table, IpsSourceBucket.__table__))
+            await self.session.execute(
+                bucket_insert.on_conflict_do_nothing(
+                    index_elements=["log_source_id", "bucket_start"]
+                ),
+                bucket_rows,
+            )
+        if metric_rows:
+            metric_insert = pg_insert(cast(Table, IpsEntityMetric.__table__))
+            await self.session.execute(
+                metric_insert.on_conflict_do_nothing(
+                    index_elements=["ips_entity_id", "bucket_start"]
+                ),
+                metric_rows,
+            )
+        report.history_buckets_written += len(bucket_rows)
+
+    async def _write_handoff_watermarks(
+        self,
+        instance: QRadarInstance,
+        sources: dict[int, LogSource],
+        handoffs: dict[int, bool],
+        *,
+        boundary: datetime,
+        now: datetime,
+        interval: int,
+    ) -> None:
+        """Seed both source watermarks in one executemany statement."""
+        from app.services.ips_pipeline import evaluation_collector
+
+        rows: list[dict[str, object]] = []
+        for qradar_id, settled in handoffs.items():
+            if qradar_id not in sources:
+                continue
+            watermark = boundary - timedelta(seconds=interval) if settled else None
+            for collector in (
+                watermark_collector(qradar_id),
+                evaluation_collector(qradar_id),
+            ):
+                rows.append(
+                    {
+                        "id": uuid.uuid4(),
+                        "instance_id": instance.id,
+                        "collector": collector,
+                        "watermark_at": watermark,
+                        "last_run_at": now,
+                        "lag_seconds": None,
+                        "intervals_collected": 0,
+                        "consecutive_failures": 0,
+                        "last_error": None,
+                        "collection_metadata": {
+                            "history_handoff": True,
+                            "history_end": boundary.isoformat() if settled else None,
+                        },
+                    }
+                )
+        if not rows:
+            return
+        insert = pg_insert(cast(Table, CollectionWatermark.__table__))
+        await self.session.execute(
+            insert.on_conflict_do_update(
+                constraint="uq_collection_watermark_key",
+                set_={
+                    "watermark_at": insert.excluded.watermark_at,
+                    "last_run_at": insert.excluded.last_run_at,
+                    "lag_seconds": insert.excluded.lag_seconds,
+                    "consecutive_failures": 0,
+                    "last_error": None,
+                    "collection_metadata": insert.excluded.collection_metadata,
+                },
+            ),
+            rows,
+        )
 
     async def _search(
         self, sources: Sequence[_Source], bucket_seconds: int, budget: IpsSearchBudget
