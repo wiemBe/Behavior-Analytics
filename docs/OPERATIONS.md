@@ -393,11 +393,29 @@ Full report: ./qradar-dash doctor
 Raporun geri kalanı (henüz yazılmamış bir beat kalp atışı, QRadar kontrolleri) yükseltmeyi ya da
 geri almayı yanlış bir başarısızlık gibi gösterirdi; bu yüzden yalnız karar veren iki satır yazılır.
 
+Bu çift `upgrade` tarafından **iki kez** yazılır; her ikisinden sonra da
+`Full report: ./qradar-dash doctor` satırı gelir:
+
+- **Birincisi** yazıcılar durmadan önce, ön kontrolde yazılır ve **kurulu** sürümün başını
+  gösterir (`database and image are at 0025`). Bu, veritabanının yükseltmeden önce sağlıklı
+  olduğunun kanıtıdır.
+- **İkincisi** yeni yığın başladıktan sonra yazılır ve **hedef** sürümün başını gösterir
+  (`database and image are at 0030`). Bu, migrasyonun hedef başa ulaştığının kanıtıdır.
+
+`rollback` çifti **bir kez** yazar: geri alınan sürüm ayakta olduktan sonra, o sürümün başında
+(`database and image are at 0025`). Bir yükseltme otomatik geri alınırsa geri almanın kendi
+kontrolü de çifti bir kez daha yazar; o zaman son çift geri alınan sürümün başını gösterir.
+Kurulu sürüm zaten hedefse (`Version <sürüm> is already installed and healthy; nothing changed.`)
+çift yalnız bir kez yazılır.
+
 ### İmaj ön ekinin taşınması
 
 Depo 2026-10-18'de `wiemBe/QRadar-Dashboard` adından `wiemBe/Behavior-Analytics` adına taşındı.
-Sonraki sürümlerin imajları `ghcr.io/wiembe/behavior-analytics/<servis>` altına yayımlanır;
-`0.1.0` ve `0.1.1` imajları eski adda (`ghcr.io/wiembe/qradar-dashboard/<servis>`) kalır.
+Sonraki sürümlerin imajları `ghcr.io/wiembe/behavior-analytics/<servis>` altında yayımlanır; yayın
+iş akışı, depo adından imaj adını türetir, yani sonraki her sürüm yeni adda çıkar. `0.1.0` ve
+`0.1.1` yayımlanırken depo hâlâ eski addaydı; bu iki sürüm 2026-10-20'de `mirror-images` iş akışıyla
+yeni ada kopyalandı. Bugün `ghcr.io/wiembe/behavior-analytics/<servis>:0.1.0` ve `:0.1.1` de anonim
+olarak çekilebilir ve her iki addaki imajın özeti aynıdır.
 
 `upgrade`, taşımayı kendisi yapar. Hedef sürümün betiği, sürüm kontrollerinden ve durum dosyası
 kontrollerinden sonra, hiçbir şey çekmeden önce çalışır:
@@ -422,13 +440,22 @@ yerinde kalır; yerel etiketler sayesinde durum tutarlıdır. `rollback` kayıtl
 **geçerli** `.env` ön ekiyle etiketler ve `.env` dosyasını eski haline döndürmez; yani geri alınan
 sürüm de yeni ön ek altında çalışır. Eski bir sürümü yeni ön ek altında çekmek gerekirse (geri
 almadan sonra aynı sürümün `install` yeniden çalıştırması), imajlar `mirror-images` iş akışıyla
-(`.github/workflows/mirror-images.yml`, elle çalıştırılır) yeni ada kopyalanmış olmalıdır.
+(`.github/workflows/mirror-images.yml`, elle çalıştırılır) yeni ada kopyalanmış olmalıdır. Bu iş
+akışı yalnız **taşımadan önce** yayımlanmış sürümler için gerekir: `0.1.0` ve `0.1.1`
+2026-10-20'de kopyalandı, sonraki sürümler zaten yeni adla yayımlanır. Yeni bir sanal makinede
+(2026-10-20) kopyalama sonrasında geri alınan sürümün `install` yeniden çalıştırması denendi:
+kurulum tamamlandı, yönetici parolası korundu ve `ENCRYPTION_KEY` döndürülmedi.
 `upgrade --offline` taşımayı aynı şekilde yapar; hedef imajlar yeni ön ek altında yüklü olmalıdır.
 
 ### Ön kontrol
 
-Hiçbir konteyner durdurulmadan önce:
+Hiçbir konteyner durdurulmadan önce, betik kontrolleri şu sırayla yapar:
 
+- Checkout'un kendisi hedef sürümdür (bkz. yukarıdaki Yükseltme bölümü): `VERSION` dosyasının
+  içeriği hedefle aynı olmalıdır. Değilse
+  `upgrade refused: this checkout is version <checkout>, not <hedef>; run git fetch --tags && git
+  checkout v<hedef> first (see docs/OPERATIONS.md, Yükseltme)` ile reddedilir. Bu, ilk kontroldür:
+  reddedişten önce hiçbir şey çekilmemiş ve hiçbir konteyner durdurulmamıştır.
 - `.qradar-dash/state.json` vardır ve geçerlidir; değilse betik geçersiz ya da eksik alanı
   adıyla bildirir (`upgrade refused: .qradar-dash/state.json field <alan> is invalid or missing`).
 - `installed_version` hedeften eskidir. Aynı sürüm ve sağlıklı konteynerlerde komut çalışma
@@ -437,6 +464,15 @@ Hiçbir konteyner durdurulmadan önce:
   `version <sürüm> is recorded but the running stack is not healthy: <neden>` ile durur.
   Daha yeni kurulu sürüm `upgrade refused: <kurulu> is newer than <hedef>; that is rollback` ile
   reddedilir.
+- Önceki yükseltme `outcome=failed` kaydettiyse, `rollback` ya da başarılı bir `restore` bunu
+  temizleyene kadar yeni yükseltme `upgrade refused: the last upgrade failed; run rollback or
+  restore first` ile engellenir. `last_upgrade.restored_from` alanı dolu olan `failed` bir kayıt
+  bu engeli kaldırır (başarılı bir `restore` o alanı yazar).
+- İmaj ön eki taşınır (bkz. İmaj ön ekinin taşınması). Bu da hiçbir şey çekilmeden önce olur:
+  kurulu imajlar yeni ön ek altında etiketlenir, `.env` ve `.secrets/install.answers` yeniden
+  yazılır ve `Image prefix moved: …` satırı yazılır. Ön ek başka bir kayıt defterine ya da aynaya
+  aitse hiçbir şey değişmez; betik, hedef imajların o ön ek altında bulunması gerektiğini söyler.
+  Kurulu imaj yerelde yoksa yükseltme, imajı adıyla anarak reddedilir ve hiçbir şey değişmez.
 - Hedef imaj çekilebilir ya da zaten yüklüdür. Çekme, yazıcılar durmadan **önce** olur; kayıt
   defteri hatası kesinti yaratmaz. Çekilemezse
   `upgrade refused: target images are unavailable; no container was stopped`. `--offline`
@@ -444,22 +480,30 @@ Hiçbir konteyner durdurulmadan önce:
 - Hedef imajın sürüm notları ayrıştırılır ve `installed_version`, `min_from` değerine eşit ya da
   büyüktür. Ayrıştırılamazsa
   `upgrade refused: target release notes are missing, invalid, or for another version`; eskiyse
-  `upgrade refused: <hedef> requires at least <min_from>`. Dur: imajlar çekilmiştir,
-  konteynerlere dokunulmamıştır.
+  `upgrade refused: <hedef> requires at least <min_from>`. Bu reddediş zararsızdır: komut 1 ile
+  çıkar, hiçbir konteyner durmaz ve `state.json` değişmez. Yalnız iki şey olmuştur: imaj ön eki
+  taşınmış ve hedef imajlar çekilmiştir. Örneğin `0.1.0` kurulumunda `upgrade 0.1.2`,
+  `upgrade refused: 0.1.2 requires at least 0.1.1` ile reddedilir; sonraki adım
+  `git checkout v0.1.1 && ./qradar-dash upgrade 0.1.1` ise taşınmış ön eki okur ve `0.1.1`
+  imajlarını yeni ad altında çeker. Bu, eski sürümler yeni ada kopyalandığı için çalışır
+  (bkz. İmaj ön ekinin taşınması).
 - Disk koruması (bkz. Yedek ve geri alma) geçer. Yedek kökü yoksa
-  `upgrade refused: backup root is unavailable`.
+  `upgrade refused: backup root is unavailable`; veritabanı boyutu okunamazsa
+  `upgrade refused: database size is unavailable`. Koruma
+  `Backup disk: <boş> GiB free; <gerekli> GiB required at <yol>.` yazar, yer yetmiyorsa
+  `backup disk guard refused: <boş> GiB free, <gerekli> GiB required at <yol>` ile reddeder.
 - `doctor` `db_connect` ve `migration_head` **PASS** verir. Biri FAIL ise
   `upgrade refused: database readiness is already failing; see runbook OPS-R11`; biri hiç PASS
   bildirilmediyse `upgrade refused: doctor did not report db_connect and migration_head as PASS;
   see runbook OPS-R11`. Veritabanı **mevcut** imajın başında değilse biri elle migrate etmiştir
-  ya da önceki migrate çökmüştür. Dur ve OPS-R11'e bak.
+  ya da önceki migrate çökmüştür. Dur ve OPS-R11'e bak. Bu kontrol yazıcılar durmadan önce
+  çalışır ve **kurulu** sürümün başını gösterir.
+- Çalışan imaj özetleri okunabilir; okunamazsa
+  `upgrade refused: running image digests are unavailable`.
 - `.env` içindeki `QRADAR_DASH_VERSION`, durum dosyasındaki `installed_version` ile aynıdır.
   Değilse `upgrade refused: .env has QRADAR_DASH_VERSION=<değer> but the state file says
   <kurulu>`.
-- Önceki yükseltme `outcome=failed` kaydettiyse, `rollback` ya da başarılı bir `restore` bunu
-  temizleyene kadar yeni yükseltme `upgrade refused: the last upgrade failed; run rollback or
-  restore first` ile engellenir. `last_upgrade.restored_from` alanı dolu olan `failed` bir kayıt
-  bu engeli kaldırır (başarılı bir `restore` o alanı yazar).
+- UTC saati alınabilir; alınamazsa `upgrade refused: the UTC time is unavailable`.
 
 ### Yedek, sonra migrasyon
 
@@ -532,6 +576,11 @@ dakikadır; veritabanı büyükse döküm süresi eklenir.
 
 Bir test VM'de (küçük bir veritabanı) yükseltme kesintisi yaklaşık 15 sn, geri alma yaklaşık 13 sn
 ölçüldü. Bunlar bir söz değildir; kendi veritabanın büyükse döküm süresi eklenir.
+
+Yeni bir sanal makinede (2026-10-20, 4 vCPU / 10 GiB) ölçülenler: `0.1.1` → `0.1.2` yükseltmesi
+52 sn sürdü, kesintisi 16,2 sn; geri alma 33 sn sürdü, kesintisi 13,7 sn; ikinci yükseltme 50 sn
+sürdü, kesintisi 20,8 sn. Toplam süre, kesinti penceresinin dışındaki imaj çekme ve ön kontrol
+adımlarını da kapsar. Bunlar da bir söz değildir.
 
 ### Durum dosyasını okuma
 
@@ -672,7 +721,10 @@ gereklidir (`--non-interactive rollback requires --yes`).
    yazdırır.
 3. Önceki imaj özetlerini başlatır; özetleri önceki sürümün etiketlerine çevirir. İmaj çekmez;
    özetler yereldir.
-4. Yükseltmedeki aynı sağlık kontrolleri, bu kez **önceki** sürümü bekleyerek.
+4. Yükseltmedeki aynı sağlık kontrolleri, bu kez **önceki** sürümü bekleyerek. Bu kontrol
+   `doctor` raporundan yalnız `db_connect` ve `migration_head` satırlarını **bir kez** yazar
+   (`Full report: ./qradar-dash doctor` satırıyla birlikte) ve **geri alınan** sürümün başını
+   gösterir.
 5. `outcome=rolled_back` kaydeder ve `previous_images` değerini temizler.
 
 Geri alma kendi sağlık kontrolünde başarısız olursa (OPS-R45): yazıcılar yeniden durdurulur, yedek
