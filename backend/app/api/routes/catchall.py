@@ -20,6 +20,8 @@ from app.alerts.fingerprint import catchall_sender_fingerprint
 from app.alerts.routing import default_policy
 from app.alerts.service import AlertResolution, AlertService
 from app.api.deps import SessionDep, SettingsDep
+from app.history.origin import origin_of
+from app.history.state import HistoryFamily
 from app.models.catchall import CatchallBucket, CatchallSender
 from app.models.enums import CatchallReviewStatus
 from app.models.log_source import LogSource
@@ -80,6 +82,17 @@ def _sender_out(sender: CatchallSender, source_name: str) -> CatchallSenderOut:
         reviewed_by=sender.reviewed_by,
         reviewed_at=sender.reviewed_at,
     )
+
+
+def _bucket_out(row: CatchallBucket) -> CatchallBucketOut:
+    """The stored bucket as the API reports it, labelled with where it came from.
+
+    The marker is read with the shared helper, so the two spellings of "this row
+    came from QRadar's past" stay in one place (HISTORY-BACKFILL §B.4.4).
+    """
+    out = CatchallBucketOut.model_validate(row)
+    out.origin = origin_of(HistoryFamily.CATCHALL, row.origin)
+    return out
 
 
 @router.get("/sources", response_model=CatchallSourceList)
@@ -215,7 +228,7 @@ async def list_buckets(
         catchall_log_source_id=catchall_log_source_id,
         since=since,
         until=until,
-        items=[CatchallBucketOut.model_validate(row) for row in rows],
+        items=[_bucket_out(row) for row in rows],
     )
 
 

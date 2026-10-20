@@ -12,6 +12,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.history.origin import HistoryOrigin
+
 
 class MappingFieldOut(BaseModel):
     key: str
@@ -142,6 +144,9 @@ class WafFieldStatusOut(BaseModel):
 class WafLastBucketOut(BaseModel):
     bucket_start: datetime
     completeness: str
+    #: LIVE when the cadence collection wrote the bucket, HISTORY when the
+    #: history backfill read it from QRadar's past (HISTORY-BACKFILL §B.4.2).
+    origin: HistoryOrigin
     #: EXACT, or LOWER_BOUND when grouping was truncated or coverage was low.
     request_count_measurement: str
     #: The grouped result hit its cap: new-endpoint discovery was incomplete.

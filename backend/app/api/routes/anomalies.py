@@ -27,6 +27,8 @@ from app.anomaly.capabilities import (
 )
 from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
+from app.history.origin import origin_of
+from app.history.state import HistoryFamily
 from app.models.enums import (
     AnomalyState,
     AnomalyType,
@@ -660,7 +662,18 @@ async def source_metrics(
     )
     out: list[MetricBucketOut] = []
     for row in rows:
-        item = MetricBucketOut.model_validate(row)
+        # Phase A keeps no `origin` column: the marker lives in the row's
+        # `collection_source` (§B.4.1), and the shared helper owns that spelling.
+        item = MetricBucketOut(
+            bucket_start=row.bucket_start,
+            bucket_seconds=row.bucket_seconds,
+            event_count=row.event_count,
+            average_eps=row.average_eps,
+            peak_eps=row.peak_eps,
+            completeness=row.completeness,
+            last_event_at=row.last_event_at,
+            origin=origin_of(HistoryFamily.PHASE_A, row.collection_source),
+        )
         telemetry = bucket_telemetry(row.collection_source, row.query_provenance)
         if LogSourceTelemetry.PEAK_RATE not in telemetry:
             item.peak_eps = None
@@ -848,6 +861,7 @@ async def _waf_source_rows(
                         bucket_start=bucket.bucket_start,
                         bucket_seconds=bucket.bucket_seconds,
                         completeness=str(bucket.completeness),
+                        origin=origin_of(HistoryFamily.WAF, bucket.origin),
                         endpoint_coverage_ratio=bucket.endpoint_coverage_ratio,
                         coverage_measurement=str(bucket.coverage_measurement),
                         request_count_measurement=str(bucket.request_count_measurement),
@@ -1045,6 +1059,11 @@ async def waf_endpoint_metrics(
                     str(bucket.request_count_measurement) if bucket is not None else None
                 ),
                 completeness=str(metric.completeness),
+                # The endpoint metric row carries no marker of its own: the
+                # source's bucket record does (§B.4.2).
+                origin=(
+                    origin_of(HistoryFamily.WAF, bucket.origin) if bucket is not None else None
+                ),
                 partial=metric.completeness == BucketCompleteness.PARTIAL,
                 endpoint_coverage_ratio=metric.endpoint_coverage_ratio,
                 in_maintenance=bucket.in_maintenance if bucket is not None else None,
@@ -1200,6 +1219,7 @@ def _ips_source_row(
                 total_events=bucket.total_events,
                 total_records=bucket.total_records,
                 in_maintenance=bucket.in_maintenance,
+                origin=origin_of(HistoryFamily.IPS, bucket.origin),
                 dimensions=_bucket_dimensions(bucket),
                 admission=_bucket_admission(bucket),
             )
@@ -1345,6 +1365,11 @@ async def ips_entity_metrics(
                 bucket_start=metric.bucket_start,
                 bucket_seconds=metric.bucket_seconds,
                 events=metric.events,
+                # The entity metric row carries no marker of its own: the
+                # source's bucket record does (§B.4.3).
+                origin=(
+                    origin_of(HistoryFamily.IPS, bucket.origin) if bucket is not None else None
+                ),
                 measurement=coverage.measurement if coverage is not None else None,
                 coverage_ratio=coverage.coverage_ratio if coverage is not None else None,
                 coverage_lower_bound=(
@@ -1427,6 +1452,7 @@ async def ips_source_metrics(
             total_events=b.total_events,
             total_records=b.total_records,
             in_maintenance=b.in_maintenance,
+            origin=origin_of(HistoryFamily.IPS, b.origin),
             dimensions=_bucket_dimensions(b),
             source_events=b.source_events,
             distinct_sources=b.distinct_sources,

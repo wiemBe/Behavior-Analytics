@@ -20,6 +20,7 @@ from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.fleet.summary import EPS_METRIC, _class_of
+from app.history.origin import is_history_clause
 from app.models.enums import BucketCompleteness, SourceClass
 from app.models.fleet import LogSourceClassification
 from app.models.log_source import LogSource, LogSourceBaseline, LogSourceMetric
@@ -106,6 +107,9 @@ async def build_fleet_eps_series(
     #    width is not a cell of this grid. Rows of sources no longer monitored
     #    are filtered out by the join.
     complete = LogSourceMetric.completeness == BucketCompleteness.COMPLETE.value
+    # Phase A marks a row read from QRadar's past in `collection_source`; the
+    # shared helper owns that spelling (HISTORY-BACKFILL §B.4.1).
+    history = is_history_clause(LogSourceMetric)
     step_index = cast(
         func.floor(
             (
@@ -123,6 +127,7 @@ async def build_fleet_eps_series(
                 step_index,
                 func.count().filter(complete),
                 func.coalesce(func.sum(LogSourceMetric.event_count).filter(complete), 0),
+                func.count().filter(complete, history),
             )
             .select_from(LogSourceMetric)
             .join(LogSource, LogSource.id == LogSourceMetric.log_source_id)
@@ -141,9 +146,11 @@ async def build_fleet_eps_series(
     ).all()
     cell_complete: dict[tuple[str, int], int] = {}
     cell_events: dict[tuple[str, int], int] = {}
-    for cls, idx, n_complete, n_events in metric_rows:
+    cell_history: dict[tuple[str, int], int] = {}
+    for cls, idx, n_complete, n_events, n_history in metric_rows:
         cell_complete[(cls, idx)] = int(n_complete)
         cell_events[(cls, idx)] = int(n_events)
+        cell_history[(cls, idx)] = int(n_history)
 
     # 3. Reliable baseline medians of monitored, non-internal sources.
     baseline_rows = (
@@ -215,6 +222,7 @@ async def build_fleet_eps_series(
         points: list[EpsSeriesPoint] = []
         for i in range(steps):
             n_complete = sum(cell_complete.get((cls, i), 0) for cls in classes)
+            n_history = sum(cell_history.get((cls, i), 0) for cls in classes)
             measured = cells_expected > 0 and n_complete == cells_expected
             n_events = sum(cell_events.get((cls, i), 0) for cls in classes)
             steps_measured += 1 if measured else 0
@@ -225,6 +233,7 @@ async def build_fleet_eps_series(
                     eps=n_events / step_seconds if measured else None,
                     expected_eps=expected_for(source_ids, i),
                     cells_complete=n_complete,
+                    cells_from_history=n_history,
                     cells_expected=cells_expected,
                     sources_expected=n_sources,
                 )

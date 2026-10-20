@@ -655,7 +655,7 @@ def test_waf_endpoint_inventory(db_schema) -> None:
 
 METRIC_KEYS = {
     "bucket_start", "bucket_seconds", "request_count", "request_count_measurement",
-    "completeness", "partial", "endpoint_coverage_ratio", "in_maintenance",
+    "completeness", "origin", "partial", "endpoint_coverage_ratio", "in_maintenance",
     "normalizer_version", "distinct_client_count", "action_measurement",
     "response_code_measurement", "client_measurement", "blocked_count", "action_events",
     "unmapped_action_count", "response_code_events", "client_error_count",
@@ -689,6 +689,10 @@ def test_waf_metrics_keep_unmeasured_null_and_flag_partial(db_schema) -> None:
     # No source bucket record for the row: what it would have said is unknown.
     assert orphan["request_count_measurement"] is None and orphan["in_maintenance"] is None
     assert orphan["action_measurement"] is None
+    # The marker rides the source's bucket record: the two rows that have one
+    # say where it came from, the orphan row cannot say and stays unknown.
+    assert complete["origin"] == "LIVE" and partial["origin"] == "LIVE"
+    assert orphan["origin"] is None
     assert "198.51.100.9" not in resp.text and "top_clients" not in resp.text
     assert "queries" not in resp.text and "provenance" not in resp.text
     narrow = Client(READER).get(
