@@ -372,15 +372,13 @@ def transition_row(
         "progress": dict(row.progress) if row.progress is not None else {},
     }
     if action.state is HistoryState.READING:
-        # A scope that starts (or starts again) reads from a fresh window: nothing searched.
+        # Empty progress says the new reading has searched nothing yet.  Keep the earlier
+        # reading's window and evidence visible until the first step replaces them with its
+        # own; a stop before that step must not erase what the aggregate tables still hold.
         values.update(
             anchor=action.anchor if action.anchor is not None else row.anchor,
             started_at=at,
             finished_at=None,
-            days_target=None,
-            target_start=None,
-            floor=None,
-            through=None,
             progress={},
         )
     else:
@@ -394,17 +392,17 @@ def transition_row(
 def decode_scope(row: ScopeRowView) -> DecodedProgress | None:
     """The row's progress and adapter state, or None while the scope has not searched.
 
-    `progress` is `{}` exactly while the scope has not searched: `WAITING`, `NOT_ELIGIBLE`,
-    a `READING` scope before its first step, or one that finished before it. Otherwise it
-    decodes with `decode_progress` and agrees with the row's `target_start`. A contradiction
-    raises `LifecycleError`; nothing is guessed.
+    `progress` is `{}` exactly while the scope has not searched in its current reading:
+    `WAITING`, `NOT_ELIGIBLE`, a `READING` scope before its first step, or one that finished
+    before it. A restarted scope may still expose the preceding reading's window and evidence
+    columns until its first step replaces them. Otherwise progress decodes with
+    `decode_progress` and agrees with the row's `target_start`. A contradiction raises
+    `LifecycleError`; nothing is guessed.
     """
     body = row.progress
     if body is None:
         raise LifecycleError("a scope row has progress ({} while nothing was searched)")
     if len(body) == 0:
-        if row.target_start is not None:
-            raise LifecycleError("progress is {} but the row has a target_start")
         return None
     if row.state in (HistoryState.WAITING, HistoryState.NOT_ELIGIBLE):
         raise LifecycleError(f"a {row.state.value} scope has not searched, so progress is {{}}")
