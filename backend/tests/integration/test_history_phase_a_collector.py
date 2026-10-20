@@ -758,7 +758,9 @@ async def test_the_rebuild_costs_statements_per_source_rebuilt_not_per_tick(
 
     assert len(double) > len(single)
     per_source = len(double) - len(single)
-    assert per_source > 5  # a rebuild reads and upserts the baseline cells of one source
+    # HB-12 D2: two bulk reads (observations, exclusion spans) and one bulk
+    # upsert, whatever the number of cells.
+    assert per_source == 3
     # One source is left (4 - 1 - 2): one rebuild again, so the cost is that of `single`.
     with counting(db_session) as last:
         await tick(db_session, console.instance, provider, two, at + 2 * STEP)
