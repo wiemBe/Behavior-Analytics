@@ -635,6 +635,73 @@ async def test_the_page_lists_waf_and_ips_sources_with_and_without_live_rows(  #
     assert ips["later_yes"] is None
 
 
+async def test_a_scope_row_carries_its_log_sources_name(db_session, db_schema) -> None:
+    """HB-8r1: a WAF or IPS scope row is named; a console-wide row and an unknown id are not."""
+    instance = await make_instance(db_session)
+    await make_log_source(db_session, instance, qradar_id=7, name="web-7")
+    await make_log_source(db_session, instance, qradar_id=9, name="ips-9")
+    db_session.add_all(
+        [
+            scope_row(instance.id, "WAF", "7", state="READING"),
+            # The source is gone from the inventory: the page shows the key, not a name.
+            scope_row(instance.id, "WAF", "8", state="READING"),
+            scope_row(instance.id, "IPS", "9", state="READING"),
+            scope_row(instance.id, "PHASE_A", "", state="READING"),
+        ]
+    )
+    await db_session.commit()
+    console = Client(db_schema, READER).get(BASE).json()[0]
+    assert [s["name"] for s in family_of(console, "WAF")["scopes"]] == ["web-7", None]
+    assert [s["name"] for s in family_of(console, "IPS")["scopes"]] == ["ips-9"]
+    assert [s["name"] for s in family_of(console, "PHASE_A")["scopes"]] == [None]
+
+
+async def test_the_page_says_which_family_floor_is_proved(db_session, db_schema) -> None:
+    """§B.3.2: a read start is not a proved floor, and its margin buckets are not read."""
+    instance = await make_instance(db_session)
+    target_start = START + timedelta(hours=24)
+    db_session.add_all(
+        [
+            scope_row(
+                instance.id,
+                "PHASE_A",
+                "",
+                floor=target_start - timedelta(hours=24),
+                target_start=target_start,
+                through=target_start + timedelta(hours=10),
+            ),
+            scope_row(
+                instance.id,
+                "CATCHALL",
+                "",
+                floor=START,
+                through=START + timedelta(hours=4, minutes=45),
+            ),
+            scope_row(instance.id, "WAF", "7", floor=START, through=START + timedelta(hours=10)),
+            scope_row(instance.id, "IPS", "9", floor=START, through=START + timedelta(hours=10)),
+            scope_row(
+                instance.id, "RULE_MATCH", "", floor=START, through=START + timedelta(hours=10)
+            ),
+        ]
+    )
+    await db_session.commit()
+    console = Client(db_schema, READER).get(BASE).json()[0]
+    phase_a = family_of(console, "PHASE_A")["scopes"][0]
+    assert phase_a["floor_proved"] is False
+    # `floor` is the read start, `T0 - m`; the days read count from `T0`.
+    assert phase_a["floor"].startswith("2026-10-01T00:00:00")
+    assert phase_a["target_start"].startswith("2026-10-02T00:00:00")
+    assert phase_a["days_read"] == 0.4
+    catchall = family_of(console, "CATCHALL")["scopes"][0]
+    assert catchall["floor_proved"] is False
+    assert catchall["days_read"] == 0.2
+    for family, days in (("WAF", 0.4), ("IPS", 0.4), ("RULE_MATCH", 0.5)):
+        scope = family_of(console, family)["scopes"][0]
+        assert scope["floor_proved"] is True, family
+        # Five-minute buckets for WAF and IPS, hourly windows for rule matches.
+        assert scope["days_read"] == days, family
+
+
 async def test_a_family_that_is_switched_off_is_a_row_not_an_absence(  # type: ignore[no-untyped-def]
     db_session, db_schema
 ) -> None:
@@ -800,6 +867,48 @@ async def test_the_estimate_hours_follow_the_family_cadence(db_session, db_schem
     # Two ticks at an hour each, not at the default five minutes.
     assert phase_a["hours"] == 2.0
     assert "one tick every 1 hour" in " ".join(phase_a["assumptions"])
+
+
+async def test_the_waf_estimate_says_the_adapter_does_not_fit_the_window(
+    db_session, db_schema
+) -> None:
+    """Item 4: HB-6 reads the whole window and stops at the limit; the estimate says so."""
+    instance = await make_instance(db_session)
+    for index in (1, 2, 3):
+        await make_log_source(db_session, instance, qradar_id=index, name=f"src-{index}")
+    waf_source = await make_log_source(db_session, instance, qradar_id=10, name="waf-1")
+    db_session.add(waf_profile(instance.id, waf_source.id))
+    db_session.add_all(
+        [waf_endpoint(instance.id, waf_source.id, f"/{index}") for index in ("a", "b", "c")]
+    )
+    await db_session.commit()
+    client = Client(
+        db_schema,
+        READER,
+        settings_update={
+            "waf_collection_enabled": True,
+            "history_backfill_max_hours": 1,
+            "history_backfill_searches_per_tick": 1,
+        },
+    )
+    estimates = {
+        item["family"]: item
+        for item in client.get(f"{BASE}/estimate").json()[0]["families"]
+    }
+    waf = estimates["WAF"]
+    # The model does not fit this window in an hour at one search per tick.
+    assert waf["refused"] or waf["reduced"]
+    # ... and the route says what the reading will really do instead of leaving the
+    # model's verdict to read as the adapter's (`waf_pipeline.py:439` does not fit).
+    assert "the WAF reading does not apply it" in waf["reason"]
+    assert "does not shorten its window or refuse it" in waf["reason"]
+    assert "ends PARTIAL" in waf["reason"]
+    assert "72-hour" not in waf["reason"]
+    assert "1-hour limit" in waf["reason"]
+    # History is not unavailable: the adapter reads it and stops at the limit.
+    assert "history is unavailable" not in waf["reason"]
+    # A family whose adapter does apply the fit keeps the model's plain wording.
+    assert "does not shorten" not in estimates["PHASE_A"]["reason"]
 
 
 async def test_a_source_qradar_has_disabled_is_still_collected_and_counted(
@@ -1178,3 +1287,33 @@ async def test_the_reads_cost_the_same_however_many_rows_there_are(  # type: ign
     await db_session.commit()
     client.get(f"{BASE}/estimate")
     assert len(client.statements) == estimate_statements
+
+
+async def test_the_names_of_twenty_waf_scope_rows_cost_one_statement(
+    db_session, db_schema
+) -> None:
+    """HB-8r1 item 3: the names are one bulk statement, measured at 1 and 20 rows (rule 9)."""
+    instance = await make_instance(db_session)
+    source = await make_log_source(db_session, instance, qradar_id=1, name="waf-1")
+    db_session.add(waf_profile(instance.id, source.id))
+    db_session.add(scope_row(instance.id, "WAF", "1", state="READING"))
+    await db_session.commit()
+    client = Client(db_schema, READER)
+
+    console = client.get(BASE).json()[0]
+    assert [s["name"] for s in family_of(console, "WAF")["scopes"]] == ["waf-1"]
+    one = list(client.statements)
+
+    for index in range(2, 21):
+        extra = await make_log_source(db_session, instance, qradar_id=index, name=f"waf-{index}")
+        db_session.add(waf_profile(instance.id, extra.id))
+        db_session.add(scope_row(instance.id, "WAF", str(index), state="READING"))
+    await db_session.commit()
+
+    console = client.get(BASE).json()[0]
+    waf = family_of(console, "WAF")
+    assert len(waf["scopes"]) == 20
+    assert {s["scope_key"]: s["name"] for s in waf["scopes"]} == {
+        str(index): f"waf-{index}" for index in range(1, 21)
+    }
+    assert len(client.statements) == len(one), (one, list(client.statements))

@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 import uuid
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -40,7 +40,7 @@ from app.history.estimate import (
 from app.history.families import FAMILY_SPECS, FamilySpec, fit_family_window
 from app.history.lifecycle import DecisionView, console_mode
 from app.history.origin import is_live_clause
-from app.history.planner import PlannerInputError, PlannerSettings
+from app.history.planner import DEFAULT_MIN_WINDOW_DAYS, PlannerInputError, PlannerSettings
 from app.history.progress_codec import ProgressCodecError, decode_progress
 from app.history.state import SCOPE_TABLE_FAMILIES, HistoryFamily, HistoryState
 from app.models.catchall import CatchallBucket
@@ -75,6 +75,14 @@ FAMILY_ORDER: tuple[HistoryFamily, ...] = tuple(
     family for family in FAMILY_SPECS if family in SCOPE_TABLE_FAMILIES
 )
 _PER_SOURCE = frozenset(PER_SOURCE_FAMILIES)
+
+#: Families whose `floor` column holds the floor QRadar proved for the scope (§B.3.2).
+#: Phase A and catch-all prove one floor per source instead, which the scope column cannot
+#: hold: their `floor` is only where the read started (`T0 - m`), and the per-source floors
+#: live in `progress` (§B.3.3). A read start is never presented as a proved floor.
+PROVED_FLOOR_FAMILIES: frozenset[HistoryFamily] = frozenset(
+    {HistoryFamily.WAF, HistoryFamily.IPS, HistoryFamily.RULE_MATCH}
+)
 
 LATER_YES_POSSIBLE = "possible"
 LATER_YES_NOT_POSSIBLE = "not possible: this source already collected"
@@ -177,26 +185,47 @@ def bucket_seconds_of(family: HistoryFamily, settings: Settings) -> int:
 
 
 def days_read(
-    floor: datetime | None, through: datetime | None, bucket_seconds: int
+    family: HistoryFamily,
+    floor: datetime | None,
+    through: datetime | None,
+    bucket_seconds: int,
+    *,
+    target_start: datetime | None = None,
 ) -> float | None:
-    """Whole buckets from `floor` through `through` (the last bucket written), in days.
+    """Whole buckets from the start this family can prove through `through`, in days.
 
-    One decimal. None when either end is missing or `through` precedes `floor`: a
+    The `floor` column does not mean the same thing for every family (§B.3.2): for WAF,
+    IPS and rule matches it is the floor QRadar proved (`floor_proved`), so the read may
+    begin there. For Phase A and catch-all it is only where the read started, `T0 - m`,
+    and the real floors are per source in `progress`; those two families therefore count
+    from `max(floor, target_start)` when `target_start` is known, so the margin buckets
+    before `T0` are never counted as read.
+
+    One decimal. None when either end is missing or `through` precedes the start: a
     measurement that is not there is not zero. This is what was read, never an ETA.
     """
     floor_at, through_at = aware(floor), aware(through)
-    if floor_at is None or through_at is None or through_at < floor_at:
+    start = floor_at
+    if family not in PROVED_FLOOR_FAMILIES:
+        target_at = aware(target_start)
+        if target_at is not None and (start is None or target_at > start):
+            start = target_at
+    if start is None or through_at is None or through_at < start:
         return None
-    buckets = int((through_at - floor_at).total_seconds() // bucket_seconds) + 1
+    buckets = int((through_at - start).total_seconds() // bucket_seconds) + 1
     return round(buckets * bucket_seconds / 86400, 1)
 
 
-def scope_out(row: HistoryBackfillScope, bucket_seconds: int) -> ScopeOut:
+def scope_out(
+    row: HistoryBackfillScope, bucket_seconds: int, name: str | None = None
+) -> ScopeOut:
     """One scope row as the page shows it.
 
     The counts come from the decoded progress. A row whose progress is `{}` has not
     searched yet and a row whose progress does not decode is unknown: both answer
     `null`, never a zero (rule 8), and the second says so with `progress_unreadable`.
+    `name` is the scope's log-source name for WAF and IPS, looked up once for the whole
+    console (never one query per row); a console-wide row has none.
     """
     searches: int | None = None
     buckets_read: int | None = None
@@ -219,11 +248,13 @@ def scope_out(row: HistoryBackfillScope, bucket_seconds: int) -> ScopeOut:
         later_yes = LATER_YES_HAS_SCOPE
     return ScopeOut(
         scope_key=row.scope_key,
+        name=None if family not in _PER_SOURCE else name,
         state=row.state,
         days_requested=row.days_requested,
         days_target=row.days_target,
         target_start=row.target_start,
         floor=row.floor,
+        floor_proved=family in PROVED_FLOOR_FAMILIES,
         through=row.through,
         anchor=row.anchor,
         started_at=row.started_at,
@@ -231,7 +262,9 @@ def scope_out(row: HistoryBackfillScope, bucket_seconds: int) -> ScopeOut:
         reason=row.reason,
         searches=searches,
         buckets_read=buckets_read,
-        days_read=days_read(row.floor, row.through, bucket_seconds),
+        days_read=days_read(
+            family, row.floor, row.through, bucket_seconds, target_start=row.target_start
+        ),
         gaps=gaps,
         progress_unreadable=unreadable,
         later_yes=later_yes,
@@ -355,9 +388,16 @@ class HistoryBackfillService:
             .execution_options(populate_existing=True)
         ):
             scopes[(scope.instance_id, scope.family)].append(scope)
+        # The log source's name of a WAF or IPS scope row: one statement for every row of
+        # every console, never one per row (rule 9).
+        scope_names = await self._scope_names(ids, scopes)
         sources = {
-            HistoryFamily.WAF: await self._sources(WafSourceProfile, WafSourceBucket, ids),
-            HistoryFamily.IPS: await self._sources(IpsSourceProfile, IpsSourceBucket, ids),
+            HistoryFamily.WAF: await self._sources(
+                WafSourceProfile, WafSourceBucket, is_live_clause(WafSourceBucket), ids
+            ),
+            HistoryFamily.IPS: await self._sources(
+                IpsSourceProfile, IpsSourceBucket, is_live_clause(IpsSourceBucket), ids
+            ),
         }
 
         out: list[ConsoleOut] = []
@@ -367,7 +407,12 @@ class HistoryBackfillService:
             for family in FAMILY_ORDER:
                 rows = scopes.get((instance_id, family.value), [])
                 families.append(
-                    self._family_out(family, rows, sources.get(family, {}).get(instance_id))
+                    self._family_out(
+                        family,
+                        rows,
+                        sources.get(family, {}).get(instance_id),
+                        scope_names.get(instance_id, {}),
+                    )
                 )
             out.append(
                 ConsoleOut(
@@ -380,11 +425,47 @@ class HistoryBackfillService:
             )
         return out
 
+    async def _scope_names(
+        self,
+        instance_ids: Sequence[uuid.UUID],
+        scopes: Mapping[tuple[uuid.UUID, str], Sequence[HistoryBackfillScope]],
+    ) -> dict[uuid.UUID, dict[str, str]]:
+        """Every WAF or IPS scope row's log-source name: one statement for all consoles.
+
+        `scope_key` is the QRadar log-source id, so this is the lookup `SourceOut` uses
+        (`log_source` joined on `qradar_id`), done once per request. A key that is not an
+        id, and a source that is no longer known, have no name: the page shows the key
+        instead of inventing one.
+        """
+        wanted: dict[uuid.UUID, set[int]] = defaultdict(set)
+        for (instance_id, family), rows in scopes.items():
+            if HistoryFamily(family) not in _PER_SOURCE:
+                continue
+            for row in rows:
+                try:
+                    wanted[instance_id].add(int(row.scope_key))
+                except ValueError:
+                    continue
+        ids = sorted(wanted)
+        if not ids:
+            return {}
+        found: dict[uuid.UUID, dict[str, str]] = defaultdict(dict)
+        name_rows = await self.session.execute(
+            select(LogSource.instance_id, LogSource.qradar_id, LogSource.name).where(
+                LogSource.instance_id.in_(ids),
+                LogSource.qradar_id.in_(sorted({k for keys in wanted.values() for k in keys})),
+            )
+        )
+        for instance_id, qradar_id, name in name_rows:
+            found[instance_id][str(qradar_id)] = name
+        return found
+
     def _family_out(
         self,
         family: HistoryFamily,
         rows: Sequence[HistoryBackfillScope],
         sources: list[tuple[str, str, bool, bool]] | None,
+        names: Mapping[str, str],
     ) -> FamilyOut:
         spec = FAMILY_SPECS[family]
         enabled, reason = collection_state(spec, self.settings)
@@ -414,24 +495,28 @@ class HistoryBackfillService:
                 limited_by=list(fitted.limited_by),
                 reason=fitted.reason,
             ),
-            scopes=[scope_out(row, bucket) for row in rows],
+            scopes=[scope_out(row, bucket, names.get(row.scope_key)) for row in rows],
             sources=listed,
             later_yes=None if family in _PER_SOURCE else LATER_YES_POSSIBLE,
         )
 
     async def _sources(
-        self, profile: Any, bucket: Any, instance_ids: Sequence[uuid.UUID]
+        self,
+        profile: Any,
+        bucket: Any,
+        live_clause: Any,
+        instance_ids: Sequence[uuid.UUID],
     ) -> dict[uuid.UUID, list[tuple[str, str, bool, bool]]]:
         """Every configured source of a family: one statement for all consoles.
 
         The configured-source tables are `waf_source_profile` and `ips_source_profile`
         (one row per log source). "Has live rows" is one `EXISTS` on the family's bucket
-        table, `origin = 'LIVE'`, per profile row inside that one statement (§B.5). The
-        live-only clause is the core's helper, so a reader of a table that may hold
-        history says so with the one spelling (§B.4.7).
+        table, per profile row inside that one statement (§B.5). The caller names the
+        live-only clause with the table it reads (`is_live_clause`), so a reader of a table
+        that may hold history says so with the one spelling (§B.4.7).
         """
         has_live = exists().where(
-            bucket.log_source_id == profile.log_source_id, is_live_clause(bucket)
+            bucket.log_source_id == profile.log_source_id, live_clause
         )
         rows = await self.session.execute(
             select(
@@ -770,6 +855,26 @@ class HistoryBackfillService:
         except PlannerInputError as exc:
             return none(f"no estimate: the planner refused the settings ({exc})")
         reason = result.reason
+        # HB-6's adapter does not fit this window: `WafSourcePipeline._run_history_volume`
+        # (`app/services/waf_pipeline.py:439`) bounds the days by the family's window only,
+        # and the planner ends the scope PARTIAL at `max_hours` (`app/history/planner.py:465`).
+        # Where the model would shorten or refuse the window, say what the reading will
+        # really do rather than leaving the model's verdict to read as the adapter's.
+        if family is HistoryFamily.WAF and (result.reduced or result.refused):
+            assert fitted.days is not None
+            if result.refused:
+                covered = DEFAULT_MIN_WINDOW_DAYS
+            else:
+                assert result.days_fitted is not None
+                covered = result.days_fitted
+            reason = (
+                "this figure is the model's, and the WAF reading does not apply it: it "
+                "does not shorten its window or refuse it. It reads the "
+                f"{fitted.days}-day window and ends PARTIAL when the "
+                f"{settings.history_backfill_max_hours}-hour limit is reached. The model "
+                f"needs {covered} days in about {result.hours:.1f} hours "
+                f"({result.searches} searches, {result.ticks} ticks)"
+            )
         reduced = result.reduced
         if fitted.days is not None and fitted.days < requested:
             reduced = True
