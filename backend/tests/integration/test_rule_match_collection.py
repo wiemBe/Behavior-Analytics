@@ -503,7 +503,9 @@ def evaluator(session, **cfg) -> RuleHealthEvaluator:
     return RuleHealthEvaluator(session, settings=settings, clock=lambda: EVAL_NOW)
 
 
-async def fill_windows(session, instance, *, overrides: dict[int, str] | None = None):
+async def fill_windows(
+    session, instance, *, overrides: dict[int, str] | None = None, origin: str = "LIVE"
+):
     """Every window of the 24 h span ending at 11:00 (23 of them), COMPLETE unless told."""
     overrides = overrides or {}
     first = EVAL_NOW - timedelta(days=1)
@@ -513,7 +515,7 @@ async def fill_windows(session, instance, *, overrides: dict[int, str] | None = 
                 instance_id=instance.id,
                 window_start=first + i * HOUR,
                 window_seconds=3600,
-                origin="LIVE",
+                origin=origin,
                 status=overrides.get(i, RuleMatchWindowStatus.COMPLETE),
                 rows_returned=0,
                 row_cap=100,

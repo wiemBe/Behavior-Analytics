@@ -33,6 +33,7 @@ from app.models.enums import IpsDimension, PwScopeKind
 from app.providers.base import (
     IPS_NORMALIZED_FIELD_ALLOWLIST,
     PROPERTY_NAME_PATTERN,
+    ConsoleEventTotals,
     LogSourceTelemetry,
     ProviderCapability,
     QRadarProvider,
@@ -622,6 +623,39 @@ class MockQRadarProvider(QRadarProvider):
             truncated=raw_total > max(1, max_rows),
             row_cap=max(1, max_rows),
             query=f"MOCK creEventList WINDOWED LIMIT {max(1, max_rows) + 1}",
+        )
+
+    async def get_console_event_totals(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+    ) -> ConsoleEventTotals:
+        """Deterministic console-wide events: a positive total per bucket.
+
+        Seeded from the bucket start, so the floor scan finds its first event
+        at the first bucket of every window and two calls agree exactly. Only
+        buckets with events are returned, as the REST query returns them.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        step = timedelta(seconds=bucket_seconds)
+        totals: dict[datetime, int] = {}
+        cursor = start
+        while cursor < end:
+            rng = random.Random(  # noqa: S311 - deterministic fixture, not crypto
+                f"console-totals:{int(cursor.timestamp())}"
+            )
+            totals[cursor] = int(rng.random() * 900) + 100
+            cursor += step
+        return ConsoleEventTotals(
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            totals=totals,
+            query_version="mock_console_event_totals/v1",
+            query="MOCK console event totals",
         )
 
     #: Endpoints the mock WAF source publishes. Mirrors the shape the lab

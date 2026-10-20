@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -146,6 +147,27 @@ class LogSourceTelemetry(StrEnum):
     COLLECTION_ERRORS = "COLLECTION_ERRORS"
     #: Hash of a representative payload.
     PAYLOAD_SIGNATURE = "PAYLOAD_SIGNATURE"
+
+
+@dataclass(frozen=True)
+class ConsoleEventTotals:
+    """Console-wide events per bucket, the rule-match floor proof (§B.3.2).
+
+    One entry per bucket in which the console held an event. A bucket with no
+    entry held none: the floor scan reads a missing bucket as measured silence,
+    which is exactly what it asks. Totals are `SUM(eventcount)` over every event
+    in the bucket, with no log-source or rule filter, so they can say that the
+    console held an hour even though the per-rule `creEventList` read cannot.
+
+    Read-only (repository rule 1): one REST/Ariel aggregate, never MCP.
+    """
+
+    window_start: datetime
+    window_end: datetime
+    bucket_seconds: int
+    totals: dict[datetime, int]
+    query_version: str
+    query: str = ""
 
 
 class ProviderError(RuntimeError):
@@ -335,6 +357,33 @@ class QRadarProvider(ABC):
 
         Requires AQL_EXECUTION, so this never runs through MCP. Read-only: it
         only searches events.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        raise NotImplementedError
+
+    async def get_console_event_totals(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+    ) -> ConsoleEventTotals:
+        """Console-wide `SUM(eventcount)` per bucket over one bounded window.
+
+        The proof a per-scope keyed read cannot give: that QRadar held an event
+        in a bucket at all (`HISTORY-BACKFILL` §B.3.2). It is deliberately
+        unfiltered -- no log source, no rule -- and is the only search that
+        proves a rule-match history window is measurable rather than silent.
+
+        The span must be epoch-aligned whole buckets of at most 168 hours, the
+        same bound `validate_bucketed_metric_window` applies. Requires
+        AQL_EXECUTION, so it never runs through MCP. Read-only: one aggregate
+        over ``events``, no raw event kept.
+
+        A bucket absent from `ConsoleEventTotals.totals` held no event. An
+        implementation that cannot answer every bucket must raise, never omit
+        one: a missing bucket would let the floor scan mistake a held hour for
+        silence.
         """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError

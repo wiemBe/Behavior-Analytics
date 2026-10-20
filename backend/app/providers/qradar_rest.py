@@ -32,6 +32,7 @@ import httpx
 
 from app.catchall.keyed_rows import parse_catchall_rows, validate_catchall_type_ids
 from app.collectors.bucketed_metrics import (
+    _integer_bucket_key,
     fold_log_source_metric_buckets,
     validate_bucketed_metric_window,
 )
@@ -47,6 +48,7 @@ from app.providers.base import (
     IPS_PROBE_MAX_WINDOW_SECONDS,
     PROPERTY_NAME_PATTERN,
     WAF_PROBE_MAX_WINDOW_SECONDS,
+    ConsoleEventTotals,
     LogSourceTelemetry,
     ProviderAuthError,
     ProviderCapability,
@@ -130,6 +132,9 @@ RULE_MATCH_QUERY_VERSION = "rule_match/v1"
 #: The keyed multi-window form of the same query (T-037). Its text differs, so
 #: its windows carry their own version.
 RULE_MATCH_WINDOWED_QUERY_VERSION = "rule_match/v2"
+#: The console-wide floor proof of the rule-match history backfill (HB-5). One
+#: row per bucket with events; the text is stored here, never built by a caller.
+CONSOLE_EVENT_TOTALS_QUERY_VERSION = "console_event_totals/v1"
 
 
 def _rule_id(value: Any) -> int | None:
@@ -1048,6 +1053,60 @@ class QRadarRestProvider(QRadarProvider):
             row_cap=cap,
             query=aql,
             ariel_searches=1,
+        )
+
+    # ------------------------------------------------------------ history (HB-5)
+    async def get_console_event_totals(
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        bucket_seconds: int,
+    ) -> ConsoleEventTotals:
+        """One console-wide aggregate of `SUM(eventcount)` per whole bucket.
+
+        The stored, versioned query text lives here and nowhere else. Only the
+        validated epochs and bucket width reach it; it has no log-source or rule
+        filter, which is what lets it prove the console held a bucket at all
+        (`HISTORY-BACKFILL` §B.3.2). Read-only: one Ariel search over ``events``.
+        """
+        self.require(ProviderCapability.AQL_EXECUTION)
+        start, end = validate_bucketed_metric_window(window_start, window_end, bucket_seconds)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        bucket_ms = bucket_seconds * 1000
+        buckets = int((end - start).total_seconds()) // bucket_seconds
+        aql = (
+            f'SELECT starttime / {bucket_ms} AS "k", '  # noqa: S608 - validated integers only
+            'SUM(eventcount) AS "events" FROM events '
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"GROUP BY starttime / {bucket_ms} "
+            f"ORDER BY starttime / {bucket_ms} "
+            f"{self._ariel_scope(start_ms, end_ms)}"
+        )
+        raw = await self._run_bounded_aggregate(aql, max_rows=buckets + 1)
+        if len(raw) > buckets:
+            # One row per bucket means more rows cannot be a whole answer.
+            raise ProviderError("QRadar console event totals returned more rows than buckets")
+        totals: dict[datetime, int] = {}
+        for row in raw:
+            key = _integer_bucket_key(row.get("k"))
+            events = as_int(row.get("events"))
+            if key is None or events is None or events < 0:
+                raise ProviderError("QRadar console event total row is malformed")
+            bucket = datetime.fromtimestamp(key * bucket_seconds, tz=UTC)
+            if not start <= bucket < end:
+                raise ProviderError("QRadar console event total row is outside the window")
+            if bucket in totals:
+                raise ProviderError("QRadar console event totals repeat a bucket")
+            totals[bucket] = events
+        return ConsoleEventTotals(
+            window_start=start,
+            window_end=end,
+            bucket_seconds=bucket_seconds,
+            totals=totals,
+            query_version=CONSOLE_EVENT_TOTALS_QUERY_VERSION,
+            query=aql,
         )
 
     # ------------------------------------------------------------ WAF (Phase B)
