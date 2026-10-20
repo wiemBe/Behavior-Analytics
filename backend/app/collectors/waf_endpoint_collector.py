@@ -1210,13 +1210,25 @@ class WafEndpointCollector:
         }
         if (table, conflict) not in allowed:
             raise ValueError("unsupported WAF history bulk target")
+        tables = {
+            "waf_source_bucket": WafSourceBucket.__table__,
+            "waf_endpoint_metric": WafEndpointMetric.__table__,
+        }
         names = tuple(rows[0])
         if any(tuple(row) != names for row in rows):
             raise ValueError("history bulk rows must have identical columns")
+        # The column names become SQL identifiers. Accept only names the target model
+        # declares, so a fold that grows a key fails here instead of at the server.
+        known_columns = set(tables[table].columns.keys())
+        for name in names:
+            if name not in known_columns:
+                raise ValueError(
+                    f"history bulk column {name!r} is not a column of {table}"
+                )
         columns = ", ".join(f'"{name}"' for name in names)
         selected = ", ".join(f'history_rows."{name}"' for name in names)
-        # Identifiers and the conflict clause are selected from the closed set above;
-        # only the JSON document itself is a bound value.
+        # The table and the conflict clause come from the closed set above, and every
+        # column name from the model; only the JSON document is a bound value.
         statement = text(
             f'INSERT INTO "{table}" ({columns}) '  # noqa: S608
             f"SELECT {selected} "
