@@ -3,6 +3,7 @@
 // React and no fetch, so each rule has a unit test.
 
 import { formatCoveragePercent, statusReason } from "@/components/propertywatch/pwFormat";
+import { historyProgress } from "@/components/propertywatch/history";
 import { PW_MAX_SERIES } from "@/components/propertywatch/pwSeries";
 import type { PropertyWatch, PropertyWatchCatalog, PwValue } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
@@ -60,6 +61,12 @@ export function earlyState(
     return {
       kind: "not_collected",
       reason: `${setting}${statusReason(watch.status, watch.status_reason)} Open the watch for its history.`,
+    };
+  }
+  if (watch.history.state === "READING") {
+    return {
+      kind: "empty",
+      reason: `Reading history from QRadar: ${historyProgress(watch.history)}. Nothing is judged until it finishes.`,
     };
   }
   if (watch.coverage === null) {

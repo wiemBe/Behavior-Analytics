@@ -58,6 +58,7 @@ export function readPwPalette(root: Element = document.documentElement): PwPalet
     band: base.band,
     gap: base.gap,
     anomaly: base.anomaly,
+    history: style.getPropertyValue("--neutral-bg").trim(),
     marker: base.marker,
     expected: base.expected,
     tooltipBg: base.tooltipBg,
@@ -207,6 +208,12 @@ export function PropertyWatchSeriesChart({
             Not collected
           </li>
         )}
+        {model.history.length > 0 && (
+          <li>
+            <span className="chart-key pw-key-history" aria-hidden="true" />
+            Read from QRadar history, not judged
+          </li>
+        )}
         {detectionBand && model.lines.length > 0 && (
           <li>
             <span className="chart-key chart-key-band" aria-hidden="true" />
@@ -226,6 +233,21 @@ export function PropertyWatchSeriesChart({
           </li>
         )}
       </ul>
+      {model.history.length > 0 && (
+        <table className="sr-only" aria-label="QRadar history shown in the chart">
+          <caption>Intervals read from QRadar history and not judged</caption>
+          <thead><tr><th scope="col">From (UTC)</th><th scope="col">To (UTC)</th><th scope="col">Meaning</th></tr></thead>
+          <tbody>
+            {model.history.map((span) => (
+              <tr key={`${span.start}-${span.end}`}>
+                <td>{new Date(span.start).toISOString()}</td>
+                <td>{new Date(span.end).toISOString()}</td>
+                <td>Read from QRadar history, not judged</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       <p className={compact ? "sr-only" : "subtitle chart-note"}>
         Gaps in a line are buckets that were not collected
         {hasGap ? ", values that were unknown in a lower-bound bucket, or times the value was not tracked" : ""}.

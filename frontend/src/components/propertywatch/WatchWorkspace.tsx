@@ -185,7 +185,7 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
           <time dateTime={props.windowEnd}>{formatDateTime(props.windowEnd)}</time>.
           {latest && (
             <>
-              {" "}Latest bucket{" "}
+              {" "}Latest bucket{latest.origin === "HISTORY" ? " read from QRadar history" : ""}{" "}
               <time dateTime={latest.bucket_start}>{formatDateTime(latest.bucket_start)}</time>{" "}
               <span className="muted">({relativeAge(latest.bucket_start, new Date(props.windowEnd))})</span>.
             </>
@@ -275,6 +275,7 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
                 incidents={incidentByValue}
                 sort={props.sort}
                 sortHref={sortHref}
+                history={watch.history}
               />
             </TableScroll>
             <Pagination

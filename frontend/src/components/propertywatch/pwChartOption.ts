@@ -33,6 +33,7 @@ export interface PwPalette {
   band: string;
   gap: string;
   anomaly: string;
+  history: string;
   marker: string;
   expected: string;
   tooltipBg: string;
@@ -100,14 +101,15 @@ const enc = (text: string) => format.encodeHTML(text);
 
 function pointLine(name: string, p: PlotPoint, unit: string): string {
   const label = enc(name);
+  const origin = p.origin === "HISTORY" ? "; read from QRadar history, not judged" : "";
   switch (p.kind) {
     case "EXACT":
     case "MEASURED_ZERO":
-      return `${label}: ${formatEvents(p.value)} ${unit} (${kindWords(p.kind)})`;
+      return `${label}: ${formatEvents(p.value)} ${unit} (${kindWords(p.kind)}${origin})`;
     case "LOWER_BOUND":
-      return `${label}: ${formatEvents(p.value, "LOWER_BOUND")} ${unit} (${kindWords(p.kind)})`;
+      return `${label}: ${formatEvents(p.value, "LOWER_BOUND")} ${unit} (${kindWords(p.kind)}${origin})`;
     default:
-      return `${label}: not plotted, ${kindWords(p.kind)}`;
+      return `${label}: not plotted, ${kindWords(p.kind)}${origin}`;
   }
 }
 
@@ -214,6 +216,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
   }));
   const gapAreas = areas(model.uncollected, c.gap, "not collected");
   const incidentAreas = areas(incidentSpans, c.anomaly, "incident");
+  const historyAreas = areas(model.history, c.history, "read from QRadar history, not judged");
   const detected = input.detectionBand ?? null;
   const detectionAreas: MarkAreaPair[] =
     detected && model.lines.length > 0
@@ -253,11 +256,11 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
     itemStyle: { color: c.cat[i % c.cat.length] },
     z: 3,
     markArea:
-      i === 0 && gapAreas.length + incidentAreas.length + detectionAreas.length > 0
+      i === 0 && gapAreas.length + incidentAreas.length + historyAreas.length + detectionAreas.length > 0
         ? {
             silent: true,
             label: { show: false },
-            data: [...gapAreas, ...incidentAreas, ...detectionAreas],
+            data: [...historyAreas, ...gapAreas, ...incidentAreas, ...detectionAreas],
           }
         : undefined,
   }));

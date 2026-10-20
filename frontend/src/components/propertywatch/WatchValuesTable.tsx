@@ -9,7 +9,7 @@
 // at 1024 px a seventh column was clipped, and they describe the value, not a measurement.
 // A long value takes two lines; the full text is behind a disclosure, which a keyboard reaches.
 
-import type { AnomalySummary, PwBucket, PwValue } from "@/lib/api";
+import type { AnomalySummary, PwBucket, PwValue, PwWatchHistory } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 
@@ -63,6 +63,7 @@ export function WatchValuesTable({
   incidents,
   sort,
   sortHref,
+  history = null,
 }: {
   values: PwValue[];
   /** The newest collected bucket, for the share column. */
@@ -74,6 +75,7 @@ export function WatchValuesTable({
   sort: ValueSort;
   /** The link a sortable header points to. */
   sortHref: (sort: ValueSort) => string;
+  history?: PwWatchHistory | null;
 }) {
   const unit = eventsUnit(latest?.bucket_seconds ?? 300);
   const full = selected.size >= maxSelected;
@@ -93,6 +95,9 @@ export function WatchValuesTable({
       <caption className="sr-only">
         Tracked values, pinned first. The latest bucket is
         {latest ? ` ${formatDateTime(latest.bucket_start)}` : " not available"}; counts are {unit}.
+        {history?.floor
+          ? ` First seen includes the history read from QRadar, from ${formatDateTime(history.floor)}.`
+          : ""}
         Select up to {maxSelected} values to plot them.
       </caption>
       <thead>
@@ -108,7 +113,12 @@ export function WatchValuesTable({
           <th scope="col" className="num">
             Share of parsed events
           </th>
-          {header("first_seen", "First seen (UTC)")}
+          {header(
+            "first_seen",
+            history?.floor
+              ? `First seen (UTC; history read from ${formatDateTime(history.floor)})`
+              : "First seen (UTC)",
+          )}
         </tr>
       </thead>
       <tbody>

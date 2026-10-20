@@ -75,6 +75,20 @@ export function PwInvestigation({
   );
   const observed = d?.observed_events ?? anomaly.observed_value;
   const reason = d?.reason ?? anomaly.explanation;
+  const historyEvidence =
+    (anomaly.anomaly_type === "PW_NEW_VALUE" || anomaly.anomaly_type === "PW_NEW_COMBINATION") &&
+    d?.history_buckets_from_history !== null &&
+    d?.history_buckets_from_history !== undefined &&
+    d.history_floor !== null &&
+    d.history_buckets_verified !== null
+      ? {
+          days: (d.history_buckets_verified * bucketSeconds) / 86_400,
+          before: anomaly.anomaly_start ?? anomaly.detected_at,
+          verified: d.history_buckets_verified,
+          fromHistory: d.history_buckets_from_history,
+          floor: d.history_floor,
+        }
+      : null;
   return (
     <>
       <header className="page-header incident-header">
@@ -253,6 +267,15 @@ export function PwInvestigation({
           <p className="subtitle">{robustScoreMeaning(d.robust_score_status as "DEGENERATE")}</p>
         )}
         {d?.claim && <p className="subtitle">{d.claim}.</p>}
+        {historyEvidence && (
+          <p className="subtitle">
+            The {historyEvidence.days.toLocaleString("en-US", { maximumFractionDigits: 1 })} days before{" "}
+            {formatDateTime(historyEvidence.before)} were verified:{" "}
+            {historyEvidence.verified.toLocaleString("en-US")} buckets, of which{" "}
+            {historyEvidence.fromHistory.toLocaleString("en-US")} were read from QRadar history
+            from {formatDateTime(historyEvidence.floor)} and not judged.
+          </p>
+        )}
         {lower && (
           <p className="subtitle">
             The observed count is a lower bound: at least that many events, so the finding is real

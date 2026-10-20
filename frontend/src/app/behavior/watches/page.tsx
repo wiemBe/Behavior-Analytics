@@ -169,7 +169,7 @@ export default async function PropertyWatchesPage() {
                         <Link href={`/behavior/watches/${w.id}`}>{w.name}</Link>
                       </td>
                       <td className="pw-status-cell">
-                        <PwStatus status={w.status} reason={w.status_reason} />
+                        <PwStatus status={w.status} reason={w.status_reason} history={w.history} />
                       </td>
                       <td className="pw-scope-cell">{scopeText(w)}</td>
                       <td className="pw-props-cell">{propertiesText(w)}</td>

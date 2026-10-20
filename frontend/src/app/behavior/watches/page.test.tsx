@@ -158,7 +158,7 @@ describe("the table", () => {
   it("puts status and reason in the second column, in words, for every status", async () => {
     const all: Array<PwWatchStatus | null> = [
       "NOT_ENABLED", "DISABLED", "SCOPE_EMPTY", "SCOPE_STALE", "SCOPE_TOO_LARGE",
-      "NOT_APPLICABLE", "STALE", "OPEN", "RECOVERING", "OK", null,
+      "NOT_APPLICABLE", "STALE", "READING_HISTORY", "OPEN", "RECOVERING", "OK", null,
     ];
     vi.spyOn(api, "propertyWatches").mockResolvedValue(
       all.map((status, i) => watch({ id: String(i), name: `w${i}`, status, status_reason: status ? `reason ${status}` : null })),
@@ -169,10 +169,30 @@ describe("the table", () => {
       expect(cell.querySelector(".pill")?.textContent).toBeTruthy();
       expect(cell.textContent?.length).toBeGreaterThan(8);
     }
-    const never = rows().find((r) => within(r).getAllByRole("cell")[0].textContent === "w10")!;
+    const never = rows().find((r) => within(r).getAllByRole("cell")[0].textContent === "w11")!;
     expect(never).toHaveTextContent("Never run");
     expect(never).toHaveTextContent("not judged");
     expect(never.querySelector(".pill.ok")).toBeNull();
+  });
+
+  it("shows history progress without attention-sorting it when the API gives no overdue limit", async () => {
+    const base = watch();
+    vi.spyOn(api, "propertyWatches").mockResolvedValue([
+      watch({ id: "1", name: "Zulu", status: "OK" }),
+      watch({
+        id: "2",
+        name: "Alpha",
+        status: "READING_HISTORY",
+        history: { ...base.history, state: "READING", days_requested: 28, days_read: 9 },
+      }),
+    ]);
+    await renderPage();
+    expect(rows().map((row) => within(row).getAllByRole("cell")[0].textContent)).toEqual([
+      "Alpha", "Zulu",
+    ]);
+    const reading = rows()[0];
+    expect(reading).toHaveTextContent("Reading history");
+    expect(reading).toHaveTextContent("9 of 28 days");
   });
 
   it("writes 'at least' on a lower-bound coverage and a dash when it is unknown", async () => {

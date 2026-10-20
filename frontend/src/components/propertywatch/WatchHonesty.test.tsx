@@ -19,6 +19,56 @@ describe("the honesty line", () => {
     expect(honestyNotes(input())).toEqual([]);
   });
 
+  it.each([
+    [
+      "READING",
+      { state: "READING", days_requested: 28, days_read: 9 },
+      "Reading history from QRadar: 9 of 28 days. Nothing is judged until it finishes.",
+    ],
+    [
+      "COMPLETE",
+      { state: "COMPLETE", days_requested: 28, days_read: 28, finished_at: "2026-10-19T12:00:00Z" },
+      "History: 28 days read from QRadar on 2026-10-19, used for baselines and new-value checks. Those buckets were not judged.",
+    ],
+    [
+      "UNAVAILABLE",
+      { state: "UNAVAILABLE", days_requested: 28 },
+      "QRadar holds no events of this scope in the last 28 days. The watch learns forward.",
+    ],
+  ] as const)("states %s history without implying health", (_state, history, expected) => {
+    const base = watch();
+    const notes = honestyNotes(input({ watch: watch({ history: { ...base.history, ...history } }) }));
+    expect(notes[0].text).toBe(expected);
+  });
+
+  it("states a partial retention floor, every gap and unreadable progress", () => {
+    const base = watch();
+    const notes = honestyNotes(input({
+      watch: watch({
+        history: {
+          ...base.history,
+          state: "PARTIAL",
+          days_requested: 28,
+          days_read: 9,
+          floor: "2026-10-10T09:00:00Z",
+          progress_unreadable: true,
+          gaps: [{
+            start: "2026-10-12T14:00:00Z",
+            end: "2026-10-12T16:00:00Z",
+            reason: "search failed 3 times at the minimum width",
+          }],
+        },
+      }),
+    }));
+    expect(notes[0].text).toContain("earlier buckets are not claimed as zero");
+    expect(notes.find((note) => note.label === "HISTORY GAP")?.text).toContain(
+      "could not be read (search failed 3 times at the minimum width).",
+    );
+    expect(notes.find((note) => note.label === "HISTORY PROGRESS UNREADABLE")?.text).toContain(
+      "not zero days read",
+    );
+  });
+
   it("counts intervals, not rows, for what was not collected", () => {
     const notes = honestyNotes(input({ buckets: full(9) }));
     expect(notes).toHaveLength(1);

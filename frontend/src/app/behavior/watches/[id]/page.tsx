@@ -36,6 +36,7 @@ import {
   type PwValueSeries,
 } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
+import { historyHeaderText } from "@/components/propertywatch/history";
 
 import "@/components/ui/controls.css";
 import "../watches.css";
@@ -158,7 +159,13 @@ export default async function PropertyWatchPage({
         actions={access === "writer" ? <WatchActions watch={watch} catalog={catalog} /> : null}
         meta={
           <>
-            <PwStatus status={watch.status} reason={watch.status_reason} strong inline />
+            <PwStatus status={watch.status} reason={watch.status_reason} history={watch.history} strong inline />
+            {watch.status !== "READING_HISTORY" && (
+              <>
+                <span className="muted" aria-hidden="true">·</span>
+                <span>{historyHeaderText(watch.history)}</span>
+              </>
+            )}
             <span className="muted" aria-hidden="true">
               ·
             </span>
@@ -175,7 +182,7 @@ export default async function PropertyWatchPage({
               ·
             </span>
             <span>
-              Last bucket{" "}
+              Last {watch.history.state === "READING" ? "collected " : ""}bucket{" "}
               {last ? (
                 <>
                   <time dateTime={last}>{formatDateTime(last)}</time>{" "}

@@ -33,6 +33,7 @@ import {
 import { WatchPropertyPicker, WatchScopePicker } from "./WatchPickers";
 import { latencyCadence } from "@/components/cadence/CadenceLatency";
 import { pinAvailability } from "./pwFormat";
+import { historyHeaderText } from "./history";
 
 import "./propertywatch.css";
 
@@ -167,6 +168,8 @@ export function WatchEditor({
   const nameId = useId();
   const descriptionId = useId();
   const severityId = useId();
+  const historyId = useId();
+  const historyDaysId = useId();
   const [draft, setDraft] = useState<WatchDraft>(() =>
     watch ? draftFromWatch(watch) : emptyWatchDraft(catalog),
   );
@@ -248,8 +251,8 @@ export function WatchEditor({
     try {
       const saved =
         currentWatch === null
-          ? await api.createPropertyWatch(createWatchBody(draft))
-          : await api.updatePropertyWatch(currentWatch.id, updateWatchBody(draft, currentWatch));
+          ? await api.createPropertyWatch(createWatchBody(shown))
+          : await api.updatePropertyWatch(currentWatch.id, updateWatchBody(shown, currentWatch));
       setCurrentWatch(saved);
       const [result, resolvedScope] = await Promise.all([
         api.previewPropertyWatch(saved.id),
@@ -291,7 +294,30 @@ export function WatchEditor({
     }
   }
 
-  const summary = watchSummary(draft);
+  const historyNeed = draft.pins.length > 0 ? 3 : 2;
+  const historyLocked =
+    currentWatch !== null &&
+    (currentWatch.history.state !== "NOT_REQUESTED" ||
+      currentWatch.coverage !== null ||
+      currentWatch.collected_through !== null ||
+      currentWatch.evaluated_through !== null);
+  const historyDisabledReason =
+    historyLocked && currentWatch
+      ? `${historyHeaderText(currentWatch.history)}. The request cannot change after history or collected buckets exist.`
+      : !catalog.history.enabled
+        ? "History reading is switched off on this server."
+        : catalog.history.searches_free < historyNeed
+          ? `History needs ${historyNeed} free searches per tick for this watch; ${catalog.history.searches_free} ${catalog.history.searches_free === 1 ? "is" : "are"} free.`
+          : null;
+  // A disabled section never asks for history: the form shows, and sends, what will happen.
+  const shown: WatchDraft =
+    historyDisabledReason !== null && !historyLocked
+      ? { ...draft, historyDays: 0, historyTouched: catalog.history.enabled || draft.historyTouched }
+      : draft;
+  const summary = watchSummary(shown);
+  const historyOptions = [...new Set([7, 14, 28, catalog.history.days_default])]
+    .filter((days) => days >= catalog.history.days_min && days <= catalog.history.days_max)
+    .sort((a, b) => a - b);
 
   return (
     <div className="pw-editor-layout">
@@ -534,6 +560,60 @@ export function WatchEditor({
           </p>
         </fieldset>
 
+        <fieldset className="pw-editor-section">
+          <legend>5. History</legend>
+          <label className="pw-detector-option" htmlFor={historyId}>
+            <input
+              id={historyId}
+              type="checkbox"
+              checked={shown.historyDays > 0}
+              disabled={historyDisabledReason !== null}
+              onChange={(event) =>
+                patch({
+                  historyDays: event.target.checked ? catalog.history.days_default : 0,
+                  historyTouched: true,
+                })
+              }
+            />
+            <span>
+              <strong>Read history from QRadar (used only for learning)</strong>
+              <span>Reads QRadar&apos;s past once before collection begins.</span>
+            </span>
+          </label>
+          {historyDisabledReason && (
+            <p className="field-hint" role="status">{historyDisabledReason}</p>
+          )}
+          <div className="pw-field">
+            <label htmlFor={historyDaysId}>History window</label>
+            <select
+              id={historyDaysId}
+              className="select-control"
+              value={shown.historyDays || draft.historyDays || catalog.history.days_default}
+              disabled={shown.historyDays === 0 || historyDisabledReason !== null}
+              onChange={(event) =>
+                patch({ historyDays: Number(event.target.value), historyTouched: true })
+              }
+            >
+              {historyOptions.map((days) => (
+                <option key={days} value={days}>{days} days</option>
+              ))}
+            </select>
+          </div>
+          {currentWatch?.history.estimate && shown.historyDays > 0 && (
+            <p className="field-hint">
+              Estimate: about {currentWatch.history.estimate.searches_min} to{" "}
+              {currentWatch.history.estimate.searches_max} searches,{" "}
+              {currentWatch.history.estimate.ticks_min} to {currentWatch.history.estimate.ticks_max}{" "}
+              collection runs. This is an estimate, not a completion promise.
+            </p>
+          )}
+          <ul className="pw-history-limits">
+            <li>Events whose property was not parsed then are not counted as history.</li>
+            <li>The membership of a group is today&apos;s, not as it was.</li>
+            <li>Nothing is judged until the reading finishes.</li>
+          </ul>
+        </fieldset>
+
         <p className="pw-editor-summary">{summary}</p>
         {localReasons.length > 0 && (
           <ul className="pw-reasons" aria-label="Form validation reasons" role="alert">
@@ -566,7 +646,7 @@ export function WatchEditor({
 
       <aside className="pw-editor-preview panel" aria-labelledby={`${nameId}-preview-title`}>
         <div className="pw-preview-head">
-          <h2 id={`${nameId}-preview-title`}>5. Preview</h2>
+          <h2 id={`${nameId}-preview-title`}>6. Preview</h2>
           <p>
             Saves this definition disabled, then spends {catalog.preview_searches} bounded searches
             over the last closed hour. Nothing is admitted or alerted.
