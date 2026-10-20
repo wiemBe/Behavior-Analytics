@@ -192,4 +192,28 @@ describe("SourceVolume", () => {
     expect(alert).toHaveTextContent("read:fleet");
     expect(within(alert).queryByRole("button")).toBeNull();
   });
+
+  it("marks a history bucket in the selected-bucket panel and keys the span", async () => {
+    vi.spyOn(catchallApi, "buckets").mockResolvedValue(
+      list([bucket(0), bucket(5, { origin: "HISTORY" }), bucket(20)]),
+    );
+    render(<SourceVolume sources={sources()} now={NOW} />);
+    await screen.findByRole("img", { name: "chart" });
+    expect(screen.getByRole("list", { name: "Chart key" })).toHaveTextContent(
+      "Read from QRadar history, not judged",
+    );
+    const i = lastProps!.slots.findIndex((s) => s.bucket?.origin === "HISTORY");
+    await act(async () => lastProps!.onSelect(i));
+    const panel = screen.getByRole("group", { name: "Selected bucket" });
+    expect(within(panel).getByText("read from QRadar history, not judged")).toBeInTheDocument();
+  });
+
+  it("says nothing of origin for live buckets", async () => {
+    vi.spyOn(catchallApi, "buckets").mockResolvedValue(list([bucket(0, { origin: "LIVE" }), bucket(20)]));
+    render(<SourceVolume sources={sources()} now={NOW} />);
+    await screen.findByRole("img", { name: "chart" });
+    expect(screen.getByRole("list", { name: "Chart key" })).not.toHaveTextContent("history");
+    expect(screen.queryByText("Origin")).toBeNull();
+  });
 });
+

@@ -26,6 +26,7 @@ vi.mock("echarts/core", () => ({ init, use }));
 vi.mock("echarts/charts", () => ({ BarChart: {} }));
 vi.mock("echarts/components", () => ({
   GridComponent: {},
+  MarkAreaComponent: {},
   MarkLineComponent: {},
   TooltipComponent: {},
 }));
@@ -101,4 +102,46 @@ describe("BucketChart", () => {
     expect(screen.getByRole("img", { name: "Events per 5 min bucket" })).toBeInTheDocument();
     expect(screen.getByText("2 buckets were not measured")).toBeInTheDocument();
   });
+
+  it("draws contiguous history buckets as one span behind the bars, labelled, with tooltip and text", () => {
+    const s = buildSlots(
+      [bucket(0, { origin: "HISTORY" }), bucket(5, { origin: "HISTORY" }), bucket(10)],
+      T(0),
+      T(15),
+    );
+    render(<BucketChart slots={s.slots} bucketSeconds={300} selected={null} onSelect={vi.fn()} ariaLabel="c" textSummary="t" />);
+    expect(option().series).toHaveLength(2);
+    const data = option().series[0].markArea.data;
+    expect(data).toHaveLength(1);
+    expect(data[0][0].xAxis).toBe(String(T(0)));
+    expect(data[0][1].xAxis).toBe(String(T(5)));
+    expect(data[0][0].name).toBe("read from QRadar history, not judged");
+    const tip = (i: number) => option().tooltip.formatter({ dataIndex: i });
+    expect(tip(1)).toContain("Read from QRadar history, not judged");
+    expect(tip(2)).not.toContain("history");
+    expect(document.body).toHaveTextContent("2 of 3 buckets were read from QRadar history");
+  });
+
+  it("splits the span where one live bucket sits between history buckets", () => {
+    const s = buildSlots(
+      [bucket(0, { origin: "HISTORY" }), bucket(5, { origin: "LIVE" }), bucket(10, { origin: "HISTORY" })],
+      T(0),
+      T(15),
+    );
+    render(<BucketChart slots={s.slots} bucketSeconds={300} selected={null} onSelect={vi.fn()} ariaLabel="c" textSummary="t" />);
+    const data = option().series[0].markArea.data;
+    expect(data.map((d: Array<{ xAxis: string }>) => [d[0].xAxis, d[1].xAxis])).toEqual([
+      [String(T(0)), String(T(0))],
+      [String(T(10)), String(T(10))],
+    ]);
+  });
+
+  it("is unchanged for a series with no history bucket", () => {
+    const s = buildSlots([bucket(0, { origin: "LIVE" }), bucket(5)], T(0), T(10));
+    render(<BucketChart slots={s.slots} bucketSeconds={300} selected={null} onSelect={vi.fn()} ariaLabel="c" textSummary="t" />);
+    expect(option().series).toHaveLength(2);
+    expect(option().series[0].markArea).toBeUndefined();
+    expect(option().tooltip.formatter({ dataIndex: 0 })).not.toContain("history");
+  });
 });
+

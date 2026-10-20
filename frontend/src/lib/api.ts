@@ -658,6 +658,14 @@ export interface WafSourceStatus {
   validation_pending: boolean;
   validation_requested_at: string | null;
   validation_requested_by: string | null;
+  last_bucket?: WafLastBucket | null;
+}
+
+/** The newest stored bucket of a WAF source, as `GET /waf/sources` reports it. */
+export interface WafLastBucket {
+  bucket_start: string;
+  completeness: string;
+  origin?: HistoryOrigin;
 }
 
 export interface Alert {
@@ -983,6 +991,13 @@ export type AnomalyState =
   | "RESOLVED"
   | "SUPPRESSED";
 
+/**
+ * Where a stored bucket came from: the cadence collection, or QRadar's past (learning only).
+ * Every `origin` below is optional only because a response from before HB-14 carries none; the
+ * charts then say nothing about origin. `null` is unknown and is never rendered as live.
+ */
+export type HistoryOrigin = "LIVE" | "HISTORY";
+
 export type BucketCompleteness = "COMPLETE" | "PARTIAL" | "MISSING";
 
 export type EvidenceStatus =
@@ -1004,6 +1019,8 @@ export type RobustScoreStatus = "OK" | "DEGENERATE" | "UNAVAILABLE";
 export interface MetricBucket {
   bucket_start: string;
   bucket_seconds: number;
+  // Where the bucket was read from. HISTORY: read from QRadar's past, for learning only.
+  origin?: HistoryOrigin;
   event_count: number;
   average_eps: number;
   // Null when the bucket's collection path does not measure a peak. The live
@@ -1320,6 +1337,8 @@ export function isWafDetail(
 export interface WafMetricBucket {
   bucket_start: string;
   bucket_seconds: number;
+  // null: the source's bucket record is missing, so the origin is unknown (never LIVE).
+  origin?: HistoryOrigin | null;
   request_count: number | null;
   request_count_measurement: MeasurementKind | null;
   completeness: BucketCompleteness;
@@ -1380,6 +1399,7 @@ export interface PagedWafBaselines {
 export interface WafLatestBucket {
   bucket_start: string;
   bucket_seconds: number;
+  origin?: HistoryOrigin;
   completeness: string;
   endpoint_coverage_ratio: number;
   // LOWER_BOUND when grouping was truncated: the ratio is then itself a floor.
@@ -2006,6 +2026,8 @@ export interface IpsDimensionCoverage {
 export interface IpsEntityMetricBucket {
   bucket_start: string;
   bucket_seconds: number;
+  // null: the source's bucket record is missing, so the origin is unknown (never LIVE).
+  origin?: HistoryOrigin | null;
   events: number;
   // null when the source's bucket record is missing: unknown, not exact.
   measurement: string | null;
@@ -2018,6 +2040,7 @@ export interface IpsEntityMetricBucket {
 export interface IpsSourceMetricBucket {
   bucket_start: string;
   bucket_seconds: number;
+  origin?: HistoryOrigin;
   total_events: number;
   total_records: number;
   in_maintenance: boolean;
@@ -2096,6 +2119,7 @@ export interface IpsAdmission {
 export interface IpsLatestBucket {
   bucket_start: string;
   bucket_seconds: number;
+  origin?: HistoryOrigin;
   total_events: number;
   total_records: number;
   in_maintenance: boolean;
@@ -2936,6 +2960,7 @@ export interface CatchallBucket {
   catchall_log_source_id: string;
   bucket_start: string;
   bucket_seconds: number;
+  origin?: HistoryOrigin;
   events: number;
   records: number;
   distinct_senders: number;
@@ -3077,6 +3102,8 @@ export interface RuleStatisticsWindow {
   window_seconds: number;
   expected_windows: number;
   complete_windows: number;
+  // Of `complete_windows`, how many were read from QRadar history.
+  history_windows?: number;
   truncated_windows: number;
   failed_windows: number;
   missing_windows: number;
@@ -3403,6 +3430,8 @@ export interface EpsSeriesPoint {
   eps: number | null;
   expected_eps: number | null;
   cells_complete: number;
+  // Of `cells_complete`, how many were read from QRadar history.
+  cells_from_history?: number;
   cells_expected: number;
   sources_expected: number;
 }
