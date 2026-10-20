@@ -37,6 +37,7 @@ from app.history.origin import (
     origin_of,
 )
 from app.history.planner import (
+    CEILING_RELEASE_STEPS,
     PlannerSettings,
     ScopeProgress,
     fit_window,
@@ -66,6 +67,7 @@ from app.history.state import (
 )
 
 __all__ = [
+    "CEILING_RELEASE_STEPS",
     "FAMILY_SPECS",
     "PHASE_A_HISTORY_SOURCE",
     "PROGRESS_VERSION",

@@ -10,10 +10,12 @@ a defaulted `through` or `failures` would make the planner read a span twice or 
 
 Shape::
 
-    {"version": 1, "progress": {<every ScopeProgress field>}, "adapter": {...}}
+    {"version": 2, "progress": {<every ScopeProgress field>}, "adapter": {...}}
 
-`adapter` is opaque to the core: the family adapters keep their own state there (per-source
-floors for Phase A and catch-all), and it is returned untouched. Pure: no database.
+Version 1 has the same shape without `ceiling_successes`; it is still read, with the counter
+as 0, because lab and test databases hold version-1 rows. `adapter` is opaque to the core:
+the family adapters keep their own state there (per-source floors for Phase A and catch-all),
+and it is returned untouched. Pure: no database.
 """
 
 from __future__ import annotations
@@ -25,7 +27,9 @@ from typing import Any, NamedTuple
 
 from app.history.planner import Gap, ScopeProgress
 
-PROGRESS_VERSION = 1
+PROGRESS_VERSION = 2
+# Version 1 encoded every field but `ceiling_successes`; it decodes with the counter at 0.
+_VERSION_1_ABSENT = ("ceiling_successes",)
 
 _DATETIME_FIELDS = (
     "target_start",
@@ -85,6 +89,13 @@ def _decode_int(value: object, name: str) -> int:
     return value
 
 
+def _decode_count(value: object, name: str) -> int:
+    count = _decode_int(value, name)
+    if count < 0:
+        raise ProgressCodecError(f"{name} cannot be negative")
+    return count
+
+
 def encode_progress(
     progress: ScopeProgress, adapter: Mapping[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -118,8 +129,10 @@ def decode_progress(data: object) -> DecodedProgress:
             f"progress keys are {sorted(data)}, expected ['adapter', 'progress', 'version']"
         )
     version = data["version"]
-    if isinstance(version, bool) or version != PROGRESS_VERSION:
-        raise ProgressCodecError(f"progress version {version!r} is not {PROGRESS_VERSION}")
+    if isinstance(version, bool) or version not in (1, PROGRESS_VERSION):
+        raise ProgressCodecError(
+            f"progress version {version!r} is not 1 or {PROGRESS_VERSION}"
+        )
     adapter = data["adapter"]
     if not isinstance(adapter, Mapping):
         raise ProgressCodecError("adapter must be an object")
@@ -128,9 +141,10 @@ def decode_progress(data: object) -> DecodedProgress:
         raise ProgressCodecError("progress body must be an object")
 
     names = {item.name for item in dataclasses.fields(ScopeProgress)}
-    if set(body) != names:
-        missing = sorted(names - set(body))
-        extra = sorted(set(body) - names)
+    expected = names if version == PROGRESS_VERSION else names - set(_VERSION_1_ABSENT)
+    if set(body) != expected:
+        missing = sorted(expected - set(body))
+        extra = sorted(set(body) - expected)
         raise ProgressCodecError(f"progress fields differ: missing {missing}, unknown {extra}")
 
     values: dict[str, Any] = {}
@@ -145,6 +159,9 @@ def decode_progress(data: object) -> DecodedProgress:
     for name in _INT_FIELDS:
         raw = body[name]
         values[name] = None if raw is None and name in _OPTIONAL_INTS else _decode_int(raw, name)
+    values["ceiling_successes"] = (
+        0 if version == 1 else _decode_count(body["ceiling_successes"], "ceiling_successes")
+    )
     for name in _BOOL_FIELDS:
         raw = body[name]
         if not isinstance(raw, bool):

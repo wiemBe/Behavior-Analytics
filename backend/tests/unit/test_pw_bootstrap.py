@@ -530,7 +530,7 @@ def test_a_column_that_differs_from_the_progress_is_named(column: str) -> None:
 def test_a_bad_codec_payload_is_an_error() -> None:
     cols = history_columns(full_progress(), state=Ps.READING, reason="r")
     w = watch_of(cols)
-    w.history_progress = {**cols["history_progress"], "version": 2}
+    w.history_progress = {**cols["history_progress"], "version": 3}
     with pytest.raises(BootstrapStateError):
         read_progress(w)
     w.history_progress = encode_progress(full_progress(), adapter={})

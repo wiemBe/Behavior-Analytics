@@ -9,7 +9,8 @@ settings)`. The caller runs the searches and the fold; this module decides:
   target (`plan_step`);
 * what a step's results allow: `through` moves only past the contiguous prefix of whole
   searches; a failure halves the width and, at the minimum width, becomes a gap after
-  `max_failures`; the density gate; completion against the moving end (`settle_step`);
+  `max_failures`; three clean steps double a failure ceiling again and release it at the
+  density fit; the density gate; completion against the moving end (`settle_step`);
 * the window fitted to the time budget (`fit_window`) and the cost model of §B.8
   (`searches_for`, `ticks_for`).
 
@@ -35,6 +36,10 @@ HARD_MAX_SPAN_HOURS = 168
 DEFAULT_MIN_WINDOW_DAYS = 7
 # §B.6.2 step 6: rows per bucket are inflated by a quarter before sizing a chunk.
 DENSITY_SAFETY = 1.25
+# §B.6.3: this many consecutive clean steps double the failure ceiling, so one transient
+# failure (a timeout, a console restart) does not cap the width for the rest of the reading.
+# Three and not one because a width that keeps failing would fail every other step.
+CEILING_RELEASE_STEPS = 3
 
 
 class PlannerInputError(ValueError):
@@ -170,6 +175,8 @@ class ScopeProgress:
     scan_failures: int = 0
     chunk_buckets: int | None = None  # W, the width of one search
     chunk_ceiling: int | None = None  # W may not grow past a width that failed
+    # Consecutive clean settled steps since the ceiling was last set (§B.6.3).
+    ceiling_successes: int = 0
     failures: int = 0  # consecutive failures at the minimum width
     searches: int = 0
     buckets_read: int = 0
@@ -594,16 +601,53 @@ def settle_step(
         updated = replace(updated, failures=0)
         reasons.append(f"read {read} bucket(s)")
         rho = updated.rows_per_bucket
-        if rho is not None:
-            fit = row_fit_buckets(rho, settings)
-            if updated.chunk_ceiling is not None:
-                fit = min(fit, updated.chunk_ceiling)
-            updated = replace(updated, chunk_buckets=fit)
+        # The width density alone would choose. Before any non-silent bucket there is no
+        # density fit yet, so the initial width is the target.
+        fit = settings.initial_chunk_buckets if rho is None else row_fit_buckets(rho, settings)
+        ceiling = updated.chunk_ceiling
+        successes = updated.ceiling_successes
+        if ceiling is not None:
+            successes += 1
+            if successes >= CEILING_RELEASE_STEPS:
+                successes = 0
+                if 2 * ceiling >= fit:
+                    ceiling = None
+                    reasons.append(
+                        f"{CEILING_RELEASE_STEPS} clean steps brought the failure ceiling to "
+                        f"the row fit of {fit}; the ceiling is released"
+                    )
+                else:
+                    ceiling = 2 * ceiling
+                    reasons.append(
+                        f"{CEILING_RELEASE_STEPS} clean steps doubled the failure ceiling to "
+                        f"{ceiling}"
+                    )
+        # A released ceiling hands the width back to the fit, also when there is no density
+        # evidence yet (the fit is then the initial width): a failure in a silent span must not
+        # cap the width for the rest of the reading.
+        if rho is not None or ceiling is not None or updated.chunk_ceiling is not None:
+            updated = replace(
+                updated,
+                chunk_ceiling=ceiling,
+                ceiling_successes=successes,
+                chunk_buckets=fit if ceiling is None else min(fit, ceiling),
+            )
+        else:
+            updated = replace(
+                updated,
+                chunk_ceiling=ceiling,
+                ceiling_successes=successes,
+            )
     else:
         n = blocker.span.buckets(settings)
         if blocker.status is SearchStatus.FAILED:
             narrower = max(settings.min_chunk_buckets, n // 2)
-            updated = replace(updated, chunk_buckets=narrower, chunk_ceiling=narrower)
+            updated = replace(
+                updated,
+                chunk_buckets=narrower,
+                chunk_ceiling=narrower,
+                ceiling_successes=0,
+            )
             if n <= settings.min_chunk_buckets:
                 failures = updated.failures + 1
                 if failures >= settings.max_failures:

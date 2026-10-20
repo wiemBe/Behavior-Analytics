@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.history.planner import (
+    CEILING_RELEASE_STEPS,
     ChunkResult,
     PlannerInputError,
     PlannerSettings,
@@ -17,6 +18,7 @@ from app.history.planner import (
     Span,
     StepAction,
     StepBudget,
+    chunk_width,
     fit_window,
     floor_is_cut,
     interpret_scan,
@@ -409,6 +411,182 @@ def test_a_success_resets_the_failure_count() -> None:
     p = prog(floor=T0, failures=2, chunk_buckets=1)
     s = settle_step(p, [ok(T0, 1)], end=END, settings=SET)
     assert s.progress.failures == 0
+
+
+def test_three_clean_steps_double_the_failure_ceiling_then_release_it_at_the_row_fit() -> None:
+    p = prog(floor=T0, rows_seen=200, non_silent_buckets=20)  # 10 rows a bucket: fit 320
+    assert row_fit_buckets(10, SET) == 320
+    s = settle_step(p, [bad(T0, 40, SearchStatus.FAILED)], end=END, settings=SET)
+    p = s.progress
+    assert (p.chunk_buckets, p.chunk_ceiling, p.ceiling_successes) == (20, 20, 0)
+    start = T0
+
+    def clean(width: int):
+        nonlocal p, start
+        landed = settle_step(
+            p, [ok(start, width, rows=10 * width, ns=width)], end=END, settings=SET
+        )
+        p = landed.progress
+        assert p.through is not None
+        start = p.through + B
+        return landed
+
+    # Each block of three clean steps doubles the ceiling; the width follows it.
+    for ceiling in (40, 80, 160):
+        for _ in range(CEILING_RELEASE_STEPS):
+            landed = clean(p.chunk_buckets or 1)
+        assert (p.chunk_ceiling, p.ceiling_successes, p.chunk_buckets) == (
+            ceiling,
+            0,
+            ceiling,
+        )
+        assert "doubled the failure ceiling" in landed.reason
+    # The next double (320) is at the row fit, so the ceiling is released and W is the fit.
+    for _ in range(CEILING_RELEASE_STEPS):
+        landed = clean(p.chunk_buckets or 1)
+    assert p.chunk_ceiling is None and p.ceiling_successes == 0
+    assert p.chunk_buckets == row_fit_buckets(p.rows_per_bucket or 0, SET) == 320
+    assert "released" in landed.reason
+
+
+def test_a_failure_after_two_clean_steps_restarts_the_release_count() -> None:
+    p = prog(floor=T0)
+    p = settle_step(p, [bad(T0, 40, SearchStatus.FAILED)], end=END, settings=SET).progress
+    assert (p.chunk_ceiling, p.ceiling_successes) == (20, 0)
+    start = T0
+    for _ in range(2):
+        s = settle_step(p, [ok(start, 20)], end=END, settings=SET)
+        p = s.progress
+        assert p.through is not None
+        start = p.through + B
+    assert (p.chunk_ceiling, p.ceiling_successes, p.chunk_buckets) == (20, 2, 20)
+    # a failure resets the count: the release needs three clean steps again
+    s = settle_step(p, [bad(start, 20, SearchStatus.FAILED)], end=END, settings=SET)
+    p = s.progress
+    assert (p.chunk_ceiling, p.ceiling_successes, p.chunk_buckets) == (10, 0, 10)
+    for _ in range(2):
+        s = settle_step(p, [ok(start, 10)], end=END, settings=SET)
+        p = s.progress
+        assert p.through is not None
+        start = p.through + B
+    assert (p.chunk_ceiling, p.ceiling_successes) == (10, 2)  # two is not enough
+    s = settle_step(p, [ok(start, 10)], end=END, settings=SET)
+    assert (s.progress.chunk_ceiling, s.progress.ceiling_successes) == (20, 0)
+
+
+def test_without_density_evidence_the_ceiling_recovers_to_the_initial_width() -> None:
+    # No non-silent bucket yet: the row fit is unknown, so the initial width is the target.
+    p = prog(floor=T0, chunk_buckets=2, chunk_ceiling=2)
+    start = T0
+    for _ in range(CEILING_RELEASE_STEPS):
+        s = settle_step(p, [ok(start, 2, rows=0, ns=0)], end=END, settings=SET)
+        p = s.progress
+        assert p.through is not None
+        start = p.through + B
+    assert p.rows_per_bucket is None
+    assert (p.chunk_ceiling, p.ceiling_successes, p.chunk_buckets) == (4, 0, 4)
+
+
+def test_a_failure_in_a_silent_span_does_not_cap_the_width_after_the_release() -> None:
+    # No non-silent bucket: there is no row fit, so the initial width is the release target.
+    p = prog(floor=T0, chunk_buckets=40)
+    p = settle_step(p, [bad(T0, 40, SearchStatus.FAILED)], end=END, settings=SET).progress
+    assert (p.chunk_buckets, p.chunk_ceiling, p.ceiling_successes) == (20, 20, 0)
+    start = T0
+    blocks = 0
+    while p.chunk_ceiling is not None:
+        blocks += 1
+        for _ in range(CEILING_RELEASE_STEPS):
+            width = p.chunk_buckets
+            assert width is not None
+            s = settle_step(p, [ok(start, width, rows=0, ns=0)], end=END, settings=SET)
+            p = s.progress
+            assert p.through is not None
+            start = p.through + B
+    # 20 -> 40 -> 80 -> 160, then the double (320) reaches the 288-bucket target.
+    assert blocks == 4
+    assert p.rows_per_bucket is None
+    assert (p.chunk_ceiling, p.ceiling_successes) == (None, 0)
+    assert p.chunk_buckets == SET.initial_chunk_buckets
+    assert chunk_width(p, SET) == min(SET.initial_chunk_buckets, SET.max_span_buckets)
+    assert "released" in s.reason
+
+
+def test_a_truncated_chunk_leaves_the_ceiling_and_the_release_count_alone() -> None:
+    p = prog(floor=T0, chunk_buckets=20, chunk_ceiling=40, ceiling_successes=2)
+    s = settle_step(p, [bad(T0, 20, SearchStatus.TRUNCATED)], end=END, settings=SET)
+    assert s.progress.chunk_buckets == 10  # the width still halves
+    assert s.progress.chunk_ceiling == 40
+    assert s.progress.ceiling_successes == 2
+
+
+def test_a_gap_at_the_minimum_width_then_clean_steps_let_the_width_recover() -> None:
+    p = prog(floor=T0, chunk_buckets=1, chunk_ceiling=1, failures=SET.max_failures - 1)
+    s = settle_step(p, [bad(T0, 1, SearchStatus.FAILED)], end=END, settings=SET)
+    p = s.progress
+    assert s.new_gap is not None and p.through == T0
+    assert (p.chunk_buckets, p.chunk_ceiling, p.ceiling_successes) == (1, 1, 0)
+    widths: list[int] = []
+    start = T0 + B
+    for _ in range(4 * CEILING_RELEASE_STEPS):
+        plan = plan_step(p, now=STARTED, end=END, budget=BUDGET, settings=SET)
+        assert plan.chunk_buckets is not None
+        widths.append(plan.chunk_buckets)
+        s = settle_step(
+            p,
+            [
+                ok(
+                    start,
+                    plan.chunk_buckets,
+                    rows=10 * plan.chunk_buckets,
+                    ns=plan.chunk_buckets,
+                )
+            ],
+            end=END,
+            settings=SET,
+        )
+        p = s.progress
+        assert p.through is not None
+        start = p.through + B
+    assert widths == [1, 1, 1, 2, 2, 2, 4, 4, 4, 8, 8, 8]
+    assert p.chunk_buckets == 16
+
+
+def _drive_reading(*, fail_at_tick: int | None, rows_per_bucket: int = 100) -> int:
+    """Ticks a 28-day reading at ten searches a tick; returns the ticks it took."""
+    p = prog(floor=T0)
+    ticks = 0
+    while ticks < 10_000:
+        ticks += 1
+        plan = plan_step(p, now=STARTED, end=END, budget=BUDGET, settings=SET)
+        if plan.action is StepAction.FINISH:
+            return ticks
+        assert plan.action is StepAction.READ and plan.chunks
+        results: list[ChunkResult] = []
+        for index, chunk in enumerate(plan.chunks):
+            n = chunk.buckets(SET)
+            if fail_at_tick == ticks and index == 0:
+                results.append(ChunkResult(chunk, SearchStatus.FAILED))
+                break
+            results.append(
+                ChunkResult(
+                    chunk,
+                    SearchStatus.COMPLETE,
+                    rows=rows_per_bucket * n,
+                    non_silent_buckets=n,
+                )
+            )
+        p = settle_step(p, results, end=END, settings=SET).progress
+    raise AssertionError("the reading did not finish")
+
+
+def test_a_28_day_reading_with_one_early_failure_costs_a_small_constant_in_ticks() -> None:
+    clean = _drive_reading(fail_at_tick=None)
+    failed = _drive_reading(fail_at_tick=1)
+    # Measured with this fixture: clean 21 ticks, one early failure 24 ticks. The failure
+    # costs its own step, and the half width it leaves for the next step costs about two more.
+    assert (clean, failed) == (21, 24)
+    assert failed <= clean + 3
 
 
 def test_the_gap_list_is_bounded() -> None:
