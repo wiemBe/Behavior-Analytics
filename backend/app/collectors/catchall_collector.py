@@ -790,6 +790,9 @@ class CatchallCollector:
             )
         progress = decoded.progress if decoded is not None else None
         floors = SourceFloors.decode(decoded.adapter) if decoded is not None else SourceFloors()
+        # A restarted row still holds the earlier reading's days_target until this step
+        # writes its own, so the first step takes the window's days from its own progress.
+        first_step = progress is None
         if progress is None:
             # A reading that has not searched: the window is the family's own.
             fitted = fit_family_window(HistoryFamily.CATCHALL, settings)
@@ -819,7 +822,7 @@ class CatchallCollector:
                 instance,
                 report,
                 decision=decision,
-                view=view,
+                view=self._with_own_days(view, first_step, anchor, progress),
                 progress=progress,
                 trigger=plan.trigger,
                 reason=plan.reason,
@@ -939,7 +942,7 @@ class CatchallCollector:
                 instance,
                 report,
                 decision=decision,
-                view=view,
+                view=self._with_own_days(view, first_step, anchor, new_progress),
                 progress=new_progress,
                 floors=fold.floors,
                 trigger=trigger,
@@ -949,7 +952,11 @@ class CatchallCollector:
         new_view = replace(
             view,
             state=HistoryState.READING,
-            days_target=view.days_target or _days_between(anchor, new_progress.target_start),
+            days_target=(
+                _days_between(anchor, new_progress.target_start)
+                if first_step
+                else view.days_target or _days_between(anchor, new_progress.target_start)
+            ),
             target_start=new_progress.target_start,
             floor=new_progress.floor,
             through=new_progress.through,
@@ -967,6 +974,15 @@ class CatchallCollector:
             ]
         )
         return HistoryState.READING
+
+    @staticmethod
+    def _with_own_days(
+        view: ScopeRowView, first_step: bool, anchor: datetime, progress: ScopeProgress
+    ) -> ScopeRowView:
+        """The view whose days_target agrees with the progress a first step just planned."""
+        if not first_step:
+            return view
+        return replace(view, days_target=_days_between(anchor, progress.target_start))
 
     async def _finish_history(
         self,

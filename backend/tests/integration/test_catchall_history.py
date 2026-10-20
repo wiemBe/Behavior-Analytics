@@ -293,7 +293,9 @@ class TestLifecycle:
         assert stopped is not None and stopped.state == "PARTIAL"
         assert stopped.reason and "the operator" in stopped.reason
 
-    async def test_a_start_request_after_the_reading_restarts_it(self, db_session) -> None:
+    async def test_a_restart_stopped_before_its_first_step_keeps_finished_evidence(
+        self, db_session
+    ) -> None:
         inst, _ = await setup(db_session)
         await decide(db_session, inst)
         prov = provider(always(row("fw-01", 50)))
@@ -304,9 +306,16 @@ class TestLifecycle:
         assert report.history_scope_state is HistoryState.COMPLETE
         finished = await scope(db_session, inst)
         assert finished is not None and finished.finished_at is not None
+        finished_at = finished.finished_at
+        evidence = (
+            finished.days_target,
+            finished.target_start,
+            finished.floor,
+            finished.through,
+        )
 
         await HistoryBackfillRepository(db_session).request_start(
-            inst.id, by="the operator", at=finished.finished_at + timedelta(hours=1)
+            inst.id, by="the operator", at=finished_at + timedelta(hours=1)
         )
         again = await collector(db_session, prov).collect(inst)
 
@@ -315,8 +324,103 @@ class TestLifecycle:
         assert restarted is not None and restarted.state == "READING"
         # A restart reads a fresh window from the same anchor.
         assert restarted.anchor == FIRST
-        assert restarted.target_start is None and restarted.progress == {}
+        assert restarted.progress == {}
+        assert (
+            restarted.days_target,
+            restarted.target_start,
+            restarted.floor,
+            restarted.through,
+        ) == evidence
         assert restarted.finished_at is None
+
+        await HistoryBackfillRepository(db_session).request_stop(
+            inst.id, by="the operator", at=finished_at + timedelta(hours=2)
+        )
+        stopped_report = await collector(db_session, prov).collect(inst)
+
+        assert stopped_report.history_scope_state is HistoryState.PARTIAL
+        stopped = await scope(db_session, inst)
+        assert stopped is not None and stopped.state == "PARTIAL"
+        assert stopped.reason == "stopped by the operator"
+        assert stopped.progress == {}
+        assert (stopped.days_target, stopped.target_start, stopped.floor, stopped.through) == (
+            evidence
+        )
+
+    async def test_a_restarted_first_step_writes_its_own_window_and_evidence(
+        self, db_session
+    ) -> None:
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+
+        await collector(db_session, prov).collect(inst)
+        await collector(db_session, prov).collect(inst)
+        first_step = await scope(db_session, inst)
+        assert first_step is not None and first_step.progress
+        first_values = (
+            first_step.days_target,
+            first_step.target_start,
+            first_step.floor,
+            first_step.through,
+        )
+
+        for _ in range(6):
+            report = await collector(db_session, prov).collect(inst)
+            if report.history_scope_state is HistoryState.COMPLETE:
+                break
+        assert report.history_scope_state is HistoryState.COMPLETE
+        finished = await scope(db_session, inst)
+        assert finished is not None and finished.finished_at is not None
+        assert finished.through != first_values[3]
+
+        await HistoryBackfillRepository(db_session).request_start(
+            inst.id, by="the operator", at=finished.finished_at + timedelta(hours=1)
+        )
+        await collector(db_session, prov).collect(inst)
+        restarted = await scope(db_session, inst)
+        assert restarted is not None and restarted.progress == {}
+        await collector(db_session, prov).collect(inst)
+
+        stepped = await scope(db_session, inst)
+        assert stepped is not None and stepped.progress
+        assert (stepped.days_target, stepped.target_start, stepped.floor, stepped.through) == (
+            first_values
+        )
+
+    async def test_a_restart_with_a_changed_window_writes_the_new_days_and_evidence(
+        self, db_session
+    ) -> None:
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+
+        for _ in range(8):
+            report = await collector(db_session, prov).collect(inst)
+            if report.history_scope_state is HistoryState.COMPLETE:
+                break
+        assert report.history_scope_state is HistoryState.COMPLETE
+        finished = await scope(db_session, inst)
+        assert finished is not None and finished.finished_at is not None
+        earlier = (finished.days_target, finished.target_start, finished.floor, finished.through)
+        assert finished.days_target == DAYS
+
+        await HistoryBackfillRepository(db_session).request_start(
+            inst.id, by="the operator", at=finished.finished_at + timedelta(hours=1)
+        )
+        longer = DAYS + 1
+        await collector(db_session, prov, history_backfill_days=longer).collect(inst)
+        restarted = await scope(db_session, inst)
+        assert restarted is not None and restarted.progress == {}
+        await collector(db_session, prov, history_backfill_days=longer).collect(inst)
+
+        stepped = await scope(db_session, inst)
+        assert stepped is not None and stepped.progress
+        assert stepped.days_target == longer
+        assert stepped.target_start == restarted.anchor - timedelta(days=longer)
+        assert stepped.target_start != earlier[1]
+        assert stepped.floor != earlier[2]
+        assert stepped.floor is not None and stepped.floor < earlier[2]
 
     async def test_a_budget_of_zero_reads_nothing(self, db_session) -> None:
         inst, _ = await setup(db_session)

@@ -455,6 +455,119 @@ async def test_waf_first_step_adds_one_count_statement_and_later_steps_add_none(
     assert (len(first), len(later)) == (16, 16)
 
 
+async def test_scope_upsert_refreshes_loaded_rows_once_and_skips_unloaded_rows(
+    db_session,  # type: ignore[no-untyped-def]
+) -> None:
+    settings = cfg()
+    provider = ScriptedWaf({})
+    _profile, _source, instance, _ = await make_source(db_session, provider, settings)
+    repository = HistoryBackfillRepository(db_session)
+
+    def values(key: str, state: str = "READING") -> dict[str, object]:
+        return {
+            "instance_id": instance.id,
+            "family": HistoryFamily.WAF.value,
+            "scope_key": key,
+            "state": state,
+            "days_requested": 7,
+            "days_target": 7,
+            "target_start": T0,
+            "floor": T0,
+            "through": T0,
+            "anchor": T0 + STEP,
+            "started_at": T0,
+            "finished_at": T0 + STEP if state == "PARTIAL" else None,
+            "reason": "stopped by operator" if state == "PARTIAL" else None,
+            "progress": {},
+        }
+
+    await repository.write_scopes([values(str(key)) for key in range(1, 11)])
+    loaded = await repository.scopes(
+        instance.id, HistoryFamily.WAF.value, [str(key) for key in range(1, 11)]
+    )
+
+    with recorded_statements(db_session) as loaded_sql:
+        await repository.write_scopes(
+            [values(str(key), HistoryState.PARTIAL.value) for key in range(1, 11)]
+        )
+
+    scope_sql = [sql for sql in loaded_sql if "history_backfill_scope" in sql]
+    assert len(scope_sql) == 1  # one statement for ten rows: RETURNING refreshes every loaded scope
+    assert "RETURNING" in scope_sql[0]
+    assert {row.state for row in loaded.values()} == {HistoryState.PARTIAL.value}
+
+    with recorded_statements(db_session) as unloaded_sql:
+        await repository.write_scopes([values(str(key)) for key in range(11, 21)])
+
+    scope_sql = [sql for sql in unloaded_sql if "history_backfill_scope" in sql]
+    assert len(scope_sql) == 1
+    assert "RETURNING" not in scope_sql[0]  # no loaded identity, so no refresh work
+
+
+async def test_waf_stop_before_an_unstepped_reading_keeps_existing_evidence(
+    db_session,  # type: ignore[no-untyped-def]
+) -> None:
+    settings = cfg(history_backfill_days=7)
+    provider = ScriptedWaf({})
+    profile, source, instance, _ = await make_source(db_session, provider, settings)
+    repository = HistoryBackfillRepository(db_session)
+    await repository.record_decision(
+        instance.id,
+        answer="YES",
+        days=7,
+        source="UI",
+        decided_by="operator",
+        at=T0,
+    )
+    target = T0 - timedelta(days=7)
+    floor = target - timedelta(hours=1)
+    through = T0 - STEP
+    await repository.write_scopes(
+        [
+            {
+                "instance_id": instance.id,
+                "family": HistoryFamily.WAF.value,
+                "scope_key": str(source.qradar_id),
+                "state": HistoryState.READING.value,
+                "days_requested": 7,
+                "days_target": 7,
+                "target_start": target,
+                "floor": floor,
+                "through": through,
+                "anchor": T0,
+                "started_at": T0,
+                "finished_at": None,
+                "reason": "read history now: topping up",
+                "progress": {},
+            }
+        ]
+    )
+    await repository.request_stop(instance.id, by="operator", at=T0 + timedelta(seconds=1))
+    await db_session.commit()
+
+    await run_waf_source(
+        db_session,
+        profile.id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: T0 + STEP + timedelta(seconds=5),
+    )
+
+    stopped = await db_session.get(
+        HistoryBackfillScope,
+        (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
+    )
+    assert stopped is not None and stopped.state == HistoryState.PARTIAL.value
+    assert stopped.reason == "stopped by operator"
+    assert stopped.progress == {}
+    assert (stopped.days_target, stopped.target_start, stopped.floor, stopped.through) == (
+        7,
+        target,
+        floor,
+        through,
+    )
+
+
 async def test_history_rows_are_not_pending_or_f1_but_preview_can_read_them(db_session) -> None:  # type: ignore[no-untyped-def]
     settings = cfg()
     provider = ScriptedWaf(

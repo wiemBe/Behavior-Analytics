@@ -600,6 +600,42 @@ async def test_the_page_shows_a_yes_with_a_scope_row_in_every_state(  # type: ig
     )
 
 
+async def test_a_restart_stopped_before_stepping_shows_kept_days_without_counts(
+    db_session, db_schema
+) -> None:  # type: ignore[no-untyped-def]
+    instance = await make_instance(db_session)
+    target = START
+    floor = target - timedelta(hours=1)
+    through = target + timedelta(hours=23, minutes=55)
+    db_session.add_all(
+        [
+            decision(instance.id, "YES"),
+            scope_row(
+                instance.id,
+                "CATCHALL",
+                "",
+                state="PARTIAL",
+                days_target=7,
+                target_start=target,
+                floor=floor,
+                through=through,
+                finished_at=STAMP,
+                reason="stopped by the operator",
+                progress={},
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    shown = family_of(Client(db_schema, READER).get(BASE).json()[0], "CATCHALL")["scopes"][0]
+
+    assert shown["days_read"] == 1.0
+    assert shown["searches"] is None
+    assert shown["buckets_read"] is None
+    assert shown["gaps"] is None
+    assert shown["progress_unreadable"] is False
+
+
 async def test_the_page_lists_waf_and_ips_sources_with_and_without_live_rows(  # type: ignore[no-untyped-def]
     db_session, db_schema
 ) -> None:

@@ -20,6 +20,8 @@ from typing import Any, cast
 from sqlalchemy import Table, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
+from sqlalchemy.orm.util import identity_key
 
 from app.history.lifecycle import MAX_REASON_LENGTH, SCOPE_COLUMNS, bounded_reason
 from app.models.enums import HistoryDecisionAnswer
@@ -92,15 +94,38 @@ class HistoryBackfillRepository:
             reason = row["reason"]
             if reason is not None and len(reason) > MAX_REASON_LENGTH:
                 raise ValueError(f"scope row {index} reason is longer than {MAX_REASON_LENGTH}")
-        insert = pg_insert(cast(Table, HistoryBackfillScope.__table__))
+        table = cast(Table, HistoryBackfillScope.__table__)
+        insert = pg_insert(table)
         statement = insert.on_conflict_do_update(
             index_elements=list(_SCOPE_KEY),
             set_={
                 name: insert.excluded[name] for name in SCOPE_COLUMNS if name not in _SCOPE_KEY
             },
         )
+        loaded = {}
+        for row in rows:
+            key = (row["instance_id"], row["family"], row["scope_key"])
+            found = self.session.identity_map.get(identity_key(HistoryBackfillScope, key))
+            if found is not None:
+                loaded[key] = found
         # A list of parameter dicts: executemany, one statement to the driver.
-        await self.session.execute(statement, [dict(row) for row in rows])
+        if not loaded:
+            await self.session.execute(statement, [dict(row) for row in rows])
+            return
+        # The bulk upsert does not touch an ORM row already loaded in the session, and a
+        # caller that reads that row afterwards would act on the state before the write.
+        # RETURNING hands back the written values in the same statement, so the loaded
+        # rows are synchronised without a SELECT: still one statement, whatever the count.
+        # (The ORM entity form of this upsert runs more than one statement for many rows.)
+        result = await self.session.execute(
+            statement.returning(*table.c), [dict(row) for row in rows]
+        )
+        for written in result.mappings():
+            found = loaded.get((written["instance_id"], written["family"], written["scope_key"]))
+            if found is None:
+                continue
+            for name in SCOPE_COLUMNS:
+                attributes.set_committed_value(found, name, written[name])
 
     async def record_decision(
         self,

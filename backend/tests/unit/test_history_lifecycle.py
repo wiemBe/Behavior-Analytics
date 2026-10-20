@@ -417,10 +417,14 @@ def test_transition_row_anchor_found_starts_reading() -> None:
     assert values["progress"] == {}
 
 
-def test_transition_row_restart_clears_the_window_and_the_finish() -> None:
+@pytest.mark.parametrize("state", [S.PARTIAL, S.COMPLETE])
+def test_transition_row_restart_keeps_evidence_and_clears_progress(state: S) -> None:
+    target = ANCHOR - timedelta(days=28)
+    floor = target - timedelta(hours=1)
+    through = ANCHOR - timedelta(minutes=5)
     old = ScopeRowView(
-        state=S.COMPLETE, days_requested=28, days_target=28, target_start=ANCHOR, floor=ANCHOR,
-        through=ANCHOR, anchor=ANCHOR, started_at=ANCHOR, finished_at=FINISHED,
+        state=state, days_requested=28, days_target=28, target_start=target, floor=floor,
+        through=through, anchor=ANCHOR, started_at=ANCHOR, finished_at=FINISHED,
         progress={"a": 1})
     decision = DecisionView("YES", 35, start_requested_at=START, start_requested_by="a")
     action = act(F.PHASE_A, ConsoleMode.ACTIVE, decision=decision, scope=old, live=True)
@@ -430,7 +434,13 @@ def test_transition_row_restart_clears_the_window_and_the_finish() -> None:
     assert values["state"] == "READING"
     assert values["days_requested"] == 35
     assert values["started_at"] == START and values["finished_at"] is None
-    assert values["progress"] == {} and values["target_start"] is None
+    assert values["progress"] == {}
+    assert (values["days_target"], values["target_start"], values["floor"], values["through"]) == (
+        28,
+        target,
+        floor,
+        through,
+    )
     assert values["reason"] == "read history now: topping up"
 
 
@@ -469,9 +479,10 @@ def test_a_searched_scope_decodes() -> None:
     assert progress is not None and progress.target_start == T0
 
 
-def test_empty_progress_with_a_target_start_is_a_contradiction() -> None:
-    with pytest.raises(LifecycleError, match="progress is"):
-        scope_progress(ScopeRowView(state=S.READING, target_start=T0, progress={}))
+def test_empty_progress_with_kept_evidence_is_an_unsearched_restart() -> None:
+    assert scope_progress(
+        ScopeRowView(state=S.READING, target_start=T0, floor=T0, through=NOW, progress={})
+    ) is None
 
 
 def test_progress_without_a_target_start_is_a_contradiction() -> None:

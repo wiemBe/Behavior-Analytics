@@ -410,10 +410,6 @@ class WafSourcePipeline:
         await repository.write_scopes([values])
         await self.session.flush()
         if row is not None:
-            # The bulk upsert does not synchronise an identity-mapped row, and the
-            # caller must act on the state just written (a switch-off or stop ends
-            # the reading this tick).
-            await self.session.refresh(row)
             return row
         return (
             await repository.scopes(instance.id, HistoryFamily.WAF.value, [scope_key])
