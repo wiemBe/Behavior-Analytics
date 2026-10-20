@@ -44,7 +44,7 @@ collector, the detectors, the API and the UI (§G.16 builds exactly those).
 
 ## G.1 Facts that constrain the design
 
-Verified on this branch, `file:line`. Facts about the QRadar console were settled by the PW-0 lab probe
+Verified in the code, `file:line`. Facts about the QRadar console were settled by the PW-0 lab probe
 (L1 to L8, summarised in §G.17).
 
 ### G.1.1 The inventory already knows sources, types and groups
@@ -200,7 +200,7 @@ Verified on this branch, `file:line`. Facts about the QRadar console were settle
   (`backend/app/core/config.py:159`), the bucket width `collection_interval_seconds` = 300 s
   (`backend/app/core/config.py:237`). WAF's steady-state run costs a constant 36 SQL statements at 100 to 2,000 endpoints, measured on a
   test database with no Ariel time (`docs/PHASE-B-WAF-BEHAVIOR.md` §29.7) — the bar a PW run must meet.
-- The migration head on this branch is `0025_auth_sessions` (`backend/alembic/versions/`); Phase G
+- The migration head in this release is `0025_auth_sessions` (`backend/alembic/versions/`); Phase G
   takes the next number at build time.
 
 ---
@@ -372,8 +372,7 @@ inventory when the watch is saved and when it runs; a vanished group id is `SCOP
   added in the fold; a value is exact only if every chunk's search was whole, otherwise the bucket
   is a `LOWER_BOUND` (a chunk's missing tail can only add events). A type scope is one filter and is
   never chunked. A scope that outgrows the cap therefore costs more searches, never wrong numbers.
-  Whether one `IN (…)` list of 50 ids is the right size on the lab console is
-  The lab accepted a 54-id list of 453 characters (L7); the setting is the knob.
+  Whether one `IN (…)` list of 50 ids is the right size on the lab console is shown by the measurement: the lab accepted a 54-id list of 453 characters (L7); the setting is the knob.
 - **Membership churn.** A source gained or lost by the group changes the population the watch
   measures. That is honest: the watch measures the scope *as currently synced*. It must not look like
   behavior, though. The bucket row stores `scope_member_count` and `scope_fingerprint` (a hash of

@@ -1567,7 +1567,7 @@ oturum açmasıdır; 503 değildir.
 **Belirti:** Bir dizin kullanıcısı oturum açıyor ve her sayfa yasak.
 
 **Olası neden:** Satır yoksa ilk başarılı bind kullanıcıyı oluşturur ve rol atamaz. `User.roles`
-boş kalır. Roller AD'den okunmaz (D-19).
+boş kalır. Roller AD'den okunmaz (üretim girişi, 2026-10-16: yerel hesaplar ve AD LDAP üzerinden; roller uygulamada atanır).
 
 **Doğrulama:** `/admin/users` kullanıcıyı rolsüz gösterir ve `/me` başarılı olur.
 

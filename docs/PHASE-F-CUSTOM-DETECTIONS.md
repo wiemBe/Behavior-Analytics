@@ -631,7 +631,7 @@ apart — one component, two mounts.
 > off (`retention_search_result_metric_days` is unset unless `RETENTION_ENABLED` is set).
 > The breach delete also skips a `RESOLVED` row a rule still points at with
 > `active_breach_id` (`backend/app/custom_rules/retention.py`). `0024` revises `0023`; the
-> chain head on this branch is `0025`.
+> chain head in this release is `0025`.
 
 One migration, `0024_custom_rules`, chained after the current head `0023_dashboards`
 (`alembic/versions/0023_dashboards.py`). **Additive only**: three new tables —
@@ -865,7 +865,7 @@ Every new test is checked by breaking the code on purpose.
 
 ## F.15 Task split (question 12) **[BUILT — F-1 through F-7 and F-6a]**
 
-> **As built**: F-1 through F-7 and F-6a are on this branch. Review changed the cron floor
+> **As built**: F-1 through F-7 and F-6a are in the code. Review changed the cron floor
 > (§F.8) and replaced the search editor's latency sentence (§F.12). F-6 is the
 > `/custom-rules` UI; F-6a is `GET /custom-rules/catalog`. F-8 wrote these markers while those
 > two were still open; the placeholders are closed. Breach retention shipped in F-1, not under

@@ -37,7 +37,7 @@ Engine and Compose v2, HTTPS 443 in, QRadar 443 and AD 636 out, `ghcr.io` and Gi
 out, NTP, a DNS name and a TLS certificate for the app, the QRadar CA, a read-only
 QRadar token, a backup directory. Sizes are in §3.1.
 
-The code this design is written against is this branch. Migration head is `0025`
+The code this design is written against is this release. Migration head is `0025`
 (`backend/alembic/versions/0025_auth_sessions.py:28-29`). AUTH-1, AUTH-2 and Phase F
 are in the tree. The frontend lockfile pins `postcss` to `8.5.30`
 (`frontend/package.json:35-37`).

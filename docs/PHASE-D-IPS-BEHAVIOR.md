@@ -9,7 +9,7 @@ Status: **design, 2026-10-13.** It builds on the WAF architecture
 
 Following the convention of WAF §27, each design item below is marked **[BUILT]** (exists in the
 code) or **[DESIGN]** (specified here, not built), with a short note where the built thing
-differs from the design. Status was checked against the code on this branch.
+differs from the design. Status was checked against the code in this release.
 
 Of §D.13: **built** — T-049 (§D.3 profile, `/ips` admin API), T-050 (§D.5 collection, §D.4
 admission, §D.9 persistence), T-051a (§D.6 pure detectors), T-051b (detection tables `0021`, the
