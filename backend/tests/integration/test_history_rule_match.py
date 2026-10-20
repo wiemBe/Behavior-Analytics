@@ -68,6 +68,10 @@ MATCHES = {
     H0 + 6 * HOUR: {100: (2, 4), 900: (5, 5)},
 }
 
+#: 100 rules that matched (1 record, 1 event) in every one of the 168 hourly
+#: windows of the requested week: 16,800 metric rows for one step.
+DENSE_RULES = {100 + j: (1, 1) for j in range(100)}
+
 
 def by_window(start, table=None):
     return (table or MATCHES).get(start, {})
@@ -690,10 +694,6 @@ class TestLargeStep:
     rows must be exactly the ones the fold produced -- not merely counted.
     """
 
-    #: 100 rules that matched (1 record, 1 event) in every one of the 168 hourly
-    #: windows of the requested week: 16,800 metric rows for one step.
-    DENSE_RULES = {100 + j: (1, 1) for j in range(100)}
-
     @pytest.mark.asyncio
     async def test_a_step_with_more_metric_rows_than_the_bind_limit_writes_them(
         self, db_session
@@ -702,7 +702,7 @@ class TestLargeStep:
         for qid in range(100, 200):
             await add_rule(db_session, instance, qid)
         await seed_anchor_and_decision(db_session, instance)
-        dense = self.DENSE_RULES
+        dense = DENSE_RULES
         matches: dict[datetime, dict[int, tuple[int, int]]] = {
             TARGET_START + i * HOUR: dense for i in range(168)
         }
@@ -725,9 +725,9 @@ class TestLargeStep:
             (qid, start, 3600, 1, 1) for start in matches for qid in range(100, 200)
         ]
         assert await metric_facts(db_session, instance) == expected_metrics
-        expected_windows = {
-            start: (3600, "COMPLETE", 100, 5000, 0, 1, None) for start in matches
-        }
+        expected_windows = dict.fromkeys(
+            matches, (3600, "COMPLETE", 100, 5000, 0, 1, None)
+        )
         assert await window_facts(db_session, instance, origin="HISTORY") == expected_windows
 
     @pytest.mark.asyncio
