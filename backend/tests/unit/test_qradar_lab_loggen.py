@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import io
 import socket
@@ -22,6 +23,26 @@ sys.modules[SPEC.name] = loggen
 SPEC.loader.exec_module(loggen)
 
 NOW = datetime(2026, 8, 1, 12, 0, tzinfo=UTC)
+
+# A username that --fixed-username accepts but that is never picked at random.
+FIXED_ONLY_USERNAME = "newuser.demo"
+
+# Seeded runs of the generator, captured from the tool before the fixed-only
+# username tuple existed.  SYNTHETIC_USERS seeds every random scenario, so
+# these events must not change.
+SEEDED_CASES = (
+    ("normal", {"seed": 8675309}, 40),
+    ("brute-force", {"scenario": "brute-force", "seed": 5}, 10),
+    ("password-spray", {"scenario": "password-spray", "seed": 5}, 6),
+    (
+        "failed-login-then-success",
+        {"scenario": "failed-login-then-success", "attempt_count": 3, "seed": 5},
+        4,
+    ),
+    ("port-scan", {"scenario": "port-scan", "seed": 5}, 6),
+    ("volume-spike", {"scenario": "volume-spike", "seed": 11}, 12),
+)
+SEEDED_STREAM_DIGEST = "c4852bd8e12ed1b9d77ede48de409831c5ac8abcb115aba144c138efe10c63e8"
 
 
 def fields(message: str) -> dict[str, str]:
@@ -82,6 +103,83 @@ def test_seed_is_deterministic_apart_from_timestamps() -> None:
     one = messages(loggen.Options(seed=8675309), 20)
     two = messages(loggen.Options(seed=8675309), 20)
     assert one == two
+
+
+def test_seeded_stream_is_unchanged_by_the_fixed_only_username_tuple() -> None:
+    digest = hashlib.sha256()
+    for name, overrides, count in SEEDED_CASES:
+        generator = loggen.EventGenerator(loggen.Options(**overrides), clock=lambda: NOW)
+        for index in range(count):
+            digest.update(name.encode())
+            digest.update(generator.generate(index).encode())
+            digest.update(b"\n")
+    assert digest.hexdigest() == SEEDED_STREAM_DIGEST
+
+
+def test_fixed_only_username_is_never_chosen_at_random() -> None:
+    assert loggen.SYNTHETIC_USERS == (
+        "administrator",
+        "efe.lab",
+        "test.user",
+        "svc_backup",
+        "svc_sql",
+        "compromised.user",
+    )
+    assert loggen.FIXED_ONLY_USERS == (FIXED_ONLY_USERNAME,)
+    parsed = [fields(message) for message in messages(loggen.Options(seed=8675309), 500)]
+    assert {item["usrName"] for item in parsed} <= set(loggen.SYNTHETIC_USERS)
+    assert FIXED_ONLY_USERNAME not in {item["usrName"] for item in parsed}
+
+
+def test_fixed_only_username_is_accepted_and_carried_on_every_event() -> None:
+    parser = loggen.build_parser()
+    options = loggen.options_from_args(
+        parser.parse_args(["--fixed-username", FIXED_ONLY_USERNAME])
+    )
+    assert options.fixed_username == FIXED_ONLY_USERNAME
+    loggen.validate_options(options)
+    parsed = [fields(message) for message in messages(
+        loggen.Options(seed=7, fixed_username=FIXED_ONLY_USERNAME), 5
+    )]
+    assert {item["usrName"] for item in parsed} == {FIXED_ONLY_USERNAME}
+
+
+def test_username_outside_both_tuples_is_refused_with_the_same_message() -> None:
+    assert "real.user" not in loggen.SYNTHETIC_USERS
+    assert "real.user" not in loggen.FIXED_ONLY_USERS
+    parser = loggen.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--fixed-username", "real.user"])
+    with pytest.raises(ValueError) as excinfo:
+        loggen.validate_options(loggen.Options(fixed_username="real.user"))
+    assert str(excinfo.value) == "--fixed-username must be a synthetic username"
+
+
+def test_cli_runs_with_the_fixed_only_username(tmp_path: Path) -> None:
+    # The operator path: the command line of the live-validation plan, with
+    # --dry-run so that no packet is sent.
+    output = tmp_path / "events.log"
+    exit_code = loggen.main(
+        [
+            "--dry-run",
+            "--count",
+            "2",
+            "--eps",
+            "50",
+            "--seed",
+            "42",
+            "--types",
+            "linux_auth",
+            "--fixed-username",
+            FIXED_ONLY_USERNAME,
+            "--output-file",
+            str(output),
+        ]
+    )
+    assert exit_code == 0
+    written = output.read_text().splitlines()
+    assert len(written) == 2
+    assert all(f"usrName={FIXED_ONLY_USERNAME}\t" in line for line in written)
 
 
 def test_fixed_source_controls_override_payload_fields_without_spoofing() -> None:
@@ -167,6 +265,34 @@ def test_count_terminates_and_dry_run_never_constructs_sender() -> None:
     )
     assert count == 3
     assert len(stdout.getvalue().splitlines()) == 3
+
+
+def test_stdout_without_dry_run_still_sends_the_events() -> None:
+    fake = FakeTime()
+    stdout = io.StringIO()
+    sender = RecordingSender()
+    count = loggen.run(
+        loggen.Options(count=2, stdout=True, seed=1),
+        sender_factory=lambda *_args, **_kwargs: sender,
+        monotonic=fake.monotonic,
+        sleeper=fake.sleep,
+        clock=lambda: NOW,
+        stdout=stdout,
+        stderr=io.StringIO(),
+    )
+    assert count == 2
+    assert len(sender.messages) == 2
+    assert len(stdout.getvalue().splitlines()) == 2
+    assert sender.closed
+
+
+def test_help_text_says_that_stdout_still_sends_and_dry_run_sends_nothing() -> None:
+    flat = " ".join(loggen.build_parser().format_help().split())
+    assert (
+        "--stdout, --print print each event to standard output as well; events are still sent "
+        "unless --dry-run is given"
+    ) in flat
+    assert "--dry-run generate the events but send nothing" in flat
 
 
 def test_duration_terminates_at_first_elapsed_boundary() -> None:

@@ -39,6 +39,13 @@ SYNTHETIC_USERS = (
     "compromised.user",
 )
 
+# Usernames that --fixed-username accepts but that are never picked at random.
+# SYNTHETIC_USERS seeds every random scenario, so its content and order are
+# frozen; a fixed-only user must be asked for by name.
+FIXED_ONLY_USERS = ("newuser.demo",)
+
+FIXED_USERNAME_CHOICES = (*SYNTHETIC_USERS, *FIXED_ONLY_USERS)
+
 PROFILE_ALIASES = {
     "linux": "linux_firewall",
     "windows": "windows_firewall",
@@ -2142,7 +2149,7 @@ def validate_options(options: Options) -> None:
         r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", options.fixed_host
     ):
         raise ValueError("--fixed-host must be a valid synthetic hostname")
-    if options.fixed_username and options.fixed_username not in SYNTHETIC_USERS:
+    if options.fixed_username and options.fixed_username not in FIXED_USERNAME_CHOICES:
         raise ValueError("--fixed-username must be a synthetic username")
     if options.scenario in VENDOR_IPS_SCENARIOS:
         selected = tuple(
@@ -2270,12 +2277,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timestamp-delay", type=float, default=3600.0)
     parser.add_argument("--fixed-source-ip")
     parser.add_argument("--fixed-destination-ip")
-    parser.add_argument("--fixed-username", choices=SYNTHETIC_USERS)
+    parser.add_argument(
+        "--fixed-username",
+        choices=FIXED_USERNAME_CHOICES,
+        help=(
+            "pin every event to this username; the synthetic users plus "
+            "newuser.demo, which is never chosen at random"
+        ),
+    )
     parser.add_argument("--fixed-host")
     parser.add_argument("--bind-address")
     parser.add_argument("--multiple-devices", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--stdout", "--print", dest="stdout", action="store_true")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="generate the events but send nothing; no packet is transmitted",
+    )
+    parser.add_argument(
+        "--stdout",
+        "--print",
+        dest="stdout",
+        action="store_true",
+        help=(
+            "print each event to standard output as well; events are still sent "
+            "unless --dry-run is given"
+        ),
+    )
     parser.add_argument("--output-file", type=Path)
 
     phase_a = parser.add_argument_group(

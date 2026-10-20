@@ -13,7 +13,10 @@ manual console operation; the application does not create log sources or rules t
 - Rates above 100 EPS are rejected unless `--allow-high-rate` is explicit. Keep initial validation
   at or below 50 EPS.
 - Only synthetic usernames are accepted: `administrator`, `efe.lab`, `test.user`, `svc_backup`,
-  `svc_sql`, and `compromised.user`.
+  `svc_sql`, and `compromised.user`. `--fixed-username` also accepts `newuser.demo`, and only
+  there: the random scenarios never choose it, so a property watch can see a new value on purpose.
+- `--stdout` prints every event as well, and on its own it still sends them; add `--dry-run` to
+  send nothing.
 - Use `--dry-run --stdout` before every new recipe. Do not commit generated output files.
 
 ## Generator quick start
