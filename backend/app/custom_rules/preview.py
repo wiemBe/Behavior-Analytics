@@ -395,11 +395,19 @@ async def _load(
         )
     if kind is _IPS_ENTITY:
         return await load_ips_entities(
-            session, [uuid.UUID(key)], after=after, through=through
+            session,
+            [uuid.UUID(key)],
+            after=after,
+            through=through,
+            include_history=True,
         )
     if kind is _IPS_SOURCE:
         return await load_ips_sources(
-            session, [uuid.UUID(key)], after=after, through=through
+            session,
+            [uuid.UUID(key)],
+            after=after,
+            through=through,
+            include_history=True,
         )
     if kind is _PW_VALUE:
         if pw_coverage_floor is None:

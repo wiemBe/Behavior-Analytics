@@ -66,6 +66,77 @@ HISTORY_TABLES = (
             "app.services.pw_retention.<module>": Reader("R7", ReaderKind.DELETE),
         },
     ),
+    HistoryTable(
+        model="IpsSourceBucket",
+        sql_name="ips_source_bucket",
+        readers={
+            "app.collectors.ips_collector.IpsCollector._apply_history_lifecycle": Reader(
+                "eligibility: a source with live buckets is not eligible", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.collectors.ips_collector.IpsCollector._persist": Reader(
+                "collector replacement", ReaderKind.DELETE
+            ),
+            "app.collectors.ips_collector.IpsCollector._persist_history": Reader(
+                "history writer: writes HISTORY rows, replaces no live row", ReaderKind.DELETE
+            ),
+            "app.custom_rules.loaders.load_ips_entities": Reader(
+                "R5 entity join", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.custom_rules.loaders.load_ips_sources": Reader(
+                "R5 source", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.ips.baseline.IpsBaselineBuilder._source_buckets": Reader(
+                "baseline", ReaderKind.EVIDENCE
+            ),
+            "app.ips.engine.IpsAnomalyEngine._load_novelty": Reader(
+                "novelty history", ReaderKind.EVIDENCE
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.latest_buckets": Reader(
+                "latest status", ReaderKind.DISPLAY
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.entity_metrics_page": Reader(
+                "entity series", ReaderKind.DISPLAY
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.source_metrics_page": Reader(
+                "source series", ReaderKind.DISPLAY
+            ),
+            "app.services.ips_pipeline.IpsInstancePipeline.run": Reader(
+                "training eligibility", ReaderKind.EVIDENCE
+            ),
+            "app.services.ips_pipeline.IpsInstancePipeline._evaluate": Reader(
+                "pending evaluation", ReaderKind.LIVE_ONLY, 1
+            ),
+            "app.services.ips_retention.<module>": Reader("retention", ReaderKind.DELETE),
+        },
+    ),
+    HistoryTable(
+        model="IpsEntityMetric",
+        sql_name="ips_entity_metric",
+        readers={
+            "app.collectors.ips_collector.IpsCollector._persist": Reader(
+                "collector replacement", ReaderKind.DELETE
+            ),
+            "app.collectors.ips_collector.IpsCollector._persist_history": Reader(
+                "history writer: writes HISTORY rows, replaces no live row", ReaderKind.DELETE
+            ),
+            "app.custom_rules.loaders.load_ips_entities": Reader(
+                "R5 through the LIVE source-bucket join", ReaderKind.LIVE_ONLY
+            ),
+            "app.ips.baseline.IpsBaselineBuilder._entity_rows": Reader(
+                "baseline", ReaderKind.EVIDENCE
+            ),
+            "app.ips.engine.IpsAnomalyEngine._load_subjects": Reader(
+                "current LIVE bucket supplied by the guarded pipeline", ReaderKind.LIVE_ONLY
+            ),
+            "app.ips.engine.IpsAnomalyEngine._load_novelty": Reader(
+                "novelty history", ReaderKind.EVIDENCE
+            ),
+            "app.repositories.ips_behavior.IpsBehaviorRepository.entity_metrics_page": Reader(
+                "entity series", ReaderKind.DISPLAY
+            ),
+            "app.services.ips_retention.<module>": Reader("retention", ReaderKind.DELETE),
+        },
+    ),
 )
 
 

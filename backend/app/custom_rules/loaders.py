@@ -282,6 +282,7 @@ async def load_ips_entities(
     *,
     after: datetime,
     through: datetime,
+    include_history: bool = False,
 ) -> dict[str, dict[datetime, BucketFacts]]:
     """Entity counts joined to the source bucket, one statement for every dimension.
 
@@ -290,33 +291,34 @@ async def load_ips_entities(
     """
     if not entity_ids:
         return {}
-    rows = (
-        await session.execute(
-            select(
-                IpsEntityMetric.ips_entity_id,
-                IpsEntityMetric.bucket_start,
-                IpsEntityMetric.events,
-                IpsEntity.dimension,
-                IpsSourceBucket.destination_port_measurement,
-                IpsSourceBucket.destination_ip_measurement,
-                IpsSourceBucket.signature_measurement,
-                IpsSourceBucket.in_maintenance,
-            )
-            .join(IpsEntity, IpsEntity.id == IpsEntityMetric.ips_entity_id)
-            .join(
-                IpsSourceBucket,
-                and_(
-                    IpsSourceBucket.log_source_id == IpsEntity.log_source_id,
-                    IpsSourceBucket.bucket_start == IpsEntityMetric.bucket_start,
-                ),
-            )
-            .where(
-                IpsEntityMetric.ips_entity_id.in_(entity_ids),
-                IpsEntityMetric.bucket_start > after,
-                IpsEntityMetric.bucket_start <= through,
-            )
+    statement = (
+        select(
+            IpsEntityMetric.ips_entity_id,
+            IpsEntityMetric.bucket_start,
+            IpsEntityMetric.events,
+            IpsEntity.dimension,
+            IpsSourceBucket.destination_port_measurement,
+            IpsSourceBucket.destination_ip_measurement,
+            IpsSourceBucket.signature_measurement,
+            IpsSourceBucket.in_maintenance,
         )
-    ).all()
+        .join(IpsEntity, IpsEntity.id == IpsEntityMetric.ips_entity_id)
+        .join(
+            IpsSourceBucket,
+            and_(
+                IpsSourceBucket.log_source_id == IpsEntity.log_source_id,
+                IpsSourceBucket.bucket_start == IpsEntityMetric.bucket_start,
+            ),
+        )
+        .where(
+            IpsEntityMetric.ips_entity_id.in_(entity_ids),
+            IpsEntityMetric.bucket_start > after,
+            IpsEntityMetric.bucket_start <= through,
+        )
+    )
+    if not include_history:
+        statement = statement.where(is_live_clause(IpsSourceBucket))
+    rows = (await session.execute(statement)).all()
     built: list[tuple[str, datetime, BucketFacts]] = []
     for (
         entity_id,
@@ -355,28 +357,28 @@ async def load_ips_sources(
     *,
     after: datetime,
     through: datetime,
+    include_history: bool = False,
 ) -> dict[str, dict[datetime, BucketFacts]]:
     """Source-level IPS totals and the action triple for the named sources."""
     if not log_source_ids:
         return {}
-    rows = (
-        await session.execute(
-            select(
-                IpsSourceBucket.log_source_id,
-                IpsSourceBucket.bucket_start,
-                IpsSourceBucket.total_events,
-                IpsSourceBucket.blocked_events,
-                IpsSourceBucket.allowed_events,
-                IpsSourceBucket.unmapped_events,
-                IpsSourceBucket.action_measurement,
-                IpsSourceBucket.in_maintenance,
-            ).where(
-                IpsSourceBucket.log_source_id.in_(log_source_ids),
-                IpsSourceBucket.bucket_start > after,
-                IpsSourceBucket.bucket_start <= through,
-            )
-        )
-    ).all()
+    statement = select(
+        IpsSourceBucket.log_source_id,
+        IpsSourceBucket.bucket_start,
+        IpsSourceBucket.total_events,
+        IpsSourceBucket.blocked_events,
+        IpsSourceBucket.allowed_events,
+        IpsSourceBucket.unmapped_events,
+        IpsSourceBucket.action_measurement,
+        IpsSourceBucket.in_maintenance,
+    ).where(
+        IpsSourceBucket.log_source_id.in_(log_source_ids),
+        IpsSourceBucket.bucket_start > after,
+        IpsSourceBucket.bucket_start <= through,
+    )
+    if not include_history:
+        statement = statement.where(is_live_clause(IpsSourceBucket))
+    rows = (await session.execute(statement)).all()
     built: list[tuple[str, datetime, BucketFacts]] = []
     for (
         source_id,
