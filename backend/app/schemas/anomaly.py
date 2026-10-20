@@ -23,6 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from app.history.origin import HistoryOrigin
 from app.models.enums import (
     AnomalyState,
     AnomalyType,
@@ -120,6 +121,11 @@ class MetricBucketOut(BaseModel):
     peak_eps: float | None = None
     completeness: BucketCompleteness
     last_event_at: datetime | None = None
+    #: LIVE when the cadence collection wrote the bucket, HISTORY when the
+    #: history backfill read it from QRadar's past (HISTORY-BACKFILL §B.4.1).
+    #: Phase A keeps no `origin` column, so the route derives this from the
+    #: row's `collection_source`.
+    origin: HistoryOrigin
 
 
 class InputRequirementOut(BaseModel):
@@ -825,6 +831,9 @@ class WafLatestBucketOut(BaseModel):
     bucket_start: datetime
     bucket_seconds: int
     completeness: str
+    #: LIVE when the cadence collection wrote the bucket, HISTORY when the
+    #: history backfill read it from QRadar's past (HISTORY-BACKFILL §B.4.2).
+    origin: HistoryOrigin
     #: Share of the source's events that carried a parseable endpoint.
     endpoint_coverage_ratio: float
     #: LOWER_BOUND when grouping was truncated: the ratio is then itself a floor.
@@ -966,6 +975,10 @@ class WafMetricBucketOut(BaseModel):
     #: From the source's bucket record. None when that record is missing.
     request_count_measurement: str | None = None
     completeness: str
+    #: LIVE or HISTORY: the marker of the source's bucket record. The endpoint
+    #: metric row carries none of its own, so None when that record is missing
+    #: (HISTORY-BACKFILL §B.4.2).
+    origin: HistoryOrigin | None = None
     #: PARTIAL buckets are displayable but never train or judge a baseline.
     partial: bool
     endpoint_coverage_ratio: float | None = None

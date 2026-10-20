@@ -11,6 +11,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.history.origin import HistoryOrigin
 from app.models.enums import CatchallMeasurement, CatchallReviewStatus
 
 
@@ -49,6 +50,9 @@ class CatchallBucketOut(BaseModel):
     catchall_log_source_id: uuid.UUID
     bucket_start: datetime
     bucket_seconds: int
+    #: LIVE when the cadence collection wrote the bucket, HISTORY when the
+    #: history backfill read it from QRadar's past (HISTORY-BACKFILL §B.4.4).
+    origin: HistoryOrigin
     events: int
     records: int
     distinct_senders: int

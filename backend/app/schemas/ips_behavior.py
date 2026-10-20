@@ -21,6 +21,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.history.origin import HistoryOrigin
 from app.models.enums import AnomalyState, IpsDimension
 
 
@@ -65,6 +66,9 @@ class IpsLatestBucketOut(BaseModel):
     total_events: int
     total_records: int
     in_maintenance: bool
+    #: LIVE when the cadence collection wrote the bucket, HISTORY when the
+    #: history backfill read it from QRadar's past (HISTORY-BACKFILL §B.4.3).
+    origin: HistoryOrigin
     #: Every search dimension's own measurement and coverage.
     dimensions: list[IpsDimensionCoverageOut]
     #: The three entity dimensions' admission outcomes for this bucket.
@@ -153,6 +157,10 @@ class IpsEntityMetricBucketOut(BaseModel):
     bucket_start: datetime
     bucket_seconds: int
     events: int
+    #: LIVE or HISTORY: the marker of the source's bucket record. The entity
+    #: metric row carries none of its own, so None when that record is missing
+    #: (HISTORY-BACKFILL §B.4.3).
+    origin: HistoryOrigin | None = None
     #: The entity's dimension measurement, from the source's bucket record.
     #: None when that record is missing: what the bucket would have said is
     #: unknown, not exact.
@@ -175,6 +183,9 @@ class IpsSourceMetricBucketOut(BaseModel):
     total_events: int
     total_records: int
     in_maintenance: bool
+    #: LIVE when the cadence collection wrote the bucket, HISTORY when the
+    #: history backfill read it from QRadar's past (HISTORY-BACKFILL §B.4.3).
+    origin: HistoryOrigin
     dimensions: list[IpsDimensionCoverageOut]
     #: Source-IP concentration.
     source_events: int | None = None

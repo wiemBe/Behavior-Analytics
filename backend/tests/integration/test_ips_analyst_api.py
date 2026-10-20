@@ -768,7 +768,7 @@ def test_ips_entities_inventory(db_schema) -> None:
 
 
 ENTITY_METRIC_KEYS = {
-    "bucket_start", "bucket_seconds", "events", "measurement", "coverage_ratio",
+    "bucket_start", "bucket_seconds", "events", "origin", "measurement", "coverage_ratio",
     "coverage_lower_bound", "admission_truncated", "in_maintenance",
 }
 
@@ -796,6 +796,10 @@ def test_ips_entity_metrics_keep_unmeasured_null_and_skip_absent_buckets(db_sche
     assert orphan["events"] == 5
     assert orphan["measurement"] is None and orphan["coverage_ratio"] is None
     assert orphan["in_maintenance"] is None and orphan["admission_truncated"] is None
+    # The marker rides the source's bucket record: the two rows that have one
+    # say where it came from, the orphan row cannot say and stays unknown.
+    assert full["origin"] == "LIVE" and sparse["origin"] == "LIVE"
+    assert orphan["origin"] is None
     assert CONTRIBUTOR_IP not in resp.text
     assert "queries" not in resp.text and "provenance" not in resp.text
     # A bucket with no entity row is absent, not a zero: the entity has three

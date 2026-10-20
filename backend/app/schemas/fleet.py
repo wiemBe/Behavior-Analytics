@@ -266,6 +266,10 @@ class EpsSeriesPoint(BaseModel):
     # band. Null unless every in-scope source has a reliable cell for the step.
     expected_eps: float | None
     cells_complete: int
+    # Of `cells_complete`, how many were read from QRadar's past by the history
+    # backfill rather than collected live (HISTORY-BACKFILL §B.4.1, R6). A step
+    # whose cells are all live reports 0, which is a measured zero.
+    cells_from_history: int
     cells_expected: int
     sources_expected: int
 

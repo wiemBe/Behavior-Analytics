@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.collectors.waf_endpoint_collector import watermark_collector
 from app.core.config import Settings
+from app.history.origin import origin_of
+from app.history.state import HistoryFamily
 from app.models.enums import WafMeasurement
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
@@ -219,6 +221,7 @@ async def waf_source_statuses(
                     WafLastBucketOut(
                         bucket_start=last.bucket_start,
                         completeness=str(last.completeness),
+                        origin=origin_of(HistoryFamily.WAF, last.origin),
                         request_count_measurement=str(last.request_count_measurement),
                         groups_truncated=last.groups_truncated,
                         discovery_complete=last.discovery_complete,
