@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from app.models.enums import RuleHealthStatus
-from app.schemas.offense import CountEntry
+from app.schemas.offense import CountEntry, OffenseSummary
 from app.schemas.rule import RuleSummary
 
 
@@ -87,3 +87,32 @@ class TestSanitizedStrEnumFields:
         row.name = "<b>rule-100</b>"
         summary = RuleSummary.model_validate(row)
         assert summary.name == "rule-100"
+
+
+class _BareStrSubclass(str):
+    """A str subclass that is not an enum member."""
+
+
+class TestSanitizedStrSubclasses:
+    """Every str is sanitized except an enum.Enum member.
+
+    Keying sanitization on `type(value) is str` would let any other str
+    subclass skip the sanitizer and reach the DOM with its markup intact.
+    The subclass branch cannot be exercised through model validation on
+    pydantic 2.14 — its str core schema normalizes subclasses to plain str
+    before after-validators run — so the rule is pinned on `_strip_markup`
+    itself, the validator every `_Sanitized` response model inherits.
+    """
+
+    def test_a_str_subclass_carrying_markup_is_sanitized(self) -> None:
+        value = OffenseSummary._strip_markup(_BareStrSubclass("<b>br</b>"))
+        assert value == "br"
+        assert type(value) is str
+
+    def test_a_str_subclass_in_a_list_is_sanitized_and_an_enum_member_is_kept(self) -> None:
+        value = OffenseSummary._strip_markup(
+            [_BareStrSubclass("<i>Malware</i>"), RuleHealthStatus.UNKNOWN]
+        )
+        assert value == ["Malware", RuleHealthStatus.UNKNOWN]
+        assert type(value[0]) is str
+        assert value[1] is RuleHealthStatus.UNKNOWN

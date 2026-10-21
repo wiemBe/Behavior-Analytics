@@ -162,10 +162,11 @@ class AlertService:
     ) -> tuple[list[AlertResult], list[AlertResult | None]]:
         """Apply a bucket's alert work after one active-alert lookup.
 
-        Refreshes are deliberately flushed together so a bucket with hundreds
-        of already-open conditions issues one batched UPDATE, not one statement
-        per endpoint. New alerts retain the partial unique index's concurrency
-        protection by inserting inside a savepoint.
+        Refreshes of alerts that were already open before the call are
+        deliberately flushed together, so a bucket with hundreds of
+        already-open conditions issues one batched UPDATE, not one statement
+        per endpoint. Each new alert retains the partial unique index's
+        concurrency protection by inserting inside its own savepoint.
         """
         fingerprints = {
             data.fingerprint for data in open_or_updates
@@ -187,8 +188,41 @@ class AlertService:
             )
             active = {row.dedup_key: row for row in rows}
 
-        opened_or_updated: list[AlertResult] = []
-        for data in open_or_updates:
+        results: dict[int, AlertResult] = {}
+
+        # Pass A refreshes every alert that was open in the bulk snapshot, so
+        # their field writes leave as one batched UPDATE.
+        for index, data in enumerate(open_or_updates):
+            existing = active.get(data.fingerprint)
+            if existing is None:
+                continue
+            now = self._clock()
+            existing.occurrence_count += 1
+            existing.last_seen_at = now
+            existing.severity = data.severity
+            if data.evidence is not None:
+                existing.evidence_snapshot = data.evidence
+            if data.source_anomaly_ids:
+                merged = set(existing.source_anomaly_ids) | set(data.source_anomaly_ids)
+                existing.source_anomaly_ids = sorted(merged)
+            results[index] = AlertResult(
+                alert=existing, opened=False, updated=True, transition=None
+            )
+
+        await self.session.flush()
+
+        # Pass B opens the new alerts in input order. A second input with the
+        # same new fingerprint finds the alert the first one created in
+        # `active` and takes the refresh branch below. The pre-flush settles
+        # whatever an earlier pass-B item left pending (a refresh of an alert
+        # created earlier in this call, or the IntegrityError fallback's
+        # refresh): flush() no longer accepts the partial-flush objects
+        # argument (deprecated in SQLAlchemy 2.1), so each savepoint's nested
+        # flush must find only its own new alert and a duplicate fingerprint
+        # rolls back alone.
+        for index, data in enumerate(open_or_updates):
+            if index in results:
+                continue
             now = self._clock()
             existing = active.get(data.fingerprint)
             if existing is not None:
@@ -200,10 +234,8 @@ class AlertService:
                 if data.source_anomaly_ids:
                     merged = set(existing.source_anomaly_ids) | set(data.source_anomaly_ids)
                     existing.source_anomaly_ids = sorted(merged)
-                opened_or_updated.append(
-                    AlertResult(
-                        alert=existing, opened=False, updated=True, transition=None
-                    )
+                results[index] = AlertResult(
+                    alert=existing, opened=False, updated=True, transition=None
                 )
                 continue
 
@@ -224,10 +256,6 @@ class AlertService:
                 evidence_snapshot=data.evidence or {},
                 source_anomaly_ids=data.source_anomaly_ids or [],
             )
-            # Settle the refreshes before the savepoint: flush() no longer
-            # accepts the partial-flush objects argument (deprecated in
-            # SQLAlchemy 2.1), so the nested flush must find only the new alert
-            # pending and a duplicate fingerprint rolls back alone.
             await self.session.flush()
             try:
                 async with self.session.begin_nested():
@@ -242,21 +270,19 @@ class AlertService:
                 existing.occurrence_count += 1
                 existing.last_seen_at = self._clock()
                 active[data.fingerprint] = existing
-                opened_or_updated.append(
-                    AlertResult(
-                        alert=existing, opened=False, updated=True, transition=None
-                    )
+                results[index] = AlertResult(
+                    alert=existing, opened=False, updated=True, transition=None
                 )
                 continue
             active[data.fingerprint] = alert
-            opened_or_updated.append(
-                AlertResult(
-                    alert=alert,
-                    opened=True,
-                    updated=False,
-                    transition=AlertTransition.OPENED,
-                )
+            results[index] = AlertResult(
+                alert=alert,
+                opened=True,
+                updated=False,
+                transition=AlertTransition.OPENED,
             )
+
+        opened_or_updated = [results[index] for index in range(len(open_or_updates))]
 
         resolved: list[AlertResult | None] = []
         for item in resolutions:
