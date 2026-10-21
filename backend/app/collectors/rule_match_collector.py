@@ -327,14 +327,32 @@ class RuleMatchCollector:
             report.watermark_at = watermark.watermark_at
             # History runs after the live pass, under the same lock and in the
             # same transaction, and never touches the live report's status.
-            await self._history_step(
-                instance,
-                started,
-                report,
-                window_seconds=window_seconds,
-                cadence_seconds=cadence.cadence_seconds,
-                rule_ids=rule_ids,
-            )
+            try:
+                async with self.session.begin_nested():
+                    await self._history_step(
+                        instance,
+                        started,
+                        report,
+                        window_seconds=window_seconds,
+                        cadence_seconds=cadence.cadence_seconds,
+                        rule_ids=rule_ids,
+                    )
+            except Exception as exc:
+                report.history_error = type(exc).__name__
+                await HistoryBackfillRepository(self.session).write_step_errors(
+                    instance.id,
+                    HistoryFamily.RULE_MATCH.value,
+                    {RULE_MATCH_SCOPE_KEY: exc},
+                    at=self._clock(),
+                )
+                logger.warning(
+                    "rule match history step failed",
+                    extra={
+                        "instance_id": str(instance.id),
+                        "scope_key": RULE_MATCH_SCOPE_KEY,
+                        "error_class": type(exc).__name__,
+                    },
+                )
             await self.session.flush()
 
         report.duration_ms = int((self._clock() - started).total_seconds() * 1000)

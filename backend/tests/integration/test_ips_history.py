@@ -823,8 +823,8 @@ class TestStatementCount:
                 )
             ).all()
             assert rows, "the counted tick wrote no history row"
-        assert first_counts == {1: 9, 10: 9}
-        assert later_counts == {1: 12, 10: 12}
+        assert first_counts == {1: 13, 10: 13}
+        assert later_counts == {1: 16, 10: 16}
 
     async def test_three_failed_sources_write_scope_errors_in_one_statement(
         self, db_session
@@ -890,7 +890,7 @@ class TestStatementCount:
             counts[buckets_written] = len(statements)
         assert counts[12] == counts[2016], counts
         # Pinned: the whole reading of one source, scan tick and reading tick.
-        assert counts[12] == 23, counts
+        assert counts[12] == 31, counts
 
     async def test_the_count_does_not_grow_with_the_number_of_entities(
         self, db_session
@@ -936,7 +936,7 @@ class TestStatementCount:
             counts[entities] = len(statements)
         assert counts[1] == counts[22], counts
         # Pinned: the same reading, with one entity per bucket and with many.
-        assert counts[1] == 23, counts
+        assert counts[1] == 31, counts
 
     async def test_a_step_writes_more_rows_than_the_bind_limit_allows(
         self, db_session
@@ -1317,6 +1317,34 @@ class TestNovelty:
 class TestOperatorPath:
     """Every exit of the operator's path: the dispatch through the collector."""
 
+    async def _two_source_fault_rig(self, db_session):  # type: ignore[no-untyped-def]
+        """One READING source plus one source already on the ordinary live path."""
+        instance = await make_instance(db_session)
+        boundary = boundary_of(NOW)
+        target = boundary - timedelta(days=WINDOW_DAYS)
+        provider = ScriptedIpsProvider(
+            window_events(target - MARGIN, boundary), now=NOW
+        )
+        _, live_source = await add_source(db_session, instance, SOURCE_ID + 1)
+        await collect(db_session, instance, provider, hcfg(), NOW - BUCKET)
+        _, history_source = await add_source(db_session, instance, SOURCE_ID)
+        await record_yes(db_session, instance)
+        await collect(db_session, instance, provider, hcfg(), NOW)
+        reading = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert reading is not None and reading.state == "READING"
+        return instance, provider, history_source, live_source, reading
+
+    @staticmethod
+    async def _source_buckets(db_session, source, origin: str):  # type: ignore[no-untyped-def]
+        return (
+            await db_session.scalars(
+                select(IpsSourceBucket).where(
+                    IpsSourceBucket.log_source_id == source.id,
+                    IpsSourceBucket.origin == origin,
+                )
+            )
+        ).all()
+
     async def test_a_no_answer_creates_no_scope(self, db_session) -> None:
         instance = await make_instance(db_session)
         await add_source(db_session, instance, SOURCE_ID)
@@ -1499,6 +1527,104 @@ class TestOperatorPath:
 
         provider.ips_fault = None
         await collect(db_session, instance, provider, hcfg(), NOW)
+        cleared = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    async def test_a_lifecycle_fault_keeps_the_live_source_and_marks_the_reading_scope(
+        self, db_session, monkeypatch
+    ) -> None:
+        instance, provider, history_source, live_source, before = (
+            await self._two_source_fault_rig(db_session)
+        )
+        before_progress = dict(before.progress)
+        before_through = before.through
+        history_before = len(
+            await self._source_buckets(db_session, history_source, "HISTORY")
+        )
+        live_before = len(await self._source_buckets(db_session, live_source, "LIVE"))
+        watermark_before = await watermark_of(
+            db_session, instance, watermark_collector(live_source.qradar_id)
+        )
+        assert watermark_before is not None
+        old_live_watermark = watermark_before.watermark_at
+        original = ips_collector_module.scope_action
+
+        def broken_lifecycle(*args, **kwargs):  # type: ignore[no-untyped-def]
+            row = kwargs.get("row")
+            if row is not None and row.state.value == "READING":
+                raise RuntimeError("SELECT sensitive_property FROM events")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(ips_collector_module, "scope_action", broken_lifecycle)
+        failed_at = NOW + BUCKET
+        await collect(db_session, instance, provider, hcfg(), failed_at)
+
+        failed = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert failed is not None and failed.state == "READING"
+        assert failed.progress == before_progress and failed.through == before_through
+        assert failed.last_error_class == "RuntimeError"
+        assert failed.last_error_at == failed_at
+        assert len(
+            await self._source_buckets(db_session, history_source, "HISTORY")
+        ) == history_before
+        assert len(await self._source_buckets(db_session, live_source, "LIVE")) > live_before
+        live_watermark = await watermark_of(
+            db_session, instance, watermark_collector(live_source.qradar_id)
+        )
+        assert live_watermark is not None
+        assert live_watermark.watermark_at > old_live_watermark  # type: ignore[operator]
+
+        monkeypatch.setattr(ips_collector_module, "scope_action", original)
+        await collect(db_session, instance, provider, hcfg(), NOW + 2 * BUCKET)
+        cleared = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    async def test_a_history_run_fault_keeps_the_live_source_and_rolls_the_run_back(
+        self, db_session, monkeypatch
+    ) -> None:
+        instance, provider, history_source, live_source, before = (
+            await self._two_source_fault_rig(db_session)
+        )
+        before_progress = dict(before.progress)
+        before_through = before.through
+        history_before = len(
+            await self._source_buckets(db_session, history_source, "HISTORY")
+        )
+        live_before = len(await self._source_buckets(db_session, live_source, "LIVE"))
+        watermark_before = await watermark_of(
+            db_session, instance, watermark_collector(live_source.qradar_id)
+        )
+        assert watermark_before is not None
+        old_live_watermark = watermark_before.watermark_at
+        original = IpsCollector._persist_history
+
+        async def persist_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            await original(self, *args, **kwargs)
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(IpsCollector, "_persist_history", persist_then_crash)
+        failed_at = NOW + BUCKET
+        await collect(db_session, instance, provider, hcfg(), failed_at)
+
+        failed = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert failed is not None and failed.state == "READING"
+        assert failed.progress == before_progress and failed.through == before_through
+        assert failed.last_error_class == "RuntimeError"
+        assert failed.last_error_at == failed_at
+        assert len(
+            await self._source_buckets(db_session, history_source, "HISTORY")
+        ) == history_before
+        assert len(await self._source_buckets(db_session, live_source, "LIVE")) > live_before
+        live_watermark = await watermark_of(
+            db_session, instance, watermark_collector(live_source.qradar_id)
+        )
+        assert live_watermark is not None
+        assert live_watermark.watermark_at > old_live_watermark  # type: ignore[operator]
+
+        monkeypatch.setattr(IpsCollector, "_persist_history", original)
+        await collect(db_session, instance, provider, hcfg(), NOW + 2 * BUCKET)
         cleared = await scope_of(db_session, instance, str(SOURCE_ID))
         assert cleared is not None
         assert cleared.last_error_class is None and cleared.last_error_at is None
