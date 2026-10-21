@@ -32,9 +32,9 @@ Two tools, one alert pipeline:
 | For | Conditions on data the platform **already collects** every bucket: a source's events/EPS, a class's EPS, a WAF endpoint's requests and ratios, IPS counts | Conditions the platform does **not** collect: a QID, a username, a custom property |
 | Mechanism | A rule naming a subject, a metric, an operator, a threshold, a sustain and a recovery, evaluated in a DB-only tick | The existing scheduled searches: stored, validated, versioned AQL with a threshold alert |
 | New Ariel searches | **Zero.** Rules read stored aggregates only | The search's own runs, under the existing Ariel budget and new caps (§F.8.2) |
-| Fail-closed | As the detectors: unmeasured is `INSUFFICIENT_DATA`, never "below"; a `LOWER_BOUND` count proves "above" only | As today: a truncated run never resolves a threshold alert (`app/alerts/search_alerts.py:81-88`) |
-| Alerts | `AlertService`, a new fingerprint kind, new enums — `AnomalyType` is not extended | The existing `search_threshold` and `search_failure` alerts (`app/alerts/search_alerts.py:6-14`) |
-| What is missing | Everything: model, evaluator, API, UI | Only the UI and the charts: `/searches` is read-only today (`frontend/src/app/searches/page.tsx:6-65`) and no widget plots a search's results |
+| Fail-closed | As the detectors: unmeasured is `INSUFFICIENT_DATA`, never "below"; a `LOWER_BOUND` count proves "above" only | As today: a truncated run never resolves a threshold alert (`app/alerts/search_alerts.py` `SearchAlertEvaluator._evaluate_threshold`) |
+| Alerts | `AlertService`, a new fingerprint kind, new enums — `AnomalyType` is not extended | The existing `search_threshold` and `search_failure` alerts (`app/alerts/search_alerts.py` `SearchAlertEvaluator._evaluate_threshold` and `SearchAlertEvaluator._evaluate_failure`) |
+| What is missing | Everything: model, evaluator, API, UI | Only the UI and the charts: `/searches` is read-only today (`frontend/src/app/searches/page.tsx` `SearchCatalogPage`) and no widget plots a search's results |
 
 ---
 
@@ -42,21 +42,21 @@ Two tools, one alert pipeline:
 
 ### F.1.1 What is already collected, per subject and metric (question 1)
 
-The platform measures these in **every bucket** (`COLLECTION_INTERVAL_SECONDS`, 300 s,
-`app/core/config.py:223`). Each row below is a legal F.1 metric; nothing else is.
+The platform measures these in **every bucket** (300 s, `app/core/config.py`
+`collection_interval_seconds`). Each row below is a legal F.1 metric; nothing else is.
 
 | # | Subject kind | Metric | Unit | Reads | Measurement |
 |---|---|---|---|---|---|
-| 1 | `LOG_SOURCE` | `event_count` | events / bucket | `log_source_metric.event_count` (`app/models/log_source.py:148`) | **EXACT** when the row exists and `completeness = COMPLETE` (`app/models/log_source.py:177-179`). No row ⇒ not measured. A `PARTIAL` row ⇒ no verdict either way |
-| 2 | `LOG_SOURCE` | `average_eps` | events/s | `log_source_metric.average_eps` (`app/models/log_source.py:149`) | as #1 |
-| 3 | `FLEET_CLASS` | `eps` | events/s | Derived per bucket: `SUM(event_count) / SUM(bucket_seconds)` over the class's monitored sources' `COMPLETE` rows, classed by `log_source_classification` with `UNCLASSIFIED` as the default (`app/fleet/summary.py:50-57,109-150`) | **EXACT** when every enabled, monitored source of the class has a `COMPLETE` row for the bucket; otherwise a **LOWER_BOUND** (missing sources can only add events) |
-| 4 | `WAF_ENDPOINT` | `request_count` | requests / bucket | `waf_endpoint_metric.request_count` (`app/models/waf.py:453`; `SUM(eventcount)`, never `COUNT(*)`) | Per the bucket's `waf_source_bucket.request_count_measurement` (`app/models/waf.py:233-235`): `EXACT`, or **LOWER_BOUND** when grouping truncated or coverage fell below its floor |
-| 5 | `WAF_ENDPOINT` | `block_ratio` | share ∈ [0,1] | `blocked_count / action_events` (`app/models/waf.py:460,467`) | `EXACT` when `action_measurement = EXACT` (`app/models/waf.py:248-253`) and `unmapped_action_count = 0` (`app/models/waf.py:470`); `NOT_COLLECTED` when the action breakdown did not run. A non-zero unmapped remainder makes the numerator a lower bound ⇒ proves "above" only |
-| 6 | `WAF_ENDPOINT` | `server_error_ratio` | share ∈ [0,1] | `server_error_count / response_code_events` (`app/models/waf.py:474,472`) | as #5, through `response_code_measurement` (`app/models/waf.py:254-260`) and `unclassified_response_count` (`app/models/waf.py:477`) |
-| 7 | `WAF_ENDPOINT` | `client_error_ratio` | share ∈ [0,1] | `client_error_count / response_code_events` (`app/models/waf.py:473,472`) | as #6 |
-| 8 | `IPS_ENTITY` | `events` | events / bucket | `ips_entity_metric.events` (`app/models/ips.py:257`), sparse per admitted entity | Per the dimension's `*_measurement` on `ips_source_bucket` (`app/models/ips.py:158-166`): `EXACT`, or **LOWER_BOUND** when the dimension search truncated |
-| 9 | `IPS_SOURCE` | `total_events` | events / bucket | `ips_source_bucket.total_events` (`app/models/ips.py:155`) | **EXACT** whenever the row exists (totals are complete or the row is absent) |
-| 10 | `IPS_SOURCE` | `blocked_share` | share ∈ [0,1] | `blocked_events / (blocked + allowed + unmapped)` (`app/models/ips.py:181-183`) | `EXACT` when `action_measurement = EXACT` (`app/models/ips.py:171-173`) and `unmapped_events = 0`; a non-zero unmapped remainder makes the numerator a lower bound ⇒ proves "above" only |
+| 1 | `LOG_SOURCE` | `event_count` | events / bucket | `log_source_metric.event_count` (`app/models/log_source.py` `LogSourceMetric.event_count`) | **EXACT** when the row exists and `completeness = COMPLETE` (`app/models/log_source.py` `LogSourceMetric.completeness`). No row ⇒ not measured. A `PARTIAL` row ⇒ no verdict either way |
+| 2 | `LOG_SOURCE` | `average_eps` | events/s | `log_source_metric.average_eps` (`app/models/log_source.py` `LogSourceMetric.average_eps`) | as #1 |
+| 3 | `FLEET_CLASS` | `eps` | events/s | Derived per bucket: `SUM(event_count) / SUM(bucket_seconds)` over the class's monitored sources' `COMPLETE` rows, classed by `log_source_classification` with `UNCLASSIFIED` as the default (`app/fleet/summary.py` `EPS_METRIC` and `build_fleet_summary`) | **EXACT** when every enabled, monitored source of the class has a `COMPLETE` row for the bucket; otherwise a **LOWER_BOUND** (missing sources can only add events) |
+| 4 | `WAF_ENDPOINT` | `request_count` | requests / bucket | `waf_endpoint_metric.request_count` (`app/models/waf.py` `WafEndpointMetric.request_count`; `SUM(eventcount)`, never `COUNT(*)`) | Per the bucket's `waf_source_bucket.request_count_measurement` (`app/models/waf.py` `WafSourceBucket.request_count_measurement`): `EXACT`, or **LOWER_BOUND** when grouping truncated or coverage fell below its floor |
+| 5 | `WAF_ENDPOINT` | `block_ratio` | share ∈ [0,1] | `blocked_count / action_events` (`app/models/waf.py` `WafEndpointMetric.blocked_count` and `WafEndpointMetric.action_events`) | `EXACT` when `action_measurement = EXACT` (`app/models/waf.py` `WafSourceBucket.action_measurement`) and `unmapped_action_count = 0` (`app/models/waf.py` `WafEndpointMetric.unmapped_action_count`); `NOT_COLLECTED` when the action breakdown did not run. A non-zero unmapped remainder makes the numerator a lower bound ⇒ proves "above" only |
+| 6 | `WAF_ENDPOINT` | `server_error_ratio` | share ∈ [0,1] | `server_error_count / response_code_events` (`app/models/waf.py` `WafEndpointMetric.server_error_count` and `WafEndpointMetric.response_code_events`) | as #5, through `response_code_measurement` (`app/models/waf.py` `WafSourceBucket.response_code_measurement`) and `unclassified_response_count` (`app/models/waf.py` `WafEndpointMetric.unclassified_response_count`) |
+| 7 | `WAF_ENDPOINT` | `client_error_ratio` | share ∈ [0,1] | `client_error_count / response_code_events` (`app/models/waf.py` `WafEndpointMetric.client_error_count` and `WafEndpointMetric.response_code_events`) | as #6 |
+| 8 | `IPS_ENTITY` | `events` | events / bucket | `ips_entity_metric.events` (`app/models/ips.py` `IpsEntityMetric.events`), sparse per admitted entity | Per the dimension's `*_measurement` on `ips_source_bucket` (`app/models/ips.py` `IpsSourceBucket`): `EXACT`, or **LOWER_BOUND** when the dimension search truncated |
+| 9 | `IPS_SOURCE` | `total_events` | events / bucket | `ips_source_bucket.total_events` (`app/models/ips.py` `IpsSourceBucket.total_events`) | **EXACT** whenever the row exists (totals are complete or the row is absent) |
+| 10 | `IPS_SOURCE` | `blocked_share` | share ∈ [0,1] | `blocked_events / (blocked + allowed + unmapped)` (`app/models/ips.py` `IpsSourceBucket.blocked_events`, `IpsSourceBucket.allowed_events` and `IpsSourceBucket.unmapped_events`) | `EXACT` when `action_measurement = EXACT` (`app/models/ips.py` `IpsSourceBucket.action_measurement`) and `unmapped_events = 0`; a non-zero unmapped remainder makes the numerator a lower bound ⇒ proves "above" only |
 
 **What a sustained breach needs in each case.** For an `EXACT` metric: N consecutive buckets, each
 measured and each breaching. For a `LOWER_BOUND`-capable metric and an "above" rule (`GT`/`GE`):
@@ -66,16 +66,17 @@ recovery**. For a "below" rule (`LT`/`LE`) on any metric: every counted bucket m
 that bounds nothing (`docs/PHASE-B-WAF-BEHAVIOR.md` §29.2, lines 2881-2895).
 
 Deliberately **not** in the catalog v1: client concentration on WAF endpoints
-(`top1_client_requests` needs an exact breakdown, `app/models/waf.py:481-487`; Phase B keeps
-client aggregates "possible, not built", §28.11), fan-out, novelty (both need verified history
-windows), and every count the Ariel path does not measure — those are F.2's job.
+(`top1_client_requests` needs an exact breakdown, `app/models/waf.py`
+`WafEndpointMetric.top1_client_requests`; Phase B keeps client aggregates "possible, not built",
+§28.11), fan-out, novelty (both need verified history windows), and every count the Ariel path
+does not measure — those are F.2's job.
 
 ### F.1.2 Measurement semantics are already a solved problem
 
 The platform already distinguishes `EXACT` from `LOWER_BOUND` as a first-class concept
-(`WafMeasurement`, `app/models/enums.py:373-392`) and already states, per detector, what a lower
-bound may prove (`DetectorSpec.measurement`, `app/anomaly/capabilities.py:131-134`, with
-`LOWER_BOUND_PROVES_INCREASE` at `app/anomaly/capabilities.py:246-247`). The WAF guarantee is
+(`WafMeasurement`, `app/models/enums.py` `WafMeasurement`) and already states, per detector, what a lower
+bound may prove (`DetectorSpec.measurement`, `app/anomaly/capabilities.py` `DetectorSpec.measurement`, with
+`LOWER_BOUND_PROVES_INCREASE` at `app/anomaly/capabilities.py` `_INCREASE`). The WAF guarantee is
 documented and property-tested: a stored count *c* satisfies *c ≤ T*, and every guard on the way
 to a "spike" verdict is non-decreasing in *c*, so a lower bound that fires proves the breach —
 while no verdict of "normal" is ever drawn from one (`docs/PHASE-B-WAF-BEHAVIOR.md` §29.2, lines
@@ -84,13 +85,14 @@ while no verdict of "normal" is ever drawn from one (`docs/PHASE-B-WAF-BEHAVIOR.
 ### F.1.3 Latency is the cadence, not seconds
 
 Collection runs at each family's cadence (default **5 min**, and **15 min** for WAF and
-IPS; `default_search_cadence`, `backend/app/models/enums.py:126-130`, `docs/SEARCH-CADENCE.md`
+IPS; `default_search_cadence`, `backend/app/models/enums.py` `default_search_cadence`, `docs/SEARCH-CADENCE.md`
 §SC.0) plus a settle delay (default 120 s, `docs/SEARCH-CADENCE.md` §SC.4). A detection can
 therefore arrive up to *cadence + bucket + settle* late — about **12 min** at the 5-minute default
 and **22 min** for WAF and IPS (`README.md` lines 96, 170). F.1 rules read the same buckets, so
 their alerts inherit exactly this delay, plus at most one evaluation beat (60 s,
-`app/workers/celery_app.py:42-46`). F.2 alerts arrive when the search's run completes: its cron
-interval plus the run's duration (timeout defaults to 300 s, `app/models/search.py:66`).
+`app/workers/celery_app.py` `celery_app.conf.beat_schedule`). F.2 alerts arrive when the search's
+run completes: its cron interval plus the run's duration (timeout defaults to 300 s,
+`app/models/search.py` `ScheduledSearch.timeout_seconds`).
 
 **Neither tool is a real-time correlation engine.** QRadar's own rules are the tool for alerting
 within seconds; this platform's detections are minutes-to-hours deep on collected aggregates. The
@@ -101,46 +103,55 @@ UI says so plainly, in the rule editor and on the rules page (§F.12).
 Everything server-side exists and is tested:
 
 - **Stored, validated, versioned queries.** `ScheduledSearch` holds the AQL and a version pointer
-  (`app/models/search.py:53-54`); every AQL change mints an immutable `SearchQueryVersion` row
-  with author and note (`app/models/search.py:90-110`; `app/services/scheduled_search.py:100-105`).
-  Authoring-time validation refuses anything that is not a single bounded read-only SELECT —
-  lexer, banned keywords, allowed datasets, mandatory time window, row limits
-  (`app/services/aql_validator.py:32-45,126-199`), wired into the create and update schemas
-  (`app/schemas/search.py:63-71,107-111`).
+  (`app/models/search.py` `ScheduledSearch.aql_query` and `ScheduledSearch.query_version`); every
+  AQL change mints an immutable `SearchQueryVersion` row with author and note
+  (`app/models/search.py` `SearchQueryVersion`; `app/services/scheduled_search.py`
+  `ScheduledSearchService._add_version`). Authoring-time validation refuses anything that is not a
+  single bounded read-only SELECT — lexer, banned keywords, allowed datasets, mandatory time
+  window, row limits (`app/services/aql_validator.py` `_BANNED_KEYWORDS`, `_ALLOWED_DATASETS`,
+  `_TIME_WINDOW_TOKENS`, `_TOKEN_RE` and `validate_aql`), wired into the create and update schemas
+  (`app/schemas/search.py` `ScheduledSearchCreate._validate_aql` and
+  `ScheduledSearchUpdate._validate_aql`).
 - **Threshold alerting that fails closed.** A completed run that crossed the threshold opens one
   alert (`search_threshold` fingerprint); a truncated run can open or keep a breach but **never
   resolves** one, because "not breached" is no verdict on a lower bound
-  (`app/alerts/search_alerts.py:70-116`, truncation at 81-88; the executor records a truncated
-  `threshold_breached` only for `GT`/`GE` from the proven bound `value + 1`,
-  `app/services/search_executor.py:263-276`). A search that fails
-  `search_failure_alert_after` (3) consecutive runs opens a `search_failure` alert
-  (`app/alerts/search_alerts.py:118-159`, setting at `app/core/config.py:144`) — the
-  quietly-stopped-detection blind spot.
+  (`app/alerts/search_alerts.py` `SearchAlertEvaluator._evaluate_threshold`, whose truncation
+  guard never resolves; the executor records a truncated `threshold_breached` only for `GT`/`GE`
+  from the proven bound `value + 1`, `app/services/search_executor.py`
+  `SearchExecutor._apply_threshold`). A search that fails `search_failure_alert_after` (3)
+  consecutive runs opens a `search_failure` alert (`app/alerts/search_alerts.py`
+  `SearchAlertEvaluator._evaluate_failure`, setting at `app/core/config.py`
+  `search_failure_alert_after`) — the quietly-stopped-detection blind spot.
 - **Aggregated results, never raw events.** A successful run stores one `total` point (only when
-  not truncated, `app/services/search_executor.py:222-233`) and one `SearchResultMetric` row per
-  GROUP BY key with its `dimensions` (`app/services/search_executor.py:235-243`;
-  `app/models/search.py:167-193`) — on a Timescale hypertable
-  (`alembic/versions/0001_initial_schema.py:47`).
+  not truncated, `app/services/search_executor.py` `SearchExecutor._store_metrics`) and one
+  `SearchResultMetric` row per GROUP BY key with its `dimensions`
+  (`app/services/search_executor.py` `SearchExecutor._store_metrics`; `app/models/search.py`
+  `SearchResultMetric`) — on a Timescale hypertable (`alembic/versions/0001_initial_schema.py`
+  `_HYPERTABLES`).
 - **A write API behind permissions.** `POST /searches` and `PATCH /searches/{id}` require
-  `search:write` (`app/api/routes/searches.py:73-85,96-120`); `POST /searches/{id}/run` requires
-  `search:execute` and **executes the stored query only, never AQL from the request body**
-  (`app/api/routes/searches.py:233-236`). Both permissions exist (`app/security/rbac.py:31-32`);
-  today the admin role holds `search:write`, the analyst role only `search:execute`
-  (`app/services/seed.py:21,30`). A result-trend read endpoint already exists with a
-  `metric_key` filter and a most-recent-wins cap of 5,000 points
-  (`app/api/routes/searches.py:139-223`).
+  `search:write` (`app/api/routes/searches.py` `create_search` and `update_search`);
+  `POST /searches/{id}/run` requires `search:execute` and **executes the stored query only, never
+  AQL from the request body** (`app/api/routes/searches.py` `run_search`). Both permissions exist
+  (`app/security/rbac.py` `PERM_SEARCH_WRITE` and `PERM_SEARCH_EXECUTE`); today the admin role
+  holds `search:write`, the analyst role only `search:execute` (`app/services/seed.py` `_ROLES`).
+  A result-trend read endpoint already exists with a `metric_key` filter and a most-recent-wins
+  cap of 5,000 points (`app/api/routes/searches.py` `list_results`).
 - **Cost controls.** Per-search `timeout_seconds`, `max_time_range_hours`, `max_result_rows`
-  (`app/models/search.py:66-68`) clamped by the platform settings (900 s / 168 h / 10,000 rows,
-  `app/core/config.py:123-125`); cron scheduling with seed-don't-run, coalescing, overlap refusal
-  and a bounded cycle (`app/services/search_scheduler.py:1-29`,
-  `search_max_dispatch_per_cycle` = 10, `app/core/config.py:140`); executor concurrency of 3 per
-  instance and 6 global (`app/core/config.py:121,131`).
+  (`app/models/search.py` `ScheduledSearch.timeout_seconds`,
+  `ScheduledSearch.max_time_range_hours` and `ScheduledSearch.max_result_rows`) clamped by the
+  platform settings (900 s / 168 h / 10,000 rows, `app/core/config.py`
+  `ariel_max_timeout_seconds`, `ariel_max_time_range_hours` and `ariel_max_result_rows`); cron
+  scheduling with seed-don't-run, coalescing, overlap refusal and a bounded cycle
+  (`app/services/search_scheduler.py` `SearchScheduler`, `search_max_dispatch_per_cycle` = 10,
+  `app/core/config.py` `search_max_dispatch_per_cycle`); executor concurrency of 3 per instance
+  and 6 global (`app/core/config.py` `ariel_max_concurrent_searches` and
+  `ariel_global_max_concurrent_searches`).
 
 ### F.1.5 What is missing
 
 1. **`/searches` is read-only in the UI** — a catalog table and a detail page that renders the AQL
-   in a `CodePanel` marked read-only (`frontend/src/app/searches/page.tsx:6-65`,
-   `frontend/src/app/searches/[id]/page.tsx:75`). No editor, no create, no enable/disable.
+   in a `CodePanel` marked read-only (`frontend/src/app/searches/page.tsx` `SearchCatalogPage`,
+   `frontend/src/app/searches/[id]/page.tsx` `SearchDetailPage`). No editor, no create, no enable/disable.
 2. **No widget plots a search's results.** The initial widget catalog has no search widget.
 3. **F.1 does not exist at all.**
 
@@ -174,18 +185,18 @@ custom_rule
   name String(80) UNIQUE NOT NULL, description Text NULL
   subject_kind String(16) NOT NULL   -- LOG_SOURCE | FLEET_CLASS | WAF_ENDPOINT | IPS_ENTITY | IPS_SOURCE
   log_source_id  UUID FK log_source  NULL   -- set iff LOG_SOURCE or IPS_SOURCE
-  source_class   String(32)          NULL   -- set iff FLEET_CLASS (SourceClass, app/models/enums.py:15)
+  source_class   String(32)          NULL   -- set iff FLEET_CLASS (SourceClass, `app/models/enums.py` `SourceClass`)
   waf_endpoint_id UUID FK waf_endpoint NULL -- set iff WAF_ENDPOINT
   ips_entity_id  UUID FK ips_entity  NULL   -- set iff IPS_ENTITY
   metric String(32) NOT NULL         -- one of §F.1.1, validated against the catalog in code
   operator String(4) NOT NULL        -- GT | GE | LT | LE | EQ (the scheduled-search set,
-                                     --   app/schemas/search.py:100)
+                                     --   `app/schemas/search.py` `ScheduledSearchCreate.threshold_operator`)
   threshold_value Float NOT NULL     -- CHECK >= 0; ratios additionally in (0,1), validated in code
   sustain_buckets  Integer NOT NULL DEFAULT 1  CHECK >= 1
   recovery_buckets Integer NOT NULL DEFAULT 2  CHECK >= 1
-  severity String(16) NOT NULL DEFAULT 'MEDIUM'   -- Severity, app/models/enums.py:92-98
+  severity String(16) NOT NULL DEFAULT 'MEDIUM'   -- Severity, `app/models/enums.py` `Severity`
   enabled Boolean NOT NULL DEFAULT false
-  -- hysteresis and evaluation state (the Phase A pattern, app/models/log_source.py:293-296)
+  -- hysteresis and evaluation state (the Phase A pattern, `app/models/log_source.py` `LogSourceDetectorState`)
   consecutive_breaching Integer NOT NULL DEFAULT 0
   consecutive_under    Integer NOT NULL DEFAULT 0
   last_evaluated_bucket_start DateTime(tz) NULL
@@ -198,9 +209,9 @@ custom_rule
 New enums in `app/models/enums.py` — `CustomRuleSubjectKind`, `CustomRuleMetric` — following the
 pattern and the rationale of `WafAnomalyType`: `AnomalyType` is persisted in Phase A rows and
 alert fingerprints, so a custom-rule value must never widen it (rule 6;
-`app/models/enums.py:139-145` states the same reason for WAF). The subject-column pairing is
+`app/models/enums.py` `WafAnomalyType` states the same reason for WAF). The subject-column pairing is
 enforced by a `CHECK` in the migration, the pattern of `_IPS_SUBJECT_CHECK`
-(`app/models/ips.py:353-358`); the metric is validated against the in-code catalog (§F.3.2) with
+(`app/models/ips.py` `_IPS_SUBJECT_CHECK`); the metric is validated against the in-code catalog (§F.3.2) with
 a guard test (§F.14), because the allowed metric set differs per subject kind.
 
 ### F.3.2 The metric catalog
@@ -208,8 +219,8 @@ a guard test (§F.14), because the allowed metric set differs per subject kind.
 A pure module `app/custom_rules/catalog.py`: one entry per §F.1.1 row, each stating its subject
 kind, unit, the columns it reads, its measurement rule (`EXACT_ONLY` or
 `LOWER_BOUND_PROVES_INCREASE` — reusing the requirement vocabulary of
-`app/anomaly/capabilities.py:246-247`), and its bulk loader (§F.4.2). This is the F.1 analogue of
-`DetectorSpec` (`app/anomaly/capabilities.py:119-147`): the rule's verdict scope comes from the
+`app/anomaly/capabilities.py` `_INCREASE`), and its bulk loader (§F.4.2). This is the F.1 analogue of
+`DetectorSpec` (`app/anomaly/capabilities.py` `DetectorSpec`): the rule's verdict scope comes from the
 catalog, never from the evaluator's own reasoning.
 
 ### F.3.3 WAF and IPS subjects: admission and pinning (question 2)
@@ -222,15 +233,17 @@ Why, against the three options the task lists:
 
 - *Reject the rule with a reason* — for a URI with no `waf_endpoint` row there is nothing to
   measure: endpoints below `waf_min_admission_requests` (3) per bucket or over the per-bucket
-  quota (`waf_max_new_endpoints_per_bucket` = 20, `app/core/config.py:438,443`) are never stored
+  quota (`waf_max_new_endpoints_per_bucket` = 20, `app/core/config.py`
+  `waf_max_new_endpoints_per_bucket` and `waf_min_admission_requests`) are never stored
   (`waf_endpoint_metric` rows exist only for endpoints the grouped result mentioned,
-  `app/models/waf.py:422-429`). Such a rule would be permanently `INSUFFICIENT_DATA` — fail-closed
-  but useless, and a trap for the operator. The editor therefore offers only endpoints that
-  exist, via the existing paged endpoint list `GET /behavior/waf/sources/{id}/endpoints`
-  (`app/api/routes/anomalies.py:863-865`); a search that finds no endpoint explains *why*
-  (admission is bounded per source and per bucket) and points at F.2 as the
-  tool for conditions the platform does not collect. IPS entities pin the same way, by
-  `ips_entity_id` (`app/models/ips.py:211-217`), from the existing entity inventory API.
+  `app/models/waf.py` `WafEndpointMetric`). Such a rule would be permanently `INSUFFICIENT_DATA`
+  — fail-closed but useless, and a trap for the operator. The editor therefore offers only
+  endpoints that exist, via the existing paged endpoint list
+  `GET /behavior/waf/sources/{id}/endpoints` (`app/api/routes/anomalies.py`
+  `list_waf_endpoints`); a search that finds no endpoint explains *why* (admission is bounded
+  per source and per bucket) and points at F.2 as the tool for conditions the platform does not
+  collect. IPS entities pin the same way, by `ips_entity_id` (`app/models/ips.py` `IpsEntity`),
+  from the existing entity inventory API.
 - *Pin the endpoint inside the existing bounds* — pinning to the entity id (not to the natural
   key) is what keeps evaluation **constant SQL**: the bulk loader joins `waf_endpoint_metric` to
   `waf_source_bucket` for the union of rule endpoints in one statement (§F.4.2), never a query per
@@ -238,16 +251,17 @@ Why, against the three options the task lists:
   (`docs/PHASE-B-WAF-BEHAVIOR.md` lines 3173-3185) applies verbatim.
 - *Say "not collected"* — that is the **runtime** answer, not the authoring answer, for the two
   cases that can only appear after authoring:
-  - the endpoint **retires** (`waf_endpoint.is_active = false`, `app/models/waf.py:366`): the
-    rule's status becomes `SUBJECT_RETIRED`, it gets no verdict, no recovery, no resolution, and
-    the rule page says the endpoint stopped being tracked and when;
+  - the endpoint **retires** (`waf_endpoint.is_active = false`, `app/models/waf.py`
+    `WafEndpoint.is_active`): the rule's status becomes `SUBJECT_RETIRED`, it gets no verdict, no
+    recovery, no resolution, and the rule page says the endpoint stopped being tracked and when;
   - the subject's **family is off** (WAF collection disabled, `waf_collection_enabled` default
-    false, `app/core/config.py:398`; IPS the same, `app/core/config.py:159`): the rule's status is
-    `NOT_COLLECTED` with that reason — the same vocabulary the detector-status API publishes
-    (`DetectorStatus.NOT_ENABLED`, `app/anomaly/capabilities.py:66-77`).
+    false, `app/core/config.py` `waf_collection_enabled`; IPS the same, `app/core/config.py`
+    `ips_collection_enabled`): the rule's status is `NOT_COLLECTED` with that reason — the same
+    vocabulary the detector-status API publishes (`DetectorStatus.NOT_ENABLED`,
+    `app/anomaly/capabilities.py` `DetectorStatus.NOT_ENABLED`).
 
 A rule keeps a display snapshot of the subject (source name, endpoint's `display_name`
-(`app/models/waf.py:405-408`), entity's dimension and value) in the breach's `details`, so the
+(`app/models/waf.py` `WafEndpoint.display_name`), entity's dimension and value) in the breach's `details`, so the
 alert stays readable after an entity is retired or deleted.
 
 ---
@@ -279,14 +293,16 @@ alert stays readable after an entity is retired or deleted.
 ### F.4.1 Where it runs
 
 A new DB-only Celery task `evaluate_custom_rules`, on a 60 s beat like `evaluate_anomalies`
-(`app/workers/celery_app.py:42-46`; that task is DB-only by design,
+(`app/workers/celery_app.py` `celery_app.conf.beat_schedule`; that task is DB-only by design,
 `docs/SEARCH-CADENCE.md` lines 145-147). It sends **no Ariel search, ever**. It is a no-op while
 `CUSTOM_RULES_ENABLED` is false (default) — the WAF/IPS kill-switch pattern
-(`app/core/config.py:398,159`) — and every rule then reports `NOT_ENABLED`.
+(`app/core/config.py` `waf_collection_enabled` and `ips_collection_enabled`) — and every rule
+then reports `NOT_ENABLED`.
 
 Each subject kind has a watermark row (`custom_rule_watermark`, pattern of
-`anomaly_evaluation_watermark`, `app/models/monitoring.py:58-71`): `evaluated_through` is the last
-bucket start every rule of that kind was judged on. Evaluation walks buckets in ascending order —
+`anomaly_evaluation_watermark`, `app/models/monitoring.py` `AnomalyEvaluationWatermark`):
+`evaluated_through` is the last bucket start every rule of that kind was judged on. Evaluation
+walks buckets in ascending order —
 the SC.6 rule that an hour-cadence tick must judge all twelve new buckets, not just the latest
 (`docs/SEARCH-CADENCE.md` lines 193-199) — bounded by `custom_rules_max_buckets_per_run`
 (default 288, one day of 5-minute buckets). **First run seeds the watermark at the latest complete
@@ -302,26 +318,27 @@ Per tick, for each subject kind that has enabled rules:
 2. **One statement** loads the metric window for the union of that kind's subjects since the
    kind's watermark — per kind:
    - `LOG_SOURCE`: `log_source_metric` rows for the named sources (`log_source_id IN (…)`),
-     with `completeness` and `bucket_seconds` (`app/models/log_source.py:145,177-179`);
+     with `completeness` and `bucket_seconds` (`app/models/log_source.py`
+     `LogSourceMetric.bucket_seconds` and `LogSourceMetric.completeness`);
    - `FLEET_CLASS`: one `GROUP BY class, bucket_start` over `log_source_metric` joined to
-     `log_source` and `log_source_classification` (`app/fleet/summary.py:55-57,109-150` is the
+     `log_source` and `log_source_classification` (`app/fleet/summary.py` `_class_of` and `build_fleet_summary` is the
      shape), restricted to the classes rules name; the bucket is `EXACT` only when every
      enabled, monitored source of the class has a `COMPLETE` row, which the same statement
      counts;
    - `WAF_ENDPOINT`: `waf_endpoint_metric` joined to `waf_source_bucket` on
      `(log_source_id, bucket_start)` for the named endpoints, carrying
      `request_count`, the three ratio pairs and the bucket's measurement columns
-     (`app/models/waf.py:453-487,233-265`);
+     (`app/models/waf.py` `WafEndpointMetric` and `WafSourceBucket`);
    - `IPS_ENTITY`: `ips_entity_metric` joined to `ips_entity` and `ips_source_bucket`, with the
-     dimension's `*_measurement` (`app/models/ips.py:244-258,158-166`);
-   - `IPS_SOURCE`: `ips_source_bucket` rows for the named sources (`app/models/ips.py:155,171-183`).
+     dimension's `*_measurement` (`app/models/ips.py` `IpsEntityMetric` and `IpsSourceBucket`);
+   - `IPS_SOURCE`: `ips_source_bucket` rows for the named sources (`app/models/ips.py` `IpsSourceBucket`).
 3. The fold is pure and in-memory (sustain, recovery, honesty — §F.5). One flush writes rule
    state, breaches and watermark: **at most ~4 statements per subject kind per tick, ≤ 5 kinds,
    ≤ ~20 statements per tick — constant in the number of rules**, the same argument and the same
    regression-test pin as WAF §29.5 (`docs/PHASE-B-WAF-BEHAVIOR.md` lines 2994-3017).
 
 The one accepted exception is the WAF/IPS one: opening an alert costs a few statements per *new*
-alert through `AlertService.apply_bulk` (`app/alerts/service.py:158`), noted as such in
+alert through `AlertService.apply_bulk` (`app/alerts/service.py` `AlertService.apply_bulk`), noted as such in
 `docs/PHASE-D-IPS-BEHAVIOR.md` D.10 (lines 250-253).
 
 **Caps (numbers).** `custom_rules_max_enabled` = **100** enabled rules; creating or enabling
@@ -339,10 +356,10 @@ What an analyst actually needs from a rule tripwire, and where it comes from:
 
 | Need | Provided by |
 |---|---|
-| One alert per condition, no duplicates | `AlertService` + the partial unique index on `dedup_key` (`app/models/alert.py:46-51`) with a new `custom_rule_breach_fingerprint(rule_id)` (condition `custom_rule`, the pattern of `app/alerts/fingerprint.py:35-50,147-166`) |
-| The values, honestly labelled | the breach row's `worst_value`/`last_value` with `worst_measurement`/`last_measurement` (`EXACT`/`LOWER_BOUND`) — the `observed_measurement` pattern (`app/models/waf.py:678-682`) |
-| Recovery without flapping | the rule's `recovery_buckets`, the counter pattern of `app/models/log_source.py:293-296` |
-| "When did it fire, what did it read" | the breach row's bucket bounds and the alert's `evidence_snapshot` (`app/models/alert.py:84-93`) |
+| One alert per condition, no duplicates | `AlertService` + the partial unique index on `dedup_key` (`app/models/alert.py` `uq_alert_active_dedup`) with a new `custom_rule_breach_fingerprint(rule_id)` (condition `custom_rule`, the pattern of `app/alerts/fingerprint.py` `compute_fingerprint` and `search_threshold_fingerprint`) |
+| The values, honestly labelled | the breach row's `worst_value`/`last_value` with `worst_measurement`/`last_measurement` (`EXACT`/`LOWER_BOUND`) — the `observed_measurement` pattern (`app/models/waf.py` `WafAnomaly.observed_measurement`) |
+| Recovery without flapping | the rule's `recovery_buckets`, the counter pattern of `app/models/log_source.py` `LogSourceDetectorState` |
+| "When did it fire, what did it read" | the breach row's bucket bounds and the alert's `evidence_snapshot` (`app/models/alert.py` `Alert.evidence_snapshot`) |
 | Investigation: *what changed* | the subject's existing pages — `/behavior/sources/[id]`, `/behavior/waf/sources/[id]`, the IPS views — which already carry baselines, bands and contributors. A threshold breach has no baseline, no explanation job and no contributor evidence to investigate |
 | Tuning | the preview replay (§F.7) |
 
@@ -350,18 +367,18 @@ Why not the incident lifecycle: `CANDIDATE` exists to hold an unconfirmed *basel
 out of the incident list until hysteresis confirms it — but a rule's `sustain_buckets` **is** that
 confirmation, so a CANDIDATE state would count the same delay twice. `RECOVERING` likewise
 duplicates `recovery_buckets`. And the unified anomaly API projects Phase A, WAF and IPS
-incidents (`app/api/routes/anomalies.py:142`); admitting operator tripwires there would blur "the
+incidents (`app/api/routes/anomalies.py` `list_anomalies`); admitting operator tripwires there would blur "the
 platform's detectors found this" with "my number crossed my line", which is exactly the
 distinction an analyst triaging `/anomalies` relies on. The platform's own precedent for
 "observation versus notification" is kept: an anomaly is an observation, an alert is the notified
-lifecycle object (`app/models/log_source.py:310-312`) — the breach row is the observation.
+lifecycle object (`app/models/log_source.py` `LogSourceAnomaly`) — the breach row is the observation.
 
 `custom_rule_breach` (new): `rule_id` FK cascade, `state` checked to `OPEN | RECOVERING |
 RESOLVED` (`AnomalyState` values reused, no enum change — the WAF/IPS precedent
-`app/models/waf.py:614-616`), `first_/last_bucket_start`, `opened_at`, `recovering_at`,
+`app/models/waf.py` `WafDetectorState.state`), `first_/last_bucket_start`, `opened_at`, `recovering_at`,
 `resolved_at`, the value/measurement pairs, `unmeasured_buckets`, a `subject_label` snapshot and
 `details` JSONB. No transition table: the lifecycle is three states, the alert and its
-notifications already record transitions (`app/models/alert.py:105-120`), and audit covers
+notifications already record transitions (`app/models/alert.py` `AlertNotification.transition`), and audit covers
 configuration (§F.11). Deleting a rule resolves its open alert first (actor: the deleting
 principal), then cascades.
 
@@ -408,19 +425,19 @@ run at 15 minutes, about **23 minutes**. This is the platform's documented detec
 4. **Ratios need their denominators exact.** While a denominator (`action_events`,
    `response_code_events`, the IPS action triple) is itself missing or a lower bound, the ratio
    has no verdict — a ratio over a lower bound bounds nothing (the `_ratio_inputs` rationale,
-   `app/anomaly/capabilities.py:258-277`). An unmapped remainder (`unmapped_action_count`,
+   `app/anomaly/capabilities.py` `_ratio_inputs`). An unmapped remainder (`unmapped_action_count`,
    `unclassified_response_count`, `unmapped_events` > 0) makes the numerator a lower bound: rule 2
    applies.
 5. **The rule never grants itself scope.** Which metrics may conclude what from a `LOWER_BOUND`
    comes from the catalog entry (§F.3.2), the way a detector's verdict scope comes from its
-   `DetectorSpec` (`app/anomaly/capabilities.py:131-134`).
+   `DetectorSpec` (`app/anomaly/capabilities.py` `DetectorSpec.measurement`).
 6. **Evaluation is idempotent.** `last_evaluated_bucket_start` makes re-processing a bucket a
-   no-op (the pattern of `app/models/log_source.py:296` and
-   `app/models/waf.py:617-619`).
+   no-op (the pattern of `app/models/log_source.py` `LogSourceDetectorState.last_interval_start` and
+   `app/models/waf.py` `WafDetectorState.last_interval_start`).
 7. **A disabled family, a retired subject, a disabled rule: `NOT_ENABLED`, `SUBJECT_RETIRED`,
    `DISABLED` — statuses with reasons, never silence.** No verdict is drawn, and the rule page
-   shows the state (the detector-status contract, `app/anomaly/capabilities.py:66-77`,
-   published by `GET /behavior/detectors`, `app/api/routes/anomalies.py:595-604`).
+   shows the state (the detector-status contract, `app/anomaly/capabilities.py` `DetectorStatus.NOT_ENABLED`,
+   published by `GET /behavior/detectors`, `app/api/routes/anomalies.py` `detector_capabilities`).
 8. **Nothing raw is persisted.** Rules read aggregates that already exist; breach rows store
    counts, shares and labels only.
 
@@ -445,18 +462,19 @@ run at 15 minutes, about **23 minutes**. This is the platform's documented detec
 One alert per rule condition, through `AlertService`:
 
 - **Fingerprint.** `custom_rule_breach_fingerprint(rule_id)` — `compute_fingerprint` with
-  `source_type="custom_rule"`, `condition="custom_rule_breach"` (`app/alerts/fingerprint.py:35-50`).
+  `source_type="custom_rule"`, `condition="custom_rule_breach"` (`app/alerts/fingerprint.py` `compute_fingerprint`).
   A new fingerprint kind, not a new member of any existing condition family, so it can never
   deduplicate against Phase A, WAF, IPS or search alerts.
 - **Open/refresh/resolve.** A breach that opens (after `sustain_buckets`) calls `open_or_update`
-  (`app/alerts/service.py:68`) with the rule's severity, `source_type="custom_rule"`,
-  `source_id=rule_id`, `context` = rule name, subject kind, subject label, metric with unit, and
-  `evidence` = observed value, measurement, threshold, operator, bucket bounds,
-  `unmeasured_buckets`. A still-breaching `OPEN` breach refreshes it (the `occurrence_count`
-  path, `app/models/alert.py:84-88`). Resolution (after `recovery_buckets`) calls
-  `resolve_by_fingerprint` (`app/alerts/service.py:150`), actor `custom-rule-evaluator`, reason
+  (`app/alerts/service.py` `AlertService.open_or_update`) with the rule's severity,
+  `source_type="custom_rule"`, `source_id=rule_id`, `context` = rule name, subject kind, subject
+  label, metric with unit, and `evidence` = observed value, measurement, threshold, operator,
+  bucket bounds, `unmeasured_buckets`. A still-breaching `OPEN` breach refreshes it (the
+  `occurrence_count` path, `app/models/alert.py` `Alert.occurrence_count`). Resolution (after
+  `recovery_buckets`) calls `resolve_by_fingerprint` (`app/alerts/service.py`
+  `AlertService.resolve_by_fingerprint`), actor `custom-rule-evaluator`, reason
   `condition recovered`. Notifications are enqueued per transition, exactly as the search
-  evaluator does (`app/alerts/search_alerts.py:161-165`).
+  evaluator does (`app/alerts/search_alerts.py` `SearchAlertEvaluator._notify`).
 - **Switch.** `CUSTOM_RULES_ENABLED` (default **false**) gates the whole evaluator. Within it,
   each rule's `enabled` is its own switch. Both states are visible per rule (§F.5 rule 7).
 - **Maintenance.** A source in maintenance does not open or refresh — the WAF/IPS rule
@@ -526,23 +544,24 @@ version**; only stored versions run.
    cron presets (5 min … 8 h, `docs/SEARCH-CADENCE.md` lines 235-243), the threshold with
    operator and severity, the guardrails, and `visualization_type` (§F.9.2's set).
 2. **Save as a disabled version.** The editor saves with `enabled=false` (the create schema
-   accepts it, `app/schemas/search.py:60`). Server-side validation runs at authoring time
-   (`app/schemas/search.py:63-71`) and again before every run; the unreachable-threshold guard
-   refuses a threshold the capped result could never breach (`app/schemas/search.py:73-85`).
+   accepts it, `app/schemas/search.py` `ScheduledSearchCreate.enabled`). Server-side validation
+   runs at authoring time (`app/schemas/search.py` `ScheduledSearchCreate._validate_aql`) and
+   again before every run; the unreachable-threshold guard refuses a threshold the capped result
+   could never breach (`app/schemas/search.py` `unreachable_threshold_reason`).
 3. **Preview = "Run now" on the stored draft.** `POST /searches/{id}/run` executes the stored
-   query by id (`app/api/routes/searches.py:226-266`), never unsaved text; a manual run raises and
-   clears the same alerts a scheduled run would (`app/api/routes/searches.py:254-260`). The
-   preview costs one real bounded Ariel search and is rate-limited (search execution carries the
-   tighter limiter, `README.md` line 206).
+   query by id (`app/api/routes/searches.py` `run_search`), never unsaved text; a manual run
+   raises and clears the same alerts a scheduled run would (`app/api/routes/searches.py`
+   `run_search`). The preview costs one real bounded Ariel search and is rate-limited (search
+   execution carries the tighter limiter, `README.md` line 206).
 4. **Read the result.** The chart (§F.9) appears on the detail page, with the run's status and
    honesty states.
 5. **Enable.** `PATCH` flips `enabled`; the version history (`/searches/{id}/versions`) and the
-   audit trail show who changed what, when (`app/api/routes/searches.py:115-119`;
-   `app/models/search.py:107-108`).
+   audit trail show who changed what, when (`app/api/routes/searches.py` `update_search`;
+   `app/models/search.py` `SearchQueryVersion.changed_by` and `SearchQueryVersion.change_note`).
 
 **Validation feedback.** `AQLValidationError.reasons` is a list — every problem at once
-(`app/services/aql_validator.py:48-53`). Today the API folds it into one string
-(`app/schemas/search.py:64-68`). Phase F returns the reasons as a list in the 422 detail (the
+(`app/services/aql_validator.py` `AQLValidationError.reasons`). Today the API folds it into one string
+(`app/schemas/search.py` `_compat_message`). Phase F returns the reasons as a list in the 422 detail (the
 string kept for compatibility) and the editor renders them as an inline list under the editor,
 each reason addressable, alongside the threshold-reachability reason. No reason is paraphrased
 into something vague (the frontend guidelines ban "Something went wrong" copy).
@@ -552,18 +571,19 @@ into something vague (the frontend guidelines ban "Something went wrong" copy).
 | Guard | Value | Mechanism |
 |---|---|---|
 | Enabled custom searches | **25** (`scheduled_searches_max_enabled`, new) | Refuse at create/enable with `409` naming the limit (the dashboard-limits pattern) |
-| Minimum cadence | **5 min** | The editor offers only the seven presets; a new or changed cron must fire at least 300 s apart, checked by computing successive fires with the scheduler's `CronTrigger` (`app/services/search_scheduler.py:9-12`). An existing cron that matches no preset is shown as **Custom** and kept verbatim (`docs/SEARCH-CADENCE.md` line 245) |
-| Per-search window and rows | defaults 24 h / 10,000 rows | Existing columns (`app/models/search.py:67-68`), clamped by the platform caps 168 h / 10,000 (`app/core/config.py:124-125`) |
-| Timeout | default 300 s, ≤ 900 s | Existing (`app/models/search.py:66`; `app/core/config.py:123`) |
-| Ariel concurrency | unchanged: 3 per instance, 6 global | Existing executor limits (`app/core/config.py:121,131`); overlap refused and cycles bounded (`app/services/search_scheduler.py:20-23`, `app/core/config.py:140`) |
-| Result retention | `search_result_metric_retention_days` = **90** (new) | A bounded daily batch task, the WAF/catch-all pattern (`app/core/config.py:477-479`). No retention exists for these rows today — the cap makes the gap matter (§F.13) |
-| Who may write AQL | `search:write` — admin only today | Existing permission (`app/security/rbac.py:32`); admin role holds it, analyst does not (`app/services/seed.py:21,30`). "Run now" stays `search:execute` (`app/api/routes/searches.py:237`) |
-| Audit of every version | already there | `search.create`/`search.update` with version before/after (`app/api/routes/searches.py:80-84,115-119`), immutable version rows with author and note (`app/models/search.py:107-108`). Phase F splits enable/disable into their own audited actions for readability |
+| Minimum cadence | **5 min** | The editor offers only the seven presets; a new or changed cron must fire at least 300 s apart, checked by computing successive fires with the scheduler's `CronTrigger` (`app/services/search_scheduler.py` `check_cron_floor`). An existing cron that matches no preset is shown as **Custom** and kept verbatim (`docs/SEARCH-CADENCE.md` line 245) |
+| Per-search window and rows | defaults 24 h / 10,000 rows | Existing columns (`app/models/search.py` `ScheduledSearch.max_time_range_hours` and `ScheduledSearch.max_result_rows`), clamped by the platform caps 168 h / 10,000 (`app/core/config.py` `ariel_max_time_range_hours` and `ariel_max_result_rows`) |
+| Timeout | default 300 s, ≤ 900 s | Existing (`app/models/search.py` `ScheduledSearch.timeout_seconds`; `app/core/config.py` `ariel_max_timeout_seconds`) |
+| Ariel concurrency | unchanged: 3 per instance, 6 global | Existing executor limits (`app/core/config.py` `ariel_max_concurrent_searches` and `ariel_global_max_concurrent_searches`); overlap refused and cycles bounded (`app/services/search_scheduler.py` `SearchScheduler.run_due` and `SearchScheduler._has_run_in_flight`, `app/core/config.py` `search_max_dispatch_per_cycle`) |
+| Result retention | `search_result_metric_retention_days` = **90** (new) | A bounded daily batch task, the WAF/catch-all pattern (`app/core/config.py` `waf_retention_batch_size`, `waf_retention_max_batches` and `waf_retention_interval_seconds`). No retention exists for these rows today — the cap makes the gap matter (§F.13) |
+| Who may write AQL | `search:write` — admin only today | Existing permission (`app/security/rbac.py` `PERM_SEARCH_WRITE`); admin role holds it, analyst does not (`app/services/seed.py` `_ROLES`). "Run now" stays `search:execute` (`app/api/routes/searches.py` `run_search`) |
+| Audit of every version | already there | `search.create`/`search.update` with version before/after (`app/api/routes/searches.py` `create_search` and `update_search`), immutable version rows with author and note (`app/models/search.py` `SearchQueryVersion.changed_by` and `SearchQueryVersion.change_note`). Phase F splits enable/disable into their own audited actions for readability |
 
 **Worst case, stated.** 25 enabled searches at the 5-minute floor is at most 5 due per minute —
-within the 10-per-cycle dispatch bound (`app/core/config.py:140`) — and QRadar never sees more
-than 6 concurrent scheduled-search Ariel searches (`app/core/config.py:131`). Beyond the caps the
-failure mode is *delayed runs, visible as late executions*, never unbounded load.
+within the 10-per-cycle dispatch bound (`app/core/config.py` `search_max_dispatch_per_cycle`) —
+and QRadar never sees more than 6 concurrent scheduled-search Ariel searches
+(`app/core/config.py` `ariel_global_max_concurrent_searches`). Beyond the caps the failure mode
+is *delayed runs, visible as late executions*, never unbounded load.
 
 ---
 
@@ -579,19 +599,20 @@ failure mode is *delayed runs, visible as late executions*, never unbounded load
 
 ### F.9.1 Which result shapes chart
 
-The executor stores two shapes (`app/services/search_executor.py:216-243`):
+The executor stores two shapes (`app/services/search_executor.py` `SearchExecutor._store_metrics`):
 
 - **A time series per `metric_key`.** One `total` point per successful untruncated run
   (bucketed to the completed minute), and one point per GROUP BY key per run. A series charts as
   a **line over time** for a chosen `metric_key` — the existing trend endpoint serves exactly
   this, most-recent-first, capped at 5,000 points
-  (`app/api/routes/searches.py:139-223`).
+  (`app/api/routes/searches.py` `list_results`).
 - **A top-N table.** The latest run's grouped rows (`metric_key`, `dimensions`, `value`,
-  `app/models/search.py:181-193`), ordered by value, display-capped, each row a dimension key.
+  `app/models/search.py` `SearchResultMetric.metric_key`, `SearchResultMetric.dimensions` and
+  `SearchResultMetric.value`), ordered by value, display-capped, each row a dimension key.
 
 So `visualization_type` maps: `LINE` → the per-`metric_key` series; `TABLE` → the top-N table;
 `SINGLE_VALUE` → the latest total; `BAR` → the series as bars. `PIE` and `HEATMAP` exist in the
-enum (`app/models/enums.py:531-538`) but are **not offered** by the editor: a pie over an
+enum (`app/models/enums.py` `VisualizationType`) but are **not offered** by the editor: a pie over an
 unbounded GROUP BY would break the five-slice rule and no heatmap shape is
 defined. An existing search stored with `PIE`/`HEATMAP` renders as `TABLE` with a note saying so —
 rendered, never hidden.
@@ -599,7 +620,7 @@ rendered, never hidden.
 ### F.9.2 The widget and its states
 
 A new configurable widget `chart.search_results` in the registry
-(`frontend/src/widgets/registry.ts:40-93`): `requires: ["read:searches"]`,
+(`frontend/src/widgets/registry.ts` `WIDGETS`): `requires: ["read:searches"]`,
 `sources: ["/searches/{id}/results"]`, `config: { search_id, metric_key }` — both **enumerated**
 options (the registry rule: pickers over ids, never free text reaching the server as a query).
 It renders per the search's `visualization_type`
@@ -609,14 +630,14 @@ mapping above. Every `WidgetState` kind is designed and tested:
 |---|---|
 | `ok` | the series/table with unit on the axis, tabular figures, UTC times |
 | `empty` — never run | "This search has never run since it was created" + when it was created and how to run it now |
-| `ok` + TRUNCATED qualifier | a truncated run stored no total (`app/services/search_executor.py:222-233`), so the point is **absent** — a gap in the line, never a zero (`docs/SEARCH-CADENCE.md` §SC.8, lines 296-302); the table shows "≥ n" for a truncated count and "no verdict" beside the threshold |
+| `ok` + TRUNCATED qualifier | a truncated run stored no total (`app/services/search_executor.py` `SearchExecutor._store_metrics`), so the point is **absent** — a gap in the line, never a zero (`docs/SEARCH-CADENCE.md` §SC.8, lines 296-302); the table shows "≥ n" for a truncated count and "no verdict" beside the threshold |
 | `ok` + stale | the last successful run is older than twice the search's own schedule interval (derived from `last_run_at`/`next_run_at`; the widget system's stale rule) — say so, with the age |
 | `error` — last run failed | the failure's `error_type` in words, the consecutive-failure count against `search_failure_alert_after` (3), and what to do: inspect the execution, edit the query, or wait for the retry |
 | `forbidden` | names `read:searches` and says who can grant it |
 | `loading` | the text-only placeholder |
 
 The **same chart, same states, same component** on `/searches/[id]`: the existing `ResultTrend`
-(`frontend/src/app/searches/[id]/page.tsx:120-127`, which already receives truncated-run times)
+(`frontend/src/app/searches/[id]/page.tsx` `SearchDetailPage`, which already receives truncated-run times)
 gains the `metric_key` selector and the top-N table view, so the widget and the page cannot drift
 apart — one component, two mounts.
 
@@ -638,22 +659,25 @@ One migration, `0024_custom_rules`, chained after the current head `0023_dashboa
 `custom_rule` (§F.3.1), `custom_rule_breach` (§F.4.3), `custom_rule_watermark` (§F.4.1) — no
 Phase A, WAF, IPS, catch-all, geo or dashboard table or enum is touched. F.2 needs **no new
 tables**: `scheduled_search`, `search_query_version`, `search_execution` and
-`search_result_metric` already hold everything (`app/models/search.py:29-195`).
+`search_result_metric` already hold everything (`app/models/search.py` `ScheduledSearch`,
+`SearchQueryVersion`, `SearchExecution` and `SearchResultMetric`).
 
 Indexes: `uq_custom_rule_name`; `ix_custom_rule_subject (subject_kind, enabled)`;
 `ix_custom_rule_breach_rule (rule_id, state)`; and a partial unique
 `uq_custom_rule_breach_active` on `custom_rule_breach (rule_id)` where `state <> 'RESOLVED'` —
 one live breach per rule, structurally, the exact shape of the alert dedup index
-(`app/models/alert.py:46-51`). The breach table's FK cascades with the rule.
+(`app/models/alert.py` `uq_alert_active_dedup`). The breach table's FK cascades with the rule.
 Downgrade drops the three tables, with their data, and restores `0023` exactly; the migration
 must upgrade → `alembic check` → downgrade → upgrade → `alembic check` cleanly on a fresh
 database, with a data-carrying round-trip test (the `0009` precedent,
 `docs/PHASE-B-WAF-BEHAVIOR.md` §29.12, lines 3194-3212).
 
 **Retention.** `custom_rule_breach_retention_days` = **180** (the incident-retention precedent
-`waf_anomaly_retention_days` = 180, `app/core/config.py:476`), one bounded daily batch task under
-`custom_rules_retention_batch_size` / `_max_batches` / `_interval_seconds` (the WAF pattern,
-`app/core/config.py:477-479`); resolved breaches age out by `resolved_at`, live breaches never.
+`waf_anomaly_retention_days` = 180, `app/core/config.py` `waf_anomaly_retention_days`), one
+bounded daily batch task under `custom_rules_retention_batch_size` / `_max_batches` /
+`_interval_seconds` (the WAF pattern, `app/core/config.py` `waf_retention_batch_size`,
+`waf_retention_max_batches` and `waf_retention_interval_seconds`); resolved breaches age out by
+`resolved_at`, live breaches never.
 Rules themselves are kept until deleted. The new `search_result_metric` retention (90 days,
 §F.8.2) rides the same task shape. Upgrade note for the README: nothing evaluates until
 `CUSTOM_RULES_ENABLED` is set, so an upgrade changes no behaviour (the additive-migration
@@ -684,7 +708,8 @@ convention, `README.md` lines 683-699, needs no writer stop beyond it).
 > `alerting_mode` (`shadow` or `alerting`), `max_enabled`, `enabled_count`,
 > `preview_hours_min` (1) and `preview_hours_max` (168).
 
-**Permissions** (`app/security/rbac.py`, following the dashboard pattern at lines 104-106):
+**Permissions** (`app/security/rbac.py`, following the dashboard pattern at
+`PERM_DASHBOARD_READ`, `PERM_DASHBOARD_WRITE` and `PERM_DASHBOARD_SHARE`):
 
 - `read:custom_rules` — satisfied by `read:*`; lists, reads, previews.
 - `custom_rule:write` — create, update, delete, enable, disable. **Not** satisfied by `read:*`,
@@ -692,13 +717,13 @@ convention, `README.md` lines 683-699, needs no writer stop beyond it).
 - The guard lives on the router mount, not on handlers, so adding an endpoint cannot ship it
   unauthenticated (`README.md` lines 483-485; the `/ips` precedent, `README.md` lines 993-995).
 - F.2 permissions are unchanged: `read:searches`, `search:write`, `search:execute`
-  (`app/security/rbac.py:31-32,77`).
+  (`app/security/rbac.py` `PERM_SEARCH_READ`, `PERM_SEARCH_WRITE` and `PERM_SEARCH_EXECUTE`).
 
 **Audit.** Every rule write is an `AuditLog` row with action `custom_rule.create | .update |
 .delete | .enable | .disable`, the actor, and before/after values (the outage-policy precedent,
 `README.md` lines 923-927); `search.enable`/`search.disable` split out for F.2. Preview replays
 are reads and are not audited, as for other list endpoints; "Run now" already is
-(`app/api/routes/searches.py:261-265`).
+(`app/api/routes/searches.py` `run_search`).
 
 **API** (prefix `/api/v1`, guards as above):
 
@@ -757,13 +782,13 @@ spacing or type literal; existing components only.
 
 - **F.1 rules** — `/custom-rules`, `/custom-rules/new`, `/custom-rules/[id]`, in the
   **Detection** navigation group (which holds Offenses, Alerts, Rules, Rule statistics, Coverage —
-  `frontend/src/lib/nav.ts:59-67`), labelled **Custom rules**. Rationale: these are detections an
+  `frontend/src/lib/nav.ts` `NAV`), labelled **Custom rules**. Rationale: these are detections an
   analyst triages through `/alerts`; the group is the detection-content surface, and the nav's
-  rule is that an entry promises a working page (`frontend/src/lib/nav.ts:10-12`).
+  rule is that an entry promises a working page (`frontend/src/lib/nav.ts` `NAV`).
 - **AQL editor** — `/searches/new` plus edit on `/searches/[id]`, under Operations' Searches
-  (`frontend/src/lib/nav.ts:72`), because the catalog page is already the home of stored searches
+  (`frontend/src/lib/nav.ts` `NAV`), because the catalog page is already the home of stored searches
   and its own copy says the frontend never runs ad-hoc AQL
-  (`frontend/src/app/searches/page.tsx:19`).
+  (`frontend/src/app/searches/page.tsx` `SearchCatalogPage`).
 
 **The rule editor** (`/custom-rules/new`, reusing the `fieldmapping` form patterns the WAF/IPS
 editors established, `README.md` lines 492-505): a subject picker (kind, then the matching entity

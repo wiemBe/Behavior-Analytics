@@ -6,9 +6,10 @@ extends [`PHASE-G-PROPERTY-WATCH.md`](PHASE-G-PROPERTY-WATCH.md) (cited as §G.n
 its text: the sentences this design makes wrong are listed in §H.0.4, and the docs round corrected
 them there. It rests on [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (§SC.5, §SC.6, §SC.10), on
 [`PRODUCT-UX-GUIDELINES.md`](PRODUCT-UX-GUIDELINES.md) (§4, §6, §8) and on the decisions of 2026-10-18 on this bootstrap and on the 5-minute cadence.
-Every claim about the code carries a `file:line` citation checked on 2026-10-18. Where the code and
-§G disagree the code wins, and the disagreement is listed in §H.14.3. Facts that only the console can
-give are not asserted: each has a probe in §H.3.5 and is marked **[C-n]**.
+Every claim about the code carries a citation to the file and the symbol it means, checked on
+2026-10-18. Where the code and §G disagree the code wins, and the disagreement is listed in
+§H.14.3. Facts that only the console can give are not asserted: each has a probe in §H.3.5 and
+is marked **[C-n]**.
 
 > **The user's decisions on §H.14.1 (2026-10-18 ~18:00; they override the text below where
 > it differs).** Build it as designed, in the order of §H.13. **Q1: `pw_bootstrap_enabled` defaults to
@@ -56,8 +57,8 @@ first". The decision of 2026-10-18, then:
   over older windows, in time order, so a bootstrapped bucket is byte-for-byte what live collection
   of that bucket would have written (§H.2.5). No new fold, no new admission rule.
 - **Not a write to QRadar.** It sends the three existing read-only search kinds (GROUPED, TOTALS,
-  PINNED) through `QRadarRestProvider.get_pw_keyed` (`backend/app/providers/qradar_rest.py:1662`),
-  never through MCP, with no AQL from the browser.
+  PINNED) through `QRadarRestProvider.get_pw_keyed` (`backend/app/providers/qradar_rest.py`
+  `QRadarRestProvider.get_pw_keyed`), never through MCP, with no AQL from the browser.
 - **Not raw storage.** The aggregates-only rule is unchanged: value texts persist only as admitted or pinned
   `pw_value` rows; nothing of an un-admitted value is staged between ticks (§H.5.3 rejects a staging
   table for exactly this reason).
@@ -80,7 +81,7 @@ first". The decision of 2026-10-18, then:
 
 | Alternative | Why not |
 |---|---|
-| **Fixed end, live from enable.** Live collection starts at the bucket of the first tick and runs in parallel while history fills behind it | Admission is order-dependent and stateful (`admit_bucket` "call this oldest first", `backend/app/property_watch/admission.py:149-153`). Live buckets would admit values before the history that makes them established; merging the two admission streams afterwards rewrites `first_seen_at`, `tracked_since` and the ceiling count of values already used by evaluated buckets |
+| **Fixed end, live from enable.** Live collection starts at the bucket of the first tick and runs in parallel while history fills behind it | Admission is order-dependent and stateful (`admit_bucket` "call this oldest first", `backend/app/property_watch/admission.py` `admit_bucket`). Live buckets would admit values before the history that makes them established; merging the two admission streams afterwards rewrites `first_seen_at`, `tracked_since` and the ceiling count of values already used by evaluated buckets |
 | **Newest first**, so the 7-day novelty window completes soonest | Same ordering problem reversed: a value is "admitted" at its newest sighting and its older sub-threshold sightings become stored rows, which live would never have stored. The stored history would no longer be what live collection writes |
 | **A staging table** of raw per-value aggregates, processed in order later | Persists un-admitted value texts, which rule 3 forbids (§G.7.1 "Never stored: a value that was not admitted") |
 | **A fixed end at enable plus a catch-up burst of live buckets** | The buckets between enable and the end of a long bootstrap would be evaluated hours late, as a replay. The moving end of H3 makes them history instead; the cost is a blind period of minutes (small watches) to a few hours (§H.4.5), stated on the page |
@@ -95,10 +96,10 @@ first". The decision of 2026-10-18, then:
 | `docs/PHASE-G-PROPERTY-WATCH.md:1921` (§G.17 limitations) | "No backfill: a watch learns forward from its first bucket (§G.6)." | "A watch learns forward unless history was requested (PHASE-G-HISTORY-BOOTSTRAP.md)" |
 | `docs/PHASE-G-PROPERTY-WATCH.md:890-893` (§G.8.0) | "the first verdict on a cell comes **one week after the value was first tracked**" | True for a watch without history. After a bootstrap of `7 x pw_baseline_min_visits` days (14 at the default) the cells are judged at hand-off (§H.8.2) |
 | `docs/PHASE-G-PROPERTY-WATCH.md:1000-1002` (§G.8.3) | "Learning period: `pw_new_value_history_days` from the watch's first collected bucket" | The first collected bucket is the oldest history bucket, so the period is already over at hand-off if the window was read (§H.1.1) |
-| `docs/PHASE-G-PROPERTY-WATCH.md:1485` (§G.13.4) and `frontend/src/components/propertywatch/authoring.ts:40-60` | "needs 7 days of history", "Needs a week of reliable baselines", "Needs 7 days of complete novelty history" | Conditional on the history option (§H.9.4) |
+| `docs/PHASE-G-PROPERTY-WATCH.md:1485` (§G.13.4) and `frontend/src/components/propertywatch/authoring.ts` `DETECTORS` | "needs 7 days of history", "Needs a week of reliable baselines", "Needs 7 days of complete novelty history" | Conditional on the history option (§H.9.4) |
 | `docs/PHASE-G-PROPERTY-WATCH.md:1608-1620` (§G.14.1) | "Per watch per tick the cost is `chunks x (2 or 3)`", the static cost at enable | Steady-state cost, still true. A bootstrapping watch also draws on the history budget of §H.4.4 |
-| `backend/app/collectors/pw_collector.py:15-18` (module docstring) | "**The first run seeds the watermark at the latest closed bucket and replays nothing**" | Add: unless the watch is `READING` or `COMPLETE` history (§H.2.3) |
-| `docs/SEARCH-CADENCE.md` §SC.5 item 2 | the window of one tick is at most `cadence_seconds / bucket_seconds + collection_max_backfill_intervals` buckets | A history step is a deliberate, budgeted exception (§H.4.2). The 168 h per-search bound (`backend/app/collectors/bucketed_metrics.py:28`) still holds |
+| `backend/app/collectors/pw_collector.py` (module docstring) | "**The first run seeds the watermark at the latest closed bucket and replays nothing**" | Add: unless the watch is `READING` or `COMPLETE` history (§H.2.3) |
+| `docs/SEARCH-CADENCE.md` §SC.5 item 2 | the window of one tick is at most `cadence_seconds / bucket_seconds + collection_max_backfill_intervals` buckets | A history step is a deliberate, budgeted exception (§H.4.2). The 168 h per-search bound (`backend/app/collectors/bucketed_metrics.py` `validate_bucketed_metric_window`) still holds |
 | [DATA-MODEL.md](DATA-MODEL.md) "Custom threshold rules" | "so an upgrade never replays history" | About F.1; stays true. The PW paragraph should say a bootstrapped bucket is not evaluated either |
 
 ---
@@ -112,9 +113,9 @@ bootstrap changes no detector. It supplies, earlier, the inputs they already req
 
 | Detector | Needs | The bootstrap gives it | What it still cannot know |
 |---|---|---|---|
-| **`PW_NEW_VALUE`** | For a value first admitted at `first`: every bucket of `[first - pw_new_value_history_days, first)` exists, with the same `watch_version`, none `NOT_COLLECTED`, none `LOWER_BOUND`, none with `admission_truncated` or `rejected_over_quota > 0` (`backend/app/property_watch/history.py:12-82`); and `first >= watch_first_collected_at + pw_new_value_history_days` (`backend/app/property_watch/detectors.py:598-612`), where that first-collected time is the oldest stored bucket of the version (`backend/app/repositories/property_watch.py:178-186`) | The whole window as history buckets from `F` (§H.3.1). With `D >= 7` days read and no hole, every first appearance **after hand-off** has a complete 7-day history, and the learning period is over at hand-off | Sightings below `pw_min_admission_events` (3 events in one bucket) were never stored, so "never seen" is still not claimed (§G.8.3). A bucket whose admission was truncated or whose search was cut blocks the claim for the 7 days after it. Events whose property was not parsed (§H.6, row 2). The scope as it was then (§H.6, row 4) |
-| **`PW_NEW_COMBINATION`** | The tuple history above, plus, per component, an earlier counted occurrence (a presence claim, `LOWER_BOUND` suffices) (`backend/app/anomaly/capabilities.py:748-775`, `backend/app/repositories/property_watch.py:306-361`) | The component occurrences of the whole window: `component_occurrences` reads `pw_value_metric` joined to `pw_bucket` with no origin condition, and history is exactly the evidence it wants | Components seen only below the admission threshold are not known (§G.9.3); same limits as `PW_NEW_VALUE` |
-| **`PW_VALUE_SPIKE`** | A reliable cell: `baseline_min_samples` (8, `backend/app/core/config.py:335`) clean samples **and** `pw_baseline_min_visits` (2, `backend/app/core/config.py:657`) distinct weekly visits in the weekday x hour cell | After training at hand-off, one visit of an hour-of-week gives up to 12 samples (§H.8.2). A cell is reliable after `7 x pw_baseline_min_visits` days: `D = 14` gives two visits and up to 24 samples, `D = 28` four visits and up to 48 | A week-to-week variation that one visit cannot show (the samples of one visit are correlated). Values admitted late in the window have fewer visits |
+| **`PW_NEW_VALUE`** | For a value first admitted at `first`: every bucket of `[first - pw_new_value_history_days, first)` exists, with the same `watch_version`, none `NOT_COLLECTED`, none `LOWER_BOUND`, none with `admission_truncated` or `rejected_over_quota > 0` (`backend/app/property_watch/history.py` `verify_value_history`); and `first >= watch_first_collected_at + pw_new_value_history_days` (`backend/app/property_watch/detectors.py` `_novelty_common`), where that first-collected time is the oldest stored bucket of the version (`backend/app/repositories/property_watch.py` `PropertyWatchRepository.pending_buckets`) | The whole window as history buckets from `F` (§H.3.1). With `D >= 7` days read and no hole, every first appearance **after hand-off** has a complete 7-day history, and the learning period is over at hand-off | Sightings below `pw_min_admission_events` (3 events in one bucket) were never stored, so "never seen" is still not claimed (§G.8.3). A bucket whose admission was truncated or whose search was cut blocks the claim for the 7 days after it. Events whose property was not parsed (§H.6, row 2). The scope as it was then (§H.6, row 4) |
+| **`PW_NEW_COMBINATION`** | The tuple history above, plus, per component, an earlier counted occurrence (a presence claim, `LOWER_BOUND` suffices) (`backend/app/anomaly/capabilities.py` `PW_DETECTORS`, `backend/app/repositories/property_watch.py` `PropertyWatchRepository.component_occurrences`) | The component occurrences of the whole window: `component_occurrences` reads `pw_value_metric` joined to `pw_bucket` with no origin condition, and history is exactly the evidence it wants | Components seen only below the admission threshold are not known (§G.9.3); same limits as `PW_NEW_VALUE` |
+| **`PW_VALUE_SPIKE`** | A reliable cell: `baseline_min_samples` (8, `backend/app/core/config.py` `baseline_min_samples`) clean samples **and** `pw_baseline_min_visits` (2, `backend/app/core/config.py` `pw_baseline_min_visits`) distinct weekly visits in the weekday x hour cell | After training at hand-off, one visit of an hour-of-week gives up to 12 samples (§H.8.2). A cell is reliable after `7 x pw_baseline_min_visits` days: `D = 14` gives two visits and up to 24 samples, `D = 28` four visits and up to 48 | A week-to-week variation that one visit cannot show (the samples of one visit are correlated). Values admitted late in the window have fewer visits |
 | **`PW_VALUE_DROP`** | The same cell, `EXACT` counts, coverage at the floor | The same | The same; and it never reads a `LOWER_BOUND` bucket (a lower bound cannot prove a drop, §G.8.2) |
 | **`PW_VALUE_DISAPPEARED`** | A cell median >= 5, then `pw_disappear_buckets` (6) consecutive **measured zeros** in evaluated buckets | The cell. The zeros must be live (§H.1.3) | Whether a gap in history was silence: only buckets after `F` are zeros (§H.3.2) |
 | **F.1 threshold rules** on a pinned value | Nothing: "no learning period: a rule needs no baseline" (§G.8.4) | Nothing | See §H.1.2 |
@@ -127,9 +128,10 @@ Decision: **no**. Two reasons:
    the past is an alert on an old event, which the bootstrap decision and §SC.6 forbid.
 2. The F.1 engine would otherwise read them by accident. Its PW loader reads every bucket of a
    pinned value in `(after, through]` with no condition on the watch's own watermarks
-   (`backend/app/custom_rules/loaders.py:486-560`), and the engine keeps one watermark per subject
-   *kind*, not per watch (`backend/app/custom_rules/engine.py:266-312`). A rule on watch B, or a
-   rule created on watch A during its bootstrap, could therefore have the last history buckets of A
+   (`backend/app/custom_rules/loaders.py` `load_pw_values`), and the engine keeps one watermark per
+   subject *kind*, not per watch (`backend/app/custom_rules/engine.py`
+   `CustomRuleEngine._load_watermarks`). A rule on watch B, or a rule created on watch A during its
+   bootstrap, could therefore have the last history buckets of A
    fall after its kind watermark. So `load_pw_values` gets `PwBucket.origin == 'LIVE'` in both joins
    (§H.2.2, reader R5). The F.1 **preview** is a replay that persists and alerts nothing
    (`docs/PHASE-F-CUSTOM-DETECTIONS.md` §F.8.1), so it may read history: `load_pw_values` takes
@@ -139,8 +141,8 @@ Decision: **no**. Two reasons:
 ### H.1.3 What a history bucket is, to a detector: evidence, never a judged interval **[BUILT]**
 
 The engine reads recent buckets and history buckets to judge a **live** bucket: the trailing
-`pw_disappear_buckets` readings (`backend/app/property_watch/engine.py:772-790`), the novelty history
-(`engine.py:807-854`) and the component lookup. History buckets stay valid evidence for the second
+`pw_disappear_buckets` readings (`backend/app/property_watch/engine.py` `PwAnomalyEngine._recent`), the novelty history
+(`engine.py` `PwAnomalyEngine._history`) and the component lookup. History buckets stay valid evidence for the second
 and third. For the first, the streak that opens a disappearance incident begins at `first`, and the
 incident's `interval_start` is that bucket (`detectors.py`, the disappearance verdict). An incident
 whose interval starts in a bootstrapped bucket would be an incident opened from one. So:
@@ -149,8 +151,9 @@ whose interval starts in a bootstrapped bucket would be an incident opened from 
   `pw_disappear_buckets + anomaly_open_after_intervals - 1` live buckets after hand-off (7 buckets,
   35 minutes, at the defaults), which is the price of the rule.
 - A value whose `first_seen_at` is before the first live bucket (`property_watch.history_end`) is
-  **established**, whatever its age: `_established` (`engine.py:856-880`) is used for it, so a value
-  that first appeared in the last hour of the window cannot be called new at hand-off. Its
+  **established**, whatever its age: `_established` (`engine.py` `PwAnomalyEngine._established`) is
+  used for it, so a value that first appeared in the last hour of the window cannot be called new
+  at hand-off. Its
   `first_seen_at` is a history time; only the live buckets after hand-off can raise a first
   appearance.
 
@@ -169,20 +172,22 @@ change meaning (a version bump, §H.5.4) while a stored bucket's provenance cann
 
 A `HISTORY` row is always stored with `scope_changed = false` and `in_maintenance = false`. Both
 describe the *scope at collection time*, which history does not have: today's maintenance state
-applied to the past would exclude good buckets from training (`app/property_watch/baseline.py:92-113`)
+applied to the past would exclude good buckets from training (`app/property_watch/baseline.py` `build_value_baseline`)
 and today's membership says nothing about the past (§H.6, row 4).
 
 ### H.2.2 Provably never read as a pending bucket: three independent guards and a classification **[BUILT]**
 
 Guard 1, **watermarks**. While a watch is `READING` its `collected_through` and `evaluated_through`
 stay NULL (§H.2.3). `pending_buckets` requires `PwBucket.bucket_start <= PropertyWatch.collected_through`
-(`backend/app/repositories/property_watch.py:200`), which is not true against NULL, so no bucket of the
-watch is pending. `due_baseline_values` requires `evaluated_through IS NOT NULL` (`:540`), so the
-watch is not trained either until hand-off.
+(`backend/app/repositories/property_watch.py` `PropertyWatchRepository.pending_buckets`), which is
+not true against NULL, so no bucket of the watch is pending. `due_baseline_values` requires
+`evaluated_through IS NOT NULL` (`backend/app/repositories/property_watch.py`
+`PropertyWatchRepository.due_baseline_values`), so the watch is not trained either until hand-off.
 
 Guard 2, **the seed**. At hand-off both watermarks are set to the start of the last history bucket,
-so the pending condition `bucket_start > evaluated_through` (`:201-204`) excludes every history
-bucket whatever else happens to the watermarks later.
+so the pending condition `bucket_start > evaluated_through` (`backend/app/repositories/property_watch.py`
+`PropertyWatchRepository.pending_buckets`) excludes every history bucket whatever else happens to
+the watermarks later.
 
 Guard 3, **the column**. `pending_buckets` adds `PwBucket.origin == 'LIVE'` inside the ranked
 subquery, so even a watermark written wrongly (an operator's SQL, a future bug, a restored backup)
@@ -194,17 +199,17 @@ pending read returns nothing, then breaks guard 3 on purpose and watches it fail
 
 **The classification.** Every reader of `pw_bucket` is one of three kinds, and a guard test
 fails the build when a reader is unclassified, in the shape of `implemented_loaders()`
-(`backend/app/custom_rules/loaders.py:41`, §G.10.2):
+(`backend/app/custom_rules/loaders.py` `implemented_loaders`, §G.10.2):
 
 | # | Reader | Where | Kind | What it does with `HISTORY` |
 |---|---|---|---|---|
-| R1 | pending read for evaluation | `repositories/property_watch.py:170-229` | LIVE only | `origin = 'LIVE'` (guard 3) |
-| R2 | `buckets_between`: the engine's history, recent readings and the training window | `repositories/property_watch.py:231-246`, used at `property_watch/engine.py:316` and `property_watch/training.py:76` | EVIDENCE | reads both; `_recent` filters to LIVE in Python (§H.1.3); training reads both on purpose (§H.8) |
-| R3 | `component_occurrences` | `repositories/property_watch.py:306-361` | EVIDENCE | reads both |
-| R4 | `scope_history`, the membership comparison | `repositories/property_watch.py:133-168` | EVIDENCE | reads both, so the first live bucket compares with the last history bucket |
-| R5 | F.1 `load_pw_values` | `custom_rules/loaders.py:486-560` | LIVE only | `origin = 'LIVE'`; `include_history` for the preview only |
-| R6 | the API: latest coverage, scope changes, buckets, series | `services/property_watches.py:578-612,700-720`, the bucket and series routes | DISPLAY | reads both and **labels** `origin` (§H.9) |
-| R7 | retention | `services/pw_retention.py:113` | DELETE | by `bucket_start` as for any bucket |
+| R1 | pending read for evaluation | `repositories/property_watch.py` `PropertyWatchRepository.pending_buckets` | LIVE only | `origin = 'LIVE'` (guard 3) |
+| R2 | `buckets_between`: the engine's history, recent readings and the training window | `repositories/property_watch.py` `PropertyWatchRepository.buckets_between`, used at `property_watch/engine.py` `PwAnomalyEngine.evaluate` and `property_watch/training.py` `PwBaselineTrainer._rebuild_chunk` | EVIDENCE | reads both; `_recent` filters to LIVE in Python (§H.1.3); training reads both on purpose (§H.8) |
+| R3 | `component_occurrences` | `repositories/property_watch.py` `PropertyWatchRepository.component_occurrences` | EVIDENCE | reads both |
+| R4 | `scope_history`, the membership comparison | `repositories/property_watch.py` `PropertyWatchRepository.scope_history` | EVIDENCE | reads both, so the first live bucket compares with the last history bucket |
+| R5 | F.1 `load_pw_values` | `custom_rules/loaders.py` `load_pw_values` | LIVE only | `origin = 'LIVE'`; `include_history` for the preview only |
+| R6 | the API: latest coverage, scope changes, buckets, series | `services/property_watches.py` `_latest_coverage` and `_scope_changes`, the bucket and series routes | DISPLAY | reads both and **labels** `origin` (§H.9) |
+| R7 | retention | `services/pw_retention.py` `PwRetention.run` | DELETE | by `bucket_start` as for any bucket |
 
 Alerting never reads a bucket: it reads incidents, and an incident exists only through R1 and R5.
 The live validation (§H.12) asserts this from the database: no `pw_anomaly`, `pw_anomaly_transition`,
@@ -223,16 +228,16 @@ Per watch, in `property_watch`:
 | `UNAVAILABLE` (Ariel holds nothing of the scope in the window) | NULL (so the existing first-run seed runs) | NULL | `UNAVAILABLE` |
 
 `collected_through` is "bucket start of the last collected bucket" and the live path starts at
-`through + bucket` (`backend/app/collectors/pw_collector.py:356`). Setting it to the last history
-bucket makes the first live bucket the one after it, with no new code in the live path.
-`UNAVAILABLE` leaves NULL so the existing rule `start = boundary - step` (`:356`) seeds the live
-path exactly as today.
+`through + bucket` (`backend/app/collectors/pw_collector.py` `PwCollector.collect`). Setting it to
+the last history bucket makes the first live bucket the one after it, with no new code in the live
+path. `UNAVAILABLE` leaves NULL so the existing rule `start = boundary - step`
+(`backend/app/collectors/pw_collector.py` `PwCollector.collect`) seeds the live path exactly as today.
 
 ### H.2.4 The hand-off: zero gap, zero overlap **[BUILT]**
 
 The end of the history is **not fixed at enable**. Each step reads up to the closed-bucket boundary
 of its own tick (`boundary = floor_to_interval(now - settle, interval)`,
-`pw_collector.py:342-344`). The step that reaches `boundary` is the last one.
+`pw_collector.py` `PwCollector.collect`). The step that reaches `boundary` is the last one.
 
 ```text
 history:  [ F ............. J ][ chunk of this tick ........ boundary )        <- HISTORY, origin='HISTORY'
@@ -243,22 +248,23 @@ live:                                                      [ boundary ....      
 - **Zero overlap.** The history chunk is `[J + bucket, e)` with `e <= boundary`. The live path starts
   at `collected_through + bucket`. At hand-off `collected_through = e - bucket`, so the first live
   bucket starts at `e = boundary`. Bucket starts are unique per watch (`pw_bucket` primary key
-  `(watch_id, bucket_start)`, `models/property_watch.py:210-212`); an overlap would be an upsert onto
+  `(watch_id, bucket_start)`, `models/property_watch.py` `PwBucket`); an overlap would be an upsert onto
   an existing row, and the test asserts none occurs.
 - **Zero gap.** The next live bucket starts where the last history bucket ended. If the final chunk
   completes only a prefix (a search failed or the budget ran out), `J` advances only past the
-  contiguous completed prefix (the rule of `collected_prefix`, `pw_collector.py:291-312`) and the
+  contiguous completed prefix (the rule of `collected_prefix`, `pw_collector.py` `collected_prefix`) and the
   watch stays `READING`; the next tick continues at `J + bucket` against a newer boundary.
 - **A tick that runs while the bootstrap is half done.** A `READING` watch is skipped by the live
   plan and planned by the history planner (§H.4.2). It writes only history chunks and moves only
   `history_through`. Another tick between two of its steps changes nothing: each step is read from
   the stored `history_through`, and its writes are idempotent upserts. A second tick *overlapping*
   the first (a tick longer than the cadence slot: `claim_slot` lets the next slot start,
-  `backend/app/services/search_cadence.py:83-95`) is prevented by an advisory lock taken before the
-  first search of the step; a tick that does not get it skips the watch (the live dispatch has no
-  such lock today: `workers/tasks.py:1394-1442`; a history step is long enough to need one). All
+  `backend/app/services/search_cadence.py` `SearchCadenceService.claim_slot`) is prevented by an
+  advisory lock taken before the first search of the step; a tick that does not get it skips the
+  watch (the live dispatch has no such lock today: `workers/tasks.py`
+  `dispatch_property_watch_collection`; a history step is long enough to need one). All
   writes of a step, including `history_through` and, on the last step, the two watermarks, are in
-  the instance's one transaction (`workers/tasks.py:206-210`): a crash rolls the whole step back.
+  the instance's one transaction (`workers/tasks.py` `_for_each_instance`): a crash rolls the whole step back.
 - **The moving end costs a blind period, not a hole.** The buckets between enable and hand-off are
   history, not live: nothing is evaluated for the watch in them. For a 6-value watch that is
   minutes; for a 200-value watch it can be hours (§H.4.5). The page says "reading history: n of m
@@ -267,8 +273,8 @@ live:                                                      [ boundary ....      
 
 > **As built.** The lock is **not** a per-watch lock: the whole property-watch pipeline of an
 > instance (collect, evaluate, train) runs under one instance-wide `CollectorAdvisoryLock` of
-> `(instance, "property_watch")` (`backend/app/services/pw_pipeline.py:95-101`,
-> `backend/app/services/locks.py:38-77`). It is taken before the first search of the tick and
+> `(instance, "property_watch")` (`backend/app/services/pw_pipeline.py` `PwInstancePipeline.run`,
+> `backend/app/services/locks.py` `CollectorAdvisoryLock`). It is taken before the first search of the tick and
 > released at its end; a tick that does not get it does nothing and says so (`skipped_locked`).
 > Two ticks of the same instance therefore never overlap, whichever watch they would read; the
 > price is that one long history step holds the other watches of the same instance until it ends.
@@ -277,19 +283,19 @@ live:                                                      [ boundary ....      
 
 The history chunk goes through the same functions as a live chunk: `run_search`,
 `combine_chunks`, `collected_prefix`, `fold_bucket`, `admit_bucket`, `retire_stale`, `sync_pins`
-(`pw_collector.py:523-721`), with these differences and no others:
+(`pw_collector.py` `PwCollector._search` and `PwCollector._fold_and_stage`), with these differences and no others:
 
 | Live | History |
 |---|---|
 | `scope_changed_flags(history, ...)` | the same call, so a membership change *during* the bootstrap is flagged; `history` read from `scope_history` as for live (R4) |
-| `in_maintenance = _scope_in_maintenance(scope, bucket_start)` (`:672`) | `False` (§H.2.1) |
-| `retire_stale(values, reference=last bucket of the tick)` once per tick (`:693-694`) | once **per bucket** inside the chunk, so the ceiling and the tracking windows are what bucket-by-bucket live collection would have produced; in memory, no statement |
-| `status_row["collected_through"] = reference` (`:711`) | `history_through = reference`; watermarks only at hand-off |
+| `in_maintenance = _scope_in_maintenance(scope, bucket_start)` (`pw_collector.py` `PwCollector._fold_and_stage`) | `False` (§H.2.1) |
+| `retire_stale(values, reference=last bucket of the tick)` once per tick (`pw_collector.py` `PwCollector._fold_and_stage`) | once **per bucket** inside the chunk, so the ceiling and the tracking windows are what bucket-by-bucket live collection would have produced; in memory, no statement |
+| `status_row["collected_through"] = reference` (`pw_collector.py` `PwCollector._fold_and_stage`) | `history_through = reference`; watermarks only at hand-off |
 | `origin = 'LIVE'` | `origin = 'HISTORY'` |
-| `NOT_APPLICABLE` check at the end of the tick (`:712-717`) | not run: nothing is judged |
+| `NOT_APPLICABLE` check at the end of the tick (`pw_collector.py` `PwCollector._fold_and_stage`) | not run: nothing is judged |
 
 A unit test runs the same scripted mock search (`MockQRadarProvider.pw_script`,
-`backend/app/providers/mock.py:292-294,1180-1195`) once through the live path bucket by bucket and
+`backend/app/providers/mock.py` `MockQRadarProvider.pw_script`) once through the live path bucket by bucket and
 once through the history path in chunks, and asserts the stored rows are equal column for column
 except `origin`, `collected_at` and `query_provenance` (the SC.5 item 4 bar,
 [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) §SC.5).
@@ -306,25 +312,27 @@ except `origin`, `collected_at` and `query_provenance` (the SC.5 item 4 bar,
 | per watch `history_days` | the days one watch asks for | none (not requested) | 0 or `pw_new_value_history_days` to `pw_bootstrap_days` |
 
 Why 28: the volume detectors build their cells over `pw_baseline_lookback_days` = 28
-(`backend/app/core/config.py:656`; training reads exactly that window, `property_watch/training.py:71-76`),
-so reading more is wasted and reading less leaves fewer visits per cell (§H.8.2). Why not less: the
-new-value detectors need 7 (`config.py:671`). Why a per-watch value: the lab wants 7 or 3, a
-production watch 28; the cost is bounded by the tick budget either way (§H.4.4), so the objection to
-per-watch overrides in §G.3 (one watch consuming the budget) does not apply.
+(`backend/app/core/config.py` `pw_baseline_lookback_days`; training reads exactly that window,
+`property_watch/training.py` `PwBaselineTrainer._rebuild_chunk`), so reading more is wasted and
+reading less leaves fewer visits per cell (§H.8.2). Why not less: the new-value detectors need 7
+(`config.py` `pw_new_value_history_days`). Why a per-watch value: the lab wants 7 or 3, a production
+watch 28; the cost is bounded by the tick budget either way (§H.4.4), so the objection to per-watch
+overrides in §G.3 (one watch consuming the budget) does not apply.
 
 Hard bounds:
 
-- **`pw_metric_retention_days` = 35** (`config.py:675`). The daily retention task deletes buckets older
-  than `now - 35 d` (`backend/app/services/pw_retention.py:113`). Window 28 d plus up to
-  `pw_bootstrap_max_hours` (72 h) of reading stays below 35 d, with 4 days to spare. The validator
-  `pw_bootstrap_days <= pw_baseline_lookback_days` inherits the existing `lookback <= retention`
-  check (`config.py:931-935`), and `pw_new_value_history_days < retention` (`:936-940`) is unchanged.
+- **`pw_metric_retention_days` = 35** (`config.py` `pw_metric_retention_days`). The daily retention
+  task deletes buckets older than `now - 35 d` (`backend/app/services/pw_retention.py`
+  `PwRetention.run`). Window 28 d plus up to `pw_bootstrap_max_hours` (72 h) of reading stays below
+  35 d, with 4 days to spare. The validator `pw_bootstrap_days <= pw_baseline_lookback_days`
+  inherits the existing `lookback <= retention` check (`config.py` `_pw_bounds_are_consistent`), and
+  `pw_new_value_history_days < retention` (`config.py` `_pw_bounds_are_consistent`) is unchanged.
 - **Ariel's own retention**, below.
 - **168 h per search.** `validate_bucketed_metric_window` refuses a window above 168 hours
-  (`backend/app/collectors/bucketed_metrics.py:28`), so a span is at most 2,016 buckets.
+  (`backend/app/collectors/bucketed_metrics.py` `validate_bucketed_metric_window`), so a span is at most 2,016 buckets.
 - **120 s per search.** `_run_bounded_aggregate` polls 120 times at 1 s and then cancels
-  (`backend/app/providers/qradar_rest.py:2110-2126`); a search that long ends `FAILED`
-  (`keyed_search.py:264,270`). Wide windows must stay below it (§H.4.3, **[C-5]**).
+  (`backend/app/providers/qradar_rest.py` `QRadarRestProvider._run_bounded_aggregate`); a search that long ends `FAILED`
+  (`keyed_search.py` `run_search`). Wide windows must stay below it (§H.4.3, **[C-5]**).
 
 ### H.3.2 How the design knows, read-only, how far back Ariel holds this scope **[BUILT]**
 
@@ -351,7 +359,7 @@ scope at or before it, plus a margin.**
    the same zero a live bucket stores.
 4. **Nothing before `F` is written.** Not a zero, not a `NOT_COLLECTED` row. Absence of a row is "no
    claim" and `verify_value_history` already reports a missing bucket as an incomplete history
-   (`history.py:34-41`). The watch page says "QRadar holds events of this scope from F; T0 was
+   (`history.py` `verify_value_history`). The watch page says "QRadar holds events of this scope from F; T0 was
    asked".
 5. **No event in the whole window** (the scan reaches the boundary): `history_state = UNAVAILABLE`,
    nothing is written, hand-off is the existing first-run seed (§H.2.3).
@@ -422,14 +430,15 @@ AQL in the log.
 
 | Kind | Query | History use |
 |---|---|---|
-| TOTALS | `SELECT starttime / <bucket_ms> AS "k", SUM(eventcount) ... GROUP BY k LIMIT <buckets + 1>` (`backend/app/property_watch/aql.py:150-156`) | the floor scan and the denominator, over a span of up to 2,016 buckets; its cap is the bucket count (`keyed_search.py:148-160`), so it never truncates |
-| GROUPED | the keyed value query with `IS NOT NULL` on each property (`aql.py:157-170`) | over a **sub-window** sized by density (§H.4.3) |
-| PINNED | the same restricted with `IN` (`aql.py:160-165`) | over the span, when values are pinned; cap `min(pinned rows per bucket x buckets, pw_max_rows_per_search)` |
+| TOTALS | `SELECT starttime / <bucket_ms> AS "k", SUM(eventcount) ... GROUP BY k LIMIT <buckets + 1>` (`backend/app/property_watch/aql.py` `build_query`) | the floor scan and the denominator, over a span of up to 2,016 buckets; its cap is the bucket count (`keyed_search.py` `search_row_cap`), so it never truncates |
+| GROUPED | the keyed value query with `IS NOT NULL` on each property (`aql.py` `build_query`) | over a **sub-window** sized by density (§H.4.3) |
+| PINNED | the same restricted with `IN` (`aql.py` `build_query`) | over the span, when values are pinned; cap `min(pinned rows per bucket x buckets, pw_max_rows_per_search)` |
 
 Bucket width stays `collection_interval_seconds` (300 s). Nothing about the scope filter changes.
-Every search carries the half-open `WHERE starttime >= a AND starttime < b` and the Ariel `START a STOP b+pad`
-(`backend/app/providers/qradar_rest.py:292-312`, `:1662-1721`): the `WHERE` is authoritative, the pad
-(`ariel_stop_pad_seconds`, 60 s, `config.py:136`) is capped at "now", so on a window days old it only
+Every search carries the half-open `WHERE starttime >= a AND starttime < b` and the Ariel
+`START a STOP b+pad` (`backend/app/providers/qradar_rest.py` `QRadarRestProvider._ariel_scope` and
+`QRadarRestProvider.get_pw_keyed`): the `WHERE` is authoritative, the pad (`ariel_stop_pad_seconds`,
+60 s, `config.py` `ariel_stop_pad_seconds`) is capped at "now", so on a window days old it only
 widens the scan by 60 s (C-6 asks the probe to confirm it does not move a count).
 
 ### H.4.2 A history step **[BUILT]**
@@ -457,13 +466,13 @@ inputs : state (T0, F or none, J or none), boundary, budget B, time budget, chun
 
 `reserved` is 1 for TOTALS plus 1 when values are pinned. `pinned_cap_buckets` is
 `floor(0.8 * pw_max_rows_per_search / pinned_rows_per_bucket)`
-(`aql.py:127-133`), so a watch with ten pins reads 400-bucket spans. The first GROUPED sub-window is
+(`aql.py` `pinned_rows_per_bucket`), so a watch with ten pins reads 400-bucket spans. The first GROUPED sub-window is
 288 buckets (one day) until a density is observed. The truncation split of `run_search` stays: a
-truncated sub-window is split in time and charges the budget (`keyed_search.py:272-281`); the next
+truncated sub-window is split in time and charges the budget (`keyed_search.py` `run_search`); the next
 `W` is halved so it does not repeat.
 
 **Failure is not truncation.** A `FAILED` search is not split in the live driver
-(`keyed_search.py:264,270`). Here a failed sub-window increments `history_progress.failures` and
+(`keyed_search.py` `run_search`). Here a failed sub-window increments `history_progress.failures` and
 halves `W` for the next tick (a timeout is a function of width). After
 `pw_bootstrap_max_failures` (3) consecutive failures at the minimum width (12 buckets), that
 sub-window becomes a **gap** (recorded in `history_gaps`, no rows written, `PARTIAL`) and `J` moves
@@ -471,11 +480,11 @@ past it; novelty windows crossing it fail closed by their missing buckets.
 
 ### H.4.3 Chunking by rows **[BUILT]**
 
-`values x buckets <= pw_max_rows_per_search` (5,000, `config.py:641`): the search returns one row
+`values x buckets <= pw_max_rows_per_search` (5,000, `config.py` `pw_max_rows_per_search`): the search returns one row
 per distinct value per non-silent bucket, whether or not the fold later keeps it. The planner targets
 80 % of the cap so an ordinary bucket does not truncate the window. A bucket with more distinct
-values than the cap truncates even alone and is stored `LOWER_BOUND` (`keyed_search.py:280-281`),
-which is useless as history (`history.py:61-64`). The **density gate** stops that waste: after the
+values than the cap truncates even alone and is stored `LOWER_BOUND` (`keyed_search.py` `run_search`),
+which is useless as history (`history.py` `verify_value_history`). The **density gate** stops that waste: after the
 first GROUPED sub-window, if more than `pw_bootstrap_max_lower_bound_share` (0.05) of the buckets
 read came back `LOWER_BOUND`, the bootstrap ends `PARTIAL` with the reason "more than N distinct
 values per 5-minute bucket: history would be lower bounds"; the buckets read stay (they are valid
@@ -483,21 +492,23 @@ evidence for the volume baselines of the values they name).
 
 ### H.4.4 The tick budget: live first **[BUILT]**
 
-The plan of a tick (`dispatch_property_watch_collection`, `workers/tasks.py:1394-1442`) becomes:
+The plan of a tick (`dispatch_property_watch_collection`, `workers/tasks.py`
+`dispatch_property_watch_collection`) becomes:
 
 1. every **live** watch is planned and run first, under the one `PwSearchBudget(pw_max_searches_per_tick)`
-   exactly as today (`pw_collector.py:394-418`);
+   exactly as today (`pw_collector.py` `PwCollector.collect`);
 2. then every `READING` watch, oldest `history_started_at` first, under a sub-budget
    `min(pw_bootstrap_searches_per_tick, budget.remaining)`, and until `pw_bootstrap_seconds_per_tick`
    have passed since the tick started (no new search starts after it).
 
 So a history step only ever spends what live collection left over, which keeps the one Ariel-load
-knob of §G.14.1 and the concurrency limits (3 per instance, `config.py:122`) intact. The price: if
-live watches use the whole budget, history starves, visibly (`history_reason = "waiting for search
+knob of §G.14.1 and the concurrency limits (3 per instance, `config.py`
+`ariel_max_concurrent_searches`) intact. The price: if live watches use the whole budget, history
+starves, visibly (`history_reason = "waiting for search
 budget"`). Enabling a watch **with** history is refused with 409 when fewer than 3 searches of the
 tick budget are free after the static cost of the enabled watches (one triple: TOTALS, GROUPED,
 PINNED), naming both numbers (the pattern of `enable_reasons`,
-`backend/app/services/property_watches.py:448-492`).
+`backend/app/services/property_watches.py` `enable_reasons`).
 
 ### H.4.5 Cost table (design figures, not measurements) **[BUILT]**
 
@@ -537,11 +548,12 @@ tick writes them by `executemany` in one statement per table (§H.5.6).
 ### H.4.6 Cadence **[BUILT]**
 
 The decision of 2026-10-18 makes 5 minutes the default for the family (the code seeded 1 h:
-`backend/alembic/versions/0026_property_watch.py:258`; migrations by T-134 and T-138,
-`0028_default_search_cadence.py`, move the untouched seed to 5 minutes). The
+`backend/alembic/versions/0026_property_watch.py` `upgrade` (the `search_cadence` seed); migrations
+by T-134 and T-138, `0028_default_search_cadence.py`, move the untouched seed to 5 minutes). The
 bootstrap advances once per
-family slot (`claim_slot`, `search_cadence.py:61`): it does not add a task or search outside the
-cadence, so the operator's one control over Ariel schedule (decided on 2026-10-12) holds. A longer cadence slows the
+family slot (`claim_slot`, `search_cadence.py` `SearchCadenceService.claim_slot`): it does not add a
+task or search outside the cadence, so the operator's one control over Ariel schedule (decided on
+2026-10-12) holds. A longer cadence slows the
 bootstrap in proportion (table). A faster bootstrap than one step per slot is Q6.
 
 ---
@@ -561,11 +573,12 @@ bootstrap in proportion (table). A faster bootstrap than one step per slot is Q6
 | `history_started_at`, `history_finished_at` | `DateTime(tz) NULL` | wall clock |
 | `history_progress` | `JSONB NOT NULL` default `{}` | `chunk_buckets`, `failures`, `searches`, `buckets_read`, `gaps` (at most 20 `{start, end, reason}`), `reason` (words, never a value text) |
 
-`pw_bucket` gains `origin` (§H.2.1). `last_status_known` (`models/property_watch.py:105`) gains
-`READING_HISTORY` (a new `PwWatchStatus`, `models/enums.py:263`), owned by collection: it is set by
-the history planner and cleared at hand-off the way `_COLLECTION_STATUSES` clears
-(`pw_collector.py:83-90`). The engine never sees it (a `READING` watch has no pending bucket); the
-set `_DETECTOR_OWNED` (`engine.py:202`) is unchanged.
+`pw_bucket` gains `origin` (§H.2.1). `last_status_known` (`models/property_watch.py`
+`PropertyWatch.last_status_known`) gains `READING_HISTORY` (a new `PwWatchStatus`, `models/enums.py`
+`PwWatchStatus`), owned by collection: it is set by the history planner and cleared at hand-off the
+way `_COLLECTION_STATUSES` clears (`pw_collector.py` `_COLLECTION_STATUSES`). The engine never sees
+it (a `READING` watch has no pending bucket); the set `_DETECTOR_OWNED` (`engine.py`
+`_DETECTOR_OWNED`) is unchanged.
 
 `history_progress` is JSONB, not columns, for the counters and the gap list: they are read only by
 the API and the planner, never filtered or joined.
@@ -577,10 +590,12 @@ the API and the planner, never filtered or joined.
 (provider error, worker restart, rollback) writes nothing and the next one re-plans from
 `history_through`. A restart of the Celery worker mid-step is the same case. Re-running a step is
 idempotent: `write_buckets` and `write_metrics` are upserts keyed `(watch_id, bucket_start)` and
-`(pw_value_id, bucket_start)` (`repositories/property_watch.py:389-418`), `write_values` keeps the
-earliest `first_seen_at` (`:362-387`). The admission state for a step is the stored `pw_value` rows
-(the bulk read at `pw_collector.py:382-384`), so a step starts from the state the last committed
-step left.
+`(pw_value_id, bucket_start)` (`repositories/property_watch.py`
+`PropertyWatchRepository.write_buckets` and `PropertyWatchRepository.write_metrics`),
+`write_values` keeps the earliest `first_seen_at` (`repositories/property_watch.py`
+`PropertyWatchRepository.write_values`). The admission state for a step is the stored `pw_value`
+rows (the bulk read at `pw_collector.py` `PwCollector.collect`), so a step starts from the state the
+last committed step left.
 
 ### H.5.3 No staging table **[BUILT]**
 
@@ -593,14 +608,14 @@ pass) would persist value texts rule 3 forbids, and was rejected for that reason
 
 | Event | Effect on a bootstrap in progress | Why |
 |---|---|---|
-| **Edit that bumps `watch_version`** (scope or properties, `api/routes/property_watches.py:826-828`) | The bootstrap **restarts** for the new version if `history_days` is set: `history_state = READING`, `history_*` cleared, `collected_through = NULL`, `evaluated_through = NULL`. Old-version values retire as today (`pw_collector.py:645-646`). The new history overwrites old-version bucket rows at the same `bucket_start` (the primary key has no version, `models/property_watch.py:210-212`), which nothing reads (every reader filters on the current version) | Values and baselines of another version are never compared (§G.3); the new version needs its own history. The patch route does **not** reset watermarks for a non-bootstrap watch today, and that is left alone |
-| **Edit of pins, severity, detectors, name** | Nothing. A new pin is `sync_pins`-ed at the next step's first bucket, so its `tracked_since` is that bucket, not `F`: it has no measured zeros before it (`admission.py:105-130`, honest and stated) | no version bump (§G.3) |
+| **Edit that bumps `watch_version`** (scope or properties, `api/routes/property_watches.py` `update_watch`) | The bootstrap **restarts** for the new version if `history_days` is set: `history_state = READING`, `history_*` cleared, `collected_through = NULL`, `evaluated_through = NULL`. Old-version values retire as today (`pw_collector.py` `PwCollector._fold_and_stage`). The new history overwrites old-version bucket rows at the same `bucket_start` (the primary key has no version, `models/property_watch.py` `PwBucket`), which nothing reads (every reader filters on the current version) | Values and baselines of another version are never compared (§G.3); the new version needs its own history. The patch route does **not** reset watermarks for a non-bootstrap watch today, and that is left alone |
+| **Edit of pins, severity, detectors, name** | Nothing. A new pin is `sync_pins`-ed at the next step's first bucket, so its `tracked_since` is that bucket, not `F`: it has no measured zeros before it (`admission.py` `sync_pins`, honest and stated) | no version bump (§G.3) |
 | **Disable** | The watch leaves `enabled_watches`, so no step runs; `history_*` is kept. Re-enable resumes at `history_through` against the then boundary | the end moves, so a long pause only lengthens the last step. The wall-clock limit `pw_bootstrap_max_hours` (72) counts from `history_started_at` and so includes the pause; past it the next step hands off `PARTIAL` with the reason, so a half-aged window never resumes |
-| **Delete** | Cascades (every bucket, value, metric, baseline: `ondelete="CASCADE"`, `models/property_watch.py:209-212,267,301`). A step in flight fails at its write with a foreign-key error and rolls back its instance transaction (the same exposure as a live tick, longer here: **open point**) | the routes lock the watch row (`_locked`, `routes/property_watches.py:177-183`) but the collector does not |
-| **Scope change that keeps the version** | There is none: a scope change bumps the version (`routes:826`) | |
-| **Inventory re-sync** changes a group's membership | `scope_changed_flags` flags the first history bucket under the new fingerprint and the grace buckets after it (`property_watch/scope.py:248-281`), as in live. `SCOPE_STALE`, `SCOPE_EMPTY`, `SCOPE_TOO_LARGE` stop the step like a live tick: no search, status set, `history_through` unmoved (`pw_collector.py:465-471`) | the same resolver, read every tick |
+| **Delete** | Cascades (every bucket, value, metric, baseline: `ondelete="CASCADE"`, `models/property_watch.py` `PwBucket`, `PwValue` and `PwValueMetric`). A step in flight fails at its write with a foreign-key error and rolls back its instance transaction (the same exposure as a live tick, longer here: **open point**) | the routes lock the watch row (`_locked`, `routes/property_watches.py` `_locked`) but the collector does not |
+| **Scope change that keeps the version** | There is none: a scope change bumps the version (`routes/property_watches.py` `update_watch`) | |
+| **Inventory re-sync** changes a group's membership | `scope_changed_flags` flags the first history bucket under the new fingerprint and the grace buckets after it (`property_watch/scope.py` `scope_changed_flags`), as in live. `SCOPE_STALE`, `SCOPE_EMPTY`, `SCOPE_TOO_LARGE` stop the step like a live tick: no search, status set, `history_through` unmoved (`pw_collector.py` `PwCollector._collect_watch`) | the same resolver, read every tick |
 | **Kill switch turned off** | A `READING` watch hands off at once with `PARTIAL`, reason "history reading was switched off", leaving the buckets read and a gap to the boundary | the operator wanted no more Ariel load, not a watch that never starts |
-| **`pw_collection_enabled` off** | The dispatch is a no-op (`workers/tasks.py:1402-1404`); nothing moves | |
+| **`pw_collection_enabled` off** | The dispatch is a no-op (`workers/tasks.py` `dispatch_property_watch_collection`); nothing moves | |
 
 ### H.5.5 An existing enabled watch at upgrade **[BUILT]**
 
@@ -625,8 +640,9 @@ buckets the route answers 409 with the count and the reason, and the operator cr
 A history step adds no per-watch, per-value or per-bucket statement. Per tick, beyond the live
 count: one `pg_try_advisory_xact_lock` per `READING` watch (a constant per watch, not per value or
 bucket), and the same bulk reads and one-statement-per-table writes (`values`, `buckets`, `metrics`,
-`watches`; `pw_collector.py:723-735`). The history columns ride on the existing `update_watches`
-`executemany` (`repositories/property_watch.py:420-438`) as extra bind parameters. A pin test, in
+`watches`; `pw_collector.py` `PwCollector._persist`). The history columns ride on the existing
+`update_watches` `executemany` (`repositories/property_watch.py`
+`PropertyWatchRepository.update_watches`) as extra bind parameters. A pin test, in
 the shape of `tests/integration/test_pw_engine_scale.py`, asserts the history tick's statement count
 is equal for 1 and 10 `READING` watches, for 6 and 200 values and for a 12-bucket and a
 2,016-bucket chunk.
@@ -641,12 +657,12 @@ none is `NORMAL`, none lets a detector grant itself lower-bound reasoning.
 | # | Condition | Result |
 |---|---|---|
 | 1 | **Retention gap.** Buckets before the first event of the scope plus the margin | not written, no row, not a zero; `history_floor` states where history starts; `PARTIAL` if the asked window was cut, `UNAVAILABLE` if the scope has no event in it (§H.3.2) |
-| 2 | **A property that did not parse in old events.** A history bucket whose coverage (`parsed / total`) is below `pw_min_coverage` (0.90), or `parsed_events = 0` with events (`PwBucketFact.coverage`, `facts.py:295-308`) | the bucket **is stored**, as measured (it is real data) and marked by its coverage; it is **excluded from training** as `low_coverage` (`property_watch/baseline.py:92-113`, existing), and **fails `verify_value_history`** for novelty. `verify_value_history` takes a new `min_coverage` argument applied to `origin = 'HISTORY'` buckets: "history bucket X had parsing coverage below the floor". The new-value window can therefore not complete over such buckets: that is the incomplete history the bootstrap asks for. The live rows are not changed (Q5 asks whether they should be) |
-| 3 | **A truncated or failed chunk.** A GROUPED sub-window cut at the row cap; a TOTALS or PINNED search that is not whole; a failed search; a timeout | cut: split in time (not kept from the multi-bucket search), and at one bucket stored `LOWER_BOUND`, which `verify_value_history` rejects (`history.py:61-64`). Failed: no row, `J` holds, `W` halves, at the third failure at 12 buckets the sub-window is a recorded gap (§H.4.2). A multi-bucket truncated result is never written (`keyed_search.py:11-12`) |
+| 2 | **A property that did not parse in old events.** A history bucket whose coverage (`parsed / total`) is below `pw_min_coverage` (0.90), or `parsed_events = 0` with events (`PwBucketFact.coverage`, `facts.py` `PwBucketFact.coverage`) | the bucket **is stored**, as measured (it is real data) and marked by its coverage; it is **excluded from training** as `low_coverage` (`property_watch/baseline.py` `build_value_baseline`, existing), and **fails `verify_value_history`** for novelty. `verify_value_history` takes a new `min_coverage` argument applied to `origin = 'HISTORY'` buckets: "history bucket X had parsing coverage below the floor". The new-value window can therefore not complete over such buckets: that is the incomplete history the bootstrap asks for. The live rows are not changed (Q5 asks whether they should be) |
+| 3 | **A truncated or failed chunk.** A GROUPED sub-window cut at the row cap; a TOTALS or PINNED search that is not whole; a failed search; a timeout | cut: split in time (not kept from the multi-bucket search), and at one bucket stored `LOWER_BOUND`, which `verify_value_history` rejects (`history.py` `verify_value_history`). Failed: no row, `J` holds, `W` halves, at the third failure at 12 buckets the sub-window is a recorded gap (§H.4.2). A multi-bucket truncated result is never written (`keyed_search.py` (module docstring)) |
 | 4 | **Today's scope membership applied to the past.** A group is resolved from the inventory now (`logsourceid IN (<ids>)`, §G.4); sources that were members then and are not now are absent from the past counts, and members that joined later contribute events from before they joined | stated limitation. History buckets carry today's `scope_member_count` and fingerprint with `membership: current` in `query_provenance`; the page says it (§H.9.3). A type scope (`devicetype = n`) is historical by construction; a source scope is one id. A group whose membership changes *during* the reading is flagged by `scope_changed_flags` as in live |
-| 5 | **The admission caps hit during the bootstrap.** `pw_max_new_values_per_bucket`, `pw_max_active_values_per_watch`, more than `pw_max_values_per_bucket` distinct untracked values in a bucket | the bucket records `rejected_over_quota` and `admission_truncated` exactly as live (`admission.py:176-213`), so `verify_value_history` rejects it and a first appearance in the 7 days after it is `INSUFFICIENT_DATA`. The caps never silently drop a value that later reads as new |
+| 5 | **The admission caps hit during the bootstrap.** `pw_max_new_values_per_bucket`, `pw_max_active_values_per_watch`, more than `pw_max_values_per_bucket` distinct untracked values in a bucket | the bucket records `rejected_over_quota` and `admission_truncated` exactly as live (`admission.py` `admit_bucket`), so `verify_value_history` rejects it and a first appearance in the 7 days after it is `INSUFFICIENT_DATA`. The caps never silently drop a value that later reads as new |
 | 6 | **A source that did not exist yet.** A source scope or a group member not yet sending | its leading silence is the leading silence of row 1: nothing before the first event plus the margin is written |
-| 7 | The scope is `SCOPE_STALE`, `SCOPE_EMPTY` or `SCOPE_TOO_LARGE` | no step, no bucket; the watch holds (`pw_collector.py:465-471`) |
+| 7 | The scope is `SCOPE_STALE`, `SCOPE_EMPTY` or `SCOPE_TOO_LARGE` | no step, no bucket; the watch holds (`pw_collector.py` `PwCollector._collect_watch`) |
 | 8 | `parsed_events = 0` with `total_events > 0` for a whole cadence of history | stored as measured; no `NOT_APPLICABLE` status from history (it judges nothing); the live check resumes at hand-off |
 | 9 | The reading did not finish in `pw_bootstrap_max_hours`, or the switch went off, or the search budget starved it | hand-off `PARTIAL` with the reason, no row for the unread span (an implicit gap), live starts at the boundary |
 | 10 | A bucket whose search left the span unmeasured (budget spent mid-step) | left for the next step; `J` moves only past the contiguous completed prefix |
@@ -660,14 +676,15 @@ none is `NORMAL`, none lets a detector grant itself lower-bound reasoning.
 
 ### H.7.1 Admission during the bootstrap **[BUILT]**
 
-The same pure `admit_bucket` (`admission.py:143-215`) runs oldest bucket first, so a value admitted in
-one bucket is tracked in the next, which is what its docstring requires (`:150-156`). The policy is
-the live one (`pw_min_admission_events` 3, `pw_max_new_values_per_bucket` 20,
-`pw_max_active_values_per_watch` 200, `pw_value_active_days` 7: `config.py:644-652`). Nothing is
-relaxed for history.
+The same pure `admit_bucket` (`admission.py` `admit_bucket`) runs oldest bucket first, so a value
+admitted in one bucket is tracked in the next, which is what its docstring requires (`admission.py`
+`admit_bucket`). The policy is the live one (`pw_min_admission_events` 3,
+`pw_max_new_values_per_bucket` 20, `pw_max_active_values_per_watch` 200, `pw_value_active_days` 7:
+`config.py` `pw_min_admission_events`, `pw_max_new_values_per_bucket`,
+`pw_max_active_values_per_watch` and `pw_value_active_days`). Nothing is relaxed for history.
 
 **Which values win when the cap binds.** Within a bucket, `candidates` arrive ordered by events, then
-key (the fold's order), and `eligible[:quota]` are admitted (`admission.py:176-181`): the most
+key (the fold's order), and `eligible[:quota]` are admitted (`admission.py` `admit_bucket`): the most
 frequent in that bucket win. Across buckets the winner is the **earliest to reach the ceiling**: once
 200 values are active no new value is admitted until one retires. Over a 28-day window this favours
 values that appeared early over equally frequent ones that appeared later. It is the order live
@@ -679,17 +696,17 @@ ceiling. The remedy is `pw_max_active_values_per_watch`, not a smarter history.
 ### H.7.2 `first_seen_at` and `tracked_since` from history **[BUILT]**
 
 A value admitted at history bucket `b` gets `first_seen_at = tracked_since = b`, a time in the past,
-while its `created_at` is the time of the reading (`admission.py:78-92`). That is the meaning the
+while its `created_at` is the time of the reading (`admission.py` `_new_value`). That is the meaning the
 detectors need: `first_seen_at` is the first bucket in which the value reached the admission
 threshold **at or after `F`**. The page never says "first seen ever"; it says "first seen in the
 history read from QRadar (from F)". A pinned value is `tracked_since` the first bucket of its first
-step (`sync_pins`, `pw_collector.py:643-644`), i.e. `F`, so its measured zeros from `F` on are
+step (`sync_pins`, `pw_collector.py` `PwCollector._fold_and_stage`), i.e. `F`, so its measured zeros from `F` on are
 provable (the PINNED search covers the span).
 
 ### H.7.3 Retirement while reading old values **[BUILT]**
 
 `retire_stale` retires an active, unpinned value unobserved for `pw_value_active_days` and sets
-`tracked_until` to the reference bucket (`admission.py:218-245`), so that a lagging read cannot treat
+`tracked_until` to the reference bucket (`admission.py` `retire_stale`), so that a lagging read cannot treat
 absence as zero. The live path calls it once per tick with the tick's last bucket. A history chunk may
 span days, so the call at the end of a chunk would (a) leave a long-gone value counting against the
 ceiling for the rest of the chunk, which makes the ceiling bind early, and (b) set `tracked_until`
@@ -720,29 +737,32 @@ in live. A pin added or removed during the reading takes effect at the next step
 Training is untouched. `PwBaselineTrainer.rebuild_due` takes the `pw_baseline_values_per_run` (100)
 least recently computed values and rebuilds them in one chunk of a fixed number of statements: the
 due read, then `buckets_between`, `metrics_between`, the incident-span read, the baseline upsert and
-the stale-cell delete (`property_watch/training.py:67-157`; 6 statements per chunk). The number of
-statements is constant in values, buckets and
+the stale-cell delete (`property_watch/training.py` `PwBaselineTrainer.rebuild_due`; 6 statements
+per chunk). The number of statements is constant in values, buckets and
 watches; what grows with the bootstrap is the **rows** one statement returns: up to
 100 values x 8,064 buckets = 806,000 metric rows (the
-trainer loads ORM objects, `repositories/property_watch.py:248-262`). That is the steady state at day
-28, reached at day 1. It breaks no statement bound; it is a memory and time question, and the build
+trainer loads ORM objects, `repositories/property_watch.py`
+`PropertyWatchRepository.metrics_between`). That is the steady state at day 28, reached at day 1.
+It breaks no statement bound; it is a memory and time question, and the build
 task changes `metrics_between` for the trainer to select the three columns it reads
 (`pw_value_id`, `bucket_start`, `events`) as tuples instead of entities (PW-13c, §H.13), which
 removes most of the object overhead. A 200-value watch is trained in two runs (two ticks) after
 hand-off; the values not yet trained read `INSUFFICIENT_DATA` ("learning") until their turn, never a
 verdict.
 
-The trainer reads buckets up to `evaluated_through` (`training.py:71`, `repositories/property_watch.py:540`),
-which is the last history bucket at hand-off, so the first training pass uses the whole window.
+The trainer reads buckets up to `evaluated_through` (`training.py`
+`PwBaselineTrainer._rebuild_chunk`, `repositories/property_watch.py`
+`PropertyWatchRepository.due_baseline_values`), which is the last history bucket at hand-off, so
+the first training pass uses the whole window.
 
 ### H.8.2 When the seasonal cells become reliable **[BUILT]**
 
 > **As built.** A cell needs **two** things: at least `baseline_min_samples` = 8 clean samples
-> (`config.py:335`) **and** at least `pw_baseline_min_visits` = 2 distinct weekly visits
-> (`config.py:657`). A visit is the UTC calendar date of the bucket start, and the twelve
+> (`config.py` `baseline_min_samples`) **and** at least `pw_baseline_min_visits` = 2 distinct weekly visits
+> (`config.py` `pw_baseline_min_visits`). A visit is the UTC calendar date of the bucket start, and the twelve
 > five-minute samples of one visit are correlated, not a baseline
-> (`property_watch/baseline.py:123,137`). The spike, drop and disappearance detectors read a cell
-> only when it is reliable (`property_watch/detectors.py:237-254`); until then they answer
+> (`property_watch/baseline.py` `build_value_baseline`). The spike, drop and disappearance detectors read a cell
+> only when it is reliable (`property_watch/detectors.py` `_Guard.cell`); until then they answer
 > `INSUFFICIENT_DATA`, with the reason "the value-events baseline has N sample(s), but they come
 > from too few separate weekly visits of this weekday and hour: a baseline needs the same hour
 > from at least 2 different weeks" when the samples are enough but the visits are not.
@@ -753,7 +773,7 @@ which is the last history bucket at hand-off, so the first training pass uses th
 
 A visit to an hour-of-week supplies up to 12 five-minute samples. Counting a visit's samples as
 available only where the value was tracked and the reading was exact, covered and not excluded
-(`property_watch/baseline.py:101-124`):
+(`property_watch/baseline.py` `build_value_baseline`):
 
 | Window read | Visits per cell | Samples per cell (max) | Reliable at hand-off (two visits by default) |
 |---|---|---|---|
@@ -795,7 +815,7 @@ All additive; nothing removed (`backend/app/api/routes/property_watches.py`,
 | `PropertyWatchOut.history` | `{state, days_requested, days_target, floor, through, end, days_read, searches, buckets_read, gaps, reason, started_at, finished_at}`; `days_read` and `days_target` computed from `history_through`, `history_floor` and the boundary, never invented. **No ETA** is returned: the cost table (§H.4.5) is a design figure, not a promise |
 | enable response (`PATCH {enabled: true}`) | the same `history` object, plus `history.estimate = {searches_min, searches_max, ticks_min, ticks_max, cadence_seconds}` from the static model (`rho` from the pins at the low end, from the ceiling plus the fold's cut at the high end). The 409 for a full tick budget names the free and the needed numbers |
 | `status` | the new `READING_HISTORY` is a watch status with a reason ("Reading history from QRadar: 9 of 28 days; nothing is judged until it finishes") |
-| `GET /property-watches/catalog` | gains `history: {enabled, days_default, days_max, searches_per_tick, seconds_per_tick, reading_count, searches_free}`, beside the existing `search_budget` and `budget_used` (`services/property_watches.py:417-492`) |
+| `GET /property-watches/catalog` | gains `history: {enabled, days_default, days_max, searches_per_tick, seconds_per_tick, reading_count, searches_free}`, beside the existing `search_budget` and `budget_used` (`services/property_watches.py` `enabled_cost_total` and `history_catalog`) |
 | `GET .../buckets`, `.../series`, `.../values` | each bucket and point carries `origin`; `first_seen_at` of a value stays the history time |
 | `GET /anomalies/{id}` evidence | adds `history_buckets_from_history: n` next to `history_buckets_verified`, and `history_floor` |
 | `/aql` | lists the history searches (the generated text of the last history step is in the bucket's `query_provenance`, as for live) |
@@ -836,7 +856,7 @@ colour, no gradient), and the same table of text beneath for assistive technolog
   2,016 were read from QRadar history on 2026-10-19 and not judged", so an analyst sees where the
   absence claim comes from, and the wording stays "not observed [...] in the 7 days before", never
   "never" (§G.8.3).
-- **Widget** `chart.property_watch` (`frontend/src/widgets/pwWidgetState.ts:33-38`): a `READING`
+- **Widget** `chart.property_watch` (`frontend/src/widgets/pwWidgetState.ts` `earlyState`): a `READING`
   watch with no live bucket is the `empty` state, with the reason and "reading history: n of m days"
   and the drill-down; after hand-off the first live bucket makes it `ok`. `READING_HISTORY` is added
   to `pwFormat.ts` (label, reason, tone `info`/`warn` as for `STALE`) and `lib/api.ts`. The widget
@@ -860,7 +880,7 @@ with the widget in `READING`.
 > rest of the property-watch bounds.
 
 All in `backend/app/core/config.py`, validated only where `pw_collection_enabled` is on, like the
-other PW cross-checks (`config.py:906-945`), and additionally where `pw_bootstrap_enabled` is on.
+other PW cross-checks (`config.py` `_pw_bounds_are_consistent`), and additionally where `pw_bootstrap_enabled` is on.
 
 | Setting | Default | Bounds and notes |
 |---|---|---|
@@ -884,7 +904,8 @@ settings (they follow `pw_max_rows_per_search`).
    fail-closed for the last two but rests on A1 for the first.
 2. A bootstrap spends Ariel searches the operator did not ask for at that moment (§H.4.5: up to
    about 400 for a heavy watch); a new default-on load belongs behind an explicit decision, as
-   `pw_collection_enabled` and `pw_alerting_enabled` are (`config.py:628-630`).
+   `pw_collection_enabled` and `pw_alerting_enabled` are (`config.py` `pw_collection_enabled` and
+   `pw_alerting_enabled`).
 3. Off is a safe state: a watch that asks for history while it is off starts live as today and says
    so (§H.6 row 11).
 
@@ -901,9 +922,10 @@ One additive migration, number **`0029_pw_history_bootstrap`** (2026-10-18: T-13
   server default `'NOT_REQUESTED'` and the default is then dropped, and `history_progress` the same with
   `'{}'`, so no persistent server default is left (the repository invariant, `0010`'s test
   `test_0010_backfills_existing_rows_and_leaves_no_server_default`,
-  `backend/tests/integration/test_migrations.py:543`; PW-1's note, §G.3);
+  `backend/tests/integration/test_migrations.py`
+  `test_0010_backfills_existing_rows_and_leaves_no_server_default`; PW-1's note, §G.3);
 - adds `pw_bucket.origin` `NOT NULL` with a temporary server default `'LIVE'`, then drops the default.
-  `pw_bucket` is a hypertable (`0026_property_watch.py:254-280`): the test adds the column on a
+  `pw_bucket` is a hypertable (`0026_property_watch.py` `_create_hypertable`): the test adds the column on a
   hypertable that has data **and** one with a compressed chunk, since a `NOT NULL` column with a default
   on a compressed hypertable depends on the TimescaleDB version in use (**open point**, tested in
   PW-13a);
@@ -942,13 +964,13 @@ bucket with unusable history is `INSUFFICIENT_DATA` with its reason.
 
 It can only show (d) if the scope has at least `pw_new_value_history_days + margin/24` = **8 days** of
 events in Ariel, because `F = b0 + 24 h` and the learning check needs `first_seen >= F + 7 d`
-(`detectors.py:600-612`). **Whether source 212 holds 8 days is not known [C-1].** P-1 decides, and the
+(`detectors.py` `_novelty_common`). **Whether source 212 holds 8 days is not known [C-1].** P-1 decides, and the
 run is planned in two cases:
 
 | Case | Condition (from P-1/P-2) | Settings of the run | Expected for the new user |
 |---|---|---|---|
 | A | scope has events from `b0 <= now - 8 d` | defaults; `PW_BOOTSTRAP_DAYS=7` for speed | `ANOMALOUS` (below) |
-| B | `b0` is 4 to 7 days ago | `PW_NEW_VALUE_HISTORY_DAYS=3`, `PW_BOOTSTRAP_DAYS=3` (history length is a timing setting, not a detection threshold, the LAB_MODE rule `config.py:45-52`) | `ANOMALOUS` after 3 days of history |
+| B | `b0` is 4 to 7 days ago | `PW_NEW_VALUE_HISTORY_DAYS=3`, `PW_BOOTSTRAP_DAYS=3` (history length is a timing setting, not a detection threshold, the LAB_MODE rule `config.py` `LAB_PROFILE`) | `ANOMALOUS` after 3 days of history |
 | C | `b0` is under 4 days ago | defaults, `PW_BOOTSTRAP_DAYS=7` | `INSUFFICIENT_DATA`, reason "learning: day n of 7": the fail-closed demonstration, no detection |
 
 ### H.12.2 Generator plan (lab, rate limit 10 events/s, as PW-10)
@@ -992,11 +1014,11 @@ tick as PW-10 does (`ticks.jsonl`).
 > **As built.** The row about `PW_BOOTSTRAP_SEARCHES_PER_TICK=2` holds only for a watch **without** a
 > pinned value. The smallest step of a reading is 2 searches (TOTALS and one GROUPED) and **3** with
 > a pinned value (TOTALS, PINNED and one GROUPED)
-> (`backend/app/property_watch/bootstrap.py:515-522`). A setting below the smallest step of the
+> (`backend/app/property_watch/bootstrap.py` `history_step_searches`). A setting below the smallest step of the
 > watch is refused: the enable answers 409 with the code `HISTORY_BUDGET` ("PW_BOOTSTRAP_SEARCHES_PER_TICK
 > is 2; reading history for this watch needs at least 3 searches per tick (TOTALS, PINNED and one
 > GROUPED)"), and a reading that is already running waits and says the same
-> (`backend/app/collectors/pw_collector.py:1046-1055`). The watch of the lab run (§H.12.2) has a
+> (`backend/app/collectors/pw_collector.py` `PwCollector._read_history`). The watch of the lab run (§H.12.2) has a
 > pinned value, so a setting of 2 would have refused it.
 
 The lab run also measures what the cost table assumed: seconds per history search by window, rows
@@ -1076,52 +1098,58 @@ what retention buckets exist (P-3 shows whether the API lists them) before the d
 | C-3 | Whether old events keep the payload a custom property is extracted from, and whether an optimised property is extracted at ingest only | P-4 | the coverage rule (§H.6 row 2) already fails closed; if old events never parse, history for custom properties is `PARTIAL` or useless and the editor should say so |
 | C-4 | The ramp of counts near the retention floor (a partial first day) | P-7 | sets the margin |
 | C-5 | Ariel time against window width and rows, for a custom property and for `username`; whether a 168 h grouped search stays below 120 s | P-5, P-6, P-8 | the sub-windows shrink and the ticks of §H.4.5 grow; if 168 h times out, spans are capped lower |
-| C-6 | Whether the `START`/`STOP` pad (`ariel_stop_pad_seconds`, `config.py:136`, `qradar_rest.py:292-312`) behaves on windows days old | covered by P-5 (compare an old window's counts with and without the pad) | the pad is capped at "now" and floored at the window end, so on old windows it only widens the scan by 60 s; a count difference would mean the pad leaks events |
+| C-6 | Whether the `START`/`STOP` pad (`ariel_stop_pad_seconds`, `config.py` `ariel_stop_pad_seconds`, `qradar_rest.py` `QRadarRestProvider._ariel_scope`) behaves on windows days old | covered by P-5 (compare an old window's counts with and without the pad) | the pad is capped at "now" and floored at the window end, so on old windows it only widens the scan by 60 s; a count difference would mean the pad leaks events |
 
 ### H.14.3 Where the code and the Phase G text disagree (the code wins)
 
 1. **`verify_value_history` reads no coverage.** §G.5 says "any verdict that reads an absence as
    evidence [...] requires coverage >= `pw_min_coverage`" (the list names disappearance, drop,
-   "below", `NORMAL`); the new-value claim is an absence claim, and `history.py:12-82` takes no
+   "below", `NORMAL`); the new-value claim is an absence claim, and `history.py` `verify_value_history` takes no
    coverage input. A live parsing break followed by recovery lets a returning value read as new.
    Pre-existing; the bootstrap makes it matter (payload expiry), so §H.6 row 2 adds the check for
    history buckets only (Q5).
 2. **`watch_first_collected_at` is the minimum stored bucket, including a `NOT_COLLECTED` row.**
-   §G.8.3 says "from the watch's first collected bucket"; `repositories/property_watch.py:178-186`
-   takes `min(bucket_start)` over every stored row of the version, a failed first bucket included.
+   §G.8.3 says "from the watch's first collected bucket"; `repositories/property_watch.py`
+   `PropertyWatchRepository.pending_buckets` takes `min(bucket_start)` over every stored row of the
+   version, a failed first bucket included.
    Harmless today; with history the minimum is the oldest history bucket, which is the intended
    meaning.
 3. **Re-enable does not start fresh for the watermarks.** §G.10.1 says "Enabling again starts fresh"
    (about incidents); `PATCH` neither resets `collected_through` nor `evaluated_through`
-   (`routes/property_watches.py:731-863`), so a watch disabled for days catches up
+   (`routes/property_watches.py` `update_watch`), so a watch disabled for days catches up
    `cadence/interval + collection_max_backfill_intervals` buckets per tick from the old watermark
-   (`pw_collector.py:348-357`) and evaluates them. Not in this task's scope; it is a replay of old
+   (`pw_collector.py` `PwCollector.collect`) and evaluates them. Not in this task's scope; it is a replay of old
    events into evaluation of the kind the bootstrap forbids for history. Reported, not changed.
 4. **A version bump keeps the watermarks.** §G.3 says the new version has no baselines and no
    history, and the engine reads only the current version; but `collected_through` is not reset
-   (`routes:826-828`), so the first bucket of the new version is the one after the old watermark.
+   (`routes/property_watches.py` `update_watch`), so the first bucket of the new version is the one
+   after the old watermark.
    For a bootstrap restart (§H.5.4) the watermarks must be reset; the patch route does that only for a
    watch with `history_days`.
 5. **The search window bound.** §G.6/§G.14 speak of windows of "whole buckets" with no bound; the code
-   refuses a window above 168 h (`bucketed_metrics.py:28`). The history span is bounded by it.
+   refuses a window above 168 h (`bucketed_metrics.py` `validate_bucketed_metric_window`). The history
+   span is bounded by it.
 6. **The search timeout.** §G.14.1 gives measured times of 0.4 to 3.5 s; `_run_bounded_aggregate`
-   gives a search 120 s (`qradar_rest.py:2114`) and uses a fixed 1 s sleep; the setting
-   `ariel_poll_interval_seconds` (`config.py:127`) is not used there.
+   gives a search 120 s (`qradar_rest.py` `QRadarRestProvider._run_bounded_aggregate`) and uses a
+   fixed 1 s sleep; the setting `ariel_poll_interval_seconds` (`config.py`
+   `ariel_poll_interval_seconds`) is not used there.
 7. **`admission_truncated` is set by the fold's cut as well as by quota.** §G.7.3 describes it as the
    outcome of a binding ceiling; the code sets it when `rejected > 0` **or** when the fold kept fewer
-   values than it observed (`admission.py:204-213`), including values below the threshold. A bucket
+   values than it observed (`admission.py` `admit_bucket`), including values below the threshold. A bucket
    with more than `pw_max_values_per_bucket` distinct untracked values is therefore never valid
    history. Conservative (fail closed), but it limits what a bootstrap can give for a
    high-cardinality property (§H.4.3).
 8. **`pw_bucket`'s primary key has no `watch_version`.** §G.7.1 stamps buckets with the version "and
-   never compares across it"; the key is `(watch_id, bucket_start)` (`models/property_watch.py:210-212`),
+   never compares across it"; the key is `(watch_id, bucket_start)` (`models/property_watch.py` `PwBucket`),
    so a rewritten window overwrites the other version's rows (§H.5.4). Harmless to readers.
 9. **The PW dispatch has no advisory lock.** The other families hold one per instance or source
-   (`workers/tasks.py:745,891`); `dispatch_property_watch_collection` (`:1394-1442`) relies on
-   `claim_slot` alone. A history step is long enough to need the lock (§H.2.4).
+   (`workers/tasks.py` `collect_anomaly_explanations` and `dispatch_waf_collection`);
+   `dispatch_property_watch_collection` (`workers/tasks.py` `dispatch_property_watch_collection`)
+   relies on `claim_slot` alone. A history step is long enough to need the lock (§H.2.4).
 10. **The cadence default.** §G.3 and the 0026 seed say 1 h; the decision of 2026-10-18 says 5 minutes (T-134
    implemented: migration `0028` moves the untouched seed).
 11. **The static enable cost counts steady state only** (`search_cost`,
-    `services/property_watches.py:406-415`); a bootstrap's draw is outside it by design (§H.4.4).
-12. **Training loads ORM entities for up to 806,000 metric rows** (`training.py:77-80`); PW-3b
-    recorded the bound as "not measured on a console". Bootstrap reaches it on day 1 (§H.8.1).
+    `services/property_watches.py` `search_cost`); a bootstrap's draw is outside it by design (§H.4.4).
+12. **Training loads ORM entities for up to 806,000 metric rows** (`training.py`
+    `PwBaselineTrainer._rebuild_chunk`); PW-3b recorded the bound as "not measured on a console".
+    Bootstrap reaches it on day 1 (§H.8.1).
