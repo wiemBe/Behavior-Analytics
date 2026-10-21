@@ -210,6 +210,27 @@ def test_a_quiet_source_is_zero_filled_from_its_floor_on() -> None:
     ]
 
 
+# ----------------------------------------------------------------- the unmapped rows
+
+
+def test_a_row_of_an_unknown_source_is_counted_and_not_stored() -> None:
+    """The known row is folded; the row of an unknown source is only counted."""
+    fold = CatchallHistoryFold()
+    outcomes = [
+        outcome(T0 - MARGIN, (row("fw-01", 50),)),
+        outcome(T0, (row("fw-01", 50), row("ghost", 50, source=9999))),
+    ]
+
+    folded = fold_chunk(
+        outcomes, sources=SOURCES, fold=fold, policy=POLICY, step=step(), now=NOW
+    )
+
+    assert folded.unmapped_rows == 1
+    # Only the known row is folded: the unknown one's events are not in it.
+    assert [(r_["bucket_start"], r_["events"]) for r_ in folded.rows] == [(T0, 50)]
+    assert {r_["catchall_log_source_id"] for r_ in folded.rows} == {SOURCE}
+
+
 # --------------------------------------------------------------------------- the chunk results
 
 
