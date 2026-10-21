@@ -1,5 +1,6 @@
 import { api, type Page, type RuleHealthCount, type RuleSummary } from "@/lib/api";
 import Link from "next/link";
+import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -28,15 +29,15 @@ export default async function RulesPage({
 
   let page: Page<RuleSummary> | null = null;
   let summary: RuleHealthCount[] = [];
-  let error = false;
+  let error: string | null = null;
 
   try {
     [page, summary] = await Promise.all([
       api.rules({ limit: PAGE_SIZE, offset, search, health_status: health }),
       api.ruleHealthSummary(),
     ]);
-  } catch {
-    error = true;
+  } catch (err) {
+    error = loadErrorMessage(err, "rules", "read:rules");
   }
 
   if (error) {
@@ -47,11 +48,7 @@ export default async function RulesPage({
           actions={<Link href="/rules/statistics">Rule statistics</Link>}
         />
         <div className="notice" role="alert">
-          <p>
-            Backend unreachable. Start the stack, then run{" "}
-            <code>python -m app.cli.sync rules</code>. Nothing was changed; reload once the
-            backend answers.
-          </p>
+          <p>{error}</p>
         </div>
       </>
     );

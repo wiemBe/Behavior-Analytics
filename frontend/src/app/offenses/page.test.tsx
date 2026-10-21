@@ -11,7 +11,7 @@ import {
 } from "@/lib/api";
 
 // States this route renders, from `page.tsx`:
-//  - the read fails (either call in the Promise.all): a "Backend unreachable" notice
+//  - the read fails (either call in the Promise.all): the 403 / 401 / failure sentence from `loadErrorMessage`,
 //    naming the offense sync command;
 //  - no offenses and no filter: the "nothing collected yet" notice;
 //  - no offenses with a search or status filter: the "match these filters" notice;
@@ -78,15 +78,28 @@ async function renderPage(params: Record<string, string> = {}) {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("offense list states", () => {
-  it("explains a failed read and names the sync command", async () => {
+  it("keeps the heading and the query when a read fails", async () => {
     const read = vi.spyOn(api, "offenses").mockRejectedValue(new ApiError(500, "secret"));
     vi.spyOn(api, "offenseAggregates").mockResolvedValue(aggregates());
     await renderPage();
     expect(read).toHaveBeenCalledWith({ limit: 25, offset: 0, search: "", status: "" });
     expect(screen.getByRole("heading", { name: "Offenses" })).toBeInTheDocument();
-    const notice = screen.getByText(/Backend unreachable/);
-    expect(notice).toHaveTextContent("python -m app.cli.sync offenses");
-    expect(notice).not.toHaveTextContent("secret");
+    expect(screen.getByRole("alert")).toHaveTextContent("Offenses could not be loaded.");
+  });
+
+  it.each([
+    [403, new ApiError(403, "secret"), "You do not have permission to view offenses. Ask an administrator for the read:offenses grant."],
+    [401, new ApiError(401, "secret"), "Your session has expired. Sign in again to continue."],
+    [500, new ApiError(500, "secret"), "Offenses could not be loaded. The backend may be unreachable; reload the page to try again."],
+    ["network", new Error("fetch failed"), "Offenses could not be loaded. The backend may be unreachable; reload the page to try again."],
+  ])("names what failed for a %s read failure, with no developer instruction", async (_case, error, sentence) => {
+    vi.spyOn(api, "offenses").mockRejectedValue(error);
+    await renderPage();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(sentence);
+    for (const gone of ["Backend unreachable", "Start the stack", "POST", "secret", "!"]) {
+      expect(alert).not.toHaveTextContent(gone);
+    }
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -259,7 +272,7 @@ describe("offense list layout", () => {
   it("says in an alert what failed and what to do", async () => {
     vi.spyOn(api, "offenses").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("Nothing was changed");
+    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
   });
 });
 

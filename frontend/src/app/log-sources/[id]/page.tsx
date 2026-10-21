@@ -29,7 +29,6 @@ export default async function LogSourceDetailPage({
       </>
     );
   }
-  const hb = d.health_breakdown;
 
   return (
     <>
@@ -41,39 +40,6 @@ export default async function LogSourceDetailPage({
           </>
         }
       />
-
-      {hb ? (
-        <div className="grid">
-          <div className="card">
-            <div className="k">Overall Health</div>
-            <div className="v">
-              {hb.score}
-              <span className="v-unit"> / 100</span>
-            </div>
-          </div>
-          <div className="card">
-            <div className="k">Freshness (40%)</div>
-            <div className="v">{hb.freshness}</div>
-          </div>
-          <div className="card">
-            <div className="k">Volume (25%)</div>
-            <div className="v">{hb.volume}</div>
-          </div>
-          <div className="card">
-            <div className="k">Parsing (20%)</div>
-            <div className="v">{hb.parsing}</div>
-          </div>
-          <div className="card">
-            <div className="k">Collection (15%)</div>
-            <div className="v">{hb.collection}</div>
-          </div>
-        </div>
-      ) : (
-        <div className="notice" role="status">
-          No health score yet. It is computed from freshness, volume, parsing and collection
-          once this source has been measured.
-        </div>
-      )}
 
       <div className="card detail-card">
         <div className="k">Configuration</div>

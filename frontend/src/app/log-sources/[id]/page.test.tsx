@@ -30,8 +30,6 @@ function detail(over: Partial<LogSourceDetail> = {}): LogSourceDetail {
     owner: "SOC",
     owner_email: "soc@example.com",
     qradar_status: "SUCCESS",
-    health_score: 85,
-    health_breakdown: { score: 85, freshness: 90, volume: 80, parsing: 95, collection: 70 },
     business_hours_only: false,
     expected_interval_seconds: 300,
     last_event_time: "2026-10-15T08:59:00Z",
@@ -68,15 +66,11 @@ describe("log source detail states", () => {
 describe("log source detail contents", () => {
   beforeEach(() => vi.spyOn(api, "logSource").mockResolvedValue(detail()));
 
-  it("breaks the health score into its weighted parts", async () => {
+  it("has no health section: no score is computed, so none is promised", async () => {
     await renderPage();
-    const card = (label: string) =>
-      screen.getByText(label, { selector: ".k" }).closest(".card") as HTMLElement;
-    expect(within(card("Overall Health")).getByText("85")).toBeInTheDocument();
-    expect(within(card("Freshness (40%)")).getByText("90")).toBeInTheDocument();
-    expect(within(card("Volume (25%)")).getByText("80")).toBeInTheDocument();
-    expect(within(card("Parsing (20%)")).getByText("95")).toBeInTheDocument();
-    expect(within(card("Collection (15%)")).getByText("70")).toBeInTheDocument();
+    expect(screen.queryByText(/health/i)).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByText("Configuration", { selector: ".k" })).toBeInTheDocument();
   });
 
   it("shows the configuration in the order it is read", async () => {
@@ -95,13 +89,6 @@ describe("log source detail contents", () => {
       "href",
       "/behavior/sources/s-1",
     );
-  });
-
-  it("omits the health breakdown when the source has none", async () => {
-    vi.spyOn(api, "logSource").mockResolvedValue(detail({ health_breakdown: null }));
-    await renderPage();
-    expect(screen.queryByText("Overall Health")).toBeNull();
-    expect(screen.getByText("Configuration", { selector: ".k" })).toBeInTheDocument();
   });
 
   it("draws missing values as unknown, never, or an em dash", async () => {
@@ -136,12 +123,6 @@ describe("log source detail honesty", () => {
     await renderPage();
     const config = screen.getByText("Configuration", { selector: ".k" }).closest(".card")!;
     expect(config).toHaveTextContent("Last event: 2026-10-15 08:59:00 UTC");
-  });
-
-  it("says why there is no health breakdown instead of showing nothing", async () => {
-    vi.spyOn(api, "logSource").mockResolvedValue(detail({ health_breakdown: null }));
-    await renderPage();
-    expect(screen.getByRole("status")).toHaveTextContent("No health score yet");
   });
 
   it("carries no inline style (the page moved them to a stylesheet)", async () => {

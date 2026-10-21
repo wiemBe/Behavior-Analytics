@@ -66,8 +66,6 @@ function meta(over: Partial<LogSourceDetail> = {}): LogSourceDetail {
     owner: "soc",
     owner_email: null,
     qradar_status: "SUCCESS",
-    health_score: 90,
-    health_breakdown: null,
     business_hours_only: false,
     expected_interval_seconds: 60,
     last_event_time: "2026-07-20T10:04:00Z",

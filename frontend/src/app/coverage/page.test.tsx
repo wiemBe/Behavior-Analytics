@@ -13,7 +13,7 @@ import {
 } from "@/lib/api";
 
 // States this route renders, from `page.tsx`:
-//  - any of the four reads fails: a "Backend unreachable" notice naming the coverage
+//  - any of the four reads fails: the 403 / 401 / failure sentence from `loadErrorMessage`, naming the coverage
 //    sync command;
 //  - no technique mappings at all (`total_techniques === 0`): the honest
 //    "Coverage has not been evaluated" state, which must never read as 0% covered;
@@ -120,13 +120,26 @@ beforeEach(() => {
 });
 
 describe("coverage states", () => {
-  it("explains a failed read and names the sync command", async () => {
+  it("keeps the heading when a read fails", async () => {
     vi.spyOn(api, "coverageSummary").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
     expect(screen.getByRole("heading", { name: "Detection Coverage" })).toBeInTheDocument();
-    const notice = screen.getByText(/Backend unreachable/);
-    expect(notice).toHaveTextContent("python -m app.cli.sync coverage");
-    expect(notice).not.toHaveTextContent("secret");
+  });
+
+  it.each([
+    [403, new ApiError(403, "secret"), "You do not have permission to view detection coverage. Ask an administrator for the read:coverage grant."],
+    [401, new ApiError(401, "secret"), "Your session has expired. Sign in again to continue."],
+    [500, new ApiError(500, "secret"), "Detection coverage could not be loaded. The backend may be unreachable; reload the page to try again."],
+    ["network", new Error("fetch failed"), "Detection coverage could not be loaded. The backend may be unreachable; reload the page to try again."],
+  ])("names what failed for a %s read failure, with no developer instruction", async (_case, error, sentence) => {
+    vi.spyOn(api, "coverageSummary").mockRejectedValue(error);
+    await renderPage();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(sentence);
+    for (const gone of ["Backend unreachable", "Start the stack", "POST", "secret", "!"]) {
+      expect(alert).not.toHaveTextContent(gone);
+    }
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("refuses to claim zero coverage when nothing is mapped", async () => {
@@ -310,7 +323,7 @@ describe("coverage layout", () => {
   it("says in an alert what failed and what to do", async () => {
     vi.spyOn(api, "coverageSummary").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("Nothing was changed");
+    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
   });
 });
 

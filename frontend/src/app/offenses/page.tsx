@@ -1,4 +1,5 @@
 import { api, type OffenseAggregates, type OffenseSummary, type Page } from "@/lib/api";
+import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { formatAge, magnitudeTone } from "@/lib/health";
 import { axisTimeLabel } from "@/lib/searchRuns";
@@ -30,7 +31,7 @@ export default async function OffensesPage({
 
   let page: Page<OffenseSummary> | null = null;
   let aggregates: OffenseAggregates | null = null;
-  let error = false;
+  let error: string | null = null;
 
   try {
     // Fetched together: the counters describe the whole instance, not the
@@ -39,8 +40,8 @@ export default async function OffensesPage({
       api.offenses({ limit: PAGE_SIZE, offset, search, status }),
       api.offenseAggregates(),
     ]);
-  } catch {
-    error = true;
+  } catch (err) {
+    error = loadErrorMessage(err, "offenses", "read:offenses");
   }
 
   if (error) {
@@ -48,11 +49,7 @@ export default async function OffensesPage({
       <>
         <PageHeader title="Offenses" />
         <div className="notice" role="alert">
-          <p>
-            Backend unreachable. Start the stack, then run{" "}
-            <code>python -m app.cli.sync offenses</code>. Nothing was changed; reload once the
-            backend answers.
-          </p>
+          <p>{error}</p>
         </div>
       </>
     );

@@ -7,11 +7,3 @@
 .detail-note {
   margin-top: var(--sp-5);
 }
-
-/* The unit after the overall score. */
-.card .v .v-unit {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-normal);
-  color: var(--text-3);
-  letter-spacing: 0;
-}

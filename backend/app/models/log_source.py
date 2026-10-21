@@ -106,6 +106,8 @@ class LogSource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     custom_thresholds: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     # --- derived ------------------------------------------------------------
+    # Never written by the application; the columns stay because dropping them needs a
+    # migration and migrations are additive (the score and its UI were removed, UI-7.1).
     health_score: Mapped[float | None] = mapped_column(Float)
     health_computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

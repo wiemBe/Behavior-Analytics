@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type Alert } from "@/lib/api";
+import { loadErrorMessage } from "@/lib/loadError";
 import { formatDateTimeCompact } from "@/lib/health";
 
 import "./alerts.css";
@@ -13,11 +14,11 @@ function statusTone(status: string): string {
 
 export default async function AlertsPage() {
   let alerts: Alert[] = [];
-  let error = false;
+  let error: string | null = null;
   try {
     alerts = await api.alerts();
-  } catch {
-    error = true;
+  } catch (err) {
+    error = loadErrorMessage(err, "alerts", "read:alerts");
   }
 
   return (
@@ -29,8 +30,7 @@ export default async function AlertsPage() {
 
       {error ? (
         <div className="notice" role="alert">
-          <p>Backend unreachable.</p>
-          <p>Alerts could not be loaded. Check that the stack is running, then reload the page.</p>
+          <p>{error}</p>
         </div>
       ) : alerts.length === 0 ? (
         <div className="notice">No alerts.</div>
