@@ -698,7 +698,7 @@ class MetricCollector:
                 LogSource.monitoring_enabled.is_(True),
             )
         )
-        return dict(rows.tuples().all())
+        return dict(rows.all())
 
     async def _history_step(
         self,

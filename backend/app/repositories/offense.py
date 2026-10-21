@@ -19,6 +19,7 @@ from typing import Any
 
 from sqlalchemy import Select, and_, desc, func, or_, select
 from sqlalchemy import true as sa_true
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import NamedFromClause, Subquery
 
@@ -74,8 +75,8 @@ class OffenseRepository:
         "latest per group" in PostgreSQL and uses the
         (instance_id, qradar_offense_id, captured_at) index directly.
         """
-        stmt = select(OffenseSnapshot).distinct(
-            OffenseSnapshot.instance_id, OffenseSnapshot.qradar_offense_id
+        stmt = select(OffenseSnapshot).ext(
+            distinct_on(OffenseSnapshot.instance_id, OffenseSnapshot.qradar_offense_id)
         )
         if instance_id is not None:
             stmt = stmt.where(OffenseSnapshot.instance_id == instance_id)

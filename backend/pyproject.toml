@@ -78,6 +78,14 @@ addopts = "-q --strict-markers"
 markers = [
     "integration: requires postgres/redis",
 ]
+filterwarnings = [
+    # The locked SQLAlchemy 2.1.4 deprecates APIs our code must not use; a new
+    # one must surface as a test error, not as a growing warnings summary.
+    "error::sqlalchemy.exc.SADeprecationWarning",
+    # A value whose type does not match the response model (e.g. a plain str
+    # where the model declares an enum) warns before it can change the JSON.
+    "error:Pydantic serializer warnings:UserWarning",
+]
 
 [tool.mypy]
 python_version = "3.12"

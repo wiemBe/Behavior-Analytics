@@ -27,7 +27,7 @@ from sqlalchemy import (
     tuple_,
     union_all,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, distinct_on
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
@@ -588,7 +588,7 @@ class AnomalyRepository:
         rows = await self.session.scalars(
             select(m)
             .where(m.log_source_id.in_(ids))
-            .distinct(m.log_source_id)
+            .ext(distinct_on(m.log_source_id))
             .order_by(m.log_source_id, m.bucket_start.desc())
             .options(defer(m.query_provenance))
         )
@@ -805,7 +805,7 @@ class AnomalyRepository:
         rows = await self.session.scalars(
             select(b)
             .where(b.log_source_id.in_(log_source_ids))
-            .distinct(b.log_source_id)
+            .ext(distinct_on(b.log_source_id))
             .order_by(b.log_source_id, b.bucket_start.desc())
             .options(defer(b.query_provenance))
         )

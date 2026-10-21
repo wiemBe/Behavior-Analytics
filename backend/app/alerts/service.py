@@ -224,10 +224,15 @@ class AlertService:
                 evidence_snapshot=data.evidence or {},
                 source_anomaly_ids=data.source_anomaly_ids or [],
             )
+            # Settle the refreshes before the savepoint: flush() no longer
+            # accepts the partial-flush objects argument (deprecated in
+            # SQLAlchemy 2.1), so the nested flush must find only the new alert
+            # pending and a duplicate fingerprint rolls back alone.
+            await self.session.flush()
             try:
                 async with self.session.begin_nested():
                     self.session.add(alert)
-                    await self.session.flush([alert])
+                    await self.session.flush()
             except IntegrityError:
                 # A concurrent worker won after the bulk snapshot. Reload only
                 # this exceptional fingerprint and preserve the outer work.

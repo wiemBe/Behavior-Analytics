@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -236,7 +237,7 @@ class RuleMetricCollector:
                 OffenseSnapshot.instance_id == instance_id,
                 OffenseSnapshot.captured_at >= cutoff,
             )
-            .distinct(OffenseSnapshot.qradar_offense_id)
+            .ext(distinct_on(OffenseSnapshot.qradar_offense_id))
             .order_by(
                 OffenseSnapshot.qradar_offense_id,
                 OffenseSnapshot.captured_at.desc(),
