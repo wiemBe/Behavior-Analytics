@@ -73,6 +73,11 @@ MAX_GAPS = 20
 
 
 
+def source_key(qradar_id: int) -> str:
+    """The key of a source in `SourceFloors`: its QRadar id (as Phase A's is)."""
+    return str(qradar_id)
+
+
 @dataclass(frozen=True)
 class CatchallSource:
     """One catch-all log source of the console: the row's key and the search's id."""
@@ -83,7 +88,7 @@ class CatchallSource:
     @property
     def key(self) -> str:
         """The key the per-source floors are stored under (the QRadar log-source id)."""
-        return str(self.qradar_id)
+        return source_key(self.qradar_id)
 
 
 @dataclass
