@@ -826,6 +826,40 @@ class TestStatementCount:
         assert first_counts == {1: 9, 10: 9}
         assert later_counts == {1: 12, 10: 12}
 
+    async def test_three_failed_sources_write_scope_errors_in_one_statement(
+        self, db_session
+    ) -> None:
+        instance = await make_instance(db_session)
+        source_ids = (500, 501, 502)
+        for source_id in source_ids:
+            await add_source(db_session, instance, source_id)
+        await record_yes(db_session, instance)
+        boundary = boundary_of(NOW)
+        provider = ScriptedIpsProvider(
+            window_events(boundary - timedelta(days=WINDOW_DAYS) - MARGIN, boundary),
+            now=NOW,
+        )
+        provider.ips_fault = lambda search: (
+            ProviderError("SELECT sensitive_property FROM events")
+            if search.window_end < boundary
+            else None
+        )
+
+        with self._counting(db_session) as statements:
+            await collect(db_session, instance, provider, hcfg(), NOW)
+
+        error_writes = [
+            sql
+            for sql in statements
+            if sql.lstrip().startswith("UPDATE history_backfill_scope")
+            and "last_error_class" in sql
+        ]
+        assert len(error_writes) == 1
+        for source_id in source_ids:
+            row = await scope_of(db_session, instance, str(source_id))
+            assert row is not None and row.state == "READING"
+            assert row.last_error_class == "ProviderError" and row.last_error_at == NOW
+
     async def test_the_count_does_not_grow_with_the_span(self, db_session) -> None:
         """A twelve-bucket step and a 2,016-bucket step cost the same statements."""
         counts = {}
@@ -1415,28 +1449,59 @@ class TestOperatorPath:
 
     async def test_a_provider_failure_mid_step_writes_nothing(self, db_session) -> None:
         instance = await make_instance(db_session)
-        _, source = await add_source(db_session, instance, SOURCE_ID)
-        await record_yes(db_session, instance)
         boundary = boundary_of(NOW)
         target = boundary - timedelta(days=WINDOW_DAYS)
         provider = ScriptedIpsProvider(
             window_events(target - MARGIN, boundary), now=NOW
         )
-        provider.ips_fault = lambda search: ProviderError("the appliance refused") if (
-            search.dimension is not IpsDimension.TOTALS
-        ) else None
+        _, live_source = await add_source(db_session, instance, SOURCE_ID + 1)
+        await collect(db_session, instance, provider, hcfg(), NOW - BUCKET)
+        live_before = len(
+            (
+                await db_session.scalars(
+                    select(IpsSourceBucket).where(
+                        IpsSourceBucket.log_source_id == live_source.id,
+                        IpsSourceBucket.origin == "LIVE",
+                    )
+                )
+            ).all()
+        )
+        _, source = await add_source(db_session, instance, SOURCE_ID)
+        await record_yes(db_session, instance)
+        provider.ips_fault = lambda search: (
+            ProviderError("SELECT sensitive_property FROM events")
+            if search.window_end < boundary
+            else None
+        )
 
         await collect(db_session, instance, provider, hcfg(), NOW)
 
         scope = await scope_of(db_session, instance, str(SOURCE_ID))
         assert scope is not None
         assert scope.state == "READING"
+        assert scope.last_error_class == "ProviderError"
+        assert scope.last_error_at == NOW
         rows = (
             await db_session.scalars(
                 select(IpsSourceBucket).where(IpsSourceBucket.log_source_id == source.id)
             )
         ).all()
         assert rows == []
+        live_after = (
+            await db_session.scalars(
+                select(IpsSourceBucket).where(
+                    IpsSourceBucket.log_source_id == live_source.id,
+                    IpsSourceBucket.origin == "LIVE",
+                )
+            )
+        ).all()
+        assert len(live_after) > live_before
+
+        provider.ips_fault = None
+        await collect(db_session, instance, provider, hcfg(), NOW)
+        cleared = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
 
     async def test_two_sources_read_independently(self, db_session) -> None:
         instance = await make_instance(db_session)

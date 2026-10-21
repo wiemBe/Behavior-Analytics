@@ -268,6 +268,8 @@ def scope_out(
         started_at=row.started_at,
         finished_at=row.finished_at,
         reason=row.reason,
+        last_error_class=row.last_error_class,
+        last_error_at=row.last_error_at,
         searches=searches,
         buckets_read=buckets_read,
         days_read=days_read(

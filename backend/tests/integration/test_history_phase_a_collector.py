@@ -522,7 +522,7 @@ async def test_a_fault_in_the_history_step_never_takes_the_live_buckets(
 
     async def broken(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         await original(self, *args, **kwargs)  # the step writes its rows ...
-        raise RuntimeError("a bug in the step")  # ... and then fails
+        raise RuntimeError("SELECT sensitive_property FROM events")  # ... and then fails
 
     monkeypatch.setattr(MetricCollector, "_history_step", broken)
     report = await tick(db_session, console.instance, provider, settings, FIRST_TICK + STEP)
@@ -535,7 +535,15 @@ async def test_a_fault_in_the_history_step_never_takes_the_live_buckets(
     assert mark is not None and mark.watermark_at == ANCHOR + STEP
     scope = await scope_of(db_session, console.instance)
     assert scope is not None and scope.state == "READING" and scope.progress == {}
+    assert scope.last_error_class == "RuntimeError"
+    assert scope.last_error_at == FIRST_TICK + STEP
     assert await history_rows(db_session, console.instance) == []  # rolled back with the step
+
+    monkeypatch.setattr(MetricCollector, "_history_step", original)
+    await tick(db_session, console.instance, provider, settings, FIRST_TICK + 2 * STEP)
+    cleared = await scope_of(db_session, console.instance)
+    assert cleared is not None
+    assert cleared.last_error_class is None and cleared.last_error_at is None
 
 
 # ------------------------------------------------------------- never over live

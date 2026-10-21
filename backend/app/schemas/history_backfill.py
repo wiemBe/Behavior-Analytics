@@ -78,6 +78,8 @@ class ScopeOut(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     reason: str | None
+    last_error_class: str | None
+    last_error_at: datetime | None
     #: From the decoded progress; None for a `{}` progress or one that does not decode.
     searches: int | None
     buckets_read: int | None

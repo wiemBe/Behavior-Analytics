@@ -187,7 +187,7 @@ def test_0030_round_trip_carries_live_rows_and_downgrade_deletes_history(clean_d
             _seed_bucket_family(connection, LIVE_AT)
             _history_phase_a_rows(connection)
 
-        command.upgrade(config, "head")
+        command.upgrade(config, "0030")
         with engine.begin() as connection:
             assert MigrationContext.configure(connection).get_current_revision() == "0030"
             for table in FOUR_TABLES:
@@ -445,7 +445,7 @@ def test_0030_adds_origin_to_a_populated_hypertable_with_a_compressed_chunk(
             )
             assert _compressed_chunks(connection, table) >= 1
 
-        command.upgrade(config, "head")
+        command.upgrade(config, "0030")
         with engine.begin() as connection:
             assert connection.execute(text(f"SELECT origin FROM {table}")).scalar_one() == "LIVE"  # noqa: S608
             assert _compressed_chunks(connection, table) >= 1
@@ -536,7 +536,7 @@ def test_0030_decision_requests_columns_checks_and_round_trip(clean_db: str) -> 
     from alembic import command
 
     config = _alembic_config(clean_db)
-    command.upgrade(config, "head")
+    command.upgrade(config, "0030")
     engine = create_engine(clean_db, future=True)
     try:
         with engine.begin() as connection:

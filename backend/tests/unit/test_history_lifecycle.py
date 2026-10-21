@@ -362,6 +362,7 @@ def test_new_scope_row_has_every_column(family, live) -> None:  # type: ignore[n
     assert values["days_requested"] == 28
     assert values["progress"] == {}
     assert values["reason"] == action.reason
+    assert values["last_error_class"] is None and values["last_error_at"] is None
     reading = action.state is S.READING
     not_eligible = action.state is S.NOT_ELIGIBLE
     assert (values["started_at"] == NOW) is reading
@@ -415,6 +416,24 @@ def test_transition_row_anchor_found_starts_reading() -> None:
     assert (values["state"], values["anchor"], values["started_at"], values["finished_at"]) == (
         "READING", ANCHOR, NOW, None)
     assert values["progress"] == {}
+
+
+def test_transition_row_clears_the_previous_step_error() -> None:
+    reading = row(S.READING, days_requested=28, started_at=NOW - timedelta(hours=1))
+    action = act(F.PHASE_A, ConsoleMode.STOPPED, decision=stopped_decision(), scope=reading)
+
+    values = transition_row(
+        action,
+        instance_id=INSTANCE,
+        family=F.PHASE_A,
+        scope_key="",
+        row=reading,
+        decision=stopped_decision(),
+        at=NOW,
+    )
+
+    assert values["state"] == "PARTIAL"
+    assert values["last_error_class"] is None and values["last_error_at"] is None
 
 
 @pytest.mark.parametrize("state", [S.PARTIAL, S.COMPLETE])

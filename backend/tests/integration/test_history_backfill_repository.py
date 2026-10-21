@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.history.lifecycle import MAX_REASON_LENGTH, SCOPE_COLUMNS, bounded_reason
 from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
+from app.providers.base import ProviderError
 from app.repositories.history_backfill import HistoryBackfillRepository
 from tests.integration.factories import make_instance
 from tests.integration.test_rule_match_collection import recorded_statements
@@ -26,7 +27,7 @@ def scope_row(instance_id: uuid.UUID, family: str = "WAF", key: str = "1", **ext
         "instance_id": instance_id, "family": family, "scope_key": key, "state": "READING",
         "days_requested": 28, "days_target": None, "target_start": None, "floor": None,
         "through": None, "anchor": None, "started_at": NOW, "finished_at": None,
-        "reason": None, "progress": {},
+        "reason": None, "last_error_class": None, "last_error_at": None, "progress": {},
     }
     values.update(extra)
     return values
@@ -117,6 +118,50 @@ async def test_write_scopes_with_no_rows_sends_nothing(db_session) -> None:  # t
     assert statements == []
 
 
+async def test_step_errors_are_one_statement_class_only_and_the_next_write_clears(  # type: ignore[no-untyped-def]
+    db_session,
+) -> None:
+    instance = await make_instance(db_session)
+    repo = HistoryBackfillRepository(db_session)
+    await repo.write_scopes([scope_row(instance.id, family="IPS", key=str(i)) for i in range(3)])
+    message = "SELECT sensitive_property FROM events"
+
+    with recorded_statements(db_session, only="history_backfill_scope") as statements:
+        await repo.write_step_errors(
+            instance.id,
+            "IPS",
+            {str(i): ProviderError(message) for i in range(3)},
+            at=LATER,
+        )
+
+    assert len(statements) == 1
+    rows = await stored(db_session, instance.id)
+    assert {
+        (rows[("IPS", str(i))].last_error_class, rows[("IPS", str(i))].last_error_at)
+        for i in range(3)
+    } == {("ProviderError", LATER)}
+    assert message not in " ".join(row.last_error_class or "" for row in rows.values())
+
+    await repo.write_scopes([scope_row(instance.id, family="IPS", key=str(i)) for i in range(3)])
+    cleared = await stored(db_session, instance.id)
+    assert all(
+        row.last_error_class is None and row.last_error_at is None for row in cleared.values()
+    )
+
+
+async def test_step_error_class_is_bounded_to_64_characters(db_session) -> None:  # type: ignore[no-untyped-def]
+    instance = await make_instance(db_session)
+    repo = HistoryBackfillRepository(db_session)
+    await repo.write_scopes([scope_row(instance.id)])
+    long_error_class = type("X" * 80, (Exception,), {})
+
+    await repo.write_step_errors(instance.id, "WAF", {"1": long_error_class()}, at=LATER)
+
+    row = (await stored(db_session, instance.id))[("WAF", "1")]
+    assert row.last_error_class == "X" * 64
+    assert row.last_error_at == LATER
+
+
 # --------------------------------------------------------------------------- reads
 async def test_scopes_and_decisions_are_one_statement_each(db_session) -> None:  # type: ignore[no-untyped-def]
     one, other = await make_instance(db_session), await make_instance(db_session)
@@ -201,8 +246,10 @@ async def test_upgrade_to_yes_changes_only_a_no(db_session) -> None:  # type: ig
 
 async def test_there_is_no_way_to_turn_a_yes_into_a_no() -> None:
     names = {n for n in dir(HistoryBackfillRepository) if not n.startswith("_")}
-    assert names == {"decisions", "scopes", "write_scopes", "record_decision", "upgrade_to_yes",
-                     "request_start", "request_stop"}
+    assert names == {
+        "decisions", "scopes", "write_scopes", "write_step_errors", "record_decision",
+        "upgrade_to_yes", "request_start", "request_stop",
+    }
 
 
 @pytest.mark.parametrize("kind", ["start", "stop"])

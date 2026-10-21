@@ -533,5 +533,7 @@ def scope_row(
         "started_at": view.started_at,
         "finished_at": view.finished_at,
         "reason": bounded_reason(reason if reason is not None else (view.reason or "")),
+        "last_error_class": None,
+        "last_error_at": None,
         "progress": dict(view.progress) if view.progress else {},
     }
