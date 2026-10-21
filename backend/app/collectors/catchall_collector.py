@@ -202,6 +202,9 @@ class CatchallCollectionReport:
     history_scope_state: HistoryState | None = None
     #: Buckets a history step wrote.
     history_buckets_written: int = 0
+    #: Rows a history step saw of a log source this instance's inventory does
+    #: not know (not stored), as the live fold's `unmapped_rows` counts them.
+    history_unmapped_rows: int = 0
     #: Senders a history step wrote.
     history_senders_written: int = 0
     #: Searches a history step sent.
@@ -328,6 +331,7 @@ class CatchallCollector:
                 "buckets_failed": report.buckets_failed,
                 "buckets_not_collected": report.buckets_not_collected,
                 "senders_admitted": report.senders_admitted,
+                "history_unmapped_rows": report.history_unmapped_rows,
                 "duration_ms": report.duration_ms,
             },
         )
@@ -926,6 +930,8 @@ class CatchallCollector:
             chunks.append(folded)
             results.extend(folded.results)
         report.history_searches = history_budget.used
+        # Rows the fold dropped as unmapped: counted per chunk, never stored.
+        report.history_unmapped_rows = sum(chunk.unmapped_rows for chunk in chunks)
         settlement = settle_step(progress, results, end=anchor, settings=planner)
         new_progress = settlement.progress
         # The window is fitted to the budget from the density the read observed

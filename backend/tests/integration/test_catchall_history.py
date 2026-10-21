@@ -219,7 +219,13 @@ class TestLifecycle:
         assert waiting is not None and waiting.state == "WAITING"
         assert waiting.progress == {}
 
-        working = provider(always(row("fw-01", 50)))
+        working = provider(
+            lambda start: (
+                [row("fw-01", 50), row("ghost", 50, source=9999)]
+                if start == T0
+                else [row("fw-01", 50)]
+            )
+        )
         second = await collector(db_session, working).collect(inst)
 
         # The live bucket exists: the scope starts reading (the hand-off is a tick).
@@ -234,6 +240,8 @@ class TestLifecycle:
         # The first step reads the window and writes the history buckets.
         assert third.history_scope_state is HistoryState.READING
         assert third.history_buckets_written > 0
+        # The one row of an unknown source in the read window: counted, not stored.
+        assert third.history_unmapped_rows == 1
         history = await buckets(db_session, "HISTORY")
         assert history and all(b.origin == "HISTORY" for b in history)
         assert min(b.bucket_start for b in history) >= T0

@@ -134,6 +134,9 @@ class CatchallChunk:
     touches: Mapping[datetime, Mapping[tuple[uuid.UUID, str], SenderTouch]]
     #: The planner's results of the chunk, in time order.
     results: tuple[ChunkResult, ...]
+    #: Rows of a log source the inventory does not know (not stored), as the
+    #: live report's `unmapped_rows` counts them.
+    unmapped_rows: int = 0
 
 
 def reading_progress(
@@ -374,6 +377,7 @@ def fold_chunk(
     ordered = sorted(sources, key=lambda source: source.qradar_id)
     rows: list[dict[str, Any]] = []
     touches: dict[datetime, dict[tuple[uuid.UUID, str], SenderTouch]] = {}
+    unmapped = 0
     for outcome in outcomes:
         if not outcome.measured:
             continue
@@ -381,7 +385,9 @@ def fold_chunk(
         for row in outcome.rows:
             source = by_qradar.get(row.qradar_log_source_id)
             if source is None:
-                # A row of a source the inventory does not know is not stored.
+                # A row of a source the inventory does not know is not stored;
+                # the chunk still counts it, as the live fold counts it.
+                unmapped += 1
                 continue
             by_source.setdefault(source.qradar_id, []).append(row)
         # The floor proof: the first bucket in which the source has a row.
@@ -442,6 +448,7 @@ def fold_chunk(
         results=tuple(
             chunk_results(outcomes, bucket_seconds=step.bucket_seconds, searches=searches)
         ),
+        unmapped_rows=unmapped,
     )
 
 
