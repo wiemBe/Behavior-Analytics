@@ -228,6 +228,15 @@ describe("property-watch save and preview", () => {
 });
 
 describe("property-watch history controls", () => {
+  const historyRequestName = /Read history from QRadar/;
+
+  function addPinnedValue(value = "svc-admin") {
+    fireEvent.click(screen.getByRole("button", { name: "Add pinned value" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "username" }), {
+      target: { value },
+    });
+  }
+
   it("states the server switch reason and disables the request", () => {
     render(
       <WatchEditor
@@ -237,6 +246,61 @@ describe("property-watch history controls", () => {
     );
     expect(screen.getByRole("checkbox", { name: /Read history from QRadar/ })).toBeDisabled();
     expect(screen.getByText("History reading is switched off on this server.")).toBeInTheDocument();
+  });
+
+  it("uses the per-reading setting for a pinned watch but permits an unpinned step", () => {
+    const settingLimited = catalog({
+      history: { ...catalog().history, searches_per_tick: 2, searches_free: 16 },
+    });
+    const pinned = render(<WatchEditor catalog={settingLimited} mode="create" />);
+    addPinnedValue();
+    expect(screen.getByRole("checkbox", { name: historyRequestName })).toBeDisabled();
+    expect(
+      screen.getByText(
+        "History needs 3 searches per tick for this watch; this server gives a history reading at most 2 (PW_BOOTSTRAP_SEARCHES_PER_TICK).",
+      ),
+    ).toBeInTheDocument();
+
+    pinned.unmount();
+    render(<WatchEditor catalog={settingLimited} mode="create" />);
+    expect(screen.getByRole("checkbox", { name: historyRequestName })).toBeEnabled();
+  });
+
+  it("keeps the free-budget reason when the tick budget binds", () => {
+    const freeLimited = catalog({
+      history: { ...catalog().history, searches_per_tick: 12, searches_free: 2 },
+    });
+    render(<WatchEditor catalog={freeLimited} mode="create" />);
+    addPinnedValue();
+    expect(screen.getByRole("checkbox", { name: historyRequestName })).toBeDisabled();
+    expect(
+      screen.getByText("History needs 3 free searches per tick for this watch; 2 are free."),
+    ).toBeInTheDocument();
+  });
+
+  it("permits history when both limits exactly pay for a pinned step", () => {
+    const exact = catalog({
+      history: { ...catalog().history, searches_per_tick: 3, searches_free: 3 },
+    });
+    render(<WatchEditor catalog={exact} mode="create" />);
+    addPinnedValue();
+    expect(screen.getByRole("checkbox", { name: historyRequestName })).toBeEnabled();
+  });
+
+  it("sends zero history days when the per-reading setting disables the option", async () => {
+    const settingLimited = catalog({
+      history: { ...catalog().history, searches_per_tick: 2, searches_free: 16 },
+    });
+    render(<WatchEditor catalog={settingLimited} mode="create" />);
+    addPinnedValue();
+    fireEvent.change(screen.getByRole("textbox", { name: "Watch name" }), {
+      target: { value: "Setting limited" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Choose fixture scope" }));
+    await save();
+    expect(api.createPropertyWatch).toHaveBeenCalledWith(
+      expect.objectContaining({ history_days: 0 }),
+    );
   });
 
   it("states the free and needed searches for pinned and unpinned watches", () => {
