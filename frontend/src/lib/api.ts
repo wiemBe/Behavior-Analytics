@@ -357,11 +357,9 @@ export interface SocOverview {
   instance_version: string | null;
   instance_last_health_check_at?: string | null;
   generated_at: string;
-  average_health_score: number | null;
   log_sources: {
     total_log_sources: number;
     monitored_log_sources: number;
-    healthy_log_sources: number;
     silent_log_sources: number;
     anomalous_log_sources: number;
     in_maintenance: number;
@@ -387,7 +385,6 @@ export interface LogSourceSummary {
   maintenance_mode: boolean;
   qradar_status: string | null;
   last_event_time: string | null;
-  health_score: number | null;
   open_anomaly_count: number;
 }
 
@@ -408,14 +405,6 @@ export interface LogSourceDetail {
   owner: string | null;
   owner_email: string | null;
   qradar_status: string | null;
-  health_score: number | null;
-  health_breakdown: {
-    score: number;
-    freshness: number;
-    volume: number;
-    parsing: number;
-    collection: number;
-  } | null;
   business_hours_only: boolean;
   expected_interval_seconds: number | null;
   last_event_time: string | null;

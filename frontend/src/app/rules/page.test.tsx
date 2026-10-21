@@ -76,6 +76,22 @@ describe("rules list layout", () => {
   it("says in an alert what failed and what to do", async () => {
     vi.spyOn(api, "rules").mockRejectedValue(new ApiError(500, "secret"));
     render(await RulesPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Nothing was changed");
+    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+  });
+
+  it.each([
+    [403, new ApiError(403, "secret"), "You do not have permission to view rules. Ask an administrator for the read:rules grant."],
+    [401, new ApiError(401, "secret"), "Your session has expired. Sign in again to continue."],
+    [500, new ApiError(500, "secret"), "Rules could not be loaded. The backend may be unreachable; reload the page to try again."],
+    ["network", new Error("fetch failed"), "Rules could not be loaded. The backend may be unreachable; reload the page to try again."],
+  ])("names what failed for a %s read failure, with no developer instruction", async (_case, error, sentence) => {
+    vi.spyOn(api, "rules").mockRejectedValue(error);
+    await RulesPage({ searchParams: Promise.resolve({}) }).then((p) => render(p));
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(sentence);
+    for (const gone of ["Backend unreachable", "Start the stack", "POST", "secret", "!"]) {
+      expect(alert).not.toHaveTextContent(gone);
+    }
+    expect(screen.queryByRole("table")).toBeNull();
   });
 });

@@ -5,7 +5,7 @@ import AlertsPage from "./page";
 import { ApiError, api, type Alert } from "@/lib/api";
 
 // States this route renders, from `page.tsx`:
-//  - the read fails: a bare "Backend unreachable" notice;
+//  - the read fails: the 403 / 401 / failure sentence from `loadErrorMessage`;
 //  - no alerts: the terse "No alerts." notice;
 //  - the normal list: the lifecycle explainer, the six columns, the per-row link, the
 //    severity and status pills and the occurrence count;
@@ -44,12 +44,25 @@ async function renderPage() {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("alert list states", () => {
-  it("explains a failed read", async () => {
+  it("keeps the heading when the read fails", async () => {
     vi.spyOn(api, "alerts").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
     expect(screen.getByRole("heading", { name: "Alerts" })).toBeInTheDocument();
-    const notice = screen.getByText("Backend unreachable.");
-    expect(notice).not.toHaveTextContent("secret");
+  });
+
+  it.each([
+    [403, new ApiError(403, "secret"), "You do not have permission to view alerts. Ask an administrator for the read:alerts grant."],
+    [401, new ApiError(401, "secret"), "Your session has expired. Sign in again to continue."],
+    [500, new ApiError(500, "secret"), "Alerts could not be loaded. The backend may be unreachable; reload the page to try again."],
+    ["network", new Error("fetch failed"), "Alerts could not be loaded. The backend may be unreachable; reload the page to try again."],
+  ])("names what failed for a %s read failure, with no developer instruction", async (_case, error, sentence) => {
+    vi.spyOn(api, "alerts").mockRejectedValue(error);
+    await renderPage();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(sentence);
+    for (const gone of ["Backend unreachable", "Start the stack", "POST", "secret", "!"]) {
+      expect(alert).not.toHaveTextContent(gone);
+    }
     expect(screen.queryByRole("table")).toBeNull();
   });
 

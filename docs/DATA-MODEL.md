@@ -60,9 +60,8 @@ A bucket read from QRadar's past is marked in `collection_source` (`ariel_histor
 store bounded aggregate contributors and per-dimension completeness; raw events do not leave the
 folding functions.
 
-A pure 0–100 health-score function exists for freshness, volume, parsing and collection inputs, but
-the live collector does not populate all of those inputs and does not call that score. It must not
-be interpreted as a collected live health measure.
+`log_source.health_score` and `health_computed_at` are never written and no API or page shows
+them; the columns stay because dropping them needs a migration.
 
 ## WAF behavior
 

@@ -2,24 +2,18 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type LogSourceSummary } from "@/lib/api";
 import { formatDateTimeCompact } from "@/lib/health";
+import { loadErrorMessage } from "@/lib/loadError";
 
 import "./log-sources.css";
 import { qradarStatusLabel, qradarStatusTone } from "./qradarStatus";
 
-function healthTone(score: number | null): "ok" | "warn" | "crit" | undefined {
-  if (score == null) return undefined;
-  if (score >= 70) return "ok";
-  if (score >= 40) return "warn";
-  return "crit";
-}
-
 export default async function LogSourcesPage() {
   let sources: LogSourceSummary[] = [];
-  let error = false;
+  let error: string | null = null;
   try {
     sources = await api.logSources();
-  } catch {
-    error = true;
+  } catch (err) {
+    error = loadErrorMessage(err, "log sources", "read:log_sources");
   }
 
   return (
@@ -37,7 +31,7 @@ export default async function LogSourcesPage() {
 
       {error ? (
         <div className="notice" role="alert">
-          Backend unreachable — start the stack, then POST <code>/api/v1/log-sources/sync</code>.
+          {error}
         </div>
       ) : sources.length === 0 ? (
         <div className="notice">
@@ -52,7 +46,6 @@ export default async function LogSourcesPage() {
                 <th>Type</th>
                 <th>Criticality</th>
                 <th>Status</th>
-                <th className="num">Health</th>
                 <th className="num">Anomalies</th>
                 <th>Last Event</th>
               </tr>
@@ -69,11 +62,6 @@ export default async function LogSourcesPage() {
                   <td>
                     <span className={`pill ${qradarStatusTone(s.qradar_status)}`}>
                       {qradarStatusLabel(s.qradar_status)}
-                    </span>
-                  </td>
-                  <td className="num">
-                    <span className={`pill ${healthTone(s.health_score) ?? ""}`}>
-                      {s.health_score ?? "—"}
                     </span>
                   </td>
                   <td className="num">

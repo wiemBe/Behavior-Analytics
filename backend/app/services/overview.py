@@ -40,11 +40,9 @@ class OverviewService:
                 instance.last_health_check_at if instance else None
             ),
             generated_at=datetime.now(UTC),
-            average_health_score=counts["avg_health"],
             log_sources=OverviewCounts(
                 total_log_sources=counts["total"],
                 monitored_log_sources=counts["monitored"],
-                healthy_log_sources=counts["healthy"],
                 silent_log_sources=silent,
                 anomalous_log_sources=anomalous,
                 in_maintenance=counts["maintenance"],

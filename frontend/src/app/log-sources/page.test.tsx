@@ -5,15 +5,15 @@ import LogSourcesPage from "./page";
 import { ApiError, api, type LogSourceSummary } from "@/lib/api";
 
 // States this route renders, from `page.tsx`:
-//  - the read fails: a "Backend unreachable" notice naming the sync endpoint;
+//  - the read fails: the 403 / 401 / failure sentence from `loadErrorMessage`;
 //  - no sources (a successful empty read): the "No log sources yet" notice;
 //  - the normal inventory: the source count, the table, the maintenance marker and
-//    the status / health / anomaly pills;
+//    the status / anomaly pills;
 //  - honesty: a missing type is an em dash, a missing QRadar status reads "unknown",
-//    a missing health score is an em dash, a zero anomaly count is a plain "0" and a
+//    a zero anomaly count is a plain "0" and a
 //    source that has never sent an event says "never".
-// The status, health and maintenance pills carry a tone class the page uses as
-// meaning (SUCCESS -> ok, otherwise crit; health >= 70 ok, >= 40 warn, else crit),
+// The status and maintenance pills carry a tone class the page uses as
+// meaning (SUCCESS -> ok, otherwise crit),
 // so those are asserted. The honesty gaps T-096 recorded are asserted in the last block.
 
 function source(over: Partial<LogSourceSummary> = {}): LogSourceSummary {
@@ -29,7 +29,6 @@ function source(over: Partial<LogSourceSummary> = {}): LogSourceSummary {
     maintenance_mode: false,
     qradar_status: "SUCCESS",
     last_event_time: "2026-10-15T08:59:00Z",
-    health_score: 85,
     open_anomaly_count: 0,
     ...over,
   };
@@ -42,13 +41,25 @@ async function renderPage() {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("log source list states", () => {
-  it("explains a failed read and names the sync endpoint", async () => {
+  it("keeps the heading when the read fails", async () => {
     vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
     expect(screen.getByRole("heading", { name: "Log Sources" })).toBeInTheDocument();
-    const notice = screen.getByText(/Backend unreachable/);
-    expect(notice).toHaveTextContent("POST /api/v1/log-sources/sync");
-    expect(notice).not.toHaveTextContent("secret");
+  });
+
+  it.each([
+    [403, new ApiError(403, "secret"), "You do not have permission to view log sources. Ask an administrator for the read:log_sources grant."],
+    [401, new ApiError(401, "secret"), "Your session has expired. Sign in again to continue."],
+    [500, new ApiError(500, "secret"), "Log sources could not be loaded. The backend may be unreachable; reload the page to try again."],
+    ["network", new Error("fetch failed"), "Log sources could not be loaded. The backend may be unreachable; reload the page to try again."],
+  ])("names what failed for a %s read failure, with no developer instruction", async (_case, error, sentence) => {
+    vi.spyOn(api, "logSources").mockRejectedValue(error);
+    await renderPage();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(sentence);
+    for (const gone of ["Backend unreachable", "Start the stack", "POST", "secret", "!"]) {
+      expect(alert).not.toHaveTextContent(gone);
+    }
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -76,7 +87,6 @@ describe("log source list contents", () => {
       "Type",
       "Criticality",
       "Status",
-      "Health",
       "Anomalies",
       "Last Event",
     ]) {
@@ -90,17 +100,21 @@ describe("log source list contents", () => {
     expect(row).toHaveTextContent("Check Point Firewall");
     expect(row).toHaveTextContent("HIGH");
     expect(row).toHaveTextContent("SUCCESS");
-    expect(row).toHaveTextContent("85");
   });
 
-  it("marks a source in maintenance and tones its status and health", async () => {
+  it("has no Health column: no score is computed, so none is drawn", async () => {
+    await renderPage();
+    expect(screen.queryByRole("columnheader", { name: "Health" })).toBeNull();
+    expect(within(screen.getByRole("table")).getAllByRole("columnheader")).toHaveLength(6);
+  });
+
+  it("marks a source in maintenance and tones its status", async () => {
     vi.spyOn(api, "logSources").mockResolvedValue([
-      source({ maintenance_mode: true, health_score: 45 }),
+      source({ maintenance_mode: true }),
     ]);
     await renderPage();
     expect(screen.getByText("maint")).toHaveClass("warn");
     expect(screen.getByText("SUCCESS")).toHaveClass("ok");
-    expect(screen.getByText("45")).toHaveClass("warn");
   });
 
   it("shows a positive anomaly count as an alarm and a zero as a plain zero", async () => {
@@ -118,12 +132,12 @@ describe("log source list contents", () => {
 
   it("draws missing values as em dashes and unknown, never zero", async () => {
     vi.spyOn(api, "logSources").mockResolvedValue([
-      source({ type_name: null, qradar_status: null, health_score: null, last_event_time: null }),
+      source({ type_name: null, qradar_status: null, last_event_time: null }),
     ]);
     await renderPage();
     const row = screen.getByRole("table").querySelector("tbody tr") as HTMLElement;
-    // The type and the health score are both unmeasured.
-    expect(within(row).getAllByText("—")).toHaveLength(2);
+    // The type is unmeasured.
+    expect(within(row).getAllByText("—")).toHaveLength(1);
     expect(within(row).getByText("unknown")).toBeInTheDocument();
     expect(row).toHaveTextContent("never");
   });
@@ -175,21 +189,19 @@ describe("log source list layout", () => {
     expect(within(region).getByRole("table")).toBeInTheDocument();
   });
 
-  it("right-aligns the health and anomaly figures", async () => {
+  it("right-aligns the anomaly figure", async () => {
     vi.spyOn(api, "logSources").mockResolvedValue([source()]);
     await renderPage();
     const row = within(screen.getByRole("table")).getAllByRole("row")[1];
     const cells = within(row).getAllByRole("cell");
     expect(cells[4]).toHaveClass("num");
-    expect(cells[5]).toHaveClass("num");
-    expect(screen.getByRole("columnheader", { name: "Health" })).toHaveClass("num");
     expect(screen.getByRole("columnheader", { name: "Anomalies" })).toHaveClass("num");
   });
 
   it("says what failed as an alert", async () => {
     vi.spyOn(api, "logSources").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
-    expect(screen.getByRole("alert")).toHaveTextContent("Backend unreachable");
+    expect(screen.getByRole("alert")).toHaveTextContent("Log sources could not be loaded.");
   });
 });
 

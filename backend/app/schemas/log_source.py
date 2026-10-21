@@ -15,14 +15,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.enums import AnomalyType, Criticality, Severity
 
 
-class HealthBreakdown(BaseModel):
-    score: float
-    freshness: float
-    volume: float
-    parsing: float
-    collection: float
-
-
 class LogSourceSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -37,7 +29,6 @@ class LogSourceSummary(BaseModel):
     maintenance_mode: bool
     qradar_status: str | None
     last_event_time: datetime | None
-    health_score: float | None
     open_anomaly_count: int = 0
 
 
@@ -54,8 +45,6 @@ class LogSourceDetail(LogSourceSummary):
     business_days: list[int]
     timezone_name: str
     custom_thresholds: dict
-    health_breakdown: HealthBreakdown | None = None
-    health_computed_at: datetime | None = None
 
 
 class LogSourceUpdate(BaseModel):
@@ -101,7 +90,6 @@ class SyncResult(BaseModel):
 class OverviewCounts(BaseModel):
     total_log_sources: int
     monitored_log_sources: int
-    healthy_log_sources: int
     silent_log_sources: int
     anomalous_log_sources: int
     in_maintenance: int
@@ -130,4 +118,3 @@ class SocOverview(BaseModel):
     log_sources: OverviewCounts
     offenses: OverviewOffenses
     alerts: OverviewAlerts
-    average_health_score: float | None

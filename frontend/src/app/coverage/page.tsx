@@ -6,6 +6,7 @@ import {
   type RuleCoverageView,
   type TechniqueCoverage,
 } from "@/lib/api";
+import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -32,7 +33,7 @@ export default async function CoveragePage({
   let page: Page<TechniqueCoverage> | null = null;
   let byRule: RuleCoverageView[] = [];
   let byDataSource: DataSourceCoverageView[] = [];
-  let error = false;
+  let error: string | null = null;
 
   try {
     [summary, page, byRule, byDataSource] = await Promise.all([
@@ -41,8 +42,8 @@ export default async function CoveragePage({
       api.coverageByRule(),
       api.coverageByDataSource(),
     ]);
-  } catch {
-    error = true;
+  } catch (err) {
+    error = loadErrorMessage(err, "detection coverage", "read:coverage");
   }
 
   if (error) {
@@ -50,11 +51,7 @@ export default async function CoveragePage({
       <>
         <PageHeader title="Detection Coverage" />
         <div className="notice" role="alert">
-          <p>
-            Backend unreachable. Start the stack, then run{" "}
-            <code>python -m app.cli.sync coverage</code>. Nothing was changed; reload once the
-            backend answers.
-          </p>
+          <p>{error}</p>
         </div>
       </>
     );
