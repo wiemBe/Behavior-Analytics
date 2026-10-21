@@ -301,13 +301,19 @@ export function WatchEditor({
       currentWatch.coverage !== null ||
       currentWatch.collected_through !== null ||
       currentWatch.evaluated_through !== null);
+  const historySearchesAvailable = Math.min(
+    catalog.history.searches_per_tick,
+    catalog.history.searches_free,
+  );
   const historyDisabledReason =
     historyLocked && currentWatch
       ? `${historyHeaderText(currentWatch.history)}. The request cannot change after history or collected buckets exist.`
       : !catalog.history.enabled
         ? "History reading is switched off on this server."
-        : catalog.history.searches_free < historyNeed
-          ? `History needs ${historyNeed} free searches per tick for this watch; ${catalog.history.searches_free} ${catalog.history.searches_free === 1 ? "is" : "are"} free.`
+        : historySearchesAvailable < historyNeed
+          ? catalog.history.searches_per_tick <= catalog.history.searches_free
+            ? `History needs ${historyNeed} searches per tick for this watch; this server gives a history reading at most ${catalog.history.searches_per_tick} (PW_BOOTSTRAP_SEARCHES_PER_TICK).`
+            : `History needs ${historyNeed} free searches per tick for this watch; ${catalog.history.searches_free} ${catalog.history.searches_free === 1 ? "is" : "are"} free.`
           : null;
   // A disabled section never asks for history: the form shows, and sends, what will happen.
   const shown: WatchDraft =
