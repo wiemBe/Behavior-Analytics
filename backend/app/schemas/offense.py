@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -22,10 +23,19 @@ class _Sanitized(BaseModel):
     @field_validator("*", mode="after")
     @classmethod
     def _strip_markup(cls, value: object) -> object:
-        if isinstance(value, str):
+        # Every str is sanitized except an enum.Enum member. Enum members are
+        # str subclasses (StrEnum) whose values are code constants, not user
+        # text; running them through the sanitizer returns a bare str, which
+        # replaces the member the response model declared and trips pydantic's
+        # serializer. Any other str subclass is ordinary text and must go
+        # through the sanitizer.
+        if isinstance(value, str) and not isinstance(value, Enum):
             return sanitize_text(value)
         if isinstance(value, list):
-            return [sanitize_text(v) if isinstance(v, str) else v for v in value]
+            return [
+                sanitize_text(v) if isinstance(v, str) and not isinstance(v, Enum) else v
+                for v in value
+            ]
         return value
 
 

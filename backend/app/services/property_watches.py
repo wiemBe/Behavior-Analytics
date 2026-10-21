@@ -33,6 +33,7 @@ from itertools import pairwise
 from typing import Any, Literal, cast
 
 from sqlalchemy import and_, func, null, select, tuple_
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import AlertEnqueuer
@@ -817,7 +818,7 @@ async def _latest_coverage(
             ),
         )
         .where(PwBucket.watch_id.in_(watch_ids))
-        .distinct(PwBucket.watch_id)
+        .ext(distinct_on(PwBucket.watch_id))
         .order_by(PwBucket.watch_id, PwBucket.bucket_start.desc())
     )
     return {
