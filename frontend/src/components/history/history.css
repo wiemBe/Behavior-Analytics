@@ -116,6 +116,9 @@
   display: grid;
   gap: var(--sp-2);
 }
+.hb-last-error.warn {
+  color: var(--warn-text);
+}
 
 /* --- the first-run dialog (a native <dialog>, as the widget Catalog and Expand) ------------ */
 
