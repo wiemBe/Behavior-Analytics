@@ -957,7 +957,7 @@ class RuleMatchCollector:
                 RuleMatchWindow.status == RuleMatchWindowStatus.FAILED,
             )
         )
-        return dict(rows.tuples().all())
+        return dict(rows.all())
 
     def _windows_to_collect(
         self, watermark: CollectionWatermark, now: datetime, window_seconds: int, limit: int
@@ -1198,7 +1198,7 @@ class RuleMatchCollector:
                 AnalyticsRule.instance_id == instance_id
             )
         )
-        return dict(rows.tuples().all())
+        return dict(rows.all())
 
     async def _get_or_create_watermark(
         self, instance: QRadarInstance

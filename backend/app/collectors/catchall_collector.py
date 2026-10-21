@@ -1103,7 +1103,7 @@ class CatchallCollector:
                 CatchallSender.active,
             ).where(CatchallSender.instance_id == instance_id)
         )
-        for source_id, identifier, active in rows.tuples().all():
+        for source_id, identifier, active in rows.all():
             known[(source_id, identifier)] = active
             if active:
                 ledgers.setdefault(source_id, SenderLedger()).active.add(identifier)

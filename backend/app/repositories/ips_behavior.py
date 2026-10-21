@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
@@ -84,7 +85,7 @@ class IpsBehaviorRepository:
         rows = await self.session.scalars(
             select(b)
             .where(b.log_source_id.in_(log_source_ids))
-            .distinct(b.log_source_id)
+            .ext(distinct_on(b.log_source_id))
             .order_by(b.log_source_id, b.bucket_start.desc())
             .options(defer(b.contributors), defer(b.query_provenance))
         )

@@ -22,10 +22,14 @@ class _Sanitized(BaseModel):
     @field_validator("*", mode="after")
     @classmethod
     def _strip_markup(cls, value: object) -> object:
-        if isinstance(value, str):
+        # Only a plain str is sanitized. Enum members are str subclasses
+        # (StrEnum) whose values are code constants, not user text; running
+        # them through the sanitizer returns a bare str, which replaces the
+        # member the response model declared and trips pydantic's serializer.
+        if type(value) is str:
             return sanitize_text(value)
         if isinstance(value, list):
-            return [sanitize_text(v) if isinstance(v, str) else v for v in value]
+            return [sanitize_text(v) if type(v) is str else v for v in value]
         return value
 
 
