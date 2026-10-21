@@ -19,6 +19,7 @@ import time
 import uuid
 from collections import defaultdict
 from collections.abc import Callable, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -232,6 +233,14 @@ class _HistoryWrite:
     buckets: tuple[HistoryIpsBucket, ...]
 
 
+@dataclass
+class _HistoryFaultContext:
+    """The scope being processed and the scopes that started this tick reading."""
+
+    reading_at_start: set[str] = field(default_factory=set)
+    current_scope_key: str | None = None
+
+
 class _TimedIpsSearchBudget(IpsSearchBudget):
     """An IPS budget that also refuses searches after the history time deadline."""
 
@@ -426,35 +435,83 @@ class IpsCollector:
 
             scope_values: dict[int, dict[str, object]] = {}
             handoffs: dict[int, bool] = {}
-            history_errors: dict[int, BaseException] = {}
             history_sources: list[_Source] = []
+            history_fault = _HistoryFaultContext()
             live_sources = [item for item in locked if item.window[0] < item.window[1]]
             if has_yes and decision_row is not None:
-                live_sources, history_sources, scope_values, handoffs = (
-                    await self._apply_history_lifecycle(
-                        instance, locked, decision_row, now=now
+                try:
+                    async with self.session.begin_nested():
+                        live_sources, history_sources, scope_values, handoffs = (
+                            await self._apply_history_lifecycle(
+                                instance,
+                                locked,
+                                decision_row,
+                                now=now,
+                                fault_context=history_fault,
+                            )
+                        )
+                        if handoffs:
+                            await self._write_handoff_watermarks(
+                                instance,
+                                {
+                                    item.log_source.qradar_id: item.log_source
+                                    for item in locked
+                                },
+                                handoffs,
+                                boundary=boundary,
+                                now=now,
+                                interval=interval,
+                            )
+                            # A settled hand-off already owns the last bucket before this
+                            # boundary. An empty hand-off deliberately lets the ordinary
+                            # first-live window run now.
+                            live_sources = [
+                                replace(item, window=(boundary, boundary))
+                                if handoffs.get(item.log_source.qradar_id)
+                                else item
+                                for item in live_sources
+                            ]
+                            handoffs = {}
+                        if scope_values and not history_sources:
+                            await HistoryBackfillRepository(self.session).write_scopes(
+                                list(scope_values.values())
+                            )
+                            scope_values = {}
+                except Exception as exc:
+                    error_keys = await self._history_fault_scope_keys(
+                        instance, history_fault
                     )
-                )
-                if handoffs:
-                    await self._write_handoff_watermarks(
-                        instance,
-                        {item.log_source.qradar_id: item.log_source for item in locked},
-                        handoffs,
-                        boundary=boundary,
-                        now=now,
-                        interval=interval,
+                    await HistoryBackfillRepository(self.session).write_step_errors(
+                        instance.id,
+                        HistoryFamily.IPS.value,
+                        dict.fromkeys(error_keys, exc),
+                        at=self._clock(),
                     )
-                    # A settled hand-off already owns the last bucket before this
-                    # boundary. An empty hand-off deliberately lets the ordinary
-                    # first-live window run now.
-                    live_sources = [
-                        replace(item, window=(boundary, boundary))
-                        if handoffs.get(item.log_source.qradar_id)
-                        else item
-                        for item in live_sources
-                    ]
+                    logger.warning(
+                        "IPS history lifecycle failed",
+                        extra={
+                            "instance_id": str(instance.id),
+                            "scope_keys": error_keys,
+                            "error_class": type(exc).__name__,
+                        },
+                    )
+                    scope_values = {}
                     handoffs = {}
-                live_sources = [item for item in live_sources if item.window[0] < item.window[1]]
+                    history_sources = []
+                    # Sources that were already reading stay paused. Every other
+                    # locked source takes its ordinary live window, as though the
+                    # lifecycle had found no transition or hand-off to apply.
+                    live_sources = [
+                        item
+                        for item in locked
+                        if str(item.log_source.qradar_id)
+                        not in history_fault.reading_at_start
+                        and item.window[0] < item.window[1]
+                    ]
+                else:
+                    live_sources = [
+                        item for item in live_sources if item.window[0] < item.window[1]
+                    ]
 
             budget = IpsSearchBudget(self.settings.search_cadence_max_searches_per_tick)
             search_result = await self._search(live_sources, interval, budget)
@@ -472,39 +529,98 @@ class IpsCollector:
                 search_result.budget_blocked_reasons,
             )
             if history_sources:
-                new_handoffs, history_errors = await self._run_history(
-                    instance,
-                    history_sources,
-                    scope_values,
-                    boundary=boundary,
-                    now=now,
-                    interval=interval,
-                    cadence_seconds=cadence.cadence_seconds,
-                    live_searches=budget.used,
-                    report=report,
+                lifecycle_scope_values = scope_values
+                run_scope_values = deepcopy(scope_values)
+                report_before_history = (
+                    report.history_sources,
+                    report.history_searches,
+                    report.history_buckets_written,
+                    dict(report.history_states),
                 )
-                handoffs.update(new_handoffs)
-            if scope_values:
-                await HistoryBackfillRepository(self.session).write_scopes(
-                    list(scope_values.values())
-                )
-            if history_errors:
-                await HistoryBackfillRepository(self.session).write_step_errors(
-                    instance.id,
-                    HistoryFamily.IPS.value,
-                    {str(source_id): exc for source_id, exc in history_errors.items()},
-                    at=self._clock(),
-                )
-            if handoffs:
-                await self._write_handoff_watermarks(
-                    instance,
-                    {item.log_source.qradar_id: item.log_source for item in locked},
-                    handoffs,
-                    boundary=boundary,
-                    now=now,
-                    interval=interval,
-                )
+                try:
+                    async with self.session.begin_nested():
+                        new_handoffs, history_errors = await self._run_history(
+                            instance,
+                            history_sources,
+                            run_scope_values,
+                            boundary=boundary,
+                            now=now,
+                            interval=interval,
+                            cadence_seconds=cadence.cadence_seconds,
+                            live_searches=budget.used,
+                            report=report,
+                            fault_context=history_fault,
+                        )
+                        await HistoryBackfillRepository(self.session).write_scopes(
+                            list(run_scope_values.values())
+                        )
+                        if history_errors:
+                            await HistoryBackfillRepository(self.session).write_step_errors(
+                                instance.id,
+                                HistoryFamily.IPS.value,
+                                {
+                                    str(source_id): exc
+                                    for source_id, exc in history_errors.items()
+                                },
+                                at=self._clock(),
+                            )
+                        if new_handoffs:
+                            await self._write_handoff_watermarks(
+                                instance,
+                                {
+                                    item.log_source.qradar_id: item.log_source
+                                    for item in locked
+                                },
+                                new_handoffs,
+                                boundary=boundary,
+                                now=now,
+                                interval=interval,
+                            )
+                except Exception as exc:
+                    (
+                        report.history_sources,
+                        report.history_searches,
+                        report.history_buckets_written,
+                        report.history_states,
+                    ) = report_before_history
+                    await HistoryBackfillRepository(self.session).write_scopes(
+                        list(lifecycle_scope_values.values())
+                    )
+                    error_keys = await self._history_fault_scope_keys(
+                        instance, history_fault
+                    )
+                    await HistoryBackfillRepository(self.session).write_step_errors(
+                        instance.id,
+                        HistoryFamily.IPS.value,
+                        dict.fromkeys(error_keys, exc),
+                        at=self._clock(),
+                    )
+                    logger.warning(
+                        "IPS history run failed",
+                        extra={
+                            "instance_id": str(instance.id),
+                            "scope_keys": error_keys,
+                            "error_class": type(exc).__name__,
+                        },
+                    )
         return report
+
+    async def _history_fault_scope_keys(
+        self, instance: QRadarInstance, context: _HistoryFaultContext
+    ) -> tuple[str, ...]:
+        """Resolve the scope keys to mark after a history savepoint rolled back."""
+        if context.current_scope_key is not None:
+            return (context.current_scope_key,)
+        if not context.reading_at_start:
+            scopes = await HistoryBackfillRepository(self.session).scopes(
+                instance.id, HistoryFamily.IPS.value
+            )
+            context.reading_at_start = {
+                key
+                for key, row in scopes.items()
+                if row.state == HistoryState.READING.value
+            }
+        return tuple(sorted(context.reading_at_start))
 
     def _ineligibility(self, profile: IpsSourceProfile, source: LogSource) -> str | None:
         if not profile.enabled:
@@ -545,6 +661,7 @@ class IpsCollector:
         decision_row: HistoryBackfillDecision,
         *,
         now: datetime,
+        fault_context: _HistoryFaultContext,
     ) -> tuple[
         list[_Source],
         list[_Source],
@@ -560,8 +677,10 @@ class IpsCollector:
         if not sources:
             return [], [], {}, {}
         repository = HistoryBackfillRepository(self.session)
-        keys = [str(item.log_source.qradar_id) for item in sources]
-        scopes = await repository.scopes(instance.id, HistoryFamily.IPS.value, keys)
+        scopes = await repository.scopes(instance.id, HistoryFamily.IPS.value)
+        fault_context.reading_at_start = {
+            key for key, row in scopes.items() if row.state == HistoryState.READING.value
+        }
         # The lifecycle reads `has_live_data` only to decide whether a scope may be
         # created, so the live-bucket read happens only for a source that has no scope
         # row yet. It is one bulk statement whatever the fleet size, and it looks at
@@ -592,6 +711,7 @@ class IpsCollector:
         for item in sources:
             qradar_id = item.log_source.qradar_id
             key = str(qradar_id)
+            fault_context.current_scope_key = key
             row = scopes.get(key)
             row_view = self._scope_view(row)
             action = scope_action(
@@ -641,6 +761,7 @@ class IpsCollector:
                 if action.kind in (ActionKind.CREATE, ActionKind.TRANSITION):
                     assert values is not None
                     values_by_source[qradar_id] = values
+            fault_context.current_scope_key = None
         reading.sort(
             key=lambda item: (
                 values_by_source[item.log_source.qradar_id].get("started_at") or now,
@@ -711,6 +832,7 @@ class IpsCollector:
         cadence_seconds: int,
         live_searches: int,
         report: IpsCollectionReport,
+        fault_context: _HistoryFaultContext,
     ) -> tuple[dict[int, bool], dict[int, BaseException]]:
         """Advance independent source scopes under one oldest-first sub-budget.
 
@@ -746,6 +868,7 @@ class IpsCollector:
 
         for item in sources:
             source_id = item.log_source.qradar_id
+            fault_context.current_scope_key = str(source_id)
             values = scope_values[source_id]
             report.history_sources += 1
             stored = values["progress"]
@@ -769,6 +892,7 @@ class IpsCollector:
                     )
                     handoffs[source_id] = False
                     report.history_states[str(source_id)] = change.state.value
+                    fault_context.current_scope_key = None
                     continue
                 counts = entity_counts.get(item.log_source.id, {})
                 no_entities = not any(counts.values())
@@ -817,6 +941,7 @@ class IpsCollector:
                     )
                     handoffs[source_id] = False
                     report.history_states[str(source_id)] = change.state.value
+                    fault_context.current_scope_key = None
                     continue
                 started_at = values.get("started_at")
                 assert isinstance(started_at, datetime)
@@ -899,6 +1024,7 @@ class IpsCollector:
                     and change.state is not HistoryState.UNAVAILABLE
                 )
             report.history_states[str(source_id)] = str(values["state"])
+            fault_context.current_scope_key = None
 
         report.history_searches = budget.used
         if writes:

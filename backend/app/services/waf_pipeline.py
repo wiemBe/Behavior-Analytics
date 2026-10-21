@@ -866,14 +866,14 @@ def sanitized_error(exc: BaseException) -> str:
 
 async def record_waf_failure(
     session: AsyncSession, profile_id: uuid.UUID, exc: BaseException, *, now: datetime
-) -> None:
-    """Make a failed run visible without touching the watermark or any bucket."""
+) -> int | None:
+    """Make a failed run visible and return its QRadar source id when it exists."""
     profile = await session.get(WafSourceProfile, profile_id)
     if profile is None:
-        return
+        return None
     log_source = await session.get(LogSource, profile.log_source_id)
     if log_source is None:
-        return
+        return None
     wm = await _watermark(session, profile.instance_id, watermark_collector(log_source))
     wm.consecutive_failures += 1
     wm.last_error = sanitized_error(exc)
@@ -883,6 +883,7 @@ async def record_waf_failure(
         "last_error_class": type(exc).__name__,
     }
     await session.flush()
+    return log_source.qradar_id
 
 
 async def record_waf_skip(
@@ -937,6 +938,7 @@ async def run_waf_source(
     if instance is None:
         return {"profile_id": str(profile_id), "status": "missing"}
     provider = provider_factory(instance)
+    instance_id = instance.id
     log_source_id = profile.log_source_id
     try:
         report = await WafSourcePipeline(
@@ -958,7 +960,18 @@ async def run_waf_source(
         return report.as_dict()
     except Exception as exc:
         await session.rollback()
-        await record_waf_failure(session, profile_id, exc, now=clock())
+        failed_at = clock()
+        qradar_source_id = await record_waf_failure(
+            session, profile_id, exc, now=failed_at
+        )
+        if qradar_source_id is not None:
+            await HistoryBackfillRepository(session).write_step_errors(
+                instance_id,
+                HistoryFamily.WAF.value,
+                {str(qradar_source_id): exc},
+                at=failed_at,
+                required_state=HistoryState.READING.value,
+            )
         await session.commit()
         logger.warning(
             "waf source run failed",

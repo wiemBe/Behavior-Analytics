@@ -291,9 +291,34 @@ class CatchallCollector:
                     instance, watermark, starts, bucket_seconds, started, report
                 )
             # The history step, after the live pass, under the same lock (§B.6.2).
-            report.history_scope_state = await self._history_step(
-                instance, report, decision=decision, scope=scope, tick_started=started
+            history_scope_state_before = (
+                None if scope is None else HistoryState(scope.state)
             )
+            try:
+                async with self.session.begin_nested():
+                    report.history_scope_state = await self._history_step(
+                        instance,
+                        report,
+                        decision=decision,
+                        scope=scope,
+                        tick_started=started,
+                    )
+            except Exception as exc:
+                await HistoryBackfillRepository(self.session).write_step_errors(
+                    instance.id,
+                    HistoryFamily.CATCHALL.value,
+                    {SCOPE_KEY: exc},
+                    at=self._clock(),
+                )
+                report.history_scope_state = history_scope_state_before
+                logger.warning(
+                    "catch-all history step failed",
+                    extra={
+                        "instance_id": str(instance.id),
+                        "scope_key": SCOPE_KEY,
+                        "error_class": type(exc).__name__,
+                    },
+                )
             watermark.last_run_at = started
             if watermark.watermark_at is not None:
                 end_of_last = watermark.watermark_at + timedelta(seconds=bucket_seconds)

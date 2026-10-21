@@ -983,7 +983,19 @@ async def test_worker_failure_rolls_back_rows_and_progress_then_resumes(
         (instance_id, HistoryFamily.WAF.value, scope_key),
     )
     assert scope is not None
+    assert scope.state == HistoryState.READING.value
     assert scope.through is None
+    assert scope.last_error_class == "RuntimeError"
+    assert scope.last_error_at == T0 + STEP + timedelta(seconds=5)
+    failed_watermark = await db_session.scalar(
+        select(CollectionWatermark).where(
+            CollectionWatermark.instance_id == instance_id,
+            CollectionWatermark.collector == collection_key,
+        )
+    )
+    assert failed_watermark is not None
+    assert failed_watermark.consecutive_failures == 1
+    assert failed_watermark.collection_metadata["last_error_class"] == "RuntimeError"
 
     monkeypatch.setattr(HistoryBackfillRepository, "write_scopes", original)
     resumed = await run_waf_source(
@@ -1000,6 +1012,7 @@ async def test_worker_failure_rolls_back_rows_and_progress_then_resumes(
     assert scope.through == T0
     assert scope.state == HistoryState.COMPLETE.value
     assert scope.anchor == T0 + STEP
+    assert scope.last_error_class is None and scope.last_error_at is None
     collection_wm = await db_session.scalar(
         select(CollectionWatermark).where(
             CollectionWatermark.instance_id == instance_id,
@@ -1026,6 +1039,22 @@ async def test_worker_failure_rolls_back_rows_and_progress_then_resumes(
     assert (await db_session.get(WafSourceBucket, (source_id, T0))).origin == "HISTORY"  # type: ignore[union-attr]
     first_live = await db_session.get(WafSourceBucket, (source_id, T0 + STEP))
     assert first_live is not None and first_live.origin == "LIVE"
+
+    async def crash_complete_scope(self, profile):  # type: ignore[no-untyped-def]
+        raise RuntimeError("failure after the history hand-off")
+
+    monkeypatch.setattr(WafSourcePipeline, "run", crash_complete_scope)
+    failed_complete = await run_waf_source(
+        db_session,
+        profile_id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: T0 + 3 * STEP + timedelta(seconds=5),
+    )
+    assert failed_complete["status"] == "failed"
+    await db_session.refresh(scope)
+    assert scope.state == HistoryState.COMPLETE.value
+    assert scope.last_error_class is None and scope.last_error_at is None
 
 
 async def test_history_writer_statement_count_is_constant_at_scale(db_session) -> None:  # type: ignore[no-untyped-def]

@@ -512,6 +512,97 @@ class TestLifecycle:
         assert cleared is not None
         assert cleared.last_error_class is None and cleared.last_error_at is None
 
+    async def test_an_unexpected_step_fault_keeps_live_and_rolls_history_back(
+        self, db_session, monkeypatch
+    ) -> None:
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+        await collector(db_session, prov).collect(inst)
+        before = await scope(db_session, inst)
+        assert before is not None and before.state == "READING"
+        before_progress = dict(before.progress)
+        before_through = before.through
+        live_before = len(await buckets(db_session, "LIVE"))
+        history_before = len(await buckets(db_session, "HISTORY"))
+        watermark_before = (await watermark(db_session, inst)).watermark_at  # type: ignore[union-attr]
+        original = CatchallCollector._read_history
+
+        async def write_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            await original(self, *args, **kwargs)
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(CatchallCollector, "_read_history", write_then_crash)
+        failed_at = NOW + timedelta(hours=1)
+        report = await collector(db_session, prov, now=failed_at).collect(inst)
+
+        assert report.history_scope_state is HistoryState.READING
+        failed = await scope(db_session, inst)
+        assert failed is not None and failed.state == "READING"
+        assert failed.progress == before_progress and failed.through == before_through
+        assert failed.last_error_class == "RuntimeError"
+        assert failed.last_error_at == failed_at
+        assert len(await buckets(db_session, "HISTORY")) == history_before
+        assert len(await buckets(db_session, "LIVE")) > live_before
+        assert (await watermark(db_session, inst)).watermark_at > watermark_before  # type: ignore[union-attr,operator]
+
+        monkeypatch.setattr(CatchallCollector, "_read_history", original)
+        await collector(db_session, prov, now=failed_at + timedelta(hours=1)).collect(inst)
+        cleared = await scope(db_session, inst)
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    async def test_a_fault_after_settlement_reports_the_pre_tick_state(
+        self, db_session, monkeypatch
+    ) -> None:
+        """A rolled-back READING-to-COMPLETE write cannot leak into the report."""
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+        await collector(db_session, prov).collect(inst)
+        await db_session.commit()
+        original = CatchallCollector._finish_history
+        settled_states: list[HistoryState] = []
+
+        async def settle_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            state = await original(self, *args, **kwargs)
+            settled_states.append(state)
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(CatchallCollector, "_finish_history", settle_then_crash)
+
+        for tick in range(1, 8):
+            before = await scope(db_session, inst)
+            assert before is not None and before.state == HistoryState.READING.value
+            state_before = HistoryState(before.state)
+            history_before = len(await buckets(db_session, "HISTORY"))
+            live_before = len(await buckets(db_session, "LIVE"))
+            stored_watermark = await watermark(db_session, inst)
+            assert stored_watermark is not None and stored_watermark.watermark_at is not None
+            watermark_before = stored_watermark.watermark_at
+            failed_at = NOW + timedelta(hours=tick)
+
+            report = await collector(db_session, prov, now=failed_at).collect(inst)
+            if not settled_states:
+                await db_session.commit()
+                continue
+
+            assert settled_states == [HistoryState.COMPLETE]
+            assert report.history_scope_state is state_before
+            await db_session.commit()
+            failed = await scope(db_session, inst)
+            assert failed is not None and failed.state == state_before.value
+            assert failed.last_error_class == "RuntimeError"
+            assert failed.last_error_at == failed_at
+            assert len(await buckets(db_session, "HISTORY")) == history_before
+            assert len(await buckets(db_session, "LIVE")) > live_before
+            current_watermark = await watermark(db_session, inst)
+            assert current_watermark is not None
+            assert current_watermark.watermark_at > watermark_before
+            break
+        else:
+            pytest.fail("the catch-all history did not reach its settlement write")
+
 
 # --------------------------------------------------------------------------- the guards
 
