@@ -460,12 +460,6 @@ def floor_to_bucket(now: datetime, bucket_seconds: int) -> datetime:
     return datetime.fromtimestamp(epoch, tz=UTC)
 
 
-def group_sources(keys: Sequence[int], size: int) -> list[list[int]]:
-    """Retained compatibility helper; IPS history estimation no longer groups sources."""
-    ordered = sorted(keys)
-    return [ordered[i : i + size] for i in range(0, len(ordered), size)]
-
-
 SearchFactory = Callable[[PlannerSettings], Callable[[int], int]]
 
 

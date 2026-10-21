@@ -171,13 +171,14 @@ New file `.github/workflows/release.yml`. Trigger: a tag `v*`. The workflow:
    ([INSTALL.md](INSTALL.md) "Clone the repository"), not a side effect of a release.
 2. Fails if the tag does not equal `v` + `VERSION`.
 3. Runs the gates. Backend, from `backend/`: ruff, `mypy app` (the result must be
-   zero errors; today's CI swallows mypy with `|| true` at
-   `.github/workflows/ci.yml:48`), `alembic upgrade head` and `alembic check`
-   (the same steps as `.github/workflows/ci.yml:57-69`), then pytest. Frontend:
-   `npm ci`, lint, typecheck, vitest, build. CI today runs `npm install` and does
-   not run lint or vitest (`.github/workflows/ci.yml:82-92`). The release workflow
-   runs the full gate. OPS-3 updates the pull-request workflow to the same
-   commands so a red release is not the first time the gate runs.
+   zero errors), `alembic upgrade head` and `alembic check`, then pytest. These
+   are the `Lint`, `Type check`, `Prepare migration-check database`,
+   `Migration drift check (alembic check)` and `Unit + integration tests` steps of
+   the backend job of `ci.yml`; the last one runs `pytest -rs`. Frontend:
+   `npm ci`, lint, typecheck, vitest, build — the `Install`, `Lint`, `Type check`,
+   `Unit tests` and `Build` steps of the frontend job of `ci.yml`. The release
+   workflow runs the full gate. OPS-3 has updated the pull-request workflow to
+   the same commands so a red release is not the first time the gate runs.
 4. Builds and pushes the images in §2.2.
 5. Writes a GitHub Release whose body is `docs/releases/<version>.md`. The release
    is a convenience. The image copy is the one `upgrade` trusts.
@@ -247,18 +248,19 @@ origin is same-origin. One image serves every site. The hostname lives in
 
 ### 2.4 Lockfile
 
-The backend image installs from floating ranges:
+The backend image installs from the hashed lock:
 
 ```
-COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install .
+COPY requirements.txt ./
+RUN pip install --upgrade pip && pip install --require-hashes -r requirements.txt
 ```
 
 (`backend/Dockerfile:13-16`), then `pip install --no-deps -e .`
-(`backend/Dockerfile:18-19`). `backend/pyproject.toml:6-30` is `>=` ranges. CI does
-the same with `pip install -e '.[dev]'` (`.github/workflows/ci.yml:39-40`). Two
-builds on two days can ship different dependency trees. The frontend already
-installs from its lock (`frontend/Dockerfile:4-8`), including the `postcss` override
+(`backend/Dockerfile:42`). `backend/pyproject.toml:6-30` is `>=` ranges; the lock
+is what pins them. CI installs the same lock plus the dev lock (the
+`Install backend` step of `ci.yml`). Without the lock, two builds on two days
+could ship different dependency trees. The frontend already installs from its lock
+(`frontend/Dockerfile:4-8`), including the `postcss` override
 (`frontend/package.json:35-37`). PostCSS runs at `next build` only (T-117). The
 production image must keep that override, which `npm ci` does and a fresh resolve
 might not.
@@ -446,7 +448,7 @@ Preflight changes nothing. Any failure stops the script before `.env` is written
 
 | Check | Pass | Fail / warn |
 |---|---|---|
-| Architecture | `uname -m` is `x86_64` | Fail otherwise. The images are built on `ubuntu-latest` (`.github/workflows/ci.yml:9`). |
+| Architecture | `uname -m` is `x86_64` | Fail otherwise. The images are built on `ubuntu-latest` (the `runs-on` key of the `images` job of `release.yml`). |
 | Docker | `docker version` and `docker compose version` both succeed | Fail. Compose v2 is required. The script does not call `docker-compose`. |
 | Resources | at least 4 CPUs, 8 GiB RAM, 80 GiB free on the Docker root, 20 GiB free on the backup directory | Fail under the floor. |
 | Ports | `443` free on the host when the bundled proxy is used. `127.0.0.1:3000` and `127.0.0.1:8000` free. | Fail if taken. |

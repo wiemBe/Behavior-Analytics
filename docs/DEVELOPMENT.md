@@ -91,8 +91,10 @@ Run commands from `backend/` with the worktree first on `PYTHONPATH`:
 ```bash
 ruff check app tests
 mypy app
-PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> pytest -q -m "not integration"
+PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> pytest -m "not integration"
 ```
+
+`pyproject.toml` already passes `-q`; adding another hides pytest's summary line.
 
 Integration tests require PostgreSQL with TimescaleDB and a dedicated database:
 
@@ -100,7 +102,7 @@ Integration tests require PostgreSQL with TimescaleDB and a dedicated database:
 PYTHONPATH=. \
 ENCRYPTION_KEY=<fernet-key> \
 TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/behavior_analytics_test \
-pytest -q -m integration tests/integration
+pytest -m integration tests/integration
 ```
 
 Never run two test processes against the same test database. The schema fixture recreates tables,

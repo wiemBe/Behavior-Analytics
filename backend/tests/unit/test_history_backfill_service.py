@@ -29,7 +29,6 @@ from app.services.history_backfill import (
     days_read,
     duration_words,
     floor_to_bucket,
-    group_sources,
     scope_out,
 )
 
@@ -90,12 +89,6 @@ def test_the_estimate_end_is_a_whole_bucket() -> None:
     now = datetime(2026, 10, 19, 12, 7, 43, tzinfo=UTC)
     assert floor_to_bucket(now, 300) == datetime(2026, 10, 19, 12, 5, tzinfo=UTC)
     assert floor_to_bucket(now, 3600) == datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
-
-
-def test_the_sources_are_grouped_in_a_fixed_order_at_most_size_per_plan() -> None:
-    assert group_sources([3, 1, 2], 2) == [[1, 2], [3]]
-    assert group_sources([], 2) == []
-    assert group_sources([5], 2) == [[5]]
 
 
 # --------------------------------------------------------------- the floor and the name
