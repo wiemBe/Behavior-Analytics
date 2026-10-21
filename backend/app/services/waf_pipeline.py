@@ -62,7 +62,6 @@ from app.history import (
     DecisionView,
     HistoryFamily,
     HistoryState,
-    ScopeRowView,
     console_mode,
     decode_progress,
     decode_scope,
@@ -78,6 +77,7 @@ from app.history import (
     transition_row,
     waf_source_searches,
 )
+from app.history.lifecycle import scope_row, scope_view, step_row
 from app.history.state import HistoryTrigger
 from app.history.waf import waf_planner_settings
 from app.models.enums import SearchFamily, WafBreakdown
@@ -97,8 +97,6 @@ from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 from app.waf.profile import WafFieldMapping, breakdown_plan, collection_ineligibility
 
 logger = logging.getLogger("app.waf.pipeline")
-
-_KEEP = object()
 
 EVALUATION_COLLECTOR = "waf_endpoint_evaluation"
 SCHEDULING_RECORD = "waf_scheduling"
@@ -367,7 +365,7 @@ class WafSourcePipeline:
             family=HistoryFamily.WAF,
             mode=console_mode(decision),
             decision=decision,
-            row=self._scope_view(row),
+            row=scope_view(row),
             has_live_data=has_live,
             live_anchor=None,
             switch_on=self.settings.history_backfill_enabled,
@@ -386,7 +384,7 @@ class WafSourcePipeline:
             )
         elif action.kind is ActionKind.TRANSITION:
             assert row is not None
-            row_view = self._scope_view(row)
+            row_view = scope_view(row)
             assert row_view is not None
             values = transition_row(
                 action,
@@ -431,9 +429,9 @@ class WafSourcePipeline:
         planner = waf_planner_settings(
             self.settings, cadence_seconds=cadence.cadence_seconds
         )
-        scope_view = self._scope_view(scope)
-        assert scope_view is not None
-        decoded = decode_scope(scope_view)
+        view = scope_view(scope)
+        assert view is not None
+        decoded = decode_scope(view)
         fit_reason: str | None = None
         days_target: int | None
         budget = history_search_budget(self.settings, used=0)
@@ -441,8 +439,13 @@ class WafSourcePipeline:
             fitted = fit_family_window(HistoryFamily.WAF, self.settings)
             if fitted.days is None:
                 change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
-                values = self._scope_values(
-                    scope,
+                values = step_row(
+                    scope_row(
+                        view,
+                        instance_id=scope.instance_id,
+                        family=HistoryFamily.WAF,
+                        scope_key=scope.scope_key,
+                    ),
                     state=change.state,
                     reason=fitted.reason or change.reason,
                     finished_at=now,
@@ -490,8 +493,13 @@ class WafSourcePipeline:
             ) or None
             if fit.refused or fit.days_fitted is None or fit.target_start is None:
                 change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
-                values = self._scope_values(
-                    scope,
+                values = step_row(
+                    scope_row(
+                        view,
+                        instance_id=scope.instance_id,
+                        family=HistoryFamily.WAF,
+                        scope_key=scope.scope_key,
+                    ),
                     state=change.state,
                     reason=fit_reason or fit.reason,
                     finished_at=now,
@@ -533,15 +541,23 @@ class WafSourcePipeline:
                 settled=outcome.progress.through is not None,
             )
         reason = "; ".join(part for part in (fit_reason, outcome.reason) if part)
-        values = self._scope_values(
-            scope,
+        values = step_row(
+            scope_row(
+                view,
+                instance_id=scope.instance_id,
+                family=HistoryFamily.WAF,
+                scope_key=scope.scope_key,
+            ),
             state=state,
             reason=reason,
-            progress=outcome.progress,
-            adapter=adapter,
             days_target=days_target,
+            target_start=outcome.progress.target_start,
+            floor=outcome.progress.floor,
+            through=outcome.progress.through,
+            started_at=outcome.progress.started_at,
             finished_at=finished_at,
             anchor=anchor,
+            progress=encode_progress(outcome.progress, adapter),
         )
         await HistoryBackfillRepository(self.session).write_scopes([values])
         if state is HistoryState.READING and outcome.error is not None:
@@ -587,9 +603,9 @@ class WafSourcePipeline:
         """Run the post-hand-off enrichment without changing the volume state."""
         if not collector.planned_breakdowns() or scope.floor is None or scope.anchor is None:
             return
-        scope_view = self._scope_view(scope)
-        assert scope_view is not None
-        decoded = decode_scope(scope_view)
+        view = scope_view(scope)
+        assert view is not None
+        decoded = decode_scope(view)
         if decoded is None:
             return
         outer_adapter = dict(decoded.adapter)
@@ -629,13 +645,20 @@ class WafSourcePipeline:
             outcome.progress,
             adapter={"done": outcome.trigger is not None, "reason": outcome.reason},
         )
-        values = self._scope_values(
-            scope,
+        values = step_row(
+            scope_row(
+                view,
+                instance_id=scope.instance_id,
+                family=HistoryFamily.WAF,
+                scope_key=scope.scope_key,
+            ),
             state=HistoryState(scope.state),
             reason=scope.reason or "history volume pass finished",
-            progress=decoded.progress,
-            adapter=outer_adapter,
-            finished_at=scope.finished_at,
+            target_start=decoded.progress.target_start,
+            floor=decoded.progress.floor,
+            through=decoded.progress.through,
+            started_at=decoded.progress.started_at,
+            progress=encode_progress(decoded.progress, outer_adapter),
         )
         await HistoryBackfillRepository(self.session).write_scopes([values])
         report.history_searches += outcome.searches
@@ -658,68 +681,6 @@ class WafSourcePipeline:
             stop_requested_at=row.stop_requested_at,
             stop_requested_by=row.stop_requested_by,
         )
-
-    @staticmethod
-    def _scope_view(row: HistoryBackfillScope | None) -> ScopeRowView | None:
-        if row is None:
-            return None
-        return ScopeRowView(
-            state=HistoryState(row.state),
-            days_requested=row.days_requested,
-            days_target=row.days_target,
-            target_start=row.target_start,
-            floor=row.floor,
-            through=row.through,
-            anchor=row.anchor,
-            started_at=row.started_at,
-            finished_at=row.finished_at,
-            reason=row.reason,
-            progress=row.progress,
-        )
-
-    @staticmethod
-    def _scope_values(
-        row: HistoryBackfillScope,
-        *,
-        state: HistoryState,
-        reason: str,
-        progress: Any | None = None,
-        adapter: Mapping[str, Any] | None = None,
-        days_target: int | None = None,
-        finished_at: datetime | None | object = _KEEP,
-        anchor: datetime | None = None,
-    ) -> dict[str, Any]:
-        encoded = row.progress
-        target_start, floor, through, started_at = (
-            row.target_start,
-            row.floor,
-            row.through,
-            row.started_at,
-        )
-        if progress is not None:
-            encoded = encode_progress(progress, adapter=adapter)
-            target_start = progress.target_start
-            floor = progress.floor
-            through = progress.through
-            started_at = progress.started_at
-        return {
-            "instance_id": row.instance_id,
-            "family": row.family,
-            "scope_key": row.scope_key,
-            "state": state.value,
-            "days_requested": row.days_requested,
-            "days_target": days_target if days_target is not None else row.days_target,
-            "target_start": target_start,
-            "floor": floor,
-            "through": through,
-            "anchor": anchor if anchor is not None else row.anchor,
-            "started_at": started_at,
-            "finished_at": row.finished_at if finished_at is _KEEP else finished_at,
-            "reason": reason[:255],
-            "last_error_class": None,
-            "last_error_at": None,
-            "progress": encoded,
-        }
 
     async def _evaluate(
         self,

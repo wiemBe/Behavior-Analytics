@@ -28,6 +28,7 @@ from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any, cast
 
 from sqlalchemy import Table, func, select
@@ -45,11 +46,13 @@ from app.history.lifecycle import (
     LifecycleError,
     ScopeAction,
     ScopeRowView,
-    bounded_reason,
     console_mode,
     decode_scope,
     new_scope_row,
     scope_action,
+    scope_row,
+    scope_view,
+    step_row,
     transition_row,
 )
 from app.history.origin import is_live_clause
@@ -69,7 +72,7 @@ from app.history.progress_codec import encode_progress
 from app.history.source_floors import SourceFloors
 from app.history.state import HistoryFamily, HistoryState, HistoryTrigger, next_state
 from app.models.enums import BucketCompleteness, SearchFamily
-from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
+from app.models.history_backfill import HistoryBackfillDecision
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceMetric
 from app.models.monitoring import CollectionWatermark
@@ -641,7 +644,7 @@ class MetricCollector:
         stored = (await repo.scopes(instance.id, HISTORY_FAMILY.value, [HISTORY_SCOPE_KEY])).get(
             HISTORY_SCOPE_KEY
         )
-        row = _row_view(stored)
+        row = scope_view(stored)
         switch_on = self.settings.history_backfill_enabled
         # The oldest live bucket is read only when the lifecycle can use it: a scope that
         # is created, wakes from WAITING or restarts. A reading scope never needs it.
@@ -929,15 +932,17 @@ class MetricCollector:
         earliest = phase_a.earliest_floor(
             floors, floors.first_buckets, target_start=progress.target_start, settings=ps
         )
-        return {
-            **_scope_mapping(instance_id, row),
-            "state": HistoryState.READING.value,
-            "target_start": progress.target_start,
-            "floor": earliest,
-            "through": progress.through,
-            "reason": bounded_reason(reason),
-            "progress": encode_progress(progress, {**adapter, **floors.encode()}),
-        }
+        return step_row(
+            scope_row(
+                row, instance_id=instance_id, family=HISTORY_FAMILY, scope_key=HISTORY_SCOPE_KEY
+            ),
+            state=HistoryState.READING,
+            target_start=progress.target_start,
+            floor=earliest,
+            through=progress.through,
+            reason=reason,
+            progress=encode_progress(progress, {**adapter, **floors.encode()}),
+        )
 
     def _finish_values(
         self,
@@ -1016,8 +1021,17 @@ class MetricCollector:
             await builder.rebuild_for_source(source, now=now)
         report.rebuilt = len(sources)
         adapter = {**decoded.adapter, phase_a.REBUILD_PENDING_KEY: rest}
-        base = values if values is not None else _scope_mapping(instance.id, current)
-        return {**base, "progress": encode_progress(decoded.progress, adapter)}
+        base = (
+            values
+            if values is not None
+            else scope_row(
+                current,
+                instance_id=instance.id,
+                family=HISTORY_FAMILY,
+                scope_key=HISTORY_SCOPE_KEY,
+            )
+        )
+        return step_row(base, progress=encode_progress(decoded.progress, adapter))
 
     async def _log_source_id_map(self, instance_id: uuid.UUID) -> dict[int, uuid.UUID]:
         rows = await self.session.execute(
@@ -1055,51 +1069,16 @@ def _decision_view(row: HistoryBackfillDecision | None) -> DecisionView | None:
     )
 
 
-_VIEW_FIELDS = (
-    "days_requested",
-    "days_target",
-    "target_start",
-    "floor",
-    "through",
-    "anchor",
-    "started_at",
-    "finished_at",
-    "reason",
-    "progress",
-)
-
-
-def _row_view(row: HistoryBackfillScope | None) -> ScopeRowView | None:
-    if row is None:
-        return None
-    return ScopeRowView(
-        state=HistoryState(row.state), **{name: getattr(row, name) for name in _VIEW_FIELDS}
-    )
-
-
 def _view_of(values: Mapping[str, Any]) -> ScopeRowView:
-    """The lifecycle's view of a scope row mapping that is about to be written."""
-    return ScopeRowView(
-        state=HistoryState(values["state"]), **{name: values[name] for name in _VIEW_FIELDS}
-    )
+    """The lifecycle's view of a scope row mapping that is about to be written.
 
-
-def _scope_mapping(instance_id: uuid.UUID, row: ScopeRowView) -> dict[str, Any]:
-    """A scope row's full column mapping, for the updates no lifecycle helper covers.
-
-    `new_scope_row` and `transition_row` build every create and every state change. A step
-    that leaves the scope `READING` only moves `through`, `floor`, `reason` and `progress`,
-    which the lifecycle has no helper for; it starts from the row as it is.
+    The lifecycle's `scope_view` reads attributes (the stored ORM row); this
+    family also turns the mapping it has just built into a view, so the mapping
+    case is bridged here and the columns stay listed once, in the lifecycle.
     """
-    return {
-        "instance_id": instance_id,
-        "family": HISTORY_FAMILY.value,
-        "scope_key": HISTORY_SCOPE_KEY,
-        "state": row.state.value,
-        **{name: getattr(row, name) for name in _VIEW_FIELDS},
-        "last_error_class": None,
-        "last_error_at": None,
-    }
+    view = scope_view(SimpleNamespace(**values))
+    assert view is not None
+    return view
 
 
 def _needs_anchor(row: ScopeRowView | None, decision: DecisionView) -> bool:

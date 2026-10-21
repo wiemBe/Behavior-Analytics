@@ -40,7 +40,6 @@ from app.history import (
     HistoryState,
     HistoryTrigger,
     IpsGroup,
-    ScopeRowView,
     bounded_reason,
     console_mode,
     decode_progress,
@@ -64,6 +63,7 @@ from app.history.ips import (
     fold_ips_history,
     ips_planner_settings,
 )
+from app.history.lifecycle import scope_row, scope_view
 from app.history.planner import (
     ChunkResult,
     PlannerSettings,
@@ -96,7 +96,7 @@ from app.models.enums import (
     IpsProfileValidationStatus,
     SearchFamily,
 )
-from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
+from app.models.history_backfill import HistoryBackfillDecision
 from app.models.instance import QRadarInstance
 from app.models.ips import (
     IPS_NORMALIZER_VERSION,
@@ -713,7 +713,7 @@ class IpsCollector:
             key = str(qradar_id)
             fault_context.current_scope_key = key
             row = scopes.get(key)
-            row_view = self._scope_view(row)
+            row_view = scope_view(row)
             action = scope_action(
                 family=HistoryFamily.IPS,
                 mode=mode,
@@ -747,7 +747,13 @@ class IpsCollector:
                 if row.state == HistoryState.READING.value:
                     handoffs[qradar_id] = row.through is not None
             elif row is not None:
-                values = self._scope_values(row)
+                assert row_view is not None
+                values = scope_row(
+                    row_view,
+                    instance_id=instance.id,
+                    family=HistoryFamily.IPS,
+                    scope_key=key,
+                )
 
             # Act on the mapping just built, never on the identity-mapped row the
             # repository upsert will leave stale (HB-7's written-row decision).
@@ -780,45 +786,6 @@ class IpsCollector:
             stop_requested_at=row.stop_requested_at,
             stop_requested_by=row.stop_requested_by,
         )
-
-    @staticmethod
-    def _scope_view(row: HistoryBackfillScope | None) -> ScopeRowView | None:
-        if row is None:
-            return None
-        return ScopeRowView(
-            state=HistoryState(row.state),
-            days_requested=row.days_requested,
-            days_target=row.days_target,
-            target_start=row.target_start,
-            floor=row.floor,
-            through=row.through,
-            anchor=row.anchor,
-            started_at=row.started_at,
-            finished_at=row.finished_at,
-            reason=row.reason,
-            progress=row.progress,
-        )
-
-    @staticmethod
-    def _scope_values(row: HistoryBackfillScope) -> dict[str, object]:
-        return {
-            "instance_id": row.instance_id,
-            "family": row.family,
-            "scope_key": row.scope_key,
-            "state": row.state,
-            "days_requested": row.days_requested,
-            "days_target": row.days_target,
-            "target_start": row.target_start,
-            "floor": row.floor,
-            "through": row.through,
-            "anchor": row.anchor,
-            "started_at": row.started_at,
-            "finished_at": row.finished_at,
-            "reason": row.reason,
-            "last_error_class": None,
-            "last_error_at": None,
-            "progress": dict(row.progress),
-        }
 
     async def _run_history(
         self,

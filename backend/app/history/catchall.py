@@ -36,7 +36,6 @@ from typing import Any
 from app.catchall.fold import CatchallBucketFact, SenderLedger, fold_source_bucket
 from app.catchall.keyed_search import CatchallBucketOutcome
 from app.history.families import history_search_budget
-from app.history.lifecycle import ScopeRowView, bounded_reason
 from app.history.origin import HistoryOrigin, marker_values
 from app.history.planner import (
     DEFAULT_MIN_WINDOW_DAYS,
@@ -514,38 +513,3 @@ def sender_rows(
             }
         )
     return rows
-
-
-def scope_row(
-    view: ScopeRowView,
-    *,
-    instance_id: Any,
-    family: HistoryFamily,
-    scope_key: str,
-    reason: str | None = None,
-) -> dict[str, Any]:
-    """The full column mapping of a scope row, from a view of it.
-
-    The lifecycle's `new_scope_row` and `transition_row` build the rows a
-    scope's *state change* writes. A step that only advances the reading
-    changes no state, so it needs this third builder; it writes the same
-    columns, and the repository refuses a row that lacks one.
-    """
-    return {
-        "instance_id": instance_id,
-        "family": family.value,
-        "scope_key": scope_key,
-        "state": view.state.value,
-        "days_requested": view.days_requested,
-        "days_target": view.days_target,
-        "target_start": view.target_start,
-        "floor": view.floor,
-        "through": view.through,
-        "anchor": view.anchor,
-        "started_at": view.started_at,
-        "finished_at": view.finished_at,
-        "reason": bounded_reason(reason if reason is not None else (view.reason or "")),
-        "last_error_class": None,
-        "last_error_at": None,
-        "progress": dict(view.progress) if view.progress else {},
-    }

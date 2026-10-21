@@ -60,7 +60,6 @@ from app.history.catchall import (
     fold_chunk,
     merge_touches,
     reading_progress,
-    scope_row,
     sender_rows,
 )
 from app.history.families import fit_family_window
@@ -76,6 +75,9 @@ from app.history.lifecycle import (
     decode_scope,
     new_scope_row,
     scope_action,
+    scope_row,
+    scope_view,
+    step_row,
     transition_row,
 )
 from app.history.origin import is_live_clause
@@ -297,6 +299,14 @@ class CatchallCollector:
             history_scope_state_before = (
                 None if scope is None else HistoryState(scope.state)
             )
+            # What the report said before the step: a fault the savepoint rolls
+            # back must not leave the step's counts in it (as IPS restores).
+            report_before_history = (
+                report.history_searches,
+                report.history_buckets_written,
+                report.history_unmapped_rows,
+                report.history_senders_written,
+            )
             try:
                 async with self.session.begin_nested():
                     report.history_scope_state = await self._history_step(
@@ -314,6 +324,12 @@ class CatchallCollector:
                     at=self._clock(),
                 )
                 report.history_scope_state = history_scope_state_before
+                (
+                    report.history_searches,
+                    report.history_buckets_written,
+                    report.history_unmapped_rows,
+                    report.history_senders_written,
+                ) = report_before_history
                 logger.warning(
                     "catch-all history step failed",
                     extra={
@@ -756,7 +772,7 @@ class CatchallCollector:
         settings = self.settings
         now = self._clock()
         repository = HistoryBackfillRepository(self.session)
-        view = _scope_view(scope)
+        view = scope_view(scope)
         anchor = await self._live_anchor(instance.id)
         action = scope_action(
             family=HistoryFamily.CATCHALL,
@@ -1035,11 +1051,13 @@ class CatchallCollector:
         )
         await HistoryBackfillRepository(self.session).write_scopes(
             [
-                scope_row(
-                    new_view,
-                    instance_id=instance.id,
-                    family=HistoryFamily.CATCHALL,
-                    scope_key=SCOPE_KEY,
+                step_row(
+                    scope_row(
+                        new_view,
+                        instance_id=instance.id,
+                        family=HistoryFamily.CATCHALL,
+                        scope_key=SCOPE_KEY,
+                    ),
                     reason=settlement.reason,
                 )
             ]
@@ -1207,25 +1225,6 @@ def _decision_view(row: HistoryBackfillDecision) -> DecisionView:
         start_requested_by=row.start_requested_by,
         stop_requested_at=row.stop_requested_at,
         stop_requested_by=row.stop_requested_by,
-    )
-
-
-def _scope_view(row: HistoryBackfillScope | None) -> ScopeRowView | None:
-    """The scope row as the lifecycle reads it; never an ORM object."""
-    if row is None:
-        return None
-    return ScopeRowView(
-        state=HistoryState(row.state),
-        days_requested=row.days_requested,
-        days_target=row.days_target,
-        target_start=row.target_start,
-        floor=row.floor,
-        through=row.through,
-        anchor=row.anchor,
-        started_at=row.started_at,
-        finished_at=row.finished_at,
-        reason=row.reason,
-        progress=row.progress,
     )
 
 
