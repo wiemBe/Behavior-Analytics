@@ -675,6 +675,55 @@ class TestOperatorPaths:
         assert cleared is not None
         assert cleared.last_error_class is None and cleared.last_error_at is None
 
+    @pytest.mark.asyncio
+    async def test_a_fault_after_the_step_wrote_rows_reports_the_pre_step_counts(
+        self, db_session, monkeypatch
+    ) -> None:
+        """A rolled-back step's written counts cannot stay in the tick's report."""
+        instance = await make_instance(db_session)
+        await add_rule(db_session, instance, 100)
+        await seed_anchor_and_decision(db_session, instance)
+        provider = HistoryProvider(by_window, first_event=H0 - 24 * HOUR)
+        await history_collector(
+            db_session, provider, search_cadence_max_searches_per_tick=1
+        ).collect(instance)
+        before = await scope_row(db_session, instance)
+        assert before is not None and before.state == "READING"
+        history_before = await history_windows(db_session, instance)
+        rows_original = RuleMatchCollector._write_history_rows
+        written: list[tuple[int, int]] = []
+
+        async def count_then_write(self, window_rows, metric_rows):  # type: ignore[no-untyped-def]
+            await rows_original(self, window_rows, metric_rows)
+            written.append((len(window_rows), len(metric_rows)))
+
+        monkeypatch.setattr(RuleMatchCollector, "_write_history_rows", count_then_write)
+        scope_original = RuleMatchCollector._write_history_scope
+
+        async def write_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            await scope_original(self, *args, **kwargs)
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(RuleMatchCollector, "_write_history_scope", write_then_crash)
+        failed_at = NOW + HOUR
+
+        report = await history_collector(db_session, provider, now=failed_at).collect(instance)
+
+        assert written and written[0][0] > 0  # the step wrote rows first
+        # Everything the step said about itself was said inside the savepoint, so
+        # the report is back to its pre-step defaults: no state, no counts.
+        assert report.history_state is None
+        assert report.history_reason is None
+        assert report.history_searches == 0
+        assert report.history_windows_written == 0
+        assert report.history_rows_written == 0
+        assert report.history_error == "RuntimeError"
+        failed = await scope_row(db_session, instance)
+        assert failed is not None and failed.state == "READING"
+        assert failed.last_error_class == "RuntimeError"
+        assert failed.last_error_at == failed_at
+        assert await history_windows(db_session, instance) == history_before
+
 
 def full_read_matches(start: datetime) -> dict:
     """The history read of the whole asked window: every window COMPLETE, no rows.

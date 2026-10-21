@@ -6,8 +6,10 @@ only `history_backfill_decision`; "Stop reading" and "Read history now" are *req
 that row (`stop_requested_*`, `start_requested_*`), applied at the family's next tick.
 
 `scope_action` is the one function that says what happens to a scope, so the five family
-adapters cannot diverge on §B.5. `new_scope_row` and `transition_row` build the full column
-mapping the repository's `write_scopes` takes, so an adapter never assembles a row by hand.
+adapters cannot diverge on §B.5. `new_scope_row`, `transition_row` and `step_row` build the
+full column mapping the repository's `write_scopes` takes, so an adapter never assembles a
+row by hand: a create or a state change goes through the first two, and a step that leaves
+the state alone starts from `scope_row` (the row as it stands) and names what it changes.
 A state change is always applied through `next_state`, never by hand.
 
 Tie rules (pinned by tests): a stop request is "later" than a start request only when it is
@@ -389,6 +391,97 @@ def transition_row(
         )
     else:
         values["finished_at"] = at
+    return values
+
+
+def scope_view(row: Any | None) -> ScopeRowView | None:
+    """The lifecycle's view of a scope row, from any object holding the columns.
+
+    The stored row (the ORM object the repository hands back) is the usual case;
+    `None` reads as `None`. `state` is read as a `HistoryState`, so a caller never
+    compares raw strings against the lifecycle's states.
+    """
+    if row is None:
+        return None
+    return ScopeRowView(
+        state=HistoryState(row.state),
+        days_requested=row.days_requested,
+        days_target=row.days_target,
+        target_start=row.target_start,
+        floor=row.floor,
+        through=row.through,
+        anchor=row.anchor,
+        started_at=row.started_at,
+        finished_at=row.finished_at,
+        reason=row.reason,
+        progress=row.progress,
+    )
+
+
+def scope_row(
+    view: ScopeRowView,
+    *,
+    instance_id: Any,
+    family: HistoryFamily,
+    scope_key: str,
+) -> dict[str, Any]:
+    """The full column mapping of a scope row as it stands, from a view of it.
+
+    The lifecycle's `new_scope_row` and `transition_row` build the rows a
+    scope's *state change* writes. A step that leaves the state alone (or
+    settles it) needs this third builder; it writes every column the row holds,
+    and the repository refuses a row that lacks one. `progress` is copied, never
+    aliased, and the error marker is cleared: a written step clears it (HB-16).
+    """
+    _check_key(family, scope_key)
+    return {
+        "instance_id": instance_id,
+        "family": family.value,
+        "scope_key": scope_key,
+        "state": view.state.value,
+        "days_requested": view.days_requested,
+        "days_target": view.days_target,
+        "target_start": view.target_start,
+        "floor": view.floor,
+        "through": view.through,
+        "anchor": view.anchor,
+        "started_at": view.started_at,
+        "finished_at": view.finished_at,
+        "reason": view.reason,
+        "last_error_class": None,
+        "last_error_at": None,
+        "progress": dict(view.progress) if view.progress else {},
+    }
+
+
+def step_row(base: Mapping[str, Any], **changes: Any) -> dict[str, Any]:
+    """A copy of the scope row `base` with only the named columns replaced.
+
+    A step names at its call site the columns it changes; everything else stays
+    as the base holds it. `reason` always goes through `bounded_reason`, `state`
+    accepts a `HistoryState`, `progress` is copied, never aliased, and the error
+    marker is cleared (a written step clears it, HB-16). An unknown column name
+    raises `LifecycleError`, and the result must hold exactly `SCOPE_COLUMNS`.
+    """
+    unknown = set(changes) - set(SCOPE_COLUMNS)
+    if unknown:
+        raise LifecycleError(f"unknown scope columns {sorted(unknown)}")
+    values = dict(base)
+    values.update(changes)
+    if isinstance(values.get("state"), HistoryState):
+        values["state"] = values["state"].value
+    if "reason" in changes:
+        values["reason"] = bounded_reason(changes["reason"])
+    if "progress" in changes:
+        values["progress"] = dict(changes["progress"]) if changes["progress"] else {}
+    values["last_error_class"] = None
+    values["last_error_at"] = None
+    missing = set(SCOPE_COLUMNS) - set(values)
+    if missing or set(values) - set(SCOPE_COLUMNS):
+        raise LifecycleError(
+            f"scope row differs from the columns: missing {sorted(missing)}, "
+            f"unknown {sorted(set(values) - set(SCOPE_COLUMNS))}"
+        )
     return values
 
 

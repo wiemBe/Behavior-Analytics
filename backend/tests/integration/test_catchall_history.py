@@ -611,6 +611,39 @@ class TestLifecycle:
         else:
             pytest.fail("the catch-all history did not reach its settlement write")
 
+    async def test_a_fault_after_the_step_wrote_rows_reports_the_pre_step_counts(
+        self, db_session, monkeypatch
+    ) -> None:
+        """A rolled-back step's written counts cannot stay in the tick's report."""
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+        await collector(db_session, prov).collect(inst)
+        await db_session.commit()
+        history_before = len(await buckets(db_session, "HISTORY"))
+        original = CatchallCollector._write_history_senders
+        senders_at_fault: list[int] = []
+
+        async def write_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            senders_at_fault.append(await original(self, *args, **kwargs))
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(CatchallCollector, "_write_history_senders", write_then_crash)
+        failed_at = NOW + timedelta(hours=1)
+
+        report = await collector(db_session, prov, now=failed_at).collect(inst)
+
+        assert senders_at_fault and senders_at_fault[0] > 0  # the step wrote rows first
+        assert report.history_searches == 0
+        assert report.history_buckets_written == 0
+        assert report.history_unmapped_rows == 0
+        assert report.history_senders_written == 0
+        assert report.history_scope_state is HistoryState.READING
+        failed = await scope(db_session, inst)
+        assert failed is not None and failed.last_error_class == "RuntimeError"
+        assert failed.last_error_at == failed_at
+        assert len(await buckets(db_session, "HISTORY")) == history_before
+
 
 # --------------------------------------------------------------------------- the guards
 

@@ -13,22 +13,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.core.config import get_settings
-from app.history.lifecycle import SCOPE_COLUMNS, ScopeRowView
 from app.history.planner import ChunkResult, ScanSpanResult, SearchStatus, Span
 from app.history.rule_match import (
-    RULE_MATCH_SCOPE_KEY,
     failed_chunk,
     failed_scan,
     fitted_window,
     fold_chunk,
     planner_settings,
     scan_result,
-    scope_base,
     searches_for_days,
-    step_scope_row,
     windows_of,
 )
-from app.history.state import HistoryFamily, HistoryState
 from app.models.rule import RuleMatchWindowStatus
 from app.providers.base import ConsoleEventTotals, ProviderError
 from app.providers.dto import RuleMatchBatch, RuleMatchRow, WindowedRuleMatches
@@ -377,102 +372,3 @@ class TestRows:
             "match_records": 1,
             "matched_events": 2,
         }
-
-
-def scope_view(**overrides) -> ScopeRowView:
-    return ScopeRowView(state=HistoryState.READING, **overrides)
-
-
-class TestScopeRow:
-    def test_scope_base_holds_every_column(self) -> None:
-        instance_id = uuid.uuid4()
-
-        base = scope_base(
-            instance_id=instance_id,
-            family=HistoryFamily.RULE_MATCH,
-            scope_key=RULE_MATCH_SCOPE_KEY,
-            row=scope_view(reason="reading"),
-        )
-
-        assert set(base) == set(SCOPE_COLUMNS)
-        assert base["instance_id"] == instance_id
-        assert base["family"] == "RULE_MATCH"
-        assert base["scope_key"] == ""
-        assert base["state"] == "READING"
-        assert base["progress"] == {}
-
-    def test_step_scope_row_overlays_the_planner_fields(self) -> None:
-        base = scope_base(
-            instance_id=uuid.uuid4(),
-            family=HistoryFamily.RULE_MATCH,
-            scope_key=RULE_MATCH_SCOPE_KEY,
-            row=scope_view(),
-        )
-
-        row = step_scope_row(
-            base,
-            state=HistoryState.READING,
-            days_target=28,
-            target_start=T0,
-            floor=T0,
-            through=T0 + HOUR,
-            started_at=T0,
-            finished_at=None,
-            reason="read 1 bucket(s)",
-            progress={"version": 1},
-        )
-
-        assert set(row) == set(SCOPE_COLUMNS)
-        assert row["state"] == "READING"
-        assert row["days_target"] == 28
-        assert row["floor"] == T0
-        assert row["through"] == T0 + HOUR
-        assert row["progress"] == {"version": 1}
-        assert row["finished_at"] is None
-
-    def test_step_scope_row_bounds_a_long_reason(self) -> None:
-        base = scope_base(
-            instance_id=uuid.uuid4(),
-            family=HistoryFamily.RULE_MATCH,
-            scope_key=RULE_MATCH_SCOPE_KEY,
-            row=scope_view(),
-        )
-
-        row = step_scope_row(
-            base,
-            state=HistoryState.COMPLETE,
-            days_target=28,
-            target_start=T0,
-            floor=T0,
-            through=T0 + HOUR,
-            started_at=T0,
-            finished_at=T0 + HOUR,
-            reason="x" * 400,
-            progress={},
-        )
-
-        assert len(row["reason"]) == 255
-        assert row["reason"].endswith("…")
-
-    def test_step_scope_row_refuses_an_incomplete_base(self) -> None:
-        base = scope_base(
-            instance_id=uuid.uuid4(),
-            family=HistoryFamily.RULE_MATCH,
-            scope_key=RULE_MATCH_SCOPE_KEY,
-            row=scope_view(),
-        )
-        del base["floor"]
-
-        with pytest.raises(ValueError, match="scope base lacks"):
-            step_scope_row(
-                base,
-                state=HistoryState.READING,
-                days_target=None,
-                target_start=None,
-                floor=None,
-                through=None,
-                started_at=None,
-                finished_at=None,
-                reason="",
-                progress={},
-            )

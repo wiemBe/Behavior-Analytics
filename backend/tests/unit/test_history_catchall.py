@@ -15,13 +15,10 @@ from app.history.catchall import (
     fold_chunk,
     merge_touches,
     reading_progress,
-    scope_row,
     sender_rows,
 )
-from app.history.lifecycle import ScopeRowView
 from app.history.origin import HistoryOrigin
 from app.history.planner import PlannerSettings, SearchStatus
-from app.history.state import HistoryState
 from app.models.enums import CatchallMeasurement, IpsCellState
 from app.providers.dto import CatchallSenderRow
 from app.waf.admission import AdmissionPolicy
@@ -322,29 +319,6 @@ def test_only_the_written_buckets_count_as_touches() -> None:
     merged = merge_touches([written, unwritten], buckets={T0})
 
     assert set(merged) == {(SOURCE, "a")}
-
-
-# --------------------------------------------------------------------------- the scope row
-
-
-def test_the_scope_row_carries_every_column() -> None:
-    from app.history.lifecycle import SCOPE_COLUMNS
-    from app.history.state import HistoryFamily
-
-    view = ScopeRowView(state=HistoryState.READING, days_requested=28, progress={})
-
-    row_ = scope_row(
-        view,
-        instance_id=uuid.uuid4(),
-        family=HistoryFamily.CATCHALL,
-        scope_key="",
-        reason="read 12 bucket(s)",
-    )
-
-    assert set(row_) == set(SCOPE_COLUMNS)
-    assert row_["state"] == "READING"
-    assert row_["family"] == "CATCHALL"
-    assert row_["reason"] == "read 12 bucket(s)"
 
 
 # --------------------------------------------------------------------------- the window

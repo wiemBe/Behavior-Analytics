@@ -38,6 +38,7 @@ from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import delete, select, text
@@ -71,6 +72,7 @@ from app.history import (
     scope_progress,
     transition_row,
 )
+from app.history.lifecycle import scope_row, scope_view, step_row
 from app.history.planner import (
     PlannerInputError,
     ScanOutcome,
@@ -92,8 +94,6 @@ from app.history.rule_match import (
     fold_chunk,
     planner_settings,
     scan_result,
-    scope_base,
-    step_scope_row,
 )
 from app.models.enums import SearchFamily
 from app.models.instance import QRadarInstance
@@ -185,23 +185,17 @@ def _decision_view(row: object | None) -> DecisionView | None:
 
 
 def _scope_view(row: object | None) -> ScopeRowView | None:
-    """The lifecycle's view of a scope row, whether stored or newly built."""
+    """The lifecycle's view of a scope row, whether stored or newly built.
+
+    The lifecycle's `scope_view` reads attributes (the stored ORM row); this
+    family's step reads the mapping it has just built too, so the mapping case
+    is bridged here and the columns stay listed once, in the lifecycle.
+    """
     if row is None:
         return None
-    progress = _value(row, "progress")
-    return ScopeRowView(
-        state=HistoryState(str(_value(row, "state"))),
-        days_requested=_value(row, "days_requested"),  # type: ignore[arg-type]
-        days_target=_value(row, "days_target"),  # type: ignore[arg-type]
-        target_start=_value(row, "target_start"),  # type: ignore[arg-type]
-        floor=_value(row, "floor"),  # type: ignore[arg-type]
-        through=_value(row, "through"),  # type: ignore[arg-type]
-        anchor=_value(row, "anchor"),  # type: ignore[arg-type]
-        started_at=_value(row, "started_at"),  # type: ignore[arg-type]
-        finished_at=_value(row, "finished_at"),  # type: ignore[arg-type]
-        reason=_value(row, "reason"),  # type: ignore[arg-type]
-        progress=dict(progress) if isinstance(progress, Mapping) else {},
-    )
+    if isinstance(row, Mapping):
+        row = SimpleNamespace(**row)
+    return scope_view(row)
 
 
 class RuleMatchCollector:
@@ -327,6 +321,15 @@ class RuleMatchCollector:
             report.watermark_at = watermark.watermark_at
             # History runs after the live pass, under the same lock and in the
             # same transaction, and never touches the live report's status.
+            # What the report said before the step: a fault the savepoint rolls
+            # back must not leave the step's counts in it (as IPS restores).
+            report_before_history = (
+                report.history_state,
+                report.history_reason,
+                report.history_searches,
+                report.history_windows_written,
+                report.history_rows_written,
+            )
             try:
                 async with self.session.begin_nested():
                     await self._history_step(
@@ -338,6 +341,13 @@ class RuleMatchCollector:
                         rule_ids=rule_ids,
                     )
             except Exception as exc:
+                (
+                    report.history_state,
+                    report.history_reason,
+                    report.history_searches,
+                    report.history_windows_written,
+                    report.history_rows_written,
+                ) = report_before_history
                 report.history_error = type(exc).__name__
                 await HistoryBackfillRepository(self.session).write_step_errors(
                     instance.id,
@@ -412,8 +422,8 @@ class RuleMatchCollector:
         scopes = await repository.scopes(
             instance.id, HistoryFamily.RULE_MATCH.value, [RULE_MATCH_SCOPE_KEY]
         )
-        scope_row = scopes.get(RULE_MATCH_SCOPE_KEY)
-        row = _scope_view(scope_row)
+        stored = scopes.get(RULE_MATCH_SCOPE_KEY)
+        row = _scope_view(stored)
         action = scope_action(
             family=HistoryFamily.RULE_MATCH,
             mode=mode,
@@ -646,11 +656,11 @@ class RuleMatchCollector:
                     return
                 refreshed = _scope_view(
                     {
-                        **scope_base(
+                        **scope_row(
+                            row,
                             instance_id=instance.id,
                             family=HistoryFamily.RULE_MATCH,
                             scope_key=RULE_MATCH_SCOPE_KEY,
-                            row=row,
                         ),
                         "state": HistoryState.READING.value,
                         "days_target": days_target,
@@ -805,11 +815,11 @@ class RuleMatchCollector:
     ) -> None:
         """Write the scope row: the lifecycle's columns, then the planner's fields."""
         if trigger is None:
-            scope_values = scope_base(
+            scope_values = scope_row(
+                row,
                 instance_id=instance.id,
                 family=HistoryFamily.RULE_MATCH,
                 scope_key=RULE_MATCH_SCOPE_KEY,
-                row=row,
             )
         else:
             scope_values = transition_row(
@@ -827,9 +837,9 @@ class RuleMatchCollector:
                 at=now,
             )
         if progress is None:
-            scope_values.update(state=state.value, reason=bounded_reason(reason))
+            scope_values = step_row(scope_values, state=state, reason=reason)
         else:
-            scope_values = step_scope_row(
+            scope_values = step_row(
                 scope_values,
                 state=state,
                 days_target=days_target,
