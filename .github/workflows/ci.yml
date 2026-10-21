@@ -83,7 +83,9 @@ jobs:
 
       - name: Unit + integration tests
         working-directory: backend
-        run: pytest -q
+        # `-rs` prints the short summary of skip reasons. The backend's addopts already
+        # carry one `-q`; a second one (-qq) hides the "N passed, M skipped" line.
+        run: pytest -rs
 
   frontend:
     runs-on: ubuntu-latest
