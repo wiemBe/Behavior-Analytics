@@ -587,6 +587,12 @@ class MetricCollector:
                     cadence_seconds=cadence_seconds,
                 )
         except Exception as exc:
+            await HistoryBackfillRepository(self.session).write_step_errors(
+                instance.id,
+                HISTORY_FAMILY.value,
+                {HISTORY_SCOPE_KEY: exc},
+                at=self._clock(),
+            )
             logger.warning(
                 "history backfill step failed",
                 extra={"instance": instance.name, "error_class": type(exc).__name__},
@@ -1073,6 +1079,8 @@ def _scope_mapping(instance_id: uuid.UUID, row: ScopeRowView) -> dict[str, Any]:
         "scope_key": HISTORY_SCOPE_KEY,
         "state": row.state.value,
         **{name: getattr(row, name) for name in _VIEW_FIELDS},
+        "last_error_class": None,
+        "last_error_at": None,
     }
 
 

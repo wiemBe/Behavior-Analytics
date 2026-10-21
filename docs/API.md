@@ -227,7 +227,8 @@ a `NOT_ELIGIBLE` one, or one whose floor was never proved — says false; for so
 catch-all the floor is only where the read started), the resume point, the anchor,
 the counters (`searches`, `buckets_read`, `days_read`), the gaps and the reason. A counter that
 was not measured is `null`, never a zero, and `progress_unreadable` says that a stored progress
-did not read back.
+did not read back. `last_error_class` is the class of the last failed history step, cleared by the
+next step that succeeds; never a message. `last_error_at` is that failure's UTC time.
 
 The estimate is a model of the cost, not a measurement: searches, ticks and hours per family,
 with the assumptions it rests on. A family whose count the model needs is missing answers with no

@@ -154,6 +154,8 @@ def scope_row(  # type: ignore[no-untyped-def]
         "started_at": STAMP,
         "finished_at": None,
         "reason": None,
+        "last_error_class": None,
+        "last_error_at": None,
         "progress": {},
     }
     values.update(kw)
@@ -537,6 +539,8 @@ async def test_the_page_shows_a_yes_with_a_scope_row_in_every_state(  # type: ig
                     buckets_read=58,
                     gaps=gaps,
                 ),
+                last_error_class="ProviderUnavailableError",
+                last_error_at=STAMP,
             ),
             scope_row(instance.id, "RULE_MATCH", "", state="COMPLETE", finished_at=STAMP),
             scope_row(
@@ -580,9 +584,12 @@ async def test_the_page_shows_a_yes_with_a_scope_row_in_every_state(  # type: ig
     assert [g["reason"] for g in reading["gaps"]] == [g.reason for g in gaps]
     assert reading["gaps"][0]["start"].startswith("2026-10-01T00:00:00")
     assert reading["progress_unreadable"] is False
+    assert reading["last_error_class"] == "ProviderUnavailableError"
+    assert reading["last_error_at"].startswith("2026-10-19T12:00:00")
 
     complete = family_of(console, "RULE_MATCH")["scopes"][0]
     assert complete["state"] == "COMPLETE" and complete["reason"] is None
+    assert (complete["last_error_class"], complete["last_error_at"]) == (None, None)
     partial = family_of(console, "IPS")["scopes"][0]
     assert partial["state"] == "PARTIAL" and partial["reason"] == "stopped by ayse"
 

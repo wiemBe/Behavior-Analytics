@@ -305,6 +305,8 @@ def scope_base(
         "started_at": row.started_at,
         "finished_at": row.finished_at,
         "reason": row.reason,
+        "last_error_class": None,
+        "last_error_at": None,
         "progress": dict(row.progress or {}),
     }
 
@@ -336,6 +338,8 @@ def step_scope_row(
         started_at=started_at,
         finished_at=finished_at,
         reason=bounded_reason(reason),
+        last_error_class=None,
+        last_error_at=None,
         progress=dict(progress),
     )
     return values

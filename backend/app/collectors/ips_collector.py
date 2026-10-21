@@ -21,7 +21,7 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Any, cast
 
 from sqlalchemy import Table, delete, exists, func, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -106,7 +106,7 @@ from app.models.ips import (
 )
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
-from app.providers.base import QRadarProvider
+from app.providers.base import ProviderError, QRadarProvider
 from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key
@@ -175,6 +175,25 @@ class _Source:
     log_source: LogSource
     mapping: IpsFieldMapping
     window: tuple[datetime, datetime]
+
+
+class _HistoryProvider:
+    """Delegate IPS history reads and retain each caught source fault by class."""
+
+    def __init__(self, provider: QRadarProvider) -> None:
+        self.provider = provider
+        self.errors: dict[int, ProviderError] = {}
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.provider, name)
+
+    async def get_ips_keyed(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return await self.provider.get_ips_keyed(*args, **kwargs)
+        except ProviderError as exc:
+            for source_id in kwargs.get("qradar_log_source_ids", ()):
+                self.errors.setdefault(int(source_id), exc)
+            raise
 
 
 @dataclass(frozen=True)
@@ -407,6 +426,7 @@ class IpsCollector:
 
             scope_values: dict[int, dict[str, object]] = {}
             handoffs: dict[int, bool] = {}
+            history_errors: dict[int, BaseException] = {}
             history_sources: list[_Source] = []
             live_sources = [item for item in locked if item.window[0] < item.window[1]]
             if has_yes and decision_row is not None:
@@ -452,7 +472,7 @@ class IpsCollector:
                 search_result.budget_blocked_reasons,
             )
             if history_sources:
-                new_handoffs = await self._run_history(
+                new_handoffs, history_errors = await self._run_history(
                     instance,
                     history_sources,
                     scope_values,
@@ -467,6 +487,13 @@ class IpsCollector:
             if scope_values:
                 await HistoryBackfillRepository(self.session).write_scopes(
                     list(scope_values.values())
+                )
+            if history_errors:
+                await HistoryBackfillRepository(self.session).write_step_errors(
+                    instance.id,
+                    HistoryFamily.IPS.value,
+                    {str(source_id): exc for source_id, exc in history_errors.items()},
+                    at=self._clock(),
                 )
             if handoffs:
                 await self._write_handoff_watermarks(
@@ -667,6 +694,8 @@ class IpsCollector:
             "started_at": row.started_at,
             "finished_at": row.finished_at,
             "reason": row.reason,
+            "last_error_class": None,
+            "last_error_at": None,
             "progress": dict(row.progress),
         }
 
@@ -682,7 +711,7 @@ class IpsCollector:
         cadence_seconds: int,
         live_searches: int,
         report: IpsCollectionReport,
-    ) -> dict[int, bool]:
+    ) -> tuple[dict[int, bool], dict[int, BaseException]]:
         """Advance independent source scopes under one oldest-first sub-budget.
 
         IPS history is deliberately per source: a shared keyed search returns roughly
@@ -713,6 +742,7 @@ class IpsCollector:
         )
         writes: list[_HistoryWrite] = []
         handoffs: dict[int, bool] = {}
+        history_provider = _HistoryProvider(self.provider)
 
         for item in sources:
             source_id = item.log_source.qradar_id
@@ -815,7 +845,7 @@ class IpsCollector:
             if plan.action is StepAction.SCAN:
                 assert plan.scan_span is not None
                 status, totals = await self._history_scan(
-                    item, plan.scan_span, interval, budget
+                    item, plan.scan_span, interval, budget, history_provider
                 )
                 decision = interpret_scan(
                     progress,
@@ -831,7 +861,7 @@ class IpsCollector:
                 completed: dict[Span, dict[tuple[int, datetime, IpsDimension], IpsCellOutcome]] = {}
                 for chunk in plan.chunks:
                     outcome_map, result = await self._history_search_span(
-                        item, chunk, interval, budget
+                        item, chunk, interval, budget, history_provider
                     )
                     results.append(result)
                     if result.status is SearchStatus.COMPLETE:
@@ -873,7 +903,12 @@ class IpsCollector:
         report.history_searches = budget.used
         if writes:
             await self._persist_history(instance, writes, now=now, interval=interval, report=report)
-        return handoffs
+        errors: dict[int, BaseException] = {
+            source_id: exc
+            for source_id, exc in history_provider.errors.items()
+            if str(scope_values[source_id]["state"]) == HistoryState.READING.value
+        }
+        return handoffs, errors
 
     async def _history_entity_counts(
         self, sources: Sequence[_Source]
@@ -913,6 +948,7 @@ class IpsCollector:
         span: Span,
         interval: int,
         budget: IpsSearchBudget,
+        provider: _HistoryProvider,
     ) -> tuple[SearchStatus, tuple[tuple[datetime, int], ...]]:
         """The floor proof: the `TOTALS` dimension of one span, and nothing else.
 
@@ -922,7 +958,7 @@ class IpsCollector:
         """
         group = IpsSourceGroup(fields=(), source_ids=(source.log_source.qradar_id,))
         cells = await run_dimension(
-            self.provider,
+            cast(QRadarProvider, provider),
             IpsDimension.TOTALS,
             group,
             (span.start, span.end),
@@ -952,13 +988,17 @@ class IpsCollector:
         span: Span,
         interval: int,
         budget: IpsSearchBudget,
+        provider: _HistoryProvider,
     ) -> tuple[
         dict[tuple[int, datetime, IpsDimension], IpsCellOutcome],
         ChunkResult,
     ]:
         before = budget.used
         searched = await self._search(
-            [replace(source, window=(span.start, span.end))], interval, budget
+            [replace(source, window=(span.start, span.end))],
+            interval,
+            budget,
+            provider=cast(QRadarProvider, provider),
         )
         spent = budget.used - before
         result = self._history_chunk_result(source, span, searched.outcomes, searches=spent)
@@ -1219,8 +1259,14 @@ class IpsCollector:
         )
 
     async def _search(
-        self, sources: Sequence[_Source], bucket_seconds: int, budget: IpsSearchBudget
+        self,
+        sources: Sequence[_Source],
+        bucket_seconds: int,
+        budget: IpsSearchBudget,
+        *,
+        provider: QRadarProvider | None = None,
     ) -> _SearchResult:
+        search_provider = provider or self.provider
         by_window: dict[tuple[datetime, datetime], list[_Source]] = defaultdict(list)
         for source in sources:
             by_window[source.window].append(source)
@@ -1269,7 +1315,7 @@ class IpsCollector:
                 continue
             for search in plan:
                 cells = await run_dimension(
-                    self.provider,
+                    search_provider,
                     search.dimension,
                     search.group,
                     window,

@@ -488,16 +488,29 @@ class TestLifecycle:
         failing = provider(always(row("fw-01", 50)))
         # The live window still works; the history window (before the anchor) fails.
         failing.catchall_fault = lambda s: (
-            ProviderError("QRadar is unreachable") if s.window_start < FIRST else None
+            ProviderError("SELECT sensitive_property FROM events")
+            if s.window_start < FIRST
+            else None
         )
+        live_before = len(await buckets(db_session, "LIVE"))
 
-        report = await collector(db_session, failing).collect(inst)
+        failed_at = NOW + timedelta(hours=1)
+        report = await collector(db_session, failing, now=failed_at).collect(inst)
 
         assert report.history_scope_state is HistoryState.READING
         assert await buckets(db_session, "HISTORY") == []
         reading = await scope(db_session, inst)
         assert reading is not None and reading.state == "READING"
         assert reading.through is None
+        assert reading.last_error_class == "ProviderError"
+        assert reading.last_error_at == failed_at
+        assert len(await buckets(db_session, "LIVE")) > live_before
+
+        failing.catchall_fault = None
+        await collector(db_session, failing, now=failed_at + timedelta(hours=1)).collect(inst)
+        cleared = await scope(db_session, inst)
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
 
 
 # --------------------------------------------------------------------------- the guards

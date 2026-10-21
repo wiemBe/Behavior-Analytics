@@ -464,7 +464,13 @@ class RuleMatchCollector:
             # A scope row that cannot be read back is a bug or a manual edit,
             # not a reason to lose the live pass. Stop this step; the next tick
             # retries, and the operator sees the reason on the scope row.
-            report.history_error = f"{type(exc).__name__}: {exc}"[:512]
+            report.history_error = type(exc).__name__
+            await repository.write_step_errors(
+                instance.id,
+                HistoryFamily.RULE_MATCH.value,
+                {RULE_MATCH_SCOPE_KEY: exc},
+                at=self._clock(),
+            )
             logger.warning(
                 "rule match history step failed",
                 extra={

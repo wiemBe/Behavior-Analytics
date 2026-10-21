@@ -225,6 +225,7 @@ class WafHistoryStep:
     rows_written: int = 0
     searches: int = 0
     permit_unavailable: bool = False
+    error: ProviderError | None = None
 
 
 @dataclass(frozen=True)
@@ -1281,7 +1282,7 @@ class WafEndpointCollector:
         async def run() -> WafHistoryStep:
             if plan.action is StepAction.SCAN:
                 assert plan.scan_span is not None
-                status, keyed, _ = await self._history_volume_search(
+                status, keyed, _, scan_error = await self._history_volume_search(
                     log_source, plan.scan_span, planner.bucket_seconds
                 )
                 totals: tuple[tuple[datetime, int], ...] = ()
@@ -1308,6 +1309,7 @@ class WafEndpointCollector:
                         decision.reason,
                         decision.trigger,
                         searches=1 if status is not SearchStatus.NOT_RUN else 0,
+                        error=scan_error,
                     )
                 reuse_span = Span(updated.floor, plan.scan_span.end)
                 result = self._history_chunk_result(
@@ -1324,17 +1326,20 @@ class WafEndpointCollector:
                     settled.trigger,
                     rows_written=len(folded.metrics),
                     searches=1,
+                    error=scan_error,
                 )
 
             results: list[ChunkResult] = []
             keyed_by_span: dict[Span, WafObservationBucketBatch] = {}
+            step_error: ProviderError | None = None
             began = time.monotonic()
             for chunk in plan.chunks:
                 if time.monotonic() - began >= seconds_left:
                     break
-                status, keyed, searches = await self._history_volume_search(
+                status, keyed, searches, caught = await self._history_volume_search(
                     log_source, chunk, planner.bucket_seconds
                 )
+                step_error = step_error or caught
                 results.append(self._history_chunk_result(chunk, keyed, status, searches))
                 if keyed is not None and status is SearchStatus.COMPLETE:
                     keyed_by_span[chunk] = keyed
@@ -1361,6 +1366,7 @@ class WafEndpointCollector:
                 settled.trigger,
                 rows_written=rows,
                 searches=sum(result.searches for result in results),
+                error=step_error,
             )
 
         if self.ariel_budget is None:
@@ -1628,7 +1634,7 @@ class WafEndpointCollector:
 
     async def _history_volume_search(
         self, log_source: LogSource, span: Span, bucket_seconds: int
-    ) -> tuple[SearchStatus, WafObservationBucketBatch | None, int]:
+    ) -> tuple[SearchStatus, WafObservationBucketBatch | None, int, ProviderError | None]:
         try:
             if span.end - span.start == timedelta(seconds=bucket_seconds):
                 batch = await self._observations_one(log_source, span.start, span.end)
@@ -1642,15 +1648,16 @@ class WafEndpointCollector:
                         ariel_searches=batch.ariel_searches,
                     ),
                     1,
+                    None,
                 )
             keyed = await self._observations_keyed(
                 log_source, span.start, span.end, bucket_seconds
             )
-        except ProviderError:
-            return SearchStatus.FAILED, None, 1
+        except ProviderError as exc:
+            return SearchStatus.FAILED, None, 1, exc
         if keyed.truncated:
-            return SearchStatus.TRUNCATED, None, 1
-        return SearchStatus.COMPLETE, keyed, 1
+            return SearchStatus.TRUNCATED, None, 1, None
+        return SearchStatus.COMPLETE, keyed, 1, None
 
     def _history_chunk_result(
         self,

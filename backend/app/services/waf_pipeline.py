@@ -544,6 +544,13 @@ class WafSourcePipeline:
             anchor=anchor,
         )
         await HistoryBackfillRepository(self.session).write_scopes([values])
+        if state is HistoryState.READING and outcome.error is not None:
+            await HistoryBackfillRepository(self.session).write_step_errors(
+                instance.id,
+                HistoryFamily.WAF.value,
+                {str(log_source.qradar_id): outcome.error},
+                at=self._clock(),
+            )
         report.status = "history_reading" if state is HistoryState.READING else "history_handoff"
         report.history_state = state.value
         report.history_reason = reason
@@ -709,6 +716,8 @@ class WafSourcePipeline:
             "started_at": started_at,
             "finished_at": row.finished_at if finished_at is _KEEP else finished_at,
             "reason": reason[:255],
+            "last_error_class": None,
+            "last_error_at": None,
             "progress": encoded,
         }
 

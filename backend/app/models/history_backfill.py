@@ -127,5 +127,8 @@ class HistoryBackfillScope(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     #: Words, never a value text.
     reason: Mapped[str | None] = mapped_column(String(255))
+    #: Code only: the class of the last raised history-step fault, never its message.
+    last_error_class: Mapped[str | None] = mapped_column(String(64))
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     #: The planner's carried progress (`app.history.progress_codec`).
     progress: Mapped[dict] = mapped_column(JSONB, nullable=False)

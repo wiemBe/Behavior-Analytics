@@ -33,7 +33,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func, literal_column, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -103,7 +103,7 @@ from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfill
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
-from app.providers.base import ProviderCapability, QRadarProvider
+from app.providers.base import ProviderCapability, ProviderError, QRadarProvider
 from app.providers.dto import CatchallSenderRow
 from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.locks import CollectorAdvisoryLock
@@ -128,6 +128,24 @@ _FINISHED_SCOPES = (
     HistoryState.PARTIAL,
     HistoryState.UNAVAILABLE,
 )
+
+
+class _HistoryProvider:
+    """Delegate history reads while retaining caught provider faults by class."""
+
+    def __init__(self, provider: QRadarProvider) -> None:
+        self.provider = provider
+        self.error: ProviderError | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.provider, name)
+
+    async def get_catchall_senders_keyed(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return await self.provider.get_catchall_senders_keyed(*args, **kwargs)
+        except ProviderError as exc:
+            self.error = exc
+            raise
 
 
 @dataclass
@@ -777,17 +795,17 @@ class CatchallCollector:
         try:
             decoded = decode_scope(view)
         except (LifecycleError, ProgressCodecError) as exc:
-            logger.warning("the catch-all history progress cannot be read: %s", exc)
-            return await self._finish_history(
-                instance,
-                report,
-                decision=decision,
-                view=view,
-                progress=None,
-                trigger=HistoryTrigger.FINISHED_PARTIAL,
-                reason=UNREADABLE_PROGRESS,
-                now=now,
+            await HistoryBackfillRepository(self.session).write_step_errors(
+                instance.id,
+                HistoryFamily.CATCHALL.value,
+                {SCOPE_KEY: exc},
+                at=self._clock(),
             )
+            logger.warning(
+                "the catch-all history progress cannot be read",
+                extra={"instance_id": str(instance.id), "error_class": type(exc).__name__},
+            )
+            return view.state
         progress = decoded.progress if decoded is not None else None
         floors = SourceFloors.decode(decoded.adapter) if decoded is not None else SourceFloors()
         # A restarted row still holds the earlier reading's days_target until this step
@@ -862,12 +880,13 @@ class CatchallCollector:
             min_requests=settings.catchall_min_admission_events,
         )
         history_budget = IpsSearchBudget(budget.searches)
+        history_provider = _HistoryProvider(self.provider)
         chunks: list[CatchallChunk] = []
         results: list[ChunkResult] = []
         for chunk in plan.chunks:
             before = history_budget.used
             outcomes = await run_catchall_search(
-                self.provider,
+                cast(QRadarProvider, history_provider),
                 settings.catchall_type_ids,
                 (chunk.start, chunk.end),
                 bucket_seconds,
@@ -973,6 +992,13 @@ class CatchallCollector:
                 )
             ]
         )
+        if history_provider.error is not None:
+            await HistoryBackfillRepository(self.session).write_step_errors(
+                instance.id,
+                HistoryFamily.CATCHALL.value,
+                {SCOPE_KEY: history_provider.error},
+                at=self._clock(),
+            )
         return HistoryState.READING
 
     @staticmethod

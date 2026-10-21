@@ -259,6 +259,8 @@ class TestStatementCounts:
                 "started_at": T0 - timedelta(days=2),
                 "finished_at": T0 - timedelta(days=2),
                 "reason": "test: a finished reading",
+                "last_error_class": None,
+                "last_error_at": None,
                 "progress": encode_progress(
                     ScopeProgress(
                         target_start=T0 - timedelta(days=8),

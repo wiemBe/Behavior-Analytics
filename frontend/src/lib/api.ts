@@ -275,6 +275,8 @@ export interface HistoryScope {
   started_at: string | null;
   finished_at: string | null;
   reason: string | null;
+  last_error_class: string | null;
+  last_error_at: string | null;
   searches: number | null;
   buckets_read: number | null;
   days_read: number | null;

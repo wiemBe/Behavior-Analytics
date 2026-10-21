@@ -478,6 +478,8 @@ async def test_scope_upsert_refreshes_loaded_rows_once_and_skips_unloaded_rows(
             "started_at": T0,
             "finished_at": T0 + STEP if state == "PARTIAL" else None,
             "reason": "stopped by operator" if state == "PARTIAL" else None,
+            "last_error_class": None,
+            "last_error_at": None,
             "progress": {},
         }
 
@@ -538,6 +540,8 @@ async def test_waf_stop_before_an_unstepped_reading_keeps_existing_evidence(
                 "started_at": T0,
                 "finished_at": None,
                 "reason": "read history now: topping up",
+                "last_error_class": None,
+                "last_error_at": None,
                 "progress": {},
             }
         ]
@@ -951,6 +955,8 @@ async def test_worker_failure_rolls_back_rows_and_progress_then_resumes(
                 "started_at": T0,
                 "finished_at": None,
                 "reason": "test starts at a proved floor",
+                "last_error_class": None,
+                "last_error_at": None,
                 "progress": encode_progress(progress),
             }
         ]
@@ -1205,6 +1211,8 @@ async def test_empty_history_handoff_keeps_null_watermarks_then_live_seeds(db_se
                 "started_at": T0,
                 "finished_at": None,
                 "reason": "nothing settled",
+                "last_error_class": None,
+                "last_error_at": None,
                 "progress": encode_progress(progress),
             }
         ]
@@ -1399,6 +1407,8 @@ async def reading_scope(  # type: ignore[no-untyped-def]
                 "started_at": body.started_at,
                 "finished_at": None,
                 "reason": "test starts at a proved floor",
+                "last_error_class": None,
+                "last_error_at": None,
                 "progress": encode_progress(body),
             }
         ]
@@ -1810,6 +1820,9 @@ async def test_a_provider_failure_mid_step_writes_nothing_and_retries_narrower(
         (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
     )
     assert scope is not None and scope.through is None
+    assert scope.state == HistoryState.READING.value
+    assert scope.last_error_class == "ProviderUnavailableError"
+    assert scope.last_error_at == T0 + 2 * STEP + timedelta(seconds=5)
     assert await db_session.scalar(select(WafSourceBucket)) is None
 
     provider.fail_keyed_volume_at.clear()
@@ -1822,6 +1835,8 @@ async def test_a_provider_failure_mid_step_writes_nothing_and_retries_narrower(
     )
     assert resumed["status"] == "history_handoff"
     assert resumed["history_state"] == HistoryState.COMPLETE.value
+    await db_session.refresh(scope)
+    assert scope.last_error_class is None and scope.last_error_at is None
     starts = (
         await db_session.scalars(
             select(WafSourceBucket.bucket_start).order_by(WafSourceBucket.bucket_start)

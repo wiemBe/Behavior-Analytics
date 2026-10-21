@@ -15,6 +15,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.collectors.rule_match_collector import COLLECTOR_NAME, RuleMatchCollector
+from app.history.progress_codec import ProgressCodecError
 from app.models.enums import HistoryDecisionAnswer, HistoryDecisionSource, RuleHealthStatus
 from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
 from app.models.rule import (
@@ -578,6 +579,41 @@ class TestOperatorPaths:
         assert report.error is None
         assert report.partial_failure is False
         assert await history_windows(db_session, instance) == []
+
+    @pytest.mark.asyncio
+    async def test_a_raised_step_fault_is_visible_then_a_success_clears_it(
+        self, db_session, monkeypatch
+    ) -> None:
+        instance = await make_instance(db_session)
+        await add_rule(db_session, instance, 100)
+        await seed_anchor_and_decision(db_session, instance)
+        provider = HistoryProvider(by_window, first_event=H0 - 24 * HOUR)
+        await history_collector(
+            db_session, provider, search_cadence_max_searches_per_tick=1
+        ).collect(instance)
+        reading = await scope_row(db_session, instance)
+        assert reading is not None and reading.state == "READING"
+        live_before = len(await windows(db_session, instance))
+        original = RuleMatchCollector._read_history
+
+        async def broken(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            raise ProgressCodecError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(RuleMatchCollector, "_read_history", broken)
+        report = await history_collector(db_session, provider, now=NOW + HOUR).collect(instance)
+
+        failed = await scope_row(db_session, instance)
+        assert report.history_error == "ProgressCodecError"
+        assert failed is not None and failed.state == "READING"
+        assert failed.last_error_class == "ProgressCodecError"
+        assert failed.last_error_at == NOW + HOUR
+        assert len(await windows(db_session, instance)) > live_before
+
+        monkeypatch.setattr(RuleMatchCollector, "_read_history", original)
+        await history_collector(db_session, provider, now=NOW + 2 * HOUR).collect(instance)
+        cleared = await scope_row(db_session, instance)
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
 
 
 def full_read_matches(start: datetime) -> dict:

@@ -56,6 +56,8 @@ SCOPE_COLUMNS: tuple[str, ...] = (
     "started_at",
     "finished_at",
     "reason",
+    "last_error_class",
+    "last_error_at",
     "progress",
 )
 
@@ -336,6 +338,8 @@ def new_scope_row(
         "started_at": at if reading else None,
         "finished_at": at if finished else None,
         "reason": bounded_reason(action.reason),
+        "last_error_class": None,
+        "last_error_at": None,
         "progress": {},
     }
 
@@ -369,6 +373,8 @@ def transition_row(
         "started_at": row.started_at,
         "finished_at": row.finished_at,
         "reason": bounded_reason(action.reason),
+        "last_error_class": None,
+        "last_error_at": None,
         "progress": dict(row.progress) if row.progress is not None else {},
     }
     if action.state is HistoryState.READING:
