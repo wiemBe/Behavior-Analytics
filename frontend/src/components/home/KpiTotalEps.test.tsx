@@ -87,7 +87,13 @@ describe("KpiTotalEps", () => {
       fleet([
         fleetClass("FIREWALL", {
           mean_eps: 5,
-          buckets: { expected: 48, complete: 40, partial: 2, missing: 6 },
+          buckets: {
+            expected: 48,
+            complete: 40,
+            complete_from_history: 0,
+            partial: 2,
+            missing: 6,
+          },
         }),
       ]),
     );

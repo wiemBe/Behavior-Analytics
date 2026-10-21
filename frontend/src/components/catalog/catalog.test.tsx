@@ -241,7 +241,19 @@ describe("table.fleet_classes", () => {
 
   it("qualifies incomplete buckets as partial", () => {
     res.byKey = {
-      [KEY]: ok(fleet([fleetClass("DNS", { buckets: { expected: 48, complete: 40, partial: 4, missing: 4 } })])),
+      [KEY]: ok(
+        fleet([
+          fleetClass("DNS", {
+            buckets: {
+              expected: 48,
+              complete: 40,
+              complete_from_history: 0,
+              partial: 4,
+              missing: 4,
+            },
+          }),
+        ]),
+      ),
     };
     render(<FleetClasses />);
     expect(screen.getByText(/40 of 48 intervals collected/)).toBeInTheDocument();

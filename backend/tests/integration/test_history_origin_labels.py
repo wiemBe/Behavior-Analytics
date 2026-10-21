@@ -47,7 +47,7 @@ from app.security.rbac import Principal
 from app.services import rule_statistics as rule_statistics_service
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 from tests.integration.factories import add_metric, make_instance, make_log_source
-from tests.integration.test_fleet_api import Client, run
+from tests.integration.test_fleet_api import Client, classification, run
 
 pytestmark = pytest.mark.integration
 
@@ -465,6 +465,73 @@ def test_the_fleet_series_statement_count_is_unchanged(
     # Measured on the base before this change: 3 statements (the sources, the
     # metric cells, the baselines).
     assert client.statements == 3
+
+
+# -------------------------------------------------------------- fleet summary
+async def _seed_fleet_summary(s, *, include_history: bool) -> None:  # type: ignore[no-untyped-def]
+    """Two classes with complete buckets; history markers are optional."""
+    inst = await make_instance(s)
+    firewall = await make_log_source(s, inst, qradar_id=11, name="firewall")
+    waf = await make_log_source(s, inst, qradar_id=12, name="waf")
+    s.add_all([classification(firewall, "FIREWALL"), classification(waf, "WAF")])
+    await s.flush()
+    markers = (
+        ["ariel_history", "ariel_history", "ariel_aggregate"]
+        if include_history
+        else ["ariel_aggregate"] * 3
+    )
+    for index, marker in enumerate(markers, start=1):
+        await add_metric(
+            s,
+            firewall,
+            CLOSED - timedelta(minutes=5 * index),
+            event_count=100,
+            collection_source=marker,
+        )
+    waf_markers = (
+        ["ariel_history", "ariel_aggregate", "ariel_aggregate"]
+        if include_history
+        else ["ariel_aggregate"] * 3
+    )
+    for index, marker in enumerate(waf_markers, start=1):
+        await add_metric(
+            s,
+            waf,
+            CLOSED - timedelta(minutes=5 * index),
+            event_count=200,
+            collection_source=marker,
+        )
+
+
+def test_the_fleet_summary_counts_complete_buckets_read_from_history_by_class(
+    db_schema, _fleet_clock
+) -> None:
+    run(lambda s: _seed_fleet_summary(s, include_history=True))
+    body = Client(READER).get("/api/v1/fleet/summary?window=1h").json()
+    classes = {row["source_class"]: row for row in body["classes"]}
+    assert classes["FIREWALL"]["buckets"]["complete"] == 3
+    assert classes["FIREWALL"]["buckets"]["complete_from_history"] == 2
+    assert classes["WAF"]["buckets"]["complete"] == 3
+    assert classes["WAF"]["buckets"]["complete_from_history"] == 1
+
+
+def test_a_live_only_fleet_summary_reports_zero_history_buckets(
+    db_schema, _fleet_clock
+) -> None:
+    run(lambda s: _seed_fleet_summary(s, include_history=False))
+    body = Client(READER).get("/api/v1/fleet/summary?window=1h").json()
+    classes = {row["source_class"]: row for row in body["classes"]}
+    assert classes["FIREWALL"]["buckets"]["complete_from_history"] == 0
+    assert classes["WAF"]["buckets"]["complete_from_history"] == 0
+
+
+def test_the_fleet_summary_statement_count_is_unchanged(db_schema, _fleet_clock) -> None:
+    run(lambda s: _seed_fleet_summary(s, include_history=True))
+    client = Client(READER)
+    resp = client.get("/api/v1/fleet/summary?window=1h")
+    assert resp.status_code == 200
+    # Measured before HB-21: sources, metrics, baselines, incidents and outage policy.
+    assert client.statements == 5
 
 
 # ------------------------------------------------------------ rule statistics

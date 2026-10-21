@@ -26,7 +26,13 @@ function setup(over: { fleet?: unknown; behaviors?: unknown } = {}) {
             top_sources: [ts("a", 86_400_000, "Core Firewall"), ts("b", 43_200_000, "Edge FW")],
           }),
           fleetClass("PROXY", {
-            buckets: { expected: 48, complete: 40, partial: 4, missing: 4 },
+            buckets: {
+              expected: 48,
+              complete: 40,
+              complete_from_history: 0,
+              partial: 4,
+              missing: 4,
+            },
             top_sources: [ts("c", 8_640_000, "Proxy")],
           }),
         ]),

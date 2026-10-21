@@ -29,7 +29,7 @@ describe("totalEps", () => {
       sources: { enabled: 0, disabled: 0 },
       mean_eps: null,
       events: null,
-      buckets: { expected: 0, complete: 0, partial: 0, missing: 0 },
+      buckets: { expected: 0, complete: 0, complete_from_history: 0, partial: 0, missing: 0 },
     });
     expect(totalEps(fleet([fleetClass("DNS", { mean_eps: 1 }), empty])).classesWithoutData).toBe(0);
   });
@@ -63,8 +63,24 @@ describe("totalEps", () => {
   it("is PARTIAL with the interval counts when buckets are partial or missing", () => {
     const r = totalEps(
       fleet([
-        fleetClass("DNS", { buckets: { expected: 48, complete: 40, partial: 5, missing: 3 } }),
-        fleetClass("LINUX", { buckets: { expected: 48, complete: 48, partial: 0, missing: 0 } }),
+        fleetClass("DNS", {
+          buckets: {
+            expected: 48,
+            complete: 40,
+            complete_from_history: 0,
+            partial: 5,
+            missing: 3,
+          },
+        }),
+        fleetClass("LINUX", {
+          buckets: {
+            expected: 48,
+            complete: 48,
+            complete_from_history: 0,
+            partial: 0,
+            missing: 0,
+          },
+        }),
       ]),
     );
     const q = r.qualifiers.find((x) => x.kind === "PARTIAL");

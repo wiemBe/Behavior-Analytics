@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.fleet.outage_policy import resolve
+from app.history.origin import is_history_clause
 from app.models.enums import (
     ACTIVE_ANOMALY_STATES,
     BucketCompleteness,
@@ -110,6 +111,7 @@ async def build_fleet_summary(
     #    PARTIAL rows are counted only to say how much of the window is unusable.
     complete = LogSourceMetric.completeness == BucketCompleteness.COMPLETE.value
     partial = LogSourceMetric.completeness == BucketCompleteness.PARTIAL.value
+    history = is_history_clause(LogSourceMetric)
     metric_rows = (
         await session.execute(
             select(
@@ -117,6 +119,7 @@ async def build_fleet_summary(
                 LogSource.name,
                 source_class,
                 func.count().filter(complete),
+                func.count().filter(complete, history),
                 func.count().filter(partial),
                 func.coalesce(func.sum(LogSourceMetric.event_count).filter(complete), 0),
                 func.coalesce(func.sum(LogSourceMetric.bucket_seconds).filter(complete), 0),
@@ -135,12 +138,14 @@ async def build_fleet_summary(
         )
     ).all()
     complete_buckets: dict[str, int] = defaultdict(int)
+    complete_from_history: dict[str, int] = defaultdict(int)
     partial_buckets: dict[str, int] = defaultdict(int)
     events: dict[str, int] = defaultdict(int)
     eps: dict[str, float] = defaultdict(float)
     top: dict[str, list[TopSource]] = defaultdict(list)
-    for sid, name, cls, n_complete, n_partial, n_events, n_seconds in metric_rows:
+    for sid, name, cls, n_complete, n_history, n_partial, n_events, n_seconds in metric_rows:
         complete_buckets[cls] += n_complete
+        complete_from_history[cls] += n_history
         partial_buckets[cls] += n_partial
         if n_complete:
             events[cls] += int(n_events)
@@ -274,6 +279,7 @@ async def build_fleet_summary(
                 buckets=BucketCounts(
                     expected=expected,
                     complete=n_complete,
+                    complete_from_history=complete_from_history.get(cls, 0),
                     partial=n_partial,
                     missing=max(0, expected - n_complete - n_partial),
                 ),

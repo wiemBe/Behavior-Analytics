@@ -30,7 +30,13 @@ describe("topSources", () => {
     const rows = topSources(
       fleet([
         fleetClass("DNS", {
-          buckets: { expected: 48, complete: 40, partial: 8, missing: 0 },
+          buckets: {
+            expected: 48,
+            complete: 40,
+            complete_from_history: 0,
+            partial: 8,
+            missing: 0,
+          },
           top_sources: [ts("a", 100)],
         }),
       ]),

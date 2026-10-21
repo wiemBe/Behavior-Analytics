@@ -270,7 +270,13 @@ def test_summary_reports_completeness_and_never_a_zero_for_a_missing_measurement
     fw = classes["FIREWALL"]
     assert fw["sources"] == {"enabled": 2, "disabled": 1}
     # 2 monitored+enabled sources x 12 buckets; 18 complete, 2 partial, 4 neither.
-    assert fw["buckets"] == {"expected": 24, "complete": 18, "partial": 2, "missing": 4}
+    assert fw["buckets"] == {
+        "expected": 24,
+        "complete": 18,
+        "complete_from_history": 0,
+        "partial": 2,
+        "missing": 4,
+    }
     assert fw["events"] == 12 * 3000 + 6 * 1500
     assert fw["mean_eps"] == pytest.approx(10.0 + 5.0)
     assert fw["expected_eps"] == pytest.approx(9.0)
@@ -281,14 +287,26 @@ def test_summary_reports_completeness_and_never_a_zero_for_a_missing_measurement
 
     ips = classes["IPS"]
     assert ips["sources"] == {"enabled": 1, "disabled": 0}
-    assert ips["buckets"] == {"expected": 12, "complete": 0, "partial": 0, "missing": 12}
+    assert ips["buckets"] == {
+        "expected": 12,
+        "complete": 0,
+        "complete_from_history": 0,
+        "partial": 0,
+        "missing": 12,
+    }
     assert ips["events"] is None and ips["mean_eps"] is None
     assert ips["expected_eps"] is None and ips["baseline_share"] == 0.0
     assert ips["open_incidents"] == {}  # the only incident is suppressed
     assert ips["top_sources"] == []
 
     waf = classes["WAF"]
-    assert waf["buckets"] == {"expected": 12, "complete": 0, "partial": 1, "missing": 11}
+    assert waf["buckets"] == {
+        "expected": 12,
+        "complete": 0,
+        "complete_from_history": 0,
+        "partial": 1,
+        "missing": 11,
+    }
     assert waf["events"] is None and waf["mean_eps"] is None  # partial is not a measurement
 
     dns = classes["DNS"]  # no sources at all: nothing to measure, not a zero

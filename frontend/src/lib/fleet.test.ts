@@ -19,7 +19,7 @@ function cls(over: Partial<FleetClassSummary> = {}): FleetClassSummary {
   return {
     source_class: "WAF",
     sources: { enabled: 4, disabled: 0 },
-    buckets: { expected: 12, complete: 12, partial: 0, missing: 0 },
+    buckets: { expected: 12, complete: 12, complete_from_history: 0, partial: 0, missing: 0 },
     events: 100,
     mean_eps: 1,
     expected_eps: 2,
@@ -43,17 +43,35 @@ describe("null is not zero", () => {
 
 describe("completenessInfo", () => {
   it("is complete only when every expected bucket is complete", () => {
-    expect(completenessInfo({ expected: 12, complete: 12, partial: 0, missing: 0 }).state).toBe(
-      "complete",
-    );
+    expect(
+      completenessInfo({
+        expected: 12,
+        complete: 12,
+        complete_from_history: 0,
+        partial: 0,
+        missing: 0,
+      }).state,
+    ).toBe("complete");
   });
   it("is incomplete with partial and missing counts", () => {
-    const i = completenessInfo({ expected: 12, complete: 8, partial: 3, missing: 1 });
+    const i = completenessInfo({
+      expected: 12,
+      complete: 8,
+      complete_from_history: 0,
+      partial: 3,
+      missing: 1,
+    });
     expect(i.state).toBe("incomplete");
     expect(i.detail).toBe("3 partial, 1 missing");
   });
   it("says there are no monitored sources rather than 100% complete", () => {
-    const i = completenessInfo({ expected: 0, complete: 0, partial: 0, missing: 0 });
+    const i = completenessInfo({
+      expected: 0,
+      complete: 0,
+      complete_from_history: 0,
+      partial: 0,
+      missing: 0,
+    });
     expect(i.state).toBe("none");
   });
 });
