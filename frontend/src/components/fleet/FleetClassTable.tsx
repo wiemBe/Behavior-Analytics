@@ -10,6 +10,7 @@ import Link from "next/link";
 
 import "@/components/ui/controls.css";
 
+import { HISTORY_TEXT } from "@/components/behavior/historyOrigin";
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { FleetClassSummary } from "@/lib/api";
 import {
@@ -95,6 +96,12 @@ function ClassRows({ c }: { c: FleetClassSummary }) {
             {completeness.text}
           </span>
           {completeness.detail && <span className="cell-sub">{completeness.detail}</span>}
+          {c.buckets.complete_from_history > 0 && (
+            <span className="cell-sub">
+              {c.buckets.complete_from_history.toLocaleString("en-US")} of{" "}
+              {c.buckets.complete.toLocaleString("en-US")} complete buckets were {HISTORY_TEXT}.
+            </span>
+          )}
         </td>
         <td>
           {incidents.length === 0 ? (

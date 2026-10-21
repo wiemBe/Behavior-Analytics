@@ -2767,6 +2767,8 @@ export interface FleetSourceCounts {
 export interface FleetBucketCounts {
   expected: number;
   complete: number;
+  // Of `complete`, the buckets read from QRadar history rather than collected by the cadence.
+  complete_from_history: number;
   partial: number;
   missing: number;
 }

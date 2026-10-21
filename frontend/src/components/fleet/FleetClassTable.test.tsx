@@ -8,7 +8,13 @@ function cls(over: Partial<FleetClassSummary> = {}): FleetClassSummary {
   return {
     source_class: "WAF",
     sources: { enabled: 4, disabled: 1 },
-    buckets: { expected: 1152, complete: 1152, partial: 0, missing: 0 },
+    buckets: {
+      expected: 1152,
+      complete: 1152,
+      complete_from_history: 0,
+      partial: 0,
+      missing: 0,
+    },
     events: 3456000,
     mean_eps: 40,
     expected_eps: 38.5,
@@ -47,7 +53,13 @@ describe("FleetClassTable", () => {
             source_class: "WINDOWS",
             events: null,
             mean_eps: null,
-            buckets: { expected: 100, complete: 0, partial: 20, missing: 80 },
+            buckets: {
+              expected: 100,
+              complete: 0,
+              complete_from_history: 0,
+              partial: 20,
+              missing: 80,
+            },
             top_sources: [],
           }),
         ]}
@@ -95,7 +107,17 @@ describe("FleetClassTable", () => {
   it("shows the incomplete window next to the figures it qualifies", () => {
     render(
       <FleetClassTable
-        classes={[cls({ buckets: { expected: 100, complete: 80, partial: 12, missing: 8 } })]}
+        classes={[
+          cls({
+            buckets: {
+              expected: 100,
+              complete: 80,
+              complete_from_history: 0,
+              partial: 12,
+              missing: 8,
+            },
+          }),
+        ]}
         windowName="24 hours"
       />,
     );
@@ -106,6 +128,34 @@ describe("FleetClassTable", () => {
     expect(within(r).getByText("complete buckets only")).toBeInTheDocument();
   });
 
+  it("adds the history share only when complete buckets came from history", () => {
+    const live = render(<FleetClassTable classes={[cls()]} windowName="24 hours" />);
+    expect(screen.queryByText(/complete buckets were read from QRadar history/)).toBeNull();
+    live.unmount();
+
+    render(
+      <FleetClassTable
+        classes={[
+          cls({
+            buckets: {
+              expected: 1152,
+              complete: 1152,
+              complete_from_history: 864,
+              partial: 0,
+              missing: 0,
+            },
+          }),
+        ]}
+        windowName="24 hours"
+      />,
+    );
+    expect(
+      screen.getByText(
+        "864 of 1,152 complete buckets were read from QRadar history, not judged.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("does not call an empty class complete", () => {
     render(
       <FleetClassTable
@@ -113,7 +163,13 @@ describe("FleetClassTable", () => {
           cls({
             source_class: "PROXY",
             sources: { enabled: 0, disabled: 0 },
-            buckets: { expected: 0, complete: 0, partial: 0, missing: 0 },
+            buckets: {
+              expected: 0,
+              complete: 0,
+              complete_from_history: 0,
+              partial: 0,
+              missing: 0,
+            },
             events: null,
             mean_eps: null,
             expected_eps: null,

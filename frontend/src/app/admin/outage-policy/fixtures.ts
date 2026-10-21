@@ -20,7 +20,13 @@ export function classSummary(
   return {
     source_class,
     sources: { enabled, disabled: 0 },
-    buckets: { expected: enabled * 288, complete: enabled * 288, partial: 0, missing: 0 },
+    buckets: {
+      expected: enabled * 288,
+      complete: enabled * 288,
+      complete_from_history: 0,
+      partial: 0,
+      missing: 0,
+    },
     events: enabled ? 1000 : null,
     mean_eps: enabled ? 1 : null,
     expected_eps: enabled ? 1 : null,

@@ -16,7 +16,13 @@ function summary(over: Partial<FleetSummary> = {}): FleetSummary {
       {
         source_class: "WAF",
         sources: { enabled: 2, disabled: 0 },
-        buckets: { expected: 576, complete: 576, partial: 0, missing: 0 },
+        buckets: {
+          expected: 576,
+          complete: 576,
+          complete_from_history: 0,
+          partial: 0,
+          missing: 0,
+        },
         events: 10,
         mean_eps: 1,
         expected_eps: 1,

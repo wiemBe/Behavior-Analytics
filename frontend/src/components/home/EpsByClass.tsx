@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
 import { useApiResource } from "@/hooks/useApiResource";
+import { HISTORY_TEXT } from "@/components/behavior/historyOrigin";
 import { homeReads } from "@/lib/api";
 import { NOT_MEASURED } from "@/lib/behavior";
 import { formatEpsValue } from "@/lib/fleet";
@@ -113,6 +114,9 @@ export function EpsByClass({ range }: RangedProps = {}) {
   const state = useApiResource(read.key, read.fetch);
   const data = state.status === "ok" ? state.data : null;
   const model = useMemo(() => (data ? epsByClass(data) : null), [data]);
+  const complete = data?.classes.reduce((sum, c) => sum + c.buckets.complete, 0) ?? 0;
+  const fromHistory =
+    data?.classes.reduce((sum, c) => sum + c.buckets.complete_from_history, 0) ?? 0;
 
   return (
     <WidgetFrame
@@ -128,6 +132,12 @@ export function EpsByClass({ range }: RangedProps = {}) {
       {() =>
           model && (
             <>
+              {fromHistory > 0 && (
+                <p className="tw-note">
+                  {fromHistory.toLocaleString("en-US")} of {complete.toLocaleString("en-US")} complete
+                  buckets were {HISTORY_TEXT}.
+                </p>
+              )}
               {model.entries.length === 0 ? (
                 <p className="tw-state">{reasonOf(model)}</p>
               ) : (

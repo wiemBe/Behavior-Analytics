@@ -102,6 +102,22 @@ Evidence states are explicit: `NOT_REQUESTED`, `PENDING`, `COMPLETE`, `PARTIAL`,
 Null means unmeasured. A measured zero remains `0`. Partial or missing chart buckets are gaps and
 are not connected across an outage. Expected ranges are returned and drawn as bands.
 
+## Log-source fleet summary
+
+`GET /fleet/summary` returns one class summary for each non-internal source class. Its `buckets`
+object carries the completeness of the selected window:
+
+| Field | Meaning |
+|---|---|
+| `expected` | Complete collection buckets expected from the class's enabled, monitored sources |
+| `complete` | Buckets collected completely; these are the only buckets used in events and mean EPS |
+| `complete_from_history` | Of `complete`, the buckets read from QRadar history rather than collected by the cadence |
+| `partial` | Buckets collected incompletely and excluded from events and mean EPS |
+| `missing` | Expected buckets that are neither complete nor partial |
+
+`complete_from_history` is always between `0` and `complete`. History buckets remain COMPLETE data
+and stay in the class totals; the field states how much of that measured total came from the past.
+
 ## WAF profiles
 
 Each WAF source has a versioned mapping from logical URL, method, virtual-host, action,
