@@ -259,6 +259,14 @@ export interface HistoryGap {
   reason: string;
 }
 
+/** One log source of a console-wide reading: its key and, when known, its name. */
+export interface HistoryScopeSource {
+  /** The key the per-source floors are stored under (the QRadar log-source id). */
+  key: string;
+  /** The log source's name; null when the source is no longer known. */
+  name: string | null;
+}
+
 export interface HistoryScope {
   scope_key: string;
   /** The log source's name for a WAF or IPS scope row; null for a console-wide row. */
@@ -281,6 +289,17 @@ export interface HistoryScope {
   buckets_read: number | null;
   days_read: number | null;
   gaps: HistoryGap[] | null;
+  /**
+   * The monitored sources the reading was short of (source volume and catch-all only).
+   * Null means "not measured": another family, a scope that has not searched, a stored
+   * progress that did not read back. The lists hold at most 25 names; the counts are
+   * the whole numbers. The API always sends the four; they are optional here so the
+   * shared history fixture, which predates them, still builds a scope.
+   */
+  sources_cut?: HistoryScopeSource[] | null;
+  sources_silent?: HistoryScopeSource[] | null;
+  sources_cut_count?: number | null;
+  sources_silent_count?: number | null;
   progress_unreadable: boolean;
   later_yes: string;
 }

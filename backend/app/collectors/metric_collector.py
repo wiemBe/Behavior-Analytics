@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable, Mapping
+from collections import defaultdict
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -83,6 +84,28 @@ HISTORY_FAMILY = HistoryFamily.PHASE_A
 HISTORY_SCOPE_KEY = ""  # Phase A has one console-wide scope
 
 logger = logging.getLogger(__name__)
+
+
+async def monitored_source_map(
+    session: AsyncSession, instance_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, dict[int, uuid.UUID]]:
+    """The monitored sources of each console: QRadar id -> internal id.
+
+    Every source the platform monitors, whatever QRadar says about the source: a
+    QRadar-disabled source still costs a search, so it is monitored too. One
+    statement for every console asked for, so a reader of the same set (the admin
+    page, HB-17) needs no query per source.
+    """
+    rows = await session.execute(
+        select(LogSource.instance_id, LogSource.qradar_id, LogSource.id).where(
+            LogSource.instance_id.in_(list(instance_ids)),
+            LogSource.monitoring_enabled.is_(True),
+        )
+    )
+    found: dict[uuid.UUID, dict[int, uuid.UUID]] = defaultdict(dict)
+    for instance_id, qradar_id, source_id in rows.all():
+        found[instance_id][int(qradar_id)] = source_id
+    return dict(found)
 
 
 @dataclass
@@ -698,13 +721,8 @@ class MetricCollector:
 
     async def _monitored_sources(self, instance_id: uuid.UUID) -> dict[int, uuid.UUID]:
         """QRadar id -> internal id of the monitored sources: the id map and the set, once."""
-        rows = await self.session.execute(
-            select(LogSource.qradar_id, LogSource.id).where(
-                LogSource.instance_id == instance_id,
-                LogSource.monitoring_enabled.is_(True),
-            )
-        )
-        return dict(rows.all())
+        found = await monitored_source_map(self.session, [instance_id])
+        return found.get(instance_id, {})
 
     async def _history_step(
         self,

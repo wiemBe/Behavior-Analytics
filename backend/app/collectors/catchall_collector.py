@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -146,6 +147,26 @@ class _HistoryProvider:
         except ProviderError as exc:
             self.error = exc
             raise
+
+
+async def catchall_log_sources(
+    session: AsyncSession, instance_ids: Sequence[uuid.UUID], type_ids: Sequence[int]
+) -> dict[uuid.UUID, list[LogSource]]:
+    """The inventory's catch-all sources of each console, one statement for all.
+
+    These are the only sources a catch-all bucket row is written for. A reader of
+    the same set (the admin page, HB-17) needs no query per source.
+    """
+    rows = await session.scalars(
+        select(LogSource).where(
+            LogSource.instance_id.in_(list(instance_ids)),
+            LogSource.type_id.in_(sorted(set(type_ids))),
+        )
+    )
+    found: dict[uuid.UUID, list[LogSource]] = defaultdict(list)
+    for source in rows.all():
+        found[source.instance_id].append(source)
+    return dict(found)
 
 
 @dataclass
@@ -1109,13 +1130,10 @@ class CatchallCollector:
     # ------------------------------------------------------------------- loads
     async def _catchall_sources(self, instance_id: uuid.UUID) -> list[LogSource]:
         """The inventory's catch-all sources: the only ones a bucket row is written for."""
-        rows = await self.session.scalars(
-            select(LogSource).where(
-                LogSource.instance_id == instance_id,
-                LogSource.type_id.in_(sorted(set(self.settings.catchall_type_ids))),
-            )
+        found = await catchall_log_sources(
+            self.session, [instance_id], self.settings.catchall_type_ids
         )
-        return list(rows.all())
+        return found.get(instance_id, [])
 
     async def _load_senders(
         self, instance_id: uuid.UUID, ledgers: dict[uuid.UUID, SenderLedger]

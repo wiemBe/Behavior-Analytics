@@ -54,6 +54,19 @@ class GapOut(BaseModel):
     reason: str
 
 
+class ScopeSourceOut(BaseModel):
+    """One log source of a console-wide reading: its key and, when known, its name.
+
+    A log-source name is configuration, never an event value: nothing measured
+    about the events of a source is shown here.
+    """
+
+    #: The key the per-source floors are stored under (the QRadar log-source id).
+    key: str
+    #: The log source's name; None when the source is no longer known.
+    name: str | None
+
+
 class ScopeOut(BaseModel):
     scope_key: str
     #: The QRadar log source's name for a WAF or IPS scope row; None for a console-wide
@@ -88,6 +101,19 @@ class ScopeOut(BaseModel):
     #: their `floor` is the read start, which is earlier than anything they could prove.
     days_read: float | None
     gaps: list[GapOut] | None
+    #: The sources a console-wide reading (Phase A, catch-all) was short of.
+    #: `sources_cut` holds the monitored sources whose floor is later than
+    #: `T0 + one bucket` (QRadar holds less than asked), `sources_silent` the
+    #: monitored sources with no event at all in the window. Both are judged
+    #: against the sources monitored now, so they can differ from the counts in
+    #: `reason`. None means "not measured" (another family, a scope that has not
+    #: searched, a progress that does not decode), never "none".
+    sources_cut: list[ScopeSourceOut] | None
+    sources_silent: list[ScopeSourceOut] | None
+    #: The whole number of cut and of silent sources; the lists above hold at
+    #: most 25 names each.
+    sources_cut_count: int | None
+    sources_silent_count: int | None
     #: True when the stored progress did not decode: the three fields above are None.
     progress_unreadable: bool
     later_yes: str
