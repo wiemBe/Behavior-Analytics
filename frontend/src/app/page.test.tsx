@@ -182,10 +182,13 @@ beforeEach(() => {
 });
 
 // The widgets load with `next/dynamic` (UR.5.1), so the first assertions wait for every
-// text-only placeholder to be replaced by its widget.
+// text-only placeholder to be replaced by its widget. The settle time is the widget modules'
+// dynamic `import()` under CPU load (T-143: it crossed 5 s once on a loaded machine; the
+// slowest settle measured beside the backend unit suite was 628 ms), so the window is well
+// above that and below the 15 s per-test timeout, keeping this helper's own failure message.
 async function widgetsLoaded(container: HTMLElement) {
   await waitFor(() => expect(container.querySelectorAll("[aria-busy='true']")).toHaveLength(0), {
-    timeout: 5000,
+    timeout: 10000,
   });
 }
 
