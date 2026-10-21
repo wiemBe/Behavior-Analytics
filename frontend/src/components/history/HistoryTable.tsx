@@ -4,7 +4,7 @@
 // right-aligned in tabular figures, times carry their zone, and a missing measurement is an em
 // dash with the reason beside it, never a zero.
 
-import type { HistoryConsole } from "@/lib/api";
+import type { HistoryConsole, HistoryScopeSource } from "@/lib/api";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 
@@ -21,6 +21,7 @@ import "@/components/ui/controls.css";
 import "./history.css";
 
 const MAX_GAPS_SHOWN = 3;
+const MAX_SOURCES_SHOWN = 5;
 
 function Time({ iso, now }: { iso: string | null; now: Date }) {
   if (iso === null) return <span className="muted">—</span>;
@@ -97,10 +98,44 @@ function Read({ row }: { row: HistoryRow }) {
   );
 }
 
+function SourceShortfall({
+  label,
+  sources,
+  count,
+}: {
+  label: string;
+  sources: HistoryScopeSource[] | null;
+  count: number | null;
+}) {
+  if (count === null || count <= 0) return null;
+  const shown = (sources ?? []).slice(0, Math.min(MAX_SOURCES_SHOWN, count));
+  const more = count - shown.length;
+  const names = shown.map((source) => source.name ?? `source ${source.key}`).join(", ");
+  const remainder = more > 0 ? `${shown.length > 0 ? " and " : ""}${more} more` : "";
+  return (
+    <div>
+      <span className="muted">{label}: </span>
+      {names}
+      {remainder}.
+    </div>
+  );
+}
+
 function Reason({ row }: { row: HistoryRow }) {
   const shown = row.gaps.slice(0, MAX_GAPS_SHOWN);
   const more = row.gaps.length - shown.length;
-  if (row.reason === null && shown.length === 0) return <span className="muted">—</span>;
+  const hasLastError = row.lastErrorClass !== null;
+  const hasCutSources = row.sourcesCutCount !== null && row.sourcesCutCount > 0;
+  const hasSilentSources = row.sourcesSilentCount !== null && row.sourcesSilentCount > 0;
+  if (
+    row.reason === null &&
+    shown.length === 0 &&
+    !hasLastError &&
+    !hasCutSources &&
+    !hasSilentSources
+  ) {
+    return <span className="muted">—</span>;
+  }
   return (
     <>
       {row.reason}
@@ -117,6 +152,28 @@ function Reason({ row }: { row: HistoryRow }) {
           {more > 0 && <li className="cell-sub">and {more} more</li>}
         </ul>
       )}
+      {hasLastError && (
+        <span className="cell-sub hb-last-error warn">
+          Last step failed at{" "}
+          <time
+            dateTime={row.lastErrorAt ?? undefined}
+            title={formatDateTime(row.lastErrorAt)}
+          >
+            {formatDateTimeCompact(row.lastErrorAt)}
+          </time>{" "}
+          ({row.lastErrorClass}). The next collection retries.
+        </span>
+      )}
+      <SourceShortfall
+        label="QRadar holds less than asked for"
+        sources={row.sourcesCut}
+        count={row.sourcesCutCount}
+      />
+      <SourceShortfall
+        label="No event in the window"
+        sources={row.sourcesSilent}
+        count={row.sourcesSilentCount}
+      />
     </>
   );
 }

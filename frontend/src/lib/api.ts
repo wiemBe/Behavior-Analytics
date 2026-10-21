@@ -293,13 +293,12 @@ export interface HistoryScope {
    * The monitored sources the reading was short of (source volume and catch-all only).
    * Null means "not measured": another family, a scope that has not searched, a stored
    * progress that did not read back. The lists hold at most 25 names; the counts are
-   * the whole numbers. The API always sends the four; they are optional here so the
-   * shared history fixture, which predates them, still builds a scope.
+   * the whole numbers. The API always sends all four fields.
    */
-  sources_cut?: HistoryScopeSource[] | null;
-  sources_silent?: HistoryScopeSource[] | null;
-  sources_cut_count?: number | null;
-  sources_silent_count?: number | null;
+  sources_cut: HistoryScopeSource[] | null;
+  sources_silent: HistoryScopeSource[] | null;
+  sources_cut_count: number | null;
+  sources_silent_count: number | null;
   progress_unreadable: boolean;
   later_yes: string;
 }
