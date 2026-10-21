@@ -327,6 +327,76 @@ async def test_group_failure_does_not_fail_inventory_sync(db_session) -> None:
     assert len(await classifications(db_session)) == 1
 
 
+async def test_sync_writes_more_log_source_types_than_one_statement_can_bind(
+    db_session,
+) -> None:
+    instance = await make_instance(db_session)
+    columns = len(LogSourceType.__table__.columns)
+    row_count = 32_767 // columns + 1
+
+    class ManyTypesProvider(FleetProvider):
+        async def list_log_source_types(self) -> list[LogSourceTypeDTO]:
+            return [
+                LogSourceTypeDTO(type_id=index, name=f"Type {index}")
+                for index in range(1, row_count + 1)
+            ]
+
+    with counting(db_session) as statements:
+        await InventorySyncService(
+            db_session, ManyTypesProvider([]), clock=lambda: NOW
+        ).sync(instance)
+
+    assert row_count * columns > 32_767
+    assert await db_session.scalar(select(func.count()).select_from(LogSourceType)) == row_count
+    assert sum("INSERT INTO log_source_type " in sql for sql in statements) == 1
+
+
+async def test_sync_writes_more_log_source_groups_than_one_statement_can_bind(
+    db_session,
+) -> None:
+    instance = await make_instance(db_session)
+    columns = len(LogSourceGroup.__table__.columns)
+    row_count = 32_767 // columns + 1
+
+    class ManyGroupsProvider(FleetProvider):
+        async def list_log_source_groups(self) -> list[LogSourceGroupDTO]:
+            return [
+                LogSourceGroupDTO(qradar_id=index, name=f"Group {index}")
+                for index in range(1, row_count + 1)
+            ]
+
+    with counting(db_session) as statements:
+        await InventorySyncService(
+            db_session, ManyGroupsProvider([]), clock=lambda: NOW
+        ).sync(instance)
+
+    assert row_count * columns > 32_767
+    assert await db_session.scalar(select(func.count()).select_from(LogSourceGroup)) == row_count
+    assert sum("INSERT INTO log_source_group " in sql for sql in statements) == 1
+
+
+async def test_sync_classifies_more_sources_than_one_statement_can_bind(db_session) -> None:
+    instance = await make_instance(db_session)
+    columns = len(LogSourceClassification.__table__.columns)
+    row_count = 32_767 // columns + 1
+    provider = FleetProvider(
+        [source(index, f"linux-{index}") for index in range(1, row_count + 1)]
+    )
+
+    with counting(db_session) as statements:
+        result = await InventorySyncService(
+            db_session, provider, clock=lambda: NOW
+        ).sync(instance)
+
+    assert row_count * columns > 32_767
+    assert result.created == row_count
+    assert (
+        await db_session.scalar(select(func.count()).select_from(LogSourceClassification))
+        == row_count
+    )
+    assert sum("INSERT INTO log_source_classification " in sql for sql in statements) == 1
+
+
 @contextmanager
 def counting(session):  # type: ignore[no-untyped-def]
     statements: list[str] = []

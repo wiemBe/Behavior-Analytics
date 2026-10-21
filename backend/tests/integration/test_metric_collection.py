@@ -4,10 +4,11 @@ DB-gated."""
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine, delete, func, select, text
+from sqlalchemy import create_engine, delete, event, func, insert, select, text
 
 from app.collectors.metric_collector import (
     COLLECTOR_NAME,
@@ -19,10 +20,12 @@ from app.models.enums import SearchFamily
 from app.models.log_source import LogSource, LogSourceMetric
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError
+from app.providers.dto import LogSourceMetricSample
 from app.providers.mock import MockQRadarProvider
 from app.services.inventory_sync import InventorySyncService
 from app.services.locks import collector_lock_key
 from app.services.search_cadence import SearchCadenceService
+from tests.integration.factories import make_instance
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -32,6 +35,21 @@ def _settings(**kw) -> Settings:
                 collection_max_backfill_intervals=3)
     base.update(kw)
     return Settings(**base)
+
+
+@contextmanager
+def _recorded_statements(session):  # type: ignore[no-untyped-def]
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, params, context, executemany):  # type: ignore[no-untyped-def]
+        statements.append(statement)
+
+    engine = session.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        yield statements
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
 
 
 async def _seed_inventory(session):
@@ -68,6 +86,53 @@ async def test_first_run_collects_one_interval(db_session) -> None:
     assert report.intervals_collected == 1
     assert report.samples_written > 0
     assert report.watermark_at is not None
+
+
+async def test_tick_writes_more_metrics_than_one_statement_can_bind(db_session) -> None:
+    instance = await make_instance(db_session)
+    # `first_event_at` is the one table column this live row shape does not bind.
+    columns = len(LogSourceMetric.__table__.columns) - 1
+    row_count = 32_767 // columns + 1
+    await db_session.execute(
+        insert(LogSource),
+        [
+            {
+                "instance_id": instance.id,
+                "qradar_id": index,
+                "name": f"source-{index}",
+            }
+            for index in range(1, row_count + 1)
+        ],
+    )
+    await db_session.flush()
+
+    class ManyMetricsProvider(MockQRadarProvider):
+        async def get_log_source_metrics(
+            self, window_start: datetime, window_end: datetime
+        ) -> list[LogSourceMetricSample]:
+            return [
+                LogSourceMetricSample(
+                    qradar_id=index,
+                    bucket_start=window_start,
+                    bucket_seconds=int((window_end - window_start).total_seconds()),
+                    event_count=index,
+                )
+                for index in range(1, row_count + 1)
+            ]
+
+    now = datetime(2026, 7, 15, 10, 3, tzinfo=UTC)
+    with _recorded_statements(db_session) as statements:
+        report = await MetricCollector(
+            db_session,
+            ManyMetricsProvider(seed=1337),
+            settings=_settings(),
+            clock=lambda: now,
+        ).collect(instance)
+
+    assert row_count * columns > 32_767
+    assert report.samples_written == row_count
+    assert await db_session.scalar(select(func.count()).select_from(LogSourceMetric)) == row_count
+    assert sum("INSERT INTO log_source_metric " in sql for sql in statements) == 1
 
 
 async def test_collection_is_idempotent(db_session) -> None:

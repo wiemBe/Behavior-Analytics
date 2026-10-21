@@ -480,13 +480,13 @@ class MetricCollector:
             return 0
 
         # Idempotent upsert on the composite PK. Re-collecting overwrites.
-        stmt = pg_insert(LogSourceMetric).values(rows)
+        stmt = pg_insert(cast(Table, LogSourceMetric.__table__))
         update_cols = {c: stmt.excluded[c] for c in rows[0] if c not in
                        ("log_source_id", "bucket_start")}
         stmt = stmt.on_conflict_do_update(
             index_elements=["log_source_id", "bucket_start"], set_=update_cols
         )
-        await self.session.execute(stmt)
+        await self.session.execute(stmt, rows)
         return len(rows)
 
     async def _zero_filled_rows(
@@ -698,7 +698,7 @@ class MetricCollector:
                 LogSource.monitoring_enabled.is_(True),
             )
         )
-        return dict(rows.tuples().all())
+        return dict(rows.all())
 
     async def _history_step(
         self,

@@ -1,6 +1,6 @@
 [project]
 name = "qradar-observability-backend"
-version = "0.1.2"
+version = "0.1.3"
 description = "On-premises QRadar observability and SOC analytics platform"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,7 +9,7 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
-    "sqlalchemy[asyncio]>=2.0.36",
+    "sqlalchemy[asyncio]>=2.1",
     "alembic>=1.14",
     "psycopg[binary]>=3.2",
     "asyncpg>=0.30",
@@ -77,6 +77,14 @@ testpaths = ["tests"]
 addopts = "-q --strict-markers"
 markers = [
     "integration: requires postgres/redis",
+]
+filterwarnings = [
+    # The locked SQLAlchemy 2.1.4 deprecates APIs our code must not use; a new
+    # one must surface as a test error, not as a growing warnings summary.
+    "error::sqlalchemy.exc.SADeprecationWarning",
+    # A value whose type does not match the response model (e.g. a plain str
+    # where the model declares an enum) warns before it can change the JSON.
+    "error:Pydantic serializer warnings:UserWarning",
 ]
 
 [tool.mypy]

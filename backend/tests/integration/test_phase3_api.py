@@ -11,6 +11,7 @@ adding an endpoint to one of these modules cannot reintroduce the gap.
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import UTC, datetime
 
 import pytest
@@ -451,3 +452,113 @@ class TestProviderCapabilitiesApi:
         assert not set(body["mcp_allowlisted_tools"]) & set(
             body["mcp_blocked_write_tools"]
         )
+
+
+# ============================================================================
+class TestEnumFieldJsonBodies:
+    """The enum fields these routes return must serialize exactly as before.
+
+    Handing the response models their declared enum members again (instead of
+    the plain str the sanitizer used to produce) is a serializer-type fix, so
+    each body here is compared whole, not field by field.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_degraded_technique_item_body_is_unchanged(
+        self, db_session
+    ) -> None:
+        inst = await make_instance(db_session)
+        db_session.add(
+            DetectionCoverage(
+                instance_id=inst.id,
+                technique_id="T1078",
+                status=CoverageStatus.DEGRADED,
+                coverage_score=0.5,
+                degraded_rule_count=1,
+            )
+        )
+        await db_session.commit()
+
+        body = client_for(READER).get("/api/v1/coverage/degraded").json()
+        assert body["total"] == 1
+        assert body["items"] == [
+            {
+                "instance_id": str(inst.id),
+                "technique_id": "T1078",
+                "technique_name": None,
+                "tactic": None,
+                "status": "DEGRADED",
+                "coverage_score": 0.5,
+                "confidence": 1.0,
+                "mapped_rule_count": 0,
+                "enabled_rule_count": 0,
+                "firing_rule_count": 0,
+                "inferred_rule_count": 0,
+                "degraded_rule_count": 1,
+                "last_evaluated_at": None,
+                "logic_version": 1,
+                "reason": None,
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_rule_detail_body_reports_health_status(
+        self, db_session
+    ) -> None:
+        rule = await make_rule(db_session)
+        await db_session.commit()
+
+        body = client_for(READER).get(f"/api/v1/rules/{rule.id}").json()
+        assert body == {
+            "id": str(rule.id),
+            "qradar_id": 100,
+            "name": "rule-100",
+            "enabled": True,
+            "is_building_block": False,
+            "rule_type": None,
+            "origin": None,
+            "owner": None,
+            "health_status": "UNKNOWN",
+            "health_evaluated_at": None,
+            "last_fired_at": None,
+            "offense_contribution_count": 0,
+            "event_contribution_count": 0,
+            "mitre_techniques": [],
+            "description": None,
+            "categories": [],
+            "average_capacity": None,
+            "generates_offense": None,
+            "response_actions": [],
+            "qradar_created_at": None,
+            "qradar_modified_at": None,
+            "first_seen_at": None,
+            "soc_notes": None,
+            "expected_daily_firings": None,
+            "health_monitoring_enabled": True,
+            "dependencies": [],
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_created_mapping_body_reports_source(
+        self, db_session
+    ) -> None:
+        rule = await make_rule(db_session)
+        await db_session.commit()
+
+        resp = client_for(COVERAGE_EDITOR).post(
+            "/api/v1/coverage/mappings",
+            json={"technique_id": "T1059", "rule_id": str(rule.id)},
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        # The id is generated on insert; only its shape is pinned here.
+        assert uuid.UUID(body.pop("id"))
+        assert body == {
+            "technique_id": "T1059",
+            "technique_name": None,
+            "tactic": None,
+            "rule_id": str(rule.id),
+            "source": "EXPLICIT",
+            "confidence": 1.0,
+            "provenance": None,
+        }
