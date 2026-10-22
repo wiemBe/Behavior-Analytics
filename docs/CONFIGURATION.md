@@ -62,6 +62,11 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `ARIEL_RETRY_MAX_SECONDS` | `60.0` | Maximum retry delay |
 | `ARIEL_STOP_PAD_SECONDS` | `60` | Padding on the Ariel stop bound; the `WHERE` interval is unchanged |
 | `ARIEL_MULTI_BUCKET_MAX_ROWS` | `5000` | Row cap before a keyed time window is split |
+| `ARIEL_PERMIT_LOCK_NAMESPACE` | `4713` | PostgreSQL advisory-lock namespace for the global Ariel permit pool; must be distinct from every other lock namespace |
+| `ARIEL_PERMIT_INSTANCE_LOCK_NAMESPACE` | `4714` | PostgreSQL advisory-lock namespace for per-console Ariel permit pools; must be distinct from every other lock namespace |
+| `ARIEL_PERMIT_WAIT_SECONDS` | `30` | Maximum wait for an Ariel permit (`0`–`600` seconds) |
+| `ARIEL_PERMIT_POLL_SECONDS` | `1` | Permit retry interval (more than `0`, at most `30` seconds) |
+| `ARIEL_PERMIT_RESERVED_LIVE_SLOTS` | `2` | Low-numbered global slots only live collection may take; must be below the global cap |
 
 ## Search cadence and bucket collection
 
