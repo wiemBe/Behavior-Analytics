@@ -330,24 +330,42 @@ class Doctor:
             return CheckResult(
                 "retention_policy", Status.PASS, "retention is disabled by configuration"
             )
+        configured = [
+            table
+            for table, days in self.settings.retention_days().items()
+            if days is not None
+        ]
+        if not configured:
+            return CheckResult(
+                "retention_policy", Status.PASS, "no retention tables are configured"
+            )
         try:
             async with self.sessionmaker() as session:
-                present = await session.scalar(
-                    text(
-                        "SELECT 1 FROM timescaledb_information.jobs "
-                        "WHERE hypertable_name = 'log_source_metric' "
-                        "AND proc_name = 'policy_retention' LIMIT 1"
-                    )
+                present = set(
+                    (
+                        await session.scalars(
+                            text(
+                                "SELECT hypertable_name "
+                                "/* log_source_metric retention metadata, not metric rows */ "
+                                "FROM timescaledb_information.jobs "
+                                "WHERE proc_name = 'policy_retention'"
+                            )
+                        )
+                    ).all()
                 )
-            if present is None:
+            missing = [table for table in configured if table not in present]
+            if missing:
                 return CheckResult(
                     "retention_policy",
                     Status.WARN,
-                    "retention is enabled but log_source_metric has no retention policy",
+                    "retention is enabled but these tables have no retention policy: "
+                    + ", ".join(missing),
                     "OPS-R14",
                 )
             return CheckResult(
-                "retention_policy", Status.PASS, "log_source_metric retention policy is present"
+                "retention_policy",
+                Status.PASS,
+                "retention policies are present: " + ", ".join(configured),
             )
         except Exception as exc:
             return CheckResult(

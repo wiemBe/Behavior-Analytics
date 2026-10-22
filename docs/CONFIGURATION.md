@@ -357,10 +357,17 @@ have at least five minutes between fires.
 
 General Timescale retention is non-destructive by default: `RETENTION_ENABLED=false`, and each
 general retention day setting defaults to unset. Family-specific bounded retention switches are
-listed above.
+listed above. `./qradar-dash install` enables these general policies and writes `90 days` for all
+four tables plus `7 days` for compression; a repeat install keeps operator-set values.
 
 | Setting | Default | Meaning |
 |---|---:|---|
+| `RETENTION_ENABLED` | `false` | Enable reconciliation of the general Timescale retention policies; the production installer writes `true` |
+| `RETENTION_LOG_SOURCE_METRIC_DAYS` | unset | Days of source-volume chunks to retain; the production installer writes `90` |
+| `RETENTION_SEARCH_RESULT_METRIC_DAYS` | unset | Days of scheduled-search result chunks to retain; the production installer writes `90` |
+| `RETENTION_RULE_METRIC_DAYS` | unset | Days of rule-metric chunks to retain; the production installer writes `90` |
+| `RETENTION_OFFENSE_SNAPSHOT_DAYS` | unset | Days of offense-snapshot chunks to retain; the production installer writes `90` |
+| `COMPRESSION_AFTER_DAYS` | unset | Age in days after which eligible Timescale chunks are compressed; the production installer writes `7` |
 | `TIMESCALE_POLICY_INTERVAL_SECONDS` | `86400` | General policy reconciliation interval |
 | `NOTIFY_MAX_RETRIES` | `5` | Notification retry count |
 | `NOTIFY_RETRY_BASE_SECONDS` | `2.0` | Initial retry delay |

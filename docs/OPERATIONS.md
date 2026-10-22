@@ -139,8 +139,9 @@ Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 
   erişmeni sağlar. Yedek dizini ile Docker veri kökü aynı aygıttaysa kurulum ön kontrolü uyarır,
   reddetmez. Aynı aygıttaki yedek hatalı bir migrasyondan kurtarır, ölü bir diskten kurtarmaz.
 - Retention (saklama süresi) ayarı `retention_enabled` varsayılanda kapalıdır. Kurulum sihirbazı
-  `RETENTION_ENABLED=true` yazar. Politika `apply_timescale_policies` görevi çalışana kadar
-  uygulanmaz. Bu yüzden diski izle (bkz. OPS-R14).
+  `RETENTION_ENABLED=true`, dört Timescale tablosunun her biri için 90 gün ve sıkıştırma için 7 gün
+  yazar. Politikalar `apply_timescale_policies` görevi çalışana kadar uygulanmaz. Bu yüzden diski
+  izle (bkz. OPS-R14).
 
 Ana makinenin izin vermesi gereken portlar:
 
@@ -166,7 +167,8 @@ Ana makinenin izin vermesi gereken portlar:
 | Yedek dizini | var ya da oluşturulabilir, izin `0700` olacak, git checkout'unun içinde değil | Oluşturulamazsa başarısız. |
 
 `docker-compose.override.yml` git tarafından yok sayılır. Laboratuvarda libvirt macvlan'ını bağlamak
-için kullanılır. Ön kontrol bu dosyanın var olup olmadığını yazdırır, silmez. QRadar:443'e
+için kullanılır. Dosya varsa `install` ve `upgrade` onu üretim overlay'inden sonra gerçekten yükler,
+bilgi satırında adını yazar ve `.env` içindeki `COMPOSE_FILE` listesine ekler; silmez. QRadar:443'e
 yönlenebilen bir üretim ana makinesinin buna ihtiyacı yoktur.
 
 ### Sihirbaz
@@ -283,9 +285,14 @@ Bir test VM'de ilk kurulum toplam 1 dk 40 sn sürdü (QRadar erişilemezken). Bu
 ask"), kapalı aileler (WAF, IPS, kural eşleşmeleri, özel kurallar), yedek dizini ve bu kılavuzun
 yolu `docs/OPERATIONS.md`.
 
-- Çıkış kodu 0: yığın sağlıklı ve yönetici var.
-- Çıkış kodu 1: QRadar kontrolü başarısız ya da bir servis hiç sağlıklı olmadı. Parola bu çıkıştan
-  önce stdout'a yazılır; başarısız QRadar kontrolü onu yutmaz.
+- Çıkış kodu 0: yığın sağlıklı, `/health/ready` ve `/version` 200 döndürdü, QRadar kontrolü geçti ve
+  yönetici var.
+- Çıkış kodu 1: ön kontrol ya da çalışma adımı başarısız, QRadar kontrolü başarısız veya
+  `/health/ready` ya da `/version` 200 döndürmedi. Parola bu çıkıştan önce stdout'a yazılmış olabilir;
+  başarısız QRadar kontrolü onu yutmaz. Özet aşamasına ulaşıldıysa QRadar veya API hatasında durum
+  dosyası yine yazılır ve özet `API readiness      NOT READY` satırını gösterir.
+- Çıkış kodu 2: seçenek ya da etkileşimsiz yanıt dosyası geçersizdir; kurulum başlamaz.
+- Çıkış kodu 3: harici vekilde güvenli bir `FORWARDED_ALLOW_IPS` yoktur; backend başlatılmaz.
 
   QRadar kontrolü başarısız olduğunda yığın ve `.qradar-dash/state.json` **yerindedir**: kurulum
   "başarısız" görünse de `status`, `upgrade` ve `rollback` çalışır. QRadar'ı düzelt ve `install`
@@ -308,9 +315,20 @@ Sonra:
 
 Mevcut `.env` ile ikinci `install`:
 
-- `SECRET_KEY`, `ENCRYPTION_KEY` ve `POSTGRES_PASSWORD` yeniden üretilmez. `ENCRYPTION_KEY`'i
+- Saklanan sırlar `SECRET_KEY`, `POSTGRES_PASSWORD`, `ENCRYPTION_KEY`, `ENCRYPTION_KEYS_JSON` ve
+  `ENCRYPTION_KEY_VERSION` değerleridir; değerleri bilgi satırına yazılmaz. `ENCRYPTION_KEY`'i
   değiştirmek saklı şifreli veriyi okunmaz yapar. `.env` içindeki `POSTGRES_PASSWORD`'i değiştirmek
   hazır bir volume'un içindeki parolayı değiştirmez.
+- `LOG_LEVEL`, `AUTH_PROVIDER`, bütün `RETENTION_*` anahtarları, `COMPRESSION_AFTER_DAYS`,
+  `LLM_ENABLED` ve `MCP_ENABLED` varsa korunur; yoksa kurulum varsayılanı yazılır. Kurucunun
+  tanımadığı diğer `KEY=VALUE` satırları (örneğin `NOTIFY_*`, `SMTP_*` ve aile anahtarları) eski
+  sıralarıyla dosyanın sonundaki tek bir "Kept from" bölümüne taşınır. Yorumlar ve boş satırlar
+  taşınmaz; hiçbir anahtar iki kez yazılmaz.
+- Sihirbaz yanıtlarından türetilen adres, port, Compose, imaj, volume ve QRadar alanları kayıtlı
+  yanıtlardan yeniden yazılır. Üretim değişmezleri (`ENVIRONMENT=production`, `DEBUG=false`,
+  `QRADAR_PROVIDER=rest`, `QRADAR_VERIFY_SSL=true`, iç token/CA yolları, Postgres adları, API
+  yolları ve `LLM_ALLOW_AUTONOMOUS_ACTIONS=false`) her seferinde zorlanır; eski değer farklıysa
+  anahtarın eski ve yeni değeriyle uyarı yazılır.
 - Kullanıcı adı zaten varsa `create-admin` çağrılmaz. Tekrar çağırmak parolayı sıfırlar ve
   oturumları iptal eder.
 - `load-secrets.sh` ve `qradar add` yeniden çalışır; migrate'te Alembic zaten başta olduğundan bir
@@ -826,7 +844,7 @@ bağlanmaz.
 | `db_connect` | `SELECT 1`. Hazırlık kontrolüyle aynı olgu. | OPS-R36 |
 | `migration_head` | `alembic_version` tablosu imajın başıyla aynı mı. | OPS-R11 |
 | `timescale` | Eklenti yüklü ve `log_source_metric` bir hypertable mı. | OPS-R14 |
-| `retention_policy` | `RETENTION_ENABLED` true iken `log_source_metric` için saklama politikası var mı. | OPS-R14 |
+| `retention_policy` | `RETENTION_ENABLED` true iken gün sayısı ayarlı dört tablonun her birinde saklama politikası var mı; eksik tabloları adlarıyla tek satırda bildirir. | OPS-R14 |
 | `redis` | Broker URL'sinde `PING`. | OPS-R9 |
 | `celery_workers` | Backend konteynerinin içinden `inspect ping`. En az bir yanıt gerekir. | OPS-R41 |
 | `celery_beat` | Redis'teki kalp atışı anahtarı; yaşı 180 sn altında olmalı. | OPS-R9 |
@@ -1278,10 +1296,12 @@ içinden aynı ana makineye TCP bağlantısı başarısız olur.
 ./qradar-dash doctor
 ```
 
-**Çözüm:** README'deki macvlan geçersiz kılma (override) bölümü: `./deploy/create-vmnet.sh` ve
+**Çözüm:** `docs/INSTALL.md` içindeki macvlan geçersiz kılma (override) bölümü:
+`./deploy/create-vmnet.sh` ve
 `backend`, `celery-worker`, `celery-beat` ile `migrate` servislerini o ağa koyan,
-git tarafından yok sayılan bir `docker-compose.override.yml`. Ya da bir rota. Betik bir güvenlik duvarı
-değişikliği yapmaz.
+git tarafından yok sayılan bir `docker-compose.override.yml`. Betik dosya varsa bütün Compose
+çağrılarına ekler ve kullanımını yazdırır. Ya da bir rota. Betik bir güvenlik duvarı değişikliği
+yapmaz.
 
 ```bash
 ./deploy/create-vmnet.sh
@@ -1510,7 +1530,8 @@ timedatectl
 ```
 
 **Çözüm:** Satırları şifreleyen anahtarı anahtarlığa geri koy. Kopya, yedeğin `env.bak` dosyasıdır.
-Hatayı "düzeltmek" için yeni anahtar üretme.
+`ENCRYPTION_KEYS_JSON` ve `ENCRYPTION_KEY_VERSION` mevcut `.env` içinde bulunduğunda yeniden
+`install` çalıştırmak ikisini de korur. Hatayı "düzeltmek" için yeni anahtar üretme.
 
 ### OPS-R17. Backend `Unsafe production configuration` ile yeniden başlıyor
 
@@ -1763,7 +1784,7 @@ varsayılanda 120 sn'dir.
 docker network ls
 ```
 
-**Çözüm:** README'deki yeniden oluşturma komutu. Bu geçersiz kılmayı hiç oluşturmamış bir üretim
+**Çözüm:** `docs/INSTALL.md` içindeki yeniden oluşturma komutu. Bu geçersiz kılmayı hiç oluşturmamış bir üretim
 kurulumu bunu görmez.
 
 ```bash

@@ -45,6 +45,7 @@ class Install:
         self.script = root / "qradar-dash"
         shutil.copy(SCRIPT, self.script)
         self.script.chmod(0o755)
+        (root / "VERSION").write_text("0.1.0\n")
         self.files = root.parent / "inputs"
         self.files.mkdir()
         (self.files / "token").write_text("not-a-real-token\n")
@@ -96,7 +97,7 @@ class Install:
         )
 
     def nothing_written(self) -> bool:
-        return sorted(p.name for p in self.root.iterdir()) == ["qradar-dash"]
+        return sorted(p.name for p in self.root.iterdir()) == ["VERSION", "qradar-dash"]
 
 
 @pytest.fixture
@@ -236,6 +237,26 @@ def test_non_interactive_needs_a_file(inst: Install) -> None:
     assert inst.nothing_written()
 
 
+@pytest.mark.parametrize("version_contents", [None, "\n"])
+def test_install_refuses_an_incomplete_checkout_without_a_version(
+    inst: Install, version_contents: str | None
+) -> None:
+    version = inst.root / "VERSION"
+    if version_contents is None:
+        version.unlink()
+    else:
+        version.write_text(version_contents)
+
+    result = install(inst, inst.answers())
+
+    assert result.returncode == 1
+    assert "VERSION" in result.stderr
+    assert "checkout is incomplete" in result.stderr
+    assert "run ./qradar-dash install again" in result.stderr
+    assert not (inst.root / ".env").exists()
+    assert not (inst.root / ".secrets").exists()
+
+
 def test_unbuilt_subcommands_exit_non_zero(inst: Install) -> None:
     for cmd in ("bundle",):
         result = inst.run(cmd)
@@ -272,11 +293,23 @@ def test_the_script_is_executable_and_runs_no_forbidden_command() -> None:
         assert forbidden not in compose
 
 
+def test_production_images_require_the_installed_version() -> None:
+    compose = (REPO / "docker-compose.prod.yml").read_text()
+    required = (
+        "${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; "
+        "run ./qradar-dash install}"
+    )
+    assert compose.count(required) == 8
+    assert "QRADAR_DASH_VERSION:-0.1.0" not in compose
+
+
 # ---- T-122: COMPOSE_FILE in .env, GIT_SHA for --build -------------------------------------
 
 COMPOSE_FILE_LINE = "COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml"
+COMPOSE_FILE_OVERRIDE_LINE = COMPOSE_FILE_LINE + ":docker-compose.override.yml"
 
 DOCKER_BUILD_STUB = """#!/bin/sh
+printf '%s\\n' "$*" >> "$HOME/docker-args.log"
 case "$*" in
   "compose version --short") echo 2.30.0; exit 0 ;;
   *" build "*)
@@ -340,6 +373,53 @@ def test_a_fresh_env_has_compose_file(inst: Install, tmp_path: Path, build_path:
     assert lines.index(COMPOSE_FILE_LINE) == lines.index(
         next(x for x in lines if x.startswith("COMPOSE_PROJECT_NAME="))
     ) + 2
+
+
+def test_a_fresh_env_has_all_four_retention_defaults(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    result = _build(inst, tmp_path, build_path)
+
+    assert result.returncode == 1
+    lines = _env_lines(inst)
+    for line in (
+        "RETENTION_LOG_SOURCE_METRIC_DAYS=90",
+        "RETENTION_SEARCH_RESULT_METRIC_DAYS=90",
+        "RETENTION_RULE_METRIC_DAYS=90",
+        "RETENTION_OFFENSE_SNAPSHOT_DAYS=90",
+    ):
+        assert lines.count(line) == 1
+    assert "# Kept from the previous .env" not in lines
+    assert "first install: new .env" in result.stdout
+
+
+def test_compose_override_is_in_dc_argv_and_compose_file(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    (inst.root / "docker-compose.override.yml").write_text("services: {}\n")
+
+    result = _build(inst, tmp_path, build_path)
+
+    assert "docker-compose.override.yml is in use" in result.stdout
+    lines = _env_lines(inst)
+    assert COMPOSE_FILE_OVERRIDE_LINE in lines
+    build_call = next(
+        line for line in (tmp_path / "docker-args.log").read_text().splitlines()
+        if " build " in f" {line} "
+    )
+    assert (
+        "-f docker-compose.yml -f docker-compose.prod.yml "
+        "-f docker-compose.override.yml build"
+    ) in build_call
+
+
+def test_compose_without_override_omits_it_from_dc_argv_and_compose_file(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    _build(inst, tmp_path, build_path)
+
+    assert COMPOSE_FILE_LINE in _env_lines(inst)
+    assert "docker-compose.override.yml" not in (tmp_path / "docker-args.log").read_text()
 
 
 def test_a_rerun_adds_a_missing_compose_file_and_keeps_the_other_lines(
@@ -525,8 +605,24 @@ esac
 def flow_path(tmp_path: Path, build_path: str, inst: Install) -> str:
     """build_path with a docker stub that lets the whole install run, and the helper script."""
     _stub(Path(build_path) / "docker", INSTALL_FLOW_DOCKER_STUB)
-    _stub(Path(build_path) / "curl", "#!/bin/sh\n"
-          "case \"$*\" in *'-w '*) echo 200 ;; *version) echo '{\"version\":\"0.1.0\"}' ;; esac\n")
+    curl_stub = r"""#!/bin/bash
+rc() { [ -f "$HOME/$1" ] && cat "$HOME/$1" || echo "$2"; }
+url=${!#}
+case "$url" in
+  */health/ready) exit "$(rc ready_rc 0)" ;;
+  */version)
+    case "$*" in
+      *" -w "*) rc version_code 200 ;;
+      *) printf '%s\n' '{"version":"0.1.0"}' ;;
+    esac
+    ;;
+esac
+"""
+    _stub(Path(build_path) / "curl", curl_stub)
+    sleep = Path(build_path) / "sleep"
+    if sleep.exists() or sleep.is_symlink():
+        sleep.unlink()
+    _stub(sleep, "#!/bin/sh\nexit 0\n")
     deploy = inst.root / "deploy"
     deploy.mkdir()
     _stub(deploy / "load-secrets.sh", "#!/bin/sh\nexit 0\n")
@@ -534,10 +630,19 @@ def flow_path(tmp_path: Path, build_path: str, inst: Install) -> str:
 
 
 def _install_flow(
-    inst: Install, tmp_path: Path, path: str, *, qr_rc: int = 0, up_rc: int = 0
+    inst: Install,
+    tmp_path: Path,
+    path: str,
+    *,
+    qr_rc: int = 0,
+    up_rc: int = 0,
+    ready_rc: int = 0,
+    version_code: int = 200,
 ) -> subprocess.CompletedProcess[str]:
     (tmp_path / "qr_rc").write_text(f"{qr_rc}\n")
     (tmp_path / "up_rc").write_text(f"{up_rc}\n")
+    (tmp_path / "ready_rc").write_text(f"{ready_rc}\n")
+    (tmp_path / "version_code").write_text(f"{version_code}\n")
     answers = inst.answers()
     return inst.run(
         "install", "--non-interactive", str(answers), "--skip-qradar-check", path=path
@@ -573,6 +678,103 @@ def test_install_with_a_failing_qradar_check_still_writes_the_state_file(
     assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
 
 
+OLD_ENV = """ENVIRONMENT=production
+DEBUG=false
+LOG_LEVEL=DEBUG
+SECRET_KEY=kept-secret-key-material
+ENCRYPTION_KEY=kept-active-fernet-key
+ENCRYPTION_KEYS_JSON={"1":"kept-old-fernet-key"}
+ENCRYPTION_KEY_VERSION=2
+POSTGRES_USER=qradar_obs
+POSTGRES_PASSWORD=kept-postgres-password
+POSTGRES_DB=qradar_obs
+POSTGRES_HOST=postgres
+QRADAR_PROVIDER=rest
+QRADAR_VERIFY_SSL=false
+QRADAR_API_TOKEN_FILE=/run/secrets/qradar_sec_token
+QRADAR_CA_BUNDLE=/run/secrets/qradar_ca.pem
+NEXT_PUBLIC_API_BASE_URL=/api/v1
+INTERNAL_API_BASE_URL=http://backend:8000/api/v1
+LLM_ALLOW_AUTONOMOUS_ACTIONS=false
+RETENTION_RULE_METRIC_DAYS=30
+NOTIFY_SLACK_WEBHOOK_URL=https://hooks.example.test/secret-value
+SMTP_HOST=mail.example.test
+WAF_COLLECTION_ENABLED=true
+"""
+
+
+@pytest.mark.parametrize(
+    ("qr_rc", "ready_rc", "expected_rc", "summary"),
+    [
+        (0, 0, 0, "QRadar connection  ok"),
+        (3, 0, 1, "QRadar connection  FAILED (exit 3)"),
+        (0, 1, 1, "API readiness      NOT READY"),
+    ],
+)
+def test_install_merges_the_existing_env_on_every_written_exit_path(
+    inst: Install,
+    tmp_path: Path,
+    flow_path: str,
+    qr_rc: int,
+    ready_rc: int,
+    expected_rc: int,
+    summary: str,
+) -> None:
+    env_path = inst.root / ".env"
+    env_path.write_text(OLD_ENV)
+
+    result = _install_flow(
+        inst, tmp_path, flow_path, qr_rc=qr_rc, ready_rc=ready_rc
+    )
+
+    assert result.returncode == expected_rc, result.stdout + result.stderr
+    assert summary in result.stdout
+    assert (inst.root / ".qradar-dash" / "state.json").is_file()
+    lines = env_path.read_text().splitlines()
+    expected = {
+        "LOG_LEVEL": "DEBUG",
+        "ENCRYPTION_KEY": "kept-active-fernet-key",
+        "ENCRYPTION_KEYS_JSON": '{"1":"kept-old-fernet-key"}',
+        "ENCRYPTION_KEY_VERSION": "2",
+        "RETENTION_RULE_METRIC_DAYS": "30",
+        "NOTIFY_SLACK_WEBHOOK_URL": "https://hooks.example.test/secret-value",
+        "SMTP_HOST": "mail.example.test",
+        "WAF_COLLECTION_ENABLED": "true",
+        "QRADAR_VERIFY_SSL": "true",
+    }
+    for key, value in expected.items():
+        assert lines.count(f"{key}={value}") == 1
+        assert len([line for line in lines if line.startswith(f"{key}=")]) == 1
+    marker = "# Kept from the previous .env (not written by ./qradar-dash install)"
+    assert lines[lines.index(marker) + 1 :] == [
+        "NOTIFY_SLACK_WEBHOOK_URL=https://hooks.example.test/secret-value",
+        "SMTP_HOST=mail.example.test",
+        "WAF_COLLECTION_ENABLED=true",
+    ]
+    assert stat.S_IMODE(env_path.stat().st_mode) == 0o600
+    combined = result.stdout + result.stderr
+    for name in (
+        "NOTIFY_SLACK_WEBHOOK_URL",
+        "SMTP_HOST",
+        "WAF_COLLECTION_ENABLED",
+        "ENCRYPTION_KEYS_JSON",
+        "ENCRYPTION_KEY_VERSION",
+        "LOG_LEVEL",
+        "RETENTION_RULE_METRIC_DAYS",
+    ):
+        assert name in combined
+    for value in (
+        "https://hooks.example.test/secret-value",
+        "mail.example.test",
+        "kept-old-fernet-key",
+        "kept-active-fernet-key",
+        "kept-secret-key-material",
+        "kept-postgres-password",
+    ):
+        assert value not in combined
+    assert "QRADAR_VERIFY_SSL was 'false' and is enforced as 'true'" in result.stderr
+
+
 def test_install_whose_stack_does_not_come_up_writes_no_state_file(
     inst: Install, tmp_path: Path, flow_path: str
 ) -> None:
@@ -595,11 +797,12 @@ def test_install_summary_has_no_stale_arrives_with_text(
 def test_a_version_endpoint_failure_says_what_failed(
     inst: Install, tmp_path: Path, flow_path: str
 ) -> None:
-    _stub(Path(flow_path) / "curl", "#!/bin/sh\ncase \"$*\" in *'-w '*) echo 503 ;; esac\n")
+    result = _install_flow(inst, tmp_path, flow_path, version_code=503)
 
-    result = _install_flow(inst, tmp_path, flow_path)
-
+    assert result.returncode == 1
     assert "GET /api/v1/version did not answer 200 (got '503')" in result.stderr
+    assert "API readiness      NOT READY" in result.stdout
+    assert (inst.root / ".qradar-dash" / "state.json").is_file()
     assert "OPS-1" not in result.stderr
 
 
@@ -1129,7 +1332,7 @@ def test_a_bad_value_in_the_answers_file_is_refused_and_nothing_is_written(
     assert "HISTORY_BACKFILL: must be yes or no" in result.stderr
     assert "nothing was written" in result.stderr
     # flow_path adds deploy/ to the checkout; nothing the installer writes may appear
-    assert sorted(p.name for p in inst.root.iterdir()) == ["deploy", "qradar-dash"]
+    assert sorted(p.name for p in inst.root.iterdir()) == ["VERSION", "deploy", "qradar-dash"]
     assert _docker_log(tmp_path) == []
 
 

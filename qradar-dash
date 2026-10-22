@@ -391,9 +391,6 @@ preflight_host() {
   else
     warn "timedatectl not found; check the clock by hand"
   fi
-  if [ -f docker-compose.override.yml ]; then
-    info "docker-compose.override.yml exists and will be used as-is (a lab overlay)"
-  fi
   [ "$bad" -eq 0 ] || { fail "preflight failed; nothing was written."; exit 1; }
 }
 
@@ -474,11 +471,55 @@ preflight_network() {
 # ---------------------------------------------------------------- compose helpers
 
 PROJECT=qradar-observability
-dc() { docker compose -p "$PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"; }
+
+set_compose_args() {
+  COMPOSE_ARGS=(-f docker-compose.yml -f docker-compose.prod.yml)
+  if [ -f docker-compose.override.yml ]; then
+    COMPOSE_ARGS+=(-f docker-compose.override.yml)
+  fi
+}
+
+dc() {
+  local -a COMPOSE_ARGS=()
+  set_compose_args
+  docker compose -p "$PROJECT" "${COMPOSE_ARGS[@]}" "$@"
+}
+
+compose_command() {
+  local -a COMPOSE_ARGS=()
+  set_compose_args
+  printf 'docker compose -p %s' "$PROJECT"
+  printf ' %s' "${COMPOSE_ARGS[@]}"
+}
+
+compose_file_value() {
+  printf 'docker-compose.yml:docker-compose.prod.yml'
+  [ ! -f docker-compose.override.yml ] || printf ':docker-compose.override.yml'
+}
+
+report_compose_override() {
+  [ ! -f docker-compose.override.yml ] \
+    || info "docker-compose.override.yml is in use; run ./qradar-dash doctor to verify the stack"
+}
 
 env_get() { # env_get KEY -> value from .env, or empty
   [ -f "$ENV_FILE" ] || return 0
   sed -n "s/^$1=//p" "$ENV_FILE" | head -n1
+}
+
+env_has_key() { # env_has_key KEY
+  [ -f "$ENV_FILE" ] && grep -q "^$1=" "$ENV_FILE"
+}
+
+read_checkout_version() {
+  local retry=${1:-install} version
+  if [ ! -r VERSION ]; then
+    die "VERSION is missing or unreadable; this checkout is incomplete; restore VERSION and run ./qradar-dash $retry again"
+  fi
+  version=$(tr -d '[:space:]' <VERSION)
+  [ -n "$version" ] \
+    || die "VERSION is empty; this checkout is incomplete; restore VERSION and run ./qradar-dash $retry again"
+  printf '%s\n' "$version"
 }
 
 load_project_from_env() {
@@ -520,14 +561,111 @@ save_answers() {
   mv "$f" "$SAVED_ANSWERS"
 }
 
+installer_env_key() {
+  case "$1" in
+    ENVIRONMENT | DEBUG | LOG_LEVEL | AUTH_PROVIDER | PUBLIC_ORIGIN | SECRET_KEY | \
+      ENCRYPTION_KEY | ENCRYPTION_KEY_VERSION | ENCRYPTION_KEYS_JSON | POSTGRES_USER | \
+      POSTGRES_PASSWORD | POSTGRES_DB | POSTGRES_HOST | QRADAR_PROVIDER | QRADAR_BASE_URL | \
+      QRADAR_CONSOLE_FQDN | QRADAR_API_VERSION | QRADAR_VERIFY_SSL | QRADAR_API_TOKEN_FILE | \
+      QRADAR_CA_BUNDLE | QRADAR_TLS_ALLOW_MISSING_AKI | NEXT_PUBLIC_API_BASE_URL | \
+      INTERNAL_API_BASE_URL | RETENTION_ENABLED | RETENTION_LOG_SOURCE_METRIC_DAYS | \
+      RETENTION_SEARCH_RESULT_METRIC_DAYS | RETENTION_RULE_METRIC_DAYS | \
+      RETENTION_OFFENSE_SNAPSHOT_DAYS | COMPRESSION_AFTER_DAYS | FORWARDED_ALLOW_IPS | \
+      LLM_ENABLED | LLM_ALLOW_AUTONOMOUS_ACTIONS | MCP_ENABLED | COMPOSE_PROJECT_NAME | \
+      COMPOSE_FILE | COMPOSE_PROFILES | QRADAR_DASH_VERSION | QRADAR_DASH_IMAGE_PREFIX | \
+      QRADAR_DASH_BACKUP_DIR | SECRETS_VOLUME | PROXY_CERTS_VOLUME | HTTPS_PORT | \
+      API_LOOPBACK_PORT | UI_LOOPBACK_PORT | EDGE_SUBNET | PROXY_EDGE_IP) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+env_or_default() { # env_or_default KEY DEFAULT
+  if env_has_key "$1"; then env_get "$1"; else printf '%s\n' "$2"; fi
+}
+
+warn_invariant_change() { # warn_invariant_change KEY REQUIRED_VALUE
+  local old
+  env_has_key "$1" || return 0
+  old=$(env_get "$1")
+  [ "$old" = "$2" ] || warn "$1 was '$old' and is enforced as '$2'; run ./qradar-dash doctor after install"
+}
+
+join_names() {
+  local joined="" name
+  for name in "$@"; do
+    if [ -n "$joined" ]; then joined="$joined, $name"; else joined=$name; fi
+  done
+  printf '%s\n' "$joined"
+}
+
 write_env() { # write_env ENCRYPTION_KEY
-  local enc=$1 secret_key pg_pass fwd origin profiles version
-  secret_key=$(env_get SECRET_KEY)
-  [ -n "$secret_key" ] || secret_key=$(openssl rand -base64 48 | tr -d '\n')
+  local enc=$1 secret_key pg_pass fwd origin profiles version compose_files old_exists=no
+  local encryption_keys encryption_version log_level auth_provider retention_enabled
+  local retention_log retention_search retention_rule retention_offense compression llm_enabled
+  local mcp_enabled line key
+  local -a kept_operator=() kept_secrets=() extra_lines=()
+  local -A seen_extra=()
+  [ ! -f "$ENV_FILE" ] || old_exists=yes
+
+  if env_has_key SECRET_KEY && [ -n "$(env_get SECRET_KEY)" ]; then
+    secret_key=$(env_get SECRET_KEY)
+    kept_secrets+=(SECRET_KEY)
+  else
+    secret_key=$(openssl rand -base64 48 | tr -d '\n')
+  fi
   # hex, not base64: the password is spliced into a database URL unescaped, and a
   # '/' or '+' from base64 would break it (backend/app/core/config.py database_url).
-  pg_pass=$(env_get POSTGRES_PASSWORD)
-  [ -n "$pg_pass" ] || pg_pass=$(openssl rand -hex 24)
+  if env_has_key POSTGRES_PASSWORD && [ -n "$(env_get POSTGRES_PASSWORD)" ]; then
+    pg_pass=$(env_get POSTGRES_PASSWORD)
+    kept_secrets+=(POSTGRES_PASSWORD)
+  else
+    pg_pass=$(openssl rand -hex 24)
+  fi
+  if env_has_key ENCRYPTION_KEY && [ -n "$(env_get ENCRYPTION_KEY)" ]; then
+    enc=$(env_get ENCRYPTION_KEY)
+    kept_secrets+=(ENCRYPTION_KEY)
+  fi
+  if env_has_key ENCRYPTION_KEYS_JSON; then
+    encryption_keys=$(env_get ENCRYPTION_KEYS_JSON)
+    kept_secrets+=(ENCRYPTION_KEYS_JSON)
+  else
+    encryption_keys=""
+  fi
+  if env_has_key ENCRYPTION_KEY_VERSION; then
+    encryption_version=$(env_get ENCRYPTION_KEY_VERSION)
+    kept_secrets+=(ENCRYPTION_KEY_VERSION)
+  else
+    encryption_version=1
+  fi
+
+  log_level=$(env_or_default LOG_LEVEL INFO)
+  auth_provider=$(env_or_default AUTH_PROVIDER session)
+  retention_enabled=$(env_or_default RETENTION_ENABLED true)
+  retention_log=$(env_or_default RETENTION_LOG_SOURCE_METRIC_DAYS 90)
+  retention_search=$(env_or_default RETENTION_SEARCH_RESULT_METRIC_DAYS 90)
+  retention_rule=$(env_or_default RETENTION_RULE_METRIC_DAYS 90)
+  retention_offense=$(env_or_default RETENTION_OFFENSE_SNAPSHOT_DAYS 90)
+  compression=$(env_or_default COMPRESSION_AFTER_DAYS 7)
+  llm_enabled=$(env_or_default LLM_ENABLED false)
+  mcp_enabled=$(env_or_default MCP_ENABLED false)
+  for key in LOG_LEVEL AUTH_PROVIDER RETENTION_ENABLED RETENTION_LOG_SOURCE_METRIC_DAYS \
+    RETENTION_SEARCH_RESULT_METRIC_DAYS RETENTION_RULE_METRIC_DAYS \
+    RETENTION_OFFENSE_SNAPSHOT_DAYS COMPRESSION_AFTER_DAYS LLM_ENABLED MCP_ENABLED; do
+    env_has_key "$key" && kept_operator+=("$key")
+  done
+
+  if [ -f "$ENV_FILE" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      [[ $line =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]] || continue
+      key=${BASH_REMATCH[1]}
+      if ! installer_env_key "$key" && [ -z "${seen_extra[$key]:-}" ]; then
+        extra_lines+=("$line")
+        kept_operator+=("$key")
+        seen_extra[$key]=yes
+      fi
+    done <"$ENV_FILE"
+  fi
+
   fwd=${ANS[FORWARDED_ALLOW_IPS]:-}
   if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then
     fwd=${ANS[PROXY_EDGE_IP]}
@@ -540,21 +678,32 @@ write_env() { # write_env ENCRYPTION_KEY
     # Keep an earlier external-proxy value, never the bundled proxy address of a previous mode.
     if [ -z "$fwd" ] && [ -z "$(env_get COMPOSE_PROFILES)" ]; then fwd=$(env_get FORWARDED_ALLOW_IPS); fi
   fi
-  version=""
-  if [ -r VERSION ]; then version=$(tr -d '[:space:]' <VERSION); fi
-  : "${version:=0.1.0}"
+  version=$(read_checkout_version)
+  compose_files=$(compose_file_value)
+  warn_invariant_change ENVIRONMENT production
+  warn_invariant_change DEBUG false
+  warn_invariant_change QRADAR_PROVIDER rest
+  warn_invariant_change QRADAR_VERIFY_SSL true
+  warn_invariant_change QRADAR_API_TOKEN_FILE /run/secrets/qradar_sec_token
+  warn_invariant_change QRADAR_CA_BUNDLE /run/secrets/qradar_ca.pem
+  warn_invariant_change POSTGRES_USER qradar_obs
+  warn_invariant_change POSTGRES_DB qradar_obs
+  warn_invariant_change POSTGRES_HOST postgres
+  warn_invariant_change NEXT_PUBLIC_API_BASE_URL /api/v1
+  warn_invariant_change INTERNAL_API_BASE_URL http://backend:8000/api/v1
+  warn_invariant_change LLM_ALLOW_AUTONOMOUS_ACTIONS false
   umask 077
   cat >"$ENV_FILE.tmp" <<EOF
 # Written by ./qradar-dash install. Mode 0600. Secret keys are kept on re-runs.
 ENVIRONMENT=production
 DEBUG=false
-LOG_LEVEL=INFO
-AUTH_PROVIDER=session
+LOG_LEVEL=$log_level
+AUTH_PROVIDER=$auth_provider
 PUBLIC_ORIGIN=$origin
 SECRET_KEY=$secret_key
 ENCRYPTION_KEY=$enc
-ENCRYPTION_KEY_VERSION=1
-ENCRYPTION_KEYS_JSON=
+ENCRYPTION_KEY_VERSION=$encryption_version
+ENCRYPTION_KEYS_JSON=$encryption_keys
 POSTGRES_USER=qradar_obs
 POSTGRES_PASSWORD=$pg_pass
 POSTGRES_DB=qradar_obs
@@ -569,18 +718,19 @@ QRADAR_CA_BUNDLE=/run/secrets/qradar_ca.pem
 QRADAR_TLS_ALLOW_MISSING_AKI=$([ "${ANS[QRADAR_ALLOW_MISSING_AKI]}" = yes ] && echo true || echo false)
 NEXT_PUBLIC_API_BASE_URL=/api/v1
 INTERNAL_API_BASE_URL=http://backend:8000/api/v1
-RETENTION_ENABLED=true
-RETENTION_LOG_SOURCE_METRIC_DAYS=90
-RETENTION_RULE_METRIC_DAYS=90
-RETENTION_OFFENSE_SNAPSHOT_DAYS=90
-COMPRESSION_AFTER_DAYS=7
+RETENTION_ENABLED=$retention_enabled
+RETENTION_LOG_SOURCE_METRIC_DAYS=$retention_log
+RETENTION_SEARCH_RESULT_METRIC_DAYS=$retention_search
+RETENTION_RULE_METRIC_DAYS=$retention_rule
+RETENTION_OFFENSE_SNAPSHOT_DAYS=$retention_offense
+COMPRESSION_AFTER_DAYS=$compression
 FORWARDED_ALLOW_IPS=$fwd
-LLM_ENABLED=false
+LLM_ENABLED=$llm_enabled
 LLM_ALLOW_AUTONOMOUS_ACTIONS=false
-MCP_ENABLED=false
+MCP_ENABLED=$mcp_enabled
 COMPOSE_PROJECT_NAME=${ANS[PROJECT_NAME]}
 # So a bare 'docker compose' in this directory uses the production overlay too (./qradar-dash passes -f itself).
-COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+COMPOSE_FILE=$compose_files
 COMPOSE_PROFILES=$profiles
 QRADAR_DASH_VERSION=$version
 QRADAR_DASH_IMAGE_PREFIX=${ANS[IMAGE_PREFIX]}
@@ -593,8 +743,17 @@ UI_LOOPBACK_PORT=${ANS[UI_LOOPBACK_PORT]}
 EDGE_SUBNET=${ANS[EDGE_SUBNET]}
 PROXY_EDGE_IP=${ANS[PROXY_EDGE_IP]}
 EOF
+  if [ "${#extra_lines[@]}" -gt 0 ]; then
+    say "# Kept from the previous .env (not written by ./qradar-dash install)" >>"$ENV_FILE.tmp"
+    printf '%s\n' "${extra_lines[@]}" >>"$ENV_FILE.tmp"
+  fi
   chmod 600 "$ENV_FILE.tmp"
   mv "$ENV_FILE.tmp" "$ENV_FILE"
+  if [ "$old_exists" = no ]; then
+    ENV_WRITE_STATUS="first install: new .env"
+  else
+    ENV_WRITE_STATUS="kept operator keys: $(join_names "${kept_operator[@]}"); kept secrets: $(join_names "${kept_secrets[@]}")"
+  fi
 }
 
 get_images() { # get_images MODE OFFLINE_BUNDLE
@@ -657,7 +816,7 @@ admin_exists() { # prints yes or no; no user field is printed
 }
 
 cmd_install() {
-  local mode=pull bundle="" answers="" dry=no reconfigure=no
+  local mode=pull bundle="" answers="" dry=no reconfigure=no checkout
   FLAG_EXTERNAL_PROXY=no
   FLAG_SKIP_QRADAR=no
   PREFLIGHT_HOST_DONE=no
@@ -678,12 +837,10 @@ cmd_install() {
   if [ "$mode" = "offline" ]; then
     [ -r "$bundle" ] || { fail "bundle not readable: $bundle"; exit 2; }
   fi
+  checkout=$(read_checkout_version)
 
   # 0. A site that records a version keeps it: changing versions is `upgrade`, which backs up first.
   if [ -e .qradar-dash/state.json ] || [ -L .qradar-dash/state.json ]; then
-    local checkout_version=""
-    if [ -r VERSION ]; then checkout_version=$(tr -d '[:space:]' <VERSION); fi
-    : "${checkout_version:=0.1.0}"
     state_read .qradar-dash/state.json || {
       fail "install refused: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid; see ./qradar-dash status"
       exit 1
@@ -693,8 +850,8 @@ cmd_install() {
       fail "install refused: the last upgrade failed; run rollback or restore first"
       exit 1
     fi
-    if [ "$STATE_INSTALLED_VERSION" != "$checkout_version" ]; then
-      fail "install refused: this site runs $STATE_INSTALLED_VERSION and this checkout is $checkout_version; use ./qradar-dash upgrade $checkout_version to change versions, or check out v$STATE_INSTALLED_VERSION to re-run install (see docs/OPERATIONS.md, Yükseltme)"
+    if [ "$STATE_INSTALLED_VERSION" != "$checkout" ]; then
+      fail "install refused: this site runs $STATE_INSTALLED_VERSION and this checkout is $checkout; use ./qradar-dash upgrade $checkout to change versions, or check out v$STATE_INSTALLED_VERSION to re-run install (see docs/OPERATIONS.md, Yükseltme)"
       exit 1
     fi
   fi
@@ -728,6 +885,7 @@ cmd_install() {
   say "Preflight"
   if [ "$PREFLIGHT_HOST_DONE" = "no" ]; then preflight_host; fi
   PROJECT=${ANS[PROJECT_NAME]}
+  report_compose_override
   preflight_network
   if [ "$dry" = "yes" ]; then say "Dry run: every check passed; nothing was written."; exit 0; fi
 
@@ -738,7 +896,7 @@ cmd_install() {
   write_secrets_dir
   save_answers
   write_env "$enc"
-  info ".env written (mode 0600); existing keys were kept"
+  info ".env written (mode 0600); $ENV_WRITE_STATUS"
 
   # 4. Images.
   get_images "$mode" "$bundle"
@@ -828,23 +986,27 @@ cmd_install() {
   dc up -d --wait --wait-timeout 180 $svc || { dc ps; fail "a service did not become healthy within 180 s"; exit 1; }
   info "backend, worker, beat, frontend$([ "${ANS[EXTERNAL_PROXY]}" = no ] && echo ", proxy") are healthy"
   local api="http://127.0.0.1:${ANS[API_LOOPBACK_PORT]}/api/v1"
-  wait_ready "$api/health/ready" 60 || warn "$api/health/ready did not answer 200 within 60 s"
-  local code
+  local api_ready=yes code
+  if ! wait_ready "$api/health/ready" 60; then
+    warn "$api/health/ready did not answer 200 within 60 s; run ./qradar-dash doctor and ./qradar-dash logs backend"
+    api_ready=no
+  fi
   code=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$api/version" || true)
   if [ "$code" = "200" ]; then
     info "version: $(curl -s --max-time 5 "$api/version")"
   else
-    warn "GET /api/v1/version did not answer 200 (got '${code:-no answer}'); check ./qradar-dash doctor"
+    warn "GET /api/v1/version did not answer 200 (got '${code:-no answer}'); run ./qradar-dash doctor and ./qradar-dash logs backend"
+    api_ready=no
   fi
 
-  summary "$qr_rc" "$have_admin"
+  summary "$qr_rc" "$have_admin" "$api_ready"
   # The state file records the version and image digests, which do not depend on QRadar.
-  write_install_state || die "the install succeeded but its state file could not be written"
-  [ "$qr_rc" -eq 0 ] || exit 1
+  write_install_state || die "the install state file could not be written; run ./qradar-dash status"
+  [ "$qr_rc" -eq 0 ] && [ "$api_ready" = yes ] || exit 1
 }
 
 summary() {
-  local qr_rc=$1 had=$2 origin hb_line
+  local qr_rc=$1 had=$2 api_ready=$3 origin hb_line
   origin=$(env_get PUBLIC_ORIGIN)
   say ""
   say "=============================== Install summary ==============================="
@@ -861,6 +1023,9 @@ summary() {
   else
     say "QRadar connection  FAILED (exit $qr_rc). The instance row is stored; fix the console, token or"
     say "                    CA and run ./qradar-dash install again (qradar add updates the row)."
+  fi
+  if [ "$api_ready" != yes ]; then
+    say "API readiness      NOT READY — run ./qradar-dash doctor and ./qradar-dash logs backend"
   fi
   if [ -z "${HB_RC:-}" ]; then
     say "History backfill   not decided; the first administrator sign-in will ask (WAF and IPS read"
@@ -1748,7 +1913,7 @@ restore_failure_before_swap() { # restore_failure_before_swap DATABASE
 print_broken_database_instructions() { # print_broken_database_instructions NAME
   say "Previous database kept as $1."
   say "Drop it later only after validation:"
-  say "  docker compose -p $PROJECT -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'DROP DATABASE $1;'"
+  say "  $(compose_command) exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'DROP DATABASE $1;'"
 }
 
 restore_swap_database() { # restore_swap_database BACKUP_DIRECTORY REASON
@@ -1789,7 +1954,7 @@ restore_swap_database() { # restore_swap_database BACKUP_DIRECTORY REASON
       say "Original database: $broken"
       say "Restored candidate database: $restored"
       say "Rename the original back with:"
-      say "  docker compose -p $PROJECT -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'ALTER DATABASE $broken RENAME TO $live;'"
+      say "  $(compose_command) exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'ALTER DATABASE $broken RENAME TO $live;'"
     fi
     restore_start_services || true
     return 1
@@ -2172,6 +2337,7 @@ cmd_upgrade() {
   local backup_output backup at new_images old_env_version checkout_version
   need_installed
   command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  report_compose_override
   while [ $# -gt 0 ]; do
     case "$1" in
       --offline) offline=yes ;;
@@ -2186,8 +2352,7 @@ cmd_upgrade() {
     fail "upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)"
     return 1
   }
-  checkout_version=""
-  if [ -r VERSION ]; then checkout_version=$(tr -d '[:space:]' <VERSION); fi
+  checkout_version=$(read_checkout_version "upgrade $target")
   if [ "$checkout_version" != "$target" ]; then
     fail "upgrade refused: this checkout is version ${checkout_version:-unknown}, not $target; run git fetch --tags && git checkout v$target first (see docs/OPERATIONS.md, Yükseltme)"
     return 1

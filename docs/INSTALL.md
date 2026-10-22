@@ -69,7 +69,22 @@ The wizard performs host checks, writes generated secrets to a mode-`0600` `.env
 and TLS files into Docker volumes, runs migrations, creates the break-glass administrator, registers
 the console, starts the services behind the bundled TLS proxy, and prints a summary. The initial
 administrator password is printed once. A repeat run preserves generated keys and does not modify
-that account.
+that account. More precisely, it keeps `SECRET_KEY`, `POSTGRES_PASSWORD`, `ENCRYPTION_KEY`,
+`ENCRYPTION_KEYS_JSON` and `ENCRYPTION_KEY_VERSION`; keeps existing operator defaults such as
+`LOG_LEVEL`, `AUTH_PROVIDER`, `RETENTION_*`, `COMPRESSION_AFTER_DAYS`, `LLM_ENABLED` and
+`MCP_ENABLED`; and carries forward every other operator-added `KEY=VALUE` line. Wizard-derived
+values are rewritten from the saved answers. Production invariants such as
+`QRADAR_VERIFY_SSL=true`, `QRADAR_PROVIDER=rest` and `DEBUG=false` are enforced, with one warning
+per changed key. The installer prints names of retained keys, never their values.
+
+The install summary includes QRadar connection and API-readiness results. Its exit codes are:
+
+| Exit code | Meaning |
+|---:|---|
+| `0` | The stack answered both readiness and version checks, and the QRadar registration check passed |
+| `1` | A host/runtime check failed, QRadar registration failed, or readiness/version did not answer 200; when the summary was reached, the install state file was still written |
+| `2` | An option or non-interactive answers file was invalid; installation did not start |
+| `3` | External-proxy mode had no safe `FORWARDED_ALLOW_IPS`; the backend was not started |
 
 The default release images are under `ghcr.io/wiembe/behavior-analytics/`. The installer supports:
 
@@ -280,7 +295,9 @@ If the host reaches a QRadar VM but containers receive `ECONNREFUSED`, libvirt m
 forwarded traffic from the Compose bridge. Use `deploy/create-vmnet.sh` to create the external
 macvlan after adapting its interface and subnet to the host, then attach `backend`,
 `celery-worker`, `celery-beat` and `migrate` in a gitignored Compose override. Do not weaken the
-host firewall.
+host firewall. When `docker-compose.override.yml` exists in the checkout, `./qradar-dash install`
+and `upgrade` load it after the production overlay, and the installer writes the same file list to
+`COMPOSE_FILE` for a bare `docker compose` command.
 
 ## Optional MCP service
 
