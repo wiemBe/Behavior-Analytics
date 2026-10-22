@@ -11,12 +11,14 @@ from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import ProviderKind, Settings, get_settings
+from app.core.database import get_engine
 from app.models.instance import QRadarInstance
 from app.providers.audit_sink import make_audit_sink
 from app.providers.base import QRadarProvider
 from app.providers.mock import MockQRadarProvider
 from app.providers.qradar_mcp import QRadarMCPProvider
 from app.providers.qradar_rest import QRadarRestProvider
+from app.services.ariel_permit import ArielPermitBudget
 
 
 def build_provider(settings: Settings | None = None) -> QRadarProvider:
@@ -44,6 +46,7 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
                 ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
                 ips_max_sources_per_search=settings.ips_max_sources_per_search,
                 pw_max_sources_per_search=settings.pw_max_sources_per_search,
+                permit=ArielPermitBudget(get_engine(), settings, instance_id=None),
             )
         case ProviderKind.MCP:
             return QRadarMCPProvider(
@@ -101,6 +104,15 @@ def build_provider_for_instance(
                 ariel_stop_pad_seconds=settings.ariel_stop_pad_seconds,
                 ips_max_sources_per_search=settings.ips_max_sources_per_search,
                 pw_max_sources_per_search=settings.pw_max_sources_per_search,
+                permit=(
+                    ArielPermitBudget.for_session(
+                        audit_session,
+                        settings,
+                        instance_id=instance.id,
+                    )
+                    if audit_session is not None
+                    else ArielPermitBudget(get_engine(), settings, instance_id=instance.id)
+                ),
             )
         case ProviderKind.MCP:
             return QRadarMCPProvider(

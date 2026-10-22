@@ -4,9 +4,11 @@ DB-gated."""
 from __future__ import annotations
 
 import os
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import pytest
 from sqlalchemy import create_engine, delete, event, func, insert, select, text
 
@@ -22,6 +24,8 @@ from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError
 from app.providers.dto import LogSourceMetricSample
 from app.providers.mock import MockQRadarProvider
+from app.providers.qradar_rest import QRadarRestProvider
+from app.services.ariel_permit import ArielPermitUnavailable
 from app.services.inventory_sync import InventorySyncService
 from app.services.locks import collector_lock_key
 from app.services.search_cadence import SearchCadenceService
@@ -86,6 +90,59 @@ async def test_first_run_collects_one_interval(db_session) -> None:
     assert report.intervals_collected == 1
     assert report.samples_written > 0
     assert report.watermark_at is not None
+
+
+async def test_ariel_permit_refusal_fails_phase_a_closed(db_session) -> None:
+    """A refused permit surfaces as the typed provider error the task layer records by
+    class: no bucket, no watermark move, nothing on the wire."""
+    instance = await _seed_inventory(db_session)
+    prior_watermark = datetime(2026, 10, 22, 9, 50, tzinfo=UTC)
+    watermark = await _seed_watermark(db_session, instance, prior_watermark)
+    await db_session.commit()
+    requests = 0
+
+    class RefusingBudget:
+        wait_seconds = 0.0
+        instance_limit = 3
+        global_limit = 6
+
+        @asynccontextmanager
+        async def permit(self) -> AsyncIterator[None]:
+            yield None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="https://qradar.example.internal/api",
+    )
+    provider = QRadarRestProvider(
+        base_url="https://qradar.example.internal",
+        sec_token="test-token",
+        client=client,
+        permit=RefusingBudget(),  # type: ignore[arg-type]
+    )
+    settings = _settings(history_backfill_enabled=False)
+    try:
+        with pytest.raises(ArielPermitUnavailable) as raised:
+            await MetricCollector(
+                db_session,
+                provider,
+                settings=settings,
+                clock=lambda: datetime(2026, 10, 22, 10, 3, tzinfo=UTC),
+            ).collect(instance)
+    finally:
+        await provider.aclose()
+
+    assert isinstance(raised.value, ProviderError)
+    assert type(raised.value).__name__ == "ArielPermitUnavailable"
+    assert requests == 0
+    assert await db_session.scalar(select(func.count()).select_from(LogSourceMetric)) == 0
+    await db_session.refresh(watermark)
+    assert watermark.watermark_at == prior_watermark
 
 
 async def test_tick_writes_more_metrics_than_one_statement_can_bind(db_session) -> None:

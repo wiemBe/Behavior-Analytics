@@ -132,13 +132,19 @@ class ArielPermitBudget:
         self.wait_seconds = settings.ariel_permit_wait_seconds
         self.poll_seconds = settings.ariel_permit_poll_seconds
         self.reserved_live_slots = settings.ariel_permit_reserved_live_slots
-        self._instance_base = (
-            _instance_slot_base(instance_id, self.instance_limit)
-            if instance_id is not None
-            else None
-        )
         self._sleep = sleep
         self._monotonic = monotonic
+
+    @property
+    def _instance_base(self) -> int | None:
+        """The console's slot range start, derived on first use.
+
+        Lazy so that building a provider never hashes the id: only a search that is
+        about to hold a permit needs the range.
+        """
+        if self.instance_id is None:
+            return None
+        return _instance_slot_base(self.instance_id, self.instance_limit)
 
     @classmethod
     def for_session(
