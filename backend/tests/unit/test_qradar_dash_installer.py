@@ -257,18 +257,16 @@ def test_install_refuses_an_incomplete_checkout_without_a_version(
     assert not (inst.root / ".secrets").exists()
 
 
-def test_unbuilt_subcommands_exit_non_zero(inst: Install) -> None:
-    for cmd in ("bundle",):
-        result = inst.run(cmd)
-        assert result.returncode == 64, cmd
-        assert "not built yet" in result.stderr
+def test_usage_lists_bundle_with_its_options_and_nothing_is_marked_unbuilt(
+    inst: Install,
+) -> None:
+    result = inst.run("help")
 
-
-def test_bundle_says_what_to_use_instead(inst: Install) -> None:
-    result = inst.run("bundle")
-    assert "OPS-" not in result.stderr
-    assert "install --build" in result.stderr
-    assert "registry" in result.stderr
+    assert "Not built" not in result.stdout and "not built" not in result.stderr
+    assert "bundle        On a connected host" in result.stdout
+    assert "--output DIR" in result.stdout and "--version X.Y.Z" in result.stdout
+    assert "--offline [BUNDLE]" in result.stdout
+    assert "./qradar-dash bundle [--version" in SCRIPT.read_text().split("set -euo")[0]
 
 
 def test_status_without_an_install_says_so(inst: Install) -> None:

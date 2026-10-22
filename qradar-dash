@@ -8,7 +8,8 @@
 #   ./qradar-dash logs [docker compose logs arguments]
 #   ./qradar-dash backup [manual|scheduled|pre-upgrade] [--no-verify]
 #   ./qradar-dash restore <backup-directory> [--non-interactive --yes]
-#   ./qradar-dash upgrade <version> [--offline]
+#   ./qradar-dash upgrade <version> [--offline [BUNDLE]]
+#   ./qradar-dash bundle [--version X.Y.Z] [--output DIR]
 #   ./qradar-dash rollback [--non-interactive --yes]
 #
 # Specified in docs/OPERATIONS-DESIGN.md section 3. The script needs bash and
@@ -17,6 +18,7 @@
 # never bind-mounts the checkout: secrets travel through deploy/load-secrets.sh.
 set -euo pipefail
 
+ORIG_PWD="$PWD" # where the operator ran the script; a relative bundle path is relative to it
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 cd "$ROOT"
 
@@ -50,7 +52,8 @@ Commands
                 Write a redacted diagnostic archive under the backup root.
   upgrade       Pull and install one explicit production SemVer release.
   rollback      Restore the pre-upgrade backup and previous image digests (asks first).
-  bundle        Not built in this release (use install --build, or pull from the registry).
+  bundle        On a connected host: write the offline bundle (images and checkout) for an
+                air-gapped host.
 
 backup options
   --no-verify       Skip the scratch-database restore (not allowed for pre-upgrade).
@@ -62,7 +65,13 @@ restore options
   --yes             Confirm a non-interactive restore.
 
 upgrade options
-  --offline         Refuse unless every target image is already loaded locally.
+  --offline [BUNDLE]
+                    Do not pull. With BUNDLE, verify and load the images from that offline
+                    bundle first; without it, refuse unless every target image is already loaded.
+
+bundle options
+  --version X.Y.Z   Assert the release to bundle (it must equal this checkout's VERSION).
+  --output DIR      Directory for qradar-dash-<version>-bundle.tar (default: the current directory).
 
 rollback options
   --non-interactive Refuse unless --yes is also present.
@@ -71,7 +80,7 @@ rollback options
 install options
   --non-interactive FILE   Read the answers from FILE (mode 0600, no secrets).
   --build                  Build the images from this checkout instead of pulling.
-  --offline BUNDLE         Load the images from an offline bundle tar.
+  --offline BUNDLE         Load the images from an offline bundle tar (made by `bundle`).
   --external-proxy         Skip the bundled TLS proxy; you run your own.
   --reconfigure            Ask the questions again even when answers are saved.
   --dry-run                Run every check, write nothing, change nothing.
@@ -757,7 +766,7 @@ EOF
 }
 
 get_images() { # get_images MODE OFFLINE_BUNDLE
-  local mode=$1 bundle=${2:-} svc="postgres redis backend frontend" dir
+  local mode=$1 bundle=${2:-} svc="postgres redis backend frontend"
   if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then svc="$svc proxy"; fi
   case "$mode" in
     build)
@@ -770,13 +779,7 @@ get_images() { # get_images MODE OFFLINE_BUNDLE
       dc pull redis || warn "could not pull redis; compose will try again at start"
       ;;
     offline)
-      dir=$TMP_DIR/bundle
-      rm -rf "$TMP_DIR"
-      mkdir -p "$dir"
-      tar -xf "$bundle" -C "$dir" SHA256SUMS images.tar || die "cannot read the bundle $bundle"
-      (cd "$dir" && sha256sum -c --quiet SHA256SUMS) || die "the bundle checksums do not match; nothing was loaded"
-      docker load -i "$dir/images.tar" || die "docker load failed"
-      rm -rf "$TMP_DIR"
+      bundle_load "$bundle"
       ;;
     pull)
       if [ -s .secrets/ghcr.token ] && [ -n "${ANS[GHCR_USER]:-}" ]; then
@@ -789,6 +792,246 @@ get_images() { # get_images MODE OFFLINE_BUNDLE
       fi
       ;;
   esac
+}
+
+# ---------------------------------------------------------------- offline bundle
+
+# The redis reference is read from the production compose file, never written down a second time.
+redis_ref() {
+  local ref
+  ref=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(redis:[^[:space:]@]*@sha256:[0-9a-f]\{64\}\)[[:space:]]*$/\1/p' \
+    docker-compose.prod.yml 2>/dev/null | head -n1 || true)
+  [ -n "$ref" ] || return 1
+  printf '%s\n' "$ref"
+}
+
+bundle_image_refs() { # bundle_image_refs PREFIX VERSION -> the six image references, one per line
+  local prefix=$1 version=$2 service ref
+  for service in postgres backend frontend proxy qradar-mcp; do
+    printf '%s/%s:%s\n' "$prefix" "$service" "$version"
+  done
+  ref=$(redis_ref) \
+    || die "docker-compose.prod.yml has no redis image pinned by digest (redis:TAG@sha256:...); this checkout is incomplete; restore docker-compose.prod.yml and run ./qradar-dash bundle again"
+  printf '%s\n' "$ref"
+}
+
+user_path() { # user_path PATH -> absolute, a relative PATH being relative to where the operator ran the script
+  case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$ORIG_PWD" "$1" ;; esac
+}
+
+BUNDLE_STAGE=""
+BUNDLE_PARTIAL=""
+BUNDLE_DONE=no
+BUNDLE_OUT=""
+
+bundle_cleanup() {
+  [ -z "$BUNDLE_STAGE" ] || rm -rf -- "$BUNDLE_STAGE"
+  [ -z "$BUNDLE_PARTIAL" ] || rm -f -- "$BUNDLE_PARTIAL"
+  if [ "$BUNDLE_DONE" != yes ]; then
+    warn "bundle not written: no partial bundle was left in $BUNDLE_OUT; fix the cause above and run ./qradar-dash bundle again"
+  fi
+}
+
+cmd_bundle() {
+  local version="" out="" checkout prefix source ref id bytes target name member
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --version) [ $# -ge 2 ] || { fail "--version needs a release such as 0.2.0"; return 2; }; version=$2; shift ;;
+      --output) [ $# -ge 2 ] || { fail "--output needs a directory"; return 2; }; out=$2; shift ;;
+      -h | --help) usage; return 0 ;;
+      *) fail "unknown bundle option: $1; usage: ./qradar-dash bundle [--version X.Y.Z] [--output DIR]"; return 2 ;;
+    esac
+    shift
+  done
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed; the bundle is made on a host that can run docker pull"
+  checkout=$(read_checkout_version bundle)
+  if [ -n "$version" ]; then
+    valid_release_version "$version" || {
+      fail "bundle version must be plain SemVer (MAJOR.MINOR.PATCH), not $version"
+      return 2
+    }
+    if [ "$version" != "$checkout" ]; then
+      fail "bundle refused: this checkout is version $checkout, not $version; run git fetch --tags && git checkout v$version first, then ./qradar-dash bundle again"
+      return 1
+    fi
+  fi
+  version=$checkout
+  valid_release_version "$version" || die "VERSION holds '$version', not plain SemVer (MAJOR.MINOR.PATCH); this checkout is incomplete; restore VERSION and run ./qradar-dash bundle again"
+  out=$(user_path "${out:-.}")
+  BUNDLE_OUT=$out
+  [ -d "$out" ] && [ -w "$out" ] \
+    || die "bundle output directory $out does not exist or is not writable; run mkdir -p $out, or pass --output DIR"
+  name=qradar-dash-$version-bundle.tar
+  target=$out/$name
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    die "bundle refused: $target already exists and is not overwritten; move or delete it, or pass --output DIR"
+  fi
+  for member in qradar-dash docker-compose.yml docker-compose.prod.yml "docs/releases/$version.md"; do
+    [ -f "$member" ] || die "bundle refused: $member is missing from this checkout; restore it (git checkout v$version) and run ./qradar-dash bundle again"
+  done
+  [ -d deploy ] || die "bundle refused: deploy/ is missing from this checkout; restore it (git checkout v$version) and run ./qradar-dash bundle again"
+
+  prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+  if [ -n "$prefix" ]; then source="QRADAR_DASH_IMAGE_PREFIX in .env"; else prefix=$DEFAULT_IMAGE_PREFIX; source="the default; no QRADAR_DASH_IMAGE_PREFIX in .env"; fi
+  say "Bundle $version, image prefix $prefix ($source)"
+  local -a refs=()
+  mapfile -t refs < <(bundle_image_refs "$prefix" "$version")
+  [ "${#refs[@]}" -eq 6 ] || die "could not work out the six image references; run ./qradar-dash bundle again"
+
+  BUNDLE_DONE=no
+  trap bundle_cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  for ref in "${refs[@]}"; do
+    say "Pulling $ref"
+    docker pull "$ref" >/dev/null \
+      || die "could not pull $ref; a private registry needs docker login ghcr.io with a read:packages token; then run ./qradar-dash bundle again"
+  done
+  BUNDLE_STAGE=$(mktemp -d "$out/.qradar-dash-bundle.XXXXXX") \
+    || die "cannot create a working directory in $out; free space there or pass --output DIR"
+  BUNDLE_PARTIAL=$BUNDLE_STAGE.partial
+  say "Saving the six images (this takes a while)"
+  docker save -o "$BUNDLE_STAGE/images.tar" "${refs[@]}" \
+    || die "docker save failed (is there room in $out?); free space or pass --output DIR"
+  {
+    printf '# qradar-dash offline bundle manifest; ./qradar-dash checks every image line after docker load\n'
+    printf 'version %s\n' "$version"
+    printf 'image_prefix %s\n' "$prefix"
+    for ref in "${refs[@]}"; do
+      id=$(docker image inspect --format '{{.Id}}' "$ref") && [ -n "$id" ] \
+        || die "cannot read the local image ID of $ref; run docker pull $ref and ./qradar-dash bundle again"
+      printf 'image %s %s\n' "$ref" "$id"
+    done
+  } >"$BUNDLE_STAGE/MANIFEST"
+  printf '%s\n' "$version" >"$BUNDLE_STAGE/VERSION"
+  cp -p qradar-dash docker-compose.yml docker-compose.prod.yml "$BUNDLE_STAGE/" \
+    || die "cannot copy the checkout files into the bundle"
+  mkdir -p "$BUNDLE_STAGE/docs/releases"
+  cp -p "docs/releases/$version.md" "$BUNDLE_STAGE/docs/releases/" || die "cannot copy docs/releases/$version.md"
+  cp -pR deploy "$BUNDLE_STAGE/deploy" || die "cannot copy deploy/"
+  member=$(find "$BUNDLE_STAGE" \( -name .env -o -name .secrets -o -name docker-compose.override.yml \) -print -quit)
+  [ -z "$member" ] || die "bundle refused: ${member#"$BUNDLE_STAGE"/} would go into the bundle and holds this site's configuration; remove it from deploy/ and run ./qradar-dash bundle again"
+  (
+    cd "$BUNDLE_STAGE"
+    find . -type f ! -name SHA256SUMS -printf '%P\n' | LC_ALL=C sort | while IFS= read -r member; do
+      sha256sum -- "$member"
+    done >SHA256SUMS
+  ) || die "cannot write SHA256SUMS"
+  tar --owner=0 --group=0 --numeric-owner -cf "$BUNDLE_PARTIAL" -C "$BUNDLE_STAGE" \
+    SHA256SUMS MANIFEST VERSION qradar-dash docker-compose.yml docker-compose.prod.yml deploy docs images.tar \
+    || die "cannot write the bundle archive (is there room in $out?); free space or pass --output DIR"
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    die "bundle refused: $target appeared while the bundle was being made and is not overwritten"
+  fi
+  mv -- "$BUNDLE_PARTIAL" "$target" || die "cannot move the finished bundle to $target"
+  BUNDLE_DONE=yes
+  trap - EXIT HUP INT TERM
+  rm -rf -- "$BUNDLE_STAGE"
+  bytes=$(wc -c <"$target" | tr -d '[:space:]')
+  say ""
+  info "bundle written: $target ($(awk -v b="$bytes" 'BEGIN {printf "%.1f MiB", b / 1048576}'), $bytes bytes)"
+  say "Copy it to the production host. There:"
+  say ""
+  say "First install"
+  say "  mkdir qradar-dash-$version"
+  say "  tar -xf /path/to/$name -C qradar-dash-$version --exclude=images.tar"
+  say "  cd qradar-dash-$version"
+  say "  ./qradar-dash install --offline /path/to/$name"
+  say ""
+  say "Upgrade of an installed site"
+  say "  cd <installation directory>"
+  say "  tar -xf /path/to/$name --exclude=images.tar"
+  say "  ./qradar-dash upgrade $version --offline /path/to/$name"
+}
+
+# bundle_member BUNDLE MEMBER -> the member's text; fails when it is not in the tar.
+bundle_member() {
+  local text
+  text=$(tar -xOf "$1" --occurrence=1 "$2" 2>/dev/null) || return 1
+  printf '%s\n' "$text"
+}
+
+# bundle_precheck BUNDLE EXPECTED_VERSION WHAT PREFIX
+# Reads only the small members. Refuses, before anything is loaded, a file that is not a bundle,
+# a bundle of another version, and a bundle whose images sit under another image prefix.
+bundle_precheck() {
+  local bundle=$1 expected=$2 what=$3 prefix=$4 listing found manifest bundle_prefix
+  listing=$(tar -tvf "$bundle" 2>/dev/null) \
+    || die "cannot read $bundle as a tar file; copy it again from the connected host (made by ./qradar-dash bundle); nothing was loaded"
+  if printf '%s\n' "$listing" | grep -Eq '^[lh]'; then
+    die "$bundle holds links, which a ./qradar-dash bundle never does; nothing was loaded; copy it again from the connected host"
+  fi
+  if printf '%s\n' "$listing" | awk '{print $NF}' | grep -Eq '^/|(^|/)\.\.(/|$)'; then
+    die "$bundle holds absolute or parent-directory paths, which a ./qradar-dash bundle never does; nothing was loaded; copy it again from the connected host"
+  fi
+  found=$(bundle_member "$bundle" VERSION | tr -d '[:space:]') || found=""
+  [ -n "$found" ] \
+    || die "$bundle has no VERSION member, so it is not a ./qradar-dash bundle; make one with ./qradar-dash bundle on a connected host; nothing was loaded"
+  if [ "$found" != "$expected" ]; then
+    die "bundle refused: $bundle is version $found but $what is $expected; nothing was loaded; use the bundle of version $expected (./qradar-dash bundle --version $expected on a connected host)"
+  fi
+  manifest=$(bundle_member "$bundle" MANIFEST) \
+    || die "$bundle has no MANIFEST member, so it is not a ./qradar-dash bundle; make one with ./qradar-dash bundle on a connected host; nothing was loaded"
+  bundle_prefix=$(printf '%s\n' "$manifest" | sed -n 's/^image_prefix //p' | head -n1)
+  if [ "$bundle_prefix" != "$prefix" ]; then
+    die "bundle refused: its images are under ${bundle_prefix:-an unknown prefix} but this site uses $prefix; nothing was loaded; make the bundle on a host whose .env has QRADAR_DASH_IMAGE_PREFIX=$prefix, or set that value here"
+  fi
+}
+
+bundle_clean_tmp() { rm -rf -- "$TMP_DIR"; }
+
+# bundle_verify_manifest MANIFEST -> every image line resolves, with the ID the bundle was made from.
+# A redis reference pinned by digest can be lost by docker save / docker load on some image
+# stores; the image is then present by ID only, and is tagged back to the pinned reference.
+bundle_verify_manifest() {
+  local manifest=$1 kind ref id actual bad=0
+  while read -r kind ref id; do
+    [ "$kind" = image ] || continue
+    actual=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) || actual=""
+    if [ -z "$actual" ]; then
+      if docker image inspect "$id" >/dev/null 2>&1 && docker tag "$id" "$ref" 2>/dev/null \
+        && actual=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) && [ -n "$actual" ]; then
+        warn "docker load kept $ref only by its ID; tagged $id as $ref"
+      else
+        fail "after docker load, $ref is not present (the bundle lists it as $id). Docker dropped the reference. Run: docker tag $id $ref   If Docker refuses that, keep the output of: docker image ls --digests   and of: ./qradar-dash support-bundle   and see docs/OPERATIONS.md (Çevrimdışı paket)"
+        bad=1
+        continue
+      fi
+    fi
+    if [ "$actual" != "$id" ]; then
+      fail "after docker load, $ref is image $actual but the bundle was made from $id; remove it (docker rmi $ref) and load the bundle again, or copy the bundle again from the connected host"
+      bad=1
+    fi
+  done <"$manifest"
+  [ "$bad" -eq 0 ]
+}
+
+# bundle_load BUNDLE: extract, check the sums, docker load, check the MANIFEST. Nothing is loaded
+# unless every member matches SHA256SUMS exactly.
+bundle_load() {
+  local bundle=$1 dir=$TMP_DIR/bundle member listed members
+  bundle_clean_tmp
+  mkdir -p "$dir"
+  tar -xf "$bundle" -C "$dir" \
+    || { bundle_clean_tmp; die "cannot extract the bundle $bundle (is there room under $ROOT?); nothing was loaded"; }
+  [ -f "$dir/SHA256SUMS" ] && [ -f "$dir/MANIFEST" ] && [ -f "$dir/images.tar" ] \
+    || { bundle_clean_tmp; die "the bundle $bundle lacks SHA256SUMS, MANIFEST or images.tar; copy it again from the connected host; nothing was loaded"; }
+  (cd "$dir" && sha256sum -c --quiet SHA256SUMS) \
+    || { bundle_clean_tmp; die "the bundle checksums do not match; nothing was loaded; copy the bundle again from the connected host and compare sha256sum on both hosts"; }
+  listed=$(sed -n 's/^[0-9a-f]\{64\} [ *]//p' "$dir/SHA256SUMS")
+  members=$(cd "$dir" && find . -type f ! -name SHA256SUMS -printf '%P\n') \
+    || { bundle_clean_tmp; die "cannot list the members of the bundle (is find installed?); nothing was loaded"; }
+  while IFS= read -r member; do
+    printf '%s\n' "$listed" | grep -qxF -- "$member" \
+      || { bundle_clean_tmp; die "the bundle holds $member, which SHA256SUMS does not cover; nothing was loaded; copy the bundle again from the connected host"; }
+  done <<<"$members"
+  say "Bundle checksums match; loading the images (this takes a while)"
+  docker load -i "$dir/images.tar" \
+    || { bundle_clean_tmp; die "docker load failed; free space in Docker's data directory (docker info shows it) and run the command again"; }
+  bundle_verify_manifest "$dir/MANIFEST" || { bundle_clean_tmp; exit 1; }
+  bundle_clean_tmp
+  info "bundle images loaded and checked against MANIFEST"
 }
 
 fernet_key() {
@@ -824,7 +1067,7 @@ cmd_install() {
     case "$1" in
       --non-interactive) [ $# -ge 2 ] || { fail "--non-interactive needs a file"; exit 2; }; answers=$2; shift ;;
       --build) mode=build ;;
-      --offline) [ $# -ge 2 ] || { fail "--offline needs a bundle file"; exit 2; }; mode=offline; bundle=$2; shift ;;
+      --offline) [ $# -ge 2 ] || { fail "--offline needs a bundle file"; exit 2; }; mode=offline; bundle=$(user_path "$2"); shift ;;
       --external-proxy) FLAG_EXTERNAL_PROXY=yes ;;
       --reconfigure) reconfigure=yes ;;
       --dry-run) dry=yes ;;
@@ -880,6 +1123,9 @@ cmd_install() {
   apply_defaults
   validate_answers "$mode"
   report_errors_and_exit
+  if [ "$mode" = "offline" ]; then
+    bundle_precheck "$bundle" "$checkout" "this checkout" "${ANS[IMAGE_PREFIX]}"
+  fi
 
   # 2. Preflight. Changes nothing.
   say "Preflight"
@@ -2092,11 +2338,14 @@ release_notes_fields() { # release_notes_fields TEXT -> version<TAB>min_from
   printf '%s\t%s\n' "$version" "$min_from"
 }
 
-upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE
+UPGRADE_MISSING_IMAGE=""
+
+upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE; offline, UPGRADE_MISSING_IMAGE names what is absent
   local target=$1 offline=$2 prefix service ref
   local -a services=(postgres redis backend frontend)
   doctor_profile_enabled proxy && services+=(proxy)
   doctor_profile_enabled mcp && services+=(qradar-mcp)
+  UPGRADE_MISSING_IMAGE=""
   if [ "$offline" = no ]; then
     QRADAR_DASH_VERSION=$target dc pull "${services[@]}"
     return
@@ -2104,16 +2353,19 @@ upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
   : "${prefix:=$DEFAULT_IMAGE_PREFIX}"
   for service in postgres backend frontend; do
-    docker image inspect "$prefix/$service:$target" >/dev/null || return 1
+    ref=$prefix/$service:$target
+    docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
   done
   if doctor_profile_enabled proxy; then
-    docker image inspect "$prefix/proxy:$target" >/dev/null || return 1
+    ref=$prefix/proxy:$target
+    docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
   fi
   if doctor_profile_enabled mcp; then
-    docker image inspect "$prefix/qradar-mcp:$target" >/dev/null || return 1
+    ref=$prefix/qradar-mcp:$target
+    docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
   fi
-  ref='redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499'
-  docker image inspect "$ref" >/dev/null
+  ref=$(redis_ref) || { UPGRADE_MISSING_IMAGE="redis (docker-compose.prod.yml pins no digest)"; return 1; }
+  docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
 }
 
 read_target_release_notes() { # read_target_release_notes VERSION
@@ -2333,14 +2585,21 @@ migrate_image_prefix() { # migrate_image_prefix INSTALLED_VERSION
 }
 
 cmd_upgrade() {
-  local target="" offline=no installed min_from db_size backup_root old_images
+  local target="" offline=no bundle="" installed min_from db_size backup_root old_images prefix
   local backup_output backup at new_images old_env_version checkout_version
   need_installed
   command -v docker >/dev/null 2>&1 || die "Docker is not installed"
   report_compose_override
   while [ $# -gt 0 ]; do
     case "$1" in
-      --offline) offline=yes ;;
+      --offline)
+        offline=yes
+        # An optional bundle file follows; a version or another option does not.
+        if [ $# -ge 2 ] && [[ $2 != -* ]] && ! valid_release_version "$2"; then
+          bundle=$(user_path "$2")
+          shift
+        fi
+        ;;
       -h | --help) usage; return 0 ;;
       -*) fail "unknown upgrade option: $1"; return 2 ;;
       *) [ -z "$target" ] || { fail "upgrade accepts one version"; return 2; }; target=$1 ;;
@@ -2381,8 +2640,22 @@ cmd_upgrade() {
     return 1
   fi
   migrate_image_prefix "$installed" || return 1
+  if [ -n "$bundle" ]; then
+    [ -r "$bundle" ] || { fail "upgrade refused: bundle not readable: $bundle; no container was stopped"; return 1; }
+    prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+    bundle_precheck "$bundle" "$target" "the upgrade target" "${prefix:-$DEFAULT_IMAGE_PREFIX}"
+    bundle_load "$bundle"
+  fi
   upgrade_pull_target "$target" "$offline" || {
-    fail "upgrade refused: target images are unavailable; no container was stopped"
+    if [ "$offline" = yes ] && [ -n "$UPGRADE_MISSING_IMAGE" ]; then
+      if [ -n "$bundle" ]; then
+        fail "upgrade refused: target images are unavailable: image $UPGRADE_MISSING_IMAGE is not on this host although the bundle was loaded (the bundle was made for another image prefix or profile set); no container was stopped; make the bundle again on a connected host with ./qradar-dash bundle"
+      else
+        fail "upgrade refused: target images are unavailable: image $UPGRADE_MISSING_IMAGE is not loaded on this host; no container was stopped; pass the bundle: ./qradar-dash upgrade $target --offline /path/to/qradar-dash-$target-bundle.tar"
+      fi
+    else
+      fail "upgrade refused: target images are unavailable; no container was stopped"
+    fi
     return 1
   }
   min_from=$(read_target_release_notes "$target") || {
@@ -2984,11 +3257,6 @@ cmd_support_bundle() {
   say "$final"
 }
 
-not_built() {
-  fail "'$1' is not built yet ($2)."
-  exit 64
-}
-
 main() {
   local cmd=${1:-}
   [ $# -eq 0 ] || shift
@@ -3002,7 +3270,7 @@ main() {
     restore) cmd_restore "$@" ;;
     doctor) cmd_doctor ;;
     support-bundle) cmd_support_bundle ;;
-    bundle) not_built "$cmd" "the offline bundle is not part of this release; use ./qradar-dash install --build from a checkout, or install by pulling from the registry" ;;
+    bundle) cmd_bundle "$@" ;;
     -h | --help | help | "") usage; [ -n "$cmd" ] || exit 2 ;;
     *) fail "unknown command: $cmd"; usage >&2; exit 2 ;;
   esac

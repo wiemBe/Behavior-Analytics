@@ -14,24 +14,17 @@ Dört kural her bölümde geçerlidir:
 **İçindekiler**
 
 1. [Kurulum](#kurulum)
-2. [Dizin](#dizin)
-3. [Yükseltme](#yükseltme)
-4. [Yedek ve geri alma](#yedek-ve-geri-alma)
-5. [Tanı](#tanı)
-6. [Geçmiş okuma](#geçmiş-okuma)
-7. [Belirtiler](#belirtiler)
+2. [Çevrimdışı paket](#çevrimdışı-paket)
+3. [Dizin](#dizin)
+4. [Yükseltme](#yükseltme)
+5. [Yedek ve geri alma](#yedek-ve-geri-alma)
+6. [Tanı](#tanı)
+7. [Geçmiş okuma](#geçmiş-okuma)
+8. [Belirtiler](#belirtiler)
    (OPS-R1 ... OPS-R60; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
-`install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
-`support-bundle` bugün çalışır. `bundle` (çevrimdışı paket) bu sürümde yoktur. `./qradar-dash bundle`
-şu satırı yazıp 64 ile çıkar:
-
-```
-'bundle' is not built yet (the offline bundle is not part of this release; use ./qradar-dash install --build from a checkout, or install by pulling from the registry).
-```
-
-`install` yardımındaki satır şudur:
-`Not built in this release (use install --build, or pull from the registry).`
+`install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
+`support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
 
 ---
 
@@ -72,7 +65,7 @@ Yanıt dosyasının izni `0600` olur. İçinde yollar ve yönetici kullanıcı a
 |---|---|
 | `--non-interactive FILE` | Yanıtları FILE dosyasından oku (izin `0600`, sır yok). |
 | `--build` | İmajları çekmek yerine bu checkout'tan derle. |
-| `--offline BUNDLE` | İmajları çevrimdışı paket tar'ından yükle. |
+| `--offline BUNDLE` | İmajları çevrimdışı paket tar'ından yükle (paketi `bundle` yazar; bkz. [Çevrimdışı paket](#çevrimdışı-paket)). |
 | `--external-proxy` | Paketle gelen TLS vekilini atla; kendi vekilini sen işlet. |
 | `--reconfigure` | Yanıtlar kayıtlı olsa bile soruları yeniden sor. |
 | `--dry-run` | Her kontrolü çalıştır, hiçbir şey yazma, hiçbir şey değiştirme. |
@@ -354,6 +347,112 @@ vardır, `install` ise ikisine de sahip değildir. Durum dosyası hiç yoksa `in
 
 ---
 
+## Çevrimdışı paket
+
+Üretim makinesi kayıt defterine (registry) ulaşamıyorsa imajlar ve checkout, internete çıkan bir
+makinede tek dosyaya paketlenir ve elle taşınır. Paketi `bundle` yazar; `install --offline` ve
+`upgrade --offline` okur. Üretim makinesinde `docker pull` ve `git` gerekmez.
+
+### 1. Bağlı makinede paketi hazırla
+
+Paketlenecek sürümün checkout'unda ve `docker pull` yapabilen bir makinede:
+
+```bash
+git fetch --tags
+git checkout v<sürüm>
+./qradar-dash bundle
+```
+
+Seçenekler: `--output DIR` paketi başka bir dizine yazar (varsayılan: bulunduğun dizin).
+`--version X.Y.Z` yalnız bir doğrulamadır: `VERSION` dosyasıyla aynı olmak zorundadır, aksi halde
+`bundle refused: this checkout is version <checkout>, not <sürüm>; run git fetch --tags && git checkout v<sürüm> first`
+yazılır. Betik imaj ön ekini `.env` içindeki `QRADAR_DASH_IMAGE_PREFIX` değerinden alır; `.env`
+yoksa varsayılan ön eki kullanır ve çıktıda hangisini kullandığını yazar.
+
+Komut altı imajı çeker: `postgres`, `backend`, `frontend`, `proxy` ve `qradar-mcp` (hepsi seçilen
+sürümde) ile `docker-compose.prod.yml` dosyasında digest ile sabitlenmiş `redis`. Redis
+başvurusu o dosyadan okunur, betikte elle yazılı değildir. Özel bir kayıt defteri için önce
+`docker login ghcr.io` (`read:packages` token) çalıştırılır; çekme hatası imajı adıyla söyler.
+
+`qradar-dash-<sürüm>-bundle.tar` şunları içerir:
+
+| Üye | Anlamı |
+|---|---|
+| `images.tar` | Altı imajın `docker save` çıktısı. |
+| `SHA256SUMS` | Bu dosya dışındaki her üyenin özeti. |
+| `MANIFEST` | Her imaj başvurusu ve paket yapılırken yerel imaj kimliği; alıcı taraf yüklediğini bununla denetler. |
+| `VERSION`, `docs/releases/<sürüm>.md` | Sürüm ve sürüm notları. |
+| `qradar-dash`, `docker-compose.yml`, `docker-compose.prod.yml`, `deploy/` | Üretimde `git` olmadan kullanılacak checkout. |
+
+Pakete `.env`, `.secrets/` ve `docker-compose.override.yml` hiçbir zaman girmez. Paket önce geçici
+bir adla yazılır, sonunda yerine taşınır; hata olursa dizinde yarım paket kalmaz ve betik bunu
+söyler. Aynı adlı bir paket varsa üzerine yazılmaz (`bundle refused: … already exists`). Bitince
+betik yolu, boyutu ve üretim makinesinde çalıştırılacak komutları yazar.
+
+Dosyayı taşıdıktan sonra iki makinede de `sha256sum qradar-dash-<sürüm>-bundle.tar` çalıştır;
+çıktılar aynı olmalıdır.
+
+### 2. Üretim makinesinde ilk kurulum
+
+Checkout'u paketin içinden çıkar (imajlar `images.tar` içindedir; çıkarmaya gerek yoktur) ve kur:
+
+```bash
+mkdir qradar-dash-<sürüm>
+tar -xf /yol/qradar-dash-<sürüm>-bundle.tar -C qradar-dash-<sürüm> --exclude=images.tar
+cd qradar-dash-<sürüm>
+./qradar-dash install --offline /yol/qradar-dash-<sürüm>-bundle.tar
+```
+
+Göreli yol da kabul edilir ve komutu çalıştırdığın dizine göredir. Kurulum yanıtları her zamanki gibi sorulur ya da
+`--non-interactive FILE` ile verilir.
+
+### 3. Kurulu sitede yükseltme
+
+Çıkardığın dosyalar mevcut kurulum dizininin üzerine yazılır (`.env`, `.secrets/` ve
+`docker-compose.override.yml` pakette olmadığı için değişmez); sonra yükseltme paketle çalışır:
+
+```bash
+cd <kurulum dizini>
+tar -xf /yol/qradar-dash-<sürüm>-bundle.tar --exclude=images.tar
+./qradar-dash upgrade <sürüm> --offline /yol/qradar-dash-<sürüm>-bundle.tar
+```
+
+Sıra aynıdır: önce toplam denetimi ve sürüm denetimi, sonra imajların yüklenmesi, sonra her zamanki
+yükseltme. Hiçbir konteyner imajlar yüklenip denetlenmeden durdurulmaz. Paket vermeden
+`upgrade <sürüm> --offline`, imajların daha önce yüklenmiş olmasını şart koşar; eksik olan ilk imajı
+adıyla söyler ve paketi vermeni ister.
+
+### Paketin yaptığı denetimler
+
+Yükleme başlamadan şunlardan biri tutmazsa `nothing was loaded` yazılır ve hiçbir imaj yüklenmez:
+
+| Denetim | Mesajın başı |
+|---|---|
+| Dosya tar değil ya da `VERSION`/`MANIFEST` yok | `cannot read … as a tar file` / `has no VERSION member` |
+| Üyede bağlantı (link) ya da `..` ve mutlak yol var | `holds links` / `holds absolute or parent-directory paths` |
+| Paket sürümü, checkout (install) ya da yükseltme hedefi ile aynı değil | `bundle refused: … is version A but this checkout is B` |
+| Paketteki imaj ön eki sitenin ön ekiyle aynı değil | `bundle refused: its images are under A but this site uses B` |
+| `sha256sum -c` tutmuyor ya da özetlenmemiş bir üye var | `the bundle checksums do not match` / `which SHA256SUMS does not cover` |
+
+Çözüm hep aynıdır: paketi bağlı makineden yeniden kopyala ya da doğru sürümün/ön ekin paketini yap.
+
+`docker load` sonrasında `MANIFEST` içindeki her başvuru için `docker image inspect` çalışır ve
+kimlik, paketin yapıldığı kimlikle karşılaştırılır. Bazı Docker imaj depoları digest ile sabit bir
+başvuruyu (`redis:7.4-alpine@sha256:…`) `docker save`/`docker load` sonrası kaybedebilir; imaj o
+zaman yalnız kimliğiyle kalır ve Compose onu bulamaz. Betik bu durumda imajı kimliğinden o başvuruya
+etiketlemeyi dener (`[warn] docker load kept … only by its ID; tagged … as …`). Docker etiketlemeyi
+reddederse betik durur ve başvuruyu ile komutu yazar:
+
+```
+after docker load, redis:7.4-alpine@sha256:… is not present (the bundle lists it as sha256:…). Docker dropped the reference. Run: docker tag sha256:… redis:7.4-alpine@sha256:…
+```
+
+Bu komut da reddedilirse `docker image ls --digests` çıktısını ve `./qradar-dash support-bundle`
+paketini sakla ve yükseltmeyi/kurulumu sürdürme: redis başvurusu çözülmeden Compose imajı çekmeye
+çalışır.
+
+---
+
 ## Dizin
 
 Dizin (LDAPS / AD) ayarı kurulumda sorulmaz. Arayüzden `/admin/directory` sayfasında yapılır.
@@ -381,7 +480,7 @@ denetlenir.
 ```bash
 git fetch --tags
 git checkout v<version>
-./qradar-dash upgrade <version> [--offline]
+./qradar-dash upgrade <version> [--offline [BUNDLE]]
 ```
 
 Yükseltmeyi hedef sürümün betiği ve compose dosyaları yürütür; eski bir checkout, yeni imajları eski
@@ -397,7 +496,8 @@ gerektirmez. Sürüm notları yine hedef imajdan okunur.
 
 `version`, başında `v` olmayan, düz SemVer'dir (`MAJOR.MINOR.PATCH`). Aksi halde betik
 `upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)` ile reddeder. İmaj etiketlerinde `v`
-yoktur. `--offline`, çekmek yerine hedef imajların yerelde yüklü olmasını şart koşar.
+yoktur. `--offline`, çekmek yerine hedef imajların yerelde yüklü olmasını şart koşar;
+`--offline BUNDLE` önce paketi doğrular ve yükler (bkz. [Çevrimdışı paket](#çevrimdışı-paket)).
 
 `upgrade` ve `rollback`, `doctor` raporundan yalnız `db_connect` ve `migration_head` satırlarını
 yazdırır; ardından `Full report: ./qradar-dash doctor` satırı gelir:
@@ -494,7 +594,10 @@ Hiçbir konteyner durdurulmadan önce, betik kontrolleri şu sırayla yapar:
 - Hedef imaj çekilebilir ya da zaten yüklüdür. Çekme, yazıcılar durmadan **önce** olur; kayıt
   defteri hatası kesinti yaratmaz. Çekilemezse
   `upgrade refused: target images are unavailable; no container was stopped`. `--offline`
-  verilmişse çekme yerine her hedef imajın yerelde olduğu doğrulanır.
+  verilmişse çekme yerine her hedef imajın yerelde olduğu doğrulanır; biri yoksa
+  `upgrade refused: target images are unavailable: image <imaj> is not loaded on this host; no container was stopped; pass the bundle: ./qradar-dash upgrade <sürüm> --offline /path/to/qradar-dash-<sürüm>-bundle.tar`
+  yazılır. Paket verilmişse önce toplamlar ve sürüm denetlenir, imajlar yüklenir ve `MANIFEST`
+  ile karşılaştırılır; bunların hiçbiri bir konteyneri durdurmaz.
 - Hedef imajın sürüm notları ayrıştırılır ve `installed_version`, `min_from` değerine eşit ya da
   büyüktür. Ayrıştırılamazsa
   `upgrade refused: target release notes are missing, invalid, or for another version`; eskiyse
@@ -1901,7 +2004,9 @@ yapmaz. `RULE_MATCH_COLLECTION_ENABLED` de aynı biçimdedir.
 docker login
 ```
 
-**Çözüm:** Yeni bir token. Kayıt defterine hiç ulaşılamıyorsa yol `--offline` seçeneğidir.
+**Çözüm:** Yeni bir token. Kayıt defterine hiç ulaşılamıyorsa yol çevrimdışı pakettir: bağlı bir makinede
+`./qradar-dash bundle`, üretimde `./qradar-dash install --offline BUNDLE` ya da
+`./qradar-dash upgrade <sürüm> --offline BUNDLE` (bkz. [Çevrimdışı paket](#çevrimdışı-paket)).
 
 ### OPS-R39. Dizin sayfası yapıştırılan CA'yı reddediyor
 
