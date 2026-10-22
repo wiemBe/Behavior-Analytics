@@ -327,21 +327,43 @@ the MCP image is already built, and the default install does not start MCP.
 
 ### 2.6 Offline bundle and `--build`
 
-**[design]** `qradar-dash bundle`, run on a machine that can pull, writes
-`qradar-dash-<version>-bundle.tar` containing:
+**Built (OPS-21a).** `./qradar-dash bundle [--version X.Y.Z] [--output DIR]` (`cmd_bundle`), run
+from a checkout on a machine that can pull, writes `qradar-dash-<version>-bundle.tar` in DIR (default
+the current directory). `--version` is only an assertion: it must equal the checkout's `VERSION`.
+The image prefix is `QRADAR_DASH_IMAGE_PREFIX` from `.env`, else `DEFAULT_IMAGE_PREFIX`; the output
+says which. The command pulls the six images of §2.2 and saves them in one `docker save`. Redis is
+referenced by the digest pinned in `docker-compose.prod.yml` (`redis_ref` reads it; no second copy).
+The tar holds, with no directory prefix:
 
-- `images.tar` from `docker save` of the six images in §2.2 (redis included)
-- `SHA256SUMS`
+- `images.tar` from `docker save` of the six images (redis included)
+- `SHA256SUMS`, covering every other member
+- `MANIFEST`: `version`, `image_prefix` and one `image <reference> <local image ID>` line per image
 - `VERSION`, `docs/releases/<version>.md`
 - `qradar-dash`, `docker-compose.yml`, `docker-compose.prod.yml`, `deploy/`
 
-No `.env`, no `.secrets`. On the production host:
+No `.env`, no `.secrets`, no `docker-compose.override.yml`; the command refuses if one of them sits
+inside `deploy/`. The tar is written under a temporary name in DIR and moved into place, so a failure
+leaves no partial bundle. An existing bundle is never overwritten.
+
+On the production host the checkout comes out of the bundle
+(`tar -xf BUNDLE -C DIR --exclude=images.tar`), and:
 
 ```bash
-./qradar-dash install --offline qradar-dash-<version>-bundle.tar
+./qradar-dash install --offline /path/to/qradar-dash-<version>-bundle.tar   # in the new directory
+./qradar-dash upgrade <version> --offline /path/to/qradar-dash-<version>-bundle.tar   # in the installation directory
 ```
 
-loads the images, checks the sums, and does not pull or build.
+`bundle_precheck` reads only `VERSION` and `MANIFEST` and refuses, before anything is loaded, a file
+that is not a tar, a tar with links or absolute or `..` paths, a bundle whose `VERSION` differs from
+the checkout (install) or the upgrade target, and a bundle whose `image_prefix` differs from the
+site's. `bundle_load` extracts under `.install-tmp/`, runs `sha256sum -c`, refuses a member that
+`SHA256SUMS` does not cover, runs `docker load`, and then `bundle_verify_manifest` checks every
+`image` line with `docker image inspect`: the reference must resolve and its ID must equal the one
+recorded. A reference that does not resolve is tagged from the loaded ID; if Docker refuses that,
+the command stops and prints the `docker tag <id> <reference>` it tried. This handles the digest
+reference of redis, which `docker save` and `docker load` can lose on some image stores. A failure
+anywhere loads nothing further and leaves no `.install-tmp/`. `upgrade --offline` without a bundle
+still requires the images to be loaded and names the first missing one.
 
 `--build` runs `docker compose build` from the checkout, including the submodule.
 It is the fallback when the registry cannot be used and no bundle is on disk.

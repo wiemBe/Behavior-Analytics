@@ -91,12 +91,57 @@ The default release images are under `ghcr.io/wiembe/behavior-analytics/`. The i
 ```text
 --non-interactive FILE   read non-secret answers from a mode-0600 file
 --build                  build images from this checkout
---offline BUNDLE         load images from an offline bundle
+--offline BUNDLE         load images from an offline bundle (made by `./qradar-dash bundle`)
 --external-proxy         do not start the bundled TLS proxy
 --reconfigure            ask the questions again
 --dry-run                run checks without making changes
 --skip-qradar-check      skip the QRadar TLS handshake check
 ```
+
+### Offline hosts
+
+A production host that cannot reach the registry installs from a bundle made on a connected host.
+On the connected host, from a checkout of the release (`git checkout v<version>`):
+
+```bash
+./qradar-dash bundle [--version X.Y.Z] [--output DIR]
+```
+
+It pulls the five release images (`postgres`, `backend`, `frontend`, `proxy`, `qradar-mcp`, under
+`QRADAR_DASH_IMAGE_PREFIX` from `.env`, else the default prefix) and `redis` by the digest pinned in
+`docker-compose.prod.yml`, and writes `qradar-dash-<version>-bundle.tar`: `images.tar`, `SHA256SUMS`,
+`MANIFEST` (each image reference and its local image ID), `VERSION`, `docs/releases/<version>.md`,
+`qradar-dash`, `docker-compose.yml`, `docker-compose.prod.yml` and `deploy/`. It never contains
+`.env`, `.secrets/` or `docker-compose.override.yml`. The file is written under a temporary name and
+moved into place, so a failure leaves no partial bundle, and an existing bundle is never overwritten.
+
+On the production host, first install: extract the checkout from the bundle into a new directory
+and install:
+
+```bash
+mkdir qradar-dash-<version>
+tar -xf /path/to/qradar-dash-<version>-bundle.tar -C qradar-dash-<version> --exclude=images.tar
+cd qradar-dash-<version>
+./qradar-dash install --offline /path/to/qradar-dash-<version>-bundle.tar
+```
+
+Upgrade of an installed site: run it from the existing installation directory, which holds `.env`,
+`.secrets/` and `.qradar-dash/state.json`. Extract the bundle over it (none of those are in the
+bundle) and upgrade; a fresh directory fails with "not installed here":
+
+```bash
+cd <installation directory>
+tar -xf /path/to/qradar-dash-<version>-bundle.tar --exclude=images.tar
+./qradar-dash upgrade <version> --offline /path/to/qradar-dash-<version>-bundle.tar
+```
+
+`install --offline` refuses, before it loads anything, a bundle whose `VERSION` differs from the
+checkout's, whose image prefix differs from the site's, or whose `SHA256SUMS` does not match. After
+`docker load` it checks every `MANIFEST` image with `docker image inspect`; if Docker kept the redis
+image only by ID, it tags it back to the pinned reference, or stops and prints the `docker tag`
+command to run. Without a
+bundle, `upgrade <version> --offline` requires the images to be loaded already. The Turkish runbook,
+`docs/OPERATIONS.md` (Çevrimdışı paket), has the full list of checks.
 
 The last question of a first install asks whether to read the last 28 days of history from
 QRadar, so baselines are steadier from day 1. It is asked once: a re-run, `--reconfigure` and a

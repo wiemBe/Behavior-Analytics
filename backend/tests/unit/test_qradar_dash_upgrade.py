@@ -43,8 +43,11 @@ HOST_TOOLS = (
     "readlink",
     "rm",
     "sed",
+    "sha256sum",
     "sort",
     "tail",
+    "tar",
+    "find",
     "tr",
 )
 
@@ -271,6 +274,8 @@ class UpgradeFixture:
         shutil.copy(SCRIPT, self.script)
         self.script.chmod(0o755)
         (self.root / "VERSION").write_text(f"{TARGET_VERSION}\n")  # the checkout is at the target
+        # offline upgrade reads the pinned redis reference from the checkout's compose file
+        shutil.copy(REPO / "docker-compose.prod.yml", self.root / "docker-compose.prod.yml")
         self.backup_root = tmp_path / "backups"
         self.backup_root.mkdir(mode=0o700)
         self.docker_root = tmp_path / "docker-root"
