@@ -130,6 +130,14 @@ class Settings(BaseSettings):
     ariel_retry_max_seconds: float = Field(default=60.0, ge=1.0)
     # Global cap across all instances, plus the per-instance cap above.
     ariel_global_max_concurrent_searches: int = Field(default=6, ge=1, le=50)
+    #: PostgreSQL advisory-lock namespaces for the global and per-console Ariel
+    #: permit pools. They must be distinct from every other lock namespace.
+    ariel_permit_lock_namespace: int = 4713
+    ariel_permit_instance_lock_namespace: int = 4714
+    ariel_permit_wait_seconds: float = Field(default=30.0, ge=0.0, le=600.0)
+    ariel_permit_poll_seconds: float = Field(default=1.0, gt=0.0, le=30.0)
+    #: Low-numbered global slots that only live collection may take.
+    ariel_permit_reserved_live_slots: int = Field(default=2, ge=0)
     # Pad added to the Ariel STOP bound so late-stored events are not dropped
     # from the last bucket. The WHERE clause is NOT padded; it remains the
     # authoritative half-open bound [start, end). Default 60s, 0 disables.
@@ -1027,11 +1035,32 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _waf_permit_namespace_is_its_own(self) -> Settings:
-        if self.waf_ariel_permit_lock_namespace == self.collection_advisory_lock_namespace:
+    def _permit_namespaces_are_distinct(self) -> Settings:
+        namespaces = {
+            "COLLECTION_ADVISORY_LOCK_NAMESPACE": self.collection_advisory_lock_namespace,
+            "WAF_ARIEL_PERMIT_LOCK_NAMESPACE": self.waf_ariel_permit_lock_namespace,
+            "ARIEL_PERMIT_LOCK_NAMESPACE": self.ariel_permit_lock_namespace,
+            "ARIEL_PERMIT_INSTANCE_LOCK_NAMESPACE": (
+                self.ariel_permit_instance_lock_namespace
+            ),
+        }
+        if len(set(namespaces.values())) != len(namespaces):
+            collisions = ", ".join(
+                name
+                for name, value in namespaces.items()
+                if list(namespaces.values()).count(value) > 1
+            )
+            raise ValueError(f"Advisory-lock namespaces must be pairwise distinct: {collisions}")
+        return self
+
+    @model_validator(mode="after")
+    def _ariel_live_reservation_fits_global_pool(self) -> Settings:
+        if self.ariel_permit_reserved_live_slots >= self.ariel_global_max_concurrent_searches:
             raise ValueError(
-                "WAF_ARIEL_PERMIT_LOCK_NAMESPACE must differ from "
-                "COLLECTION_ADVISORY_LOCK_NAMESPACE"
+                "ARIEL_PERMIT_RESERVED_LIVE_SLOTS must be below "
+                "ARIEL_GLOBAL_MAX_CONCURRENT_SEARCHES "
+                f"({self.ariel_permit_reserved_live_slots} >= "
+                f"{self.ariel_global_max_concurrent_searches})"
             )
         return self
 
