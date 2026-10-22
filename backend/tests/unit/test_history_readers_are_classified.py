@@ -122,6 +122,11 @@ HISTORY_TABLES = (
                 "R7 (not in the design table: retention policy metadata, no rows)",
                 ReaderKind.DISPLAY,
             ),
+            # T-171: the newest live bucket per monitored source, to report a source
+            # whose evaluation trails it. Read-only display of the engine's lag.
+            "app.cli.doctor.Doctor.check_anomaly_evaluation": Reader(
+                "R6 (not in the design table: evaluation lag)", ReaderKind.DISPLAY
+            ),
         },
     ),
     HistoryTable(

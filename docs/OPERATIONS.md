@@ -20,7 +20,7 @@ Dört kural her bölümde geçerlidir:
 5. [Tanı](#tanı)
 6. [Geçmiş okuma](#geçmiş-okuma)
 7. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R60; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R61; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
 `support-bundle` bugün çalışır. `bundle` (çevrimdışı paket) bu sürümde yoktur. `./qradar-dash bundle`
@@ -836,6 +836,7 @@ bağlanmaz.
 | `cadence` | Her `search_cadence` ailesi. Son çalışma yaşı kadans + yerleşme + 60 sn içinde olmalı. | OPS-R30 |
 | `families_off` | Varsayılanda kapalı dört bayrak. Yeni kurulum kırmızı görünmesin diye PASS olarak, bayrak adıyla yazılır. | OPS-R7 |
 | `errors_recent` | `consecutive_failures > 0` olan filigran satırı sayısı: sıfır PASS, bir ya da iki WARN, üç ve üstü FAIL. | OPS-R30 |
+| `anomaly_evaluation` | Son 24 saatte verdict üretmeden bırakılan kova varsa FAIL; açık bir fault varsa ya da beklenen yargılama zamanı (kova sonu + yerleşme + bir beat + iki değerlendirme tick'i) geçmiş canlı bir kovası olan izlenen kaynak varsa WARN. | OPS-R61 |
 | `pg_database_size` | Veritabanı boyutu. Boş alan ana makine kontrolündedir. | OPS-R14 |
 | `encryption` | Saklı bir örnek token'ı çözmeyi dener. Şifreli metin yazdırılmaz. | OPS-R16 |
 | `secrets_files` | Token ve CA dosyaları var, boş değil ve uid 10001 tarafından okunabilir. | OPS-R1 |
@@ -2384,3 +2385,52 @@ değerini büyüt. Olmuyorsa ve reddedilen tek sebep geçmiş bütçesiyse "Enab
 düğmesine bas: izleme `history_days = 0` ile etkinleşir, yalnız ileriye doğru öğrenir ve QRadar'ın
 geçmişi okunmaz. Başka bir sebep reddedildiyse o düğme yoktur; o sebebi gider (aktif izleme
 sayısını azalt, grubu küçült) ve yeniden dene.
+
+### OPS-R61. Bir anomali kovası değerlendirilemedi
+
+**Belirti:** `anomaly_evaluation` FAIL ya da WARN veriyor. FAIL: son 24 saatte en az bir kova
+verdict üretmeden bırakıldı ("N anomaly bucket(s) were not judged"). WARN: açık bir fault var (bir
+kova yeniden deneniyor) ya da bir izlenen kaynağın beklenen yargılama zamanı geçmiş canlı bir kovası
+var — yani o kovanın beklenen yargılama zamanı (kova sonu + toplama yerleşme süresi + bir beat +
+iki değerlendirme tick'i) geçmiş. Bir kaynak yalnız bu koşul sağlandığında sayılır; sadece yeni bir
+canlı kova olması yeterli değildir.
+
+**Olası neden:** `AnomalyEngine.evaluate_pending` bir kovayı değerlendirirken istisna aldı. Hata
+kalıcıysa motor `ANOMALY_MAX_BUCKET_ATTEMPTS` (varsayılan 3) denemeden sonra o kovadan vazgeçer:
+`anomaly_evaluation_fault` satırı `given_up_at` ile kapanır, `evaluated_through` o kovanın ötesine
+ilerler ve sonraki kova aynı tick'te değerlendirilir. Vazgeçilen kova hiçbir verdict yazmaz:
+`log_source_detector_state` ve `log_source_anomaly` içinde o kova için satır yoktur, açık bir olay
+olduğu gibi kalır. Yani "satır yok" "anomali yok" demek değildir. Hata geçiciyse (kilit, zaman
+aşımı, yeniden başlatma) sonraki başarılı kova fault satırını `resolved_at` ile kapatır.
+
+**Doğrulama:** `./qradar-dash doctor` satırı kaynak sayısını, son hata sınıfını ve zamanını verir.
+Kovanın kendisi ve sınıfı backend günlüğündedir; satır artık `bucket_start`, `attempts`,
+`given_up` ve `error_class` alanlarını taşır. Açık fault'lar:
+
+```sql
+SELECT log_source_id, bucket_start, attempts, error_class, first_failed_at, last_failed_at
+FROM anomaly_evaluation_fault
+WHERE resolved_at IS NULL AND given_up_at IS NULL
+ORDER BY last_failed_at DESC;
+```
+
+Son 24 saatte vazgeçilenler:
+
+```sql
+SELECT log_source_id, bucket_start, attempts, error_class, given_up_at
+FROM anomaly_evaluation_fault
+WHERE given_up_at >= now() - interval '24 hours'
+ORDER BY given_up_at DESC;
+```
+
+**Çözüm:** `error_class` bir kod hatasıysa (RuntimeError, KeyError, ValueError) bu bir yazılım
+hatasıdır; günlükteki aynı `bucket_start` satırını stack trace ile birlikte bildir. Vazgeçilen kova
+"not judged" olarak kalır; geriye dönük verdict üretilmez ve bu doğrudur. Veritabanı kaynaklı
+geçici sınıflar (OperationalError, TimeoutError, DeadlockDetected) kendiliğinden düzelir; sayı
+artmıyorsa işlem yapma. Sayı sürekli artıyorsa OPS-R36 ve OPS-R14'e bak.
+`ANOMALY_MAX_BUCKET_ATTEMPTS` değerini yükseltmek yalnız yavaş bir veritabanında anlamlıdır;
+kalıcı bir kod hatasını gizlemez.
+
+```bash
+./qradar-dash logs
+```

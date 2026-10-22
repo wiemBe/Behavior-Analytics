@@ -37,6 +37,7 @@ from app.anomaly.detectors import (
     MetricPoint,
 )
 from app.anomaly.evidence import AnomalyEvidence
+from app.anomaly.faults import FaultDecision, next_attempt
 from app.anomaly.lifecycle import (
     LifecycleDecision,
     LifecycleInput,
@@ -70,6 +71,7 @@ from app.models.log_source import (
 from app.models.monitoring import AnomalyEvaluationWatermark
 from app.models.outage import OutageAlertPolicy
 from app.providers.base import LogSourceTelemetry
+from app.repositories.anomaly_faults import AnomalyFaultRepository
 
 if TYPE_CHECKING:
     # Annotations only: the engine depends on delivery structurally, never on
@@ -98,6 +100,10 @@ class EvaluationReport:
     #: verdict and no state change: a detector that was never given its input
     #: must not report the source as healthy.
     unsupported: dict[str, str] = field(default_factory=dict)
+    #: Buckets whose evaluation raised during this tick.
+    failed: int = 0
+    #: ... of which the engine gave up on, so they stay "not judged".
+    given_up: int = 0
     skipped_reason: str | None = None
 
 
@@ -152,6 +158,11 @@ class AnomalyEngine:
         # the rest of the run. Distinct from `_source_class_cache`, which the
         # alert context fills one source at a time.
         self._class_map: dict[uuid.UUID, str] | None = None
+        # Faults awaiting a retry. Loaded once per engine instance in one
+        # statement (rule 9), so the success path can tell whether a source
+        # needs its fault cleared without a query per bucket.
+        self._faults = AnomalyFaultRepository(session)
+        self._open_faults: set[uuid.UUID] | None = None
 
     async def evaluate_latest(self, log_source: LogSource) -> EvaluationReport:
         metric = await self.session.scalar(
@@ -199,15 +210,27 @@ class AnomalyEngine:
                     )
                     await self.session.flush()
             except Exception as exc:
-                logger.warning(
-                    "anomaly evaluation failed",
-                    extra={"log_source_id": str(log_source.id), "error_class": type(exc).__name__},
-                )
+                given_up = await self._record_failure(log_source, metric, exc)
+                if given_up:
+                    # Without a watermark every later tick would retry this
+                    # bucket forever. Seed the mark at the bucket that was given
+                    # up so newer buckets are evaluated on the next tick.
+                    self.session.add(
+                        AnomalyEvaluationWatermark(
+                            log_source_id=log_source.id,
+                            evaluated_through=metric.bucket_start,
+                            updated_at=self._clock(),
+                        )
+                    )
+                    await self.session.flush()
                 return EvaluationReport(
                     log_source.id,
                     metric.bucket_start,
+                    failed=1,
+                    given_up=1 if given_up else 0,
                     skipped_reason="evaluation failed",
                 )
+            await self._clear_failure(log_source)
             return report
 
         metrics = list(
@@ -237,12 +260,19 @@ class AnomalyEngine:
                     watermark.updated_at = self._clock()
                     await self.session.flush()
             except Exception as exc:
-                logger.warning(
-                    "anomaly evaluation failed",
-                    extra={"log_source_id": str(log_source.id), "error_class": type(exc).__name__},
-                )
-                combined.skipped_reason = "evaluation failed"
-                break
+                combined.failed += 1
+                if not await self._record_failure(log_source, metric, exc):
+                    combined.skipped_reason = "evaluation failed"
+                    break
+                # Given up: the bucket stays "not judged" (nothing is written
+                # for it), and the watermark moves past it so the next bucket in
+                # this same tick is attempted.
+                combined.given_up += 1
+                watermark.evaluated_through = metric.bucket_start
+                watermark.updated_at = self._clock()
+                await self.session.flush()
+                continue
+            await self._clear_failure(log_source)
             combined.interval_start = report.interval_start
             combined.opened.extend(report.opened)
             combined.resolved.extend(report.resolved)
@@ -252,6 +282,85 @@ class AnomalyEngine:
             combined.states = report.states
             combined.unsupported = report.unsupported
         return combined
+
+    # ---------------------------------------------------------------- faults
+    async def _open_fault_sources(self) -> set[uuid.UUID]:
+        """Sources with a fault awaiting a retry, loaded once per engine run.
+
+        One statement whatever the fleet size (rule 9). The recovery update is
+        only issued for a source in this set, so a healthy bucket costs none.
+        """
+        if self._open_faults is None:
+            self._open_faults = await self._faults.open_source_ids()
+        return self._open_faults
+
+    async def _record_failure(
+        self, log_source: LogSource, metric: LogSourceMetric, exc: Exception
+    ) -> bool:
+        """Record one failed attempt; return whether the bucket was given up.
+
+        Runs after the bucket's savepoint rolled back, so the fault row is the
+        only trace of it. The log line names the bucket and the attempt count:
+        one repeating bucket used to be indistinguishable from a new failure.
+
+        The bookkeeping has its own savepoint. If it fails (the table is
+        unavailable, the source was deleted and the FK refuses the upsert), the
+        bucket is held exactly as it was before T-171 -- break, keep the
+        watermark, report "evaluation failed" -- so one unrecordable fault
+        cannot cost every other source of the tick its verdict.
+        """
+        now = self._clock()
+        error_class = type(exc).__name__
+        try:
+            async with self.session.begin_nested():
+                attempts = await self._faults.record_failure(
+                    log_source.id, metric.bucket_start, error_class=error_class, at=now
+                )
+                given_up = (
+                    next_attempt(attempts, self.settings.anomaly_max_bucket_attempts)
+                    is FaultDecision.GIVE_UP
+                )
+                open_faults = await self._open_fault_sources()
+                if given_up:
+                    await self._faults.give_up(log_source.id, metric.bucket_start, at=now)
+                    open_faults.discard(log_source.id)
+                else:
+                    open_faults.add(log_source.id)
+        except Exception as bookkeeping:
+            logger.warning(
+                "anomaly fault bookkeeping failed",
+                extra={
+                    "log_source_id": str(log_source.id),
+                    "bucket_start": metric.bucket_start.isoformat(),
+                    "error_class": type(bookkeeping).__name__,
+                    "evaluation_error_class": error_class,
+                },
+            )
+            return False
+        logger.warning(
+            "anomaly evaluation failed",
+            extra={
+                "log_source_id": str(log_source.id),
+                "bucket_start": metric.bucket_start.isoformat(),
+                "attempts": attempts,
+                "given_up": given_up,
+                "error_class": error_class,
+            },
+        )
+        return given_up
+
+    async def _clear_failure(self, log_source: LogSource) -> None:
+        """Close the fault this source was retrying, now that a bucket judged.
+
+        Only a source the bulk load marked as open pays the update. A given-up
+        row stays as the record of a bucket with no verdict until retention
+        removes it.
+        """
+        open_faults = await self._open_fault_sources()
+        if log_source.id not in open_faults:
+            return
+        await self._faults.resolve(log_source.id, at=self._clock())
+        open_faults.discard(log_source.id)
 
     async def evaluate_interval(
         self, log_source: LogSource, metric: LogSourceMetric
