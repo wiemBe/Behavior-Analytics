@@ -8,12 +8,19 @@ on:
   # The release workflow runs these same gates before it builds any image.
   workflow_call:
 
+# A newer push to the same branch cancels the older run. `main`, the tags (the
+# release's workflow_call runs with the tag's ref) and pull requests are never
+# cancelled: they are the runs a release waits for.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' }}
+
 jobs:
-  backend:
+  backend-static:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
-      # Real PostgreSQL + TimescaleDB for the integration suite and the
-      # migration-drift check.
+      # Real PostgreSQL + TimescaleDB for the migration-drift check.
       test-db:
         image: timescale/timescaledb:2.17.2-pg16
         env:
@@ -29,13 +36,14 @@ jobs:
     env:
       ENCRYPTION_KEY: sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A=
       QRADAR_PROVIDER: mock
-      TEST_DATABASE_URL: postgresql+asyncpg://test:test@localhost:5433/qradar_obs_test
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
 
       - name: Install backend
         working-directory: backend
@@ -81,19 +89,106 @@ jobs:
         # Fails the build if models and migrations disagree.
         run: alembic check
 
-      - name: Unit + integration tests
+  backend-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # No database: the unit suite never asks for one (see docs/DEVELOPMENT.md).
+
+    env:
+      ENCRYPTION_KEY: sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A=
+      QRADAR_PROVIDER: mock
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install backend
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+          pip install --no-deps -e .
+
+      - name: Unit tests
         working-directory: backend
         # `-rs` prints the short summary of skip reasons. The backend's addopts already
         # carry one `-q`; a second one (-qq) hides the "N passed, M skipped" line.
-        run: pytest -rs
+        # Everything that is not marked `integration` runs here: the unit suite and
+        # the two tests in tests/integration/test_api.py that carry no marker. The
+        # integration shards run everything that is marked, so the two sets never
+        # overlap and together they are the whole suite.
+        run: pytest -rs -m "not integration" tests
+
+  backend-integration:
+    # The shard number is in the job name, so the GitHub UI shows which shard
+    # a run is: "backend-integration (shard 3/5)".
+    name: backend-integration (shard ${{ matrix.shard }}/5)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      # Every shard reports its own result; one failing shard must not hide
+      # the others.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+
+    services:
+      # Every shard gets its own PostgreSQL + TimescaleDB: the schema fixture
+      # drops and recreates the tables, so two shards may not share a database.
+      test-db:
+        image: timescale/timescaledb:2.17.2-pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: qradar_obs_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d qradar_obs_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    env:
+      ENCRYPTION_KEY: sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A=
+      QRADAR_PROVIDER: mock
+      TEST_DATABASE_URL: postgresql+asyncpg://test:test@localhost:5433/qradar_obs_test
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install backend
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+          pip install --no-deps -e .
+
+      - name: Integration tests
+        working-directory: backend
+        # `-rs` prints the short summary of skip reasons. The backend's addopts already
+        # carry one `-q`; a second one (-qq) hides the "N passed, M skipped" line.
+        # The shard script splits tests/integration into five shards that weigh
+        # the same; together with the unit job they run every test exactly once.
+        run: pytest -rs -m integration --durations=15 $(python scripts/ci_shard.py --shard ${{ matrix.shard }} --of 5)
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Install
         working-directory: frontend
         run: npm ci

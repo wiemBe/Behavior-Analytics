@@ -119,6 +119,40 @@ hardening, collectors, robust baselines, detector fail-closed paths, alert finge
 notification routing, scheduling, API guards and database integration. QRadar responses are mocked
 in automated tests, and `MockNotifier` prevents external delivery.
 
+## The CI gate
+
+`.github/workflows/ci.yml` runs the backend gate in parallel jobs, each with its own time limit:
+
+| Job | What it runs | Limit |
+| --- | --- | --- |
+| `backend-static` | the version check, `ruff check app tests`, `mypy app`, `alembic upgrade head`, `alembic check` | 15 min |
+| `backend-unit` | every test that is not marked `integration`, without a database | 15 min |
+| `backend-integration` | the integration suite in five shards, each with its own database | 35 min |
+| `frontend` | `npm ci`, lint, typecheck, vitest, build | 20 min |
+
+The five shards show up as `backend-integration (shard 3/5)`. Together the unit job and the five
+shards run every test in the repository exactly once: the shards run everything marked
+`integration`, the unit job everything else.
+`backend/tests/unit/test_ci_shard.py` reads the commands out of the workflow and fails if a test
+runs in no job or in two.
+
+`backend/scripts/ci_shard.py` splits `tests/integration` into the shards. The split is a greedy
+longest-processing-time assignment over the per-file durations in
+`backend/tests/integration/shard_weights.json`, so the shards weigh the same and finish together.
+Refresh the weights when the integration suite changes shape (a new file, a much slower test):
+
+```bash
+cd backend
+PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> \
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/behavior_analytics_test \
+pytest -rs -m integration --durations=0 --durations-min=0
+```
+
+Sum the setup, call and teardown seconds of each file in that report and write them into
+`backend/tests/integration/shard_weights.json` as `{"tests/integration/test_x.py": seconds, ...}`.
+A file with no entry counts as the median of the known weights, so a missing entry is harmless but
+unbalanced. The seconds come from one local machine: only their ratios matter.
+
 ## Frontend tests
 
 ```bash

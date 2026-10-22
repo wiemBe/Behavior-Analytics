@@ -173,8 +173,11 @@ New file `.github/workflows/release.yml`. Trigger: a tag `v*`. The workflow:
 3. Runs the gates. Backend, from `backend/`: ruff, `mypy app` (the result must be
    zero errors), `alembic upgrade head` and `alembic check`, then pytest. These
    are the `Lint`, `Type check`, `Prepare migration-check database`,
-   `Migration drift check (alembic check)` and `Unit + integration tests` steps of
-   the backend job of `ci.yml`; the last one runs `pytest -rs`. Frontend:
+   `Migration drift check (alembic check)` and `Unit tests` steps of the
+   `backend-static` and `backend-unit` jobs of `ci.yml`, and the `Integration
+   tests` step of its five `backend-integration` jobs; the last one runs
+   `pytest -rs -m integration --durations=15 $(python scripts/ci_shard.py --shard
+   N --of 5)`. Frontend:
    `npm ci`, lint, typecheck, vitest, build — the `Install`, `Lint`, `Type check`,
    `Unit tests` and `Build` steps of the frontend job of `ci.yml`. The release
    workflow runs the full gate. OPS-3 has updated the pull-request workflow to
