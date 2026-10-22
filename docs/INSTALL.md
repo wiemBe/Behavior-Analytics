@@ -137,9 +137,16 @@ tar -xf /path/to/qradar-dash-<version>-bundle.tar --exclude=images.tar
 
 `install --offline` refuses, before it loads anything, a bundle whose `VERSION` differs from the
 checkout's, whose image prefix differs from the site's, or whose `SHA256SUMS` does not match. After
-`docker load` it checks every `MANIFEST` image with `docker image inspect`; if Docker kept the redis
-image only by ID, it tags it back to the pinned reference, or stops and prints the `docker tag`
-command to run. Without a
+`docker load` it checks that every `MANIFEST` image reference resolves with `docker image inspect`,
+and compares image IDs when the bundle host and this host use the same Docker image store
+(`image_store` in `MANIFEST`: `containerd` or `classic`; `.Id` means different things in the two).
+When the stores differ it prints that the IDs were not compared and goes on; integrity then rests on
+the `SHA256SUMS` check of `images.tar`. `docker save` does not record the name of the redis image
+that is pinned by digest, so after the load it exists by ID only, and Docker refuses to tag a digest
+reference. The script therefore sets the plain tag (`redis:7.4-alpine`, which moves an existing tag
+of that name on the host) and checks that the pinned reference then resolves. If it still does not,
+the install stops before starting anything and tells you to make the bundle again on a host with the
+same image store; there is no `docker tag` command to run by hand. Without a
 bundle, `upgrade <version> --offline` requires the images to be loaded already. The Turkish runbook,
 `docs/OPERATIONS.md` (Çevrimdışı paket), has the full list of checks.
 

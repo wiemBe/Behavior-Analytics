@@ -898,6 +898,7 @@ cmd_bundle() {
     printf '# qradar-dash offline bundle manifest; ./qradar-dash checks every image line after docker load\n'
     printf 'version %s\n' "$version"
     printf 'image_prefix %s\n' "$prefix"
+    printf 'image_store %s\n' "$(docker_image_store)"
     for ref in "${refs[@]}"; do
       id=$(docker image inspect --format '{{.Id}}' "$ref") && [ -n "$id" ] \
         || die "cannot read the local image ID of $ref; run docker pull $ref and ./qradar-dash bundle again"
@@ -981,25 +982,56 @@ bundle_precheck() {
 
 bundle_clean_tmp() { rm -rf -- "$TMP_DIR"; }
 
-# bundle_verify_manifest MANIFEST -> every image line resolves, with the ID the bundle was made from.
-# A redis reference pinned by digest can be lost by docker save / docker load on some image
-# stores; the image is then present by ID only, and is tagged back to the pinned reference.
+# docker_image_store -> containerd, classic or unknown. The two stores give a different meaning to
+# an image's .Id, so IDs are compared only between hosts with the same store.
+docker_image_store() {
+  local status
+  status=$(docker info --format '{{.DriverStatus}}' 2>/dev/null) || status=""
+  case "$status" in
+    "") printf 'unknown\n' ;;
+    *io.containerd.snapshotter*) printf 'containerd\n' ;;
+    *) printf 'classic\n' ;;
+  esac
+}
+
+# bundle_verify_manifest MANIFEST -> every image line resolves, and has the ID the bundle was made
+# from when both hosts use the same image store. docker save does not record a digest-pinned name
+# (redis:TAG@sha256:...), so after docker load that image exists by ID only. Docker refuses to tag
+# a digest reference, but once the plain redis:TAG is set the pinned reference resolves.
 bundle_verify_manifest() {
-  local manifest=$1 kind ref id actual bad=0
+  local manifest=$1 kind ref id actual plain bad=0 compare=yes there here
+  there=$(sed -n 's/^image_store //p' "$manifest" | head -n1)
+  here=$(docker_image_store)
+  if [ -n "$there" ]; then
+    if [ "$there" != "$here" ] || [ "$here" = unknown ]; then
+      compare=no
+      say "Image IDs were not compared: the bundle host's image store is $there and this host's is $here; integrity rests on the SHA256SUMS check of images.tar. Every image reference is still checked."
+    fi
+  fi
   while read -r kind ref id; do
     [ "$kind" = image ] || continue
     actual=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) || actual=""
     if [ -z "$actual" ]; then
-      if docker image inspect "$id" >/dev/null 2>&1 && docker tag "$id" "$ref" 2>/dev/null \
+      plain=${ref%%@*}
+      if [ "$plain" != "$ref" ]; then
+        if docker image inspect "$id" >/dev/null 2>&1 && docker tag "$id" "$plain" 2>/dev/null \
+          && actual=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) && [ -n "$actual" ]; then
+          info "docker load kept $ref only by its ID; set the tag $plain on it (this moves an existing $plain on this host)"
+        else
+          fail "after docker load, $ref does not resolve: the loaded image ($id) does not carry the pinned digest on this Docker, even with the tag $plain set. Make the bundle again with ./qradar-dash bundle on a connected host whose Docker image store is the same as this host's ($here; the bundle host's was ${there:-not recorded}); see docs/OPERATIONS.md (Çevrimdışı paket)"
+          bad=1
+          continue
+        fi
+      elif docker image inspect "$id" >/dev/null 2>&1 && docker tag "$id" "$ref" 2>/dev/null \
         && actual=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) && [ -n "$actual" ]; then
-        warn "docker load kept $ref only by its ID; tagged $id as $ref"
+        info "docker load kept $ref only by its ID; tagged it as $ref"
       else
-        fail "after docker load, $ref is not present (the bundle lists it as $id). Docker dropped the reference. Run: docker tag $id $ref   If Docker refuses that, keep the output of: docker image ls --digests   and of: ./qradar-dash support-bundle   and see docs/OPERATIONS.md (Çevrimdışı paket)"
+        fail "after docker load, $ref is not present (the bundle lists it as $id); copy the bundle again from the connected host and run the command again"
         bad=1
         continue
       fi
     fi
-    if [ "$actual" != "$id" ]; then
+    if [ "$compare" = yes ] && [ "$actual" != "$id" ]; then
       fail "after docker load, $ref is image $actual but the bundle was made from $id; remove it (docker rmi $ref) and load the bundle again, or copy the bundle again from the connected host"
       bad=1
     fi
