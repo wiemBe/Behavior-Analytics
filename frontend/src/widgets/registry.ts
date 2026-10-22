@@ -102,8 +102,9 @@ function blocked(
 
 // Sizes are grid cells of the 12-column layout (row heights: `--dash-row` in tokens.css).
 const KPI: WidgetSize = { w: 3, h: 7, minW: 2, minH: 6, maxW: 6 };
-const WIDE: WidgetSize = { w: 8, h: 12, minW: 6, minH: 10 };
-const THIRD: WidgetSize = { w: 4, h: 12, minW: 3, minH: 10 };
+const WIDE: WidgetSize = { w: 8, h: 14, minW: 6, minH: 10 };
+// 14 rows hold the donut, the completeness note and five class rows of EPS by source class.
+const THIRD: WidgetSize = { w: 4, h: 14, minW: 3, minH: 10 };
 const PANEL: WidgetSize = { w: 4, h: 15, minW: 3, minH: 11 };
 const SMALL: WidgetSize = { w: 4, h: 10, minW: 3, minH: 7 };
 const HALF: WidgetSize = { w: 6, h: 15, minW: 4, minH: 11 };

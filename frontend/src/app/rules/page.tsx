@@ -1,8 +1,10 @@
 import { api, type Page, type RuleHealthCount, type RuleSummary } from "@/lib/api";
 import Link from "next/link";
+import { rulesAsOf } from "@/lib/home/asOf";
 import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
+import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
@@ -61,6 +63,7 @@ export default async function RulesPage({
 
   return (
     <>
+      <ReportDataAge iso={rulesAsOf(items)} />
       <PageHeader
         title="Rule health"
         description="Analytics rules collected from QRadar, with a health verdict derived from what has actually been observed. Building blocks are collected but are not listed here."

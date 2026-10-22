@@ -12,6 +12,7 @@ import { useMemo } from "react";
 import { WidgetFrame, WidgetLoading, secondary } from "@/components/home/WidgetFrame";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads, type BucketSeries, type MetricBucket } from "@/lib/api";
+import { bucketsAsOf } from "@/lib/home/asOf";
 import { badgeText } from "@/lib/home/qualifiers";
 import { RANGE_TEXT, useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 
@@ -103,6 +104,10 @@ export function SourceEps({
           : { href: "/behavior/sources", label: "Sources" }
       }
       state={state}
+      dataTo={{
+        at: sourceId === null || gone || series.status !== "ok" ? null : bucketsAsOf(series.data.buckets),
+        family: "PHASE_A_VOLUME",
+      }}
       what="the source's EPS series"
       permission="read:anomalies"
       fillBody

@@ -31,10 +31,13 @@ import {
 
 import { formatClockUtc } from "@/components/shell/AutoRefresh";
 import type { ResourceState } from "@/hooks/useApiResource";
+import type { SearchFamily } from "@/lib/api";
 import { formatClock } from "@/lib/fieldMapping";
 import type { Qualifier } from "@/lib/home/qualifiers";
 import { RangeControl } from "@/widgets/RangeControl";
+import { useFamilyTiming } from "@/widgets/cadence";
 import { effectiveRange, WidgetRuntimeContext } from "@/widgets/runtime";
+import { deriveStale } from "@/widgets/state";
 import type { WidgetState } from "@/widgets/types";
 
 import "./kpi.css";
@@ -101,6 +104,18 @@ export interface Settled<T> {
   refreshFailed: { httpStatus: number | null } | null;
 }
 
+/**
+ * How far the widget's data reaches (UI-7.2): the instant its response says, and the search
+ * family that collected it. The frame judges staleness from the family's cadence. A widget whose
+ * response carries no such instant passes nothing: the frame then draws no data time and never
+ * calls the widget stale.
+ */
+export interface DataTo {
+  /** ISO instant; null when the response has none (no bucket stored yet). */
+  at: string | null;
+  family: SearchFamily;
+}
+
 export interface WidgetFrameProps<T> {
   /** Unique on the page: names the section. */
   id: string;
@@ -123,6 +138,8 @@ export interface WidgetFrameProps<T> {
   /** The permission the primary read needs, quoted when it is refused. */
   permission: string;
   state: ResourceState<T> | WidgetState<T>;
+  /** How far the data reaches; absent when the response does not say. */
+  dataTo?: DataTo;
   /**
    * What the figures mean (window, definitions). Kept out of the body: it is the widget's
    * accessible description, so it is read out but takes no room.
@@ -275,16 +292,43 @@ function StaleNote({
   variant,
 }: {
   asOf: string;
+  ageSeconds: number | null;
+  variant: WidgetVariant;
+}) {
+  const className = variant === "kpi" ? "kpi-foot kpi-refresh-failed" : "tw-note warn";
+  if (ageSeconds === null) {
+    return (
+      <p className={className} role="status">
+        Stale: the time the latest data reaches cannot be read.
+      </p>
+    );
+  }
+  return (
+    <p className={className} role="status">
+      Stale: the latest data is from <time dateTime={asOf}>{formatClockUtc(asOf)}</time>,{" "}
+      {formatAge(ageSeconds)} old.
+    </p>
+  );
+}
+
+/** "under 1 min", "4 min", "3 h": the age after the data's own time (guidelines section 10). */
+function formatAgo(seconds: number): string {
+  return seconds < 60 ? "under 1 min" : formatAge(seconds);
+}
+
+/** Where the data reaches, in UTC, with its age after it; the fetch time is not shown. */
+function DataToNote({
+  at,
+  ageSeconds,
+  variant,
+}: {
+  at: string;
   ageSeconds: number;
   variant: WidgetVariant;
 }) {
   return (
-    <p
-      className={variant === "kpi" ? "kpi-foot kpi-refresh-failed" : "tw-note warn"}
-      role="status"
-    >
-      Stale: the latest data is from <time dateTime={asOf}>{formatClockUtc(asOf)}</time>,{" "}
-      {formatAge(ageSeconds)} old.
+    <p className={variant === "kpi" ? "kpi-foot" : "tw-note"}>
+      Data to <time dateTime={at}>{formatClockUtc(at)}</time>, {formatAgo(ageSeconds)} ago.
     </p>
   );
 }
@@ -293,15 +337,22 @@ function StaleNote({
 function RefreshNote({
   failed,
   receivedAt,
+  dataAt,
   variant,
 }: {
   failed: { httpStatus: number | null } | null;
   receivedAt: string;
+  /** Where the data reaches, when the widget knows: it replaces the fetch time. */
+  dataAt: string | null;
   variant: WidgetVariant;
 }) {
   if (!failed) return null;
   if (variant === "kpi") {
-    return (
+    return dataAt ? (
+      <p className="kpi-foot kpi-refresh-failed" role="status">
+        Refresh failed; showing data to <time dateTime={dataAt}>{formatClockUtc(dataAt)}</time>.
+      </p>
+    ) : (
       <p className="kpi-foot kpi-refresh-failed" role="status">
         Refresh failed; showing data received at{" "}
         <time dateTime={receivedAt}>{formatClock(receivedAt)}</time>.
@@ -311,8 +362,10 @@ function RefreshNote({
   return (
     <p className="tw-note warn" role="status">
       The latest refresh failed
-      {failed.httpStatus === null ? "" : ` (HTTP ${failed.httpStatus})`}. Showing the data
-      received at {formatClockUtc(receivedAt)}.
+      {failed.httpStatus === null ? "" : ` (HTTP ${failed.httpStatus})`}.{" "}
+      {dataAt
+        ? `Showing the data to ${formatClockUtc(dataAt)}.`
+        : `Showing the data received at ${formatClockUtc(receivedAt)}.`}
     </p>
   );
 }
@@ -324,8 +377,16 @@ type Shown<T> =
       data: T;
       receivedAt: string;
       refreshFailed: { httpStatus: number | null } | null;
+      /** Where the data reaches and how old that is; null when the widget does not say. */
+      dataTo: { at: string; ageSeconds: number } | null;
     }
-  | { kind: "stale"; data: T; receivedAt: string; ageSeconds: number; refreshFailed: null }
+  | {
+      kind: "stale";
+      data: T;
+      receivedAt: string;
+      ageSeconds: number | null;
+      refreshFailed: { httpStatus: number | null } | null;
+    }
   | { kind: "empty" | "no_data" | "not_collected"; reason: string }
   | { kind: "error"; httpStatus: number | null; action?: string }
   | { kind: "forbidden"; permission: string };
@@ -343,6 +404,7 @@ function normalize<T>(
           data: state.data,
           receivedAt: state.asOf ?? "",
           refreshFailed: null,
+          dataTo: null,
         };
       case "stale":
         return {
@@ -372,8 +434,34 @@ function normalize<T>(
         data: state.data,
         receivedAt: state.receivedAt,
         refreshFailed: state.refreshFailed,
+        dataTo: null,
       };
   }
+}
+
+/**
+ * Applies the widget's data time to a settled answer: past twice the family's cadence the answer
+ * is `stale` (still drawn), otherwise it carries the time. An answer the widget gave as `stale`
+ * itself, and a widget with no data time, pass through unchanged.
+ */
+function withDataTime<T>(
+  shown: Shown<T>,
+  dataTo: DataTo | undefined,
+  cadenceSeconds: number | null,
+  now: number,
+): Shown<T> {
+  if (shown.kind !== "ok" || !dataTo || dataTo.at === null) return shown;
+  const verdict = deriveStale(dataTo.at, cadenceSeconds, now);
+  if (verdict.stale) {
+    return {
+      kind: "stale",
+      data: shown.data,
+      receivedAt: dataTo.at,
+      ageSeconds: verdict.ageSeconds,
+      refreshFailed: shown.refreshFailed,
+    };
+  }
+  return { ...shown, dataTo: { at: dataTo.at, ageSeconds: verdict.ageSeconds ?? 0 } };
 }
 
 export function WidgetFrame<T>({
@@ -386,6 +474,7 @@ export function WidgetFrame<T>({
   what,
   permission,
   state,
+  dataTo,
   description,
   variant = "panel",
   fillBody = false,
@@ -409,7 +498,8 @@ export function WidgetFrame<T>({
   const descId = `${frameId}-desc`;
   let body: ReactNode;
 
-  const shown = normalize(state, permission);
+  const timing = useFamilyTiming(dataTo?.family);
+  const shown = withDataTime(normalize(state, permission), dataTo, timing.cadenceSeconds, Date.now());
 
   switch (shown.kind) {
     case "loading":
@@ -448,10 +538,13 @@ export function WidgetFrame<T>({
           })}
           {shown.kind === "stale" ? (
             <StaleNote asOf={shown.receivedAt} ageSeconds={shown.ageSeconds} variant={variant} />
+          ) : shown.dataTo ? (
+            <DataToNote at={shown.dataTo.at} ageSeconds={shown.dataTo.ageSeconds} variant={variant} />
           ) : null}
           <RefreshNote
             failed={shown.refreshFailed}
             receivedAt={shown.receivedAt}
+            dataAt={shown.kind === "stale" ? (dataTo ? shown.receivedAt : null) : (shown.dataTo?.at ?? null)}
             variant={variant}
           />
         </>

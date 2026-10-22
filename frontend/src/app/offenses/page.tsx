@@ -5,6 +5,7 @@ import { formatAge, magnitudeTone } from "@/lib/health";
 import { axisTimeLabel } from "@/lib/searchRuns";
 import { Pagination } from "@/components/Pagination";
 import { OffenseFilters } from "@/components/OffenseFilters";
+import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 
@@ -59,6 +60,8 @@ export default async function OffensesPage({
 
   return (
     <>
+      {/* Neither read says how far the offense snapshots reach: the page has no data time. */}
+      <ReportDataAge iso={null} />
       <PageHeader
         title="Offenses"
         description="Read-only view of offenses collected from QRadar. This page issues no writes: offenses are triaged in QRadar, not here."

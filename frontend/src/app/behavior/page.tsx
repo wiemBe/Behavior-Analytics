@@ -22,6 +22,7 @@ import { Fragment } from "react";
 
 import { HealthDistribution } from "@/components/behavior/HealthDistribution";
 import { StatCard } from "@/components/StatCard";
+import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
@@ -40,6 +41,7 @@ import {
 } from "@/lib/behaviorOverview";
 import { detectorLabel, formatMetric, formatRatio, stateTone } from "@/lib/behavior";
 import { formatDateTimeCompact } from "@/lib/health";
+import { sourcesAsOf } from "@/lib/home/asOf";
 
 import "./overview.css";
 
@@ -112,6 +114,7 @@ export default async function BehaviorPage() {
 
   return (
     <>
+      <ReportDataAge iso={sourcesAsOf(sources, null)} />
       <PageHeader
         title="Behavioral overview"
         description={
