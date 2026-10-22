@@ -125,15 +125,16 @@ describe("KpiLogSources", () => {
     );
   });
 
-  it("keeps the data on a failed refresh and says when it was received", () => {
+  it("keeps the data on a failed refresh and says how far it reaches", () => {
     mocks.states[SUMMARY] = ok(summary({ monitored_sources: 4 }), {
       refreshFailed: { httpStatus: 500 },
     });
     mocks.states[SOURCES] = ok(sources);
     mocks.states[OVERVIEW] = ok(overview(9));
     render(<KpiLogSources />);
-    const note = screen.getByText(/Refresh failed; showing data received at/);
-    expect(within(note).getByText("13:55 UTC")).toBeInTheDocument();
+    // The sources carry a data time (their newest bucket), so the note names it, not the fetch.
+    const note = screen.getByText(/Refresh failed; showing data to/);
+    expect(within(note).getByText("13:00:00 UTC")).toBeInTheDocument();
     expect(screen.getByText(/^2 of 3 judged normal/)).toBeInTheDocument();
   });
 });

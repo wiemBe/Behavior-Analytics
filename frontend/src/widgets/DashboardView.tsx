@@ -30,6 +30,7 @@ import { useInView } from "@/hooks/useInView";
 
 import { Catalog, MAX_WIDGETS } from "./Catalog";
 import { ConfigureDrawer, hasConfigure, type ConfigChoice } from "./Configure";
+import { CadenceProvider } from "./cadence";
 import { ExpandDialog } from "./Expand";
 import {
   columnsForWidth,
@@ -457,7 +458,7 @@ export function DashboardView({
   }
 
   return (
-    <>
+    <CadenceProvider>
       {renderHeader(actions)}
       {dirty || saveMessage || notice ? (
         <p className="dg-status dg-save-status" role="status" aria-live="polite">
@@ -540,6 +541,6 @@ export function DashboardView({
           onClose={() => setCatalogOpen(false)}
         />
       ) : null}
-    </>
+    </CadenceProvider>
   );
 }

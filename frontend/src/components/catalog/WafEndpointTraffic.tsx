@@ -19,6 +19,7 @@ import { WafRequestChart } from "@/components/waf/WafRequestChart";
 import { buildBaselineLookup } from "@/components/waf/wafBaseline";
 import { bucketWidth } from "@/components/waf/wafFormat";
 import { useApiResource } from "@/hooks/useApiResource";
+import { bucketsAsOf } from "@/lib/home/asOf";
 import {
   homeReads,
   type BucketSeries,
@@ -127,6 +128,10 @@ export function WafEndpointTraffic({
           : { href: "/behavior/waf", label: "WAF" }
       }
       state={state}
+      dataTo={{
+        at: !configured || gone || series.status !== "ok" ? null : bucketsAsOf(series.data.buckets),
+        family: "WAF_COLLECTION",
+      }}
       what="the endpoint's request series"
       permission="read:anomalies"
       fillBody

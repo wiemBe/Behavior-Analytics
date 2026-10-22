@@ -23,6 +23,7 @@ import { useMemo } from "react";
 
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads, type FleetEpsSeries } from "@/lib/api";
+import { epsSeriesAsOf } from "@/lib/home/asOf";
 import { epsChartModel, epsSummaryText, windowText, type EpsChartModel } from "@/lib/home/epsChart";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import { badgeText } from "@/lib/home/qualifiers";
@@ -122,6 +123,7 @@ export function EpsChart({ range }: RangedProps = {}) {
       badge={(model && badgeText(model.qualifiers)) || undefined}
       link={{ href: "/fleet", label: "Fleet" }}
       state={state}
+      dataTo={{ at: data ? epsSeriesAsOf(data) : null, family: "PHASE_A_VOLUME" }}
       what="the fleet EPS series"
       permission="read:fleet"
       fillBody

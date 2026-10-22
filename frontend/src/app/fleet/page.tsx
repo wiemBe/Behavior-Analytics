@@ -10,6 +10,7 @@ import Link from "next/link";
 
 import { FleetClassTable } from "@/components/fleet/FleetClassTable";
 import { WindowSwitch } from "@/components/fleet/WindowSwitch";
+import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApiError, fleetApi, type FleetSummary } from "@/lib/api";
 import { formatDateTime } from "@/lib/health";
@@ -46,6 +47,8 @@ export default async function FleetPage({
 
   return (
     <>
+      {/* The summary's `window_end` is the request's own "now": the page has no data time. */}
+      <ReportDataAge iso={null} />
       <PageHeader
         title="Log-source fleet"
         description="Volume per class of log source against its baseline, and the sources waiting for review. Times are UTC."

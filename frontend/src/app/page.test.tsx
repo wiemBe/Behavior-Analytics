@@ -157,6 +157,9 @@ function stateFor(key: string): ResourceState<unknown> {
           : sourceRows,
     );
   }
+  // The cadence of the search families (UI-7.2): a role without `read:search_cadence`, so every
+  // widget judges staleness by the 2 h default.
+  if (key === "/admin/search-cadence") return { status: "forbidden", httpStatus: 403 };
   if (key === "/overview") return okay(overview);
   if (key === "/offenses/analytics") {
     return okay(empty ? analytics() : analytics({ active: 1, critical: 1 }, [{ key: "8", count: 1 }]));
@@ -214,7 +217,10 @@ describe("Dashboard page", () => {
     ]);
     expect(screen.getAllByRole("article")).toHaveLength(4);
     expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(11);
-    expect(mocks.reportAge).toHaveBeenCalledWith("2026-10-14T14:00:00Z");
+    // The end of the last measured step (12:05 + 5 min), not the series' window_end (14:00), which
+    // is the request's own "now".
+    expect(mocks.reportAge).toHaveBeenCalledWith("2026-10-14T12:10:00.000Z");
+    expect(mocks.reportAge).not.toHaveBeenCalledWith("2026-10-14T14:00:00Z");
   });
 
   it("renders a fresh install as explained empty states, never zero for an absent measurement", async () => {
