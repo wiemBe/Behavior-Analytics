@@ -488,14 +488,22 @@ def test_checkout_of_another_version_is_refused_before_pull_or_stop(
     assert (upgrade.state_dir / "state.json").read_bytes() == before
 
 
-def test_checkout_without_a_version_file_is_refused_as_unknown(
+def test_checkout_without_a_version_file_is_refused_as_incomplete(
     upgrade: UpgradeFixture,
 ) -> None:
     (upgrade.root / "VERSION").unlink()
 
     result = upgrade.run("upgrade", TARGET_VERSION)
 
-    _assert_checkout_refused(upgrade, result, "unknown")
+    assert result.returncode == 1, output(result)
+    assert (
+        "VERSION is missing or unreadable; this checkout is incomplete; restore VERSION and run "
+        f"./qradar-dash upgrade {TARGET_VERSION} again"
+    ) in result.stderr
+    actions = upgrade.action_text()
+    for call in (" pull ", " stop ", " up "):
+        assert call not in actions
+    assert "state-write" not in actions
 
 
 def test_checkout_check_runs_before_the_state_file_is_read(upgrade: UpgradeFixture) -> None:

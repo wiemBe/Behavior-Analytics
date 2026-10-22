@@ -73,6 +73,7 @@ class FakeSession:
     ) -> None:
         self.scalar_values = list(scalar_values or [])
         self.scalars_values = list(scalars_values or [])
+        self.statements: list[object] = []
 
     async def __aenter__(self) -> FakeSession:
         return self
@@ -80,10 +81,12 @@ class FakeSession:
     async def __aexit__(self, *_args: object) -> None:
         return None
 
-    async def scalar(self, _query: object) -> Any:
+    async def scalar(self, query: object) -> Any:
+        self.statements.append(query)
         return self.scalar_values.pop(0)
 
-    async def scalars(self, _query: object) -> FakeScalars:
+    async def scalars(self, query: object) -> FakeScalars:
+        self.statements.append(query)
         return FakeScalars(self.scalars_values.pop(0))
 
 
@@ -190,11 +193,61 @@ async def test_timescale_pass_warn_and_fail(settings: Settings) -> None:
 
 
 @pytest.mark.asyncio
-async def test_retention_policy_pass_and_warn(settings: Settings) -> None:
-    assert (await make_doctor(settings).check_retention_policy()).status is Status.PASS
-    enabled = settings.model_copy(update={"retention_enabled": True})
-    result = await make_doctor(enabled, FakeSession(scalar_values=[None])).check_retention_policy()
+async def test_retention_policy_disabled_queries_nothing(settings: Settings) -> None:
+    session = FakeSession()
+    result = await make_doctor(settings, session).check_retention_policy()
+    assert result.status is Status.PASS
+    assert result.message == "retention is disabled by configuration"
+    assert session.statements == []
+
+
+@pytest.mark.asyncio
+async def test_retention_policy_warns_for_each_missing_table_with_one_query(
+    settings: Settings,
+) -> None:
+    enabled = settings.model_copy(
+        update={
+            "retention_enabled": True,
+            "retention_log_source_metric_days": 90,
+            "retention_search_result_metric_days": 90,
+            "retention_rule_metric_days": 30,
+            "retention_offense_snapshot_days": 90,
+        }
+    )
+    session = FakeSession(
+        scalars_values=[["log_source_metric", "search_result_metric", "offense_snapshot"]]
+    )
+    result = await make_doctor(enabled, session).check_retention_policy()
     assert result.status is Status.WARN
+    assert result.message == (
+        "retention is enabled but these tables have no retention policy: rule_metric"
+    )
+    assert len(session.statements) == 1
+
+
+@pytest.mark.asyncio
+async def test_retention_policy_pass_lists_all_configured_tables(settings: Settings) -> None:
+    tables = [
+        "log_source_metric",
+        "search_result_metric",
+        "rule_metric",
+        "offense_snapshot",
+    ]
+    enabled = settings.model_copy(
+        update={
+            "retention_enabled": True,
+            "retention_log_source_metric_days": 90,
+            "retention_search_result_metric_days": 90,
+            "retention_rule_metric_days": 90,
+            "retention_offense_snapshot_days": 90,
+        }
+    )
+    session = FakeSession(scalars_values=[tables])
+    result = await make_doctor(enabled, session).check_retention_policy()
+    assert result.status is Status.PASS
+    for table in tables:
+        assert table in result.message
+    assert len(session.statements) == 1
 
 
 @pytest.mark.asyncio
