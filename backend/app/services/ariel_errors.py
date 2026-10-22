@@ -13,6 +13,7 @@ import httpx
 from app.models.enums import ExecutionErrorType
 from app.providers.base import ProviderAuthError, ProviderUnavailableError
 from app.services.aql_validator import AQLValidationError
+from app.services.ariel_permit import ArielPermitUnavailable
 
 
 class ArielSearchFailed(RuntimeError):
@@ -33,6 +34,9 @@ NON_RETRYABLE = {
     ExecutionErrorType.AUTH,
     ExecutionErrorType.PARSING,
     ExecutionErrorType.CANCELLED,
+    # A full budget is a decision to wait for the next cycle, not to hold the permit
+    # queue longer: a retry would only wait again behind the same searches.
+    ExecutionErrorType.CAPACITY,
 }
 
 
@@ -40,6 +44,9 @@ def classify(exc: BaseException) -> ExecutionErrorType:
     """Classify an exception into the execution error taxonomy."""
     if isinstance(exc, AQLValidationError):
         return ExecutionErrorType.VALIDATION
+    # Before ProviderUnavailableError, which it subclasses.
+    if isinstance(exc, ArielPermitUnavailable):
+        return ExecutionErrorType.CAPACITY
     if isinstance(exc, ProviderAuthError):
         return ExecutionErrorType.AUTH
     if isinstance(exc, ArielTimeout):

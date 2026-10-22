@@ -50,8 +50,8 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `ARIEL_MAX_CONCURRENT_SEARCHES` | `3` | Concurrent searches per QRadar instance |
-| `ARIEL_GLOBAL_MAX_CONCURRENT_SEARCHES` | `6` | Concurrent searches across instances |
+| `ARIEL_MAX_CONCURRENT_SEARCHES` | `3` | Concurrent Ariel searches per QRadar console, across every process, held through PostgreSQL advisory-lock permits for a search's whole lifecycle. Collectors bind it per console; scheduled and manual searches are not console-scoped yet and take the global pool only |
+| `ARIEL_GLOBAL_MAX_CONCURRENT_SEARCHES` | `6` | Concurrent Ariel searches across every console and every process (collectors, scheduled searches and manual runs), through the same advisory-lock permits. A scheduled or manual search that gets no permit within `ARIEL_PERMIT_WAIT_SECONDS` fails with error type `CAPACITY` and is not retried; a manual run answers 503 |
 | `ARIEL_DEFAULT_TIMEOUT_SECONDS` | `300` | Default search timeout |
 | `ARIEL_MAX_TIMEOUT_SECONDS` | `900` | Maximum accepted timeout |
 | `ARIEL_MAX_TIME_RANGE_HOURS` | `168` | Maximum query time range |
