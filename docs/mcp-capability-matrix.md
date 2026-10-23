@@ -170,7 +170,14 @@ Defence in depth, because a toggle file is one bad mount away from being ignored
 5. **Provider-level allowlist** — `QRadarMCPProvider` refuses to invoke any tool not on a
    hardcoded read-only allowlist, independent of what the server advertises.
 
-Layers 4 and 5 are the ones that actually hold. 1–3 are configuration and can be misconfigured.
+6. **Capability negotiation** — before its first tool call, `QRadarMCPProvider` discovers the
+   server's tools with MCP `tools/list` (section 6) and refuses to operate, for good, if the
+   server advertises any known write tool or none of the allowlisted read tools. A refused
+   provider instance raises on every later call without touching the network, and never falls
+   back to REST.
+
+Layers 4 and 5 are the ones that actually hold. 1–3 are configuration and can be misconfigured;
+layer 6 notices that they were.
 
 ---
 
@@ -184,3 +191,30 @@ python backend/scripts/extract_mcp_capabilities.py --repo qradar-mcp --check doc
 
 No CI step runs this check. A new tool on the pinned commit is not rejected until someone
 runs the command above.
+
+---
+
+## 6. Protocol the provider speaks (measured against the pinned image)
+
+Measured on 2026-10-23 against `ghcr.io/wiembe/behavior-analytics/qradar-mcp:0.1.4`
+(the release build of the pinned commit; FastMCP 3.2.4), against a stub QRadar. The server has
+no `GET /tools`: `GET /tools` answers 404. It serves MCP Streamable HTTP at `POST /mcp`:
+
+1. `initialize` (`protocolVersion` `2025-06-18`) with `Accept: application/json, text/event-stream`.
+   The answer carries the `Mcp-Session-Id` response header.
+2. `notifications/initialized` with `Mcp-Session-Id` and `MCP-Protocol-Version` → `202`, no body.
+3. `tools/list` → every tool the toggles leave registered. Read-only toggles: 41 tools, none of
+   the 25 in section 3. Upstream default toggles: 73 tools, all 25 of them.
+4. `tools/call` → `result.content[].text` holds the tool's JSON; a failing tool is still HTTP 200
+   with `result.isError: true`.
+
+Answers to requests with an id arrive as `text/event-stream` (`event: message` / `data: {...}`).
+A request whose `Accept` lacks either media type gets 406, one without a session id 400, and one
+with an unknown or ended session id 404 (`Session not found`, for example after a server
+restart). Every request, `initialize` included, is authenticated by the server against QRadar
+first, so a server with no working QRadar credentials answers 401 to all of it.
+
+The provider performs this handshake once per instance, keeps the session id, and on a 404
+initialises again once (and negotiates again, since the restarted server may carry other
+toggles). A test against the real server runs when `QRADAR_MCP_REAL_SERVER_IMAGE` is set
+(`backend/tests/unit/test_qradar_mcp_real_server.py`).
