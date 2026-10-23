@@ -76,8 +76,11 @@ jobs:
             build-contexts: ""
             base-label: timescale/timescaledb:2.17.2-pg16
           - name: qradar-mcp
-            context: qradar-mcp
-            build-contexts: ""
+            # deploy/mcp/Dockerfile is FROM the named context `upstream`: IBM's qradar-mcp
+            # built with its own Dockerfile (step "Build the upstream qradar-mcp") plus
+            # one COPY of feature_toggles.json (writes off). Nothing else is changed.
+            context: deploy/mcp
+            build-contexts: upstream=oci-layout://${{ github.workspace }}/.qradar-mcp-upstream
             base-label: ""
           - name: proxy
             context: deploy/proxy
@@ -121,8 +124,8 @@ jobs:
               # over the image's own LABEL for the same key. This image is built from IBM's
               # unchanged qradar-mcp and must not read as an IBM release.
               echo "org.opencontainers.image.title=qradar-mcp"
-              echo "org.opencontainers.image.description=Unmodified build of IBM/qradar-mcp at commit $QRADAR_MCP_PIN. Apache-2.0. Not an IBM release."
-              echo "maintainer=Behavior Analytics release workflow (unmodified build of IBM/qradar-mcp)"
+              echo "org.opencontainers.image.description=IBM/qradar-mcp at commit $QRADAR_MCP_PIN, unmodified, with feature_toggles.json replaced (writes off). Apache-2.0. Not an IBM release."
+              echo "maintainer=Behavior Analytics release workflow (IBM/qradar-mcp, unmodified code, feature_toggles.json replaced)"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
@@ -134,6 +137,28 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The upstream image is built from ./qradar-mcp with IBM's own Dockerfile, into an OCI
+      # layout that the final build reads as its named context `upstream`. A layout, not
+      # docker-image://, because the docker-container builder cannot see the runner's local
+      # images. Provenance and SBOM stay off: an attestation manifest would sit in the
+      # layout's index beside the image.
+      - name: Build the upstream qradar-mcp
+        if: matrix.name == 'qradar-mcp'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: qradar-mcp
+          push: false
+          provenance: false
+          sbom: false
+          outputs: type=oci,dest=${{ runner.temp }}/qradar-mcp-upstream.tar
+
+      - name: Unpack the upstream qradar-mcp layout
+        if: matrix.name == 'qradar-mcp'
+        run: |
+          mkdir "$GITHUB_WORKSPACE/.qradar-mcp-upstream"
+          tar -xf "$RUNNER_TEMP/qradar-mcp-upstream.tar" -C "$GITHUB_WORKSPACE/.qradar-mcp-upstream"
+          test -s "$GITHUB_WORKSPACE/.qradar-mcp-upstream/index.json"
 
       # The frontend bundle is checked before anything is pushed. The check image is
       # built locally (load: true) and never pushed.

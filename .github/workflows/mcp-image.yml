@@ -1,0 +1,69 @@
+name: MCP image
+
+# Builds the qradar-mcp image the way release.yml does and checks it, without pushing.
+# It mirrors the qradar-mcp path of release.yml (the "Build the upstream qradar-mcp" and
+# "Unpack" steps, then the build of deploy/mcp with the named context `upstream`) and must
+# change with it. It exists so that path runs before a release tag does.
+on:
+  workflow_dispatch:
+  push:
+    paths: &paths
+      - "deploy/mcp/**"
+      - "qradar-mcp"
+      - "docker-compose.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/mcp-image.yml"
+  pull_request:
+    paths: *paths
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build the upstream qradar-mcp
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: qradar-mcp
+          push: false
+          provenance: false
+          sbom: false
+          outputs: type=oci,dest=${{ runner.temp }}/qradar-mcp-upstream.tar
+
+      - name: Unpack the upstream qradar-mcp layout
+        run: |
+          mkdir "$GITHUB_WORKSPACE/.qradar-mcp-upstream"
+          tar -xf "$RUNNER_TEMP/qradar-mcp-upstream.tar" -C "$GITHUB_WORKSPACE/.qradar-mcp-upstream"
+          test -s "$GITHUB_WORKSPACE/.qradar-mcp-upstream/index.json"
+
+      - name: Build the derived image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: deploy/mcp
+          build-contexts: upstream=oci-layout://${{ github.workspace }}/.qradar-mcp-upstream
+          push: false
+          load: true
+          tags: qradar-dash-check/qradar-mcp:check
+
+      - name: The image has the write-off toggles, a read-only file and uid 1001
+        run: |
+          image=qradar-dash-check/qradar-mcp:check
+          file=/opt/app-root/qradar-mcp/feature_toggles.json
+          docker run --rm --entrypoint python "$image" -c '
+          import json, os, sys
+          path = sys.argv[1]
+          verbs = json.load(open(path))["verb_toggles"]
+          assert verbs["POST"] is False and verbs["DELETE"] is False, verbs
+          mode = os.stat(path).st_mode & 0o777
+          assert mode == 0o444, oct(mode)
+          ' "$file"
+          user="$(docker run --rm --entrypoint id "$image" -u)"
+          [ "$user" = "1001" ] || { echo "image runs as uid $user, expected 1001" >&2; exit 1; }

@@ -184,6 +184,7 @@ class QRadarMCPProvider(QRadarProvider):
         self,
         *,
         base_url: str,
+        sec_token: str | None = None,
         timeout: float = 60.0,
         connect_timeout: float = 10.0,
         max_response_bytes: int = MAX_RESPONSE_BYTES,
@@ -191,6 +192,11 @@ class QRadarMCPProvider(QRadarProvider):
         audit_sink: Callable[[dict], Awaitable[None]] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        # The pinned server authenticates every request, `initialize` included, against
+        # QRadar with the `SEC` header it receives (docs/mcp-capability-matrix.md section
+        # 6). Held privately and sent per request, never on the client's default headers
+        # and never in a log record, an error message or a repr.
+        self._sec_token = sec_token or None
         self._timeout = timeout
         self._max_response_bytes = max_response_bytes
         # Callable invoked with one audit record per tool call. The Celery/API
@@ -268,6 +274,8 @@ class QRadarMCPProvider(QRadarProvider):
         # The Streamable HTTP transport answers 406 unless the client accepts both
         # media types, whichever one it then chooses to answer with.
         headers = {"Accept": _ACCEPT, "Content-Type": "application/json"}
+        if self._sec_token is not None:
+            headers["SEC"] = self._sec_token
         if with_session:
             headers["MCP-Protocol-Version"] = self._protocol_version
             if self._session_id is not None:

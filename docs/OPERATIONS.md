@@ -1778,8 +1778,10 @@ tam `https` köken olarak ayarla.
 
 **Belirti:** Bir konteyner, checkout içinde olan bir dosyayı okuyamıyor.
 
-**Olası neden:** SELinux `user_home_t`. MCP servisi checkout'u bağlar; etkin bir `mcp` profili
-bu yüzden zorlayıcı (enforcing) ana makinede başarısız olur.
+**Olası neden:** SELinux `user_home_t`. Checkout'tan bağlanan bir dosyayı konteyner okuyamaz.
+MCP servisi artık checkout'u bağlamaz: `feature_toggles.json` imajın içindedir ve CA ile token
+adlandırılmış `qradar_secrets` birimindendir. Bu belirtiyi gören servis büyük olasılıkla
+checkout'tan bir dosya bağlayan yerel bir `docker-compose.override.yml` taşıyordur.
 
 **Doğrulama:** `ausearch` ya da günlük, `container_t` için `denied` gösterir ve `getenforce`
 çıktısı `Enforcing` olur.
@@ -1789,10 +1791,10 @@ getenforce
 ```
 
 **Çözüm:** **Yeniden etiketleme yapma.** SELinux kapatılmaz ve `:z` kullanılmaz. Uygulama
-token'ı ve CA için `load-secrets.sh` kullanmaya devam et. Üretim ana makinelerinde `mcp`
-profili, yapılandırma checkout bağlama noktası olmadan gelene kadar desteklenmez
-(`docs/INSTALL.md`, Optional MCP service). Geliştirme ve laboratuvar ana makinelerinde
-örnek `deploy/mcp/config.json` dosyasına kopyalanır.
+token'ı ve CA için `load-secrets.sh` kullanmaya devam et. Bağlama noktasını override
+dosyasından kaldır. Üretim ana makinelerinde `mcp` profili, gerçek bir konsola karşı
+doğrulanana kadar başlatılmaz (`docs/INSTALL.md`, Optional MCP service). Geliştirme ve
+laboratuvar ana makinelerinde profil için kopyalanacak ya da düzenlenecek bir dosya yoktur.
 
 ### OPS-R14. Postgres `No space left on device` veriyor ya da `doctor` diski FAIL gösteriyor
 

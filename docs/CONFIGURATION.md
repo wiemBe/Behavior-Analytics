@@ -17,7 +17,7 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `LAB_MODE` | `false` | Isolated accelerated lab profile; refused in production |
 | `LOG_LEVEL` | `INFO` | Application log level |
 | `API_PREFIX` | `/api/v1` | Versioned API prefix |
-| `QRADAR_PROVIDER` | `mock` | `mock`, `rest` or `mcp`; `mock` is refused outside development |
+| `QRADAR_PROVIDER` | `mock` | `mock`, `rest` or `mcp`; `mock` is refused outside development. `mcp` needs the same token as `rest` (`QRADAR_API_TOKEN_FILE` or `QRADAR_SEC_TOKEN`); production refuses it without one |
 | `QRADAR_BASE_URL` | empty | Preferred QRadar URL; `QRADAR_HOST` is a compatibility alias |
 | `QRADAR_API_TOKEN_FILE` | unset | File containing the read-only service token; preferred |
 | `QRADAR_SEC_TOKEN` | empty | Token value fallback; avoid in production |
@@ -26,7 +26,7 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `QRADAR_CA_BUNDLE` | unset | Internal CA bundle path |
 | `QRADAR_TLS_ALLOW_MISSING_AKI` | `false` | Permit only the missing-AKI certificate condition |
 | `MCP_ENABLED` | `false` | Enable the optional MCP inventory integration |
-| `MCP_BASE_URL` | `http://qradar-mcp:5000` | Internal MCP service URL |
+| `MCP_BASE_URL` | `http://qradar-mcp:5000` | Internal MCP service URL; plain HTTP on the internal network, and the backend sends the SEC token to it. The MCP container verifies the console certificate with the same CA as the backend (`/run/secrets/qradar_ca.pem`) |
 | `MCP_TIMEOUT_SECONDS` | `60` | MCP request timeout |
 
 ## Secrets, database and queue

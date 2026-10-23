@@ -1,5 +1,7 @@
 # Secrets — never commit
 .env
+# No longer read by anything (SEC-4), but older install notes had operators put the
+# QRadar token in it: keep it out of git on hosts that still have one.
 deploy/mcp/config.json
 *.pem
 *.key
