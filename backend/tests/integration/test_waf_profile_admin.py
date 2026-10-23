@@ -28,6 +28,7 @@ from app.providers.dto import LogSourceDTO
 from app.providers.mock import MockQRadarProvider
 from app.security.auth import get_principal
 from app.security.rbac import Principal
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.waf_profiles import WafProfileService
 from app.waf.profile import WafFieldMapping
 from app.workers import tasks
@@ -563,11 +564,14 @@ class ValidationProvider(MockQRadarProvider):
         self.hook = hook
         self.error = error
         self.closed = False
+        self.priorities: list[str] = []
 
     async def get_log_source(self, qradar_id: int) -> LogSourceDTO | None:
+        self.priorities.append(_ARIEL_PRIORITY.get())
         return LogSourceDTO(qradar_id=qradar_id, name="WAF")
 
     async def probe_waf_properties(self, **kwargs):  # type: ignore[no-untyped-def, override]
+        self.priorities.append(_ARIEL_PRIORITY.get())
         if self.hook is not None:
             await self.hook()
         if self.error is not None:
@@ -588,6 +592,21 @@ async def pending_profile(db_session) -> WafSourceProfile:  # type: ignore[no-un
     )
     await service.request_validation(profile, actor="requester", enqueue=lambda _: None)
     return profile
+
+
+async def test_validation_uses_background_priority_and_capacity_cannot_validate(
+    db_session,
+) -> None:
+    profile = await pending_profile(db_session)
+    provider = ValidationProvider(error=ArielPermitUnavailable(30, 3, 6))
+
+    result = await WafProfileService(
+        db_session, settings=settings(), clock=lambda: NOW
+    ).validate(profile, provider, actor="validator", persist=False)
+
+    assert result.status is not WafProfileValidationStatus.VALID
+    assert provider.priorities == ["background", "background"]
+    assert _ARIEL_PRIORITY.get() == "live"
 
 
 async def test_worker_success_and_exception(db_session, db_schema, monkeypatch) -> None:

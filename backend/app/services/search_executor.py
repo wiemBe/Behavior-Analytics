@@ -41,7 +41,11 @@ from app.services.ariel_errors import (
     classify,
     is_retryable,
 )
-from app.services.ariel_permit import ArielPermitBudget, ArielPermitUnavailable
+from app.services.ariel_permit import (
+    ArielPermitBudget,
+    ArielPermitUnavailable,
+    ariel_background_priority,
+)
 from app.services.backoff import backoff_delay
 
 Clock = Callable[[], datetime]
@@ -161,35 +165,38 @@ class SearchExecutor:
             settings=self.settings,
         )
 
-        async with self._hold_permit():
-            handle = await self.provider.create_ariel_search(search.aql_query)
-            # The row's ariel_search_id is nullable (a search is created before
-            # the id exists), but past this point the id is always set; thread
-            # the non-optional value through rather than re-reading the column.
-            search_id = handle.search_id
-            execution.ariel_search_id = search_id
-            execution.ariel_status = handle.status
-            await self.session.flush()
+        with ariel_background_priority():
+            async with self._hold_permit():
+                handle = await self.provider.create_ariel_search(search.aql_query)
+                # The row's ariel_search_id is nullable (a search is created before
+                # the id exists), but past this point the id is always set; thread
+                # the non-optional value through rather than re-reading the column.
+                search_id = handle.search_id
+                execution.ariel_search_id = search_id
+                execution.ariel_status = handle.status
+                await self.session.flush()
 
-            status = await self._poll_until_terminal(search, execution, search_id)
-            if status.status == "ERROR":
-                raise ArielSearchFailed("; ".join(status.error_messages) or "Ariel search failed")
+                status = await self._poll_until_terminal(search, execution, search_id)
+                if status.status == "ERROR":
+                    raise ArielSearchFailed(
+                        "; ".join(status.error_messages) or "Ariel search failed"
+                    )
 
-            try:
-                results = await self.provider.get_ariel_search_results(
-                    handle.search_id, max_rows=search.max_result_rows
-                )
-            except (ArielTimeout, ArielSearchFailed):
-                raise
-            except Exception as exc:
-                raise ResultParsingError(f"failed to fetch/parse results: {exc}") from exc
+                try:
+                    results = await self.provider.get_ariel_search_results(
+                        handle.search_id, max_rows=search.max_result_rows
+                    )
+                except (ArielTimeout, ArielSearchFailed):
+                    raise
+                except Exception as exc:
+                    raise ResultParsingError(f"failed to fetch/parse results: {exc}") from exc
 
-            return {
-                "columns": results.columns,
-                "rows": results.rows,
-                "total_count": results.total_count,
-                "truncated": results.truncated,
-            }
+                return {
+                    "columns": results.columns,
+                    "rows": results.rows,
+                    "total_count": results.total_count,
+                    "truncated": results.truncated,
+                }
 
     @asynccontextmanager
     async def _hold_permit(self) -> AsyncIterator[None]:

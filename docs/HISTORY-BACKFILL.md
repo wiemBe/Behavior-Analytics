@@ -505,6 +505,12 @@ one bucket the result is a lower bound (`ips/keyed_search.py` docstring, `metric
 at most 20 entries, no value text), no row is written for it, `J` moves past it, and the state ends `PARTIAL`.
 A gap fails every novelty or `COMPLETE` coverage claim across it through its missing buckets.
 
+An Ariel permit refusal is capacity deferral, not a failed QRadar search. The step yields without
+halving its span, recording a gap, advancing `through`, or replacing its previous error marker; its
+scope remains `READING`. On the history administration page the scope reason reads
+`deferred: no Ariel permit within N s`, so an operator can distinguish live-first capacity pressure
+from a console or query fault and let the next scheduled step retry unchanged.
+
 ### B.6.4 The density gate **[BUILT]**
 
 After the first span, if more than `history_backfill_max_lower_bound_share` of the buckets read came back as

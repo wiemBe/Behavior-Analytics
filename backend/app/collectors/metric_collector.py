@@ -51,6 +51,7 @@ from app.history.lifecycle import (
     ScopeRowView,
     console_mode,
     decode_scope,
+    deferred_scope_row,
     new_scope_row,
     scope_action,
     scope_row,
@@ -87,6 +88,11 @@ from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError, QRadarProvider
 from app.providers.dto import LogSourceMetricSample
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import (
+    ArielPermitUnavailable,
+    ariel_background_priority,
+    ariel_history_deferred_reason,
+)
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 
@@ -340,7 +346,9 @@ class MetricCollector:
         search cap and the start and end they pass, never in how a search is run). The
         completed buckets are always a prefix of the window: the search goes left first and
         stops at the first failure, the cap, or `deadline`. A lone bucket that fails (or is
-        still truncated) writes nothing, for history as for live.
+        still truncated) writes nothing, for history as for live. A permit refusal is that
+        same failure and stays in the result: the live pass keeps the prefix, and the
+        history step raises the typed error before the planner can halve the span.
         """
         found = _WindowSearch()
 
@@ -639,6 +647,26 @@ class MetricCollector:
                     live_searches=live_searches,
                     cadence_seconds=cadence_seconds,
                 )
+        except ArielPermitUnavailable as exc:
+            repository = HistoryBackfillRepository(self.session)
+            stored = (
+                await repository.scopes(
+                    instance.id, HISTORY_FAMILY.value, [HISTORY_SCOPE_KEY]
+                )
+            ).get(HISTORY_SCOPE_KEY)
+            if stored is not None and stored.state == HistoryState.READING.value:
+                await repository.write_scopes(
+                    [
+                        deferred_scope_row(
+                            stored,
+                            instance_id=instance.id,
+                            family=HISTORY_FAMILY,
+                            scope_key=HISTORY_SCOPE_KEY,
+                            reason=ariel_history_deferred_reason(exc),
+                        )
+                    ]
+                )
+            return HistoryReport(state=HistoryState.READING.value)
         except Exception as exc:
             await HistoryBackfillRepository(self.session).write_step_errors(
                 instance.id,
@@ -878,14 +906,20 @@ class MetricCollector:
         for chunk in plan.chunks:
             if spent >= budget:
                 break
-            found = await self._search_window(
-                chunk.start,
-                chunk.buckets(ps),
-                interval,
-                max_searches=budget - spent,
-                deadline=deadline,
-                qradar_ids=search_ids,
-            )
+            with ariel_background_priority():
+                found = await self._search_window(
+                    chunk.start,
+                    chunk.buckets(ps),
+                    interval,
+                    max_searches=budget - spent,
+                    deadline=deadline,
+                    qradar_ids=search_ids,
+                )
+            if isinstance(found.failure, ArielPermitUnavailable):
+                # Before chunk_results and settle_step. Those treat a provider
+                # failure as a span to halve and a marker to write; a refusal is
+                # neither. The savepoint rolls back anything this step staged.
+                raise found.failure
             spent += found.searches
             completed.update(found.completed)
             if report.failure is None and found.failure is not None:

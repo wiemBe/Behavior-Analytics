@@ -80,7 +80,7 @@ from app.history import (
     transition_row,
     waf_source_searches,
 )
-from app.history.lifecycle import scope_row, scope_view, step_row
+from app.history.lifecycle import deferred_scope_row, scope_row, scope_view, step_row
 from app.history.state import HistoryTrigger
 from app.history.waf import waf_planner_settings
 from app.models.enums import SearchFamily, WafBreakdown
@@ -91,6 +91,10 @@ from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafEndpoint, WafSourceBucket, WafSourceProfile
 from app.providers.base import ProviderError, QRadarProvider
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import (
+    ArielPermitUnavailable,
+    ariel_history_deferred_reason,
+)
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
@@ -563,14 +567,32 @@ class WafSourcePipeline:
             fit_reason = stored_reason if isinstance(stored_reason, str) else None
             days_target = scope.days_target
 
-        outcome = await collector.history_volume_step(
-            log_source,
-            progress,
-            boundary=boundary,
-            search_budget=budget,
-            seconds_left=float(self.settings.history_backfill_seconds_per_tick),
-            cadence_seconds=cadence.cadence_seconds,
-        )
+        try:
+            outcome = await collector.history_volume_step(
+                log_source,
+                progress,
+                boundary=boundary,
+                search_budget=budget,
+                seconds_left=float(self.settings.history_backfill_seconds_per_tick),
+                cadence_seconds=cadence.cadence_seconds,
+            )
+        except ArielPermitUnavailable as exc:
+            reason = ariel_history_deferred_reason(exc)
+            await HistoryBackfillRepository(self.session).write_scopes(
+                [
+                    deferred_scope_row(
+                        scope,
+                        instance_id=scope.instance_id,
+                        family=HistoryFamily.WAF,
+                        scope_key=scope.scope_key,
+                        reason=reason,
+                    )
+                ]
+            )
+            report.status = "history_reading"
+            report.history_state = HistoryState.READING.value
+            report.history_reason = reason
+            return
         state = HistoryState.READING
         finished_at: datetime | None = None
         anchor: datetime | None = scope.anchor
@@ -693,14 +715,30 @@ class WafSourcePipeline:
             if nested.adapter.get("done") is True:
                 return
             breakdown_progress = nested.progress
-        outcome = await collector.history_breakdown_step(
-            log_source,
-            breakdown_progress,
-            boundary=scope.anchor,
-            search_budget=history_search_budget(self.settings, used=used),
-            seconds_left=float(self.settings.history_backfill_seconds_per_tick),
-            cadence_seconds=cadence.cadence_seconds,
-        )
+        try:
+            outcome = await collector.history_breakdown_step(
+                log_source,
+                breakdown_progress,
+                boundary=scope.anchor,
+                search_budget=history_search_budget(self.settings, used=used),
+                seconds_left=float(self.settings.history_backfill_seconds_per_tick),
+                cadence_seconds=cadence.cadence_seconds,
+            )
+        except ArielPermitUnavailable as exc:
+            reason = ariel_history_deferred_reason(exc)
+            await HistoryBackfillRepository(self.session).write_scopes(
+                [
+                    deferred_scope_row(
+                        scope,
+                        instance_id=scope.instance_id,
+                        family=HistoryFamily.WAF,
+                        scope_key=scope.scope_key,
+                        reason=reason,
+                    )
+                ]
+            )
+            report.history_reason = reason
+            return
         outer_adapter["breakdown"] = encode_progress(
             outcome.progress,
             adapter={"done": outcome.trigger is not None, "reason": outcome.reason},

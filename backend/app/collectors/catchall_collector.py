@@ -73,6 +73,7 @@ from app.history.lifecycle import (
     bounded_reason,
     console_mode,
     decode_scope,
+    deferred_scope_row,
     new_scope_row,
     scope_action,
     scope_row,
@@ -109,6 +110,11 @@ from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderCapability, ProviderError, QRadarProvider
 from app.providers.dto import CatchallSenderRow
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import (
+    ArielPermitUnavailable,
+    ariel_background_priority,
+    ariel_history_deferred_reason,
+)
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.waf.admission import AdmissionPolicy
@@ -139,6 +145,7 @@ class _HistoryProvider:
     def __init__(self, provider: QRadarProvider) -> None:
         self.provider = provider
         self.error: ProviderError | None = None
+        self.deferred: ArielPermitUnavailable | None = None
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.provider, name)
@@ -146,6 +153,9 @@ class _HistoryProvider:
     async def get_catchall_senders_keyed(self, *args: Any, **kwargs: Any) -> Any:
         try:
             return await self.provider.get_catchall_senders_keyed(*args, **kwargs)
+        except ArielPermitUnavailable as exc:
+            self.deferred = exc
+            raise
         except ProviderError as exc:
             self.error = exc
             raise
@@ -315,6 +325,26 @@ class CatchallCollector:
                         decision=decision,
                         scope=scope,
                         tick_started=started,
+                    )
+            except ArielPermitUnavailable as exc:
+                report.history_scope_state = history_scope_state_before
+                (
+                    report.history_searches,
+                    report.history_buckets_written,
+                    report.history_unmapped_rows,
+                    report.history_senders_written,
+                ) = report_before_history
+                if scope is not None and scope.state == HistoryState.READING.value:
+                    await HistoryBackfillRepository(self.session).write_scopes(
+                        [
+                            deferred_scope_row(
+                                scope,
+                                instance_id=instance.id,
+                                family=HistoryFamily.CATCHALL,
+                                scope_key=SCOPE_KEY,
+                                reason=ariel_history_deferred_reason(exc),
+                            )
+                        ]
                     )
             except Exception as exc:
                 await HistoryBackfillRepository(self.session).write_step_errors(
@@ -951,14 +981,17 @@ class CatchallCollector:
         results: list[ChunkResult] = []
         for chunk in plan.chunks:
             before = history_budget.used
-            outcomes = await run_catchall_search(
-                cast(QRadarProvider, history_provider),
-                settings.catchall_type_ids,
-                (chunk.start, chunk.end),
-                bucket_seconds,
-                max_rows=settings.catchall_max_rows_per_search,
-                budget=history_budget,
-            )
+            with ariel_background_priority():
+                outcomes = await run_catchall_search(
+                    cast(QRadarProvider, history_provider),
+                    settings.catchall_type_ids,
+                    (chunk.start, chunk.end),
+                    bucket_seconds,
+                    max_rows=settings.catchall_max_rows_per_search,
+                    budget=history_budget,
+                )
+            if history_provider.deferred is not None:
+                raise history_provider.deferred
             folded = fold_chunk(
                 outcomes,
                 sources=catchall_sources,

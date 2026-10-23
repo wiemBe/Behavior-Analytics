@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import uuid
 from contextlib import contextmanager
 from datetime import timedelta
@@ -34,6 +35,7 @@ from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafEndpoint, WafEndpointMetric, WafSourceBucket
 from app.providers.dto import WafBreakdownBatch, WafBreakdownGroup
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_pipeline import (
@@ -1877,6 +1879,60 @@ async def test_a_provider_failure_mid_step_writes_nothing_and_retries_narrower(
         )
     ).all()
     assert list(starts) == [T0, T0 + STEP]
+
+
+async def test_a_capacity_refusal_defers_volume_without_changing_scope_progress(
+    db_session,  # type: ignore[no-untyped-def]
+) -> None:
+    settings = cfg(history_backfill_days=7, history_backfill_max_lower_bound_share=1.0)
+    provider = ScriptedWaf({T0: [("/deferred", "GET", 40)]})
+    profile, source, instance, _ = await make_source(db_session, provider, settings)
+    await reading_scope(
+        db_session,
+        instance_id=instance.id,
+        scope_key=str(source.qradar_id),
+        target_start=T0,
+        floor=T0,
+    )
+    scope = await db_session.get(
+        HistoryBackfillScope,
+        (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
+    )
+    assert scope is not None
+    scope.last_error_class = "EarlierProviderError"
+    scope.last_error_at = T0
+    await db_session.commit()
+    before_progress = copy.deepcopy(scope.progress)
+    original = provider.get_waf_observations_bucketed
+
+    async def refuse_history(**kwargs):  # type: ignore[no-untyped-def]
+        if kwargs["window_start"] == T0:
+            assert _ARIEL_PRIORITY.get() == "background"
+            raise ArielPermitUnavailable(7, 2, 4)
+        return await original(**kwargs)
+
+    provider.get_waf_observations_bucketed = refuse_history  # type: ignore[method-assign]
+    result = await run_waf_source(
+        db_session,
+        profile.id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: T0 + 2 * STEP + timedelta(seconds=5),
+    )
+
+    assert result["status"] == "history_reading"
+    yielded = await db_session.get(
+        HistoryBackfillScope,
+        (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
+        populate_existing=True,
+    )
+    assert yielded is not None and yielded.state == HistoryState.READING.value
+    assert yielded.through is None and yielded.progress == before_progress
+    assert yielded.last_error_class == "EarlierProviderError"
+    assert yielded.last_error_at == T0
+    assert yielded.reason == "deferred: no Ariel permit within 7 s"
+    assert await db_session.scalar(select(WafSourceBucket)) is None
+    assert _ARIEL_PRIORITY.get() == "live"
 
 
 async def test_a_locked_source_runs_no_history_step(db_session, db_schema) -> None:  # type: ignore[no-untyped-def]

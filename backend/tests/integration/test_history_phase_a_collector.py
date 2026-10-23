@@ -21,6 +21,7 @@ from app.models.log_source import LogSource, LogSourceBaseline, LogSourceMetric
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderUnavailableError
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from tests.integration.factories import FakeClock
 from tests.integration.history_phase_a_support import (
@@ -974,6 +975,41 @@ async def test_a_provider_outage_marks_the_scope_and_the_next_step_clears_it(db_
     assert cleared is not None
     assert cleared.last_error_class is None and cleared.last_error_at is None
     assert cleared.state == "READING"
+
+
+async def test_capacity_refusal_yields_without_halving_or_marking_the_scope(db_session) -> None:
+    console = await make_console(db_session, QIDS)
+    await say_yes(db_session, console.instance)
+    provider = ScriptedMockProvider(QIDS)
+    settings = settings_for()
+    await tick(db_session, console.instance, provider, settings, FIRST_TICK)
+    before = await scope_of(db_session, console.instance)
+    assert before is not None
+    before_progress = copy.deepcopy(before.progress)
+    before_through = before.through
+    before.last_error_class = "EarlierProviderError"
+    before.last_error_at = FIRST_TICK
+    await db_session.commit()
+
+    def refuse_history(start: datetime, end: datetime, count: int) -> bool:
+        if end <= ANCHOR and count > 1:
+            assert _ARIEL_PRIORITY.get() == "background"
+            return True
+        return False
+
+    provider.fail = refuse_history
+    provider.failure_type = lambda _message: ArielPermitUnavailable(7, 2, 4)  # type: ignore[assignment]
+    report = await tick(db_session, console.instance, provider, settings, FIRST_TICK + STEP)
+
+    yielded = await scope_of(db_session, console.instance)
+    assert yielded is not None and yielded.state == "READING"
+    assert yielded.progress == before_progress and yielded.through == before_through
+    assert yielded.last_error_class == "EarlierProviderError"
+    assert yielded.last_error_at == FIRST_TICK
+    assert yielded.reason == "deferred: no Ariel permit within 7 s"
+    assert report.history is not None and report.history.searches == 0
+    assert await history_rows(db_session, console.instance) == []
+    assert _ARIEL_PRIORITY.get() == "live"
 
 
 async def test_a_provider_outage_adds_one_scope_write_and_success_does_not(db_session) -> None:

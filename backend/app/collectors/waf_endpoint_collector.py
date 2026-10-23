@@ -134,6 +134,7 @@ from app.providers.dto import (
     WafObservationBatch,
     WafObservationBucketBatch,
 )
+from app.services.ariel_permit import ArielPermitUnavailable, ariel_background_priority
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
@@ -706,12 +707,17 @@ class WafEndpointCollector:
         interval: int,
         count: int,
         breakdown: WafBreakdown,
+        *,
+        yield_permit_refusal: bool = False,
     ) -> tuple[dict[datetime, _BreakdownResult], bool, int]:
         """One breakdown search over `count` buckets: results, truncated?, searches.
 
         A single bucket is the per-bucket search. A failure is recorded as FAILED
         for every bucket the search covered; the class name only, as a message
-        can echo query text. A truncated keyed search returns no results.
+        can echo query text. A truncated keyed search returns no results. Live
+        collection uses that FAILED result for a permit refusal too. A history
+        step passes `yield_permit_refusal` so the typed error can yield before
+        the planner halves the span.
         """
         starts = [start + timedelta(seconds=interval * i) for i in range(count)]
         common: dict[str, Any] = {
@@ -741,6 +747,8 @@ class WafEndpointCollector:
                     keyed.buckets, keyed.truncated, keyed.ariel_searches
                 )
         except (ProviderError, ValueError) as exc:
+            if yield_permit_refusal and isinstance(exc, ArielPermitUnavailable):
+                raise
             failed = _BreakdownResult(WafTelemetryStatus.FAILED, error_class=type(exc).__name__)
             return {s: dataclasses.replace(failed) for s in starts}, False, 0
         if whole_truncated:
@@ -1370,7 +1378,8 @@ class WafEndpointCollector:
             )
 
         if self.ariel_budget is None:
-            return await run()
+            with ariel_background_priority():
+                return await run()
         async with self.ariel_budget.permit() as permit:
             if permit is None:
                 return WafHistoryStep(
@@ -1378,7 +1387,8 @@ class WafEndpointCollector:
                     "waiting for a global WAF Ariel permit",
                     permit_unavailable=True,
                 )
-            return await run()
+            with ariel_background_priority():
+                return await run()
 
     async def history_breakdown_step(
         self,
@@ -1443,6 +1453,7 @@ class WafEndpointCollector:
                         planner.bucket_seconds,
                         count,
                         kind,
+                        yield_permit_refusal=True,
                     )
                     spent += 1
                     if truncated:
@@ -1497,7 +1508,8 @@ class WafEndpointCollector:
             )
 
         if self.ariel_budget is None:
-            return await run()
+            with ariel_background_priority():
+                return await run()
         async with self.ariel_budget.permit() as permit:
             if permit is None:
                 return WafBreakdownHistoryStep(
@@ -1505,7 +1517,8 @@ class WafEndpointCollector:
                     "waiting for a global WAF Ariel permit",
                     permit_unavailable=True,
                 )
-            return await run()
+            with ariel_background_priority():
+                return await run()
 
     async def persist_history_breakdowns(
         self,
@@ -1653,6 +1666,8 @@ class WafEndpointCollector:
             keyed = await self._observations_keyed(
                 log_source, span.start, span.end, bucket_seconds
             )
+        except ArielPermitUnavailable:
+            raise
         except ProviderError as exc:
             return SearchStatus.FAILED, None, 1, exc
         if keyed.truncated:

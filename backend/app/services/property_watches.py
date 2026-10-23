@@ -128,6 +128,7 @@ from app.schemas.property_watch import (
     WatchValueOut,
 )
 from app.schemas.search_cadence import CadenceOut
+from app.services.ariel_permit import ariel_background_priority
 from app.services.search_cadence import SearchCadenceService, bucket_seconds
 
 #: Inclusive bounds of the `hours` query on the history reads and the default, as F.1's preview.
@@ -1639,20 +1640,22 @@ async def run_preview(
         "max_sources": settings.pw_max_sources_per_search,
     }
     try:
-        totals = await run_search(
-            provider,
-            PwSearchPlan(PwSearchKind.TOTALS, scope_kind, tuple(scope_ids)),
-            (start, end),
-            bucket_seconds,
-            **common,
-        )
-        grouped = await run_search(
-            provider,
-            PwSearchPlan(PwSearchKind.GROUPED, scope_kind, tuple(scope_ids), properties),
-            (start, end),
-            bucket_seconds,
-            **common,
-        )
+        with ariel_background_priority():
+            totals = await run_search(
+                provider,
+                PwSearchPlan(PwSearchKind.TOTALS, scope_kind, tuple(scope_ids)),
+                (start, end),
+                bucket_seconds,
+                **common,
+            )
+        with ariel_background_priority():
+            grouped = await run_search(
+                provider,
+                PwSearchPlan(PwSearchKind.GROUPED, scope_kind, tuple(scope_ids), properties),
+                (start, end),
+                bucket_seconds,
+                **common,
+            )
     except ValueError as exc:  # a reference or a window the validators refuse
         raise PreviewRefused(f"the stored watch cannot be searched: {exc}") from exc
     facts = [

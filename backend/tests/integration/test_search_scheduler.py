@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from app.models.enums import ExecutionStatus
 from app.models.search import SearchExecution
 from app.providers.mock import MockQRadarProvider
+from app.services.ariel_permit import _ARIEL_PRIORITY
 from app.services.search_executor import SearchExecutor
 from app.services.search_scheduler import SearchScheduler
 from tests.integration.ariel_permit_fakes import CountingBudget
@@ -226,8 +227,8 @@ class _NoAqlProvider:
 
 
 # ------------------------------------------------------------- Ariel permit (AP-4)
-async def test_cycle_with_a_refusing_budget_records_capacity_for_every_due_search(
-    db_session,
+async def test_cycle_with_a_refusing_budget_records_first_and_defers_remaining_due_searches(
+    db_session, caplog,
 ) -> None:
     from app.models.enums import ExecutionErrorType
 
@@ -241,9 +242,18 @@ async def test_cycle_with_a_refusing_budget_records_capacity_for_every_due_searc
 
     report = await SearchScheduler(db_session, executor).run_due(now=utc(h=10, mi=6))
 
-    assert sorted(report.dispatched) == ["due-0", "due-1", "due-2"]
-    assert budget.refused == 3
-    for search in searches:
+    assert report.dispatched == ["due-0"]
+    assert report.deferred_capacity == ["due-1", "due-2"]
+    assert budget.refused == 1
+    assert budget.priorities == ["background"]
+    assert _ARIEL_PRIORITY.get() == "live"
+    capacity_logs = [
+        record
+        for record in caplog.records
+        if record.name == "app.search_scheduler" and hasattr(record, "deferred_count")
+    ]
+    assert [record.deferred_count for record in capacity_logs] == [2]
+    for index, search in enumerate(searches):
         rows = list(
             (
                 await db_session.scalars(
@@ -251,10 +261,16 @@ async def test_cycle_with_a_refusing_budget_records_capacity_for_every_due_searc
                 )
             ).all()
         )
-        assert [(r.status, r.error_type) for r in rows] == [
-            (ExecutionStatus.FAILED, ExecutionErrorType.CAPACITY.value)
-        ]
-        assert search.consecutive_failures == 1
+        if index == 0:
+            assert [(r.status, r.error_type) for r in rows] == [
+                (ExecutionStatus.FAILED, ExecutionErrorType.CAPACITY.value)
+            ]
+            assert search.consecutive_failures == 1
+            assert search.next_run_at == utc(h=10, mi=10)
+        else:
+            assert rows == []
+            assert search.consecutive_failures == 0
+            assert search.next_run_at == utc(h=10, mi=5)
 
 
 async def test_capacity_failures_open_the_streak_alert_at_the_threshold(db_session) -> None:

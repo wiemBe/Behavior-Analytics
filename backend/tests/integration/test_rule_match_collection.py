@@ -22,6 +22,7 @@ from app.models.rule import (
 from app.providers.base import ProviderCapability, ProviderUnavailableError
 from app.providers.dto import RuleMatchBatch, RuleMatchRow
 from app.providers.mock import MockQRadarProvider
+from app.services.ariel_permit import ArielPermitUnavailable
 from app.services.rule_health import RuleHealthEvaluator
 from tests.integration.factories import make_instance
 
@@ -53,10 +54,13 @@ def recorded_statements(session, *, only: str | None = None):
 class ScriptedProvider(MockQRadarProvider):
     """A mock whose rule matches are whatever the test says, and which counts calls."""
 
-    def __init__(self, matches=None, *, fail: bool = False, fail_for=None) -> None:
+    def __init__(
+        self, matches=None, *, fail: bool = False, fail_for=None, error=None
+    ) -> None:
         super().__init__(seed=1)
         self.matches = matches or {}
         self.fail = fail
+        self.error = error or ProviderUnavailableError("QRadar is unreachable")
         #: window start -> failures left; None fails that window every time.
         self.fail_for: dict[datetime, int | None] = dict(fail_for or {})
         self.calls: list[datetime] = []
@@ -68,9 +72,9 @@ class ScriptedProvider(MockQRadarProvider):
             if left is None or left > 0:
                 if left is not None:
                     self.fail_for[window_start] = left - 1
-                raise ProviderUnavailableError("QRadar is unreachable")
+                raise self.error
         if self.fail:
-            raise ProviderUnavailableError("QRadar is unreachable")
+            raise self.error
         rows = self.matches(window_start) if callable(self.matches) else self.matches
         truncated = len(rows) >= max_rows
         return RuleMatchBatch(
@@ -181,13 +185,19 @@ class TestCollector:
         assert report.rows_written == 2
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure",
+        [ProviderUnavailableError("QRadar is unreachable"), ArielPermitUnavailable(30, 3, 6)],
+    )
     async def test_provider_failure_writes_a_failed_window_and_no_rows(
-        self, db_session
+        self, db_session, failure
     ) -> None:
         inst = await make_instance(db_session)
         await add_rule(db_session, inst, 100)
 
-        report = await collector(db_session, ScriptedProvider(fail=True)).collect(inst)
+        report = await collector(
+            db_session, ScriptedProvider(fail=True, error=failure)
+        ).collect(inst)
 
         (window,) = await windows(db_session, inst)
         assert window.status == RuleMatchWindowStatus.FAILED
@@ -200,6 +210,7 @@ class TestCollector:
         )
         assert wm.watermark_at is None  # the next run retries the same window
         assert wm.consecutive_failures == 1
+        assert wm.last_error and type(failure).__name__ in wm.last_error
 
     @pytest.mark.asyncio
     async def test_a_failed_window_is_retried_and_then_completes(self, db_session) -> None:

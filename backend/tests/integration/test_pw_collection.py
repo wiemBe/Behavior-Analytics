@@ -28,6 +28,7 @@ from app.models.property_watch import PropertyWatch, PwBucket, PwValue, PwValueM
 from app.providers.base import ProviderError
 from app.providers.dto import PwSearchKind
 from app.providers.mock import MockPwSearch, MockQRadarProvider
+from app.services.ariel_permit import ArielPermitUnavailable
 from app.services.search_cadence import SearchCadenceService
 from tests.integration.factories import make_instance, make_log_source
 
@@ -199,13 +200,18 @@ async def test_the_next_run_continues_from_the_watermark_without_overlap(db_sess
 
 
 # ----------------------------------------------------------------------- honesty
-async def test_a_failed_search_holds_the_watermark_and_stores_not_collected(db_session) -> None:
+@pytest.mark.parametrize(
+    "failure", [ProviderError("boom"), ArielPermitUnavailable(30, 3, 6)]
+)
+async def test_a_failed_search_holds_the_watermark_and_stores_not_collected(
+    db_session, failure
+) -> None:
     instance = await make_instance(db_session)
     watch = await add_watch(db_session, instance, through=NOW - timedelta(hours=1, minutes=7))
     provider = provider_with({"alice": 10})
 
     def fail_totals(search: MockPwSearch) -> Exception | None:
-        return ProviderError("boom") if search.search is PwSearchKind.TOTALS else None
+        return failure if search.search is PwSearchKind.TOTALS else None
 
     provider.pw_fault = fail_totals
     report = await collect(db_session, instance, provider)
