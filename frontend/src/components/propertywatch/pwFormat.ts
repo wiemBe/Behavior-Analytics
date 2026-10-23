@@ -23,6 +23,7 @@ import { delayText, latencyCadence, latencyParts, type LatencyCadence, type Late
 import { NOT_MEASURED } from "@/lib/behavior";
 import type { Tone } from "@/lib/health";
 import { formatCount } from "@/lib/format";
+import { formatPercent } from "@/components/waf/wafFormat";
 
 /** Said once per page: the cadence is not a promise of speed. */
 export function pwLatency(cadence?: LatencyCadence | null): LatencyParts {
@@ -267,8 +268,7 @@ export function readingMeaning(reading: PwReadingLabel): string {
 
 /** A fraction as a whole percent, `96 %`; `null` is an em dash, never `0 %`. */
 export function formatCoveragePercent(ratio: number | null | undefined): string {
-  if (ratio == null || Number.isNaN(ratio)) return NOT_MEASURED;
-  return `${Math.round(ratio * 100)} %`;
+  return formatPercent(ratio, null, 0);
 }
 
 /** Coverage of the last bucket: `96 %`, or `at least 88 %` when the grouped search was cut. */

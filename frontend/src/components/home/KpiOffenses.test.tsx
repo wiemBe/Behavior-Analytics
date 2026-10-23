@@ -37,14 +37,16 @@ describe("KpiOffenses", () => {
     const lines = screen.getAllByText((_, node) => node?.classList.contains("kpi-line") ?? false);
     expect(
       Array.from(lines[0].querySelectorAll(".kpi-line-part"), (part) => part.textContent),
-    ).toEqual(["3\u00a0critical (\u2265 7) \u00b7", "8\u00a0below \u00b7", "1\u00a0unknown"]);
+    ).toEqual(["3\u00a0critical (\u2265 7) \u00b7", "8\u00a0below"]);
     expect(lines[0].textContent?.replaceAll("\u00a0", " ")).toBe(
-      "3 critical (\u2265 7) \u00b7 8 below \u00b7 1 unknown",
+      "3 critical (\u2265 7) \u00b7 8 below",
     );
+    // The offense with no magnitude is its own qualifier line, not a third breakdown part.
+    expect(lines[1].textContent).toBe("+\u00a01\u00a0with unknown magnitude");
     expect(
-      Array.from(lines[1].querySelectorAll(".kpi-line-part"), (part) => part.textContent),
+      Array.from(lines[2].querySelectorAll(".kpi-line-part"), (part) => part.textContent),
     ).toEqual(["5\u00a0unassigned \u00b7", "2\u00a0over SLA"]);
-    expect(lines[1].textContent?.replaceAll("\u00a0", " ")).toBe("5 unassigned \u00b7 2 over SLA");
+    expect(lines[2].textContent?.replaceAll("\u00a0", " ")).toBe("5 unassigned \u00b7 2 over SLA");
     expect(screen.getByTitle(/magnitude of 7 or more/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View open offenses" })).toHaveAttribute(
       "href",
@@ -137,5 +139,65 @@ describe("KpiOffenses", () => {
     const note = screen.getByText(/Refresh failed; showing data received at/);
     expect(within(note).getByText("13:55 UTC")).toBeInTheDocument();
     expect(screen.getByText("4", { selector: ".kpi-value" })).toBeInTheDocument();
+  });
+});
+
+describe("KpiOffenses unknown counts", () => {
+  const lineTexts = () =>
+    screen
+      .getAllByText((_, node) => node?.classList.contains("kpi-line") ?? false)
+      .map((n) => n.textContent);
+
+  it("says how many open offenses have no magnitude and no age, in words", () => {
+    mocks.states[ANALYTICS] = ok(
+      analytics({
+        active: 12, critical: 3, unassigned: 5, exceeding_sla: 2,
+        critical_unknown: 4, age_unknown: 2,
+      }),
+    );
+    mocks.states[PROBE] = withSnapshot();
+    render(<KpiOffenses />);
+    expect(lineTexts()).toEqual([
+      "3\u00a0critical (\u2265 7) \u00b7 5\u00a0below",
+      "+\u00a04\u00a0with unknown magnitude",
+      "5\u00a0unassigned \u00b7 2\u00a0over SLA",
+      "+\u00a02\u00a0with unknown age",
+    ]);
+    expect(screen.getByRole("link", { name: "View open offenses" })).toHaveAttribute(
+      "href",
+      "/offenses?status=OPEN",
+    );
+  });
+
+  it("adds nothing when no open offense is unknown", () => {
+    mocks.states[ANALYTICS] = ok(
+      analytics({
+        active: 12, critical: 3, unassigned: 5, exceeding_sla: 2,
+        critical_unknown: 0, age_unknown: 0,
+      }),
+    );
+    mocks.states[PROBE] = withSnapshot();
+    render(<KpiOffenses />);
+    expect(lineTexts()).toHaveLength(2);
+    expect(document.body.textContent).not.toMatch(/with unknown/);
+  });
+
+  it("shows the age qualifier alone, and the magnitude one alone", () => {
+    mocks.states[ANALYTICS] = ok(
+      analytics({ active: 6, critical: 1, critical_unknown: 0, age_unknown: 3 }),
+    );
+    mocks.states[PROBE] = withSnapshot();
+    render(<KpiOffenses />);
+    expect(document.body.textContent).toContain("+\u00a03\u00a0with unknown age");
+    expect(document.body.textContent).not.toContain("unknown magnitude");
+  });
+
+  it("shows neither qualifier when nothing was collected", () => {
+    mocks.states[ANALYTICS] = ok(
+      analytics({ active: null, critical: null, critical_unknown: null, age_unknown: null }),
+    );
+    mocks.states[PROBE] = withSnapshot();
+    render(<KpiOffenses />);
+    expect(document.body.textContent).not.toMatch(/with unknown/);
   });
 });

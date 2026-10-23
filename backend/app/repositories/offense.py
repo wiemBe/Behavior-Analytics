@@ -188,6 +188,8 @@ class OffenseRepository:
                     ),
                     func.max(sub.c.age_seconds).filter(open_only),
                     func.avg(sub.c.magnitude).filter(open_only),
+                    func.count().filter(and_(open_only, sub.c.magnitude.is_(None))),
+                    func.count().filter(and_(open_only, sub.c.age_seconds.is_(None))),
                 ).select_from(sub)
             )
         ).one()
@@ -204,6 +206,9 @@ class OffenseRepository:
             "exceeding_sla": int(row[4] or 0),
             "oldest_age_seconds": int(row[5]) if row[5] is not None else None,
             "average_magnitude": round(float(row[6]), 2) if row[6] is not None else None,
+            # Open offenses the two counts above could not classify.
+            "critical_unknown": int(row[7] or 0),
+            "age_unknown": int(row[8] or 0),
         }
 
     async def distribution(
@@ -342,6 +347,8 @@ def _unknown_offense_metrics() -> dict[str, Any]:
         "exceeding_sla": None,
         "oldest_age_seconds": None,
         "average_magnitude": None,
+        "critical_unknown": None,
+        "age_unknown": None,
     }
 
 

@@ -10,6 +10,7 @@
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
 import { homeReads, type FleetEpsSeries } from "@/lib/api";
 import { fleetDrillHref, formatEpsValue } from "@/lib/fleet";
+import { formatPercent } from "@/components/waf/wafFormat";
 import { totalEps, type TotalEps } from "@/lib/home/totalEps";
 import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
 
@@ -94,7 +95,7 @@ function Body({
           card.topClass
             ? `largest: ${card.topClass.label}${
                 card.topClass.share !== null
-                  ? ` ${(card.topClass.share * 100).toFixed(0)} %`
+                  ? ` ${formatPercent(card.topClass.share, null, 0)}`
                   : ""
               }`
             : "largest: \u2014 (no class measured)",

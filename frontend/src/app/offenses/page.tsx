@@ -23,9 +23,26 @@ const EMPTY_LIST =
   "No offenses have been collected from QRadar yet, so this list is empty. Offense collection is set up by an administrator.";
 
 /** A nullable open count. Null is an em dash; the group states why once. A measured 0 stays 0. */
-function offenseStat(label: string, count: number | null, alarm?: "crit" | "warn") {
+function offenseStat(
+  label: string,
+  count: number | null,
+  alarm?: "crit" | "warn",
+  unknown?: { count: number | null | undefined; what: string },
+) {
   if (count == null) return <StatCard label={label} value="—" />;
-  return <StatCard label={label} value={formatCount(count)} tone={alarm && count > 0 ? alarm : undefined} />;
+  // Open offenses the count could not classify: said beside the figure, in words.
+  const note =
+    unknown && typeof unknown.count === "number" && unknown.count > 0
+      ? `+\u00a0${formatCount(unknown.count)}\u00a0with unknown ${unknown.what}`
+      : undefined;
+  return (
+    <StatCard
+      label={label}
+      value={formatCount(count)}
+      tone={alarm && count > 0 ? alarm : undefined}
+      note={note}
+    />
+  );
 }
 
 /** Magnitude is 0 to 10; the bar is drawn in whole tenths of the track. */
@@ -101,9 +118,13 @@ export default async function OffensesPage({
               `Critical (mag ${aggregates.critical_magnitude}+)`,
               aggregates.critical,
               "crit",
+              { count: aggregates.critical_unknown, what: "magnitude" },
             )}
             {offenseStat("Unassigned", aggregates.unassigned, "warn")}
-            {offenseStat(`Over ${aggregates.sla_hours}h SLA`, aggregates.exceeding_sla, "warn")}
+            {offenseStat(`Over ${aggregates.sla_hours}h SLA`, aggregates.exceeding_sla, "warn", {
+              count: aggregates.age_unknown,
+              what: "age",
+            })}
             <StatCard label="Oldest" value={formatAge(aggregates.oldest_age_seconds)} />
           </div>
         </>

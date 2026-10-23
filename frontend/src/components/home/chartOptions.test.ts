@@ -251,3 +251,19 @@ describe("buildSeverityOption", () => {
     expect(JSON.stringify(buildSeverityOption(model, palette, false))).not.toMatch(/#[0-9a-f]{3,8}/i);
   });
 });
+
+describe("the class donut tooltip percent", () => {
+  it("is a whole percent with U+00A0, and carries no percent when the chart gives none", () => {
+    const option = buildClassOption(
+      epsByClass(fleet([fleetClass("FIREWALL", { mean_eps: 750 }), fleetClass("WAF", { mean_eps: 250 })])).entries,
+      palette,
+      false,
+    ) as unknown as {
+      tooltip: { formatter: (p: unknown) => string };
+    };
+    expect(option.tooltip.formatter({ name: "Firewall", value: 750, percent: 75 })).toBe(
+      "Firewall: 750.00 EPS (75\u00A0%)",
+    );
+    expect(option.tooltip.formatter({ name: "Firewall", value: 750 })).toBe("Firewall: 750.00 EPS");
+  });
+});

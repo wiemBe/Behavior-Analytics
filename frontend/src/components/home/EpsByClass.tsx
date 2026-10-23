@@ -19,6 +19,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { HISTORY_TEXT } from "@/components/behavior/historyOrigin";
 import { homeReads } from "@/lib/api";
 import { NOT_MEASURED } from "@/lib/behavior";
+import { formatPercent } from "@/components/waf/wafFormat";
 import { fleetDrillHref, formatEpsValue, type FleetWindow } from "@/lib/fleet";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import { sliceVar } from "@/lib/home/chartPalette";
@@ -41,7 +42,7 @@ export function classHref(e: Pick<ClassEps, "key">, window: FleetWindow): string
     : `/fleet/sources?class=${encodeURIComponent(e.key)}`;
 }
 
-const share = (v: number | null) => (v === null ? NOT_MEASURED : `${(v * 100).toFixed(0)} %`);
+const share = (v: number | null) => formatPercent(v, null, 0);
 const eps = (v: number | null | undefined) => formatEpsValue(v) ?? NOT_MEASURED;
 
 function reasonOf(model: Model): string {

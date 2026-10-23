@@ -45,6 +45,7 @@ describe("health.detection", () => {
     };
     render(<HealthDetection />);
     expect(screen.getByText("25.0 %")).toBeInTheDocument();
+    expect(document.body.textContent).toContain("25.0\u00A0%");
     expect(screen.getByText("50 of 200 techniques covered")).toBeInTheDocument();
     const rules = screen.getByRole("table", { name: "Rule health by verdict" });
     expect(within(rules).getByText("120")).toBeInTheDocument();

@@ -4,6 +4,7 @@ import { bucket, catalog, value, watch } from "./fixtures";
 import {
   baselineText,
   coverageText,
+  formatCoveragePercent,
   eventsUnit,
   expectedRangeText,
   formatEvents,
@@ -91,8 +92,8 @@ describe("numbers", () => {
   });
 
   it("states coverage with 'at least' on a lower bound and a dash when unknown", () => {
-    expect(coverageText({ bucket_start: "x", total_events: 1, parsed_events: 1, ratio: 0.96, measurement: "EXACT" })).toBe("96 %");
-    expect(coverageText({ bucket_start: "x", total_events: 1, parsed_events: 1, ratio: 0.88, measurement: "LOWER_BOUND" })).toBe("at least 88 %");
+    expect(coverageText({ bucket_start: "x", total_events: 1, parsed_events: 1, ratio: 0.96, measurement: "EXACT" })).toBe("96\u00A0%");
+    expect(coverageText({ bucket_start: "x", total_events: 1, parsed_events: 1, ratio: 0.88, measurement: "LOWER_BOUND" })).toBe("at least 88\u00A0%");
     expect(coverageText({ bucket_start: "x", total_events: null, parsed_events: null, ratio: null, measurement: "EXACT" })).toBe("—");
     expect(coverageText(null)).toBe("—");
   });
@@ -173,5 +174,16 @@ describe("the view parameters", () => {
 describe("the catalog fixture", () => {
   it("carries the coverage floor as a fraction", () => {
     expect(catalog().min_coverage).toBe(0.9);
+  });
+});
+
+describe("coverage percent spelling", () => {
+  it("is a whole percent with U+00A0 before the sign, and a dash when unmeasured", () => {
+    expect(formatCoveragePercent(0.9)).toBe("90\u00A0%");
+    expect(formatCoveragePercent(0.964)).toBe("96\u00A0%");
+    expect(formatCoveragePercent(0)).toBe("0\u00A0%");
+    expect(formatCoveragePercent(null)).toBe("\u2014");
+    expect(formatCoveragePercent(undefined)).toBe("\u2014");
+    expect(formatCoveragePercent(Number.NaN)).toBe("\u2014");
   });
 });

@@ -12,7 +12,7 @@ import { UtcTime } from "@/components/ui/UtcTime";
 
 
 import { WatchAqlSection, type AqlRead } from "./WatchAql";
-import { pwTypeLabel, scopeKindLabel, scopeText, statusLabel, statusReason } from "./pwFormat";
+import { formatCoveragePercent, pwTypeLabel, scopeKindLabel, scopeText, statusLabel, statusReason } from "./pwFormat";
 import { HistoryGapLine } from "./WatchHonesty";
 import { historyHeaderText } from "./history";
 
@@ -239,7 +239,7 @@ export function WatchDefinition({
           </h2>
           <p className="subtitle">
             A value beyond a cap is counted in its bucket and never plotted or judged. The coverage
-            floor is {Math.round(catalog.min_coverage * 100)} %: below it, verdicts that read an
+            floor is {formatCoveragePercent(catalog.min_coverage)}: below it, verdicts that read an
             absence as evidence are insufficient data.
           </p>
           <dl className="dimension-meta pw-dl">

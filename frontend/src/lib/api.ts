@@ -858,6 +858,10 @@ export interface OffenseAggregates {
   exceeding_sla: number | null;
   oldest_age_seconds: number | null;
   average_magnitude: number | null;
+  /** Open offenses with no magnitude (in neither `critical` nor the rest); null: no snapshot. */
+  critical_unknown?: number | null;
+  /** Open offenses with no age (not in `exceeding_sla`); null: no snapshot. */
+  age_unknown?: number | null;
   sla_hours: number;
   critical_magnitude: number;
 }
