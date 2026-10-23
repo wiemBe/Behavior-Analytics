@@ -33,7 +33,8 @@ import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
 import { isPwRow, pwTypeLabel } from "@/components/propertywatch/pwFormat";
 import { valueText } from "@/components/propertywatch/WatchValuesTable";
-import { formatPercent, formatRequests, SINCE_UNIT } from "@/components/waf/wafFormat";
+import { formatRequests, SINCE_UNIT } from "@/components/waf/wafFormat";
+import { formatPercent } from "@/lib/format";
 import {
   endpointLabel,
   evidenceLabel,

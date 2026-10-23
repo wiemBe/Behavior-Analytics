@@ -13,8 +13,7 @@ import { healthTone } from "@/lib/health";
 import { NOT_MEASURED } from "@/lib/behavior";
 import { secondary, WidgetFrame, WidgetLoading } from "@/components/home/WidgetFrame";
 import { Unmeasured } from "@/components/home/WidgetParts";
-import { formatCount } from "@/lib/format";
-import { formatPercent } from "@/components/waf/wafFormat";
+import { formatCount, formatPercent } from "@/lib/format";
 
 import { detectionView, ruleHealthView } from "./derive";
 

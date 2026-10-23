@@ -11,7 +11,7 @@ import type { WafSourceBehavior } from "@/lib/api";
 import { NOT_MEASURED, formatCount } from "@/lib/behavior";
 import { UtcTime } from "@/components/ui/UtcTime";
 
-import { formatPercent } from "./wafFormat";
+import { formatPercent } from "@/lib/format";
 import { atCeiling, isOverflowing, sortByAttention, validationView } from "./wafSourceHealth";
 
 import "@/components/ui/controls.css";

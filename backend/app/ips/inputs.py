@@ -31,6 +31,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
+from app.core.text import percent
 from app.models.enums import IpsDimension, WafMeasurement
 from app.waf.inputs import HistoryFacts
 
@@ -271,7 +272,7 @@ def entity_count(
     if not dim.coverage_met(min_coverage):
         return EntityCount(
             None, None,
-            f"{entity.dimension.value} coverage is below the {min_coverage:.0%} floor: events "
+            f"{entity.dimension.value} coverage is below the {percent(min_coverage)} floor: events "
             "the search could not attribute may have been the entity's",
         )
     if dim.admission_truncated is not False:

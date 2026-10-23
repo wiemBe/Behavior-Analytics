@@ -22,8 +22,7 @@ import type {
 import { delayText, latencyCadence, latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
 import { NOT_MEASURED } from "@/lib/behavior";
 import type { Tone } from "@/lib/health";
-import { formatCount } from "@/lib/format";
-import { formatPercent } from "@/components/waf/wafFormat";
+import { formatCount, formatPercent } from "@/lib/format";
 
 /** Said once per page: the cadence is not a promise of speed. */
 export function pwLatency(cadence?: LatencyCadence | null): LatencyParts {

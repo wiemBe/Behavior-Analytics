@@ -12,6 +12,7 @@ from typing import Any
 
 from app.anomaly import statistics as rstats
 from app.anomaly.evidence import AnomalyEvidence
+from app.core.text import percent
 from app.ips.detector import (
     EVIDENCE_VERSION,
     IpsDetectionContext,
@@ -412,7 +413,7 @@ def verify_port_history(
         ),
         (
             lambda bucket: not bucket.destination_port.coverage_met(min_coverage),
-            lambda bucket: f"had destination-port coverage below the {min_coverage:.0%} floor",
+            lambda bucket: f"had destination-port coverage below the {percent(min_coverage)} floor",
         ),
         (
             lambda bucket: bucket.destination_port.admission_truncated is not False,

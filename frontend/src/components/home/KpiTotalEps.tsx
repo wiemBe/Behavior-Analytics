@@ -10,7 +10,7 @@
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
 import { homeReads, type FleetEpsSeries } from "@/lib/api";
 import { fleetDrillHref, formatEpsValue } from "@/lib/fleet";
-import { formatPercent } from "@/components/waf/wafFormat";
+import { formatPercent } from "@/lib/format";
 import { totalEps, type TotalEps } from "@/lib/home/totalEps";
 import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
 

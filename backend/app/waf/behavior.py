@@ -38,6 +38,7 @@ from typing import Any
 
 from app.anomaly import statistics as rstats
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
+from app.core.text import percent
 from app.models.enums import (
     DetectorSignal,
     RobustScoreStatus,
@@ -108,7 +109,8 @@ def _result(dt: WafAnomalyType, ev: AnomalyEvidence[WafAnomalyType]) -> WafSpike
 
 
 def _pct(value: float | None) -> str:
-    return "n/a" if value is None else f"{value:.1%}"
+    """The share spelling for WAF sentences: one decimal of the shared helper."""
+    return percent(value, precision=1)
 
 
 def _entity(ctx: WafDetectionContext) -> dict[str, Any] | None:
@@ -354,9 +356,9 @@ def _unavailable(breakdown: str, status: WafTelemetryStatus) -> str:
 
 def _low_source_coverage(ratio: float, floor: float) -> str:
     return (
-        f"only {ratio:.0%} of this source's events parsed to an endpoint, below the "
-        f"{floor:.0%} coverage floor: the unparsed requests may differ in kind from the parsed "
-        "ones, so the visible proportion bounds nothing"
+        f"only {percent(ratio)} of this source's events parsed to an endpoint, below the "
+        f"{percent(floor)} coverage floor: the unparsed requests may differ in kind from "
+        "the parsed ones, so the visible proportion bounds nothing"
     )
 
 
@@ -380,8 +382,8 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
     # requests. The request count is exact here: the scope requires it.
     if obs.request_count > 0 and min(1.0, n / obs.request_count) < thr.min_coverage:
         return g.insufficient(
-            f"only {min(1.0, n / obs.request_count):.0%} of the endpoint's requests carried "
-            f"the {d.breakdown.lower()} field, below the {thr.min_coverage:.0%} coverage floor"
+            f"only {percent(min(1.0, n / obs.request_count))} of the endpoint's requests carried "
+            f"the {d.breakdown.lower()} field, below the {percent(thr.min_coverage)} coverage floor"
         )
     cell_or_exit = g.baseline(d.metric)
     if isinstance(cell_or_exit, WafSpikeVerdict):
@@ -528,8 +530,8 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
     n = obs.counts.client_events or 0
     if obs.request_count > 0 and min(1.0, n / obs.request_count) < thr.min_coverage:
         return g.insufficient(
-            f"only {min(1.0, n / obs.request_count):.0%} of the endpoint's requests were "
-            f"attributed to a source IP, below the {thr.min_coverage:.0%} coverage floor"
+            f"only {percent(min(1.0, n / obs.request_count))} of the endpoint's requests were "
+            f"attributed to a source IP, below the {percent(thr.min_coverage)} coverage floor"
         )
     cell_or_exit = g.baseline(TOP_CLIENT_SHARE_METRIC)
     if isinstance(cell_or_exit, WafSpikeVerdict):

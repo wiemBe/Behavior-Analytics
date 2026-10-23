@@ -31,6 +31,7 @@ from typing import Any
 
 from app.anomaly import statistics as rstats
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
+from app.core.text import percent
 from app.models.enums import (
     BucketCompleteness,
     DetectorSignal,
@@ -234,7 +235,7 @@ def detect_request_rate_spike(ctx: WafDetectionContext) -> WafSpikeVerdict:
             insufficient(
                 at, interval_start=p.bucket_start, interval_end=p.bucket_end,
                 reason=(
-                    f"only {p.endpoint_coverage_ratio:.0%} of this source's events "
+                    f"only {percent(p.endpoint_coverage_ratio)} of this source's events "
                     "carried a parseable endpoint in this bucket"
                 ),
             )

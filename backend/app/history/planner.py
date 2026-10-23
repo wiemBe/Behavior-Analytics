@@ -28,6 +28,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
+from app.core.text import percent
 from app.history.state import HistoryTrigger
 
 # One search never covers more than a week (`validate_bucketed_metric_window`).
@@ -748,8 +749,8 @@ def settle_step(
         if share > settings.max_lower_bound_share:
             trigger = HistoryTrigger.DENSITY_GATE
             reasons.append(
-                f"{share:.0%} of the buckets read are lower bounds (limit "
-                f"{settings.max_lower_bound_share:.0%}): too many distinct values per bucket, "
+                f"{percent(share)} of the buckets read are lower bounds (limit "
+                f"{percent(settings.max_lower_bound_share)}): too many distinct values per bucket, "
                 "so history would be lower bounds"
             )
 

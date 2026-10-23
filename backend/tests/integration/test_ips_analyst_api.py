@@ -200,7 +200,7 @@ SHARE_DETAILS = {
     "baseline_low": 0.2, "baseline_high": 0.3, "deviation_score": 9.0, "threshold": 3.5,
     "sample_count": 12, "interval_start": "2026-10-13T09:00:00+00:00",
     "interval_end": "2026-10-13T10:00:00+00:00", "confidence": 0.85,
-    "reason": "the largest source IP sent 700 of 1000 events (70.0%)",
+    "reason": "the largest source IP sent 700 of 1000 events (70.0\u00a0%)",
     "insufficient_data": False,
     "extra": {
         "evidence_version": 1, "detector_type": "IPS_SOURCE_CONCENTRATION_SPIKE",
