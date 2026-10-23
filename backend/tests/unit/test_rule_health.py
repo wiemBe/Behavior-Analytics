@@ -360,11 +360,11 @@ class TestClassifications:
         assert verdict.required_log_sources_healthy is False
         assert "Linux OS is not delivering events" in verdict.missing_dependencies
 
-    def test_missing_building_block_defaults_to_healthy(self) -> None:
-        """An unknown dependency is not assumed broken; we lack evidence, not health.
+    def test_missing_building_block_is_insufficient_data(self) -> None:
+        """A building block that has not been observed is not evidence of health.
 
-        Treating "not in the map" as disabled would degrade every rule whose
-        building block has not yet been synced.
+        The rule has fired. That does not make an unsynced dependency healthy,
+        and it is not a known failure either, so the verdict is insufficient.
         """
         verdict = classify(
             make_rule(age_days=200, last_fired_at=NOW),
@@ -372,8 +372,75 @@ class TestClassifications:
             dependencies=[dependency(RuleDependencyKind.BUILDING_BLOCK, "unsynced")],
             building_block_enabled={},
         )
+        assert verdict.status == RuleHealthStatus.INSUFFICIENT_DATA
+        assert "unsynced" in verdict.reason
+        assert "not been observed" in verdict.reason
+        assert verdict.building_blocks_healthy is None
+        assert any("unsynced" in item for item in verdict.missing_dependencies)
+
+    def test_missing_log_source_type_is_insufficient_data(self) -> None:
+        verdict = classify(
+            make_rule(age_days=200, last_fired_at=NOW),
+            trigger_count=10,
+            dependencies=[
+                dependency(
+                    RuleDependencyKind.LOG_SOURCE_TYPE, "12", target_name="Linux OS"
+                )
+            ],
+            log_source_type_healthy={},
+        )
+        assert verdict.status == RuleHealthStatus.INSUFFICIENT_DATA
+        assert "Linux OS" in verdict.reason
+        assert "not been observed" in verdict.reason
+        assert verdict.required_log_sources_healthy is None
+
+    def test_known_healthy_building_block_stays_healthy(self) -> None:
+        verdict = classify(
+            make_rule(age_days=200, last_fired_at=NOW),
+            trigger_count=10,
+            dependencies=[dependency(RuleDependencyKind.BUILDING_BLOCK, "77")],
+            building_block_enabled={"77": True},
+        )
         assert verdict.status == RuleHealthStatus.HEALTHY
         assert verdict.building_blocks_healthy is True
+
+    def test_known_degraded_dependency_outranks_an_unknown_one(self) -> None:
+        """A known failure is evidence. An unobserved sibling does not replace it."""
+        verdict = classify(
+            make_rule(age_days=200),
+            dependencies=[
+                dependency(
+                    RuleDependencyKind.BUILDING_BLOCK,
+                    "77",
+                    target_name="BB: Admin Hosts",
+                ),
+                dependency(
+                    RuleDependencyKind.BUILDING_BLOCK,
+                    "unsynced",
+                    target_name="BB: Missing",
+                ),
+            ],
+            building_block_enabled={"77": False},
+        )
+        assert verdict.status == RuleHealthStatus.DEPENDENCY_DEGRADED
+        assert verdict.building_blocks_healthy is False
+        assert "BB: Admin Hosts is disabled" in verdict.missing_dependencies
+        assert not any("Missing" in item for item in verdict.missing_dependencies)
+
+    def test_unknown_dependency_reason_names_at_most_five(self) -> None:
+        deps = [
+            dependency(RuleDependencyKind.BUILDING_BLOCK, str(i), target_name=f"BB {i}")
+            for i in range(6)
+        ]
+        verdict = classify(
+            make_rule(age_days=200, last_fired_at=NOW),
+            trigger_count=10,
+            dependencies=deps,
+            building_block_enabled={},
+        )
+        assert verdict.status == RuleHealthStatus.INSUFFICIENT_DATA
+        assert len(verdict.missing_dependencies) == 6
+        assert verdict.reason.count(";") == 4
 
     def test_multiple_missing_dependencies_are_all_reported(self) -> None:
         verdict = classify(

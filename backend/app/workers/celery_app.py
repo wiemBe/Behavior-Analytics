@@ -19,6 +19,16 @@ settings = get_settings()
 BEAT_HEARTBEAT_KEY = "qradar-observability:celery-beat-heartbeat"
 BEAT_HEARTBEAT_TTL_SECONDS = 180
 
+#: The anomaly evaluation beat's period, in seconds. `ANOMALY_MAX_BUCKET_ATTEMPTS`
+#: is expressed in these ticks, and the doctor's `anomaly_evaluation` check treats
+#: a source as trailing when its verdict is more than twice this behind.
+ANOMALY_EVALUATION_CADENCE_SECONDS = 60
+
+#: The Phase A collection beat interval (one tick), in seconds. The doctor uses
+#: this for the allowance between collection and evaluation (`one beat`), and
+#: the beat schedule uses it for the heartbeat and metric collection entries.
+BEAT_INTERVAL_SECONDS = 60
+
 celery_app = Celery(
     "qradar_observability",
     broker=settings.celery_broker_url,
@@ -47,16 +57,23 @@ celery_app.conf.beat_schedule = {
         # write comes one interval after a restart, and doctor FAILs on a
         # healthy stack.
         "task": "beat_heartbeat",
-        "schedule": 60.0,
+        "schedule": float(BEAT_INTERVAL_SECONDS),
     },
     "collect-metrics": {
         "task": "collect_metrics",
-        "schedule": 60.0,
+        "schedule": float(BEAT_INTERVAL_SECONDS),
     },
     "evaluate-anomalies": {
         # Runs shortly after each collection cycle.
         "task": "evaluate_anomalies",
-        "schedule": 60.0,
+        "schedule": float(ANOMALY_EVALUATION_CADENCE_SECONDS),
+    },
+    "apply-anomaly-fault-retention": {
+        # Daily, like the other retention tasks. Closed fault rows only: an open
+        # fault is the source's current state, and a given-up row is the only
+        # record that its bucket was never judged.
+        "task": "apply_anomaly_fault_retention",
+        "schedule": 86400.0,
     },
     "dispatch-notifications": {
         "task": "dispatch_notifications",

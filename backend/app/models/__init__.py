@@ -45,7 +45,11 @@ from app.models.log_source import (
     LogSourceDetectorState,
     LogSourceMetric,
 )
-from app.models.monitoring import AnomalyEvaluationWatermark, CollectionWatermark
+from app.models.monitoring import (
+    AnomalyEvaluationFault,
+    AnomalyEvaluationWatermark,
+    CollectionWatermark,
+)
 from app.models.offense import OffenseSnapshot
 from app.models.outage import OutageAlertPolicy
 from app.models.property_watch import (
@@ -115,6 +119,7 @@ __all__ = [
     "Alert",
     "AlertNotification",
     "AnalyticsRule",
+    "AnomalyEvaluationFault",
     "AnomalyEvaluationWatermark",
     "AnomalyExplanation",
     "AnomalyExplanationContributor",

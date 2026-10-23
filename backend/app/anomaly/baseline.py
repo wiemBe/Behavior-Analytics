@@ -27,6 +27,7 @@ from sqlalchemy import Table, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.anomaly.business_hours import is_expected_active
 from app.anomaly.seasonal import (
     anomaly_exclusion_span,
     in_any_span,
@@ -242,20 +243,15 @@ class BaselineBuilder:
         ):
             return "maintenance"
         # Business-hours-only sources: off-hours intervals are expected-empty and
-        # must not be baselined as if they were real observations.
-        if log_source.business_hours_only and not self._in_business_hours(when, log_source):
+        # must not be baselined as if they were real observations. The clock is
+        # the source's timezone; a wrapped window belongs to the day it starts on.
+        if log_source.business_hours_only and not is_expected_active(log_source, when):
             return "off_hours"
         # Known anomaly spans. An ongoing incident must not poison the baseline
         # it will later be judged against.
         if in_any_span(when, excluded):
             return "known_anomaly"
         return None
-
-    def _in_business_hours(self, when: datetime, log_source: LogSource) -> bool:
-        weekday = when.isoweekday()
-        if weekday not in (log_source.business_days or [1, 2, 3, 4, 5]):
-            return False
-        return log_source.business_hours_start <= when.hour < log_source.business_hours_end
 
     def _cell_row(
         self,

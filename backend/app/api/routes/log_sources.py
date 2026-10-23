@@ -27,6 +27,7 @@ from app.schemas.log_source import (
     LogSourceSummary,
     LogSourceUpdate,
     SyncResult,
+    business_days_usable,
 )
 from app.security.auth import get_principal
 from app.security.rbac import (
@@ -48,6 +49,35 @@ def _guard(principal: Principal, permission: str) -> None:
         require_permission(principal, permission)
     except PermissionDenied as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+
+
+def _reject_unusable_business_days(ls: LogSource, updates: dict[str, object]) -> None:
+    """422 when the merged row would be business-hours-only with no usable days.
+
+    Item bounds and an explicit empty list sent together with
+    `business_hours_only: true` are rejected by the schema. This covers a PATCH
+    that sets only one of the two fields.
+    """
+    hours_only = updates.get("business_hours_only", ls.business_hours_only)
+    if hours_only is not True:
+        return
+    days = updates.get("business_days", ls.business_days)
+    if business_days_usable(days):
+        return
+    raise HTTPException(
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail=[
+            {
+                "type": "value_error",
+                "loc": ["body", "business_days"],
+                "msg": (
+                    "business_days must list at least one ISO weekday from 1 to 7 "
+                    "when business_hours_only is true"
+                ),
+                "input": days,
+            }
+        ],
+    )
 
 
 def _jsonable(value: object) -> object:
@@ -112,7 +142,9 @@ async def update_log_source(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
 
     changes: dict[str, dict[str, object]] = {}
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates: dict[str, object] = payload.model_dump(exclude_unset=True)
+    _reject_unusable_business_days(ls, updates)
+    for field, value in updates.items():
         changes[field] = {"from": _jsonable(getattr(ls, field, None)), "to": _jsonable(value)}
         setattr(ls, field, value)
     await session.flush()

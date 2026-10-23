@@ -54,6 +54,7 @@ from app.models.waf import WafSourceProfile
 from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider, build_provider_for_instance
 from app.repositories.offense import OffenseRepository
+from app.services.anomaly_fault_retention import AnomalyFaultRetention
 from app.services.catchall_retention import CatchallRetention
 from app.services.concurrency import InMemoryConcurrencyLimiter
 from app.services.detection_coverage import DetectionCoverageEvaluator
@@ -736,13 +737,21 @@ async def evaluate_anomalies() -> dict:
                 )
             ).all()
         )
-        opened = resolved = 0
+        opened = resolved = failed = given_up = 0
         for source in sources:
             report = await engine.evaluate_pending(source)
             opened += len(report.opened)
             resolved += len(report.resolved)
+            failed += report.failed
+            given_up += report.given_up
         await session.commit()
-        return {"sources": len(sources), "opened": opened, "resolved": resolved}
+        return {
+            "sources": len(sources),
+            "opened": opened,
+            "resolved": resolved,
+            "failed": failed,
+            "given_up": given_up,
+        }
 
 
 # -------------------------------------------------------- anomaly explanation
@@ -1311,6 +1320,18 @@ async def apply_waf_retention() -> dict:
         return report.as_dict()
 
 
+async def apply_anomaly_fault_retention() -> dict:
+    """Delete closed anomaly evaluation faults older than the retention window.
+
+    An open fault is the source's current state and is never touched; a
+    given-up one is kept for the full window, because it is the only record
+    that its bucket has no verdict.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await AnomalyFaultRetention(session).run()).as_dict()
+
+
 async def evaluate_custom_rules() -> dict:
     """Judge custom threshold rules from stored buckets. Sends no Ariel search.
 
@@ -1633,6 +1654,11 @@ def apply_catchall_retention_task() -> dict:
 @celery_app.task(name="apply_waf_retention")
 def apply_waf_retention_task() -> dict:
     return _run(apply_waf_retention())
+
+
+@celery_app.task(name="apply_anomaly_fault_retention")
+def apply_anomaly_fault_retention_task() -> dict:
+    return _run(apply_anomaly_fault_retention())
 
 
 @celery_app.task(name="dispatch_ips_collection")

@@ -105,6 +105,8 @@ accepted compatibility settings, but search-family cadence is the scheduler cont
 | `ANOMALY_MIN_ABSOLUTE_DELTA_EVENTS` | `100` | Minimum absolute event change |
 | `ANOMALY_MIN_BUCKET_EVENTS` | `50` | Minimum material bucket population |
 | `ANOMALY_SILENCE_GRACE_BUCKETS` | `1` | Missing buckets tolerated before silence evaluation |
+| `ANOMALY_MAX_BUCKET_ATTEMPTS` | `3` | Failed evaluation ticks on one bucket before it is given up. `1`–`20` |
+| `ANOMALY_FAULT_RETENTION_DAYS` | `30` | Days a resolved or given-up fault is kept. `1`–`3650` |
 | `OUTAGE_ALERT_DEFAULT` | `ALERT` | Default source-silence policy when no override applies |
 
 ## WAF behavior

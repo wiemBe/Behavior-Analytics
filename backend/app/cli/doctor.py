@@ -13,7 +13,7 @@ import re
 import ssl
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -23,20 +23,32 @@ import httpx
 import redis.asyncio as redis
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Environment, Settings, get_settings
 from app.core.database import dispose_engine, get_sessionmaker
+from app.history.origin import is_live_clause
 from app.models.enums import SearchFamily, default_search_cadence
 from app.models.instance import QRadarInstance
-from app.models.monitoring import CollectionWatermark
+from app.models.log_source import LogSource, LogSourceMetric
+from app.models.monitoring import (
+    AnomalyEvaluationFault,
+    AnomalyEvaluationWatermark,
+    CollectionWatermark,
+)
 from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider_for_instance
 from app.providers.tls import build_ssl_context
 from app.security.redaction import redact
-from app.workers.celery_app import BEAT_HEARTBEAT_KEY, BEAT_HEARTBEAT_TTL_SECONDS, celery_app
+from app.workers.celery_app import (
+    ANOMALY_EVALUATION_CADENCE_SECONDS,
+    BEAT_HEARTBEAT_KEY,
+    BEAT_HEARTBEAT_TTL_SECONDS,
+    BEAT_INTERVAL_SECONDS,
+    celery_app,
+)
 
 FRONTEND_HEALTH_URL = "http://frontend:3000/api/health"
 BACKEND_VERSION_URL = "http://backend:8000/api/v1/version"
@@ -55,6 +67,7 @@ _CHECK_RUNBOOKS = (
     ("cadence", "OPS-R30"),
     ("families_off", "OPS-R7"),
     ("errors_recent", "OPS-R30"),
+    ("anomaly_evaluation", "OPS-R61"),
     ("pg_database_size", "OPS-R14"),
     ("encryption", "OPS-R16"),
     ("secrets_files", "OPS-R1"),
@@ -695,6 +708,140 @@ class Doctor:
                 f"recent errors could not be counted ({type(exc).__name__})",
                 "OPS-R30",
             )
+
+    async def check_anomaly_evaluation(self) -> CheckResult:
+        """Whether the anomaly engine is judging every monitored source's buckets.
+
+        `AnomalyEvaluationWatermark` is not a `CollectionWatermark`, so the
+        `watermarks` check cannot see it. Every read here is set-based: given-up
+        and open faults are counted on the fault table, and a trailing source is
+        found in one correlated `EXISTS`, never a round trip per source.
+
+        A pending bucket is not late the moment it is written: buckets are
+        `bucket_seconds` wide, the collector writes after the bucket ends plus
+        the settle, the beat can wait one more tick, and the engine judges it on
+        the next evaluation tick. A source trails only once that allowance has
+        elapsed, measured per row, so a healthy system does not WARN between a
+        collection and the tick that judges it.
+        """
+        now = self.now()
+        cutoff = now - timedelta(hours=24)
+        allowance = timedelta(
+            seconds=(
+                self.settings.search_cadence_settle_seconds
+                + BEAT_INTERVAL_SECONDS
+                + 2 * ANOMALY_EVALUATION_CADENCE_SECONDS
+            )
+        )
+        try:
+            async with self.sessionmaker() as session:
+                given_up, sources = (
+                    await session.execute(
+                        select(
+                            func.count(),
+                            func.count(AnomalyEvaluationFault.log_source_id.distinct()),
+                        ).where(AnomalyEvaluationFault.given_up_at >= cutoff)
+                    )
+                ).one()
+                last = (
+                    await session.execute(
+                        select(
+                            AnomalyEvaluationFault.error_class,
+                            AnomalyEvaluationFault.last_failed_at,
+                        )
+                        .where(AnomalyEvaluationFault.given_up_at >= cutoff)
+                        .order_by(AnomalyEvaluationFault.last_failed_at.desc())
+                        .limit(1)
+                    )
+                ).first()
+                open_faults = int(
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(AnomalyEvaluationFault)
+                        .where(
+                            AnomalyEvaluationFault.resolved_at.is_(None),
+                            AnomalyEvaluationFault.given_up_at.is_(None),
+                        )
+                    )
+                    or 0
+                )
+                # `make_interval` keeps the per-row width in SQL; `allowance`
+                # is the constant part, bound once.
+                expected_judged_at = (
+                    LogSourceMetric.bucket_start
+                    + func.make_interval(0, 0, 0, 0, 0, 0, LogSourceMetric.bucket_seconds)
+                    + allowance
+                )
+                pending = (
+                    select(LogSourceMetric.bucket_start)
+                    .where(
+                        LogSourceMetric.log_source_id == LogSource.id,
+                        is_live_clause(LogSourceMetric),
+                        or_(
+                            AnomalyEvaluationWatermark.evaluated_through.is_(None),
+                            LogSourceMetric.bucket_start
+                            > AnomalyEvaluationWatermark.evaluated_through,
+                        ),
+                        expected_judged_at < now,
+                    )
+                    .correlate(LogSource, AnomalyEvaluationWatermark)
+                    .exists()
+                )
+                trailing = int(
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(LogSource)
+                        .outerjoin(
+                            AnomalyEvaluationWatermark,
+                            AnomalyEvaluationWatermark.log_source_id == LogSource.id,
+                        )
+                        .where(LogSource.monitoring_enabled.is_(True), pending)
+                    )
+                    or 0
+                )
+        except Exception as exc:
+            return CheckResult(
+                "anomaly_evaluation",
+                Status.FAIL,
+                f"anomaly evaluation state could not be read ({type(exc).__name__})",
+                "OPS-R61",
+            )
+
+        if given_up:
+            # A given-up bucket is data the platform promised and did not
+            # produce, so it outranks the retryable states below.
+            if last is not None:
+                when = last[1].astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+                detail = f"last failure {_safe_text(last[0])} at {when}"
+            else:
+                detail = "the failing class was not recorded"
+            return CheckResult(
+                "anomaly_evaluation",
+                Status.FAIL,
+                f"{int(given_up)} anomaly bucket(s) were not judged in the last 24 h "
+                f"on {int(sources)} source(s); {detail}",
+                "OPS-R61",
+            )
+        if open_faults:
+            return CheckResult(
+                "anomaly_evaluation",
+                Status.WARN,
+                f"{open_faults} anomaly bucket(s) are failing evaluation and will be retried",
+                "OPS-R61",
+            )
+        if trailing:
+            return CheckResult(
+                "anomaly_evaluation",
+                Status.WARN,
+                f"{trailing} monitored source(s) have a live bucket that should already "
+                "have been judged",
+                "OPS-R61",
+            )
+        return CheckResult(
+            "anomaly_evaluation",
+            Status.PASS,
+            "no bucket given up in 24 h, no open fault, and every monitored source is judged",
+        )
 
     async def check_pg_database_size(self) -> CheckResult:
         try:
