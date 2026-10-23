@@ -609,6 +609,8 @@ class BehaviorSummaryOut(BaseModel):
     sources_with_evaluation_faults: int = 0
     #: Given-up buckets in the last 24 h. These buckets have no verdict.
     buckets_not_judged: int = 0
+    #: Anomalies with a recorded resolution timestamp in the last 24 h.
+    resolved_last_24h: int = 0
     recently_resolved: list[AnomalyListItem] = Field(default_factory=list)
     highest_deviation: list[AnomalyListItem] = Field(default_factory=list)
 

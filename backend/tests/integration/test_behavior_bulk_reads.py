@@ -372,6 +372,26 @@ async def test_statement_count_does_not_grow_with_the_fleet(
     b = await _add_source(db_session, inst, "count-02-unreliable", 3202)
     await _add_bucket(db_session, b, now)
     await _add_cell(db_session, b, now, median=2.0, reliable=False)
+    db_session.add_all(
+        [
+            LogSourceAnomaly(
+                log_source_id=a,
+                anomaly_type=AnomalyType.VOLUME_SPIKE,
+                severity=Severity.LOW,
+                state=AnomalyState.RESOLVED,
+                detected_at=now - timedelta(hours=2),
+                resolved_at=now - timedelta(hours=1),
+            ),
+            LogSourceAnomaly(
+                log_source_id=b,
+                anomaly_type=AnomalyType.VOLUME_DROP,
+                severity=Severity.LOW,
+                state=AnomalyState.RESOLVED,
+                detected_at=now - timedelta(hours=27),
+                resolved_at=now - timedelta(hours=25),
+            ),
+        ]
+    )
     await db_session.commit()
 
     api = reader_client(db_schema)
@@ -387,6 +407,7 @@ async def test_statement_count_does_not_grow_with_the_fleet(
         with recorded_statements(anchor) as statements:
             response = api.get("/api/v1/anomalies/summary")
         assert response.status_code == 200
+        assert response.json()["resolved_last_24h"] == 1
         summary_two = len(statements)
 
         # Four more: a source with no bucket, one with a bucket but no cell,
@@ -411,6 +432,7 @@ async def test_statement_count_does_not_grow_with_the_fleet(
         with recorded_statements(anchor) as statements:
             response = api.get("/api/v1/anomalies/summary")
         assert response.status_code == 200
+        assert response.json()["resolved_last_24h"] == 1
         assert len(statements) == summary_two, (summary_two, statements)
 
 

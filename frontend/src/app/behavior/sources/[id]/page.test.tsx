@@ -132,8 +132,8 @@ function anomaly(over: Partial<AnomalySummary> = {}): AnomalySummary {
   };
 }
 
-function page(items: AnomalySummary[]): Page<AnomalySummary> {
-  return { items, total: items.length, limit: 20, offset: 0 };
+function page(items: AnomalySummary[], total = items.length): Page<AnomalySummary> {
+  return { items, total, limit: 20, offset: 0 };
 }
 
 beforeEach(() => {
@@ -145,6 +145,8 @@ async function renderPage({
   source = behavior(),
   buckets = [bucket()],
   anomalies = [] as AnomalySummary[],
+  activeAnomalies,
+  anomalyTotal,
   cells = [cell()],
   metadata = meta(),
   params = {} as Record<string, string | undefined>,
@@ -152,6 +154,8 @@ async function renderPage({
   source?: SourceBehavior;
   buckets?: MetricBucket[];
   anomalies?: AnomalySummary[];
+  activeAnomalies?: AnomalySummary[];
+  anomalyTotal?: number;
   cells?: BaselineCell[];
   metadata?: LogSourceDetail | null;
   params?: Record<string, string | undefined>;
@@ -159,7 +163,11 @@ async function renderPage({
   vi.spyOn(api, "sourceBehavior").mockResolvedValue(source);
   vi.spyOn(api, "logSource").mockResolvedValue(metadata as LogSourceDetail);
   vi.spyOn(api, "sourceMetrics").mockResolvedValue(buckets);
-  vi.spyOn(api, "anomalies").mockResolvedValue(page(anomalies));
+  vi.spyOn(api, "anomalies").mockImplementation(async (request) =>
+    request?.active_only
+      ? page(activeAnomalies ?? anomalies)
+      : page(anomalies, anomalyTotal ?? anomalies.length),
+  );
   vi.spyOn(api, "sourceBaselines").mockResolvedValue(cells);
   return render(
     await SourceBehaviorPage({
@@ -447,6 +455,16 @@ describe("chart text summary", () => {
     expect(summary).toContain("1 anomaly was detected");
   });
 
+  it("uses the window total when the anomaly page is capped", async () => {
+    await renderPage({
+      anomalies: Array.from({ length: 20 }, (_, index) => anomaly({ id: `a-${index}` })),
+      anomalyTotal: 37,
+    });
+    expect(chartProps[0].textSummary as string).toContain(
+      "Showing 20 of 37 anomalies detected in this window.",
+    );
+  });
+
   it("says a still-learning source has no expectation", async () => {
     await renderPage({
       source: behavior({ state: "INSUFFICIENT_DATA", expected_eps: null }),
@@ -509,7 +527,34 @@ describe("anomalies", () => {
   it("shows a calm empty state rather than an empty table", async () => {
     await renderPage({ anomalies: [] });
     expect(screen.queryByRole("region", { name: "Active anomalies" })).toBeNull();
+    expect(
+      screen.getByText(/No incident is currently open, a candidate, or recovering/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/No anomalies were detected in the last 6 hours/)).toBeInTheDocument();
+  });
+
+  it("shows an active incident detected before the selected window", async () => {
+    await renderPage({
+      anomalies: [],
+      activeAnomalies: [
+        anomaly({ id: "older-open", detected_at: "2026-07-19T02:00:00Z" }),
+      ],
+    });
+
+    expect(screen.getByRole("region", { name: "Active anomalies" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute(
+      "href",
+      "/anomalies/older-open",
+    );
+    expect(
+      screen.queryByText(/No incident is currently open, a candidate, or recovering/),
+    ).toBeNull();
+    expect(api.anomalies).toHaveBeenCalledWith({
+      log_source_id: SOURCE_ID,
+      active_only: true,
+      limit: 200,
+      subject_kind: "LOG_SOURCE",
+    });
   });
 
   it("says an empty result is not a clean one for an unbaselined source", async () => {
@@ -532,7 +577,32 @@ describe("anomalies", () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    expect(screen.getByRole("alert")).toHaveTextContent(/not an absence of anomalies/i);
+    expect(screen.getAllByRole("alert").some((notice) =>
+      /not an absence of anomalies/i.test(notice.textContent ?? ""),
+    )).toBe(true);
+    expect(screen.queryByText(/No incident is currently open/)).toBeNull();
+  });
+
+  it("treats a failed active read as unknown, not as no current incident", async () => {
+    vi.spyOn(api, "sourceBehavior").mockResolvedValue(behavior());
+    vi.spyOn(api, "logSource").mockResolvedValue(meta());
+    vi.spyOn(api, "sourceMetrics").mockResolvedValue([bucket()]);
+    vi.spyOn(api, "anomalies").mockImplementation(async (request) => {
+      if (request?.active_only) throw new Error("boom");
+      return page([]);
+    });
+    vi.spyOn(api, "sourceBaselines").mockResolvedValue([]);
+    render(
+      await SourceBehaviorPage({
+        params: Promise.resolve({ id: SOURCE_ID }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /Whether an incident is currently open, a candidate, or recovering is unknown/,
+    );
+    expect(screen.queryByText(/No incident is currently open/)).toBeNull();
   });
 });
 

@@ -343,6 +343,7 @@ export function summarizeSourceTimeline({
   missing,
   partial,
   anomalyCount,
+  shownAnomalyCount = anomalyCount,
 }: {
   hours: number;
   observed: (number | null)[];
@@ -350,7 +351,8 @@ export function summarizeSourceTimeline({
   expectedEps: number | null;
   missing: number;
   partial: number;
-  anomalyCount: number;
+  anomalyCount: number | null;
+  shownAnomalyCount?: number | null;
 }): string {
   const parts: string[] = [`Observed volume over the last ${rangeLabel(hours as RangeHours)}.`];
 
@@ -387,11 +389,19 @@ export function summarizeSourceTimeline({
     );
   }
 
-  parts.push(
-    anomalyCount === 0
-      ? "No anomalies were detected in this window."
-      : `${anomalyCount} anomal${anomalyCount === 1 ? "y was" : "ies were"} detected in this window.`,
-  );
+  if (anomalyCount == null) {
+    parts.push("Anomaly history could not be loaded for this window.");
+  } else if (shownAnomalyCount != null && shownAnomalyCount < anomalyCount) {
+    parts.push(
+      `Showing ${shownAnomalyCount} of ${anomalyCount} anomalies detected in this window.`,
+    );
+  } else {
+    parts.push(
+      anomalyCount === 0
+        ? "No anomalies were detected in this window."
+        : `${anomalyCount} anomal${anomalyCount === 1 ? "y was" : "ies were"} detected in this window.`,
+    );
+  }
 
   return parts.join(" ");
 }

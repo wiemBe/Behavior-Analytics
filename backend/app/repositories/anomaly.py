@@ -480,6 +480,16 @@ class AnomalyRepository:
             ).all()
         )
 
+    async def resolved_count(self, *, since: datetime, until: datetime) -> int:
+        """Count resolution timestamps in one half-open window."""
+        count = await self.session.scalar(
+            select(func.count())
+            .select_from(LogSourceAnomaly)
+            .where(LogSourceAnomaly.resolved_at >= since)
+            .where(LogSourceAnomaly.resolved_at < until)
+        )
+        return int(count or 0)
+
     async def highest_deviation(self, *, limit: int = 10) -> list[LogSourceAnomaly]:
         """Active anomalies ranked by how far they departed from expectation.
 

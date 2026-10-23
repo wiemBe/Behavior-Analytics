@@ -39,6 +39,15 @@ class AlertOut(BaseModel):
     source_anomaly_ids: list[str]
 
 
+class AlertPage(BaseModel):
+    """Offset pagination with an explicit total, matching the other list APIs."""
+
+    items: list[AlertOut]
+    total: int
+    limit: int
+    offset: int
+
+
 class NotificationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

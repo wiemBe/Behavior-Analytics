@@ -24,7 +24,7 @@ export function AlertBell({ overview }: { overview: Loaded<SocOverview> }) {
 
   return (
     <Link
-      href="/alerts"
+      href="/alerts?status=OPEN"
       className="topbar-bell plain"
       aria-label={name}
       title={count === null && overview.state !== "loading" ? "Alert count unavailable" : undefined}

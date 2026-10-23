@@ -106,13 +106,19 @@ export default async function SourceBehaviorPage({
 
   // Each of these enriches the page; none of them is the page. A failure in
   // one is reported in place rather than replacing everything with an error.
-  const [metaResult, bucketsResult, anomaliesResult, cellsResult] =
+  const [metaResult, bucketsResult, anomaliesResult, activeResult, cellsResult] =
     await Promise.allSettled([
       api.logSource(id),
       api.sourceMetrics(id, { since, until, limit: METRIC_LIMIT }),
       // log_source_id also matches a WAF endpoint's log source, so the kind
       // must be pinned explicitly to keep this page on Phase A anomalies.
       api.anomalies({ log_source_id: id, limit: 20, since, until, subject_kind: "LOG_SOURCE" }),
+      api.anomalies({
+        log_source_id: id,
+        active_only: true,
+        limit: 200,
+        subject_kind: "LOG_SOURCE",
+      }),
       api.sourceBaselines(id),
     ]);
 
@@ -123,10 +129,13 @@ export default async function SourceBehaviorPage({
   const anomalyPage: Page<AnomalySummary> | null =
     anomaliesResult.status === "fulfilled" ? anomaliesResult.value : null;
   const anomalies = anomalyPage?.items ?? [];
+  const activePage: Page<AnomalySummary> | null =
+    activeResult.status === "fulfilled" ? activeResult.value : null;
   const cells: BaselineCell[] =
     cellsResult.status === "fulfilled" ? cellsResult.value : [];
 
-  const { active, recent } = partitionAnomalies(anomalies);
+  const { active } = partitionAnomalies(activePage?.items ?? []);
+  const { recent } = partitionAnomalies(anomalies);
   const quality = baselineQuality(behavior, cells);
   const metricsFailed = bucketsResult.status === "rejected";
   const health = collectionHealth(buckets, behavior.last_bucket_at, range * 3600);
@@ -143,7 +152,8 @@ export default async function SourceBehaviorPage({
     expectedEps: behavior.expected_eps,
     missing,
     partial,
-    anomalyCount: anomalies.length,
+    anomalyCount: anomalyPage?.total ?? null,
+    shownAnomalyCount: anomalyPage?.items.length ?? null,
   });
 
   // Secondary conditions worth stating next to the numbers they qualify.
@@ -271,7 +281,8 @@ export default async function SourceBehaviorPage({
         <SourceAnomalies
           active={active}
           recent={recent}
-          failed={anomaliesResult.status === "rejected"}
+          activeFailed={activeResult.status === "rejected"}
+          recentFailed={anomaliesResult.status === "rejected"}
           windowLabel={rangeLabel(range)}
           unjudged={unjudged}
         />
