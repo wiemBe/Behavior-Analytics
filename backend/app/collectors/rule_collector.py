@@ -49,19 +49,6 @@ COLLECTOR_NAME = "rule_inventory"
 #: Rows per capacity insert: 6 bind parameters each, under asyncpg's 32,767.
 CAPACITY_CHUNK = 5000
 
-#: Columns the SOC owns. Listed explicitly rather than by exclusion so that
-#: adding a QRadar-mirrored column can never silently start clobbering
-#: analyst-entered data.
-SOC_OWNED_FIELDS = frozenset(
-    {
-        "owner",
-        "mitre_techniques",
-        "soc_notes",
-        "expected_daily_firings",
-        "health_monitoring_enabled",
-    }
-)
-
 
 @dataclass
 class RuleSyncReport:

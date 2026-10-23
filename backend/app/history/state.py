@@ -83,7 +83,6 @@ class StateChange:
 S = HistoryState
 T = HistoryTrigger
 
-_ACTIVE = (S.NOT_REQUESTED, S.WAITING, S.READING)
 _FINISHED = (S.COMPLETE, S.PARTIAL, S.UNAVAILABLE)
 
 # (state, trigger) -> (next state, the reason in words)
@@ -168,15 +167,15 @@ def next_state(current: HistoryState, trigger: HistoryTrigger) -> StateChange:
 
 
 def legal_triggers(current: HistoryState) -> frozenset[HistoryTrigger]:
-    """The triggers a state accepts."""
+    """Test-only: the triggers a state accepts. Production uses ``next_state``."""
     return frozenset(t for (s, t) in _TRANSITIONS if s is current)
 
 
 def all_transitions() -> dict[tuple[HistoryState, HistoryTrigger], StateChange]:
-    """Every legal transition with its reason, for tests and the admin page."""
+    """Test-only: every legal transition. No admin page reads this table."""
     return {key: next_state(*key) for key in _TRANSITIONS}
 
 
 def is_finished(state: HistoryState) -> bool:
-    """A finished reading: the scope no longer reads, whatever the verdict."""
+    """Test-only: a finished reading. Production compares states directly."""
     return state in (S.COMPLETE, S.PARTIAL, S.UNAVAILABLE, S.NOT_ELIGIBLE)

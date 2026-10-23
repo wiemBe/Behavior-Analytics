@@ -21,9 +21,11 @@ from app.history.lifecycle import (
     ScopeRowView,
     bounded_reason,
     console_mode,
+    decision_view,
     new_scope_row,
     scope_action,
     scope_progress,
+    scope_view,
     transition_row,
 )
 from app.history.planner import PlannerSettings, new_progress
@@ -107,6 +109,67 @@ def test_the_tie_rule_equal_times_read_active() -> None:
         stop_requested_at=NOW, stop_requested_by="b",
     )
     assert console_mode(view) is ConsoleMode.ACTIVE
+
+
+class _TextAnswer:
+    def __str__(self) -> str:
+        return "NO"
+
+
+def test_decision_view_reads_none_attributes_and_mappings() -> None:
+    assert decision_view(None) is None
+    attributes = decision_view(
+        type(
+            "Row",
+            (),
+            {
+                "answer": "YES",
+                "days": 28,
+                "start_requested_at": NOW,
+                "start_requested_by": "a",
+                "stop_requested_at": None,
+                "stop_requested_by": None,
+            },
+        )()
+    )
+    assert attributes == DecisionView(
+        "YES", 28, start_requested_at=NOW, start_requested_by="a"
+    )
+    mapped = decision_view(
+        {
+            "answer": _TextAnswer(),
+            "days": None,
+            "start_requested_at": None,
+            "start_requested_by": None,
+            "stop_requested_at": None,
+            "stop_requested_by": None,
+        }
+    )
+    assert mapped == DecisionView("NO")
+
+
+def test_scope_view_reads_none_attributes_and_mappings() -> None:
+    assert scope_view(None) is None
+    columns = {
+        "state": "WAITING",
+        "days_requested": None,
+        "days_target": 7,
+        "target_start": None,
+        "floor": None,
+        "through": None,
+        "anchor": None,
+        "started_at": None,
+        "finished_at": None,
+        "reason": "waiting",
+        "progress": {},
+    }
+    from_attributes = scope_view(type("Scope", (), columns)())
+    from_mapping = scope_view(columns)
+    assert from_attributes == from_mapping
+    assert from_mapping is not None
+    assert from_mapping.state is S.WAITING
+    assert from_mapping.days_target == 7
+    assert from_mapping.reason == "waiting"
 
 
 @pytest.mark.parametrize(

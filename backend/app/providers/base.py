@@ -685,10 +685,6 @@ class QRadarProvider(ABC):
         self.require(ProviderCapability.INVENTORY)
         return []
 
-    async def get_rule(self, qradar_id: int) -> AnalyticsRuleDTO | None:
-        self.require(ProviderCapability.INVENTORY)
-        raise NotImplementedError
-
     async def validate_connection(self) -> InstanceInfoDTO:
         """Prove credentials, TLS and reachability with one cheap call."""
         return await self.get_instance_info()
@@ -708,18 +704,6 @@ class QRadarProvider(ABC):
         cannot filter server-side must still honour it by filtering locally, so
         callers can rely on the result never predating the watermark.
         """
-
-    async def get_offense(self, qradar_id: int) -> OffenseDTO | None:
-        self.require(ProviderCapability.OFFENSES)
-        raise NotImplementedError
-
-    async def list_offense_types(self) -> dict[int, str]:
-        self.require(ProviderCapability.OFFENSES)
-        return {}
-
-    async def list_offense_closing_reasons(self) -> dict[int, str]:
-        self.require(ProviderCapability.OFFENSES)
-        return {}
 
     # -- AQL / Ariel (guarded by AQL_EXECUTION capability) ------------------
     async def create_ariel_search(self, aql: str) -> ArielSearchHandleDTO:

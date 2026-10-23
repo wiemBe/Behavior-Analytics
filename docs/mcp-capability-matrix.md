@@ -182,5 +182,5 @@ Regenerate this matrix after any version bump:
 python backend/scripts/extract_mcp_capabilities.py --repo qradar-mcp --check docs/mcp-capability-matrix.md
 ```
 
-CI fails if the pinned commit exposes a tool absent from this document — a new write tool can
-never land silently.
+No CI step runs this check. A new tool on the pinned commit is not rejected until someone
+runs the command above.

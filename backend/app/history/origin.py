@@ -33,7 +33,7 @@ PHASE_A_HISTORY_SOURCES: tuple[str, ...] = (PHASE_A_HISTORY_SOURCE, PHASE_A_MOCK
 
 
 def marker_column(family: HistoryFamily) -> str:
-    """The column that carries the marker for a family."""
+    """Test-only: the column that carries the marker. Writers use ``marker_values``."""
     return COLLECTION_SOURCE_COLUMN if family is HistoryFamily.PHASE_A else ORIGIN_COLUMN
 
 

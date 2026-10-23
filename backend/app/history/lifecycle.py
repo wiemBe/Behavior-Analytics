@@ -25,7 +25,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, overload
 
 from app.history.planner import ScopeProgress
 from app.history.progress_codec import DecodedProgress, decode_progress
@@ -123,6 +124,49 @@ class DecisionView:
             _aware(at, f"{kind}_requested_at")
             if at is not None and self.answer != ANSWER_YES:
                 raise LifecycleError("a request exists only on a YES")
+
+
+@overload
+def decision_view(row: None) -> None: ...
+
+
+@overload
+def decision_view(row: object) -> DecisionView: ...
+
+
+def decision_view(row: object | None) -> DecisionView | None:
+    """The lifecycle's view of a decision row, from an object or a mapping.
+
+    ``None`` stays ``None``. An attribute row copies ``answer`` as stored. A
+    mapping's ``answer`` is read as text, which is what a freshly built column
+    dict holds. Times are copied as given: a caller that stores naive times
+    coerces them before calling this.
+    """
+    if row is None:
+        return None
+    source: Any = row
+    if isinstance(source, Mapping):
+        answer = str(source["answer"])
+        days = source["days"]
+        start_requested_at = source["start_requested_at"]
+        start_requested_by = source["start_requested_by"]
+        stop_requested_at = source["stop_requested_at"]
+        stop_requested_by = source["stop_requested_by"]
+    else:
+        answer = source.answer
+        days = source.days
+        start_requested_at = source.start_requested_at
+        start_requested_by = source.start_requested_by
+        stop_requested_at = source.stop_requested_at
+        stop_requested_by = source.stop_requested_by
+    return DecisionView(
+        answer=answer,
+        days=days,
+        start_requested_at=start_requested_at,
+        start_requested_by=start_requested_by,
+        stop_requested_at=stop_requested_at,
+        stop_requested_by=stop_requested_by,
+    )
 
 
 def console_mode(decision: DecisionView | None) -> ConsoleMode:
@@ -395,27 +439,41 @@ def transition_row(
     return values
 
 
-def scope_view(row: Any | None) -> ScopeRowView | None:
-    """The lifecycle's view of a scope row, from any object holding the columns.
+@overload
+def scope_view(row: None) -> None: ...
+
+
+@overload
+def scope_view(row: Mapping[str, Any]) -> ScopeRowView: ...
+
+
+@overload
+def scope_view(row: object) -> ScopeRowView: ...
+
+
+def scope_view(row: object | None) -> ScopeRowView | None:
+    """The lifecycle's view of a scope row, from an object or a column mapping.
 
     The stored row (the ORM object the repository hands back) is the usual case;
-    `None` reads as `None`. `state` is read as a `HistoryState`, so a caller never
-    compares raw strings against the lifecycle's states.
+    a mapping is the row a family has just built. `None` reads as `None`.
+    `state` is read as a `HistoryState`, so a caller never compares raw strings
+    against the lifecycle's states.
     """
     if row is None:
         return None
+    source: Any = SimpleNamespace(**row) if isinstance(row, Mapping) else row
     return ScopeRowView(
-        state=HistoryState(row.state),
-        days_requested=row.days_requested,
-        days_target=row.days_target,
-        target_start=row.target_start,
-        floor=row.floor,
-        through=row.through,
-        anchor=row.anchor,
-        started_at=row.started_at,
-        finished_at=row.finished_at,
-        reason=row.reason,
-        progress=row.progress,
+        state=HistoryState(source.state),
+        days_requested=source.days_requested,
+        days_target=source.days_target,
+        target_start=source.target_start,
+        floor=source.floor,
+        through=source.through,
+        anchor=source.anchor,
+        started_at=source.started_at,
+        finished_at=source.finished_at,
+        reason=source.reason,
+        progress=source.progress,
     )
 
 

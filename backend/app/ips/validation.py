@@ -56,6 +56,7 @@ class IpsProfileValidation:
     ariel_searches: int
 
     def field_status(self, logical: IpsLogicalField) -> IpsFieldStatus:
+        """Test-only lookup of one field's status on a validation result."""
         return next(field.status for field in self.fields if field.logical is logical)
 
     def as_report(self) -> dict[str, Any]:

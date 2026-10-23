@@ -1,8 +1,8 @@
-"""Celery application.
+"""Celery application and beat schedule.
 
-Phase 1 defines the app and the beat schedule placeholder only; the collection,
-anomaly and notification tasks are registered in Phase 2. APScheduler is the
-documented MVP fallback for teams not running Celery — see README.
+Beat drives collection, detection, notification and retention. There is no
+scheduler fallback: APScheduler only parses cron expressions for scheduled
+searches.
 """
 
 from __future__ import annotations

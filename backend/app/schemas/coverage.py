@@ -11,17 +11,6 @@ from app.models.enums import CoverageStatus, MappingSource
 from app.schemas.offense import _Sanitized
 
 
-class CoverageEvidenceRule(BaseModel):
-    rule_qradar_id: int
-    rule_name: str
-    enabled: bool
-    health_status: str
-    mapping_source: str
-    mapping_confidence: float
-    contributes: bool
-    reason: str
-
-
 class TechniqueCoverage(_Sanitized):
     instance_id: uuid.UUID
     technique_id: str

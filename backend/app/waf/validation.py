@@ -122,6 +122,7 @@ class ProfileValidation:
     total_query: str | None = None
 
     def field_status(self, logical: WafLogicalField) -> WafFieldStatus:
+        """Test-only lookup of one field's status on a validation result."""
         return next(f.status for f in self.fields if f.logical is logical)
 
     def as_report(self) -> dict[str, Any]:

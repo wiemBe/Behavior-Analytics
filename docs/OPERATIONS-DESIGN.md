@@ -573,10 +573,8 @@ be made inside it:
   to boot if autonomous actions are on (`config.py:889-892`).
 - `MCP_ENABLED=false`.
 
-`.env.example` still describes `AUTH_PROVIDER` as `local | oidc`
-(`.env.example:226-227`). Production refuses `oidc` (`config.py:907-911`).
-OPS-4 updates that comment so the file an operator reads matches the wizard.
-The wizard does not copy `.env.example` as the production file. It writes the
+`.env.example` lists `AUTH_PROVIDER` as `local | session | oidc`. Production refuses
+`oidc`. The wizard does not copy `.env.example` as the production file. It writes the
 list above.
 
 ### 3.4 Proxy and TLS
@@ -1436,12 +1434,12 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
     into the keyring. The backup's `env.bak` is the copy. Do not generate a
     new key to "fix" the error.
 
-17. **OPS-R17. The backend restarts with `Unsafe production configuration`.** Cause:
-    one of the startup checks (`config.py:875-914`): `DEBUG`, TLS off, short
+17. **OPS-R17. The backend restarts with `Unsafe configuration for ENVIRONMENT=…`.** Cause:
+    one of the startup checks in `_production_hardening`: `DEBUG`, TLS off, short
     `SECRET_KEY`, missing `ENCRYPTION_KEY`, `QRADAR_PROVIDER=mock`, no token,
     autonomous LLM, a bad `PUBLIC_ORIGIN`, or `AUTH_PROVIDER=oidc`. Confirm:
     the traceback lists the bullets. Fix: the bullet. `LAB_MODE` is a separate
-    refusal (`config.py:803-804`).
+    refusal.
 
 18. **OPS-R18. `QRADAR_HOST must use https://`.** Cause: the URL has no `https` scheme
     (`config.py:782-788`). The instance registry repeats the rule

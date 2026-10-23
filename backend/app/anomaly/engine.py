@@ -166,6 +166,7 @@ class AnomalyEngine:
         self._open_faults: set[uuid.UUID] | None = None
 
     async def evaluate_latest(self, log_source: LogSource) -> EvaluationReport:
+        """Test-only: no collector calls this; tests pin that it reads live rows."""
         metric = await self.session.scalar(
             select(LogSourceMetric)
             .where(

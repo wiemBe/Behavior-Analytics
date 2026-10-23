@@ -139,8 +139,8 @@ This is a new table, so Phase A tables stay as they are.
   beat schedule.
 - The existing `*_interval_seconds` settings of the four families stop driving the beat.
   `explanation_collection_interval_seconds` and `rule_match_collection_interval_seconds` are
-  replaced by the cadence row. Their settings stay readable for one release, ignored, with a
-  deprecation note.
+  replaced by the cadence row. Those settings are accepted and have no effect; see
+  `docs/CONFIGURATION.md`.
 
 ## SC.4 Dispatch: the cadence gate
 

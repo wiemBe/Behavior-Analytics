@@ -59,19 +59,6 @@ def as_int(value: Any) -> int | None:
     return None
 
 
-def as_float(value: Any) -> float | None:
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            return None
-    return None
-
-
 def as_text(value: Any, *, limit: int) -> str | None:
     """Truncate to the column width. Empty and whitespace-only become None."""
     if value is None or isinstance(value, bool):

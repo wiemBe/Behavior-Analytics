@@ -463,7 +463,7 @@ class WafEndpointMetric(Base):
     #: Requests whose action is in the profile's BLOCKED list. Collected by the
     #: action breakdown; NULL when that breakdown was not collected.
     blocked_count: Mapped[int | None] = mapped_column(BigInteger)
-    #: Legacy, never written. The response-code breakdown writes the two classes
+    #: Written only as NULL. The response-code breakdown writes the two classes
     #: separately below, because 4xx and 5xx are different conditions.
     error_count: Mapped[int | None] = mapped_column(BigInteger)
 

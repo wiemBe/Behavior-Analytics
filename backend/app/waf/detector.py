@@ -1,4 +1,4 @@
-"""WAF_REQUEST_RATE_SPIKE — the Phase B MVP detector.
+"""WAF_REQUEST_RATE_SPIKE — the Phase B request-rate detector.
 
 A pure function over a context, exactly like the Phase A detectors: no I/O and
 no ORM, so every guard is unit-testable against exact inputs.

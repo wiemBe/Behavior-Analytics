@@ -26,7 +26,6 @@ from app.models.dashboard import DashboardVisibility
 
 #: The layout versions this server reads. A client writing any other `v` is refused (422).
 SUPPORTED_LAYOUT_VERSIONS: frozenset[int] = frozenset({1})
-CURRENT_LAYOUT_VERSION = 1
 
 GRID_COLUMNS = 12
 MAX_WIDGETS = 24

@@ -94,9 +94,22 @@ mypy app
 PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> pytest -m "not integration"
 ```
 
-`pyproject.toml` already passes `-q`; adding another hides pytest's summary line.
+`pyproject.toml` already passes `-q`; adding another hides pytest's summary line. `make test`
+runs that unit selection and does not add `-q`.
 
-Integration tests require PostgreSQL with TimescaleDB and a dedicated database:
+`make lint` runs `ruff check app tests`. `make mypy` runs `mypy app`.
+
+Integration tests require PostgreSQL with TimescaleDB and a dedicated database. `make
+test-integration` starts the compose test database with `docker compose up -d --wait` and
+refuses to run when `TEST_DATABASE_URL` is unset. It does not invent a URL. Pass the database
+you were given:
+
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5433/behavior_analytics_test \
+  make test-integration
+```
+
+The same suite from `backend/`:
 
 ```bash
 PYTHONPATH=. \
@@ -106,10 +119,19 @@ pytest -m integration tests/integration
 ```
 
 Never run two test processes against the same test database. The schema fixture recreates tables,
-so concurrent runs corrupt one another's assumptions. Migration checks use the same isolated test
-database:
+so concurrent runs corrupt one another's assumptions. `make db-test-up` and `make db-test-down`
+start and remove the compose test database. `make check` runs `alembic upgrade head` and
+`alembic check` against that database.
+
+`alembic` reads `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and
+`POSTGRES_DB` through settings. Point those at the test database. `TEST_DATABASE_URL` is not
+read by Alembic:
 
 ```bash
+cd backend
+POSTGRES_HOST=localhost POSTGRES_PORT=5433 POSTGRES_USER=test POSTGRES_PASSWORD=test \
+POSTGRES_DB=qradar_obs_test \
+ENCRYPTION_KEY=<fernet-key> \
 alembic upgrade head
 alembic check
 ```

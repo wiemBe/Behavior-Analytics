@@ -17,6 +17,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any, Literal
 
 from sqlalchemy import and_, exists, func, select
@@ -49,6 +50,7 @@ from app.history.families import (
     history_search_budget,
 )
 from app.history.lifecycle import DecisionView, console_mode
+from app.history.lifecycle import decision_view as lifecycle_decision_view
 from app.history.origin import is_live_clause
 from app.history.planner import PlannerInputError, PlannerSettings
 from app.history.progress_codec import DecodedProgress, ProgressCodecError, decode_progress
@@ -175,13 +177,21 @@ def aware(value: datetime | None) -> datetime | None:
 
 
 def decision_view(row: HistoryBackfillDecision) -> DecisionView:
-    return DecisionView(
-        answer=row.answer,
-        days=row.days,
-        start_requested_at=aware(row.start_requested_at),
-        start_requested_by=row.start_requested_by,
-        stop_requested_at=aware(row.stop_requested_at),
-        stop_requested_by=row.stop_requested_by,
+    """The stored decision as the lifecycle reads it. Naive times are UTC.
+
+    The column copy lives in ``lifecycle_decision_view``. This wrapper is the
+    API path: it coerces naive timestamps before the lifecycle sees them, which
+    the collectors do not.
+    """
+    return lifecycle_decision_view(
+        SimpleNamespace(
+            answer=row.answer,
+            days=row.days,
+            start_requested_at=aware(row.start_requested_at),
+            start_requested_by=row.start_requested_by,
+            stop_requested_at=aware(row.stop_requested_at),
+            stop_requested_by=row.stop_requested_by,
+        )
     )
 
 

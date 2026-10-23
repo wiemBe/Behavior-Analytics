@@ -1701,15 +1701,6 @@ class MockQRadarProvider(QRadarProvider):
             for bb_id, name, enabled in specs
         ]
 
-    async def get_rule(self, qradar_id: int) -> AnalyticsRuleDTO | None:
-        for rule in await self.list_rules():
-            if rule.qradar_id == qradar_id:
-                return rule
-        for bb in await self.list_building_blocks():
-            if bb.qradar_id == qradar_id:
-                return bb
-        return None
-
     # -- offenses -----------------------------------------------------------
     async def list_offenses(
         self,
@@ -1777,22 +1768,6 @@ class MockQRadarProvider(QRadarProvider):
                 )
             )
         return out
-
-    async def get_offense(self, qradar_id: int) -> OffenseDTO | None:
-        for offense in await self.list_offenses(open_only=False):
-            if offense.qradar_id == qradar_id:
-                return offense
-        return None
-
-    async def list_offense_types(self) -> dict[int, str]:
-        return {1: "Source IP", 2: "Destination IP", 3: "Source IP", 4: "Username"}
-
-    async def list_offense_closing_reasons(self) -> dict[int, str]:
-        return {
-            1: "False Positive, Tuned",
-            2: "Non-Issue",
-            3: "Policy Violation",
-        }
 
     # -- Ariel lifecycle ----------------------------------------------------
     async def create_ariel_search(self, aql: str) -> ArielSearchHandleDTO:

@@ -203,7 +203,7 @@ class TestOffenseApi:
         assert resp.status_code == 404
 
     def test_analytics_responds_on_an_empty_dataset(self, db_schema) -> None:
-        """Aggregates over nothing must be zeroes, not an error."""
+        """Aggregates over nothing must be nulls, not an error."""
         resp = client_for(READER).get("/api/v1/offenses/analytics")
         assert resp.status_code == 200
 

@@ -712,12 +712,6 @@ class RuleHealthEvaluator:
             return "incomplete"
         return "complete"
 
-    async def _observation_complete(
-        self, instance_id: uuid.UUID, window_start: datetime
-    ) -> bool:
-        """Compatibility helper for callers/tests that only need the gate."""
-        return await self._observation_status(instance_id, window_start) == "complete"
-
     async def _dependencies(
         self, rule_ids: list[uuid.UUID]
     ) -> dict[uuid.UUID, list[RuleDependency]]:
