@@ -273,12 +273,19 @@ class QRadarProvider(ABC):
         )
 
     async def get_log_source_metrics(
-        self, window_start: datetime, window_end: datetime
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        qradar_ids: Sequence[int] | None = None,
     ) -> list[LogSourceMetricSample]:
         """Per-log-source metric samples for one collection interval.
 
         Requires INVENTORY. The REST provider derives these from AQL aggregates
         (Phase 3); the mock synthesizes them deterministically.
+
+        `qradar_ids` restricts the aggregate to those log sources (a Phase A top-up).
+        `None` is the whole console, which is what the live pass asks for.
         """
         self.require(ProviderCapability.INVENTORY)
         raise NotImplementedError
@@ -290,8 +297,12 @@ class QRadarProvider(ABC):
         *,
         bucket_seconds: int,
         max_rows: int,
+        qradar_ids: Sequence[int] | None = None,
     ) -> LogSourceMetricBucketBatch:
-        """Per-source metric samples keyed by bucket start for one bounded window."""
+        """Per-source metric samples keyed by bucket start for one bounded window.
+
+        `qradar_ids` restricts the aggregate to those log sources. `None` does not.
+        """
         self.require(ProviderCapability.AQL_EXECUTION)
         raise NotImplementedError
 

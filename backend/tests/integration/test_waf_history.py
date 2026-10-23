@@ -11,6 +11,7 @@ from sqlalchemy import event, func, insert, select
 
 from app.collectors.waf_endpoint_collector import (
     WafCollectionReport,
+    WafEndpointCollector,
     _BreakdownResult,
     watermark_collector,
 )
@@ -452,7 +453,11 @@ async def test_waf_first_step_adds_one_count_statement_and_later_steps_add_none(
     count_sql = [sql for sql in first if "count(waf_endpoint.id)" in sql.lower()]
     assert len(count_sql) == 1
     assert not [sql for sql in later if "count(waf_endpoint.id)" in sql.lower()]
-    assert (len(first), len(later)) == (16, 16)
+    # HB-22 D3: a history step that searched clears a collection-watermark failure.
+    # The watermark is not loaded on this mid-reading path, so that is one
+    # conditional UPDATE on the first step and on each later step. Pin maintenance
+    # of the old (16, 16): the count query is still once, and only on the first step.
+    assert (len(first), len(later)) == (17, 17)
 
 
 async def test_scope_upsert_refreshes_loaded_rows_once_and_skips_unloaded_rows(
@@ -1998,3 +2003,108 @@ async def test_the_pipeline_hands_off_the_scope_anchor_as_the_novelty_end(
     assert T0.isoformat() in established.evidence.reason
     assert fresh.signal is DetectorSignal.ANOMALOUS
     assert "established endpoint" not in fresh.evidence.reason
+
+
+async def test_a_recovered_history_run_clears_the_collection_watermark(
+    db_session, monkeypatch  # type: ignore[no-untyped-def]
+) -> None:
+    """HB-22 D3: a failed history run records; the next clean history run clears it."""
+    settings = cfg(
+        history_backfill_days=7,
+        history_backfill_searches_per_tick=1,
+        history_backfill_max_lower_bound_share=1.0,
+    )
+    boundary = T0 + STEP
+    target = boundary - timedelta(days=7)
+    provider = ScriptedWaf(
+        {
+            target - timedelta(hours=24): [("/floor", "GET", 40)],
+            target: [("/history", "GET", 40)],
+        }
+    )
+    profile, source, instance, _ = await make_source(db_session, provider, settings)
+    profile_id = profile.id
+    instance_id = instance.id
+    scope_key = str(source.qradar_id)
+    collector_name = watermark_collector(source)
+    await HistoryBackfillRepository(db_session).record_decision(
+        instance_id,
+        answer="YES",
+        days=7,
+        source="UI",
+        decided_by="operator",
+        at=T0,
+    )
+    await db_session.commit()
+    original = WafEndpointCollector.history_volume_step
+
+    async def broken(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        raise RuntimeError("history step lost the permit")
+
+    monkeypatch.setattr(WafEndpointCollector, "history_volume_step", broken)
+    failed = await run_waf_source(
+        db_session,
+        profile_id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: boundary + timedelta(seconds=5),
+    )
+    assert failed["status"] == "failed"
+    failed_wm = await db_session.scalar(
+        select(CollectionWatermark).where(
+            CollectionWatermark.instance_id == instance_id,
+            CollectionWatermark.collector == collector_name,
+        )
+    )
+    assert failed_wm is not None
+    assert failed_wm.consecutive_failures == 1
+    assert failed_wm.last_error == "RuntimeError"
+    # The clean run must take the conditional UPDATE, not a loaded object.
+    db_session.expunge(failed_wm)
+
+    monkeypatch.setattr(WafEndpointCollector, "history_volume_step", original)
+    clean = await run_waf_source(
+        db_session,
+        profile_id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: boundary + timedelta(seconds=5),
+    )
+    assert clean["status"] == "history_reading"
+    scope = await db_session.get(
+        HistoryBackfillScope,
+        (instance_id, HistoryFamily.WAF.value, scope_key),
+    )
+    assert scope is not None and scope.state == HistoryState.READING.value
+    cleared = await db_session.scalar(
+        select(CollectionWatermark)
+        .where(
+            CollectionWatermark.instance_id == instance_id,
+            CollectionWatermark.collector == collector_name,
+        )
+        .execution_options(populate_existing=True)
+    )
+    assert cleared is not None
+    assert cleared.consecutive_failures == 0
+    assert cleared.last_error is None
+
+    monkeypatch.setattr(WafEndpointCollector, "history_volume_step", broken)
+    again = await run_waf_source(
+        db_session,
+        profile_id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: boundary + timedelta(seconds=5),
+    )
+    assert again["status"] == "failed"
+    recorded = await db_session.scalar(
+        select(CollectionWatermark)
+        .where(
+            CollectionWatermark.instance_id == instance_id,
+            CollectionWatermark.collector == collector_name,
+        )
+        .execution_options(populate_existing=True)
+    )
+    assert recorded is not None
+    assert recorded.consecutive_failures == 1
+    assert recorded.last_error == "RuntimeError"

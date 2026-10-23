@@ -6,6 +6,7 @@ live pass and the step are exercised together on each exit the operator can reac
 
 from __future__ import annotations
 
+import copy
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -18,6 +19,7 @@ from app.history.progress_codec import decode_progress
 from app.history.source_floors import SourceFloors
 from app.models.log_source import LogSource, LogSourceBaseline, LogSourceMetric
 from app.models.monitoring import CollectionWatermark
+from app.providers.base import ProviderUnavailableError
 from app.repositories.history_backfill import HistoryBackfillRepository
 from app.services.locks import collector_lock_key
 from tests.integration.factories import FakeClock
@@ -36,6 +38,7 @@ from tests.integration.history_phase_a_support import (
     settings_for,
     tick,
 )
+from tests.integration.test_history_backfill_api import ADMIN, BASE, Client, family_of
 from tests.integration.test_waf_scale import counting
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -919,3 +922,216 @@ async def test_a_step_larger_than_the_driver_parameter_limit_stores_every_row(
         )
     )
     assert stored == report.history.rows
+
+
+# ------------------------------------------------------- HB-22 provider fault
+
+
+def _scope_writes(statements: list[str]) -> list[str]:
+    return [
+        statement
+        for statement in statements
+        if "history_backfill_scope" in statement
+        and statement.lstrip().upper().startswith(("INSERT", "UPDATE"))
+    ]
+
+
+async def test_a_provider_outage_marks_the_scope_and_the_next_step_clears_it(db_session) -> None:
+    """HB-22 D1: a history search that fails at the provider leaves its class and the tick."""
+    console = await make_console(db_session, QIDS)
+    await say_yes(db_session, console.instance)
+    down = True
+
+    def fail(start: datetime, end: datetime, count: int) -> bool:
+        return down and end <= ANCHOR and count > 1
+
+    provider = ScriptedMockProvider(
+        QIDS, fail=fail, failure_type=ProviderUnavailableError
+    )
+    settings = settings_for()
+    await tick(db_session, console.instance, provider, settings, FIRST_TICK)
+
+    report = await tick(db_session, console.instance, provider, settings, FIRST_TICK + STEP)
+
+    scope = await scope_of(db_session, console.instance)
+    assert scope is not None and scope.state == "READING"
+    assert scope.last_error_class == "ProviderUnavailableError"
+    assert scope.last_error_at == FIRST_TICK + STEP
+    assert "the width halves to" in (scope.reason or "")
+    progress = (await _decoded(db_session, console)).progress
+    assert progress.chunk_buckets is not None and progress.chunk_buckets < 1333 // 2 + 1
+    assert progress.chunk_ceiling == progress.chunk_buckets
+    assert report.history is not None and report.history.searches == 1
+    assert await history_rows(db_session, console.instance) == []
+    mark = await db_session.scalar(
+        select(CollectionWatermark).where(CollectionWatermark.instance_id == console.instance.id)
+    )
+    assert mark is not None and mark.watermark_at == ANCHOR + STEP
+
+    down = False
+    await tick(db_session, console.instance, provider, settings, FIRST_TICK + 2 * STEP)
+    cleared = await scope_of(db_session, console.instance)
+    assert cleared is not None
+    assert cleared.last_error_class is None and cleared.last_error_at is None
+    assert cleared.state == "READING"
+
+
+async def test_a_provider_outage_adds_one_scope_write_and_success_does_not(db_session) -> None:
+    """The failure path writes the marker; the success path's statement count stays put."""
+    clean = await _step_statements(db_session, QIDS)
+    console = await make_console(db_session, QIDS)
+    await say_yes(db_session, console.instance)
+
+    def fail(start: datetime, end: datetime, count: int) -> bool:
+        return end <= ANCHOR and count > 1
+
+    provider = ScriptedMockProvider(
+        QIDS, fail=fail, failure_type=ProviderUnavailableError
+    )
+    settings = settings_for()
+    await tick(db_session, console.instance, provider, settings, FIRST_TICK)
+    with counting(db_session) as failed:
+        await tick(db_session, console.instance, provider, settings, FIRST_TICK + STEP)
+    scope = await scope_of(db_session, console.instance)
+    assert scope is not None and scope.last_error_class == "ProviderUnavailableError"
+    failed_writes = _scope_writes(failed)
+    assert len(failed_writes) == 2  # the step's upsert, then the marker
+    assert any("last_error_class" in statement for statement in failed_writes)
+    # Measured on this suite: a successful history step is 14 statements, and D1 adds
+    # none of them. The failure path's extra statement is the marker update above.
+    assert clean == 14, clean
+
+
+# --------------------------------------------------------------- HB-22 top-up
+
+
+async def test_a_restart_searches_only_sources_without_a_floor(db_session) -> None:
+    """Read history now searches the new source and keeps the floors already proved."""
+    console = await make_console(db_session, QIDS)
+    await say_yes(db_session, console.instance)
+    provider = ScriptedMockProvider(QIDS)
+    settings = settings_for()
+    scope, _, at = await read_all(db_session, console, provider, settings)
+    assert scope.state == "COMPLETE"
+    before = {
+        (row.log_source_id, row.bucket_start): row.collected_at
+        for row in await history_rows(db_session, console.instance)
+    }
+    previous = copy.deepcopy(scope.progress)
+    previous_through = scope.through
+    previous_days = scope.days_target
+    finished_at = scope.finished_at
+    from tests.integration.factories import make_log_source
+
+    late = await make_log_source(db_session, console.instance, qradar_id=9, name="src-9")
+    provider.qids = [*QIDS, 9]
+    await HistoryBackfillRepository(db_session).request_start(
+        console.instance.id, by="analyst@example.test", at=at
+    )
+    marked = len(provider.calls)
+    await tick(db_session, console.instance, provider, settings, at)
+    restarted = await scope_of(db_session, console.instance)
+    assert restarted is not None and restarted.state == "READING"
+    assert restarted.progress == previous
+    assert restarted.through == previous_through
+    assert restarted.days_target == previous_days
+
+    for index in range(1, 12):
+        await tick(db_session, console.instance, provider, settings, at + index * STEP)
+        restarted = await scope_of(db_session, console.instance)
+        assert restarted is not None
+        if (
+            restarted.state == "COMPLETE"
+            and restarted.finished_at is not None
+            and finished_at is not None
+            and restarted.finished_at > finished_at
+        ):
+            break
+    else:
+        raise AssertionError("the top-up did not finish")
+
+    history_filters = [
+        filt
+        for call, filt in zip(
+            provider.calls[marked:], provider.source_filters[marked:], strict=True
+        )
+        if call[1] <= ANCHOR
+    ]
+    assert history_filters
+    assert set(history_filters) == {frozenset({9})}
+    floors = SourceFloors.decode((await _decoded(db_session, console)).adapter)
+    for qid in QIDS:
+        assert str(qid) in floors.first_buckets
+    rows = await history_rows(db_session, console.instance)
+    after = {(row.log_source_id, row.bucket_start): row.collected_at for row in rows}
+    assert all(after[key] == stamp for key, stamp in before.items())
+    mine = [row.bucket_start for row in rows if row.log_source_id == late.id]
+    assert min(mine) == T0 and max(mine) == ANCHOR - STEP
+
+
+def _phase_a_page(url: str, instance_id: object) -> dict:  # type: ignore[type-arg]
+    page = Client(url, ADMIN).get(BASE).json()
+    console = next(item for item in page if item["instance_id"] == str(instance_id))
+    return family_of(console, "PHASE_A")["scopes"][0]
+
+
+_KEPT = (
+    "days_read",
+    "searches",
+    "buckets_read",
+    "through",
+    "floor",
+    "target_start",
+    "days_target",
+    "sources_silent",
+    "sources_silent_count",
+    "sources_cut",
+    "sources_cut_count",
+)
+
+
+async def test_read_history_now_then_stop_keeps_the_finished_evidence(
+    db_session, db_schema
+) -> None:
+    """The operator's path: start, one tick, stop, one tick, and the page still shows it."""
+    console = await make_console(db_session, QIDS)
+    await say_yes(db_session, console.instance)
+    provider = ScriptedMockProvider(QIDS)
+    settings = settings_for()
+    scope, _, at = await read_all(db_session, console, provider, settings)
+    assert scope.state == "COMPLETE"
+    assert scope.finished_at is not None
+    instance = console.instance
+    instance_id = instance.id
+    await db_session.commit()
+
+    before = _phase_a_page(db_schema, instance_id)
+    assert before["state"] == "COMPLETE"
+    assert before["searches"] is not None and before["days_read"] is not None
+    started = Client(db_schema, ADMIN).post(f"{BASE}/{instance_id}/start")
+    assert started.status_code == 200, started.text
+    await db_session.commit()
+    # The API wrote the request on its own connection. Drop this session's copy
+    # and reload the instance the next tick collects.
+    db_session.expire_all()
+    await db_session.refresh(instance)
+
+    await tick(db_session, instance, provider, settings, at)
+    await db_session.commit()
+    reading = _phase_a_page(db_schema, instance_id)
+    assert reading["state"] == "READING"
+    assert "topping up" in (reading["reason"] or "")
+    assert {name: reading[name] for name in _KEPT} == {name: before[name] for name in _KEPT}
+
+    stopped = Client(db_schema, ADMIN).post(f"{BASE}/{instance_id}/stop")
+    assert stopped.status_code == 200, stopped.text
+    await db_session.commit()
+    db_session.expire_all()
+    await db_session.refresh(instance)
+    await tick(db_session, instance, provider, settings, at + STEP)
+    await db_session.commit()
+
+    partial = _phase_a_page(db_schema, instance_id)
+    assert partial["state"] == "PARTIAL"
+    assert partial["reason"] == "stopped by admin"
+    assert {name: partial[name] for name in _KEPT} == {name: before[name] for name in _KEPT}

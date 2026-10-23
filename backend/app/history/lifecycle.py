@@ -380,14 +380,15 @@ def transition_row(
         "progress": dict(row.progress) if row.progress is not None else {},
     }
     if action.state is HistoryState.READING:
-        # Empty progress says the new reading has searched nothing yet.  Keep the earlier
-        # reading's window and evidence visible until the first step replaces them with its
-        # own; a stop before that step must not erase what the aggregate tables still hold.
+        # The new reading has not searched. Keep the earlier reading's progress as well as
+        # its window columns: the page still shows those floors, searches and days until the
+        # first step replaces them, and a stop before that step leaves them (HB-12 D5,
+        # HB-22 D2a). `decode_scope` treats that progress as not the current reading, because
+        # its `started_at` is older than the one this transition writes.
         values.update(
             anchor=action.anchor if action.anchor is not None else row.anchor,
             started_at=at,
             finished_at=None,
-            progress={},
         )
     else:
         values["finished_at"] = at
@@ -493,9 +494,13 @@ def decode_scope(row: ScopeRowView) -> DecodedProgress | None:
 
     `progress` is `{}` exactly while the scope has not searched in its current reading:
     `WAITING`, `NOT_ELIGIBLE`, a `READING` scope before its first step, or one that finished
-    before it. A restarted scope may still expose the preceding reading's window and evidence
-    columns until its first step replaces them. Otherwise progress decodes with
-    `decode_progress` and agrees with the row's `target_start`. A contradiction raises
+    before it. A restarted scope keeps the preceding reading's progress until its first step
+    replaces it. That body is not this reading's: its `started_at` is older than the row's,
+    and this returns None so the collector plans a fresh window. The page reads the stored
+    body directly and still shows it. Otherwise progress decodes with `decode_progress` and
+    agrees with the row's `target_start`. A row whose reason is still the restart
+    reason has not taken that step either, including when the clock did not move
+    and the body's `started_at` equals the row's. A contradiction raises
     `LifecycleError`; nothing is guessed.
     """
     body = row.progress
@@ -508,6 +513,13 @@ def decode_scope(row: ScopeRowView) -> DecodedProgress | None:
     if row.target_start is None:
         raise LifecycleError("progress is set but the row has no target_start")
     decoded = decode_progress(body)
+    if row.started_at is not None and decoded.progress.started_at < row.started_at:
+        return None
+    # A restart keeps this reason until the first step replaces it. The body's
+    # started_at can equal the row's when the collector clock does not move, and
+    # that body is still the finished reading (catch-all, rule matches).
+    if row.reason == RESTART_REASON:
+        return None
     if decoded.progress.target_start != row.target_start:
         raise LifecycleError("progress and the row disagree on target_start")
     return decoded

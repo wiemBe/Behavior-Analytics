@@ -453,7 +453,8 @@ def test_transition_row_restart_keeps_evidence_and_clears_progress(state: S) -> 
     assert values["state"] == "READING"
     assert values["days_requested"] == 35
     assert values["started_at"] == START and values["finished_at"] is None
-    assert values["progress"] == {}
+    # HB-22 D2a: the previous progress stays until the new reading's first step.
+    assert values["progress"] == {"a": 1}
     assert (values["days_target"], values["target_start"], values["floor"], values["through"]) == (
         28,
         target,
@@ -496,6 +497,27 @@ def test_a_searched_scope_decodes() -> None:
     view = ScopeRowView(state=S.READING, target_start=T0, progress=searched_body())
     progress = scope_progress(view)
     assert progress is not None and progress.target_start == T0
+
+
+def test_a_restarted_reading_decodes_as_not_started_until_its_first_step() -> None:
+    """The stored body is the previous reading; the collector must plan a new one."""
+    body = searched_body()  # progress.started_at is NOW; the restart's started_at is later
+    restarted = ScopeRowView(
+        state=S.READING, target_start=T0, started_at=START, progress=body
+    )
+    assert scope_progress(restarted) is None
+    current = ScopeRowView(state=S.READING, target_start=T0, started_at=NOW, progress=body)
+    assert scope_progress(current) is not None
+    # A frozen collector clock restarts at the same instant the body started.
+    # The restart reason is what still says this body is the previous reading.
+    frozen = ScopeRowView(
+        state=S.READING,
+        target_start=T0,
+        started_at=NOW,
+        reason="read history now: topping up",
+        progress=body,
+    )
+    assert scope_progress(frozen) is None
 
 
 def test_empty_progress_with_kept_evidence_is_an_unsearched_restart() -> None:

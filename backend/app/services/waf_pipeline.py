@@ -21,7 +21,10 @@ training by its incident span.
 
 A run for a source that is not eligible (`collection_ineligibility`) does
 nothing. A failed run leaves both watermarks where they were and records the
-failure on the source's collection watermark; it never writes a bucket.
+failure on the source's collection watermark; it never writes a bucket. A run
+that succeeds clears that record again: the live pass in the collector, a
+history-only run in `_run_history_volume`, so a source that recovered does not
+carry the old fault while it reads its history (HB-22).
 
 Collection takes one global WAF Ariel permit per bucket
 (`app.services.waf_ariel_budget`). A run that cannot get one stops collecting,
@@ -44,9 +47,9 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import exists, func, select, text
+from sqlalchemy import Table, exists, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import AlertEnqueuer
@@ -188,6 +191,48 @@ class WafPipelineReport:
             "history_breakdown_buckets": self.history_breakdown_buckets,
             "history_breakdown_metrics": self.history_breakdown_metrics,
         }
+
+
+def _loaded_collection_watermark(
+    session: AsyncSession, instance_id: uuid.UUID, collector_name: str
+) -> CollectionWatermark | None:
+    """The watermark already in this session, if a previous statement loaded it."""
+    for obj in session.identity_map.values():
+        if (
+            isinstance(obj, CollectionWatermark)
+            and obj.instance_id == instance_id
+            and obj.collector == collector_name
+        ):
+            return obj
+    return None
+
+
+async def _clear_collection_failure(
+    session: AsyncSession, instance_id: uuid.UUID, collector_name: str
+) -> None:
+    """Reset one source's collection-watermark failure in this run's transaction.
+
+    A watermark the hand-off already loaded is cleared on that object, so the
+    flush that writes `watermark_at` also clears the failure and this adds no
+    statement. Otherwise one conditional update matches a row that still records
+    a failure. It inserts nothing when the source has no watermark yet.
+    """
+    loaded = _loaded_collection_watermark(session, instance_id, collector_name)
+    if loaded is not None:
+        if loaded.consecutive_failures or loaded.last_error:
+            loaded.consecutive_failures = 0
+            loaded.last_error = None
+        return
+    table = cast(Table, CollectionWatermark.__table__)
+    await session.execute(
+        update(table)
+        .where(
+            table.c.instance_id == instance_id,
+            table.c.collector == collector_name,
+            or_(table.c.consecutive_failures != 0, table.c.last_error.is_not(None)),
+        )
+        .values(consecutive_failures=0, last_error=None)
+    )
 
 
 async def _watermark(
@@ -566,6 +611,21 @@ class WafSourcePipeline:
                 HistoryFamily.WAF.value,
                 {str(log_source.qradar_id): outcome.error},
                 at=self._clock(),
+            )
+        if (
+            outcome.error is None
+            and not outcome.permit_unavailable
+            and (outcome.searches > 0 or outcome.trigger is not None)
+        ):
+            # HB-22 D3: a history run that did its work and did not fail clears the
+            # failure record of the source's collection watermark, as the live success
+            # path does. A source in history reading has no live pass, so without this
+            # the record of the fault that a previous history run hit would stay on the
+            # source for the whole reading. A run that searched nothing (no budget, no
+            # permit) proved nothing and keeps the record. This does not insert a
+            # watermark the source does not have.
+            await _clear_collection_failure(
+                self.session, instance.id, watermark_collector(log_source)
             )
         report.status = "history_reading" if state is HistoryState.READING else "history_handoff"
         report.history_state = state.value

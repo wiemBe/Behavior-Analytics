@@ -258,9 +258,9 @@ class SourceSets:
     """The sources a console-wide reading was short of (HB-17).
 
     Every field is None when the reading did not measure it: another family, a
-    scope that has not searched yet, a progress that does not decode and floors
-    that cannot be read all answer None, never an empty list and never a zero
-    (rule 8).
+    scope that has not searched yet, a progress that does not decode, floors
+    that cannot be read, and a floor map that holds no source at all (HB-22 D2b)
+    all answer None, never an empty list and never a zero (rule 8).
     """
 
     cut: list[ScopeSourceOut] | None = None
@@ -321,13 +321,21 @@ def _scope_sources(
 
     A family that reads one source per scope has nothing to name, a scope that
     has not searched has no floors, and floors that cannot be read back are
-    unknown, not empty.
+    unknown, not empty. So is a floor map without a single source (HB-22 D2b):
+    the reading proved no floor at all, so "every monitored source is silent"
+    would be a verdict from a floor proof that never produced one — a restart
+    whose first step wrote its plan and failed before a row is the case the lab
+    showed. The progress carries no separate floor-scan-completion flag for
+    these families (their floor proof is the read itself, the core `floor` is
+    where the read starts), so the floor map is the signal there is.
     """
     if family not in MULTI_SOURCE_FAMILIES or decoded is None or margin is None:
         return SourceSets()
     try:
         floors = SourceFloors.decode(decoded.adapter)
     except ProgressCodecError:
+        return SourceSets()
+    if not floors.first_buckets:
         return SourceSets()
     return source_sets(
         floors,
