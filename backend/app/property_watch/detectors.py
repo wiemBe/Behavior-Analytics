@@ -14,6 +14,7 @@ from typing import Any
 from app.anomaly import statistics as rstats
 from app.anomaly.capabilities import pw_input_scope
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
+from app.core.text import percent
 from app.models.enums import (
     DetectorSignal,
     PwAnomalyType,
@@ -280,10 +281,10 @@ class _Guard:
         assert self.bucket is not None
         coverage = self.bucket.coverage
         if not coverage.reaches(self.thresholds.min_coverage):
-            seen = "unknown" if coverage.ratio is None else f"{coverage.ratio:.0%}"
+            seen = percent(coverage.ratio, missing="unknown")
             return self.insufficient(
                 f"property coverage was {seen}, below the "
-                f"{self.thresholds.min_coverage:.0%} floor"
+                f"{percent(self.thresholds.min_coverage)} floor"
             )
         return None
 

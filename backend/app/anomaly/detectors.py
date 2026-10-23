@@ -16,6 +16,7 @@ from app.anomaly import statistics as rstats
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient, unknown
 from app.anomaly.thresholds import Thresholds
 from app.core.config import get_settings
+from app.core.text import percent
 from app.models.enums import (
     AnomalyType,
     BucketCompleteness,
@@ -523,7 +524,7 @@ def detect_cardinality_drop(ctx: DetectionContext) -> AnomalyEvidence:
             confidence=_confidence(cell, 4.0),
             reason=(
                 f"distinct source IPs {p.distinct_source_ip_count} dropped below "
-                f"{frac:.0%} of baseline median {cell.median:.0f}"
+                f"{percent(frac)} of baseline median {cell.median:.0f}"
             ),
         )
     return healthy(at, interval_start=p.interval_start, interval_end=p.interval_end,

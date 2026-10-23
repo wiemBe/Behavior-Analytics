@@ -17,7 +17,8 @@ import {
   hasConfidenceLimitation,
 } from "@/lib/behavior";
 
-import { formatPercent, formatPoints, formatRequests, requestsUnit, SINCE_UNIT } from "./wafFormat";
+import { formatPercent } from "@/lib/format";
+import { formatPoints, formatRequests, requestsUnit, SINCE_UNIT } from "./wafFormat";
 import { isLowerBound } from "./wafLabels";
 import { isNewEndpointType, isRatioType } from "./wafSummary";
 

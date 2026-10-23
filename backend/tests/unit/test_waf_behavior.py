@@ -477,7 +477,7 @@ class TestRatioAnomalous:
         }
         assert x["observed_measurement"] == "LOWER_BOUND"
         assert v.evidence.reason.startswith("at least ")
-        assert "(at least 40.0%)" in v.evidence.reason
+        assert "(at least 40.0\u00a0%)" in v.evidence.reason
 
     def test_contributors_are_attached_and_bounded(self, kind) -> None:
         tops = ({"source_ip": "203.0.113.7", "requests": 25},)
@@ -604,7 +604,7 @@ class TestSourceCoverage:
 
     def test_ratio_low_source_coverage_is_insufficient(self, kind) -> None:
         v = run(kind, _with_source_coverage(ratio_ctx(kind, 40), 0.85))
-        assert_insufficient(v, "85%", "90%", "bounds nothing")
+        assert_insufficient(v, "85\u00a0%", "90\u00a0%", "bounds nothing")
         assert v.detector_type is RATIOS[kind][1]
 
     def test_ratio_at_the_source_floor_still_reaches_its_verdict(self, kind) -> None:
@@ -613,12 +613,12 @@ class TestSourceCoverage:
 
     def test_ratio_source_coverage_is_checked_before_breakdown_coverage(self, kind) -> None:
         ctx = _with_source_coverage(ratio_ctx(kind, 40, 85, request_count=100), 0.5)
-        assert_insufficient(run(kind, ctx), "50%", "bounds nothing")
+        assert_insufficient(run(kind, ctx), "50\u00a0%", "bounds nothing")
 
     def test_concentration_low_source_coverage_is_insufficient(self) -> None:
         ctx = _with_source_coverage(conc_ctx(60), 0.85)
         v = detect_client_concentration_spike(ctx)
-        assert_insufficient(v, "85%", "90%", "bounds nothing")
+        assert_insufficient(v, "85\u00a0%", "90\u00a0%", "bounds nothing")
 
     def test_concentration_at_the_source_floor_still_reaches_its_verdict(self) -> None:
         v = detect_client_concentration_spike(_with_source_coverage(conc_ctx(60), 0.9))
@@ -628,7 +628,7 @@ class TestSourceCoverage:
 
     def test_concentration_source_coverage_is_checked_before_breakdown_coverage(self) -> None:
         ctx = _with_source_coverage(conc_ctx(60, 85, request_count=100), 0.5)
-        assert_insufficient(detect_client_concentration_spike(ctx), "50%", "bounds nothing")
+        assert_insufficient(detect_client_concentration_spike(ctx), "50\u00a0%", "bounds nothing")
 
 
 class TestConcentrationGuards:
@@ -704,7 +704,7 @@ class TestConcentrationAnomalous:
         assert x["percentage_point_change"] == pytest.approx(50.0)
         assert "intent" in x["caveat"]
         assert "proxy" in x["client_identity"]
-        assert "five largest sent 80.0%" in ev.reason
+        assert "five largest sent 80.0\u00a0%" in ev.reason
         assert "no reliable volume baseline" in ev.reason
 
     def test_contributors_list_is_the_only_place_ips_appear(self) -> None:

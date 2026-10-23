@@ -12,7 +12,8 @@ import {
   robustScoreMeaning,
 } from "@/lib/behavior";
 
-import { formatPercent, formatRequests, requestsUnit } from "./wafFormat";
+import { formatPercent } from "@/lib/format";
+import { formatRequests, requestsUnit } from "./wafFormat";
 import { isNewEndpointType, isRatioType } from "./wafSummary";
 
 function Missing({ reason }: { reason: string }) {

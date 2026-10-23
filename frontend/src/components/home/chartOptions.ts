@@ -18,8 +18,7 @@ import { NOT_MEASURED } from "@/lib/behavior";
 import { formatEpsValue } from "@/lib/fleet";
 import { historyMarkAreas, readHistoryShade } from "@/components/behavior/historyOrigin";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
-import { formatCount } from "@/lib/format";
-import { formatPercent } from "@/components/waf/wafFormat";
+import { formatCount, formatPercent } from "@/lib/format";
 
 import { epsHistoryLine, type EpsHistory } from "./epsHistory";
 

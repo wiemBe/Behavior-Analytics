@@ -7,8 +7,10 @@
 
 import type { IpsAnomalyDetail } from "@/lib/api";
 
+import { formatPercent } from "@/lib/format";
+
 import { detectorSpec, ipsFigures } from "./ipsDetectors";
-import { bucketWidth, formatFigure, formatPercent, unitText } from "./ipsFormat";
+import { bucketWidth, formatFigure, unitText } from "./ipsFormat";
 import { entityLabel, ipsTypeLabel } from "./ipsLabels";
 
 export interface IpsSummary {

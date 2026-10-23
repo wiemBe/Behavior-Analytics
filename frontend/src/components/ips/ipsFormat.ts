@@ -4,12 +4,13 @@
 // dash and a measured zero is `0`; a lower bound is "≥ n". What IPS adds is a
 // unit per detector, so a figure is never printed bare.
 
-import { formatPercent, formatRequests } from "@/components/waf/wafFormat";
+import { formatRequests } from "@/components/waf/wafFormat";
 import { NOT_MEASURED } from "@/lib/behavior";
+import { formatPercent } from "@/lib/format";
 
 import type { IpsUnit } from "./ipsDetectors";
 
-export { bucketWidth, formatPercent, formatPoints } from "@/components/waf/wafFormat";
+export { bucketWidth, formatPoints } from "@/components/waf/wafFormat";
 
 /** A count of events or ports: whole numbers stay whole, a fractional median keeps one decimal. */
 export const formatEvents = formatRequests;

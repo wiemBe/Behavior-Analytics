@@ -13,7 +13,7 @@ import { WidgetFrame, WidgetQualifiers } from "@/components/home/WidgetFrame";
 import { Unmeasured } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { truncated } from "@/lib/home/qualifiers";
-import { formatPercent } from "@/components/waf/wafFormat";
+import { formatPercent } from "@/lib/format";
 import { atCeiling, sortByAttention, validationView } from "@/components/waf/wafSourceHealth";
 
 import { useExpanded } from "@/widgets/runtime";

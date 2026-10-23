@@ -19,7 +19,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { HISTORY_TEXT } from "@/components/behavior/historyOrigin";
 import { homeReads } from "@/lib/api";
 import { NOT_MEASURED } from "@/lib/behavior";
-import { formatPercent } from "@/components/waf/wafFormat";
+import { formatPercent } from "@/lib/format";
 import { fleetDrillHref, formatEpsValue, type FleetWindow } from "@/lib/fleet";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import { sliceVar } from "@/lib/home/chartPalette";

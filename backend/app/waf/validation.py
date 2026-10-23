@@ -29,6 +29,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.text import percent
 from app.models.enums import WafFieldStatus, WafLogicalField, WafProfileValidationStatus
 from app.providers.dto import WafPropertyProbe, WafSourceProbe
 from app.waf.normalize import (
@@ -201,16 +202,16 @@ def evaluate_field(
     if used_by_collection and result.populated_ratio < min_ratio:
         result.status = WafFieldStatus.INSUFFICIENT_COVERAGE
         result.detail = (
-            f"populated on {result.populated_ratio:.1%} of events, below the "
-            f"required {min_ratio:.0%}"
+            f"populated on {percent(result.populated_ratio, precision=1)} of events, below "
+            f"the required {percent(min_ratio)}"
         )
         return result
     if result.plausible_ratio is None or result.plausible_ratio < min_ratio:
         result.status = WafFieldStatus.IMPLAUSIBLE
-        shown = "no values" if result.plausible_ratio is None else f"{result.plausible_ratio:.1%}"
+        shown = percent(result.plausible_ratio, precision=1, missing="no values")
         result.detail = (
             f"{shown} of sampled events carry a plausible {logical.value.lower()} value, "
-            f"below the required {min_ratio:.0%}"
+            f"below the required {percent(min_ratio)}"
         )
         return result
     return result

@@ -1,6 +1,6 @@
-// One count and one share for every screen.
+// One count, one share and one percent for every screen.
 //
-// Both are pinned to en-US. `toLocaleString()` with no locale renders the
+// All are pinned to en-US. `toLocaleString()` with no locale renders the
 // server's locale during SSR and the browser's after hydration, so the same
 // count can print "1,234" and then "1.234". A missing measurement is an em
 // dash, never "0". A share always has one decimal and a space before "%",
@@ -16,6 +16,27 @@ const MISSING = "—";
 export function formatCount(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return MISSING;
   return COUNT.format(value);
+}
+
+/**
+ * A fraction in [0,1] as a percentage; a lower bound reads "≥ 12.5 %".
+ *
+ * The one percent formatter for every screen whose figures sit beside sentences
+ * the backend wrote with the same spelling (home, catalog, IPS, property watch,
+ * WAF). One decimal goes through `formatShare`; another precision keeps the
+ * U+00A0 before the sign and does not use the tiny-share mark.
+ */
+export function formatPercent(
+  value: number | null | undefined,
+  measurement?: string | null,
+  digits = 1,
+) {
+  if (value == null || Number.isNaN(value)) return MISSING;
+  // `measurement === "LOWER_BOUND"` mirrors `isLowerBound` in
+  // components/waf/wafLabels: lib/format does not import from components.
+  const text =
+    digits === 1 ? formatShare(value) : `${(value * 100).toFixed(digits)}\u00A0%`;
+  return measurement === "LOWER_BOUND" ? `≥ ${text}` : text;
 }
 
 /**

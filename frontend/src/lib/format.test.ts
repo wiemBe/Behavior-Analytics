@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCount, formatShare } from "./format";
+import { formatCount, formatPercent, formatShare } from "./format";
 
 describe("formatCount", () => {
   it("pins en-US grouping and keeps a measured zero", () => {
@@ -40,5 +40,20 @@ describe("formatShare", () => {
     expect(formatShare(0.875)).toBe("87.5\u00A0%");
     expect(formatShare(0.0003)).toBe("<0.1\u00A0%");
     expect(formatShare(0.875)).not.toContain(" ");
+  });
+});
+
+describe("formatPercent", () => {
+  it("joins the number and its unit with U+00A0", () => {
+    expect(formatPercent(0.318)).toBe("31.8\u00A0%");
+    expect(formatPercent(0.318, null, 2)).toBe("31.80\u00A0%");
+  });
+
+  it("formats a fraction as a percentage, with a lower bound as ≥", () => {
+    expect(formatPercent(0.318)).toBe("31.8\u00A0%");
+    expect(formatPercent(0.624, "LOWER_BOUND")).toBe("≥ 62.4\u00A0%");
+    expect(formatPercent(0)).toBe("0.0\u00A0%");
+    expect(formatPercent(0.0003)).toBe("<0.1\u00A0%");
+    expect(formatPercent(null)).toBe("—");
   });
 });
