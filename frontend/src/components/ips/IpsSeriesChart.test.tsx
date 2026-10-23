@@ -5,7 +5,7 @@ import { ipsCell, ipsEntityBucket } from "./fixtures";
 import { IpsSeriesChart } from "./IpsSeriesChart";
 import { buildIpsEntitySeries } from "./ipsSeries";
 
-const { setOption, resize, dispose, init, use } = vi.hoisted(() => {
+const { setOption, dispose, init, use } = vi.hoisted(() => {
   const setOption = vi.fn();
   const resize = vi.fn();
   const dispose = vi.fn();
@@ -33,6 +33,7 @@ interface Series {
 }
 interface Option {
   useUTC: boolean;
+  tooltip: { formatter: (params: unknown) => string };
   xAxis: { name?: string };
   yAxis: { name?: string };
   series: Series[];
@@ -132,6 +133,16 @@ describe("IpsSeriesChart", () => {
     expect(series("Largest source IP's share of events").data[0][1]).toBe(25);
     expect(option().yAxis.name).toBe("Largest source IP's share of events (%)");
     expect(screen.getByText(/not 0 %/)).toBeInTheDocument();
+  });
+
+  it("spells a share in the tooltip with the shared formatter", () => {
+    const rows = [ipsEntityBucket({ bucket_start: T(0), events: 0.25 })];
+    chart(rows, { unit: "share", quantity: "Largest source IP's share of events", expected: 0.2, expectedLow: 0.1, expectedHigh: 0.3 });
+    const html = option().tooltip.formatter([{ dataIndex: 0 }]);
+    expect(html).toContain("25.0\u00A0%");
+    expect(html).toContain("20.0\u00A0%");
+    expect(html).toContain("10.0\u00A0% – 30.0\u00A0%");
+    expect(html).not.toMatch(/\d%/);
   });
 
   it("names the unit on both axes, plots in UTC, and puts no marker on every point", () => {

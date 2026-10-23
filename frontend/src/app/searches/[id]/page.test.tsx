@@ -16,7 +16,7 @@ import { ApiError, api, type ScheduledSearch, type SearchExecution, type SearchV
 //    as a measured number;
 //  - honesty: a null category reads "uncategorised", a null next-run time is omitted,
 //    and null version fields are em dashes with a compact UTC time.
-// The page's own components (ScheduleControl, RunSearchButton, ResultTrend) are
+// The page's own components (ScheduleControl, SearchRunControl, ResultTrend) are
 // rendered as-is; only `next/navigation` and ECharts are stubbed, and the trend's read
 // is mocked to its empty state.
 

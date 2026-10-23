@@ -15,7 +15,6 @@ import {
   type CatchallSender,
 } from "@/lib/api";
 import { formatCount } from "@/lib/format";
-import { utcTimeText } from "@/components/ui/UtcTime";
 
 
 export { formatCount };
@@ -173,22 +172,6 @@ export function buildSlots(buckets: CatchallBucket[], sinceMs: number, untilMs: 
   return { slots, bucketSeconds: first.bucket_seconds, latestStart, gapCount, lowerBoundCount };
 }
 
-/** Index ranges `[from, to]` of consecutive gap slots, for shading. */
-export function gapRuns(slots: Slot[]): Array<[number, number]> {
-  const runs: Array<[number, number]> = [];
-  let start = -1;
-  slots.forEach((s, i) => {
-    if (s.state === "gap") {
-      if (start < 0) start = i;
-    } else if (start >= 0) {
-      runs.push([start, i - 1]);
-      start = -1;
-    }
-  });
-  if (start >= 0) runs.push([start, slots.length - 1]);
-  return runs;
-}
-
 /**
  * The shaded "not measured" series: the axis maximum at each gap slot, null
  * elsewhere. These are the shaded ranges the chart receives.
@@ -221,11 +204,6 @@ export function niceMax(value: number): number {
   const pow = 10 ** Math.floor(Math.log10(value));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((m) => m >= value) ?? 10 * pow;
   return step;
-}
-
-/** A time for a column whose header already says UTC: `10-13 15:00`. */
-export function formatSeen(value: string): string {
-  return utcTimeText(value, "compact", true);
 }
 
 /** What a sender is called where it may wrap: after `.` and `-`, never mid-word. */
@@ -267,11 +245,6 @@ export function axisLabel(ms: number): string {
     return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   }
   return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-}
-
-export function windowText(startIso: string, seconds: number): string {
-  const end = new Date(Date.parse(startIso) + seconds * 1000).toISOString();
-  return `${utcTimeText(startIso)} to ${utcTimeText(end)}`;
 }
 
 export interface RangeOption {

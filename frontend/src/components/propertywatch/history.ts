@@ -50,8 +50,3 @@ export function historyStateText(history: PwWatchHistory): string | null {
   }
 }
 
-export function historyGapText(gap: PwWatchHistory["gaps"] extends (infer T)[] | null ? T : never): string {
-  const reason = gap.reason.trim().replace(/[.:;]+$/, "");
-  const range = `${utcTimeText(gap.start)} to ${utcTimeText(gap.end)}`;
-  return reason ? `Buckets from ${range} could not be read (${reason}).` : `Buckets from ${range} could not be read.`;
-}

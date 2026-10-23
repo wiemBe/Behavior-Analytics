@@ -10,7 +10,7 @@ import {
   profile,
   status,
 } from "@/components/fieldmapping/fixtures";
-import { ApiError, api, type WafProfileOut } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { draftFromProfile } from "@/lib/fieldMapping";
 
 const SOURCE: EditorSource = {

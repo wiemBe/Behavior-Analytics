@@ -52,11 +52,6 @@ async function chooseSignature(user: ReturnType<typeof userEvent.setup>, name: s
   await user.type(box, name);
 }
 
-async function reviewAndSave(user: ReturnType<typeof userEvent.setup>, name: string) {
-  await user.click(screen.getByRole("button", { name: "Review and save" }));
-  await user.click(screen.getByRole("button", { name }));
-}
-
 describe("IpsProfileEditor: header and sections", () => {
   it("states the source, its version, validation and collection", () => {
     editor();

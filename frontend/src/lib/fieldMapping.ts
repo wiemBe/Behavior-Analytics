@@ -341,14 +341,6 @@ export function matchProperty(name: string, query: string): PropertyMatch | null
   return { score, ranges };
 }
 
-/** The words after a suggestion's name. */
-export function suggestionHint(p: PropertyCatalogOut["properties"][number]): string {
-  if (!p.name_allowed) return "not selectable: name not allowed";
-  if (p.applies_to_source_type === true) return "applies to this source type";
-  if (p.applies_to_source_type === false) return "other source type";
-  return "";
-}
-
 // --- validation words -------------------------------------------------------
 
 export interface FieldStatusInfo {

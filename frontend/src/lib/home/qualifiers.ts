@@ -36,10 +36,6 @@ export function truncated(shown: number, total: number): Qualifier {
   return { kind: "TRUNCATED", shown, total, text: `First ${n(shown)} of ${n(total)}` };
 }
 
-export function hasQualifier(qualifiers: Qualifier[], kind: Qualifier["kind"]): boolean {
-  return qualifiers.some((q) => q.kind === kind);
-}
-
 /**
  * One short phrase for a widget's header pill: the worst caveat, in words. A state that
  * leaves nothing to draw (not collected, insufficient) outranks one that qualifies what is

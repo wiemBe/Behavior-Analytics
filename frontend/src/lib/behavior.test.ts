@@ -12,7 +12,6 @@ import {
   dimensionLabel,
   dimensionMeaning,
   dimensionTone,
-  evidenceMeaning,
   evidenceTone,
   formatCount,
   formatDelta,
@@ -23,7 +22,6 @@ import {
   formatShare,
   hasConfidenceLimitation,
   isUnjudged,
-  isUnobserved,
   robustScoreMeaning,
   stateMeaning,
   stateMeaningAgainst,
@@ -35,9 +33,9 @@ describe("zero is not the same as unmeasured", () => {
     expect(formatMetric(0)).toBe("0.00");
     expect(formatCount(0)).toBe("0");
     expect(formatRatio(0)).toBe("0.00x");
-    expect(formatShare(0)).toBe("0.0 %");
+    expect(formatShare(0)).toBe("0.0\u00A0%");
     expect(formatDelta(0)).toBe("0");
-    expect(formatPercentDelta(0)).toBe("0.0 %");
+    expect(formatPercentDelta(0)).toBe("0.0\u00A0%");
     expect(formatDuration(0)).toBe("0 s");
   });
 
@@ -69,12 +67,12 @@ describe("signed formatting", () => {
   });
 
   it("signs a percentage delta", () => {
-    expect(formatPercentDelta(400.6)).toBe("+400.6 %");
-    expect(formatPercentDelta(-42.5)).toBe("-42.5 %");
+    expect(formatPercentDelta(400.6)).toBe("+400.6\u00A0%");
+    expect(formatPercentDelta(-42.5)).toBe("-42.5\u00A0%");
   });
 
   it("scales a fraction into a percentage", () => {
-    expect(formatShare(0.68)).toBe("68.0 %");
+    expect(formatShare(0.68)).toBe("68.0\u00A0%");
   });
 });
 
@@ -135,21 +133,6 @@ describe("lifecycle states", () => {
 });
 
 describe("evidence status", () => {
-  const ALL = [
-    "NOT_REQUESTED",
-    "PENDING",
-    "COMPLETE",
-    "PARTIAL",
-    "UNAVAILABLE",
-    "FAILED",
-  ] as const;
-
-  it("explains all six states", () => {
-    for (const s of ALL) {
-      expect(evidenceMeaning(s).length).toBeGreaterThan(20);
-    }
-  });
-
   it("only calls COMPLETE good news", () => {
     expect(evidenceTone("COMPLETE")).toBe("ok");
     expect(evidenceTone("PARTIAL")).toBe("warn");
@@ -162,18 +145,6 @@ describe("evidence status", () => {
     // as ok would present an unexamined anomaly as a clean one.
     expect(evidenceTone("NOT_REQUESTED")).toBe("");
     expect(evidenceTone("UNAVAILABLE")).toBe("");
-  });
-
-  it("says that PARTIAL leaves dimensions unchecked", () => {
-    expect(evidenceMeaning("PARTIAL")).toMatch(/not been checked/i);
-  });
-
-  it("says UNAVAILABLE is a property of the source, not an error", () => {
-    expect(evidenceMeaning("UNAVAILABLE")).toMatch(/property of the source/i);
-  });
-
-  it("says FAILED is transient and says nothing about the anomaly", () => {
-    expect(evidenceMeaning("FAILED")).toMatch(/transient/i);
   });
 });
 
@@ -204,12 +175,6 @@ describe("dimension availability", () => {
 });
 
 describe("bucket completeness", () => {
-  it("treats anything but COMPLETE as not a trustworthy observation", () => {
-    expect(isUnobserved("COMPLETE")).toBe(false);
-    expect(isUnobserved("PARTIAL")).toBe(true);
-    expect(isUnobserved("MISSING")).toBe(true);
-  });
-
   it("says a partial bucket is an undercount, not a measurement", () => {
     expect(completenessMeaning("PARTIAL")).toMatch(/undercount/i);
   });

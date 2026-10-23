@@ -174,6 +174,12 @@ describe("baselineQuality", () => {
     const q = baselineQuality(source(), [cell({ is_reliable: false })]);
     expect(q.status).toBe("INCOMPLETE");
   });
+
+  it("states the cell's completeness in the shared percent spelling", () => {
+    const q = baselineQuality(source(), [cell({ is_reliable: false, completeness: 0.9 })]);
+    expect(q.explanation).toContain("at 90.0\u00A0% collection completeness");
+    expect(q.explanation).not.toMatch(/\d%/);
+  });
 });
 
 describe("collectionHealth", () => {

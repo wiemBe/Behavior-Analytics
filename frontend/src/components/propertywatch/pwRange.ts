@@ -17,8 +17,6 @@ export const VALUES_PAGE_SIZE = 50;
 
 export type PwRangeKey = (typeof PW_RANGES)[number]["key"];
 
-export const DEFAULT_PW_RANGE: PwRangeKey = "24h";
-
 export function parsePwRange(value: string | undefined): (typeof PW_RANGES)[number] {
   return PW_RANGES.find((r) => r.key === value) ?? PW_RANGES[2];
 }

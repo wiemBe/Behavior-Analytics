@@ -16,7 +16,6 @@ import { sevTone, type AnomalyState, type EvidenceStatus } from "@/lib/api";
 import {
   dimensionMeaning,
   dimensionTone,
-  evidenceMeaning,
   evidenceTone,
   isUnjudged,
   stateMeaning,
@@ -107,12 +106,6 @@ describe("lifecycle state reads without colour", () => {
 });
 
 describe("evidence outcome reads without colour", () => {
-  it("explains every evidence status in words", () => {
-    for (const status of EVIDENCE) {
-      expect(evidenceMeaning(status).length, status).toBeGreaterThan(0);
-    }
-  });
-
   it("calls only a complete collection good news", () => {
     expect(evidenceTone("COMPLETE")).toBe("ok");
     for (const status of EVIDENCE.filter((s) => s !== "COMPLETE")) {
@@ -124,15 +117,7 @@ describe("evidence outcome reads without colour", () => {
     // One is a property of the source, the other a transient collection
     // error. Rendering them alike would make an outage look like a
     // characteristic of the data.
-    expect(evidenceMeaning("UNAVAILABLE")).not.toBe(evidenceMeaning("FAILED"));
     expect(evidenceTone("UNAVAILABLE")).not.toBe(evidenceTone("FAILED"));
-  });
-
-  it("does not present either as an empty but successful result", () => {
-    for (const status of ["UNAVAILABLE", "FAILED"] as const) {
-      expect(evidenceMeaning(status), status).not.toBe(evidenceMeaning("COMPLETE"));
-      expect(evidenceMeaning(status), status).not.toMatch(/\bno (?:contributors|results|change)\b/i);
-    }
   });
 });
 

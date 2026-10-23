@@ -20,12 +20,16 @@ describe("formatAgo", () => {
 });
 
 describe("signedPercent", () => {
+  it("joins the number and the sign with U+00A0", () => {
+    expect(signedPercent(3.2)).toBe("+3.2\u00A0%");
+  });
+
   it("uses a true minus for a negative value", () => {
-    expect(signedPercent(-3.94)).toBe("−3.9 %");
+    expect(signedPercent(-3.94)).toBe("−3.9\u00A0%");
     expect(signedPercent(-3.94)).not.toContain("-");
   });
   it("signs a positive value and leaves zero bare", () => {
-    expect(signedPercent(3.2)).toBe("+3.2 %");
-    expect(signedPercent(0)).toBe("0.0 %");
+    expect(signedPercent(3.2)).toBe("+3.2\u00A0%");
+    expect(signedPercent(0)).toBe("0.0\u00A0%");
   });
 });

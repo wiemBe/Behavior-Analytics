@@ -5,7 +5,7 @@
 
 import type { DashboardLayout, LayoutWidget, WidgetRange } from "@/widgets/types";
 
-import { ApiError, request, type CallerInfo } from "./api";
+import { ApiError, request } from "./api";
 
 /** `PRIVATE` is the owner's alone; `SHARED` is read-only to every dashboard reader. */
 export type DashboardVisibility = "PRIVATE" | "SHARED";
@@ -138,8 +138,6 @@ export async function replaceDashboard(
     throw error;
   }
 }
-
-export const fetchMe = (signal?: AbortSignal) => request<CallerInfo>("/me", { signal });
 
 /** The same reads in the shape `useApiResource` takes: a key (the request's identity). */
 export const dashboardReads = {

@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { setOption, resize, dispose, init, use, shell } = vi.hoisted(() => {
+const { setOption, init, use, shell } = vi.hoisted(() => {
   const setOption = vi.fn();
   const resize = vi.fn();
   const dispose = vi.fn();

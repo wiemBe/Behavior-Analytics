@@ -49,5 +49,3 @@ export const KNOWN_PERMISSIONS = [
   "read:history_backfill",
   "admin:history_backfill",
 ] as const;
-
-export type KnownPermission = (typeof KNOWN_PERMISSIONS)[number];

@@ -4,7 +4,8 @@
 // server's locale during SSR and the browser's after hydration, so the same
 // count can print "1,234" and then "1.234". A missing measurement is an em
 // dash, never "0". A share always has one decimal and a space before "%",
-// the unit spacing the guidelines require ("12.3 %"). A positive share that
+// the unit spacing the guidelines require ("12.3 %"); the space is U+00A0, so a
+// line never breaks between the number and its sign. A positive share that
 // would round to 0.0 % is "<0.1 %", so a real fraction is not drawn as zero.
 
 const COUNT = new Intl.NumberFormat("en-US");
@@ -24,6 +25,6 @@ export function formatCount(value: number | null | undefined): string {
 export function formatShare(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return MISSING;
   const pct = value * 100;
-  if (pct > 0 && pct < 0.1) return "<0.1 %";
-  return `${pct.toFixed(1)} %`;
+  if (pct > 0 && pct < 0.1) return "<0.1\u00A0%";
+  return `${pct.toFixed(1)}\u00A0%`;
 }

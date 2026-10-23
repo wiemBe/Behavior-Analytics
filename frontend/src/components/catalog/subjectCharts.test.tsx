@@ -6,7 +6,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { failed, forbidden, loading, ok } from "@/components/home/testkit";
+import { failed, forbidden, ok } from "@/components/home/testkit";
 import { wafBaselineCell, wafEndpoint } from "@/components/waf/fixtures";
 import { homeReads } from "@/lib/api";
 import { behavior } from "@/lib/home/fixtures";

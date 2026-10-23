@@ -33,6 +33,8 @@ import {
 import { WatchPropertyPicker, WatchScopePicker } from "./WatchPickers";
 import { latencyCadence } from "@/components/cadence/CadenceLatency";
 
+import { formatShare } from "@/lib/format";
+
 import { pinAvailability } from "./pwFormat";
 import { historyHeaderText } from "./history";
 
@@ -92,7 +94,7 @@ function PreviewResult({
         </div>
         <div>
           <dt>Coverage</dt>
-          <dd className="num">{preview.coverage === null ? "—" : `${(preview.coverage * 100).toFixed(1)} %`}</dd>
+          <dd className="num">{formatShare(preview.coverage)}</dd>
         </div>
         <div>
           <dt>Unparsed remainder</dt>
@@ -119,7 +121,7 @@ function PreviewResult({
                 <tr key={row.value_key}>
                   <td className="pw-value-text">{row.components.join(" × ") || row.value_key}</td>
                   <td className="num">{preview.rows_measurement === "LOWER_BOUND" ? "at least " : ""}{row.events.toLocaleString("en-US")}</td>
-                  <td className="num">{row.share === null ? "—" : `${(row.share * 100).toFixed(1)} %`}</td>
+                  <td className="num">{formatShare(row.share)}</td>
                 </tr>
               ))}
             </tbody>
@@ -130,7 +132,7 @@ function PreviewResult({
         <p>
           <strong>Applicability reading.</strong>{" "}
           {preview.property_parses === true
-            ? `The selected property set parsed on ${preview.coverage === null ? "an unknown share of" : `${(preview.coverage * 100).toFixed(1)} % of`} events.`
+            ? `The selected property set parsed on ${preview.coverage === null ? "an unknown share of" : `${formatShare(preview.coverage)} of`} events.`
             : preview.property_parses === false
               ? "The selected property set parsed on no event although the scope sent events."
               : "The preview cannot determine whether the property parses on this scope."}

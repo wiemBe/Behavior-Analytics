@@ -310,7 +310,7 @@ describe("WAF investigation: seasonal band and ratio", () => {
     );
     const text = String(chartProps.last!.textSummary);
     expect(text).toMatch(/Blocked share of requests/);
-    expect(text).toMatch(/expected proportion at detection was 2\.1%/);
+    expect(text).toMatch(/expected proportion at detection was 2\.1\s%\./);
     expect(text).toMatch(/not as 0 %/);
   });
 });

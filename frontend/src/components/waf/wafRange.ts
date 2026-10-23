@@ -12,8 +12,6 @@ export const WAF_RANGES = [
 
 export type WafRangeKey = (typeof WAF_RANGES)[number]["key"];
 
-export const DEFAULT_WAF_RANGE: WafRangeKey = "24h";
-
 export function parseWafRange(value: string | undefined): (typeof WAF_RANGES)[number] {
   return WAF_RANGES.find((r) => r.key === value) ?? WAF_RANGES[0];
 }

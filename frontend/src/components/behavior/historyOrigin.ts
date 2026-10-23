@@ -40,10 +40,6 @@ export interface OriginCounts {
 const byTime = <T extends { bucket_start: string }>(rows: T[]): T[] =>
   [...rows].sort((a, b) => Date.parse(a.bucket_start) - Date.parse(b.bucket_start));
 
-export function isHistory(origin: HistoryOrigin | null | undefined): boolean {
-  return origin === "HISTORY";
-}
-
 export function originCounts(rows: OriginRow[]): OriginCounts {
   return {
     total: rows.length,

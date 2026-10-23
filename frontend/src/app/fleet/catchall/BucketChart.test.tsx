@@ -5,7 +5,7 @@ import { BucketChart } from "./BucketChart";
 import { buildSlots } from "./catchall";
 import { bucket } from "./fixtures";
 
-const { setOption, init, use, on } = vi.hoisted(() => {
+const { setOption, init, use } = vi.hoisted(() => {
   const setOption = vi.fn();
   const on = vi.fn();
   return {

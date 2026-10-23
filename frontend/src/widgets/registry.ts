@@ -1,6 +1,6 @@
 // The widget registry (UR.5.1): every widget the catalog can place, in one list.
 //
-// The Phase 2 Home components are registered as they are: each one reads its own data through
+// The Home components (the Home is the widget system) are registered as they are: each one reads its own data through
 // `useApiResource` and renders its own frame and states, so the registry wraps them and does
 // not rewrite them. The catalog lists only what exists. A `blocked` entry is a widget whose
 // data does not exist yet; the catalog shows it disabled with the reason and no layout can
@@ -33,7 +33,7 @@ import type { SearchResultsConfig } from "@/widgets/SearchResultsWidget";
 
 type NoConfig = Record<string, never>;
 
-/** Loads a Phase 2 component with `next/dynamic`, `ssr: false`, under a text-only state. */
+/** Loads a Home component with `next/dynamic`, `ssr: false`, under a text-only state. */
 function load(
   title: string,
   kpi: boolean,

@@ -39,5 +39,5 @@ export function formatFigure(
  */
 export function formatPointChange(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
-  return `${value > 0 ? "+" : ""}${value.toFixed(1)} pp`;
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}\u00A0pp`;
 }

@@ -201,8 +201,6 @@ export function propertiesText(watch: Pick<PropertyWatch, "properties">): string
 
 // --- readings ------------------------------------------------------------------
 
-export const EVENTS_UNIT = "events per 5 min";
-
 /** The unit of a bucket count, spoken from the bucket width: `events per 5 min`. */
 export function eventsUnit(bucketSeconds: number | null | undefined): string {
   if (!bucketSeconds || bucketSeconds <= 0) return "events per bucket";

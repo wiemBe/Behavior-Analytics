@@ -19,7 +19,7 @@ import { epsPoint, epsSeries } from "@/lib/home/fixtures";
 import { WidgetRuntimeContext } from "./runtime";
 import type { WidgetRange } from "./types";
 
-const { setOption, init } = vi.hoisted(() => {
+const { init } = vi.hoisted(() => {
   const setOption = vi.fn();
   return {
     setOption,

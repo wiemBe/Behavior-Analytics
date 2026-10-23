@@ -5,7 +5,7 @@ import { homeReads, type FleetEpsSeries } from "@/lib/api";
 import { fleet, fleetClass, noData } from "@/lib/home/fixtures";
 
 import { KpiTotalEps } from "./KpiTotalEps";
-import { failed, forbidden, loading, ok } from "./KpiTestStates";
+import { failed, forbidden, ok } from "./KpiTestStates";
 
 const mocks = vi.hoisted(() => ({ states: {} as Record<string, unknown> }));
 vi.mock("@/hooks/useApiResource", () => ({
