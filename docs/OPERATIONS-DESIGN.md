@@ -205,6 +205,10 @@ GHCR lowercases the owner and the image name. The repository is
 name `ghcr.io/wiembe/qradar-dashboard/` and stay there; `upgrade` moves an installed site to the
 new prefix (OPS-17).
 
+Every `FROM` in the four Dockerfiles is pinned `TAG@sha256:<digest>`. The release's
+digest step (the `redis` job) resolves each of those pins and the redis pin, and fails when one no
+longer resolves; how to bump one is in [`DEVELOPMENT.md`](DEVELOPMENT.md) "Base image pins".
+
 The production compose file sets `image:` to those names and keeps `build:` so
 `--build` still works. `docker compose pull` is the default. `docker compose build`
 runs only for `--build`.
@@ -331,11 +335,14 @@ the MCP image is already built, and the default install does not start MCP.
 from a checkout on a machine that can pull, writes `qradar-dash-<version>-bundle.tar` in DIR (default
 the current directory). `--version` is only an assertion: it must equal the checkout's `VERSION`.
 The image prefix is `QRADAR_DASH_IMAGE_PREFIX` from `.env`, else `DEFAULT_IMAGE_PREFIX`; the output
-says which. The command pulls the six images of §2.2 and saves them in one `docker save`. Redis is
-referenced by the digest pinned in `docker-compose.prod.yml` (`redis_ref` reads it; no second copy).
+says which. The command pulls the seven images — the five service images of §2.2, the redis and
+the secrets helper — and saves them in one `docker save`. Redis and the helper are referenced by
+the digests pinned in `docker-compose.prod.yml` (`redis_ref`) and `deploy/load-secrets.sh`
+(`secrets_helper_image`; no second copy of either). The offline host runs `deploy/load-secrets.sh`
+and the backup's secrets tar with the helper image, and cannot pull it, so the bundle carries it.
 The tar holds, with no directory prefix:
 
-- `images.tar` from `docker save` of the six images (redis included)
+- `images.tar` from `docker save` of the seven images (redis and the secrets helper included)
 - `SHA256SUMS`, covering every other member
 - `MANIFEST`: `version`, `image_prefix` and one `image <reference> <local image ID>` line per image
 - `VERSION`, `docs/releases/<version>.md`
@@ -362,13 +369,15 @@ site's. `bundle_load` extracts under `.install-tmp/`, runs `sha256sum -c`, refus
 `image_store` (`containerd` or `classic`, from `docker info`, recorded by `docker_image_store`)
 equals this host's or is absent, its ID must equal the one recorded. `.Id` differs between the two
 stores, so with different stores the IDs are not compared, one line says so, and integrity rests on
-`SHA256SUMS`. `docker save` records no name for the digest-pinned redis image, and Docker refuses a
+`SHA256SUMS`. `docker save` records no name for a digest-pinned reference, and Docker refuses a
 digest reference as a tag target, so a reference that does not resolve after the load gets the plain
 `name:tag` from the loaded ID and the pinned reference must then resolve (measured on Docker 29.9.1,
 containerd store, OPS-21b); if not, the command stops with a message that the loaded image does not
-carry the pinned digest and says to make the bundle again. A failure
+carry the pinned digest and says to make the bundle again. The same path serves the redis and the
+secrets-helper references. A failure
 anywhere loads nothing further and leaves no `.install-tmp/`. `upgrade --offline` without a bundle
-still requires the images to be loaded and names the first missing one.
+still requires the images to be loaded and names the first missing one — the secrets helper
+included, because the pre-upgrade backup runs it.
 
 `--build` runs `docker compose build` from the checkout, including the submodule.
 It is the fallback when the registry cannot be used and no bundle is on disk.
@@ -909,8 +918,12 @@ support bundle (§7).
 database. A restore that omitted them would bring back a database whose
 `ca_bundle_path` points at `/run/secrets/qradar_ca.pem` and whose volume was
 empty. The tar is produced by the same stdin-tar approach as `load-secrets.sh`,
-reading the volume from a short-lived container, so the checkout is not bind
-mounted.
+reading the volume from a short-lived container of the digest-pinned alpine
+helper (`SECRETS_HELPER_IMAGE` in `deploy/load-secrets.sh`; the same constant
+the load path uses), so the checkout is not bind
+mounted. That container runs offline (`--network none`), with every capability
+dropped except the DAC read the tar needs (the token file is `0400`, owned by
+the backend account), both volumes read-only, and `no-new-privileges`.
 
 **As built (OPS-5).** `./qradar-dash backup` writes
 `.qradar-dash-<utc>-<reason>.partial` with umask `077`, verifies it, then renames

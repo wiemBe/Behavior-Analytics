@@ -3,8 +3,8 @@
 Docker is a stub on PATH. The stub keeps a small image store under `$HOME/imgstate`: `pull` adds
 an image (its ID is derived from the reference), `save` writes the references and IDs into the
 archive, `load` reads them back, `image inspect` and `tag` read and write the store. A flag file in
-that directory makes the stub fail a call or lose the redis digest reference on `load`, the way
-some real image stores do.
+that directory makes the stub fail a call or, on `load`, keep a digest-pinned reference by ID only
+(every digest pin, or the secrets helper alone), the way some real image stores do.
 """
 
 # ruff: noqa: F811  (fixtures imported from the installer and upgrade tests are used by name)
@@ -88,6 +88,9 @@ if [ -d "$S" ]; then
       while read -r ref id; do
         add "$id" "$id"
         if flag load-drop-digest && [[ $ref == *@sha256:* ]]; then
+          printf '%s %s\n' "$ref" "$id" >> "$S/dropped"; continue
+        fi
+        if flag load-drop-helper && [[ $ref == alpine:*@sha256:* ]]; then
           printf '%s %s\n' "$ref" "$id" >> "$S/dropped"; continue
         fi
         if flag load-skew && [[ $ref == */backend:* ]]; then id="${id}00"; fi
@@ -218,11 +221,35 @@ def redis_reference() -> str:
     return match.group(1)
 
 
-def six_refs(prefix: str, version: str) -> list[str]:
+def helper_reference() -> str:
+    """The secrets-helper reference as pinned in deploy/load-secrets.sh (one place)."""
+    match = re.search(
+        r"^SECRETS_HELPER_IMAGE=(alpine:\S+@sha256:[0-9a-f]{64})$",
+        (REPO / "deploy" / "load-secrets.sh").read_text(),
+        flags=re.MULTILINE,
+    )
+    assert match
+    return match.group(1)
+
+
+def bundle_refs(prefix: str, version: str) -> list[str]:
+    """The references the bundle pulls and saves: five services, redis, the helper."""
     return [
         f"{prefix}/{name}:{version}"
         for name in ("postgres", "backend", "frontend", "proxy", "qradar-mcp")
-    ] + [redis_reference()]
+    ] + [redis_reference(), helper_reference()]
+
+
+def plain_name(reference: str) -> str:
+    """The name:tag of a digest pin. `docker tag` may target this, never the digest."""
+    plain, separator, digest = reference.partition("@")
+    assert separator == "@" and digest.startswith("sha256:") and "@" not in plain
+    return plain
+
+
+def tag_targets(calls: list[str]) -> list[str]:
+    """Targets of the stub's `tag` lines. A digest reference is never one of them."""
+    return [call.rsplit(" ", 1)[-1] for call in calls if call.startswith("tag ")]
 
 
 def members(bundle: Path) -> list[str]:
@@ -254,17 +281,21 @@ def rewrite(bundle: Path, changes: dict[str, bytes | None]) -> Path:
 # ---------------------------------------------------------------- bundle: the producing side
 
 
-def test_bundle_pulls_and_saves_the_six_images_and_redis_by_its_pinned_digest(
+def test_bundle_pulls_and_saves_the_seven_images_redis_and_helper_by_pinned_digest(
     producer: Producer,
 ) -> None:
-    producer.make()
+    result = producer.run("bundle", "--output", str(producer.out))
+    assert result.returncode == 0, result.stdout + result.stderr
 
     calls = producer.docker_calls()
-    refs = six_refs(DEFAULT_PREFIX, "0.1.0")
+    refs = bundle_refs(DEFAULT_PREFIX, "0.1.0")
+    assert len(refs) == 7
+    assert f"Saving the {len(refs)} images" in result.stdout
     assert [c for c in calls if c.startswith("pull ")] == [f"pull {r}" for r in refs]
     assert any(r.endswith("/proxy:0.1.0") for r in refs)
     assert any(r.endswith("/qradar-mcp:0.1.0") for r in refs)
-    assert refs[-1] == redis_reference() and "@sha256:" in refs[-1]
+    assert refs[-2] == redis_reference() and "@sha256:" in refs[-2]
+    assert refs[-1] == helper_reference() and "@sha256:" in refs[-1]
     saves = [c for c in calls if c.startswith("save ")]
     assert len(saves) == 1
     assert saves[0].endswith(" ".join(refs))
@@ -298,7 +329,7 @@ def test_bundle_has_exactly_the_designed_members_and_correct_sums(producer: Prod
     assert "version 0.1.0" in manifest
     assert f"image_prefix {DEFAULT_PREFIX}" in manifest
     images = [line.split() for line in manifest if line.startswith("image ")]
-    assert [i[1] for i in images] == six_refs(DEFAULT_PREFIX, "0.1.0")
+    assert [i[1] for i in images] == bundle_refs(DEFAULT_PREFIX, "0.1.0")
     assert all(re.fullmatch(r"sha256:[0-9a-f]{64}", i[2]) for i in images)
 
 
@@ -338,8 +369,14 @@ def test_bundle_says_which_prefix_it_used(tmp_path: Path) -> None:
     assert (
         "image prefix registry.example/mirror (QRADAR_DASH_IMAGE_PREFIX in .env)" in result.stdout
     )
-    assert all(c.startswith("pull registry.example/mirror/") or "redis" in c
-               for c in custom.docker_calls() if c.startswith("pull "))
+    pulls = [c.removeprefix("pull ") for c in custom.docker_calls() if c.startswith("pull ")]
+    assert pulls == bundle_refs("registry.example/mirror", "0.1.1")
+    # The site prefix covers the five services only. Redis and the helper stay the
+    # digest pins from their own files and are not rewritten onto the prefix.
+    assert pulls[-2] == redis_reference()
+    assert not redis_reference().startswith("registry.example/")
+    assert pulls[-1] == helper_reference()
+    assert not helper_reference().startswith("registry.example/")
 
 
 def test_bundle_defaults_to_the_checkout_version_and_current_directory(
@@ -389,7 +426,7 @@ def test_a_failed_save_leaves_no_partial_bundle_and_says_so(producer: Producer) 
 
 
 def test_a_failed_pull_names_the_image_and_writes_nothing(producer: Producer) -> None:
-    refs = six_refs(DEFAULT_PREFIX, "0.1.0")
+    refs = bundle_refs(DEFAULT_PREFIX, "0.1.0")
     producer.flag("pull-fail", refs[3] + "\n")
 
     result = producer.run("bundle", "--output", str(producer.out))
@@ -447,6 +484,17 @@ def test_bundle_without_a_pinned_redis_digest_is_refused(producer: Producer) -> 
 
     assert result.returncode == 1
     assert "no redis image pinned by digest" in result.stderr
+    assert list(producer.out.iterdir()) == []
+
+
+def test_bundle_without_a_pinned_helper_digest_is_refused(producer: Producer) -> None:
+    script = producer.root / "deploy" / "load-secrets.sh"
+    script.write_text(script.read_text().replace(helper_reference(), "alpine:3.20"))
+
+    result = producer.run("bundle", "--output", str(producer.out))
+
+    assert result.returncode == 1
+    assert "no SECRETS_HELPER_IMAGE pinned by digest" in result.stderr
     assert list(producer.out.iterdir()) == []
 
 
@@ -508,7 +556,7 @@ def test_the_operators_path_bundle_then_install_offline(
     assert "bundle images loaded and checked against MANIFEST" in result.stdout
     calls = consumer_calls(consumer)
     assert any(c.startswith("load -i ") for c in calls)
-    for ref in six_refs(DEFAULT_PREFIX, "0.1.0"):
+    for ref in bundle_refs(DEFAULT_PREFIX, "0.1.0"):
         assert f"image inspect --format {{{{.Id}}}} {ref}" in calls, ref
     assert (consumer.root / ".qradar-dash" / "state.json").is_file()
     assert not (consumer.root / ".install-tmp").exists()
@@ -675,12 +723,19 @@ def test_a_load_that_loses_the_redis_digest_gets_the_plain_tag_and_the_pinned_re
 
     assert result.returncode == 0, result.stdout + result.stderr
     ref = redis_reference()
+    helper_plain = plain_name(helper_reference())
+    assert plain_name(ref) == PLAIN_REDIS
     assert f"set the tag {PLAIN_REDIS} on it" in result.stdout
     assert f"moves an existing {PLAIN_REDIS}" in result.stdout
+    assert f"set the tag {helper_plain} on it" in result.stdout
+    assert f"moves an existing {helper_plain}" in result.stdout
     calls = consumer_calls(consumer)
-    tags = [c for c in calls if c.startswith("tag ")]
-    assert len(tags) == 1 and tags[0].endswith(f" {PLAIN_REDIS}")  # never a digest tag
+    # load-drop-digest drops every digest pin (redis and the helper). Each is
+    # retagged as its plain name only — never a digest tag.
+    assert tag_targets(calls) == [PLAIN_REDIS, helper_plain]
+    assert not [call for call in calls if call.startswith("tag ") and "@" in call]
     assert f"image inspect --format {{{{.Id}}}} {ref}" in calls
+    assert f"image inspect --format {{{{.Id}}}} {helper_reference()}" in calls
     assert (consumer.root / ".qradar-dash" / "state.json").is_file()
 
 
@@ -699,7 +754,57 @@ def test_a_pinned_ref_that_does_not_resolve_after_the_plain_tag_is_refused(
     assert "does not carry the pinned digest on this Docker" in result.stderr
     assert "bundle again" in result.stderr
     assert "docker tag" not in result.stderr  # no advice Docker would refuse
-    assert not [c for c in consumer_calls(consumer) if c.startswith("tag ") and "@" in c]
+    calls = consumer_calls(consumer)
+    # Both digest pins are dropped. Each tag target is the plain name — never a digest tag.
+    assert tag_targets(calls) == [PLAIN_REDIS, plain_name(helper_reference())]
+    assert not [call for call in calls if call.startswith("tag ") and "@" in call]
+    assert not (consumer.root / ".qradar-dash" / "state.json").exists()
+    assert not (consumer.root / ".install-tmp").exists()
+
+
+def test_a_load_that_loses_the_helper_digest_gets_the_plain_tag_and_the_pinned_ref_resolves(
+    consumer: Install, producer: Producer
+) -> None:
+    bundle = producer.make()
+    consumer_flag(consumer, "load-drop-helper")
+
+    result = offline_install(consumer, bundle)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    ref = helper_reference()
+    plain = plain_name(ref)
+    assert f"docker load kept {ref} only by its ID" in result.stdout
+    assert f"set the tag {plain} on it" in result.stdout
+    assert f"moves an existing {plain}" in result.stdout
+    calls = consumer_calls(consumer)
+    # Redis kept its digest, so the only retag is the helper, and it is the plain
+    # name — never a digest tag.
+    assert tag_targets(calls) == [plain]
+    assert not [call for call in calls if call.startswith("tag ") and "@" in call]
+    assert f"image inspect --format {{{{.Id}}}} {ref}" in calls
+    assert (consumer.root / ".qradar-dash" / "state.json").is_file()
+
+
+def test_a_pinned_helper_ref_that_does_not_resolve_after_the_plain_tag_is_refused(
+    consumer: Install, producer: Producer
+) -> None:
+    bundle = producer.make()
+    consumer_flag(consumer, "load-drop-helper")
+    consumer_flag(consumer, "plain-no-resolve")
+
+    result = offline_install(consumer, bundle)
+
+    assert result.returncode == 1, result.stdout
+    ref = helper_reference()
+    plain = plain_name(ref)
+    assert f"{ref} does not resolve" in result.stderr
+    assert "does not carry the pinned digest on this Docker" in result.stderr
+    assert f"even with the tag {plain} set" in result.stderr
+    assert "bundle again" in result.stderr
+    assert "docker tag" not in result.stderr  # no advice Docker would refuse
+    calls = consumer_calls(consumer)
+    assert tag_targets(calls) == [plain]  # never a digest tag
+    assert not [call for call in calls if call.startswith("tag ") and "@" in call]
     assert not (consumer.root / ".qradar-dash" / "state.json").exists()
     assert not (consumer.root / ".install-tmp").exists()
 
@@ -881,6 +986,14 @@ def test_upgrade_with_a_bundle_whose_redis_digest_cannot_be_restored_is_refused_
     assert result.returncode == 1
     assert f"{redis_reference()} does not resolve" in result.stderr
     assert " stop " not in upgrade_store.action_text()
+    tags = [
+        line.removeprefix("docker ")
+        for line in upgrade_store.action_text().splitlines()
+        if line.startswith("docker tag ")
+    ]
+    # never a digest tag, for redis and for the helper (both pins were dropped)
+    assert tag_targets(tags) == [PLAIN_REDIS, plain_name(helper_reference())]
+    assert not [line for line in tags if "@" in line]
 
 
 def test_upgrade_with_a_lost_redis_digest_tags_it_back_and_continues(
@@ -892,7 +1005,16 @@ def test_upgrade_with_a_lost_redis_digest_tags_it_back_and_continues(
     result = upgrade_store.run("upgrade", TARGET_VERSION, "--offline", str(bundle))
 
     assert result.returncode == 0, output(result)
+    helper_plain = plain_name(helper_reference())
     assert f"set the tag {PLAIN_REDIS} on it" in result.stdout
+    assert f"set the tag {helper_plain} on it" in result.stdout
+    tags = [
+        line.removeprefix("docker ")
+        for line in upgrade_store.action_text().splitlines()
+        if line.startswith("docker tag ")
+    ]
+    assert tag_targets(tags) == [PLAIN_REDIS, helper_plain]  # never a digest tag
+    assert not [line for line in tags if "@" in line]
 
 
 def test_upgrade_with_a_bundle_for_another_prefix_is_refused_before_loading(
@@ -923,6 +1045,19 @@ def test_offline_upgrade_without_a_bundle_names_the_missing_image_and_the_bundle
     assert " stop " not in upgrade.action_text()
 
 
+def test_offline_upgrade_without_the_helper_image_names_it_and_suggests_the_bundle(
+    upgrade: UpgradeFixture,
+) -> None:
+    result = upgrade.run("upgrade", TARGET_VERSION, "--offline", STUB_HELPER_MISSING="1")
+
+    assert result.returncode == 1
+    ref = helper_reference()
+    assert f"image {ref} is not loaded on this host" in result.stderr
+    assert "pass the bundle: ./qradar-dash upgrade 0.2.0 --offline /path/to/" in result.stderr
+    assert "no container was stopped" in result.stderr
+    assert " stop " not in upgrade.action_text()
+
+
 def test_offline_upgrade_reads_the_redis_reference_from_the_compose_file(
     upgrade: UpgradeFixture,
 ) -> None:
@@ -930,3 +1065,4 @@ def test_offline_upgrade_reads_the_redis_reference_from_the_compose_file(
 
     assert result.returncode == 0, output(result)
     assert f"docker image inspect {redis_reference()}" in upgrade.action_text()
+    assert f"docker image inspect {helper_reference()}" in upgrade.action_text()

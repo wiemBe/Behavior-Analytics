@@ -1,5 +1,6 @@
-# Multi-stage build for the Next.js SPA.
-FROM node:22-alpine AS deps
+# Multi-stage build for the Next.js SPA. The base is pinned by digest in every
+# stage (docs/DEVELOPMENT.md "Base image pins"); the tag stays for readability.
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # The lockfile is committed, so install from it. `npm ci` fails on any drift
@@ -7,7 +8,7 @@ COPY package.json package-lock.json ./
 # image installs exactly the dependency tree the frontend gates tested.
 RUN npm ci
 
-FROM node:22-alpine AS builder
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -21,7 +22,7 @@ ARG APP_VERSION
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 RUN npm run build
 
-FROM node:22-alpine AS runner
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS runner
 ARG APP_VERSION
 ARG GIT_SHA
 LABEL org.opencontainers.image.version=$APP_VERSION \

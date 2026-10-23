@@ -187,6 +187,32 @@ container.
 The enforced formatter policy is deliberate: run `ruff check`, but do not run `ruff format` over
 the repository.
 
+## Base image pins
+
+Every image the product runs is pinned by digest, tag kept for readability:
+
+| Image | Where the pin lives |
+| --- | --- |
+| `python:3.12-slim`, `node:22-alpine` | the `FROM` lines of `backend/Dockerfile`, `frontend/Dockerfile` |
+| `timescale/timescaledb:2.17.2-pg16` | `deploy/postgres/Dockerfile` |
+| `nginx:1.27-alpine` | `deploy/proxy/Dockerfile` |
+| `alpine:3.20` (the secrets helper) | `SECRETS_HELPER_IMAGE` in `deploy/load-secrets.sh` — the only place it is written; `qradar-dash` reads it from there |
+| `redis:7.4-alpine` | `docker-compose.prod.yml` |
+
+To bump a base image, print the new multi-arch index digest and edit the pin (keep the tag):
+
+```bash
+docker buildx imagetools inspect nginx:1.27-alpine   # the "Digest:" line
+```
+
+A bump is a reviewed edit like any other. Nothing rebuilds a base silently: the release workflow's
+`redis` job (`The pinned digests still resolve` step) runs `docker buildx imagetools inspect` on
+every pin above, so a digest that no longer resolves — an upstream deletion or rename — fails the
+release instead of building from whatever the bare tag points at that day. An unpinned `FROM` never
+gets that far: `backend/tests/unit/test_pinned_images.py` fails the unit gate, and the secrets
+helper's argv is pinned by `backend/tests/unit/test_load_secrets_sh.py` and the
+`test_qradar_dash_backup.py` tests.
+
 ## Adding a migration
 
 Migrations are additive and must implement both upgrade and downgrade. Verify a fresh upgrade, a

@@ -369,16 +369,19 @@ Seçenekler: `--output DIR` paketi başka bir dizine yazar (varsayılan: bulundu
 yazılır. Betik imaj ön ekini `.env` içindeki `QRADAR_DASH_IMAGE_PREFIX` değerinden alır; `.env`
 yoksa varsayılan ön eki kullanır ve çıktıda hangisini kullandığını yazar.
 
-Komut altı imajı çeker: `postgres`, `backend`, `frontend`, `proxy` ve `qradar-mcp` (hepsi seçilen
-sürümde) ile `docker-compose.prod.yml` dosyasında digest ile sabitlenmiş `redis`. Redis
-başvurusu o dosyadan okunur, betikte elle yazılı değildir. Özel bir kayıt defteri için önce
-`docker login ghcr.io` (`read:packages` token) çalıştırılır; çekme hatası imajı adıyla söyler.
+Komut yedi imajı çeker: `postgres`, `backend`, `frontend`, `proxy` ve `qradar-mcp` (hepsi seçilen
+sürümde), `docker-compose.prod.yml` dosyasında digest ile sabitlenmiş `redis` ve
+`deploy/load-secrets.sh` içinde yine digest ile sabitlenmiş yardımcı `alpine` (gizli dizileri
+yükleyen ve yedekleyen imaj; çevrimdışı makine onu çekemeyeceği için pakette taşınır). Redis ve
+yardımcı imajın başvurusu kendi dosyasından okunur, betikte elle yazılı değildir. Özel bir kayıt
+defteri için önce `docker login ghcr.io` (`read:packages` token) çalıştırılır; çekme hatası imajı
+adıyla söyler.
 
 `qradar-dash-<sürüm>-bundle.tar` şunları içerir:
 
 | Üye | Anlamı |
 |---|---|
-| `images.tar` | Altı imajın `docker save` çıktısı. |
+| `images.tar` | Yedi imajın `docker save` çıktısı (redis ve yardımcı `alpine` dahil). |
 | `SHA256SUMS` | Bu dosya dışındaki her üyenin özeti. |
 | `MANIFEST` | Her imaj başvurusu ve paket yapılırken yerel imaj kimliği; alıcı taraf yüklediğini bununla denetler. |
 | `VERSION`, `docs/releases/<sürüm>.md` | Sürüm ve sürüm notları. |
@@ -471,6 +474,12 @@ after docker load, redis:7.4-alpine@sha256:… does not resolve: the loaded imag
 Çözüm: paketi, imaj deposu bu makineyle aynı türde olan bağlı bir makinede yeniden yap
 (`docker info` deposu gösterir). Elle yazılacak bir `docker tag … @sha256:…` komutu yoktur; Docker onu
 reddeder.
+
+Aynı mekanizma gizli dizilerin yardımcı imajı için de geçerlidir (`alpine:3.20@sha256:…`;
+sabitleme `deploy/load-secrets.sh` içindedir). `docker load` onu da yalnız kimliğiyle tutabilir;
+betik düz `alpine:3.20` etiketini koyar ve sabitlenmiş başvurunun çözüldüğünü doğrular. Paketsiz
+`upgrade <sürüm> --offline` bu imajı da arar: yükseltme öncesi yedek onu çalıştırır, eksikse betik
+imajı adıyla söyler ve hiçbir konteyneri durdurmaz.
 
 ---
 

@@ -7,7 +7,9 @@
 # source tree as a side effect. COPY puts the files in an image layer
 # (container_file_t), so nothing on the host is touched and SELinux stays
 # enforcing.
-FROM timescale/timescaledb:2.17.2-pg16
+# The base is pinned by digest (docs/DEVELOPMENT.md "Base image pins"); the tag
+# stays for readability.
+FROM timescale/timescaledb:2.17.2-pg16@sha256:4e459e217f00cbb09920c34d245501e63427e6767a495de57ce76823ff280f12
 
 COPY init/ /docker-entrypoint-initdb.d/
 
