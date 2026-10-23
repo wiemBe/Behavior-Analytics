@@ -1285,6 +1285,9 @@ cmd_install() {
 
 summary() {
   local qr_rc=$1 had=$2 api_ready=$3 origin hb_line
+  local ts_on ts_ls ts_sr ts_rm ts_os
+  local sr_days ca_days geo_days waf_m waf_a ips_m ips_a pw_m pw_a
+  local fault_days cr_days lsa_days rhs_days dcs_days
   origin=$(env_get PUBLIC_ORIGIN)
   say ""
   say "=============================== Install summary ==============================="
@@ -1314,6 +1317,29 @@ summary() {
   else
     say "History backfill   not recorded (exit $HB_RC); the first administrator sign-in will ask"
   fi
+  # Daily deleters run whether or not RETENTION_ENABLED is set. Timescale days
+  # come from .env (the installer writes 90). The other days are the code
+  # defaults unless that key is set in .env. One line, summary only.
+  ts_on=$(env_get RETENTION_ENABLED)
+  ts_ls=$(env_get RETENTION_LOG_SOURCE_METRIC_DAYS)
+  ts_sr=$(env_get RETENTION_SEARCH_RESULT_METRIC_DAYS)
+  ts_rm=$(env_get RETENTION_RULE_METRIC_DAYS)
+  ts_os=$(env_get RETENTION_OFFENSE_SNAPSHOT_DAYS)
+  sr_days=$(env_get SEARCH_RESULT_METRIC_RETENTION_DAYS); sr_days=${sr_days:-90}
+  ca_days=$(env_get CATCHALL_RETENTION_DAYS); ca_days=${ca_days:-35}
+  geo_days=$(env_get GEO_RETENTION_DAYS); geo_days=${geo_days:-35}
+  waf_m=$(env_get WAF_METRIC_RETENTION_DAYS); waf_m=${waf_m:-35}
+  waf_a=$(env_get WAF_ANOMALY_RETENTION_DAYS); waf_a=${waf_a:-180}
+  ips_m=$(env_get IPS_METRIC_RETENTION_DAYS); ips_m=${ips_m:-35}
+  ips_a=$(env_get IPS_ANOMALY_RETENTION_DAYS); ips_a=${ips_a:-365}
+  pw_m=$(env_get PW_METRIC_RETENTION_DAYS); pw_m=${pw_m:-35}
+  pw_a=$(env_get PW_ANOMALY_RETENTION_DAYS); pw_a=${pw_a:-180}
+  fault_days=$(env_get ANOMALY_FAULT_RETENTION_DAYS); fault_days=${fault_days:-30}
+  cr_days=$(env_get CUSTOM_RULE_BREACH_RETENTION_DAYS); cr_days=${cr_days:-180}
+  lsa_days=$(env_get LOG_SOURCE_ANOMALY_RETENTION_DAYS); lsa_days=${lsa_days:-365}
+  rhs_days=$(env_get RULE_HEALTH_SNAPSHOT_RETENTION_DAYS); rhs_days=${rhs_days:-90}
+  dcs_days=$(env_get DETECTION_COVERAGE_SNAPSHOT_RETENTION_DAYS); dcs_days=${dcs_days:-90}
+  say "Retention           Timescale RETENTION_ENABLED=${ts_on:-false} log_source_metric ${ts_ls:-unset}d search_result_metric ${ts_sr:-unset}d rule_metric ${ts_rm:-unset}d offense_snapshot ${ts_os:-unset}d; daily deleters (not gated by RETENTION_ENABLED): search results ${sr_days}d, catch-all ${ca_days}d, geo ${geo_days}d, WAF metrics ${waf_m}d, WAF incidents ${waf_a}d, IPS metrics ${ips_m}d, IPS incidents ${ips_a}d, property-watch metrics ${pw_m}d, property-watch incidents ${pw_a}d, anomaly faults ${fault_days}d, custom-rule breaches ${cr_days}d, Phase A incidents ${lsa_days}d, rule-health snapshots ${rhs_days}d, coverage snapshots ${dcs_days}d"
   say "Left off           WAF, IPS, rule-match collection, custom rules (turn them on later)"
   say "Next               Sign in, then Directory ($origin/admin/directory) if AD is used,"
   say "                    and Users ($origin/admin/users) to assign roles."

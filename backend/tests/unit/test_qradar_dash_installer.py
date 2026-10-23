@@ -792,6 +792,35 @@ def test_install_summary_has_no_stale_arrives_with_text(
     assert "Runbook            docs/OPERATIONS.md; ./qradar-dash doctor" in result.stdout
 
 
+def test_install_summary_names_every_retention_window(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = result.stdout
+    for fragment in (
+        "Retention",
+        "RETENTION_ENABLED=",
+        "not gated by RETENTION_ENABLED",
+        "catch-all 35d",
+        "geo 35d",
+        "Phase A incidents 365d",
+        "IPS incidents 365d",
+        "WAF incidents 180d",
+        "property-watch incidents 180d",
+        "anomaly faults 30d",
+        "custom-rule breaches 180d",
+        "rule-health snapshots 90d",
+        "coverage snapshots 90d",
+        "WAF metrics 35d",
+        "IPS metrics 35d",
+        "search results 90d",
+        "log_source_metric 90d",
+    ):
+        assert fragment in text, fragment
+
+
 def test_a_version_endpoint_failure_says_what_failed(
     inst: Install, tmp_path: Path, flow_path: str
 ) -> None:

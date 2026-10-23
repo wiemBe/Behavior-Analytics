@@ -325,6 +325,13 @@ class Settings(BaseSettings):
     ips_retention_batch_size: int = Field(default=5000, ge=100, le=100000)
     ips_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     ips_retention_interval_seconds: int = Field(default=86400, ge=3600)
+    #: Closed IPS incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). Not the metric
+    #: retention above, and not gated by IPS_RETENTION_ENABLED: the daily incident
+    #: task runs on its own so a lookback skip cannot freeze incident aging.
+    ips_anomaly_retention_days: int = Field(default=365, ge=1, le=3650)
+    ips_anomaly_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    ips_anomaly_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    ips_anomaly_retention_interval_seconds: int = Field(default=86400, ge=3600)
     #: Days of version-compatible IPS buckets considered by a baseline rebuild.
     ips_baseline_lookback_days: int = Field(default=28, ge=1)
     #: IPS subjects loaded and upserted together during a bounded baseline rebuild.
@@ -460,6 +467,9 @@ class Settings(BaseSettings):
     # Health classification reads only stored data, so it can run more often
     # than the inventory sync that feeds it.
     rule_health_evaluation_interval_seconds: int = Field(default=1800, ge=60)
+    #: rule_health_snapshot rows older than this, by evaluated_at. Not gated by
+    #: RETENTION_ENABLED. Shared batch knobs with the coverage snapshot below.
+    rule_health_snapshot_retention_days: int = Field(default=90, ge=1, le=3650)
 
     # --- Detection coverage (Phase 3) ---------------------------------------
     coverage_evaluation_interval_seconds: int = Field(default=3600, ge=60)
@@ -467,6 +477,11 @@ class Settings(BaseSettings):
     # toward coverage.
     coverage_min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     coverage_logic_version: int = 1
+    #: detection_coverage_snapshot rows older than this, by captured_at.
+    detection_coverage_snapshot_retention_days: int = Field(default=90, ge=1, le=3650)
+    snapshot_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    snapshot_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    snapshot_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- API guardrails -----------------------------------------------------
     api_default_page_size: int = Field(default=50, ge=1, le=500)
@@ -512,6 +527,12 @@ class Settings(BaseSettings):
     #: Closed fault rows (resolved or given up) older than this are deleted. An
     #: open fault is the source's current state and is never pruned.
     anomaly_fault_retention_days: int = Field(default=30, ge=1, le=3650)
+    #: Closed Phase A incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). Live
+    #: states are kept. Not gated by RETENTION_ENABLED.
+    log_source_anomaly_retention_days: int = Field(default=365, ge=1, le=3650)
+    log_source_anomaly_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    log_source_anomaly_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    log_source_anomaly_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- Phase C.2: outage alert policy -------------------------------------
     #: What a source's NO_EVENTS does when no `outage_alert_policy` row applies.
@@ -1077,6 +1098,24 @@ class Settings(BaseSettings):
             raise ValueError(
                 "WAF_METRIC_RETENTION_DAYS must exceed BASELINE_LOOKBACK_DAYS "
                 f"({self.waf_metric_retention_days} <= {self.baseline_lookback_days})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _ips_retention_covers_the_baseline(self) -> Settings:
+        """Deleting metrics the IPS baseline still needs would silently thin it.
+
+        A baseline rebuild reads `ips_baseline_lookback_days` of history, so
+        metric retention at or below that removes samples every rebuild relies
+        on. Same rule as WAF: refused only when collection and retention are
+        both on. The retention task repeats the check even if collection is off.
+        """
+        if not (self.ips_collection_enabled and self.ips_retention_enabled):
+            return self
+        if self.ips_metric_retention_days <= self.ips_baseline_lookback_days:
+            raise ValueError(
+                "IPS_METRIC_RETENTION_DAYS must exceed IPS_BASELINE_LOOKBACK_DAYS "
+                f"({self.ips_metric_retention_days} <= {self.ips_baseline_lookback_days})"
             )
         return self
 

@@ -75,6 +75,11 @@ celery_app.conf.beat_schedule = {
         "task": "apply_anomaly_fault_retention",
         "schedule": 86400.0,
     },
+    "apply-log-source-anomaly-retention": {
+        # Closed Phase A incidents. Not gated by RETENTION_ENABLED.
+        "task": "apply_log_source_anomaly_retention",
+        "schedule": float(settings.log_source_anomaly_retention_interval_seconds),
+    },
     "dispatch-notifications": {
         "task": "dispatch_notifications",
         "schedule": 30.0,
@@ -143,6 +148,12 @@ celery_app.conf.beat_schedule = {
         "task": "evaluate_detection_coverage",
         "schedule": float(settings.coverage_evaluation_interval_seconds),
     },
+    "apply-snapshot-retention": {
+        # rule_health_snapshot and detection_coverage_snapshot, each by its own
+        # day count. Not gated by RETENTION_ENABLED.
+        "task": "apply_snapshot_retention",
+        "schedule": float(settings.snapshot_retention_interval_seconds),
+    },
     # --- Phase B.1 -----------------------------------------------------------
     "dispatch-waf-collection": {
         # Enqueues one `collect_waf_source` task per eligible WAF source, so a
@@ -192,6 +203,12 @@ celery_app.conf.beat_schedule = {
     "apply-ips-retention": {
         "task": "apply_ips_retention",
         "schedule": float(settings.ips_retention_interval_seconds),
+    },
+    "apply-ips-anomaly-retention": {
+        # Closed IPS incidents. Separate from apply_ips_retention so a lookback
+        # skip on the metric task cannot freeze the 365-day incident delete.
+        "task": "apply_ips_anomaly_retention",
+        "schedule": float(settings.ips_anomaly_retention_interval_seconds),
     },
     # --- Phase G -------------------------------------------------------------
     "dispatch-property-watch-collection": {

@@ -106,7 +106,11 @@ accepted compatibility settings, but search-family cadence is the scheduler cont
 | `ANOMALY_MIN_BUCKET_EVENTS` | `50` | Minimum material bucket population |
 | `ANOMALY_SILENCE_GRACE_BUCKETS` | `1` | Missing buckets tolerated before silence evaluation |
 | `ANOMALY_MAX_BUCKET_ATTEMPTS` | `3` | Failed evaluation ticks on one bucket before it is given up. `1`–`20` |
-| `ANOMALY_FAULT_RETENTION_DAYS` | `30` | Days a resolved or given-up fault is kept. `1`–`3650` |
+| `ANOMALY_FAULT_RETENTION_DAYS` | `30` | Days a resolved or given-up fault is kept. `1`–`3650`. Daily task `apply_anomaly_fault_retention`; not gated by `RETENTION_ENABLED` |
+| `LOG_SOURCE_ANOMALY_RETENTION_DAYS` | `365` | Closed Phase A incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). `1`–`3650`. Live states are kept. Task `apply_log_source_anomaly_retention`; not gated by `RETENTION_ENABLED`. An alert that lists the incident in `source_anomaly_ids` keeps it for the life of the alert, whatever the alert status (nothing deletes alerts). `evidence_snapshot` and `source_id` are not guards |
+| `LOG_SOURCE_ANOMALY_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch. `100`–`100000` |
+| `LOG_SOURCE_ANOMALY_RETENTION_MAX_BATCHES` | `20` | Batches per run. `1`–`1000` |
+| `LOG_SOURCE_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
 | `OUTAGE_ALERT_DEFAULT` | `ALERT` | Default source-silence policy when no override applies |
 
 ## WAF behavior
@@ -176,11 +180,21 @@ Field names and blocked/allowed values belong to each source's versioned profile
 | `IPS_MAX_EVALUATION_BUCKETS_PER_RUN` | `24` | Buckets evaluated per source and run |
 | `IPS_BASELINE_LOOKBACK_DAYS` | `28` | Compatible history used for a baseline |
 | `IPS_BASELINE_REBUILD_BATCH_SIZE` | `50` | Subjects rebuilt in one batch |
-| `IPS_RETENTION_ENABLED` | `true` | Run bounded IPS retention |
-| `IPS_METRIC_RETENTION_DAYS` | `35` | Bucket and entity-metric retention |
+| `IPS_RETENTION_ENABLED` | `true` | Run bounded IPS metric retention. Does not gate closed-incident retention |
+| `IPS_METRIC_RETENTION_DAYS` | `35` | Bucket and entity-metric retention. Must exceed `IPS_BASELINE_LOOKBACK_DAYS` when collection and this switch are both on |
 | `IPS_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
 | `IPS_RETENTION_MAX_BATCHES` | `20` | Batches per retention run |
-| `IPS_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule |
+| `IPS_RETENTION_INTERVAL_SECONDS` | `86400` | Metric retention schedule |
+| `IPS_ANOMALY_RETENTION_DAYS` | `365` | Closed IPS incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA), entity and source. `1`–`3650`. Task `apply_ips_anomaly_retention`; not gated by `IPS_RETENTION_ENABLED` or `RETENTION_ENABLED`. An alert that lists the incident in `source_anomaly_ids` keeps it for the life of the alert, whatever the alert status (nothing deletes alerts). `evidence_snapshot` and `source_id` are not guards |
+| `IPS_ANOMALY_RETENTION_BATCH_SIZE` | `5000` | Incident rows deleted per batch |
+| `IPS_ANOMALY_RETENTION_MAX_BATCHES` | `20` | Batches per incident run |
+| `IPS_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Incident retention schedule |
+
+When `IPS_COLLECTION_ENABLED` and `IPS_RETENTION_ENABLED` are both on, startup refuses
+`IPS_METRIC_RETENTION_DAYS` that does not exceed `IPS_BASELINE_LOOKBACK_DAYS` (equality
+included). The metric retention task repeats that check and deletes nothing when the days
+do not exceed the lookback, even if collection is off. Closed-incident retention is a
+separate task and is not skipped by that check.
 
 ## Geography
 
@@ -363,12 +377,20 @@ have at least five minutes between fires.
 ## Retention and notifications
 
 General Timescale retention is non-destructive by default: `RETENTION_ENABLED=false`, and each
-general retention day setting defaults to unset. Family-specific bounded retention switches are
-listed above. `./qradar-dash install` enables these general policies and writes `90 days` for all
-four tables plus `7 days` for compression; a repeat install keeps operator-set values.
+general retention day setting defaults to unset. That flag gates only the four chunk policies
+(`log_source_metric`, `search_result_metric`, `rule_metric`, `offense_snapshot`) reconciled by
+`apply_timescale_policies`. Daily batch deleters are not gated by it. Their day counts are the
+family settings above, plus the snapshot settings in this section. `./qradar-dash install`
+enables the Timescale policies and writes `90 days` for all four tables plus `7 days` for
+compression; a repeat install keeps operator-set values. The install summary names every deleter.
 
 | Setting | Default | Meaning |
 |---|---:|---|
+| `RULE_HEALTH_SNAPSHOT_RETENTION_DAYS` | `90` | `rule_health_snapshot` rows kept, by `evaluated_at`. `1`–`3650`. Task `apply_snapshot_retention` |
+| `DETECTION_COVERAGE_SNAPSHOT_RETENTION_DAYS` | `90` | `detection_coverage_snapshot` rows kept, by `captured_at`. `1`–`3650`. Same task |
+| `SNAPSHOT_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch, per snapshot table |
+| `SNAPSHOT_RETENTION_MAX_BATCHES` | `20` | Batches per table per run |
+| `SNAPSHOT_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
 | `RETENTION_ENABLED` | `false` | Enable reconciliation of the general Timescale retention policies; the production installer writes `true` |
 | `RETENTION_LOG_SOURCE_METRIC_DAYS` | unset | Days of source-volume chunks to retain; the production installer writes `90` |
 | `RETENTION_SEARCH_RESULT_METRIC_DAYS` | unset | Days of scheduled-search result chunks to retain; the production installer writes `90` |

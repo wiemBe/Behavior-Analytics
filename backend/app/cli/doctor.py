@@ -59,6 +59,7 @@ _CHECK_RUNBOOKS = (
     ("migration_head", "OPS-R11"),
     ("timescale", "OPS-R14"),
     ("retention_policy", "OPS-R14"),
+    ("batch_retention", "OPS-R14"),
     ("redis", "OPS-R9"),
     ("celery_workers", "OPS-R41"),
     ("celery_beat", "OPS-R9"),
@@ -130,6 +131,141 @@ _WATERMARK_NAMES = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class BatchTable:
+    """One table a daily deleter ages, and the settings attribute holding its days."""
+
+    table: str
+    days_attr: str
+
+
+@dataclass(frozen=True)
+class BatchDeleter:
+    """One scheduled row deleter. ``gate`` is its own switch, not RETENTION_ENABLED.
+
+    ``apply_timescale_policies`` is not here: it reconciles chunk policies and
+    its task name does not contain ``retention``. ``check_retention_policy``
+    owns that concern.
+    """
+
+    task: str
+    tables: tuple[BatchTable, ...]
+    gate: str | None = None
+
+
+#: Every daily ``DELETE`` task on the beat. Days are read from settings at check
+#: time. A unit test pins this set to every beat task whose name contains
+#: ``retention``.
+BATCH_DELETERS: tuple[BatchDeleter, ...] = (
+    BatchDeleter(
+        "apply_search_result_retention",
+        (BatchTable("search_result_metric", "search_result_metric_retention_days"),),
+    ),
+    BatchDeleter(
+        "apply_catchall_retention",
+        (
+            BatchTable("catchall_bucket", "catchall_retention_days"),
+            BatchTable("catchall_sender", "catchall_retention_days"),
+        ),
+    ),
+    BatchDeleter(
+        "apply_geo_retention",
+        (BatchTable("geo_country_bucket", "geo_retention_days"),),
+    ),
+    BatchDeleter(
+        "apply_waf_retention",
+        (
+            BatchTable("waf_endpoint_metric", "waf_metric_retention_days"),
+            BatchTable("waf_source_bucket", "waf_metric_retention_days"),
+            BatchTable("waf_endpoint_baseline", "waf_metric_retention_days"),
+            BatchTable("waf_endpoint", "waf_metric_retention_days"),
+            BatchTable("waf_anomaly", "waf_anomaly_retention_days"),
+        ),
+        "WAF_RETENTION_ENABLED",
+    ),
+    BatchDeleter(
+        "apply_ips_retention",
+        (
+            BatchTable("ips_entity_metric", "ips_metric_retention_days"),
+            BatchTable("ips_source_bucket", "ips_metric_retention_days"),
+            BatchTable("ips_entity", "ips_metric_retention_days"),
+        ),
+        "IPS_RETENTION_ENABLED",
+    ),
+    BatchDeleter(
+        "apply_ips_anomaly_retention",
+        (BatchTable("ips_anomaly", "ips_anomaly_retention_days"),),
+    ),
+    BatchDeleter(
+        "apply_property_watch_retention",
+        (
+            BatchTable("pw_value_metric", "pw_metric_retention_days"),
+            BatchTable("pw_bucket", "pw_metric_retention_days"),
+            BatchTable("pw_value", "pw_metric_retention_days"),
+            BatchTable("pw_anomaly", "pw_anomaly_retention_days"),
+        ),
+    ),
+    BatchDeleter(
+        "apply_anomaly_fault_retention",
+        (BatchTable("anomaly_evaluation_fault", "anomaly_fault_retention_days"),),
+    ),
+    BatchDeleter(
+        "apply_custom_rule_retention",
+        (BatchTable("custom_rule_breach", "custom_rule_breach_retention_days"),),
+    ),
+    BatchDeleter(
+        "apply_log_source_anomaly_retention",
+        (BatchTable("log_source_anomaly", "log_source_anomaly_retention_days"),),
+    ),
+    BatchDeleter(
+        "apply_snapshot_retention",
+        (
+            BatchTable("rule_health_snapshot", "rule_health_snapshot_retention_days"),
+            BatchTable(
+                "detection_coverage_snapshot",
+                "detection_coverage_snapshot_retention_days",
+            ),
+        ),
+    ),
+)
+
+#: Table names from the deleter catalog. Derived, not copied, so a new table
+#: cannot be redacted by ``_safe_text`` while the catalog still names it.
+#: Task names are not in this set; OPS-R14 names the tasks.
+_BATCH_TABLE_NAMES = frozenset(
+    item.table for deleter in BATCH_DELETERS for item in deleter.tables
+)
+
+#: Shared render cap for ``_safe_text`` and ``_watermark_list``. 1000 keeps
+#: ``batch_retention`` whole when every deleter has its own day count. The
+#: gate names are at the end of that line, so a short cap hides them.
+_MESSAGE_CAP = 1000
+
+
+def _batch_retention_message(settings: Settings) -> str:
+    """Group catalog tables by their day count. Each own gate is named once.
+
+    Task names are left to OPS-R14 and the configuration reference. No last-run
+    row exists; this line does not invent one, and the runbook says so.
+    """
+    grouped: dict[int, list[str]] = {}
+    gates: list[str] = []
+    for deleter in BATCH_DELETERS:
+        if deleter.gate is not None and deleter.gate not in gates:
+            gates.append(deleter.gate)
+        for item in deleter.tables:
+            days = int(getattr(settings, item.days_attr))
+            grouped.setdefault(days, []).append(item.table)
+    parts = [
+        f"{days}d: {', '.join(sorted(names))}"
+        for days, names in sorted(grouped.items(), reverse=True)
+    ]
+    tail = "not gated by RETENTION_ENABLED"
+    if gates:
+        tail = f"{tail}; {', '.join(gates)}"
+    return "; ".join(parts) + "; " + tail
+
+
 def _safe_text(value: object) -> str:
     """Redact untrusted text before it can reach terminal or JSON output."""
     cleaned = str(redact(str(value))).replace("\r", " ").replace("\n", " ")
@@ -140,19 +276,20 @@ def _safe_text(value: object) -> str:
         candidate = match.group(0)
         # A known collector name is a code constant, not a secret. The output layer redacts
         # every message a second time, so without this the name would be masked here and the
-        # operator would never learn which collector failed.
-        if candidate in _WATERMARK_NAMES:
+        # operator would never learn which collector failed. Catalog table names are the
+        # same kind of constant: derived from ``BATCH_DELETERS``, not operator text.
+        if candidate in _WATERMARK_NAMES or candidate in _BATCH_TABLE_NAMES:
             return candidate
         if "_" in candidate and candidate.upper() == candidate:
             return candidate
         return "***redacted***"
 
-    return _TOKENISH_RE.sub(replace_tokenish, cleaned)[:500]
+    return _TOKENISH_RE.sub(replace_tokenish, cleaned)[:_MESSAGE_CAP]
 
 
 def _watermark_list(names: Sequence[str]) -> str:
     """Collector names for output: a known name as is, anything else redacted."""
-    return ", ".join(n if n in _WATERMARK_NAMES else _safe_text(n) for n in names)[:500]
+    return ", ".join(n if n in _WATERMARK_NAMES else _safe_text(n) for n in names)[:_MESSAGE_CAP]
 
 
 def _host_from_url(value: str, fallback: str) -> str:
@@ -391,6 +528,23 @@ class Doctor:
                 f"retention policy metadata could not be read ({type(exc).__name__})",
                 "OPS-R14",
             )
+
+    async def check_batch_retention(self) -> CheckResult:
+        """Name every daily row deleter. Issues no query.
+
+        The tasks return a dict to Celery and write no watermark or last-run
+        row. The result backend is not a last-run record, so this check does
+        not invent one and does not read Redis. Days come from settings.
+        ``check_retention_policy`` stays the Timescale concern and still
+        returns immediately when ``RETENTION_ENABLED`` is false. The line
+        groups tables by day count. Task names stay in OPS-R14.
+        """
+        return CheckResult(
+            "batch_retention",
+            Status.PASS,
+            _batch_retention_message(self.settings),
+            "OPS-R14",
+        )
 
     async def check_redis(self) -> CheckResult:
         client = redis.from_url(self.settings.redis_url)
