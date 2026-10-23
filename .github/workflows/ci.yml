@@ -15,6 +15,12 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' }}
 
+# Read-only: no CI job pushes a package or writes to the repository. The
+# release workflow calls this file through workflow_call, and a called workflow
+# can only downgrade the permissions the caller grants it.
+permissions:
+  contents: read
+
 jobs:
   backend-static:
     runs-on: ubuntu-latest

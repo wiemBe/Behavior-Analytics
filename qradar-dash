@@ -805,13 +805,33 @@ redis_ref() {
   printf '%s\n' "$ref"
 }
 
-bundle_image_refs() { # bundle_image_refs PREFIX VERSION -> the six image references, one per line
+# The image that reads the secrets volumes for the backup: the same digest-pinned
+# alpine that loads them. Written once in deploy/load-secrets.sh and read from
+# there, the way redis_ref reads the production compose file.
+secrets_helper_image() {
+  local ref
+  ref=$(sed -n 's/^[[:space:]]*SECRETS_HELPER_IMAGE=\(alpine:[^[:space:]@]*@sha256:[0-9a-f]\{64\}\)[[:space:]]*$/\1/p' \
+    deploy/load-secrets.sh 2>/dev/null | head -n1 || true)
+  [ -n "$ref" ] || return 1
+  printf '%s\n' "$ref"
+}
+
+# The compose services the bundle carries as version-tagged images. Redis and the
+# secrets helper are digest-pinned references, not services, and follow below.
+BUNDLE_SERVICES=(postgres backend frontend proxy qradar-mcp)
+
+bundle_image_refs() { # bundle_image_refs PREFIX VERSION -> the image references, one per line
   local prefix=$1 version=$2 service ref
-  for service in postgres backend frontend proxy qradar-mcp; do
+  for service in "${BUNDLE_SERVICES[@]}"; do
     printf '%s/%s:%s\n' "$prefix" "$service" "$version"
   done
   ref=$(redis_ref) \
     || die "docker-compose.prod.yml has no redis image pinned by digest (redis:TAG@sha256:...); this checkout is incomplete; restore docker-compose.prod.yml and run ./qradar-dash bundle again"
+  printf '%s\n' "$ref"
+  # The offline host runs load-secrets.sh and the backup's secrets tar with this
+  # image and cannot pull it, so the bundle carries it too.
+  ref=$(secrets_helper_image) \
+    || die "deploy/load-secrets.sh has no SECRETS_HELPER_IMAGE pinned by digest (alpine:TAG@sha256:...); this checkout is incomplete; restore deploy/load-secrets.sh and run ./qradar-dash bundle again"
   printf '%s\n' "$ref"
 }
 
@@ -876,7 +896,11 @@ cmd_bundle() {
   say "Bundle $version, image prefix $prefix ($source)"
   local -a refs=()
   mapfile -t refs < <(bundle_image_refs "$prefix" "$version")
-  [ "${#refs[@]}" -eq 6 ] || die "could not work out the six image references; run ./qradar-dash bundle again"
+  # the BUNDLE_SERVICES images plus the two digest pins bundle_image_refs appends
+  # (redis and the secrets helper); derived from the list, so the next service
+  # needs no edit here
+  [ "${#refs[@]}" -eq $((${#BUNDLE_SERVICES[@]} + 2)) ] \
+    || die "could not work out the image references; run ./qradar-dash bundle again"
 
   BUNDLE_DONE=no
   trap bundle_cleanup EXIT
@@ -891,7 +915,7 @@ cmd_bundle() {
   BUNDLE_STAGE=$(mktemp -d "$out/.qradar-dash-bundle.XXXXXX") \
     || die "cannot create a working directory in $out; free space there or pass --output DIR"
   BUNDLE_PARTIAL=$BUNDLE_STAGE.partial
-  say "Saving the six images (this takes a while)"
+  say "Saving the ${#refs[@]} images (this takes a while)"
   docker save -o "$BUNDLE_STAGE/images.tar" "${refs[@]}" \
     || die "docker save failed (is there room in $out?); free space or pass --output DIR"
   {
@@ -996,8 +1020,10 @@ docker_image_store() {
 
 # bundle_verify_manifest MANIFEST -> every image line resolves, and has the ID the bundle was made
 # from when both hosts use the same image store. docker save does not record a digest-pinned name
-# (redis:TAG@sha256:...), so after docker load that image exists by ID only. Docker refuses to tag
-# a digest reference, but once the plain redis:TAG is set the pinned reference resolves.
+# (redis:TAG@sha256:... and the secrets helper alpine:TAG@sha256:...), so after docker load that
+# image exists by ID only. Docker refuses to tag a digest reference, but once the plain name:tag
+# is set the pinned reference resolves. Redis and the helper take this one path; there is no
+# per-image branch.
 bundle_verify_manifest() {
   local manifest=$1 kind ref id actual plain bad=0 compare=yes there here
   there=$(sed -n 's/^image_store //p' "$manifest" | head -n1)
@@ -1972,13 +1998,17 @@ apply_backup_retention() { # apply_backup_retention ROOT DB_SIZE
 BACKUP_SECRETS_VOLUMES=""
 
 write_secrets_backup() { # write_secrets_backup TARGET
-  local secrets proxy
+  local secrets proxy helper
   local -a mounts entries
   secrets=$(env_get SECRETS_VOLUME)
   proxy=$(env_get PROXY_CERTS_VOLUME)
   : "${secrets:=qradar-observability-secrets}"
   : "${proxy:=qradar-observability-proxy-certs}"
   case "$secrets:$proxy" in *[!A-Za-z0-9_.:-]*) return 1 ;; esac
+  helper=$(secrets_helper_image) || {
+    fail "deploy/load-secrets.sh has no SECRETS_HELPER_IMAGE pinned by digest (alpine:TAG@sha256:...); this checkout is incomplete; restore deploy/load-secrets.sh"
+    return 1
+  }
   docker volume inspect "$secrets" >/dev/null 2>&1 || {
     fail "required QRadar secrets volume is missing"
     return 1
@@ -1991,7 +2021,13 @@ write_secrets_backup() { # write_secrets_backup TARGET
     entries+=(proxy)
     BACKUP_SECRETS_VOLUMES=qradar,proxy
   fi
-  docker run --rm "${mounts[@]}" alpine tar -C /volumes -cf - "${entries[@]}" >"$1"
+  # The tar only reads, so both volumes are mounted read-only and the container
+  # runs offline with every capability dropped except DAC_READ_SEARCH: the token
+  # file is 0400 and owned by the backend account, which root without a DAC read
+  # capability may not read.
+  docker run --rm --network none --cap-drop ALL --cap-add DAC_READ_SEARCH \
+    --security-opt no-new-privileges "${mounts[@]}" \
+    "$helper" tar -C /volumes -cf - "${entries[@]}" >"$1"
 }
 
 cmd_backup_create() { # cmd_backup_create REASON VERIFY
@@ -2423,6 +2459,11 @@ upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE; offline, UPGRADE_
     docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
   fi
   ref=$(redis_ref) || { UPGRADE_MISSING_IMAGE="redis (docker-compose.prod.yml pins no digest)"; return 1; }
+  docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
+  # the pre-upgrade backup tars the secrets volumes with this image, and an
+  # offline host cannot let `docker run` pull it
+  ref=$(secrets_helper_image) \
+    || { UPGRADE_MISSING_IMAGE="secrets helper (deploy/load-secrets.sh pins no digest)"; return 1; }
   docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
 }
 

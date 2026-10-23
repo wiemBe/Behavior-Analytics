@@ -13,8 +13,9 @@ on:
         required: true
         default: "0.1.0 0.1.1"
 
+# The single job pushes images and reads nothing from the repository (it has no
+# checkout step), so it gets the one write scope it uses.
 permissions:
-  contents: read
   packages: write
 
 env:

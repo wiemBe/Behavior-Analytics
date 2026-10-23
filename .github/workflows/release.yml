@@ -7,9 +7,10 @@ on:
   push:
     tags: ["v*"]
 
+# Read-only by default. Only the jobs that push images or write the release get
+# a write token at job level (`images`, `release`).
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 env:
   # The vendored IBM qradar-mcp commit. A pin bump is a reviewed edit of this one line.
@@ -51,6 +52,10 @@ jobs:
 
   images:
     needs: [verify, gates]
+    # This job pushes to ghcr.io; it is the only one that needs packages: write.
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -176,14 +181,40 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: The pinned Redis digest resolves
+      - name: The pinned digests still resolve
         run: |
-          refs="$(grep -oE 'redis:7\.4-alpine@sha256:[0-9a-f]{64}' docker-compose.prod.yml | sort -u)"
-          [ "$(echo "$refs" | wc -l)" = "1" ] && [ -n "$refs" ] || { echo "expected exactly one pinned Redis reference" >&2; exit 1; }
-          docker buildx imagetools inspect "$refs"
+          # Redis is not built from a Dockerfile here; its pin lives in the
+          # production compose file.
+          redis="$(grep -oE 'redis:7\.4-alpine@sha256:[0-9a-f]{64}' docker-compose.prod.yml | sort -u)"
+          [ "$(echo "$redis" | wc -l)" = "1" ] && [ -n "$redis" ] || { echo "expected exactly one pinned Redis reference" >&2; exit 1; }
+          refs="$redis"
+          # Every image the release builds from is digest-pinned in its
+          # Dockerfile, and the secrets helper that touches the token and the
+          # TLS key is pinned in deploy/load-secrets.sh (docs/DEVELOPMENT.md
+          # "Base image pins"). A pin that no longer resolves fails the release
+          # instead of silently building from whatever the bare tag points at
+          # today. None of the references contains a space.
+          for dockerfile in backend/Dockerfile frontend/Dockerfile \
+            deploy/postgres/Dockerfile deploy/proxy/Dockerfile; do
+            bases="$(grep -hoE '^ *FROM +[^ ]+@sha256:[0-9a-f]{64}' "$dockerfile" | sort -u | awk '{print $2}')"
+            [ -n "$bases" ] || { echo "$dockerfile pins no base image by digest" >&2; exit 1; }
+            refs="$refs $bases"
+          done
+          helper="$(sed -n 's/^SECRETS_HELPER_IMAGE=\([^[:space:]]*\)[[:space:]]*$/\1/p' deploy/load-secrets.sh | head -n1)"
+          [[ "$helper" =~ ^alpine:[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] \
+            || { echo "deploy/load-secrets.sh has no digest-pinned SECRETS_HELPER_IMAGE" >&2; exit 1; }
+          refs="$refs $helper"
+          for ref in $refs; do
+            echo "checking $ref"
+            docker buildx imagetools inspect "$ref"
+          done
 
   release:
     needs: [verify, images, redis]
+    # This job writes the GitHub Release; it is the only one that needs
+    # contents: write.
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
