@@ -240,6 +240,10 @@ celery_app.conf.beat_schedule = {
         "task": "apply_custom_rule_retention",
         "schedule": float(settings.custom_rules_retention_interval_seconds),
     },
+    "apply-rule-match-retention": {
+        "task": "apply_rule_match_retention",
+        "schedule": float(settings.rule_match_retention_interval_seconds),
+    },
     "apply-timescale-policies": {
         # Reconciles TimescaleDB retention and compression with the settings.
         # Also sent once when beat starts (below), so a changed setting does not

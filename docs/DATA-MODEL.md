@@ -315,6 +315,7 @@ never interprets a missing bucket as an observation.
 | `log_source_anomaly` (terminal) | `apply_log_source_anomaly_retention` | 365 d | none |
 | `rule_health_snapshot` | `apply_snapshot_retention` | 90 d | none |
 | `detection_coverage_snapshot` | `apply_snapshot_retention` | 90 d | none |
+| `rule_match_metric`, `rule_match_window` | `apply_rule_match_retention` | 90 d | none |
 
 Terminal incident states are RESOLVED, NORMAL and INSUFFICIENT_DATA. Age is
 `COALESCE(resolved_at, anomaly_end, detected_at)`. CANDIDATE, OPEN, RECOVERING and SUPPRESSED
@@ -333,7 +334,10 @@ a skip: `anomaly_state_transition`, `anomaly_explanation`, `anomaly_explanation_
 separate evidence table. Snapshot deletes have no reference guard. Their foreign keys point at
 the rule or the instance, so a snapshot delete does not delete the parent.
 
-`rule_match_window` and `rule_match_metric` are not deleted by age. That gap is unchanged.
+`rule_match_window` and `rule_match_metric` are deleted by age by `apply_rule_match_retention`,
+like every other measured table: windows by `window_start`, metrics by `bucket_start`. A startup
+check refuses a `RULE_MATCH_RETENTION_DAYS` that does not exceed `RULE_HEALTH_WINDOW_DAYS`, the
+longest reader's window, so the fitted history window stays inside the retention.
 
 Retention deletes a bucket by age whatever its origin, so a history bucket is deleted with the
 live ones of the same age. The history tables themselves (`history_backfill_decision`,

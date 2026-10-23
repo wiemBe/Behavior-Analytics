@@ -141,8 +141,8 @@ Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 
   uygulanmaz. Günlük satır silicileri bu bayraktan bağımsız çalışır: arama sonuçları 90 gün,
   catch-all 35, coğrafya 35, WAF metrik 35 / kapalı olay 180, IPS metrik 35 / kapalı olay 365,
   property-watch metrik 35 / kapalı olay 180, anomaly fault 30, özel kural ihlali 180, kapalı
-  Phase A olay 365, `rule_health_snapshot` 90, `detection_coverage_snapshot` 90. Diski izle
-  (bkz. OPS-R14).
+  Phase A olay 365, `rule_health_snapshot` 90, `detection_coverage_snapshot` 90,
+  `rule_match_metric` ve `rule_match_window` 90. Diski izle (bkz. OPS-R14).
 
 Ana makinenin izin vermesi gereken portlar:
 
@@ -1809,7 +1809,8 @@ kapalı olay 365 (`apply_ips_anomaly_retention`), property-watch metrik 35 / kap
 (`apply_property_watch_retention`), anomaly fault 30 (`apply_anomaly_fault_retention`), özel kural
 ihlali 180 (`apply_custom_rule_retention`), kapalı Phase A olay 365
 (`apply_log_source_anomaly_retention`), `rule_health_snapshot` 90 ve `detection_coverage_snapshot`
-90 (`apply_snapshot_retention`). Docker json günlükleri 20 MB × 5 ile sınırlıdır ve diski dolduran
+90 (`apply_snapshot_retention`), `rule_match_metric` ve `rule_match_window` 90
+(`apply_rule_match_retention`). Docker json günlükleri 20 MB × 5 ile sınırlıdır ve diski dolduran
 şey bunlar değildir.
 
 **Doğrulama:** `disk_docker` ya da `disk_backup` FAIL ve `pg_database_size` satırı.
