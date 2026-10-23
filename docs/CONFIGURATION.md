@@ -12,17 +12,17 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `ENVIRONMENT` | `development` | `development`, `staging` or `production` |
-| `DEBUG` | `false` | Diagnostic mode; refused in production |
+| `ENVIRONMENT` | `development` | `development`, `staging` or `production`. Staging is the production posture for a pre-production site |
+| `DEBUG` | `false` | Diagnostic mode; refused outside development |
 | `LAB_MODE` | `false` | Isolated accelerated lab profile; refused in production |
 | `LOG_LEVEL` | `INFO` | Application log level |
 | `API_PREFIX` | `/api/v1` | Versioned API prefix |
-| `QRADAR_PROVIDER` | `mock` | `mock`, `rest` or `mcp`; production refuses `mock` |
+| `QRADAR_PROVIDER` | `mock` | `mock`, `rest` or `mcp`; `mock` is refused outside development |
 | `QRADAR_BASE_URL` | empty | Preferred QRadar URL; `QRADAR_HOST` is a compatibility alias |
 | `QRADAR_API_TOKEN_FILE` | unset | File containing the read-only service token; preferred |
 | `QRADAR_SEC_TOKEN` | empty | Token value fallback; avoid in production |
 | `QRADAR_API_VERSION` | `20.0` | Default API version for unregistered connections |
-| `QRADAR_VERIFY_SSL` | `true` | TLS verification; `false` is refused by the REST provider |
+| `QRADAR_VERIFY_SSL` | `true` | TLS verification; `false` is refused outside development |
 | `QRADAR_CA_BUNDLE` | unset | Internal CA bundle path |
 | `QRADAR_TLS_ALLOW_MISSING_AKI` | `false` | Permit only the missing-AKI certificate condition |
 | `MCP_ENABLED` | `false` | Enable the optional MCP inventory integration |
@@ -33,10 +33,10 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `SECRET_KEY` | empty | Required application secret |
-| `ENCRYPTION_KEY` | empty | Fernet key for encrypted columns |
+| `SECRET_KEY` | empty | Application secret. Outside development it must be at least 32 characters and must not be the `.env.example` placeholder |
+| `ENCRYPTION_KEY` | empty | Fernet key for encrypted columns. Outside development the `.env.example` placeholder and any value Fernet cannot construct are refused |
 | `ENCRYPTION_KEY_VERSION` | `1` | Active encryption-key version |
-| `ENCRYPTION_KEYS_JSON` | empty | JSON map of all keys accepted during rotation |
+| `ENCRYPTION_KEYS_JSON` | empty | JSON map of version to Fernet key. Outside development each entry must be a Fernet key; the startup error names the version and never the key |
 | `POSTGRES_USER` | `qradar_obs` | Database user |
 | `POSTGRES_PASSWORD` | empty | Database password |
 | `POSTGRES_DB` | `qradar_obs` | Database name |
@@ -348,12 +348,12 @@ have at least five minutes between fires.
 | `API_DEFAULT_PAGE_SIZE` | `50` | Default list page size |
 | `API_MAX_PAGE_SIZE` | `200` | Maximum list page size |
 | `API_MAX_RANGE_DAYS` | `365` | Maximum accepted history range |
-| `AUTH_PROVIDER` | `local` | Authentication provider |
+| `AUTH_PROVIDER` | `local` | `local`, `session` or `oidc`. Outside development a request needs the session cookie; `local` is the development principal and `oidc` is refused |
 | `SESSION_IDLE_MINUTES` | `480` | Idle session lifetime |
 | `SESSION_MAX_HOURS` | `12` | Absolute session lifetime |
 | `LOGIN_LOCKOUT_THRESHOLD` | `5` | Failed attempts before lockout |
 | `LOGIN_LOCKOUT_MINUTES` | `15` | Lockout duration |
-| `PUBLIC_ORIGIN` | `http://localhost:3000` | Browser origin accepted for session protection |
+| `PUBLIC_ORIGIN` | `http://localhost:3000` | Browser origin. Outside development it must be an https origin with a host and no path, query or wildcard |
 | `RATE_LIMIT_DEFAULT` | `120/minute` | Default per-client and per-path API limit |
 | `RATE_LIMIT_SEARCH_EXECUTION` | `10/minute` | Manual search-execution limit |
 | `RATE_LIMIT_LOGIN` | `300/minute` | Login endpoint limit |

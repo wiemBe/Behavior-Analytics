@@ -1458,3 +1458,36 @@ def test_the_upgrade_command_does_not_reach_the_wizard_or_the_answers_parser() -
     body = text.split("\ncmd_upgrade() {", 1)[1].split("\nupgrade_auto_rollback()", 1)[0]
     for name in ("wizard", "parse_answers", "HISTORY_BACKFILL", "history_backfill"):
         assert name not in body, name
+
+
+def _env_file_mapping(inst: Install) -> dict[str, str]:
+    """KEY=VALUE lines from a written ``.env``. Values stay out of assertions."""
+    mapping: dict[str, str] = {}
+    for line in (inst.root / ".env").read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        mapping[key] = value
+    return mapping
+
+
+async def test_a_fresh_install_env_passes_unknown_settings(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    """The ``.env`` ``install`` just wrote is not an unknown-settings warning."""
+    from app.cli.doctor import Status
+    from app.core.config import Settings, unknown_setting_names
+    from tests.unit.test_doctor import make_doctor
+
+    _build(inst, tmp_path, build_path)
+    environ = _env_file_mapping(inst)
+    assert environ
+    reported = unknown_setting_names(environ)
+    assert reported == ()
+    result = await make_doctor(
+        Settings(_env_file=None, encryption_key="x" * 44),
+        environ=environ,
+    ).check_unknown_settings()
+    assert result.status is Status.PASS
+    assert result.message == "no unknown settings"
+    assert result.runbook is None

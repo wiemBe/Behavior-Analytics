@@ -542,6 +542,38 @@ async def test_production_cookie_is_secure(api) -> None:
     assert "secure" in response.headers["set-cookie"].lower()
 
 
+async def test_staging_session_cookie_is_secure_and_anonymous_is_not_admin(api) -> None:
+    """Staging is the production posture: Secure cookie, 401 without a session, CSRF on."""
+    client, maker = api
+    await _add_user(maker, "ada")
+    app = client.app
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={
+            "environment": Environment.STAGING,
+            "auth_provider": "local",
+            "public_origin": "https://soc.example",
+        }
+    )
+    produced = TestClient(app, headers={"Origin": "https://soc.example"})
+    response = produced.post(
+        "/api/v1/auth/login", json={"username": "ada", "password": PASSWORD}
+    )
+    assert response.status_code == 200, response.text
+    assert "secure" in response.headers["set-cookie"].lower()
+
+    anonymous = TestClient(app)
+    denied = anonymous.get("/api/v1/offenses")
+    assert denied.status_code == 401, denied.text
+    assert denied.json()["detail"] == "Authentication required."
+
+    missing_origin = TestClient(app)
+    refused = missing_origin.post(
+        "/api/v1/auth/login", json={"username": "ada", "password": PASSWORD}
+    )
+    assert refused.status_code == 403, refused.text
+    assert "no Origin or Referer" in refused.json()["detail"]
+
+
 async def test_ldap_config_api_and_probe(
     api, caplog: pytest.LogCaptureFixture, tmp_path: Path
 ) -> None:

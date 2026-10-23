@@ -9,9 +9,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import ssl
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -26,7 +27,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.config import Environment, Settings, get_settings
+from app.core.config import Environment, Settings, get_settings, unknown_setting_names
 from app.core.database import dispose_engine, get_sessionmaker
 from app.models.enums import SearchFamily, default_search_cadence
 from app.models.instance import QRadarInstance
@@ -60,6 +61,7 @@ _CHECK_RUNBOOKS = (
     ("secrets_files", "OPS-R1"),
     ("public_origin", "OPS-R12"),
     ("version_match", "OPS-R11"),
+    ("unknown_settings", "OPS-R62"),
 )
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
 _CREDENTIAL_URL_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
@@ -229,6 +231,7 @@ class Doctor:
         provider_factory: Callable[[QRadarInstance], QRadarProvider] | None = None,
         frontend_health_url: str = FRONTEND_HEALTH_URL,
         backend_version_url: str = BACKEND_VERSION_URL,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.sessionmaker = sessionmaker or get_sessionmaker()
@@ -240,6 +243,7 @@ class Doctor:
         )
         self.frontend_health_url = frontend_health_url
         self.backend_version_url = backend_version_url
+        self.environ = os.environ if environ is None else environ
 
     async def _scalar(self, sql: str) -> Any:
         async with self.sessionmaker() as session:
@@ -840,6 +844,23 @@ class Doctor:
                 f"version response could not be read ({type(exc).__name__})",
                 "OPS-R11",
             )
+
+    async def check_unknown_settings(self) -> CheckResult:
+        """WARN when an environment name looks like a setting and is not one.
+
+        The message lists names and never values. A deployment with no such
+        names passes, including the ``NOTIFY_*`` and ``SMTP_*`` names the
+        notifier reads outside ``Settings``.
+        """
+        names = unknown_setting_names(self.environ)
+        if not names:
+            return CheckResult("unknown_settings", Status.PASS, "no unknown settings")
+        return CheckResult(
+            "unknown_settings",
+            Status.WARN,
+            "ignored unknown settings: " + ", ".join(names),
+            "OPS-R62",
+        )
 
     async def run(self) -> list[CheckResult]:
         results: list[CheckResult] = []

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,7 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.routes.property_watches import CapacityConflict
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, get_settings, unknown_setting_names
 from app.core.logging import configure_logging
 from app.core.rate_limit import limiter
 from app.core.version import read_version
@@ -51,6 +52,11 @@ def _security_headers(response: Response) -> Response:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
+    # One line, names only. A typo such as CATCHALL_COLLECTION_ENABLE is kept
+    # across re-install and otherwise never applied.
+    unknown = unknown_setting_names(os.environ)
+    if unknown:
+        logger.warning("ignoring unknown settings: %s", ", ".join(unknown))
     logger.info(
         "starting qradar-observability",
         extra={"environment": str(settings.environment), "provider": str(settings.qradar_provider)},
@@ -65,20 +71,20 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="qradar-observability",
         version=read_version(),
-        # No interactive docs in production — do not advertise the API surface.
-        docs_url=None if settings.is_production else "/docs",
+        # No interactive docs outside development — do not advertise the API surface.
+        docs_url=None if settings.is_hardened else "/docs",
         redoc_url=None,
-        openapi_url=None if settings.is_production else "/openapi.json",
+        openapi_url=None if settings.is_hardened else "/openapi.json",
         lifespan=lifespan,
     )
 
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
 
-    # The SPA is same-origin behind the reverse proxy in production; in dev it
-    # runs on :3000 and calls the API on :8000 with credentials. No wildcard.
+    # The SPA is same-origin behind the reverse proxy outside development; in
+    # dev it runs on :3000 and calls the API on :8000 with credentials. No wildcard.
     origins = [settings.public_origin]
-    if not settings.is_production and "http://localhost:3000" not in origins:
+    if not settings.is_hardened and "http://localhost:3000" not in origins:
         origins.append("http://localhost:3000")
     app.add_middleware(
         CORSMiddleware,

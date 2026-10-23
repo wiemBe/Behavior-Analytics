@@ -64,17 +64,6 @@ def session_expired(
     return now - last_seen_at >= timedelta(minutes=idle_minutes)
 
 
-def cookie_kwargs(settings: Settings) -> dict[str, object]:
-    return {
-        "key": COOKIE_NAME,
-        "httponly": True,
-        "samesite": "strict",
-        "secure": settings.is_production,
-        "path": "/",
-        "max_age": settings.session_max_hours * 3600,
-    }
-
-
 async def cleanup_expired(
     session: AsyncSession, settings: Settings, now: datetime
 ) -> None:

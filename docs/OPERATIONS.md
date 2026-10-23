@@ -21,7 +21,7 @@ Dört kural her bölümde geçerlidir:
 6. [Tanı](#tanı)
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R60; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R62; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -962,6 +962,7 @@ bağlanmaz.
 | `secrets_files` | Token ve CA dosyaları var, boş değil ve uid 10001 tarafından okunabilir. | OPS-R1 |
 | `public_origin` | Çalışan ayarlardaki köken. `https` olmalı. | OPS-R12 |
 | `version_match` | Frontend probu ile `/api/v1/version` aynı mı. | OPS-R11 |
+| `unknown_settings` | Ortamda bir ayara benzeyen ama ayar olmayan adlar. Adlar yazılır, değerler yazılmaz. Böyle bir ad yoksa PASS. Kurulumun yazdığı adlar burada görünmez. | OPS-R62 |
 
 `families_off` WARN değil PASS verir: yeni kurulumda WAF, IPS, kural eşleşmeleri ve özel kurallar
 bilerek kapalıdır. Satır, bir ailenin neden filigranı olmadığını bayrak adıyla gösterir. Arayüz hiç
@@ -1636,13 +1637,16 @@ timedatectl
 `ENCRYPTION_KEYS_JSON` ve `ENCRYPTION_KEY_VERSION` mevcut `.env` içinde bulunduğunda yeniden
 `install` çalıştırmak ikisini de korur. Hatayı "düzeltmek" için yeni anahtar üretme.
 
-### OPS-R17. Backend `Unsafe production configuration` ile yeniden başlıyor
+### OPS-R17. Backend `Unsafe configuration for ENVIRONMENT=<ortam>` ile yeniden başlıyor
 
-**Belirti:** Backend `Unsafe production configuration` hatasıyla yeniden başlıyor.
+**Belirti:** Backend `Unsafe configuration for ENVIRONMENT=staging` ya da
+`ENVIRONMENT=production` hatasıyla yeniden başlıyor. Satır ortamın adını taşır.
 
 **Olası neden:** Başlangıç kontrollerinden biri: `DEBUG`, kapalı TLS, kısa `SECRET_KEY`, eksik
 `ENCRYPTION_KEY`, `QRADAR_PROVIDER=mock`, token yok, otonom LLM, hatalı `PUBLIC_ORIGIN` ya da
-`AUTH_PROVIDER=oidc`.
+`AUTH_PROVIDER=oidc`. Staging aynı hatayı verir; staging, üretim öncesi sitenin üretim
+duruşudur. `.env.example` içindeki yer tutucu `SECRET_KEY` ve `ENCRYPTION_KEY` değerleri ile
+Fernet'in kuramadığı bir `ENCRYPTION_KEY` ya da `ENCRYPTION_KEYS_JSON` girdisi de nedendir.
 
 **Doğrulama:** İzleme (traceback) maddeleri listeler.
 
@@ -2510,3 +2514,26 @@ değerini büyüt. Olmuyorsa ve reddedilen tek sebep geçmiş bütçesiyse "Enab
 düğmesine bas: izleme `history_days = 0` ile etkinleşir, yalnız ileriye doğru öğrenir ve QRadar'ın
 geçmişi okunmaz. Başka bir sebep reddedildiyse o düğme yoktur; o sebebi gider (aktif izleme
 sayısını azalt, grubu küçült) ve yeniden dene.
+
+### OPS-R62. `doctor` bilinmeyen bir ayar adı yazıyor
+
+**Belirti:** `doctor` `unknown_settings` için WARN yazar: `ignored unknown settings:` ve ardından
+büyük harfli adlar. Backend başlangıcında bir WARNING satırı aynı adları yazar (`ignoring unknown
+settings:`). Değerler yazılmaz.
+
+**Olası neden:** Ortamda, bir ayarın ilk `_` öncesi parçasıyla başlayan ama kendisi bir ayar
+olmayan bir ad vardır. Sık neden yazım hatasıdır (`CATCHALL_COLLECTION_ENABLE` gibi). Bildirim
+kanallarının `NOTIFY_*` ve `SMTP_*` adları ile `GIT_SHA` bu listeye girmez; onlar bilerek
+`Settings` dışında okunur. `./qradar-dash install` komutunun `.env` dosyasına yazdığı adlar
+(`QRADAR_DASH_VERSION` gibi) ve compose dosyalarındaki `${...}` başvuruları da girmez.
+
+**Doğrulama:** `doctor` satırı adları listeler. Başlangıç günlüğü aynı adları yazar.
+
+```bash
+./qradar-dash doctor
+./qradar-dash logs
+```
+
+**Çözüm:** Adı `.env` içinde düzelt ya da sil. `install` bilinmeyen `KEY=VALUE` satırlarını
+korur, bu yüzden yazım hatası yeniden kurulumdan sonra da durur. Ayar reddedilmez; yok sayılır
+ve burada bildirilir.
