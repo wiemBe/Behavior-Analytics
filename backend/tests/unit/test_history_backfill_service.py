@@ -370,6 +370,41 @@ def test_a_progress_without_floors_names_nothing() -> None:
     assert shown.sources_silent_count is None
 
 
+def test_a_reading_whose_floor_proof_proved_no_source_names_nothing() -> None:
+    """HB-22 D2b: an empty floor map proves nothing, so nobody is "silent".
+
+    The lab's restart wrote its plan and failed before a single row, so the floors
+    were `{}` while 55 sources were monitored: the page named all 55 as silent
+    although 26 held history rows.
+    """
+    settings = PlannerSettings(bucket_seconds=BUCKET)
+    progress = encode_progress(new_progress(START, START, settings), SourceFloors().encode())
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors(),
+        monitored=["1", "2"],
+        names={"1": "web-1", "2": "web-2"},
+        progress=progress,
+    )
+    assert shown.sources_cut is None
+    assert shown.sources_silent is None
+    assert shown.sources_cut_count is None
+    assert shown.sources_silent_count is None
+
+
+@pytest.mark.parametrize("family", [HistoryFamily.PHASE_A, HistoryFamily.CATCHALL])
+def test_an_empty_floor_map_is_no_proof_for_either_console_wide_family(
+    family: HistoryFamily,
+) -> None:
+    settings = PlannerSettings(bucket_seconds=BUCKET)
+    progress = encode_progress(new_progress(START, START, settings), SourceFloors().encode())
+    shown = named_scope(
+        family, SourceFloors(), monitored=["1"], names={"1": "web-1"}, progress=progress
+    )
+    assert (shown.sources_cut, shown.sources_silent) == (None, None)
+    assert (shown.sources_cut_count, shown.sources_silent_count) == (None, None)
+
+
 def test_the_console_wide_margin_and_bucket_are_the_collectors_own() -> None:
     """The page judges the floors with the numbers the reading read with (§B.3.2)."""
     settings = Settings()

@@ -6,6 +6,7 @@ guards of §B.4.4, the per-source floors, the prepend and the statement count.
 
 from __future__ import annotations
 
+import copy
 import math
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -321,6 +322,7 @@ class TestLifecycle:
             finished.floor,
             finished.through,
         )
+        previous_progress = copy.deepcopy(finished.progress)
 
         await HistoryBackfillRepository(db_session).request_start(
             inst.id, by="the operator", at=finished_at + timedelta(hours=1)
@@ -330,9 +332,10 @@ class TestLifecycle:
         assert again.history_scope_state is HistoryState.READING
         restarted = await scope(db_session, inst)
         assert restarted is not None and restarted.state == "READING"
-        # A restart reads a fresh window from the same anchor.
+        # A restart keeps the finished progress until its first step, and reads a fresh
+        # window from the same anchor when that step runs.
         assert restarted.anchor == FIRST
-        assert restarted.progress == {}
+        assert restarted.progress == previous_progress
         assert (
             restarted.days_target,
             restarted.target_start,
@@ -350,7 +353,7 @@ class TestLifecycle:
         stopped = await scope(db_session, inst)
         assert stopped is not None and stopped.state == "PARTIAL"
         assert stopped.reason == "stopped by the operator"
-        assert stopped.progress == {}
+        assert stopped.progress == previous_progress
         assert (stopped.days_target, stopped.target_start, stopped.floor, stopped.through) == (
             evidence
         )
@@ -381,13 +384,14 @@ class TestLifecycle:
         finished = await scope(db_session, inst)
         assert finished is not None and finished.finished_at is not None
         assert finished.through != first_values[3]
+        previous_progress = copy.deepcopy(finished.progress)
 
         await HistoryBackfillRepository(db_session).request_start(
             inst.id, by="the operator", at=finished.finished_at + timedelta(hours=1)
         )
         await collector(db_session, prov).collect(inst)
         restarted = await scope(db_session, inst)
-        assert restarted is not None and restarted.progress == {}
+        assert restarted is not None and restarted.progress == previous_progress
         await collector(db_session, prov).collect(inst)
 
         stepped = await scope(db_session, inst)
@@ -412,6 +416,7 @@ class TestLifecycle:
         assert finished is not None and finished.finished_at is not None
         earlier = (finished.days_target, finished.target_start, finished.floor, finished.through)
         assert finished.days_target == DAYS
+        previous_progress = copy.deepcopy(finished.progress)
 
         await HistoryBackfillRepository(db_session).request_start(
             inst.id, by="the operator", at=finished.finished_at + timedelta(hours=1)
@@ -419,7 +424,7 @@ class TestLifecycle:
         longer = DAYS + 1
         await collector(db_session, prov, history_backfill_days=longer).collect(inst)
         restarted = await scope(db_session, inst)
-        assert restarted is not None and restarted.progress == {}
+        assert restarted is not None and restarted.progress == previous_progress
         await collector(db_session, prov, history_backfill_days=longer).collect(inst)
 
         stepped = await scope(db_session, inst)

@@ -17,7 +17,9 @@ the Phase A history reading (HISTORY-BACKFILL §B.4.1, §B.6; `app.history.phase
 goes first and keeps its transaction: the step runs in a savepoint, so a fault in it never
 takes the live buckets with it. It spends only the searches and seconds the live pass left,
 writes `collection_source = 'ariel_history'` rows with `ON CONFLICT DO NOTHING`, and never
-touches the collection watermark.
+touches the collection watermark. A history search that fails at the provider records that
+exception's class on the scope in the same savepoint (HB-22); the next step that writes
+clears it. A restart searches only sources that have no floor yet.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -40,6 +42,7 @@ from app.core.config import Settings, get_settings
 from app.history import phase_a
 from app.history.families import fit_family_window, history_search_budget
 from app.history.lifecycle import (
+    RESTART_REASON,
     ActionKind,
     ConsoleMode,
     DecisionView,
@@ -68,7 +71,12 @@ from app.history.planner import (
     plan_step,
     settle_step,
 )
-from app.history.progress_codec import encode_progress
+from app.history.progress_codec import (
+    DecodedProgress,
+    ProgressCodecError,
+    decode_progress,
+    encode_progress,
+)
 from app.history.source_floors import SourceFloors
 from app.history.state import HistoryFamily, HistoryState, HistoryTrigger, next_state
 from app.models.enums import BucketCompleteness, SearchFamily
@@ -121,6 +129,10 @@ class HistoryReport:
     rows: int = 0
     rebuilt: int = 0
     error: str | None = None
+    #: The provider failure of this step's first failed history search, when there was
+    #: one. The planner turns it into a failed span; the scope row's marker needs it
+    #: (HB-22 D1). Never persisted or logged as such, only its class.
+    failure: BaseException | None = None
 
 
 @dataclass
@@ -320,6 +332,7 @@ class MetricCollector:
         *,
         max_searches: int,
         deadline: datetime | None = None,
+        qradar_ids: Sequence[int] | None = None,
     ) -> _WindowSearch:
         """Search `bucket_count` buckets from `start`, recursively splitting truncation.
 
@@ -344,7 +357,12 @@ class MetricCollector:
             started = self._clock()
             if count == 1:
                 try:
-                    samples = await self.provider.get_log_source_metrics(first, end)
+                    if qradar_ids is None:
+                        samples = await self.provider.get_log_source_metrics(first, end)
+                    else:
+                        samples = await self.provider.get_log_source_metrics(
+                            first, end, qradar_ids=qradar_ids
+                        )
                 except ProviderError as exc:
                     found.failure, found.failed = exc, Span(first, end)
                     return
@@ -360,12 +378,21 @@ class MetricCollector:
                 )
                 return
             try:
-                batch = await self.provider.get_log_source_metrics_bucketed(
-                    first,
-                    end,
-                    bucket_seconds=interval,
-                    max_rows=self.settings.ariel_multi_bucket_max_rows,
-                )
+                if qradar_ids is None:
+                    batch = await self.provider.get_log_source_metrics_bucketed(
+                        first,
+                        end,
+                        bucket_seconds=interval,
+                        max_rows=self.settings.ariel_multi_bucket_max_rows,
+                    )
+                else:
+                    batch = await self.provider.get_log_source_metrics_bucketed(
+                        first,
+                        end,
+                        bucket_seconds=interval,
+                        max_rows=self.settings.ariel_multi_bucket_max_rows,
+                        qradar_ids=qradar_ids,
+                    )
             except ProviderError as exc:
                 found.failure, found.failed = exc, Span(first, end)
                 return
@@ -707,6 +734,17 @@ class MetricCollector:
         if values is not None:
             await repo.write_scopes([values])
             report.state = str(values["state"])
+            if report.failure is not None:
+                # HB-22 D1: a history search that failed at the provider is a failed step,
+                # and the page must say so. Written after the scope row, because that
+                # write clears the marker (`lifecycle.step_row`, HB-16); one statement,
+                # on the failure path only.
+                await repo.write_step_errors(
+                    instance.id,
+                    HISTORY_FAMILY.value,
+                    {HISTORY_SCOPE_KEY: report.failure},
+                    at=now,
+                )
         elif row is not None:
             report.state = row.state.value
         return report
@@ -751,7 +789,10 @@ class MetricCollector:
         decoded = decode_scope(row)
 
         if decoded is None:
-            # The first step plans the window (§B.6.5), from the anchor, fresh after a restart.
+            # The first step plans the window (§B.6.5), from the anchor. A restart's stored
+            # progress is the previous reading (`decode_scope` returns None); its floors are
+            # carried, and only sources without one are searched (HB-22 D2a).
+            previous = _previous_reading(row)
             planned = self._plan_window(decision, row, anchor, len(monitored), ps, now)
             if isinstance(planned, ScopeAction):
                 return transition_row(
@@ -764,20 +805,34 @@ class MetricCollector:
                     at=now,
                 )
             progress, days_target, reason = planned
+            if previous is None:
+                floors = SourceFloors()
+                adapter = floors.encode()
+            else:
+                floors = SourceFloors.decode(previous.adapter)
+                missing = [
+                    qid
+                    for qid in monitored
+                    if phase_a.source_key(qid) not in floors.first_buckets
+                ]
+                adapter = {
+                    **floors.encode(),
+                    phase_a.REBUILD_PENDING_KEY: phase_a.pending_of(previous.adapter),
+                    phase_a.TOPUP_SOURCES_KEY: [phase_a.source_key(qid) for qid in missing],
+                }
             row = replace(
                 row,
                 days_target=days_target,
                 target_start=progress.target_start,
-                progress=encode_progress(progress, SourceFloors().encode()),
+                progress=encode_progress(progress, adapter),
                 reason=reason,
             )
-            floors = SourceFloors()
             first_step = True
-            adapter: dict[str, Any] = SourceFloors().encode()
         else:
-            progress, adapter = decoded.progress, decoded.adapter
+            progress, adapter = decoded.progress, dict(decoded.adapter)
             floors = SourceFloors.decode(adapter)
             first_step = False
+        search_ids = _topup_ids(adapter, monitored)
 
         budget = history_search_budget(settings, used=live_searches)
         started = self._clock()
@@ -804,7 +859,15 @@ class MetricCollector:
             assert plan.trigger is not None
             return self._finish_values(
                 instance, decision, row, progress, adapter, floors, known, ps, plan.trigger,
-                plan.reason, now,
+                plan.reason, now, rebuild_keys=_topup_source_keys(adapter),
+            )
+
+        # Every monitored source already has a floor: nothing to search, and the reading ends
+        # with the floors it carried. An empty id list must not become an unfiltered search.
+        if search_ids is not None and not search_ids:
+            return self._finish_values(
+                instance, decision, row, progress, adapter, floors, known, ps,
+                HistoryTrigger.FINISHED_COMPLETE, plan.reason, now, rebuild_keys=[],
             )
 
         # READ: the chunks go through the live split routine, one search cap for the step.
@@ -821,9 +884,13 @@ class MetricCollector:
                 interval,
                 max_searches=budget - spent,
                 deadline=deadline,
+                qradar_ids=search_ids,
             )
             spent += found.searches
             completed.update(found.completed)
+            if report.failure is None and found.failure is not None:
+                # The planner only sees the failed span; the marker needs the failure.
+                report.failure = found.failure
             results.extend(
                 phase_a.chunk_results(
                     chunk, found.completed, settings=ps, searches=found.searches,
@@ -840,9 +907,13 @@ class MetricCollector:
             for span in settlement.write_spans
             for start in _span_starts(span, ps)
         }
+        fold_monitored = monitored
+        if search_ids is not None:
+            chosen = set(search_ids)
+            fold_monitored = {qid: src for qid, src in monitored.items() if qid in chosen}
         fold = phase_a.fold_step(
             written,
-            monitored=monitored,
+            monitored=fold_monitored,
             floors=floors,
             read_start=progress.floor or progress.target_start,
             target_start=progress.target_start,
@@ -869,6 +940,7 @@ class MetricCollector:
             return self._finish_values(
                 instance, decision, row, settlement.progress, adapter, fold.floors, known, ps,
                 settlement.trigger, settlement.reason, now,
+                rebuild_keys=_topup_source_keys(adapter),
             )
         return self._step_values(
             instance.id, row, settlement.progress, adapter, fold.floors, ps, settlement.reason
@@ -957,13 +1029,20 @@ class MetricCollector:
         trigger: HistoryTrigger,
         reason: str,
         now: datetime,
+        rebuild_keys: Collection[str] | None = None,
     ) -> dict[str, Any]:
-        """The scope row of a reading that ends: the state comes from `next_state`."""
+        """The scope row of a reading that ends: the state comes from `next_state`.
+
+        `rebuild_keys` limits the baseline rebuild to those sources. A top-up passes the
+        sources that had no floor, so sources the previous reading already rebuilt are not
+        queued again. `None` rebuilds every monitored source the reading reached.
+        """
         trigger, reason = phase_a.finish(
             trigger, reason, floors, known=known, target_start=progress.target_start, settings=ps
         )
         change = next_state(HistoryState.READING, trigger)
-        read = phase_a.read_sources(floors, known)
+        readable = known if rebuild_keys is None else rebuild_keys
+        read = phase_a.read_sources(floors, readable)
         pending = phase_a.merge_pending(phase_a.pending_of(adapter), read)
         stepped = self._step_values(
             instance.id,
@@ -1056,6 +1135,49 @@ class MetricCollector:
 
 
 # ------------------------------------------------------------------ history helpers
+def _previous_reading(row: ScopeRowView) -> DecodedProgress | None:
+    """The previous reading kept on a restart, or None on a true first step.
+
+    `decode_scope` returns None for both. Only a body whose `started_at` is older
+    than the row's belongs to the reading that just finished.
+    """
+    body = row.progress
+    if not body or row.started_at is None:
+        return None
+    try:
+        decoded = decode_progress(body)
+    except ProgressCodecError as exc:
+        raise LifecycleError("a restarted scope's progress does not decode") from exc
+    if decoded.progress.started_at < row.started_at or row.reason == RESTART_REASON:
+        return decoded
+    return None
+
+
+def _topup_source_keys(adapter: Mapping[str, Any]) -> list[str] | None:
+    """Source keys a top-up may search, or None when this reading searches everyone."""
+    if phase_a.TOPUP_SOURCES_KEY not in adapter:
+        return None
+    raw = adapter[phase_a.TOPUP_SOURCES_KEY]
+    if not isinstance(raw, list) or any(not isinstance(item, str) or not item for item in raw):
+        raise LifecycleError("top-up sources are a list of source keys")
+    return list(raw)
+
+
+def _topup_ids(
+    adapter: Mapping[str, Any], monitored: Mapping[int, uuid.UUID]
+) -> list[int] | None:
+    """QRadar ids of a top-up, in `monitored` order, or None when the search is unfiltered.
+
+    An empty list means every monitored source already has a floor. The caller
+    must not turn that into a search of the whole console.
+    """
+    keys = _topup_source_keys(adapter)
+    if keys is None:
+        return None
+    wanted = set(keys)
+    return [qid for qid in monitored if phase_a.source_key(qid) in wanted]
+
+
 def _decision_view(row: HistoryBackfillDecision | None) -> DecisionView | None:
     if row is None:
         return None

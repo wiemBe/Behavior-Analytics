@@ -23,11 +23,14 @@ or not, but zero-fills only monitored ones. History reads the past for learning,
 monitored source is baselined, so an unmonitored source's history would be storage without a
 reader (the same argument as the live zero-fill, `_zero_filled_rows`).
 
-Top-up limitation ("Read history now", a `RESTART`). A restart re-reads `[T0, anchor)` with
-`ON CONFLICT DO NOTHING`. A source that joined the inventory after the anchor gets history
-only before the anchor, from its own floor; the span between the anchor and its first live
-bucket stays without rows (a missing row is "no claim", never a zero). There is no per-source
-anchor on purpose.
+Top-up ("Read history now", a `RESTART`). The restart keeps the previous floors until the
+new reading's first step. That step plans a fresh window from the anchor and searches only
+the monitored sources that have no floor yet, one `logsourceid IN (...)` on the same
+aggregate, and folds only those sources onto the floors already proved. A source that
+already has a floor is not read again. Rows still insert with `ON CONFLICT DO NOTHING`.
+A source that joined after the anchor gets history only before the anchor, from its own
+floor; the span between the anchor and its first live bucket stays without rows (a missing
+row is "no claim", never a zero). There is no per-source anchor on purpose.
 """
 
 from __future__ import annotations
@@ -58,6 +61,9 @@ NO_EVENT_REASON = (
 )
 NO_MONITORED_REASON = "no log source is monitored, so there is nothing to read history for"
 REBUILD_PENDING_KEY = "rebuild_pending"
+#: Source keys a restarted reading may search: the ones that had no floor. Absent on a
+#: reading that is not a top-up, which searches every monitored source. Not a codec field.
+TOPUP_SOURCES_KEY = "topup_sources"
 
 
 @dataclass(frozen=True)

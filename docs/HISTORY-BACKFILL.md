@@ -914,11 +914,16 @@ None of them takes an AQL or a window from the browser; `days` is the stored set
 > decision recorded in the meantime, and "Read history now" or "Stop reading" on a console with no
 > `YES` ("record Yes first"). The decision returns 201 when the row was created and 200 when it
 > already existed or was upgraded; the two requests change no scope row and say so in their
-> message. A restarted scope keeps the earlier reading's window and evidence (`days_target`,
-> `target_start`, `floor`, `through`) until its first step replaces them, so the row shows the
-> state "Reading", the reason "read history now: topping up", the previous window and floor, and
-> no counter at all (the new reading has searched nothing yet): a counter that was not measured is
-> `null`, never a zero.
+> message. A restarted scope keeps the earlier reading's window, evidence and progress
+> (`days_target`, `target_start`, `floor`, `through`, the per-source floors, the searches and
+> `days_read`) until its first step replaces them, so the row shows the state "Reading", the
+> reason "read history now: topping up", and that previous reading — not an empty counter and
+> not "every source is silent". A stop before that step leaves the evidence. The new Phase A
+> reading searches only the monitored sources that have no floor in it (sources added later, or
+> silent then); a source that already has a floor is not read again. A counter that was not
+> measured is `null`, never a zero. A Phase A history search that fails at the provider writes
+> `last_error_class` for that exception in the same step as the width halving; the next step
+> that writes clears it.
 
 ## B.11 Relation to the property-watch bootstrap **[BUILT]**
 

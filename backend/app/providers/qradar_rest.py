@@ -222,6 +222,23 @@ class MalformedUpstreamResponse(ProviderError):
     """QRadar returned something we could not safely interpret."""
 
 
+def _metric_log_source_clause(qradar_ids: Sequence[int] | None) -> str:
+    """` AND logsourceid IN (...)` for a top-up, or empty for the whole console.
+
+    Only integers are interpolated. An empty list must not become an unfiltered
+    search: the caller skips the search instead of asking for every source.
+    """
+    if qradar_ids is None:
+        return ""
+    if not qradar_ids:
+        raise ValueError("metric source filter is empty")
+    try:
+        rendered = ", ".join(str(int(item)) for item in qradar_ids)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("metric source ids must be integers") from exc
+    return f" AND logsourceid IN ({rendered})"
+
+
 def _sanitize_upstream_error(status_code: int) -> str:
     """Build operator-facing error text from the status code alone.
 
@@ -674,7 +691,11 @@ class QRadarRestProvider(QRadarProvider):
 
     @_holds_ariel_permit
     async def get_log_source_metrics(
-        self, window_start: datetime, window_end: datetime
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        qradar_ids: Sequence[int] | None = None,
     ) -> list[LogSourceMetricSample]:
         """Collect bounded per-log-source event volume through Ariel.
 
@@ -696,6 +717,7 @@ class QRadarRestProvider(QRadarProvider):
 
         start_ms = int(start.timestamp() * 1000)
         end_ms = int(end.timestamp() * 1000)
+        source_clause = _metric_log_source_clause(qradar_ids)
         aql = (
             # SUM(eventcount), not COUNT(*). QRadar coalesces identical events
             # into a single Ariel record carrying an `eventcount` multiplier, so
@@ -708,9 +730,9 @@ class QRadarRestProvider(QRadarProvider):
             # coalesces harder, so true volume can rise sharply while the record
             # count stays flat. That is precisely the spike a volume detector
             # exists to catch, and it is the reading it would have missed.
-            'SELECT logsourceid AS "qradar_id", SUM(eventcount) AS "event_count", '  # noqa: S608 - integer epochs only
+            'SELECT logsourceid AS "qradar_id", SUM(eventcount) AS "event_count", '  # noqa: S608 - integer epochs and ids only
             'MAX(starttime) AS "last_event_time" FROM events '
-            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms}{source_clause} "
             "GROUP BY logsourceid "
             # START/STOP scopes the Ariel search itself. Without it QRadar
             # defaults the search to a recent window and intersects that with
@@ -779,6 +801,7 @@ class QRadarRestProvider(QRadarProvider):
         *,
         bucket_seconds: int,
         max_rows: int,
+        qradar_ids: Sequence[int] | None = None,
     ) -> LogSourceMetricBucketBatch:
         """Collect one keyed Ariel aggregate spanning multiple metric buckets."""
         self.require(ProviderCapability.AQL_EXECUTION)
@@ -790,12 +813,13 @@ class QRadarRestProvider(QRadarProvider):
         start_ms = int(start.timestamp() * 1000)
         end_ms = int(end.timestamp() * 1000)
         bucket_ms = bucket_seconds * 1000
+        source_clause = _metric_log_source_clause(qradar_ids)
         aql = (
             'SELECT logsourceid AS "qradar_id", '  # noqa: S608 - validated integers only
             f'starttime / {bucket_ms} AS "k", '
             'SUM(eventcount) AS "event_count", MAX(starttime) AS "last_event_time" '
             "FROM events "
-            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms}{source_clause} "
             f"GROUP BY logsourceid, starttime / {bucket_ms} "
             f"LIMIT {max_rows + 1} {self._ariel_scope(start_ms, end_ms)}"
         )
