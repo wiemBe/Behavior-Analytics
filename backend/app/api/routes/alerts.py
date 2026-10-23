@@ -6,7 +6,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import NotificationDispatcher
@@ -16,7 +16,7 @@ from app.api.deps import SessionDep
 from app.models.alert import Alert, AlertNotification
 from app.models.enums import AlertStatus
 from app.repositories.audit import record_audit
-from app.schemas.alert import AlertActionIn, AlertOut, NotificationOut
+from app.schemas.alert import AlertActionIn, AlertOut, AlertPage, NotificationOut
 from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_ALERT_ACK,
@@ -52,17 +52,31 @@ async def _enqueue_transition(session: AsyncSession, result: AlertResult) -> Non
     await dispatcher.enqueue(result.alert, result.transition)
 
 
-@router.get("", response_model=list[AlertOut])
+@router.get("", response_model=AlertPage)
 async def list_alerts(
     session: SessionDep,
     status_filter: AlertStatus | None = Query(default=None, alias="status"),
     limit: int = Query(default=100, ge=1, le=500),
-) -> list[AlertOut]:
-    stmt = select(Alert).order_by(Alert.opened_at.desc()).limit(limit)
+    offset: int = Query(default=0, ge=0),
+) -> AlertPage:
+    filters = []
     if status_filter is not None:
-        stmt = stmt.where(Alert.status == status_filter)
+        filters.append(Alert.status == status_filter)
+    total = await session.scalar(select(func.count()).select_from(Alert).where(*filters))
+    stmt = (
+        select(Alert)
+        .where(*filters)
+        .order_by(Alert.opened_at.desc(), Alert.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     rows = (await session.scalars(stmt)).all()
-    return [AlertOut.model_validate(r) for r in rows]
+    return AlertPage(
+        items=[AlertOut.model_validate(r) for r in rows],
+        total=int(total or 0),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{alert_id}", response_model=AlertOut)

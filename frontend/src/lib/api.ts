@@ -1294,6 +1294,8 @@ export interface BehaviorSummary {
   sources_with_evaluation_faults: number;
   // Given-up buckets in the last 24 h. These buckets have no verdict.
   buckets_not_judged: number;
+  // Anomalies with a recorded resolution timestamp in the last 24 h.
+  resolved_last_24h: number;
   recently_resolved: AnomalySummary[];
   highest_deviation: AnomalySummary[];
 }
@@ -2458,8 +2460,8 @@ export const api = {
       body: JSON.stringify({ schedule_cron: scheduleCron }),
     }),
 
-  alerts: (status?: string) =>
-    request<Alert[]>(`/alerts${status ? `?status=${status}` : ""}`),
+  alerts: (params: { status?: string; limit?: number; offset?: number } = {}) =>
+    request<Page<Alert>>(`/alerts${qs(params)}`),
   alert: (id: string) => request<Alert>(`/alerts/${id}`),
   alertNotifications: (id: string) => request<Notification[]>(`/alerts/${id}/notifications`),
 

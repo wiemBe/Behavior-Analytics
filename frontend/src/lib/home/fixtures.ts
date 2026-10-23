@@ -93,6 +93,7 @@ export function summary(over: Partial<BehaviorSummary> = {}): BehaviorSummary {
     evidence_failed: 0,
     sources_with_evaluation_faults: 0,
     buckets_not_judged: 0,
+    resolved_last_24h: 0,
     recently_resolved: [],
     highest_deviation: [],
     ...over,

@@ -292,6 +292,9 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
     fault_sources, buckets_not_judged = await AnomalyFaultRepository(
         session
     ).summary_counts(since=now - timedelta(hours=24), until=now)
+    resolved_last_24h = await repo.resolved_count(
+        since=now - timedelta(hours=24), until=now
+    )
 
     return BehaviorSummaryOut(
         open_anomalies=open_total,
@@ -306,6 +309,7 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
         evidence_failed=evidence.get(EvidenceStatus.FAILED.value, 0),
         sources_with_evaluation_faults=fault_sources,
         buckets_not_judged=buckets_not_judged,
+        resolved_last_24h=resolved_last_24h,
         recently_resolved=await _list_items(repo, await repo.recently_resolved()),
         highest_deviation=await _list_items(repo, await repo.highest_deviation()),
     )

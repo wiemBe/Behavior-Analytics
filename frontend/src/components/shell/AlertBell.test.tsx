@@ -14,10 +14,10 @@ const ok = (open: number): Loaded<SocOverview> => ({
 });
 
 describe("AlertBell", () => {
-  it("shows the count, links to /alerts, and takes the crit tone above zero", () => {
+  it("shows the count, links to the OPEN list, and takes the crit tone above zero", () => {
     render(<AlertBell overview={ok(3)} />);
     const link = screen.getByRole("link", { name: "Open alerts: 3" });
-    expect(link).toHaveAttribute("href", "/alerts");
+    expect(link).toHaveAttribute("href", "/alerts?status=OPEN");
     expect(link.querySelector(".pill")).toHaveTextContent("3");
     expect(link.querySelector(".pill")).toHaveClass("crit");
   });

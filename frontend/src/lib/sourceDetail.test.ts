@@ -329,6 +329,18 @@ describe("summarizeSourceTimeline", () => {
       "3 anomalies were detected",
     );
   });
+
+  it("states when the anomaly page is capped", () => {
+    expect(
+      summarizeSourceTimeline({ ...base, anomalyCount: 37, shownAnomalyCount: 20 }),
+    ).toContain("Showing 20 of 37 anomalies detected in this window.");
+  });
+
+  it("does not turn a failed anomaly read into a zero", () => {
+    expect(summarizeSourceTimeline({ ...base, anomalyCount: null })).toContain(
+      "Anomaly history could not be loaded",
+    );
+  });
 });
 
 describe("seasonalCellLabel", () => {

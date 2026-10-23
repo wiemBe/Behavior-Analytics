@@ -25,6 +25,7 @@ function summary(over: Partial<BehaviorSummary> = {}): BehaviorSummary {
     evidence_failed: 0,
     sources_with_evaluation_faults: 0,
     buckets_not_judged: 0,
+    resolved_last_24h: 0,
     recently_resolved: [],
     highest_deviation: [],
     ...over,
@@ -79,8 +80,8 @@ function anomaly(over: Partial<AnomalySummary> = {}): AnomalySummary {
   };
 }
 
-function page(items: AnomalySummary[]): Page<AnomalySummary> {
-  return { items, total: items.length, limit: 50, offset: 0 };
+function page(items: AnomalySummary[], total = items.length): Page<AnomalySummary> {
+  return { items, total, limit: 200, offset: 0 };
 }
 
 /** Mocks all three calls the overview makes. */
@@ -342,6 +343,25 @@ describe("recently resolved", () => {
 
     expect(screen.getByText(/No anomalies have been resolved yet/i)).toBeInTheDocument();
   });
+
+  it("uses the true 24-hour count and states when the table is capped", async () => {
+    const resolved = Array.from({ length: 10 }, (_, index) =>
+      anomaly({ id: `resolved-${index}`, state: "RESOLVED" }),
+    );
+    mockApi({
+      behavior: summary({ resolved_last_24h: 14, recently_resolved: resolved }),
+    });
+    await renderPage();
+
+    expect(screen.getByText("Resolved, 24 h").nextSibling).toHaveTextContent("14");
+    expect(
+      screen.getByText("Latest 6 of the 10 most recently resolved anomalies."),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Recently resolved anomalies" }))
+        .getAllByRole("row"),
+    ).toHaveLength(7);
+  });
 });
 
 describe("source health", () => {
@@ -413,16 +433,32 @@ describe("error states", () => {
     expect(screen.queryByText("LAB Firewall")).toBeNull();
   });
 
-  it("still renders the worklist when the active-anomaly call fails", async () => {
+  it("warns that the worklist may be incomplete when the active-anomaly call fails", async () => {
     // The anomaly list enriches the worklist; it is not the page.
     vi.spyOn(api, "behaviorSummary").mockResolvedValue(summary({ open_anomalies: 2 }));
     vi.spyOn(api, "sourceBehaviors").mockResolvedValue([source({ deviation_ratio: 5 })]);
     vi.spyOn(api, "anomalies").mockRejectedValue(new Error("ECONNREFUSED"));
     await renderPage();
 
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The active anomaly list could not be loaded; this worklist may be incomplete.",
+    );
     expect(screen.getByText("Open anomalies")).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /LAB Firewall/ })).toBeInTheDocument();
+  });
+
+  it("does not show the all-clear copy when open anomalies cannot be matched", async () => {
+    vi.spyOn(api, "behaviorSummary").mockResolvedValue(summary({ open_anomalies: 2 }));
+    vi.spyOn(api, "sourceBehaviors").mockResolvedValue([]);
+    vi.spyOn(api, "anomalies").mockResolvedValue(page([]));
+    await renderPage();
+
+    expect(screen.queryByText(/Nothing is currently anomalous/)).toBeNull();
+    expect(screen.getByText(/2 active anomalies could not be matched/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View all active anomalies" })).toHaveAttribute(
+      "href",
+      "/anomalies?active_only=true",
+    );
   });
 });
 
@@ -435,7 +471,31 @@ describe("subject filter", () => {
     await renderPage();
 
     expect(api.anomalies).toHaveBeenCalledWith(
-      expect.objectContaining({ subject_kind: "LOG_SOURCE" }),
+      expect.objectContaining({
+        active_only: true,
+        limit: 200,
+        subject_kind: "LOG_SOURCE",
+      }),
+    );
+  });
+});
+
+describe("active anomaly cap", () => {
+  it("states that ranking used the route maximum when more active rows exist", async () => {
+    const active = Array.from({ length: 200 }, (_, index) =>
+      anomaly({ id: `active-${index}`, log_source_id: `source-${index}` }),
+    );
+    vi.spyOn(api, "behaviorSummary").mockResolvedValue(summary({ open_anomalies: 237 }));
+    vi.spyOn(api, "sourceBehaviors").mockResolvedValue([]);
+    vi.spyOn(api, "anomalies").mockResolvedValue(page(active, 237));
+    await renderPage();
+
+    expect(
+      screen.getByText(/Ranked from the 200 most recent of 237 active anomalies/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "View all active anomalies" })[0]).toHaveAttribute(
+      "href",
+      "/anomalies?active_only=true",
     );
   });
 });
