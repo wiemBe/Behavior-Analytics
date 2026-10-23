@@ -402,10 +402,19 @@ secrets as for the rest of the stack and start the profile:
 docker compose --profile mcp up -d qradar-mcp
 ```
 
-`install --build` does not build this image. To build it from the checkout, run
-`docker compose --profile mcp build qradar-mcp`: Compose builds `./qradar-mcp` first (the
-`qradar-mcp-upstream` service) and passes it to `deploy/mcp/Dockerfile` as the named context
-`upstream`.
+`install --build` does not build this image. To build it from the checkout, run two steps in
+this order:
+
+```bash
+docker compose --profile mcp-build build qradar-mcp-upstream
+docker compose --profile mcp build qradar-mcp
+```
+
+The first builds `./qradar-mcp` with IBM's own Dockerfile and tags it
+`localhost/qradar-mcp-upstream:b8f6a4a3`. The second passes that image to
+`deploy/mcp/Dockerfile` as the named context `upstream`. The `localhost/` name is deliberate:
+if the first step was skipped, the build fails instead of fetching an image of that name from a
+public registry.
 
 ## Upgrade, backup and recovery
 

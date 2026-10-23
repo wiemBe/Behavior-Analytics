@@ -308,6 +308,9 @@ def test_docker_compose_config_keeps_migrate_and_the_external_network(tmp_path: 
 
 # ------------------------------------------------------------ qradar-mcp service (SEC-4)
 MCP_SECRETS_MOUNT = "/run/secrets"
+# `localhost/` so an unbuilt upstream is never resolved from Docker Hub; an image, not a
+# `service:` reference, because Compose 2.x refuses a service of an inactive profile there.
+UPSTREAM_IMAGE = "localhost/qradar-mcp-upstream:b8f6a4a3"
 
 
 def _mcp_volume_entries(service: dict) -> list[dict]:
@@ -367,12 +370,13 @@ def test_the_mcp_service_has_no_checkout_mount_and_verifies_tls_in_the_yaml() ->
         _assert_mcp_service(document["services"]["qradar-mcp"])
     mcp = base["services"]["qradar-mcp"]
     assert mcp["build"]["context"] == "./deploy/mcp"
-    assert mcp["build"]["additional_contexts"] == {"upstream": "service:qradar-mcp-upstream"}
+    assert mcp["build"]["additional_contexts"] == {"upstream": f"docker-image://{UPSTREAM_IMAGE}"}
     # The upstream build is a build-only service: no profile that `up` ever enables.
     upstream = base["services"]["qradar-mcp-upstream"]
     assert upstream["build"]["context"] == "./qradar-mcp"
     assert "dockerfile" not in upstream or upstream["dockerfile"] == "Dockerfile"
     assert upstream["profiles"] == ["mcp-build"]
+    assert upstream["image"] == UPSTREAM_IMAGE
 
 
 def test_docker_compose_config_shows_the_mcp_service_without_a_bind_mount(
@@ -395,7 +399,7 @@ def test_docker_compose_config_shows_the_mcp_service_without_a_bind_mount(
     assert with_prod["volumes"]["qradar_secrets"]["name"] == "site-secrets"
     for document in (base, with_prod):
         build = document["services"]["qradar-mcp"]["build"]
-        assert build["additional_contexts"] == {"upstream": "service:qradar-mcp-upstream"}
+        assert build["additional_contexts"] == {"upstream": f"docker-image://{UPSTREAM_IMAGE}"}
 
 
 def test_the_mcp_dockerfile_adds_only_the_toggle_file_to_the_upstream_build() -> None:
