@@ -43,7 +43,7 @@ const EVIDENCE = [
 ];
 
 export interface AnomalyFilterValues {
-  /** What the anomaly is about: LOG_SOURCE, WAF_ENDPOINT, IPS_ENTITY, IPS_SOURCE, PW_VALUE or "" for all. */
+  /** What the anomaly is about, including URL-only IPS for entities and sources together. */
   subject_kind?: string;
   /** One IPS entity, from a link on an entity view. Not editable here; a chip clears it. */
   ips_entity_id?: string;

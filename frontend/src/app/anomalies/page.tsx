@@ -33,6 +33,8 @@ import {
   paginationParams,
   parseAnomalyQuery,
   parseSubjectQuery,
+  subjectKindsForApi,
+  type SearchParamValue,
 } from "@/lib/anomalyQuery";
 import { sourcesAsOf } from "@/lib/home/asOf";
 
@@ -45,7 +47,7 @@ export const metadata: Metadata = {
 export default async function AnomaliesPage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | undefined>>;
+  searchParams: Promise<Record<string, SearchParamValue>>;
 }) {
   const raw = await searchParams;
   const q = parseAnomalyQuery(raw);
@@ -75,7 +77,7 @@ export default async function AnomaliesPage({
         log_source_id: q.log_source_id || undefined,
         instance_id: q.instance_id || undefined,
         anomaly_type: anomalyType || undefined,
-        subject_kind: subject.subject_kind || undefined,
+        subject_kind: subjectKindsForApi(subject.subject_kind),
         ips_entity_id: subject.ips_entity_id || undefined,
         property_watch_id: subject.property_watch_id || undefined,
         state: q.state || undefined,

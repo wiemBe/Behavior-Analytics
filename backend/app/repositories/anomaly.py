@@ -7,7 +7,7 @@ and range guards in one place where they cannot be forgotten on a new endpoint.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from datetime import datetime
 from typing import Any
 
@@ -69,16 +69,27 @@ _WAF_TYPES = frozenset(t.value for t in WafAnomalyType)
 _IPS_TYPES = frozenset(t.value for t in IpsAnomalyType)
 _PW_TYPES = frozenset(t.value for t in PwAnomalyType)
 
+SubjectKindFilter = SubjectKind | Collection[SubjectKind] | None
+
 
 class AnomalyRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    @staticmethod
+    def _kind_set(subject_kind: SubjectKindFilter) -> frozenset[SubjectKind] | None:
+        """The requested kinds, deduplicated; None keeps the unfiltered population."""
+        if subject_kind is None:
+            return None
+        if isinstance(subject_kind, SubjectKind):
+            return frozenset((subject_kind,))
+        return frozenset(subject_kind)
+
     # ------------------------------------------------------- unified list
     @staticmethod
     def _applicable_kinds(
         *,
-        subject_kind: SubjectKind | None,
+        subject_kind: SubjectKindFilter,
         waf_endpoint_id: uuid.UUID | None,
         ips_entity_id: uuid.UUID | None,
         anomaly_type: str | None,
@@ -88,9 +99,12 @@ class AnomalyRepository:
         A filter that cannot apply to a family excludes it. Ignoring it would
         return rows the caller asked not to see.
         """
-        phase_a = subject_kind in (None, SubjectKind.LOG_SOURCE)
-        waf = subject_kind in (None, SubjectKind.WAF_ENDPOINT)
-        ips = subject_kind in (None, SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE)
+        kinds = AnomalyRepository._kind_set(subject_kind)
+        phase_a = kinds is None or SubjectKind.LOG_SOURCE in kinds
+        waf = kinds is None or SubjectKind.WAF_ENDPOINT in kinds
+        ips = kinds is None or bool(
+            kinds.intersection((SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE))
+        )
         if waf_endpoint_id is not None:
             phase_a = False
             ips = False
@@ -99,7 +113,7 @@ class AnomalyRepository:
             waf = False
             # An entity id names an entity incident; a source-incident filter
             # contradicts it.
-            ips = ips and subject_kind is not SubjectKind.IPS_SOURCE
+            ips = ips and (kinds is None or SubjectKind.IPS_ENTITY in kinds)
         if anomaly_type is not None:
             phase_a = phase_a and anomaly_type in _PHASE_A_TYPES
             waf = waf and anomaly_type in _WAF_TYPES
@@ -280,7 +294,7 @@ class AnomalyRepository:
         *,
         limit: int,
         offset: int,
-        subject_kind: SubjectKind | None = None,
+        subject_kind: SubjectKindFilter = None,
         waf_endpoint_id: uuid.UUID | None = None,
         ips_entity_id: uuid.UUID | None = None,
         pw_watch_id: uuid.UUID | None = None,
@@ -303,15 +317,16 @@ class AnomalyRepository:
         as a tiebreak so a page boundary inside a tie cannot repeat or drop a
         row.
         """
+        kinds = self._kind_set(subject_kind)
         phase_a, waf, ips = self._applicable_kinds(
-            subject_kind=subject_kind,
+            subject_kind=kinds,
             waf_endpoint_id=waf_endpoint_id,
             ips_entity_id=ips_entity_id,
             anomaly_type=anomaly_type,
         )
         # The property-watch family (Phase G): its own subject kind and detector types. A
         # filter that names another family's subject excludes it, as for the others.
-        pw = subject_kind in (None, SubjectKind.PW_VALUE)
+        pw = kinds is None or SubjectKind.PW_VALUE in kinds
         if waf_endpoint_id is not None or ips_entity_id is not None:
             pw = False
         if anomaly_type is not None:
@@ -377,10 +392,15 @@ class AnomalyRepository:
                 )
             if ips_entity_id is not None:
                 conditions.append(IpsAnomaly.ips_entity_id == ips_entity_id)
-            if subject_kind is not None:
-                # IPS_ENTITY or IPS_SOURCE: the row's own subject discriminator,
-                # so one narrows to entity incidents and the other to source ones.
-                conditions.append(IpsAnomaly.subject_kind == subject_kind.value)
+            if kinds is not None:
+                # The row owns the IPS discriminator. A repeated query value therefore
+                # stays one branch and one statement rather than one query per kind.
+                ips_kinds = [
+                    kind.value
+                    for kind in (SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE)
+                    if kind in kinds
+                ]
+                conditions.append(IpsAnomaly.subject_kind.in_(ips_kinds))
             if anomaly_type is not None:
                 conditions.append(IpsAnomaly.detector_type == anomaly_type)
             branches.append(self._unified_ips(conditions))

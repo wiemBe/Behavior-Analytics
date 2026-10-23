@@ -152,6 +152,7 @@ describe("the IPS filters", () => {
       "WAF_ENDPOINT",
       "IPS_ENTITY",
       "IPS_SOURCE",
+      "IPS",
       "PW_VALUE",
     ]);
   });
@@ -172,6 +173,32 @@ describe("the IPS filters", () => {
       expect.objectContaining({ subject_kind: "IPS_SOURCE", anomaly_type: "IPS_BLOCK_RATIO_SHIFT" }),
     );
     expect(screen.getByRole("link", { name: /Detector: Block-ratio shift/ })).toBeInTheDocument();
+  });
+
+  it("sends both repeated API kinds for the combined IPS URL and keeps it in pagination", async () => {
+    vi.spyOn(api, "anomalies").mockResolvedValue({
+      items: [ipsListItem()],
+      total: 60,
+      limit: 25,
+      offset: 0,
+    });
+    vi.spyOn(api, "sourceBehaviors").mockResolvedValue([]);
+    render(
+      await AnomaliesPage({
+        searchParams: Promise.resolve({ subject_kind: "IPS", active_only: "true" }),
+      }),
+    );
+    expect(api.anomalies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject_kind: ["IPS_ENTITY", "IPS_SOURCE"],
+        active_only: true,
+      }),
+    );
+    expect(screen.getByRole("link", { name: /IPS entities and sources/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("subject_kind=IPS"),
+    );
   });
 
   it("passes ips_entity_id through, shows a chip, and keeps it across a re-filter and pagination", async () => {

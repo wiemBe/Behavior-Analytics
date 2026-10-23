@@ -33,7 +33,7 @@ from app.models.ips import IpsAnomaly
 from app.models.log_source import LogSourceAnomaly
 from app.models.property_watch import PwAnomaly
 from app.models.waf import WafAnomaly
-from app.repositories.anomaly import AnomalyRepository
+from app.repositories.anomaly import AnomalyRepository, SubjectKindFilter
 from app.schemas.anomaly import SubjectKind
 
 #: The histogram's bucket is the UTC hour.
@@ -134,19 +134,26 @@ def _waf_branch(since: datetime, until: datetime) -> Select:
 
 
 def _ips_branch(
-    since: datetime, until: datetime, subject_kind: SubjectKind | None = None
+    since: datetime,
+    until: datetime,
+    subject_kind: SubjectKindFilter = None,
 ) -> Select:
     """IPS anomalies grouped by hour and severity, filtered by subject_kind.
 
-    When `subject_kind` is IPS_ENTITY or IPS_SOURCE, filters
-    `IpsAnomaly.subject_kind == subject_kind.value`, matching the list
-    behavior. No joins needed: the histogram only counts rows.
+    Requested IPS kinds share one branch and one statement. No joins are
+    needed: the histogram only counts rows.
     """
     a = IpsAnomaly
     hour = _hour_of(a.detected_at)
     conditions = [a.detected_at >= since, a.detected_at < until]
-    if subject_kind in (SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE):
-        conditions.append(a.subject_kind == subject_kind.value)
+    kinds = AnomalyRepository._kind_set(subject_kind)
+    if kinds is not None:
+        ips_kinds = [
+            kind.value
+            for kind in (SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE)
+            if kind in kinds
+        ]
+        conditions.append(a.subject_kind.in_(ips_kinds))
     return (
         select(
             hour.label("hour"),
@@ -202,7 +209,7 @@ async def histogram(
     *,
     since: datetime,
     until: datetime,
-    subject_kind: SubjectKind | None = None,
+    subject_kind: SubjectKindFilter = None,
 ) -> Histogram:
     """Count anomalies per UTC hour and severity: one statement, any range.
 
@@ -213,8 +220,9 @@ async def histogram(
     same `subject_kind`, so `total` equals the list's `total` for the same
     arguments.
     """
+    kinds = AnomalyRepository._kind_set(subject_kind)
     phase_a, waf, ips = AnomalyRepository._applicable_kinds(
-        subject_kind=subject_kind, waf_endpoint_id=None, ips_entity_id=None, anomaly_type=None
+        subject_kind=kinds, waf_endpoint_id=None, ips_entity_id=None, anomaly_type=None
     )
     branches: list[Select] = []
     families: list[str] = []
@@ -225,12 +233,13 @@ async def histogram(
         branches.append(_waf_branch(since, until))
         families.append(SubjectKind.WAF_ENDPOINT.value)
     if ips:
-        branches.append(_ips_branch(since, until, subject_kind))
-        if subject_kind in (SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE):
-            families.append(subject_kind.value)
-        else:
-            families.extend([SubjectKind.IPS_ENTITY.value, SubjectKind.IPS_SOURCE.value])
-    if subject_kind in (None, SubjectKind.PW_VALUE):
+        branches.append(_ips_branch(since, until, kinds))
+        families.extend(
+            kind.value
+            for kind in (SubjectKind.IPS_ENTITY, SubjectKind.IPS_SOURCE)
+            if kinds is None or kind in kinds
+        )
+    if kinds is None or SubjectKind.PW_VALUE in kinds:
         branches.append(_pw_branch(since, until))
         families.append(SubjectKind.PW_VALUE.value)
     span = hour_span(since, until)
