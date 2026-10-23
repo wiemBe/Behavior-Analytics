@@ -77,6 +77,26 @@ describe("KpiOffenses", () => {
     expect(screen.queryByText("0", { selector: ".kpi-value" })).toBeNull();
   });
 
+  it("says Not collected from a null count even when the probe lists rows", () => {
+    mocks.states[ANALYTICS] = ok(analytics({ active: null }));
+    mocks.states[PROBE] = withSnapshot();
+    render(<KpiOffenses />);
+    expect(screen.getByText("—", { selector: ".kpi-value" })).toBeInTheDocument();
+    expect(screen.getByText("Not collected")).toBeInTheDocument();
+    expect(screen.getByText("No offense snapshot has been collected yet.")).toBeInTheDocument();
+    expect(screen.queryByText("0", { selector: ".kpi-value" })).toBeNull();
+  });
+
+  it("does not wait for the probe when the count is already unknown", () => {
+    mocks.states[ANALYTICS] = ok(analytics({ active: null }));
+    render(<KpiOffenses />);
+    expect(screen.getByText("—", { selector: ".kpi-value" })).toBeInTheDocument();
+    expect(screen.getByText("Not collected")).toBeInTheDocument();
+    expect(screen.getByText("No offense snapshot has been collected yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/Loading offenses/)).toBeNull();
+    expect(screen.queryByText("0", { selector: ".kpi-value" })).toBeNull();
+  });
+
   it("waits for the probe rather than showing a zero", () => {
     mocks.states[ANALYTICS] = ok(analytics({ active: 0 }));
     render(<KpiOffenses />);

@@ -1,8 +1,9 @@
 // KPI card 1 (UR.4.2): total EPS over the window, from GET /fleet/summary.
 //
-// The value is the sum of the classes' `mean_eps`, each of which is a mean over
-// complete buckets only. A class with no complete bucket has a null mean and is
-// left out of the sum and counted, never added as zero.
+// The value is the sum of the classes' `mean_eps`. Each class figure is a sum
+// of per-source rates over the seconds those sources actually measured
+// (complete buckets only). A class with no complete bucket has a null mean and
+// is left out of the sum, never added as zero. It is still counted.
 
 import type { FleetClassSummary, FleetSummary, SourceClass } from "@/lib/api";
 import { classLabel } from "@/lib/fleet";
@@ -10,7 +11,7 @@ import { classLabel } from "@/lib/fleet";
 import { insufficient, partial, type Qualifier } from "./qualifiers";
 
 export interface TotalEps {
-  /** Sum of the non-null class means; null when no class has one. */
+  /** Sum of the non-null class figures; null when no class has one. */
   meanEps: number | null;
   classesMeasured: number;
   /** Classes with sources to measure but no complete bucket. */
@@ -19,8 +20,8 @@ export interface TotalEps {
   expectedEps: number | null;
   expectedCoverage: ExpectedCoverage | null;
   /**
-   * The mean of only the baselined classes: the like-for-like figure to set
-   * against `expectedEps`. Null when none of them has a mean.
+   * The sum of `mean_eps` over baselined classes that have one: the like-for-like
+   * figure to set against `expectedEps`. Null when none of them has a figure.
    */
   comparableMeanEps: number | null;
   /** (comparable - expected) / expected, in percent. Null when expected is null or 0. */

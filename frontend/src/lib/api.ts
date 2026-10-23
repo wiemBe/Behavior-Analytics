@@ -365,9 +365,9 @@ export interface SocOverview {
     in_maintenance: number;
   };
   offenses: {
-    active: number;
-    critical: number;
-    unassigned: number;
+    active: number | null;
+    critical: number | null;
+    unassigned: number | null;
     oldest_age_seconds: number | null;
   };
   alerts: { open: number; acknowledged: number; by_severity: Record<string, number> };
@@ -851,10 +851,10 @@ export interface OffenseHistoryPoint {
 }
 
 export interface OffenseAggregates {
-  active: number;
-  critical: number;
-  unassigned: number;
-  exceeding_sla: number;
+  active: number | null;
+  critical: number | null;
+  unassigned: number | null;
+  exceeding_sla: number | null;
   oldest_age_seconds: number | null;
   average_magnitude: number | null;
   sla_hours: number;
@@ -868,7 +868,7 @@ export interface CountEntry {
 
 export interface AgingBucket {
   bucket: string;
-  count: number;
+  count: number | null;
 }
 
 export interface OffenseAnalytics {

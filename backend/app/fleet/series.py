@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.fleet.summary import EPS_METRIC, _class_of
+from app.fleet.summary import EPS_METRIC, _class_of, in_monitored_grid, metric_grid_predicates
 from app.history.origin import is_history_clause
 from app.models.enums import BucketCompleteness, SourceClass
 from app.models.fleet import LogSourceClassification
@@ -83,8 +83,7 @@ async def build_fleet_eps_series(
     steps = window_seconds // step_seconds
     per_step_buckets = step_seconds // bucket_seconds
     source_class = _class_of()
-    monitored = (LogSource.enabled.is_(True)) & (LogSource.monitoring_enabled.is_(True))
-    in_scope = monitored & (source_class != _INTERNAL)
+    in_scope = in_monitored_grid(source_class)
 
     # 1. Monitored, non-internal sources and their class.
     source_rows = (
@@ -103,9 +102,9 @@ async def build_fleet_eps_series(
     for cls in class_of.values():
         per_class_sources[cls] += 1
 
-    # 2. COMPLETE cells and their events, per class and step. A row of another
-    #    width is not a cell of this grid. Rows of sources no longer monitored
-    #    are filtered out by the join.
+    # 2. COMPLETE cells and their events, per class and step. The shared grid
+    #    predicate drops another bucket width and any source outside the
+    #    monitored, non-internal population. The summary uses the same one.
     complete = LogSourceMetric.completeness == BucketCompleteness.COMPLETE.value
     # Phase A marks a row read from QRadar's past in `collection_source`; the
     # shared helper owns that spelling (HISTORY-BACKFILL §B.4.1).
@@ -136,10 +135,12 @@ async def build_fleet_eps_series(
                 LogSourceClassification.log_source_id == LogSource.id,
             )
             .where(
-                in_scope,
-                LogSourceMetric.bucket_seconds == bucket_seconds,
-                LogSourceMetric.bucket_start >= window_start,
-                LogSourceMetric.bucket_start < now,
+                *metric_grid_predicates(
+                    source_class,
+                    bucket_seconds=bucket_seconds,
+                    window_start=window_start,
+                    window_end=now,
+                )
             )
             .group_by(source_class, step_index)
         )

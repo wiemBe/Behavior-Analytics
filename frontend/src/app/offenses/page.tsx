@@ -16,6 +16,18 @@ import "./offenses.css";
 
 const PAGE_SIZE = 25;
 
+const NOT_COLLECTED = "No offense snapshot has been collected yet.";
+
+/** A nullable offense count. Null is the not-collected state; a measured 0 stays 0. */
+function offenseStat(label: string, count: number | null, alarm?: "crit" | "warn") {
+  if (count == null) {
+    return (
+      <StatCard label={label} value="—" note={`Not collected. ${NOT_COLLECTED}`} />
+    );
+  }
+  return <StatCard label={label} value={count} tone={alarm && count > 0 ? alarm : undefined} />;
+}
+
 /** Magnitude is 0 to 10; the bar is drawn in whole tenths of the track. */
 function magnitudeStep(magnitude: number): number {
   return Math.min(10, Math.max(0, Math.round(magnitude)));
@@ -71,22 +83,14 @@ export default async function OffensesPage({
       {aggregates && (
         <div className="cards offenses-cards offenses-cards-3">
           <StatCard label="Total" value={page?.total ?? 0} />
-          <StatCard label="Active" value={aggregates.active} />
-          <StatCard
-            label={`Critical (mag ${aggregates.critical_magnitude}+)`}
-            value={aggregates.critical}
-            tone={aggregates.critical > 0 ? "crit" : undefined}
-          />
-          <StatCard
-            label="Unassigned"
-            value={aggregates.unassigned}
-            tone={aggregates.unassigned > 0 ? "warn" : undefined}
-          />
-          <StatCard
-            label={`Over ${aggregates.sla_hours}h SLA`}
-            value={aggregates.exceeding_sla}
-            tone={aggregates.exceeding_sla > 0 ? "warn" : undefined}
-          />
+          {offenseStat("Active", aggregates.active)}
+          {offenseStat(
+            `Critical (mag ${aggregates.critical_magnitude}+)`,
+            aggregates.critical,
+            "crit",
+          )}
+          {offenseStat("Unassigned", aggregates.unassigned, "warn")}
+          {offenseStat(`Over ${aggregates.sla_hours}h SLA`, aggregates.exceeding_sla, "warn")}
           <StatCard label="Oldest" value={formatAge(aggregates.oldest_age_seconds)} />
         </div>
       )}

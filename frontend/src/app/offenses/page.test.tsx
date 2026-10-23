@@ -233,6 +233,64 @@ describe("offense paging and filters", () => {
   });
 });
 
+describe("nullable aggregate counts", () => {
+  const card = (label: string) => screen.getByText(label).closest(".card") as HTMLElement;
+
+  it("renders a null count as not collected, with no alarm tone", async () => {
+    vi.spyOn(api, "offenses").mockResolvedValue(page([]));
+    vi.spyOn(api, "offenseAggregates").mockResolvedValue(
+      aggregates({
+        active: null,
+        critical: null,
+        unassigned: null,
+        exceeding_sla: null,
+        oldest_age_seconds: null,
+      }),
+    );
+    await renderPage();
+    for (const label of ["Active", "Critical (mag 8+)", "Unassigned", "Over 24h SLA"]) {
+      const stat = card(label);
+      expect(within(stat).getByText("—")).toBeInTheDocument();
+      expect(stat).toHaveTextContent("Not collected");
+      expect(stat).toHaveTextContent("No offense snapshot has been collected yet.");
+      const value = stat.querySelector(".v");
+      expect(value).not.toHaveClass("crit");
+      expect(value).not.toHaveClass("warn");
+      expect(value).not.toHaveTextContent("0");
+    }
+  });
+
+  it("keeps a measured zero as 0, with no alarm tone and no not-collected note", async () => {
+    vi.spyOn(api, "offenses").mockResolvedValue(page([offense({ status: "CLOSED" })]));
+    vi.spyOn(api, "offenseAggregates").mockResolvedValue(
+      aggregates({ active: 0, critical: 0, unassigned: 0, exceeding_sla: 0 }),
+    );
+    await renderPage();
+    for (const label of ["Active", "Critical (mag 8+)", "Unassigned", "Over 24h SLA"]) {
+      const stat = card(label);
+      expect(within(stat).getByText("0")).toBeInTheDocument();
+      expect(stat).not.toHaveTextContent("Not collected");
+      const value = stat.querySelector(".v");
+      expect(value).not.toHaveClass("crit");
+      expect(value).not.toHaveClass("warn");
+    }
+  });
+
+  it("keeps a positive count and its alarm tone", async () => {
+    vi.spyOn(api, "offenses").mockResolvedValue(page([offense()]));
+    vi.spyOn(api, "offenseAggregates").mockResolvedValue(
+      aggregates({ active: 7, critical: 2, unassigned: 3, exceeding_sla: 1 }),
+    );
+    await renderPage();
+    expect(within(card("Active")).getByText("7")).toBeInTheDocument();
+    expect(card("Active")).not.toHaveTextContent("Not collected");
+    expect(card("Critical (mag 8+)").querySelector(".v")).toHaveClass("crit");
+    expect(within(card("Critical (mag 8+)")).getByText("2")).toBeInTheDocument();
+    expect(card("Unassigned").querySelector(".v")).toHaveClass("warn");
+    expect(card("Over 24h SLA").querySelector(".v")).toHaveClass("warn");
+  });
+});
+
 describe("offense list layout", () => {
   beforeEach(() => {
     vi.spyOn(api, "offenses").mockResolvedValue(page([offense()]));

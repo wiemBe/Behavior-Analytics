@@ -198,7 +198,10 @@ class WafSourceStatusOut(BaseModel):
     #: Seconds from the end of the last collected bucket to now. None before
     #: the first successful collection.
     lag_seconds: int | None = None
-    consecutive_failures: int = 0
+    #: None when this source has no collection watermark: that is unknown, not
+    #: a measured run of zero failures. Zero means a watermark exists and the
+    #: collector has not failed.
+    consecutive_failures: int | None = None
     last_error: str | None = None
     last_failure_at: datetime | None = None
 

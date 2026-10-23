@@ -100,10 +100,12 @@ class OffensePage(BaseModel):
 
 
 class OffenseAggregates(BaseModel):
-    active: int
-    critical: int
-    unassigned: int
-    exceeding_sla: int
+    #: None when no offense snapshot exists. Zero means snapshots exist and
+    #: none of the latest ones is open.
+    active: int | None
+    critical: int | None
+    unassigned: int | None
+    exceeding_sla: int | None
     oldest_age_seconds: int | None = None
     average_magnitude: float | None = None
     sla_hours: int
@@ -133,7 +135,9 @@ class CountEntry(BaseModel):
 
 class AgingBucket(BaseModel):
     bucket: str
-    count: int
+    #: None when no snapshot exists, so an empty capture is not six measured
+    #: zeros. Zero means snapshots exist and none of the open ones fall here.
+    count: int | None
 
 
 class MagnitudeTrendPoint(BaseModel):

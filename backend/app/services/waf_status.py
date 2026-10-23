@@ -1,14 +1,23 @@
-"""Assemble WAF operational status from profiles, watermarks and source buckets."""
+"""Assemble WAF operational status from profiles, watermarks and source buckets.
+
+Six statements however many profiles match: the profiles, their watermarks,
+the latest bucket per source, the 24-hour bucket counts, the endpoint counts,
+and the buckets still waiting for evaluation. A source with no collection
+watermark reports an unknown failure count, not zero.
+"""
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, Row, String, and_, cast, func, literal, or_, select, tuple_
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
-from app.collectors.waf_endpoint_collector import watermark_collector
+from app.collectors.waf_endpoint_collector import COLLECTOR_NAME, watermark_collector
 from app.core.config import Settings
 from app.history.origin import origin_of
 from app.history.state import HistoryFamily
@@ -23,7 +32,11 @@ from app.schemas.waf import (
     WafSourceStatusOut,
 )
 from app.services.waf_ariel_budget import WafArielBudget
-from app.services.waf_pipeline import evaluation_collector, scheduling_record
+from app.services.waf_pipeline import (
+    EVALUATION_COLLECTOR,
+    evaluation_collector,
+    scheduling_record,
+)
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 from app.waf.profile import collection_ineligibility
 
@@ -37,23 +50,59 @@ def _parse(value: object) -> datetime | None:
         return None
 
 
-async def _watermark(
-    session: AsyncSession, instance_id: uuid.UUID, collector: str
-) -> CollectionWatermark | None:
-    return await session.scalar(
-        select(CollectionWatermark).where(
-            CollectionWatermark.instance_id == instance_id,
-            CollectionWatermark.collector == collector,
-        )
-    )
-
-
-async def _count(session: AsyncSession, stmt) -> int:  # type: ignore[no-untyped-def]
-    return int(await session.scalar(stmt) or 0)
-
-
 def _int(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _collector_sql(prefix: str) -> ColumnElement[str]:
+    """The watermark key `prefix:{qradar_id}`, as the collector helpers spell it."""
+    return literal(f"{prefix}:", type_=String()) + cast(LogSource.qradar_id, String)
+
+
+async def _watermarks(
+    session: AsyncSession,
+    rows: Sequence[Row[WafSourceProfile, LogSource]],
+) -> dict[tuple[uuid.UUID, str], CollectionWatermark]:
+    """Every collection, evaluation and scheduling watermark for these profiles."""
+    keys = [
+        (profile.instance_id, name)
+        for profile, log_source in rows
+        for name in (
+            watermark_collector(log_source),
+            evaluation_collector(log_source),
+            scheduling_record(log_source),
+        )
+    ]
+    found = await session.scalars(
+        select(CollectionWatermark).where(
+            tuple_(CollectionWatermark.instance_id, CollectionWatermark.collector).in_(keys)
+        )
+    )
+    return {(row.instance_id, row.collector): row for row in found.all()}
+
+
+async def _endpoint_counts(
+    session: AsyncSession, source_ids: list[uuid.UUID]
+) -> tuple[dict[uuid.UUID, int], dict[uuid.UUID, int]]:
+    rows = (
+        await session.execute(
+            select(
+                WafEndpoint.log_source_id,
+                func.count(),
+                func.count().filter(WafEndpoint.baseline_rebuilt_at.is_(None)),
+            )
+            .where(
+                WafEndpoint.log_source_id.in_(source_ids),
+                WafEndpoint.is_active.is_(True),
+                WafEndpoint.normalizer_version == ENDPOINT_NORMALIZER_VERSION,
+            )
+            .group_by(WafEndpoint.log_source_id)
+        )
+    ).all()
+    return (
+        {sid: int(n) for sid, n, _ in rows},
+        {sid: int(n) for sid, _, n in rows},
+    )
 
 
 async def waf_ariel_budget_status(
@@ -83,12 +132,86 @@ async def waf_source_statuses(
     if profile_id is not None:
         query = query.where(WafSourceProfile.id == profile_id)
 
+    rows = list((await session.execute(query)).all())
+    if not rows:
+        return []
+    source_ids = [log_source.id for _, log_source in rows]
+    watermarks = await _watermarks(session, rows)
+    # The bucket reads stay in this function. The history-reader inventory names
+    # it, not a helper, as the display reader of waf_source_bucket.
+    last_found = await session.scalars(
+        select(WafSourceBucket)
+        .ext(distinct_on(WafSourceBucket.log_source_id))
+        .where(WafSourceBucket.log_source_id.in_(source_ids))
+        .order_by(WafSourceBucket.log_source_id, WafSourceBucket.bucket_start.desc())
+    )
+    last_by_source = {bucket.log_source_id: bucket for bucket in last_found.all()}
+    cutoff = now - timedelta(hours=24)
+    count_rows = (
+        await session.execute(
+            select(
+                WafSourceBucket.log_source_id,
+                func.count().filter(WafSourceBucket.admission_truncated.is_(True)),
+                func.count().filter(
+                    WafSourceBucket.request_count_measurement == WafMeasurement.LOWER_BOUND
+                ),
+            )
+            .where(
+                WafSourceBucket.log_source_id.in_(source_ids),
+                WafSourceBucket.bucket_start >= cutoff,
+            )
+            .group_by(WafSourceBucket.log_source_id)
+        )
+    ).all()
+    truncated_by = {sid: int(n) for sid, n, _ in count_rows}
+    lower_by = {sid: int(n) for sid, _, n in count_rows}
+    active_by, never_by = await _endpoint_counts(session, source_ids)
+    # Pending stays zero when collection has no watermark. The failure count is
+    # the field that says unknown; this one is a queue length.
+    collection_wm = aliased(CollectionWatermark)
+    evaluation_wm = aliased(CollectionWatermark)
+    pending_rows = (
+        await session.execute(
+            select(LogSource.id, func.count(WafSourceBucket.bucket_start))
+            .select_from(LogSource)
+            .join(
+                collection_wm,
+                and_(
+                    collection_wm.instance_id == LogSource.instance_id,
+                    collection_wm.collector == _collector_sql(COLLECTOR_NAME),
+                    collection_wm.watermark_at.is_not(None),
+                ),
+            )
+            .outerjoin(
+                evaluation_wm,
+                and_(
+                    evaluation_wm.instance_id == LogSource.instance_id,
+                    evaluation_wm.collector == _collector_sql(EVALUATION_COLLECTOR),
+                ),
+            )
+            .join(
+                WafSourceBucket,
+                and_(
+                    WafSourceBucket.log_source_id == LogSource.id,
+                    WafSourceBucket.bucket_start <= collection_wm.watermark_at,
+                    or_(
+                        evaluation_wm.watermark_at.is_(None),
+                        WafSourceBucket.bucket_start > evaluation_wm.watermark_at,
+                    ),
+                ),
+            )
+            .where(LogSource.id.in_(source_ids))
+            .group_by(LogSource.id)
+        )
+    ).all()
+    pending_by = {sid: int(n) for sid, n in pending_rows}
+
     out: list[WafSourceStatusOut] = []
-    for profile, log_source in (await session.execute(query)).all():
+    for profile, log_source in rows:
         instance_id = profile.instance_id
-        collection = await _watermark(session, instance_id, watermark_collector(log_source))
-        evaluation = await _watermark(session, instance_id, evaluation_collector(log_source))
-        scheduling = await _watermark(session, instance_id, scheduling_record(log_source))
+        collection = watermarks.get((instance_id, watermark_collector(log_source)))
+        evaluation = watermarks.get((instance_id, evaluation_collector(log_source)))
+        scheduling = watermarks.get((instance_id, scheduling_record(log_source)))
         coll_meta = (collection.collection_metadata if collection else None) or {}
         eval_meta = (evaluation.collection_metadata if evaluation else None) or {}
         sched_meta = (scheduling.collection_metadata if scheduling else None) or {}
@@ -102,60 +225,12 @@ async def waf_source_statuses(
             last_skipped_at > t for t in other_outcomes
         )
 
-        last = await session.scalar(
-            select(WafSourceBucket)
-            .where(WafSourceBucket.log_source_id == log_source.id)
-            .order_by(WafSourceBucket.bucket_start.desc())
-            .limit(1)
-        )
-        truncated_24h = await _count(
-            session,
-            select(func.count())
-            .select_from(WafSourceBucket)
-            .where(
-                WafSourceBucket.log_source_id == log_source.id,
-                WafSourceBucket.admission_truncated.is_(True),
-                WafSourceBucket.bucket_start >= now - timedelta(hours=24),
-            ),
-        )
-        lower_bound_24h = await _count(
-            session,
-            select(func.count())
-            .select_from(WafSourceBucket)
-            .where(
-                WafSourceBucket.log_source_id == log_source.id,
-                WafSourceBucket.request_count_measurement == WafMeasurement.LOWER_BOUND,
-                WafSourceBucket.bucket_start >= now - timedelta(hours=24),
-            ),
-        )
-        active_filter = (
-            WafEndpoint.log_source_id == log_source.id,
-            WafEndpoint.is_active.is_(True),
-            WafEndpoint.normalizer_version == ENDPOINT_NORMALIZER_VERSION,
-        )
-        active = await _count(
-            session, select(func.count()).select_from(WafEndpoint).where(*active_filter)
-        )
-        never_rebuilt = await _count(
-            session,
-            select(func.count())
-            .select_from(WafEndpoint)
-            .where(*active_filter, WafEndpoint.baseline_rebuilt_at.is_(None)),
-        )
-
-        pending = 0
-        if collection is not None and collection.watermark_at is not None:
-            pending_q = (
-                select(func.count())
-                .select_from(WafSourceBucket)
-                .where(
-                    WafSourceBucket.log_source_id == log_source.id,
-                    WafSourceBucket.bucket_start <= collection.watermark_at,
-                )
-            )
-            if evaluation is not None and evaluation.watermark_at is not None:
-                pending_q = pending_q.where(WafSourceBucket.bucket_start > evaluation.watermark_at)
-            pending = await _count(session, pending_q)
+        last = last_by_source.get(log_source.id)
+        truncated_24h = truncated_by.get(log_source.id, 0)
+        lower_bound_24h = lower_by.get(log_source.id, 0)
+        active = active_by.get(log_source.id, 0)
+        never_rebuilt = never_by.get(log_source.id, 0)
+        pending = pending_by.get(log_source.id, 0)
 
         lag: int | None = None
         if collection is not None and collection.watermark_at is not None:
@@ -202,7 +277,9 @@ async def waf_source_statuses(
                 last_run_at=collection.last_run_at if collection else None,
                 last_success_at=last_success_at,
                 lag_seconds=lag,
-                consecutive_failures=collection.consecutive_failures if collection else 0,
+                consecutive_failures=(
+                    collection.consecutive_failures if collection is not None else None
+                ),
                 last_error=collection.last_error if collection else None,
                 last_failure_at=last_failure_at,
                 ariel_searches_last_run=_int(coll_meta.get("last_run_ariel_searches")),

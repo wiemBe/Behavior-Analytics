@@ -142,9 +142,11 @@ class OverviewCounts(BaseModel):
 
 
 class OverviewOffenses(BaseModel):
-    active: int
-    critical: int
-    unassigned: int
+    #: None when no offense snapshot has been collected. Zero means a snapshot
+    #: exists and none of its offenses is open.
+    active: int | None
+    critical: int | None
+    unassigned: int | None
     oldest_age_seconds: int | None = None
 
 
