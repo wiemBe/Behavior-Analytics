@@ -394,9 +394,67 @@ The hop from the backend to the MCP service is plain HTTP on the internal Docker
 service publishes no port, so only containers on that network can reach it, and the token
 travels in that hop. Do not publish the port.
 
-Production hosts must not start the `mcp` profile until it has been validated against a real
-console (see [`OPERATIONS.md`](OPERATIONS.md), OPS-R13). On a development or lab host, load the
-secrets as for the rest of the stack and start the profile:
+### Enable the profile on a production host
+
+The `mcp` profile was validated against a QRadar 7.6.0 FP1 console on 2026-10-23: the handshake and
+tool negotiation (no write tool), the read tools, a value equal to the REST provider's, TLS
+verification on, a missing token refused with 401, and no token in any log. A production host runs
+the published image `<QRADAR_DASH_IMAGE_PREFIX>/qradar-mcp:<QRADAR_DASH_VERSION>` (the prefix and
+version come from `.env`). It is pulled, or loaded from the offline bundle; nothing is built on
+the host.
+
+Before you enable it, check four things:
+
+- **The name.** `QRADAR_CONSOLE_FQDN` in `.env` must match a subject alternative name (SAN) of the
+  console certificate. An IP SAN works when the value is that IP address.
+- **The chain.** `qradar_ca.pem` in the secrets volume must hold the full chain up to the root the
+  console certificate chains to. The server's Python accepted a CA without an Authority Key
+  Identifier; the backend still needs `QRADAR_TLS_ALLOW_MISSING_AKI=true` for such a CA (see
+  [`OPERATIONS.md`](OPERATIONS.md), OPS-R3).
+- **The route.** The service reaches the console from the `internal` network, as the backend does.
+  If the backend needs the macvlan override (OPS-R4), `qradar-mcp` needs the same network.
+- **The token.** The one the backend already has. The profile adds none.
+
+Then turn it on:
+
+1. Add `mcp` to `COMPOSE_PROFILES` in `.env`, keeping what is there. With the bundled proxy the
+   line becomes `COMPOSE_PROFILES=proxy,mcp`; with an external proxy it becomes
+   `COMPOSE_PROFILES=mcp`.
+2. Start the service. A bare `docker compose` in the checkout reads `COMPOSE_FILE` and
+   `COMPOSE_PROFILES` from `.env`:
+
+   ```bash
+   docker compose up -d qradar-mcp
+   ```
+
+3. Check it: `./qradar-dash doctor` now counts `qradar-mcp` in its `containers` row, and
+   `docker compose ps qradar-mcp` should show it healthy.
+
+Starting the profile does not move the application to MCP. `QRADAR_PROVIDER` stays `rest`, and a
+console uses the MCP service only when it is registered with `--provider mcp` and
+`--mcp-url http://qradar-mcp:5000` (`python -m app.cli.qradar add`, see OPS-R1).
+
+The server writes its log to standard output only. Read it with `docker compose logs qradar-mcp`.
+The `mcp_logs` volume stays empty; do not rely on it.
+
+**Re-running `install` removes `mcp`; `upgrade` does not move the service.**
+
+- `./qradar-dash install` rewrites `COMPOSE_PROFILES` from the wizard answers (`proxy`, or empty
+  with an external proxy). An operator-added `mcp` is not carried forward. The running container
+  is not stopped, but `doctor` stops counting it and `upgrade` stops pulling its image. After
+  every `install` run, add `mcp` to `COMPOSE_PROFILES` again.
+- `./qradar-dash upgrade` edits only `QRADAR_DASH_VERSION` (and the image prefix when the
+  repository was renamed), so `mcp` stays in `COMPOSE_PROFILES`, and it pulls the target
+  `qradar-mcp` image. It does not recreate the `qradar-mcp` container: its service list holds the
+  backend, the workers, the frontend and the proxy. After each upgrade, run
+  `docker compose up -d qradar-mcp` to move it to the new image.
+
+If MCP calls fail after the service is up, follow [`OPERATIONS.md`](OPERATIONS.md), OPS-R64. A TLS
+failure reaches the backend as an unavailability, not as an authentication error.
+
+### Development and lab hosts
+
+On a development or lab host, load the secrets as for the rest of the stack and start the profile:
 
 ```bash
 docker compose --profile mcp up -d qradar-mcp
