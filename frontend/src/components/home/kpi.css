@@ -175,7 +175,7 @@
 /* HealthDistribution's legend carries a page-section top margin; inside a card the
    bar and its legend sit close. */
 .kpi .health-legend {
-  margin-top: var(--sp-2);
+  margin-top: 0;
   gap: var(--sp-1) var(--sp-3);
   font-size: var(--fs-xs);
 }

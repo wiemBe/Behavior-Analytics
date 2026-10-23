@@ -37,6 +37,7 @@ from app.models.log_source import (
     LogSourceMetric,
 )
 from app.repositories.anomaly import AnomalyRepository
+from app.repositories.anomaly_faults import AnomalyFaultRepository
 from app.security.auth import get_principal
 from app.security.rbac import Principal
 from tests.integration.test_rule_match_collection import recorded_statements
@@ -461,4 +462,9 @@ async def test_empty_input_is_a_no_op_with_zero_statements(db_session) -> None:
     with recorded_statements(db_session) as statements:
         assert await repo.latest_buckets([]) == {}
         assert await repo.baseline_cells([], metric="average_eps") == {}
+        faults = AnomalyFaultRepository(db_session)
+        assert await faults.evaluated_through([]) == {}
+        assert await faults.evaluation_faults(
+            [], since=_utcnow(), until=_utcnow()
+        ) == {}
     assert statements == []

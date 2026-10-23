@@ -15,6 +15,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { SourceFilters } from "@/components/behavior/SourceFilters";
+import { SourceRowQualifier } from "@/components/behavior/SourceRowQualifier";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -149,6 +150,7 @@ export default async function SourcesIndexPage({
                   <tr key={s.log_source_id}>
                     <td className="cell-name">
                       <Link href={`/behavior/sources/${s.log_source_id}`}>{s.name}</Link>
+                      <SourceRowQualifier source={s} />
                     </td>
                     <td>
                       <span className={`pill ${stateTone(s.state)}`}>{s.state}</span>

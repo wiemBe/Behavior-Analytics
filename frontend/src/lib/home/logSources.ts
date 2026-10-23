@@ -5,6 +5,7 @@
 
 import type { BehaviorSummary, SourceBehavior } from "@/lib/api";
 import { healthDistribution, type HealthGroup } from "@/lib/behaviorOverview";
+import { evaluationFaultQualifier } from "@/lib/evaluationFault";
 
 import { insufficient, type Qualifier } from "./qualifiers";
 
@@ -27,6 +28,10 @@ export interface LogSourcesCard {
   silent: number;
   silentDefinition: string;
   qualifiers: Qualifier[];
+  /** Evaluation-fault sentence, or null when every source was judged. */
+  evaluationFault: string | null;
+  /** Full sentence for title and accessible name; null when `evaluationFault` is. */
+  evaluationFaultDetail: string | null;
 }
 
 export function logSources(
@@ -48,6 +53,7 @@ export function logSources(
       ),
     );
   }
+  const fault = evaluationFaultQualifier(summary);
   return {
     monitored: summary.monitored_sources,
     total: totalLogSources,
@@ -62,5 +68,7 @@ export function logSources(
     silent: summary.silent_sources,
     silentDefinition: SILENT_DEFINITION,
     qualifiers,
+    evaluationFault: fault?.text ?? null,
+    evaluationFaultDetail: fault?.detail ?? null,
   };
 }

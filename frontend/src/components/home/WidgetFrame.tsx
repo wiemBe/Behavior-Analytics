@@ -179,10 +179,13 @@ export function WidgetQualifiers({
   qualifiers,
   variant = "panel",
   extra,
+  extraTitle,
 }: {
   qualifiers: Qualifier[];
   variant?: WidgetVariant;
   extra?: string;
+  /** Tooltip and accessible name for `extra` when the visible text is shorter. */
+  extraTitle?: string;
 }) {
   if (qualifiers.length === 0 && !extra) return null;
   if (variant === "kpi") {
@@ -196,7 +199,14 @@ export function WidgetQualifiers({
             <span className="kpi-qualifier-text">{qualifierText(q, true)}</span>
           </span>
         ))}
-        {extra ? <span className="kpi-qualifier-text">{extra}</span> : null}
+        {extra ? (
+          <span
+            className="kpi-qualifier-text"
+            {...(extraTitle ? { title: extraTitle, "aria-label": extraTitle } : {})}
+          >
+            {extra}
+          </span>
+        ) : null}
       </p>
     );
   }
@@ -210,6 +220,14 @@ export function WidgetQualifiers({
           <span className="kind">{QUALIFIER_WORDS[q.kind].pill}</span>: {qualifierText(q, false)}
         </li>
       ))}
+      {extra ? (
+        <li
+          className="warn"
+          {...(extraTitle ? { title: extraTitle, "aria-label": extraTitle } : {})}
+        >
+          {extra}
+        </li>
+      ) : null}
     </ul>
   );
 }

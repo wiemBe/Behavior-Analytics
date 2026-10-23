@@ -342,3 +342,97 @@ describe("error states", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/session has expired/i);
   });
 });
+
+describe("evaluation-fault row qualifier", () => {
+  it("keeps OPEN on a retrying row and names when it was last judged", async () => {
+    await renderPage({}, [
+      source({
+        state: "OPEN",
+        evaluation: {
+          judged_through: "2026-10-22T17:05:00Z",
+          failed_bucket_start: "2026-10-22T17:10:00Z",
+          attempts: 2,
+          max_attempts: 3,
+          error_class: "RuntimeError",
+          last_failure_at: "2026-10-22T19:52:00Z",
+          given_up_at: null,
+          resolved_at: null,
+        },
+      }),
+    ]);
+    const row = screen.getByRole("row", { name: /LAB Firewall/ });
+    expect(within(row).getByText("OPEN")).toBeInTheDocument();
+    expect(within(row).queryByText("NORMAL")).toBeNull();
+    expect(row).toHaveTextContent(/Not judged since/);
+    expect(within(row).getByText("10-22 17:05 UTC")).toBeInTheDocument();
+  });
+
+  it("names a given-up bucket without folding the row into NORMAL", async () => {
+    await renderPage({}, [
+      source({
+        name: "Given up",
+        log_source_id: "given",
+        state: "OPEN",
+        evaluation: {
+          judged_through: "2026-10-22T17:30:00Z",
+          failed_bucket_start: "2026-10-22T17:10:00Z",
+          attempts: 3,
+          max_attempts: 3,
+          error_class: "RuntimeError",
+          last_failure_at: "2026-10-22T19:54:00Z",
+          given_up_at: "2026-10-22T19:54:00Z",
+          resolved_at: null,
+        },
+        skipped_buckets_in_window: 1,
+      }),
+      source({
+        name: "Healthy",
+        log_source_id: "healthy",
+        state: "NORMAL",
+        open_anomaly_count: 0,
+        evaluation: {
+          judged_through: "2026-10-22T17:30:00Z",
+          failed_bucket_start: null,
+          attempts: null,
+          max_attempts: 3,
+          error_class: null,
+          last_failure_at: null,
+          given_up_at: null,
+          resolved_at: null,
+        },
+      }),
+    ]);
+    const given = screen.getByRole("row", { name: /Given up/ });
+    expect(within(given).getByText("OPEN")).toBeInTheDocument();
+    expect(given).toHaveTextContent(/1 bucket not judged/);
+    expect(within(given).getByText("10-22 17:10 UTC")).toBeInTheDocument();
+    expect(given).not.toHaveTextContent(/Not judged since/);
+    const healthy = screen.getByRole("row", { name: /Healthy/ });
+    expect(within(healthy).getByText("NORMAL")).toBeInTheDocument();
+    expect(healthy).not.toHaveTextContent(/Not judged since/);
+    expect(healthy).not.toHaveTextContent(/not judged/);
+  });
+
+  it("appends given-up buckets on a retrying row without dropping since", async () => {
+    await renderPage({}, [
+      source({
+        state: "OPEN",
+        evaluation: {
+          judged_through: "2026-10-22T17:05:00Z",
+          failed_bucket_start: "2026-10-22T17:30:00Z",
+          attempts: 1,
+          max_attempts: 3,
+          error_class: "RuntimeError",
+          last_failure_at: "2026-10-22T17:32:00Z",
+          given_up_at: null,
+          resolved_at: null,
+        },
+        skipped_buckets_in_window: 1,
+      }),
+    ]);
+    const row = screen.getByRole("row", { name: /LAB Firewall/ });
+    expect(row).toHaveTextContent(/Not judged since/);
+    expect(within(row).getByText("10-22 17:05 UTC")).toBeInTheDocument();
+    expect(row).toHaveTextContent(/1 bucket given up in 24 h/);
+  });
+});

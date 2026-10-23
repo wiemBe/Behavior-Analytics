@@ -40,7 +40,12 @@ function Body({ card, totalNote }: { card: LogSourcesCard; totalNote: string | n
         unit={total ? `of ${total} monitored` : "monitored"}
         title={total ? `Monitored log sources, of ${total} that QRadar knows.` : undefined}
       />
-      <WidgetQualifiers variant="kpi" qualifiers={card.qualifiers} />
+      <WidgetQualifiers
+        variant="kpi"
+        qualifiers={card.qualifiers}
+        extra={card.evaluationFault ?? undefined}
+        extraTitle={card.evaluationFaultDetail ?? undefined}
+      />
       <Line
         title={card.silentDefinition}
         parts={[

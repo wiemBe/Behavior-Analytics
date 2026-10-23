@@ -301,6 +301,14 @@ describe("run readout", () => {
     expect(failed.text).toContain("Consecutive failures recorded: 2");
     expect(failed.text).toContain("after 3");
 
+    const capacity = runReadout(
+      execution({ status: "FAILED", result_count: null, error_type: "CAPACITY" }),
+      null,
+    );
+    expect(capacity.text).toContain("Error type CAPACITY");
+    expect(capacity.text).toContain("Not run: the Ariel search budget was full.");
+    expect(capacity.text).not.toMatch(/!/);
+
     const unnamed = runReadout(
       execution({ status: "FAILED", result_count: null, error_type: "ARIEL_BOOM" }),
       null,
