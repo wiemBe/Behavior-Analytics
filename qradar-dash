@@ -648,7 +648,7 @@ write_env() { # write_env ENCRYPTION_KEY
   local enc=$1 secret_key pg_pass fwd origin profiles version compose_files old_exists=no
   local encryption_keys encryption_version log_level auth_provider retention_enabled
   local retention_log retention_search retention_rule retention_offense compression llm_enabled
-  local mcp_enabled line key
+  local mcp_enabled line key name old_profiles extra_profiles="" old_had_proxy=no
   local -a kept_operator=() kept_secrets=() extra_lines=()
   local -A seen_extra=()
   [ ! -f "$ENV_FILE" ] || old_exists=yes
@@ -712,17 +712,25 @@ write_env() { # write_env ENCRYPTION_KEY
     done <"$ENV_FILE"
   fi
 
+  # The wizard owns 'proxy'. Any other profile an operator added (mcp in practice) is kept.
+  old_profiles=$(env_get COMPOSE_PROFILES)
+  for name in ${old_profiles//,/ }; do
+    [ "$name" != proxy ] || { old_had_proxy=yes; continue; }
+    case ",$extra_profiles," in *",$name,"*) continue ;; esac
+    extra_profiles=${extra_profiles:+$extra_profiles,}$name
+  done
+
   fwd=${ANS[FORWARDED_ALLOW_IPS]:-}
   if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then
     fwd=${ANS[PROXY_EDGE_IP]}
-    profiles=proxy
+    profiles=proxy${extra_profiles:+,$extra_profiles}
     origin="https://${ANS[PUBLIC_HOSTNAME]}"
     if [ "${ANS[HTTPS_PORT]}" != "443" ]; then origin="$origin:${ANS[HTTPS_PORT]}"; fi
   else
-    profiles=""
+    profiles=$extra_profiles
     origin="https://${ANS[PUBLIC_HOSTNAME]}"
     # Keep an earlier external-proxy value, never the bundled proxy address of a previous mode.
-    if [ -z "$fwd" ] && [ -z "$(env_get COMPOSE_PROFILES)" ]; then fwd=$(env_get FORWARDED_ALLOW_IPS); fi
+    if [ -z "$fwd" ] && [ "$old_had_proxy" = no ]; then fwd=$(env_get FORWARDED_ALLOW_IPS); fi
   fi
   version=$(read_checkout_version)
   compose_files=$(compose_file_value)
@@ -799,6 +807,7 @@ EOF
     ENV_WRITE_STATUS="first install: new .env"
   else
     ENV_WRITE_STATUS="kept operator keys: $(join_names "${kept_operator[@]}"); kept secrets: $(join_names "${kept_secrets[@]}")"
+    [ -z "$extra_profiles" ] || ENV_WRITE_STATUS="$ENV_WRITE_STATUS; kept profiles: ${extra_profiles//,/, }"
   fi
 }
 
@@ -2700,6 +2709,9 @@ UPGRADE_CHECK_FAILURE=""
 set_upgrade_services() {
   UPGRADE_SERVICES=(backend celery-worker celery-beat frontend)
   if doctor_profile_enabled proxy; then UPGRADE_SERVICES+=(proxy); fi
+  # The backend is the MCP service's only client; one 'up -d --wait' recreates both and
+  # waits for the healthcheck, so the argument order is not an ordering guarantee.
+  if doctor_profile_enabled mcp; then UPGRADE_SERVICES=(qradar-mcp "${UPGRADE_SERVICES[@]}"); fi
 }
 
 set_env_version() { # set_env_version VERSION

@@ -22,7 +22,7 @@ Dört kural her bölümde geçerlidir:
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
 9. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R63; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R64; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -354,6 +354,9 @@ Mevcut `.env` ile ikinci `install`:
   oturumları iptal eder.
 - `load-secrets.sh` ve `qradar add` yeniden çalışır; migrate'te Alembic zaten başta olduğundan bir
   şey yapmaz; `up -d` yeniden çalışır.
+- `COMPOSE_PROFILES` içinde `proxy` sihirbaz yanıtına göre yazılır; elle eklenmiş diğer profiller
+  (pratikte `mcp`) korunur. `upgrade` ve `rollback`, `mcp` açıksa `qradar-mcp` servisini de hedef
+  imajla yeniden yaratır (bkz. OPS-R64).
 
 `--reconfigure` sır olmayan soruları yeniden sorar. Postgres volume'u varsa `ENCRYPTION_KEY` ve
 `POSTGRES_PASSWORD` değişimini reddeder.
@@ -1792,9 +1795,9 @@ getenforce
 
 **Çözüm:** **Yeniden etiketleme yapma.** SELinux kapatılmaz ve `:z` kullanılmaz. Uygulama
 token'ı ve CA için `load-secrets.sh` kullanmaya devam et. Bağlama noktasını override
-dosyasından kaldır. Üretim ana makinelerinde `mcp` profili, gerçek bir konsola karşı
-doğrulanana kadar başlatılmaz (`docs/INSTALL.md`, Optional MCP service). Geliştirme ve
-laboratuvar ana makinelerinde profil için kopyalanacak ya da düzenlenecek bir dosya yoktur.
+dosyasından kaldır. `mcp` profili 2026-10-23'te gerçek bir konsola karşı doğrulandı; üretimde
+nasıl açıldığı `docs/INSTALL.md` içinde, Optional MCP service bölümündedir. Profil için kopyalanacak
+ya da düzenlenecek bir dosya yoktur.
 
 ### OPS-R14. Postgres `No space left on device` veriyor ya da `doctor` diski FAIL gösteriyor
 
@@ -2828,3 +2831,76 @@ Doluysa WARN. `GET /api/v1/searches/ariel-budget` aynı sayıları döner. Yanı
 
 **Çözüm:** Yükü düşür: kadansları seyrelt ya da geçmiş okumayı azalt. Tavanları, cihazın
 kaldırdığı ölçüde yükselt. Ölçülmüş sınırlar AP-8'dedir. İzni kapatarak çözme.
+
+### OPS-R64. MCP çağrıları başarısız oluyor
+
+**Belirti:** `mcp` profili açık ve bir MCP çağrısı iki sağlayıcı hatasından biriyle düşüyor:
+
+- `MCP service rejected the request`: sağlayıcının auth hatası. MCP servisi 401 ya da 403 döndü.
+- `MCP session initialisation failed upstream`: sağlayıcının erişilemezlik hatası. MCP servisi
+  oturum açılırken 4xx/5xx döndü; TLS hatasında bu HTTP 500'dür.
+
+Servise hiç ulaşılamazsa hata bunlardan biri değil, `Could not reach the MCP service` olur.
+Servis ayakta değilse ya da profil `COMPOSE_PROFILES` içinde yoksa önce `docker compose ps
+qradar-mcp` ile konteynerin çalıştığına bak.
+
+**Olası neden:** Dördü de `qradar-mcp` ile konsol arasındadır:
+
+1. `qradar_ca.pem` yanlış ya da eksik: zincirin yalnız bir parçası var, ya da konsolun CA'sı değil.
+2. Konsol sertifikasının SAN alanlarında `QRADAR_CONSOLE_FQDN` değeri yok.
+3. `internal` ağdan konsola rota yok (bkz. OPS-R4; macvlan override'ında `qradar-mcp` da vardır).
+4. Token eksik ya da yanlış: backend `SEC` başlığına boş ya da geçersiz değer koyuyor.
+
+Sunucunun kendi günlüğündeki `Authentication failed for both user and service` satırı **hem bozuk CA
+hem eksik ya da yanlış token için aynıdır**. TLS hatası backend'e auth hatası olarak değil, HTTP 500
+ve erişilemezlik olarak ulaşır. Bu yüzden satır tek başına nedeni söylemez; aşağıdaki TLS denetimiyle
+birlikte okunur.
+
+**Doğrulama:** Sırayla. Hiçbir komut token yazdırmaz ve hiçbiri bir şeyi değiştirmez.
+
+1. Sunucunun günlüğü. Sunucu yalnız standart çıktıya yazar; `mcp_logs` birimi boş kalır.
+
+   ```bash
+   ./qradar-dash logs --tail=200 qradar-mcp
+   ```
+
+2. Konteynerin içinden TLS denetimi. Komut, sunucunun kullandığı aynı CA dosyasını
+   (`REQUESTS_CA_BUNDLE`) ve aynı adı (`QRADAR_CONSOLE_FQDN`) kullanır; imajda hiçbir şey kurmaz.
+   Yalnız el sıkışır, token ve istek göndermez.
+
+   ```bash
+   docker compose exec qradar-mcp python -c 'import os,socket,ssl; h=os.environ["QRADAR_CONSOLE_FQDN"]; c=ssl.create_default_context(cafile=os.environ["REQUESTS_CA_BUNDLE"]); s=c.wrap_socket(socket.create_connection((h,443),10),server_hostname=h); print("TLS OK",s.version(),s.getpeercert()["subjectAltName"])'
+   ```
+
+   - `TLS OK ...` ve SAN listesi: CA ve ad doğru; geriye neden 4 kalır (neden 3 aralıklı da olabilir).
+   - `CERTIFICATE_VERIFY_FAILED ... unable to get local issuer certificate`: neden 1.
+   - `CERTIFICATE_VERIFY_FAILED ... Hostname mismatch, certificate is not valid for '<ad>'`: neden 2.
+   - `TimeoutError` ya da `OSError`: neden 3.
+
+   Ayrıntılı zincir dökümü gerekirse imajda `openssl` vardır; ana makinedeki OPS-R2 komutunun
+   aynısı `docker compose exec qradar-mcp openssl s_client ...` ile de çalışır.
+
+3. Token tarafı, ancak 2. adım `TLS OK` verdiyse: `./qradar-dash doctor` içindeki `qradar_auth`
+   satırı backend'in aynı token'la yaptığı kendi QRadar denetimidir. FAIL ise token sorunu OPS-R1'dedir.
+   PASS ise ve MCP yine `rejected the request` veriyorsa, MCP için kayıtlı konsolun saklı token'ı
+   eskidir (`qradar add` ile yeniden kaydet).
+
+```bash
+./qradar-dash doctor
+```
+
+**Çözüm:**
+
+- Neden 1: Kökü, sonra ara sertifikaları `.secrets/qradar-ca.pem` dosyasında birleştir; sonra
+  `./deploy/load-secrets.sh` çalıştır ve `docker compose restart qradar-mcp` ile servisi yeniden
+  başlat (OPS-R2). Konsol sertifikasında AKI yoksa backend için `QRADAR_TLS_ALLOW_MISSING_AKI=true`
+  gerekir (OPS-R3); sunucunun Python'u AKI'siz bir CA'yı kabul etti.
+- Neden 2: `.env` içindeki `QRADAR_CONSOLE_FQDN` değerini sertifikanın bir SAN değerine eşitle
+  (IP SAN varsa IP de olur) ve `docker compose up -d qradar-mcp` ile konteyneri yeniden yarat.
+  Ya da konsola SAN'ı olan bir sertifika düzenlet.
+- Neden 3: OPS-R4'teki macvlan override'ını ya da bir rotayı ekle; `qradar-mcp` konsola `internal`
+  ağdan ulaşabilmeli.
+- Neden 4: `.secrets/qradar.sec` dosyasını değiştir, `./deploy/load-secrets.sh` çalıştır ve OPS-R1'deki
+  `qradar add` komutunu yeniden çalıştır. MCP servisi token'ı hiç saklamaz; her istekte backend'den alır.
+
+Token hiçbir komutta yazdırılmaz; günlüklerde de yoktur.
