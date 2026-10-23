@@ -19,6 +19,7 @@ import Link from "next/link";
 import { RangeSelector } from "@/components/behavior/RangeSelector";
 import { SourceAdvanced } from "@/components/behavior/SourceAdvanced";
 import { SourceAnomalies } from "@/components/behavior/SourceAnomalies";
+import { SourceEvaluationNotice } from "@/components/behavior/SourceEvaluationNotice";
 import { SourceHeader } from "@/components/behavior/SourceHeader";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SourceQuality } from "@/components/behavior/SourceQuality";
@@ -40,6 +41,7 @@ import {
   isUnjudged,
   stateMeaningAgainst,
 } from "@/lib/behavior";
+import { figureNewerThanVerdict } from "@/lib/evaluationFault";
 import {
   METRIC_LIMIT,
   baselineQuality,
@@ -68,11 +70,13 @@ export default async function SourceBehaviorPage({
 }) {
   const { id } = await params;
   const range = parseRange((await searchParams).range);
+  const until = new Date().toISOString();
+  const since = new Date(Date.now() - range * 3600_000).toISOString();
 
   let behavior: SourceBehavior | null = null;
   let status = 0;
   try {
-    behavior = await api.sourceBehavior(id);
+    behavior = await api.sourceBehavior(id, { since, until });
   } catch (err) {
     status = err instanceof ApiError ? err.status : 0;
   }
@@ -96,9 +100,6 @@ export default async function SourceBehaviorPage({
       </>
     );
   }
-
-  const until = new Date().toISOString();
-  const since = new Date(Date.now() - range * 3600_000).toISOString();
 
   // Each of these enriches the page; none of them is the page. A failure in
   // one is reported in place rather than replacing everything with an error.
@@ -162,15 +163,26 @@ export default async function SourceBehaviorPage({
           low: behavior.expected_low,
           high: behavior.expected_high,
         })}</p>
+      <SourceEvaluationNotice source={behavior} />
 
       {/* --- 2. four primary metrics -------------------------------------- */}
       <div className="grid-4">
         <div className="card">
           <div className="k">Observed EPS</div>
           {/* A measured zero is 0.00; only an absent measurement is an em
-              dash. formatMetric enforces the distinction. */}
+              dash. formatMetric enforces the distinction. An unjudged bucket
+              still shows its collected EPS, qualified below, never a zero. */}
           <div className="v">{formatMetric(behavior.observed_eps)}</div>
-          <p className="metric-note">Most recent collected interval</p>
+          <p className="metric-note">
+            {figureNewerThanVerdict(behavior) ? (
+              <>
+                Collected <UtcTime value={behavior.last_bucket_at} variant="compact" />; newer
+                than the last verdict
+              </>
+            ) : (
+              "Most recent collected interval"
+            )}
+          </p>
         </div>
         <div className="card">
           <div className="k">Expected EPS</div>

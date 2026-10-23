@@ -137,4 +137,30 @@ describe("KpiLogSources", () => {
     expect(within(note).getByText("13:00:00 UTC")).toBeInTheDocument();
     expect(screen.getByText(/^2 of 3 judged normal/)).toBeInTheDocument();
   });
+
+  it("shows the evaluation-fault qualifier with its count and keeps the sources drill-down", () => {
+    mocks.states[SUMMARY] = ok(
+      summary({
+        monitored_sources: 4,
+        sources_with_evaluation_faults: 1,
+        buckets_not_judged: 2,
+      }),
+    );
+    mocks.states[SOURCES] = ok(sources);
+    mocks.states[OVERVIEW] = ok(overview(120));
+    render(<KpiLogSources />);
+    const line = screen.getByText("Not judged: 1 source (24 h)");
+    expect(line).toBeInTheDocument();
+    expect(line).toHaveAttribute(
+      "title",
+      "1 source has an evaluation fault; 2 buckets were not judged in 24 h",
+    );
+    expect(line).toHaveAccessibleName(
+      "1 source has an evaluation fault; 2 buckets were not judged in 24 h",
+    );
+    expect(screen.getByRole("link", { name: "View log sources" })).toHaveAttribute(
+      "href",
+      "/behavior/sources",
+    );
+  });
 });

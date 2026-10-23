@@ -1097,6 +1097,30 @@ export interface SourceBehavior {
   last_bucket_completeness?: "COMPLETE" | "PARTIAL" | "MISSING" | null;
   last_event_at: string | null;
   open_anomaly_count: number;
+  // None when this source has never been evaluated and has no fault row.
+  evaluation?: SourceEvaluation | null;
+  // Given-up buckets in the selected window. A measured zero is 0.
+  skipped_buckets_in_window?: number | null;
+  skipped_buckets?: SkippedBucket[];
+}
+
+export interface SourceEvaluation {
+  judged_through: string | null;
+  failed_bucket_start: string | null;
+  attempts: number | null;
+  max_attempts: number | null;
+  error_class: string | null;
+  last_failure_at: string | null;
+  given_up_at: string | null;
+  resolved_at: string | null;
+}
+
+export interface SkippedBucket {
+  bucket_start: string;
+  error_class: string;
+  attempts: number;
+  given_up_at: string | null;
+  last_failure_at: string;
 }
 
 export interface AnomalyTransition {
@@ -1266,6 +1290,10 @@ export interface BehaviorSummary {
   monitored_sources: number;
   evidence_pending: number;
   evidence_failed: number;
+  // Sources with an open evaluation fault or a given-up bucket in 24 h.
+  sources_with_evaluation_faults: number;
+  // Given-up buckets in the last 24 h. These buckets have no verdict.
+  buckets_not_judged: number;
   recently_resolved: AnomalySummary[];
   highest_deviation: AnomalySummary[];
 }
@@ -2575,8 +2603,8 @@ export const api = {
   behaviorSummary: () => request<BehaviorSummary>("/anomalies/summary"),
 
   sourceBehaviors: () => request<SourceBehavior[]>("/behavior/sources"),
-  sourceBehavior: (id: string) =>
-    request<SourceBehavior>(`/behavior/sources/${id}`),
+  sourceBehavior: (id: string, params: { since?: string; until?: string } = {}) =>
+    request<SourceBehavior>(`/behavior/sources/${id}${qs(params)}`),
   sourceMetrics: (id: string, params: { since?: string; until?: string; limit?: number } = {}) =>
     request<MetricBucket[]>(`/behavior/sources/${id}/metrics${qs({ ...params })}`),
   sourceBaselines: (id: string, metric = "average_eps") =>

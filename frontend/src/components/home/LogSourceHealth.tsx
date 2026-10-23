@@ -90,7 +90,11 @@ export function LogSourceHealth() {
                 />
               )}
               {card && sources.length > 0 && (
-                <WidgetQualifiers qualifiers={card.qualifiers} />
+                <WidgetQualifiers
+                  qualifiers={card.qualifiers}
+                  extra={card.evaluationFault ?? undefined}
+                  extraTitle={card.evaluationFaultDetail ?? undefined}
+                />
               )}
               {sum.data === null && (
                 <p className="tw-note">

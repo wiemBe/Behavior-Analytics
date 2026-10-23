@@ -807,3 +807,144 @@ describe("error states", () => {
     ).toBeInTheDocument();
   });
 });
+
+function evaluation(
+  over: Partial<NonNullable<SourceBehavior["evaluation"]>> = {},
+): NonNullable<SourceBehavior["evaluation"]> {
+  return {
+    judged_through: "2026-10-22T17:05:00Z",
+    failed_bucket_start: "2026-10-22T17:10:00Z",
+    attempts: 2,
+    max_attempts: 3,
+    error_class: "RuntimeError",
+    last_failure_at: "2026-10-22T19:52:00Z",
+    given_up_at: null,
+    resolved_at: null,
+    ...over,
+  };
+}
+
+describe("evaluation fault", () => {
+  it("shows Judged through next to the state and a PARTIAL qualifier while retrying", async () => {
+    const { container } = await renderPage({
+      source: behavior({
+        last_bucket_at: "2026-10-22T17:30:00Z",
+        observed_eps: 50,
+        expected_eps: 50,
+        deviation_ratio: 1,
+        evaluation: evaluation(),
+      }),
+    });
+    const header = container.querySelector(".incident-header") as HTMLElement;
+    expect(within(header).getByText("OPEN")).toBeInTheDocument();
+    expect(header).toHaveTextContent(/Judged through/);
+    expect(within(header).getByText("10-22 17:05 UTC")).toBeInTheDocument();
+    expect(within(header).getByText("PARTIAL")).toBeInTheDocument();
+    expect(screen.getByText(/bucket has no verdict/)).toBeInTheDocument();
+    expect(screen.getByText(/2 of 3 attempts used/)).toBeInTheDocument();
+    expect(screen.getByText(/next evaluation tick/)).toBeInTheDocument();
+  });
+
+  it("does not draw a zero for the unjudged bucket and says the figure is newer than the verdict", async () => {
+    const { container } = await renderPage({
+      source: behavior({
+        last_bucket_at: "2026-10-22T17:30:00Z",
+        observed_eps: 50,
+        expected_eps: 50,
+        deviation_ratio: 1,
+        evaluation: evaluation(),
+      }),
+    });
+    const primary = container.querySelector(".grid-4") as HTMLElement;
+    const observed = within(primary).getByText("Observed EPS").closest(".card") as HTMLElement;
+    expect(within(observed).getByText("50.00")).toBeInTheDocument();
+    expect(within(primary).queryByText("0.00")).toBeNull();
+    expect(observed).toHaveTextContent(/newer than the last verdict/);
+  });
+
+  it("names a given-up bucket and the count in the window", async () => {
+    await renderPage({
+      source: behavior({
+        last_bucket_at: "2026-10-22T17:30:00Z",
+        evaluation: evaluation({
+          judged_through: "2026-10-22T17:30:00Z",
+          attempts: 3,
+          given_up_at: "2026-10-22T19:54:00Z",
+        }),
+        skipped_buckets_in_window: 1,
+        skipped_buckets: [
+          {
+            bucket_start: "2026-10-22T17:10:00Z",
+            error_class: "RuntimeError",
+            attempts: 3,
+            given_up_at: "2026-10-22T19:54:00Z",
+            last_failure_at: "2026-10-22T19:54:00Z",
+          },
+        ],
+      }),
+    });
+    expect(screen.getByText(/bucket was not judged/)).toBeInTheDocument();
+    expect(screen.getByText(/1 bucket in this window has no verdict/)).toBeInTheDocument();
+    expect(screen.getByText(/Evaluation resumed/)).toBeInTheDocument();
+    expect(screen.queryByText(/next evaluation tick/)).toBeNull();
+  });
+
+  it("omits the window count when it is not known", async () => {
+    await renderPage({
+      source: behavior({
+        last_bucket_at: "2026-10-22T17:30:00Z",
+        evaluation: evaluation({
+          judged_through: "2026-10-22T17:30:00Z",
+          attempts: 3,
+          given_up_at: "2026-10-22T19:54:00Z",
+        }),
+        skipped_buckets_in_window: null,
+        skipped_buckets: [
+          {
+            bucket_start: "2026-10-22T17:10:00Z",
+            error_class: "RuntimeError",
+            attempts: 3,
+            given_up_at: "2026-10-22T19:54:00Z",
+            last_failure_at: "2026-10-22T19:54:00Z",
+          },
+        ],
+      }),
+    });
+    expect(screen.getByText(/bucket was not judged/)).toBeInTheDocument();
+    expect(screen.queryByText(/in this window has no verdict/)).toBeNull();
+    expect(screen.queryByText(/1 bucket in this window/)).toBeNull();
+  });
+
+  it("keeps a cleared fault as a line in technical detail, with no notice", async () => {
+    await renderPage({
+      source: behavior({
+        last_bucket_at: "2026-10-22T17:30:00Z",
+        evaluation: evaluation({
+          judged_through: "2026-10-22T17:30:00Z",
+          attempts: 1,
+          given_up_at: null,
+          resolved_at: "2026-10-22T19:53:00Z",
+        }),
+      }),
+    });
+    expect(screen.queryByText(/bucket has no verdict/)).toBeNull();
+    expect(screen.queryByText(/bucket was not judged/)).toBeNull();
+    expect(screen.getByText(/Last evaluation fault/)).toBeInTheDocument();
+    expect(screen.getByText(/judged on retry/)).toBeInTheDocument();
+  });
+
+  it("does not invent Judged through when the source was never evaluated", async () => {
+    const { container } = await renderPage({
+      source: behavior({
+        evaluation: null,
+        last_bucket_at: null,
+        observed_eps: null,
+        expected_eps: null,
+        deviation_ratio: null,
+        state: "INSUFFICIENT_DATA",
+      }),
+    });
+    expect(container).not.toHaveTextContent(/Judged through/);
+    expect(screen.queryByText(/bucket has no verdict/)).toBeNull();
+  });
+});

@@ -7,6 +7,10 @@
   min-width: 16ch;
 }
 
+.source-inventory td.cell-name .cell-sub {
+  white-space: normal;
+}
+
 /* The search field gives the row back to the filter button instead of leaving
    it alone on a second line. */
 .source-filters input[type="search"] {

@@ -9,13 +9,14 @@ is one statement.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.monitoring import AnomalyEvaluationFault
+from app.models.monitoring import AnomalyEvaluationFault, AnomalyEvaluationWatermark
 
 
 class AnomalyFaultRepository:
@@ -105,3 +106,103 @@ class AnomalyFaultRepository:
             .values(resolved_at=at)
         )
         return int(getattr(result, "rowcount", 0) or 0)
+
+    async def evaluated_through(
+        self, log_source_ids: Iterable[uuid.UUID]
+    ) -> dict[uuid.UUID, datetime]:
+        """The evaluation watermark per source, one statement whatever the fleet.
+
+        A source that has never been judged is absent, not mapped to a sentinel.
+        """
+        ids = list(log_source_ids)
+        if not ids:
+            return {}
+        rows = await self.session.execute(
+            select(
+                AnomalyEvaluationWatermark.log_source_id,
+                AnomalyEvaluationWatermark.evaluated_through,
+            ).where(AnomalyEvaluationWatermark.log_source_id.in_(ids))
+        )
+        return dict(rows.all())
+
+    async def evaluation_faults(
+        self,
+        log_source_ids: Iterable[uuid.UUID],
+        *,
+        since: datetime,
+        until: datetime,
+    ) -> dict[uuid.UUID, list[AnomalyEvaluationFault]]:
+        """Window-relevant faults per source, one statement.
+
+        Open faults are always included (they are the current state). Given-up
+        rows are included when their `bucket_start` falls in `[since, until)`,
+        because the per-source count is "buckets in this window have no
+        verdict" (the chart's range). Resolved rows still join by
+        `resolved_at` in that half-open interval. `summary_counts` keeps
+        counting given-up rows by `given_up_at` (the doctor's FAIL rule).
+        """
+        ids = list(log_source_ids)
+        if not ids:
+            return {}
+        open_fault = and_(
+            AnomalyEvaluationFault.resolved_at.is_(None),
+            AnomalyEvaluationFault.given_up_at.is_(None),
+        )
+        given_up_in_window = and_(
+            AnomalyEvaluationFault.given_up_at.is_not(None),
+            AnomalyEvaluationFault.bucket_start >= since,
+            AnomalyEvaluationFault.bucket_start < until,
+        )
+        resolved_in_window = and_(
+            AnomalyEvaluationFault.resolved_at.is_not(None),
+            AnomalyEvaluationFault.resolved_at >= since,
+            AnomalyEvaluationFault.resolved_at < until,
+        )
+        rows = await self.session.scalars(
+            select(AnomalyEvaluationFault)
+            .where(
+                AnomalyEvaluationFault.log_source_id.in_(ids),
+                or_(open_fault, given_up_in_window, resolved_in_window),
+            )
+            .order_by(
+                AnomalyEvaluationFault.log_source_id,
+                AnomalyEvaluationFault.bucket_start.desc(),
+            )
+        )
+        by_source: dict[uuid.UUID, list[AnomalyEvaluationFault]] = {}
+        for row in rows.all():
+            by_source.setdefault(row.log_source_id, []).append(row)
+        return by_source
+
+    async def summary_counts(
+        self, *, since: datetime, until: datetime
+    ) -> tuple[int, int]:
+        """`(sources_with_evaluation_faults, buckets_not_judged)` in one statement.
+
+        Sources: an open (retrying) fault, or a given-up bucket in the window.
+        Buckets: given-up rows whose `given_up_at` falls in `[since, until)` —
+        the doctor's FAIL rule (when the engine gave up), not when the
+        unjudged bucket started. The per-source window (`evaluation_faults`)
+        counts those same rows by `bucket_start` instead.
+        A measured zero is 0 — we counted, and nothing matched.
+        """
+        open_fault = and_(
+            AnomalyEvaluationFault.resolved_at.is_(None),
+            AnomalyEvaluationFault.given_up_at.is_(None),
+        )
+        given_up_in_window = and_(
+            AnomalyEvaluationFault.given_up_at.is_not(None),
+            AnomalyEvaluationFault.given_up_at >= since,
+            AnomalyEvaluationFault.given_up_at < until,
+        )
+        row = (
+            await self.session.execute(
+                select(
+                    func.count(AnomalyEvaluationFault.log_source_id.distinct()).filter(
+                        or_(open_fault, given_up_in_window)
+                    ),
+                    func.count().filter(given_up_in_window),
+                ).select_from(AnomalyEvaluationFault)
+            )
+        ).one()
+        return int(row[0] or 0), int(row[1] or 0)
