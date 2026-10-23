@@ -5,15 +5,15 @@
 // and Expand dialogs: focus moves to the first control on open, Escape closes it, and focus
 // returns to where it was. Closing without choosing does not decide.
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { ApiError, api, type HistoryConsole, type HistoryConsoleEstimate } from "@/lib/api";
 
+import { DecisionLine } from "./DecisionLine";
 import {
   ADMIN_PERMISSION,
   conflictConsole,
   costHours,
-  decisionSentence,
   estimateText,
   familyName,
   familyStateText,
@@ -32,9 +32,9 @@ type Estimates =
 type RowState =
   | { phase: "idle" }
   | { phase: "saving" }
-  | { phase: "done"; text: string }
-  | { phase: "refused"; text: string }
-  | { phase: "error"; text: string };
+  | { phase: "done"; text: ReactNode }
+  | { phase: "refused"; text: ReactNode }
+  | { phase: "error"; text: ReactNode };
 
 const LEFT_OUT = [{ family: "Geography", why: "No baseline to fill." }] as const;
 
@@ -147,7 +147,7 @@ export function FirstRunDialog({
     setRows((r) => ({ ...r, [key]: { phase: "saving" } }));
     try {
       const next = await api.decideHistoryBackfill(key, choice);
-      setRows((r) => ({ ...r, [key]: { phase: "done", text: decisionSentence(next) } }));
+      setRows((r) => ({ ...r, [key]: { phase: "done", text: <DecisionLine console={next} /> } }));
       setRecorded((r) => ({ ...r, [key]: next }));
       const left = consoles.filter(
         (c) => c.instance_id !== key && !recorded[c.instance_id] && rows[c.instance_id]?.phase !== "done",
@@ -162,7 +162,12 @@ export function FirstRunDialog({
           ...r,
           [key]: {
             phase: "refused",
-            text: `Your answer was not recorded. A decision was recorded in the meantime. ${decisionSentence(now)}`,
+            text: (
+              <>
+                Your answer was not recorded. A decision was recorded in the meantime.{" "}
+                <DecisionLine console={now} />
+              </>
+            ),
           },
         }));
       } else if (err instanceof ApiError && err.status === 403) {

@@ -43,7 +43,7 @@ import {
 } from "@/lib/searchRuns";
 import { useEffectiveRange, useExpanded } from "@/widgets/runtime";
 import type { WidgetRange } from "@/widgets/types";
-import { UtcTime, utcTimeHtml, utcTimeText } from "@/components/ui/UtcTime";
+import { UtcTime, utcTimeHtml } from "@/components/ui/UtcTime";
 
 
 import type { EChartsOption } from "echarts";
@@ -182,9 +182,6 @@ function refused(states: { status: string }[]): boolean {
 }
 
 function CreatedLine({ createdAt, variant }: { createdAt: string | null; variant: "page" | "widget" }) {
-  const when = createdAt
-    ? `This search has never run since it was created on ${utcTimeText(createdAt)}.`
-    : "This search has never run. The creation time was not recorded.";
   const how =
     variant === "widget"
       ? "Run it from the search page with Run now, or wait for its schedule."
@@ -192,7 +189,14 @@ function CreatedLine({ createdAt, variant }: { createdAt: string | null; variant
   return (
     <div className={variant === "widget" ? "tw-state" : "notice"}>
       <p>
-        {when} {how}
+        {createdAt ? (
+          <>
+            This search has never run since it was created on <UtcTime value={createdAt} />.{" "}
+          </>
+        ) : (
+          "This search has never run. The creation time was not recorded. "
+        )}
+        {how}
       </p>
     </div>
   );
@@ -758,7 +762,7 @@ function SingleValue({
 }) {
   if (latest?.truncated) {
     const count = resultCount(latest);
-    const when = utcTimeText(latest.completed_at ?? latest.started_at);
+    const when = latest.completed_at ?? latest.started_at;
     const verdict = latest.threshold_breached ? "Threshold: breached." : "Threshold: no verdict.";
     return (
       <div>
@@ -770,7 +774,15 @@ function SingleValue({
           )}
         </p>
         <p className="subtitle trend-note">
-          {count.kind === "lower-bound" ? `result rows at ${when}. ` : `${when}. `}
+          {count.kind === "lower-bound" ? (
+            <>
+              result rows at <UtcTime value={when} />.{" "}
+            </>
+          ) : (
+            <>
+              <UtcTime value={when} />.{" "}
+            </>
+          )}
           {verdict} The latest run was truncated, so an older success is not the current total.
         </p>
       </div>

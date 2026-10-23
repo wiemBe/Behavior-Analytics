@@ -27,6 +27,7 @@ import { epsSeriesAsOf } from "@/lib/home/asOf";
 import { epsChartModel, epsSummaryText, windowText, type EpsChartModel } from "@/lib/home/epsChart";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import { badgeText } from "@/lib/home/qualifiers";
+import { fleetDrillHref } from "@/lib/fleet";
 import { useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 
 import { HistoryKey } from "@/components/behavior/HistoryKey";
@@ -121,7 +122,7 @@ export function EpsChart({ range }: RangedProps = {}) {
       title="Fleet EPS"
       windowText={windowText(window)}
       badge={(model && badgeText(model.qualifiers)) || undefined}
-      link={{ href: "/fleet", label: "Fleet" }}
+      link={{ href: fleetDrillHref(window), label: "Fleet" }}
       state={state}
       dataTo={{ at: data ? epsSeriesAsOf(data) : null, family: "PHASE_A_VOLUME" }}
       what="the fleet EPS series"

@@ -352,7 +352,7 @@ describe("waf.sources", () => {
     const rows = screen.getAllByRole("row").slice(1);
     expect(within(rows[0]).getByText("waf-dmz")).toBeInTheDocument();
     expect(within(rows[0]).getByText("INVALID")).toBeInTheDocument();
-    expect(within(rows[1]).getByText("92.0%")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("92.0 %")).toBeInTheDocument();
     expect(within(rows[1]).getByText("120")).toBeInTheDocument();
     expect(within(rows[1]).getByText("of 500")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "waf-edge-01" })).toHaveAttribute(

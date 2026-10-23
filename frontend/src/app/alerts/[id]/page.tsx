@@ -3,6 +3,7 @@ import { Evidence } from "@/components/Evidence";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type Notification } from "@/lib/api";
+import { formatCount } from "@/lib/format";
 import { axisTimeLabel } from "@/lib/searchRuns";
 import { UtcTime } from "@/components/ui/UtcTime";
 
@@ -50,7 +51,7 @@ export default async function AlertDetailPage({
         description={
           <>
             <span className={`pill ${sevTone(alert.severity)}`}>{alert.severity}</span>{" "}
-            <span className="pill">{alert.status}</span> · seen {alert.occurrence_count}× ·
+            <span className="pill">{alert.status}</span> · seen {formatCount(alert.occurrence_count)}× ·
             fingerprint <code>{alert.fingerprint}</code>
           </>
         }

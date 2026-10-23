@@ -105,7 +105,7 @@ describe("RecentIpsAnomalies", () => {
     expect(rows[0]).toHaveTextContent("events / bucket");
     expect(rows[0]).toHaveTextContent("Destination-port rate spike · lab-ips-01");
     expect(rows[1]).toHaveTextContent("Source-level");
-    expect(rows[1]).toHaveTextContent("42.0% → 5.0%");
+    expect(rows[1]).toHaveTextContent("42.0 % → 5.0 %");
     expect(container.textContent).not.toMatch(/EPS|volume/i);
     expect(container.textContent).not.toMatch(/IPS_[A-Z_]+/);
   });
@@ -134,6 +134,27 @@ describe("RecentIpsAnomalies", () => {
     render(<RecentIpsAnomalies />);
     expect(screen.getByText("18 active")).toBeInTheDocument();
     expect(screen.getByText(/Showing the latest 2 of 18\./)).toBeInTheDocument();
+  });
+
+  it("links to the source list when the widget shows more sources, and names that list", () => {
+    set(
+      ok(page([entity("e1", "2026-10-12T08:00:00Z")])),
+      ok(
+        page([
+          source("s1", "2026-10-12T10:00:00Z"),
+          source("s2", "2026-10-12T09:00:00Z"),
+        ]),
+      ),
+    );
+    render(<RecentIpsAnomalies />);
+    expect(screen.getByRole("link", { name: "View active IPS source anomalies" })).toHaveAttribute(
+      "href",
+      "/anomalies?subject_kind=IPS_SOURCE&active_only=true",
+    );
+    expect(screen.getByRole("link", { name: "Entity anomalies" })).toHaveAttribute(
+      "href",
+      "/anomalies?subject_kind=IPS_ENTITY&active_only=true",
+    );
   });
 
   it("links to the entity list and to the source-level list", () => {

@@ -335,6 +335,10 @@ describe("empty and error states", () => {
     render(await AnomaliesPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "The source list could not be loaded, so the source filter is unavailable; the anomaly list below is complete.",
+    );
+    expect(screen.queryByLabelText("Log source")).toBeNull();
     expect(screen.getByRole("row", { name: /LAB Firewall/ })).toBeInTheDocument();
   });
 });

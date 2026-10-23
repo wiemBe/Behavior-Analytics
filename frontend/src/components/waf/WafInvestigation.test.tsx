@@ -111,8 +111,8 @@ describe("WAF investigation: measurements", () => {
       }),
     });
     const m = within(screen.getByLabelText("Incident measurements"));
-    expect(m.getByText("31.8%")).toBeInTheDocument();
-    expect(m.getByText("2.1%")).toBeInTheDocument();
+    expect(m.getByText("31.8 %")).toBeInTheDocument();
+    expect(m.getByText("2.1 %")).toBeInTheDocument();
     expect(m.getByText("+29.7 pp")).toBeInTheDocument();
     expect(m.getByText(/318 of 1,000/)).toBeInTheDocument();
   });
@@ -147,7 +147,7 @@ describe("WAF investigation: measurements", () => {
 
   it("states the endpoint coverage the detector saw", () => {
     view();
-    expect(screen.getByText("97.2%")).toBeInTheDocument();
+    expect(screen.getByText("97.2 %")).toBeInTheDocument();
   });
 });
 
@@ -376,7 +376,7 @@ describe("WAF investigation: against what normal", () => {
       detection: wafDetection({ expected_low: 0.01, expected_high: 0.05, expected_proportion: 0.02 }),
     });
     const row = working().getByText("Seasonal p05–p95 at detection").closest("div")!;
-    expect(row).toHaveTextContent("1.0% – 5.0%");
+    expect(row).toHaveTextContent("1.0 % – 5.0 %");
     expect(row).not.toHaveTextContent("requests / 5 min");
   });
 });

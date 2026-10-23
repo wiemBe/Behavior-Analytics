@@ -8,6 +8,7 @@ import {
   healthTone,
   isUnestablished,
   magnitudeTone,
+  offenseStatusTone,
 } from "./health";
 
 describe("isUnestablished", () => {
@@ -90,15 +91,28 @@ describe("magnitudeTone", () => {
     [7, "crit"],
     [6, "warn"],
     [4, "warn"],
-    [3, "ok"],
-    [0, "ok"],
+    [3, ""],
+    [0, ""],
   ])("maps magnitude %i to %s", (mag, expected) => {
     expect(magnitudeTone(mag as number)).toBe(expected);
   });
 
-  it("stays neutral when magnitude is unknown", () => {
+  it("stays neutral when magnitude is unknown, and a low score is never ok", () => {
     expect(magnitudeTone(null)).toBe("");
     expect(magnitudeTone(undefined)).toBe("");
+    expect(magnitudeTone(3)).not.toBe("ok");
+    expect(magnitudeTone(0)).not.toBe("ok");
+  });
+});
+
+describe("offenseStatusTone", () => {
+  it("lets only CLOSED take ok", () => {
+    expect(offenseStatusTone("CLOSED")).toBe("ok");
+    expect(offenseStatusTone("OPEN")).toBe("warn");
+    expect(offenseStatusTone("HIDDEN")).toBe("");
+    expect(offenseStatusTone("")).toBe("");
+    expect(offenseStatusTone(null)).toBe("");
+    expect(offenseStatusTone(undefined)).toBe("");
   });
 });
 

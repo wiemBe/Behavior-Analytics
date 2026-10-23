@@ -37,7 +37,7 @@ describe("zero is not the same as unmeasured", () => {
     expect(formatRatio(0)).toBe("0.00x");
     expect(formatShare(0)).toBe("0.0 %");
     expect(formatDelta(0)).toBe("0");
-    expect(formatPercentDelta(0)).toBe("0.0%");
+    expect(formatPercentDelta(0)).toBe("0.0 %");
     expect(formatDuration(0)).toBe("0 s");
   });
 
@@ -69,8 +69,8 @@ describe("signed formatting", () => {
   });
 
   it("signs a percentage delta", () => {
-    expect(formatPercentDelta(400.6)).toBe("+400.6%");
-    expect(formatPercentDelta(-42.5)).toBe("-42.5%");
+    expect(formatPercentDelta(400.6)).toBe("+400.6 %");
+    expect(formatPercentDelta(-42.5)).toBe("-42.5 %");
   });
 
   it("scales a fraction into a percentage", () => {

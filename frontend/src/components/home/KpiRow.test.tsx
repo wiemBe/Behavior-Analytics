@@ -18,7 +18,7 @@ describe("KpiRow", () => {
     expect(screen.getAllByRole("article")).toHaveLength(4);
     const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
     expect(hrefs).toEqual([
-      "/fleet",
+      "/fleet?window=24h",
       "/behavior/sources",
       "/offenses?status=OPEN",
       "/anomalies?active_only=true",

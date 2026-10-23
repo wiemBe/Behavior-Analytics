@@ -64,17 +64,93 @@ function row(a: AnomalySummary): IpsAnomalyRow {
   };
 }
 
+function mergedItems(
+  entities: Page<AnomalySummary>,
+  sources: Page<AnomalySummary>,
+  limit: number,
+): AnomalySummary[] {
+  const seen = new Set<string>();
+  return [...entities.items, ...sources.items]
+    .filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)))
+    // Newest first; the id breaks a tie so the order never depends on which list came first.
+    .sort((a, b) => Date.parse(b.detected_at) - Date.parse(a.detected_at) || a.id.localeCompare(b.id))
+    .slice(0, limit);
+}
+
+export type IpsKind = "IPS_ENTITY" | "IPS_SOURCE";
+
+export interface IpsDrill {
+  kind: IpsKind;
+  href: string;
+  label: string;
+  ariaLabel: string;
+  otherHref: string;
+  otherLabel: string;
+}
+
+const IPS_DRILL: Record<IpsKind, { href: string; label: string; ariaLabel: string }> = {
+  IPS_ENTITY: {
+    href: "/anomalies?subject_kind=IPS_ENTITY&active_only=true",
+    label: "Entities",
+    ariaLabel: "View active IPS entity anomalies",
+  },
+  IPS_SOURCE: {
+    href: "/anomalies?subject_kind=IPS_SOURCE&active_only=true",
+    label: "Sources",
+    ariaLabel: "View active IPS source anomalies",
+  },
+};
+
+/** While the two lists are still loading, the count is unknown, so the link opens entities. */
+export const IPS_DRILL_UNKNOWN: IpsDrill = {
+  kind: "IPS_ENTITY",
+  ...IPS_DRILL.IPS_ENTITY,
+  otherHref: IPS_DRILL.IPS_SOURCE.href,
+  otherLabel: "Source-level anomalies",
+};
+
+/**
+ * The anomalies page can select one IPS kind. The header opens the kind this widget
+ * shows most of (the rows on screen, then the totals). A tie stays on entities.
+ */
+export function ipsMajorityKind(
+  shown: readonly { subject_kind?: string | null }[],
+  entityTotal: number,
+  sourceTotal: number,
+): IpsKind {
+  let entityShown = 0;
+  let sourceShown = 0;
+  for (const row of shown) {
+    if (row.subject_kind === "IPS_ENTITY") entityShown += 1;
+    else if (row.subject_kind === "IPS_SOURCE") sourceShown += 1;
+  }
+  if (sourceShown > entityShown) return "IPS_SOURCE";
+  if (entityShown > sourceShown) return "IPS_ENTITY";
+  if (sourceTotal > entityTotal) return "IPS_SOURCE";
+  return "IPS_ENTITY";
+}
+
+export function ipsDrillLink(
+  entities: Page<AnomalySummary>,
+  sources: Page<AnomalySummary>,
+  limit: number = IPS_ANOMALIES_LIMIT,
+): IpsDrill {
+  const kind = ipsMajorityKind(mergedItems(entities, sources, limit), entities.total, sources.total);
+  const other: IpsKind = kind === "IPS_ENTITY" ? "IPS_SOURCE" : "IPS_ENTITY";
+  return {
+    kind,
+    ...IPS_DRILL[kind],
+    otherHref: IPS_DRILL[other].href,
+    otherLabel: other === "IPS_SOURCE" ? "Source-level anomalies" : "Entity anomalies",
+  };
+}
+
 export function mergeIpsAnomalies(
   entities: Page<AnomalySummary>,
   sources: Page<AnomalySummary>,
   limit: number = IPS_ANOMALIES_LIMIT,
 ): IpsAnomaliesView {
-  const seen = new Set<string>();
-  const merged = [...entities.items, ...sources.items]
-    .filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)))
-    // Newest first; the id breaks a tie so the order never depends on which list came first.
-    .sort((a, b) => Date.parse(b.detected_at) - Date.parse(a.detected_at) || a.id.localeCompare(b.id))
-    .slice(0, limit);
+  const merged = mergedItems(entities, sources, limit);
   const total = entities.total + sources.total;
   const n = (v: number) => formatCount(v);
   return {

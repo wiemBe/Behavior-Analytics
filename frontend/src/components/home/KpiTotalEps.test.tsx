@@ -67,10 +67,18 @@ describe("KpiTotalEps", () => {
     expect(screen.getByTitle("Firewall, 800.00 EPS of the total")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View fleet by class" })).toHaveAttribute(
       "href",
-      "/fleet",
+      "/fleet?window=24h",
     );
     // No always-on "Received" line: the top bar says when the page refreshed.
     expect(screen.queryByText(/Received/)).toBeNull();
+  });
+
+  it.each(["1h", "7d"] as const)("keeps the fleet window %s on the drill-down", (window) => {
+    render(<KpiTotalEps range={window} />);
+    expect(screen.getByRole("link", { name: "View fleet by class" })).toHaveAttribute(
+      "href",
+      `/fleet?window=${window}`,
+    );
   });
 
   it("shows an em dash and the reason, never 0, when no class has a mean", () => {

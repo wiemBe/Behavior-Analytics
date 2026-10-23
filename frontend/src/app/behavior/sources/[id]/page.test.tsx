@@ -696,6 +696,17 @@ describe("time range", () => {
     );
   });
 
+  it("says a 7-day widget was narrowed to 24 hours", async () => {
+    await renderPage({ params: { range: "24", from: "7d" } });
+    expect(screen.getByText(/longest window this page can show/)).toBeInTheDocument();
+    expect(screen.getByText(/7 days/)).toBeInTheDocument();
+  });
+
+  it("does not show the 7-day note on an ordinary range", async () => {
+    await renderPage({ params: { range: "6" } });
+    expect(screen.queryByText(/longest window this page can show/)).toBeNull();
+  });
+
   it("offers the range as keyboard-operable links", async () => {
     await renderPage();
     for (const label of ["1 hour", "6 hours", "12 hours", "24 hours"]) {

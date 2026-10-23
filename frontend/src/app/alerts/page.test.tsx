@@ -99,6 +99,13 @@ describe("alert list contents", () => {
     expect(row).toHaveTextContent("4");
   });
 
+  it("groups a large occurrence count", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue([alert({ occurrence_count: 1200 })]);
+    await renderPage();
+    const row = screen.getByRole("table").querySelector("tbody tr") as HTMLElement;
+    expect(row).toHaveTextContent("1,200");
+  });
+
   it("tones acknowledged and resolved alerts differently", async () => {
     vi.spyOn(api, "alerts").mockResolvedValue([
       alert({ id: "a-1", title: "Acked", status: "ACKNOWLEDGED" }),

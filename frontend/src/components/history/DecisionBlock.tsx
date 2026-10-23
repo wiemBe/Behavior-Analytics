@@ -4,17 +4,16 @@
 // when and how, and the one or two actions the mode allows. Each action says in plain words what
 // it does before it is confirmed (§B.5), and the response's own message is shown after it.
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { ApiError, api, type HistoryConsole } from "@/lib/api";
 
+import { DecisionLine, RequestLines } from "./DecisionLine";
 import {
   ADMIN_PERMISSION,
   CONFIRM_TEXT,
   conflictConsole,
-  decisionSentence,
   modeText,
-  requestSentences,
 } from "./historyFormat";
 
 import "./history.css";
@@ -23,7 +22,7 @@ type Action = "yes" | "no" | "start" | "stop";
 
 interface Outcome {
   tone: "ok" | "crit";
-  text: string;
+  text: ReactNode;
 }
 
 const LABEL: Record<Action, string> = {
@@ -76,7 +75,6 @@ export function DecisionBlock({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const actions = allowedActions(consoleState);
-  const requests = requestSentences(consoleState);
 
   async function run(action: Action) {
     setBusy(true);
@@ -94,7 +92,11 @@ export function DecisionBlock({
       setConfirming(null);
       setOutcome({
         tone: "ok",
-        text: next.message ?? `Recorded. ${decisionSentence(next)}`,
+        text: next.message ?? (
+          <>
+            Recorded. <DecisionLine console={next} />
+          </>
+        ),
       });
     } catch (err) {
       setConfirming(null);
@@ -104,7 +106,11 @@ export function DecisionBlock({
         const why = err instanceof ApiError && typeof err.detail === "string" ? ` ${err.detail}.` : "";
         setOutcome({
           tone: "crit",
-          text: `Not changed.${why} What is recorded now: ${decisionSentence(recorded)}`,
+          text: (
+            <>
+              Not changed.{why} What is recorded now: <DecisionLine console={recorded} />
+            </>
+          ),
         });
       } else if (err instanceof ApiError && err.status === 409) {
         setOutcome({
@@ -129,10 +135,12 @@ export function DecisionBlock({
 
   return (
     <div className="hb-decision" aria-busy={busy}>
-      <p className="hb-decision-line">{decisionSentence(consoleState)}</p>
+      <p className="hb-decision-line">
+        <DecisionLine console={consoleState} />
+      </p>
       <p className="hb-decision-sub">
         Mode: {modeText(consoleState.mode)}.
-        {requests.length > 0 ? ` ${requests.join(" ")}` : ""}
+        <RequestLines console={consoleState} />
       </p>
 
       {!canAdmin ? (

@@ -51,7 +51,7 @@ export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
       link={
         waf
           ? { href: "/anomalies?subject_kind=WAF_ENDPOINT&active_only=true", label: "View all" }
-          : { href: "/anomalies", label: "View all" }
+          : { href: "/anomalies?active_only=true", label: "View all" }
       }
       state={list}
       what={waf ? "the active WAF anomalies" : "the active anomalies"}

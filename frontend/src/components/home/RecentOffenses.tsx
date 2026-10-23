@@ -47,7 +47,7 @@ export function RecentOffenses() {
       id="recent-offenses"
       title="Recent offenses"
       windowText="open, by last update"
-      link={{ href: "/offenses", label: "View all" }}
+      link={{ href: "/offenses?status=OPEN", label: "View all" }}
       state={open}
       what="the open offenses"
       permission="read:offenses"

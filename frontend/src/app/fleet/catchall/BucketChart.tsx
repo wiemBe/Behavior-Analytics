@@ -26,7 +26,7 @@ import {
 } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { HistoryText } from "@/components/behavior/HistoryKey";
 import {
@@ -72,7 +72,7 @@ export function BucketChart({
   selected: number | null;
   onSelect: (index: number) => void;
   ariaLabel: string;
-  textSummary: string;
+  textSummary: ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // The click handler is registered once per chart; the ref keeps it current.

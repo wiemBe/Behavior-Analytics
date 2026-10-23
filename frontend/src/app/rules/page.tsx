@@ -12,7 +12,7 @@ import {
   healthTone,
   isUnestablished,
 } from "@/lib/health";
-import { axisTimeLabel } from "@/lib/searchRuns";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 import "./rules.css";
@@ -85,11 +85,12 @@ export default async function RulesPage({
 
       {unestablished > 0 && (
         <div className="notice">
-          <strong>{unestablished} rules have no health verdict yet.</strong>{" "}
-          QRadar&rsquo;s rule inventory API exposes no last-fired timestamp and no
-          rule statistics, so silence cannot be distinguished from never having
-          been observed. These are reported as <code>INSUFFICIENT_DATA</code>{" "}
-          rather than being counted as detection gaps.
+          <strong>{unestablished} rules have no health verdict yet.</strong> A rule is{" "}
+          <code>INSUFFICIENT_DATA</code> when it cannot be judged. That includes a
+          dependency that has not been observed, and a window where QRadar exposes no
+          last-fired time or the collection does not cover it. Neither is a detection
+          gap. The health summary counts these rules together; it does not say which
+          cause applies to each.
         </div>
       )}
 
@@ -156,9 +157,9 @@ export default async function RulesPage({
                     </span>
                   </td>
                   <td className="muted cell-meaning">{healthMeaning(r.health_status)}</td>
-                  <td className="nowrap">
+                  <td>
                     {r.last_fired_at ? (
-                      axisTimeLabel(r.last_fired_at)
+                      <UtcTime value={r.last_fired_at} wrapZone />
                     ) : (
                       <span className="muted">not observed</span>
                     )}

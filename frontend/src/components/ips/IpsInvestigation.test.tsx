@@ -302,7 +302,7 @@ describe("IPS investigation: source detectors", () => {
   it("concentration is a share with its numerator and denominator", () => {
     const { container } = view(ipsSourceDetail(), sourceData());
     expect(container.querySelector("h1")).toHaveTextContent("Source-level");
-    expect(measures().getByText("62.0%")).toBeInTheDocument();
+    expect(measures().getByText("62.0 %")).toBeInTheDocument();
     expect(measures().getByText(/620 of 1,?000/)).toBeInTheDocument();
     expect(chartProps.last).toMatchObject({ unit: "share" });
     expect(container.textContent).not.toMatch(/EPS/);

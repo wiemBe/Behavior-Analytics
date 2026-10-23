@@ -150,10 +150,13 @@ describe("supporting-page KPI row", () => {
       await OffensesPage({ searchParams: Promise.resolve({}) }),
     );
 
-    const row = container.querySelector(".cards");
-    expect(row).not.toBeNull();
-    // Six cards in one responsive grid; the grid decides how many fit.
-    expect(row!.querySelectorAll(".card").length).toBeGreaterThanOrEqual(6);
+    const groups = container.querySelectorAll(".cards");
+    expect(groups).toHaveLength(2);
+    // The filtered total sits in its own grid. The five open counts share the next one.
+    expect(groups[0]).toHaveClass("offenses-matching");
+    expect(groups[0].querySelectorAll(".card")).toHaveLength(1);
+    expect(groups[1].querySelectorAll(".card")).toHaveLength(5);
+    expect(container.querySelector(".offenses-cards-3")).toBeNull();
   });
 
   it("keeps a long metric label intact rather than truncating it", async () => {

@@ -79,7 +79,15 @@ export function magnitudeTone(magnitude: number | null | undefined): Tone {
   if (magnitude == null) return "";
   if (magnitude >= 7) return "crit";
   if (magnitude >= 4) return "warn";
-  return "ok";
+  // Below 4 is not a good outcome. A low score stays neutral, never ok.
+  return "";
+}
+
+/** Only a closed offense is a good outcome. OPEN stays a warning; anything else is neutral. */
+export function offenseStatusTone(status: string | null | undefined): Tone {
+  if (status === "CLOSED") return "ok";
+  if (status === "OPEN") return "warn";
+  return "";
 }
 
 export { formatAge } from "@/lib/time";

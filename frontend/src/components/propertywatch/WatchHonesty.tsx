@@ -4,17 +4,34 @@
 // Every note is derived from fields the API sent; none is a verdict. A note that would be
 // empty is not drawn, and a collection fault is never worded as a finding about the events.
 
-import type { PropertyWatch, PropertyWatchCatalog, PwBucket } from "@/lib/api";
-import { utcTimeText } from "@/components/ui/UtcTime";
+import type { ReactNode } from "react";
+
+import type { PropertyWatch, PropertyWatchCatalog, PwBucket, PwWatchHistory } from "@/lib/api";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import { statusLabel, statusReason } from "./pwFormat";
-import { historyGapText, historyStateText } from "./history";
+import { historyProgress, historyStateText } from "./history";
 
 export interface HonestyNote {
   /** The word that names the condition, so colour is never the only carrier. */
   label: string;
-  text: string;
+  text: ReactNode;
   tone: "warn" | "crit" | "";
+}
+
+/** A history gap, with both ends as instants. */
+export function HistoryGapLine({
+  gap,
+}: {
+  gap: NonNullable<PwWatchHistory["gaps"]>[number];
+}) {
+  const reason = gap.reason.trim().replace(/[.:;]+$/, "");
+  return (
+    <>
+      Buckets from <UtcTime value={gap.start} /> to <UtcTime value={gap.end} /> could not be read
+      {reason ? ` (${reason}).` : "."}
+    </>
+  );
 }
 
 const FAULT_STATUSES = new Set([
@@ -37,7 +54,15 @@ export function honestyNotes(input: {
   const { watch, catalog, buckets, hours } = input;
   const notes: HonestyNote[] = [];
 
-  const historyText = historyStateText(watch.history);
+  const historyText =
+    watch.history.state === "PARTIAL" && watch.history.floor ? (
+      <>
+        History: {historyProgress(watch.history)}. QRadar holds events of this scope from{" "}
+        <UtcTime value={watch.history.floor} />; earlier buckets are not claimed as zero.
+      </>
+    ) : (
+      historyStateText(watch.history)
+    );
   if (historyText) {
     notes.push({
       label: watch.history.state === "READING" ? "READING HISTORY" : `HISTORY ${watch.history.state}`,
@@ -46,7 +71,7 @@ export function honestyNotes(input: {
     });
   }
   for (const gap of watch.history.gaps ?? []) {
-    notes.push({ label: "HISTORY GAP", tone: "warn", text: historyGapText(gap) });
+    notes.push({ label: "HISTORY GAP", tone: "warn", text: <HistoryGapLine gap={gap} /> });
   }
   if (watch.history.progress_unreadable) {
     notes.push({
@@ -125,7 +150,14 @@ export function honestyNotes(input: {
     notes.push({
       label: "ADMISSION",
       tone: "",
-      text: `${refused.rejected_over_quota.toLocaleString("en-US")} ${plural(refused.rejected_over_quota, "value was", "values were")} refused admission at ${utcTimeText(refused.bucket_start)}: the watch already tracks its maximum. They are counted in the bucket, not plotted.`,
+      text: (
+        <>
+          {refused.rejected_over_quota.toLocaleString("en-US")}{" "}
+          {plural(refused.rejected_over_quota, "value was", "values were")} refused admission at{" "}
+          <UtcTime value={refused.bucket_start} />: the watch already tracks its maximum. They are
+          counted in the bucket, not plotted.
+        </>
+      ),
     });
   }
 
@@ -142,7 +174,12 @@ export function honestyNotes(input: {
     notes.push({
       label: "MEMBERSHIP CHANGED",
       tone: "",
-      text: `The scope's membership changed at ${utcTimeText(now.bucket_start)}${counts}. Buckets inside the grace window after a change are insufficient data, not normal.`,
+      text: (
+        <>
+          The scope&apos;s membership changed at <UtcTime value={now.bucket_start} />
+          {counts}. Buckets inside the grace window after a change are insufficient data, not normal.
+        </>
+      ),
     });
   }
   return notes;
@@ -152,8 +189,8 @@ export function WatchHonesty({ notes }: { notes: HonestyNote[] }) {
   if (notes.length === 0) return null;
   return (
     <div className="pw-honesty" role="group" aria-label="What is not known about this window">
-      {notes.map((n) => (
-        <p key={n.label + n.text} className={`banner${n.tone ? ` ${n.tone}` : ""}`}>
+      {notes.map((n, i) => (
+        <p key={`${n.label}-${i}`} className={`banner${n.tone ? ` ${n.tone}` : ""}`}>
           <span>
             <strong>{n.label}.</strong> {n.text}
           </span>

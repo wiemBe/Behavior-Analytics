@@ -5,6 +5,7 @@
 // width is spoken in minutes because every WAF figure is "per bucket".
 
 import { NOT_MEASURED } from "@/lib/behavior";
+import { formatShare } from "@/lib/format";
 
 import { isLowerBound } from "./wafLabels";
 
@@ -17,14 +18,17 @@ export function formatRequests(value: number | null | undefined, measurement?: s
   return isLowerBound(measurement) ? `≥ ${text}` : text;
 }
 
-/** A fraction in [0,1] as a percentage; a lower bound reads "≥ 12.5%". */
+/** A fraction in [0,1] as a percentage; a lower bound reads "≥ 12.5 %". */
 export function formatPercent(
   value: number | null | undefined,
   measurement?: string | null,
   digits = 1,
 ) {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
-  const text = `${(value * 100).toFixed(digits)}%`;
+  // The shared spelling is one decimal and a space before "%". A non-default
+  // precision keeps that space and does not use the tiny-share mark.
+  const text =
+    digits === 1 ? formatShare(value) : `${(value * 100).toFixed(digits)} %`;
   return isLowerBound(measurement) ? `≥ ${text}` : text;
 }
 

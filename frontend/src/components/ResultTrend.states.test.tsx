@@ -120,7 +120,9 @@ describe("ResultTrend states", () => {
         search={search}
       />,
     );
-    expect(await screen.findByText(/never run since it was created on 2026-07-01 00:00:00 UTC/)).toBeInTheDocument();
+    expect(await screen.findByText(/never run since it was created on/)).toHaveTextContent(
+      "never run since it was created on 2026-07-01 00:00:00 UTC",
+    );
     expect(screen.getByText(/Run it from this page with Run now/)).toBeInTheDocument();
     expect(init).not.toHaveBeenCalled();
   });

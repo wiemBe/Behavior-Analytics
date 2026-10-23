@@ -24,7 +24,7 @@ const CASES: [string, ComponentType, string, string, string, RegExp][] = [
   ["health.collection", HealthCollection, "/admin/search-cadence", "read:search_cadence", "Cadence", /search cadence/],
   ["health.evidence", HealthEvidence, "/anomalies?evidence_status=FAILED", "read:anomalies", "Failed", /evidence counts/],
   ["table.catchall_senders", CatchallSenders, "/fleet/catchall", "read:fleet", "Review", /catch-all senders/],
-  ["table.fleet_classes", FleetClasses, "/fleet", "read:fleet", "Fleet", /fleet summary/],
+  ["table.fleet_classes", FleetClasses, "/fleet?window=24h", "read:fleet", "Fleet", /fleet summary/],
   ["table.outage_policy", OutagePolicy, "/admin/outage-policy", "read:fleet", "Policy", /outage policy/],
   ["waf.sources", WafSources, "/behavior/waf", "read:anomalies", "WAF", /WAF sources/],
   [
@@ -62,4 +62,9 @@ describe.each(CASES)("%s", (_type, Widget, href, permission, linkName, what) => 
     expect(screen.getByRole("status")).toHaveTextContent(`permission ${permission}`);
     expect(screen.getByRole("status").textContent).toMatch(what);
   });
+});
+
+it.each(["1h", "7d"] as const)("fleet classes keeps window %s", (window) => {
+  render(<FleetClasses range={window} />);
+  expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", `/fleet?window=${window}`);
 });

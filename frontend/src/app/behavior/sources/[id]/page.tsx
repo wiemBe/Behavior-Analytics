@@ -47,6 +47,7 @@ import {
   baselineQuality,
   collectionHealth,
   parseRange,
+  SOURCE_7D_NOTE,
   partitionAnomalies,
   rangeLabel,
   summarizeSourceTimeline,
@@ -69,7 +70,9 @@ export default async function SourceBehaviorPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { id } = await params;
-  const range = parseRange((await searchParams).range);
+  const query = await searchParams;
+  const range = parseRange(query.range);
+  const from7d = query.from === "7d";
   const until = new Date().toISOString();
   const since = new Date(Date.now() - range * 3600_000).toISOString();
 
@@ -233,6 +236,11 @@ export default async function SourceBehaviorPage({
           <h2 className="section-title">Observed volume</h2>
           <RangeSelector sourceId={behavior.log_source_id} active={range} />
         </div>
+        {from7d && (
+          <p className="notice" role="status">
+            {SOURCE_7D_NOTE}
+          </p>
+        )}
         {bucketsResult.status === "rejected" ? (
           <div className="notice" role="alert">
             Metric history could not be loaded. This is a failed request, not an

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import Link from "next/link";
 // The values table of a watch page: every figure the chart carries, as text, so assistive
 // technology and a reader who cannot see the canvas lose nothing (guidelines §10).
@@ -12,7 +14,7 @@ import Link from "next/link";
 
 import type { AnomalySummary, PwBucket, PwValue, PwWatchHistory } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
-import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import {
   baselineText,
@@ -80,7 +82,7 @@ export function WatchValuesTable({
 }) {
   const unit = eventsUnit(latest?.bucket_seconds ?? 300);
   const full = selected.size >= maxSelected;
-  const header = (key: ValueSort, text: string, className?: string) => (
+  const header = (key: ValueSort, text: ReactNode, className?: string) => (
     <th
       scope="col"
       className={className}
@@ -129,9 +131,13 @@ export function WatchValuesTable({
           </th>
           {header(
             "first_seen",
-            history?.floor
-              ? `First seen (UTC; history read from ${utcTimeText(history.floor)})`
-              : "First seen (UTC)",
+            history?.floor ? (
+              <>
+                First seen (UTC; history read from <UtcTime value={history.floor} />)
+              </>
+            ) : (
+              "First seen (UTC)"
+            ),
           )}
         </tr>
       </thead>

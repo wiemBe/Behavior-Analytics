@@ -6,7 +6,7 @@
 
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
-import { formatEpsValue } from "@/lib/fleet";
+import { fleetDrillHref, formatEpsValue } from "@/lib/fleet";
 import { partial } from "@/lib/home/qualifiers";
 import { RANGE_TEXT, useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 import { WidgetFrame, WidgetQualifiers } from "@/components/home/WidgetFrame";
@@ -28,7 +28,7 @@ export function FleetClasses({ range, expanded: expandedProp }: RangedProps = {}
       id="fleet-classes"
       title="Source classes"
       windowText={RANGE_TEXT[window]}
-      link={{ href: "/fleet", label: "Fleet" }}
+      link={{ href: fleetDrillHref(window), label: "Fleet" }}
       state={state}
       what="the fleet summary"
       permission="read:fleet"

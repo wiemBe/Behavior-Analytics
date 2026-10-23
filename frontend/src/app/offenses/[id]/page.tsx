@@ -2,7 +2,7 @@ import { api, type OffenseDetail, type OffenseHistoryPoint } from "@/lib/api";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatAge, magnitudeTone } from "@/lib/health";
+import { formatAge, magnitudeTone, offenseStatusTone } from "@/lib/health";
 import { UtcTime } from "@/components/ui/UtcTime";
 
 
@@ -12,6 +12,11 @@ import "./offense-detail.css";
 /** A count that was not measured is a dash, never a zero. */
 function count(n: number | null | undefined): string {
   return n == null ? "—" : n.toLocaleString("en-US");
+}
+
+/** A 0–10 score. Null is an em dash, with no unit attached to a missing measurement. */
+function scoreOfTen(value: number | null | undefined): string {
+  return value == null ? "—" : `${value} of 10`;
 }
 
 function List({ label, values }: { label: string; values: (string | number)[] }) {
@@ -103,38 +108,43 @@ export default async function OffenseDetailPage({
         description={o.description?.trim() || "No description."}
       />
 
-      <div className="cards offense-cards offense-cards-3">
-        <div className="card">
-          <div className="k">Magnitude</div>
-          <div className={`v ${magnitudeTone(o.magnitude)}`}>{o.magnitude ?? "—"}</div>
-          {o.magnitude != null && (
-            <span
-              className={`mag-bar ${magnitudeTone(o.magnitude)} mag-w-${Math.min(10, Math.max(0, Math.round(o.magnitude)))}`}
-              aria-hidden="true"
-            />
-          )}
+      <h2>Scores</h2>
+      <dl className="dimension-meta" aria-label="Offense scores">
+        <div>
+          <dt>Magnitude</dt>
+          <dd>
+            <span className={`pill ${magnitudeTone(o.magnitude)}`}>{scoreOfTen(o.magnitude)}</span>
+            {o.magnitude != null && (
+              <span
+                className={`mag-bar ${magnitudeTone(o.magnitude)} mag-w-${Math.min(10, Math.max(0, Math.round(o.magnitude)))}`}
+                aria-hidden="true"
+              />
+            )}
+          </dd>
         </div>
-        <div className="card">
-          <div className="k">Status</div>
-          <div className="v">{o.status}</div>
+        <div>
+          <dt>Status</dt>
+          <dd>
+            <span className={`pill ${offenseStatusTone(o.status)}`}>{o.status}</span>
+          </dd>
         </div>
-        <div className="card">
-          <div className="k">Severity</div>
-          <div className="v">{o.severity ?? "—"}</div>
+        <div>
+          <dt>Severity</dt>
+          <dd>{scoreOfTen(o.severity)}</dd>
         </div>
-        <div className="card">
-          <div className="k">Credibility</div>
-          <div className="v">{o.credibility ?? "—"}</div>
+        <div>
+          <dt>Credibility</dt>
+          <dd>{scoreOfTen(o.credibility)}</dd>
         </div>
-        <div className="card">
-          <div className="k">Relevance</div>
-          <div className="v">{o.relevance ?? "—"}</div>
+        <div>
+          <dt>Relevance</dt>
+          <dd>{scoreOfTen(o.relevance)}</dd>
         </div>
-        <div className="card">
-          <div className="k">Age</div>
-          <div className="v">{formatAge(o.age_seconds)}</div>
+        <div>
+          <dt>Age</dt>
+          <dd>{formatAge(o.age_seconds)}</dd>
         </div>
-      </div>
+      </dl>
 
       <h3>Attributes</h3>
       <TableScroll label="Offense attributes">
