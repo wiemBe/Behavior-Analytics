@@ -1096,9 +1096,11 @@ and `secrets.tar` are always left for an operator to inspect.
 upgrade line, the last backup path and age, and free space on both
 filesystems. It does not print `.env`.
 
-`logs [service]` is `docker compose logs --tail=200 -f`. With no service it
-follows backend, worker and beat. The app's log filter redacts UUID-shaped
-tokens only on lines that already mention a secret keyword
+`logs [service]` is `docker compose logs` with the arguments you pass. It adds
+no `--tail` and no `-f`; an operator who wants a tail or a follow passes them,
+for example `./qradar-dash logs --tail=200 -f backend`. With no service it
+streams every service's log. The app's log filter redacts UUID-shaped tokens
+only on lines that already mention a secret keyword
 (`backend/app/core/logging.py:18-38`). `logs` does not claim to be a second
 redactor. The support bundle is (§7).
 
@@ -1117,27 +1119,35 @@ The host half is built as of OPS-7b. As built, `disk_docker` reports `df -P`
 for Docker's root with the 70% WARN and 90% FAIL thresholds. As built,
 `disk_backup` applies the same thresholds to `QRADAR_DASH_BACKUP_DIR` and also
 checks the §5.3 database-size guard, warning when that size is unavailable. As
-built, `qradar_clock` reports `timedatectl` NTP synchronization and uses
-OPS-R15 for either an unsynchronized clock or a host without that command. As
-built, `selinux` reports the current `getenforce` result as PASS, including
-`Enforcing`, or PASSes with "SELinux is not installed" when the command is
-absent. As built, `containers` checks every service returned by Compose and
-ignores a stopped `qradar-mcp` while the `mcp` profile is off and an exited
-`migrate` only when its exit code is zero. As built,
-`doctor_incontainer` is emitted only when the backend is not running; otherwise
-the wrapper prints the in-container output unchanged and preserves its status.
+built, `host_clock` reports this host's `timedatectl` NTP synchronization and
+uses OPS-R15 for either an unsynchronized clock or a host without that command.
+It measures the host's clock, not QRadar's. As built, `selinux` reports
+`Enforcing` as PASS, `Permissive` as WARN ("SELinux is permissive: denials are
+logged, not enforced"), and an absent or `Disabled` command as PASS "SELinux is
+not in use on this host". As built, `backup_age` WARNs when no `qradar-dash-*`
+backup exists under `QRADAR_DASH_BACKUP_DIR` or the newest is older than 26 h,
+and WARNs when the backup timer is not enabled, naming
+`./qradar-dash backup --install-timer`. It asks `systemctl is-enabled
+qradar-dash-backup.timer` (or `--user` for the user unit) and falls back to the
+unit file only when `systemctl` is absent. As built, `containers` checks every
+service returned by Compose and ignores a stopped `qradar-mcp` while the `mcp`
+profile is off and an exited `migrate` only when its exit code is zero. As
+built, `doctor_incontainer` is emitted only when the backend is not running;
+otherwise the wrapper prints the in-container output unchanged and preserves
+its status.
 
 The disk **free-space** lines are host-side because the backend container
 does not mount the Postgres volume (`docker-compose.yml:40` mounts only the
 secrets volume). The in-container half prints `pg_database_size`, which is
 the number that grows. Both appear in one report.
 
-Each line is:
+Each line is (the container ids are padded to the longest id,
+`anomaly_evaluation`; the host ids use a fixed 16-column field):
 
 ```
-PASS  db_connect     database accepted SELECT 1
-WARN  cadence_late   WAF_COLLECTION last run 2 h 10 m past its cadence    runbook: OPS-R30
-FAIL  migration_head database at 0024, image expects 0025                 runbook: OPS-R11
+PASS  db_connect         database accepted SELECT 1
+WARN  cadence            enabled families late or never run: WAF_COLLECTION    runbook: OPS-R30
+FAIL  migration_head     database at 0031, image expects 0032    runbook: OPS-R11
 ```
 
 `PASS`, `WARN`, `FAIL` only. The cause is one line. The runbook id is
@@ -1163,7 +1173,6 @@ A separate TLS handshake to the console uses the CA bundle and sends no
 | `celery_beat` | a heartbeat key in Redis | age under 180 s | — | missing or older |
 | `qradar_tls` | handshake with the configured CA (`tls.py:18-36`) | chain and hostname verify, notAfter more than 30 days away | notAfter inside 30 days, or `QRADAR_TLS_ALLOW_MISSING_AKI` is true | chain, hostname, or expiry failure. The message is the one the code already uses, including `unable to get issuer certificate` (`tls.py:25-28`) |
 | `qradar_auth` | `GET /system/about` | reachable, version printed | — | the sanitized status text (`qradar_rest.py:183-202`). 401 and 403 share one sentence on purpose (`:190-191`) |
-| `qradar_clock` | skipped. `/system/about` does not return a server time (`qradar_rest.py:486-500` keeps three fields). Host NTP is the host half of `doctor` | — | host NTP not synchronized | — |
 | `watermarks` | each `collection_watermark` row (`backend/app/models/monitoring.py:24-51`) | `consecutive_failures` is 0 and lag under twice the family's cadence | lag over twice the cadence | `consecutive_failures` ≥ 3, or `last_error` set. `last_error` is already capped at 512 characters (`:51`) and provider text is from a fixed vocabulary (`backend/app/services/waf_pipeline.py:388-398`) |
 | `cadence` | each `search_cadence` family (`backend/app/schemas/search_cadence.py:24-34`) | last run age ≤ cadence + settle + 60 s, the UI's rule (`frontend/src/components/catalog/derive.ts:17-19`, `:82-84`) | late, or never run while that family's enable flag is true | — |
 | `families_off` | the four flags that default off | printed as PASS with the flag name, so a fresh install is not red | — | — |
@@ -1426,7 +1435,7 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
 15. **OPS-R15. Watermarks jump, or many sources show `TIMESTAMP_DELAY`, after the host
     was suspended.** Cause: the host clock stepped. Beat is UTC
     (`celery_app.py:26-27`). The delay detector is a real anomaly type
-    (`enums.py:133`). Confirm: `qradar_clock` WARN, `timedatectl` not
+    (`enums.py:133`). Confirm: `host_clock` WARN, `timedatectl` not
     synchronized. Fix: enable NTP and wait for the next complete buckets. Do
     not hand-edit watermarks.
 

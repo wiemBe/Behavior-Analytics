@@ -110,9 +110,11 @@ On the connected host, from a checkout of the release (`git checkout v<version>`
 ./qradar-dash bundle [--version X.Y.Z] [--output DIR]
 ```
 
-It pulls the five release images (`postgres`, `backend`, `frontend`, `proxy`, `qradar-mcp`, under
-`QRADAR_DASH_IMAGE_PREFIX` from `.env`, else the default prefix) and `redis` by the digest pinned in
-`docker-compose.prod.yml`, and writes `qradar-dash-<version>-bundle.tar`: `images.tar`, `SHA256SUMS`,
+It pulls seven images: `postgres`, `backend`, `frontend`, `proxy` and `qradar-mcp` (under
+`QRADAR_DASH_IMAGE_PREFIX` from `.env`, else the default prefix), `redis` by the digest pinned in
+`docker-compose.prod.yml`, and the secrets helper `alpine:3.20@sha256:…` by the digest pinned in
+`deploy/load-secrets.sh`. The helper reference is read from that file; this guide does not copy the
+digest. It writes `qradar-dash-<version>-bundle.tar`: `images.tar`, `SHA256SUMS`,
 `MANIFEST` (each image reference and its local image ID), `VERSION`, `docs/releases/<version>.md`,
 `qradar-dash`, `docker-compose.yml`, `docker-compose.prod.yml` and `deploy/`. It never contains
 `.env`, `.secrets/` or `docker-compose.override.yml`. The file is written under a temporary name and
