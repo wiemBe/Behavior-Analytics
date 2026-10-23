@@ -21,7 +21,7 @@ Dört kural her bölümde geçerlidir:
 6. [Tanı](#tanı)
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R62; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R63; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -1000,6 +1000,7 @@ bağlanmaz.
 | `public_origin` | Çalışan ayarlardaki köken. `https` olmalı. | OPS-R12 |
 | `version_match` | Frontend probu ile `/api/v1/version` aynı mı. | OPS-R11 |
 | `unknown_settings` | Ortamda bir ayara benzeyen ama ayar olmayan adlar. Adlar yazılır, değerler yazılmaz. Böyle bir ad yoksa PASS. Kurulumun yazdığı adlar burada görünmez. | OPS-R62 |
+| `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 
 `families_off` WARN değil PASS verir: yeni kurulumda WAF, IPS, kural eşleşmeleri ve özel kurallar
 bilerek kapalıdır. Satır, bir ailenin neden filigranı olmadığını bayrak adıyla gösterir. Arayüz hiç
@@ -1227,6 +1228,10 @@ Komut kayıtlı bir kararı asla değiştirmez ve QRadar'a arama yapmaz.
   Laboratuvar konsolunda saklama kovaları okunamadı; hangi kovaların hangi süreyle tutulduğu ve
   silmenin kova içinde en eskiden yeniye mi yapıldığı konsoldan doğrulanmalıdır. Bu doğrulanmadan
   geçmiş okumaya dayalı bir taban çizgisine güvenme.
+- **Havuz meşgulken geçmiş okuma yerini verir.** Canlı toplama ayrılmış yuvaları kullanır. Bir
+  geçmiş adımı izin alamazsa kapsam ilerlemez: `through` yerinde kalır, durum değişmez, önceki
+  `last_error` sınıfı ve zamanı durur. Gerekçe `deferred: no Ariel permit within N s` olur. N,
+  beklenen saniyedir. Bu bir hata değildir; havuz boşalınca aynı adım yeniden denenir.
 
 ### Mülk izlemesinin kendi geçmişi
 
@@ -2651,3 +2656,21 @@ kanallarının `NOTIFY_*` ve `SMTP_*` adları ile `GIT_SHA` bu listeye girmez; o
 **Çözüm:** Adı `.env` içinde düzelt ya da sil. `install` bilinmeyen `KEY=VALUE` satırlarını
 korur, bu yüzden yazım hatası yeniden kurulumdan sonra da durur. Ayar reddedilmez; yok sayılır
 ve burada bildirilir.
+
+### OPS-R63. Bir aile geç kalıyor ve gerekçe Ariel izni diyor
+
+**Belirti:** Bir ailenin toplaması geç kalıyor. Filigranın `last_error` değeri
+`ArielPermitUnavailable` sınıfını taşıyor, ya da geçmiş okumanın gerekçesi
+`deferred: no Ariel permit` diyor.
+
+**Olası neden:** Ariel izin havuzu dolu. Canlı iş bekler. Geçmiş okuma yerini verir.
+
+**Doğrulama:** `doctor` içindeki `ariel_permits` satırı global havuzun held/cap değerini yazar.
+Doluysa WARN. `GET /api/v1/searches/ariel-budget` aynı sayıları döner. Yanıtta sorgu metni yoktur.
+
+```bash
+./qradar-dash doctor
+```
+
+**Çözüm:** Yükü düşür: kadansları seyrelt ya da geçmiş okumayı azalt. Tavanları, cihazın
+kaldırdığı ölçüde yükselt. Ölçülmüş sınırlar AP-8'dedir. İzni kapatarak çözme.

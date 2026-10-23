@@ -426,9 +426,9 @@ collection waiting on it**.
 
 | Surface | What it shows | Where it goes |
 |---|---|---|
-| `doctor` | a new in-container check `ariel_permits`: `pg_locks` counts per namespace (the generalisation of `WafArielBudget.active_permits`), printed as `held/cap` for global and per console; PASS normally, WARN when the global pool is saturated at sample time (`held == cap`) | `app/cli/doctor.py`, one row in `_CHECK_RUNBOOKS`, runbook `OPS-R61` |
+| `doctor` | a new in-container check `ariel_permits`: `pg_locks` counts per namespace (the generalisation of `WafArielBudget.active_permits`), printed as `held/cap` for global and per console; PASS normally, WARN when the global pool is saturated at sample time (`held >= cap`) | `app/cli/doctor.py`, one row in `_CHECK_RUNBOOKS`, runbook `OPS-R63` |
 | admin status | `GET /api/v1/searches/ariel-budget` (new route, the shape of `app/api/routes/waf.py` `get_waf_ariel_budget`): enforced, caps, reserved slots, and permits held now, global and per console — counts only, no query text, as `WafArielBudgetOut` already promises. Refused-permit counters are deliberately not included (a counter nobody resets tells the operator nothing); waits are visible in logs and watermarks instead | new `app/services/ariel_status.py`, `app/schemas/` one model, one route |
-| logs | one INFO line per acquisition that waited (`family`, `waited_seconds`, `class`); one WARNING per refusal, per §P.4 | `app/services/ariel_permit.py` |
+| logs | one INFO line per acquisition that waited (`waited_seconds`, `class`); one WARNING per refusal, per §P.4; the log lines carry no family: the permit does not know the family, and the watermark and the history reason name it | `app/services/ariel_permit.py` |
 | watermarks | collectors keep their existing `last_error`; WAF keeps `last_run_permit_wait_ms` — no new per-family metadata is introduced by this design | unchanged |
 | support bundle | nothing new to add: the bundle already captures `doctor` output, so the new check reaches it (and OPERATIONS.md's `support-bundle` section needs no change) | `qradar-dash support-bundle` |
 
@@ -439,7 +439,7 @@ design: neither Ariel endpoint has a UI consumer today, and the operator surface
 
 **`docs/OPERATIONS.md` sections to change** (listed, not written — the build task writes them):
 `Tanı` → the `doctor` container-check table (one `ariel_permits` row); `Belirtiler` → a new
-`OPS-R61` entry ("a family is late and `last_error` says `ArielPermitUnavailable`", with the
+`OPS-R63` entry ("a family is late and `last_error` says `ArielPermitUnavailable`", with the
 raise-cap-or-lower-load remedies); `Geçmiş okuma` → `Sınırlar` (history yields when the pool is
 busy; the reason string); `Kurulum` → nothing (no new installer question, no new wizard key).
 

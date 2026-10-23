@@ -28,6 +28,7 @@ from app.models.search import (
     SearchResultMetric,
 )
 from app.repositories.audit import record_audit
+from app.schemas.ariel import ArielBudgetOut
 from app.schemas.search import (
     AuthoringDetail,
     ExecutionOut,
@@ -48,11 +49,13 @@ from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_SEARCH_EXECUTE,
     PERM_SEARCH_WRITE,
+    PERM_WAF_ADMIN,
     PermissionDenied,
     Principal,
     require_permission,
 )
 from app.services.ariel_permit import ArielPermitBudget
+from app.services.ariel_status import ariel_budget_status
 from app.services.scheduled_search import EnabledSearchLimitError, ScheduledSearchService
 from app.services.search_executor import SearchExecutor
 from app.services.search_scheduler import CronFloorError
@@ -288,6 +291,22 @@ async def create_search(
         detail={"name": search.name},
     )
     return ScheduledSearchOut.model_validate(search)
+
+
+@router.get("/ariel-budget", response_model=ArielBudgetOut)
+async def get_ariel_budget(
+    session: SessionDep,
+    settings: SettingsDep,
+    principal: PrincipalDep,
+) -> ArielBudgetOut:
+    """Global Ariel permit pool: configured caps and permits held now.
+
+    Counts only. Requires ``admin:waf``, the same permission as the WAF source
+    budget route. The pool is read after that check. The searches router is
+    also mounted with ``read:searches``.
+    """
+    _guard(principal, PERM_WAF_ADMIN)
+    return await ariel_budget_status(session, settings=settings)
 
 
 @router.get("/{search_id}", response_model=ScheduledSearchOut)

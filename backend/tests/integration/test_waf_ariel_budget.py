@@ -236,6 +236,50 @@ class TestPermits:
         finally:
             await engine.dispose()
 
+    async def test_failed_unlock_invalidates_connection_and_frees_locks(
+        self,
+        db_schema: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from sqlalchemy import event
+
+        settings = budget_settings(limit=1, wait=0)
+        engine = create_async_engine(db_schema, pool_size=1, max_overflow=0)
+        observer = create_async_engine(db_schema)
+        budget = WafArielBudget(engine, settings)
+        invalidations: list[BaseException | None] = []
+
+        def record_invalidation(_connection, _record, error):  # type: ignore[no-untyped-def]
+            invalidations.append(error)
+
+        event.listen(engine.sync_engine.pool, "invalidate", record_invalidation)
+        original_execute = AsyncConnection.execute
+
+        async def fail_unlock(self, statement, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if str(statement) == "SELECT pg_advisory_unlock_all()":
+                raise RuntimeError("scripted unlock failure")
+            return await original_execute(self, statement, *args, **kwargs)
+
+        monkeypatch.setattr(AsyncConnection, "execute", fail_unlock)
+        try:
+            with pytest.raises(RuntimeError, match="scripted unlock failure"):
+                async with budget.permit() as permit:
+                    assert permit is not None
+            assert len(invalidations) == 1
+            async with observer.connect() as conn:
+                leaked = await conn.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_locks "
+                        "WHERE locktype = 'advisory' AND granted AND objsubid = 2 "
+                        "AND classid = :ns AND database = ("
+                        "SELECT oid FROM pg_database WHERE datname = current_database())"
+                    ).bindparams(ns=settings.waf_ariel_permit_lock_namespace)
+                )
+            assert int(leaked or 0) == 0
+        finally:
+            await observer.dispose()
+            await engine.dispose()
+
 
 class GrantingBudget(WafArielBudget):
     """Grants `n` permits, then none: a deterministic capacity squeeze."""

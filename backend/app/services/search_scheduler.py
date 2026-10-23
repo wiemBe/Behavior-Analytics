@@ -705,12 +705,34 @@ class SearchScheduler:
                 execution is not None
                 and execution.error_type == ExecutionErrorType.CAPACITY.value
             ):
-                report.deferred_capacity.extend(
-                    candidate.name
-                    for candidate in searches[index + 1 :]
-                    if candidate.next_run_at is not None
-                    and _as_utc(candidate.next_run_at) <= now
+                # Only the searches this cycle would still have dispatched: the
+                # slots left after the ones already sent, skipping a run that is
+                # already in flight and a cron the cycle would not dispatch.
+                remaining = self.settings.search_max_dispatch_per_cycle - len(
+                    report.dispatched
                 )
+                deferred: list[str] = []
+                for candidate in searches[index + 1 :]:
+                    if len(deferred) >= remaining:
+                        break
+                    if (
+                        candidate.next_run_at is None
+                        or _as_utc(candidate.next_run_at) > now
+                    ):
+                        continue
+                    try:
+                        next_fire_time(
+                            candidate.schedule_cron,
+                            candidate.schedule_timezone,
+                            after=None,
+                            now=now,
+                        )
+                    except InvalidCronExpression:
+                        continue
+                    if await self._has_run_in_flight(candidate, now):
+                        continue
+                    deferred.append(candidate.name)
+                report.deferred_capacity.extend(deferred)
                 if report.deferred_capacity:
                     logger.warning(
                         "Ariel capacity refused a scheduled search; deferred %d due searches",

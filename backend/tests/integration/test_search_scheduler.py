@@ -273,6 +273,54 @@ async def test_cycle_with_a_refusing_budget_records_first_and_defers_remaining_d
             assert search.next_run_at == utc(h=10, mi=5)
 
 
+async def test_capacity_deferral_stops_at_remaining_slots_and_skips_in_flight(
+    db_session, caplog,
+) -> None:
+    """The deferred list is the searches this cycle would still have sent."""
+    from app.core.config import get_settings
+
+    settings = get_settings().model_copy(update={"search_max_dispatch_per_cycle": 2})
+    due = await make_search(db_session, name="due-0", next_run_at=utc(h=10, mi=1))
+    busy = await make_search(db_session, name="busy", next_run_at=utc(h=10, mi=2))
+    broken = await make_search(
+        db_session, name="broken", schedule_cron="not a cron", next_run_at=utc(h=10, mi=3)
+    )
+    nxt = await make_search(db_session, name="due-2", next_run_at=utc(h=10, mi=4))
+    later_due = await make_search(db_session, name="due-3", next_run_at=utc(h=10, mi=5))
+    not_due = await make_search(db_session, name="later", next_run_at=utc(h=10, mi=15))
+    db_session.add(
+        SearchExecution(
+            search_id=busy.id, run_key="in-flight", trigger="SCHEDULED",
+            query_version=1, status=ExecutionStatus.RUNNING, started_at=utc(h=10, mi=4),
+        )
+    )
+    await db_session.flush()
+    budget = CountingBudget(refuse=True)
+    executor = SearchExecutor(
+        db_session, MockQRadarProvider(seed=1337), budget, sleep=_noop_sleep,
+    )
+
+    report = await SearchScheduler(db_session, executor, settings=settings).run_due(
+        now=utc(h=10, mi=6)
+    )
+
+    assert report.dispatched == ["due-0"]
+    assert report.deferred_capacity == ["due-2"]
+    assert report.skipped_running == []
+    assert due.next_run_at == utc(h=10, mi=10)
+    assert busy.next_run_at == utc(h=10, mi=2)
+    assert broken.next_run_at == utc(h=10, mi=3)
+    assert nxt.next_run_at == utc(h=10, mi=4)
+    assert later_due.next_run_at == utc(h=10, mi=5)
+    assert not_due.next_run_at == utc(h=10, mi=15)
+    capacity_logs = [
+        record
+        for record in caplog.records
+        if record.name == "app.search_scheduler" and hasattr(record, "deferred_count")
+    ]
+    assert [record.deferred_count for record in capacity_logs] == [1]
+
+
 async def test_capacity_failures_open_the_streak_alert_at_the_threshold(db_session) -> None:
     from app.alerts.fingerprint import search_failure_fingerprint
     from app.alerts.search_alerts import SearchAlertEvaluator
