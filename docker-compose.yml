@@ -88,6 +88,13 @@ services:
   # ------------------------------------------------- IBM QRadar MCP (vendored)
   # Pinned to commit b8f6a4a3fe901eac4f55e4ca5d146d952f55db51.
   # The code is IBM's, built with the upstream Dockerfile unmodified (qradar-mcp-upstream).
+  # Two explicit build steps, because a `service:` context naming a service of an inactive
+  # profile is refused by older Compose (2.x):
+  #   docker compose --profile mcp-build build qradar-mcp-upstream
+  #   docker compose --profile mcp build qradar-mcp
+  # The second reads the first one's image by name. `localhost/` is deliberate: if the
+  # upstream was not built first, BuildKit must not look the name up on Docker Hub, where
+  # someone else's image of that name would become our base.
   # deploy/mcp/Dockerfile adds one file on top: feature_toggles.json, writes off. It is
   # baked in, not bind-mounted: a checkout file is unreadable to a container on an
   # SELinux-enforcing host (docs/OPERATIONS.md OPS-R13).
@@ -95,9 +102,8 @@ services:
     build:
       context: ./qradar-mcp
       dockerfile: Dockerfile
-    image: qradar-observability/qradar-mcp-upstream:b8f6a4a3
-    # Build-only: the profile is never enabled, so `up` never starts it. qradar-mcp
-    # builds it through `additional_contexts` below.
+    image: localhost/qradar-mcp-upstream:b8f6a4a3
+    # Build-only: the profile is never enabled by `up`, so this is never started.
     profiles: [mcp-build]
 
   qradar-mcp:
@@ -105,7 +111,7 @@ services:
       context: ./deploy/mcp
       dockerfile: Dockerfile
       additional_contexts:
-        upstream: service:qradar-mcp-upstream
+        upstream: docker-image://localhost/qradar-mcp-upstream:b8f6a4a3
     image: qradar-observability/qradar-mcp:b8f6a4a3
     # NO ports: block. Internal network access only. This is deliberate. The backend
     # reaches this service over plain HTTP on the internal network and sends the SEC
