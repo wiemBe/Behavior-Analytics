@@ -86,7 +86,13 @@ class OverviewService:
             select(func.max(OffenseSnapshot.captured_at))
         )
         if latest_captured is None:
-            return OverviewOffenses(active=None, critical=None, unassigned=None)
+            return OverviewOffenses(
+                active=None,
+                critical=None,
+                critical_unknown=None,
+                unassigned=None,
+                oldest_age_seconds=None,
+            )
 
         base = select(OffenseSnapshot).where(
             OffenseSnapshot.captured_at == latest_captured,
@@ -94,11 +100,17 @@ class OverviewService:
         )
         rows = list((await self.session.scalars(base)).all())
         active = len(rows)
-        critical = sum(1 for r in rows if (r.magnitude or 0) >= 7)
+        critical = sum(1 for r in rows if r.magnitude is not None and r.magnitude >= 7)
+        critical_unknown = sum(1 for r in rows if r.magnitude is None)
         unassigned = sum(1 for r in rows if not r.is_assigned)
-        oldest = max((r.age_seconds or 0 for r in rows), default=None)
+        known_ages = [r.age_seconds for r in rows if r.age_seconds is not None]
+        oldest = max(known_ages) if known_ages else None
         return OverviewOffenses(
-            active=active, critical=critical, unassigned=unassigned, oldest_age_seconds=oldest
+            active=active,
+            critical=critical,
+            critical_unknown=critical_unknown,
+            unassigned=unassigned,
+            oldest_age_seconds=oldest,
         )
 
     async def _alert_overview(self) -> OverviewAlerts:

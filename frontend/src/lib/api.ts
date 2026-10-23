@@ -367,6 +367,7 @@ export interface SocOverview {
   offenses: {
     active: number | null;
     critical: number | null;
+    critical_unknown?: number | null;
     unassigned: number | null;
     oldest_age_seconds: number | null;
   };
