@@ -13,7 +13,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, select, text, update
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.collectors import ips_collector as ips_collector_module
 from app.collectors.ips_collector import IpsCollector, watermark_collector
@@ -1455,24 +1454,23 @@ class TestOperatorPath:
         await add_source(db_session, instance, SOURCE_ID)
         await record_yes(db_session, instance)
         provider = ScriptedIpsProvider({}, now=NOW)
-        # Another worker holds the source's pipeline lock.
+        # Another worker holds the source's pipeline lock — on a connection
+        # that stays checked out for the whole tick, as a real worker's does.
         key = collector_lock_key(instance.id, ips_pipeline_lock_key(SOURCE_ID))
         namespace = hcfg().collection_advisory_lock_namespace
-        maker = async_sessionmaker(db_session.bind, expire_on_commit=False)
-        async with maker() as other:
-            held = await other.scalar(
+        async with db_session.bind.connect() as holder:
+            held = await holder.scalar(
                 text("SELECT pg_try_advisory_lock(:namespace, :key)"),
                 {"namespace": namespace, "key": key},
             )
             assert held
 
-        report = await collect(db_session, instance, provider, hcfg(), NOW)
+            report = await collect(db_session, instance, provider, hcfg(), NOW)
 
-        assert report.sources_locked == 1
-        assert report.history_sources == 0
-        assert await scope_of(db_session, instance, str(SOURCE_ID)) is None
-        async with maker() as other:
-            await other.execute(
+            assert report.sources_locked == 1
+            assert report.history_sources == 0
+            assert await scope_of(db_session, instance, str(SOURCE_ID)) is None
+            await holder.execute(
                 text("SELECT pg_advisory_unlock(:namespace, :key)"),
                 {"namespace": namespace, "key": key},
             )

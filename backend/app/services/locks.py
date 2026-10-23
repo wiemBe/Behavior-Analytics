@@ -52,6 +52,18 @@ def collector_lock_key(instance_id: uuid.UUID, collector: str = "") -> int:
     return key & 0x7FFFFFFF
 
 
+def session_lock_engine(session: AsyncSession) -> AsyncEngine | None:
+    """The engine a session's advisory locks can check a connection out of.
+
+    A session may be bound straight to an engine or to a single connection;
+    both reach a physical pool. Anything else (an unbound session) has nothing
+    to check out, and callers treat that as "no advisory locks here".
+    """
+    bind = session.bind
+    engine = bind.engine if isinstance(bind, AsyncConnection) else bind
+    return engine if isinstance(engine, AsyncEngine) else None
+
+
 class CollectorAdvisoryLock:
     """Session-level advisory lock scoped to (instance, collector).
 
@@ -60,6 +72,10 @@ class CollectorAdvisoryLock:
     connection on every exit path (normal, exception, cancellation). A release
     that fails or reports the lock as not held invalidates the connection, so
     a connection that may still hold the lock is closed rather than pooled.
+    The take assumes its lock is not left on an idle pooled connection:
+    PostgreSQL re-grants a session's own advisory lock, so a leaked lock on
+    the connection checked out here would be silently re-acquired, not
+    refused.
     """
 
     def __init__(
@@ -76,9 +92,7 @@ class CollectorAdvisoryLock:
         self._lock_conn: AsyncConnection | None = None
 
     def _engine(self) -> AsyncEngine | None:
-        bind = self.session.bind
-        engine = bind.engine if isinstance(bind, AsyncConnection) else bind
-        return engine if isinstance(engine, AsyncEngine) else None
+        return session_lock_engine(self.session)
 
     async def __aenter__(self) -> bool:
         engine = self._engine()

@@ -26,7 +26,7 @@ from typing import Any, cast
 
 from sqlalchemy import Table, delete, exists, func, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.anomaly.seasonal import in_maintenance
@@ -114,7 +114,7 @@ from app.services.ariel_permit import (
     ariel_history_deferred_reason,
 )
 from app.services.ips_pipeline import ips_pipeline_lock_key
-from app.services.locks import collector_lock_key
+from app.services.locks import collector_lock_key, session_lock_engine
 from app.services.search_cadence import SearchCadenceService
 from app.waf.admission import AdmissionPolicy, decide_admission
 
@@ -313,7 +313,19 @@ def _ips_search_estimator(
 
 
 class _IpsFleetLocks:
-    """Take every per-source IPS pipeline lock in two SQL statements total."""
+    """Take every per-source IPS pipeline lock in two SQL statements total.
+
+    Like ``CollectorAdvisoryLock``, the locks are held on a dedicated
+    AUTOCOMMIT connection of the session's engine, so a commit or connection
+    change on the caller's session cannot separate them from their release —
+    one statement takes the whole fleet and one releases it, whatever its
+    size. Only the sources the take reported as held are released; a release
+    that fails or reports any lock as not held invalidates the connection, so
+    one that may still hold a lock is closed rather than pooled. The take
+    assumes no fleet lock is left on an idle pooled connection: PostgreSQL
+    re-grants a session's own advisory lock, so a leaked lock on the
+    connection checked out here would be silently re-acquired, not skipped.
+    """
 
     def __init__(
         self,
@@ -328,10 +340,13 @@ class _IpsFleetLocks:
         self.qradar_ids = tuple(qradar_ids)
         self.acquired: set[int] = set()
         self._keys: dict[int, int] = {}
+        self._lock_conn: AsyncConnection | None = None
 
     async def __aenter__(self) -> set[int]:
-        bind = self.session.bind
-        if bind is None or bind.dialect.name != "postgresql":
+        engine = session_lock_engine(self.session)
+        # SQLite (unit tests) and unbound sessions have no advisory locks;
+        # treat every source as acquired, holding no connection.
+        if engine is None or engine.dialect.name != "postgresql":
             self.acquired = set(self.qradar_ids)
             return self.acquired
         self._keys = {
@@ -355,21 +370,56 @@ class _IpsFleetLocks:
             "CAST(:namespace AS integer), v.lock_key) "
             f"FROM (VALUES {values}) AS v(source_id, lock_key)"
         )
-        rows = await self.session.execute(text(lock_sql), params)
-        self.acquired = {int(source_id) for source_id, held in rows if held}
+        conn = await engine.connect()
+        try:
+            await conn.execution_options(isolation_level="AUTOCOMMIT")
+            rows = await conn.execute(text(lock_sql), params)
+            self.acquired = {int(source_id) for source_id, held in rows if held}
+        except BaseException:
+            await conn.close()
+            raise
+        if not self.acquired:
+            # Nothing was acquired, so nothing is held: the connection goes
+            # straight back.
+            await conn.close()
+            return self.acquired
+        self._lock_conn = conn
         return self.acquired
 
     async def __aexit__(self, *exc: object) -> None:
-        if not self.acquired or not self._keys:
+        conn, self._lock_conn = self._lock_conn, None
+        if conn is None:
             return
         keys = [self._keys[source_id] for source_id in sorted(self.acquired)]
-        await self.session.execute(
-            text(
-                "SELECT pg_advisory_unlock(:namespace, lock_key) "
-                "FROM unnest(CAST(:keys AS integer[])) AS lock_key"
-            ),
-            {"namespace": self.settings.collection_advisory_lock_namespace, "keys": keys},
-        )
+        try:
+            rows = await conn.execute(
+                text(
+                    "SELECT pg_advisory_unlock(:namespace, lock_key) "
+                    "FROM unnest(CAST(:keys AS integer[])) AS lock_key"
+                ),
+                {"namespace": self.settings.collection_advisory_lock_namespace, "keys": keys},
+            )
+            if any(held is not True for held, in rows):
+                # The statement ran but a lock was not ours to release: the
+                # connection's lock state is not what we think it is, so it
+                # must not go back to the pool. Invalidation closes it, and
+                # PostgreSQL frees whatever it still holds.
+                await conn.invalidate()
+                logger.warning(
+                    "IPS fleet advisory lock release reported a lock not held",
+                    extra={
+                        "instance_id": str(self.instance_id),
+                        "sources": sorted(self.acquired),
+                    },
+                )
+        except BaseException:
+            # A failed or cancelled release cannot be followed by pool reuse:
+            # rollback does not release session advisory locks. Invalidation
+            # closes the physical connection, which makes PostgreSQL free them.
+            await conn.invalidate()
+            raise
+        finally:
+            await conn.close()
 
 
 class IpsCollector:
