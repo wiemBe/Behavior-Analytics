@@ -313,7 +313,8 @@ class Settings(BaseSettings):
     # Bumped whenever classification logic changes meaning, so historical
     # snapshots stay interpretable. Not operator-tunable in practice.
     # 2: EVENT rules are judged on measured rule matches when they exist (E.1a).
-    rule_health_logic_version: int = 2
+    # 3: an unobserved dependency is INSUFFICIENT_DATA, not healthy (FIX-1).
+    rule_health_logic_version: int = 3
     # Health classification reads only stored data, so it can run more often
     # than the inventory sync that feeds it.
     rule_health_evaluation_interval_seconds: int = Field(default=1800, ge=60)

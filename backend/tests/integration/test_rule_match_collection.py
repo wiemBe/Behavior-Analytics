@@ -550,7 +550,7 @@ class TestRuleHealth:
 
         snap = await latest(db_session, rule)
         assert snap.status == RuleHealthStatus.NEVER_OBSERVED
-        assert snap.logic_version == 2
+        assert snap.logic_version == 3
         assert snap.evidence["match_windows"]["complete"] == 23
 
     @pytest.mark.asyncio

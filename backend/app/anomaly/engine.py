@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.fingerprint import anomaly_fingerprint
 from app.alerts.service import AlertInput, AlertService
+from app.anomaly.business_hours import is_expected_active
 from app.anomaly.capabilities import bucket_telemetry, unmet_requirement
 from app.anomaly.detectors import (
     DETECTORS,
@@ -1029,9 +1030,5 @@ class AnomalyEngine:
         )
 
     def _is_expected_active(self, log_source: LogSource, when: datetime) -> bool:
-        if not log_source.business_hours_only:
-            return True
-        weekday = when.isoweekday()
-        if weekday not in (log_source.business_days or [1, 2, 3, 4, 5]):
-            return False
-        return log_source.business_hours_start <= when.hour < log_source.business_hours_end
+        """Local business-hours gate. See `app.anomaly.business_hours`."""
+        return is_expected_active(log_source, when)

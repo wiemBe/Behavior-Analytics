@@ -119,8 +119,10 @@ every worker agrees on which bucket an observation belongs to.
 - Production Phase A bucket: **300 s**
 - LAB_MODE Phase A bucket: **60 s**
 
-All storage is UTC. Timezone conversion happens **only at presentation time**,
-using the user-selected timezone.
+All storage is UTC. Timezone conversion for display happens at presentation
+time, using the user-selected timezone. The business-hours gate is a detection
+decision: it converts the bucket start into the source's `timezone_name`
+(see §4.3 and §5.3).
 
 A bucket carries an explicit **completeness**: whether the collector believes it
 observed the whole interval. An incomplete bucket may be displayed, but must
@@ -212,6 +214,11 @@ A bucket is excluded from baseline computation when it is:
 - **incomplete** — the collector did not observe the whole interval;
 - **unfinished** — the current, still-accumulating bucket is never baselined.
 
+Off-hours are the source's `timezone_name` local time: a start later than the end
+wraps past midnight and that window belongs to the local day it starts on, and an
+unknown zone or an empty or out-of-range `business_days` fails closed so the bucket
+is not excluded.
+
 ### 4.4 Adequacy and INSUFFICIENT_DATA
 
 A baseline cell is *adequate* only when its sample count reaches the configured
@@ -297,6 +304,10 @@ collection completeness.
 
 **A source that is normally inactive at that time must not raise `NO_EVENTS`.**
 Off-hours silence on a business-hours-only source is healthy, not an anomaly.
+Off-hours are the source's `timezone_name` local time: a start later than the end
+wraps past midnight and that window belongs to the local day it starts on, and an
+unknown zone or an empty or out-of-range `business_days` fails closed so the source
+stays expected-active and silence can still raise `NO_EVENTS`.
 An incomplete or failed collection is `INSUFFICIENT_DATA`, not silence.
 
 ### 5.4 Thresholds

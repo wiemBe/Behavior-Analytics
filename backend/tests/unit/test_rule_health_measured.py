@@ -189,4 +189,4 @@ class TestOtherTypes:
 
 
 def test_the_logic_version_is_bumped() -> None:
-    assert get_settings().rule_health_logic_version == 2
+    assert get_settings().rule_health_logic_version == 3
