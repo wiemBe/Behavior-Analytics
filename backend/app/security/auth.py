@@ -138,5 +138,5 @@ async def _oidc_principal(authorization: str | None, settings: Settings) -> Prin
     # OIDC stays out of scope. A bearer token is refused rather than trusted.
     raise HTTPException(
         status.HTTP_501_NOT_IMPLEMENTED,
-        "OIDC verification is implemented in Phase 4",
+        "OIDC verification is not available",
     )

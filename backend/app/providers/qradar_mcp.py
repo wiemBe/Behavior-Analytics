@@ -16,6 +16,7 @@ Deliberately restricted, in this order of precedence:
      that contradicts the allowlist — notably by exposing a known write tool —
      the provider marks itself degraded and refuses to dispatch rather than
      quietly continuing against a server that is not in the expected posture.
+     It is not yet called on the production path.
 
 A denied write tool never falls back to REST. Silently satisfying a blocked
 request through another path would defeat the entire control, so denial is
@@ -540,10 +541,6 @@ class QRadarMCPProvider(QRadarProvider):
                 out.append(dto.model_copy(update={"is_building_block": True}))
         return out
 
-    async def get_rule(self, qradar_id: int) -> AnalyticsRuleDTO | None:
-        body = await self.call_tool("get_rule", {"rule_id": int(qradar_id)})
-        return self._to_rule(body) if isinstance(body, dict) else None
-
     async def list_offenses(
         self,
         *,
@@ -565,26 +562,6 @@ class QRadarMCPProvider(QRadarProvider):
                 if o.last_updated_time is not None and o.last_updated_time > cutoff
             ]
         return out
-
-    async def get_offense(self, qradar_id: int) -> OffenseDTO | None:
-        body = await self.call_tool("get_offense", {"offense_id": int(qradar_id)})
-        return self._to_offense(body) if isinstance(body, dict) else None
-
-    async def list_offense_types(self) -> dict[int, str]:
-        rows = self._rows(await self.call_tool("list_offense_types"))
-        return {
-            tid: str(row["name"])[:255]
-            for row in rows
-            if (tid := as_int(row.get("id"))) is not None and isinstance(row.get("name"), str)
-        }
-
-    async def list_offense_closing_reasons(self) -> dict[int, str]:
-        rows = self._rows(await self.call_tool("list_offense_closing_reasons"))
-        return {
-            rid: str(row["text"])[:512]
-            for row in rows
-            if (rid := as_int(row.get("id"))) is not None and isinstance(row.get("text"), str)
-        }
 
     # -------------------------------------------------------- normalization
     # The MCP service proxies QRadar's own JSON, so normalization matches the

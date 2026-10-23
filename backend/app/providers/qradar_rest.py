@@ -2273,19 +2273,6 @@ class QRadarRestProvider(QRadarProvider):
                 out.append(dto.model_copy(update={"is_building_block": True}))
         return out
 
-    async def get_rule(self, qradar_id: int) -> AnalyticsRuleDTO | None:
-        body = await self._request(
-            "GET",
-            f"/analytics/rules/{int(qradar_id)}",
-            category=EndpointCategory.RULE_DETAIL,
-            allow_404=True,
-        )
-        if body is None:
-            return None
-        if not isinstance(body, dict):
-            raise MalformedUpstreamResponse("QRadar rule detail was not an object")
-        return self._to_rule(body)
-
     # ---------------------------------------------------------- offenses
     async def list_offenses(
         self,
@@ -2318,44 +2305,6 @@ class QRadarRestProvider(QRadarProvider):
             max_pages=max_pages,
         )
         return [dto for dto in (self._to_offense(r) for r in rows) if dto is not None]
-
-    async def get_offense(self, qradar_id: int) -> OffenseDTO | None:
-        body = await self._request(
-            "GET",
-            f"/siem/offenses/{int(qradar_id)}",
-            category=EndpointCategory.OFFENSE_DETAIL,
-            allow_404=True,
-        )
-        if body is None:
-            return None
-        if not isinstance(body, dict):
-            raise MalformedUpstreamResponse("QRadar offense detail was not an object")
-        return self._to_offense(body)
-
-    async def list_offense_types(self) -> dict[int, str]:
-        rows = await self._paginate(
-            "/siem/offense_types", category=EndpointCategory.OFFENSE_TYPE_LIST
-        )
-        out: dict[int, str] = {}
-        for row in rows:
-            type_id = as_int(row.get("id"))
-            name = row.get("name")
-            if type_id is not None and isinstance(name, str):
-                out[type_id] = name[:255]
-        return out
-
-    async def list_offense_closing_reasons(self) -> dict[int, str]:
-        rows = await self._paginate(
-            "/siem/offense_closing_reasons",
-            category=EndpointCategory.OFFENSE_CLOSING_REASON_LIST,
-        )
-        out: dict[int, str] = {}
-        for row in rows:
-            reason_id = as_int(row.get("id"))
-            text = row.get("text")
-            if reason_id is not None and isinstance(text, str):
-                out[reason_id] = text[:512]
-        return out
 
     # ------------------------------------------------------ Ariel lifecycle
     async def create_ariel_search(self, aql: str) -> ArielSearchHandleDTO:

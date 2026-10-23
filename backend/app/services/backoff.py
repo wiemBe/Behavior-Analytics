@@ -27,14 +27,3 @@ def backoff_delay(
     exp = min(max_seconds, base_seconds * (2 ** (attempt - 1)))
     r = rng or random
     return r.uniform(0, exp)
-
-
-def next_retry_at_offset(
-    attempt: int,
-    *,
-    base_seconds: float,
-    max_seconds: float,
-    rng: random.Random | None = None,
-) -> float:
-    """Alias kept for call sites that read better as an offset in seconds."""
-    return backoff_delay(attempt, base_seconds=base_seconds, max_seconds=max_seconds, rng=rng)

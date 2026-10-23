@@ -786,7 +786,7 @@ class WafEndpointCollector:
         end: datetime,
         report: WafCollectionReport,
     ) -> _Fetched:
-        """One bucket by the per-bucket searches, as collection did before T-036.
+        """Test-only control: one bucket by the per-bucket searches from before T-036.
 
         Production never calls this. It is the control the equivalence tests
         compare the keyed path against: every persisted column must match.

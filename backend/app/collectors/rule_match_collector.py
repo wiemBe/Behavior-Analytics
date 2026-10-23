@@ -34,11 +34,10 @@ import math
 import time
 import uuid
 from collections import deque
-from collections.abc import AsyncGenerator, Callable, Mapping
+from collections.abc import AsyncGenerator, Callable
 from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import delete, select, text
@@ -72,7 +71,7 @@ from app.history import (
     scope_progress,
     transition_row,
 )
-from app.history.lifecycle import deferred_scope_row, scope_row, scope_view, step_row
+from app.history.lifecycle import decision_view, deferred_scope_row, scope_row, scope_view, step_row
 from app.history.planner import (
     PlannerInputError,
     ScanOutcome,
@@ -167,40 +166,6 @@ class RuleMatchCollectionReport:
     error: str | None = None
     duration_ms: int = 0
     watermark_at: datetime | None = None
-
-
-def _value(row: object, name: str) -> object:
-    if isinstance(row, Mapping):
-        return row[name]
-    return getattr(row, name)
-
-
-def _decision_view(row: object | None) -> DecisionView | None:
-    """The lifecycle's view of a decision row, never the ORM object itself."""
-    if row is None:
-        return None
-    return DecisionView(
-        answer=str(_value(row, "answer")),
-        days=_value(row, "days"),  # type: ignore[arg-type]
-        start_requested_at=_value(row, "start_requested_at"),  # type: ignore[arg-type]
-        start_requested_by=_value(row, "start_requested_by"),  # type: ignore[arg-type]
-        stop_requested_at=_value(row, "stop_requested_at"),  # type: ignore[arg-type]
-        stop_requested_by=_value(row, "stop_requested_by"),  # type: ignore[arg-type]
-    )
-
-
-def _scope_view(row: object | None) -> ScopeRowView | None:
-    """The lifecycle's view of a scope row, whether stored or newly built.
-
-    The lifecycle's `scope_view` reads attributes (the stored ORM row); this
-    family's step reads the mapping it has just built too, so the mapping case
-    is bridged here and the columns stay listed once, in the lifecycle.
-    """
-    if row is None:
-        return None
-    if isinstance(row, Mapping):
-        row = SimpleNamespace(**row)
-    return scope_view(row)
 
 
 class RuleMatchCollector:
@@ -442,7 +407,7 @@ class RuleMatchCollector:
         """
         repository = HistoryBackfillRepository(self.session)
         decision_row = (await repository.decisions([instance.id])).get(instance.id)
-        decision = _decision_view(decision_row)
+        decision = decision_view(decision_row)
         mode = console_mode(decision)
         if decision is None or mode in (ConsoleMode.UNDECIDED, ConsoleMode.NO):
             report.history_reason = "the console has no Yes answer"
@@ -459,7 +424,7 @@ class RuleMatchCollector:
             instance.id, HistoryFamily.RULE_MATCH.value, [RULE_MATCH_SCOPE_KEY]
         )
         stored = scopes.get(RULE_MATCH_SCOPE_KEY)
-        row = _scope_view(stored)
+        row = scope_view(stored)
         action = scope_action(
             family=HistoryFamily.RULE_MATCH,
             mode=mode,
@@ -485,7 +450,7 @@ class RuleMatchCollector:
                 at=now,
             )
             await repository.write_scopes([values])
-            row = _scope_view(values)
+            row = scope_view(values)
             report.history_state = action.state.value if action.state else None
             if action.state is not HistoryState.READING:
                 return
@@ -502,7 +467,7 @@ class RuleMatchCollector:
                 at=now,
             )
             await repository.write_scopes([values])
-            row = _scope_view(values)
+            row = scope_view(values)
             report.history_state = action.state.value if action.state else None
             report.history_reason = action.reason
             if action.state is not HistoryState.READING:
@@ -693,7 +658,7 @@ class RuleMatchCollector:
                 if scan.outcome is not ScanOutcome.FLOOR_FOUND:
                     report.history_state = HistoryState.READING.value
                     return
-                refreshed = _scope_view(
+                refreshed = scope_view(
                     {
                         **scope_row(
                             row,

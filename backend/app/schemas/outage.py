@@ -1,8 +1,8 @@
 """API schemas for the Phase C.2 outage alert policy.
 
 The mode and grace are the operator's whole control surface. A request that
-names an unknown mode, a grace outside 0-48, or an unknown class is a 422; a
-request against a source that does not exist is a 404.
+names an unknown mode, a grace outside 0-MAX_SILENCE_GRACE_BUCKETS, or an
+unknown class is a 422; a request against a source that does not exist is a 404.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import OutagePolicyMode, OutagePolicyScope, SourceClass
+from app.models.outage import MAX_SILENCE_GRACE_BUCKETS
 
 
 class OutagePolicyOut(BaseModel):
@@ -44,5 +45,7 @@ class OutagePolicyUpsert(BaseModel):
     mode: OutagePolicyMode
     # Bounded here as well as by the table CHECK, so the API returns 422 rather
     # than surfacing an IntegrityError.
-    silence_grace_buckets: int | None = Field(default=None, ge=0, le=48)
+    silence_grace_buckets: int | None = Field(
+        default=None, ge=0, le=MAX_SILENCE_GRACE_BUCKETS
+    )
     instance_id: uuid.UUID | None = None

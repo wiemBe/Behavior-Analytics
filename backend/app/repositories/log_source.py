@@ -47,14 +47,6 @@ class LogSourceRepository:
     async def get(self, log_source_id: uuid.UUID) -> LogSource | None:
         return await self.session.get(LogSource, log_source_id)
 
-    async def get_by_qradar_id(
-        self, instance_id: uuid.UUID, qradar_id: int
-    ) -> LogSource | None:
-        stmt = select(LogSource).where(
-            LogSource.instance_id == instance_id, LogSource.qradar_id == qradar_id
-        )
-        return await self.session.scalar(stmt)
-
     async def by_qradar_id(self, instance_id: uuid.UUID) -> dict[int, LogSource]:
         """Load an instance's inventory once for a bulk sync."""
         rows = await self.session.scalars(

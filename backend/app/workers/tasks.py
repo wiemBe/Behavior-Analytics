@@ -1,9 +1,8 @@
 """Celery task entrypoints for background collection, detection and delivery.
 
 Each task is a thin synchronous wrapper that runs an async orchestration on a
-fresh event loop with its own AsyncSession. The orchestration functions are
-also importable and awaited directly by the APScheduler MVP fallback and by
-tests, so the scheduling mechanism and the work are decoupled.
+fresh event loop with its own AsyncSession. Tests import and await those
+orchestration functions directly.
 """
 
 from __future__ import annotations

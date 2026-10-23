@@ -72,6 +72,7 @@ from app.history.lifecycle import (
     ScopeRowView,
     bounded_reason,
     console_mode,
+    decision_view,
     decode_scope,
     deferred_scope_row,
     new_scope_row,
@@ -103,7 +104,7 @@ from app.models.enums import (
     SearchFamily,
     Severity,
 )
-from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
+from app.models.history_backfill import HistoryBackfillScope
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
@@ -754,7 +755,7 @@ class CatchallCollector:
         decisions = await repository.decisions([instance_id])
         scopes = await repository.scopes(instance_id, HistoryFamily.CATCHALL.value)
         decision = decisions.get(instance_id)
-        return (None if decision is None else _decision_view(decision), scopes.get(SCOPE_KEY))
+        return (decision_view(decision), scopes.get(SCOPE_KEY))
 
     def _history_hold(
         self, decision: DecisionView | None, scope: HistoryBackfillScope | None
@@ -1247,18 +1248,6 @@ class CatchallCollector:
             self.session.add(watermark)
             await self.session.flush()
         return watermark
-
-
-def _decision_view(row: HistoryBackfillDecision) -> DecisionView:
-    """The decision row as the lifecycle reads it; never an ORM object."""
-    return DecisionView(
-        answer=row.answer,
-        days=row.days,
-        start_requested_at=row.start_requested_at,
-        start_requested_by=row.start_requested_by,
-        stop_requested_at=row.stop_requested_at,
-        stop_requested_by=row.stop_requested_by,
-    )
 
 
 def _bucket_starts(spans: Sequence[Span], bucket_seconds: int) -> set[datetime]:

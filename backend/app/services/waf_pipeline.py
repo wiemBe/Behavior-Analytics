@@ -62,7 +62,6 @@ from app.core.config import Settings, get_settings
 from app.history import (
     ActionKind,
     ConsoleMode,
-    DecisionView,
     HistoryFamily,
     HistoryState,
     console_mode,
@@ -80,11 +79,11 @@ from app.history import (
     transition_row,
     waf_source_searches,
 )
-from app.history.lifecycle import deferred_scope_row, scope_row, scope_view, step_row
+from app.history.lifecycle import decision_view, deferred_scope_row, scope_row, scope_view, step_row
 from app.history.state import HistoryTrigger
 from app.history.waf import waf_planner_settings
 from app.models.enums import SearchFamily, WafBreakdown
-from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
+from app.models.history_backfill import HistoryBackfillScope
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
@@ -386,7 +385,7 @@ class WafSourcePipeline:
         """
         repository = HistoryBackfillRepository(self.session)
         decision_row = (await repository.decisions([instance.id])).get(instance.id)
-        decision = self._decision_view(decision_row)
+        decision = decision_view(decision_row)
         if console_mode(decision) in (ConsoleMode.UNDECIDED, ConsoleMode.NO):
             # No Yes: the lifecycle does nothing and creates nothing, so a source of a
             # console that never asked for history costs one statement per tick.
@@ -766,19 +765,6 @@ class WafSourcePipeline:
     def _boundary(self, now: datetime) -> datetime:
         seconds = self.settings.collection_interval_seconds
         return datetime.fromtimestamp(int(now.timestamp()) // seconds * seconds, tz=UTC)
-
-    @staticmethod
-    def _decision_view(row: HistoryBackfillDecision | None) -> DecisionView | None:
-        if row is None:
-            return None
-        return DecisionView(
-            answer=row.answer,
-            days=row.days,
-            start_requested_at=row.start_requested_at,
-            start_requested_by=row.start_requested_by,
-            stop_requested_at=row.stop_requested_at,
-            stop_requested_by=row.stop_requested_by,
-        )
 
     async def _evaluate(
         self,

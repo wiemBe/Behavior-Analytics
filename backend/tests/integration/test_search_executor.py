@@ -480,9 +480,7 @@ async def _run_concurrently(db_url: str, budget_for, provider, count: int) -> No
 
 
 async def test_budget_caps_concurrent_lifecycles_on_the_fake(db_schema) -> None:
-    """Ported from test_concurrency.py::test_global_limit_caps_across_instances.
-
-    Four executors share a budget of two: the appliance never sees more than two
+    """Four executors share a budget of two: the appliance never sees more than two
     searches at once, and does see two (the test is not vacuous).
     """
     budget = CountingBudget(global_limit=2, instance_limit=2)
@@ -495,9 +493,7 @@ async def test_budget_caps_concurrent_lifecycles_on_the_fake(db_schema) -> None:
 
 
 async def test_real_budget_caps_concurrent_lifecycles_on_postgresql(db_schema) -> None:
-    """Ported from test_concurrency.py::test_per_instance_limit_blocks_third.
-
-    The same pin against the real advisory-lock budget: a global cap of two with
+    """The same pin against the real advisory-lock budget: a global cap of two with
     four concurrent executors, each with its own budget object.
     """
     from sqlalchemy.ext.asyncio import create_async_engine

@@ -341,9 +341,6 @@ CLIENT_ERROR_RATIO = RatioDefinition(
         "itself a block, and WAF blocking is reported separately."
     ),
 )
-RATIO_DEFINITIONS = {
-    d.detector_type: d for d in (BLOCK_RATIO, SERVER_ERROR_RATIO, CLIENT_ERROR_RATIO)
-}
 
 
 def _measured(status: WafTelemetryStatus) -> bool:

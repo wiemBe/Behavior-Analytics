@@ -261,7 +261,7 @@ def test_oidc_without_token_is_401(method: str, path: str) -> None:
         pytest.skip("allowlisted open path")
     resp = _client("oidc").request(method, _url(path))
     # 401, specifically: _oidc_principal rejects a missing token before it
-    # reaches the Phase 4 501, and an unguarded route would answer 200/404/422/500.
+    # reaches the not-available 501, and an unguarded route would answer 200/404/422/500.
     assert resp.status_code == 401, f"{method} {path} -> {resp.status_code}"
 
 

@@ -37,14 +37,6 @@ SORTABLE = {
     "qradar_offense_id": OffenseSnapshot.qradar_offense_id,
 }
 
-#: Columns free-text search may touch. Descriptions and usernames only — never
-#: an unbounded scan across every column.
-SEARCHABLE = (
-    OffenseSnapshot.description,
-    OffenseSnapshot.offense_source,
-    OffenseSnapshot.assigned_to,
-)
-
 
 @dataclass
 class OffenseFilters:

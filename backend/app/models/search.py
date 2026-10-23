@@ -53,7 +53,7 @@ class ScheduledSearch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     aql_query: Mapped[str] = mapped_column(Text, nullable=False)
     query_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
-    # Cron expression driving the schedule (Celery beat / APScheduler).
+    # Cron expression. Celery beat fires it; APScheduler's CronTrigger only parses it.
     schedule_cron: Mapped[str] = mapped_column(String(128), nullable=False)
     schedule_timezone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
 

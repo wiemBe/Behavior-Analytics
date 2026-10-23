@@ -141,6 +141,7 @@ class PwCount:
 
     @property
     def measured_zero(self) -> bool:
+        """Test-only. Production absence checks use ``PwReading.is_measured_zero``."""
         return self.state is PwCountState.EXACT and self.events == 0
 
 
@@ -401,7 +402,7 @@ def reading_for(
 
 
 def absence_is_provable(reading: PwReading, bucket: PwBucketFact, coverage_floor: float) -> bool:
-    """Whether a verdict may read this reading as the value being absent.
+    """Test-only helper. Whether a verdict may read this reading as the value being absent.
 
     A zero is a zero of *parsed* events, so the verdicts that read absence also need
     coverage at the floor (design §G.5): a parsing break must not look like a fleet of

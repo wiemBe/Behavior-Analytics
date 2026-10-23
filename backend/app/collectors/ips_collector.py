@@ -34,7 +34,6 @@ from app.collectors.metric_collector import floor_to_interval
 from app.core.config import Settings, get_settings
 from app.history import (
     ActionKind,
-    DecisionView,
     HistoryFamily,
     HistoryOrigin,
     HistoryState,
@@ -63,7 +62,7 @@ from app.history.ips import (
     fold_ips_history,
     ips_planner_settings,
 )
-from app.history.lifecycle import deferred_scope_row, scope_row, scope_view
+from app.history.lifecycle import decision_view, deferred_scope_row, scope_row, scope_view
 from app.history.planner import (
     ChunkResult,
     PlannerSettings,
@@ -769,7 +768,7 @@ class IpsCollector:
                     )
                 ).all()
             )
-        decision = self._decision_view(decision_row)
+        decision = decision_view(decision_row)
         live: list[_Source] = []
         reading: list[_Source] = []
         values_by_source: dict[int, dict[str, object]] = {}
@@ -843,17 +842,6 @@ class IpsCollector:
             )
         )
         return live, reading, values_by_source, handoffs
-
-    @staticmethod
-    def _decision_view(row: HistoryBackfillDecision) -> DecisionView:
-        return DecisionView(
-            answer=row.answer,
-            days=row.days,
-            start_requested_at=row.start_requested_at,
-            start_requested_by=row.start_requested_by,
-            stop_requested_at=row.stop_requested_at,
-            stop_requested_by=row.stop_requested_by,
-        )
 
     async def _run_history(
         self,

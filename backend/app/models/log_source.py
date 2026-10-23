@@ -263,11 +263,6 @@ class LogSourceBaseline(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     log_source: Mapped[LogSource] = relationship(back_populates="baselines")
 
-    @property
-    def seasonality_key(self) -> str:
-        """Phase A seasonality: ISO weekday x hour of day (168 cells)."""
-        return f"w{self.weekday}h{self.hour:02d}"
-
 
 class LogSourceDetectorState(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """Hysteresis state per (log source, anomaly type).

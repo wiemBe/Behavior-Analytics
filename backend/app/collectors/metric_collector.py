@@ -30,7 +30,6 @@ from collections import defaultdict
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from typing import Any, cast
 
 from sqlalchemy import Table, func, select
@@ -50,6 +49,7 @@ from app.history.lifecycle import (
     ScopeAction,
     ScopeRowView,
     console_mode,
+    decision_view,
     decode_scope,
     deferred_scope_row,
     new_scope_row,
@@ -81,7 +81,6 @@ from app.history.progress_codec import (
 from app.history.source_floors import SourceFloors
 from app.history.state import HistoryFamily, HistoryState, HistoryTrigger, next_state
 from app.models.enums import BucketCompleteness, SearchFamily
-from app.models.history_backfill import HistoryBackfillDecision
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource, LogSourceMetric
 from app.models.monitoring import CollectionWatermark
@@ -441,6 +440,7 @@ class MetricCollector:
         *,
         watermark_at: datetime | None = None,
     ) -> int:
+        """Test-only control. Production collection goes through ``_collect_bucketed_window``."""
         started = self._clock()
         samples = await self.provider.get_log_source_metrics(start, end)
         collected_at = self._clock()
@@ -691,7 +691,7 @@ class MetricCollector:
         report = HistoryReport()
         repo = HistoryBackfillRepository(self.session)
         decision_row = (await repo.decisions([instance.id])).get(instance.id)
-        decision = _decision_view(decision_row)
+        decision = decision_view(decision_row)
         mode = console_mode(decision)
         if decision is None or mode in (ConsoleMode.UNDECIDED, ConsoleMode.NO):
             return report  # undecided is not Yes (§B.12 row 15); nothing is created
@@ -750,7 +750,7 @@ class MetricCollector:
             )
 
         # The baseline rebuild of the sources a finished reading read (§B.8.5), in batches.
-        current = _view_of(values) if values is not None else row
+        current = scope_view(values) if values is not None else row
         if (
             switch_on
             and current is not None
@@ -1093,7 +1093,7 @@ class MetricCollector:
             instance_id=instance.id,
             family=HISTORY_FAMILY,
             scope_key=HISTORY_SCOPE_KEY,
-            row=_view_of(stepped),
+            row=scope_view(stepped),
             decision=decision,
             at=now,
         )
@@ -1210,31 +1210,6 @@ def _topup_ids(
         return None
     wanted = set(keys)
     return [qid for qid in monitored if phase_a.source_key(qid) in wanted]
-
-
-def _decision_view(row: HistoryBackfillDecision | None) -> DecisionView | None:
-    if row is None:
-        return None
-    return DecisionView(
-        answer=row.answer,
-        days=row.days,
-        start_requested_at=row.start_requested_at,
-        start_requested_by=row.start_requested_by,
-        stop_requested_at=row.stop_requested_at,
-        stop_requested_by=row.stop_requested_by,
-    )
-
-
-def _view_of(values: Mapping[str, Any]) -> ScopeRowView:
-    """The lifecycle's view of a scope row mapping that is about to be written.
-
-    The lifecycle's `scope_view` reads attributes (the stored ORM row); this
-    family also turns the mapping it has just built into a view, so the mapping
-    case is bridged here and the columns stay listed once, in the lifecycle.
-    """
-    view = scope_view(SimpleNamespace(**values))
-    assert view is not None
-    return view
 
 
 def _needs_anchor(row: ScopeRowView | None, decision: DecisionView) -> bool:

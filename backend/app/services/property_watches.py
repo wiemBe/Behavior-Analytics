@@ -146,9 +146,6 @@ PREVIEW_ROW_LIMIT = 100
 #: What "the last closed hour" is made of: whole buckets that add up to this many seconds.
 PREVIEW_WINDOW_SECONDS = 3600
 
-#: Hour-of-week cells in a full seasonal baseline.
-CELLS_PER_VALUE = 168
-
 _SCOPE_COLUMNS: dict[PwScopeKind, str] = {
     PwScopeKind.LOG_SOURCE: "log_source_id",
     PwScopeKind.LOG_SOURCE_TYPE: "scope_type_id",
@@ -1343,9 +1340,6 @@ def _tracked_at(value: PwValue, bucket_start: datetime) -> bool:
 
 def _measurement_label(measurement: Any) -> str | None:
     return None if measurement is None else str(measurement.value)
-
-
-VALUE_SORTS = ("events", "value", "first_seen")
 
 
 async def list_values(

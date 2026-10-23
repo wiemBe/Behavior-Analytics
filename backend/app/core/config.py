@@ -695,8 +695,8 @@ class Settings(BaseSettings):
     catchall_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- D-10: geography (events per country, for the home map) --------------
-    #: Kill switch. Two keyed searches per cadence tick (one per direction), so two an
-    #: hour per instance at the 1 h default cadence.
+    #: Kill switch. Two keyed searches per cadence tick (one per direction).
+    #: GEO_COLLECTION defaults to 5 minutes, so that is 24 searches an hour per instance.
     geo_collection_enabled: bool = True
     #: Which address is looked up, each a separate stored series. SOURCE, DESTINATION.
     geo_directions: list[str] = Field(
