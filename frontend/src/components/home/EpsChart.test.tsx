@@ -6,7 +6,7 @@ import { epsPoint, epsSeries } from "@/lib/home/fixtures";
 import { EpsChart } from "./EpsChart";
 import { failed, forbidden, loading, ok } from "./testkit";
 
-const { setOption, resize, dispose, init, use, on } = vi.hoisted(() => {
+const { setOption, dispose, init, use } = vi.hoisted(() => {
   const setOption = vi.fn();
   const resize = vi.fn();
   const dispose = vi.fn();
@@ -102,9 +102,15 @@ describe("EpsChart", () => {
     for (const state of [loading, forbidden, failed(500), ok(epsSeries(pts(5, 6)))]) {
       res.state = state;
       const { unmount } = render(<EpsChart />);
-      expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", "/fleet");
+      expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", "/fleet?window=24h");
       unmount();
     }
+  });
+
+  it.each(["1h", "7d"] as const)("keeps window %s on the fleet link", (window) => {
+    res.state = loading;
+    render(<EpsChart range={window} />);
+    expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", `/fleet?window=${window}`);
   });
 
   it("renders loading, forbidden and error as words", () => {

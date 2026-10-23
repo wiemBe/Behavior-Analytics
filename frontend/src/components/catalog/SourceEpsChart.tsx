@@ -30,7 +30,6 @@ import {
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import { useEChart } from "@/components/home/useEChart";
 import type { MetricBucket } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import {
   buildSeries,
@@ -39,6 +38,8 @@ import {
   unobservedIntervals,
 } from "@/lib/timeseries";
 import type { BaselineLookup, SeasonalValue } from "@/components/waf/wafBaseline";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
+
 
 import type { EChartsOption } from "echarts";
 
@@ -133,7 +134,7 @@ export function buildSourceEpsOption(m: SourceEpsModel, c: HomePalette): ECharts
         if (!p || i == null) return "";
         const cell = cells[i];
         return [
-          formatDateTime(new Date(p.t).toISOString()),
+          utcTimeHtml(new Date(p.t).toISOString()),
           p.observed != null
             ? `Observed: ${fmt(p.observed)} ${UNIT}`
             : `Observed: not measured (${kindMeaning(p.kind)})`,

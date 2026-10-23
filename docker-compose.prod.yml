@@ -20,28 +20,28 @@ services:
       args:
         APP_VERSION: ${QRADAR_DASH_VERSION:-}
         GIT_SHA: ${GIT_SHA:-}
-    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/postgres:${QRADAR_DASH_VERSION:-0.1.0}
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/postgres:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
 
   backend:
     <<: *backend-build-args
-    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:-0.1.0}
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
     ports: !override
       - "127.0.0.1:${API_LOOPBACK_PORT:-8000}:8000"
 
   migrate:
     <<: *backend-build-args
-    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:-0.1.0}
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
 
   celery-worker:
     <<: *backend-build-args
-    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:-0.1.0}
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
 
   celery-beat:
     <<: *backend-build-args
-    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:-0.1.0}
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/backend:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
 
   frontend:
-    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/frontend:${QRADAR_DASH_VERSION:-0.1.0}
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/frontend:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
     build:
       context: ./frontend
       args:
@@ -53,7 +53,7 @@ services:
       - "127.0.0.1:${UI_LOOPBACK_PORT:-3000}:3000"
 
   qradar-mcp:
-    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/qradar-mcp:${QRADAR_DASH_VERSION:-0.1.0}
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/qradar-mcp:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
 
   # Pinned by the multi-arch index digest, so a moved tag cannot change what runs.
   # The release workflow checks that this digest still resolves.
@@ -70,7 +70,7 @@ services:
       args:
         APP_VERSION: ${QRADAR_DASH_VERSION:-}
         GIT_SHA: ${GIT_SHA:-}
-    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/proxy:${QRADAR_DASH_VERSION:-0.1.0}
+    image: ${QRADAR_DASH_IMAGE_PREFIX:-ghcr.io/wiembe/behavior-analytics}/proxy:${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; run ./qradar-dash install}
     ports:
       - "${HTTPS_PORT:-443}:443"
     volumes:

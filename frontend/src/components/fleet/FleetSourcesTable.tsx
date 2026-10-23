@@ -12,7 +12,6 @@ import { useId, useState } from "react";
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { fleetApi, type ClassificationRule, type FleetSource, type SourceClass } from "@/lib/api";
-import { formatDateTimeCompact } from "@/lib/health";
 import {
   ASSIGNABLE_CLASSES,
   basisLabel,
@@ -23,6 +22,7 @@ import {
   reviewLabel,
   sourceFailure,
 } from "@/lib/fleet";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
@@ -114,7 +114,7 @@ function SourceRow({
         )}
       </td>
       <td className="num">
-        <span className="nowrap">{formatDateTimeCompact(source.first_seen_at)}</span>
+        <UtcTime value={source.first_seen_at} variant="compact" className="nowrap" />
         <span className="cell-sub">{originLabel(source.auto_discovered)}</span>
       </td>
       <td>

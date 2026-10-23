@@ -8,7 +8,7 @@ import { wafBaselineCell } from "./fixtures";
 
 // jsdom has no canvas, so ECharts is stubbed; what is under test is the option
 // the component hands it. Hoisted because `echarts.use` runs at import time.
-const { setOption, resize, dispose, init, use } = vi.hoisted(() => {
+const { setOption, dispose, init, use } = vi.hoisted(() => {
   const setOption = vi.fn();
   const resize = vi.fn();
   const dispose = vi.fn();

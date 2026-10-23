@@ -5,10 +5,11 @@ import { searchAccessFrom, type SearchAccess } from "@/components/searches/autho
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type ScheduledSearch } from "@/lib/api";
+import { loadErrorMessage } from "@/lib/loadError";
 
 export default async function SearchCatalogPage() {
   let searches: ScheduledSearch[] = [];
-  let failed = false;
+  let failed: string | null = null;
   let access: SearchAccess = "unknown";
   try {
     const [rows, caller] = await Promise.all([
@@ -17,8 +18,8 @@ export default async function SearchCatalogPage() {
     ]);
     searches = rows;
     access = caller;
-  } catch {
-    failed = true;
+  } catch (err) {
+    failed = loadErrorMessage(err, "searches", "read:searches");
     try {
       access = searchAccessFrom(await api.caller());
     } catch {
@@ -42,8 +43,7 @@ export default async function SearchCatalogPage() {
 
       {failed ? (
         <div className="notice" role="alert">
-          <p>Backend unreachable.</p>
-          <p>The search catalog could not be loaded. Check that the stack is running, then reload the page.</p>
+          <p>{failed}</p>
         </div>
       ) : searches.length === 0 ? (
         <div className="notice">
@@ -75,7 +75,7 @@ export default async function SearchCatalogPage() {
               {searches.map((s) => (
                 <tr key={s.id}>
                   <td>
-                    <a href={`/searches/${s.id}`}>{s.name}</a>
+                    <Link href={`/searches/${s.id}`}>{s.name}</Link>
                   </td>
                   <td>{s.category ?? "—"}</td>
                   <td>{s.mitre_techniques.join(", ") || "—"}</td>

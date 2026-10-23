@@ -70,18 +70,15 @@
   white-space: nowrap;
 }
 
-/* A metric group sits in one row at wide widths and in at most two balanced rows at 1024 px;
-   the column count comes from the group's size (`offenses-cards-N`), never a lone card on a row. */
-.cards.offenses-cards {
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-4);
+/* The filtered total is one figure. A single card in `.cards` would stretch to
+   the row; this track stays as wide as the label and the count. */
+.cards.offenses-matching {
+  grid-template-columns: minmax(0, max-content);
+  margin-bottom: var(--sp-2);
 }
-.cards.offenses-cards .card {
-  padding: var(--sp-3) var(--sp-4);
-}
-@media (max-width: 1100px) {
-  .cards.offenses-cards-3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+
+/* The open-instance row is its own section. `--sp-7` is the gap the page
+   already uses between sections (the same token as a following heading). */
+.cards.offenses-open {
+  margin-bottom: var(--sp-7);
 }

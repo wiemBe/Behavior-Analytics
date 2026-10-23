@@ -388,7 +388,7 @@ describe("primary metrics", () => {
     expect(m.getByText("3.02x")).toBeInTheDocument();
     // The absolute delta, in events, beside the ratio.
     expect(m.getByText("+240")).toBeInTheDocument();
-    expect(m.getByText("4m")).toBeInTheDocument();
+    expect(m.getByText("4 min")).toBeInTheDocument();
   });
 
   it("gives the observed value more weight than the other measures", async () => {
@@ -557,7 +557,7 @@ describe("what changed", () => {
     expect(port).toHaveTextContent("445");
     expect(port).toHaveTextContent("47 → 528");
     expect(port).toHaveTextContent("+481");
-    expect(port).toHaveTextContent("95.9%");
+    expect(port).toHaveTextContent("95.9 %");
   });
 
   it("offers a route into the full evidence", async () => {

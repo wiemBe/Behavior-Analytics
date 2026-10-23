@@ -9,18 +9,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from app.models.enums import AnomalyType, Criticality, Severity
-
-
-class HealthBreakdown(BaseModel):
-    score: float
-    freshness: float
-    volume: float
-    parsing: float
-    collection: float
 
 
 class LogSourceSummary(BaseModel):
@@ -37,7 +30,6 @@ class LogSourceSummary(BaseModel):
     maintenance_mode: bool
     qradar_status: str | None
     last_event_time: datetime | None
-    health_score: float | None
     open_anomaly_count: int = 0
 
 
@@ -54,8 +46,6 @@ class LogSourceDetail(LogSourceSummary):
     business_days: list[int]
     timezone_name: str
     custom_thresholds: dict
-    health_breakdown: HealthBreakdown | None = None
-    health_computed_at: datetime | None = None
 
 
 class LogSourceUpdate(BaseModel):
@@ -69,12 +59,57 @@ class LogSourceUpdate(BaseModel):
     maintenance_until: datetime | None = None
     maintenance_reason: str | None = Field(default=None, max_length=1000)
     expected_interval_seconds: int | None = Field(default=None, ge=1)
+    # Validated before business_days so that field can see this value.
     business_hours_only: bool | None = None
     business_hours_start: int | None = Field(default=None, ge=0, le=23)
     business_hours_end: int | None = Field(default=None, ge=0, le=23)
     business_days: list[int] | None = None
     timezone_name: str | None = Field(default=None, max_length=64)
     custom_thresholds: dict | None = None
+
+    @field_validator("timezone_name")
+    @classmethod
+    def _timezone_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("must be a valid IANA time zone name") from exc
+        return value
+
+    @field_validator("business_days")
+    @classmethod
+    def _business_days(
+        cls, value: list[int] | None, info: ValidationInfo
+    ) -> list[int] | None:
+        """ISO weekdays 1-7. Empty is allowed only while business hours are off.
+
+        `business_hours_only` is declared above, so a payload that sets both is
+        judged here. A PATCH that sets only one of them is judged on the route,
+        against the row already stored.
+        """
+        if value is None:
+            return None
+        if any(day < 1 or day > 7 for day in value):
+            raise ValueError("items must be ISO weekdays from 1 to 7")
+        if info.data.get("business_hours_only") is True and len(value) == 0:
+            raise ValueError(
+                "must list at least one ISO weekday from 1 to 7 when "
+                "business_hours_only is true"
+            )
+        return value
+
+
+def business_days_usable(days: object) -> bool:
+    """True when `days` is a non-empty list of ISO weekdays 1-7.
+
+    The route uses this on the merged row. Existing rows are not rewritten by
+    a migration, so a value that never passed the schema can still be stored.
+    """
+    if not isinstance(days, list) or len(days) == 0:
+        return False
+    return all(type(day) is int and 1 <= day <= 7 for day in days)
 
 
 class AnomalySummary(BaseModel):
@@ -101,16 +136,18 @@ class SyncResult(BaseModel):
 class OverviewCounts(BaseModel):
     total_log_sources: int
     monitored_log_sources: int
-    healthy_log_sources: int
     silent_log_sources: int
     anomalous_log_sources: int
     in_maintenance: int
 
 
 class OverviewOffenses(BaseModel):
-    active: int
-    critical: int
-    unassigned: int
+    #: None when no offense snapshot has been collected. Zero means a snapshot
+    #: exists and none of its offenses is open.
+    active: int | None
+    critical: int | None
+    critical_unknown: int | None
+    unassigned: int | None
     oldest_age_seconds: int | None = None
 
 
@@ -130,4 +167,3 @@ class SocOverview(BaseModel):
     log_sources: OverviewCounts
     offenses: OverviewOffenses
     alerts: OverviewAlerts
-    average_health_score: float | None

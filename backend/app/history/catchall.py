@@ -36,7 +36,6 @@ from typing import Any
 from app.catchall.fold import CatchallBucketFact, SenderLedger, fold_source_bucket
 from app.catchall.keyed_search import CatchallBucketOutcome
 from app.history.families import history_search_budget
-from app.history.lifecycle import ScopeRowView, bounded_reason
 from app.history.origin import HistoryOrigin, marker_values
 from app.history.planner import (
     DEFAULT_MIN_WINDOW_DAYS,
@@ -73,6 +72,11 @@ MAX_GAPS = 20
 
 
 
+def source_key(qradar_id: int) -> str:
+    """The key of a source in `SourceFloors`: its QRadar id (as Phase A's is)."""
+    return str(qradar_id)
+
+
 @dataclass(frozen=True)
 class CatchallSource:
     """One catch-all log source of the console: the row's key and the search's id."""
@@ -83,7 +87,7 @@ class CatchallSource:
     @property
     def key(self) -> str:
         """The key the per-source floors are stored under (the QRadar log-source id)."""
-        return str(self.qradar_id)
+        return source_key(self.qradar_id)
 
 
 @dataclass
@@ -129,6 +133,9 @@ class CatchallChunk:
     touches: Mapping[datetime, Mapping[tuple[uuid.UUID, str], SenderTouch]]
     #: The planner's results of the chunk, in time order.
     results: tuple[ChunkResult, ...]
+    #: Rows of a log source the inventory does not know (not stored), as the
+    #: live report's `unmapped_rows` counts them.
+    unmapped_rows: int = 0
 
 
 def reading_progress(
@@ -369,6 +376,7 @@ def fold_chunk(
     ordered = sorted(sources, key=lambda source: source.qradar_id)
     rows: list[dict[str, Any]] = []
     touches: dict[datetime, dict[tuple[uuid.UUID, str], SenderTouch]] = {}
+    unmapped = 0
     for outcome in outcomes:
         if not outcome.measured:
             continue
@@ -376,7 +384,9 @@ def fold_chunk(
         for row in outcome.rows:
             source = by_qradar.get(row.qradar_log_source_id)
             if source is None:
-                # A row of a source the inventory does not know is not stored.
+                # A row of a source the inventory does not know is not stored;
+                # the chunk still counts it, as the live fold counts it.
+                unmapped += 1
                 continue
             by_source.setdefault(source.qradar_id, []).append(row)
         # The floor proof: the first bucket in which the source has a row.
@@ -437,6 +447,7 @@ def fold_chunk(
         results=tuple(
             chunk_results(outcomes, bucket_seconds=step.bucket_seconds, searches=searches)
         ),
+        unmapped_rows=unmapped,
     )
 
 
@@ -502,36 +513,3 @@ def sender_rows(
             }
         )
     return rows
-
-
-def scope_row(
-    view: ScopeRowView,
-    *,
-    instance_id: Any,
-    family: HistoryFamily,
-    scope_key: str,
-    reason: str | None = None,
-) -> dict[str, Any]:
-    """The full column mapping of a scope row, from a view of it.
-
-    The lifecycle's `new_scope_row` and `transition_row` build the rows a
-    scope's *state change* writes. A step that only advances the reading
-    changes no state, so it needs this third builder; it writes the same
-    columns, and the repository refuses a row that lacks one.
-    """
-    return {
-        "instance_id": instance_id,
-        "family": family.value,
-        "scope_key": scope_key,
-        "state": view.state.value,
-        "days_requested": view.days_requested,
-        "days_target": view.days_target,
-        "target_start": view.target_start,
-        "floor": view.floor,
-        "through": view.through,
-        "anchor": view.anchor,
-        "started_at": view.started_at,
-        "finished_at": view.finished_at,
-        "reason": bounded_reason(reason if reason is not None else (view.reason or "")),
-        "progress": dict(view.progress) if view.progress else {},
-    }

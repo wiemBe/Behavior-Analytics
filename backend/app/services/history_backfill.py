@@ -14,15 +14,20 @@ from __future__ import annotations
 import math
 import uuid
 from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any, Literal
 
 from sqlalchemy import and_, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.collectors.catchall_collector import catchall_log_sources
+from app.collectors.metric_collector import monitored_source_map
 from app.core.config import Settings, get_settings
+from app.history import catchall as catchall_family
+from app.history import phase_a
 from app.history.estimate import (
     IPS_ACTION_VALUES_PER_SOURCE,
     IPS_FANOUT_ROWS_PER_SOURCE,
@@ -45,9 +50,11 @@ from app.history.families import (
     history_search_budget,
 )
 from app.history.lifecycle import DecisionView, console_mode
+from app.history.lifecycle import decision_view as lifecycle_decision_view
 from app.history.origin import is_live_clause
 from app.history.planner import PlannerInputError, PlannerSettings
-from app.history.progress_codec import ProgressCodecError, decode_progress
+from app.history.progress_codec import DecodedProgress, ProgressCodecError, decode_progress
+from app.history.source_floors import SourceFloors
 from app.history.state import SCOPE_TABLE_FAMILIES, HistoryFamily, HistoryState
 from app.models.catchall import CatchallBucket
 from app.models.enums import HistoryDecisionAnswer, HistoryDecisionSource
@@ -71,6 +78,7 @@ from app.schemas.history_backfill import (
     FamilyOut,
     GapOut,
     ScopeOut,
+    ScopeSourceOut,
     SourceOut,
     WindowOut,
 )
@@ -89,6 +97,18 @@ _PER_SOURCE = frozenset(PER_SOURCE_FAMILIES)
 PROVED_FLOOR_FAMILIES: frozenset[HistoryFamily] = frozenset(
     {HistoryFamily.WAF, HistoryFamily.IPS, HistoryFamily.RULE_MATCH}
 )
+
+#: The families whose scope holds many sources and proves one floor per source
+#: (§B.3.2). Only these can name the sources a reading was short of: the others
+#: read one source per scope and have nothing to name.
+MULTI_SOURCE_FAMILIES: frozenset[HistoryFamily] = frozenset(
+    {HistoryFamily.PHASE_A, HistoryFamily.CATCHALL}
+)
+
+#: How many source names one list carries. The count beside the list is the
+#: whole number, so a console with a hundred silent sources still answers
+#: truthfully, and the list stays bounded.
+MAX_SOURCE_NAMES = 25
 
 LATER_YES_POSSIBLE = "possible"
 LATER_YES_NOT_POSSIBLE = "not possible: this source already collected"
@@ -157,13 +177,21 @@ def aware(value: datetime | None) -> datetime | None:
 
 
 def decision_view(row: HistoryBackfillDecision) -> DecisionView:
-    return DecisionView(
-        answer=row.answer,
-        days=row.days,
-        start_requested_at=aware(row.start_requested_at),
-        start_requested_by=row.start_requested_by,
-        stop_requested_at=aware(row.stop_requested_at),
-        stop_requested_by=row.stop_requested_by,
+    """The stored decision as the lifecycle reads it. Naive times are UTC.
+
+    The column copy lives in ``lifecycle_decision_view``. This wrapper is the
+    API path: it coerces naive timestamps before the lifecycle sees them, which
+    the collectors do not.
+    """
+    return lifecycle_decision_view(
+        SimpleNamespace(
+            answer=row.answer,
+            days=row.days,
+            start_requested_at=aware(row.start_requested_at),
+            start_requested_by=row.start_requested_by,
+            stop_requested_at=aware(row.stop_requested_at),
+            stop_requested_by=row.stop_requested_by,
+        )
     )
 
 
@@ -222,8 +250,121 @@ def days_read(
     return round(buckets * bucket_seconds / 86400, 1)
 
 
+def console_wide_planner(family: HistoryFamily, settings: Settings) -> PlannerSettings:
+    """The margin and bucket a console-wide family reads with (§B.3.2).
+
+    Phase A and catch-all take both from the same two settings their collectors
+    take them from, so the page judges the per-source floors with the collector's
+    own numbers.
+    """
+    return PlannerSettings(
+        bucket_seconds=bucket_seconds_of(family, settings),
+        floor_margin_hours=int(settings.history_backfill_floor_margin_hours),
+    )
+
+
+@dataclass(frozen=True)
+class SourceSets:
+    """The sources a console-wide reading was short of (HB-17).
+
+    Every field is None when the reading did not measure it: another family, a
+    scope that has not searched yet, a progress that does not decode, floors
+    that cannot be read, and a floor map that holds no source at all (HB-22 D2b)
+    all answer None, never an empty list and never a zero (rule 8).
+    """
+
+    cut: list[ScopeSourceOut] | None = None
+    silent: list[ScopeSourceOut] | None = None
+    cut_count: int | None = None
+    silent_count: int | None = None
+
+
+def source_names(keys: Iterable[str], names: Mapping[str, str]) -> list[ScopeSourceOut]:
+    """The named sources, by name and then by key; at most `MAX_SOURCE_NAMES` of them.
+
+    A source that is no longer known has no name and sorts last: the named ones
+    are the ones the operator can look up.
+    """
+    listed = [ScopeSourceOut(key=key, name=names.get(key)) for key in keys]
+    listed.sort(key=lambda item: (item.name is None, item.name or "", item.key))
+    return listed[:MAX_SOURCE_NAMES]
+
+
+def source_sets(
+    floors: SourceFloors,
+    *,
+    target_start: datetime,
+    margin: timedelta,
+    bucket: timedelta,
+    monitored: Iterable[str],
+    names: Mapping[str, str],
+) -> SourceSets:
+    """The sources the reading was short of, the way the adapter computes them.
+
+    The cut ones are the monitored sources whose floor is later than `T0 + one
+    bucket` (QRadar holds less than asked); the silent ones are the monitored
+    sources with no event at all in the window. Both are judged against the
+    sources monitored now, so a source added or removed since the reading
+    finished can differ from the counts in the reason.
+    """
+    keys = frozenset(monitored)
+    cut = floors.cut_sources(target_start=target_start, margin=margin, bucket=bucket) & keys
+    silent = floors.silent_sources(keys)
+    return SourceSets(
+        cut=source_names(cut, names),
+        silent=source_names(silent, names),
+        cut_count=len(cut),
+        silent_count=len(silent),
+    )
+
+
+def _scope_sources(
+    family: HistoryFamily,
+    decoded: DecodedProgress | None,
+    *,
+    bucket_seconds: int,
+    margin: timedelta | None,
+    monitored: Sequence[str],
+    names: Mapping[str, str],
+) -> SourceSets:
+    """The four fields of a scope row: nothing measured answers four `None`s.
+
+    A family that reads one source per scope has nothing to name, a scope that
+    has not searched has no floors, and floors that cannot be read back are
+    unknown, not empty. So is a floor map without a single source (HB-22 D2b):
+    the reading proved no floor at all, so "every monitored source is silent"
+    would be a verdict from a floor proof that never produced one — a restart
+    whose first step wrote its plan and failed before a row is the case the lab
+    showed. The progress carries no separate floor-scan-completion flag for
+    these families (their floor proof is the read itself, the core `floor` is
+    where the read starts), so the floor map is the signal there is.
+    """
+    if family not in MULTI_SOURCE_FAMILIES or decoded is None or margin is None:
+        return SourceSets()
+    try:
+        floors = SourceFloors.decode(decoded.adapter)
+    except ProgressCodecError:
+        return SourceSets()
+    if not floors.first_buckets:
+        return SourceSets()
+    return source_sets(
+        floors,
+        target_start=decoded.progress.target_start,
+        margin=margin,
+        bucket=timedelta(seconds=bucket_seconds),
+        monitored=monitored,
+        names=names,
+    )
+
+
 def scope_out(
-    row: HistoryBackfillScope, bucket_seconds: int, name: str | None = None
+    row: HistoryBackfillScope,
+    bucket_seconds: int,
+    name: str | None = None,
+    *,
+    margin: timedelta | None = None,
+    monitored: Sequence[str] = (),
+    names: Mapping[str, str] | None = None,
 ) -> ScopeOut:
     """One scope row as the page shows it.
 
@@ -232,20 +373,37 @@ def scope_out(
     `null`, never a zero (rule 8), and the second says so with `progress_unreadable`.
     `name` is the scope's log-source name for WAF and IPS, looked up once for the whole
     console (never one query per row); a console-wide row has none.
+
+    Phase A and catch-all read many sources and prove one floor per source, so
+    their scope names the sources the reading was short of (HB-17): the cut ones
+    and the silent ones, with the whole counts. `margin`, `monitored` and `names`
+    are what that needs; without them the four fields stay `null` ("not
+    measured"), never an empty list.
     """
     searches: int | None = None
     buckets_read: int | None = None
     gaps: list[GapOut] | None = None
     unreadable = False
+    decoded: DecodedProgress | None = None
     if row.progress:  # `{}` is a scope that has not stepped yet: no counts, not zeros
         try:
-            progress = decode_progress(row.progress).progress
+            decoded = decode_progress(row.progress)
         except ProgressCodecError:
             unreadable = True
         else:
-            searches, buckets_read = progress.searches, progress.buckets_read
-            gaps = [GapOut(start=g.start, end=g.end, reason=g.reason) for g in progress.gaps]
+            searches, buckets_read = decoded.progress.searches, decoded.progress.buckets_read
+            gaps = [
+                GapOut(start=g.start, end=g.end, reason=g.reason) for g in decoded.progress.gaps
+            ]
     family = HistoryFamily(row.family)
+    sources = _scope_sources(
+        family,
+        decoded,
+        bucket_seconds=bucket_seconds,
+        margin=margin,
+        monitored=monitored,
+        names=names or {},
+    )
     if family not in _PER_SOURCE:
         later_yes = LATER_YES_POSSIBLE
     elif row.state == HistoryState.NOT_ELIGIBLE.value:
@@ -268,12 +426,18 @@ def scope_out(
         started_at=row.started_at,
         finished_at=row.finished_at,
         reason=row.reason,
+        last_error_class=row.last_error_class,
+        last_error_at=row.last_error_at,
         searches=searches,
         buckets_read=buckets_read,
         days_read=days_read(
             family, row.floor, row.through, bucket_seconds, target_start=row.target_start
         ),
         gaps=gaps,
+        sources_cut=sources.cut,
+        sources_silent=sources.silent,
+        sources_cut_count=sources.cut_count,
+        sources_silent_count=sources.silent_count,
         progress_unreadable=unreadable,
         later_yes=later_yes,
     )
@@ -312,12 +476,6 @@ def floor_to_bucket(now: datetime, bucket_seconds: int) -> datetime:
     """The start of the bucket `now` falls in, so the estimate's end is a whole bucket."""
     epoch = int(now.timestamp()) // bucket_seconds * bucket_seconds
     return datetime.fromtimestamp(epoch, tz=UTC)
-
-
-def group_sources(keys: Sequence[int], size: int) -> list[list[int]]:
-    """Retained compatibility helper; IPS history estimation no longer groups sources."""
-    ordered = sorted(keys)
-    return [ordered[i : i + size] for i in range(0, len(ordered), size)]
 
 
 SearchFactory = Callable[[PlannerSettings], Callable[[int], int]]
@@ -423,9 +581,13 @@ class HistoryBackfillService:
             .execution_options(populate_existing=True)
         ):
             scopes[(scope.instance_id, scope.family)].append(scope)
-        # The log source's name of a WAF or IPS scope row: one statement for every row of
-        # every console, never one per row (rule 9).
-        scope_names = await self._scope_names(ids, scopes)
+        # The sources the two console-wide families monitor now (HB-17): the very
+        # set their collectors read, one statement each for every console.
+        monitored = await self._monitored_sources(ids)
+        # The log source's name of a WAF or IPS scope row, and of every monitored
+        # source: one statement for every row of every console, never one per row
+        # (rule 9).
+        scope_names = await self._scope_names(ids, scopes, monitored)
         sources = {
             HistoryFamily.WAF: await self._sources(
                 WafSourceProfile, WafSourceBucket, is_live_clause(WafSourceBucket), ids
@@ -447,6 +609,7 @@ class HistoryBackfillService:
                         rows,
                         sources.get(family, {}).get(instance_id),
                         scope_names.get(instance_id, {}),
+                        monitored.get(instance_id, {}).get(family, ()),
                     )
                 )
             out.append(
@@ -464,13 +627,16 @@ class HistoryBackfillService:
         self,
         instance_ids: Sequence[uuid.UUID],
         scopes: Mapping[tuple[uuid.UUID, str], Sequence[HistoryBackfillScope]],
+        monitored: Mapping[uuid.UUID, Mapping[HistoryFamily, Sequence[str]]] | None = None,
     ) -> dict[uuid.UUID, dict[str, str]]:
-        """Every WAF or IPS scope row's log-source name: one statement for all consoles.
+        """Every scope row's log-source name, and every monitored source's: one statement.
 
         `scope_key` is the QRadar log-source id, so this is the lookup `SourceOut` uses
         (`log_source` joined on `qradar_id`), done once per request. A key that is not an
         id, and a source that is no longer known, have no name: the page shows the key
-        instead of inventing one.
+        instead of inventing one. The monitored sources of the two console-wide
+        families are named too (HB-17): their cut and silent sources are named on
+        the scope.
         """
         wanted: dict[uuid.UUID, set[int]] = defaultdict(set)
         for (instance_id, family), rows in scopes.items():
@@ -481,6 +647,13 @@ class HistoryBackfillService:
                     wanted[instance_id].add(int(row.scope_key))
                 except ValueError:
                     continue
+        for instance_id, families in (monitored or {}).items():
+            for keys in families.values():
+                for key in keys:
+                    try:
+                        wanted[instance_id].add(int(key))
+                    except ValueError:
+                        continue
         ids = sorted(wanted)
         if not ids:
             return {}
@@ -495,17 +668,48 @@ class HistoryBackfillService:
             found[instance_id][str(qradar_id)] = name
         return found
 
+    async def _monitored_sources(
+        self, instance_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, dict[HistoryFamily, list[str]]]:
+        """The sources each console-wide family monitors now: one statement each.
+
+        Phase A monitors every source the platform monitors; catch-all reads the
+        inventory's catch-all sources. The collectors build the very same two sets
+        (`app.collectors.metric_collector`, `app.collectors.catchall_collector`), so
+        the page judges the per-source floors against exactly what the reading read.
+        """
+        phase_a_sources = await monitored_source_map(self.session, instance_ids)
+        catchall_sources = await catchall_log_sources(
+            self.session, instance_ids, self.settings.catchall_type_ids
+        )
+        found: dict[uuid.UUID, dict[HistoryFamily, list[str]]] = defaultdict(dict)
+        for instance_id, monitored in phase_a_sources.items():
+            found[instance_id][HistoryFamily.PHASE_A] = [
+                phase_a.source_key(qradar_id) for qradar_id in monitored
+            ]
+        for instance_id, sources in catchall_sources.items():
+            found[instance_id][HistoryFamily.CATCHALL] = [
+                catchall_family.source_key(source.qradar_id) for source in sources
+            ]
+        return found
+
     def _family_out(
         self,
         family: HistoryFamily,
         rows: Sequence[HistoryBackfillScope],
         sources: list[tuple[str, str, bool, bool]] | None,
         names: Mapping[str, str],
+        monitored: Sequence[str] = (),
     ) -> FamilyOut:
         spec = FAMILY_SPECS[family]
         enabled, reason = collection_state(spec, self.settings)
         fitted = fit_family_window(family, self.settings)
         bucket = bucket_seconds_of(family, self.settings)
+        margin = (
+            console_wide_planner(family, self.settings).margin
+            if family in MULTI_SOURCE_FAMILIES
+            else None
+        )
         keys = {row.scope_key for row in rows}
         listed: list[SourceOut] | None = None
         if family in _PER_SOURCE:
@@ -530,7 +734,17 @@ class HistoryBackfillService:
                 limited_by=list(fitted.limited_by),
                 reason=fitted.reason,
             ),
-            scopes=[scope_out(row, bucket, names.get(row.scope_key)) for row in rows],
+            scopes=[
+                scope_out(
+                    row,
+                    bucket,
+                    names.get(row.scope_key),
+                    margin=margin,
+                    monitored=monitored,
+                    names=names,
+                )
+                for row in rows
+            ],
             sources=listed,
             later_yes=None if family in _PER_SOURCE else LATER_YES_POSSIBLE,
         )

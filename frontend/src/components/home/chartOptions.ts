@@ -14,10 +14,11 @@ import { SEVERITY_TOKEN, sliceColors, type HomePalette } from "@/lib/home/chartP
 import { gapText, type EpsChartModel } from "@/lib/home/epsChart";
 import type { ClassEps } from "@/lib/home/epsByClass";
 import type { SeverityPerHour } from "@/lib/home/severityPerHour";
-import { formatDateTime } from "@/lib/health";
 import { NOT_MEASURED } from "@/lib/behavior";
 import { formatEpsValue } from "@/lib/fleet";
 import { historyMarkAreas, readHistoryShade } from "@/components/behavior/historyOrigin";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
+import { formatCount } from "@/lib/format";
 
 import { epsHistoryLine, type EpsHistory } from "./epsHistory";
 
@@ -46,7 +47,7 @@ function tooltipBase(p: HomePalette) {
   };
 }
 
-const n = (v: number) => v.toLocaleString("en-US");
+const n = (v: number) => formatCount(v);
 const eps = (v: number | null | undefined) => formatEpsValue(v) ?? NOT_MEASURED;
 
 // --- fleet EPS line -----------------------------------------------------------
@@ -55,7 +56,7 @@ const eps = (v: number | null | undefined) => formatEpsValue(v) ?? NOT_MEASURED;
 export function epsTooltip(model: EpsChartModel, index: number, history?: EpsHistory): string {
   const s = model.steps[index];
   if (!s) return "";
-  const lines = [formatDateTime(new Date(s.t).toISOString())];
+  const lines = [utcTimeHtml(new Date(s.t).toISOString())];
   lines.push(
     s.eps !== null
       ? `Observed: ${eps(s.eps)} EPS`
@@ -237,7 +238,7 @@ const severityColor = (sev: string, p: HomePalette) =>
 export function severityTooltip(r: SeverityPerHour, index: number): string {
   const h = r.hours[index];
   if (!h) return "";
-  const start = formatDateTime(h.start);
+  const start = utcTimeHtml(h.start);
   const lines = stackOrder(r.severities)
     .filter((s) => (h.counts[s] ?? 0) > 0)
     .map((s) => `${s.charAt(0)}${s.slice(1).toLowerCase()}: ${n(h.counts[s])}`);

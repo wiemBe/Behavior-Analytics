@@ -19,6 +19,7 @@ from app.models.monitoring import CollectionWatermark
 from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import ProviderError
 from app.providers.mock import MockCatchallSearch, MockQRadarProvider
+from app.services.ariel_permit import ArielPermitUnavailable
 from app.services.catchall_retention import CatchallRetention
 from tests.integration.factories import make_instance, make_log_source
 
@@ -348,14 +349,20 @@ class TestSplitAndFailure:
         assert all(b.events == 0 and b.top_senders == [] for b in zero)
         assert all(b.measurement == CatchallMeasurement.EXACT.value for b in zero)
 
-    async def test_a_failure_writes_no_bucket_and_the_watermark_holds(self, db_session) -> None:
+    @pytest.mark.parametrize(
+        "failure",
+        [ProviderError("QRadar is unreachable"), ArielPermitUnavailable(30, 3, 6)],
+    )
+    async def test_a_failure_writes_no_bucket_and_the_watermark_holds(
+        self, db_session, failure
+    ) -> None:
         inst, _source, _ = await setup(db_session)
         await collector(db_session, Script(steady([row("fw", 10)]))).collect(inst)
         held = (await watermark(db_session, inst)).watermark_at
         assert held == LAST
         later = NOW + timedelta(hours=1)
         provider = Script(steady([row("fw", 10), row("zzz", 9)]))
-        provider.catchall_fault = lambda s: ProviderError("QRadar is unreachable")
+        provider.catchall_fault = lambda s: failure
         before = await db_session.scalar(select(func.count()).select_from(CatchallBucket))
 
         report = await collector(db_session, provider, now=later).collect(inst)

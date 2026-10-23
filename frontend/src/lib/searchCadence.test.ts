@@ -11,7 +11,6 @@ import {
   formatDuration,
   outcomeInfo,
   presetToCron,
-  scheduleLabel,
   worstCaseDelay,
 } from "./searchCadence";
 
@@ -98,11 +97,6 @@ describe("schedule presets", () => {
 
   it("has no cron for a duration that is not a preset", () => {
     expect(presetToCron(600)).toBeNull();
-  });
-
-  it("labels a preset 'Every …' and anything else 'Custom'", () => {
-    expect(scheduleLabel("0 * * * *")).toBe("Every 1 h");
-    expect(scheduleLabel("17 3 * * 1")).toBe("Custom");
   });
 
   it("labels an allowed cadence the same way a bucket is labelled", () => {

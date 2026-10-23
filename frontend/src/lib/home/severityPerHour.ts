@@ -7,6 +7,7 @@
 // zero; in a truncated list it is "none seen".
 
 import type { AnomalySummary, Page } from "@/lib/api";
+import { formatCount } from "@/lib/format";
 
 import { countBySeverity } from "./anomalies";
 import { insufficient, truncated, type Qualifier } from "./qualifiers";
@@ -98,7 +99,7 @@ export function lastHours(nowMs: number, hours: number): { since: string; until:
 
 /** The stack as prose: the totals the chart cannot give a screen reader. */
 export function severityText(r: SeverityPerHour, range: { since: string; until: string }): string {
-  const n = (v: number) => v.toLocaleString("en-US");
+  const n = (v: number) => formatCount(v);
   const seen = r.hours.reduce((s, h) => s + h.total, 0);
   const bound = r.lowerBound ? "at least " : "";
   const bySeverity = r.severities

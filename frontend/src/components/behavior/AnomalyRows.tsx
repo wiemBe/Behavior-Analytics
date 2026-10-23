@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 // The anomaly list's rows, with a per-row technical disclosure.
 //
 // Nine default columns instead of eleven, and the fields that were pushing the
@@ -25,7 +27,6 @@ import {
   formatRatio,
   stateTone,
 } from "@/lib/behavior";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import "@/components/ips/ips.css";
 import { expectsNone, ipsFigures } from "@/components/ips/ipsDetectors";
 import { formatFigure } from "@/components/ips/ipsFormat";
@@ -40,6 +41,7 @@ import {
   subjectText,
 } from "@/components/waf/wafLabels";
 import { isNewEndpointType, isRatioType } from "@/components/waf/wafSummary";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/propertywatch/propertywatch.css";
 import "@/components/ui/controls.css";
@@ -59,7 +61,7 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
   // Below 1100 px the Started column folds under the subject.
   const started = (
     <span className="cell-sub cell-fold fold-sm fold-started">
-      Started {formatDateTimeCompact(a.anomaly_start ?? a.detected_at)}
+      Started {<UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />}
     </span>
   );
   if (isPwRow(a) && a.pw_value) {
@@ -69,13 +71,13 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
       <td className="cell-name cell-subject">
         <span className="subject-endpoint pw-value-text">{valueText(a.pw_value)}</span>
         <span className="sr-only"> · </span>
-        <a
+        <Link
           className="subject-source"
           href={`/behavior/watches/${a.pw_value.watch_id}`}
           title={a.pw_value.watch_name}
         >
           {a.pw_value.watch_name}
-        </a>
+        </Link>
         {started}
       </td>
     );
@@ -98,9 +100,9 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
     return (
       <td className="cell-name cell-subject">
         {a.log_source_id ? (
-          <a className="subject-source" href={`/behavior/sources/${a.log_source_id}`} title={source}>
+          <Link className="subject-source" href={`/behavior/sources/${a.log_source_id}`} title={source}>
             {source}
-          </a>
+          </Link>
         ) : (
           <span className="subject-source" title={source}>
             {source}
@@ -114,13 +116,13 @@ function SubjectCell({ a }: { a: AnomalySummary }) {
     <td className="cell-name cell-subject">
       <span className="waf-endpoint subject-endpoint">{endpointLabel(a.waf_endpoint)}</span>
       <span className="sr-only"> · </span>
-      <a
+      <Link
         className="subject-source"
         href={`/behavior/waf/sources/${a.log_source_id}`}
         title={source}
       >
         {source}
-      </a>
+      </Link>
       {a.waf_endpoint.virtual_host && (
         <span className="cell-sub subject-host">Virtual host {a.waf_endpoint.virtual_host}</span>
       )}
@@ -300,7 +302,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                 </span>
               </td>
               <td className="num col-sm col-started">
-                {formatDateTimeCompact(a.anomaly_start ?? a.detected_at)}
+                {<UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />}
               </td>
               <td className="col-md">
                 <EvidenceCell a={a} />
@@ -309,7 +311,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                   extra column was pushing the detail link out of view. */}
               <td className="row-actions">
                 <div className="row-actions-inner">
-                  <a href={`/anomalies/${a.id}`}>Open</a>
+                  <Link href={`/anomalies/${a.id}`}>Open</Link>
                   <button
                     type="button"
                     className="row-toggle"
@@ -373,7 +375,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                       <dt>Anomaly end</dt>
                       <dd className="num">
                         {a.anomaly_end ? (
-                          formatDateTime(a.anomaly_end)
+                          <UtcTime value={a.anomaly_end} />
                         ) : (
                           <span className="muted">still running</span>
                         )}
@@ -381,7 +383,7 @@ export function AnomalyRows({ items }: { items: AnomalySummary[] }) {
                     </div>
                     <div>
                       <dt>Resolved</dt>
-                      <dd className="num">{formatDateTime(a.resolved_at)}</dd>
+                      <dd className="num">{<UtcTime value={a.resolved_at} />}</dd>
                     </div>
                     <div>
                       <dt>Consecutive buckets</dt>

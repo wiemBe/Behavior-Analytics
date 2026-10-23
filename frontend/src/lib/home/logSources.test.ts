@@ -57,4 +57,21 @@ describe("logSources", () => {
     expect(r.total).toBeNull();
     expect(r.qualifiers[0]).toMatchObject({ kind: "INSUFFICIENT_DATA" });
   });
+
+  it("carries the evaluation-fault qualifier with its counts and keeps the drill-down to sources", () => {
+    const r = logSources(
+      summary({
+        monitored_sources: 6,
+        sources_with_evaluation_faults: 2,
+        buckets_not_judged: 1,
+      }),
+      [src({ state: "NORMAL" }), src({ state: "OPEN" })],
+      59,
+    );
+    expect(r.evaluationFault).toBe("Not judged: 2 sources (24 h)");
+    expect(r.evaluationFaultDetail).toBe(
+      "2 sources have an evaluation fault; 1 bucket was not judged in 24 h",
+    );
+    expect(r.judgedText).toBe("1 of 2 judged normal");
+  });
 });

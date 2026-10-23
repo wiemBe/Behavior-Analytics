@@ -112,6 +112,11 @@ from app.property_watch.scope import (
 from app.providers.base import QRadarProvider
 from app.providers.dto import PwSearchKind
 from app.repositories.property_watch import PropertyWatchRepository
+from app.services.ariel_permit import (
+    ArielPermitUnavailable,
+    ariel_background_priority,
+    ariel_history_deferred_reason,
+)
 from app.services.search_cadence import SearchCadenceService
 
 logger = logging.getLogger("app.collectors.pw_collector")
@@ -258,6 +263,32 @@ class _StepBudget(PwSearchBudget):
             return False
         self.used += 1
         return True
+
+    def refund_refused_search(self) -> None:
+        """A permit refusal spent neither the step nor the tick's search allowance."""
+
+        if self.used < 1 or self._parent.used < 1:
+            raise RuntimeError("cannot refund a search the history budget did not take")
+        self.used -= 1
+        self._parent.used -= 1
+
+
+class _HistoryProvider:
+    """Remember the typed capacity refusal a keyed-search driver renders as FAILED."""
+
+    def __init__(self, provider: QRadarProvider) -> None:
+        self.provider = provider
+        self.deferred: ArielPermitUnavailable | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.provider, name)
+
+    async def get_pw_keyed(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return await self.provider.get_pw_keyed(*args, **kwargs)
+        except ArielPermitUnavailable as exc:
+            self.deferred = exc
+            raise
 
 
 def _stored_version(watch: PropertyWatch) -> int | None:
@@ -924,6 +955,7 @@ class PwCollector:
             )
 
         spent = [0]
+        history_provider = _HistoryProvider(self.provider)
 
         def unreadable() -> PwWatchReport:
             """The stored progress does not read back: hand off `PARTIAL`, from the column."""
@@ -1079,7 +1111,13 @@ class PwCollector:
                     assert plan.totals_span is not None
                     before = step_budget.used
                     outcomes = await self._run_kind(
-                        PwSearchKind.TOTALS, scope, plan.totals_span, (), (), step_budget
+                        PwSearchKind.TOTALS,
+                        scope,
+                        plan.totals_span,
+                        (),
+                        (),
+                        step_budget,
+                        provider=history_provider,
                     )
                     used = step_budget.used - before
                     result = ScanSpanResult(
@@ -1123,7 +1161,13 @@ class PwCollector:
                 else:
                     assert plan.totals_span is not None
                     totals_out = await self._run_kind(
-                        PwSearchKind.TOTALS, scope, plan.totals_span, (), (), step_budget
+                        PwSearchKind.TOTALS,
+                        scope,
+                        plan.totals_span,
+                        (),
+                        (),
+                        step_budget,
+                        provider=history_provider,
                     )
                     totals_status = _wide_status(totals_out, step_budget.used - before)
                 pinned_out: list[PwBucketOutcome] | None = None
@@ -1133,7 +1177,7 @@ class PwCollector:
                     mark = step_budget.used
                     pinned_out = await self._run_kind(
                         PwSearchKind.PINNED, scope, plan.pinned_span, properties, pinned,
-                        step_budget,
+                        step_budget, provider=history_provider,
                     )
                     pinned_status = _wide_status(pinned_out, step_budget.used - mark)
                 elif pinned:
@@ -1152,7 +1196,13 @@ class PwCollector:
                         continue
                     mark = step_budget.used
                     outcomes = await self._run_kind(
-                        PwSearchKind.GROUPED, scope, chunk, properties, (), step_budget
+                        PwSearchKind.GROUPED,
+                        scope,
+                        chunk,
+                        properties,
+                        (),
+                        step_budget,
+                        provider=history_provider,
                     )
                     result_chunk = _chunk_result(chunk, outcomes, step_budget.used - mark)
                     results.append(result_chunk)
@@ -1205,6 +1255,13 @@ class PwCollector:
                     )
                     written = len(grouped_out)
                 break
+        except ArielPermitUnavailable as exc:
+            return finish(
+                entry.progress or progress,
+                None,
+                ariel_history_deferred_reason(exc),
+                outcome="waiting",
+            )
         except ValueError as exc:
             # A corrupt stored watch: the class only, never the text (it may hold a value).
             logger.warning(
@@ -1232,28 +1289,47 @@ class PwCollector:
         properties: tuple[tuple[str, str], ...],
         pinned: tuple[tuple[str, ...], ...],
         budget: PwSearchBudget,
+        *,
+        provider: _HistoryProvider | None = None,
     ) -> list[PwBucketOutcome]:
         """One search kind over `span`, for every chunk of the scope, combined per bucket."""
         settings = self.settings
         chunks: list[list[PwBucketOutcome]] = []
         for ids in scope.chunks:
-            chunks.append(
-                await run_search(
-                    self.provider,
-                    PwSearchPlan(
-                        search=kind,
-                        scope_kind=scope.scope_kind,
-                        scope_ids=ids,
-                        properties=properties if kind is not PwSearchKind.TOTALS else (),
-                        pinned=pinned if kind is PwSearchKind.PINNED else (),
-                    ),
+            selected = self.provider if provider is None else provider
+            plan = PwSearchPlan(
+                search=kind,
+                scope_kind=scope.scope_kind,
+                scope_ids=ids,
+                properties=properties if kind is not PwSearchKind.TOTALS else (),
+                pinned=pinned if kind is PwSearchKind.PINNED else (),
+            )
+            if provider is None:
+                outcomes = await run_search(
+                    cast(QRadarProvider, selected),
+                    plan,
                     (span.start, span.end),
                     settings.collection_interval_seconds,
                     max_rows=settings.pw_max_rows_per_search,
                     budget=budget,
                     max_sources=settings.pw_max_sources_per_search,
                 )
-            )
+            else:
+                with ariel_background_priority():
+                    outcomes = await run_search(
+                        cast(QRadarProvider, selected),
+                        plan,
+                        (span.start, span.end),
+                        settings.collection_interval_seconds,
+                        max_rows=settings.pw_max_rows_per_search,
+                        budget=budget,
+                        max_sources=settings.pw_max_sources_per_search,
+                    )
+                if provider.deferred is not None:
+                    if isinstance(budget, _StepBudget):
+                        budget.refund_refused_search()
+                    raise provider.deferred
+            chunks.append(outcomes)
         return combine_chunks(chunks)
 
     async def _search(

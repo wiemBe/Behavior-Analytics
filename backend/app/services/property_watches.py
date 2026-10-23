@@ -128,6 +128,7 @@ from app.schemas.property_watch import (
     WatchValueOut,
 )
 from app.schemas.search_cadence import CadenceOut
+from app.services.ariel_permit import ariel_background_priority
 from app.services.search_cadence import SearchCadenceService, bucket_seconds
 
 #: Inclusive bounds of the `hours` query on the history reads and the default, as F.1's preview.
@@ -144,9 +145,6 @@ PREVIEW_SEARCHES = 2
 PREVIEW_ROW_LIMIT = 100
 #: What "the last closed hour" is made of: whole buckets that add up to this many seconds.
 PREVIEW_WINDOW_SECONDS = 3600
-
-#: Hour-of-week cells in a full seasonal baseline.
-CELLS_PER_VALUE = 168
 
 _SCOPE_COLUMNS: dict[PwScopeKind, str] = {
     PwScopeKind.LOG_SOURCE: "log_source_id",
@@ -1344,9 +1342,6 @@ def _measurement_label(measurement: Any) -> str | None:
     return None if measurement is None else str(measurement.value)
 
 
-VALUE_SORTS = ("events", "value", "first_seen")
-
-
 async def list_values(
     session: AsyncSession,
     watch: PropertyWatch,
@@ -1639,20 +1634,22 @@ async def run_preview(
         "max_sources": settings.pw_max_sources_per_search,
     }
     try:
-        totals = await run_search(
-            provider,
-            PwSearchPlan(PwSearchKind.TOTALS, scope_kind, tuple(scope_ids)),
-            (start, end),
-            bucket_seconds,
-            **common,
-        )
-        grouped = await run_search(
-            provider,
-            PwSearchPlan(PwSearchKind.GROUPED, scope_kind, tuple(scope_ids), properties),
-            (start, end),
-            bucket_seconds,
-            **common,
-        )
+        with ariel_background_priority():
+            totals = await run_search(
+                provider,
+                PwSearchPlan(PwSearchKind.TOTALS, scope_kind, tuple(scope_ids)),
+                (start, end),
+                bucket_seconds,
+                **common,
+            )
+        with ariel_background_priority():
+            grouped = await run_search(
+                provider,
+                PwSearchPlan(PwSearchKind.GROUPED, scope_kind, tuple(scope_ids), properties),
+                (start, end),
+                bucket_seconds,
+                **common,
+            )
     except ValueError as exc:  # a reference or a window the validators refuse
         raise PreviewRefused(f"the stored watch cannot be searched: {exc}") from exc
     facts = [

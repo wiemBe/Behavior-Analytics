@@ -1,3 +1,6 @@
+
+import { formatCount } from "@/lib/format";
+
 // The caveats a Home widget attaches to data it does have (UR.5.4). They are
 // qualifiers on an ok state, not states of their own: the numbers beside them
 // are real, and the qualifier says how far to trust them. A derivation returns
@@ -13,7 +16,7 @@ export type Qualifier =
   /** The source has not produced anything yet. Not zero. */
   | { kind: "NOT_COLLECTED"; reason: string };
 
-const n = (value: number) => value.toLocaleString("en-US");
+const n = (value: number) => formatCount(value);
 
 export function insufficient(reason: string): Qualifier {
   return { kind: "INSUFFICIENT_DATA", reason };
@@ -31,10 +34,6 @@ export function partial(have: number, of: number, unit: string): Qualifier {
 /** "First 200 of 345" */
 export function truncated(shown: number, total: number): Qualifier {
   return { kind: "TRUNCATED", shown, total, text: `First ${n(shown)} of ${n(total)}` };
-}
-
-export function hasQualifier(qualifiers: Qualifier[], kind: Qualifier["kind"]): boolean {
-  return qualifiers.some((q) => q.kind === kind);
 }
 
 /**

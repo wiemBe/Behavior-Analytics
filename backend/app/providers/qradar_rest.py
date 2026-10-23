@@ -24,9 +24,10 @@ import asyncio
 import logging
 import random
 import ssl
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from functools import wraps
+from typing import Any, ClassVar, Protocol, cast
 
 import httpx
 
@@ -103,6 +104,7 @@ from app.providers.telemetry import EndpointCategory, ErrorClass, observe
 from app.providers.tls import build_ssl_context
 from app.rules.matches import fold_windowed_rows, window_starts
 from app.security.sanitizer import sanitize_text
+from app.services.ariel_permit import ArielPermitBudget, ArielPermitUnavailable
 from app.services.backoff import backoff_delay
 from app.waf.bucketed import (
     fold_breakdown_buckets,
@@ -135,6 +137,39 @@ RULE_MATCH_WINDOWED_QUERY_VERSION = "rule_match/v2"
 #: The console-wide floor proof of the rule-match history backfill (HB-5). One
 #: row per bucket with events; the text is stored here, never built by a caller.
 CONSOLE_EVENT_TOTALS_QUERY_VERSION = "console_event_totals/v1"
+
+
+class _ArielPermitOwner(Protocol):
+    _permit: ArielPermitBudget | None
+
+
+def _holds_ariel_permit[**P, R](
+    method: Callable[P, Coroutine[Any, Any, R]],
+) -> Callable[P, Coroutine[Any, Any, R]]:
+    """Hold one configured permit around a provider-owned Ariel lifecycle.
+
+    Applied to exactly the four methods that run create, poll, results and cancel
+    themselves (docs/ARIEL-PERMIT.md §P.3). They never call each other, so a search
+    is counted once. A refusal raises before anything is sent to /ariel/searches.
+    `_permit is None` means no enforcement.
+    """
+
+    @wraps(method)
+    async def permitted(*args: P.args, **kwargs: P.kwargs) -> R:
+        owner = cast(_ArielPermitOwner, args[0])
+        budget = owner._permit
+        if budget is None:
+            return await method(*args, **kwargs)
+        async with budget.permit() as permit:
+            if permit is None:
+                raise ArielPermitUnavailable(
+                    budget.wait_seconds,
+                    budget.instance_limit,
+                    budget.global_limit,
+                )
+            return await method(*args, **kwargs)
+
+    return permitted
 
 
 def _rule_id(value: Any) -> int | None:
@@ -185,6 +220,23 @@ def parse_rule_match_rows(raw_rows: Sequence[dict]) -> tuple[list[RuleMatchRow],
 
 class MalformedUpstreamResponse(ProviderError):
     """QRadar returned something we could not safely interpret."""
+
+
+def _metric_log_source_clause(qradar_ids: Sequence[int] | None) -> str:
+    """` AND logsourceid IN (...)` for a top-up, or empty for the whole console.
+
+    Only integers are interpolated. An empty list must not become an unfiltered
+    search: the caller skips the search instead of asking for every source.
+    """
+    if qradar_ids is None:
+        return ""
+    if not qradar_ids:
+        raise ValueError("metric source filter is empty")
+    try:
+        rendered = ", ".join(str(int(item)) for item in qradar_ids)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("metric source ids must be integers") from exc
+    return f" AND logsourceid IN ({rendered})"
 
 
 def _sanitize_upstream_error(status_code: int) -> str:
@@ -252,6 +304,7 @@ class QRadarRestProvider(QRadarProvider):
         clock: Callable[[], datetime] | None = None,
         ips_max_sources_per_search: int = 50,
         pw_max_sources_per_search: int = 50,
+        permit: ArielPermitBudget | None = None,
     ) -> None:
         if not verify_ssl:
             # Hard failure, not a warning. See config._production_hardening.
@@ -272,6 +325,7 @@ class QRadarRestProvider(QRadarProvider):
         self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
         self._pw_max_sources_per_search = max(1, int(pw_max_sources_per_search))
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._permit = permit
 
         if client is not None:
             self._client = client
@@ -635,8 +689,13 @@ class QRadarRestProvider(QRadarProvider):
             )
         return out
 
+    @_holds_ariel_permit
     async def get_log_source_metrics(
-        self, window_start: datetime, window_end: datetime
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        qradar_ids: Sequence[int] | None = None,
     ) -> list[LogSourceMetricSample]:
         """Collect bounded per-log-source event volume through Ariel.
 
@@ -658,6 +717,7 @@ class QRadarRestProvider(QRadarProvider):
 
         start_ms = int(start.timestamp() * 1000)
         end_ms = int(end.timestamp() * 1000)
+        source_clause = _metric_log_source_clause(qradar_ids)
         aql = (
             # SUM(eventcount), not COUNT(*). QRadar coalesces identical events
             # into a single Ariel record carrying an `eventcount` multiplier, so
@@ -670,9 +730,9 @@ class QRadarRestProvider(QRadarProvider):
             # coalesces harder, so true volume can rise sharply while the record
             # count stays flat. That is precisely the spike a volume detector
             # exists to catch, and it is the reading it would have missed.
-            'SELECT logsourceid AS "qradar_id", SUM(eventcount) AS "event_count", '  # noqa: S608 - integer epochs only
+            'SELECT logsourceid AS "qradar_id", SUM(eventcount) AS "event_count", '  # noqa: S608 - integer epochs and ids only
             'MAX(starttime) AS "last_event_time" FROM events '
-            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms}{source_clause} "
             "GROUP BY logsourceid "
             # START/STOP scopes the Ariel search itself. Without it QRadar
             # defaults the search to a recent window and intersects that with
@@ -733,6 +793,7 @@ class QRadarRestProvider(QRadarProvider):
             )
         return samples
 
+    @_holds_ariel_permit
     async def get_log_source_metrics_bucketed(
         self,
         window_start: datetime,
@@ -740,6 +801,7 @@ class QRadarRestProvider(QRadarProvider):
         *,
         bucket_seconds: int,
         max_rows: int,
+        qradar_ids: Sequence[int] | None = None,
     ) -> LogSourceMetricBucketBatch:
         """Collect one keyed Ariel aggregate spanning multiple metric buckets."""
         self.require(ProviderCapability.AQL_EXECUTION)
@@ -751,12 +813,13 @@ class QRadarRestProvider(QRadarProvider):
         start_ms = int(start.timestamp() * 1000)
         end_ms = int(end.timestamp() * 1000)
         bucket_ms = bucket_seconds * 1000
+        source_clause = _metric_log_source_clause(qradar_ids)
         aql = (
             'SELECT logsourceid AS "qradar_id", '  # noqa: S608 - validated integers only
             f'starttime / {bucket_ms} AS "k", '
             'SUM(eventcount) AS "event_count", MAX(starttime) AS "last_event_time" '
             "FROM events "
-            f"WHERE starttime >= {start_ms} AND starttime < {end_ms} "
+            f"WHERE starttime >= {start_ms} AND starttime < {end_ms}{source_clause} "
             f"GROUP BY logsourceid, starttime / {bucket_ms} "
             f"LIMIT {max_rows + 1} {self._ariel_scope(start_ms, end_ms)}"
         )
@@ -2096,6 +2159,7 @@ class QRadarRestProvider(QRadarProvider):
             ariel_searches=searches,
         )
 
+    @_holds_ariel_permit
     async def observe_property_rejection(
         self,
         *,
@@ -2169,6 +2233,7 @@ class QRadarRestProvider(QRadarProvider):
             ))
         return out
 
+    @_holds_ariel_permit
     async def _run_bounded_aggregate(self, aql: str, *, max_rows: int) -> list[dict]:
         """Create, poll and fetch one aggregate search under a hard time bound."""
         handle = await self.create_ariel_search(aql)
@@ -2208,19 +2273,6 @@ class QRadarRestProvider(QRadarProvider):
                 out.append(dto.model_copy(update={"is_building_block": True}))
         return out
 
-    async def get_rule(self, qradar_id: int) -> AnalyticsRuleDTO | None:
-        body = await self._request(
-            "GET",
-            f"/analytics/rules/{int(qradar_id)}",
-            category=EndpointCategory.RULE_DETAIL,
-            allow_404=True,
-        )
-        if body is None:
-            return None
-        if not isinstance(body, dict):
-            raise MalformedUpstreamResponse("QRadar rule detail was not an object")
-        return self._to_rule(body)
-
     # ---------------------------------------------------------- offenses
     async def list_offenses(
         self,
@@ -2253,44 +2305,6 @@ class QRadarRestProvider(QRadarProvider):
             max_pages=max_pages,
         )
         return [dto for dto in (self._to_offense(r) for r in rows) if dto is not None]
-
-    async def get_offense(self, qradar_id: int) -> OffenseDTO | None:
-        body = await self._request(
-            "GET",
-            f"/siem/offenses/{int(qradar_id)}",
-            category=EndpointCategory.OFFENSE_DETAIL,
-            allow_404=True,
-        )
-        if body is None:
-            return None
-        if not isinstance(body, dict):
-            raise MalformedUpstreamResponse("QRadar offense detail was not an object")
-        return self._to_offense(body)
-
-    async def list_offense_types(self) -> dict[int, str]:
-        rows = await self._paginate(
-            "/siem/offense_types", category=EndpointCategory.OFFENSE_TYPE_LIST
-        )
-        out: dict[int, str] = {}
-        for row in rows:
-            type_id = as_int(row.get("id"))
-            name = row.get("name")
-            if type_id is not None and isinstance(name, str):
-                out[type_id] = name[:255]
-        return out
-
-    async def list_offense_closing_reasons(self) -> dict[int, str]:
-        rows = await self._paginate(
-            "/siem/offense_closing_reasons",
-            category=EndpointCategory.OFFENSE_CLOSING_REASON_LIST,
-        )
-        out: dict[int, str] = {}
-        for row in rows:
-            reason_id = as_int(row.get("id"))
-            text = row.get("text")
-            if reason_id is not None and isinstance(text, str):
-                out[reason_id] = text[:512]
-        return out
 
     # ------------------------------------------------------ Ariel lifecycle
     async def create_ariel_search(self, aql: str) -> ArielSearchHandleDTO:

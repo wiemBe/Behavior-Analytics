@@ -17,7 +17,7 @@ import { format } from "echarts/core";
 
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { PwBucket } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
 
 import { eventsUnit, formatCoveragePercent, formatEvents } from "./pwFormat";
 import { isolated, kindWords, type PlotModel, type PlotPoint, type Span } from "./pwSeries";
@@ -124,7 +124,7 @@ export function pwTooltip(
 ): string {
   const t = model.slots[index];
   if (t === undefined) return "";
-  const lines = [formatDateTime(new Date(t).toISOString())];
+  const lines = [utcTimeHtml(new Date(t).toISOString())];
   for (const line of model.lines) {
     const p = line.points[index];
     if (!p) continue;

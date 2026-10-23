@@ -52,11 +52,6 @@ async function chooseSignature(user: ReturnType<typeof userEvent.setup>, name: s
   await user.type(box, name);
 }
 
-async function reviewAndSave(user: ReturnType<typeof userEvent.setup>, name: string) {
-  await user.click(screen.getByRole("button", { name: "Review and save" }));
-  await user.click(screen.getByRole("button", { name }));
-}
-
 describe("IpsProfileEditor: header and sections", () => {
   it("states the source, its version, validation and collection", () => {
     editor();
@@ -432,7 +427,7 @@ describe("IpsProfileEditor: the validation report", () => {
       }),
     });
     const reasons = screen.getByRole("list", { name: "Reasons for the result" });
-    expect(reasons).toHaveTextContent("Source IP: Only 62 % of events carry it; collection needs 90 %.");
+    expect(reasons).toHaveTextContent("Source IP: Only 62.0 % of events carry it; collection needs 90.0 %.");
     expect(reasons).toHaveTextContent("Signature: QRadar does not accept this field as named.");
     expect(screen.getAllByText("Invalid").length).toBeGreaterThan(0);
     expect(screen.getByText("Field rejected")).toBeInTheDocument();

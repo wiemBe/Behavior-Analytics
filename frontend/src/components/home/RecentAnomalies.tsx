@@ -13,10 +13,11 @@ import { statePillText } from "@/components/waf/wafLabels";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads, sevTone, type SubjectKind } from "@/lib/api";
 import { formatRatio, stateTone } from "@/lib/behavior";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import { RECENT_ANOMALIES_LIMIT, recentAnomalies } from "@/lib/home/recentAnomalies";
 
 import { useExpanded } from "@/widgets/runtime";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import { secondary, WidgetFrame, WidgetLoading } from "./WidgetFrame";
 import { Unmeasured, When } from "./WidgetParts";
@@ -50,7 +51,7 @@ export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
       link={
         waf
           ? { href: "/anomalies?subject_kind=WAF_ENDPOINT&active_only=true", label: "View all" }
-          : { href: "/anomalies", label: "View all" }
+          : { href: "/anomalies?active_only=true", label: "View all" }
       }
       state={list}
       what={waf ? "the active WAF anomalies" : "the active anomalies"}
@@ -124,9 +125,7 @@ export function RecentAnomalies({ subject }: { subject?: SubjectKind } = {}) {
                               {statePillText(r.state)}
                             </span>
                             {" · "}
-                            <time dateTime={r.detectedAt} title={formatDateTime(r.detectedAt)}>
-                              {formatDateTimeCompact(r.detectedAt)}
-                            </time>
+                            <UtcTime value={r.detectedAt} variant="compact" />
                           </span>
                         </td>
                         <td className="tw-unfold">

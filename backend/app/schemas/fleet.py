@@ -55,6 +55,8 @@ class BucketCounts(BaseModel):
 
     expected: int
     complete: int
+    # COMPLETE buckets read from QRadar's past. This is a subset of `complete`.
+    complete_from_history: int
     partial: int
     missing: int
 

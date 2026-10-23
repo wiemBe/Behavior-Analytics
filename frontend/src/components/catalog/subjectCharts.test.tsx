@@ -6,7 +6,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { failed, forbidden, loading, ok } from "@/components/home/testkit";
+import { failed, forbidden, ok } from "@/components/home/testkit";
 import { wafBaselineCell, wafEndpoint } from "@/components/waf/fixtures";
 import { homeReads } from "@/lib/api";
 import { behavior } from "@/lib/home/fixtures";
@@ -107,7 +107,7 @@ describe("waf.endpoint_traffic", () => {
   it("is polite loading text, with the drill-down already there", () => {
     render(<WafEndpointTraffic config={cfg} />);
     expect(screen.getByRole("status")).toHaveTextContent(/^Loading/);
-    expect(screen.getByRole("link", { name: "Endpoints" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Open this source's endpoint list. It cannot select this endpoint." })).toHaveAttribute(
       "href",
       `/behavior/waf/sources/${SRC}`,
     );
@@ -133,10 +133,11 @@ describe("waf.endpoint_traffic", () => {
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
       "GET /portal/login · portal.lab.example24 h",
     );
-    expect(screen.getByRole("link", { name: "Endpoints" })).toHaveAttribute(
-      "href",
-      `/behavior/waf/sources/${SRC}`,
-    );
+    const sourceLink = screen.getByRole("link", {
+      name: "Open this source's endpoint list. It cannot select this endpoint.",
+    });
+    expect(sourceLink).toHaveAttribute("href", `/behavior/waf/sources/${SRC}`);
+    expect(sourceLink.getAttribute("href")).not.toMatch(/endpoint=/);
   });
 
   it("draws the requests against the band of the bucket's weekday and hour", () => {
@@ -321,8 +322,17 @@ describe("chart.eps_observed_expected", () => {
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("fw-edge-0124 h");
     expect(screen.getByRole("link", { name: "Source" })).toHaveAttribute(
       "href",
-      `/behavior/sources/${SOURCE}`,
+      `/behavior/sources/${SOURCE}?range=24`,
     );
+  });
+
+  it.each([
+    ["1h", `/behavior/sources/${SOURCE}?range=1`],
+    ["7d", `/behavior/sources/${SOURCE}?range=24&from=7d`],
+  ] as const)("a %s widget uses the nearest source-page range", (window, href) => {
+    set({ [SER(window)]: ok(series([eps(0)])) });
+    render(<SourceEps config={cfg} range={window} />);
+    expect(screen.getByRole("link", { name: "Source" })).toHaveAttribute("href", href);
   });
 
   it("draws EPS in EPS against the band, and the median as a step", () => {

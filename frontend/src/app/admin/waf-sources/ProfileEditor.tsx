@@ -43,7 +43,7 @@ import {
   type ConflictInfo,
   type MappingDraft,
 } from "@/lib/fieldMapping";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
@@ -83,16 +83,6 @@ function failure(err: unknown, verb: string): Msg {
     };
   }
   return { tone: "crit", text: `Not changed. ${actionErrorMessage(err)}` };
-}
-
-function unavailable(detail: string): PropertyCatalogOut {
-  return {
-    status: "UNAVAILABLE",
-    fetched_at: null,
-    filtered_by_source_type: false,
-    properties: [],
-    detail,
-  };
 }
 
 export function ProfileEditor({
@@ -713,7 +703,7 @@ export function ProfileEditor({
               <span className="muted">
                 {" "}
                 · version {profile.profile_version} validated{" "}
-                <time dateTime={profile.validated_at}>{formatDateTime(profile.validated_at)}</time>
+                <UtcTime value={profile.validated_at} />
               </span>
             )}
           </p>

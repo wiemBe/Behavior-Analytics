@@ -19,6 +19,7 @@ from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import ProviderError
 from app.providers.mock import MockQRadarProvider, geo_key
 from app.providers.qradar_mcp import QRadarMCPProvider
+from app.services.ariel_permit import ArielPermitUnavailable
 from app.services.geo_retention import GeoRetention
 from tests.integration.factories import make_instance
 from tests.integration.test_rule_match_collection import recorded_statements
@@ -302,8 +303,11 @@ class TestSplitAndFailure:
         assert {r.measurement for r in rows} == {"LOWER_BOUND"} and len(rows) == 12
         assert (await watermark(db_session, inst, SOURCE)).watermark_at == LAST
 
+    @pytest.mark.parametrize(
+        "failure", [ProviderError("down"), ArielPermitUnavailable(30, 3, 6)]
+    )
     async def test_a_failed_bucket_has_no_row_and_the_watermark_holds_before_it(
-        self, db_session
+        self, db_session, failure
     ) -> None:
         inst = await make_instance(db_session)
         provider = Script(steady([country("US", 10)]))
@@ -312,7 +316,7 @@ class TestSplitAndFailure:
             seconds=BUCKET
         )
         provider.geo_fault = lambda s: (
-            ProviderError("down")
+            failure
             if s.window_start == bad and s.window_end - s.window_start == timedelta(seconds=BUCKET)
             else None
         )

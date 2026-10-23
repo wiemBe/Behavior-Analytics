@@ -97,22 +97,28 @@ class WafArielBudget:
         assert self._engine is not None
         started = self._monotonic()
         async with self._engine.connect() as conn:
-            await conn.execution_options(isolation_level="AUTOCOMMIT")
-            slot = await self._acquire(conn, started)
-            if slot is None:
-                yield None
-                return
             try:
+                await conn.execution_options(isolation_level="AUTOCOMMIT")
+                slot = await self._acquire(conn, started)
+                if slot is None:
+                    yield None
+                    return
                 yield WafArielPermit(slot=slot, waited_seconds=self._monotonic() - started)
             finally:
-                # Closing the connection would release the slot too; unlocking
-                # explicitly returns it at once, before the pool reuses the
-                # connection.
-                await conn.execute(
-                    text("SELECT pg_advisory_unlock(:ns, :slot)").bindparams(
-                        ns=self.namespace, slot=slot
-                    )
-                )
+                await self._release_all(conn)
+
+    @staticmethod
+    async def _release_all(conn: AsyncConnection) -> None:
+        """Clear this connection's locks or make the connection unreusable."""
+
+        try:
+            await conn.execute(text("SELECT pg_advisory_unlock_all()"))
+        except BaseException:
+            # A failed or cancelled unlock cannot be followed by pool reuse:
+            # rollback does not release session advisory locks. Invalidation
+            # closes the physical connection, which makes PostgreSQL free them.
+            await conn.invalidate()
+            raise
 
     async def _acquire(self, conn: AsyncConnection, started: float) -> int | None:
         while True:

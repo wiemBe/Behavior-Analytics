@@ -10,9 +10,7 @@ no clock:
 * one keyed search's batches as a `ChunkResult` plus the folds to persist, using the
   **live** fold so a COMMON rule keeps its lower-bound meaning;
 * the `rule_match_window` and `rule_match_metric` mappings of a span, never a row
-  before the floor `F` (§B.3.2 rule 1);
-* the scope row of a step: every column the lifecycle built, with the planner's
-  progress overlaid, so the adapter never assembles a row by hand.
+  before the floor `F` (§B.3.2 rule 1).
 
 Only aggregates leave this module: the same per-rule counts the live collector stores.
 """
@@ -25,7 +23,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from app.history.lifecycle import SCOPE_COLUMNS, ScopeRowView, bounded_reason
 from app.history.origin import HistoryFamily, HistoryOrigin, marker_values
 from app.history.planner import (
     ChunkResult,
@@ -38,7 +35,6 @@ from app.history.planner import (
     searches_for,
     window_buckets,
 )
-from app.history.state import HistoryState
 from app.models.rule import RuleMatchWindowStatus
 from app.providers.base import ConsoleEventTotals, ProviderError
 from app.providers.dto import WindowedRuleMatches
@@ -273,69 +269,3 @@ def _metric_rows(fold: MatchFold) -> list[dict[str, Any]]:
         }
         for row in fold.rows
     ]
-
-
-# --------------------------------------------------------------------------- scope row
-
-
-def scope_base(
-    *,
-    instance_id: uuid.UUID,
-    family: HistoryFamily,
-    scope_key: str,
-    row: ScopeRowView,
-) -> dict[str, Any]:
-    """Every scope column, from a row that may not move this tick.
-
-    The lifecycle's `new_scope_row` and `transition_row` own a created or moved row;
-    neither describes a step that leaves the state alone. This keeps the full column
-    set in one place, pinned against the repository's `SCOPE_COLUMNS` by a test.
-    """
-    return {
-        "instance_id": instance_id,
-        "family": family.value,
-        "scope_key": scope_key,
-        "state": row.state.value,
-        "days_requested": row.days_requested,
-        "days_target": row.days_target,
-        "target_start": row.target_start,
-        "floor": row.floor,
-        "through": row.through,
-        "anchor": row.anchor,
-        "started_at": row.started_at,
-        "finished_at": row.finished_at,
-        "reason": row.reason,
-        "progress": dict(row.progress or {}),
-    }
-
-
-def step_scope_row(
-    base: Mapping[str, Any],
-    *,
-    state: HistoryState,
-    days_target: int | None,
-    target_start: datetime | None,
-    floor: datetime | None,
-    through: datetime | None,
-    started_at: datetime | None,
-    finished_at: datetime | None,
-    reason: str,
-    progress: Mapping[str, Any],
-) -> dict[str, Any]:
-    """The full column mapping after a step, from the lifecycle's base row."""
-    values = dict(base)
-    missing = set(SCOPE_COLUMNS) - set(values)
-    if missing:  # pragma: no cover - a guard for a future edit
-        raise ValueError(f"scope base lacks {sorted(missing)}")
-    values.update(
-        state=state.value,
-        days_target=days_target,
-        target_start=target_start,
-        floor=floor,
-        through=through,
-        started_at=started_at,
-        finished_at=finished_at,
-        reason=bounded_reason(reason),
-        progress=dict(progress),
-    )
-    return values

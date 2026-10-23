@@ -246,10 +246,10 @@ class InventorySyncService:
         )
 
     async def ensure_default_instance(self) -> QRadarInstance:
-        """Return the singleton default instance, creating it if absent.
+        """Return the first stored instance, creating one when the table is empty.
 
-        In the MVP there is one monitored QRadar; multi-instance support exists
-        in the schema but the API defaults to this one.
+        The schema allows more than one instance. This helper does not choose
+        among them.
         """
         from sqlalchemy import select
 

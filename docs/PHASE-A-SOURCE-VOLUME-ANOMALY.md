@@ -60,6 +60,11 @@ reason in `exclusion_counts`, and `completeness` records the surviving fraction 
 a cell built from 4 of 28 buckets is far weaker than one built from 26 even when
 both clear the sample minimum.
 
+Off-hours are the source's `timezone_name` local time: a start later than the end
+wraps past midnight and that window belongs to the local day it starts on, and an
+unknown zone or an empty or out-of-range `business_days` fails closed so the source
+stays expected-active.
+
 Below `BASELINE_MIN_SAMPLES` a cell is stored, marked `is_reliable=False`, and
 **must not drive a verdict**. The detector then returns `INSUFFICIENT_DATA`, never
 a misleading `NORMAL`.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
@@ -12,13 +12,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import case, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import ScalarSelect
 
 from app.alerts.dispatcher import NotificationDispatcher
 from app.alerts.routing import default_policy
 from app.alerts.search_alerts import SearchAlertEvaluator
 from app.api.deps import ProviderDep, SessionDep, SettingsDep
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
+from app.models.enums import ExecutionErrorType
 from app.models.search import (
     ScheduledSearch,
     SearchExecution,
@@ -26,6 +28,7 @@ from app.models.search import (
     SearchResultMetric,
 )
 from app.repositories.audit import record_audit
+from app.schemas.ariel import ArielBudgetOut
 from app.schemas.search import (
     AuthoringDetail,
     ExecutionOut,
@@ -46,11 +49,13 @@ from app.security.auth import get_principal
 from app.security.rbac import (
     PERM_SEARCH_EXECUTE,
     PERM_SEARCH_WRITE,
+    PERM_WAF_ADMIN,
     PermissionDenied,
     Principal,
     require_permission,
 )
-from app.services.concurrency import InMemoryConcurrencyLimiter
+from app.services.ariel_permit import ArielPermitBudget
+from app.services.ariel_status import ariel_budget_status
 from app.services.scheduled_search import EnabledSearchLimitError, ScheduledSearchService
 from app.services.search_executor import SearchExecutor
 from app.services.search_scheduler import CronFloorError
@@ -58,6 +63,27 @@ from app.services.search_scheduler import CronFloorError
 router = APIRouter(prefix="/searches", tags=["searches"])
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
+
+
+PermitFactory = Callable[[AsyncSession, Settings], ArielPermitBudget]
+
+
+def _permit_for_session(session: AsyncSession, settings: Settings) -> ArielPermitBudget:
+    return ArielPermitBudget.for_session(session, settings, instance_id=None)
+
+
+def get_ariel_permit_factory() -> PermitFactory:
+    """How a manual run builds its Ariel permit budget from the request session.
+
+    A dependency returning a factory, not a budget: the budget is built in the
+    route body, after the permission guard, so a refused caller never touches the
+    engine. A test substitutes the factory.
+    """
+    return _permit_for_session
+
+
+PermitFactoryDep = Annotated[PermitFactory, Depends(get_ariel_permit_factory)]
+
 _ENABLED_CAP_LOCK_KEY = 5_214_200_002
 
 
@@ -265,6 +291,22 @@ async def create_search(
         detail={"name": search.name},
     )
     return ScheduledSearchOut.model_validate(search)
+
+
+@router.get("/ariel-budget", response_model=ArielBudgetOut)
+async def get_ariel_budget(
+    session: SessionDep,
+    settings: SettingsDep,
+    principal: PrincipalDep,
+) -> ArielBudgetOut:
+    """Global Ariel permit pool: configured caps and permits held now.
+
+    Counts only. Requires ``admin:waf``, the same permission as the WAF source
+    budget route. The pool is read after that check. The searches router is
+    also mounted with ``read:searches``.
+    """
+    _guard(principal, PERM_WAF_ADMIN)
+    return await ariel_budget_status(session, settings=settings)
 
 
 @router.get("/{search_id}", response_model=ScheduledSearchOut)
@@ -666,6 +708,7 @@ async def run_search(
     session: SessionDep,
     provider: ProviderDep,
     principal: PrincipalDep,
+    permit_factory: PermitFactoryDep,
 ) -> ExecutionOut:
     """Manually execute a stored search. Requires search:execute.
 
@@ -678,11 +721,9 @@ async def run_search(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "search not found")
 
     settings = get_settings()
-    limiter = InMemoryConcurrencyLimiter(
-        per_instance=settings.ariel_max_concurrent_searches,
-        global_limit=settings.ariel_global_max_concurrent_searches,
-    )
-    executor = SearchExecutor(session, provider, limiter, settings=settings)
+    # Global-only: execution_instance_key is "default" for every search today.
+    permit = permit_factory(session, settings)
+    executor = SearchExecutor(session, provider, permit, settings=settings)
     run_key = svc.manual_run_key(search, principal.subject)
     execution = await executor.execute(
         search, run_key=run_key, instance_key="default",
@@ -700,4 +741,20 @@ async def run_search(
         object_type="scheduled_search", object_id=str(search.id),
         detail={"run_key": run_key, "status": str(execution.status)},
     )
+    if execution.error_type == ExecutionErrorType.CAPACITY.value:
+        # The FAILED/CAPACITY row is the record that the run was asked for and
+        # refused. Commit it before raising: the session dependency rolls back on
+        # an exception, which would erase the only evidence.
+        counts = await permit.active_permits(session)
+        await session.commit()
+        held = (
+            f"{counts.global_held} of {counts.global_cap}"
+            if counts
+            else f"cap {permit.global_limit}"
+        )
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"the Ariel search budget is full ({held} in flight); "
+            f"waited {permit.wait_seconds:g} s; nothing was sent to QRadar",
+        )
     return ExecutionOut.model_validate(execution)

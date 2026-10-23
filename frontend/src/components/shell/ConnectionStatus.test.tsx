@@ -54,7 +54,9 @@ describe("ConnectionStatus", () => {
     expect(list.getByText("Backend and database")).toBeInTheDocument();
     expect(list.getByText("QRadar instance")).toBeInTheDocument();
     expect(list.getByText("Collection")).toBeInTheDocument();
-    expect(list.getByText(/7\.5\.0 UP9 · checked 10-14 08:55 UTC/)).toBeInTheDocument();
+    expect(list.getByText(/7\.5\.0 UP9 · checked/)).toHaveTextContent(
+      "7.5.0 UP9 · checked 10-14 08:55 UTC",
+    );
     expect(control()).toHaveAccessibleName("Connection status: Connected");
     expect(control().querySelector(".pill")).toHaveClass("ok");
   });

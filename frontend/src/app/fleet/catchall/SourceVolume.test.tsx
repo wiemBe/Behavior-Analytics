@@ -68,7 +68,8 @@ describe("SourceVolume", () => {
   it("says how far collection got and counts the gaps as unknown, not zero", async () => {
     vi.spyOn(catchallApi, "buckets").mockResolvedValue(list());
     render(<SourceVolume sources={sources()} now={NOW} />);
-    const line = await screen.findByText(/Collected up to 2026-10-13 10:25:00 UTC/);
+    const line = await screen.findByText(/Collected up to/);
+    expect(line).toHaveTextContent("Collected up to 2026-10-13 10:25:00 UTC");
     const gaps = lastProps!.slots.filter((s) => s.state === "gap");
     expect(line).toHaveTextContent(`${gaps.length} buckets before that were not measured`);
     expect(line).toHaveTextContent(/unknown, not zero/);
@@ -169,7 +170,9 @@ describe("SourceVolume", () => {
   it("points at the latest measured bucket when the range holds none", async () => {
     vi.spyOn(catchallApi, "buckets").mockResolvedValue(list([]));
     render(<SourceVolume sources={sources()} now={NOW} />);
-    expect(await screen.findByText(/latest measured bucket of .* starts 2026-10-13 17:30:00 UTC/)).toBeInTheDocument();
+    expect(await screen.findByText(/latest measured bucket/)).toHaveTextContent(
+      "starts 2026-10-13 17:30:00 UTC",
+    );
   });
 
   it("says what failed, with a retry", async () => {

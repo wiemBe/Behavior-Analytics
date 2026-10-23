@@ -15,12 +15,13 @@
 //   - a signal the role may not read (403) is omitted, not shown as bad;
 //   - "Flow Collectors" and "Event Processors" are not here: no data source.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { Loaded } from "./TopBar";
 import type { HealthReady, SearchCadenceItem, SocOverview } from "@/lib/api";
-import { formatDateTimeCompact } from "@/lib/health";
 import { outcomeInfo } from "@/lib/searchCadence";
+import { relativeAge } from "@/lib/time";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 export type SignalTone = "ok" | "warn" | "crit" | "neutral";
 
@@ -29,7 +30,7 @@ export interface Signal {
   name: string;
   tone: SignalTone;
   value: string;
-  detail: string | null;
+  detail: ReactNode | null;
 }
 
 const RANK: Record<SignalTone, number> = { ok: 0, neutral: 1, warn: 2, crit: 3 };
@@ -60,13 +61,8 @@ function titleCase(s: string): string {
 
 function ageText(iso: string, now: number | null): string {
   if (now === null) return "";
-  const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (seconds < 60) return ", under 1m ago";
-  const m = Math.floor(seconds / 60);
-  if (m < 60) return `, ${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `, ${h}h ${m % 60}m ago`;
-  return `, ${Math.floor(h / 24)}d ago`;
+  const age = relativeAge(iso, now);
+  return age === "—" ? "" : `, ${age}`;
 }
 
 export function buildSignals(
@@ -108,21 +104,27 @@ export function buildSignals(
     const o = overview.data;
     const checkedAt = o.instance_last_health_check_at;
     let tone = INSTANCE_TONE[o.instance_status] ?? "neutral";
-    let when: string;
+    let detail: ReactNode;
     if (checkedAt === null) {
       tone = "neutral";
-      when = "never checked";
+      detail = [o.instance_version, "never checked"].filter(Boolean).join(" · ");
     } else if (checkedAt === undefined) {
-      when = "check time not reported";
+      detail = [o.instance_version, "check time not reported"].filter(Boolean).join(" · ");
     } else {
-      when = `checked ${formatDateTimeCompact(checkedAt)}${ageText(checkedAt, now)}`;
+      detail = (
+        <>
+          {o.instance_version ? `${o.instance_version} · ` : null}
+          checked <UtcTime value={checkedAt} variant="compact" />
+          {ageText(checkedAt, now)}
+        </>
+      );
     }
     out.push({
       key: "instance",
       name: "QRadar instance",
       tone,
       value: titleCase(o.instance_status),
-      detail: [o.instance_version, when].filter(Boolean).join(" · "),
+      detail,
     });
   }
   // overview.state === "forbidden": omitted.
@@ -156,7 +158,12 @@ export function buildSignals(
         name: "Collection",
         tone: info?.tone ?? "neutral",
         value: info?.label ?? run.outcome ?? "Outcome not recorded",
-        detail: `Source volume, last run ${formatDateTimeCompact(run.at)}${ageText(run.at, now)}`,
+        detail: (
+          <>
+            Source volume, last run <UtcTime value={run.at} variant="compact" />
+            {ageText(run.at, now)}
+          </>
+        ),
       });
     }
   }

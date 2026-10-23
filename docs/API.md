@@ -102,6 +102,22 @@ Evidence states are explicit: `NOT_REQUESTED`, `PENDING`, `COMPLETE`, `PARTIAL`,
 Null means unmeasured. A measured zero remains `0`. Partial or missing chart buckets are gaps and
 are not connected across an outage. Expected ranges are returned and drawn as bands.
 
+## Log-source fleet summary
+
+`GET /fleet/summary` returns one class summary for each non-internal source class. Its `buckets`
+object carries the completeness of the selected window:
+
+| Field | Meaning |
+|---|---|
+| `expected` | Complete collection buckets expected from the class's enabled, monitored sources |
+| `complete` | Buckets collected completely; these are the only buckets used in events and mean EPS |
+| `complete_from_history` | Of `complete`, the buckets read from QRadar history rather than collected by the cadence |
+| `partial` | Buckets collected incompletely and excluded from events and mean EPS |
+| `missing` | Expected buckets that are neither complete nor partial |
+
+`complete_from_history` is always between `0` and `complete`. History buckets remain COMPLETE data
+and stay in the class totals; the field states how much of that measured total came from the past.
+
 ## WAF profiles
 
 Each WAF source has a versioned mapping from logical URL, method, virtual-host, action,
@@ -227,7 +243,25 @@ a `NOT_ELIGIBLE` one, or one whose floor was never proved — says false; for so
 catch-all the floor is only where the read started), the resume point, the anchor,
 the counters (`searches`, `buckets_read`, `days_read`), the gaps and the reason. A counter that
 was not measured is `null`, never a zero, and `progress_unreadable` says that a stored progress
-did not read back.
+did not read back. `last_error_class` is the class of the last failed history step, cleared by the
+next step that succeeds; never a message. `last_error_at` is that failure's UTC time.
+
+A scope of a console-wide family (source volume, catch-all) also names the sources the reading
+was short of, because the reason gives counts only:
+
+| Field | Meaning |
+|---|---|
+| `sources_cut` | the monitored sources whose floor is later than `T0 + one bucket`: QRadar holds less than asked for them |
+| `sources_silent` | the monitored sources with no event at all in the window |
+| `sources_cut_count` | the whole number of cut sources; the list above holds at most 25 names |
+| `sources_silent_count` | the whole number of silent sources; the list above holds at most 25 names |
+
+Each name is a `{"key": "<QRadar log-source id>", "name": "<the source's name or null>"}`. The
+lists are sorted by name and then by key, and a source whose name is not known sorts last. They
+are judged against the sources monitored **now**, so a source added or removed since the reading
+finished can differ from the counts in `reason`. All four are `null` — never an empty list and
+never a zero — for every other family, for a scope that has not searched yet and for a stored
+progress that did not read back.
 
 The estimate is a model of the cost, not a measurement: searches, ticks and hours per family,
 with the assumptions it rests on. A family whose count the model needs is missing answers with no

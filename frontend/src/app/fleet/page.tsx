@@ -10,10 +10,12 @@ import Link from "next/link";
 
 import { FleetClassTable } from "@/components/fleet/FleetClassTable";
 import { WindowSwitch } from "@/components/fleet/WindowSwitch";
+import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApiError, fleetApi, type FleetSummary } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
 import { parseWindow, windowName } from "@/lib/fleet";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 export const metadata: Metadata = {
   title: "Fleet",
@@ -46,6 +48,8 @@ export default async function FleetPage({
 
   return (
     <>
+      {/* The summary's `window_end` is the request's own "now": the page has no data time. */}
+      <ReportDataAge iso={null} />
       <PageHeader
         title="Log-source fleet"
         description="Volume per class of log source against its baseline, and the sources waiting for review. Times are UTC."
@@ -89,8 +93,8 @@ export default async function FleetPage({
           </p>
 
           <p className="subtitle fleet-window">
-            Last {windowName(window)}: {formatDateTime(summary.window_start)} to{" "}
-            {formatDateTime(summary.window_end)}, in {summary.bucket_seconds / 60}-minute buckets.
+            Last {windowName(window)}: {<UtcTime value={summary.window_start} />} to{" "}
+            {<UtcTime value={summary.window_end} />}, in {summary.bucket_seconds / 60}-minute buckets.
           </p>
 
           {summary.classes.length === 0 ? (

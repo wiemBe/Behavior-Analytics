@@ -14,24 +14,17 @@ Dört kural her bölümde geçerlidir:
 **İçindekiler**
 
 1. [Kurulum](#kurulum)
-2. [Dizin](#dizin)
-3. [Yükseltme](#yükseltme)
-4. [Yedek ve geri alma](#yedek-ve-geri-alma)
-5. [Tanı](#tanı)
-6. [Geçmiş okuma](#geçmiş-okuma)
-7. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R60; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+2. [Çevrimdışı paket](#çevrimdışı-paket)
+3. [Dizin](#dizin)
+4. [Yükseltme](#yükseltme)
+5. [Yedek ve geri alma](#yedek-ve-geri-alma)
+6. [Tanı](#tanı)
+7. [Geçmiş okuma](#geçmiş-okuma)
+8. [Belirtiler](#belirtiler)
+   (OPS-R1 ... OPS-R63; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
-`install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback` ve
-`support-bundle` bugün çalışır. `bundle` (çevrimdışı paket) bu sürümde yoktur. `./qradar-dash bundle`
-şu satırı yazıp 64 ile çıkar:
-
-```
-'bundle' is not built yet (the offline bundle is not part of this release; use ./qradar-dash install --build from a checkout, or install by pulling from the registry).
-```
-
-`install` yardımındaki satır şudur:
-`Not built in this release (use install --build, or pull from the registry).`
+`install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
+`repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
 
 ---
 
@@ -72,7 +65,7 @@ Yanıt dosyasının izni `0600` olur. İçinde yollar ve yönetici kullanıcı a
 |---|---|
 | `--non-interactive FILE` | Yanıtları FILE dosyasından oku (izin `0600`, sır yok). |
 | `--build` | İmajları çekmek yerine bu checkout'tan derle. |
-| `--offline BUNDLE` | İmajları çevrimdışı paket tar'ından yükle. |
+| `--offline BUNDLE` | İmajları çevrimdışı paket tar'ından yükle (paketi `bundle` yazar; bkz. [Çevrimdışı paket](#çevrimdışı-paket)). |
 | `--external-proxy` | Paketle gelen TLS vekilini atla; kendi vekilini sen işlet. |
 | `--reconfigure` | Yanıtlar kayıtlı olsa bile soruları yeniden sor. |
 | `--dry-run` | Her kontrolü çalıştır, hiçbir şey yazma, hiçbir şey değiştirme. |
@@ -132,15 +125,23 @@ sudo chmod 700 /var/backups/qradar-dash
 Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 1 KiB'dir. İlk haftadan sonra
 `pg_database_size` ile değiştirilecek bir tahmindir. `doctor` bu boyutu yazar.
 
-- **En az:** 4 vCPU, 8 GiB RAM, **Docker kökünde 80 GiB boş** disk. Bu ana makine, varsayılanda
-  kapalı aileler kapalı bırakılmış Phase A içindir.
+- **En az:** 4 vCPU, 8 GiB RAM, **Docker kökünde 80 GiB boş** disk. Bu ana makine Phase A ile
+  varsayılanda açık aileler (catch-all, geo, explanations) içindir. Bunlar Administration →
+  Search cadence sayfasından değiştirilmedikçe 5 dakikada bir aranır. WAF, IPS, kural eşleşmesi
+  toplama, özel kurallar ve mülk izleme (property watch) kapalı bırakılmıştır.
 - **Önerilen:** 8 vCPU, 16 GiB RAM, Docker ve Postgres için 400 GiB ve yedek dizini olarak bağlanmış
   **ikinci bir dosya sistemi** (400 GiB). İkinci dosya sistemi, veri diski dolduğunda bile yedeğe
   erişmeni sağlar. Yedek dizini ile Docker veri kökü aynı aygıttaysa kurulum ön kontrolü uyarır,
   reddetmez. Aynı aygıttaki yedek hatalı bir migrasyondan kurtarır, ölü bir diskten kurtarmaz.
-- Retention (saklama süresi) ayarı `retention_enabled` varsayılanda kapalıdır. Kurulum sihirbazı
-  `RETENTION_ENABLED=true` yazar. Politika `apply_timescale_policies` görevi çalışana kadar
-  uygulanmaz. Bu yüzden diski izle (bkz. OPS-R14).
+- Retention (saklama süresi): `RETENTION_ENABLED` varsayılanda kapalıdır ve yalnız dört Timescale
+  parça politikasını kapatır (`log_source_metric`, `search_result_metric`, `rule_metric`,
+  `offense_snapshot`). Kurulum sihirbazı `RETENTION_ENABLED=true`, bu dört tablo için 90 gün ve
+  sıkıştırma için 7 gün yazar. Politikalar `apply_timescale_policies` görevi çalışana kadar
+  uygulanmaz. Günlük satır silicileri bu bayraktan bağımsız çalışır: arama sonuçları 90 gün,
+  catch-all 35, coğrafya 35, WAF metrik 35 / kapalı olay 180, IPS metrik 35 / kapalı olay 365,
+  property-watch metrik 35 / kapalı olay 180, anomaly fault 30, özel kural ihlali 180, kapalı
+  Phase A olay 365, `rule_health_snapshot` 90, `detection_coverage_snapshot` 90. Diski izle
+  (bkz. OPS-R14).
 
 Ana makinenin izin vermesi gereken portlar:
 
@@ -166,7 +167,8 @@ Ana makinenin izin vermesi gereken portlar:
 | Yedek dizini | var ya da oluşturulabilir, izin `0700` olacak, git checkout'unun içinde değil | Oluşturulamazsa başarısız. |
 
 `docker-compose.override.yml` git tarafından yok sayılır. Laboratuvarda libvirt macvlan'ını bağlamak
-için kullanılır. Ön kontrol bu dosyanın var olup olmadığını yazdırır, silmez. QRadar:443'e
+için kullanılır. Dosya varsa `install` ve `upgrade` onu üretim overlay'inden sonra gerçekten yükler,
+bilgi satırında adını yazar ve `.env` içindeki `COMPOSE_FILE` listesine ekler; silmez. QRadar:443'e
 yönlenebilen bir üretim ana makinesinin buna ihtiyacı yoktur.
 
 ### Sihirbaz
@@ -200,7 +202,10 @@ Sorular şu sırayla sorulur:
 
 Sorulmayanlar: LDAP (arayüzden yapılır), dedektör eşikleri, aile etkinleştirme, SMTP, webhook, LLM.
 WAF, IPS, kural eşleşmesi toplama, özel kurallar ve mülk izleme (property watch) varsayılanda
-**kapalı** kalır. Catch-all ve geo varsayılanda açıktır. Özet bunu söyler.
+**kapalı** kalır. Phase A her zaman açıktır. Catch-all, geo ve explanations varsayılanda açıktır.
+Kurulum özeti açık aileleri ve kapalı aileleri ayrı satırlarda yazar. Açık aileler, Administration →
+Search cadence sayfasından değiştirilmedikçe 5 dakikada bir aranır. WAF veya IPS açıksa özet, onların
+o sayfada değiştirilene kadar 15 dakika kullandığını da yazar.
 
 **Mülk izleme (Phase G).** İki anahtar vardır: `PW_COLLECTION_ENABLED` (varsayılan **false**) aile
 anahtarı, `PW_ALERTING_ENABLED` (varsayılan **false**) gölge moddur; gölge modda olaylar ve yaşam
@@ -283,9 +288,14 @@ Bir test VM'de ilk kurulum toplam 1 dk 40 sn sürdü (QRadar erişilemezken). Bu
 ask"), kapalı aileler (WAF, IPS, kural eşleşmeleri, özel kurallar), yedek dizini ve bu kılavuzun
 yolu `docs/OPERATIONS.md`.
 
-- Çıkış kodu 0: yığın sağlıklı ve yönetici var.
-- Çıkış kodu 1: QRadar kontrolü başarısız ya da bir servis hiç sağlıklı olmadı. Parola bu çıkıştan
-  önce stdout'a yazılır; başarısız QRadar kontrolü onu yutmaz.
+- Çıkış kodu 0: yığın sağlıklı, `/health/ready` ve `/version` 200 döndürdü, QRadar kontrolü geçti ve
+  yönetici var.
+- Çıkış kodu 1: ön kontrol ya da çalışma adımı başarısız, QRadar kontrolü başarısız veya
+  `/health/ready` ya da `/version` 200 döndürmedi. Parola bu çıkıştan önce stdout'a yazılmış olabilir;
+  başarısız QRadar kontrolü onu yutmaz. Özet aşamasına ulaşıldıysa QRadar veya API hatasında durum
+  dosyası yine yazılır ve özet `API readiness      NOT READY` satırını gösterir.
+- Çıkış kodu 2: seçenek ya da etkileşimsiz yanıt dosyası geçersizdir; kurulum başlamaz.
+- Çıkış kodu 3: harici vekilde güvenli bir `FORWARDED_ALLOW_IPS` yoktur; backend başlatılmaz.
 
   QRadar kontrolü başarısız olduğunda yığın ve `.qradar-dash/state.json` **yerindedir**: kurulum
   "başarısız" görünse de `status`, `upgrade` ve `rollback` çalışır. QRadar'ı düzelt ve `install`
@@ -308,9 +318,20 @@ Sonra:
 
 Mevcut `.env` ile ikinci `install`:
 
-- `SECRET_KEY`, `ENCRYPTION_KEY` ve `POSTGRES_PASSWORD` yeniden üretilmez. `ENCRYPTION_KEY`'i
+- Saklanan sırlar `SECRET_KEY`, `POSTGRES_PASSWORD`, `ENCRYPTION_KEY`, `ENCRYPTION_KEYS_JSON` ve
+  `ENCRYPTION_KEY_VERSION` değerleridir; değerleri bilgi satırına yazılmaz. `ENCRYPTION_KEY`'i
   değiştirmek saklı şifreli veriyi okunmaz yapar. `.env` içindeki `POSTGRES_PASSWORD`'i değiştirmek
   hazır bir volume'un içindeki parolayı değiştirmez.
+- `LOG_LEVEL`, `AUTH_PROVIDER`, bütün `RETENTION_*` anahtarları, `COMPRESSION_AFTER_DAYS`,
+  `LLM_ENABLED` ve `MCP_ENABLED` varsa korunur; yoksa kurulum varsayılanı yazılır. Kurucunun
+  tanımadığı diğer `KEY=VALUE` satırları (örneğin `NOTIFY_*`, `SMTP_*` ve aile anahtarları) eski
+  sıralarıyla dosyanın sonundaki tek bir "Kept from" bölümüne taşınır. Yorumlar ve boş satırlar
+  taşınmaz; hiçbir anahtar iki kez yazılmaz.
+- Sihirbaz yanıtlarından türetilen adres, port, Compose, imaj, volume ve QRadar alanları kayıtlı
+  yanıtlardan yeniden yazılır. Üretim değişmezleri (`ENVIRONMENT=production`, `DEBUG=false`,
+  `QRADAR_PROVIDER=rest`, `QRADAR_VERIFY_SSL=true`, iç token/CA yolları, Postgres adları, API
+  yolları ve `LLM_ALLOW_AUTONOMOUS_ACTIONS=false`) her seferinde zorlanır; eski değer farklıysa
+  anahtarın eski ve yeni değeriyle uyarı yazılır.
 - Kullanıcı adı zaten varsa `create-admin` çağrılmaz. Tekrar çağırmak parolayı sıfırlar ve
   oturumları iptal eder.
 - `load-secrets.sh` ve `qradar add` yeniden çalışır; migrate'te Alembic zaten başta olduğundan bir
@@ -333,6 +354,142 @@ install refused: .qradar-dash/state.json field <alan> is invalid; see ./qradar-d
 Sürüm değiştirmenin tek yolu `upgrade`'dir: yükseltme öncesi yedek alır ve otomatik geri alma
 vardır, `install` ise ikisine de sahip değildir. Durum dosyası hiç yoksa `install` her zamanki gibi
 çalışır; bu, QRadar kontrolü başarısız olan bir 0.1.0 sitesinin durum dosyasına ulaştığı yoldur.
+
+---
+
+## Çevrimdışı paket
+
+Üretim makinesi kayıt defterine (registry) ulaşamıyorsa imajlar ve checkout, internete çıkan bir
+makinede tek dosyaya paketlenir ve elle taşınır. Paketi `bundle` yazar; `install --offline` ve
+`upgrade --offline` okur. Üretim makinesinde `docker pull` ve `git` gerekmez.
+
+### 1. Bağlı makinede paketi hazırla
+
+Paketlenecek sürümün checkout'unda ve `docker pull` yapabilen bir makinede:
+
+```bash
+git fetch --tags
+git checkout v<sürüm>
+./qradar-dash bundle
+```
+
+Seçenekler: `--output DIR` paketi başka bir dizine yazar (varsayılan: bulunduğun dizin).
+`--version X.Y.Z` yalnız bir doğrulamadır: `VERSION` dosyasıyla aynı olmak zorundadır, aksi halde
+`bundle refused: this checkout is version <checkout>, not <sürüm>; run git fetch --tags && git checkout v<sürüm> first`
+yazılır. Betik imaj ön ekini `.env` içindeki `QRADAR_DASH_IMAGE_PREFIX` değerinden alır; `.env`
+yoksa varsayılan ön eki kullanır ve çıktıda hangisini kullandığını yazar.
+
+Komut yedi imajı çeker: `postgres`, `backend`, `frontend`, `proxy` ve `qradar-mcp` (hepsi seçilen
+sürümde), `docker-compose.prod.yml` dosyasında digest ile sabitlenmiş `redis` ve
+`deploy/load-secrets.sh` içinde yine digest ile sabitlenmiş yardımcı `alpine` (gizli dizileri
+yükleyen ve yedekleyen imaj; çevrimdışı makine onu çekemeyeceği için pakette taşınır). Redis ve
+yardımcı imajın başvurusu kendi dosyasından okunur, betikte elle yazılı değildir. Özel bir kayıt
+defteri için önce `docker login ghcr.io` (`read:packages` token) çalıştırılır; çekme hatası imajı
+adıyla söyler.
+
+`qradar-dash-<sürüm>-bundle.tar` şunları içerir:
+
+| Üye | Anlamı |
+|---|---|
+| `images.tar` | Yedi imajın `docker save` çıktısı (redis ve yardımcı `alpine` dahil). |
+| `SHA256SUMS` | Bu dosya dışındaki her üyenin özeti. |
+| `MANIFEST` | Her imaj başvurusu ve paket yapılırken yerel imaj kimliği; alıcı taraf yüklediğini bununla denetler. |
+| `VERSION`, `docs/releases/<sürüm>.md` | Sürüm ve sürüm notları. |
+| `qradar-dash`, `docker-compose.yml`, `docker-compose.prod.yml`, `deploy/` | Üretimde `git` olmadan kullanılacak checkout. |
+
+Pakete `.env`, `.secrets/` ve `docker-compose.override.yml` hiçbir zaman girmez. Paket önce geçici
+bir adla yazılır, sonunda yerine taşınır; hata olursa dizinde yarım paket kalmaz ve betik bunu
+söyler. Aynı adlı bir paket varsa üzerine yazılmaz (`bundle refused: … already exists`). Bitince
+betik yolu, boyutu ve üretim makinesinde çalıştırılacak komutları yazar.
+
+Dosyayı taşıdıktan sonra iki makinede de `sha256sum qradar-dash-<sürüm>-bundle.tar` çalıştır;
+çıktılar aynı olmalıdır.
+
+### 2. Üretim makinesinde ilk kurulum
+
+Checkout'u paketin içinden çıkar (imajlar `images.tar` içindedir; çıkarmaya gerek yoktur) ve kur:
+
+```bash
+mkdir qradar-dash-<sürüm>
+tar -xf /yol/qradar-dash-<sürüm>-bundle.tar -C qradar-dash-<sürüm> --exclude=images.tar
+cd qradar-dash-<sürüm>
+./qradar-dash install --offline /yol/qradar-dash-<sürüm>-bundle.tar
+```
+
+Göreli yol da kabul edilir ve komutu çalıştırdığın dizine göredir. Kurulum yanıtları her zamanki gibi sorulur ya da
+`--non-interactive FILE` ile verilir.
+
+### 3. Kurulu sitede yükseltme
+
+Çıkardığın dosyalar mevcut kurulum dizininin üzerine yazılır (`.env`, `.secrets/` ve
+`docker-compose.override.yml` pakette olmadığı için değişmez); sonra yükseltme paketle çalışır:
+
+```bash
+cd <kurulum dizini>
+tar -xf /yol/qradar-dash-<sürüm>-bundle.tar --exclude=images.tar
+./qradar-dash upgrade <sürüm> --offline /yol/qradar-dash-<sürüm>-bundle.tar
+```
+
+Sıra aynıdır: önce toplam denetimi ve sürüm denetimi, sonra imajların yüklenmesi, sonra her zamanki
+yükseltme. Hiçbir konteyner imajlar yüklenip denetlenmeden durdurulmaz. Paket vermeden
+`upgrade <sürüm> --offline`, imajların daha önce yüklenmiş olmasını şart koşar; eksik olan ilk imajı
+adıyla söyler ve paketi vermeni ister.
+
+### Paketin yaptığı denetimler
+
+Yükleme başlamadan şunlardan biri tutmazsa `nothing was loaded` yazılır ve hiçbir imaj yüklenmez:
+
+| Denetim | Mesajın başı |
+|---|---|
+| Dosya tar değil ya da `VERSION`/`MANIFEST` yok | `cannot read … as a tar file` / `has no VERSION member` |
+| Üyede bağlantı (link) ya da `..` ve mutlak yol var | `holds links` / `holds absolute or parent-directory paths` |
+| Paket sürümü, checkout (install) ya da yükseltme hedefi ile aynı değil | `bundle refused: … is version A but this checkout is B` |
+| Paketteki imaj ön eki sitenin ön ekiyle aynı değil | `bundle refused: its images are under A but this site uses B` |
+| `sha256sum -c` tutmuyor ya da özetlenmemiş bir üye var | `the bundle checksums do not match` / `which SHA256SUMS does not cover` |
+
+Çözüm hep aynıdır: paketi bağlı makineden yeniden kopyala ya da doğru sürümün/ön ekin paketini yap.
+
+`docker load` sonrasında `MANIFEST` içindeki her başvuru için `docker image inspect` çalışır. Kimlik
+(ID) karşılaştırması yalnız paketi yapan makine ile bu makinenin Docker imaj deposu (image store)
+aynı türdeyse yapılır; tür `MANIFEST` içindeki `image_store` satırında (`containerd` ya da
+`classic`) yazılır, çünkü `.Id` iki depoda farklı anlama gelir. Türler farklıysa betik şunu yazar ve
+sürer; bütünlük `images.tar` için yapılan `SHA256SUMS` denetimine dayanır, her başvurunun çözülmesi
+yine şarttır:
+
+```
+Image IDs were not compared: the bundle host's image store is containerd and this host's is classic; integrity rests on the SHA256SUMS check of images.tar. Every image reference is still checked.
+```
+
+`image_store` satırı olmayan eski bir paketin kimlikleri her zaman karşılaştırılır.
+
+Redis digest ile sabitlenmiştir (`redis:7.4-alpine@sha256:…`). `docker save` böyle bir başvurunun
+adını kaydetmez; `docker load` sonrası imaj yalnız kimliğiyle kalır ve Compose onu bulamaz, çekmeye
+kalkar. Docker bir digest başvurusunu etiket hedefi olarak da reddeder (`refusing to create a tag
+with a digest reference`), bu yüzden betik yalnız düz etiketi koyar ve ardından sabitlenmiş
+başvurunun çözüldüğünü doğrular:
+
+```
+[ ok ] docker load kept redis:7.4-alpine@sha256:… only by its ID; set the tag redis:7.4-alpine on it (this moves an existing redis:7.4-alpine on this host)
+```
+
+Bu, bu makinede zaten var olan bir `redis:7.4-alpine` etiketini yüklenen imaja taşıyabilir; bir
+başka imajı gösteriyorsa o imaj etiketsiz kalır (silinmez). Düz etiket konduktan sonra da sabitlenmiş
+başvuru çözülmezse (yüklenen imaj bu Docker'da sabitlenmiş digest'i taşımıyor) betik durur ve
+hiçbir şey başlatmaz:
+
+```
+after docker load, redis:7.4-alpine@sha256:… does not resolve: the loaded image (sha256:…) does not carry the pinned digest on this Docker, even with the tag redis:7.4-alpine set. Make the bundle again with ./qradar-dash bundle on a connected host whose Docker image store is the same as this host's (…)
+```
+
+Çözüm: paketi, imaj deposu bu makineyle aynı türde olan bağlı bir makinede yeniden yap
+(`docker info` deposu gösterir). Elle yazılacak bir `docker tag … @sha256:…` komutu yoktur; Docker onu
+reddeder.
+
+Aynı mekanizma gizli dizilerin yardımcı imajı için de geçerlidir (`alpine:3.20@sha256:…`;
+sabitleme `deploy/load-secrets.sh` içindedir). `docker load` onu da yalnız kimliğiyle tutabilir;
+betik düz `alpine:3.20` etiketini koyar ve sabitlenmiş başvurunun çözüldüğünü doğrular. Paketsiz
+`upgrade <sürüm> --offline` bu imajı da arar: yükseltme öncesi yedek onu çalıştırır, eksikse betik
+imajı adıyla söyler ve hiçbir konteyneri durdurmaz.
 
 ---
 
@@ -363,7 +520,7 @@ denetlenir.
 ```bash
 git fetch --tags
 git checkout v<version>
-./qradar-dash upgrade <version> [--offline]
+./qradar-dash upgrade <version> [--offline [BUNDLE]]
 ```
 
 Yükseltmeyi hedef sürümün betiği ve compose dosyaları yürütür; eski bir checkout, yeni imajları eski
@@ -379,7 +536,8 @@ gerektirmez. Sürüm notları yine hedef imajdan okunur.
 
 `version`, başında `v` olmayan, düz SemVer'dir (`MAJOR.MINOR.PATCH`). Aksi halde betik
 `upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)` ile reddeder. İmaj etiketlerinde `v`
-yoktur. `--offline`, çekmek yerine hedef imajların yerelde yüklü olmasını şart koşar.
+yoktur. `--offline`, çekmek yerine hedef imajların yerelde yüklü olmasını şart koşar;
+`--offline BUNDLE` önce paketi doğrular ve yükler (bkz. [Çevrimdışı paket](#çevrimdışı-paket)).
 
 `upgrade` ve `rollback`, `doctor` raporundan yalnız `db_connect` ve `migration_head` satırlarını
 yazdırır; ardından `Full report: ./qradar-dash doctor` satırı gelir:
@@ -476,7 +634,10 @@ Hiçbir konteyner durdurulmadan önce, betik kontrolleri şu sırayla yapar:
 - Hedef imaj çekilebilir ya da zaten yüklüdür. Çekme, yazıcılar durmadan **önce** olur; kayıt
   defteri hatası kesinti yaratmaz. Çekilemezse
   `upgrade refused: target images are unavailable; no container was stopped`. `--offline`
-  verilmişse çekme yerine her hedef imajın yerelde olduğu doğrulanır.
+  verilmişse çekme yerine her hedef imajın yerelde olduğu doğrulanır; biri yoksa
+  `upgrade refused: target images are unavailable: image <imaj> is not loaded on this host; no container was stopped; pass the bundle: ./qradar-dash upgrade <sürüm> --offline /path/to/qradar-dash-<sürüm>-bundle.tar`
+  yazılır. Paket verilmişse önce toplamlar ve sürüm denetlenir, imajlar yüklenir ve `MANIFEST`
+  ile karşılaştırılır; bunların hiçbiri bir konteyneri durdurmaz.
 - Hedef imajın sürüm notları ayrıştırılır ve `installed_version`, `min_from` değerine eşit ya da
   büyüktür. Ayrıştırılamazsa
   `upgrade refused: target release notes are missing, invalid, or for another version`; eskiyse
@@ -792,16 +953,23 @@ Backend konteyneri çalışmıyorsa konteyner içi kısım yerine `doctor_incont
 Her satır şöyledir:
 
 ```
-PASS  db_connect     database accepted SELECT 1
-WARN  cadence_late   WAF_COLLECTION last run 2 h 10 m past its cadence    runbook: OPS-R30
-FAIL  migration_head database at 0024, image expects 0025                 runbook: OPS-R11
+PASS  db_connect         database accepted SELECT 1
+WARN  cadence            enabled families late or never run: WAF_COLLECTION    runbook: OPS-R30
+FAIL  migration_head     database at 0031, image expects 0032    runbook: OPS-R11
 ```
+
+Bu üç satır, konteyner içi kontrollerin tam kimlik listesi `render_text` ile hizalanınca çıkan
+genişliktir. En uzun kimlik `anomaly_evaluation` (18 karakter) olduğu için sütun 18'dir. Ana makine
+satırları ayrıdır ve 16 karakterlik sabit genişlik kullanır.
 
 Yalnız `PASS`, `WARN`, `FAIL` vardır. Neden tek satırdır. Kılavuz kimliği `OPS-R` ile giriş
 numarasıdır (`OPS-R30` 30. girişi gösterir). Çıktıda token, `.env` değeri, DSN ya da
 `ENCRYPTION_KEY` yoktur. Bağlantı hataları ana makineyi ve istisna sınıfını söyler, parolayı değil.
 
 Çıkış kodu: tümü PASS ise 0; FAIL olmadan en az bir WARN varsa 1; en az bir FAIL varsa 2.
+`./qradar-dash doctor --json` tek bir JSON dizisi yazar: önce ana makine kontrolleri, sonra
+konteynerin kendi `--json` çıktısı. `-h` ve `--help` kullanımı yazdırır ve 0 ile çıkar. Bilinmeyen
+argüman (`doctor --json extra` dahil) kullanımı yazdırır ve 2 ile çıkar.
 
 `doctor` hiçbir yazma işlemi yapmaz. Tek QRadar çağrısı `GET /system/about` isteğidir. QRadar'a ayrı
 bir TLS el sıkışması CA paketiyle yapılır ve `SEC` başlığı göndermez; sertifika süresi token
@@ -814,8 +982,9 @@ bağlanmaz.
 |---|---|---|
 | `disk_docker` | Docker kökünün `df -P` değeri. %70 ve üstü WARN, %90 ve üstü FAIL. | OPS-R14 |
 | `disk_backup` | `QRADAR_DASH_BACKUP_DIR` için aynı eşikler ve disk koruması. Veritabanı boyutu okunamazsa uyarır. | OPS-R14 |
-| `qradar_clock` | `timedatectl` NTP eşitliği. Eşitsiz saat ya da `timedatectl` yoksa WARN. | OPS-R15 |
-| `selinux` | `getenforce` sonucu PASS olarak yazılır, `Enforcing` dahil. Komut yoksa "SELinux is not installed". | yok |
+| `host_clock` | Bu ana makinenin NTP eşitliği (`timedatectl`). Eşitsiz saat ya da `timedatectl` yoksa WARN. Kimlik daha önce `qradar_clock` idi; ölçtüğü QRadar'ın saati değil, ana makinenin saatidir. Kılavuz kimliği değişmedi. | OPS-R15 |
+| `selinux` | `getenforce`. `Enforcing` ise PASS (`SELinux is Enforcing`). `Permissive` ise WARN (`SELinux is permissive: denials are logged, not enforced`). Komut yoksa, `Disabled` ya da boşsa PASS (`SELinux is not in use on this host`). Başka bir kip WARN olur ve kipin adını yazar. | yok |
+| `backup_age` | En yeni `qradar-dash-*` yedeği 26 saatten yeni ve yedek zamanlayıcısı etkinse PASS. Yedek yoksa ya da en yenisi 26 saatten eskiyse WARN ve `./qradar-dash backup manual` der. Zamanlayıcı `systemctl is-enabled qradar-dash-backup.timer` ile sorulur (kullanıcı birimi için `--user`); kapalıysa WARN olur ve `systemctl enable --now qradar-dash-backup.timer` der, birim hiç yoksa `./qradar-dash backup --install-timer` der. `systemctl` yoksa yalnız birim dosyasına bakılır (`/etc/systemd/system/qradar-dash-backup.timer` ya da `$HOME/.config/systemd/user/qradar-dash-backup.timer`). İki olgu aynı satırda yazılabilir. | yok |
 | `containers` | Compose'un döndürdüğü her servis çalışıyor ve sağlıklı mı. Kapalı `mcp` profilindeki `qradar-mcp` ve 0 koduyla çıkmış `migrate` yok sayılır. | OPS-R36, OPS-R41, OPS-R9, OPS-R11 |
 | `doctor_incontainer` | Yalnız backend çalışmıyorsa yazılır. | OPS-R36 |
 
@@ -826,7 +995,8 @@ bağlanmaz.
 | `db_connect` | `SELECT 1`. Hazırlık kontrolüyle aynı olgu. | OPS-R36 |
 | `migration_head` | `alembic_version` tablosu imajın başıyla aynı mı. | OPS-R11 |
 | `timescale` | Eklenti yüklü ve `log_source_metric` bir hypertable mı. | OPS-R14 |
-| `retention_policy` | `RETENTION_ENABLED` true iken `log_source_metric` için saklama politikası var mı. | OPS-R14 |
+| `retention_policy` | `RETENTION_ENABLED` true iken gün sayısı ayarlı dört tablonun her birinde saklama politikası var mı; eksik tabloları adlarıyla tek satırda bildirir. Bayrak false iken sorgu atmaz ve "retention is disabled by configuration" yazar. | OPS-R14 |
+| `batch_retention` | Günlük satır silicileri, tablolar gün sayısına göre gruplanmış. Kendi kapısı olanlar bir kez yazılır (`WAF_RETENTION_ENABLED`, `IPS_RETENTION_ENABLED`). `RETENTION_ENABLED` bu görevleri kapatmaz. Görev adları bu bölümde ve `docs/CONFIGURATION.md` içindedir. Satır 1000 karakterde kesilir. Son çalışma kaydı yoktur; satır uydurmaz, Redis okumaz. Sorgu atmaz. PASS. | OPS-R14 |
 | `redis` | Broker URL'sinde `PING`. | OPS-R9 |
 | `celery_workers` | Backend konteynerinin içinden `inspect ping`. En az bir yanıt gerekir. | OPS-R41 |
 | `celery_beat` | Redis'teki kalp atışı anahtarı; yaşı 180 sn altında olmalı. | OPS-R9 |
@@ -834,21 +1004,31 @@ bağlanmaz.
 | `qradar_auth` | `GET /system/about`. | OPS-R1 |
 | `watermarks` | Her `collection_watermark` satırı: `consecutive_failures` 0 ve gecikme kadansın iki katından az ise PASS. `consecutive_failures` 3 ve üstü ya da `last_error` doluysa FAIL. | OPS-R30 |
 | `cadence` | Her `search_cadence` ailesi. Son çalışma yaşı kadans + yerleşme + 60 sn içinde olmalı. | OPS-R30 |
-| `families_off` | Varsayılanda kapalı dört bayrak. Yeni kurulum kırmızı görünmesin diye PASS olarak, bayrak adıyla yazılır. | OPS-R7 |
+| `families_off` | Kimlik aynı kalır. Satır önce `NAME=on` ya da `NAME=off` listesini, sonra açık aileleri (`on:`) ve kapalı aileleri (`off:`) ayrı yazar. Phase A her zaman açıktır. Yeni kurulum kırmızı görünmesin diye PASS'tir. | OPS-R7 |
 | `errors_recent` | `consecutive_failures > 0` olan filigran satırı sayısı: sıfır PASS, bir ya da iki WARN, üç ve üstü FAIL. | OPS-R30 |
+| `anomaly_evaluation` | Son 24 saatte verdict üretmeden bırakılan kova varsa FAIL; açık bir fault varsa ya da beklenen yargılama zamanı (kova sonu + yerleşme + bir beat + iki değerlendirme tick'i) geçmiş canlı bir kovası olan izlenen kaynak varsa WARN. | OPS-R61 |
 | `pg_database_size` | Veritabanı boyutu. Boş alan ana makine kontrolündedir. | OPS-R14 |
 | `encryption` | Saklı bir örnek token'ı çözmeyi dener. Şifreli metin yazdırılmaz. | OPS-R16 |
 | `secrets_files` | Token ve CA dosyaları var, boş değil ve uid 10001 tarafından okunabilir. | OPS-R1 |
 | `public_origin` | Çalışan ayarlardaki köken. `https` olmalı. | OPS-R12 |
 | `version_match` | Frontend probu ile `/api/v1/version` aynı mı. | OPS-R11 |
+| `unknown_settings` | Ortamda bir ayara benzeyen ama ayar olmayan adlar. Adlar yazılır, değerler yazılmaz. Böyle bir ad yoksa PASS. Kurulumun yazdığı adlar burada görünmez. | OPS-R62 |
+| `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 
-`families_off` WARN değil PASS verir: yeni kurulumda WAF, IPS, kural eşleşmeleri ve özel kurallar
-bilerek kapalıdır. Satır, bir ailenin neden filigranı olmadığını bayrak adıyla gösterir. Arayüz hiç
-çalışmamış bir aile için "zamanında" değil, tire gösterir.
+`families_off` WARN değil PASS verir. Satır açık ve kapalı aileleri ayrı yazar. Yeni kurulumda
+Phase A, catch-all, geo ve explanations açıktır; WAF, IPS, kural eşleşmeleri, özel kurallar ve mülk
+izleme bilerek kapalıdır. Arayüz hiç çalışmamış bir aile için "zamanında" değil, tire gösterir.
 
-`celery_beat` kalp atışına bakar, çünkü beat'in Compose sağlık kontrolü yalnız
-`/tmp/celerybeat-schedule` dosyasının var olduğunu sınar. Takılmış ama pid 1'i çıkmamış bir beat
-"sağlıklı" kalır.
+`celery_beat` kalp atışına bakar (`doctor`: Redis anahtarı, sağlıklı ise 180 s altı).
+Bu anahtarı worker yazar; beat yazmaz. Beat'in Compose sağlık kontrolü
+`/tmp/celerybeat-schedule` rafının en yeni mtime değerini ölçer (SQLite WAL
+kullanıldığında `-wal`, başka bir dbm kullanıldığında `.db` / `.dir` / `.pag`).
+Eşik 960 s'dir: Celery `Scheduler.sync_every` 180 s ile bir tick'in uyuyabileceği
+`max_interval` 300 s toplanır ve bu aralığın iki katı alınır. Dosya bundan
+eskiyse Compose servisi sağlıksız işaretler. Docker sağlıksız bir konteyneri
+yeniden başlatmaz; `restart:` yalnız süreç çıkınca uygulanır. `./qradar-dash status`
+(`docker compose ps`) ve `doctor` içindeki `containers` satırı bu durumu gösterir.
+`celery_beat` satırı dosya yaşı değildir.
 
 ### `status`
 
@@ -870,9 +1050,16 @@ eksik ya da geçersizse geçersiz alanı adıyla bildirir, `Installed version: u
 ./qradar-dash logs
 ```
 
-`logs [service]`, `docker compose logs --tail=200 -f` komutudur. Servis verilmezse backend, worker
-ve beat izlenir. Uygulamanın günlük filtresi UUID biçimli token'ları yalnız zaten bir sır sözcüğü
-geçen satırlarda gizler. `logs` ikinci bir temizleyici değildir; temizleyici destek paketidir.
+`logs`, `docker compose logs` komutunun kendisidir: `cmd_logs` aldığı argümanları olduğu gibi iletir
+ve kendisi `--tail` ya da `-f` eklemez. Kuyruk ve izleme isteyen operatör onları verir:
+
+```bash
+./qradar-dash logs --tail=200 -f backend
+```
+
+Servis verilmezse Compose bütün servislerin günlüğünü yazar. Uygulamanın günlük filtresi UUID
+biçimli token'ları yalnız zaten bir sır sözcüğü geçen satırlarda gizler. `logs` ikinci bir
+temizleyici değildir; temizleyici destek paketidir.
 
 ### `support-bundle`
 
@@ -886,7 +1073,8 @@ temizlenir. Okunamayan her tanı parçası tek satırlık bir `<parça>.error.tx
 engellemez. Birleştirilen dosyalar, filtrelenmemiş `.env` ve okunabilen sır dosyaları tek bir tar
 akışı olarak `docker compose run --rm --no-deps -T backend python -m app.cli.support_bundle`
 komutuna stdin'den verilir; temizlenmiş arşiv ancak temizleyici başarılı olursa son adına taşınır.
-Backend imajı yoksa ya da temizleyici hata verirse son arşiv oluşmaz.
+Backend imajı yoksa ya da temizleyici hata verirse son arşiv oluşmaz. Bilinmeyen bir argüman
+kullanımı yazdırır ve 2 ile çıkar; hiçbir arşiv yazılmaz.
 
 İçeriği: `doctor.txt` (birleşik rapor), `version.txt`, `compose-ps.txt`, `watermarks.txt` ve
 `cadence.txt`, `config.env` (sır satırları **maskelenmez, çıkarılır**) ve `logs/` (her servis için
@@ -899,6 +1087,29 @@ Paket oluşturulurken `config.env` dosyasından `SECRET_KEY`, `ENCRYPTION_KEY`,
 `ENCRYPTION_KEYS_JSON`, `POSTGRES_PASSWORD`, `QRADAR_SEC_TOKEN`, `OIDC_CLIENT_SECRET`, `LLM_API_KEY`,
 `SMTP_PASSWORD` ve adında `WEBHOOK`, `PASSWORD` ya da `TOKEN` geçen her anahtar satırı çıkarılır.
 Sırlar destek paketine girmez. Paketi bir bilete eklemeden önce yine de elle gözden geçir.
+
+### `repair-state`
+
+```bash
+./qradar-dash repair-state
+```
+
+Yükseltme ya da geri alma bittikten sonra yığın sağlıklıysa ama `state.json` yazılamadıysa kayıt
+düzeltilir. Komut, son kayıt `failed` ise (ya da yükseltmenin geri dönüşü olmayan adımdan önce
+yazdığı başarısız deneme duruyorsa), `/api/v1/health/ready` HTTP 200 dönüyorsa ve veritabanındaki
+Alembic revizyonu çalışan imajın `migration_head` değeriyle aynıysa yazar. Çalışan sürüm
+`last_upgrade.to` ise sonuç `success` olur ve denemenin önceki imajları durur. Çalışan sürüm
+`last_upgrade.from` ise (ve ikisi farklıysa) sonuç `rolled_back` olur ve `previous_images` null
+yazılır. Son kayıt `success` olsa bile çalışan sürüm o kaydın `from` sürümüyse komut bunu elle
+yapılmış bir geri alma olarak kabul eder: ara `failed` yazımı kaybolmuş olsa da site onarılabilir
+kalır. Başarıda stdout tam olarak şunu söyler: `The upgrade itself succeeded; do not roll back.`
+Geri almada: `The rollback itself succeeded; do not roll back again.`
+
+Reddeder ve hiçbir şey yazmaz: kayıt yoksa, sonuç `rolled_back` ise, `success` kaydında çalışan
+sürüm `to` ise, `restored_from` doluysa, sağlık 200 değilse, revizyonlar uyuşmuyorsa, çalışan sürüm
+iki uçtan biri değilse. Her ret nedeni, gördüğü değeri ve sonraki komutu adlandırır
+(`./qradar-dash status`, `./qradar-dash doctor`, `./qradar-dash logs backend`). Bilinmeyen argüman
+2 ile çıkar. Ret ve yazılamama 1 ile çıkar. Kayıt yazıldıysa 0 ile çıkar.
 
 ### Günlük bakış
 
@@ -1061,6 +1272,10 @@ Komut kayıtlı bir kararı asla değiştirmez ve QRadar'a arama yapmaz.
   Laboratuvar konsolunda saklama kovaları okunamadı; hangi kovaların hangi süreyle tutulduğu ve
   silmenin kova içinde en eskiden yeniye mi yapıldığı konsoldan doğrulanmalıdır. Bu doğrulanmadan
   geçmiş okumaya dayalı bir taban çizgisine güvenme.
+- **Havuz meşgulken geçmiş okuma yerini verir.** Canlı toplama ayrılmış yuvaları kullanır. Bir
+  geçmiş adımı izin alamazsa kapsam ilerlemez: `through` yerinde kalır, durum değişmez, önceki
+  `last_error` sınıfı ve zamanı durur. Gerekçe `deferred: no Ariel permit within N s` olur. N,
+  beklenen saniyedir. Bu bir hata değildir; havuz boşalınca aynı adım yeniden denenir.
 
 ### Mülk izlemesinin kendi geçmişi
 
@@ -1278,10 +1493,16 @@ içinden aynı ana makineye TCP bağlantısı başarısız olur.
 ./qradar-dash doctor
 ```
 
-**Çözüm:** README'deki macvlan geçersiz kılma (override) bölümü: `./deploy/create-vmnet.sh` ve
-`backend`, `celery-worker`, `celery-beat` ile `migrate` servislerini o ağa koyan,
-git tarafından yok sayılan bir `docker-compose.override.yml`. Ya da bir rota. Betik bir güvenlik duvarı
-değişikliği yapmaz.
+**Çözüm:** `docs/INSTALL.md` içindeki macvlan bölümü ve
+`deploy/docker-compose.override.example.yml`. Önce `./deploy/create-vmnet.sh`
+(`qradar-vmnet`; `--ip-range` DHCP havuzunun dışında). Örneği git tarafından yok
+sayılan `docker-compose.override.yml` olarak kopyala. Örnek ağı yeniden tanımlamaz;
+`external: true` ve `name: qradar-vmnet` ile betiğin oluşturduğu ağa bağlanır. Ağ
+yalnız QRadar'a bağlantı açan servislerdedir: `backend`, `celery-worker` ve profil
+açıksa `qradar-mcp`. `celery-beat` yalnız görev adını brokera yollar; `migrate`
+yalnız Postgres'e konuşur. Betik dosya varsa bütün Compose çağrılarına ekler ve
+kullanımını yazdırır. Ya da bir rota. Betik bir güvenlik duvarı değişikliği yapmaz.
+`:z` ve `label=disable` kullanılmaz.
 
 ```bash
 ./deploy/create-vmnet.sh
@@ -1461,16 +1682,29 @@ bu yüzden zorlayıcı (enforcing) ana makinede başarısız olur.
 getenforce
 ```
 
-**Çözüm:** **Yeniden etiketleme yapma.** SELinux kapatılmaz ve `:z` kullanılmaz. `load-secrets.sh`
-kullanmaya devam et. Ayarlar bir imaja gömülene kadar `mcp` profilini kapalı bırak.
+**Çözüm:** **Yeniden etiketleme yapma.** SELinux kapatılmaz ve `:z` kullanılmaz. Uygulama
+token'ı ve CA için `load-secrets.sh` kullanmaya devam et. Üretim ana makinelerinde `mcp`
+profili, yapılandırma checkout bağlama noktası olmadan gelene kadar desteklenmez
+(`docs/INSTALL.md`, Optional MCP service). Geliştirme ve laboratuvar ana makinelerinde
+örnek `deploy/mcp/config.json` dosyasına kopyalanır.
 
 ### OPS-R14. Postgres `No space left on device` veriyor ya da `doctor` diski FAIL gösteriyor
 
 **Belirti:** Postgres `No space left on device` hatası veriyor ya da `doctor` disk satırı FAIL
 gösteriyor.
 
-**Olası neden:** `retention_enabled` false idi ya da true idi ama `apply_timescale_policies` görevi
-hiç çalışmadı. Docker json günlükleri 20 MB × 5 ile sınırlıdır ve diski dolduran şey bunlar değildir.
+**Olası neden:** Timescale politikası yoktu (`RETENTION_ENABLED` false ya da `apply_timescale_policies`
+hiç çalışmadı) ya da günlük siliciler beklenen pencereden uzun tutuluyordu. `RETENTION_ENABLED=false`
+yalnız dört Timescale parça politikasını kaldırır. Günlük siliciler yine çalışır: arama sonuçları 90
+gün (`apply_search_result_retention`), catch-all 35 (`apply_catchall_retention`), coğrafya 35
+(`apply_geo_retention`), WAF metrik 35 / kapalı olay 180 (`apply_waf_retention`, kapı
+`WAF_RETENTION_ENABLED`), IPS metrik 35 (`apply_ips_retention`, kapı `IPS_RETENTION_ENABLED`) /
+kapalı olay 365 (`apply_ips_anomaly_retention`), property-watch metrik 35 / kapalı olay 180
+(`apply_property_watch_retention`), anomaly fault 30 (`apply_anomaly_fault_retention`), özel kural
+ihlali 180 (`apply_custom_rule_retention`), kapalı Phase A olay 365
+(`apply_log_source_anomaly_retention`), `rule_health_snapshot` 90 ve `detection_coverage_snapshot`
+90 (`apply_snapshot_retention`). Docker json günlükleri 20 MB × 5 ile sınırlıdır ve diski dolduran
+şey bunlar değildir.
 
 **Doğrulama:** `disk_docker` ya da `disk_backup` FAIL ve `pg_database_size` satırı.
 
@@ -1478,8 +1712,9 @@ hiç çalışmadı. Docker json günlükleri 20 MB × 5 ile sınırlıdır ve di
 ./qradar-dash doctor
 ```
 
-**Çözüm:** Yer aç, sonra bir saklama politikasının var olduğunu doğrula (`retention_policy` PASS).
-Docker günlük dosyalarını silmek dolu bir veri volume'unu düzeltmez.
+**Çözüm:** Yer aç. `retention_policy` Timescale politikalarını doğrular (PASS). `batch_retention`
+günlük silicilerin gün sayılarını yazar; son çalışmayı kaydetmez, Redis'ten de okumaz. Docker
+günlük dosyalarını silmek dolu bir veri volume'unu düzeltmez.
 
 ### OPS-R15. Ana makine askıya alındıktan sonra filigranlar atlıyor ya da çok sayıda kaynak `TIMESTAMP_DELAY` gösteriyor
 
@@ -1489,7 +1724,8 @@ Docker günlük dosyalarını silmek dolu bir veri volume'unu düzeltmez.
 **Olası neden:** Ana makine saati sıçradı. Beat UTC kullanır. Gecikme dedektörü gerçek bir anomali
 türüdür.
 
-**Doğrulama:** `qradar_clock` WARN ve `timedatectl` eşitli değil.
+**Doğrulama:** `host_clock` WARN ve `timedatectl` eşitli değil. Bu kimlik daha önce `qradar_clock`
+idi. Ölçtüğü QRadar konsolunun saati değil, bu ana makinenin NTP eşitliğidir.
 
 ```bash
 timedatectl
@@ -1510,15 +1746,19 @@ timedatectl
 ```
 
 **Çözüm:** Satırları şifreleyen anahtarı anahtarlığa geri koy. Kopya, yedeğin `env.bak` dosyasıdır.
-Hatayı "düzeltmek" için yeni anahtar üretme.
+`ENCRYPTION_KEYS_JSON` ve `ENCRYPTION_KEY_VERSION` mevcut `.env` içinde bulunduğunda yeniden
+`install` çalıştırmak ikisini de korur. Hatayı "düzeltmek" için yeni anahtar üretme.
 
-### OPS-R17. Backend `Unsafe production configuration` ile yeniden başlıyor
+### OPS-R17. Backend `Unsafe configuration for ENVIRONMENT=<ortam>` ile yeniden başlıyor
 
-**Belirti:** Backend `Unsafe production configuration` hatasıyla yeniden başlıyor.
+**Belirti:** Backend `Unsafe configuration for ENVIRONMENT=staging` ya da
+`ENVIRONMENT=production` hatasıyla yeniden başlıyor. Satır ortamın adını taşır.
 
 **Olası neden:** Başlangıç kontrollerinden biri: `DEBUG`, kapalı TLS, kısa `SECRET_KEY`, eksik
 `ENCRYPTION_KEY`, `QRADAR_PROVIDER=mock`, token yok, otonom LLM, hatalı `PUBLIC_ORIGIN` ya da
-`AUTH_PROVIDER=oidc`.
+`AUTH_PROVIDER=oidc`. Staging aynı hatayı verir; staging, üretim öncesi sitenin üretim
+duruşudur. `.env.example` içindeki yer tutucu `SECRET_KEY` ve `ENCRYPTION_KEY` değerleri ile
+Fernet'in kuramadığı bir `ENCRYPTION_KEY` ya da `ENCRYPTION_KEYS_JSON` girdisi de nedendir.
 
 **Doğrulama:** İzleme (traceback) maddeleri listeler.
 
@@ -1763,7 +2003,7 @@ varsayılanda 120 sn'dir.
 docker network ls
 ```
 
-**Çözüm:** README'deki yeniden oluşturma komutu. Bu geçersiz kılmayı hiç oluşturmamış bir üretim
+**Çözüm:** `docs/INSTALL.md` içindeki yeniden oluşturma komutu. Bu geçersiz kılmayı hiç oluşturmamış bir üretim
 kurulumu bunu görmez.
 
 ```bash
@@ -1851,7 +2091,10 @@ curl http://127.0.0.1:8000/api/v1/health/live
 curl http://127.0.0.1:8000/api/v1/health/ready
 ```
 
-**Çözüm:** Postgres sağlığına bak, sonra OPS-R14 ya da OPS-R35.
+**Çözüm:** Postgres sağlığına bak. `/ready`, `alembic_version.version_num` değerini
+imajın Alembic başıyla karşılaştırır. Baş uyuşmazlığında 503 her iki revizyonu
+adlandırır. Tablo yoksa ya da sorgu hata verirse yanıt yine 503'tür ve veritabanı
+hata metnini içermez. `OPS-R11` (`doctor` `migration_head`) ve `OPS-R14` ile doğrula.
 
 ### OPS-R37. Özel kurallar hiç değerlendirilmiyor
 
@@ -1880,7 +2123,9 @@ yapmaz. `RULE_MATCH_COLLECTION_ENABLED` de aynı biçimdedir.
 docker login
 ```
 
-**Çözüm:** Yeni bir token. Kayıt defterine hiç ulaşılamıyorsa yol `--offline` seçeneğidir.
+**Çözüm:** Yeni bir token. Kayıt defterine hiç ulaşılamıyorsa yol çevrimdışı pakettir: bağlı bir makinede
+`./qradar-dash bundle`, üretimde `./qradar-dash install --offline BUNDLE` ya da
+`./qradar-dash upgrade <sürüm> --offline BUNDLE` (bkz. [Çevrimdışı paket](#çevrimdışı-paket)).
 
 ### OPS-R39. Dizin sayfası yapıştırılan CA'yı reddediyor
 
@@ -2384,3 +2629,93 @@ değerini büyüt. Olmuyorsa ve reddedilen tek sebep geçmiş bütçesiyse "Enab
 düğmesine bas: izleme `history_days = 0` ile etkinleşir, yalnız ileriye doğru öğrenir ve QRadar'ın
 geçmişi okunmaz. Başka bir sebep reddedildiyse o düğme yoktur; o sebebi gider (aktif izleme
 sayısını azalt, grubu küçült) ve yeniden dene.
+
+### OPS-R61. Bir anomali kovası değerlendirilemedi
+
+**Belirti:** `anomaly_evaluation` FAIL ya da WARN veriyor. FAIL: son 24 saatte en az bir kova
+verdict üretmeden bırakıldı ("N anomaly bucket(s) were not judged"). WARN: açık bir fault var (bir
+kova yeniden deneniyor) ya da bir izlenen kaynağın beklenen yargılama zamanı geçmiş canlı bir kovası
+var — yani o kovanın beklenen yargılama zamanı (kova sonu + toplama yerleşme süresi + bir beat +
+iki değerlendirme tick'i) geçmiş. Bir kaynak yalnız bu koşul sağlandığında sayılır; sadece yeni bir
+canlı kova olması yeterli değildir.
+
+**Olası neden:** `AnomalyEngine.evaluate_pending` bir kovayı değerlendirirken istisna aldı. Hata
+kalıcıysa motor `ANOMALY_MAX_BUCKET_ATTEMPTS` (varsayılan 3) denemeden sonra o kovadan vazgeçer:
+`anomaly_evaluation_fault` satırı `given_up_at` ile kapanır, `evaluated_through` o kovanın ötesine
+ilerler ve sonraki kova aynı tick'te değerlendirilir. Vazgeçilen kova hiçbir verdict yazmaz:
+`log_source_detector_state` ve `log_source_anomaly` içinde o kova için satır yoktur, açık bir olay
+olduğu gibi kalır. Yani "satır yok" "anomali yok" demek değildir. Hata geçiciyse (kilit, zaman
+aşımı, yeniden başlatma) sonraki başarılı kova fault satırını `resolved_at` ile kapatır.
+
+**Doğrulama:** `./qradar-dash doctor` satırı kaynak sayısını, son hata sınıfını ve zamanını verir.
+Kovanın kendisi ve sınıfı backend günlüğündedir; satır artık `bucket_start`, `attempts`,
+`given_up` ve `error_class` alanlarını taşır. Açık fault'lar:
+
+```sql
+SELECT log_source_id, bucket_start, attempts, error_class, first_failed_at, last_failed_at
+FROM anomaly_evaluation_fault
+WHERE resolved_at IS NULL AND given_up_at IS NULL
+ORDER BY last_failed_at DESC;
+```
+
+Son 24 saatte vazgeçilenler:
+
+```sql
+SELECT log_source_id, bucket_start, attempts, error_class, given_up_at
+FROM anomaly_evaluation_fault
+WHERE given_up_at >= now() - interval '24 hours'
+ORDER BY given_up_at DESC;
+```
+
+**Çözüm:** `error_class` bir kod hatasıysa (RuntimeError, KeyError, ValueError) bu bir yazılım
+hatasıdır; günlükteki aynı `bucket_start` satırını stack trace ile birlikte bildir. Vazgeçilen kova
+"not judged" olarak kalır; geriye dönük verdict üretilmez ve bu doğrudur. Veritabanı kaynaklı
+geçici sınıflar (OperationalError, TimeoutError, DeadlockDetected) kendiliğinden düzelir; sayı
+artmıyorsa işlem yapma. Sayı sürekli artıyorsa OPS-R36 ve OPS-R14'e bak.
+`ANOMALY_MAX_BUCKET_ATTEMPTS` değerini yükseltmek yalnız yavaş bir veritabanında anlamlıdır;
+kalıcı bir kod hatasını gizlemez.
+
+```bash
+./qradar-dash logs
+```
+
+### OPS-R62. `doctor` bilinmeyen bir ayar adı yazıyor
+
+**Belirti:** `doctor` `unknown_settings` için WARN yazar: `ignored unknown settings:` ve ardından
+büyük harfli adlar. Backend başlangıcında bir WARNING satırı aynı adları yazar (`ignoring unknown
+settings:`). Değerler yazılmaz.
+
+**Olası neden:** Ortamda, bir ayarın ilk `_` öncesi parçasıyla başlayan ama kendisi bir ayar
+olmayan bir ad vardır. Sık neden yazım hatasıdır (`CATCHALL_COLLECTION_ENABLE` gibi). Bildirim
+kanallarının `NOTIFY_*` ve `SMTP_*` adları ile `GIT_SHA` bu listeye girmez; onlar bilerek
+`Settings` dışında okunur. `./qradar-dash install` komutunun `.env` dosyasına yazdığı adlar
+(`QRADAR_DASH_VERSION` gibi) ve compose dosyalarındaki `${...}` başvuruları da girmez.
+
+**Doğrulama:** `doctor` satırı adları listeler. Başlangıç günlüğü aynı adları yazar.
+
+```bash
+./qradar-dash doctor
+./qradar-dash logs
+```
+
+**Çözüm:** Adı `.env` içinde düzelt ya da sil. `install` bilinmeyen `KEY=VALUE` satırlarını
+korur, bu yüzden yazım hatası yeniden kurulumdan sonra da durur. Ayar reddedilmez; yok sayılır
+ve burada bildirilir.
+
+### OPS-R63. Bir aile geç kalıyor ve gerekçe Ariel izni diyor
+
+**Belirti:** Bir ailenin toplaması geç kalıyor. Filigranın `last_error` değeri
+`ArielPermitUnavailable` sınıfını taşıyor, ya da geçmiş okumanın gerekçesi
+`deferred: no Ariel permit` diyor.
+
+**Olası neden:** Ariel izin havuzu dolu. Canlı iş bekler. Geçmiş okuma yerini verir.
+
+**Doğrulama:** `doctor` içindeki `ariel_permits` satırı global havuzun held/cap değerini yazar.
+Doluysa WARN. `GET /api/v1/searches/ariel-budget` aynı sayıları döner. Yanıtta sorgu metni yoktur.
+
+```bash
+./qradar-dash doctor
+```
+
+**Çözüm:** Yükü düşür: kadansları seyrelt ya da geçmiş okumayı azalt. Tavanları, cihazın
+kaldırdığı ölçüde yükselt. Ölçülmüş sınırlar AP-8'dedir. İzni kapatarak çözme.

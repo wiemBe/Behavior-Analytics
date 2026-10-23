@@ -344,6 +344,7 @@ const ERROR_WORDS: Record<string, string> = {
   NETWORK: "The connection to QRadar failed.",
   PARSING: "The result could not be read.",
   CANCELLED: "The run was cancelled.",
+  CAPACITY: "Not run: the Ariel search budget was full.",
 };
 
 export interface RunReadout {

@@ -1,32 +1,7 @@
-/* The Home KPI row (UI-2.2). Built from tokens only.
+/* The KPI card styles for the Dashboard widgets (UI-2.2). Built from tokens only.
  *
- * Four cards, four different structures; they share a frame, not a layout.
- * The row is a container: four across when it has the room, two by two when it
- * does not. A container query cannot read a custom property, so its width is
- * the one literal here. */
-
-.kpi-row {
-  container-type: inline-size;
-  min-width: 0;
-}
-.kpi-grid {
-  display: grid;
-  gap: var(--widget-gap);
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  /* Borders share the row height; each card's body still lays its content from the top. */
-  align-items: stretch;
-  min-width: 0;
-}
-@container (max-width: 900px) {
-  .kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@container (max-width: 480px) {
-  .kpi-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
+ * Each card is its own structure; cards share styles, not a layout. The frame
+ * that positions them is `WidgetFrame` (`dashboard.css`). */
 
 .kpi {
   display: flex;
@@ -175,7 +150,7 @@
 /* HealthDistribution's legend carries a page-section top margin; inside a card the
    bar and its legend sit close. */
 .kpi .health-legend {
-  margin-top: var(--sp-2);
+  margin-top: 0;
   gap: var(--sp-1) var(--sp-3);
   font-size: var(--fs-xs);
 }

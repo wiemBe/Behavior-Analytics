@@ -106,6 +106,8 @@ class LogSource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     custom_thresholds: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     # --- derived ------------------------------------------------------------
+    # Never written by the application; the columns stay because dropping them needs a
+    # migration and migrations are additive (the score and its UI were removed, UI-7.1).
     health_score: Mapped[float | None] = mapped_column(Float)
     health_computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -260,11 +262,6 @@ class LogSourceBaseline(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     exclusion_counts: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     log_source: Mapped[LogSource] = relationship(back_populates="baselines")
-
-    @property
-    def seasonality_key(self) -> str:
-        """Phase A seasonality: ISO weekday x hour of day (168 cells)."""
-        return f"w{self.weekday}h{self.hour:02d}"
 
 
 class LogSourceDetectorState(UUIDPrimaryKeyMixin, TimestampMixin, Base):

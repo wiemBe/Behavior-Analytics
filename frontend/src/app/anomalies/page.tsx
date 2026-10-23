@@ -18,6 +18,7 @@ import { Pagination } from "@/components/Pagination";
 import { isIpsRow } from "@/components/ips/ipsLabels";
 import { isPwRow } from "@/components/propertywatch/pwFormat";
 import { isWafRow } from "@/components/waf/wafLabels";
+import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
@@ -33,6 +34,7 @@ import {
   parseAnomalyQuery,
   parseSubjectQuery,
 } from "@/lib/anomalyQuery";
+import { sourcesAsOf } from "@/lib/home/asOf";
 
 import "./anomalies.css";
 
@@ -59,6 +61,7 @@ export default async function AnomaliesPage({
 
   let page: Page<AnomalySummary> | null = null;
   let sources: SourceBehavior[] = [];
+  let sourcesFailed = false;
   let error: string | null = null;
 
   try {
@@ -81,7 +84,10 @@ export default async function AnomaliesPage({
         since: q.since || undefined,
         until: q.until || undefined,
       }),
-      api.sourceBehaviors().catch(() => [] as SourceBehavior[]),
+      api.sourceBehaviors().catch(() => {
+        sourcesFailed = true;
+        return [] as SourceBehavior[];
+      }),
     ]);
     page = listed;
     sources = behaviors;
@@ -113,8 +119,12 @@ export default async function AnomaliesPage({
   // ports or %), so the heading carries none once a WAF or IPS row is on the page. A
   // page of log sources keeps the "(EPS)" its existing test pins.
   const hasWaf = items.some((a) => isWafRow(a) || isIpsRow(a) || isPwRow(a));
+  // The source list reads the Phase A volume collection: it describes the data only when the
+  // list is pinned to log sources. An unfiltered list also holds WAF, IPS and watch rows.
+  const dataTo = subject.subject_kind === "LOG_SOURCE" ? sourcesAsOf(sources, null) : null;
   return (
     <>
+      <ReportDataAge iso={dataTo} />
       <PageHeader
         title="Anomalies"
         description="Open an anomaly to see what changed during its interval. Times are UTC."
@@ -136,6 +146,7 @@ export default async function AnomaliesPage({
           until: q.until,
         }}
         sources={sources}
+        sourcesFailed={sourcesFailed}
       />
 
       {q.rangeNote && <div className="notice">{q.rangeNote}</div>}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import stat
 import subprocess
@@ -125,7 +126,7 @@ case "$*" in
     printf '%s\n' backend celery-worker celery-beat frontend proxy
     ;;
   *" stop "*|*" start "*) ;;
-  run\ --rm\ -v\ *)
+  run\ --rm\ --network\ none\ --cap-drop\ ALL\ *)
     [ "${STUB_SECRETS_RC:-0}" -eq 0 ] || exit "$STUB_SECRETS_RC"
     printf '%s\n' fixture-secrets-tar
     ;;
@@ -182,6 +183,11 @@ class BackupFixture:
         shutil.copy(SCRIPT, self.script)
         self.script.chmod(0o755)
         (self.root / "VERSION").write_text("0.1.0\n")
+        # The backup reads the pinned secrets-helper image out of the helper script,
+        # the way the offline bundle reads the redis pin out of the compose file.
+        deploy = self.root / "deploy"
+        deploy.mkdir()
+        shutil.copy(REPO / "deploy" / "load-secrets.sh", deploy / "load-secrets.sh")
         self.backup_root = tmp_path / "backups"
         self.backup_root.mkdir(mode=0o700)
         self.docker_root = tmp_path / "docker-root"
@@ -482,6 +488,51 @@ def test_missing_proxy_volume_is_not_mounted_or_claimed(backup: BackupFixture) -
     assert "volume inspect fixture-proxy" in calls
     assert "-v fixture-proxy:" not in calls
     assert calls.index("volume inspect fixture-secrets") < calls.index("-v fixture-secrets:")
+
+
+def _secrets_helper_image() -> str:
+    """The helper constant as written in deploy/load-secrets.sh (exactly once)."""
+    constants = re.findall(
+        r"^SECRETS_HELPER_IMAGE=(\S+)\s*$",
+        (REPO / "deploy" / "load-secrets.sh").read_text(encoding="utf-8"),
+        flags=re.MULTILINE,
+    )
+    assert len(constants) == 1
+    return constants[0]
+
+
+def test_secrets_backup_run_is_pinned_offline_capability_free_and_read_only(
+    backup: BackupFixture,
+) -> None:
+    result = backup.run("backup")
+
+    assert result.returncode == 0, output(result)
+    image = _secrets_helper_image()
+    [run] = [
+        line for line in backup.calls.read_text().splitlines() if line.startswith("run ")
+    ]
+    assert run == (
+        "run --rm --network none --cap-drop ALL --cap-add DAC_READ_SEARCH "
+        "--security-opt no-new-privileges "
+        "-v fixture-secrets:/volumes/qradar:ro -v fixture-proxy:/volumes/proxy:ro "
+        f"{image} tar -C /volumes -cf - qradar proxy"
+    )
+
+
+def test_backup_without_a_pinned_helper_constant_refuses_before_mounting(
+    backup: BackupFixture,
+) -> None:
+    (backup.root / "deploy" / "load-secrets.sh").write_text("#!/usr/bin/env bash\nexit 0\n")
+
+    result = backup.run("backup")
+
+    assert result.returncode != 0
+    assert "no SECRETS_HELPER_IMAGE pinned by digest" in result.stderr
+    assert backup.backups() == []
+    assert backup.partials() == []
+    calls = backup.calls.read_text() if backup.calls.exists() else ""
+    assert "-v fixture-secrets:" not in calls
+    assert "volume inspect fixture-secrets" not in calls
 
 
 def test_manifest_uses_created_non_oneoff_container_image_ids(

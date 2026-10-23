@@ -5,7 +5,9 @@
 # a container cannot read a bind mount of it. The certificate and key are not in
 # the image. They arrive in the `proxy_certs` volume, which only this container
 # mounts, so the backend never sees the application's private key.
-FROM nginx:1.27-alpine
+# The base is pinned by digest (docs/DEVELOPMENT.md "Base image pins"); the tag
+# stays for readability.
+FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
 
 COPY default.conf /etc/nginx/conf.d/default.conf
 

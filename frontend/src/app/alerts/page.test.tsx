@@ -2,11 +2,12 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import AlertsPage from "./page";
-import { ApiError, api, type Alert } from "@/lib/api";
+import AlertsLoading from "./loading";
+import { ApiError, api, type Alert, type Page } from "@/lib/api";
 
 // States this route renders, from `page.tsx`:
-//  - the read fails: a bare "Backend unreachable" notice;
-//  - no alerts: the terse "No alerts." notice;
+//  - the read fails: the 403 / 401 / failure sentence from `loadErrorMessage`;
+//  - no alerts: copy specific to the selected population;
 //  - the normal list: the lifecycle explainer, the six columns, the per-row link, the
 //    severity and status pills and the occurrence count;
 //  - honesty: an alert that has never been seen again shows an em dash for "Last seen".
@@ -37,32 +38,63 @@ function alert(over: Partial<Alert> = {}): Alert {
   };
 }
 
-async function renderPage() {
-  return render(await AlertsPage());
+function page(
+  items: Alert[],
+  over: Partial<Page<Alert>> = {},
+): Page<Alert> {
+  return { items, total: items.length, limit: 100, offset: 0, ...over };
+}
+
+async function renderPage(params: Record<string, string | undefined> = {}) {
+  return render(await AlertsPage({ searchParams: Promise.resolve(params) }));
 }
 
 beforeEach(() => vi.restoreAllMocks());
 
 describe("alert list states", () => {
-  it("explains a failed read", async () => {
+  it("names the list while the route is loading", () => {
+    render(<AlertsLoading />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading alerts…");
+  });
+
+  it("keeps the heading when the read fails", async () => {
     vi.spyOn(api, "alerts").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
     expect(screen.getByRole("heading", { name: "Alerts" })).toBeInTheDocument();
-    const notice = screen.getByText("Backend unreachable.");
-    expect(notice).not.toHaveTextContent("secret");
+  });
+
+  it.each([
+    [403, new ApiError(403, "secret"), "You do not have permission to view alerts. Ask an administrator for the read:alerts grant."],
+    [401, new ApiError(401, "secret"), "Your session has expired. Sign in again to continue."],
+    [500, new ApiError(500, "secret"), "Alerts could not be loaded. The backend may be unreachable; reload the page to try again."],
+    ["network", new Error("fetch failed"), "Alerts could not be loaded. The backend may be unreachable; reload the page to try again."],
+  ])("names what failed for a %s read failure, with no developer instruction", async (_case, error, sentence) => {
+    vi.spyOn(api, "alerts").mockRejectedValue(error);
+    await renderPage();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(sentence);
+    for (const gone of ["Backend unreachable", "Start the stack", "POST", "secret", "!"]) {
+      expect(alert).not.toHaveTextContent(gone);
+    }
     expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("says there are no alerts", async () => {
-    vi.spyOn(api, "alerts").mockResolvedValue([]);
+    vi.spyOn(api, "alerts").mockResolvedValue(page([]));
     await renderPage();
-    expect(screen.getByText("No alerts.")).toBeInTheDocument();
+    expect(screen.getByText("No alerts have been raised.")).toBeInTheDocument();
+  });
+
+  it("says when the OPEN population is empty", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([]));
+    await renderPage({ status: "OPEN" });
+    expect(screen.getByText("No open alerts.")).toBeInTheDocument();
   });
 });
 
 describe("alert list contents", () => {
   it("states the lifecycle and lists every column", async () => {
-    vi.spyOn(api, "alerts").mockResolvedValue([alert()]);
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();
     expect(screen.getByText(/Lifecycle OPEN → ACKNOWLEDGED → RESOLVED\./)).toBeInTheDocument();
     const table = screen.getByRole("table");
@@ -86,18 +118,25 @@ describe("alert list contents", () => {
     expect(row).toHaveTextContent("4");
   });
 
+  it("groups a large occurrence count", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert({ occurrence_count: 1200 })]));
+    await renderPage();
+    const row = screen.getByRole("table").querySelector("tbody tr") as HTMLElement;
+    expect(row).toHaveTextContent("1,200");
+  });
+
   it("tones acknowledged and resolved alerts differently", async () => {
-    vi.spyOn(api, "alerts").mockResolvedValue([
+    vi.spyOn(api, "alerts").mockResolvedValue(page([
       alert({ id: "a-1", title: "Acked", status: "ACKNOWLEDGED" }),
       alert({ id: "a-2", title: "Done", status: "RESOLVED" }),
-    ]);
+    ]));
     await renderPage();
     expect(screen.getByText("ACKNOWLEDGED")).toHaveClass("warn");
     expect(screen.getByText("RESOLVED")).toHaveClass("ok");
   });
 
   it("draws a never-repeated alert's last seen as an em dash", async () => {
-    vi.spyOn(api, "alerts").mockResolvedValue([alert({ last_seen_at: null })]);
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert({ last_seen_at: null })]));
     await renderPage();
     const row = screen.getByRole("table").querySelector("tbody tr") as HTMLElement;
     expect(within(row).getByText("—")).toBeInTheDocument();
@@ -107,16 +146,16 @@ describe("alert list contents", () => {
 describe("alert list honesty", () => {
   // `toLocaleString()` rendered the seen times in the viewer's zone with no zone name.
   it("renders the first- and last-seen times with their timezone", async () => {
-    vi.spyOn(api, "alerts").mockResolvedValue([
+    vi.spyOn(api, "alerts").mockResolvedValue(page([
       alert({ first_seen_at: "2026-10-15T07:00:00Z", last_seen_at: "2026-10-15T08:30:00Z" }),
-    ]);
+    ]));
     await renderPage();
     expect(screen.getByText("10-15 07:00 UTC")).toBeInTheDocument();
     expect(screen.getByText("10-15 08:30 UTC")).toBeInTheDocument();
   });
 
   it("names the page with the one h1, states the zone, and scrolls the table in a region", async () => {
-    vi.spyOn(api, "alerts").mockResolvedValue([alert()]);
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();
     expect(screen.getByRole("heading", { name: "Alerts", level: 1 })).toBeInTheDocument();
     expect(screen.getByText(/Times are UTC\./)).toBeInTheDocument();
@@ -124,7 +163,7 @@ describe("alert list honesty", () => {
   });
 
   it("right-aligns the occurrence count", async () => {
-    vi.spyOn(api, "alerts").mockResolvedValue([alert()]);
+    vi.spyOn(api, "alerts").mockResolvedValue(page([alert()]));
     await renderPage();
     expect(screen.getByText("4")).toHaveClass("num");
   });
@@ -133,5 +172,46 @@ describe("alert list honesty", () => {
     vi.spyOn(api, "alerts").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage();
     expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+  });
+});
+
+describe("alert list paging and filters", () => {
+  it("loads the selected status and offset with the bounded page size", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(
+      page([alert()], { total: 201, offset: 100 }),
+    );
+    await renderPage({ status: "OPEN", offset: "100" });
+
+    expect(api.alerts).toHaveBeenCalledWith({
+      status: "OPEN",
+      limit: 100,
+      offset: 100,
+    });
+    expect(screen.getByRole("combobox", { name: "Alert status" })).toHaveValue("OPEN");
+  });
+
+  it("states the cap and keeps the status on pagination links", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(
+      page([alert()], { total: 201, limit: 100 }),
+    );
+    await renderPage({ status: "OPEN" });
+
+    expect(screen.getByText("Showing 1 of 201 alerts.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      "/alerts?status=OPEN&offset=100",
+    );
+  });
+
+  it("defaults to all statuses and drops an invalid status", async () => {
+    vi.spyOn(api, "alerts").mockResolvedValue(page([]));
+    await renderPage({ status: "NOT_A_STATUS" });
+
+    expect(api.alerts).toHaveBeenCalledWith({
+      status: undefined,
+      limit: 100,
+      offset: 0,
+    });
+    expect(screen.getByRole("combobox", { name: "Alert status" })).toHaveValue("");
   });
 });

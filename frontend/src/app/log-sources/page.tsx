@@ -1,25 +1,21 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type LogSourceSummary } from "@/lib/api";
-import { formatDateTimeCompact } from "@/lib/health";
+import { loadErrorMessage } from "@/lib/loadError";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "./log-sources.css";
 import { qradarStatusLabel, qradarStatusTone } from "./qradarStatus";
 
-function healthTone(score: number | null): "ok" | "warn" | "crit" | undefined {
-  if (score == null) return undefined;
-  if (score >= 70) return "ok";
-  if (score >= 40) return "warn";
-  return "crit";
-}
-
 export default async function LogSourcesPage() {
   let sources: LogSourceSummary[] = [];
-  let error = false;
+  let error: string | null = null;
   try {
     sources = await api.logSources();
-  } catch {
-    error = true;
+  } catch (err) {
+    error = loadErrorMessage(err, "log sources", "read:log_sources");
   }
 
   return (
@@ -37,7 +33,7 @@ export default async function LogSourcesPage() {
 
       {error ? (
         <div className="notice" role="alert">
-          Backend unreachable — start the stack, then POST <code>/api/v1/log-sources/sync</code>.
+          {error}
         </div>
       ) : sources.length === 0 ? (
         <div className="notice">
@@ -52,7 +48,6 @@ export default async function LogSourcesPage() {
                 <th>Type</th>
                 <th>Criticality</th>
                 <th>Status</th>
-                <th className="num">Health</th>
                 <th className="num">Anomalies</th>
                 <th>Last Event</th>
               </tr>
@@ -61,7 +56,7 @@ export default async function LogSourcesPage() {
               {sources.map((s) => (
                 <tr key={s.id}>
                   <td className="cell-name">
-                    <a href={`/log-sources/${s.id}`}>{s.name}</a>
+                    <Link href={`/log-sources/${s.id}`}>{s.name}</Link>
                     {s.maintenance_mode && <span className="pill warn log-source-maint"> maint</span>}
                   </td>
                   <td>{s.type_name ?? "—"}</td>
@@ -72,11 +67,6 @@ export default async function LogSourcesPage() {
                     </span>
                   </td>
                   <td className="num">
-                    <span className={`pill ${healthTone(s.health_score) ?? ""}`}>
-                      {s.health_score ?? "—"}
-                    </span>
-                  </td>
-                  <td className="num">
                     {s.open_anomaly_count > 0 ? (
                       <span className="pill warn">{s.open_anomaly_count}</span>
                     ) : (
@@ -84,7 +74,7 @@ export default async function LogSourcesPage() {
                     )}
                   </td>
                   <td className="nowrap">
-                    {s.last_event_time ? formatDateTimeCompact(s.last_event_time) : "never"}
+                    {s.last_event_time ? <UtcTime value={s.last_event_time} variant="compact" /> : "never"}
                   </td>
                 </tr>
               ))}

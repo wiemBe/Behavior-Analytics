@@ -33,13 +33,14 @@ import { useEffect, useMemo, useRef } from "react";
 
 import type { MetricBucket } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
-import { formatDateTime } from "@/lib/health";
 import {
   buildSeries,
   isolatedPoints,
   kindMeaning,
   unobservedIntervals,
 } from "@/lib/timeseries";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
+
 
 import { HistoryKey, HistoryText } from "./HistoryKey";
 import {
@@ -223,7 +224,7 @@ export function VolumeChart({
               return p.t >= start && p.t <= end;
             });
             return [
-              formatDateTime(new Date(p.t).toISOString()),
+              utcTimeHtml(new Date(p.t).toISOString()),
               observed,
               reported,
               expected != null ? `Expected: ${expected.toFixed(2)} ${UNIT}` : "",

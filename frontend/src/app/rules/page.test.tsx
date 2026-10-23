@@ -54,12 +54,28 @@ describe("rules list layout", () => {
     expect(container.querySelector("[style]")).toBeNull();
   });
 
-  it("names the zone once in the header and keeps the time on one line", async () => {
+  it("keeps the year and the zone in the last-fired cell", async () => {
     render(await RulesPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole("columnheader", { name: "Last fired (UTC)" })).toBeInTheDocument();
-    const cell = screen.getByText("10-14 22:10");
-    expect(cell).toHaveClass("nowrap");
-    expect(cell).not.toHaveTextContent("UTC");
+    const cell = screen.getByRole("time");
+    expect(cell).toHaveTextContent("2026-10-14 22:10:00 UTC");
+    expect(cell.closest("td")).not.toHaveClass("nowrap");
+  });
+
+  it("does not attribute every unestablished rule to a missing last-fired time", async () => {
+    vi.spyOn(api, "ruleHealthSummary").mockResolvedValue([
+      { status: "INSUFFICIENT_DATA", count: 4 },
+      { status: "HEALTHY", count: 2 },
+    ]);
+    const { container } = render(await RulesPage({ searchParams: Promise.resolve({}) }));
+    const notice = [...container.querySelectorAll(".notice")].find((n) =>
+      n.textContent?.includes("dependency that has not been observed"),
+    );
+    expect(notice).toBeTruthy();
+    expect(notice).toHaveTextContent("dependency that has not been observed");
+    expect(notice).toHaveTextContent("no last-fired time");
+    expect(notice).toHaveTextContent("does not say which cause applies to each");
+    expect(notice).not.toHaveTextContent("silence cannot be distinguished");
   });
 
   it("sizes the health-count group from its count, so no card is left alone on a row", async () => {
@@ -76,6 +92,22 @@ describe("rules list layout", () => {
   it("says in an alert what failed and what to do", async () => {
     vi.spyOn(api, "rules").mockRejectedValue(new ApiError(500, "secret"));
     render(await RulesPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Nothing was changed");
+    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
+  });
+
+  it.each([
+    [403, new ApiError(403, "secret"), "You do not have permission to view rules. Ask an administrator for the read:rules grant."],
+    [401, new ApiError(401, "secret"), "Your session has expired. Sign in again to continue."],
+    [500, new ApiError(500, "secret"), "Rules could not be loaded. The backend may be unreachable; reload the page to try again."],
+    ["network", new Error("fetch failed"), "Rules could not be loaded. The backend may be unreachable; reload the page to try again."],
+  ])("names what failed for a %s read failure, with no developer instruction", async (_case, error, sentence) => {
+    vi.spyOn(api, "rules").mockRejectedValue(error);
+    await RulesPage({ searchParams: Promise.resolve({}) }).then((p) => render(p));
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(sentence);
+    for (const gone of ["Backend unreachable", "Start the stack", "POST", "secret", "!"]) {
+      expect(alert).not.toHaveTextContent(gone);
+    }
+    expect(screen.queryByRole("table")).toBeNull();
   });
 });

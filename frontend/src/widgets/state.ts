@@ -1,9 +1,9 @@
 // Staleness of a widget's data (UR.5.4): derived, never stored.
 
 /** The cadence assumed when the family's is unknown: 2 h (UR.5.4). */
-export const DEFAULT_CADENCE_SECONDS = 2 * 60 * 60;
+const DEFAULT_CADENCE_SECONDS = 2 * 60 * 60;
 
-export interface Staleness {
+interface Staleness {
   stale: boolean;
   /** Whole seconds since `asOf`, never negative; null when `asOf` cannot be read. */
   ageSeconds: number | null;

@@ -7,7 +7,6 @@
 // Missing stays missing: a share that was not measured is a dash, never 0 %.
 
 import {
-  ApiError,
   type ActionValueMap,
   type DiscoveredValue,
   type FieldValidationOut,
@@ -358,7 +357,3 @@ export function lastValidationWasBusy(
 
 /** Why a 403 happened, for this domain. */
 export const IPS_PERMISSION = "admin:ips";
-
-export function isForbidden(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 403;
-}

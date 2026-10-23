@@ -16,7 +16,7 @@ import {
   formatShare,
   reasonText,
 } from "@/lib/fieldMapping";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
@@ -84,9 +84,7 @@ export function ValidationReport({
             <>
               {" "}
               since{" "}
-              <time dateTime={pending.since} title={formatDateTime(pending.since)}>
-                {formatClock(pending.since)}
-              </time>
+              <UtcTime value={pending.since}>{formatClock(pending.since)}</UtcTime>
             </>
           ) : null}
           . This page checks every 5 seconds.
@@ -116,9 +114,9 @@ export function ValidationReport({
             <div>
               <dt>Window (UTC)</dt>
               <dd className="num">
-                <time dateTime={report.window_start}>{formatDateTime(report.window_start)}</time>
+                <UtcTime value={report.window_start} />
                 {" to "}
-                <time dateTime={report.window_end}>{formatDateTime(report.window_end)}</time>
+                <UtcTime value={report.window_end} />
               </dd>
             </div>
             <div>

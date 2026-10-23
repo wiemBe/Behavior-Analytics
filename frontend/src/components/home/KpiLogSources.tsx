@@ -10,6 +10,8 @@
 import { HealthDistribution } from "@/components/behavior/HealthDistribution";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
+import { sourcesAsOf } from "@/lib/home/asOf";
+import { useFamilyTiming } from "@/widgets/cadence";
 import { healthSummaryText } from "@/lib/behaviorOverview";
 import { combine2 } from "@/lib/home/combine";
 import { logSources, type LogSourcesCard } from "@/lib/home/logSources";
@@ -38,7 +40,12 @@ function Body({ card, totalNote }: { card: LogSourcesCard; totalNote: string | n
         unit={total ? `of ${total} monitored` : "monitored"}
         title={total ? `Monitored log sources, of ${total} that QRadar knows.` : undefined}
       />
-      <WidgetQualifiers variant="kpi" qualifiers={card.qualifiers} />
+      <WidgetQualifiers
+        variant="kpi"
+        qualifiers={card.qualifiers}
+        extra={card.evaluationFault ?? undefined}
+        extraTitle={card.evaluationFaultDetail ?? undefined}
+      />
       <Line
         title={card.silentDefinition}
         parts={[
@@ -64,6 +71,7 @@ export function KpiLogSources() {
   const sources = useApiResource(sourcesRead.key, sourcesRead.fetch);
   const overview = useApiResource(overviewRead.key, overviewRead.fetch);
   const state = combine2(summary, sources);
+  const { bucketSeconds } = useFamilyTiming("PHASE_A_VOLUME");
 
   let total: number | null = null;
   let totalNote: string | null = null;
@@ -84,6 +92,10 @@ export function KpiLogSources() {
       what="log source health"
       permission="read:anomalies"
       state={state}
+      dataTo={{
+        at: sources.status === "ok" ? sourcesAsOf(sources.data, bucketSeconds) : null,
+        family: "PHASE_A_VOLUME",
+      }}
       description="Monitored log sources and how many have a verdict. Judged excludes sources with insufficient data. Silent means the detector saw no events where some were expected (NO_EVENTS anomaly)."
     >
       {({ data: [s, list] }) => <Body card={logSources(s, list, total)} totalNote={totalNote} />}

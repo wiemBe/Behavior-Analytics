@@ -14,11 +14,12 @@ import { statePillText } from "@/components/waf/wafLabels";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads, sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import { combine2 } from "@/lib/home/combine";
 import { useExpanded } from "@/widgets/runtime";
+import { UtcTime } from "@/components/ui/UtcTime";
 
-import { IPS_ANOMALIES_LIMIT, mergeIpsAnomalies } from "./ipsAnomalies";
+
+import { IPS_ANOMALIES_LIMIT, IPS_DRILL_UNKNOWN, ipsDrillLink, mergeIpsAnomalies } from "./ipsAnomalies";
 
 import "./catalog.css";
 
@@ -34,6 +35,7 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
   const state = combine2(entities, sources);
   const view =
     state.status === "ok" ? mergeIpsAnomalies(state.data[0], state.data[1]) : null;
+  const drill = state.status === "ok" ? ipsDrillLink(state.data[0], state.data[1]) : IPS_DRILL_UNKNOWN;
 
   return (
     <WidgetFrame
@@ -42,9 +44,9 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
       windowText="active now"
       badge={view?.badge}
       link={{
-        href: "/anomalies?subject_kind=IPS_ENTITY&active_only=true",
-        label: "Entities",
-        ariaLabel: "View active IPS entity anomalies",
+        href: drill.href,
+        label: drill.label,
+        ariaLabel: drill.ariaLabel,
       }}
       state={state}
       what="the active IPS anomalies"
@@ -105,9 +107,7 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
                             {statePillText(r.state)}
                           </span>
                           {" · "}
-                          <time dateTime={r.detectedAt} title={formatDateTime(r.detectedAt)}>
-                            {formatDateTimeCompact(r.detectedAt)}
-                          </time>
+                          <UtcTime value={r.detectedAt} variant="compact" />
                         </span>
                       </td>
                       <td className="tw-unfold">
@@ -152,8 +152,8 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
                       : ""
                   }`
                 : ""}
-              <Link href="/anomalies?subject_kind=IPS_SOURCE&active_only=true" className="tw-link">
-                Source-level anomalies
+              <Link href={drill.otherHref} className="tw-link">
+                {drill.otherLabel}
               </Link>
             </p>
           </>

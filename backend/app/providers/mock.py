@@ -250,6 +250,16 @@ _IPS_DESTINATIONS = (*(f"10.10.20.{n}" for n in range(1, 9)), "127.0.0.1")
 _IPS_ACTIONS = ("BLOCK", "ALLOW", "block ", "Alert")
 
 
+def _metric_source_ids(qradar_ids: Sequence[int]) -> set[int]:
+    """The log-source ids of a top-up. An empty list is a caller's bug."""
+    if not qradar_ids:
+        raise ValueError("metric source filter is empty")
+    try:
+        return {int(item) for item in qradar_ids}
+    except (TypeError, ValueError) as exc:
+        raise ValueError("metric source ids must be integers") from exc
+
+
 class MockQRadarProvider(QRadarProvider):
     capabilities = frozenset(
         {
@@ -419,7 +429,11 @@ class MockQRadarProvider(QRadarProvider):
         ]
 
     async def get_log_source_metrics(
-        self, window_start: datetime, window_end: datetime
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        qradar_ids: Sequence[int] | None = None,
     ) -> list[LogSourceMetricSample]:
         """Deterministic per-interval samples.
 
@@ -436,6 +450,9 @@ class MockQRadarProvider(QRadarProvider):
             base_eps = self._seasonal_eps(window_start, shape)
             sample = self._build_sample(qid, window_start, bucket_seconds, base_eps, shape)
             samples.append(sample)
+        if qradar_ids is not None:
+            chosen = _metric_source_ids(qradar_ids)
+            samples = [sample for sample in samples if sample.qradar_id in chosen]
         return samples
 
     async def get_log_source_metrics_bucketed(
@@ -445,6 +462,7 @@ class MockQRadarProvider(QRadarProvider):
         *,
         bucket_seconds: int,
         max_rows: int,
+        qradar_ids: Sequence[int] | None = None,
     ) -> LogSourceMetricBucketBatch:
         """Build the keyed mock result from the existing per-bucket generator."""
         from app.collectors.bucketed_metrics import validate_bucketed_metric_window
@@ -465,9 +483,15 @@ class MockQRadarProvider(QRadarProvider):
         rows_returned = 0
         truncated = False
         while cursor < end:
-            samples = await self.get_log_source_metrics(
-                cursor, cursor + timedelta(seconds=bucket_seconds)
-            )
+            # None stays an unfiltered call. A test that replaces this method
+            # does not have to accept the keyword the live collector omits.
+            bucket_end = cursor + timedelta(seconds=bucket_seconds)
+            if qradar_ids is None:
+                samples = await self.get_log_source_metrics(cursor, bucket_end)
+            else:
+                samples = await self.get_log_source_metrics(
+                    cursor, bucket_end, qradar_ids=qradar_ids
+                )
             remaining = max_rows - rows_returned
             buckets[cursor] = samples[: max(0, remaining)]
             rows_returned += len(buckets[cursor])
@@ -1677,15 +1701,6 @@ class MockQRadarProvider(QRadarProvider):
             for bb_id, name, enabled in specs
         ]
 
-    async def get_rule(self, qradar_id: int) -> AnalyticsRuleDTO | None:
-        for rule in await self.list_rules():
-            if rule.qradar_id == qradar_id:
-                return rule
-        for bb in await self.list_building_blocks():
-            if bb.qradar_id == qradar_id:
-                return bb
-        return None
-
     # -- offenses -----------------------------------------------------------
     async def list_offenses(
         self,
@@ -1753,22 +1768,6 @@ class MockQRadarProvider(QRadarProvider):
                 )
             )
         return out
-
-    async def get_offense(self, qradar_id: int) -> OffenseDTO | None:
-        for offense in await self.list_offenses(open_only=False):
-            if offense.qradar_id == qradar_id:
-                return offense
-        return None
-
-    async def list_offense_types(self) -> dict[int, str]:
-        return {1: "Source IP", 2: "Destination IP", 3: "Source IP", 4: "Username"}
-
-    async def list_offense_closing_reasons(self) -> dict[int, str]:
-        return {
-            1: "False Positive, Tuned",
-            2: "Non-Issue",
-            3: "Policy Violation",
-        }
 
     # -- Ariel lifecycle ----------------------------------------------------
     async def create_ariel_search(self, aql: str) -> ArielSearchHandleDTO:

@@ -174,6 +174,12 @@ describe("baselineQuality", () => {
     const q = baselineQuality(source(), [cell({ is_reliable: false })]);
     expect(q.status).toBe("INCOMPLETE");
   });
+
+  it("states the cell's completeness in the shared percent spelling", () => {
+    const q = baselineQuality(source(), [cell({ is_reliable: false, completeness: 0.9 })]);
+    expect(q.explanation).toContain("at 90.0\u00A0% collection completeness");
+    expect(q.explanation).not.toMatch(/\d%/);
+  });
 });
 
 describe("collectionHealth", () => {
@@ -327,6 +333,18 @@ describe("summarizeSourceTimeline", () => {
     );
     expect(summarizeSourceTimeline({ ...base, anomalyCount: 3 })).toContain(
       "3 anomalies were detected",
+    );
+  });
+
+  it("states when the anomaly page is capped", () => {
+    expect(
+      summarizeSourceTimeline({ ...base, anomalyCount: 37, shownAnomalyCount: 20 }),
+    ).toContain("Showing 20 of 37 anomalies detected in this window.");
+  });
+
+  it("does not turn a failed anomaly read into a zero", () => {
+    expect(summarizeSourceTimeline({ ...base, anomalyCount: null })).toContain(
+      "Anomaly history could not be loaded",
     );
   });
 });

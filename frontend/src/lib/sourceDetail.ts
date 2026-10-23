@@ -11,6 +11,7 @@
 
 import type { AnomalySummary, BaselineCell, MetricBucket, SourceBehavior } from "@/lib/api";
 import { formatMetric } from "@/lib/behavior";
+import { formatShare } from "@/lib/format";
 
 // --- time range ------------------------------------------------------------
 
@@ -39,6 +40,22 @@ export function parseRange(value: string | undefined): RangeHours {
 export function rangeLabel(hours: RangeHours): string {
   return hours === 1 ? "1 hour" : `${hours} hours`;
 }
+
+/**
+ * The source page's nearest range for a dashboard window.
+ *
+ * 1 h and 24 h exist as ranges. 7 d does not: a week of 60-second buckets is
+ * 10080 rows, past the metrics cap of 5000, so the link is the longest range
+ * (24 h) and `from=7d` asks the page to say so.
+ */
+export function sourceDrillHref(sourceId: string, window: "1h" | "24h" | "7d"): string {
+  if (window === "1h") return `/behavior/sources/${sourceId}?range=1`;
+  if (window === "24h") return `/behavior/sources/${sourceId}?range=24`;
+  return `/behavior/sources/${sourceId}?range=24&from=7d`;
+}
+
+export const SOURCE_7D_NOTE =
+  "This chart is the latest 24 hours, the longest window this page can show. The widget covered 7 days; a 7-day window of one-minute buckets is not available here.";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -130,7 +147,7 @@ export function baselineQuality(
       status: "INCOMPLETE",
       label: "Incomplete",
       tone: "warn",
-      explanation: `The baseline for this weekday and hour is built from ${cell.sample_count} sample${cell.sample_count === 1 ? "" : "s"} at ${(cell.completeness * 100).toFixed(0)}% collection completeness, and the backend has not marked it reliable. Verdicts against it are weaker than they appear.`,
+      explanation: `The baseline for this weekday and hour is built from ${cell.sample_count} sample${cell.sample_count === 1 ? "" : "s"} at ${formatShare(cell.completeness)} collection completeness, and the backend has not marked it reliable. Verdicts against it are weaker than they appear.`,
       cell,
     };
   }
@@ -327,6 +344,7 @@ export function summarizeSourceTimeline({
   missing,
   partial,
   anomalyCount,
+  shownAnomalyCount = anomalyCount,
 }: {
   hours: number;
   observed: (number | null)[];
@@ -334,7 +352,8 @@ export function summarizeSourceTimeline({
   expectedEps: number | null;
   missing: number;
   partial: number;
-  anomalyCount: number;
+  anomalyCount: number | null;
+  shownAnomalyCount?: number | null;
 }): string {
   const parts: string[] = [`Observed volume over the last ${rangeLabel(hours as RangeHours)}.`];
 
@@ -371,11 +390,19 @@ export function summarizeSourceTimeline({
     );
   }
 
-  parts.push(
-    anomalyCount === 0
-      ? "No anomalies were detected in this window."
-      : `${anomalyCount} anomal${anomalyCount === 1 ? "y was" : "ies were"} detected in this window.`,
-  );
+  if (anomalyCount == null) {
+    parts.push("Anomaly history could not be loaded for this window.");
+  } else if (shownAnomalyCount != null && shownAnomalyCount < anomalyCount) {
+    parts.push(
+      `Showing ${shownAnomalyCount} of ${anomalyCount} anomalies detected in this window.`,
+    );
+  } else {
+    parts.push(
+      anomalyCount === 0
+        ? "No anomalies were detected in this window."
+        : `${anomalyCount} anomal${anomalyCount === 1 ? "y was" : "ies were"} detected in this window.`,
+    );
+  }
 
   return parts.join(" ");
 }

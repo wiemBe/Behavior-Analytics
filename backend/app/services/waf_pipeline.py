@@ -21,7 +21,10 @@ training by its incident span.
 
 A run for a source that is not eligible (`collection_ineligibility`) does
 nothing. A failed run leaves both watermarks where they were and records the
-failure on the source's collection watermark; it never writes a bucket.
+failure on the source's collection watermark; it never writes a bucket. A run
+that succeeds clears that record again: the live pass in the collector, a
+history-only run in `_run_history_volume`, so a source that recovered does not
+carry the old fault while it reads its history (HB-22).
 
 Collection takes one global WAF Ariel permit per bucket
 (`app.services.waf_ariel_budget`). A run that cannot get one stops collecting,
@@ -44,9 +47,9 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import exists, func, select, text
+from sqlalchemy import Table, exists, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.dispatcher import AlertEnqueuer
@@ -59,10 +62,8 @@ from app.core.config import Settings, get_settings
 from app.history import (
     ActionKind,
     ConsoleMode,
-    DecisionView,
     HistoryFamily,
     HistoryState,
-    ScopeRowView,
     console_mode,
     decode_progress,
     decode_scope,
@@ -78,16 +79,21 @@ from app.history import (
     transition_row,
     waf_source_searches,
 )
+from app.history.lifecycle import decision_view, deferred_scope_row, scope_row, scope_view, step_row
 from app.history.state import HistoryTrigger
 from app.history.waf import waf_planner_settings
 from app.models.enums import SearchFamily, WafBreakdown
-from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
+from app.models.history_backfill import HistoryBackfillScope
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafEndpoint, WafSourceBucket, WafSourceProfile
 from app.providers.base import ProviderError, QRadarProvider
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import (
+    ArielPermitUnavailable,
+    ariel_history_deferred_reason,
+)
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_ariel_budget import WafArielBudget
@@ -97,8 +103,6 @@ from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 from app.waf.profile import WafFieldMapping, breakdown_plan, collection_ineligibility
 
 logger = logging.getLogger("app.waf.pipeline")
-
-_KEEP = object()
 
 EVALUATION_COLLECTOR = "waf_endpoint_evaluation"
 SCHEDULING_RECORD = "waf_scheduling"
@@ -190,6 +194,48 @@ class WafPipelineReport:
             "history_breakdown_buckets": self.history_breakdown_buckets,
             "history_breakdown_metrics": self.history_breakdown_metrics,
         }
+
+
+def _loaded_collection_watermark(
+    session: AsyncSession, instance_id: uuid.UUID, collector_name: str
+) -> CollectionWatermark | None:
+    """The watermark already in this session, if a previous statement loaded it."""
+    for obj in session.identity_map.values():
+        if (
+            isinstance(obj, CollectionWatermark)
+            and obj.instance_id == instance_id
+            and obj.collector == collector_name
+        ):
+            return obj
+    return None
+
+
+async def _clear_collection_failure(
+    session: AsyncSession, instance_id: uuid.UUID, collector_name: str
+) -> None:
+    """Reset one source's collection-watermark failure in this run's transaction.
+
+    A watermark the hand-off already loaded is cleared on that object, so the
+    flush that writes `watermark_at` also clears the failure and this adds no
+    statement. Otherwise one conditional update matches a row that still records
+    a failure. It inserts nothing when the source has no watermark yet.
+    """
+    loaded = _loaded_collection_watermark(session, instance_id, collector_name)
+    if loaded is not None:
+        if loaded.consecutive_failures or loaded.last_error:
+            loaded.consecutive_failures = 0
+            loaded.last_error = None
+        return
+    table = cast(Table, CollectionWatermark.__table__)
+    await session.execute(
+        update(table)
+        .where(
+            table.c.instance_id == instance_id,
+            table.c.collector == collector_name,
+            or_(table.c.consecutive_failures != 0, table.c.last_error.is_not(None)),
+        )
+        .values(consecutive_failures=0, last_error=None)
+    )
 
 
 async def _watermark(
@@ -339,7 +385,7 @@ class WafSourcePipeline:
         """
         repository = HistoryBackfillRepository(self.session)
         decision_row = (await repository.decisions([instance.id])).get(instance.id)
-        decision = self._decision_view(decision_row)
+        decision = decision_view(decision_row)
         if console_mode(decision) in (ConsoleMode.UNDECIDED, ConsoleMode.NO):
             # No Yes: the lifecycle does nothing and creates nothing, so a source of a
             # console that never asked for history costs one statement per tick.
@@ -367,7 +413,7 @@ class WafSourcePipeline:
             family=HistoryFamily.WAF,
             mode=console_mode(decision),
             decision=decision,
-            row=self._scope_view(row),
+            row=scope_view(row),
             has_live_data=has_live,
             live_anchor=None,
             switch_on=self.settings.history_backfill_enabled,
@@ -386,7 +432,7 @@ class WafSourcePipeline:
             )
         elif action.kind is ActionKind.TRANSITION:
             assert row is not None
-            row_view = self._scope_view(row)
+            row_view = scope_view(row)
             assert row_view is not None
             values = transition_row(
                 action,
@@ -431,9 +477,9 @@ class WafSourcePipeline:
         planner = waf_planner_settings(
             self.settings, cadence_seconds=cadence.cadence_seconds
         )
-        scope_view = self._scope_view(scope)
-        assert scope_view is not None
-        decoded = decode_scope(scope_view)
+        view = scope_view(scope)
+        assert view is not None
+        decoded = decode_scope(view)
         fit_reason: str | None = None
         days_target: int | None
         budget = history_search_budget(self.settings, used=0)
@@ -441,8 +487,13 @@ class WafSourcePipeline:
             fitted = fit_family_window(HistoryFamily.WAF, self.settings)
             if fitted.days is None:
                 change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
-                values = self._scope_values(
-                    scope,
+                values = step_row(
+                    scope_row(
+                        view,
+                        instance_id=scope.instance_id,
+                        family=HistoryFamily.WAF,
+                        scope_key=scope.scope_key,
+                    ),
                     state=change.state,
                     reason=fitted.reason or change.reason,
                     finished_at=now,
@@ -490,8 +541,13 @@ class WafSourcePipeline:
             ) or None
             if fit.refused or fit.days_fitted is None or fit.target_start is None:
                 change = next_state(HistoryState.READING, HistoryTrigger.WINDOW_TOO_SMALL)
-                values = self._scope_values(
-                    scope,
+                values = step_row(
+                    scope_row(
+                        view,
+                        instance_id=scope.instance_id,
+                        family=HistoryFamily.WAF,
+                        scope_key=scope.scope_key,
+                    ),
                     state=change.state,
                     reason=fit_reason or fit.reason,
                     finished_at=now,
@@ -510,14 +566,32 @@ class WafSourcePipeline:
             fit_reason = stored_reason if isinstance(stored_reason, str) else None
             days_target = scope.days_target
 
-        outcome = await collector.history_volume_step(
-            log_source,
-            progress,
-            boundary=boundary,
-            search_budget=budget,
-            seconds_left=float(self.settings.history_backfill_seconds_per_tick),
-            cadence_seconds=cadence.cadence_seconds,
-        )
+        try:
+            outcome = await collector.history_volume_step(
+                log_source,
+                progress,
+                boundary=boundary,
+                search_budget=budget,
+                seconds_left=float(self.settings.history_backfill_seconds_per_tick),
+                cadence_seconds=cadence.cadence_seconds,
+            )
+        except ArielPermitUnavailable as exc:
+            reason = ariel_history_deferred_reason(exc)
+            await HistoryBackfillRepository(self.session).write_scopes(
+                [
+                    deferred_scope_row(
+                        scope,
+                        instance_id=scope.instance_id,
+                        family=HistoryFamily.WAF,
+                        scope_key=scope.scope_key,
+                        reason=reason,
+                    )
+                ]
+            )
+            report.status = "history_reading"
+            report.history_state = HistoryState.READING.value
+            report.history_reason = reason
+            return
         state = HistoryState.READING
         finished_at: datetime | None = None
         anchor: datetime | None = scope.anchor
@@ -533,17 +607,47 @@ class WafSourcePipeline:
                 settled=outcome.progress.through is not None,
             )
         reason = "; ".join(part for part in (fit_reason, outcome.reason) if part)
-        values = self._scope_values(
-            scope,
+        values = step_row(
+            scope_row(
+                view,
+                instance_id=scope.instance_id,
+                family=HistoryFamily.WAF,
+                scope_key=scope.scope_key,
+            ),
             state=state,
             reason=reason,
-            progress=outcome.progress,
-            adapter=adapter,
             days_target=days_target,
+            target_start=outcome.progress.target_start,
+            floor=outcome.progress.floor,
+            through=outcome.progress.through,
+            started_at=outcome.progress.started_at,
             finished_at=finished_at,
             anchor=anchor,
+            progress=encode_progress(outcome.progress, adapter),
         )
         await HistoryBackfillRepository(self.session).write_scopes([values])
+        if state is HistoryState.READING and outcome.error is not None:
+            await HistoryBackfillRepository(self.session).write_step_errors(
+                instance.id,
+                HistoryFamily.WAF.value,
+                {str(log_source.qradar_id): outcome.error},
+                at=self._clock(),
+            )
+        if (
+            outcome.error is None
+            and not outcome.permit_unavailable
+            and (outcome.searches > 0 or outcome.trigger is not None)
+        ):
+            # HB-22 D3: a history run that did its work and did not fail clears the
+            # failure record of the source's collection watermark, as the live success
+            # path does. A source in history reading has no live pass, so without this
+            # the record of the fault that a previous history run hit would stay on the
+            # source for the whole reading. A run that searched nothing (no budget, no
+            # permit) proved nothing and keeps the record. This does not insert a
+            # watermark the source does not have.
+            await _clear_collection_failure(
+                self.session, instance.id, watermark_collector(log_source)
+            )
         report.status = "history_reading" if state is HistoryState.READING else "history_handoff"
         report.history_state = state.value
         report.history_reason = reason
@@ -580,9 +684,9 @@ class WafSourcePipeline:
         """Run the post-hand-off enrichment without changing the volume state."""
         if not collector.planned_breakdowns() or scope.floor is None or scope.anchor is None:
             return
-        scope_view = self._scope_view(scope)
-        assert scope_view is not None
-        decoded = decode_scope(scope_view)
+        view = scope_view(scope)
+        assert view is not None
+        decoded = decode_scope(view)
         if decoded is None:
             return
         outer_adapter = dict(decoded.adapter)
@@ -610,25 +714,48 @@ class WafSourcePipeline:
             if nested.adapter.get("done") is True:
                 return
             breakdown_progress = nested.progress
-        outcome = await collector.history_breakdown_step(
-            log_source,
-            breakdown_progress,
-            boundary=scope.anchor,
-            search_budget=history_search_budget(self.settings, used=used),
-            seconds_left=float(self.settings.history_backfill_seconds_per_tick),
-            cadence_seconds=cadence.cadence_seconds,
-        )
+        try:
+            outcome = await collector.history_breakdown_step(
+                log_source,
+                breakdown_progress,
+                boundary=scope.anchor,
+                search_budget=history_search_budget(self.settings, used=used),
+                seconds_left=float(self.settings.history_backfill_seconds_per_tick),
+                cadence_seconds=cadence.cadence_seconds,
+            )
+        except ArielPermitUnavailable as exc:
+            reason = ariel_history_deferred_reason(exc)
+            await HistoryBackfillRepository(self.session).write_scopes(
+                [
+                    deferred_scope_row(
+                        scope,
+                        instance_id=scope.instance_id,
+                        family=HistoryFamily.WAF,
+                        scope_key=scope.scope_key,
+                        reason=reason,
+                    )
+                ]
+            )
+            report.history_reason = reason
+            return
         outer_adapter["breakdown"] = encode_progress(
             outcome.progress,
             adapter={"done": outcome.trigger is not None, "reason": outcome.reason},
         )
-        values = self._scope_values(
-            scope,
+        values = step_row(
+            scope_row(
+                view,
+                instance_id=scope.instance_id,
+                family=HistoryFamily.WAF,
+                scope_key=scope.scope_key,
+            ),
             state=HistoryState(scope.state),
             reason=scope.reason or "history volume pass finished",
-            progress=decoded.progress,
-            adapter=outer_adapter,
-            finished_at=scope.finished_at,
+            target_start=decoded.progress.target_start,
+            floor=decoded.progress.floor,
+            through=decoded.progress.through,
+            started_at=decoded.progress.started_at,
+            progress=encode_progress(decoded.progress, outer_adapter),
         )
         await HistoryBackfillRepository(self.session).write_scopes([values])
         report.history_searches += outcome.searches
@@ -638,79 +765,6 @@ class WafSourcePipeline:
     def _boundary(self, now: datetime) -> datetime:
         seconds = self.settings.collection_interval_seconds
         return datetime.fromtimestamp(int(now.timestamp()) // seconds * seconds, tz=UTC)
-
-    @staticmethod
-    def _decision_view(row: HistoryBackfillDecision | None) -> DecisionView | None:
-        if row is None:
-            return None
-        return DecisionView(
-            answer=row.answer,
-            days=row.days,
-            start_requested_at=row.start_requested_at,
-            start_requested_by=row.start_requested_by,
-            stop_requested_at=row.stop_requested_at,
-            stop_requested_by=row.stop_requested_by,
-        )
-
-    @staticmethod
-    def _scope_view(row: HistoryBackfillScope | None) -> ScopeRowView | None:
-        if row is None:
-            return None
-        return ScopeRowView(
-            state=HistoryState(row.state),
-            days_requested=row.days_requested,
-            days_target=row.days_target,
-            target_start=row.target_start,
-            floor=row.floor,
-            through=row.through,
-            anchor=row.anchor,
-            started_at=row.started_at,
-            finished_at=row.finished_at,
-            reason=row.reason,
-            progress=row.progress,
-        )
-
-    @staticmethod
-    def _scope_values(
-        row: HistoryBackfillScope,
-        *,
-        state: HistoryState,
-        reason: str,
-        progress: Any | None = None,
-        adapter: Mapping[str, Any] | None = None,
-        days_target: int | None = None,
-        finished_at: datetime | None | object = _KEEP,
-        anchor: datetime | None = None,
-    ) -> dict[str, Any]:
-        encoded = row.progress
-        target_start, floor, through, started_at = (
-            row.target_start,
-            row.floor,
-            row.through,
-            row.started_at,
-        )
-        if progress is not None:
-            encoded = encode_progress(progress, adapter=adapter)
-            target_start = progress.target_start
-            floor = progress.floor
-            through = progress.through
-            started_at = progress.started_at
-        return {
-            "instance_id": row.instance_id,
-            "family": row.family,
-            "scope_key": row.scope_key,
-            "state": state.value,
-            "days_requested": row.days_requested,
-            "days_target": days_target if days_target is not None else row.days_target,
-            "target_start": target_start,
-            "floor": floor,
-            "through": through,
-            "anchor": anchor if anchor is not None else row.anchor,
-            "started_at": started_at,
-            "finished_at": row.finished_at if finished_at is _KEEP else finished_at,
-            "reason": reason[:255],
-            "progress": encoded,
-        }
 
     async def _evaluate(
         self,
@@ -857,14 +911,14 @@ def sanitized_error(exc: BaseException) -> str:
 
 async def record_waf_failure(
     session: AsyncSession, profile_id: uuid.UUID, exc: BaseException, *, now: datetime
-) -> None:
-    """Make a failed run visible without touching the watermark or any bucket."""
+) -> int | None:
+    """Make a failed run visible and return its QRadar source id when it exists."""
     profile = await session.get(WafSourceProfile, profile_id)
     if profile is None:
-        return
+        return None
     log_source = await session.get(LogSource, profile.log_source_id)
     if log_source is None:
-        return
+        return None
     wm = await _watermark(session, profile.instance_id, watermark_collector(log_source))
     wm.consecutive_failures += 1
     wm.last_error = sanitized_error(exc)
@@ -874,6 +928,7 @@ async def record_waf_failure(
         "last_error_class": type(exc).__name__,
     }
     await session.flush()
+    return log_source.qradar_id
 
 
 async def record_waf_skip(
@@ -928,6 +983,7 @@ async def run_waf_source(
     if instance is None:
         return {"profile_id": str(profile_id), "status": "missing"}
     provider = provider_factory(instance)
+    instance_id = instance.id
     log_source_id = profile.log_source_id
     try:
         report = await WafSourcePipeline(
@@ -949,7 +1005,18 @@ async def run_waf_source(
         return report.as_dict()
     except Exception as exc:
         await session.rollback()
-        await record_waf_failure(session, profile_id, exc, now=clock())
+        failed_at = clock()
+        qradar_source_id = await record_waf_failure(
+            session, profile_id, exc, now=failed_at
+        )
+        if qradar_source_id is not None:
+            await HistoryBackfillRepository(session).write_step_errors(
+                instance_id,
+                HistoryFamily.WAF.value,
+                {str(qradar_source_id): exc},
+                at=failed_at,
+                required_state=HistoryState.READING.value,
+            )
         await session.commit()
         logger.warning(
             "waf source run failed",

@@ -6,11 +6,15 @@ import {
   type RuleCoverageView,
   type TechniqueCoverage,
 } from "@/lib/api";
+import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatDateTime, healthMeaning, healthTone } from "@/lib/health";
+import { formatShare } from "@/lib/format";
+import { healthMeaning, healthTone } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "./coverage.css";
 
@@ -32,7 +36,7 @@ export default async function CoveragePage({
   let page: Page<TechniqueCoverage> | null = null;
   let byRule: RuleCoverageView[] = [];
   let byDataSource: DataSourceCoverageView[] = [];
-  let error = false;
+  let error: string | null = null;
 
   try {
     [summary, page, byRule, byDataSource] = await Promise.all([
@@ -41,8 +45,8 @@ export default async function CoveragePage({
       api.coverageByRule(),
       api.coverageByDataSource(),
     ]);
-  } catch {
-    error = true;
+  } catch (err) {
+    error = loadErrorMessage(err, "detection coverage", "read:coverage");
   }
 
   if (error) {
@@ -50,11 +54,7 @@ export default async function CoveragePage({
       <>
         <PageHeader title="Detection Coverage" />
         <div className="notice" role="alert">
-          <p>
-            Backend unreachable. Start the stack, then run{" "}
-            <code>python -m app.cli.sync coverage</code>. Nothing was changed; reload once the
-            backend answers.
-          </p>
+          <p>{error}</p>
         </div>
       </>
     );
@@ -78,15 +78,8 @@ export default async function CoveragePage({
         <div className="notice">
           <strong>Coverage has not been evaluated.</strong>
           <p>
-            No ATT&amp;CK technique mappings exist yet, so there is nothing to
-            evaluate. This is <em>not</em> a finding of zero coverage — it means
-            the question has not been asked. Rules and building blocks have been
-            collected; what is missing is the technique-to-rule mapping that
-            turns them into a coverage claim.
-          </p>
-          <p>
-            Add mappings via <code>POST /api/v1/coverage/mappings</code>, then run{" "}
-            <code>python -m app.cli.sync coverage</code>.
+            No ATT&amp;CK technique mappings are configured, so coverage cannot be
+            measured. An administrator adds them. This is not a finding of zero coverage.
           </p>
         </div>
       ) : (
@@ -114,10 +107,10 @@ export default async function CoveragePage({
 
           <p className="muted">
             {summary?.total_techniques} techniques evaluated ·{" "}
-            {Math.round((summary?.covered_ratio ?? 0) * 100)}% covered ·{" "}
+            {formatShare(summary?.covered_ratio)} covered ·{" "}
             {summary?.mapping_provenance.explicit ?? 0} explicit /{" "}
             {summary?.mapping_provenance.inferred ?? 0} inferred mappings ·
-            generated {formatDateTime(summary?.generated_at)}
+            generated {<UtcTime value={summary?.generated_at} />}
           </p>
 
           {items.length === 0 ? (
@@ -150,9 +143,7 @@ export default async function CoveragePage({
                       </td>
                       <td className="num">{t.mapped_rule_count}</td>
                       <td className="num">
-                        {t.coverage_score == null
-                          ? "—"
-                          : Math.round(t.coverage_score * 100) + "%"}
+                        {formatShare(t.coverage_score)}
                       </td>
                       <td className="muted">{t.reason ?? healthMeaning(t.status)}</td>
                     </tr>
@@ -185,7 +176,7 @@ export default async function CoveragePage({
                 <td>{r.name}</td><td>{r.enabled ? "Yes" : "No"}</td>
                 <td><span className={`pill ${healthTone(r.health_status)}`}>{r.health_status.replace(/_/g, " ")}</span></td>
                 <td>{r.techniques.map((t) => t.technique_id).join(", ")}</td>
-                <td className="muted">{r.techniques.map((t) => `${t.source.toLowerCase()} ${Math.round(t.confidence * 100)}%`).join("; ")}</td>
+                <td className="muted">{r.techniques.map((t) => `${t.source.toLowerCase()} ${formatShare(t.confidence)}`).join("; ")}</td>
               </tr>
             ))}
           </tbody>
@@ -206,7 +197,7 @@ export default async function CoveragePage({
                 <td>{d.target_name ?? d.target_ref}</td><td>{d.kind.replace(/_/g, " ")}</td>
                 <td>{d.rules.map((r) => r.name).join(", ")}</td>
                 <td>{d.techniques.join(", ") || "—"}</td>
-                <td className="muted">{d.rules.map((r) => `${r.dependency_source.toLowerCase()} ${Math.round(r.dependency_confidence * 100)}%`).join("; ")}</td>
+                <td className="muted">{d.rules.map((r) => `${r.dependency_source.toLowerCase()} ${formatShare(r.dependency_confidence)}`).join("; ")}</td>
               </tr>
             ))}
           </tbody>

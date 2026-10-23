@@ -9,6 +9,8 @@ import Link from "next/link";
 
 import type { LogSourceDetail, SourceBehavior } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
+import { evaluationOf, windowIsPartial } from "@/lib/evaluationFault";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 export function SourceHeader({
   behavior,
@@ -18,6 +20,8 @@ export function SourceHeader({
   /** Inventory metadata. Null when that call failed; the page still renders. */
   meta: LogSourceDetail | null;
 }) {
+  const evaluation = evaluationOf(behavior);
+  const partial = windowIsPartial(behavior);
   return (
     <header className="page-header incident-header">
       <div>
@@ -31,6 +35,14 @@ export function SourceHeader({
           <span className={`pill pill-strong ${stateTone(behavior.state)}`}>
             {behavior.state}
           </span>
+          {evaluation?.judged_through && (
+            <span className="muted">
+              Judged through <UtcTime value={evaluation.judged_through} variant="compact" />
+            </span>
+          )}
+          {partial && (
+            <span className="pill pill-quiet warn">PARTIAL</span>
+          )}
 
           {/* Secondary identity, so an analyst can match this against QRadar. */}
           {meta?.qradar_id != null && (

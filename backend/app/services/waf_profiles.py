@@ -24,6 +24,7 @@ from app.models.waf import WafSourceProfile
 from app.providers.base import ProviderError, QRadarProvider
 from app.providers.dto import WafSourceProbe
 from app.repositories.audit import record_audit
+from app.services.ariel_permit import ariel_background_priority
 from app.waf.profile import WafFieldMapping, WafProfileError
 from app.waf.validation import ProfileValidation, evaluate_profile
 
@@ -181,18 +182,28 @@ class WafProfileService:
         lookup_error: str | None = None
         found = False
         try:
-            found = await provider.get_log_source(log_source.qradar_id) is not None
+            with ariel_background_priority():
+                found = await provider.get_log_source(log_source.qradar_id) is not None
         except ProviderError as exc:
             lookup_error = f"{type(exc).__name__}: {exc}"[:400]
 
         if found:
-            probe = await provider.probe_waf_properties(
-                qradar_log_source_id=log_source.qradar_id,
-                window_start=window_start,
-                window_end=window_end,
-                property_names=list(mapping.mapped().values()),
-                max_values=self.settings.waf_validation_max_values,
-            )
+            try:
+                with ariel_background_priority():
+                    probe = await provider.probe_waf_properties(
+                        qradar_log_source_id=log_source.qradar_id,
+                        window_start=window_start,
+                        window_end=window_end,
+                        property_names=list(mapping.mapped().values()),
+                        max_values=self.settings.waf_validation_max_values,
+                    )
+            except ProviderError as exc:
+                probe = WafSourceProbe(
+                    qradar_log_source_id=log_source.qradar_id,
+                    window_start=window_start,
+                    window_end=window_end,
+                    total_error=f"{type(exc).__name__}: {exc}"[:400],
+                )
         else:
             # No Ariel query is spent on a source QRadar did not confirm.
             probe = WafSourceProbe(

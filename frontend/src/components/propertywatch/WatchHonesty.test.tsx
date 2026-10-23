@@ -1,8 +1,18 @@
+import type { ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { bucket, catalog, iso, watch } from "./fixtures";
 import { honestyNotes, WatchHonesty } from "./WatchHonesty";
+
+/** Text of a note, including an instant drawn by UtcTime. */
+function asText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  return renderToStaticMarkup(<>{node}</>).replace(/<[^>]+>/g, "");
+}
 
 const full = (n: number) => Array.from({ length: n }, (_, i) => bucket(i));
 const input = (over: Partial<Parameters<typeof honestyNotes>[0]> = {}) => ({
@@ -60,8 +70,9 @@ describe("the honesty line", () => {
         },
       }),
     }));
-    expect(notes[0].text).toContain("earlier buckets are not claimed as zero");
-    expect(notes.find((note) => note.label === "HISTORY GAP")?.text).toContain(
+    expect(asText(notes[0].text)).toContain("earlier buckets are not claimed as zero");
+    expect(asText(notes[0].text)).toContain("2026-10-10 09:00:00 UTC");
+    expect(asText(notes.find((note) => note.label === "HISTORY GAP")?.text)).toContain(
       "could not be read (search failed 3 times at the minimum width).",
     );
     expect(notes.find((note) => note.label === "HISTORY PROGRESS UNREADABLE")?.text).toContain(
@@ -100,8 +111,8 @@ describe("the honesty line", () => {
     const buckets = full(12).map((b, i) => (i === 5 ? { ...b, rejected_over_quota: 280 } : b));
     const [note] = honestyNotes(input({ buckets }));
     expect(note.label).toBe("ADMISSION");
-    expect(note.text).toContain("280 values were refused admission at");
-    expect(note.text).toContain("UTC");
+    expect(asText(note.text)).toContain("280 values were refused admission at");
+    expect(asText(note.text)).toContain("UTC");
   });
 
   it("reports a membership change with the counts before and after", () => {
@@ -110,8 +121,8 @@ describe("the honesty line", () => {
     );
     const [note] = honestyNotes(input({ buckets }));
     expect(note.label).toBe("MEMBERSHIP CHANGED");
-    expect(note.text).toContain("37 to 40 sources");
-    expect(note.text).toContain(iso(6).slice(0, 10));
+    expect(asText(note.text)).toContain("37 to 40 sources");
+    expect(asText(note.text)).toContain(iso(6).slice(0, 10));
   });
 
   it("names the collection setting when collection is off", () => {

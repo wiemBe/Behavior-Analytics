@@ -4,15 +4,14 @@
 // right-aligned in tabular figures, times carry their zone, and a missing measurement is an em
 // dash with the reason beside it, never a zero.
 
-import type { HistoryConsole } from "@/lib/api";
+import type { HistoryConsole, HistoryScopeSource } from "@/lib/api";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
 
 import {
   familyName,
   formatCount,
   formatDays,
-  gapRange,
   relativeAge,
 } from "./historyFormat";
 import { rowsOf, type HistoryRow } from "./historyRows";
@@ -21,17 +20,18 @@ import "@/components/ui/controls.css";
 import "./history.css";
 
 const MAX_GAPS_SHOWN = 3;
+const MAX_SOURCES_SHOWN = 5;
 
 function Time({ iso, now }: { iso: string | null; now: Date }) {
   if (iso === null) return <span className="muted">—</span>;
-  const age = relativeAge(iso, now);
   return (
-    <>
-      <time dateTime={iso} className="nowrap" title={formatDateTime(iso)}>
-        {formatDateTimeCompact(iso)}
-      </time>
-      {age && <span className="cell-sub">{age}</span>}
-    </>
+    <UtcTime
+      value={iso}
+      variant="compact"
+      wrapZone
+      age={relativeAge(iso, now)}
+      ageClassName="cell-sub"
+    />
   );
 }
 
@@ -54,9 +54,7 @@ function Proved({ row }: { row: HistoryRow }) {
     return (
       <>
         <span className="cell-sub hb-lead">Window proved</span>
-        <time dateTime={row.proved.floor} className="nowrap" title={formatDateTime(row.proved.floor)}>
-          {formatDateTimeCompact(row.proved.floor)}
-        </time>
+        <UtcTime value={row.proved.floor} variant="compact" wrapZone />
       </>
     );
   }
@@ -97,10 +95,44 @@ function Read({ row }: { row: HistoryRow }) {
   );
 }
 
+function SourceShortfall({
+  label,
+  sources,
+  count,
+}: {
+  label: string;
+  sources: HistoryScopeSource[] | null;
+  count: number | null;
+}) {
+  if (count === null || count <= 0) return null;
+  const shown = (sources ?? []).slice(0, Math.min(MAX_SOURCES_SHOWN, count));
+  const more = count - shown.length;
+  const names = shown.map((source) => source.name ?? `source ${source.key}`).join(", ");
+  const remainder = more > 0 ? `${shown.length > 0 ? " and " : ""}${more} more` : "";
+  return (
+    <div>
+      <span className="muted">{label}: </span>
+      {names}
+      {remainder}.
+    </div>
+  );
+}
+
 function Reason({ row }: { row: HistoryRow }) {
   const shown = row.gaps.slice(0, MAX_GAPS_SHOWN);
   const more = row.gaps.length - shown.length;
-  if (row.reason === null && shown.length === 0) return <span className="muted">—</span>;
+  const hasLastError = row.lastErrorClass !== null;
+  const hasCutSources = row.sourcesCutCount !== null && row.sourcesCutCount > 0;
+  const hasSilentSources = row.sourcesSilentCount !== null && row.sourcesSilentCount > 0;
+  if (
+    row.reason === null &&
+    shown.length === 0 &&
+    !hasLastError &&
+    !hasCutSources &&
+    !hasSilentSources
+  ) {
+    return <span className="muted">—</span>;
+  }
   return (
     <>
       {row.reason}
@@ -108,8 +140,10 @@ function Reason({ row }: { row: HistoryRow }) {
         <ul className="hb-gaps" aria-label="Gaps in what was read">
           {shown.map((gap) => (
             <li key={`${gap.start}-${gap.end}`}>
-              <span className="nowrap" title={`${formatDateTime(gap.start)} to ${formatDateTime(gap.end)}`}>
-                {gapRange(gap)}
+              <span title={`${utcTimeText(gap.start)} to ${utcTimeText(gap.end)}`}>
+                <UtcTime value={gap.start} variant="compact" />
+                {" to "}
+                <UtcTime value={gap.end} variant="compact" />
               </span>
               <span className="cell-sub">{gap.reason}</span>
             </li>
@@ -117,6 +151,22 @@ function Reason({ row }: { row: HistoryRow }) {
           {more > 0 && <li className="cell-sub">and {more} more</li>}
         </ul>
       )}
+      {hasLastError && (
+        <span className="cell-sub hb-last-error warn">
+          Last step failed at <UtcTime value={row.lastErrorAt} variant="compact" />{" "}
+          ({row.lastErrorClass}). The next collection retries.
+        </span>
+      )}
+      <SourceShortfall
+        label="QRadar holds less than asked for"
+        sources={row.sourcesCut}
+        count={row.sourcesCutCount}
+      />
+      <SourceShortfall
+        label="No event in the window"
+        sources={row.sourcesSilent}
+        count={row.sourcesSilentCount}
+      />
     </>
   );
 }
@@ -161,13 +211,11 @@ export function HistoryTable({ console, now }: { console: HistoryConsole; now: D
               Read through
               <span className="cell-sub">UTC</span>
             </th>
-            <th scope="col">Reason</th>
-            <th scope="col">Later Yes</th>
           </tr>
         </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.key}>
+        {rows.map((row) => (
+          <tbody key={row.key}>
+            <tr className="hb-metrics">
               <th scope="row" className="hb-family">
                 {familyName(row.family)}
               </th>
@@ -206,24 +254,33 @@ export function HistoryTable({ console, now }: { console: HistoryConsole; now: D
                     )}
                     {row.last.finished !== null && (
                       <span className="cell-sub">
-                        finished{" "}
-                        <time dateTime={row.last.finished} title={formatDateTime(row.last.finished)}>
-                          {formatDateTimeCompact(row.last.finished)}
-                        </time>
+                        finished <UtcTime value={row.last.finished} variant="compact" wrapZone />
                       </span>
                     )}
                   </>
                 )}
               </td>
-              <td className="hb-reason">
-                <Reason row={row} />
-              </td>
-              <td className="hb-later">
-                {row.laterYes === null ? <span className="muted">—</span> : row.laterYes}
+            </tr>
+            <tr className="hb-detail">
+              <td colSpan={8}>
+                <dl className="hb-detail-list">
+                  <div>
+                    <dt>Reason</dt>
+                    <dd>
+                      <Reason row={row} />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Later Yes</dt>
+                    <dd>
+                      {row.laterYes === null ? <span className="muted">—</span> : row.laterYes}
+                    </dd>
+                  </div>
+                </dl>
               </td>
             </tr>
-          ))}
-        </tbody>
+          </tbody>
+        ))}
       </table>
     </TableScroll>
   );

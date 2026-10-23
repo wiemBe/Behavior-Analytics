@@ -10,7 +10,7 @@ import {
   profile,
   status,
 } from "@/components/fieldmapping/fixtures";
-import { ApiError, api, type WafProfileOut } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { draftFromProfile } from "@/lib/fieldMapping";
 
 const SOURCE: EditorSource = {
@@ -511,7 +511,9 @@ describe("ProfileEditor: property catalog", () => {
     editor();
     await user.click(screen.getByRole("button", { name: "Refresh list" }));
     expect(refresh).toHaveBeenCalledWith("ls-1", true);
-    expect(await screen.findByText(/fetched 2026-10-13 01:00:00 UTC/)).toBeInTheDocument();
+    expect(await screen.findByText(/Property list from this console, fetched/)).toHaveTextContent(
+      "fetched 2026-10-13 01:00:00 UTC",
+    );
   });
 
   it("keeps the previous list when a refresh fails, and says so", async () => {

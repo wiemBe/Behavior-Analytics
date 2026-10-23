@@ -1,8 +1,8 @@
-"""Celery application.
+"""Celery application and beat schedule.
 
-Phase 1 defines the app and the beat schedule placeholder only; the collection,
-anomaly and notification tasks are registered in Phase 2. APScheduler is the
-documented MVP fallback for teams not running Celery — see README.
+Beat drives collection, detection, notification and retention. There is no
+scheduler fallback: APScheduler only parses cron expressions for scheduled
+searches.
 """
 
 from __future__ import annotations
@@ -18,6 +18,16 @@ settings = get_settings()
 
 BEAT_HEARTBEAT_KEY = "qradar-observability:celery-beat-heartbeat"
 BEAT_HEARTBEAT_TTL_SECONDS = 180
+
+#: The anomaly evaluation beat's period, in seconds. `ANOMALY_MAX_BUCKET_ATTEMPTS`
+#: is expressed in these ticks, and the doctor's `anomaly_evaluation` check treats
+#: a source as trailing when its verdict is more than twice this behind.
+ANOMALY_EVALUATION_CADENCE_SECONDS = 60
+
+#: The Phase A collection beat interval (one tick), in seconds. The doctor uses
+#: this for the allowance between collection and evaluation (`one beat`), and
+#: the beat schedule uses it for the heartbeat and metric collection entries.
+BEAT_INTERVAL_SECONDS = 60
 
 celery_app = Celery(
     "qradar_observability",
@@ -47,16 +57,28 @@ celery_app.conf.beat_schedule = {
         # write comes one interval after a restart, and doctor FAILs on a
         # healthy stack.
         "task": "beat_heartbeat",
-        "schedule": 60.0,
+        "schedule": float(BEAT_INTERVAL_SECONDS),
     },
     "collect-metrics": {
         "task": "collect_metrics",
-        "schedule": 60.0,
+        "schedule": float(BEAT_INTERVAL_SECONDS),
     },
     "evaluate-anomalies": {
         # Runs shortly after each collection cycle.
         "task": "evaluate_anomalies",
-        "schedule": 60.0,
+        "schedule": float(ANOMALY_EVALUATION_CADENCE_SECONDS),
+    },
+    "apply-anomaly-fault-retention": {
+        # Daily, like the other retention tasks. Closed fault rows only: an open
+        # fault is the source's current state, and a given-up row is the only
+        # record that its bucket was never judged.
+        "task": "apply_anomaly_fault_retention",
+        "schedule": 86400.0,
+    },
+    "apply-log-source-anomaly-retention": {
+        # Closed Phase A incidents. Not gated by RETENTION_ENABLED.
+        "task": "apply_log_source_anomaly_retention",
+        "schedule": float(settings.log_source_anomaly_retention_interval_seconds),
     },
     "dispatch-notifications": {
         "task": "dispatch_notifications",
@@ -126,6 +148,12 @@ celery_app.conf.beat_schedule = {
         "task": "evaluate_detection_coverage",
         "schedule": float(settings.coverage_evaluation_interval_seconds),
     },
+    "apply-snapshot-retention": {
+        # rule_health_snapshot and detection_coverage_snapshot, each by its own
+        # day count. Not gated by RETENTION_ENABLED.
+        "task": "apply_snapshot_retention",
+        "schedule": float(settings.snapshot_retention_interval_seconds),
+    },
     # --- Phase B.1 -----------------------------------------------------------
     "dispatch-waf-collection": {
         # Enqueues one `collect_waf_source` task per eligible WAF source, so a
@@ -175,6 +203,12 @@ celery_app.conf.beat_schedule = {
     "apply-ips-retention": {
         "task": "apply_ips_retention",
         "schedule": float(settings.ips_retention_interval_seconds),
+    },
+    "apply-ips-anomaly-retention": {
+        # Closed IPS incidents. Separate from apply_ips_retention so a lookback
+        # skip on the metric task cannot freeze the 365-day incident delete.
+        "task": "apply_ips_anomaly_retention",
+        "schedule": float(settings.ips_anomaly_retention_interval_seconds),
     },
     # --- Phase G -------------------------------------------------------------
     "dispatch-property-watch-collection": {

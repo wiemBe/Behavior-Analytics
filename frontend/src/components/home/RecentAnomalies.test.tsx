@@ -45,7 +45,10 @@ describe("RecentAnomalies", () => {
     render(<RecentAnomalies />);
     expect(screen.getByRole("link", { name: "Investigate FW 7" })).toHaveAttribute("href", "/anomalies/z9");
     expect(screen.getByRole("link", { name: "FW 7" })).toHaveAttribute("href", "/behavior/sources/s7");
-    expect(screen.getByRole("link", { name: "View all" })).toHaveAttribute("href", "/anomalies");
+    expect(screen.getByRole("link", { name: "View all" })).toHaveAttribute(
+      "href",
+      "/anomalies?active_only=true",
+    );
   });
 
   it("writes a null deviation as an em dash, never 0", () => {

@@ -32,7 +32,6 @@ import {
   type SearchResultTrend,
 } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
-import { formatDateTime } from "@/lib/health";
 import { formatDuration } from "@/lib/searchCadence";
 import {
   axisTimeLabel,
@@ -44,6 +43,8 @@ import {
 } from "@/lib/searchRuns";
 import { useEffectiveRange, useExpanded } from "@/widgets/runtime";
 import type { WidgetRange } from "@/widgets/types";
+import { UtcTime, utcTimeHtml } from "@/components/ui/UtcTime";
+
 
 import type { EChartsOption } from "echarts";
 
@@ -181,9 +182,6 @@ function refused(states: { status: string }[]): boolean {
 }
 
 function CreatedLine({ createdAt, variant }: { createdAt: string | null; variant: "page" | "widget" }) {
-  const when = createdAt
-    ? `This search has never run since it was created on ${formatDateTime(createdAt)}.`
-    : "This search has never run. The creation time was not recorded.";
   const how =
     variant === "widget"
       ? "Run it from the search page with Run now, or wait for its schedule."
@@ -191,7 +189,14 @@ function CreatedLine({ createdAt, variant }: { createdAt: string | null; variant
   return (
     <div className={variant === "widget" ? "tw-state" : "notice"}>
       <p>
-        {when} {how}
+        {createdAt ? (
+          <>
+            This search has never run since it was created on <UtcTime value={createdAt} />.{" "}
+          </>
+        ) : (
+          "This search has never run. The creation time was not recorded. "
+        )}
+        {how}
       </p>
     </div>
   );
@@ -200,7 +205,7 @@ function CreatedLine({ createdAt, variant }: { createdAt: string | null; variant
 function StaleLine({ stale }: { stale: Staleness }) {
   return (
     <p className="subtitle trend-note" role="status">
-      Stale: the last successful run was {formatDateTime(stale.at)},{" "}
+      Stale: the last successful run was {<UtcTime value={stale.at} />},{" "}
       {formatDuration(stale.ageMs / 1000)} old (schedule interval{" "}
       {formatDuration(stale.intervalMs / 1000)}).
     </p>
@@ -397,7 +402,7 @@ export function ResultTrend({
           const row = rows[idx];
           if (row.point === null) {
             return [
-              formatDateTime(row.at),
+              utcTimeHtml(row.at),
               "Truncated run: no result count recorded",
               "The search hit its row cap, so only a lower bound exists",
             ].join("<br/>");
@@ -407,7 +412,7 @@ export function ResultTrend({
             ? "no result (run failed)"
             : String(point.value);
           return [
-            formatDateTime(point.bucket_start),
+            utcTimeHtml(point.bucket_start),
             `Result count: ${count}`,
             `Status: ${point.execution_status}`,
             `Duration: ${formatRunDuration(point.duration_ms)}`,
@@ -757,7 +762,7 @@ function SingleValue({
 }) {
   if (latest?.truncated) {
     const count = resultCount(latest);
-    const when = formatDateTime(latest.completed_at ?? latest.started_at);
+    const when = latest.completed_at ?? latest.started_at;
     const verdict = latest.threshold_breached ? "Threshold: breached." : "Threshold: no verdict.";
     return (
       <div>
@@ -769,7 +774,15 @@ function SingleValue({
           )}
         </p>
         <p className="subtitle trend-note">
-          {count.kind === "lower-bound" ? `result rows at ${when}. ` : `${when}. `}
+          {count.kind === "lower-bound" ? (
+            <>
+              result rows at <UtcTime value={when} />.{" "}
+            </>
+          ) : (
+            <>
+              <UtcTime value={when} />.{" "}
+            </>
+          )}
           {verdict} The latest run was truncated, so an older success is not the current total.
         </p>
       </div>
@@ -791,7 +804,7 @@ function SingleValue({
         <span className="num">{measured.value}</span>
       </p>
       <p className="subtitle trend-note">
-        result rows at {formatDateTime(measured.bucket_start)}.
+        result rows at {<UtcTime value={measured.bucket_start} />}.
       </p>
     </div>
   );
@@ -828,7 +841,14 @@ function GroupsTable({
         <table className="table-dense">
           <caption className="subtitle trend-note">
             Latest run
-            {groups.started_at ? `, ${formatDateTime(groups.started_at)}` : ""}, highest value first
+            {groups.started_at ? (
+              <>
+                , <UtcTime value={groups.started_at} />
+              </>
+            ) : (
+              ""
+            )}
+            , highest value first
             {groups.total > shown.length ? `. Showing ${shown.length} of ${groups.total} rows` : ""}
           </caption>
           <thead>

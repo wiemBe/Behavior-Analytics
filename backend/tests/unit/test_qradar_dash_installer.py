@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import pty
+import re
 import shutil
 import stat
 import subprocess
@@ -45,6 +46,7 @@ class Install:
         self.script = root / "qradar-dash"
         shutil.copy(SCRIPT, self.script)
         self.script.chmod(0o755)
+        (root / "VERSION").write_text("0.1.0\n")
         self.files = root.parent / "inputs"
         self.files.mkdir()
         (self.files / "token").write_text("not-a-real-token\n")
@@ -96,7 +98,7 @@ class Install:
         )
 
     def nothing_written(self) -> bool:
-        return sorted(p.name for p in self.root.iterdir()) == ["qradar-dash"]
+        return sorted(p.name for p in self.root.iterdir()) == ["VERSION", "qradar-dash"]
 
 
 @pytest.fixture
@@ -236,18 +238,36 @@ def test_non_interactive_needs_a_file(inst: Install) -> None:
     assert inst.nothing_written()
 
 
-def test_unbuilt_subcommands_exit_non_zero(inst: Install) -> None:
-    for cmd in ("bundle",):
-        result = inst.run(cmd)
-        assert result.returncode == 64, cmd
-        assert "not built yet" in result.stderr
+@pytest.mark.parametrize("version_contents", [None, "\n"])
+def test_install_refuses_an_incomplete_checkout_without_a_version(
+    inst: Install, version_contents: str | None
+) -> None:
+    version = inst.root / "VERSION"
+    if version_contents is None:
+        version.unlink()
+    else:
+        version.write_text(version_contents)
+
+    result = install(inst, inst.answers())
+
+    assert result.returncode == 1
+    assert "VERSION" in result.stderr
+    assert "checkout is incomplete" in result.stderr
+    assert "run ./qradar-dash install again" in result.stderr
+    assert not (inst.root / ".env").exists()
+    assert not (inst.root / ".secrets").exists()
 
 
-def test_bundle_says_what_to_use_instead(inst: Install) -> None:
-    result = inst.run("bundle")
-    assert "OPS-" not in result.stderr
-    assert "install --build" in result.stderr
-    assert "registry" in result.stderr
+def test_usage_lists_bundle_with_its_options_and_nothing_is_marked_unbuilt(
+    inst: Install,
+) -> None:
+    result = inst.run("help")
+
+    assert "Not built" not in result.stdout and "not built" not in result.stderr
+    assert "bundle        On a connected host" in result.stdout
+    assert "--output DIR" in result.stdout and "--version X.Y.Z" in result.stdout
+    assert "--offline [BUNDLE]" in result.stdout
+    assert "./qradar-dash bundle [--version" in SCRIPT.read_text().split("set -euo")[0]
 
 
 def test_status_without_an_install_says_so(inst: Install) -> None:
@@ -272,11 +292,23 @@ def test_the_script_is_executable_and_runs_no_forbidden_command() -> None:
         assert forbidden not in compose
 
 
+def test_production_images_require_the_installed_version() -> None:
+    compose = (REPO / "docker-compose.prod.yml").read_text()
+    required = (
+        "${QRADAR_DASH_VERSION:?QRADAR_DASH_VERSION is not set in .env; "
+        "run ./qradar-dash install}"
+    )
+    assert compose.count(required) == 8
+    assert "QRADAR_DASH_VERSION:-0.1.0" not in compose
+
+
 # ---- T-122: COMPOSE_FILE in .env, GIT_SHA for --build -------------------------------------
 
 COMPOSE_FILE_LINE = "COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml"
+COMPOSE_FILE_OVERRIDE_LINE = COMPOSE_FILE_LINE + ":docker-compose.override.yml"
 
 DOCKER_BUILD_STUB = """#!/bin/sh
+printf '%s\\n' "$*" >> "$HOME/docker-args.log"
 case "$*" in
   "compose version --short") echo 2.30.0; exit 0 ;;
   *" build "*)
@@ -340,6 +372,53 @@ def test_a_fresh_env_has_compose_file(inst: Install, tmp_path: Path, build_path:
     assert lines.index(COMPOSE_FILE_LINE) == lines.index(
         next(x for x in lines if x.startswith("COMPOSE_PROJECT_NAME="))
     ) + 2
+
+
+def test_a_fresh_env_has_all_four_retention_defaults(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    result = _build(inst, tmp_path, build_path)
+
+    assert result.returncode == 1
+    lines = _env_lines(inst)
+    for line in (
+        "RETENTION_LOG_SOURCE_METRIC_DAYS=90",
+        "RETENTION_SEARCH_RESULT_METRIC_DAYS=90",
+        "RETENTION_RULE_METRIC_DAYS=90",
+        "RETENTION_OFFENSE_SNAPSHOT_DAYS=90",
+    ):
+        assert lines.count(line) == 1
+    assert "# Kept from the previous .env" not in lines
+    assert "first install: new .env" in result.stdout
+
+
+def test_compose_override_is_in_dc_argv_and_compose_file(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    (inst.root / "docker-compose.override.yml").write_text("services: {}\n")
+
+    result = _build(inst, tmp_path, build_path)
+
+    assert "docker-compose.override.yml is in use" in result.stdout
+    lines = _env_lines(inst)
+    assert COMPOSE_FILE_OVERRIDE_LINE in lines
+    build_call = next(
+        line for line in (tmp_path / "docker-args.log").read_text().splitlines()
+        if " build " in f" {line} "
+    )
+    assert (
+        "-f docker-compose.yml -f docker-compose.prod.yml "
+        "-f docker-compose.override.yml build"
+    ) in build_call
+
+
+def test_compose_without_override_omits_it_from_dc_argv_and_compose_file(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    _build(inst, tmp_path, build_path)
+
+    assert COMPOSE_FILE_LINE in _env_lines(inst)
+    assert "docker-compose.override.yml" not in (tmp_path / "docker-args.log").read_text()
 
 
 def test_a_rerun_adds_a_missing_compose_file_and_keeps_the_other_lines(
@@ -512,10 +591,23 @@ case "$*" in
   *" up -d --wait --wait-timeout 180 postgres redis") ;;
   *" up -d --wait --wait-timeout 180 "*) exit "$(rc up_rc)" ;;
   *" pull "*) ;;
-  *" run --rm -T migrate") ;;
-  *" exec -T postgres psql "*) cat >/dev/null; echo 1 ;;
+  *" run --rm -T migrate") exit "$(rc migrate_rc)" ;;
+  *" exec -T postgres psql "*)
+    query=$(cat)
+    case "$query" in
+      *"SELECT version_num FROM alembic_version"*)
+        if [ -f "$HOME/alembic_rev" ]; then cat "$HOME/alembic_rev"; fi
+        ;;
+      *) echo 1 ;;
+    esac
+    ;;
   *" app.cli.qradar add "*) exit "$(rc qr_rc)" ;;
+  *" ps --all --format "*)
+    if [ -f "$HOME/unhealthy_ps" ]; then cat "$HOME/unhealthy_ps"
+    else printf 'backend\texited\t\t1\n'; fi
+    ;;
   *" ps") ;;
+  *" logs --no-color --tail "*) printf '%s\n' 'stub migrate log' ;;
   *) echo "unexpected docker call: $*" >&2; exit 97 ;;
 esac
 """
@@ -525,8 +617,84 @@ esac
 def flow_path(tmp_path: Path, build_path: str, inst: Install) -> str:
     """build_path with a docker stub that lets the whole install run, and the helper script."""
     _stub(Path(build_path) / "docker", INSTALL_FLOW_DOCKER_STUB)
-    _stub(Path(build_path) / "curl", "#!/bin/sh\n"
-          "case \"$*\" in *'-w '*) echo 200 ;; *version) echo '{\"version\":\"0.1.0\"}' ;; esac\n")
+    curl_stub = r"""#!/bin/bash
+rc() { [ -f "$HOME/$1" ] && cat "$HOME/$1" || echo "$2"; }
+url=${!#}
+case "$url" in
+  https://*)
+    printf '%s\n' "$*" >> "$HOME/public-curl.log"
+    mode=0
+    [ -f "$HOME/public_curl_mode" ] && mode=$(tr -d '[:space:]' < "$HOME/public_curl_mode")
+    insecure=0
+    case " $* " in *" -k "*) insecure=1 ;; esac
+    case "$mode" in
+      0) printf '%s' 200; exit 0 ;;
+      35)
+        echo "curl: (35) TLS handshake failed for the public URL" >&2
+        exit 35
+        ;;
+      22)
+        echo "curl: (22) proxy or upstream failed for the public URL" >&2
+        exit 22
+        ;;
+      60|51)
+        if [ "$insecure" -eq 1 ]; then
+          insecure_rc=0
+          if [ -f "$HOME/public_insecure_rc" ]; then
+            insecure_rc=$(tr -d '[:space:]' < "$HOME/public_insecure_rc")
+          fi
+          if [ "$insecure_rc" -eq 0 ]; then printf '%s' 200; exit 0; fi
+          echo "curl: ($insecure_rc) insecure retry failed" >&2
+          exit "$insecure_rc"
+        fi
+        echo "curl: ($mode) SSL certificate problem" >&2
+        exit "$mode"
+        ;;
+      *)
+        echo "curl: ($mode) public check failed" >&2
+        exit "$mode"
+        ;;
+    esac
+    ;;
+  */health/ready) exit "$(rc ready_rc 0)" ;;
+  */version)
+    case "$*" in
+      *" -w "*) rc version_code 200 ;;
+      *) printf '%s\n' '{"version":"0.1.0"}' ;;
+    esac
+    ;;
+esac
+"""
+    _stub(Path(build_path) / "curl", curl_stub)
+    _stub(
+        Path(build_path) / "systemctl",
+        r"""#!/bin/bash
+printf '%s\n' "$*" >> "$HOME/systemctl.log"
+state=missing
+case " $* " in
+  *" --user "*)
+    if [ -f "$HOME/systemctl_user_state" ]; then
+      state=$(tr -d '[:space:]' < "$HOME/systemctl_user_state")
+    fi
+    ;;
+  *)
+    if [ -f "$HOME/systemctl_state" ]; then
+      state=$(tr -d '[:space:]' < "$HOME/systemctl_state")
+    fi
+    ;;
+esac
+case "$state" in
+  missing) printf 'not-found\n'; exit 4 ;;
+  silent) printf 'Failed to get unit file state\n' >&2; exit 1 ;;
+  disabled | masked) printf '%s\n' "$state"; exit 1 ;;
+  *) printf '%s\n' "$state"; exit 0 ;;
+esac
+""",
+    )
+    sleep = Path(build_path) / "sleep"
+    if sleep.exists() or sleep.is_symlink():
+        sleep.unlink()
+    _stub(sleep, "#!/bin/sh\nexit 0\n")
     deploy = inst.root / "deploy"
     deploy.mkdir()
     _stub(deploy / "load-secrets.sh", "#!/bin/sh\nexit 0\n")
@@ -534,10 +702,19 @@ def flow_path(tmp_path: Path, build_path: str, inst: Install) -> str:
 
 
 def _install_flow(
-    inst: Install, tmp_path: Path, path: str, *, qr_rc: int = 0, up_rc: int = 0
+    inst: Install,
+    tmp_path: Path,
+    path: str,
+    *,
+    qr_rc: int = 0,
+    up_rc: int = 0,
+    ready_rc: int = 0,
+    version_code: int = 200,
 ) -> subprocess.CompletedProcess[str]:
     (tmp_path / "qr_rc").write_text(f"{qr_rc}\n")
     (tmp_path / "up_rc").write_text(f"{up_rc}\n")
+    (tmp_path / "ready_rc").write_text(f"{ready_rc}\n")
+    (tmp_path / "version_code").write_text(f"{version_code}\n")
     answers = inst.answers()
     return inst.run(
         "install", "--non-interactive", str(answers), "--skip-qradar-check", path=path
@@ -573,6 +750,103 @@ def test_install_with_a_failing_qradar_check_still_writes_the_state_file(
     assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
 
 
+OLD_ENV = """ENVIRONMENT=production
+DEBUG=false
+LOG_LEVEL=DEBUG
+SECRET_KEY=kept-secret-key-material
+ENCRYPTION_KEY=kept-active-fernet-key
+ENCRYPTION_KEYS_JSON={"1":"kept-old-fernet-key"}
+ENCRYPTION_KEY_VERSION=2
+POSTGRES_USER=qradar_obs
+POSTGRES_PASSWORD=kept-postgres-password
+POSTGRES_DB=qradar_obs
+POSTGRES_HOST=postgres
+QRADAR_PROVIDER=rest
+QRADAR_VERIFY_SSL=false
+QRADAR_API_TOKEN_FILE=/run/secrets/qradar_sec_token
+QRADAR_CA_BUNDLE=/run/secrets/qradar_ca.pem
+NEXT_PUBLIC_API_BASE_URL=/api/v1
+INTERNAL_API_BASE_URL=http://backend:8000/api/v1
+LLM_ALLOW_AUTONOMOUS_ACTIONS=false
+RETENTION_RULE_METRIC_DAYS=30
+NOTIFY_SLACK_WEBHOOK_URL=https://hooks.example.test/secret-value
+SMTP_HOST=mail.example.test
+WAF_COLLECTION_ENABLED=true
+"""
+
+
+@pytest.mark.parametrize(
+    ("qr_rc", "ready_rc", "expected_rc", "summary"),
+    [
+        (0, 0, 0, "QRadar connection  ok"),
+        (3, 0, 1, "QRadar connection  FAILED (exit 3)"),
+        (0, 1, 1, "API readiness      NOT READY"),
+    ],
+)
+def test_install_merges_the_existing_env_on_every_written_exit_path(
+    inst: Install,
+    tmp_path: Path,
+    flow_path: str,
+    qr_rc: int,
+    ready_rc: int,
+    expected_rc: int,
+    summary: str,
+) -> None:
+    env_path = inst.root / ".env"
+    env_path.write_text(OLD_ENV)
+
+    result = _install_flow(
+        inst, tmp_path, flow_path, qr_rc=qr_rc, ready_rc=ready_rc
+    )
+
+    assert result.returncode == expected_rc, result.stdout + result.stderr
+    assert summary in result.stdout
+    assert (inst.root / ".qradar-dash" / "state.json").is_file()
+    lines = env_path.read_text().splitlines()
+    expected = {
+        "LOG_LEVEL": "DEBUG",
+        "ENCRYPTION_KEY": "kept-active-fernet-key",
+        "ENCRYPTION_KEYS_JSON": '{"1":"kept-old-fernet-key"}',
+        "ENCRYPTION_KEY_VERSION": "2",
+        "RETENTION_RULE_METRIC_DAYS": "30",
+        "NOTIFY_SLACK_WEBHOOK_URL": "https://hooks.example.test/secret-value",
+        "SMTP_HOST": "mail.example.test",
+        "WAF_COLLECTION_ENABLED": "true",
+        "QRADAR_VERIFY_SSL": "true",
+    }
+    for key, value in expected.items():
+        assert lines.count(f"{key}={value}") == 1
+        assert len([line for line in lines if line.startswith(f"{key}=")]) == 1
+    marker = "# Kept from the previous .env (not written by ./qradar-dash install)"
+    assert lines[lines.index(marker) + 1 :] == [
+        "NOTIFY_SLACK_WEBHOOK_URL=https://hooks.example.test/secret-value",
+        "SMTP_HOST=mail.example.test",
+        "WAF_COLLECTION_ENABLED=true",
+    ]
+    assert stat.S_IMODE(env_path.stat().st_mode) == 0o600
+    combined = result.stdout + result.stderr
+    for name in (
+        "NOTIFY_SLACK_WEBHOOK_URL",
+        "SMTP_HOST",
+        "WAF_COLLECTION_ENABLED",
+        "ENCRYPTION_KEYS_JSON",
+        "ENCRYPTION_KEY_VERSION",
+        "LOG_LEVEL",
+        "RETENTION_RULE_METRIC_DAYS",
+    ):
+        assert name in combined
+    for value in (
+        "https://hooks.example.test/secret-value",
+        "mail.example.test",
+        "kept-old-fernet-key",
+        "kept-active-fernet-key",
+        "kept-secret-key-material",
+        "kept-postgres-password",
+    ):
+        assert value not in combined
+    assert "QRADAR_VERIFY_SSL was 'false' and is enforced as 'true'" in result.stderr
+
+
 def test_install_whose_stack_does_not_come_up_writes_no_state_file(
     inst: Install, tmp_path: Path, flow_path: str
 ) -> None:
@@ -592,14 +866,44 @@ def test_install_summary_has_no_stale_arrives_with_text(
     assert "Runbook            docs/OPERATIONS.md; ./qradar-dash doctor" in result.stdout
 
 
+def test_install_summary_names_every_retention_window(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = result.stdout
+    for fragment in (
+        "Retention",
+        "RETENTION_ENABLED=",
+        "not gated by RETENTION_ENABLED",
+        "catch-all 35d",
+        "geo 35d",
+        "Phase A incidents 365d",
+        "IPS incidents 365d",
+        "WAF incidents 180d",
+        "property-watch incidents 180d",
+        "anomaly faults 30d",
+        "custom-rule breaches 180d",
+        "rule-health snapshots 90d",
+        "coverage snapshots 90d",
+        "WAF metrics 35d",
+        "IPS metrics 35d",
+        "search results 90d",
+        "log_source_metric 90d",
+    ):
+        assert fragment in text, fragment
+
+
 def test_a_version_endpoint_failure_says_what_failed(
     inst: Install, tmp_path: Path, flow_path: str
 ) -> None:
-    _stub(Path(flow_path) / "curl", "#!/bin/sh\ncase \"$*\" in *'-w '*) echo 503 ;; esac\n")
+    result = _install_flow(inst, tmp_path, flow_path, version_code=503)
 
-    result = _install_flow(inst, tmp_path, flow_path)
-
+    assert result.returncode == 1
     assert "GET /api/v1/version did not answer 200 (got '503')" in result.stderr
+    assert "API readiness      NOT READY" in result.stdout
+    assert (inst.root / ".qradar-dash" / "state.json").is_file()
     assert "OPS-1" not in result.stderr
 
 
@@ -1129,7 +1433,7 @@ def test_a_bad_value_in_the_answers_file_is_refused_and_nothing_is_written(
     assert "HISTORY_BACKFILL: must be yes or no" in result.stderr
     assert "nothing was written" in result.stderr
     # flow_path adds deploy/ to the checkout; nothing the installer writes may appear
-    assert sorted(p.name for p in inst.root.iterdir()) == ["deploy", "qradar-dash"]
+    assert sorted(p.name for p in inst.root.iterdir()) == ["VERSION", "deploy", "qradar-dash"]
     assert _docker_log(tmp_path) == []
 
 
@@ -1257,3 +1561,349 @@ def test_the_upgrade_command_does_not_reach_the_wizard_or_the_answers_parser() -
     body = text.split("\ncmd_upgrade() {", 1)[1].split("\nupgrade_auto_rollback()", 1)[0]
     for name in ("wizard", "parse_answers", "HISTORY_BACKFILL", "history_backfill"):
         assert name not in body, name
+
+
+def _env_file_mapping(inst: Install) -> dict[str, str]:
+    """KEY=VALUE lines from a written ``.env``. Values stay out of assertions."""
+    mapping: dict[str, str] = {}
+    for line in (inst.root / ".env").read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        mapping[key] = value
+    return mapping
+
+
+async def test_a_fresh_install_env_passes_unknown_settings(
+    inst: Install, tmp_path: Path, build_path: str
+) -> None:
+    """The ``.env`` ``install`` just wrote is not an unknown-settings warning."""
+    from app.cli.doctor import Status
+    from app.core.config import Settings, unknown_setting_names
+    from tests.unit.test_doctor import make_doctor
+
+    _build(inst, tmp_path, build_path)
+    environ = _env_file_mapping(inst)
+    assert environ
+    reported = unknown_setting_names(environ)
+    assert reported == ()
+    result = await make_doctor(
+        Settings(_env_file=None, encryption_key="x" * 44),
+        environ=environ,
+    ).check_unknown_settings()
+    assert result.status is Status.PASS
+    assert result.message == "no unknown settings"
+    assert result.runbook is None
+
+
+def _cadence_phrase() -> str:
+    enums = (REPO / "backend" / "app" / "models" / "enums.py").read_text()
+    match = re.search(r"FIVE_MINUTES = (\d+)", enums)
+    assert match is not None
+    minutes = int(match.group(1)) // 60
+    return f"every {minutes} min unless changed under Administration → Search cadence"
+
+
+def test_install_summary_names_on_and_off_families_and_the_backup_timer(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    phrase = _cadence_phrase()
+    assert (
+        "Searching QRadar   Phase A, catch-all, geo, explanations "
+        f"({phrase})"
+    ) in result.stdout
+    assert (
+        "Left off           WAF, IPS, rule-match collection, custom rules, "
+        "property watch (turn them on later)"
+    ) in result.stdout
+    assert "uses 15 min" not in result.stdout
+    assert f"Backup directory   {inst.files / 'backups'}" in result.stdout
+    assert (
+        "Backup timer       not installed. Run: ./qradar-dash backup --install-timer"
+    ) in result.stdout
+
+
+def test_install_summary_notes_fifteen_minutes_when_waf_is_on(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    env_path = inst.root / ".env"
+    env_path.write_text("WAF_COLLECTION_ENABLED=true\n")
+    env_path.chmod(0o600)
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    searching = next(
+        line for line in result.stdout.splitlines() if line.startswith("Searching QRadar")
+    )
+    left = next(line for line in result.stdout.splitlines() if line.startswith("Left off"))
+    assert "WAF" in searching
+    assert "uses 15 min until changed on that page" in searching
+    assert _cadence_phrase() in searching
+    assert "WAF" not in left
+    assert "IPS" in left
+    assert "property watch" in left
+
+
+def test_install_summary_says_the_backup_timer_is_installed(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (tmp_path / "systemctl_state").write_text("enabled\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Backup timer: installed" in result.stdout
+    assert "--install-timer" not in result.stdout
+    assert "is-enabled qradar-dash-backup.timer" in (
+        tmp_path / "systemctl.log"
+    ).read_text().splitlines()
+
+
+def test_install_summary_names_a_disabled_backup_timer(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (tmp_path / "systemctl_state").write_text("disabled\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "Backup timer       installed but disabled. "
+        "Run: ./qradar-dash backup --install-timer"
+    ) in result.stdout
+    assert "Backup timer: installed" not in result.stdout
+
+
+def test_install_summary_says_installed_for_a_user_timer_the_system_scope_does_not_know(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (tmp_path / "systemctl_user_state").write_text("enabled\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Backup timer: installed" in result.stdout
+    assert "--install-timer" not in result.stdout
+    assert (tmp_path / "systemctl.log").read_text().splitlines()[-2:] == [
+        "is-enabled qradar-dash-backup.timer",
+        "--user is-enabled qradar-dash-backup.timer",
+    ]
+
+
+def test_install_summary_names_a_disabled_user_timer(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (tmp_path / "systemctl_user_state").write_text("disabled\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "installed but disabled" in result.stdout
+    assert "Backup timer: installed" not in result.stdout
+
+
+def test_install_summary_says_not_installed_when_both_scopes_say_not_found(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "not installed. Run: ./qradar-dash backup --install-timer" in result.stdout
+
+
+def test_install_summary_says_unit_file_present_without_systemctl(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (Path(flow_path) / "systemctl").unlink()
+    timer_dir = tmp_path / ".config" / "systemd" / "user"
+    timer_dir.mkdir(parents=True)
+    (timer_dir / "qradar-dash-backup.timer").write_text("[Timer]\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Backup timer: unit file present (systemctl is not available)" in result.stdout
+    assert "Backup timer: installed" not in result.stdout
+
+
+def _assert_public_url_failure(
+    inst: Install, tmp_path: Path, flow_path: str, mode: int, cause: str
+) -> None:
+    (tmp_path / "public_curl_mode").write_text(f"{mode}\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "https://soc.example.test/api/v1/health/ready failed" in result.stderr
+    assert f"curl exit {mode}" in result.stderr
+    assert cause in result.stderr
+    assert "./qradar-dash logs proxy" in result.stderr
+    assert "./qradar-dash doctor" in result.stderr
+    assert (inst.root / ".qradar-dash" / "state.json").is_file()
+    log = (tmp_path / "public-curl.log").read_text()
+    assert "--resolve soc.example.test:443:127.0.0.1" in log
+
+
+@pytest.mark.parametrize(
+    ("mode", "cause"),
+    [(35, "TLS handshake failed"), (22, "proxy or upstream failed")],
+)
+def test_public_url_tls_and_proxy_failures_are_named(
+    inst: Install, tmp_path: Path, flow_path: str, mode: int, cause: str
+) -> None:
+    _assert_public_url_failure(inst, tmp_path, flow_path, mode, cause)
+
+
+def test_public_url_uses_the_non_default_port(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    for name in ("qr_rc", "up_rc", "ready_rc"):
+        (tmp_path / name).write_text("0\n")
+    (tmp_path / "version_code").write_text("200\n")
+    answers = inst.answers(HTTPS_PORT="8443")
+
+    result = inst.run(
+        "install", "--non-interactive", str(answers), "--skip-qradar-check", path=flow_path
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "public URL https://soc.example.test:8443/api/v1/health/ready answered HTTP 200"
+    ) in result.stdout
+    log = (tmp_path / "public-curl.log").read_text()
+    assert "--resolve soc.example.test:8443:127.0.0.1" in log
+
+
+@pytest.mark.parametrize("mode", [60, 51])
+def test_an_untrusted_certificate_warns_and_install_continues(
+    inst: Install, tmp_path: Path, flow_path: str, mode: int
+) -> None:
+    (tmp_path / "public_curl_mode").write_text(f"{mode}\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "certificate checks disabled" in result.stderr
+    assert "Browsers will warn" in result.stderr
+    assert "Continuing." in result.stderr
+    assert (inst.root / ".qradar-dash" / "state.json").is_file()
+    log = (tmp_path / "public-curl.log").read_text().splitlines()
+    assert any(line.split()[:1] == ["-k"] or "-k" in line.split() for line in log)
+
+
+def test_an_untrusted_certificate_whose_insecure_retry_fails_exits_one(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (tmp_path / "public_curl_mode").write_text("60\n")
+    (tmp_path / "public_insecure_rc").write_text("22\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "public URL" in result.stderr
+    assert "curl exit 22" in result.stderr
+    assert (inst.root / ".qradar-dash" / "state.json").is_file()
+
+
+def test_external_proxy_skips_the_public_url_check(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    for name in ("qr_rc", "up_rc", "ready_rc"):
+        (tmp_path / name).write_text("0\n")
+    (tmp_path / "version_code").write_text("200\n")
+    (tmp_path / "public_curl_mode").write_text("35\n")
+    answers = inst.answers(EXTERNAL_PROXY="yes", FORWARDED_ALLOW_IPS="10.1.2.3")
+
+    result = inst.run(
+        "install", "--non-interactive", str(answers), "--skip-qradar-check", path=flow_path
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "public URL" not in result.stdout + result.stderr
+    assert not (tmp_path / "public-curl.log").exists()
+
+
+def test_load_secrets_stderr_is_shown_and_names_the_rerun(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    helper = inst.root / "deploy" / "load-secrets.sh"
+    helper.write_text("#!/bin/sh\necho 'volume helper exploded' >&2\nexit 7\n")
+    helper.chmod(0o755)
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "volume helper exploded" in result.stderr
+    assert "deploy/load-secrets.sh all failed" in result.stderr
+    assert "The error from deploy/load-secrets.sh is above." in result.stderr
+    assert "Run ./qradar-dash install again." in result.stderr
+    assert not (inst.root / ".qradar-dash").exists()
+    # The helper's stderr is already on screen; the scratch directory must not stay behind.
+    assert not (inst.root / ".install-tmp").exists()
+
+
+def test_an_early_install_refusal_removes_install_tmp(upgrade: UpgradeFixture) -> None:
+    upgrade.write_state(outcome="failed")
+    (upgrade.root / ".install-tmp").mkdir()
+    (upgrade.root / ".install-tmp" / "leftover").write_text("x\n")
+
+    result = upgrade.run("install", "--non-interactive", "/nonexistent/answers")
+
+    assert result.returncode == 1, output(result)
+    assert "install refused: the last upgrade failed" in result.stderr
+    assert not (upgrade.root / ".install-tmp").exists()
+
+
+def test_a_failed_migration_on_a_new_database_says_to_install_again(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (tmp_path / "migrate_rc").write_text("1\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "alembic upgrade head failed" in result.stderr
+    assert "database looks new" in result.stderr
+    assert "alembic_version is empty or missing" in result.stderr
+    assert "Run ./qradar-dash install again." in result.stderr
+    assert "stub migrate log" in result.stdout + result.stderr
+    assert not (inst.root / ".qradar-dash").exists()
+
+
+def test_a_failed_migration_on_an_existing_database_says_to_run_doctor(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (tmp_path / "migrate_rc").write_text("1\n")
+    (tmp_path / "alembic_rev").write_text("0031\n")
+
+    result = _install_flow(inst, tmp_path, flow_path)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "alembic upgrade head failed" in result.stderr
+    assert "database is not new" in result.stderr
+    assert "alembic_version is 0031" in result.stderr
+    assert "Run ./qradar-dash doctor." in result.stderr
+    assert not (inst.root / ".qradar-dash").exists()
+
+
+def test_an_unhealthy_install_names_the_service(
+    inst: Install, tmp_path: Path, flow_path: str
+) -> None:
+    (tmp_path / "unhealthy_ps").write_text(
+        "celery-beat\texited\tunhealthy\t1\nproxy\trestarting\t\t0\n"
+    )
+
+    result = _install_flow(inst, tmp_path, flow_path, up_rc=1)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "a service did not become healthy within 180 s" in result.stderr
+    assert "celery-beat is exited (health: unhealthy)" in result.stderr
+    assert "proxy is restarting" in result.stderr
+    assert "./qradar-dash logs celery-beat" in result.stderr
+    assert "./qradar-dash logs proxy" in result.stderr
+    assert "./qradar-dash doctor" in result.stderr
+    assert not (inst.root / ".qradar-dash").exists()

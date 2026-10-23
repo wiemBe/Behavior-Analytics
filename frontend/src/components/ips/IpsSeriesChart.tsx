@@ -40,8 +40,10 @@ import {
   type OriginRow,
 } from "@/components/behavior/historyOrigin";
 import { readChartPalette } from "@/lib/chartPalette";
-import { formatDateTime } from "@/lib/health";
+import { formatShare } from "@/lib/format";
 import { bucketWidth } from "@/components/waf/wafFormat";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
+
 
 import type { IpsUnit } from "./ipsDetectors";
 import { buildIpsBaselineLookup, type IpsBaselineSource } from "./ipsBaseline";
@@ -220,10 +222,10 @@ export function IpsSeriesChart({
       const text = { color: c.label, fontFamily: c.font };
       const axisCommon = { axisLine: { lineStyle: { color: c.axis } }, axisLabel: text };
       const quiet = { silent: true, label: { show: false } };
-      const fmt = (v: number) => (unit === "share" ? `${(v * 100).toFixed(1)}%` : v.toFixed(1));
+      const fmt = (v: number) => (unit === "share" ? formatShare(v) : v.toFixed(1));
       const suffix = unit === "events" ? ` ${unitText}` : unit === "ports" ? " ports" : "";
       const whole = (v: number) =>
-        unit === "share" ? `${(v * 100).toFixed(1)}%` : String(v);
+        unit === "share" ? formatShare(v) : String(v);
 
       return {
         animation: !reduceMotion,
@@ -243,7 +245,7 @@ export function IpsSeriesChart({
             const p = i != null ? points[i] : undefined;
             if (!p || i == null) return "";
             if (p.kind === "GAP") {
-              return [formatDateTime(new Date(p.t).toISOString()), kindMeaning("GAP")].join("<br/>");
+              return [utcTimeHtml(new Date(p.t).toISOString()), kindMeaning("GAP")].join("<br/>");
             }
             const cell = seasonal ? cells[i] : null;
             const observed =
@@ -275,7 +277,7 @@ export function IpsSeriesChart({
                   : "";
             }
             return [
-              formatDateTime(new Date(p.t).toISOString()),
+              utcTimeHtml(new Date(p.t).toISOString()),
               observed,
               reported,
               counts,

@@ -6,10 +6,15 @@
 #                         [--skip-qradar-check]
 #   ./qradar-dash status
 #   ./qradar-dash logs [docker compose logs arguments]
+#   ./qradar-dash doctor [--json]
 #   ./qradar-dash backup [manual|scheduled|pre-upgrade] [--no-verify]
+#                        [--print-timer | --install-timer]
 #   ./qradar-dash restore <backup-directory> [--non-interactive --yes]
-#   ./qradar-dash upgrade <version> [--offline]
+#   ./qradar-dash support-bundle
+#   ./qradar-dash upgrade <version> [--offline [BUNDLE]]
+#   ./qradar-dash bundle [--version X.Y.Z] [--output DIR]
 #   ./qradar-dash rollback [--non-interactive --yes]
+#   ./qradar-dash repair-state
 #
 # Specified in docs/OPERATIONS-DESIGN.md section 3. The script needs bash and
 # Docker with Compose v2 on the host, plus openssl and curl. It never calls
@@ -17,6 +22,7 @@
 # never bind-mounts the checkout: secrets travel through deploy/load-secrets.sh.
 set -euo pipefail
 
+ORIG_PWD="$PWD" # where the operator ran the script; a relative bundle path is relative to it
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 cd "$ROOT"
 
@@ -44,13 +50,16 @@ Commands
   status        Show the stack and the API health.
   logs          Show service logs (arguments go to `docker compose logs`).
   doctor        Run read-only host and in-container diagnostics.
+                --json prints one JSON array (host checks, then the container's own --json).
   backup        Create and verify a private database, configuration and secrets backup.
   restore       Restore a complete backup after confirmation.
   support-bundle
                 Write a redacted diagnostic archive under the backup root.
   upgrade       Pull and install one explicit production SemVer release.
   rollback      Restore the pre-upgrade backup and previous image digests (asks first).
-  bundle        Not built in this release (use install --build, or pull from the registry).
+  repair-state  Record a healthy upgrade or rollback whose state file was not written.
+  bundle        On a connected host: write the offline bundle (images and checkout) for an
+                air-gapped host.
 
 backup options
   --no-verify       Skip the scratch-database restore (not allowed for pre-upgrade).
@@ -62,7 +71,13 @@ restore options
   --yes             Confirm a non-interactive restore.
 
 upgrade options
-  --offline         Refuse unless every target image is already loaded locally.
+  --offline [BUNDLE]
+                    Do not pull. With BUNDLE, verify and load the images from that offline
+                    bundle first; without it, refuse unless every target image is already loaded.
+
+bundle options
+  --version X.Y.Z   Assert the release to bundle (it must equal this checkout's VERSION).
+  --output DIR      Directory for qradar-dash-<version>-bundle.tar (default: the current directory).
 
 rollback options
   --non-interactive Refuse unless --yes is also present.
@@ -71,12 +86,43 @@ rollback options
 install options
   --non-interactive FILE   Read the answers from FILE (mode 0600, no secrets).
   --build                  Build the images from this checkout instead of pulling.
-  --offline BUNDLE         Load the images from an offline bundle tar.
+  --offline BUNDLE         Load the images from an offline bundle tar (made by `bundle`).
   --external-proxy         Skip the bundled TLS proxy; you run your own.
   --reconfigure            Ask the questions again even when answers are saved.
   --dry-run                Run every check, write nothing, change nothing.
   --skip-qradar-check      Skip the TLS handshake test against the QRadar console.
+
+doctor options
+  --json            Print one JSON array and no text lines.
+
+repair-state
+  No options. Refuses unless the API is ready, the database revision matches the running
+  image, and the last upgrade outcome is failed, or success while the running version is that
+  upgrade's from version (a manual rollback whose record was lost). Writes nothing on refusal.
 EOF
+}
+
+# One message for every command that needs Docker. Doctor calls it and keeps going.
+need_docker() {
+  command -v docker >/dev/null 2>&1 && return 0
+  fail "Docker is not installed (docker not on PATH). Install Docker and rerun this ./qradar-dash command. Nothing was changed."
+  return 1
+}
+
+install_signal_traps() {
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
+# $1 is the command name. The first sentence is the prefix install and upgrade tests match.
+refuse_if_last_upgrade_failed() {
+  if [ "$STATE_LAST_PRESENT" = yes ] && [ "$STATE_LAST_OUTCOME" = failed ] \
+    && [ -z "$STATE_LAST_RESTORED_FROM" ]; then
+    fail "$1 refused: the last upgrade failed; run rollback or restore first. .qradar-dash/state.json last_upgrade.outcome is failed ($STATE_LAST_FROM -> $STATE_LAST_TO, backup ${STATE_LAST_BACKUP:-unset}). If the stack is healthy, run ./qradar-dash repair-state instead of rolling back a good upgrade."
+    return 1
+  fi
+  return 0
 }
 
 # ---------------------------------------------------------------- answers
@@ -351,7 +397,7 @@ port_free() { ! ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
 
 preflight_host() {
   local bad=0 arch cv mem cpus root free
-  command -v docker >/dev/null 2>&1 || die "Docker is not installed (docker not on PATH). Nothing was written."
+  need_docker || exit 1
   docker version >/dev/null 2>&1 || die "Docker is installed but 'docker version' failed (daemon down or no permission). Nothing was written."
   cv=$(docker compose version --short 2>/dev/null) || die "Docker Compose v2 is required ('docker compose version' failed). The script does not call docker-compose."
   cv=${cv#v}
@@ -390,9 +436,6 @@ preflight_host() {
     fi
   else
     warn "timedatectl not found; check the clock by hand"
-  fi
-  if [ -f docker-compose.override.yml ]; then
-    info "docker-compose.override.yml exists and will be used as-is (a lab overlay)"
   fi
   [ "$bad" -eq 0 ] || { fail "preflight failed; nothing was written."; exit 1; }
 }
@@ -474,11 +517,55 @@ preflight_network() {
 # ---------------------------------------------------------------- compose helpers
 
 PROJECT=qradar-observability
-dc() { docker compose -p "$PROJECT" -f docker-compose.yml -f docker-compose.prod.yml "$@"; }
+
+set_compose_args() {
+  COMPOSE_ARGS=(-f docker-compose.yml -f docker-compose.prod.yml)
+  if [ -f docker-compose.override.yml ]; then
+    COMPOSE_ARGS+=(-f docker-compose.override.yml)
+  fi
+}
+
+dc() {
+  local -a COMPOSE_ARGS=()
+  set_compose_args
+  docker compose -p "$PROJECT" "${COMPOSE_ARGS[@]}" "$@"
+}
+
+compose_command() {
+  local -a COMPOSE_ARGS=()
+  set_compose_args
+  printf 'docker compose -p %s' "$PROJECT"
+  printf ' %s' "${COMPOSE_ARGS[@]}"
+}
+
+compose_file_value() {
+  printf 'docker-compose.yml:docker-compose.prod.yml'
+  [ ! -f docker-compose.override.yml ] || printf ':docker-compose.override.yml'
+}
+
+report_compose_override() {
+  [ ! -f docker-compose.override.yml ] \
+    || info "docker-compose.override.yml is in use; run ./qradar-dash doctor to verify the stack"
+}
 
 env_get() { # env_get KEY -> value from .env, or empty
   [ -f "$ENV_FILE" ] || return 0
   sed -n "s/^$1=//p" "$ENV_FILE" | head -n1
+}
+
+env_has_key() { # env_has_key KEY
+  [ -f "$ENV_FILE" ] && grep -q "^$1=" "$ENV_FILE"
+}
+
+read_checkout_version() {
+  local retry=${1:-install} version
+  if [ ! -r VERSION ]; then
+    die "VERSION is missing or unreadable; this checkout is incomplete; restore VERSION and run ./qradar-dash $retry again"
+  fi
+  version=$(tr -d '[:space:]' <VERSION)
+  [ -n "$version" ] \
+    || die "VERSION is empty; this checkout is incomplete; restore VERSION and run ./qradar-dash $retry again"
+  printf '%s\n' "$version"
 }
 
 load_project_from_env() {
@@ -520,14 +607,111 @@ save_answers() {
   mv "$f" "$SAVED_ANSWERS"
 }
 
+installer_env_key() {
+  case "$1" in
+    ENVIRONMENT | DEBUG | LOG_LEVEL | AUTH_PROVIDER | PUBLIC_ORIGIN | SECRET_KEY | \
+      ENCRYPTION_KEY | ENCRYPTION_KEY_VERSION | ENCRYPTION_KEYS_JSON | POSTGRES_USER | \
+      POSTGRES_PASSWORD | POSTGRES_DB | POSTGRES_HOST | QRADAR_PROVIDER | QRADAR_BASE_URL | \
+      QRADAR_CONSOLE_FQDN | QRADAR_API_VERSION | QRADAR_VERIFY_SSL | QRADAR_API_TOKEN_FILE | \
+      QRADAR_CA_BUNDLE | QRADAR_TLS_ALLOW_MISSING_AKI | NEXT_PUBLIC_API_BASE_URL | \
+      INTERNAL_API_BASE_URL | RETENTION_ENABLED | RETENTION_LOG_SOURCE_METRIC_DAYS | \
+      RETENTION_SEARCH_RESULT_METRIC_DAYS | RETENTION_RULE_METRIC_DAYS | \
+      RETENTION_OFFENSE_SNAPSHOT_DAYS | COMPRESSION_AFTER_DAYS | FORWARDED_ALLOW_IPS | \
+      LLM_ENABLED | LLM_ALLOW_AUTONOMOUS_ACTIONS | MCP_ENABLED | COMPOSE_PROJECT_NAME | \
+      COMPOSE_FILE | COMPOSE_PROFILES | QRADAR_DASH_VERSION | QRADAR_DASH_IMAGE_PREFIX | \
+      QRADAR_DASH_BACKUP_DIR | SECRETS_VOLUME | PROXY_CERTS_VOLUME | HTTPS_PORT | \
+      API_LOOPBACK_PORT | UI_LOOPBACK_PORT | EDGE_SUBNET | PROXY_EDGE_IP) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+env_or_default() { # env_or_default KEY DEFAULT
+  if env_has_key "$1"; then env_get "$1"; else printf '%s\n' "$2"; fi
+}
+
+warn_invariant_change() { # warn_invariant_change KEY REQUIRED_VALUE
+  local old
+  env_has_key "$1" || return 0
+  old=$(env_get "$1")
+  [ "$old" = "$2" ] || warn "$1 was '$old' and is enforced as '$2'; run ./qradar-dash doctor after install"
+}
+
+join_names() {
+  local joined="" name
+  for name in "$@"; do
+    if [ -n "$joined" ]; then joined="$joined, $name"; else joined=$name; fi
+  done
+  printf '%s\n' "$joined"
+}
+
 write_env() { # write_env ENCRYPTION_KEY
-  local enc=$1 secret_key pg_pass fwd origin profiles version
-  secret_key=$(env_get SECRET_KEY)
-  [ -n "$secret_key" ] || secret_key=$(openssl rand -base64 48 | tr -d '\n')
+  local enc=$1 secret_key pg_pass fwd origin profiles version compose_files old_exists=no
+  local encryption_keys encryption_version log_level auth_provider retention_enabled
+  local retention_log retention_search retention_rule retention_offense compression llm_enabled
+  local mcp_enabled line key
+  local -a kept_operator=() kept_secrets=() extra_lines=()
+  local -A seen_extra=()
+  [ ! -f "$ENV_FILE" ] || old_exists=yes
+
+  if env_has_key SECRET_KEY && [ -n "$(env_get SECRET_KEY)" ]; then
+    secret_key=$(env_get SECRET_KEY)
+    kept_secrets+=(SECRET_KEY)
+  else
+    secret_key=$(openssl rand -base64 48 | tr -d '\n')
+  fi
   # hex, not base64: the password is spliced into a database URL unescaped, and a
   # '/' or '+' from base64 would break it (backend/app/core/config.py database_url).
-  pg_pass=$(env_get POSTGRES_PASSWORD)
-  [ -n "$pg_pass" ] || pg_pass=$(openssl rand -hex 24)
+  if env_has_key POSTGRES_PASSWORD && [ -n "$(env_get POSTGRES_PASSWORD)" ]; then
+    pg_pass=$(env_get POSTGRES_PASSWORD)
+    kept_secrets+=(POSTGRES_PASSWORD)
+  else
+    pg_pass=$(openssl rand -hex 24)
+  fi
+  if env_has_key ENCRYPTION_KEY && [ -n "$(env_get ENCRYPTION_KEY)" ]; then
+    enc=$(env_get ENCRYPTION_KEY)
+    kept_secrets+=(ENCRYPTION_KEY)
+  fi
+  if env_has_key ENCRYPTION_KEYS_JSON; then
+    encryption_keys=$(env_get ENCRYPTION_KEYS_JSON)
+    kept_secrets+=(ENCRYPTION_KEYS_JSON)
+  else
+    encryption_keys=""
+  fi
+  if env_has_key ENCRYPTION_KEY_VERSION; then
+    encryption_version=$(env_get ENCRYPTION_KEY_VERSION)
+    kept_secrets+=(ENCRYPTION_KEY_VERSION)
+  else
+    encryption_version=1
+  fi
+
+  log_level=$(env_or_default LOG_LEVEL INFO)
+  auth_provider=$(env_or_default AUTH_PROVIDER session)
+  retention_enabled=$(env_or_default RETENTION_ENABLED true)
+  retention_log=$(env_or_default RETENTION_LOG_SOURCE_METRIC_DAYS 90)
+  retention_search=$(env_or_default RETENTION_SEARCH_RESULT_METRIC_DAYS 90)
+  retention_rule=$(env_or_default RETENTION_RULE_METRIC_DAYS 90)
+  retention_offense=$(env_or_default RETENTION_OFFENSE_SNAPSHOT_DAYS 90)
+  compression=$(env_or_default COMPRESSION_AFTER_DAYS 7)
+  llm_enabled=$(env_or_default LLM_ENABLED false)
+  mcp_enabled=$(env_or_default MCP_ENABLED false)
+  for key in LOG_LEVEL AUTH_PROVIDER RETENTION_ENABLED RETENTION_LOG_SOURCE_METRIC_DAYS \
+    RETENTION_SEARCH_RESULT_METRIC_DAYS RETENTION_RULE_METRIC_DAYS \
+    RETENTION_OFFENSE_SNAPSHOT_DAYS COMPRESSION_AFTER_DAYS LLM_ENABLED MCP_ENABLED; do
+    env_has_key "$key" && kept_operator+=("$key")
+  done
+
+  if [ -f "$ENV_FILE" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      [[ $line =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]] || continue
+      key=${BASH_REMATCH[1]}
+      if ! installer_env_key "$key" && [ -z "${seen_extra[$key]:-}" ]; then
+        extra_lines+=("$line")
+        kept_operator+=("$key")
+        seen_extra[$key]=yes
+      fi
+    done <"$ENV_FILE"
+  fi
+
   fwd=${ANS[FORWARDED_ALLOW_IPS]:-}
   if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then
     fwd=${ANS[PROXY_EDGE_IP]}
@@ -540,21 +724,32 @@ write_env() { # write_env ENCRYPTION_KEY
     # Keep an earlier external-proxy value, never the bundled proxy address of a previous mode.
     if [ -z "$fwd" ] && [ -z "$(env_get COMPOSE_PROFILES)" ]; then fwd=$(env_get FORWARDED_ALLOW_IPS); fi
   fi
-  version=""
-  if [ -r VERSION ]; then version=$(tr -d '[:space:]' <VERSION); fi
-  : "${version:=0.1.0}"
+  version=$(read_checkout_version)
+  compose_files=$(compose_file_value)
+  warn_invariant_change ENVIRONMENT production
+  warn_invariant_change DEBUG false
+  warn_invariant_change QRADAR_PROVIDER rest
+  warn_invariant_change QRADAR_VERIFY_SSL true
+  warn_invariant_change QRADAR_API_TOKEN_FILE /run/secrets/qradar_sec_token
+  warn_invariant_change QRADAR_CA_BUNDLE /run/secrets/qradar_ca.pem
+  warn_invariant_change POSTGRES_USER qradar_obs
+  warn_invariant_change POSTGRES_DB qradar_obs
+  warn_invariant_change POSTGRES_HOST postgres
+  warn_invariant_change NEXT_PUBLIC_API_BASE_URL /api/v1
+  warn_invariant_change INTERNAL_API_BASE_URL http://backend:8000/api/v1
+  warn_invariant_change LLM_ALLOW_AUTONOMOUS_ACTIONS false
   umask 077
   cat >"$ENV_FILE.tmp" <<EOF
 # Written by ./qradar-dash install. Mode 0600. Secret keys are kept on re-runs.
 ENVIRONMENT=production
 DEBUG=false
-LOG_LEVEL=INFO
-AUTH_PROVIDER=session
+LOG_LEVEL=$log_level
+AUTH_PROVIDER=$auth_provider
 PUBLIC_ORIGIN=$origin
 SECRET_KEY=$secret_key
 ENCRYPTION_KEY=$enc
-ENCRYPTION_KEY_VERSION=1
-ENCRYPTION_KEYS_JSON=
+ENCRYPTION_KEY_VERSION=$encryption_version
+ENCRYPTION_KEYS_JSON=$encryption_keys
 POSTGRES_USER=qradar_obs
 POSTGRES_PASSWORD=$pg_pass
 POSTGRES_DB=qradar_obs
@@ -569,18 +764,19 @@ QRADAR_CA_BUNDLE=/run/secrets/qradar_ca.pem
 QRADAR_TLS_ALLOW_MISSING_AKI=$([ "${ANS[QRADAR_ALLOW_MISSING_AKI]}" = yes ] && echo true || echo false)
 NEXT_PUBLIC_API_BASE_URL=/api/v1
 INTERNAL_API_BASE_URL=http://backend:8000/api/v1
-RETENTION_ENABLED=true
-RETENTION_LOG_SOURCE_METRIC_DAYS=90
-RETENTION_RULE_METRIC_DAYS=90
-RETENTION_OFFENSE_SNAPSHOT_DAYS=90
-COMPRESSION_AFTER_DAYS=7
+RETENTION_ENABLED=$retention_enabled
+RETENTION_LOG_SOURCE_METRIC_DAYS=$retention_log
+RETENTION_SEARCH_RESULT_METRIC_DAYS=$retention_search
+RETENTION_RULE_METRIC_DAYS=$retention_rule
+RETENTION_OFFENSE_SNAPSHOT_DAYS=$retention_offense
+COMPRESSION_AFTER_DAYS=$compression
 FORWARDED_ALLOW_IPS=$fwd
-LLM_ENABLED=false
+LLM_ENABLED=$llm_enabled
 LLM_ALLOW_AUTONOMOUS_ACTIONS=false
-MCP_ENABLED=false
+MCP_ENABLED=$mcp_enabled
 COMPOSE_PROJECT_NAME=${ANS[PROJECT_NAME]}
 # So a bare 'docker compose' in this directory uses the production overlay too (./qradar-dash passes -f itself).
-COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+COMPOSE_FILE=$compose_files
 COMPOSE_PROFILES=$profiles
 QRADAR_DASH_VERSION=$version
 QRADAR_DASH_IMAGE_PREFIX=${ANS[IMAGE_PREFIX]}
@@ -593,12 +789,21 @@ UI_LOOPBACK_PORT=${ANS[UI_LOOPBACK_PORT]}
 EDGE_SUBNET=${ANS[EDGE_SUBNET]}
 PROXY_EDGE_IP=${ANS[PROXY_EDGE_IP]}
 EOF
+  if [ "${#extra_lines[@]}" -gt 0 ]; then
+    say "# Kept from the previous .env (not written by ./qradar-dash install)" >>"$ENV_FILE.tmp"
+    printf '%s\n' "${extra_lines[@]}" >>"$ENV_FILE.tmp"
+  fi
   chmod 600 "$ENV_FILE.tmp"
   mv "$ENV_FILE.tmp" "$ENV_FILE"
+  if [ "$old_exists" = no ]; then
+    ENV_WRITE_STATUS="first install: new .env"
+  else
+    ENV_WRITE_STATUS="kept operator keys: $(join_names "${kept_operator[@]}"); kept secrets: $(join_names "${kept_secrets[@]}")"
+  fi
 }
 
 get_images() { # get_images MODE OFFLINE_BUNDLE
-  local mode=$1 bundle=${2:-} svc="postgres redis backend frontend" dir
+  local mode=$1 bundle=${2:-} svc="postgres redis backend frontend"
   if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then svc="$svc proxy"; fi
   case "$mode" in
     build)
@@ -611,13 +816,7 @@ get_images() { # get_images MODE OFFLINE_BUNDLE
       dc pull redis || warn "could not pull redis; compose will try again at start"
       ;;
     offline)
-      dir=$TMP_DIR/bundle
-      rm -rf "$TMP_DIR"
-      mkdir -p "$dir"
-      tar -xf "$bundle" -C "$dir" SHA256SUMS images.tar || die "cannot read the bundle $bundle"
-      (cd "$dir" && sha256sum -c --quiet SHA256SUMS) || die "the bundle checksums do not match; nothing was loaded"
-      docker load -i "$dir/images.tar" || die "docker load failed"
-      rm -rf "$TMP_DIR"
+      bundle_load "$bundle"
       ;;
     pull)
       if [ -s .secrets/ghcr.token ] && [ -n "${ANS[GHCR_USER]:-}" ]; then
@@ -630,6 +829,302 @@ get_images() { # get_images MODE OFFLINE_BUNDLE
       fi
       ;;
   esac
+}
+
+# ---------------------------------------------------------------- offline bundle
+
+# The redis reference is read from the production compose file, never written down a second time.
+redis_ref() {
+  local ref
+  ref=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(redis:[^[:space:]@]*@sha256:[0-9a-f]\{64\}\)[[:space:]]*$/\1/p' \
+    docker-compose.prod.yml 2>/dev/null | head -n1 || true)
+  [ -n "$ref" ] || return 1
+  printf '%s\n' "$ref"
+}
+
+# The image that reads the secrets volumes for the backup: the same digest-pinned
+# alpine that loads them. Written once in deploy/load-secrets.sh and read from
+# there, the way redis_ref reads the production compose file.
+secrets_helper_image() {
+  local ref
+  ref=$(sed -n 's/^[[:space:]]*SECRETS_HELPER_IMAGE=\(alpine:[^[:space:]@]*@sha256:[0-9a-f]\{64\}\)[[:space:]]*$/\1/p' \
+    deploy/load-secrets.sh 2>/dev/null | head -n1 || true)
+  [ -n "$ref" ] || return 1
+  printf '%s\n' "$ref"
+}
+
+# The compose services the bundle carries as version-tagged images. Redis and the
+# secrets helper are digest-pinned references, not services, and follow below.
+BUNDLE_SERVICES=(postgres backend frontend proxy qradar-mcp)
+
+bundle_image_refs() { # bundle_image_refs PREFIX VERSION -> the image references, one per line
+  local prefix=$1 version=$2 service ref
+  for service in "${BUNDLE_SERVICES[@]}"; do
+    printf '%s/%s:%s\n' "$prefix" "$service" "$version"
+  done
+  ref=$(redis_ref) \
+    || die "docker-compose.prod.yml has no redis image pinned by digest (redis:TAG@sha256:...); this checkout is incomplete; restore docker-compose.prod.yml and run ./qradar-dash bundle again"
+  printf '%s\n' "$ref"
+  # The offline host runs load-secrets.sh and the backup's secrets tar with this
+  # image and cannot pull it, so the bundle carries it too.
+  ref=$(secrets_helper_image) \
+    || die "deploy/load-secrets.sh has no SECRETS_HELPER_IMAGE pinned by digest (alpine:TAG@sha256:...); this checkout is incomplete; restore deploy/load-secrets.sh and run ./qradar-dash bundle again"
+  printf '%s\n' "$ref"
+}
+
+user_path() { # user_path PATH -> absolute, a relative PATH being relative to where the operator ran the script
+  case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$ORIG_PWD" "$1" ;; esac
+}
+
+BUNDLE_STAGE=""
+BUNDLE_PARTIAL=""
+BUNDLE_DONE=no
+BUNDLE_OUT=""
+
+bundle_cleanup() {
+  [ -z "$BUNDLE_STAGE" ] || rm -rf -- "$BUNDLE_STAGE"
+  [ -z "$BUNDLE_PARTIAL" ] || rm -f -- "$BUNDLE_PARTIAL"
+  if [ "$BUNDLE_DONE" != yes ]; then
+    warn "bundle not written: no partial bundle was left in $BUNDLE_OUT; fix the cause above and run ./qradar-dash bundle again"
+  fi
+}
+
+cmd_bundle() {
+  local version="" out="" checkout prefix source ref id bytes target name member
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --version) [ $# -ge 2 ] || { fail "--version needs a release such as 0.2.0"; return 2; }; version=$2; shift ;;
+      --output) [ $# -ge 2 ] || { fail "--output needs a directory"; return 2; }; out=$2; shift ;;
+      -h | --help) usage; return 0 ;;
+      *) fail "unknown bundle option: $1; usage: ./qradar-dash bundle [--version X.Y.Z] [--output DIR]"; return 2 ;;
+    esac
+    shift
+  done
+  need_docker || exit 1
+  checkout=$(read_checkout_version bundle)
+  if [ -n "$version" ]; then
+    valid_release_version "$version" || {
+      fail "bundle version must be plain SemVer (MAJOR.MINOR.PATCH), not $version"
+      return 2
+    }
+    if [ "$version" != "$checkout" ]; then
+      fail "bundle refused: this checkout is version $checkout, not $version; run git fetch --tags && git checkout v$version first, then ./qradar-dash bundle again"
+      return 1
+    fi
+  fi
+  version=$checkout
+  valid_release_version "$version" || die "VERSION holds '$version', not plain SemVer (MAJOR.MINOR.PATCH); this checkout is incomplete; restore VERSION and run ./qradar-dash bundle again"
+  out=$(user_path "${out:-.}")
+  BUNDLE_OUT=$out
+  [ -d "$out" ] && [ -w "$out" ] \
+    || die "bundle output directory $out does not exist or is not writable; run mkdir -p $out, or pass --output DIR"
+  name=qradar-dash-$version-bundle.tar
+  target=$out/$name
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    die "bundle refused: $target already exists and is not overwritten; move or delete it, or pass --output DIR"
+  fi
+  for member in qradar-dash docker-compose.yml docker-compose.prod.yml "docs/releases/$version.md"; do
+    [ -f "$member" ] || die "bundle refused: $member is missing from this checkout; restore it (git checkout v$version) and run ./qradar-dash bundle again"
+  done
+  [ -d deploy ] || die "bundle refused: deploy/ is missing from this checkout; restore it (git checkout v$version) and run ./qradar-dash bundle again"
+
+  prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+  if [ -n "$prefix" ]; then source="QRADAR_DASH_IMAGE_PREFIX in .env"; else prefix=$DEFAULT_IMAGE_PREFIX; source="the default; no QRADAR_DASH_IMAGE_PREFIX in .env"; fi
+  say "Bundle $version, image prefix $prefix ($source)"
+  local -a refs=()
+  mapfile -t refs < <(bundle_image_refs "$prefix" "$version")
+  # the BUNDLE_SERVICES images plus the two digest pins bundle_image_refs appends
+  # (redis and the secrets helper); derived from the list, so the next service
+  # needs no edit here
+  [ "${#refs[@]}" -eq $((${#BUNDLE_SERVICES[@]} + 2)) ] \
+    || die "could not work out the image references; run ./qradar-dash bundle again"
+
+  BUNDLE_DONE=no
+  trap bundle_cleanup EXIT
+  install_signal_traps
+  for ref in "${refs[@]}"; do
+    say "Pulling $ref"
+    docker pull "$ref" >/dev/null \
+      || die "could not pull $ref; a private registry needs docker login ghcr.io with a read:packages token; then run ./qradar-dash bundle again"
+  done
+  BUNDLE_STAGE=$(mktemp -d "$out/.qradar-dash-bundle.XXXXXX") \
+    || die "cannot create a working directory in $out; free space there or pass --output DIR"
+  BUNDLE_PARTIAL=$BUNDLE_STAGE.partial
+  say "Saving the ${#refs[@]} images (this takes a while)"
+  docker save -o "$BUNDLE_STAGE/images.tar" "${refs[@]}" \
+    || die "docker save failed (is there room in $out?); free space or pass --output DIR"
+  {
+    printf '# qradar-dash offline bundle manifest; ./qradar-dash checks every image line after docker load\n'
+    printf 'version %s\n' "$version"
+    printf 'image_prefix %s\n' "$prefix"
+    printf 'image_store %s\n' "$(docker_image_store)"
+    for ref in "${refs[@]}"; do
+      id=$(docker image inspect --format '{{.Id}}' "$ref") && [ -n "$id" ] \
+        || die "cannot read the local image ID of $ref; run docker pull $ref and ./qradar-dash bundle again"
+      printf 'image %s %s\n' "$ref" "$id"
+    done
+  } >"$BUNDLE_STAGE/MANIFEST"
+  printf '%s\n' "$version" >"$BUNDLE_STAGE/VERSION"
+  cp -p qradar-dash docker-compose.yml docker-compose.prod.yml "$BUNDLE_STAGE/" \
+    || die "cannot copy the checkout files into the bundle"
+  mkdir -p "$BUNDLE_STAGE/docs/releases"
+  cp -p "docs/releases/$version.md" "$BUNDLE_STAGE/docs/releases/" || die "cannot copy docs/releases/$version.md"
+  cp -pR deploy "$BUNDLE_STAGE/deploy" || die "cannot copy deploy/"
+  member=$(find "$BUNDLE_STAGE" \( -name .env -o -name .secrets -o -name docker-compose.override.yml \) -print -quit)
+  [ -z "$member" ] || die "bundle refused: ${member#"$BUNDLE_STAGE"/} would go into the bundle and holds this site's configuration; remove it from deploy/ and run ./qradar-dash bundle again"
+  (
+    cd "$BUNDLE_STAGE"
+    find . -type f ! -name SHA256SUMS -printf '%P\n' | LC_ALL=C sort | while IFS= read -r member; do
+      sha256sum -- "$member"
+    done >SHA256SUMS
+  ) || die "cannot write SHA256SUMS"
+  tar --owner=0 --group=0 --numeric-owner -cf "$BUNDLE_PARTIAL" -C "$BUNDLE_STAGE" \
+    SHA256SUMS MANIFEST VERSION qradar-dash docker-compose.yml docker-compose.prod.yml deploy docs images.tar \
+    || die "cannot write the bundle archive (is there room in $out?); free space or pass --output DIR"
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    die "bundle refused: $target appeared while the bundle was being made and is not overwritten"
+  fi
+  mv -- "$BUNDLE_PARTIAL" "$target" || die "cannot move the finished bundle to $target"
+  BUNDLE_DONE=yes
+  trap - EXIT HUP INT TERM
+  rm -rf -- "$BUNDLE_STAGE"
+  bytes=$(wc -c <"$target" | tr -d '[:space:]')
+  say ""
+  info "bundle written: $target ($(awk -v b="$bytes" 'BEGIN {printf "%.1f MiB", b / 1048576}'), $bytes bytes)"
+  say "Copy it to the production host. There:"
+  say ""
+  say "First install"
+  say "  mkdir qradar-dash-$version"
+  say "  tar -xf /path/to/$name -C qradar-dash-$version --exclude=images.tar"
+  say "  cd qradar-dash-$version"
+  say "  ./qradar-dash install --offline /path/to/$name"
+  say ""
+  say "Upgrade of an installed site"
+  say "  cd <installation directory>"
+  say "  tar -xf /path/to/$name --exclude=images.tar"
+  say "  ./qradar-dash upgrade $version --offline /path/to/$name"
+}
+
+# bundle_member BUNDLE MEMBER -> the member's text; fails when it is not in the tar.
+bundle_member() {
+  local text
+  text=$(tar -xOf "$1" --occurrence=1 "$2" 2>/dev/null) || return 1
+  printf '%s\n' "$text"
+}
+
+# bundle_precheck BUNDLE EXPECTED_VERSION WHAT PREFIX
+# Reads only the small members. Refuses, before anything is loaded, a file that is not a bundle,
+# a bundle of another version, and a bundle whose images sit under another image prefix.
+bundle_precheck() {
+  local bundle=$1 expected=$2 what=$3 prefix=$4 listing found manifest bundle_prefix
+  listing=$(tar -tvf "$bundle" 2>/dev/null) \
+    || die "cannot read $bundle as a tar file; copy it again from the connected host (made by ./qradar-dash bundle); nothing was loaded"
+  if printf '%s\n' "$listing" | grep -Eq '^[lh]'; then
+    die "$bundle holds links, which a ./qradar-dash bundle never does; nothing was loaded; copy it again from the connected host"
+  fi
+  if printf '%s\n' "$listing" | awk '{print $NF}' | grep -Eq '^/|(^|/)\.\.(/|$)'; then
+    die "$bundle holds absolute or parent-directory paths, which a ./qradar-dash bundle never does; nothing was loaded; copy it again from the connected host"
+  fi
+  found=$(bundle_member "$bundle" VERSION | tr -d '[:space:]') || found=""
+  [ -n "$found" ] \
+    || die "$bundle has no VERSION member, so it is not a ./qradar-dash bundle; make one with ./qradar-dash bundle on a connected host; nothing was loaded"
+  if [ "$found" != "$expected" ]; then
+    die "bundle refused: $bundle is version $found but $what is $expected; nothing was loaded; use the bundle of version $expected (./qradar-dash bundle --version $expected on a connected host)"
+  fi
+  manifest=$(bundle_member "$bundle" MANIFEST) \
+    || die "$bundle has no MANIFEST member, so it is not a ./qradar-dash bundle; make one with ./qradar-dash bundle on a connected host; nothing was loaded"
+  bundle_prefix=$(printf '%s\n' "$manifest" | sed -n 's/^image_prefix //p' | head -n1)
+  if [ "$bundle_prefix" != "$prefix" ]; then
+    die "bundle refused: its images are under ${bundle_prefix:-an unknown prefix} but this site uses $prefix; nothing was loaded; make the bundle on a host whose .env has QRADAR_DASH_IMAGE_PREFIX=$prefix, or set that value here"
+  fi
+}
+
+bundle_clean_tmp() { rm -rf -- "$TMP_DIR"; }
+
+# docker_image_store -> containerd, classic or unknown. The two stores give a different meaning to
+# an image's .Id, so IDs are compared only between hosts with the same store.
+docker_image_store() {
+  local status
+  status=$(docker info --format '{{.DriverStatus}}' 2>/dev/null) || status=""
+  case "$status" in
+    "") printf 'unknown\n' ;;
+    *io.containerd.snapshotter*) printf 'containerd\n' ;;
+    *) printf 'classic\n' ;;
+  esac
+}
+
+# bundle_verify_manifest MANIFEST -> every image line resolves, and has the ID the bundle was made
+# from when both hosts use the same image store. docker save does not record a digest-pinned name
+# (redis:TAG@sha256:... and the secrets helper alpine:TAG@sha256:...), so after docker load that
+# image exists by ID only. Docker refuses to tag a digest reference, but once the plain name:tag
+# is set the pinned reference resolves. Redis and the helper take this one path; there is no
+# per-image branch.
+bundle_verify_manifest() {
+  local manifest=$1 kind ref id actual plain bad=0 compare=yes there here
+  there=$(sed -n 's/^image_store //p' "$manifest" | head -n1)
+  here=$(docker_image_store)
+  if [ -n "$there" ]; then
+    if [ "$there" != "$here" ] || [ "$here" = unknown ]; then
+      compare=no
+      say "Image IDs were not compared: the bundle host's image store is $there and this host's is $here; integrity rests on the SHA256SUMS check of images.tar. Every image reference is still checked."
+    fi
+  fi
+  while read -r kind ref id; do
+    [ "$kind" = image ] || continue
+    actual=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) || actual=""
+    if [ -z "$actual" ]; then
+      plain=${ref%%@*}
+      if [ "$plain" != "$ref" ]; then
+        if docker image inspect "$id" >/dev/null 2>&1 && docker tag "$id" "$plain" 2>/dev/null \
+          && actual=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) && [ -n "$actual" ]; then
+          info "docker load kept $ref only by its ID; set the tag $plain on it (this moves an existing $plain on this host)"
+        else
+          fail "after docker load, $ref does not resolve: the loaded image ($id) does not carry the pinned digest on this Docker, even with the tag $plain set. Make the bundle again with ./qradar-dash bundle on a connected host whose Docker image store is the same as this host's ($here; the bundle host's was ${there:-not recorded}); see docs/OPERATIONS.md (Çevrimdışı paket)"
+          bad=1
+          continue
+        fi
+      elif docker image inspect "$id" >/dev/null 2>&1 && docker tag "$id" "$ref" 2>/dev/null \
+        && actual=$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null) && [ -n "$actual" ]; then
+        info "docker load kept $ref only by its ID; tagged it as $ref"
+      else
+        fail "after docker load, $ref is not present (the bundle lists it as $id); copy the bundle again from the connected host and run the command again"
+        bad=1
+        continue
+      fi
+    fi
+    if [ "$compare" = yes ] && [ "$actual" != "$id" ]; then
+      fail "after docker load, $ref is image $actual but the bundle was made from $id; remove it (docker rmi $ref) and load the bundle again, or copy the bundle again from the connected host"
+      bad=1
+    fi
+  done <"$manifest"
+  [ "$bad" -eq 0 ]
+}
+
+# bundle_load BUNDLE: extract, check the sums, docker load, check the MANIFEST. Nothing is loaded
+# unless every member matches SHA256SUMS exactly.
+bundle_load() {
+  local bundle=$1 dir=$TMP_DIR/bundle member listed members
+  bundle_clean_tmp
+  mkdir -p "$dir"
+  tar -xf "$bundle" -C "$dir" \
+    || { bundle_clean_tmp; die "cannot extract the bundle $bundle (is there room under $ROOT?); nothing was loaded"; }
+  [ -f "$dir/SHA256SUMS" ] && [ -f "$dir/MANIFEST" ] && [ -f "$dir/images.tar" ] \
+    || { bundle_clean_tmp; die "the bundle $bundle lacks SHA256SUMS, MANIFEST or images.tar; copy it again from the connected host; nothing was loaded"; }
+  (cd "$dir" && sha256sum -c --quiet SHA256SUMS) \
+    || { bundle_clean_tmp; die "the bundle checksums do not match; nothing was loaded; copy the bundle again from the connected host and compare sha256sum on both hosts"; }
+  listed=$(sed -n 's/^[0-9a-f]\{64\} [ *]//p' "$dir/SHA256SUMS")
+  members=$(cd "$dir" && find . -type f ! -name SHA256SUMS -printf '%P\n') \
+    || { bundle_clean_tmp; die "cannot list the members of the bundle (is find installed?); nothing was loaded"; }
+  while IFS= read -r member; do
+    printf '%s\n' "$listed" | grep -qxF -- "$member" \
+      || { bundle_clean_tmp; die "the bundle holds $member, which SHA256SUMS does not cover; nothing was loaded; copy the bundle again from the connected host"; }
+  done <<<"$members"
+  say "Bundle checksums match; loading the images (this takes a while)"
+  docker load -i "$dir/images.tar" \
+    || { bundle_clean_tmp; die "docker load failed; free space in Docker's data directory (docker info shows it) and run the command again"; }
+  bundle_verify_manifest "$dir/MANIFEST" || { bundle_clean_tmp; exit 1; }
+  bundle_clean_tmp
+  info "bundle images loaded and checked against MANIFEST"
 }
 
 fernet_key() {
@@ -656,8 +1151,16 @@ admin_exists() { # prints yes or no; no user field is printed
   if [ "$n" -gt 0 ] 2>/dev/null; then echo yes; else echo no; fi
 }
 
+install_cleanup() {
+  # load-secrets and the public URL check keep their stderr in .install-tmp. The same text is
+  # already on the operator's screen, so every exit removes the directory, including a die
+  # before the state file is written. No other command uses this name.
+  if [ "$TMP_DIR" = .install-tmp ]; then rm -rf -- "$TMP_DIR"; fi
+}
+
 cmd_install() {
-  local mode=pull bundle="" answers="" dry=no reconfigure=no
+  local mode=pull bundle="" answers="" dry=no reconfigure=no checkout
+  trap install_cleanup EXIT
   FLAG_EXTERNAL_PROXY=no
   FLAG_SKIP_QRADAR=no
   PREFLIGHT_HOST_DONE=no
@@ -665,7 +1168,7 @@ cmd_install() {
     case "$1" in
       --non-interactive) [ $# -ge 2 ] || { fail "--non-interactive needs a file"; exit 2; }; answers=$2; shift ;;
       --build) mode=build ;;
-      --offline) [ $# -ge 2 ] || { fail "--offline needs a bundle file"; exit 2; }; mode=offline; bundle=$2; shift ;;
+      --offline) [ $# -ge 2 ] || { fail "--offline needs a bundle file"; exit 2; }; mode=offline; bundle=$(user_path "$2"); shift ;;
       --external-proxy) FLAG_EXTERNAL_PROXY=yes ;;
       --reconfigure) reconfigure=yes ;;
       --dry-run) dry=yes ;;
@@ -678,23 +1181,17 @@ cmd_install() {
   if [ "$mode" = "offline" ]; then
     [ -r "$bundle" ] || { fail "bundle not readable: $bundle"; exit 2; }
   fi
+  checkout=$(read_checkout_version)
 
   # 0. A site that records a version keeps it: changing versions is `upgrade`, which backs up first.
   if [ -e .qradar-dash/state.json ] || [ -L .qradar-dash/state.json ]; then
-    local checkout_version=""
-    if [ -r VERSION ]; then checkout_version=$(tr -d '[:space:]' <VERSION); fi
-    : "${checkout_version:=0.1.0}"
     state_read .qradar-dash/state.json || {
       fail "install refused: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid; see ./qradar-dash status"
       exit 1
     }
-    if [ "$STATE_LAST_PRESENT" = yes ] && [ "$STATE_LAST_OUTCOME" = failed ] \
-      && [ -z "$STATE_LAST_RESTORED_FROM" ]; then
-      fail "install refused: the last upgrade failed; run rollback or restore first"
-      exit 1
-    fi
-    if [ "$STATE_INSTALLED_VERSION" != "$checkout_version" ]; then
-      fail "install refused: this site runs $STATE_INSTALLED_VERSION and this checkout is $checkout_version; use ./qradar-dash upgrade $checkout_version to change versions, or check out v$STATE_INSTALLED_VERSION to re-run install (see docs/OPERATIONS.md, Yükseltme)"
+    refuse_if_last_upgrade_failed install || exit 1
+    if [ "$STATE_INSTALLED_VERSION" != "$checkout" ]; then
+      fail "install refused: this site runs $STATE_INSTALLED_VERSION and this checkout is $checkout; use ./qradar-dash upgrade $checkout to change versions, or check out v$STATE_INSTALLED_VERSION to re-run install (see docs/OPERATIONS.md, Yükseltme)"
       exit 1
     fi
   fi
@@ -723,11 +1220,15 @@ cmd_install() {
   apply_defaults
   validate_answers "$mode"
   report_errors_and_exit
+  if [ "$mode" = "offline" ]; then
+    bundle_precheck "$bundle" "$checkout" "this checkout" "${ANS[IMAGE_PREFIX]}"
+  fi
 
   # 2. Preflight. Changes nothing.
   say "Preflight"
   if [ "$PREFLIGHT_HOST_DONE" = "no" ]; then preflight_host; fi
   PROJECT=${ANS[PROJECT_NAME]}
+  report_compose_override
   preflight_network
   if [ "$dry" = "yes" ]; then say "Dry run: every check passed; nothing was written."; exit 0; fi
 
@@ -738,7 +1239,7 @@ cmd_install() {
   write_secrets_dir
   save_answers
   write_env "$enc"
-  info ".env written (mode 0600); existing keys were kept"
+  info ".env written (mode 0600); $ENV_WRITE_STATUS"
 
   # 4. Images.
   get_images "$mode" "$bundle"
@@ -756,21 +1257,21 @@ cmd_install() {
   # 6. Secret volumes, then data services.
   export SECRETS_VOLUME=${ANS[SECRETS_VOLUME]} PROXY_CERTS_VOLUME=${ANS[PROXY_CERTS_VOLUME]}
   if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then
-    ./deploy/load-secrets.sh all >/dev/null || die "deploy/load-secrets.sh failed"
+    load_secrets_into_volumes all
   else
-    ./deploy/load-secrets.sh qradar >/dev/null || die "deploy/load-secrets.sh failed"
+    load_secrets_into_volumes qradar
   fi
   info "secrets loaded into the volumes ${ANS[SECRETS_VOLUME]}$([ "${ANS[EXTERNAL_PROXY]}" = no ] && echo " and ${ANS[PROXY_CERTS_VOLUME]}")"
   mkdir -p "${ANS[BACKUP_DIR]}" || die "cannot create the backup directory ${ANS[BACKUP_DIR]}"
   chmod 700 "${ANS[BACKUP_DIR]}" || die "cannot set mode 0700 on the backup directory ${ANS[BACKUP_DIR]}"
-  dc up -d --wait --wait-timeout 180 postgres redis || { dc ps; die "postgres or redis did not become healthy"; }
+  if ! dc up -d --wait --wait-timeout 180 postgres redis; then
+    read_unhealthy_services
+    die "postgres or redis did not become healthy within 180 s: ${UNHEALTHY_DESC}. Next: ${UNHEALTHY_NEXT:-./qradar-dash logs postgres} and ./qradar-dash doctor"
+  fi
   info "postgres and redis are healthy"
 
-  # 7. Migrate. A failure stops the install: the database is new, nothing to restore.
-  if ! dc run --rm -T migrate; then
-    dc logs --no-color --tail 40 migrate || true
-    die "alembic upgrade head failed"
-  fi
+  # 7. Migrate. A failure stops the install before the application starts.
+  run_install_migrate
   info "migrations are at head"
 
   # 8. Break-glass admin. seed is not run: it would insert a mock QRadar instance.
@@ -825,26 +1326,274 @@ cmd_install() {
   local svc="backend celery-worker celery-beat frontend"
   if [ "${ANS[EXTERNAL_PROXY]}" = "no" ]; then svc="$svc proxy"; fi
   # shellcheck disable=SC2086
-  dc up -d --wait --wait-timeout 180 $svc || { dc ps; fail "a service did not become healthy within 180 s"; exit 1; }
+  if ! dc up -d --wait --wait-timeout 180 $svc; then
+    read_unhealthy_services
+    fail "a service did not become healthy within 180 s: ${UNHEALTHY_DESC}. Next: ${UNHEALTHY_NEXT:-./qradar-dash logs backend} and ./qradar-dash doctor"
+    exit 1
+  fi
   info "backend, worker, beat, frontend$([ "${ANS[EXTERNAL_PROXY]}" = no ] && echo ", proxy") are healthy"
   local api="http://127.0.0.1:${ANS[API_LOOPBACK_PORT]}/api/v1"
-  wait_ready "$api/health/ready" 60 || warn "$api/health/ready did not answer 200 within 60 s"
-  local code
+  local api_ready=yes code public_ok=yes
+  if ! wait_ready "$api/health/ready" 60; then
+    warn "$api/health/ready did not answer 200 within 60 s; run ./qradar-dash doctor and ./qradar-dash logs backend"
+    api_ready=no
+  fi
   code=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$api/version" || true)
   if [ "$code" = "200" ]; then
     info "version: $(curl -s --max-time 5 "$api/version")"
   else
-    warn "GET /api/v1/version did not answer 200 (got '${code:-no answer}'); check ./qradar-dash doctor"
+    warn "GET /api/v1/version did not answer 200 (got '${code:-no answer}'); run ./qradar-dash doctor and ./qradar-dash logs backend"
+    api_ready=no
+  fi
+  # The bundled proxy is the only path that publishes PUBLIC_HOSTNAME. An external proxy is the
+  # operator's, so this check would not be asking the stack we started.
+  if [ "${ANS[EXTERNAL_PROXY]}" != yes ]; then
+    check_published_url || public_ok=no
   fi
 
-  summary "$qr_rc" "$have_admin"
+  summary "$qr_rc" "$have_admin" "$api_ready"
   # The state file records the version and image digests, which do not depend on QRadar.
-  write_install_state || die "the install succeeded but its state file could not be written"
-  [ "$qr_rc" -eq 0 ] || exit 1
+  write_install_state || die "the install state file could not be written; run ./qradar-dash status"
+  [ "$qr_rc" -eq 0 ] && [ "$api_ready" = yes ] && [ "$public_ok" = yes ] || exit 1
+}
+
+# stdout of load-secrets.sh is the volume noise; stderr is the operator's error. Keep it under
+# .install-tmp so a failure can be shown without using the host's /tmp.
+load_secrets_into_volumes() { # all|qradar
+  local which=$1 err="$TMP_DIR/load-secrets.err"
+  mkdir -p "$TMP_DIR"
+  if ./deploy/load-secrets.sh "$which" >/dev/null 2>"$err"; then
+    return 0
+  fi
+  cat "$err" >&2 || true
+  die "deploy/load-secrets.sh $which failed. The error from deploy/load-secrets.sh is above. Run ./qradar-dash install again."
+}
+
+database_alembic_revision() { # revision on stdout; empty or a failed query returns 1
+  local rev
+  rev=$(postgres_sql "$(env_get POSTGRES_DB)" "SELECT version_num FROM alembic_version;") || return 1
+  rev=$(printf '%s' "$rev" | tr -d '[:space:]')
+  [ -n "$rev" ] || return 1
+  printf '%s\n' "$rev"
+}
+
+run_install_migrate() {
+  local rev=""
+  if dc run --rm -T migrate; then
+    return 0
+  fi
+  dc logs --no-color --tail 40 migrate || true
+  rev=$(database_alembic_revision || true)
+  if [ -z "$rev" ]; then
+    die "alembic upgrade head failed. The database looks new (alembic_version is empty or missing). Run ./qradar-dash install again. The migrate logs are above."
+  fi
+  die "alembic upgrade head failed. The database is not new (alembic_version is $rev). Run ./qradar-dash doctor. The migrate logs are above."
+}
+
+# Prints two lines: the description, then the logs commands (empty when none).
+# Returns 1 when compose names nobody. Callers must use read_unhealthy_services:
+# a $(...) capture would drop a global, and tab is whitespace so an empty Health
+# field has to be split on a non-whitespace separator.
+compose_unhealthy_services() {
+  local rows row service state health state_l health_l joined="" logs=""
+  if ! rows=$(dc ps --all --format '{{.Service}}\t{{.State}}\t{{.Health}}\t{{.ExitCode}}' 2>/dev/null); then
+    printf '%s\nlogs:\n' "docker compose ps --all failed, so no service name is available"
+    return 1
+  fi
+  while IFS= read -r row; do
+    [ -n "$row" ] || continue
+    row=${row//$'\t'/$'\x1f'}
+    IFS=$'\x1f' read -r service state health _ <<<"$row"
+    [ -n "$service" ] || continue
+    state_l=${state,,}
+    health_l=${health,,}
+    if [ "$state_l" = running ] && { [ -z "$health_l" ] || [ "$health_l" = healthy ]; }; then
+      continue
+    fi
+    if [ -n "$joined" ]; then joined="$joined, "; fi
+    joined="$joined$service is ${state_l:-unknown}"
+    [ -z "$health_l" ] || joined="$joined (health: $health_l)"
+    if [ -n "$logs" ]; then logs="$logs and "; fi
+    logs="$logs./qradar-dash logs $service"
+  done <<<"$rows"
+  if [ -z "$joined" ]; then
+    printf '%s\nlogs:\n' "docker compose ps --all named no unhealthy service"
+    return 1
+  fi
+  # The logs: prefix stays on the second line so a command substitution, which
+  # strips trailing newlines, cannot drop an empty next-step line.
+  printf '%s\nlogs:%s\n' "$joined" "$logs"
+}
+
+read_unhealthy_services() {
+  local output
+  output=$(compose_unhealthy_services || true)
+  UNHEALTHY_DESC=${output%$'\n'*}
+  UNHEALTHY_NEXT=${output##*$'\n'}
+  UNHEALTHY_NEXT=${UNHEALTHY_NEXT#logs:}
+}
+
+# 1|true|yes|on (any case) is on. An unset key uses the config.py default (on or off).
+env_flag_on() { # KEY default
+  local raw
+  if env_has_key "$1"; then
+    raw=$(env_get "$1")
+    case "${raw,,}" in
+      1 | true | yes | on) return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
+  [ "$2" = on ]
+}
+
+csv_join() {
+  local out="" item
+  for item in "$@"; do
+    if [ -n "$out" ]; then out="$out, $item"; else out=$item; fi
+  done
+  printf '%s\n' "$out"
+}
+
+# Defaults match backend/app/core/config.py. The "every 5 min" sentence is the
+# SearchCadence.FIVE_MINUTES default; WAF and IPS are the fifteen-minute families.
+summary_search_lines() {
+  local -a on=( "Phase A" ) off=() slow=()
+  local label key default slow_family on_text off_text note slow_text
+  while IFS=$'\t' read -r label key default slow_family; do
+    [ -n "$label" ] || continue
+    if env_flag_on "$key" "$default"; then
+      on+=( "$label" )
+      [ "$slow_family" = yes ] && slow+=( "$label" )
+    else
+      off+=( "$label" )
+    fi
+  done <<'EOF'
+catch-all	CATCHALL_COLLECTION_ENABLED	on	no
+geo	GEO_COLLECTION_ENABLED	on	no
+explanations	ANOMALY_EXPLANATION_ENABLED	on	no
+WAF	WAF_COLLECTION_ENABLED	off	yes
+IPS	IPS_COLLECTION_ENABLED	off	yes
+rule-match collection	RULE_MATCH_COLLECTION_ENABLED	off	no
+custom rules	CUSTOM_RULES_ENABLED	off	no
+property watch	PW_COLLECTION_ENABLED	off	no
+EOF
+  on_text=$(csv_join "${on[@]}")
+  note="every 5 min unless changed under Administration → Search cadence"
+  if [ "${#slow[@]}" -gt 0 ]; then
+    slow_text=$(csv_join "${slow[@]}")
+    note="$note; $slow_text uses 15 min until changed on that page"
+  fi
+  say "Searching QRadar   $on_text ($note)"
+  if [ "${#off[@]}" -eq 0 ]; then
+    say "Left off           none"
+  else
+    off_text=$(csv_join "${off[@]}")
+    say "Left off           $off_text (turn them on later)"
+  fi
+}
+
+# --install-timer writes a system unit for root and a --user unit otherwise. A unit file can be
+# present and disabled, so systemd is the signal whenever systemctl exists: the first scope that
+# knows the unit answers. Only a host without systemctl falls back to the two unit-file paths.
+# Prints "SCOPE STATE" on stdout. Returns 0 when the timer is enabled (or, without systemctl,
+# when its unit file is present).
+backup_timer_state() {
+  local scope out system_unit=/etc/systemd/system/qradar-dash-backup.timer
+  local user_unit="${HOME:-}/.config/systemd/user/qradar-dash-backup.timer"
+  if command -v systemctl >/dev/null 2>&1; then
+    for scope in system user; do
+      if [ "$scope" = user ]; then
+        out=$(systemctl --user is-enabled qradar-dash-backup.timer 2>/dev/null || true)
+      else
+        out=$(systemctl is-enabled qradar-dash-backup.timer 2>/dev/null || true)
+      fi
+      out=${out%%$'\n'*}
+      # Real systemd prints not-found (exit 4) for a unit that is not in this scope, and
+      # nothing at all on older versions or a --user call without a user bus: ask the next scope.
+      case "$out" in '' | not-found) continue ;; esac
+      case "$out" in
+        enabled | enabled-runtime) printf '%s %s\n' "$scope" "$out"; return 0 ;;
+        *) printf '%s %s\n' "$scope" "$out"; return 1 ;;
+      esac
+    done
+    printf 'none missing\n'
+    return 1
+  fi
+  if [ -f "$system_unit" ] && [ ! -L "$system_unit" ]; then
+    printf 'system unit-file\n'
+    return 0
+  fi
+  if [ -n "${HOME:-}" ] && [ -f "$user_unit" ] && [ ! -L "$user_unit" ]; then
+    printf 'user unit-file\n'
+    return 0
+  fi
+  printf 'none missing\n'
+  return 1
+}
+
+backup_timer_enable_command() { # system|user
+  if [ "$1" = user ]; then
+    printf 'systemctl --user enable --now qradar-dash-backup.timer\n'
+  else
+    printf 'systemctl enable --now qradar-dash-backup.timer\n'
+  fi
+}
+
+summary_backup_timer() {
+  local scope state
+  read -r scope state <<<"$(backup_timer_state || true)"
+  case "$state" in
+    enabled | enabled-runtime) say "Backup timer: installed" ;;
+    unit-file) say "Backup timer: unit file present (systemctl is not available)" ;;
+    disabled) say "Backup timer       installed but disabled. Run: ./qradar-dash backup --install-timer" ;;
+    *) say "Backup timer       not installed. Run: ./qradar-dash backup --install-timer" ;;
+  esac
+}
+
+check_published_url() {
+  local host port url resolve err code rc err_line
+  host=${ANS[PUBLIC_HOSTNAME]}
+  port=${ANS[HTTPS_PORT]:-443}
+  if [ "$port" = 443 ]; then
+    url="https://${host}/api/v1/health/ready"
+  else
+    url="https://${host}:${port}/api/v1/health/ready"
+  fi
+  resolve="${host}:${port}:127.0.0.1"
+  mkdir -p "$TMP_DIR"
+  err="$TMP_DIR/public-ready.err"
+  : >"$err"
+  if code=$(curl -sS --max-time 15 --resolve "$resolve" -o /dev/null -w '%{http_code}' "$url" 2>"$err"); then
+    rc=0
+  else
+    rc=$?
+  fi
+  if [ "$rc" -eq 0 ] && [ "$code" = 200 ]; then
+    info "public URL $url answered HTTP 200 through the local proxy"
+    return 0
+  fi
+  if [ "$rc" -eq 60 ] || [ "$rc" -eq 51 ]; then
+    : >"$err"
+    if code=$(curl -k -sS --max-time 15 --resolve "$resolve" -o /dev/null -w '%{http_code}' "$url" 2>"$err"); then
+      rc=0
+    else
+      rc=$?
+    fi
+    if [ "$rc" -eq 0 ] && [ "$code" = 200 ]; then
+      warn "public URL $url answered HTTP 200 only with certificate checks disabled (curl exit 60 or 51). Browsers will warn unless the site CA is trusted. Continuing."
+      return 0
+    fi
+  fi
+  err_line=$(head -n1 "$err" 2>/dev/null || true)
+  fail "public URL $url failed (curl exit $rc, HTTP ${code:-none}${err_line:+: $err_line}). Next: ./qradar-dash logs proxy and ./qradar-dash doctor."
+  return 1
 }
 
 summary() {
-  local qr_rc=$1 had=$2 origin hb_line
+  local qr_rc=$1 had=$2 api_ready=$3 origin hb_line
+  local ts_on ts_ls ts_sr ts_rm ts_os
+  local sr_days ca_days geo_days waf_m waf_a ips_m ips_a pw_m pw_a
+  local fault_days cr_days lsa_days rhs_days dcs_days
   origin=$(env_get PUBLIC_ORIGIN)
   say ""
   say "=============================== Install summary ==============================="
@@ -862,6 +1611,9 @@ summary() {
     say "QRadar connection  FAILED (exit $qr_rc). The instance row is stored; fix the console, token or"
     say "                    CA and run ./qradar-dash install again (qradar add updates the row)."
   fi
+  if [ "$api_ready" != yes ]; then
+    say "API readiness      NOT READY — run ./qradar-dash doctor and ./qradar-dash logs backend"
+  fi
   if [ -z "${HB_RC:-}" ]; then
     say "History backfill   not decided; the first administrator sign-in will ask (WAF and IPS read"
     say "                    history for sources enabled after the answer)"
@@ -871,11 +1623,35 @@ summary() {
   else
     say "History backfill   not recorded (exit $HB_RC); the first administrator sign-in will ask"
   fi
-  say "Left off           WAF, IPS, rule-match collection, custom rules (turn them on later)"
+  # Daily deleters run whether or not RETENTION_ENABLED is set. Timescale days
+  # come from .env (the installer writes 90). The other days are the code
+  # defaults unless that key is set in .env. One line, summary only.
+  ts_on=$(env_get RETENTION_ENABLED)
+  ts_ls=$(env_get RETENTION_LOG_SOURCE_METRIC_DAYS)
+  ts_sr=$(env_get RETENTION_SEARCH_RESULT_METRIC_DAYS)
+  ts_rm=$(env_get RETENTION_RULE_METRIC_DAYS)
+  ts_os=$(env_get RETENTION_OFFENSE_SNAPSHOT_DAYS)
+  sr_days=$(env_get SEARCH_RESULT_METRIC_RETENTION_DAYS); sr_days=${sr_days:-90}
+  ca_days=$(env_get CATCHALL_RETENTION_DAYS); ca_days=${ca_days:-35}
+  geo_days=$(env_get GEO_RETENTION_DAYS); geo_days=${geo_days:-35}
+  waf_m=$(env_get WAF_METRIC_RETENTION_DAYS); waf_m=${waf_m:-35}
+  waf_a=$(env_get WAF_ANOMALY_RETENTION_DAYS); waf_a=${waf_a:-180}
+  ips_m=$(env_get IPS_METRIC_RETENTION_DAYS); ips_m=${ips_m:-35}
+  ips_a=$(env_get IPS_ANOMALY_RETENTION_DAYS); ips_a=${ips_a:-365}
+  pw_m=$(env_get PW_METRIC_RETENTION_DAYS); pw_m=${pw_m:-35}
+  pw_a=$(env_get PW_ANOMALY_RETENTION_DAYS); pw_a=${pw_a:-180}
+  fault_days=$(env_get ANOMALY_FAULT_RETENTION_DAYS); fault_days=${fault_days:-30}
+  cr_days=$(env_get CUSTOM_RULE_BREACH_RETENTION_DAYS); cr_days=${cr_days:-180}
+  lsa_days=$(env_get LOG_SOURCE_ANOMALY_RETENTION_DAYS); lsa_days=${lsa_days:-365}
+  rhs_days=$(env_get RULE_HEALTH_SNAPSHOT_RETENTION_DAYS); rhs_days=${rhs_days:-90}
+  dcs_days=$(env_get DETECTION_COVERAGE_SNAPSHOT_RETENTION_DAYS); dcs_days=${dcs_days:-90}
+  say "Retention           Timescale RETENTION_ENABLED=${ts_on:-false} log_source_metric ${ts_ls:-unset}d search_result_metric ${ts_sr:-unset}d rule_metric ${ts_rm:-unset}d offense_snapshot ${ts_os:-unset}d; daily deleters (not gated by RETENTION_ENABLED): search results ${sr_days}d, catch-all ${ca_days}d, geo ${geo_days}d, WAF metrics ${waf_m}d, WAF incidents ${waf_a}d, IPS metrics ${ips_m}d, IPS incidents ${ips_a}d, property-watch metrics ${pw_m}d, property-watch incidents ${pw_a}d, anomaly faults ${fault_days}d, custom-rule breaches ${cr_days}d, Phase A incidents ${lsa_days}d, rule-health snapshots ${rhs_days}d, coverage snapshots ${dcs_days}d"
+  summary_search_lines
   say "Next               Sign in, then Directory ($origin/admin/directory) if AD is used,"
   say "                    and Users ($origin/admin/users) to assign roles."
   say "Runbook            docs/OPERATIONS.md; ./qradar-dash doctor"
   say "Backup directory   ${ANS[BACKUP_DIR]}"
+  summary_backup_timer
   say "Install time       $(((SECONDS - START_SECONDS) / 60)) min $(((SECONDS - START_SECONDS) % 60)) s"
   say "================================================================================"
 }
@@ -888,8 +1664,15 @@ need_installed() {
 }
 
 cmd_status() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h | --help) usage; return 0 ;;
+      *) fail "unknown status argument: $1; usage: ./qradar-dash status"; return 2 ;;
+    esac
+    shift
+  done
   need_installed
-  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  need_docker || exit 1
   dc ps
   local port code service digest item age="unknown"
   port=$(env_get API_LOOPBACK_PORT)
@@ -1358,18 +2141,23 @@ write_restore_state() { # write_restore_state BACKUP_DIRECTORY
     "$outcome" "$recorded_backup" "$backup"
 }
 
-backup_stamp_age() { # backup_stamp_age DIR: age from the UTC stamp in the directory name
+backup_stamp_epoch() { # directory name qradar-dash-YYYYMMDDTHHMMSSZ-* -> epoch seconds
   local stamp=${1##*/}
   [[ $stamp =~ ^qradar-dash-([0-9]{8})T([0-9]{2})([0-9]{2})([0-9]{2})Z- ]] || return 1
-  state_age "${BASH_REMATCH[1]:0:4}-${BASH_REMATCH[1]:4:2}-${BASH_REMATCH[1]:6:2}T${BASH_REMATCH[2]}:${BASH_REMATCH[3]}:${BASH_REMATCH[4]}Z"
+  date -u -d "${BASH_REMATCH[1]:0:4}-${BASH_REMATCH[1]:4:2}-${BASH_REMATCH[1]:6:2}T${BASH_REMATCH[2]}:${BASH_REMATCH[3]}:${BASH_REMATCH[4]}Z" +%s
 }
 
-state_age() {
-  local timestamp now seconds
-  timestamp=$(date -u -d "$1" +%s) || return 1
+backup_age_seconds() { # directory -> age in seconds; negative or unreadable returns 1
+  local stamp_epoch now seconds
+  stamp_epoch=$(backup_stamp_epoch "$1") || return 1
   now=$(date -u +%s) || return 1
-  seconds=$((now - timestamp))
+  seconds=$((now - stamp_epoch))
   [ "$seconds" -ge 0 ] || return 1
+  printf '%s\n' "$seconds"
+}
+
+format_age() { # seconds -> the same text status already prints
+  local seconds=$1
   if [ "$seconds" -lt 3600 ]; then
     printf '%s min\n' "$((seconds / 60))"
   elif [ "$seconds" -lt 86400 ]; then
@@ -1377,6 +2165,21 @@ state_age() {
   else
     printf '%s d\n' "$((seconds / 86400))"
   fi
+}
+
+backup_stamp_age() { # backup_stamp_age DIR: age from the UTC stamp in the directory name
+  local seconds
+  seconds=$(backup_age_seconds "$1") || return 1
+  format_age "$seconds"
+}
+
+state_age() { # ISO-8601 UTC timestamp -> the same text as format_age
+  local timestamp now seconds
+  timestamp=$(date -u -d "$1" +%s) || return 1
+  now=$(date -u +%s) || return 1
+  seconds=$((now - timestamp))
+  [ "$seconds" -ge 0 ] || return 1
+  format_age "$seconds"
 }
 
 write_backup_manifest() { # write_backup_manifest DIR DB_SIZE ALEMBIC STATE SECRET_VOLUMES
@@ -1503,13 +2306,17 @@ apply_backup_retention() { # apply_backup_retention ROOT DB_SIZE
 BACKUP_SECRETS_VOLUMES=""
 
 write_secrets_backup() { # write_secrets_backup TARGET
-  local secrets proxy
+  local secrets proxy helper
   local -a mounts entries
   secrets=$(env_get SECRETS_VOLUME)
   proxy=$(env_get PROXY_CERTS_VOLUME)
   : "${secrets:=qradar-observability-secrets}"
   : "${proxy:=qradar-observability-proxy-certs}"
   case "$secrets:$proxy" in *[!A-Za-z0-9_.:-]*) return 1 ;; esac
+  helper=$(secrets_helper_image) || {
+    fail "deploy/load-secrets.sh has no SECRETS_HELPER_IMAGE pinned by digest (alpine:TAG@sha256:...); this checkout is incomplete; restore deploy/load-secrets.sh"
+    return 1
+  }
   docker volume inspect "$secrets" >/dev/null 2>&1 || {
     fail "required QRadar secrets volume is missing"
     return 1
@@ -1522,13 +2329,19 @@ write_secrets_backup() { # write_secrets_backup TARGET
     entries+=(proxy)
     BACKUP_SECRETS_VOLUMES=qradar,proxy
   fi
-  docker run --rm "${mounts[@]}" alpine tar -C /volumes -cf - "${entries[@]}" >"$1"
+  # The tar only reads, so both volumes are mounted read-only and the container
+  # runs offline with every capability dropped except DAC_READ_SEARCH: the token
+  # file is 0400 and owned by the backend account, which root without a DAC read
+  # capability may not read.
+  docker run --rm --network none --cap-drop ALL --cap-add DAC_READ_SEARCH \
+    --security-opt no-new-privileges "${mounts[@]}" \
+    "$helper" tar -C /volumes -cf - "${entries[@]}" >"$1"
 }
 
 cmd_backup_create() { # cmd_backup_create REASON VERIFY
   local reason=$1 verify=$2 root stamp name final db_size alembic state_json=absent
   need_installed
-  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  need_docker || exit 1
   root=$(env_get QRADAR_DASH_BACKUP_DIR)
   [ -n "$root" ] || die "backup root is not configured; set QRADAR_DASH_BACKUP_DIR."
   [ -d "$root" ] || die "backup root is not a directory: $root"
@@ -1548,9 +2361,7 @@ cmd_backup_create() { # cmd_backup_create REASON VERIFY
   umask 077
   mkdir -m 700 -- "$BACKUP_STAGE"
   trap backup_cleanup EXIT
-  trap 'exit 129' HUP
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
+  install_signal_traps
 
   BACKUP_CONTAINER_DUMP="/tmp/qradar-dash-$stamp.dump"
   dc exec -T postgres pg_dump -U "$(env_get POSTGRES_USER)" -Fc \
@@ -1748,7 +2559,7 @@ restore_failure_before_swap() { # restore_failure_before_swap DATABASE
 print_broken_database_instructions() { # print_broken_database_instructions NAME
   say "Previous database kept as $1."
   say "Drop it later only after validation:"
-  say "  docker compose -p $PROJECT -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'DROP DATABASE $1;'"
+  say "  $(compose_command) exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'DROP DATABASE $1;'"
 }
 
 restore_swap_database() { # restore_swap_database BACKUP_DIRECTORY REASON
@@ -1789,7 +2600,7 @@ restore_swap_database() { # restore_swap_database BACKUP_DIRECTORY REASON
       say "Original database: $broken"
       say "Restored candidate database: $restored"
       say "Rename the original back with:"
-      say "  docker compose -p $PROJECT -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'ALTER DATABASE $broken RENAME TO $live;'"
+      say "  $(compose_command) exec -T postgres psql -U $(env_get POSTGRES_USER) -d postgres -c 'ALTER DATABASE $broken RENAME TO $live;'"
     fi
     restore_start_services || true
     return 1
@@ -1818,7 +2629,7 @@ restore_start_and_wait() { # restore_start_and_wait BACKUP_DIRECTORY REASON
 cmd_restore() {
   local backup="" non_interactive=no yes=no version current db_size answer
   need_installed
-  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  need_docker || exit 1
   while [ $# -gt 0 ]; do
     case "$1" in
       --non-interactive) non_interactive=yes ;;
@@ -1927,11 +2738,14 @@ release_notes_fields() { # release_notes_fields TEXT -> version<TAB>min_from
   printf '%s\t%s\n' "$version" "$min_from"
 }
 
-upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE
+UPGRADE_MISSING_IMAGE=""
+
+upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE; offline, UPGRADE_MISSING_IMAGE names what is absent
   local target=$1 offline=$2 prefix service ref
   local -a services=(postgres redis backend frontend)
   doctor_profile_enabled proxy && services+=(proxy)
   doctor_profile_enabled mcp && services+=(qradar-mcp)
+  UPGRADE_MISSING_IMAGE=""
   if [ "$offline" = no ]; then
     QRADAR_DASH_VERSION=$target dc pull "${services[@]}"
     return
@@ -1939,16 +2753,24 @@ upgrade_pull_target() { # upgrade_pull_target VERSION OFFLINE
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
   : "${prefix:=$DEFAULT_IMAGE_PREFIX}"
   for service in postgres backend frontend; do
-    docker image inspect "$prefix/$service:$target" >/dev/null || return 1
+    ref=$prefix/$service:$target
+    docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
   done
   if doctor_profile_enabled proxy; then
-    docker image inspect "$prefix/proxy:$target" >/dev/null || return 1
+    ref=$prefix/proxy:$target
+    docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
   fi
   if doctor_profile_enabled mcp; then
-    docker image inspect "$prefix/qradar-mcp:$target" >/dev/null || return 1
+    ref=$prefix/qradar-mcp:$target
+    docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
   fi
-  ref='redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499'
-  docker image inspect "$ref" >/dev/null
+  ref=$(redis_ref) || { UPGRADE_MISSING_IMAGE="redis (docker-compose.prod.yml pins no digest)"; return 1; }
+  docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
+  # the pre-upgrade backup tars the secrets volumes with this image, and an
+  # offline host cannot let `docker run` pull it
+  ref=$(secrets_helper_image) \
+    || { UPGRADE_MISSING_IMAGE="secrets helper (deploy/load-secrets.sh pins no digest)"; return 1; }
+  docker image inspect "$ref" >/dev/null 2>&1 || { UPGRADE_MISSING_IMAGE=$ref; return 1; }
 }
 
 read_target_release_notes() { # read_target_release_notes VERSION
@@ -2035,13 +2857,23 @@ image_map_digest() { # image_map_digest MAP SERVICE
   return 1
 }
 
+PREVIOUS_IMAGE_PROBLEM=""
 previous_images_are_local() { # previous_images_are_local MAP
-  local item digest actual
-  validate_image_map "$1" || return 1
+  local item digest actual service
+  PREVIOUS_IMAGE_PROBLEM=""
+  validate_image_map "$1" || { PREVIOUS_IMAGE_PROBLEM="the image map is invalid"; return 1; }
   while IFS= read -r item; do
+    [ -n "$item" ] || continue
+    service=${item%%:*}
     digest=${item#*:}
-    actual=$(docker image inspect --format '{{.Id}}' "$digest" 2>/dev/null) || return 1
-    [ "$actual" = "$digest" ] || return 1
+    actual=$(docker image inspect --format '{{.Id}}' "$digest" 2>/dev/null) || {
+      PREVIOUS_IMAGE_PROBLEM="service $service digest $digest is not a local image"
+      return 1
+    }
+    if [ "$actual" != "$digest" ]; then
+      PREVIOUS_IMAGE_PROBLEM="service $service digest $digest has local id $actual"
+      return 1
+    fi
   done < <(printf '%s\n' "${1//,/$'\n'}")
 }
 
@@ -2079,6 +2911,77 @@ record_rollback_failure() { # backup old-version old-images from to at
   return 1
 }
 
+# The stack is already healthy. say (not fail) so the exact sentence is on stdout;
+# write_state has already printed its own failure.
+report_bookkeeping_failure() { # upgrade|rollback
+  local kind=$1 port api code body version="unknown" rc=0
+  port=$(env_get API_LOOPBACK_PORT)
+  : "${port:=8000}"
+  api="http://127.0.0.1:$port/api/v1"
+  if code=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$api/health/ready"); then
+    rc=0
+  else
+    rc=$?
+    code=${code:-none}
+  fi
+  if [ "$rc" -eq 0 ] && [ "$code" = 200 ]; then
+    if body=$(curl -fsS --max-time 5 "$api/version" 2>/dev/null); then
+      version=$(state_string_field "$body" version)
+      [ -n "$version" ] || version=unknown
+    fi
+    say "Running now: version $version, healthy (HTTP 200 from $api/health/ready)."
+  else
+    say "Running now: health check of $api/health/ready returned HTTP ${code:-none} (curl exit $rc)."
+  fi
+  if state_read .qradar-dash/state.json; then
+    if [ "$STATE_LAST_PRESENT" = yes ]; then
+      say "state.json says installed_version $STATE_INSTALLED_VERSION, last_upgrade outcome $STATE_LAST_OUTCOME ($STATE_LAST_FROM -> $STATE_LAST_TO)."
+    else
+      say "state.json says installed_version $STATE_INSTALLED_VERSION, last_upgrade is missing."
+    fi
+  else
+    say "state.json could not be read (field ${STATE_ERROR_FIELD:-json})."
+  fi
+  if [ "$kind" = rollback ]; then
+    say "The rollback itself succeeded; do not roll back again."
+  else
+    say "The upgrade itself succeeded; do not roll back."
+  fi
+  say "Repair the record: ./qradar-dash repair-state"
+}
+
+# A manual rollback writes "failed" before it reads the digests, so a later failure leaves a
+# record repair-state may replace. When that first write itself fails, state.json still holds
+# the upgrade's success record; the running version is what proves the rollback happened, and
+# repair-state accepts exactly that case.
+report_rollback_record_not_written() {
+  local port api code body version=unknown rc=0
+  port=$(env_get API_LOOPBACK_PORT)
+  : "${port:=8000}"
+  api="http://127.0.0.1:$port/api/v1"
+  if code=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$api/health/ready"); then
+    rc=0
+  else
+    rc=$?
+    code=${code:-none}
+  fi
+  if [ "$rc" -eq 0 ] && [ "$code" = 200 ]; then
+    if body=$(curl -fsS --max-time 5 "$api/version" 2>/dev/null); then
+      version=$(state_string_field "$body" version)
+      [ -n "$version" ] || version=unknown
+    fi
+    say "The rollback ran. Running now: version $version, healthy (HTTP 200 from $api/health/ready)."
+  else
+    say "The rollback ran. Running now: health check of $api/health/ready returned HTTP ${code:-none} (curl exit $rc)."
+  fi
+  if state_read .qradar-dash/state.json; then
+    say "The state file .qradar-dash/state.json could not be written; it still says installed_version $STATE_INSTALLED_VERSION, last_upgrade outcome $STATE_LAST_OUTCOME ($STATE_LAST_FROM -> $STATE_LAST_TO)."
+  else
+    say "The state file .qradar-dash/state.json could not be written; it could not be read back (field ${STATE_ERROR_FIELD:-json})."
+  fi
+  say "Next: fix permissions of .qradar-dash, then run ./qradar-dash repair-state."
+}
+
 perform_rollback() { # backup old-version old-images from to at
   local backup=$1 old_version=$2 old_images=$3 from=$4 to=$5 at=$6 images
   if ! restore_swap_database "$backup" rollback; then
@@ -2093,9 +2996,27 @@ perform_rollback() { # backup old-version old-images from to at
     record_rollback_failure "$backup" "$old_version" "$old_images" "$from" "$to" "$at"
     return 1
   fi
-  images=$(backup_image_digests) || images=$old_images
+  # A manual rollback of a successful upgrade still has outcome success until this write.
+  # Mark failed first, after the stack is healthy and before the digest, so a failed final
+  # write can be repaired. Do not do it before the database swap: a crash there must not
+  # let repair-state record success of a rollback that never happened. An upgrade's
+  # automatic rollback already recorded failed, so it is left as it is.
+  if [ "$STATE_LAST_OUTCOME" != failed ] || [ -n "$STATE_LAST_RESTORED_FROM" ]; then
+    write_state "$old_version" "$old_images" "$old_images" "$at" "$from" "$to" \
+      failed "$backup" || {
+      report_rollback_record_not_written
+      return 1
+    }
+  fi
+  images=$(backup_image_digests) || {
+    report_bookkeeping_failure rollback
+    return 1
+  }
   write_state "$old_version" "$images" "" "$at" "$from" "$to" rolled_back "$backup" \
-    || return 1
+    || {
+    report_bookkeeping_failure rollback
+    return 1
+  }
   say "Rollback complete."
 }
 
@@ -2168,13 +3089,21 @@ migrate_image_prefix() { # migrate_image_prefix INSTALLED_VERSION
 }
 
 cmd_upgrade() {
-  local target="" offline=no installed min_from db_size backup_root old_images
+  local target="" offline=no bundle="" installed min_from db_size backup_root old_images prefix
   local backup_output backup at new_images old_env_version checkout_version
   need_installed
-  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  need_docker || exit 1
+  report_compose_override
   while [ $# -gt 0 ]; do
     case "$1" in
-      --offline) offline=yes ;;
+      --offline)
+        offline=yes
+        # An optional bundle file follows; a version or another option does not.
+        if [ $# -ge 2 ] && [[ $2 != -* ]] && ! valid_release_version "$2"; then
+          bundle=$(user_path "$2")
+          shift
+        fi
+        ;;
       -h | --help) usage; return 0 ;;
       -*) fail "unknown upgrade option: $1"; return 2 ;;
       *) [ -z "$target" ] || { fail "upgrade accepts one version"; return 2; }; target=$1 ;;
@@ -2186,8 +3115,7 @@ cmd_upgrade() {
     fail "upgrade version must be plain SemVer (MAJOR.MINOR.PATCH)"
     return 1
   }
-  checkout_version=""
-  if [ -r VERSION ]; then checkout_version=$(tr -d '[:space:]' <VERSION); fi
+  checkout_version=$(read_checkout_version "upgrade $target")
   if [ "$checkout_version" != "$target" ]; then
     fail "upgrade refused: this checkout is version ${checkout_version:-unknown}, not $target; run git fetch --tags && git checkout v$target first (see docs/OPERATIONS.md, Yükseltme)"
     return 1
@@ -2210,14 +3138,24 @@ cmd_upgrade() {
     fail "upgrade refused: $installed is newer than $target; that is rollback"
     return 1
   fi
-  if [ "$STATE_LAST_PRESENT" = yes ] && [ "$STATE_LAST_OUTCOME" = failed ] \
-    && [ -z "$STATE_LAST_RESTORED_FROM" ]; then
-    fail "upgrade refused: the last upgrade failed; run rollback or restore first"
-    return 1
-  fi
+  refuse_if_last_upgrade_failed upgrade || return 1
   migrate_image_prefix "$installed" || return 1
+  if [ -n "$bundle" ]; then
+    [ -r "$bundle" ] || { fail "upgrade refused: bundle not readable: $bundle; no container was stopped"; return 1; }
+    prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+    bundle_precheck "$bundle" "$target" "the upgrade target" "${prefix:-$DEFAULT_IMAGE_PREFIX}"
+    bundle_load "$bundle"
+  fi
   upgrade_pull_target "$target" "$offline" || {
-    fail "upgrade refused: target images are unavailable; no container was stopped"
+    if [ "$offline" = yes ] && [ -n "$UPGRADE_MISSING_IMAGE" ]; then
+      if [ -n "$bundle" ]; then
+        fail "upgrade refused: target images are unavailable: image $UPGRADE_MISSING_IMAGE is not on this host although the bundle was loaded (the bundle was made for another image prefix or profile set); no container was stopped; make the bundle again on a connected host with ./qradar-dash bundle"
+      else
+        fail "upgrade refused: target images are unavailable: image $UPGRADE_MISSING_IMAGE is not loaded on this host; no container was stopped; pass the bundle: ./qradar-dash upgrade $target --offline /path/to/qradar-dash-$target-bundle.tar"
+      fi
+    else
+      fail "upgrade refused: target images are unavailable; no container was stopped"
+    fi
     return 1
   }
   min_from=$(read_target_release_notes "$target") || {
@@ -2252,9 +3190,7 @@ cmd_upgrade() {
   RESTORE_STOPPED_SERVICES=()
   UPGRADE_RESTART_OLD=yes
   trap upgrade_restart_old EXIT
-  trap 'exit 129' HUP
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
+  install_signal_traps
   if ! restore_stop_services; then
     upgrade_restart_old
     fail "upgrade could not stop all writer and UI services"
@@ -2290,12 +3226,19 @@ cmd_upgrade() {
   fi
   if ! set_env_version "$target"; then
     # Nothing irreversible happened: put the recorded state back as it was.
+    # STATE_LAST_* still describe that previous file; write_state does not refresh them.
     write_state "$installed" "$STATE_IMAGES" "$STATE_PREVIOUS_IMAGES" "$STATE_LAST_AT" \
       "$STATE_LAST_FROM" "$STATE_LAST_TO" "$STATE_LAST_OUTCOME" "$STATE_LAST_BACKUP" \
       "$STATE_LAST_RESTORED_FROM" || fail "the previous state could not be put back"
     upgrade_restart_old
     return 1
   fi
+  # perform_rollback treats an already-failed attempt as the in-progress record and
+  # does not write failed again. Refresh the globals only after set_env_version, so a
+  # failure there can still restore the pre-attempt state from the old globals.
+  STATE_LAST_PRESENT=yes
+  STATE_LAST_OUTCOME=failed
+  STATE_LAST_RESTORED_FROM=""
   UPGRADE_RESTART_OLD=no
   if ! dc run --rm -T migrate; then
     fail "migration failed; starting automatic rollback"
@@ -2303,7 +3246,8 @@ cmd_upgrade() {
     return 1
   fi
   if ! start_upgrade_services; then
-    fail "a required service was not healthy within 180 seconds; starting automatic rollback"
+    read_unhealthy_services
+    fail "a required service was not healthy within 180 seconds: ${UNHEALTHY_DESC}. Next: ${UNHEALTHY_NEXT:-./qradar-dash logs backend} and ./qradar-dash doctor; starting automatic rollback"
     upgrade_auto_rollback "$backup" "$installed" "$old_images" "$target" "$at"
     return 1
   fi
@@ -2313,11 +3257,14 @@ cmd_upgrade() {
     return 1
   fi
   new_images=$(backup_image_digests) || {
-    fail "upgrade is healthy but its running image digests could not be recorded"
+    report_bookkeeping_failure upgrade
     return 1
   }
   write_state "$target" "$new_images" "$old_images" "$at" "$installed" "$target" \
-    success "$backup" || return 1
+    success "$backup" || {
+    report_bookkeeping_failure upgrade
+    return 1
+  }
   say "Upgrade complete: $installed -> $target."
 }
 
@@ -2331,7 +3278,7 @@ cmd_rollback() {
   local backup old_version old_images db_size docker_root at answer
   local non_interactive=no yes=no
   need_installed
-  command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+  need_docker || exit 1
   while [ $# -gt 0 ]; do
     case "$1" in
       --non-interactive) non_interactive=yes ;;
@@ -2365,7 +3312,7 @@ cmd_rollback() {
     return 1
   }
   previous_images_are_local "$old_images" || {
-    fail "rollback refused: a previous image is absent or has the wrong local digest"
+    fail "rollback refused: a previous image is absent or has the wrong local digest (${PREVIOUS_IMAGE_PROBLEM:-unknown}). Next: ./qradar-dash doctor. Nothing was changed."
     return 1
   }
   encryption_key_compatible "$backup/env.bak" || {
@@ -2400,13 +3347,79 @@ DOCTOR_HAS_DOCKER=0
 DOCTOR_BACKEND_RUNNING=0
 DOCTOR_ID_WIDTH=16
 
+DOCTOR_AS_JSON=0
+DOCTOR_JSON_ITEMS=""
+DOCTOR_JSON_TAIL=""
+
+doctor_json_escape() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\t'/\\t}
+  printf '%s' "$s"
+}
+
+doctor_json_add_item() { # one JSON object, no surrounding array
+  if [ -n "$DOCTOR_JSON_ITEMS" ]; then
+    DOCTOR_JSON_ITEMS="$DOCTOR_JSON_ITEMS, $1"
+  else
+    DOCTOR_JSON_ITEMS=$1
+  fi
+}
+
+# The container prints its own json.dumps array. Keep it whole and splice it at print time:
+# splitting on "}, {" would break a message that contains that text inside a string.
+doctor_take_json_array() { # body -> DOCTOR_JSON_TAIL; 1 when it is not an array of objects
+  local compact inner
+  compact=$(printf '%s' "$1" | tr -d '\r\n')
+  compact=${compact#"${compact%%[![:space:]]*}"}
+  compact=${compact%"${compact##*[![:space:]]}"}
+  [[ $compact == \[*\] ]] || return 1
+  inner=${compact#\[}
+  inner=${inner%\]}
+  inner=${inner#"${inner%%[![:space:]]*}"}
+  [ -z "$inner" ] || [[ $inner == \{* ]] || return 1
+  DOCTOR_JSON_TAIL=$compact
+}
+
+# One array: the host objects, then the container's array without its leading "[".
+doctor_json_print() {
+  local inner=""
+  if [ -n "$DOCTOR_JSON_TAIL" ]; then
+    inner=${DOCTOR_JSON_TAIL#\[}
+    inner=${inner%\]}
+    inner=${inner#"${inner%%[![:space:]]*}"}
+    inner=${inner%"${inner##*[![:space:]]}"}
+  fi
+  if [ -z "$DOCTOR_JSON_TAIL" ] || [ -z "$inner" ]; then
+    printf '[%s]\n' "$DOCTOR_JSON_ITEMS"
+  elif [ -z "$DOCTOR_JSON_ITEMS" ]; then
+    printf '[%s]\n' "$inner"
+  else
+    printf '[%s, %s]\n' "$DOCTOR_JSON_ITEMS" "$inner"
+  fi
+}
+
 doctor_line() { # doctor_line STATUS ID MESSAGE [RUNBOOK]
   local status=$1 id=$2 message=$3 runbook=${4:-} severity=0
+  local runbook_json escaped_id escaped_message escaped_status
   case "$status" in
     WARN) severity=1 ;;
     FAIL) severity=2 ;;
   esac
   [ "$severity" -le "$DOCTOR_WORST" ] || DOCTOR_WORST=$severity
+  if [ "$DOCTOR_AS_JSON" -eq 1 ]; then
+    escaped_id=$(doctor_json_escape "$id")
+    escaped_message=$(doctor_json_escape "$message")
+    escaped_status=$(doctor_json_escape "$status")
+    runbook_json=null
+    [ -z "$runbook" ] || runbook_json="\"$(doctor_json_escape "$runbook")\""
+    doctor_json_add_item "$(printf '{"id": "%s", "message": "%s", "runbook": %s, "status": "%s"}' \
+      "$escaped_id" "$escaped_message" "$runbook_json" "$escaped_status")"
+    return
+  fi
   printf '%-5s %-*s %s' "$status" "$DOCTOR_ID_WIDTH" "$id" "$message"
   [ -z "$runbook" ] || printf '    runbook: %s' "$runbook"
   printf '\n'
@@ -2497,25 +3510,84 @@ doctor_disk_backup() {
 doctor_clock() {
   local synced
   if ! command -v timedatectl >/dev/null 2>&1; then
-    doctor_line WARN qradar_clock "timedatectl is not available; check NTP by hand" OPS-R15
+    doctor_line WARN host_clock "timedatectl is not available; check NTP by hand" OPS-R15
     return
   fi
   synced=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)
   if [ "$synced" = yes ]; then
-    doctor_line PASS qradar_clock "NTP is synchronized"
+    doctor_line PASS host_clock "NTP is synchronized"
   else
-    doctor_line WARN qradar_clock "NTP is not synchronized" OPS-R15
+    doctor_line WARN host_clock "NTP is not synchronized" OPS-R15
   fi
 }
 
 doctor_selinux() {
   local mode
   if ! command -v getenforce >/dev/null 2>&1; then
-    doctor_line PASS selinux "SELinux is not installed"
+    doctor_line PASS selinux "SELinux is not in use on this host"
     return
   fi
-  mode=$(getenforce 2>/dev/null | head -n1 || true)
-  doctor_line PASS selinux "${mode:-unknown}"
+  mode=$(getenforce 2>/dev/null | head -n1 | tr -d '[:space:]' || true)
+  case "$mode" in
+    Enforcing)
+      doctor_line PASS selinux "SELinux is Enforcing" ;;
+    Permissive)
+      doctor_line WARN selinux "SELinux is permissive: denials are logged, not enforced" ;;
+    "" | Disabled)
+      doctor_line PASS selinux "SELinux is not in use on this host" ;;
+    *)
+      doctor_line WARN selinux "SELinux mode is $mode; expected Enforcing, Permissive, or Disabled" ;;
+  esac
+}
+
+# 26 h is 26*3600 s. A backup that is exactly that old still passes. A disabled timer is a WARN
+# with the enable command; a unit file is only the signal when systemctl is not installed.
+doctor_backup_age() {
+  local root dir epoch newest="" newest_epoch=-1 seconds age_text message="" status=PASS
+  local timer_scope timer_state
+  root=$(env_get QRADAR_DASH_BACKUP_DIR)
+  if [ -z "$root" ] || [ ! -d "$root" ]; then
+    message="no backup exists${root:+ under $root}"
+    status=WARN
+  else
+    # nullglob is off: an unmatched glob stays literal and is not a directory, so date is not called.
+    for dir in "$root"/qradar-dash-*; do
+      [ -d "$dir" ] || continue
+      epoch=$(backup_stamp_epoch "$dir" 2>/dev/null) || continue
+      if [ "$epoch" -gt "$newest_epoch" ]; then
+        newest_epoch=$epoch
+        newest=$dir
+      fi
+    done
+    if [ -z "$newest" ]; then
+      message="no backup exists under $root"
+      status=WARN
+    elif ! seconds=$(backup_age_seconds "$newest"); then
+      message="backup age is unreadable for $newest"
+      status=WARN
+    else
+      age_text=$(format_age "$seconds")
+      if [ "$seconds" -gt $((26 * 3600)) ]; then
+        message="newest backup $newest is $age_text old (older than 26 h). Next: ./qradar-dash backup manual"
+        status=WARN
+      else
+        message="newest backup $newest is $age_text old"
+      fi
+    fi
+  fi
+  read -r timer_scope timer_state <<<"$(backup_timer_state || true)"
+  case "$timer_state" in
+    enabled | enabled-runtime | unit-file) ;;
+    missing)
+      status=WARN
+      message="$message; backup timer is not installed; run ./qradar-dash backup --install-timer"
+      ;;
+    *)
+      status=WARN
+      message="$message; backup timer is $timer_state; run $(backup_timer_enable_command "$timer_scope")"
+      ;;
+  esac
+  doctor_line "$status" backup_age "$message"
 }
 
 doctor_profile_enabled() {
@@ -2594,9 +3666,25 @@ doctor_containers() {
 }
 
 doctor_incontainer() {
-  local rc
+  local rc body
   if [ "$DOCTOR_BACKEND_RUNNING" -eq 0 ]; then
-    doctor_line FAIL doctor_incontainer "backend container is not running" OPS-R36
+    doctor_line FAIL doctor_incontainer "backend container is not running. Next: ./qradar-dash logs backend" OPS-R36
+    return
+  fi
+  if [ "$DOCTOR_AS_JSON" -eq 1 ]; then
+    set +e
+    body=$(dc exec -T backend python -m app.cli.doctor --json)
+    rc=$?
+    set -e
+    case "$rc" in
+      0) ;;
+      1) [ "$DOCTOR_WORST" -ge 1 ] || DOCTOR_WORST=1 ;;
+      *) DOCTOR_WORST=2 ;;
+    esac
+    if ! doctor_take_json_array "$body"; then
+      doctor_line FAIL doctor_incontainer "backend doctor --json did not print a JSON array. Next: ./qradar-dash logs backend" OPS-R36
+      DOCTOR_WORST=2
+    fi
     return
   fi
   set +e
@@ -2611,14 +3699,35 @@ doctor_incontainer() {
 }
 
 cmd_doctor() {
+  DOCTOR_AS_JSON=0
+  DOCTOR_JSON_ITEMS=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json)
+        [ "$DOCTOR_AS_JSON" -eq 0 ] || {
+          fail "unknown doctor argument: $1; usage: ./qradar-dash doctor [--json]"
+          return 2
+        }
+        DOCTOR_AS_JSON=1
+        ;;
+      -h | --help) usage; return 0 ;;
+      *) fail "unknown doctor argument: $1; usage: ./qradar-dash doctor [--json]"; return 2 ;;
+    esac
+    shift
+  done
   need_installed
-  if command -v docker >/dev/null 2>&1; then DOCTOR_HAS_DOCKER=1; fi
+  DOCTOR_HAS_DOCKER=0
+  if need_docker; then DOCTOR_HAS_DOCKER=1; fi
   doctor_disk_docker
   doctor_disk_backup
   doctor_clock
   doctor_selinux
+  doctor_backup_age
   doctor_containers
   doctor_incontainer
+  if [ "$DOCTOR_AS_JSON" -eq 1 ]; then
+    doctor_json_print
+  fi
   return "$DOCTOR_WORST"
 }
 
@@ -2759,9 +3868,15 @@ support_stage_secret() { # support_stage_secret SOURCE NAME
 }
 
 cmd_support_bundle() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h | --help) usage; return 0 ;;
+      *) fail "unknown support-bundle argument: $1; usage: ./qradar-dash support-bundle"; return 2 ;;
+    esac
+    shift
+  done
   need_installed
-  command -v docker >/dev/null 2>&1 || die \
-    "Docker is not installed; install Docker and rerun support-bundle."
+  need_docker || exit 1
   command -v tar >/dev/null 2>&1 || die \
     "tar is not installed; install tar and rerun support-bundle."
 
@@ -2775,9 +3890,7 @@ cmd_support_bundle() {
   SUPPORT_STAGE=$(mktemp -d "$backup_root/.support-staging.XXXXXX") || die \
     "staging directory cannot be created under $backup_root; fix its permissions and rerun."
   trap support_cleanup EXIT
-  trap 'exit 129' HUP
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
+  install_signal_traps
   chmod 700 "$SUPPORT_STAGE"
   mkdir -p "$SUPPORT_STAGE/input/.support-input/secrets"
 
@@ -2819,9 +3932,117 @@ cmd_support_bundle() {
   say "$final"
 }
 
-not_built() {
-  fail "'$1' is not built yet ($2)."
-  exit 64
+cmd_repair_state() {
+  local code="" body="" version="" head="" db_rev="" images="" outcome="" previous=""
+  local port api rc=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h | --help) usage; return 0 ;;
+      *)
+        fail "unknown repair-state argument: $1; usage: ./qradar-dash repair-state. Nothing was written."
+        return 2
+        ;;
+    esac
+    shift
+  done
+  if [ ! -f "$ENV_FILE" ]; then
+    fail "repair-state refused: not installed here: $ENV_FILE is missing. Run ./qradar-dash install. Nothing was written."
+    return 1
+  fi
+  need_installed
+  if ! need_docker; then
+    fail "Nothing was written."
+    return 1
+  fi
+  if ! state_read .qradar-dash/state.json; then
+    fail "repair-state refused: .qradar-dash/state.json field ${STATE_ERROR_FIELD:-json} is invalid or missing. Next: ./qradar-dash status. Nothing was written."
+    return 1
+  fi
+  if [ "$STATE_LAST_PRESENT" != yes ]; then
+    fail "repair-state refused: .qradar-dash/state.json has no last_upgrade. Next: ./qradar-dash status. Nothing was written."
+    return 1
+  fi
+  if [ -n "$STATE_LAST_RESTORED_FROM" ]; then
+    fail "repair-state refused: last_upgrade.outcome is $STATE_LAST_OUTCOME and restored_from is $STATE_LAST_RESTORED_FROM. A restore already cleared that failure. Next: ./qradar-dash status. Nothing was written."
+    return 1
+  fi
+  case "$STATE_LAST_OUTCOME" in
+    # success is accepted only when the running version is that upgrade's "from": a manual
+    # rollback whose "failed" write was lost leaves this record and is proved by the version.
+    failed | success) ;;
+    rolled_back)
+      fail "repair-state refused: last_upgrade.outcome is $STATE_LAST_OUTCOME ($STATE_LAST_FROM -> $STATE_LAST_TO). The record already matches a finished upgrade or rollback. Next: ./qradar-dash status. Nothing was written."
+      return 1
+      ;;
+    *)
+      fail "repair-state refused: last_upgrade.outcome is ${STATE_LAST_OUTCOME:-unset}. Next: ./qradar-dash status. Nothing was written."
+      return 1
+      ;;
+  esac
+  port=$(env_get API_LOOPBACK_PORT)
+  : "${port:=8000}"
+  api="http://127.0.0.1:$port/api/v1"
+  if code=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "$api/health/ready"); then
+    rc=0
+  else
+    rc=$?
+    code=${code:-none}
+  fi
+  if [ "$rc" -ne 0 ] || [ "$code" != 200 ]; then
+    fail "repair-state refused: $api/health/ready answered HTTP ${code:-none} (curl exit $rc), not 200. Next: ./qradar-dash doctor and ./qradar-dash logs backend. Nothing was written."
+    return 1
+  fi
+  if ! body=$(curl -fsS --max-time 5 "$api/version" 2>/dev/null); then
+    fail "repair-state refused: $api/version did not answer. Next: ./qradar-dash logs backend. Nothing was written."
+    return 1
+  fi
+  version=$(state_string_field "$body" version)
+  if ! valid_release_version "$version"; then
+    fail "repair-state refused: $api/version field version is '${version:-missing}', not plain SemVer. Next: ./qradar-dash logs backend. Nothing was written."
+    return 1
+  fi
+  head=$(state_string_field "$body" migration_head)
+  if [ -z "$head" ]; then
+    fail "repair-state refused: $api/version field migration_head is missing. Next: ./qradar-dash logs backend. Nothing was written."
+    return 1
+  fi
+  if ! db_rev=$(database_alembic_revision); then
+    fail "repair-state refused: SELECT version_num FROM alembic_version returned nothing. Next: ./qradar-dash doctor. Nothing was written."
+    return 1
+  fi
+  if [ "$db_rev" != "$head" ]; then
+    fail "repair-state refused: database alembic revision is $db_rev, image migration_head is $head. Next: ./qradar-dash doctor (migration_head, OPS-R11). Nothing was written."
+    return 1
+  fi
+  if [ "$version" = "$STATE_LAST_TO" ]; then
+    if [ "$STATE_LAST_OUTCOME" = success ]; then
+      fail "repair-state refused: last_upgrade.outcome is success ($STATE_LAST_FROM -> $STATE_LAST_TO) and the running version is already $STATE_LAST_TO. Next: ./qradar-dash status. Nothing was written."
+      return 1
+    fi
+    outcome=success
+    previous=$STATE_PREVIOUS_IMAGES
+  elif [ "$version" = "$STATE_LAST_FROM" ] && [ "$STATE_LAST_FROM" != "$STATE_LAST_TO" ]; then
+    outcome=rolled_back
+    previous=""
+  else
+    fail "repair-state refused: running version $version is neither last_upgrade.from $STATE_LAST_FROM nor last_upgrade.to $STATE_LAST_TO. Next: ./qradar-dash status. Nothing was written."
+    return 1
+  fi
+  if ! images=$(backup_image_digests); then
+    fail "repair-state refused: running image digests could not be recorded. Next: ./qradar-dash doctor. Nothing was written."
+    return 1
+  fi
+  if ! write_state "$version" "$images" "$previous" "$STATE_LAST_AT" "$STATE_LAST_FROM" \
+    "$STATE_LAST_TO" "$outcome" "$STATE_LAST_BACKUP"; then
+    fail "Next: fix permissions of .qradar-dash and rerun ./qradar-dash repair-state. Nothing was written."
+    return 1
+  fi
+  say "Recorded installed_version $version, outcome $outcome, images $images."
+  if [ "$outcome" = success ]; then
+    say "The upgrade itself succeeded; do not roll back."
+  else
+    say "The rollback itself succeeded; do not roll back again."
+  fi
 }
 
 main() {
@@ -2829,15 +4050,16 @@ main() {
   [ $# -eq 0 ] || shift
   case "$cmd" in
     install) cmd_install "$@" ;;
-    status) cmd_status ;;
+    status) cmd_status "$@" ;;
     logs) cmd_logs "$@" ;;
     upgrade) cmd_upgrade "$@" ;;
     rollback) cmd_rollback "$@" ;;
     backup) cmd_backup "$@" ;;
     restore) cmd_restore "$@" ;;
-    doctor) cmd_doctor ;;
-    support-bundle) cmd_support_bundle ;;
-    bundle) not_built "$cmd" "the offline bundle is not part of this release; use ./qradar-dash install --build from a checkout, or install by pulling from the registry" ;;
+    doctor) cmd_doctor "$@" ;;
+    support-bundle) cmd_support_bundle "$@" ;;
+    repair-state) cmd_repair_state "$@" ;;
+    bundle) cmd_bundle "$@" ;;
     -h | --help | help | "") usage; [ -n "$cmd" ] || exit 2 ;;
     *) fail "unknown command: $cmd"; usage >&2; exit 2 ;;
   esac

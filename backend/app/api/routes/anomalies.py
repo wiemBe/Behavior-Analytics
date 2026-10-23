@@ -52,11 +52,13 @@ from app.models.ips import (
     IpsSourceProfile,
 )
 from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline, LogSourceMetric
+from app.models.monitoring import AnomalyEvaluationFault
 from app.models.property_watch import PropertyWatch, PwAnomaly, PwAnomalyTransition
 from app.models.waf import WafAnomaly, WafEndpoint, WafSourceProfile
 from app.property_watch.facts import split_tuple_key
 from app.providers.base import LogSourceTelemetry
 from app.repositories.anomaly import AnomalyRepository
+from app.repositories.anomaly_faults import AnomalyFaultRepository
 from app.repositories.anomaly_histogram import BUCKET_SECONDS, check_range, histogram
 from app.repositories.ips_behavior import IpsBehaviorRepository
 from app.schemas.anomaly import (
@@ -80,7 +82,9 @@ from app.schemas.anomaly import (
     PagedWafMetrics,
     PagedWafSources,
     PwValueRefOut,
+    SkippedBucketOut,
     SourceBehaviorOut,
+    SourceEvaluationOut,
     SubjectKind,
     WafAdmissionOverflowOut,
     WafBaselineAdequacyOut,
@@ -285,6 +289,12 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
         cell = cells.get((src.id, now.isoweekday(), now.hour))
         if cell is None or not cell.is_reliable:
             insufficient += 1
+    fault_sources, buckets_not_judged = await AnomalyFaultRepository(
+        session
+    ).summary_counts(since=now - timedelta(hours=24), until=now)
+    resolved_last_24h = await repo.resolved_count(
+        since=now - timedelta(hours=24), until=now
+    )
 
     return BehaviorSummaryOut(
         open_anomalies=open_total,
@@ -297,6 +307,9 @@ async def anomaly_summary(session: SessionDep) -> BehaviorSummaryOut:
         monitored_sources=len(sources),
         evidence_pending=evidence.get(EvidenceStatus.PENDING.value, 0),
         evidence_failed=evidence.get(EvidenceStatus.FAILED.value, 0),
+        sources_with_evaluation_faults=fault_sources,
+        buckets_not_judged=buckets_not_judged,
+        resolved_last_24h=resolved_last_24h,
         recently_resolved=await _list_items(repo, await repo.recently_resolved()),
         highest_deviation=await _list_items(repo, await repo.highest_deviation()),
     )
@@ -564,18 +577,77 @@ def _explanation_out(package: AnomalyExplanation | None) -> ExplanationOut | Non
 
 
 # ----------------------------------------------------------------- behavior
+_EVALUATION_WINDOW = timedelta(hours=24)
+_SKIPPED_BUCKETS_SHOWN = 5
+
+
+def _current_fault(
+    faults: list[AnomalyEvaluationFault],
+) -> AnomalyEvaluationFault | None:
+    """The fault the page should name: open first, then given-up, then cleared."""
+    open_ones = [f for f in faults if f.resolved_at is None and f.given_up_at is None]
+    if open_ones:
+        return max(open_ones, key=lambda f: f.last_failed_at)
+    given_up = [f for f in faults if f.given_up_at is not None]
+    if given_up:
+        return max(given_up, key=lambda f: f.given_up_at or f.last_failed_at)
+    resolved = [f for f in faults if f.resolved_at is not None]
+    if resolved:
+        return max(resolved, key=lambda f: f.resolved_at or f.last_failed_at)
+    return None
+
+
+def _skipped_buckets(faults: list[AnomalyEvaluationFault]) -> list[SkippedBucketOut]:
+    given_up = [f for f in faults if f.given_up_at is not None]
+    given_up.sort(key=lambda f: f.bucket_start, reverse=True)
+    return [
+        SkippedBucketOut(
+            bucket_start=f.bucket_start,
+            error_class=f.error_class,
+            attempts=f.attempts,
+            given_up_at=f.given_up_at,
+            last_failure_at=f.last_failed_at,
+        )
+        for f in given_up[:_SKIPPED_BUCKETS_SHOWN]
+    ]
+
+
+def _evaluation_out(
+    judged_through: datetime | None,
+    fault: AnomalyEvaluationFault | None,
+    *,
+    max_attempts: int,
+) -> SourceEvaluationOut | None:
+    if judged_through is None and fault is None:
+        return None
+    return SourceEvaluationOut(
+        judged_through=judged_through,
+        failed_bucket_start=fault.bucket_start if fault is not None else None,
+        attempts=fault.attempts if fault is not None else None,
+        max_attempts=max_attempts,
+        error_class=fault.error_class if fault is not None else None,
+        last_failure_at=fault.last_failed_at if fault is not None else None,
+        given_up_at=fault.given_up_at if fault is not None else None,
+        resolved_at=fault.resolved_at if fault is not None else None,
+    )
+
+
 @behavior_router.get("/sources", response_model=list[SourceBehaviorOut])
-async def list_source_behavior(session: SessionDep) -> list[SourceBehaviorOut]:
+async def list_source_behavior(
+    session: SessionDep, settings: SettingsDep
+) -> list[SourceBehaviorOut]:
     """Observed vs expected volume for every monitored source.
 
-    Two bulk reads for the whole fleet, whatever its size: the Home view calls
-    this on every auto-refresh, and a statement per source would make its cost
-    grow with the fleet.
+    Two bulk reads for the whole fleet, whatever its size, plus one bulk
+    evaluation-fault read: the Home view calls this on every auto-refresh, and
+    a statement per source would make its cost grow with the fleet.
     """
     repo = AnomalyRepository(session)
+    faults_repo = AnomalyFaultRepository(session)
     sources = await repo.monitored_sources()
     active_counts = await repo.active_counts_by_source()
-    buckets = await repo.latest_buckets(src.id for src in sources)
+    ids = [src.id for src in sources]
+    buckets = await repo.latest_buckets(ids)
     cells = await repo.baseline_cells(
         [
             (src.id, buckets[src.id].bucket_start.isoweekday(), buckets[src.id].bucket_start.hour)
@@ -583,6 +655,11 @@ async def list_source_behavior(session: SessionDep) -> list[SourceBehaviorOut]:
             if src.id in buckets
         ],
         metric="average_eps",
+    )
+    now = datetime.now(UTC)
+    watermarks = await faults_repo.evaluated_through(ids)
+    faults_by_source = await faults_repo.evaluation_faults(
+        ids, since=now - _EVALUATION_WINDOW, until=now
     )
 
     out: list[SourceBehaviorOut] = []
@@ -595,7 +672,18 @@ async def list_source_behavior(session: SessionDep) -> list[SourceBehaviorOut]:
             cell = cells.get(
                 (src.id, bucket.bucket_start.isoweekday(), bucket.bucket_start.hour)
             )
-        out.append(_source_behavior(src, bucket, cell, active_counts.get(src.id, 0)))
+        faults = faults_by_source.get(src.id, [])
+        out.append(
+            _source_behavior(
+                src,
+                bucket,
+                cell,
+                active_counts.get(src.id, 0),
+                judged_through=watermarks.get(src.id),
+                faults=faults,
+                max_attempts=settings.anomaly_max_bucket_attempts,
+            )
+        )
     return out
 
 
@@ -604,6 +692,10 @@ def _source_behavior(
     bucket: LogSourceMetric | None,
     cell: LogSourceBaseline | None,
     active_count: int,
+    *,
+    judged_through: datetime | None,
+    faults: list[AnomalyEvaluationFault],
+    max_attempts: int,
 ) -> SourceBehaviorOut:
     observed = bucket.average_eps if bucket is not None else None
     expected = cell.median if (cell is not None and cell.is_reliable) else None
@@ -621,6 +713,7 @@ def _source_behavior(
     else:
         state = AnomalyState.NORMAL
 
+    skipped = _skipped_buckets(faults)
     return SourceBehaviorOut(
         log_source_id=src.id,
         name=src.name,
@@ -639,6 +732,11 @@ def _source_behavior(
         ),
         last_event_at=src.last_event_time,
         open_anomaly_count=active_count,
+        evaluation=_evaluation_out(
+            judged_through, _current_fault(faults), max_attempts=max_attempts
+        ),
+        skipped_buckets_in_window=sum(1 for f in faults if f.given_up_at is not None),
+        skipped_buckets=skipped,
     )
 
 
@@ -740,12 +838,18 @@ async def source_baselines(
 
 @behavior_router.get("/sources/{log_source_id}", response_model=SourceBehaviorOut)
 async def source_behavior(
-    log_source_id: uuid.UUID, session: SessionDep
+    log_source_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
 ) -> SourceBehaviorOut:
     src = await session.get(LogSource, log_source_id)
     if src is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "log source not found")
+    start, end = _validate_range(since, until, settings.api_max_range_days)
     repo = AnomalyRepository(session)
+    faults_repo = AnomalyFaultRepository(session)
     bucket = await repo.latest_bucket(log_source_id)
     cell = None
     if bucket is not None:
@@ -756,7 +860,19 @@ async def source_behavior(
             metric="average_eps",
         )
     counts = await repo.active_counts_by_source()
-    return _source_behavior(src, bucket, cell, counts.get(log_source_id, 0))
+    watermarks = await faults_repo.evaluated_through([log_source_id])
+    faults_by_source = await faults_repo.evaluation_faults(
+        [log_source_id], since=start, until=end
+    )
+    return _source_behavior(
+        src,
+        bucket,
+        cell,
+        counts.get(log_source_id, 0),
+        judged_through=watermarks.get(log_source_id),
+        faults=faults_by_source.get(log_source_id, []),
+        max_attempts=settings.anomaly_max_bucket_attempts,
+    )
 
 
 

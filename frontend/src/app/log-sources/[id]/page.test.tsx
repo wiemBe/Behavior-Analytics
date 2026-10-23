@@ -1,12 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import LogSourceDetailPage from "./page";
 import { ApiError, api, type LogSourceDetail } from "@/lib/api";
 
 // States this route renders, from `page.tsx`:
-//  - the read fails (it catches everything, so a 500 and a 404 look the same): a
-//    "Could not load log source <id>" notice;
+//  - the read fails: 401 session expired, 403 names read:log_sources, 404 is not
+//    in the inventory, and any other failure says the backend could not be reached;
 //  - the normal detail: the header line, the five-part health breakdown, the
 //    configuration card and the Phase-2 chart placeholder;
 //  - a null health breakdown: the breakdown cards are simply absent;
@@ -30,8 +30,6 @@ function detail(over: Partial<LogSourceDetail> = {}): LogSourceDetail {
     owner: "SOC",
     owner_email: "soc@example.com",
     qradar_status: "SUCCESS",
-    health_score: 85,
-    health_breakdown: { score: 85, freshness: 90, volume: 80, parsing: 95, collection: 70 },
     business_hours_only: false,
     expected_interval_seconds: 300,
     last_event_time: "2026-10-15T08:59:00Z",
@@ -46,12 +44,12 @@ async function renderPage(id = "s-1") {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("log source detail states", () => {
-  it("names the source it could not load", async () => {
+  it("says the backend could not be reached on a non-auth failure", async () => {
     vi.spyOn(api, "logSource").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage("s-9");
     expect(screen.getByRole("heading", { name: "Log Source Detail" })).toBeInTheDocument();
-    const notice = screen.getByText(/Could not load log source/);
-    expect(notice).toHaveTextContent("s-9");
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("The backend could not be reached. Reload the page to try again.");
     expect(notice).not.toHaveTextContent("secret");
   });
 
@@ -68,15 +66,11 @@ describe("log source detail states", () => {
 describe("log source detail contents", () => {
   beforeEach(() => vi.spyOn(api, "logSource").mockResolvedValue(detail()));
 
-  it("breaks the health score into its weighted parts", async () => {
+  it("has no health section: no score is computed, so none is promised", async () => {
     await renderPage();
-    const card = (label: string) =>
-      screen.getByText(label, { selector: ".k" }).closest(".card") as HTMLElement;
-    expect(within(card("Overall Health")).getByText("85")).toBeInTheDocument();
-    expect(within(card("Freshness (40%)")).getByText("90")).toBeInTheDocument();
-    expect(within(card("Volume (25%)")).getByText("80")).toBeInTheDocument();
-    expect(within(card("Parsing (20%)")).getByText("95")).toBeInTheDocument();
-    expect(within(card("Collection (15%)")).getByText("70")).toBeInTheDocument();
+    expect(screen.queryByText(/health/i)).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByText("Configuration", { selector: ".k" })).toBeInTheDocument();
   });
 
   it("shows the configuration in the order it is read", async () => {
@@ -95,13 +89,6 @@ describe("log source detail contents", () => {
       "href",
       "/behavior/sources/s-1",
     );
-  });
-
-  it("omits the health breakdown when the source has none", async () => {
-    vi.spyOn(api, "logSource").mockResolvedValue(detail({ health_breakdown: null }));
-    await renderPage();
-    expect(screen.queryByText("Overall Health")).toBeNull();
-    expect(screen.getByText("Configuration", { selector: ".k" })).toBeInTheDocument();
   });
 
   it("draws missing values as unknown, never, or an em dash", async () => {
@@ -138,23 +125,24 @@ describe("log source detail honesty", () => {
     expect(config).toHaveTextContent("Last event: 2026-10-15 08:59:00 UTC");
   });
 
-  it("says why there is no health breakdown instead of showing nothing", async () => {
-    vi.spyOn(api, "logSource").mockResolvedValue(detail({ health_breakdown: null }));
-    await renderPage();
-    expect(screen.getByRole("status")).toHaveTextContent("No health score yet");
-  });
-
   it("carries no inline style (the page moved them to a stylesheet)", async () => {
     vi.spyOn(api, "logSource").mockResolvedValue(detail());
     const { container } = await renderPage();
     expect(container.querySelector("[style]")).toBeNull();
   });
 
-  it("says what failed and what to do as an alert", async () => {
-    vi.spyOn(api, "logSource").mockRejectedValue(new ApiError(404, "secret"));
+  it.each([
+    [401, "Your session has expired. Sign in again to continue."],
+    [403, "Ask an administrator for the read:log_sources grant."],
+    [404, "Log source s-9 is not in the inventory."],
+    [500, "The backend could not be reached. Reload the page to try again."],
+  ])("splits a %s read into its own sentence", async (status, sentence) => {
+    vi.spyOn(api, "logSource").mockRejectedValue(new ApiError(status, "secret"));
     await renderPage("s-9");
-    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
-    expect(screen.getByRole("heading", { name: "Log Source Detail", level: 1 })).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(sentence);
+    expect(alert).not.toHaveTextContent("secret");
+    if (status === 404) expect(alert).not.toHaveTextContent("Reload the page");
   });
 
   it("gives a missing expected interval no unit", async () => {

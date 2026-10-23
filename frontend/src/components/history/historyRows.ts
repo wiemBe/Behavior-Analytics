@@ -7,13 +7,13 @@ import type {
   HistoryFamily,
   HistoryGap,
   HistoryScope,
+  HistoryScopeSource,
 } from "@/lib/api";
 
 import {
   NOT_READ,
   NOT_STARTED,
   SWITCHED_OFF,
-  familyName,
   stateInfo,
   type StateInfo,
 } from "./historyFormat";
@@ -34,6 +34,12 @@ export interface HistoryRow {
   last: { through: string | null; finished: string | null } | null;
   reason: string | null;
   gaps: HistoryGap[];
+  lastErrorClass: string | null;
+  lastErrorAt: string | null;
+  sourcesCut: HistoryScopeSource[] | null;
+  sourcesSilent: HistoryScopeSource[] | null;
+  sourcesCutCount: number | null;
+  sourcesSilentCount: number | null;
   laterYes: string | null;
 }
 
@@ -64,6 +70,12 @@ function scopeRow(console: HistoryConsole, family: HistoryFamily, scope: History
     last,
     reason: scope.reason,
     gaps: scope.gaps ?? [],
+    lastErrorClass: scope.last_error_class,
+    lastErrorAt: scope.last_error_at,
+    sourcesCut: scope.sources_cut,
+    sourcesSilent: scope.sources_silent,
+    sourcesCutCount: scope.sources_cut_count,
+    sourcesSilentCount: scope.sources_silent_count,
     laterYes: scope.later_yes,
   };
 }
@@ -116,6 +128,12 @@ function absentRow(
     last: null,
     reason,
     gaps: [],
+    lastErrorClass: null,
+    lastErrorAt: null,
+    sourcesCut: null,
+    sourcesSilent: null,
+    sourcesCutCount: null,
+    sourcesSilentCount: null,
     laterYes,
   };
 }
@@ -166,8 +184,4 @@ export function rowsOf(console: HistoryConsole): HistoryRow[] {
     }
   }
   return rows;
-}
-
-export function familyLabel(row: HistoryRow): string {
-  return familyName(row.family);
 }

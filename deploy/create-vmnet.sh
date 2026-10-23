@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Create the macvlan network that lets the QRadar-facing containers reach a
-# QRadar appliance running as a libvirt VM. See docker-compose.override.yml for
-# why a plain bridge does not work.
+# QRadar appliance running as a libvirt VM. See docs/INSTALL.md (§QRadar running
+# on a libvirt network) for why a plain bridge does not work. Copy
+# deploy/docker-compose.override.example.yml to docker-compose.override.yml;
+# that file references this network and does not define a second one.
 #
 # Adjust PARENT/SUBNET/GATEWAY to match `ip -br addr show <your libvirt bridge>`.
 # IP_RANGE must sit OUTSIDE the libvirt DHCP pool so a container can never be

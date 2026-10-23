@@ -9,9 +9,12 @@ import Link from "next/link";
 import { CapacityHistory } from "@/components/rules/CapacityHistory";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatDateTime, healthMeaning, healthTone, isUnestablished } from "@/lib/health";
+import { formatShare } from "@/lib/format";
+import { healthMeaning, healthTone, isUnestablished } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
+
 import "../rules.css";
 
 export default async function RuleDetailPage({
@@ -114,7 +117,7 @@ export default async function RuleDetailPage({
             <ul>
               {buildingBlocks.map((d) => (
                 <li key={`${d.kind}:${d.target_ref}`}>
-                  {d.target_name ?? d.target_ref} · {d.source.toLowerCase()} · {Math.round(d.confidence * 100)}%
+                  {d.target_name ?? d.target_ref} · {d.source.toLowerCase()} · {formatShare(d.confidence)}
                 </li>
               ))}
             </ul>
@@ -160,7 +163,7 @@ export default async function RuleDetailPage({
             <th>Last fired</th>
             <td>
               {r.last_fired_at ? (
-                formatDateTime(r.last_fired_at)
+                <UtcTime value={r.last_fired_at} />
               ) : (
                 <span className="muted">not observed</span>
               )}
@@ -168,7 +171,7 @@ export default async function RuleDetailPage({
           </tr>
           <tr>
             <th>Health evaluated</th>
-            <td>{formatDateTime(r.health_evaluated_at)}</td>
+            <td>{<UtcTime value={r.health_evaluated_at} />}</td>
           </tr>
           <tr>
             <th>MITRE techniques</th>
@@ -221,9 +224,9 @@ export default async function RuleDetailPage({
           <tbody>
             {history.map((h) => (
               <tr key={h.evaluated_at}>
-                <td className="nowrap">{formatDateTime(h.evaluated_at)}</td>
+                <td className="nowrap">{<UtcTime value={h.evaluated_at} />}</td>
                 <td><span className={`pill ${healthTone(h.status)}`}>{h.status.replace(/_/g, " ")}</span></td>
-                <td className="num">{Math.round(h.confidence * 100)}%</td>
+                <td className="num">{formatShare(h.confidence)}</td>
                 <td className="num">{h.trigger_count}</td>
                 <td className="num">{h.offense_contribution_count}</td>
                 <td className="muted cell-reason">{h.reason ?? "—"}</td>

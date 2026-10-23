@@ -14,7 +14,7 @@
 // A fact that cannot be placed under one of these (a COUNT with no measurement, a measured zero
 // carrying a count) fails closed to a gap. No colour, no ECharts and no I/O here.
 
-import type { MeasurementKind, PwBaselineState, PwSeriesPoint, PwValueSeries } from "@/lib/api";
+import type { PwBaselineState, PwSeriesPoint, PwValueSeries } from "@/lib/api";
 
 /** The chart draws at most this many values: five overlapping lines are the most one can read. */
 export const PW_MAX_SERIES = 5;
@@ -236,10 +236,3 @@ export function kindWords(kind: PlotKind): string {
   }
 }
 
-export function measurementOf(kind: PlotKind): MeasurementKind | null {
-  return kind === "EXACT" || kind === "MEASURED_ZERO"
-    ? "EXACT"
-    : kind === "LOWER_BOUND"
-      ? "LOWER_BOUND"
-      : null;
-}

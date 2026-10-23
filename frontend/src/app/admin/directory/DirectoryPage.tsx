@@ -29,7 +29,8 @@ import styles from "@/components/auth/auth.module.css";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingState } from "@/components/ui/RouteState";
 import { ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+
 
 const DESCRIPTION = "Where directory accounts bind, and a connection test that stores nothing.";
 
@@ -206,7 +207,13 @@ export function DirectoryPage() {
           ) : (
             <p>
               Version {form.version}
-              {form.updatedAt ? `, last saved ${formatDateTime(form.updatedAt)}` : ""}
+              {form.updatedAt ? (
+                <>
+                  , last saved <UtcTime value={form.updatedAt} />
+                </>
+              ) : (
+                ""
+              )}
               {form.updatedBy ? ` by ${form.updatedBy}` : ""}.
             </p>
           )}
@@ -435,7 +442,9 @@ function ProbeResult({ result, username }: { result: DirectoryProbe; username: s
             <dt>Certificate issuer</dt>
             <dd>{result.certificate.issuer}</dd>
             <dt>Certificate expiry (UTC)</dt>
-            <dd>{certificateExpiry(result.certificate.not_after)}</dd>
+            <dd>
+              <CertificateExpiry value={result.certificate.not_after} />
+            </dd>
           </>
         ) : (
           <>
@@ -485,9 +494,8 @@ export function buildDirectorySave(form: FormState): DirectorySave {
   };
 }
 
-function certificateExpiry(value: string): string {
-  const formatted = formatDateTime(value);
-  if (formatted !== "—") return formatted;
-  return value.trim() === "" ? "—" : value;
+function CertificateExpiry({ value }: { value: string }) {
+  if (utcTimeText(value) !== "—") return <UtcTime value={value} />;
+  return value.trim() === "" ? <span className="muted">—</span> : <>{value}</>;
 }
 

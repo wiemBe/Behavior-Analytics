@@ -18,13 +18,33 @@ import { coverageText, eventsUnit, relativeAge } from "@/components/propertywatc
 import { valueText } from "@/components/propertywatch/WatchValuesTable";
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
 import { api, type PwBucket, type PwValueSeries } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
 import type { Qualifier } from "@/lib/home/qualifiers";
 import { ageSeconds, earlyState, isStale, widgetSelection } from "@/widgets/pwWidgetState";
 import type { RangedProps } from "@/widgets/runtime";
 import type { WidgetState } from "@/widgets/types";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "./pwWidget.css";
+
+/** `{at}` in a string reason is the instant `at`, drawn as `<UtcTime>` rather than plain text. */
+function withInstant<T>(state: WidgetState<T>): WidgetState<T> {
+  if (state.kind !== "empty" && state.kind !== "no_data" && state.kind !== "not_collected") {
+    return state;
+  }
+  if (typeof state.reason !== "string" || !state.at || !state.reason.includes("{at}")) return state;
+  const [before, after = ""] = state.reason.split("{at}");
+  return {
+    ...state,
+    reason: (
+      <>
+        {before}
+        <UtcTime value={state.at} />
+        {after}
+      </>
+    ),
+  };
+}
 
 export interface PropertyWatchWidgetConfig {
   watch_id: string | null;
@@ -232,7 +252,7 @@ export function PropertyWatchWidget({
     return frame(failure("The property watch", watchS.httpStatus));
   }
   if (!settled) return frame({ kind: "loading" });
-  if (early !== null) return frame(early);
+  if (early !== null) return frame(withInstant(early));
 
   const read = failedRead([
     ["The tracked values", valuesS],
@@ -258,7 +278,13 @@ export function PropertyWatchWidget({
     return frame(
       {
         kind: "empty",
-        reason: `No value is tracked for this watch in the last ${WINDOW_TEXT}. A value appears once a collected bucket admits it, and nothing is judged until then. Created ${formatDateTime(watch?.created_at)}.`,
+        reason: (
+          <>
+            No value is tracked for this watch in the last {WINDOW_TEXT}. A value appears once a
+            collected bucket admits it, and nothing is judged until then. Created{" "}
+            <UtcTime value={watch?.created_at} />.
+          </>
+        ),
       },
       { windowed: true },
     );
@@ -319,7 +345,7 @@ function PwBody({ drawn }: { drawn: Drawn }) {
         />
       </div>
       <p className="tw-note">
-        Last bucket <time dateTime={drawn.lastBucket}>{formatDateTime(drawn.lastBucket)}</time>{" "}
+        Last bucket <UtcTime value={drawn.lastBucket} />{" "}
         <span className="pww-age">({relativeAge(drawn.lastBucket, new Date()) || "age unknown"})</span>
         . Y axis: {unit}.
       </p>

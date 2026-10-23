@@ -22,7 +22,7 @@ export function fleetClass(
   return {
     source_class,
     sources: { enabled: 2, disabled: 0 },
-    buckets: { expected: 48, complete: 48, partial: 0, missing: 0 },
+    buckets: { expected: 48, complete: 48, complete_from_history: 0, partial: 0, missing: 0 },
     events: 100,
     mean_eps: 10,
     expected_eps: null,
@@ -54,7 +54,7 @@ export function noData(source_class: SourceClass): FleetClassSummary {
   return fleetClass(source_class, {
     events: null,
     mean_eps: null,
-    buckets: { expected: 48, complete: 0, partial: 0, missing: 48 },
+    buckets: { expected: 48, complete: 0, complete_from_history: 0, partial: 0, missing: 48 },
   });
 }
 
@@ -91,6 +91,9 @@ export function summary(over: Partial<BehaviorSummary> = {}): BehaviorSummary {
     monitored_sources: 0,
     evidence_pending: 0,
     evidence_failed: 0,
+    sources_with_evaluation_faults: 0,
+    buckets_not_judged: 0,
+    resolved_last_24h: 0,
     recently_resolved: [],
     highest_deviation: [],
     ...over,

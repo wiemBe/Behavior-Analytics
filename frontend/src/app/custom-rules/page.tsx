@@ -13,7 +13,8 @@ import { resolveRuleSubjects } from "@/components/customrules/subjects";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, sevTone, type CallerInfo, type CustomRule, type CustomRuleCatalog } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 export default async function CustomRulesPage() {
   let rules: CustomRule[] = [];
@@ -114,7 +115,7 @@ export default async function CustomRulesPage() {
                         <td><span className={`pill ${sevTone(rule.severity)}`}>{rule.severity}</span></td>
                         <td>{rule.enabled ? "Yes" : "No"}</td>
                         <td className="num cell-when">
-                          {rule.last_evaluated_at ? <time dateTime={rule.last_evaluated_at}>{formatDateTime(rule.last_evaluated_at)}</time> : "Never evaluated"}
+                          {rule.last_evaluated_at ? <UtcTime value={rule.last_evaluated_at} /> : "Never evaluated"}
                         </td>
                       </tr>
                     );

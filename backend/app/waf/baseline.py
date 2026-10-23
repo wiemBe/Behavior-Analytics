@@ -72,7 +72,7 @@ from app.models.waf import (
 from app.waf.normalize import ENDPOINT_NORMALIZER_VERSION
 from app.waf.observations import BucketFacts, EndpointObservation, RowFacts, endpoint_series
 
-#: The metric baselined for the MVP. `distinct_client_count` is collected but
+#: The request-count metric this builder trains. `distinct_client_count` is collected but
 #: not yet baselined -- it has no detector, and a baseline nothing reads is
 #: storage without a reader.
 WAF_BASELINE_METRIC = "request_count"
@@ -332,7 +332,7 @@ class WafBaselineBuilder:
         log_source: LogSource | None = None,
         breakdown_identities: Mapping[WafBreakdown, str] | None = None,
     ) -> int:
-        """Recompute baseline cells for one endpoint. Returns cells written."""
+        """Test-only wrapper around ``rebuild_endpoints`` for a single endpoint."""
         written = await self.rebuild_endpoints(
             [endpoint],
             semantics=semantics,

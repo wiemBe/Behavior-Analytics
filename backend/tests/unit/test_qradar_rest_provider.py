@@ -675,8 +675,6 @@ class TestRetries:
             return httpx.Response(404)
 
         provider, _ = build_provider(handler)
-        assert await provider.get_offense(999) is None
-        assert await provider.get_rule(999) is None
         assert await provider.get_log_source(999) is None
 
     @pytest.mark.asyncio
@@ -1087,7 +1085,7 @@ class TestDecoding:
 
         provider, _ = build_provider(handler)
         with pytest.raises(MalformedUpstreamResponse, match="not an object"):
-            await provider.get_offense(1)
+            await provider.get_log_source(1)
 
 
 # -------------------------------------------------------------- normalization
@@ -1296,29 +1294,6 @@ class TestNormalization:
         a, b = await provider.list_log_sources()
         assert a.type_id == 12
         assert (b.type_id, b.type_name) == (13, "Linux OS")
-
-    @pytest.mark.asyncio
-    async def test_offense_and_closing_reason_lookups_skip_malformed_rows(self) -> None:
-        def handler(request: httpx.Request) -> httpx.Response:
-            if "offense_types" in str(request.url):
-                return httpx.Response(
-                    200,
-                    json=[
-                        {"id": 1, "name": "Source IP"},
-                        {"id": "bad"},                 # unusable id
-                        {"name": "no id"},
-                        {"id": 2, "name": 12345},      # non-string name
-                    ],
-                )
-            return httpx.Response(
-                200,
-                json=[{"id": 3, "text": "False Positive"}, {"id": 4}],
-            )
-
-        provider, _ = build_provider(handler, page_size=10)
-        assert await provider.list_offense_types() == {1: "Source IP"}
-        assert await provider.list_offense_closing_reasons() == {3: "False Positive"}
-
 
 # --------------------------------------------------------------------- Ariel
 class TestArielLifecycle:

@@ -32,6 +32,13 @@ CA_SRC=.secrets/qradar-ca.pem
 # must be readable by that account and by nobody else.
 APP_UID=10001
 
+# The helper image that touches the token, the CA and the TLS key. Pinned by
+# digest (the tag stays for readability): a moved `alpine` tag would run as
+# root on a secrets volume. This is the only place the reference is written;
+# `qradar-dash` reads it here for the backup, the way `redis_ref` reads the
+# production compose file. How to bump it: docs/DEVELOPMENT.md "Base image pins".
+SECRETS_HELPER_IMAGE=alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+
 load_qradar() {
   local f
   for f in "$TOKEN_SRC" "$CA_SRC"; do
@@ -42,19 +49,30 @@ load_qradar() {
 
   # One container, both files over a tar stream on stdin. The token never appears
   # in argv, so it stays out of `ps` output and the shell history.
+  #
+  # Hardening: no network, every capability dropped, no setuid route back. The
+  # copy adds CHOWN back — it is the only capability the chown below needs:
+  # `tar -o` extracts without restoring the host's ownership (busybox and GNU
+  # tar both read `-o` that way), so the files stay root-owned until then and
+  # the chmods run as their owner.
   tar -cf - -C .secrets qradar.sec qradar-ca.pem |
-    docker run -i --rm -v "$VOLUME:/dst" alpine sh -c '
+    docker run -i --rm --network none --cap-drop ALL --cap-add CHOWN \
+      --security-opt no-new-privileges -v "$VOLUME:/dst" \
+      "$SECRETS_HELPER_IMAGE" sh -c '
       set -e
-      tar -xf - -C /dst
+      tar -xf - -o -C /dst
       mv /dst/qradar.sec     /dst/qradar_sec_token
       mv /dst/qradar-ca.pem  /dst/qradar_ca.pem
-      chown '"$APP_UID"':'"$APP_UID"' /dst/qradar_sec_token /dst/qradar_ca.pem
       chmod 400 /dst/qradar_sec_token
       chmod 444 /dst/qradar_ca.pem
+      chown '"$APP_UID"':'"$APP_UID"' /dst/qradar_sec_token /dst/qradar_ca.pem
     '
 
+  # The listing only reads, so the volume is mounted read-only and nothing is
+  # added back to the capability drop.
   echo "loaded into $VOLUME:"
-  docker run --rm -v "$VOLUME:/dst" alpine ls -l /dst
+  docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+    -v "$VOLUME:/dst:ro" "$SECRETS_HELPER_IMAGE" ls -l /dst
 }
 
 load_proxy() {
@@ -63,17 +81,23 @@ load_proxy() {
     [ -r "$f" ] || { echo "missing: $f" >&2; exit 1; }
   done
   docker volume create "$PROXY_VOLUME" >/dev/null
-  # The proxy master process runs as root and reads both files.
+  # The proxy master process runs as root and reads both files. Same hardening
+  # as load_qradar: offline, capability-free except the chown, and `tar -o` so
+  # the chmods run as the owner of the extracted files.
   tar -cf - -C .secrets tls.crt tls.key |
-    docker run -i --rm -v "$PROXY_VOLUME:/dst" alpine sh -c '
+    docker run -i --rm --network none --cap-drop ALL --cap-add CHOWN \
+      --security-opt no-new-privileges -v "$PROXY_VOLUME:/dst" \
+      "$SECRETS_HELPER_IMAGE" sh -c '
       set -e
-      tar -xf - -C /dst
-      chown 0:0 /dst/tls.crt /dst/tls.key
+      tar -xf - -o -C /dst
       chmod 444 /dst/tls.crt
       chmod 400 /dst/tls.key
+      chown 0:0 /dst/tls.crt /dst/tls.key
     '
+  # Read-only listing, nothing added back.
   echo "loaded into $PROXY_VOLUME:"
-  docker run --rm -v "$PROXY_VOLUME:/dst" alpine ls -l /dst
+  docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+    -v "$PROXY_VOLUME:/dst:ro" "$SECRETS_HELPER_IMAGE" ls -l /dst
 }
 
 case "${1:-qradar}" in

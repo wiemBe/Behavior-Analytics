@@ -14,6 +14,8 @@ import { HealthDistribution } from "@/components/behavior/HealthDistribution";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
+import { sourcesAsOf } from "@/lib/home/asOf";
+import { useFamilyTiming } from "@/widgets/cadence";
 import { healthDistribution, healthSummaryText } from "@/lib/behaviorOverview";
 import { healthCategories } from "@/lib/home/healthCategories";
 import { logSources } from "@/lib/home/logSources";
@@ -30,6 +32,7 @@ export function LogSourceHealth() {
   const summary = useApiResource(summaryRead.key, summaryRead.fetch);
   const fleet = useApiResource(fleetRead.key, fleetRead.fetch);
   const overview = useApiResource(overviewRead.key, overviewRead.fetch);
+  const { bucketSeconds } = useFamilyTiming("PHASE_A_VOLUME");
 
   return (
     <WidgetFrame
@@ -38,6 +41,10 @@ export function LogSourceHealth() {
       windowText="latest state"
       link={{ href: "/behavior/sources", label: "View all" }}
       state={behaviors}
+      dataTo={{
+        at: behaviors.status === "ok" ? sourcesAsOf(behaviors.data, bucketSeconds) : null,
+        family: "PHASE_A_VOLUME",
+      }}
       what="the source states"
       permission="read:anomalies"
     >
@@ -83,7 +90,11 @@ export function LogSourceHealth() {
                 />
               )}
               {card && sources.length > 0 && (
-                <WidgetQualifiers qualifiers={card.qualifiers} />
+                <WidgetQualifiers
+                  qualifiers={card.qualifiers}
+                  extra={card.evaluationFault ?? undefined}
+                  extraTitle={card.evaluationFaultDetail ?? undefined}
+                />
               )}
               {sum.data === null && (
                 <p className="tw-note">

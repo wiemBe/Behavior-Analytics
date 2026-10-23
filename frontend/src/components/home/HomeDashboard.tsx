@@ -27,6 +27,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useReportDataAge } from "@/components/shell/AutoRefresh";
+import { epsSeriesAsOf } from "@/lib/home/asOf";
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
 import {
@@ -403,8 +404,9 @@ export function HomeDashboard() {
 
   const series = homeReads.epsSeries("24h", "none");
   const seriesState = useApiResource(series.key, series.fetch);
-  // Only a series that was read says how far the data reaches; anything else is unknown.
-  useReportDataAge(seriesState.status === "ok" ? seriesState.data.window_end : null);
+  // Only a series that was read says how far the data reaches, and then by its last measured
+  // step: `window_end` is the request's own "now". Anything else is unknown.
+  useReportDataAge(seriesState.status === "ok" ? epsSeriesAsOf(seriesState.data) : null);
 
   const listRead = dashboardReads.list();
   const list = useApiResource(rev === 0 ? listRead.key : `${listRead.key}&read=${rev}`, listRead.fetch);

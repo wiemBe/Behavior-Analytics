@@ -17,7 +17,7 @@ from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import Table, select, update
+from sqlalchemy import Table, bindparam, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import attributes
@@ -32,6 +32,7 @@ __all__ = ["HistoryBackfillRepository", "bounded_reason"]
 _SCOPE_KEY = ("instance_id", "family", "scope_key")
 _YES = HistoryDecisionAnswer.YES.value
 _NO = HistoryDecisionAnswer.NO.value
+_MAX_ERROR_CLASS_LENGTH = 64
 
 
 class HistoryBackfillRepository:
@@ -126,6 +127,57 @@ class HistoryBackfillRepository:
                 continue
             for name in SCOPE_COLUMNS:
                 attributes.set_committed_value(found, name, written[name])
+
+    async def write_step_errors(
+        self,
+        instance_id: uuid.UUID,
+        family: str,
+        errors: Mapping[str, BaseException],
+        *,
+        at: datetime,
+        required_state: str | None = None,
+    ) -> None:
+        """Record failed scope steps in one statement, keeping messages out of storage.
+
+        ``required_state`` lets a caller guard the update without a preceding read. This
+        keeps failure recovery to one statement when the failed transaction was rolled back.
+        """
+        if not errors:
+            return
+        table = cast(Table, HistoryBackfillScope.__table__)
+        statement = (
+            update(table)
+            .where(
+                table.c.instance_id == bindparam("error_instance_id"),
+                table.c.family == bindparam("error_family"),
+                table.c.scope_key == bindparam("error_scope_key"),
+            )
+            .values(
+                last_error_class=bindparam("error_class"),
+                last_error_at=bindparam("error_at"),
+            )
+        )
+        if required_state is not None:
+            statement = statement.where(table.c.state == required_state)
+        parameters = [
+            {
+                "error_instance_id": instance_id,
+                "error_family": family,
+                "error_scope_key": scope_key,
+                "error_class": type(exc).__name__[:_MAX_ERROR_CLASS_LENGTH],
+                "error_at": at,
+            }
+            for scope_key, exc in errors.items()
+        ]
+        await self.session.execute(statement, parameters)
+        for values in parameters:
+            key = (instance_id, family, values["error_scope_key"])
+            found = self.session.identity_map.get(identity_key(HistoryBackfillScope, key))
+            if found is not None and required_state is None:
+                attributes.set_committed_value(
+                    found, "last_error_class", values["error_class"]
+                )
+                attributes.set_committed_value(found, "last_error_at", at)
 
     async def record_decision(
         self,

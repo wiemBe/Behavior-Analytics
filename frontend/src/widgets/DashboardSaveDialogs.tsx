@@ -220,35 +220,3 @@ export function UnsavedChangesDialog({
     </Modal>
   );
 }
-
-export function ConfirmLayoutDialog({
-  title,
-  text,
-  confirm,
-  onConfirm,
-  onClose,
-}: {
-  title: string;
-  text: string;
-  confirm: string;
-  onConfirm: () => void;
-  onClose: () => void;
-}) {
-  const cancel = useRef<HTMLButtonElement>(null);
-  useEffect(() => cancel.current?.focus(), []);
-  return (
-    <Modal title={title} onClose={onClose}>
-      <div className="dg-modal-form">
-        <p className="dg-modal-text">{text}</p>
-        <div className="dg-modal-actions">
-          <button ref={cancel} type="button" className="action secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="button" className="action" onClick={onConfirm}>
-            {confirm}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}

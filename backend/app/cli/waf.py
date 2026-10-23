@@ -45,9 +45,11 @@ from app.core.database import get_sessionmaker
 from app.models.instance import QRadarInstance
 from app.models.log_source import LogSource
 from app.models.waf import WafSourceProfile
+from app.providers.base import ProviderError
 from app.providers.dto import WafRejectionObservation
 from app.providers.factory import build_provider_for_instance
 from app.repositories.audit import record_audit
+from app.services.ariel_permit import ariel_background_priority
 from app.services.waf_profiles import WafProfileService
 from app.services.waf_status import waf_ariel_budget_status, waf_source_statuses
 from app.waf.profile import WafFieldMapping, WafProfileError
@@ -78,6 +80,13 @@ def _csv(value: str | None) -> list[str]:
     return [v for v in (value or "").split(",") if v.strip()]
 
 
+def _failures(consecutive_failures: int | None) -> str:
+    """Failure count for the status line. A missing watermark is unknown."""
+    if consecutive_failures is None:
+        return "unknown"
+    return str(consecutive_failures)
+
+
 async def _run(args: argparse.Namespace) -> int:
     maker = get_sessionmaker()
     async with maker() as session:
@@ -103,7 +112,8 @@ async def _run(args: argparse.Namespace) -> int:
                         f"{s.qradar_log_source_id:>6} {s.log_source_name[:32]:32} "
                         f"v{s.profile_version} {s.validation_status:12} "
                         f"eligible={s.collection_eligible} lag={s.lag_seconds} "
-                        f"failures={s.consecutive_failures} active={s.active_endpoints} "
+                        f"failures={_failures(s.consecutive_failures)} "
+                        f"active={s.active_endpoints} "
                         f"searches={s.ariel_searches_last_run} "
                         f"duration_ms={s.last_collection_duration_ms}"
                         + (f" skipped={s.last_skip_reason}" if s.previous_run_skipped else "")
@@ -237,12 +247,13 @@ async def probe_rejection(
     end = datetime.now(UTC).replace(microsecond=0)
     provider = build_provider_for_instance(instance)
     try:
-        observed = await provider.observe_property_rejection(
-            qradar_log_source_id=log_source.qradar_id,
-            window_start=end - timedelta(minutes=15),
-            window_end=end,
-            property_names=[missing_name, profile.url_property],
-        )
+        with ariel_background_priority():
+            observed = await provider.observe_property_rejection(
+                qradar_log_source_id=log_source.qradar_id,
+                window_start=end - timedelta(minutes=15),
+                window_end=end,
+                property_names=[missing_name, profile.url_property],
+            )
     finally:
         await provider.aclose()
     by_name = {o.property_name: o for o in observed}
@@ -301,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return asyncio.run(_run(args))
-    except WafProfileError as exc:
+    except (ProviderError, WafProfileError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

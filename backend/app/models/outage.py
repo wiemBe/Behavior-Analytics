@@ -36,7 +36,8 @@ class OutageAlertPolicy(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         CheckConstraint("mode IN ('ALERT', 'RECORD_ONLY')", name="mode_known"),
         CheckConstraint(
             "silence_grace_buckets IS NULL OR "
-            "(silence_grace_buckets >= 0 AND silence_grace_buckets <= 48)",
+            "(silence_grace_buckets >= 0 AND silence_grace_buckets <= "
+            f"{MAX_SILENCE_GRACE_BUCKETS})",
             name="silence_grace_buckets_range",
         ),
         UniqueConstraint(

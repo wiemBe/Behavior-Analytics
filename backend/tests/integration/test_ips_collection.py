@@ -29,6 +29,7 @@ from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError, ProviderQueryRejectedError
 from app.providers.dto import IpsKeyedRow
 from app.providers.mock import MockQRadarProvider
+from app.services.ariel_permit import ArielPermitUnavailable
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key
 from tests.integration.factories import make_instance, make_log_source
@@ -130,12 +131,18 @@ class TestFleetAndStates:
         )
         assert invalid_wm.collection_metadata["last_skip_reason"]
 
-    async def test_missing_totals_writes_no_bucket_and_holds_watermark(self, db_session) -> None:
+    @pytest.mark.parametrize(
+        "failure",
+        [ProviderError("query text must not be stored"), ArielPermitUnavailable(30, 3, 6)],
+    )
+    async def test_missing_totals_writes_no_bucket_and_holds_watermark(
+        self, db_session, failure
+    ) -> None:
         instance = await make_instance(db_session)
         _, source = await add_source(db_session, instance, 412)
         provider = MockQRadarProvider(now=NOW)
         provider.ips_fault = lambda search: (
-            ProviderError("query text must not be stored")
+            failure
             if search.dimension is IpsDimension.TOTALS
             else None
         )
@@ -149,11 +156,28 @@ class TestFleetAndStates:
         )
         assert missing is None
         watermark = await db_session.scalar(
-            select(CollectionWatermark).where(
-                CollectionWatermark.collector == watermark_collector(412)
-            )
+            select(CollectionWatermark)
+            .where(CollectionWatermark.collector == watermark_collector(412))
+            .execution_options(populate_existing=True)
         )
         assert watermark.watermark_at is None
+        assert watermark.last_error == type(failure).__name__
+        assert "query" not in watermark.last_error
+        assert watermark.consecutive_failures == 1
+
+        provider.ips_fault = None
+        again = await IpsCollector(
+            db_session, provider, settings=cfg(), clock=lambda: NOW
+        ).collect(instance)
+        cleared = await db_session.scalar(
+            select(CollectionWatermark)
+            .where(CollectionWatermark.collector == watermark_collector(412))
+            .execution_options(populate_existing=True)
+        )
+        assert again.buckets_written == 1
+        assert cleared.last_error is None
+        assert cleared.consecutive_failures == 0
+        assert cleared.watermark_at is not None
 
     @pytest.mark.parametrize(
         ("dimension", "error", "state"),

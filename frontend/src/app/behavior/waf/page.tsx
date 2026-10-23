@@ -14,7 +14,7 @@ import { WafSourcesTable } from "@/components/waf/WafSourcesTable";
 import { isJudged } from "@/components/waf/wafSourceHealth";
 import { parseWafRange } from "@/components/waf/wafRange";
 import { ApiError, api, type PagedWafSources } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "./waf.css";
 
@@ -105,8 +105,8 @@ export default async function WafBehaviorPage({
             {page && (
               <p className="subtitle">
                 Admission overflow covers{" "}
-                <time dateTime={page.range_start}>{formatDateTime(page.range_start)}</time> to{" "}
-                <time dateTime={page.range_end}>{formatDateTime(page.range_end)}</time>.
+                <UtcTime value={page.range_start} /> to{" "}
+                <UtcTime value={page.range_end} />.
               </p>
             )}
           </div>

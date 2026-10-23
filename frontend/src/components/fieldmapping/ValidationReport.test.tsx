@@ -33,8 +33,8 @@ describe("ValidationReport", () => {
   it("shows populated and plausible shares as percentages", () => {
     show();
     const r = row(/URL path/);
-    expect(within(r).getByText("98 %")).toBeInTheDocument();
-    expect(within(r).getByText("99 %")).toBeInTheDocument();
+    expect(within(r).getByText("98.0 %")).toBeInTheDocument();
+    expect(within(r).getByText("99.0 %")).toBeInTheDocument();
   });
 
   it("renders a missing measurement as a dash with its meaning, never 0 %", () => {
@@ -53,7 +53,7 @@ describe("ValidationReport", () => {
 
   it("keeps a measured zero as 0 %", () => {
     show({ report: report({ fields: [fieldReport({ status: "UNPOPULATED", populated_ratio: 0 })] }) });
-    expect(within(row(/URL path/)).getByText("0 %")).toBeInTheDocument();
+    expect(within(row(/URL path/)).getByText("0.0 %")).toBeInTheDocument();
   });
 
   it.each([
@@ -72,7 +72,7 @@ describe("ValidationReport", () => {
         fields: [fieldReport({ status: "INSUFFICIENT_COVERAGE", populated_ratio: 0.62 })],
       }),
     });
-    expect(screen.getByText("Only 62 % of events carry it; collection needs 90 %.")).toBeInTheDocument();
+    expect(screen.getByText("Only 62.0 % of events carry it; collection needs 90.0 %.")).toBeInTheDocument();
   });
 
   it("does not render NO_EVENTS or QUERY_FAILED as a failure of the field", () => {

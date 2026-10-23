@@ -67,7 +67,7 @@ describe("RecentOffenses", () => {
     setup(ok(page([offenseRow({ qradar_offense_id: 42, description: "Port scan" })])));
     render(<RecentOffenses />);
     expect(screen.getByRole("link", { name: "Port scan" })).toHaveAttribute("href", "/offenses/42");
-    expect(screen.getByRole("link", { name: "View all" })).toHaveAttribute("href", "/offenses");
+    expect(screen.getByRole("link", { name: "View all" })).toHaveAttribute("href", "/offenses?status=OPEN");
   });
 
   it("says NOT_COLLECTED when no snapshot exists, not 'no open offenses'", () => {

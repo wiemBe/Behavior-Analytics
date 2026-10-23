@@ -8,6 +8,7 @@ import {
   healthTone,
   isUnestablished,
   magnitudeTone,
+  offenseStatusTone,
 } from "./health";
 
 describe("isUnestablished", () => {
@@ -90,29 +91,42 @@ describe("magnitudeTone", () => {
     [7, "crit"],
     [6, "warn"],
     [4, "warn"],
-    [3, "ok"],
-    [0, "ok"],
+    [3, ""],
+    [0, ""],
   ])("maps magnitude %i to %s", (mag, expected) => {
     expect(magnitudeTone(mag as number)).toBe(expected);
   });
 
-  it("stays neutral when magnitude is unknown", () => {
+  it("stays neutral when magnitude is unknown, and a low score is never ok", () => {
     expect(magnitudeTone(null)).toBe("");
     expect(magnitudeTone(undefined)).toBe("");
+    expect(magnitudeTone(3)).not.toBe("ok");
+    expect(magnitudeTone(0)).not.toBe("ok");
+  });
+});
+
+describe("offenseStatusTone", () => {
+  it("lets only CLOSED take ok", () => {
+    expect(offenseStatusTone("CLOSED")).toBe("ok");
+    expect(offenseStatusTone("OPEN")).toBe("warn");
+    expect(offenseStatusTone("HIDDEN")).toBe("");
+    expect(offenseStatusTone("")).toBe("");
+    expect(offenseStatusTone(null)).toBe("");
+    expect(offenseStatusTone(undefined)).toBe("");
   });
 });
 
 describe("formatAge", () => {
   it("formats days and hours", () => {
-    expect(formatAge(90000)).toBe("1d 1h");
+    expect(formatAge(90000)).toBe("1 d 1 h");
   });
 
   it("formats hours and minutes", () => {
-    expect(formatAge(3660)).toBe("1h 1m");
+    expect(formatAge(3660)).toBe("1 h 1 min");
   });
 
   it("formats minutes alone", () => {
-    expect(formatAge(120)).toBe("2m");
+    expect(formatAge(120)).toBe("2 min");
   });
 
   it("renders an unknown age as a dash, not as zero", () => {

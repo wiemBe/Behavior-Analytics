@@ -16,7 +16,13 @@ function summary(over: Partial<FleetSummary> = {}): FleetSummary {
       {
         source_class: "WAF",
         sources: { enabled: 2, disabled: 0 },
-        buckets: { expected: 576, complete: 576, partial: 0, missing: 0 },
+        buckets: {
+          expected: 576,
+          complete: 576,
+          complete_from_history: 0,
+          partial: 0,
+          missing: 0,
+        },
         events: 10,
         mean_eps: 1,
         expected_eps: 1,
@@ -47,7 +53,9 @@ describe("FleetPage", () => {
     await renderPage({ window: "7d" });
     expect(spy).toHaveBeenCalledWith("7d");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByText(/2026-10-12 08:00:00 UTC to 2026-10-13 08:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/Last 7 days:/)).toHaveTextContent(
+      "2026-10-12 08:00:00 UTC to 2026-10-13 08:00:00 UTC",
+    );
     expect(screen.getByRole("link", { name: "7 d" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "24 h" })).not.toHaveAttribute("aria-current");
   });

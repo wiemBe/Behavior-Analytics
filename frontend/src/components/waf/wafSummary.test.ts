@@ -37,7 +37,7 @@ describe("summarizeWafAnomaly", () => {
       300,
     );
     expect(s.text).toBe(
-      "The blocked share of requests for GET /portal/login was 31.8% (318 of 1,000 requests), against an expected 2.1%.",
+      "The blocked share of requests for GET /portal/login was 31.8\u00A0% (318 of 1,000 requests), against an expected 2.1\u00A0%.",
     );
   });
 
@@ -46,7 +46,7 @@ describe("summarizeWafAnomaly", () => {
       wafDetail({ anomaly_type: "WAF_ERROR_RATIO_SPIKE", observed_value: 0.4, expected_value: 0.01, detection: null }),
       300,
     );
-    expect(s.text).toContain("40.0%");
+    expect(s.text).toContain("40.0\u00A0%");
     expect(s.text).not.toContain("requests / 5 min");
   });
 

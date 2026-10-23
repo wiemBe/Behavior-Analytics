@@ -20,14 +20,11 @@ _ACTIVE_STATES = [s.value for s in ACTIVE_ANOMALY_STATES]
 
 
 class OverviewCounts(TypedDict):
-    """Shape of `LogSourceRepository.overview_counts`: four integer counts plus
-    the average health score, which is a float (or absent), not a count."""
+    """Shape of `LogSourceRepository.overview_counts`: three integer counts."""
 
     total: int
     monitored: int
     maintenance: int
-    healthy: int
-    avg_health: float | None
 
 
 class LogSourceRepository:
@@ -49,14 +46,6 @@ class LogSourceRepository:
 
     async def get(self, log_source_id: uuid.UUID) -> LogSource | None:
         return await self.session.get(LogSource, log_source_id)
-
-    async def get_by_qradar_id(
-        self, instance_id: uuid.UUID, qradar_id: int
-    ) -> LogSource | None:
-        stmt = select(LogSource).where(
-            LogSource.instance_id == instance_id, LogSource.qradar_id == qradar_id
-        )
-        return await self.session.scalar(stmt)
 
     async def by_qradar_id(self, instance_id: uuid.UUID) -> dict[int, LogSource]:
         """Load an instance's inventory once for a bulk sync."""
@@ -110,25 +99,10 @@ class LogSourceRepository:
             )
             or 0
         )
-        healthy = (
-            await self.session.scalar(
-                select(func.count())
-                .select_from(LogSource)
-                .where(LogSource.health_score >= 70)
-            )
-            or 0
-        )
-        avg_health = await self.session.scalar(
-            select(func.avg(LogSource.health_score)).where(
-                LogSource.monitoring_enabled.is_(True)
-            )
-        )
         return {
             "total": total,
             "monitored": monitored,
             "maintenance": maintenance,
-            "healthy": healthy,
-            "avg_health": round(float(avg_health), 1) if avg_health is not None else None,
         }
 
     async def anomalous_source_count(self) -> int:

@@ -12,7 +12,7 @@ import Link from "next/link";
 import type { IpsAnomalyDetail } from "@/lib/api";
 import { sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "./ips.css";
 import { dimensionNoun, ipsSubjectText, ipsTypeLabel, SOURCE_LEVEL } from "./ipsLabels";
@@ -21,10 +21,10 @@ function Interval({ anomaly }: { anomaly: IpsAnomalyDetail }) {
   if (!anomaly.anomaly_start) return <>Interval not recorded</>;
   return (
     <>
-      <time dateTime={anomaly.anomaly_start}>{formatDateTime(anomaly.anomaly_start)}</time>
+      <UtcTime value={anomaly.anomaly_start} />
       {" → "}
       {anomaly.anomaly_end ? (
-        <time dateTime={anomaly.anomaly_end}>{formatDateTime(anomaly.anomaly_end)}</time>
+        <UtcTime value={anomaly.anomaly_end} />
       ) : (
         // Still running: an end would report a closed incident that is open.
         "still running"
@@ -39,7 +39,7 @@ function When({ label, iso }: { label: string; iso: string | null }) {
       <dt>{label}</dt>
       <dd>
         {iso ? (
-          <time dateTime={iso}>{formatDateTime(iso)}</time>
+          <UtcTime value={iso} />
         ) : (
           <span className="muted">
             —<span className="sr-only"> not recorded</span>

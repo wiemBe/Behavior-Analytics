@@ -4,6 +4,8 @@
 // here fetches, and nothing turns a missing figure into a zero.
 
 import type { RuleCountRow, RuleStatisticsWindow } from "@/lib/api";
+import { formatCount } from "@/lib/format";
+
 
 export const STATS_PATH = "/rules/statistics";
 
@@ -159,9 +161,7 @@ export function pivotCounts(counts: RuleCountRow[], origin: string): PivotGroup[
     .filter((g) => g.rows.length > 0);
 }
 
-export function formatCount(n: number): string {
-  return n.toLocaleString("en-US");
-}
+export { formatCount } from "@/lib/format";
 
 /** One column-wide rule: two decimals, with a threshold for a positive sub-cent rate. */
 export function formatRate(perSecond: number): string {

@@ -5,7 +5,7 @@ import { homeReads, type FleetEpsSeries } from "@/lib/api";
 import { fleet, fleetClass, noData } from "@/lib/home/fixtures";
 
 import { KpiTotalEps } from "./KpiTotalEps";
-import { failed, forbidden, loading, ok } from "./KpiTestStates";
+import { failed, forbidden, ok } from "./KpiTestStates";
 
 const mocks = vi.hoisted(() => ({ states: {} as Record<string, unknown> }));
 vi.mock("@/hooks/useApiResource", () => ({
@@ -67,10 +67,18 @@ describe("KpiTotalEps", () => {
     expect(screen.getByTitle("Firewall, 800.00 EPS of the total")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View fleet by class" })).toHaveAttribute(
       "href",
-      "/fleet",
+      "/fleet?window=24h",
     );
     // No always-on "Received" line: the top bar says when the page refreshed.
     expect(screen.queryByText(/Received/)).toBeNull();
+  });
+
+  it.each(["1h", "7d"] as const)("keeps the fleet window %s on the drill-down", (window) => {
+    render(<KpiTotalEps range={window} />);
+    expect(screen.getByRole("link", { name: "View fleet by class" })).toHaveAttribute(
+      "href",
+      `/fleet?window=${window}`,
+    );
   });
 
   it("shows an em dash and the reason, never 0, when no class has a mean", () => {
@@ -87,7 +95,13 @@ describe("KpiTotalEps", () => {
       fleet([
         fleetClass("FIREWALL", {
           mean_eps: 5,
-          buckets: { expected: 48, complete: 40, partial: 2, missing: 6 },
+          buckets: {
+            expected: 48,
+            complete: 40,
+            complete_from_history: 0,
+            partial: 2,
+            missing: 6,
+          },
         }),
       ]),
     );

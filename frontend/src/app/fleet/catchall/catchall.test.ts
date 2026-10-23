@@ -11,12 +11,10 @@ import {
   emptyKind,
   breakParts,
   formatCount,
-  formatSeen,
   gapBand,
   measurementText,
   niceMax,
   formatEvents24h,
-  gapRuns,
   senderFailure,
   stepMeasured,
 } from "./catchall";
@@ -75,14 +73,6 @@ describe("buildSlots", () => {
 });
 
 describe("slot helpers", () => {
-  it("groups consecutive gaps into runs", () => {
-    const s = buildSlots([bucket(0), bucket(20), bucket(25), bucket(40)], T(0), T(45));
-    expect(gapRuns(s.slots)).toEqual([
-      [1, 3],
-      [6, 7],
-    ]);
-  });
-
   it("steps over gaps to the next measured bucket and stops at the ends", () => {
     const s = buildSlots([bucket(0), bucket(20)], T(0), T(25));
     expect(stepMeasured(s.slots, 0, 1)).toBe(4);
@@ -116,10 +106,6 @@ describe("chart helpers", () => {
   it("rounds the axis maximum up, never down", () => {
     for (const v of [1, 7, 94, 1355, 2982, 18420]) expect(niceMax(v)).toBeGreaterThanOrEqual(v);
     expect(niceMax(0)).toBe(1);
-  });
-
-  it("drops the zone for a header that names it", () => {
-    expect(formatSeen("2026-10-13T15:00:00Z")).toBe("10-13 15:00");
   });
 
   it("breaks a name after . and - only", () => {

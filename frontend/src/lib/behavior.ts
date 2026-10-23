@@ -42,11 +42,7 @@ export function formatMetric(
   return value.toFixed(digits);
 }
 
-/** Integer form of the same rule. */
-export function formatCount(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return NOT_MEASURED;
-  return value.toLocaleString();
-}
+export { formatCount } from "@/lib/format";
 
 /** A ratio, suffixed with x. A null ratio means the comparison does not exist. */
 export function formatRatio(value: number | null | undefined): string {
@@ -54,36 +50,23 @@ export function formatRatio(value: number | null | undefined): string {
   return `${value.toFixed(2)}x`;
 }
 
-/** A fraction in [0,1] as a percentage. Null stays unmeasured. */
-export function formatShare(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return NOT_MEASURED;
-  return `${(value * 100).toFixed(1)}%`;
-}
+export { formatShare } from "@/lib/format";
 
 /** A percentage delta already expressed in percent by the backend. */
 export function formatPercentDelta(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
   const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(1)}%`;
+  return `${sign}${value.toFixed(1)}\u00A0%`;
 }
 
 /** A signed absolute change, so a drop is visibly a drop. */
 export function formatDelta(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
   const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toLocaleString()}`;
+  return `${sign}${value.toLocaleString("en-US")}`;
 }
 
-/** Compact duration. Null means the anomaly has not ended, not "0s". */
-export function formatDuration(seconds: number | null | undefined): string {
-  if (seconds == null || Number.isNaN(seconds)) return NOT_MEASURED;
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const m = Math.floor(seconds / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ${m % 60}m`;
-  return `${Math.floor(h / 24)}d ${h % 24}h`;
-}
+export { formatDuration } from "@/lib/time";
 
 // --- detectors -------------------------------------------------------------
 
@@ -222,25 +205,6 @@ export function evidenceTone(status: EvidenceStatus | null | undefined): Tone {
   }
 }
 
-export function evidenceMeaning(status: EvidenceStatus | null | undefined): string {
-  switch (status) {
-    case "NOT_REQUESTED":
-      return "No evidence collection has been requested for this anomaly. Nothing has been looked at.";
-    case "PENDING":
-      return "Evidence collection is queued or running. The contributor analysis below is not yet available — this is a backlog, not a finding.";
-    case "COMPLETE":
-      return "Every requested dimension was collected successfully.";
-    case "PARTIAL":
-      return "Some dimensions were collected and others were not. The dimensions that failed or were unavailable are listed below and have not been checked — absence of a contributor there is not evidence of absence.";
-    case "UNAVAILABLE":
-      return "This log source's DSM exposes none of the requested fields for the selected interval, so no contributor analysis was possible. This is a property of the source, not a transient error.";
-    case "FAILED":
-      return "Evidence collection ran and could not complete. This is a transient condition worth retrying; it says nothing about what happened during the anomaly.";
-    default:
-      return "";
-  }
-}
-
 export function dimensionTone(
   availability: DimensionAvailability | null | undefined,
 ): Tone {
@@ -322,14 +286,6 @@ export function dimensionLabel(dimension: string): string {
 
 // --- buckets ---------------------------------------------------------------
 
-export function completenessTone(
-  completeness: BucketCompleteness | null | undefined,
-): Tone {
-  // PARTIAL and MISSING are collection problems, not source behavior, so
-  // neither is coloured as a source finding.
-  return completeness === "COMPLETE" ? "ok" : "warn";
-}
-
 export function completenessMeaning(
   completeness: BucketCompleteness | null | undefined,
 ): string {
@@ -343,11 +299,6 @@ export function completenessMeaning(
     default:
       return "";
   }
-}
-
-/** True when a bucket's volume is not a trustworthy observation. */
-export function isUnobserved(completeness: BucketCompleteness): boolean {
-  return completeness !== "COMPLETE";
 }
 
 // --- detector --------------------------------------------------------------

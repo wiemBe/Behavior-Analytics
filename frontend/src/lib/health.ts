@@ -79,19 +79,18 @@ export function magnitudeTone(magnitude: number | null | undefined): Tone {
   if (magnitude == null) return "";
   if (magnitude >= 7) return "crit";
   if (magnitude >= 4) return "warn";
-  return "ok";
+  // Below 4 is not a good outcome. A low score stays neutral, never ok.
+  return "";
 }
 
-/** Compact humanised duration, e.g. "3d 4h". */
-export function formatAge(seconds: number | null | undefined): string {
-  if (seconds == null) return "—";
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+/** Only a closed offense is a good outcome. OPEN stays a warning; anything else is neutral. */
+export function offenseStatusTone(status: string | null | undefined): Tone {
+  if (status === "CLOSED") return "ok";
+  if (status === "OPEN") return "warn";
+  return "";
 }
+
+export { formatAge } from "@/lib/time";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 

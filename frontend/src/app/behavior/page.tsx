@@ -22,6 +22,7 @@ import { Fragment } from "react";
 
 import { HealthDistribution } from "@/components/behavior/HealthDistribution";
 import { StatCard } from "@/components/StatCard";
+import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
@@ -30,6 +31,7 @@ import {
   sevTone,
   type AnomalySummary,
   type BehaviorSummary,
+  type Page,
   type SourceBehavior,
 } from "@/lib/api";
 import {
@@ -39,7 +41,9 @@ import {
   healthSummaryText,
 } from "@/lib/behaviorOverview";
 import { detectorLabel, formatMetric, formatRatio, stateTone } from "@/lib/behavior";
-import { formatDateTimeCompact } from "@/lib/health";
+import { sourcesAsOf } from "@/lib/home/asOf";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "./overview.css";
 
@@ -51,21 +55,12 @@ export const metadata: Metadata = {
 const ATTENTION_LIMIT = 8;
 const RECENT_LIMIT = 6;
 
-/** "10-13 09:30 UTC": the zone may drop to a second line, the date and time may not. */
-function StartedAt({ value }: { value: string }) {
-  const cut = value.lastIndexOf(" ");
-  if (cut < 0) return <>{value}</>;
-  return (
-    <>
-      <span className="nowrap">{value.slice(0, cut)}</span> {value.slice(cut + 1)}
-    </>
-  );
-}
-
 export default async function BehaviorPage() {
   let summary: BehaviorSummary | null = null;
   let sources: SourceBehavior[] = [];
   let active: AnomalySummary[] = [];
+  let activePage: Page<AnomalySummary> | null = null;
+  let activeFailed = false;
   let error: string | null = null;
 
   try {
@@ -78,12 +73,14 @@ export default async function BehaviorPage() {
       // subject_kind pins the list to Phase A: an unfiltered call would also
       // return WAF anomalies, which this worklist renders in Phase A rows.
       api
-        .anomalies({ active_only: true, limit: 50, subject_kind: "LOG_SOURCE" })
+        .anomalies({ active_only: true, limit: 200, subject_kind: "LOG_SOURCE" })
         .catch(() => null),
     ]);
     summary = summaryResult;
     sources = sourcesResult;
-    active = activeResult?.items ?? [];
+    activePage = activeResult;
+    active = activePage?.items ?? [];
+    activeFailed = activePage === null;
   } catch (err) {
     error =
       err instanceof ApiError && err.status === 403
@@ -112,6 +109,7 @@ export default async function BehaviorPage() {
 
   return (
     <>
+      <ReportDataAge iso={sourcesAsOf(sources, null)} />
       <PageHeader
         title="Behavioral overview"
         description={
@@ -169,8 +167,8 @@ export default async function BehaviorPage() {
           <dd className="num">{summary.recovering}</dd>
         </div>
         <div>
-          <dt>Recently resolved</dt>
-          <dd className="num">{summary.recently_resolved.length}</dd>
+          <dt>Resolved, 24 h</dt>
+          <dd className="num">{summary.resolved_last_24h}</dd>
         </div>
         <div>
           <dt>Evidence pending</dt>
@@ -202,12 +200,32 @@ export default async function BehaviorPage() {
       {/* --- needs attention ------------------------------------------------ */}
       <section>
         <h2 className="section-title">Needs attention</h2>
+        {activeFailed && (
+          <p className="notice" role="alert">
+            The active anomaly list could not be loaded; this worklist may be incomplete.
+          </p>
+        )}
+        {activePage && activePage.total > active.length && (
+          <p className="subtitle">
+            Ranked from the {active.length} most recent of {activePage.total} active anomalies.{" "}
+            <Link href="/anomalies?active_only=true">View all active anomalies</Link>.
+          </p>
+        )}
         {attention.length === 0 ? (
-          <div className="notice">
-            Nothing is currently anomalous, deviating materially from its
-            baseline, or waiting on a baseline. Sources that are simply normal
-            are not listed here.
-          </div>
+          summary.open_anomalies > 0 ? (
+            <div className="notice" role="status">
+              {summary.open_anomalies} active{" "}
+              {summary.open_anomalies === 1 ? "anomaly" : "anomalies"} could not be matched
+              to a worklist row.{" "}
+              <Link href="/anomalies?active_only=true">View all active anomalies</Link>.
+            </div>
+          ) : activeFailed ? null : (
+            <div className="notice">
+              Nothing is currently anomalous, deviating materially from its
+              baseline, or waiting on a baseline. Sources that are simply normal
+              are not listed here.
+            </div>
+          )
         ) : (
           <>
             <TableScroll label="Sources needing attention">
@@ -239,9 +257,9 @@ export default async function BehaviorPage() {
                   {attention.slice(0, ATTENTION_LIMIT).map((row) => (
                     <tr key={row.key}>
                       <td className="cell-name cell-name-single" title={row.sourceName}>
-                        <a href={`/behavior/sources/${row.sourceId}`}>
+                        <Link href={`/behavior/sources/${row.sourceId}`}>
                           {row.sourceName}
-                        </a>
+                        </Link>
                       </td>
                       <td>
                         <span className={`pill pill-wrap ${stateTone(row.state)}`}>
@@ -296,12 +314,12 @@ export default async function BehaviorPage() {
                       </td>
                       <td className="num">{formatRatio(row.deviation)}</td>
                       <td className="num cell-when">
-                        <StartedAt value={formatDateTimeCompact(row.at)} />
+                        <UtcTime value={row.at} variant="compact" wrapZone />
                       </td>
                       <td>
-                        <a href={row.href}>
+                        <Link href={row.href}>
                           {row.href.startsWith("/anomalies") ? "Investigate" : "Detail"}
-                        </a>
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -325,43 +343,53 @@ export default async function BehaviorPage() {
         {recent.length === 0 ? (
           <div className="notice">No anomalies have been resolved yet.</div>
         ) : (
-          <TableScroll label="Recently resolved anomalies">
-            <table>
-              <caption className="sr-only">
-                Anomalies that closed after sustained normal behavior.
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Source</th>
-                  <th scope="col">Detector</th>
-                  <th scope="col">Severity</th>
-                  <th scope="col" className="num">
-                    Resolved
-                  </th>
-                  <th scope="col">
-                    <span className="sr-only">Detail</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((a) => (
-                  <tr key={a.id}>
-                    <td className="cell-name">{a.log_source_name ?? a.log_source_id}</td>
-                    <td>{detectorLabel(a.anomaly_type)}</td>
-                    <td>
-                      <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
-                        {a.severity}
-                      </span>
-                    </td>
-                    <td className="num">{formatDateTimeCompact(a.resolved_at)}</td>
-                    <td>
-                      <a href={`/anomalies/${a.id}`}>Investigate</a>
-                    </td>
+          <>
+            {summary.recently_resolved.length > RECENT_LIMIT && (
+              <p className="subtitle">
+                Latest {recent.length} of the {summary.recently_resolved.length} most recently
+                resolved anomalies.
+              </p>
+            )}
+            <TableScroll label="Recently resolved anomalies">
+              <table>
+                <caption className="sr-only">
+                  Anomalies that closed after sustained normal behavior.
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Source</th>
+                    <th scope="col">Detector</th>
+                    <th scope="col">Severity</th>
+                    <th scope="col" className="num">
+                      Resolved
+                    </th>
+                    <th scope="col">
+                      <span className="sr-only">Detail</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableScroll>
+                </thead>
+                <tbody>
+                  {recent.map((a) => (
+                    <tr key={a.id}>
+                      <td className="cell-name">{a.log_source_name ?? a.log_source_id}</td>
+                      <td>{detectorLabel(a.anomaly_type)}</td>
+                      <td>
+                        <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
+                          {a.severity}
+                        </span>
+                      </td>
+                      <td className="num">
+                        {<UtcTime value={a.resolved_at} variant="compact" />}
+                      </td>
+                      <td>
+                        <Link href={`/anomalies/${a.id}`}>Investigate</Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
+          </>
         )}
       </section>
 

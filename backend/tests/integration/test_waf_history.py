@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import uuid
 from contextlib import contextmanager
 from datetime import timedelta
@@ -11,6 +12,7 @@ from sqlalchemy import event, func, insert, select
 
 from app.collectors.waf_endpoint_collector import (
     WafCollectionReport,
+    WafEndpointCollector,
     _BreakdownResult,
     watermark_collector,
 )
@@ -33,6 +35,7 @@ from app.models.monitoring import CollectionWatermark
 from app.models.waf import WafEndpoint, WafEndpointMetric, WafSourceBucket
 from app.providers.dto import WafBreakdownBatch, WafBreakdownGroup
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from app.services.search_cadence import SearchCadenceService
 from app.services.waf_pipeline import (
@@ -452,7 +455,11 @@ async def test_waf_first_step_adds_one_count_statement_and_later_steps_add_none(
     count_sql = [sql for sql in first if "count(waf_endpoint.id)" in sql.lower()]
     assert len(count_sql) == 1
     assert not [sql for sql in later if "count(waf_endpoint.id)" in sql.lower()]
-    assert (len(first), len(later)) == (16, 16)
+    # HB-22 D3: a history step that searched clears a collection-watermark failure.
+    # The watermark is not loaded on this mid-reading path, so that is one
+    # conditional UPDATE on the first step and on each later step. Pin maintenance
+    # of the old (16, 16): the count query is still once, and only on the first step.
+    assert (len(first), len(later)) == (17, 17)
 
 
 async def test_scope_upsert_refreshes_loaded_rows_once_and_skips_unloaded_rows(
@@ -478,6 +485,8 @@ async def test_scope_upsert_refreshes_loaded_rows_once_and_skips_unloaded_rows(
             "started_at": T0,
             "finished_at": T0 + STEP if state == "PARTIAL" else None,
             "reason": "stopped by operator" if state == "PARTIAL" else None,
+            "last_error_class": None,
+            "last_error_at": None,
             "progress": {},
         }
 
@@ -538,6 +547,8 @@ async def test_waf_stop_before_an_unstepped_reading_keeps_existing_evidence(
                 "started_at": T0,
                 "finished_at": None,
                 "reason": "read history now: topping up",
+                "last_error_class": None,
+                "last_error_at": None,
                 "progress": {},
             }
         ]
@@ -951,6 +962,8 @@ async def test_worker_failure_rolls_back_rows_and_progress_then_resumes(
                 "started_at": T0,
                 "finished_at": None,
                 "reason": "test starts at a proved floor",
+                "last_error_class": None,
+                "last_error_at": None,
                 "progress": encode_progress(progress),
             }
         ]
@@ -977,7 +990,19 @@ async def test_worker_failure_rolls_back_rows_and_progress_then_resumes(
         (instance_id, HistoryFamily.WAF.value, scope_key),
     )
     assert scope is not None
+    assert scope.state == HistoryState.READING.value
     assert scope.through is None
+    assert scope.last_error_class == "RuntimeError"
+    assert scope.last_error_at == T0 + STEP + timedelta(seconds=5)
+    failed_watermark = await db_session.scalar(
+        select(CollectionWatermark).where(
+            CollectionWatermark.instance_id == instance_id,
+            CollectionWatermark.collector == collection_key,
+        )
+    )
+    assert failed_watermark is not None
+    assert failed_watermark.consecutive_failures == 1
+    assert failed_watermark.collection_metadata["last_error_class"] == "RuntimeError"
 
     monkeypatch.setattr(HistoryBackfillRepository, "write_scopes", original)
     resumed = await run_waf_source(
@@ -994,6 +1019,7 @@ async def test_worker_failure_rolls_back_rows_and_progress_then_resumes(
     assert scope.through == T0
     assert scope.state == HistoryState.COMPLETE.value
     assert scope.anchor == T0 + STEP
+    assert scope.last_error_class is None and scope.last_error_at is None
     collection_wm = await db_session.scalar(
         select(CollectionWatermark).where(
             CollectionWatermark.instance_id == instance_id,
@@ -1020,6 +1046,22 @@ async def test_worker_failure_rolls_back_rows_and_progress_then_resumes(
     assert (await db_session.get(WafSourceBucket, (source_id, T0))).origin == "HISTORY"  # type: ignore[union-attr]
     first_live = await db_session.get(WafSourceBucket, (source_id, T0 + STEP))
     assert first_live is not None and first_live.origin == "LIVE"
+
+    async def crash_complete_scope(self, profile):  # type: ignore[no-untyped-def]
+        raise RuntimeError("failure after the history hand-off")
+
+    monkeypatch.setattr(WafSourcePipeline, "run", crash_complete_scope)
+    failed_complete = await run_waf_source(
+        db_session,
+        profile_id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: T0 + 3 * STEP + timedelta(seconds=5),
+    )
+    assert failed_complete["status"] == "failed"
+    await db_session.refresh(scope)
+    assert scope.state == HistoryState.COMPLETE.value
+    assert scope.last_error_class is None and scope.last_error_at is None
 
 
 async def test_history_writer_statement_count_is_constant_at_scale(db_session) -> None:  # type: ignore[no-untyped-def]
@@ -1205,6 +1247,8 @@ async def test_empty_history_handoff_keeps_null_watermarks_then_live_seeds(db_se
                 "started_at": T0,
                 "finished_at": None,
                 "reason": "nothing settled",
+                "last_error_class": None,
+                "last_error_at": None,
                 "progress": encode_progress(progress),
             }
         ]
@@ -1399,6 +1443,8 @@ async def reading_scope(  # type: ignore[no-untyped-def]
                 "started_at": body.started_at,
                 "finished_at": None,
                 "reason": "test starts at a proved floor",
+                "last_error_class": None,
+                "last_error_at": None,
                 "progress": encode_progress(body),
             }
         ]
@@ -1810,6 +1856,9 @@ async def test_a_provider_failure_mid_step_writes_nothing_and_retries_narrower(
         (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
     )
     assert scope is not None and scope.through is None
+    assert scope.state == HistoryState.READING.value
+    assert scope.last_error_class == "ProviderUnavailableError"
+    assert scope.last_error_at == T0 + 2 * STEP + timedelta(seconds=5)
     assert await db_session.scalar(select(WafSourceBucket)) is None
 
     provider.fail_keyed_volume_at.clear()
@@ -1822,12 +1871,142 @@ async def test_a_provider_failure_mid_step_writes_nothing_and_retries_narrower(
     )
     assert resumed["status"] == "history_handoff"
     assert resumed["history_state"] == HistoryState.COMPLETE.value
+    await db_session.refresh(scope)
+    assert scope.last_error_class is None and scope.last_error_at is None
     starts = (
         await db_session.scalars(
             select(WafSourceBucket.bucket_start).order_by(WafSourceBucket.bucket_start)
         )
     ).all()
     assert list(starts) == [T0, T0 + STEP]
+
+
+async def test_a_capacity_refusal_defers_volume_without_changing_scope_progress(
+    db_session,  # type: ignore[no-untyped-def]
+) -> None:
+    settings = cfg(history_backfill_days=7, history_backfill_max_lower_bound_share=1.0)
+    provider = ScriptedWaf({T0: [("/deferred", "GET", 40)]})
+    profile, source, instance, _ = await make_source(db_session, provider, settings)
+    await reading_scope(
+        db_session,
+        instance_id=instance.id,
+        scope_key=str(source.qradar_id),
+        target_start=T0,
+        floor=T0,
+    )
+    scope = await db_session.get(
+        HistoryBackfillScope,
+        (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
+    )
+    assert scope is not None
+    scope.last_error_class = "EarlierProviderError"
+    scope.last_error_at = T0
+    await db_session.commit()
+    before_progress = copy.deepcopy(scope.progress)
+    original = provider.get_waf_observations_bucketed
+
+    async def refuse_history(**kwargs):  # type: ignore[no-untyped-def]
+        if kwargs["window_start"] == T0:
+            assert _ARIEL_PRIORITY.get() == "background"
+            raise ArielPermitUnavailable(7, 2, 4)
+        return await original(**kwargs)
+
+    provider.get_waf_observations_bucketed = refuse_history  # type: ignore[method-assign]
+    result = await run_waf_source(
+        db_session,
+        profile.id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: T0 + 2 * STEP + timedelta(seconds=5),
+    )
+
+    assert result["status"] == "history_reading"
+    yielded = await db_session.get(
+        HistoryBackfillScope,
+        (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
+        populate_existing=True,
+    )
+    assert yielded is not None and yielded.state == HistoryState.READING.value
+    assert yielded.through is None and yielded.progress == before_progress
+    assert yielded.last_error_class == "EarlierProviderError"
+    assert yielded.last_error_at == T0
+    assert yielded.reason == "deferred: no Ariel permit within 7 s"
+    assert await db_session.scalar(select(WafSourceBucket)) is None
+    assert _ARIEL_PRIORITY.get() == "live"
+
+
+async def test_a_capacity_refusal_defers_breakdown_without_changing_scope_progress(
+    db_session,  # type: ignore[no-untyped-def]
+) -> None:
+    settings = cfg(**OUTCOMES_ON, history_backfill_days=7)
+    provider = ScriptedWaf({T0: [("/deferred-breakdown", "GET", 40)]})
+    profile, source, instance, _ = await make_source(db_session, provider, settings)
+    boundary = T0 + 2 * STEP
+    await reading_scope(
+        db_session,
+        instance_id=instance.id,
+        scope_key=str(source.qradar_id),
+        target_start=T0,
+        floor=T0,
+        through=T0 + STEP,
+        state=HistoryState.COMPLETE,
+        anchor=boundary,
+    )
+    scope = await db_session.get(
+        HistoryBackfillScope,
+        (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
+    )
+    assert scope is not None
+    scope.last_error_class = "EarlierProviderError"
+    scope.last_error_at = T0
+    db_session.add(
+        CollectionWatermark(
+            instance_id=instance.id,
+            collector=watermark_collector(source),
+            watermark_at=boundary - STEP,
+        )
+    )
+    await db_session.commit()
+    before_progress = copy.deepcopy(scope.progress)
+    before_through = scope.through
+    searched = False
+    original_single = provider.get_waf_breakdown
+    original_keyed = provider.get_waf_breakdown_bucketed
+
+    async def refuse_background(**kwargs):  # type: ignore[no-untyped-def]
+        nonlocal searched
+        if _ARIEL_PRIORITY.get() == "background":
+            searched = True
+            raise ArielPermitUnavailable(7, 2, 4)
+        if "bucket_seconds" in kwargs:
+            return await original_keyed(**kwargs)
+        return await original_single(**kwargs)
+
+    provider.get_waf_breakdown = refuse_background  # type: ignore[method-assign]
+    provider.get_waf_breakdown_bucketed = refuse_background  # type: ignore[method-assign]
+    result = await run_waf_source(
+        db_session,
+        profile.id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: boundary + timedelta(seconds=5),
+    )
+
+    assert searched
+    assert result["history_state"] == HistoryState.COMPLETE.value
+    assert result["history_reason"] == "deferred: no Ariel permit within 7 s"
+    yielded = await db_session.get(
+        HistoryBackfillScope,
+        (instance.id, HistoryFamily.WAF.value, str(source.qradar_id)),
+        populate_existing=True,
+    )
+    assert yielded is not None and yielded.state == HistoryState.COMPLETE.value
+    assert yielded.through == before_through
+    assert yielded.progress == before_progress
+    assert yielded.last_error_class == "EarlierProviderError"
+    assert yielded.last_error_at == T0
+    assert yielded.reason == "deferred: no Ariel permit within 7 s"
+    assert _ARIEL_PRIORITY.get() == "live"
 
 
 async def test_a_locked_source_runs_no_history_step(db_session, db_schema) -> None:  # type: ignore[no-untyped-def]
@@ -1954,3 +2133,108 @@ async def test_the_pipeline_hands_off_the_scope_anchor_as_the_novelty_end(
     assert T0.isoformat() in established.evidence.reason
     assert fresh.signal is DetectorSignal.ANOMALOUS
     assert "established endpoint" not in fresh.evidence.reason
+
+
+async def test_a_recovered_history_run_clears_the_collection_watermark(
+    db_session, monkeypatch  # type: ignore[no-untyped-def]
+) -> None:
+    """HB-22 D3: a failed history run records; the next clean history run clears it."""
+    settings = cfg(
+        history_backfill_days=7,
+        history_backfill_searches_per_tick=1,
+        history_backfill_max_lower_bound_share=1.0,
+    )
+    boundary = T0 + STEP
+    target = boundary - timedelta(days=7)
+    provider = ScriptedWaf(
+        {
+            target - timedelta(hours=24): [("/floor", "GET", 40)],
+            target: [("/history", "GET", 40)],
+        }
+    )
+    profile, source, instance, _ = await make_source(db_session, provider, settings)
+    profile_id = profile.id
+    instance_id = instance.id
+    scope_key = str(source.qradar_id)
+    collector_name = watermark_collector(source)
+    await HistoryBackfillRepository(db_session).record_decision(
+        instance_id,
+        answer="YES",
+        days=7,
+        source="UI",
+        decided_by="operator",
+        at=T0,
+    )
+    await db_session.commit()
+    original = WafEndpointCollector.history_volume_step
+
+    async def broken(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        raise RuntimeError("history step lost the permit")
+
+    monkeypatch.setattr(WafEndpointCollector, "history_volume_step", broken)
+    failed = await run_waf_source(
+        db_session,
+        profile_id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: boundary + timedelta(seconds=5),
+    )
+    assert failed["status"] == "failed"
+    failed_wm = await db_session.scalar(
+        select(CollectionWatermark).where(
+            CollectionWatermark.instance_id == instance_id,
+            CollectionWatermark.collector == collector_name,
+        )
+    )
+    assert failed_wm is not None
+    assert failed_wm.consecutive_failures == 1
+    assert failed_wm.last_error == "RuntimeError"
+    # The clean run must take the conditional UPDATE, not a loaded object.
+    db_session.expunge(failed_wm)
+
+    monkeypatch.setattr(WafEndpointCollector, "history_volume_step", original)
+    clean = await run_waf_source(
+        db_session,
+        profile_id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: boundary + timedelta(seconds=5),
+    )
+    assert clean["status"] == "history_reading"
+    scope = await db_session.get(
+        HistoryBackfillScope,
+        (instance_id, HistoryFamily.WAF.value, scope_key),
+    )
+    assert scope is not None and scope.state == HistoryState.READING.value
+    cleared = await db_session.scalar(
+        select(CollectionWatermark)
+        .where(
+            CollectionWatermark.instance_id == instance_id,
+            CollectionWatermark.collector == collector_name,
+        )
+        .execution_options(populate_existing=True)
+    )
+    assert cleared is not None
+    assert cleared.consecutive_failures == 0
+    assert cleared.last_error is None
+
+    monkeypatch.setattr(WafEndpointCollector, "history_volume_step", broken)
+    again = await run_waf_source(
+        db_session,
+        profile_id,
+        provider_factory=lambda _instance: provider,
+        settings=settings,
+        clock=lambda: boundary + timedelta(seconds=5),
+    )
+    assert again["status"] == "failed"
+    recorded = await db_session.scalar(
+        select(CollectionWatermark)
+        .where(
+            CollectionWatermark.instance_id == instance_id,
+            CollectionWatermark.collector == collector_name,
+        )
+        .execution_options(populate_existing=True)
+    )
+    assert recorded is not None
+    assert recorded.consecutive_failures == 1
+    assert recorded.last_error == "RuntimeError"

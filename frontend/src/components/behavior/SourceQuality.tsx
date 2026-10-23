@@ -15,14 +15,13 @@ import {
   type CollectionHealth,
 } from "@/lib/sourceDetail";
 import { formatMetric } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { formatShare } from "@/lib/format";
+import { relativeAgeFromSeconds } from "@/lib/time";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 function lagText(seconds: number | null): string {
-  if (seconds == null) return "—";
-  if (seconds < 90) return `${Math.round(seconds)}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 90) return `${minutes}m ago`;
-  return `${Math.round(minutes / 60)}h ago`;
+  return relativeAgeFromSeconds(seconds);
 }
 
 export function SourceQuality({
@@ -69,7 +68,7 @@ export function SourceQuality({
               <div>
                 <dt>Cell completeness</dt>
                 <dd className="num">
-                  {(baseline.cell.completeness * 100).toFixed(0)}%
+                  {formatShare(baseline.cell.completeness)}
                 </dd>
               </div>
               <div>
@@ -113,7 +112,7 @@ export function SourceQuality({
             <dt>Latest collected interval</dt>
             <dd className="num">
               {lastBucketAt ? (
-                <time dateTime={lastBucketAt}>{formatDateTime(lastBucketAt)}</time>
+                <UtcTime value={lastBucketAt} />
               ) : (
                 <span className="muted">—</span>
               )}

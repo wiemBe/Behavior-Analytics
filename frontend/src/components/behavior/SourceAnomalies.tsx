@@ -1,3 +1,4 @@
+import Link from "next/link";
 // A source's anomalies, split by whether they still need work.
 //
 // The split is derived from the lifecycle state, never from `resolved_at IS
@@ -14,7 +15,8 @@ import {
   formatRatio,
   stateTone,
 } from "@/lib/behavior";
-import { formatDateTimeCompact } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 function AnomalyTable({
   anomalies,
@@ -62,9 +64,7 @@ function AnomalyTable({
               </td>
               <td className="num">{formatRatio(a.deviation_ratio)}</td>
               <td className="num">
-                <time dateTime={a.anomaly_start ?? a.detected_at}>
-                  {formatDateTimeCompact(a.anomaly_start ?? a.detected_at)}
-                </time>
+                <UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />
               </td>
               <td>
                 <span className={`pill pill-quiet ${evidenceTone(a.evidence_status)}`}>
@@ -73,7 +73,7 @@ function AnomalyTable({
               </td>
               <td className="row-actions">
                 <div className="row-actions-inner">
-                  <a href={`/anomalies/${a.id}`}>Open</a>
+                  <Link href={`/anomalies/${a.id}`}>Open</Link>
                   <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
                     {a.severity}
                   </span>
@@ -90,42 +90,31 @@ function AnomalyTable({
 export function SourceAnomalies({
   active,
   recent,
-  failed,
+  activeFailed,
+  recentFailed,
   windowLabel,
   unjudged,
 }: {
   active: AnomalySummary[];
   recent: AnomalySummary[];
-  /** The anomaly request failed; absence here is not an absence of anomalies. */
-  failed: boolean;
+  /** The unwindowed active read failed, so current incident state is unknown. */
+  activeFailed: boolean;
+  /** The windowed history read failed, so recently closed rows are unknown. */
+  recentFailed: boolean;
   windowLabel: string;
   /** The source has no adequate baseline, so nothing has judged it. */
   unjudged: boolean;
 }) {
-  if (failed) {
-    return (
-      <div className="notice" role="alert">
-        Anomaly history could not be loaded for this source. This is a failed
-        request, not an absence of anomalies.
-      </div>
-    );
-  }
-
-  if (active.length === 0 && recent.length === 0) {
-    return (
-      <div className="notice">
-        {unjudged
-          ? "No anomalies — but this source has no adequate baseline, so no detector has judged it. This is not a clean result."
-          : `No anomalies were detected in the last ${windowLabel}.`}
-      </div>
-    );
-  }
-
   return (
     <div className="stack-6">
       <div>
         <h3>Needs attention</h3>
-        {active.length === 0 ? (
+        {activeFailed ? (
+          <p className="notice" role="alert">
+            The active incident list could not be loaded for this source. Whether an incident
+            is currently open, a candidate, or recovering is unknown.
+          </p>
+        ) : active.length === 0 ? (
           <p className="subtitle">
             No incident is currently open, a candidate, or recovering for this
             source.
@@ -141,9 +130,16 @@ export function SourceAnomalies({
 
       <div>
         <h3>Recently closed</h3>
-        {recent.length === 0 ? (
+        {recentFailed ? (
+          <p className="notice" role="alert">
+            Anomaly history could not be loaded for this source. This is a failed request, not
+            an absence of anomalies.
+          </p>
+        ) : recent.length === 0 ? (
           <p className="subtitle">
-            Nothing has closed for this source in this window.
+            {unjudged
+              ? "No anomalies — but this source has no adequate baseline, so no detector has judged it. This is not a clean result."
+              : `No anomalies were detected in the last ${windowLabel}.`}
           </p>
         ) : (
           <AnomalyTable

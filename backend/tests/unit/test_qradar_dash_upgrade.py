@@ -43,8 +43,11 @@ HOST_TOOLS = (
     "readlink",
     "rm",
     "sed",
+    "sha256sum",
     "sort",
     "tail",
+    "tar",
+    "find",
     "tr",
 )
 
@@ -103,6 +106,9 @@ fi
 if [ "$1 $2" = "image inspect" ]; then
   subject=${!#}
   [ "${STUB_OFFLINE_MISSING:-0}" -eq 0 ] || exit 1
+  [ "${STUB_HELPER_MISSING:-0}" -eq 0 ] || {
+    case "$subject" in alpine:*@sha256:* ) exit 1 ;; esac
+  }
   if [ "$3" = "--format" ]; then
     if [ "${STUB_IMAGE_ID_MISMATCH:-0}" -eq 1 ]; then
       printf 'sha256:%064x\n' 999
@@ -120,6 +126,14 @@ case "$*" in
     printf '%b' "$STUB_NOTES"
     ;;
   *" ps -a -q")
+    if [ -n "${STUB_DIGEST_CALLS:-}" ]; then
+      count=$(cat "$STUB_DIGEST_CALLS" 2>/dev/null || echo 0)
+      count=$((count + 1))
+      printf '%s\n' "$count" > "$STUB_DIGEST_CALLS"
+      if [ -n "${STUB_DIGEST_FAIL_FROM:-}" ] && [ "$count" -ge "$STUB_DIGEST_FAIL_FROM" ]; then
+        exit 1
+      fi
+    fi
     printf '%s\n' postgres-container redis-container backend-container \
       frontend-container proxy-container
     ;;
@@ -129,6 +143,10 @@ case "$*" in
     exit 0
     ;;
   *" ps --all --format "*)
+    if [ -n "${STUB_PS_ROWS:-}" ] && [ "${STUB_UP_FAIL_VERSION:-}" = "$env_version" ]; then
+      printf '%b\n' "$STUB_PS_ROWS"
+      exit 0
+    fi
     if [ "$(cat "$STUB_RUNNING")" -eq 1 ]; then
       printf '%b\n' 'postgres\trunning\thealthy\t0' 'redis\trunning\thealthy\t0' \
         'backend\trunning\thealthy\t0' 'celery-worker\trunning\thealthy\t0' \
@@ -154,7 +172,10 @@ case "$*" in
     printf 'SQL:%s\n' "$query" >> "$STUB_ACTIONS"
     case "$query" in
       *pg_database_size*) printf '%s\n' "$STUB_DB_SIZE" ;;
-      *"SELECT version_num FROM alembic_version"*) printf '%s\n' 0025 ;;
+      *"SELECT version_num FROM alembic_version"*)
+        if [ "${STUB_DB_REVISION:-0025}" = none ]; then exit 0; fi
+        printf '%s\n' "${STUB_DB_REVISION:-0025}"
+        ;;
       *"SELECT count(*)"*) printf '%s\n' 1 ;;
     esac
     ;;
@@ -179,7 +200,7 @@ case "$*" in
     printf '%s\n' fixture-dump > "$target"
     ;;
   *" cp "*" postgres:"*) ;;
-  run\ --rm\ -v\ *) printf '%s\n' fixture-secrets-tar ;;
+  run\ --rm\ --network\ none\ --cap-drop\ ALL\ *) printf '%s\n' fixture-secrets-tar ;;
   *)
     printf 'unexpected docker call: %s\n' "$*" >&2
     exit 97
@@ -219,6 +240,17 @@ CURL_STUB = r"""#!/bin/bash
 url=${!#}
 running_version=$(cat "$STUB_RUNNING_VERSION")
 if [[ " $* " == *" -w "* ]]; then
+  case "$url" in
+    */health/ready)
+      if [ "${STUB_HEALTH_FAIL_VERSION:-}" = all ] \
+        || [ "${STUB_HEALTH_FAIL_VERSION:-}" = "$running_version" ]; then
+        printf '%s\n' 000
+        exit 22
+      fi
+      printf '%s\n' "${STUB_READY_CODE:-200}"
+      exit 0
+      ;;
+  esac
   printf '%s\n' 200
   exit 0
 fi
@@ -233,10 +265,17 @@ case "$url" in
     ;;
   */version)
     printf '%s\n' 'curl version' >> "$STUB_ACTIONS"
+    if [ "${STUB_VERSION_FAIL:-0}" = 1 ]; then exit 22; fi
     if [ "${STUB_WRONG_VERSION_FOR:-}" = "$running_version" ]; then
-      printf '%s\n' '{"version":"9.9.9"}'
+      version_json=9.9.9
     else
-      printf '{"version":"%s"}\n' "$running_version"
+      version_json=$running_version
+    fi
+    if [ "${STUB_IMAGE_HEAD:-0025}" = missing ]; then
+      printf '{"version":"%s"}\n' "$version_json"
+    else
+      printf '{"version":"%s","migration_head":"%s"}\n' \
+        "$version_json" "${STUB_IMAGE_HEAD:-0025}"
     fi
     ;;
   *) exit 22 ;;
@@ -252,6 +291,14 @@ case "$target" in
     ;;
   .qradar-dash/state.json)
     printf '%s\n' state-write >> "$STUB_ACTIONS"
+    if [ -n "${STUB_STATE_WRITES:-}" ]; then
+      count=$(cat "$STUB_STATE_WRITES" 2>/dev/null || echo 0)
+      count=$((count + 1))
+      printf '%s\n' "$count" > "$STUB_STATE_WRITES"
+      if [ -n "${STUB_STATE_FAIL_FROM:-}" ] && [ "$count" -ge "$STUB_STATE_FAIL_FROM" ]; then
+        exit 23
+      fi
+    fi
     [ "${STUB_MV_FAIL_STATE:-0}" -eq 0 ] || exit 23
     ;;
 esac
@@ -271,6 +318,12 @@ class UpgradeFixture:
         shutil.copy(SCRIPT, self.script)
         self.script.chmod(0o755)
         (self.root / "VERSION").write_text(f"{TARGET_VERSION}\n")  # the checkout is at the target
+        # offline upgrade reads the pinned redis reference from the checkout's compose file,
+        # and the pre-upgrade backup reads the pinned secrets helper from the helper script
+        shutil.copy(REPO / "docker-compose.prod.yml", self.root / "docker-compose.prod.yml")
+        deploy = self.root / "deploy"
+        deploy.mkdir()
+        shutil.copy(REPO / "deploy" / "load-secrets.sh", deploy / "load-secrets.sh")
         self.backup_root = tmp_path / "backups"
         self.backup_root.mkdir(mode=0o700)
         self.docker_root = tmp_path / "docker-root"
@@ -488,14 +541,22 @@ def test_checkout_of_another_version_is_refused_before_pull_or_stop(
     assert (upgrade.state_dir / "state.json").read_bytes() == before
 
 
-def test_checkout_without_a_version_file_is_refused_as_unknown(
+def test_checkout_without_a_version_file_is_refused_as_incomplete(
     upgrade: UpgradeFixture,
 ) -> None:
     (upgrade.root / "VERSION").unlink()
 
     result = upgrade.run("upgrade", TARGET_VERSION)
 
-    _assert_checkout_refused(upgrade, result, "unknown")
+    assert result.returncode == 1, output(result)
+    assert (
+        "VERSION is missing or unreadable; this checkout is incomplete; restore VERSION and run "
+        f"./qradar-dash upgrade {TARGET_VERSION} again"
+    ) in result.stderr
+    actions = upgrade.action_text()
+    for call in (" pull ", " stop ", " up "):
+        assert call not in actions
+    assert "state-write" not in actions
 
 
 def test_checkout_check_runs_before_the_state_file_is_read(upgrade: UpgradeFixture) -> None:
@@ -1142,3 +1203,146 @@ def test_manual_rollback_without_stdin_refuses(upgrade: UpgradeFixture) -> None:
 
     assert result.returncode != 0
     assert_no_stop(upgrade)
+
+
+def test_status_rejects_an_unknown_argument(upgrade: UpgradeFixture) -> None:
+    result = upgrade.run("status", "extra")
+
+    assert result.returncode == 2
+    assert "unknown status argument: extra" in result.stderr
+    assert "usage: ./qradar-dash status" in result.stderr
+
+
+def test_status_help_exits_zero(upgrade: UpgradeFixture) -> None:
+    result = upgrade.run("status", "--help")
+
+    assert result.returncode == 0
+    assert "repair-state" in result.stdout
+
+
+def test_support_bundle_rejects_an_unknown_argument(upgrade: UpgradeFixture) -> None:
+    result = upgrade.run("support-bundle", "nope")
+
+    assert result.returncode == 2
+    assert "unknown support-bundle argument: nope" in result.stderr
+
+
+def test_healthy_upgrade_digest_failure_says_not_to_roll_back(upgrade: UpgradeFixture) -> None:
+    calls = upgrade.actions.parent / "digest-calls"
+    calls.write_text("0\n")
+
+    result = upgrade.run(
+        "upgrade",
+        TARGET_VERSION,
+        STUB_DIGEST_CALLS=str(calls),
+        STUB_DIGEST_FAIL_FROM="3",
+    )
+
+    assert result.returncode != 0, output(result)
+    assert "The upgrade itself succeeded; do not roll back." in result.stdout
+    assert "Repair the record: ./qradar-dash repair-state" in result.stdout
+    assert f"Running now: version {TARGET_VERSION}, healthy" in result.stdout
+    assert upgrade.state()["last_upgrade"]["outcome"] == "failed"  # type: ignore[index]
+
+
+def test_healthy_upgrade_state_write_failure_says_not_to_roll_back(
+    upgrade: UpgradeFixture,
+) -> None:
+    writes = upgrade.actions.parent / "state-writes"
+    writes.write_text("0\n")
+
+    result = upgrade.run(
+        "upgrade",
+        TARGET_VERSION,
+        STUB_STATE_WRITES=str(writes),
+        STUB_STATE_FAIL_FROM="2",
+    )
+
+    assert result.returncode != 0, output(result)
+    assert "The upgrade itself succeeded; do not roll back." in result.stdout
+    assert "state file write failed; the previous state was kept" in result.stderr
+    assert upgrade.state()["last_upgrade"]["outcome"] == "failed"  # type: ignore[index]
+
+
+def test_manual_rollback_digest_failure_says_not_to_roll_back_again(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    calls = upgrade.actions.parent / "digest-calls"
+    calls.write_text("0\n")
+
+    result = upgrade.run(
+        "rollback",
+        "--non-interactive",
+        "--yes",
+        STUB_DIGEST_CALLS=str(calls),
+        STUB_DIGEST_FAIL_FROM="1",
+    )
+
+    assert result.returncode != 0, output(result)
+    assert "The rollback itself succeeded; do not roll back again." in result.stdout
+    assert "./qradar-dash repair-state" in result.stdout
+    assert "healthy" in result.stdout
+    assert upgrade.state()["last_upgrade"]["outcome"] == "failed"  # type: ignore[index]
+
+
+def test_manual_rollback_final_write_failure_says_not_to_roll_back_again(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    writes = upgrade.actions.parent / "state-writes"
+    writes.write_text("0\n")
+
+    result = upgrade.run(
+        "rollback",
+        "--non-interactive",
+        "--yes",
+        STUB_STATE_WRITES=str(writes),
+        STUB_STATE_FAIL_FROM="2",
+    )
+
+    assert result.returncode != 0, output(result)
+    assert "The rollback itself succeeded; do not roll back again." in result.stdout
+    assert "state file write failed; the previous state was kept" in result.stderr
+    assert upgrade.state()["last_upgrade"]["outcome"] == "failed"  # type: ignore[index]
+
+
+def test_manual_rollback_intermediate_write_failure_names_the_repair(
+    upgrade: UpgradeFixture,
+) -> None:
+    _rollback_ready(upgrade)
+    writes = upgrade.actions.parent / "state-writes"
+    writes.write_text("0\n")
+
+    result = upgrade.run(
+        "rollback",
+        "--non-interactive",
+        "--yes",
+        STUB_STATE_WRITES=str(writes),
+        STUB_STATE_FAIL_FROM="1",
+    )
+
+    assert result.returncode != 0, output(result)
+    assert "The rollback ran." in result.stdout
+    assert "The state file .qradar-dash/state.json could not be written" in result.stdout
+    assert "last_upgrade outcome success" in result.stdout
+    assert "fix permissions of .qradar-dash, then run ./qradar-dash repair-state" in result.stdout
+    # The generic repair sentence would send the operator to a command that refuses here.
+    assert "The rollback itself succeeded; do not roll back again." not in result.stdout
+    assert "Repair the record: ./qradar-dash repair-state" not in result.stdout
+    assert upgrade.state()["last_upgrade"]["outcome"] == "success"  # type: ignore[index]
+
+
+def test_unhealthy_upgrade_service_is_named(upgrade: UpgradeFixture) -> None:
+    result = upgrade.run(
+        "upgrade",
+        TARGET_VERSION,
+        STUB_UP_FAIL_VERSION=TARGET_VERSION,
+        STUB_PS_ROWS=r"celery-worker\texited\t\t1",
+    )
+
+    assert result.returncode != 0, output(result)
+    assert "a required service was not healthy within 180 seconds" in result.stderr
+    assert "celery-worker is exited" in result.stderr
+    assert "./qradar-dash logs celery-worker" in result.stderr
+    assert "./qradar-dash doctor" in result.stderr

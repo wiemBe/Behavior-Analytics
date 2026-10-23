@@ -19,6 +19,7 @@ import { WafRequestChart } from "@/components/waf/WafRequestChart";
 import { buildBaselineLookup } from "@/components/waf/wafBaseline";
 import { bucketWidth } from "@/components/waf/wafFormat";
 import { useApiResource } from "@/hooks/useApiResource";
+import { bucketsAsOf } from "@/lib/home/asOf";
 import {
   homeReads,
   type BucketSeries,
@@ -123,10 +124,19 @@ export function WafEndpointTraffic({
       badge={(view && badgeText(view.qualifiers)) || undefined}
       link={
         sourceId && !gone
-          ? { href: `/behavior/waf/sources/${sourceId}`, label: "Endpoints" }
+          ? {
+              href: `/behavior/waf/sources/${sourceId}`,
+              label: "Source endpoints",
+              ariaLabel:
+                "Open this source's endpoint list. It cannot select this endpoint.",
+            }
           : { href: "/behavior/waf", label: "WAF" }
       }
       state={state}
+      dataTo={{
+        at: !configured || gone || series.status !== "ok" ? null : bucketsAsOf(series.data.buckets),
+        family: "WAF_COLLECTION",
+      }}
       what="the endpoint's request series"
       permission="read:anomalies"
       fillBody

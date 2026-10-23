@@ -15,9 +15,10 @@ import { useEffect, useMemo, useRef } from "react";
 
 import type { CustomRulePreview } from "@/lib/api";
 import { readChartPalette, type ChartPalette } from "@/lib/chartPalette";
-import { formatDateTime } from "@/lib/health";
 
 import type { EChartsOption } from "echarts";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
+
 
 echarts.use([
   LineChart,
@@ -51,7 +52,7 @@ export function previewTooltip(
         : `${bucket.value} ${preview.unit}`;
   return [
     safeSubject,
-    formatDateTime(bucket.bucket_start),
+    utcTimeHtml(bucket.bucket_start),
     `Reading: ${value}`,
     `Measurement: ${bucket.measurement}`,
     bucket.completeness ? `Completeness: ${bucket.completeness}` : "",

@@ -171,13 +171,17 @@ New file `.github/workflows/release.yml`. Trigger: a tag `v*`. The workflow:
    ([INSTALL.md](INSTALL.md) "Clone the repository"), not a side effect of a release.
 2. Fails if the tag does not equal `v` + `VERSION`.
 3. Runs the gates. Backend, from `backend/`: ruff, `mypy app` (the result must be
-   zero errors; today's CI swallows mypy with `|| true` at
-   `.github/workflows/ci.yml:48`), `alembic upgrade head` and `alembic check`
-   (the same steps as `.github/workflows/ci.yml:57-69`), then pytest. Frontend:
-   `npm ci`, lint, typecheck, vitest, build. CI today runs `npm install` and does
-   not run lint or vitest (`.github/workflows/ci.yml:82-92`). The release workflow
-   runs the full gate. OPS-3 updates the pull-request workflow to the same
-   commands so a red release is not the first time the gate runs.
+   zero errors), `alembic upgrade head` and `alembic check`, then pytest. These
+   are the `Lint`, `Type check`, `Prepare migration-check database`,
+   `Migration drift check (alembic check)` and `Unit tests` steps of the
+   `backend-static` and `backend-unit` jobs of `ci.yml`, and the `Integration
+   tests` step of its five `backend-integration` jobs; the last one runs
+   `pytest -rs -m integration --durations=15 $(python scripts/ci_shard.py --shard
+   N --of 5)`. Frontend:
+   `npm ci`, lint, typecheck, vitest, build — the `Install`, `Lint`, `Type check`,
+   `Unit tests` and `Build` steps of the frontend job of `ci.yml`. The release
+   workflow runs the full gate. OPS-3 has updated the pull-request workflow to
+   the same commands so a red release is not the first time the gate runs.
 4. Builds and pushes the images in §2.2.
 5. Writes a GitHub Release whose body is `docs/releases/<version>.md`. The release
    is a convenience. The image copy is the one `upgrade` trusts.
@@ -200,6 +204,10 @@ GHCR lowercases the owner and the image name. The repository is
 `ghcr.io/wiembe/behavior-analytics/`. Releases `0.1.0` and `0.1.1` were pushed under the earlier
 name `ghcr.io/wiembe/qradar-dashboard/` and stay there; `upgrade` moves an installed site to the
 new prefix (OPS-17).
+
+Every `FROM` in the four Dockerfiles is pinned `TAG@sha256:<digest>`. The release's
+digest step (the `redis` job) resolves each of those pins and the redis pin, and fails when one no
+longer resolves; how to bump one is in [`DEVELOPMENT.md`](DEVELOPMENT.md) "Base image pins".
 
 The production compose file sets `image:` to those names and keeps `build:` so
 `--build` still works. `docker compose pull` is the default. `docker compose build`
@@ -247,18 +255,19 @@ origin is same-origin. One image serves every site. The hostname lives in
 
 ### 2.4 Lockfile
 
-The backend image installs from floating ranges:
+The backend image installs from the hashed lock:
 
 ```
-COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install .
+COPY requirements.txt ./
+RUN pip install --upgrade pip && pip install --require-hashes -r requirements.txt
 ```
 
 (`backend/Dockerfile:13-16`), then `pip install --no-deps -e .`
-(`backend/Dockerfile:18-19`). `backend/pyproject.toml:6-30` is `>=` ranges. CI does
-the same with `pip install -e '.[dev]'` (`.github/workflows/ci.yml:39-40`). Two
-builds on two days can ship different dependency trees. The frontend already
-installs from its lock (`frontend/Dockerfile:4-8`), including the `postcss` override
+(`backend/Dockerfile:42`). `backend/pyproject.toml:6-30` is `>=` ranges; the lock
+is what pins them. CI installs the same lock plus the dev lock (the
+`Install backend` step of `ci.yml`). Without the lock, two builds on two days
+could ship different dependency trees. The frontend already installs from its lock
+(`frontend/Dockerfile:4-8`), including the `postcss` override
 (`frontend/package.json:35-37`). PostCSS runs at `next build` only (T-117). The
 production image must keep that override, which `npm ci` does and a fresh resolve
 might not.
@@ -322,21 +331,53 @@ the MCP image is already built, and the default install does not start MCP.
 
 ### 2.6 Offline bundle and `--build`
 
-**[design]** `qradar-dash bundle`, run on a machine that can pull, writes
-`qradar-dash-<version>-bundle.tar` containing:
+**Built (OPS-21a).** `./qradar-dash bundle [--version X.Y.Z] [--output DIR]` (`cmd_bundle`), run
+from a checkout on a machine that can pull, writes `qradar-dash-<version>-bundle.tar` in DIR (default
+the current directory). `--version` is only an assertion: it must equal the checkout's `VERSION`.
+The image prefix is `QRADAR_DASH_IMAGE_PREFIX` from `.env`, else `DEFAULT_IMAGE_PREFIX`; the output
+says which. The command pulls the seven images — the five service images of §2.2, the redis and
+the secrets helper — and saves them in one `docker save`. Redis and the helper are referenced by
+the digests pinned in `docker-compose.prod.yml` (`redis_ref`) and `deploy/load-secrets.sh`
+(`secrets_helper_image`; no second copy of either). The offline host runs `deploy/load-secrets.sh`
+and the backup's secrets tar with the helper image, and cannot pull it, so the bundle carries it.
+The tar holds, with no directory prefix:
 
-- `images.tar` from `docker save` of the six images in §2.2 (redis included)
-- `SHA256SUMS`
+- `images.tar` from `docker save` of the seven images (redis and the secrets helper included)
+- `SHA256SUMS`, covering every other member
+- `MANIFEST`: `version`, `image_prefix` and one `image <reference> <local image ID>` line per image
 - `VERSION`, `docs/releases/<version>.md`
 - `qradar-dash`, `docker-compose.yml`, `docker-compose.prod.yml`, `deploy/`
 
-No `.env`, no `.secrets`. On the production host:
+No `.env`, no `.secrets`, no `docker-compose.override.yml`; the command refuses if one of them sits
+inside `deploy/`. The tar is written under a temporary name in DIR and moved into place, so a failure
+leaves no partial bundle. An existing bundle is never overwritten.
+
+On the production host the checkout comes out of the bundle
+(`tar -xf BUNDLE -C DIR --exclude=images.tar`), and:
 
 ```bash
-./qradar-dash install --offline qradar-dash-<version>-bundle.tar
+./qradar-dash install --offline /path/to/qradar-dash-<version>-bundle.tar   # in the new directory
+./qradar-dash upgrade <version> --offline /path/to/qradar-dash-<version>-bundle.tar   # in the installation directory
 ```
 
-loads the images, checks the sums, and does not pull or build.
+`bundle_precheck` reads only `VERSION` and `MANIFEST` and refuses, before anything is loaded, a file
+that is not a tar, a tar with links or absolute or `..` paths, a bundle whose `VERSION` differs from
+the checkout (install) or the upgrade target, and a bundle whose `image_prefix` differs from the
+site's. `bundle_load` extracts under `.install-tmp/`, runs `sha256sum -c`, refuses a member that
+`SHA256SUMS` does not cover, runs `docker load`, and then `bundle_verify_manifest` checks every
+`image` line with `docker image inspect`: the reference must resolve and, when `MANIFEST`'s
+`image_store` (`containerd` or `classic`, from `docker info`, recorded by `docker_image_store`)
+equals this host's or is absent, its ID must equal the one recorded. `.Id` differs between the two
+stores, so with different stores the IDs are not compared, one line says so, and integrity rests on
+`SHA256SUMS`. `docker save` records no name for a digest-pinned reference, and Docker refuses a
+digest reference as a tag target, so a reference that does not resolve after the load gets the plain
+`name:tag` from the loaded ID and the pinned reference must then resolve (measured on Docker 29.9.1,
+containerd store, OPS-21b); if not, the command stops with a message that the loaded image does not
+carry the pinned digest and says to make the bundle again. The same path serves the redis and the
+secrets-helper references. A failure
+anywhere loads nothing further and leaves no `.install-tmp/`. `upgrade --offline` without a bundle
+still requires the images to be loaded and names the first missing one — the secrets helper
+included, because the pre-upgrade backup runs it.
 
 `--build` runs `docker compose build` from the checkout, including the submodule.
 It is the fallback when the registry cannot be used and no bundle is on disk.
@@ -446,7 +487,7 @@ Preflight changes nothing. Any failure stops the script before `.env` is written
 
 | Check | Pass | Fail / warn |
 |---|---|---|
-| Architecture | `uname -m` is `x86_64` | Fail otherwise. The images are built on `ubuntu-latest` (`.github/workflows/ci.yml:9`). |
+| Architecture | `uname -m` is `x86_64` | Fail otherwise. The images are built on `ubuntu-latest` (the `runs-on` key of the `images` job of `release.yml`). |
 | Docker | `docker version` and `docker compose version` both succeed | Fail. Compose v2 is required. The script does not call `docker-compose`. |
 | Resources | at least 4 CPUs, 8 GiB RAM, 80 GiB free on the Docker root, 20 GiB free on the backup directory | Fail under the floor. |
 | Ports | `443` free on the host when the bundled proxy is used. `127.0.0.1:3000` and `127.0.0.1:8000` free. | Fail if taken. |
@@ -532,10 +573,8 @@ be made inside it:
   to boot if autonomous actions are on (`config.py:889-892`).
 - `MCP_ENABLED=false`.
 
-`.env.example` still describes `AUTH_PROVIDER` as `local | oidc`
-(`.env.example:226-227`). Production refuses `oidc` (`config.py:907-911`).
-OPS-4 updates that comment so the file an operator reads matches the wizard.
-The wizard does not copy `.env.example` as the production file. It writes the
+`.env.example` lists `AUTH_PROVIDER` as `local | session | oidc`. Production refuses
+`oidc`. The wizard does not copy `.env.example` as the production file. It writes the
 list above.
 
 ### 3.4 Proxy and TLS
@@ -877,8 +916,12 @@ support bundle (§7).
 database. A restore that omitted them would bring back a database whose
 `ca_bundle_path` points at `/run/secrets/qradar_ca.pem` and whose volume was
 empty. The tar is produced by the same stdin-tar approach as `load-secrets.sh`,
-reading the volume from a short-lived container, so the checkout is not bind
-mounted.
+reading the volume from a short-lived container of the digest-pinned alpine
+helper (`SECRETS_HELPER_IMAGE` in `deploy/load-secrets.sh`; the same constant
+the load path uses), so the checkout is not bind
+mounted. That container runs offline (`--network none`), with every capability
+dropped except the DAC read the tar needs (the token file is `0400`, owned by
+the backend account), both volumes read-only, and `no-new-privileges`.
 
 **As built (OPS-5).** `./qradar-dash backup` writes
 `.qradar-dash-<utc>-<reason>.partial` with umask `077`, verifies it, then renames
@@ -1051,9 +1094,11 @@ and `secrets.tar` are always left for an operator to inspect.
 upgrade line, the last backup path and age, and free space on both
 filesystems. It does not print `.env`.
 
-`logs [service]` is `docker compose logs --tail=200 -f`. With no service it
-follows backend, worker and beat. The app's log filter redacts UUID-shaped
-tokens only on lines that already mention a secret keyword
+`logs [service]` is `docker compose logs` with the arguments you pass. It adds
+no `--tail` and no `-f`; an operator who wants a tail or a follow passes them,
+for example `./qradar-dash logs --tail=200 -f backend`. With no service it
+streams every service's log. The app's log filter redacts UUID-shaped tokens
+only on lines that already mention a secret keyword
 (`backend/app/core/logging.py:18-38`). `logs` does not claim to be a second
 redactor. The support bundle is (§7).
 
@@ -1072,27 +1117,35 @@ The host half is built as of OPS-7b. As built, `disk_docker` reports `df -P`
 for Docker's root with the 70% WARN and 90% FAIL thresholds. As built,
 `disk_backup` applies the same thresholds to `QRADAR_DASH_BACKUP_DIR` and also
 checks the §5.3 database-size guard, warning when that size is unavailable. As
-built, `qradar_clock` reports `timedatectl` NTP synchronization and uses
-OPS-R15 for either an unsynchronized clock or a host without that command. As
-built, `selinux` reports the current `getenforce` result as PASS, including
-`Enforcing`, or PASSes with "SELinux is not installed" when the command is
-absent. As built, `containers` checks every service returned by Compose and
-ignores a stopped `qradar-mcp` while the `mcp` profile is off and an exited
-`migrate` only when its exit code is zero. As built,
-`doctor_incontainer` is emitted only when the backend is not running; otherwise
-the wrapper prints the in-container output unchanged and preserves its status.
+built, `host_clock` reports this host's `timedatectl` NTP synchronization and
+uses OPS-R15 for either an unsynchronized clock or a host without that command.
+It measures the host's clock, not QRadar's. As built, `selinux` reports
+`Enforcing` as PASS, `Permissive` as WARN ("SELinux is permissive: denials are
+logged, not enforced"), and an absent or `Disabled` command as PASS "SELinux is
+not in use on this host". As built, `backup_age` WARNs when no `qradar-dash-*`
+backup exists under `QRADAR_DASH_BACKUP_DIR` or the newest is older than 26 h,
+and WARNs when the backup timer is not enabled, naming
+`./qradar-dash backup --install-timer`. It asks `systemctl is-enabled
+qradar-dash-backup.timer` (or `--user` for the user unit) and falls back to the
+unit file only when `systemctl` is absent. As built, `containers` checks every
+service returned by Compose and ignores a stopped `qradar-mcp` while the `mcp`
+profile is off and an exited `migrate` only when its exit code is zero. As
+built, `doctor_incontainer` is emitted only when the backend is not running;
+otherwise the wrapper prints the in-container output unchanged and preserves
+its status.
 
 The disk **free-space** lines are host-side because the backend container
 does not mount the Postgres volume (`docker-compose.yml:40` mounts only the
 secrets volume). The in-container half prints `pg_database_size`, which is
 the number that grows. Both appear in one report.
 
-Each line is:
+Each line is (the container ids are padded to the longest id,
+`anomaly_evaluation`; the host ids use a fixed 16-column field):
 
 ```
-PASS  db_connect     database accepted SELECT 1
-WARN  cadence_late   WAF_COLLECTION last run 2 h 10 m past its cadence    runbook: OPS-R30
-FAIL  migration_head database at 0024, image expects 0025                 runbook: OPS-R11
+PASS  db_connect         database accepted SELECT 1
+WARN  cadence            enabled families late or never run: WAF_COLLECTION    runbook: OPS-R30
+FAIL  migration_head     database at 0031, image expects 0032    runbook: OPS-R11
 ```
 
 `PASS`, `WARN`, `FAIL` only. The cause is one line. The runbook id is
@@ -1118,7 +1171,6 @@ A separate TLS handshake to the console uses the CA bundle and sends no
 | `celery_beat` | a heartbeat key in Redis | age under 180 s | — | missing or older |
 | `qradar_tls` | handshake with the configured CA (`tls.py:18-36`) | chain and hostname verify, notAfter more than 30 days away | notAfter inside 30 days, or `QRADAR_TLS_ALLOW_MISSING_AKI` is true | chain, hostname, or expiry failure. The message is the one the code already uses, including `unable to get issuer certificate` (`tls.py:25-28`) |
 | `qradar_auth` | `GET /system/about` | reachable, version printed | — | the sanitized status text (`qradar_rest.py:183-202`). 401 and 403 share one sentence on purpose (`:190-191`) |
-| `qradar_clock` | skipped. `/system/about` does not return a server time (`qradar_rest.py:486-500` keeps three fields). Host NTP is the host half of `doctor` | — | host NTP not synchronized | — |
 | `watermarks` | each `collection_watermark` row (`backend/app/models/monitoring.py:24-51`) | `consecutive_failures` is 0 and lag under twice the family's cadence | lag over twice the cadence | `consecutive_failures` ≥ 3, or `last_error` set. `last_error` is already capped at 512 characters (`:51`) and provider text is from a fixed vocabulary (`backend/app/services/waf_pipeline.py:388-398`) |
 | `cadence` | each `search_cadence` family (`backend/app/schemas/search_cadence.py:24-34`) | last run age ≤ cadence + settle + 60 s, the UI's rule (`frontend/src/components/catalog/derive.ts:17-19`, `:82-84`) | late, or never run while that family's enable flag is true | — |
 | `families_off` | the four flags that default off | printed as PASS with the flag name, so a fresh install is not red | — | — |
@@ -1381,7 +1433,7 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
 15. **OPS-R15. Watermarks jump, or many sources show `TIMESTAMP_DELAY`, after the host
     was suspended.** Cause: the host clock stepped. Beat is UTC
     (`celery_app.py:26-27`). The delay detector is a real anomaly type
-    (`enums.py:133`). Confirm: `qradar_clock` WARN, `timedatectl` not
+    (`enums.py:133`). Confirm: `host_clock` WARN, `timedatectl` not
     synchronized. Fix: enable NTP and wait for the next complete buckets. Do
     not hand-edit watermarks.
 
@@ -1391,12 +1443,12 @@ The confirm command is `./qradar-dash doctor` unless a row says otherwise.
     into the keyring. The backup's `env.bak` is the copy. Do not generate a
     new key to "fix" the error.
 
-17. **OPS-R17. The backend restarts with `Unsafe production configuration`.** Cause:
-    one of the startup checks (`config.py:875-914`): `DEBUG`, TLS off, short
+17. **OPS-R17. The backend restarts with `Unsafe configuration for ENVIRONMENT=…`.** Cause:
+    one of the startup checks in `_production_hardening`: `DEBUG`, TLS off, short
     `SECRET_KEY`, missing `ENCRYPTION_KEY`, `QRADAR_PROVIDER=mock`, no token,
     autonomous LLM, a bad `PUBLIC_ORIGIN`, or `AUTH_PROVIDER=oidc`. Confirm:
     the traceback lists the bullets. Fix: the bullet. `LAB_MODE` is a separate
-    refusal (`config.py:803-804`).
+    refusal.
 
 18. **OPS-R18. `QRADAR_HOST must use https://`.** Cause: the URL has no `https` scheme
     (`config.py:782-788`). The instance registry repeats the rule

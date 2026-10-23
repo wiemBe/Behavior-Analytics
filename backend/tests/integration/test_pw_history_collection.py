@@ -36,6 +36,7 @@ from app.providers.base import ProviderError
 from app.providers.dto import PwSearchKind
 from app.providers.mock import MockPwSearch, MockQRadarProvider
 from app.repositories.property_watch import PropertyWatchRepository
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from app.services.pw_pipeline import COLLECTOR_NAME, PwInstancePipeline
 from tests.integration.factories import make_instance
@@ -953,6 +954,42 @@ async def test_row_3_a_failed_chunk_writes_no_row_holds_through_and_halves_the_w
     await reload(db_session, watch)
     assert state_of(watch) is PwHistoryState.COMPLETE
     assert starts(await buckets_of(db_session, watch)) == tiling(t0, 576)
+
+
+async def test_capacity_refusal_yields_without_halving_or_advancing(db_session) -> None:
+    instance = await make_instance(db_session)
+    watch = await add_watch(db_session, instance, history_days=1)
+    floor = BOUNDARY - DAY
+    seeded = seed_reading(
+        watch,
+        target=floor,
+        floor=floor,
+        through=None,
+        started=NOW - timedelta(minutes=10),
+        chunk=288,
+        ceiling=288,
+        days=1,
+    )
+    await db_session.commit()
+    provider = flat_provider()
+
+    def refuse_grouped(search: MockPwSearch) -> Exception | None:
+        if search.search is PwSearchKind.GROUPED:
+            assert _ARIEL_PRIORITY.get() == "background"
+            return ArielPermitUnavailable(7, 2, 4)
+        return None
+
+    provider.pw_fault = refuse_grouped
+    report = await tick(db_session, instance, provider)
+    await reload(db_session, watch)
+
+    progress, reason = progress_of(watch)
+    assert state_of(watch) is PwHistoryState.READING
+    assert progress == seeded and watch.history_through is None
+    assert reason == "deferred: no Ariel permit within 7 s"
+    assert report.watches[0].searches_sent == 0
+    assert await history_rows(db_session, watch) == []
+    assert _ARIEL_PRIORITY.get() == "live"
 
 
 async def test_row_3_a_chunk_cut_short_by_the_budget_keeps_nothing_and_halves_the_width(

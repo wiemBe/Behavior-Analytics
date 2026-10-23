@@ -271,7 +271,7 @@ describe("the tabs", () => {
     expect(screen.getByRole("list", { name: "Membership changes" })).toHaveTextContent("37 to 40 sources");
     expect(screen.getByRole("list", { name: "Membership changes" })).toHaveTextContent("grace window");
     expect(screen.getByRole("list", { name: "Member names" })).toHaveTextContent("fw-dmz-02");
-    expect(screen.getByText(/2h 0m ago/)).toBeInTheDocument();
+    expect(screen.getByText(/2 h ago/)).toBeInTheDocument();
     expect(screen.getByText(/2 listed, sorted|2 of 37 are listed/)).toBeInTheDocument();
   });
 

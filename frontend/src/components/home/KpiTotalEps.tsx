@@ -9,7 +9,7 @@
 
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
 import { homeReads, type FleetEpsSeries } from "@/lib/api";
-import { formatEpsValue } from "@/lib/fleet";
+import { fleetDrillHref, formatEpsValue } from "@/lib/fleet";
 import { totalEps, type TotalEps } from "@/lib/home/totalEps";
 import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
 
@@ -117,7 +117,7 @@ export function KpiTotalEps({ range }: RangedProps = {}) {
       variant="kpi"
       id="kpi-total-eps"
       title={`Total EPS, ${windowText}`}
-      link={{ href: "/fleet", label: "Fleet", ariaLabel: "View fleet by class" }}
+      link={{ href: fleetDrillHref(window), label: "Fleet", ariaLabel: "View fleet by class" }}
       what="fleet EPS"
       permission="read:fleet"
       state={state}

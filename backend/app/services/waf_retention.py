@@ -35,13 +35,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.models.enums import AnomalyState
-
-TERMINAL_STATES = (
-    AnomalyState.RESOLVED.value,
-    AnomalyState.NORMAL.value,
-    AnomalyState.INSUFFICIENT_DATA.value,
-)
 
 
 @dataclass

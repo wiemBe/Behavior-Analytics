@@ -97,6 +97,7 @@ class Encryptor:
             ) from exc
 
     def needs_reencryption(self, stored: str) -> bool:
+        """Test-only: true when ``stored`` was not written by the active key version."""
         match = _PREFIX_RE.match(stored)
         if not match:
             return True  # legacy, unprefixed
@@ -107,15 +108,9 @@ _encryptor: Encryptor | None = None
 
 
 def get_encryptor(settings: Settings | None = None) -> Encryptor:
-    """Process-wide encryptor. Rebuilt only if explicitly reset (tests)."""
+    """Process-wide encryptor, built once from the current settings."""
     global _encryptor
     if _encryptor is None:
         settings = settings or get_settings()
         _encryptor = Encryptor(settings.encryption_keyring(), settings.encryption_key_version)
     return _encryptor
-
-
-def reset_encryptor() -> None:
-    """Test hook: force the keyring to be rebuilt from current settings."""
-    global _encryptor
-    _encryptor = None

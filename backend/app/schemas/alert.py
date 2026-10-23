@@ -9,28 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import (
     AlertStatus,
-    AnomalyType,
     NotificationChannel,
     NotificationStatus,
     Severity,
 )
-
-
-class AnomalyOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    log_source_id: uuid.UUID
-    anomaly_type: AnomalyType
-    severity: Severity
-    detected_at: datetime
-    resolved_at: datetime | None
-    observed_value: float | None
-    expected_value: float | None
-    deviation_score: float | None
-    explanation: str | None
-    details: dict
-    suppressed: bool
 
 
 class AlertOut(BaseModel):
@@ -55,6 +37,15 @@ class AlertOut(BaseModel):
     occurrence_count: int
     evidence_snapshot: dict
     source_anomaly_ids: list[str]
+
+
+class AlertPage(BaseModel):
+    """Offset pagination with an explicit total, matching the other list APIs."""
+
+    items: list[AlertOut]
+    total: int
+    limit: int
+    offset: int
 
 
 class NotificationOut(BaseModel):

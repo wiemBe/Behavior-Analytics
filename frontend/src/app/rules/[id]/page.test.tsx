@@ -158,6 +158,7 @@ describe("rule detail layout and honesty", () => {
     const region = screen.getByRole("region", { name: "Rule health history" });
     expect(region.querySelectorAll("th.num")).toHaveLength(3);
     expect(region.querySelectorAll("td.num")).toHaveLength(3);
+    expect(within(region).getByText("80.0 %")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Rule metadata" })).toBeInTheDocument();
   });
 

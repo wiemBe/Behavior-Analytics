@@ -13,7 +13,10 @@ precedence produces actively misleading answers:
   3. **DEPENDENCY_DEGRADED** — if the telemetry the rule needs is not arriving,
      the rule's silence says nothing about the rule. This is the distinction
      between "never fired" and "could not have fired", and it is the single most
-     important judgement here.
+     important judgement here. A dependency that is not in the map, or a
+     log-source type whose sources were all skipped, is not healthy either:
+     with no known-degraded dependency the verdict is INSUFFICIENT_DATA and the
+     reason names what was not observed. A known-degraded dependency still wins.
   4. **NOISY** — firing far above expectation.
   5. **NEVER_OBSERVED** / **INACTIVE** — genuinely silent, past its grace period,
      with healthy dependencies. NEVER_OBSERVED and INACTIVE are separate because
@@ -73,6 +76,17 @@ from app.rules.matches import (
 )
 
 logger = logging.getLogger("app.services.rule_health")
+
+
+def _kind_summary(seen: bool, any_degraded: bool, any_unknown: bool) -> bool | None:
+    """False when a dependency of this kind is known-bad, None when unobserved."""
+    if not seen:
+        return None
+    if any_degraded:
+        return False
+    if any_unknown:
+        return None
+    return True
 
 #: Watermark whose existence proves rule-firing observations are complete.
 #: `RuleMetric` rows are the only evidence that anyone *looked* for firings, so
@@ -363,8 +377,10 @@ class RuleHealthEvaluator:
             )
 
         # 3. Dependency health. Checked before any silence verdict, because a
-        #    rule starved of telemetry tells us nothing about itself.
-        missing, bb_ok, ls_ok = self._dependency_state(
+        #    rule starved of telemetry tells us nothing about itself. A known
+        #    failure outranks an unobserved dependency: the failure is evidence,
+        #    and the gap is not.
+        missing, unknown, bb_ok, ls_ok = self._dependency_state(
             dependencies, building_block_enabled, log_source_type_healthy
         )
         if missing:
@@ -379,6 +395,19 @@ class RuleHealthEvaluator:
                 building_blocks_healthy=bb_ok,
                 required_log_sources_healthy=ls_ok,
                 missing_dependencies=missing,
+            )
+        if unknown:
+            return verdict(
+                RuleHealthStatus.INSUFFICIENT_DATA,
+                (
+                    "A dependency has not been observed, so the rule cannot be judged: "
+                    + "; ".join(unknown[:5])
+                    + "."
+                ),
+                confidence=0.4,
+                building_blocks_healthy=bb_ok,
+                required_log_sources_healthy=ls_ok,
+                missing_dependencies=unknown,
             )
 
         # 4. Noisy — firing far above the configured expectation.
@@ -523,39 +552,52 @@ class RuleHealthEvaluator:
         dependencies: list[RuleDependency],
         building_block_enabled: dict[str, bool],
         log_source_type_healthy: dict[str, bool],
-    ) -> tuple[list[str], bool | None, bool | None]:
-        """Which dependencies are unmet, and per-kind health summaries.
+    ) -> tuple[list[str], list[str], bool | None, bool | None]:
+        """Known-degraded labels, unobserved labels, and per-kind summaries.
 
         Inferred dependencies below the confidence floor are ignored: acting on
-        a low-confidence guess would degrade a healthy rule on no real evidence.
+        a low-confidence guess would judge a healthy rule on no real evidence.
+        A ref that is not in the map has not been observed. It is not healthy.
+        A known failure (`False`) is recorded separately and outranks it.
         """
         missing: list[str] = []
+        unknown: list[str] = []
         bb_seen = ls_seen = False
-        bb_ok = ls_ok = True
+        bb_degraded = ls_degraded = False
+        bb_unknown = ls_unknown = False
 
         for dep in dependencies:
             if dep.confidence < self.settings.coverage_min_confidence:
                 continue
             if dep.kind == RuleDependencyKind.BUILDING_BLOCK:
                 bb_seen = True
-                if building_block_enabled.get(dep.target_ref, True) is False:
-                    bb_ok = False
-                    label = dep.target_name or f"building block {dep.target_ref}"
+                enabled = building_block_enabled.get(dep.target_ref)
+                label = dep.target_name or f"building block {dep.target_ref}"
+                if enabled is None:
+                    bb_unknown = True
+                    unknown.append(f"{label} has not been observed")
+                elif enabled is False:
+                    bb_degraded = True
                     missing.append(f"{label} is disabled")
             elif dep.kind in (
                 RuleDependencyKind.LOG_SOURCE_TYPE,
                 RuleDependencyKind.LOG_SOURCE,
             ):
                 ls_seen = True
-                if log_source_type_healthy.get(dep.target_ref, True) is False:
-                    ls_ok = False
-                    label = dep.target_name or f"log source type {dep.target_ref}"
+                healthy = log_source_type_healthy.get(dep.target_ref)
+                label = dep.target_name or f"log source type {dep.target_ref}"
+                if healthy is None:
+                    ls_unknown = True
+                    unknown.append(f"{label} has not been observed")
+                elif healthy is False:
+                    ls_degraded = True
                     missing.append(f"{label} is not delivering events")
 
         return (
             missing,
-            bb_ok if bb_seen else None,
-            ls_ok if ls_seen else None,
+            unknown,
+            _kind_summary(bb_seen, bb_degraded, bb_unknown),
+            _kind_summary(ls_seen, ls_degraded, ls_unknown),
         )
 
     async def _firing_counts(
@@ -670,12 +712,6 @@ class RuleHealthEvaluator:
             return "incomplete"
         return "complete"
 
-    async def _observation_complete(
-        self, instance_id: uuid.UUID, window_start: datetime
-    ) -> bool:
-        """Compatibility helper for callers/tests that only need the gate."""
-        return await self._observation_status(instance_id, window_start) == "complete"
-
     async def _dependencies(
         self, rule_ids: list[uuid.UUID]
     ) -> dict[uuid.UUID, list[RuleDependency]]:
@@ -703,12 +739,13 @@ class RuleHealthEvaluator:
     async def _log_source_type_health(
         self, instance_id: uuid.UUID, now: datetime
     ) -> dict[str, bool]:
-        """Is at least one enabled source of each type delivering events?
+        """Health of each log-source type that has a monitored source.
 
-        A type counts as healthy when any monitored source of that type reported
-        an event recently. Sources in maintenance are excluded from the verdict
-        entirely rather than counted as unhealthy — planned downtime must not
-        present as a detection gap.
+        A type is healthy when any monitored source of that type reported an
+        event recently, and unhealthy when monitored sources exist and none did.
+        Sources in maintenance or with monitoring disabled are skipped: they are
+        neither evidence for nor against. A type whose every source was skipped
+        is absent from the map. A missing entry is unknown, not healthy.
         """
         rows = (
             await self.session.scalars(
@@ -727,8 +764,8 @@ class RuleHealthEvaluator:
                 or self._aware(source.maintenance_until) > now
             )
             if in_maintenance or not source.monitoring_enabled:
-                # Neither evidence for nor against; leave any existing verdict.
-                by_type.setdefault(key, True)
+                # Neither evidence for nor against. Leaving the key unset is
+                # what makes an all-skipped type unknown rather than healthy.
                 continue
             healthy = bool(
                 source.enabled

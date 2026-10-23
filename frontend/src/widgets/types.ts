@@ -4,7 +4,7 @@
 // widgets that name a registry entry by `type`. The layout holds ids, geometry and enumerated
 // config only: nothing in it is ever executed (AGENTS.md rule 4).
 
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 export type WidgetCategory = "KPI" | "Chart" | "Table" | "Health" | "Admin";
 
@@ -128,9 +128,9 @@ export type AnyWidgetDef = WidgetDef<any>;
 export type WidgetState<T> =
   | { kind: "loading" }
   | { kind: "ok"; data: T; asOf: string | null }
-  | { kind: "empty"; reason: string }
-  | { kind: "no_data"; reason: string }
-  | { kind: "not_collected"; reason: string }
+  | { kind: "empty"; reason: ReactNode; at?: string }
+  | { kind: "no_data"; reason: ReactNode; at?: string }
+  | { kind: "not_collected"; reason: ReactNode; at?: string }
   | { kind: "stale"; data: T; asOf: string; ageSeconds: number }
   | { kind: "error"; action: string }
   | { kind: "forbidden"; permission: string };

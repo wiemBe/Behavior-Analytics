@@ -5,21 +5,9 @@
 // a family, and a scheduled search shows anything else as "Custom".
 
 import { ApiError, actionErrorMessage, type SearchFamily } from "@/lib/api";
+import { formatDuration } from "@/lib/time";
 
-/** One duration as `1 h 7 min`, `5 min`, `8 h` or `30 s`. Zero parts are dropped. */
-export function formatDuration(totalSeconds: number): string {
-  const total = Math.round(totalSeconds);
-  if (!Number.isFinite(total) || total < 0) return "—";
-  if (total === 0) return "0 s";
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const parts: string[] = [];
-  if (h) parts.push(`${h} h`);
-  if (m) parts.push(`${m} min`);
-  if (s) parts.push(`${s} s`);
-  return parts.join(" ");
-}
+export { formatDuration };
 
 /** A bucket width. Null means the family has no buckets, which is not zero. */
 export function formatBucket(seconds: number | null): string {
@@ -117,12 +105,6 @@ export function cronToPreset(cron: string): SchedulePreset | null {
 /** The cron for a preset given in seconds, or null if it is not a preset. */
 export function presetToCron(seconds: number): string | null {
   return SCHEDULE_PRESETS.find((p) => p.seconds === seconds)?.cron ?? null;
-}
-
-/** `Every 1 h` for a preset cron, `Custom` for anything else. */
-export function scheduleLabel(cron: string): string {
-  const preset = cronToPreset(cron);
-  return preset ? `Every ${preset.label}` : "Custom";
 }
 
 /** A cadence option label from the API's allowed values. */

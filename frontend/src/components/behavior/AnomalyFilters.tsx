@@ -19,7 +19,8 @@ import { subjectKindLabel, SUBJECT_KINDS } from "@/lib/anomalyQuery";
 import { IPS_TYPES, isIpsType, ipsTypeLabel } from "@/components/ips/ipsLabels";
 import { PW_TYPES, pwTypeLabel, isPwType } from "@/components/propertywatch/pwFormat";
 import { WAF_TYPES, anomalyTypeLabel } from "@/components/waf/wafLabels";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+
 
 const DETECTOR_TYPES = ["VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS"];
 const STATES = [
@@ -90,9 +91,9 @@ export function chipLabel(
     case "evidence_status":
       return `Evidence: ${text}`;
     case "since":
-      return `From: ${formatDateTime(text)}`;
+      return `From: ${utcTimeText(text)}`;
     case "until":
-      return `To: ${formatDateTime(text)}`;
+      return `To: ${utcTimeText(text)}`;
     default:
       return `${key}: ${text}`;
   }
@@ -126,9 +127,12 @@ export function toInputValue(iso: string): string {
 export function AnomalyFilters({
   values,
   sources,
+  sourcesFailed = false,
 }: {
   values: AnomalyFilterValues;
   sources: SourceBehavior[];
+  /** The source read failed. The select is omitted; the anomaly list is unaffected. */
+  sourcesFailed?: boolean;
 }) {
   const advancedActive = Boolean(
     values.log_source_id || values.instance_id || values.evidence_status,
@@ -145,6 +149,12 @@ export function AnomalyFilters({
 
   return (
     <>
+      {sourcesFailed && (
+        <p className="notice" role="status">
+          The source list could not be loaded, so the source filter is unavailable; the anomaly
+          list below is complete.
+        </p>
+      )}
       <form className="filters" method="get" action="/anomalies">
         {/* Carried through a re-filter so the entity link does not silently widen. */}
         {values.ips_entity_id && (
@@ -276,21 +286,29 @@ export function AnomalyFilters({
           </summary>
           <div className="disclosure-body">
             <div className="filters filters-advanced">
-              <label className="sr-only" htmlFor="anomaly-source">
-                Log source
-              </label>
-              <select
-                id="anomaly-source"
-                name="log_source_id"
-                defaultValue={values.log_source_id}
-              >
-                <option value="">All log sources</option>
-                {sources.map((s) => (
-                  <option key={s.log_source_id} value={s.log_source_id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+              {sourcesFailed ? (
+                values.log_source_id ? (
+                  <input type="hidden" name="log_source_id" value={values.log_source_id} />
+                ) : null
+              ) : (
+                <>
+                  <label className="sr-only" htmlFor="anomaly-source">
+                    Log source
+                  </label>
+                  <select
+                    id="anomaly-source"
+                    name="log_source_id"
+                    defaultValue={values.log_source_id}
+                  >
+                    <option value="">All log sources</option>
+                    {sources.map((s) => (
+                      <option key={s.log_source_id} value={s.log_source_id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
 
               <label className="sr-only" htmlFor="anomaly-instance">
                 QRadar instance
@@ -334,7 +352,14 @@ export function AnomalyFilters({
               className="filter-chip"
               aria-label={`Remove filter ${chipLabel(key, value, sources)}`}
             >
-              {chipLabel(key, value, sources)}
+              {key === "since" || key === "until" ? (
+                <>
+                  {key === "since" ? "From: " : "To: "}
+                  <UtcTime value={String(value)} />
+                </>
+              ) : (
+                chipLabel(key, value, sources)
+              )}
               <span aria-hidden="true">✕</span>
             </Link>
           ))}

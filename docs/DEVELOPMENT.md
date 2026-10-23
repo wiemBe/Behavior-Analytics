@@ -91,23 +91,47 @@ Run commands from `backend/` with the worktree first on `PYTHONPATH`:
 ```bash
 ruff check app tests
 mypy app
-PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> pytest -q -m "not integration"
+PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> pytest -m "not integration"
 ```
 
-Integration tests require PostgreSQL with TimescaleDB and a dedicated database:
+`pyproject.toml` already passes `-q`; adding another hides pytest's summary line. `make test`
+runs that unit selection and does not add `-q`.
+
+`make lint` runs `ruff check app tests`. `make mypy` runs `mypy app`.
+
+Integration tests require PostgreSQL with TimescaleDB and a dedicated database. `make
+test-integration` starts the compose test database with `docker compose up -d --wait` and
+refuses to run when `TEST_DATABASE_URL` is unset. It does not invent a URL. Pass the database
+you were given:
+
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5433/behavior_analytics_test \
+  make test-integration
+```
+
+The same suite from `backend/`:
 
 ```bash
 PYTHONPATH=. \
 ENCRYPTION_KEY=<fernet-key> \
 TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/behavior_analytics_test \
-pytest -q -m integration tests/integration
+pytest -m integration tests/integration
 ```
 
 Never run two test processes against the same test database. The schema fixture recreates tables,
-so concurrent runs corrupt one another's assumptions. Migration checks use the same isolated test
-database:
+so concurrent runs corrupt one another's assumptions. `make db-test-up` and `make db-test-down`
+start and remove the compose test database. `make check` runs `alembic upgrade head` and
+`alembic check` against that database.
+
+`alembic` reads `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and
+`POSTGRES_DB` through settings. Point those at the test database. `TEST_DATABASE_URL` is not
+read by Alembic:
 
 ```bash
+cd backend
+POSTGRES_HOST=localhost POSTGRES_PORT=5433 POSTGRES_USER=test POSTGRES_PASSWORD=test \
+POSTGRES_DB=qradar_obs_test \
+ENCRYPTION_KEY=<fernet-key> \
 alembic upgrade head
 alembic check
 ```
@@ -116,6 +140,40 @@ The backend suites cover provider behavior, TLS enforcement, encrypted storage, 
 hardening, collectors, robust baselines, detector fail-closed paths, alert fingerprints,
 notification routing, scheduling, API guards and database integration. QRadar responses are mocked
 in automated tests, and `MockNotifier` prevents external delivery.
+
+## The CI gate
+
+`.github/workflows/ci.yml` runs the backend gate in parallel jobs, each with its own time limit:
+
+| Job | What it runs | Limit |
+| --- | --- | --- |
+| `backend-static` | the version check, `ruff check app tests`, `mypy app`, `alembic upgrade head`, `alembic check` | 15 min |
+| `backend-unit` | every test that is not marked `integration`, without a database | 15 min |
+| `backend-integration` | the integration suite in five shards, each with its own database | 35 min |
+| `frontend` | `npm ci`, lint, typecheck, vitest, build | 20 min |
+
+The five shards show up as `backend-integration (shard 3/5)`. Together the unit job and the five
+shards run every test in the repository exactly once: the shards run everything marked
+`integration`, the unit job everything else.
+`backend/tests/unit/test_ci_shard.py` reads the commands out of the workflow and fails if a test
+runs in no job or in two.
+
+`backend/scripts/ci_shard.py` splits `tests/integration` into the shards. The split is a greedy
+longest-processing-time assignment over the per-file durations in
+`backend/tests/integration/shard_weights.json`, so the shards weigh the same and finish together.
+Refresh the weights when the integration suite changes shape (a new file, a much slower test):
+
+```bash
+cd backend
+PYTHONPATH=. ENCRYPTION_KEY=<fernet-key> \
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/behavior_analytics_test \
+pytest -rs -m integration --durations=0 --durations-min=0
+```
+
+Sum the setup, call and teardown seconds of each file in that report and write them into
+`backend/tests/integration/shard_weights.json` as `{"tests/integration/test_x.py": seconds, ...}`.
+A file with no entry counts as the median of the known weights, so a missing entry is harmless but
+unbalanced. The seconds come from one local machine: only their ratios matter.
 
 ## Frontend tests
 
@@ -150,6 +208,32 @@ container.
 
 The enforced formatter policy is deliberate: run `ruff check`, but do not run `ruff format` over
 the repository.
+
+## Base image pins
+
+Every image the product runs is pinned by digest, tag kept for readability:
+
+| Image | Where the pin lives |
+| --- | --- |
+| `python:3.12-slim`, `node:22-alpine` | the `FROM` lines of `backend/Dockerfile`, `frontend/Dockerfile` |
+| `timescale/timescaledb:2.17.2-pg16` | `deploy/postgres/Dockerfile` |
+| `nginx:1.27-alpine` | `deploy/proxy/Dockerfile` |
+| `alpine:3.20` (the secrets helper) | `SECRETS_HELPER_IMAGE` in `deploy/load-secrets.sh` — the only place it is written; `qradar-dash` reads it from there |
+| `redis:7.4-alpine` | `docker-compose.prod.yml` |
+
+To bump a base image, print the new multi-arch index digest and edit the pin (keep the tag):
+
+```bash
+docker buildx imagetools inspect nginx:1.27-alpine   # the "Digest:" line
+```
+
+A bump is a reviewed edit like any other. Nothing rebuilds a base silently: the release workflow's
+`redis` job (`The pinned digests still resolve` step) runs `docker buildx imagetools inspect` on
+every pin above, so a digest that no longer resolves — an upstream deletion or rename — fails the
+release instead of building from whatever the bare tag points at that day. An unpinned `FROM` never
+gets that far: `backend/tests/unit/test_pinned_images.py` fails the unit gate, and the secrets
+helper's argv is pinned by `backend/tests/unit/test_load_secrets_sh.py` and the
+`test_qradar_dash_backup.py` tests.
 
 ## Adding a migration
 

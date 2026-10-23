@@ -1,3 +1,4 @@
+import Link from "next/link";
 // The Incidents tab: this watch's rows in `/anomalies`, with the lifecycle each one is in.
 // A null list is "could not be loaded", which is not "there are none".
 
@@ -5,7 +6,7 @@ import type { AnomalySummary } from "@/lib/api";
 import { sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import { pwTypeLabel } from "./pwFormat";
 import { valueText } from "./WatchValuesTable";
@@ -54,7 +55,7 @@ export function WatchIncidents({
         {total !== null && total > incidents.length
           ? ` ${incidents.length} of ${total} are listed here; the rest are in `
           : " They are also in "}
-        <a href={`/anomalies?subject_kind=PW_VALUE&property_watch_id=${watchId}`}>Anomalies</a>.
+        <Link href={`/anomalies?subject_kind=PW_VALUE&property_watch_id=${watchId}`}>Anomalies</Link>.
       </p>
       <TableScroll label="Incidents of this watch">
         <table className="table-dense" aria-label="Incidents of this watch">
@@ -85,19 +86,17 @@ export function WatchIncidents({
                   <span className={`pill pill-quiet ${sevTone(a.severity)}`}>{a.severity}</span>
                 </td>
                 <td className="num cell-when">
-                  <time dateTime={a.anomaly_start ?? a.detected_at}>
-                    {formatDateTime(a.anomaly_start ?? a.detected_at)}
-                  </time>
+                  <UtcTime value={a.anomaly_start ?? a.detected_at} />
                 </td>
                 <td className="num cell-when">
                   {a.resolved_at ? (
-                    <time dateTime={a.resolved_at}>{formatDateTime(a.resolved_at)}</time>
+                    <UtcTime value={a.resolved_at} />
                   ) : (
                     <span className="muted">not resolved</span>
                   )}
                 </td>
                 <td className="row-actions">
-                  <a href={`/anomalies/${a.id}`}>Open</a>
+                  <Link href={`/anomalies/${a.id}`}>Open</Link>
                 </td>
               </tr>
             ))}

@@ -8,7 +8,7 @@ same measurements. A source can start late, stop early, stay silent, or a search
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -57,6 +57,7 @@ class ScriptedMockProvider(MockQRadarProvider):
         silent: Iterable[int] = (),
         fail: Callable[[datetime, datetime, int], bool] | None = None,
         truncate_multi: bool = False,
+        failure_type: type[ProviderError] = ProviderError,
     ) -> None:
         super().__init__(seed=1)
         self.qids = list(qids)
@@ -65,8 +66,11 @@ class ScriptedMockProvider(MockQRadarProvider):
         self.silent = set(silent)
         self.fail = fail
         self.truncate_multi = truncate_multi
+        self.failure_type = failure_type
         #: Every search: (start, end, buckets).
         self.calls: list[tuple[datetime, datetime, int]] = []
+        #: The log-source filter of each search, aligned with `calls`. None is unfiltered.
+        self.source_filters: list[frozenset[int] | None] = []
 
     def emits(self, qid: int, bucket_start: datetime) -> bool:
         if qid in self.silent:
@@ -99,19 +103,35 @@ class ScriptedMockProvider(MockQRadarProvider):
             payload_signature=f"sig-{qid}-{epoch}",
         )
 
-    def _bucket(self, start: datetime, seconds: int) -> list[LogSourceMetricSample]:
-        return [
-            self.sample(qid, start, seconds) for qid in self.qids if self.emits(qid, start)
-        ]
+    def _note(self, qradar_ids: Sequence[int] | None) -> frozenset[int] | None:
+        if qradar_ids is None:
+            self.source_filters.append(None)
+            return None
+        if not qradar_ids:
+            raise ValueError("metric source filter is empty")
+        chosen = frozenset(int(item) for item in qradar_ids)
+        self.source_filters.append(chosen)
+        return chosen
+
+    def _bucket(
+        self, start: datetime, seconds: int, chosen: frozenset[int] | None
+    ) -> list[LogSourceMetricSample]:
+        qids = self.qids if chosen is None else [qid for qid in self.qids if qid in chosen]
+        return [self.sample(qid, start, seconds) for qid in qids if self.emits(qid, start)]
 
     async def get_log_source_metrics(
-        self, window_start: datetime, window_end: datetime
+        self,
+        window_start: datetime,
+        window_end: datetime,
+        *,
+        qradar_ids: Sequence[int] | None = None,
     ) -> list[LogSourceMetricSample]:
         seconds = int((window_end - window_start).total_seconds())
         self.calls.append((window_start, window_end, 1))
+        chosen = self._note(qradar_ids)
         if self.fail is not None and self.fail(window_start, window_end, 1):
-            raise ProviderError("scripted failure")
-        return self._bucket(window_start, seconds)
+            raise self.failure_type("scripted failure")
+        return self._bucket(window_start, seconds, chosen)
 
     async def get_log_source_metrics_bucketed(
         self,
@@ -120,14 +140,16 @@ class ScriptedMockProvider(MockQRadarProvider):
         *,
         bucket_seconds: int,
         max_rows: int,
+        qradar_ids: Sequence[int] | None = None,
     ) -> LogSourceMetricBucketBatch:
         count = int((window_end - window_start).total_seconds()) // bucket_seconds
         self.calls.append((window_start, window_end, count))
+        chosen = self._note(qradar_ids)
         if self.fail is not None and self.fail(window_start, window_end, count):
-            raise ProviderError("scripted failure")
+            raise self.failure_type("scripted failure")
         buckets = {
             window_start + timedelta(seconds=bucket_seconds * index): self._bucket(
-                window_start + timedelta(seconds=bucket_seconds * index), bucket_seconds
+                window_start + timedelta(seconds=bucket_seconds * index), bucket_seconds, chosen
             )
             for index in range(count)
         }

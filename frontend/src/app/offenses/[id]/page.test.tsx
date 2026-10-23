@@ -143,14 +143,15 @@ describe("offense detail contents", () => {
 
   it("shows the six summary scores with their tones", async () => {
     await renderPage();
-    const card = (label: string) =>
-      screen.getByText(label, { selector: ".k" }).closest(".card") as HTMLElement;
-    expect(within(card("Magnitude")).getByText("8")).toHaveClass("crit");
-    expect(within(card("Status")).getByText("OPEN")).toBeInTheDocument();
-    expect(within(card("Severity")).getByText("7")).toBeInTheDocument();
-    expect(within(card("Credibility")).getByText("6")).toBeInTheDocument();
-    expect(within(card("Relevance")).getByText("5")).toBeInTheDocument();
-    expect(within(card("Age")).getByText("11h 0m")).toBeInTheDocument();
+    const term = (label: string) =>
+      screen.getByText(label, { selector: "dt" }).closest("div") as HTMLElement;
+    expect(within(term("Magnitude")).getByText("8 of 10")).toHaveClass("crit");
+    expect(within(term("Status")).getByText("OPEN")).toHaveClass("warn");
+    expect(within(term("Severity")).getByText("7 of 10")).toBeInTheDocument();
+    expect(within(term("Credibility")).getByText("6 of 10")).toBeInTheDocument();
+    expect(within(term("Relevance")).getByText("5 of 10")).toBeInTheDocument();
+    expect(within(term("Age")).getByText("11 h")).toBeInTheDocument();
+    expect(screen.queryByText("8 of 10")?.closest(".card")).toBeNull();
   });
 
   it("lists the attributes with UTC times and both counts", async () => {
@@ -275,7 +276,8 @@ describe("offense detail layout", () => {
 
   it("shows the magnitude as a bar beside its number, and no bar without a magnitude", async () => {
     const { container, unmount } = await renderPage();
-    expect(container.querySelector(".card .mag-bar.crit.mag-w-8")).not.toBeNull();
+    expect(container.querySelector(".mag-bar.crit.mag-w-8")).not.toBeNull();
+    expect(container.querySelector(".cards .card")).toBeNull();
     unmount();
     vi.spyOn(api, "offense").mockResolvedValue(offense({ magnitude: null }));
     const again = await renderPage();
@@ -319,10 +321,13 @@ describe("offense detail figures and metric group", () => {
     expect(row("Sources / Destinations")).toHaveTextContent("4,000 / 12");
   });
 
-  it("folds the six summary cards to 3 + 3", async () => {
+  it("shows the scores as a definition list, not a row of cards", async () => {
     vi.spyOn(api, "offense").mockResolvedValue(offense());
     const { container } = await renderPage();
-    expect(container.querySelectorAll(".cards .card")).toHaveLength(6);
-    expect(container.querySelector(".cards")).toHaveClass("offense-cards-3");
+    expect(screen.getByRole("heading", { name: "Scores", level: 2 })).toBeInTheDocument();
+    expect(container.querySelector("dl.dimension-meta")).not.toBeNull();
+    expect(container.querySelectorAll("dl.dimension-meta dt")).toHaveLength(6);
+    expect(container.querySelectorAll(".cards .card")).toHaveLength(0);
+    expect(container.querySelector(".offense-cards-3")).toBeNull();
   });
 });

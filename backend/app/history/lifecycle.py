@@ -6,8 +6,10 @@ only `history_backfill_decision`; "Stop reading" and "Read history now" are *req
 that row (`stop_requested_*`, `start_requested_*`), applied at the family's next tick.
 
 `scope_action` is the one function that says what happens to a scope, so the five family
-adapters cannot diverge on §B.5. `new_scope_row` and `transition_row` build the full column
-mapping the repository's `write_scopes` takes, so an adapter never assembles a row by hand.
+adapters cannot diverge on §B.5. `new_scope_row`, `transition_row` and `step_row` build the
+full column mapping the repository's `write_scopes` takes, so an adapter never assembles a
+row by hand: a create or a state change goes through the first two, and a step that leaves
+the state alone starts from `scope_row` (the row as it stands) and names what it changes.
 A state change is always applied through `next_state`, never by hand.
 
 Tie rules (pinned by tests): a stop request is "later" than a start request only when it is
@@ -23,7 +25,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, overload
 
 from app.history.planner import ScopeProgress
 from app.history.progress_codec import DecodedProgress, decode_progress
@@ -56,6 +59,8 @@ SCOPE_COLUMNS: tuple[str, ...] = (
     "started_at",
     "finished_at",
     "reason",
+    "last_error_class",
+    "last_error_at",
     "progress",
 )
 
@@ -119,6 +124,49 @@ class DecisionView:
             _aware(at, f"{kind}_requested_at")
             if at is not None and self.answer != ANSWER_YES:
                 raise LifecycleError("a request exists only on a YES")
+
+
+@overload
+def decision_view(row: None) -> None: ...
+
+
+@overload
+def decision_view(row: object) -> DecisionView: ...
+
+
+def decision_view(row: object | None) -> DecisionView | None:
+    """The lifecycle's view of a decision row, from an object or a mapping.
+
+    ``None`` stays ``None``. An attribute row copies ``answer`` as stored. A
+    mapping's ``answer`` is read as text, which is what a freshly built column
+    dict holds. Times are copied as given: a caller that stores naive times
+    coerces them before calling this.
+    """
+    if row is None:
+        return None
+    source: Any = row
+    if isinstance(source, Mapping):
+        answer = str(source["answer"])
+        days = source["days"]
+        start_requested_at = source["start_requested_at"]
+        start_requested_by = source["start_requested_by"]
+        stop_requested_at = source["stop_requested_at"]
+        stop_requested_by = source["stop_requested_by"]
+    else:
+        answer = source.answer
+        days = source.days
+        start_requested_at = source.start_requested_at
+        start_requested_by = source.start_requested_by
+        stop_requested_at = source.stop_requested_at
+        stop_requested_by = source.stop_requested_by
+    return DecisionView(
+        answer=answer,
+        days=days,
+        start_requested_at=start_requested_at,
+        start_requested_by=start_requested_by,
+        stop_requested_at=stop_requested_at,
+        stop_requested_by=stop_requested_by,
+    )
 
 
 def console_mode(decision: DecisionView | None) -> ConsoleMode:
@@ -336,6 +384,8 @@ def new_scope_row(
         "started_at": at if reading else None,
         "finished_at": at if finished else None,
         "reason": bounded_reason(action.reason),
+        "last_error_class": None,
+        "last_error_at": None,
         "progress": {},
     }
 
@@ -369,20 +419,157 @@ def transition_row(
         "started_at": row.started_at,
         "finished_at": row.finished_at,
         "reason": bounded_reason(action.reason),
+        "last_error_class": None,
+        "last_error_at": None,
         "progress": dict(row.progress) if row.progress is not None else {},
     }
     if action.state is HistoryState.READING:
-        # Empty progress says the new reading has searched nothing yet.  Keep the earlier
-        # reading's window and evidence visible until the first step replaces them with its
-        # own; a stop before that step must not erase what the aggregate tables still hold.
+        # The new reading has not searched. Keep the earlier reading's progress as well as
+        # its window columns: the page still shows those floors, searches and days until the
+        # first step replaces them, and a stop before that step leaves them (HB-12 D5,
+        # HB-22 D2a). `decode_scope` treats that progress as not the current reading, because
+        # its `started_at` is older than the one this transition writes.
         values.update(
             anchor=action.anchor if action.anchor is not None else row.anchor,
             started_at=at,
             finished_at=None,
-            progress={},
         )
     else:
         values["finished_at"] = at
+    return values
+
+
+@overload
+def scope_view(row: None) -> None: ...
+
+
+@overload
+def scope_view(row: Mapping[str, Any]) -> ScopeRowView: ...
+
+
+@overload
+def scope_view(row: object) -> ScopeRowView: ...
+
+
+def scope_view(row: object | None) -> ScopeRowView | None:
+    """The lifecycle's view of a scope row, from an object or a column mapping.
+
+    The stored row (the ORM object the repository hands back) is the usual case;
+    a mapping is the row a family has just built. `None` reads as `None`.
+    `state` is read as a `HistoryState`, so a caller never compares raw strings
+    against the lifecycle's states.
+    """
+    if row is None:
+        return None
+    source: Any = SimpleNamespace(**row) if isinstance(row, Mapping) else row
+    return ScopeRowView(
+        state=HistoryState(source.state),
+        days_requested=source.days_requested,
+        days_target=source.days_target,
+        target_start=source.target_start,
+        floor=source.floor,
+        through=source.through,
+        anchor=source.anchor,
+        started_at=source.started_at,
+        finished_at=source.finished_at,
+        reason=source.reason,
+        progress=source.progress,
+    )
+
+
+def scope_row(
+    view: ScopeRowView,
+    *,
+    instance_id: Any,
+    family: HistoryFamily,
+    scope_key: str,
+) -> dict[str, Any]:
+    """The full column mapping of a scope row as it stands, from a view of it.
+
+    The lifecycle's `new_scope_row` and `transition_row` build the rows a
+    scope's *state change* writes. A step that leaves the state alone (or
+    settles it) needs this third builder; it writes every column the row holds,
+    and the repository refuses a row that lacks one. `progress` is copied, never
+    aliased, and the error marker is cleared: a written step clears it (HB-16).
+    """
+    _check_key(family, scope_key)
+    return {
+        "instance_id": instance_id,
+        "family": family.value,
+        "scope_key": scope_key,
+        "state": view.state.value,
+        "days_requested": view.days_requested,
+        "days_target": view.days_target,
+        "target_start": view.target_start,
+        "floor": view.floor,
+        "through": view.through,
+        "anchor": view.anchor,
+        "started_at": view.started_at,
+        "finished_at": view.finished_at,
+        "reason": view.reason,
+        "last_error_class": None,
+        "last_error_at": None,
+        "progress": dict(view.progress) if view.progress else {},
+    }
+
+
+def step_row(base: Mapping[str, Any], **changes: Any) -> dict[str, Any]:
+    """A copy of the scope row `base` with only the named columns replaced.
+
+    A step names at its call site the columns it changes; everything else stays
+    as the base holds it. `reason` always goes through `bounded_reason`, `state`
+    accepts a `HistoryState`, `progress` is copied, never aliased, and the error
+    marker is cleared (a written step clears it, HB-16). An unknown column name
+    raises `LifecycleError`, and the result must hold exactly `SCOPE_COLUMNS`.
+    """
+    unknown = set(changes) - set(SCOPE_COLUMNS)
+    if unknown:
+        raise LifecycleError(f"unknown scope columns {sorted(unknown)}")
+    values = dict(base)
+    values.update(changes)
+    if isinstance(values.get("state"), HistoryState):
+        values["state"] = values["state"].value
+    if "reason" in changes:
+        values["reason"] = bounded_reason(changes["reason"])
+    if "progress" in changes:
+        values["progress"] = dict(changes["progress"]) if changes["progress"] else {}
+    values["last_error_class"] = None
+    values["last_error_at"] = None
+    missing = set(SCOPE_COLUMNS) - set(values)
+    if missing or set(values) - set(SCOPE_COLUMNS):
+        raise LifecycleError(
+            f"scope row differs from the columns: missing {sorted(missing)}, "
+            f"unknown {sorted(set(values) - set(SCOPE_COLUMNS))}"
+        )
+    return values
+
+
+def deferred_scope_row(
+    stored: Any,
+    *,
+    instance_id: Any,
+    family: HistoryFamily,
+    scope_key: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Keep a stored step exactly where it is while naming a capacity deferral.
+
+    Unlike an ordinary written step, a capacity refusal is not a successful step and
+    therefore must not clear the previous provider-fault marker.
+    """
+
+    view = scope_view(stored)
+    if view is None:
+        raise LifecycleError("a deferred history step needs a stored scope")
+    values = scope_row(
+        view,
+        instance_id=instance_id,
+        family=family,
+        scope_key=scope_key,
+    )
+    values["reason"] = bounded_reason(reason)
+    values["last_error_class"] = stored.last_error_class
+    values["last_error_at"] = stored.last_error_at
     return values
 
 
@@ -394,9 +581,13 @@ def decode_scope(row: ScopeRowView) -> DecodedProgress | None:
 
     `progress` is `{}` exactly while the scope has not searched in its current reading:
     `WAITING`, `NOT_ELIGIBLE`, a `READING` scope before its first step, or one that finished
-    before it. A restarted scope may still expose the preceding reading's window and evidence
-    columns until its first step replaces them. Otherwise progress decodes with
-    `decode_progress` and agrees with the row's `target_start`. A contradiction raises
+    before it. A restarted scope keeps the preceding reading's progress until its first step
+    replaces it. That body is not this reading's: its `started_at` is older than the row's,
+    and this returns None so the collector plans a fresh window. The page reads the stored
+    body directly and still shows it. Otherwise progress decodes with `decode_progress` and
+    agrees with the row's `target_start`. A row whose reason is still the restart
+    reason has not taken that step either, including when the clock did not move
+    and the body's `started_at` equals the row's. A contradiction raises
     `LifecycleError`; nothing is guessed.
     """
     body = row.progress
@@ -409,6 +600,13 @@ def decode_scope(row: ScopeRowView) -> DecodedProgress | None:
     if row.target_start is None:
         raise LifecycleError("progress is set but the row has no target_start")
     decoded = decode_progress(body)
+    if row.started_at is not None and decoded.progress.started_at < row.started_at:
+        return None
+    # A restart keeps this reason until the first step replaces it. The body's
+    # started_at can equal the row's when the collector clock does not move, and
+    # that body is still the finished reading (catch-all, rule matches).
+    if row.reason == RESTART_REASON:
+        return None
     if decoded.progress.target_start != row.target_start:
         raise LifecycleError("progress and the row disagree on target_start")
     return decoded

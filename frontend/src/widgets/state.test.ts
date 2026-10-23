@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveStale, DEFAULT_CADENCE_SECONDS } from "./state";
+import { deriveStale } from "./state";
 
 const NOW = Date.parse("2026-10-14T12:00:00Z");
 const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
@@ -12,7 +12,6 @@ describe("deriveStale", () => {
   });
 
   it("assumes a 2 h cadence when it is unknown, so 4 h is the threshold", () => {
-    expect(DEFAULT_CADENCE_SECONDS).toBe(7200);
     expect(deriveStale(ago(3 * 3600 + 59 * 60), null, NOW).stale).toBe(false);
     expect(deriveStale(ago(4 * 3600), null, NOW).stale).toBe(false);
     expect(deriveStale(ago(4 * 3600 + 60), null, NOW).stale).toBe(true);

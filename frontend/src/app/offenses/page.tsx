@@ -1,17 +1,32 @@
+import Link from "next/link";
 import { api, type OffenseAggregates, type OffenseSummary, type Page } from "@/lib/api";
+import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
-import { formatAge, magnitudeTone } from "@/lib/health";
-import { axisTimeLabel } from "@/lib/searchRuns";
+import { formatCount } from "@/lib/format";
+import { formatAge, magnitudeTone, offenseStatusTone } from "@/lib/health";
 import { Pagination } from "@/components/Pagination";
 import { OffenseFilters } from "@/components/OffenseFilters";
+import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
 import "./offenses.css";
 
 const PAGE_SIZE = 25;
+
+const NOT_COLLECTED = "No offense snapshot has been collected yet.";
+
+const EMPTY_LIST =
+  "No offenses have been collected from QRadar yet, so this list is empty. Offense collection is set up by an administrator.";
+
+/** A nullable open count. Null is an em dash; the group states why once. A measured 0 stays 0. */
+function offenseStat(label: string, count: number | null, alarm?: "crit" | "warn") {
+  if (count == null) return <StatCard label={label} value="—" />;
+  return <StatCard label={label} value={formatCount(count)} tone={alarm && count > 0 ? alarm : undefined} />;
+}
 
 /** Magnitude is 0 to 10; the bar is drawn in whole tenths of the track. */
 function magnitudeStep(magnitude: number): number {
@@ -30,7 +45,7 @@ export default async function OffensesPage({
 
   let page: Page<OffenseSummary> | null = null;
   let aggregates: OffenseAggregates | null = null;
-  let error = false;
+  let error: string | null = null;
 
   try {
     // Fetched together: the counters describe the whole instance, not the
@@ -39,8 +54,8 @@ export default async function OffensesPage({
       api.offenses({ limit: PAGE_SIZE, offset, search, status }),
       api.offenseAggregates(),
     ]);
-  } catch {
-    error = true;
+  } catch (err) {
+    error = loadErrorMessage(err, "offenses", "read:offenses");
   }
 
   if (error) {
@@ -48,11 +63,7 @@ export default async function OffensesPage({
       <>
         <PageHeader title="Offenses" />
         <div className="notice" role="alert">
-          <p>
-            Backend unreachable. Start the stack, then run{" "}
-            <code>python -m app.cli.sync offenses</code>. Nothing was changed; reload once the
-            backend answers.
-          </p>
+          <p>{error}</p>
         </div>
       </>
     );
@@ -62,32 +73,40 @@ export default async function OffensesPage({
 
   return (
     <>
+      {/* Neither read says how far the offense snapshots reach: the page has no data time. */}
+      <ReportDataAge iso={null} />
       <PageHeader
         title="Offenses"
         description="Read-only view of offenses collected from QRadar. This page issues no writes: offenses are triaged in QRadar, not here."
       />
 
       {aggregates && (
-        <div className="cards offenses-cards offenses-cards-3">
-          <StatCard label="Total" value={page?.total ?? 0} />
-          <StatCard label="Active" value={aggregates.active} />
-          <StatCard
-            label={`Critical (mag ${aggregates.critical_magnitude}+)`}
-            value={aggregates.critical}
-            tone={aggregates.critical > 0 ? "crit" : undefined}
-          />
-          <StatCard
-            label="Unassigned"
-            value={aggregates.unassigned}
-            tone={aggregates.unassigned > 0 ? "warn" : undefined}
-          />
-          <StatCard
-            label={`Over ${aggregates.sla_hours}h SLA`}
-            value={aggregates.exceeding_sla}
-            tone={aggregates.exceeding_sla > 0 ? "warn" : undefined}
-          />
-          <StatCard label="Oldest" value={formatAge(aggregates.oldest_age_seconds)} />
-        </div>
+        <>
+          <div className="cards offenses-matching">
+            <StatCard label="Matching offenses" value={formatCount(page?.total ?? 0)} />
+          </div>
+          <h2>Open offenses, whole instance</h2>
+          {(aggregates.active == null ||
+            aggregates.critical == null ||
+            aggregates.unassigned == null ||
+            aggregates.exceeding_sla == null ||
+            aggregates.oldest_age_seconds == null) && (
+            <p className="notice" role="status">
+              Not collected. {NOT_COLLECTED}
+            </p>
+          )}
+          <div className="cards offenses-open">
+            {offenseStat("Active", aggregates.active)}
+            {offenseStat(
+              `Critical (mag ${aggregates.critical_magnitude}+)`,
+              aggregates.critical,
+              "crit",
+            )}
+            {offenseStat("Unassigned", aggregates.unassigned, "warn")}
+            {offenseStat(`Over ${aggregates.sla_hours}h SLA`, aggregates.exceeding_sla, "warn")}
+            <StatCard label="Oldest" value={formatAge(aggregates.oldest_age_seconds)} />
+          </div>
+        </>
       )}
 
       <OffenseFilters search={search} status={status} />
@@ -96,7 +115,7 @@ export default async function OffensesPage({
         <div className="notice">
           {search || status
             ? "No offenses match these filters."
-            : "No offenses collected yet. Run an offense sync to pull them from QRadar."}
+            : EMPTY_LIST}
         </div>
       ) : (
         <>
@@ -121,7 +140,7 @@ export default async function OffensesPage({
               {items.map((o) => (
                 <tr key={o.qradar_offense_id}>
                   <td>
-                    <a href={`/offenses/${o.qradar_offense_id}`}>{o.qradar_offense_id}</a>
+                    <Link href={`/offenses/${o.qradar_offense_id}`}>{o.qradar_offense_id}</Link>
                   </td>
                   {/* Rendered as text, never as markup: this string comes from
                       QRadar. The backend sanitizes it; React escapes it again. */}
@@ -139,7 +158,7 @@ export default async function OffensesPage({
                   </td>
                   <td className="num">{o.severity ?? "—"}</td>
                   <td>
-                    <span className={`pill ${o.status === "OPEN" ? "warn" : "ok"}`}>
+                    <span className={`pill ${offenseStatusTone(o.status)}`}>
                       {o.status}
                     </span>
                   </td>
@@ -147,7 +166,7 @@ export default async function OffensesPage({
                   <td className="num">
                     {o.event_count == null ? "—" : o.event_count.toLocaleString("en-US")}
                   </td>
-                  <td className="nowrap">{o.start_time ? axisTimeLabel(o.start_time) : "—"}</td>
+                  <td>{o.start_time ? <UtcTime value={o.start_time} wrapZone /> : "—"}</td>
                   <td className="num">{formatAge(o.age_seconds)}</td>
                 </tr>
               ))}

@@ -166,7 +166,7 @@ class TestTokenFile:
             environment="production",
             debug=False,
             secret_key="s" * 40,
-            encryption_key=ENCRYPTION_KEY,
+            encryption_key="sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A=",
             qradar_provider=ProviderKind.REST,
             qradar_host="https://qradar.example",
             qradar_api_token_file=str(tmp_path / "t.sec"),

@@ -73,4 +73,27 @@ describe("offensesCard", () => {
     );
     expect(r.breakdown?.below).toBeNull();
   });
+
+  it("is NOT_COLLECTED from a null count even when the probe still lists rows", () => {
+    const r = offensesCard(
+      analytics({ active: null }),
+      snapshotExists,
+    );
+    expect(r.open).toBeNull();
+    expect(r.critical).toBeNull();
+    expect(r.unassigned).toBeNull();
+    expect(r.exceedingSla).toBeNull();
+    expect(r.breakdown).toBeNull();
+    expect(r.qualifiers).toEqual([
+      { kind: "NOT_COLLECTED", reason: "No offense snapshot has been collected yet." },
+    ]);
+  });
+
+  it("is NOT_COLLECTED from a null count while the probe has not arrived", () => {
+    const r = offensesCard(analytics({ active: null }), null);
+    expect(r.open).toBeNull();
+    expect(r.qualifiers).toEqual([
+      { kind: "NOT_COLLECTED", reason: "No offense snapshot has been collected yet." },
+    ]);
+  });
 });

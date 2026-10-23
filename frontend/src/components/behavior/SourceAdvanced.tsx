@@ -17,7 +17,9 @@ import type {
   SourceBehavior,
 } from "@/lib/api";
 import { completenessMeaning, formatMetric } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { clearedFaultLine } from "@/lib/evaluationFault";
+import { UtcTime } from "@/components/ui/UtcTime";
+import { formatCount, formatShare } from "@/lib/format";
 
 import { OriginMarker } from "./HistoryKey";
 
@@ -43,9 +45,29 @@ export function SourceAdvanced({
   const recent = [...buckets]
     .sort((a, b) => Date.parse(b.bucket_start) - Date.parse(a.bucket_start))
     .slice(0, BUCKET_ROWS);
+  const cleared = clearedFaultLine(behavior);
 
   return (
     <div className="stack-6">
+      {cleared && (
+        <p className="subtitle">
+          Last evaluation fault: the{" "}
+          <UtcTime value={cleared.failedBucket} variant="compact" /> bucket{" "}
+          {cleared.attempts == null
+            ? "failed"
+            : cleared.attempts === 1
+              ? "failed once"
+              : `failed ${cleared.attempts} times`}
+          {cleared.errorClass ? ` (${cleared.errorClass})` : ""}
+          {cleared.lastFailure ? (
+            <>
+              {" "}
+              at <UtcTime value={cleared.lastFailure} variant="compact" />
+            </>
+          ) : null}
+          ; judged on retry at <UtcTime value={cleared.resolvedAt} variant="compact" />.
+        </p>
+      )}
       <Disclosure summary="Baseline history" note={cellsFailed ? "not loaded" : `${cells.length} cells`}>
         {cellsFailed ? (
           <div className="notice" role="alert">
@@ -104,7 +126,7 @@ export function SourceAdvanced({
                       {formatMetric(c.p05)} – {formatMetric(c.p95)}
                     </td>
                     <td className="num">{c.sample_count}</td>
-                    <td className="num">{(c.completeness * 100).toFixed(0)}%</td>
+                    <td className="num">{formatShare(c.completeness)}</td>
                     <td>
                       {/* Stated as a word, not only as a colour. */}
                       <span className={`pill pill-quiet ${c.is_reliable ? "ok" : "warn"}`}>
@@ -167,11 +189,9 @@ export function SourceAdvanced({
                 {recent.map((b) => (
                   <tr key={b.bucket_start}>
                     <td className="num">
-                      <time dateTime={b.bucket_start}>
-                        {formatDateTime(b.bucket_start)}
-                      </time>
+                      <UtcTime value={b.bucket_start} />
                     </td>
-                    <td className="num">{b.event_count.toLocaleString()}</td>
+                    <td className="num">{formatCount(b.event_count)}</td>
                     {/* A COMPLETE zero is a measurement and renders as 0.00.
                         Only an unobserved interval renders as an em dash. */}
                     <td className="num">
@@ -191,7 +211,7 @@ export function SourceAdvanced({
                       </span>
                       <OriginMarker origin={b.origin} />
                     </td>
-                    <td className="num">{formatDateTime(b.last_event_at)}</td>
+                    <td className="num">{<UtcTime value={b.last_event_at} />}</td>
                   </tr>
                 ))}
               </tbody>
@@ -202,13 +222,25 @@ export function SourceAdvanced({
 
       <Disclosure summary="Collection details">
         <dl className="dimension-meta">
+          {behavior.skipped_buckets && behavior.skipped_buckets.length > 0 && (
+            <div>
+              <dt>Buckets not judged</dt>
+              <dd>
+                {behavior.skipped_buckets.map((b) => (
+                  <span key={b.bucket_start} className="cell-sub">
+                    <UtcTime value={b.bucket_start} variant="compact" /> ({b.error_class})
+                  </span>
+                ))}
+              </dd>
+            </div>
+          )}
           <div>
             <dt>Last collected bucket</dt>
-            <dd className="num">{formatDateTime(behavior.last_bucket_at)}</dd>
+            <dd className="num">{<UtcTime value={behavior.last_bucket_at} />}</dd>
           </div>
           <div>
             <dt>Last event</dt>
-            <dd className="num">{formatDateTime(behavior.last_event_at)}</dd>
+            <dd className="num">{<UtcTime value={behavior.last_event_at} />}</dd>
           </div>
           <div>
             <dt>Baseline samples</dt>
@@ -217,7 +249,7 @@ export function SourceAdvanced({
           <div>
             <dt>Baseline completeness</dt>
             <dd className="num">
-              {(behavior.baseline_completeness * 100).toFixed(0)}%
+              {formatShare(behavior.baseline_completeness)}
             </dd>
           </div>
           <div>

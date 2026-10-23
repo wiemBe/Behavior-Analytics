@@ -73,6 +73,7 @@ class FakeSession:
     ) -> None:
         self.scalar_values = list(scalar_values or [])
         self.scalars_values = list(scalars_values or [])
+        self.statements: list[object] = []
 
     async def __aenter__(self) -> FakeSession:
         return self
@@ -80,10 +81,12 @@ class FakeSession:
     async def __aexit__(self, *_args: object) -> None:
         return None
 
-    async def scalar(self, _query: object) -> Any:
+    async def scalar(self, query: object) -> Any:
+        self.statements.append(query)
         return self.scalar_values.pop(0)
 
-    async def scalars(self, _query: object) -> FakeScalars:
+    async def scalars(self, query: object) -> FakeScalars:
+        self.statements.append(query)
         return FakeScalars(self.scalars_values.pop(0))
 
 
@@ -190,11 +193,194 @@ async def test_timescale_pass_warn_and_fail(settings: Settings) -> None:
 
 
 @pytest.mark.asyncio
-async def test_retention_policy_pass_and_warn(settings: Settings) -> None:
-    assert (await make_doctor(settings).check_retention_policy()).status is Status.PASS
-    enabled = settings.model_copy(update={"retention_enabled": True})
-    result = await make_doctor(enabled, FakeSession(scalar_values=[None])).check_retention_policy()
+async def test_retention_policy_disabled_queries_nothing(settings: Settings) -> None:
+    session = FakeSession()
+    result = await make_doctor(settings, session).check_retention_policy()
+    assert result.status is Status.PASS
+    assert result.message == "retention is disabled by configuration"
+    assert session.statements == []
+
+
+@pytest.mark.asyncio
+async def test_retention_policy_warns_for_each_missing_table_with_one_query(
+    settings: Settings,
+) -> None:
+    enabled = settings.model_copy(
+        update={
+            "retention_enabled": True,
+            "retention_log_source_metric_days": 90,
+            "retention_search_result_metric_days": 90,
+            "retention_rule_metric_days": 30,
+            "retention_offense_snapshot_days": 90,
+        }
+    )
+    session = FakeSession(
+        scalars_values=[["log_source_metric", "search_result_metric", "offense_snapshot"]]
+    )
+    result = await make_doctor(enabled, session).check_retention_policy()
     assert result.status is Status.WARN
+    assert result.message == (
+        "retention is enabled but these tables have no retention policy: rule_metric"
+    )
+    assert len(session.statements) == 1
+
+
+@pytest.mark.asyncio
+async def test_retention_policy_pass_lists_all_configured_tables(settings: Settings) -> None:
+    tables = [
+        "log_source_metric",
+        "search_result_metric",
+        "rule_metric",
+        "offense_snapshot",
+    ]
+    enabled = settings.model_copy(
+        update={
+            "retention_enabled": True,
+            "retention_log_source_metric_days": 90,
+            "retention_search_result_metric_days": 90,
+            "retention_rule_metric_days": 90,
+            "retention_offense_snapshot_days": 90,
+        }
+    )
+    session = FakeSession(scalars_values=[tables])
+    result = await make_doctor(enabled, session).check_retention_policy()
+    assert result.status is Status.PASS
+    for table in tables:
+        assert table in result.message
+    assert len(session.statements) == 1
+
+
+def _day_group(message: str, days: int) -> str:
+    prefix = f"{days}d: "
+    for part in message.split("; "):
+        if part.startswith(prefix):
+            return part[len(prefix) :]
+    raise AssertionError(f"{days}d group missing from {message}")
+
+
+def _largest_retention_days(attr: str) -> int:
+    """The field's ``le`` bound, or a large value when the field has none."""
+    for meta in Settings.model_fields[attr].metadata:
+        upper = getattr(meta, "le", None)
+        if upper is not None:
+            return int(upper)
+    return 1_000_000_000
+
+
+def _distinct_retention_days() -> dict[str, int]:
+    """One day per setting, each near ``le`` or a distinct large value.
+
+    Tables that share a setting stay together. Distinct settings each open
+    their own group, which is the long form of the doctor line.
+    """
+    attrs: list[str] = []
+    for deleter in doctor_module.BATCH_DELETERS:
+        for item in deleter.tables:
+            if item.days_attr not in attrs:
+                attrs.append(item.days_attr)
+    update: dict[str, int] = {}
+    for offset, attr in enumerate(attrs):
+        upper = None
+        lower = 1
+        for meta in Settings.model_fields[attr].metadata:
+            le = getattr(meta, "le", None)
+            ge = getattr(meta, "ge", None)
+            if le is not None:
+                upper = int(le)
+            if ge is not None:
+                lower = int(ge)
+        value = (1_000_000_000 if upper is None else upper) - offset
+        if value < lower:
+            raise AssertionError(f"{attr} distinct day {value} is below {lower}")
+        update[attr] = value
+    if len(set(update.values())) != len(update):
+        raise AssertionError(f"day values are not distinct: {update}")
+    return update
+
+
+@pytest.mark.asyncio
+async def test_batch_retention_lists_every_deleter_and_queries_nothing(
+    settings: Settings,
+) -> None:
+    session = FakeSession()
+    result = await make_doctor(settings, session).check_batch_retention()
+    assert result.status is Status.PASS
+    assert result.runbook == "OPS-R14"
+    assert session.statements == []
+    assert "not gated by RETENTION_ENABLED" in result.message
+    assert result.message.count("WAF_RETENTION_ENABLED") == 1
+    assert result.message.count("IPS_RETENTION_ENABLED") == 1
+    assert "apply_timescale_policies" not in result.message
+    assert frozenset(
+        item.table for deleter in doctor_module.BATCH_DELETERS for item in deleter.tables
+    ) == doctor_module._BATCH_TABLE_NAMES
+    for deleter in doctor_module.BATCH_DELETERS:
+        assert deleter.task not in result.message
+        for item in deleter.tables:
+            assert item.table in result.message
+    assert _day_group(result.message, 365) == "ips_anomaly, log_source_anomaly"
+    rendered_text = render_text([result])
+    rendered_json = render_json([result])
+    assert json.loads(rendered_json)[0]["message"] == result.message
+    assert result.message in rendered_text
+    assert "***redacted***" not in rendered_text + rendered_json
+    assert len(result.message) <= doctor_module._MESSAGE_CAP
+    changed = settings.model_copy(update={"catchall_retention_days": 17})
+    again = await make_doctor(changed, FakeSession()).check_batch_retention()
+    assert _day_group(again.message, 17) == "catchall_bucket, catchall_sender"
+    assert "catchall_bucket" not in _day_group(again.message, 35)
+    assert "catchall_sender" not in _day_group(again.message, 35)
+
+
+@pytest.mark.asyncio
+async def test_batch_retention_render_fits_at_largest_day_values(settings: Settings) -> None:
+    update = {
+        item.days_attr: _largest_retention_days(item.days_attr)
+        for deleter in doctor_module.BATCH_DELETERS
+        for item in deleter.tables
+    }
+    widened = settings.model_copy(update=update)
+    result = await make_doctor(widened, FakeSession()).check_batch_retention()
+    rendered_text = render_text([result])
+    rendered_json = render_json([result])
+    payload = json.loads(rendered_json)
+    assert payload[0]["message"] == result.message
+    assert result.message in rendered_text
+    assert len(result.message) <= doctor_module._MESSAGE_CAP
+    assert doctor_module._safe_text(result.message) == result.message
+    assert "***redacted***" not in rendered_text
+    assert "***redacted***" not in rendered_json
+    for name in doctor_module._BATCH_TABLE_NAMES:
+        assert name in rendered_text
+        assert name in payload[0]["message"]
+    assert "3650d:" in result.message
+    assert "1000000000d:" in result.message
+
+
+@pytest.mark.asyncio
+async def test_batch_retention_render_fits_when_every_day_value_differs(
+    settings: Settings,
+) -> None:
+    days = _distinct_retention_days()
+    widened = settings.model_copy(update=days)
+    result = await make_doctor(widened, FakeSession()).check_batch_retention()
+    rendered_text = render_text([result])
+    rendered_json = render_json([result])
+    payload = json.loads(rendered_json)
+    groups = [part for part in result.message.split("; ") if part[:1].isdigit()]
+    assert len(groups) == len(days)
+    for name in doctor_module._BATCH_TABLE_NAMES:
+        assert name in rendered_text
+        assert name in payload[0]["message"]
+    for gate in ("WAF_RETENTION_ENABLED", "IPS_RETENTION_ENABLED"):
+        assert gate in rendered_text
+        assert gate in payload[0]["message"]
+    assert "***redacted***" not in rendered_text
+    assert "***redacted***" not in rendered_json
+    assert payload[0]["message"] == result.message
+    assert result.message in rendered_text
+    assert doctor_module._safe_text(result.message) == result.message
+    assert len(result.message) <= doctor_module._MESSAGE_CAP
 
 
 @pytest.mark.asyncio
@@ -731,3 +917,151 @@ async def test_timed_out_check_fails_and_next_check_runs(
     )
     assert next_check_ran
     assert results[1].status is Status.PASS
+
+
+@pytest.mark.asyncio
+async def test_unknown_settings_pass_and_warn(settings: Settings) -> None:
+    clean = {
+        "CATCHALL_COLLECTION_ENABLED": "true",
+        "QRADAR_HOST": "https://qradar.example",
+        "NOTIFY_TEAMS_WEBHOOK_URL": "https://hooks.example/planted-webhook-secret",
+        "SMTP_HOST": "mail.example",
+        "GIT_SHA": "abc123",
+        "PATH": "/usr/bin",
+        "HOSTNAME": "box",
+    }
+    passed = await make_doctor(settings, environ=clean).check_unknown_settings()
+    assert passed.status is Status.PASS
+    assert passed.message == "no unknown settings"
+    assert passed.runbook is None
+
+    planted = "planted-secret-value-9f3a"
+    warned = await make_doctor(
+        settings, environ={**clean, "CATCHALL_COLLECTION_ENABLE": planted}
+    ).check_unknown_settings()
+    assert warned.status is Status.WARN
+    assert warned.message == "ignored unknown settings: CATCHALL_COLLECTION_ENABLE"
+    assert planted not in warned.message
+    assert warned.runbook == "OPS-R62"
+    assert ("unknown_settings", "OPS-R62") in doctor_module._CHECK_RUNBOOKS
+
+
+@pytest.mark.asyncio
+async def test_unknown_settings_pass_for_the_names_install_and_compose_use(
+    settings: Settings,
+) -> None:
+    from tests.unit.test_config_and_crypto import deployment_env_names
+
+    planted = "planted-install-value"
+    environ = dict.fromkeys(deployment_env_names(), planted)
+    result = await make_doctor(settings, environ=environ).check_unknown_settings()
+    assert result.status is Status.PASS
+    assert result.message == "no unknown settings"
+    assert result.runbook is None
+    assert planted not in result.message
+
+
+class _PermitBudget:
+    def __init__(
+        self,
+        counts: Any,
+        *,
+        instance_id: Any = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.instance_id = instance_id
+        self.counts = counts
+        self.error = error
+
+    async def active_permits(self, _session: Any) -> Any:
+        if self.error is not None:
+            raise self.error
+        return self.counts
+
+
+def _install_budget(monkeypatch: pytest.MonkeyPatch, budget: _PermitBudget) -> None:
+    from app.services.ariel_permit import ArielPermitBudget
+
+    def for_session(_session: Any, _settings: Any, *, instance_id: Any) -> _PermitBudget:
+        del instance_id
+        return budget
+
+    monkeypatch.setattr(ArielPermitBudget, "for_session", for_session)
+
+
+def _permit_counts(**overrides: Any) -> Any:
+    from app.services.ariel_permit import ArielPermitCounts
+
+    values: dict[str, Any] = {
+        "global_held": 0,
+        "instance_held": 0,
+        "global_cap": 6,
+        "instance_cap": 3,
+        "reserved_live_slots": 2,
+    }
+    values.update(overrides)
+    return ArielPermitCounts(**values)
+
+
+@pytest.mark.asyncio
+async def test_ariel_permits_check_covers_every_state(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doctor = make_doctor(settings)
+    assert doctor_module._CHECK_RUNBOOKS[-1] == ("ariel_permits", "OPS-R63")
+
+    _install_budget(monkeypatch, _PermitBudget(_permit_counts()))
+    idle = await doctor.check_ariel_permits()
+    assert render_text([idle]) == (
+        "PASS  ariel_permits global 0/6, reserved live slots 2, "
+        "console-pool locks 0 (cap 3 per console)"
+    )
+    assert idle.runbook is None
+
+    _install_budget(
+        monkeypatch, _PermitBudget(_permit_counts(global_held=6, instance_held=4))
+    )
+    saturated = await doctor.check_ariel_permits()
+    assert render_text([saturated]) == (
+        "WARN  ariel_permits global 6/6, reserved live slots 2, "
+        "console-pool locks 4 (cap 3 per console); "
+        "live work is waiting and history yields    runbook: OPS-R63"
+    )
+
+    _install_budget(monkeypatch, _PermitBudget(_permit_counts(global_held=7)))
+    over = await doctor.check_ariel_permits()
+    assert render_text([over]) == (
+        "WARN  ariel_permits global 7/6, reserved live slots 2, "
+        "console-pool locks 0 (cap 3 per console); "
+        "live work is waiting and history yields    runbook: OPS-R63"
+    )
+
+    _install_budget(monkeypatch, _PermitBudget(None))
+    quiet = await doctor.check_ariel_permits()
+    assert render_text([quiet]) == "PASS  ariel_permits not enforced"
+    assert quiet.runbook is None
+
+    _install_budget(
+        monkeypatch,
+        _PermitBudget(
+            None,
+            instance_id=object(),
+            error=RuntimeError("password=planted-dsn"),
+        ),
+    )
+    failed = await doctor.check_ariel_permits()
+    assert render_text([failed]) == (
+        "FAIL  ariel_permits Ariel permit counts could not be read (RuntimeError)"
+        "    runbook: OPS-R63"
+    )
+    assert "planted-dsn" not in failed.message
+    assert "password" not in failed.message
+
+    _install_budget(
+        monkeypatch,
+        _PermitBudget(_permit_counts(global_held=1, instance_held=1), instance_id=object()),
+    )
+    one_console = await doctor.check_ariel_permits()
+    assert render_text([one_console]) == (
+        "PASS  ariel_permits global 1/6, reserved live slots 2, console 1/3"
+    )

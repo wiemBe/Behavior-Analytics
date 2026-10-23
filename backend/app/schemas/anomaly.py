@@ -185,6 +185,37 @@ class BaselineCellOut(BaseModel):
     computed_at: datetime | None = None
 
 
+class SourceEvaluationOut(BaseModel):
+    """How far anomaly evaluation has judged this source, and any fault.
+
+    `judged_through` is the watermark: the last bucket the engine processed,
+    including one it gave up on. A bucket with no verdict is recorded only on
+    this object (and the skipped list), never as a fabricated incident. A field
+    that does not apply is None, never 0 — an attempt count of 0 would look
+    like a successful empty run.
+    """
+
+    judged_through: datetime | None = None
+    failed_bucket_start: datetime | None = None
+    attempts: int | None = None
+    max_attempts: int | None = None
+    error_class: str | None = None
+    last_failure_at: datetime | None = None
+    given_up_at: datetime | None = None
+    #: Set when a later bucket was judged and the open fault cleared.
+    resolved_at: datetime | None = None
+
+
+class SkippedBucketOut(BaseModel):
+    """One bucket in the selected window that evaluation gave up on."""
+
+    bucket_start: datetime
+    error_class: str
+    attempts: int
+    given_up_at: datetime | None = None
+    last_failure_at: datetime
+
+
 class SourceBehaviorOut(BaseModel):
     """Current observed-vs-expected behavior for one log source."""
 
@@ -211,6 +242,11 @@ class SourceBehaviorOut(BaseModel):
     last_bucket_completeness: str | None = None
     last_event_at: datetime | None = None
     open_anomaly_count: int = 0
+    #: None when this source has never been evaluated and has no fault row.
+    evaluation: SourceEvaluationOut | None = None
+    #: Given-up buckets in the selected window. A measured zero is 0.
+    skipped_buckets_in_window: int | None = None
+    skipped_buckets: list[SkippedBucketOut] = Field(default_factory=list)
 
 
 class AnomalyTransitionOut(BaseModel):
@@ -568,6 +604,13 @@ class BehaviorSummaryOut(BaseModel):
     #: identical in both cases.
     evidence_pending: int = 0
     evidence_failed: int = 0
+    #: Sources with an open evaluation fault or a given-up bucket in 24 h.
+    #: A measured zero: we counted, and none matched.
+    sources_with_evaluation_faults: int = 0
+    #: Given-up buckets in the last 24 h. These buckets have no verdict.
+    buckets_not_judged: int = 0
+    #: Anomalies with a recorded resolution timestamp in the last 24 h.
+    resolved_last_24h: int = 0
     recently_resolved: list[AnomalyListItem] = Field(default_factory=list)
     highest_deviation: list[AnomalyListItem] = Field(default_factory=list)
 

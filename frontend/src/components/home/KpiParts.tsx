@@ -1,3 +1,6 @@
+
+import { formatCount } from "@/lib/format";
+
 // The parts a KPI card's body is built from: a figure with its unit and a line
 // of breakdown parts. The frame and its honesty qualifiers are in `WidgetFrame`.
 
@@ -72,5 +75,5 @@ export function countNoun(value: number, noun: string): string {
 
 /** "1,234.56": EPS with thousands separators and two decimals. */
 export function n(value: number): string {
-  return value.toLocaleString("en-US");
+  return formatCount(value);
 }

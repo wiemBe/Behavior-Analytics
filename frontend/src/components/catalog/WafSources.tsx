@@ -8,6 +8,7 @@ import Link from "next/link";
 
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
+import { wafSourcesAsOf } from "@/lib/home/asOf";
 import { WidgetFrame, WidgetQualifiers } from "@/components/home/WidgetFrame";
 import { Unmeasured } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -33,6 +34,10 @@ export function WafSources() {
       windowText="latest bucket"
       link={{ href: "/behavior/waf", label: "WAF" }}
       state={state}
+      dataTo={{
+        at: state.status === "ok" ? wafSourcesAsOf(state.data.items) : null,
+        family: "WAF_COLLECTION",
+      }}
       what="the WAF sources"
       permission="read:anomalies"
     >

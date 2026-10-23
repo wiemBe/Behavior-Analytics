@@ -7,6 +7,7 @@ and a constant statement count.
 
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime, timedelta
 from unittest import mock
 
@@ -15,8 +16,10 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.collectors.rule_match_collector import COLLECTOR_NAME, RuleMatchCollector
+from app.history.progress_codec import ProgressCodecError
 from app.models.enums import HistoryDecisionAnswer, HistoryDecisionSource, RuleHealthStatus
 from app.models.history_backfill import HistoryBackfillDecision, HistoryBackfillScope
+from app.models.monitoring import CollectionWatermark
 from app.models.rule import (
     AnalyticsRule,
     RuleMatchMetric,
@@ -25,6 +28,7 @@ from app.models.rule import (
 )
 from app.providers.base import ConsoleEventTotals, ProviderUnavailableError
 from app.rules.matches import CoverageState, assess_coverage
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from tests.integration.factories import make_instance
 from tests.integration.test_rule_match_collection import (
@@ -43,13 +47,14 @@ from tests.integration.test_rule_match_windowed_collection import KeyedProvider
 
 pytestmark = pytest.mark.integration
 
-#: The pinned statement count of one collector tick (HB-5 round 1, F2): 14,
-#: measured on 2026-10-19 over every leg of `TestStatementCount` below, the
+#: The pinned statement count of one collector tick: 16, including HB-19's
+#: savepoint pair around the console-wide history step.
+#: The pre-HB-19 count was measured on 2026-10-19 over every leg below, the
 #: large steps of `TestLargeStep` included. A step costs the same statements
 #: whatever it reads and writes (AGENTS.md §2 rule 9): the scan and chunk
 #: searches, the scope's own queries, and one executemany INSERT per table
 #: however many rows the step writes.
-HISTORY_STATEMENTS_PER_TICK = 14
+HISTORY_STATEMENTS_PER_TICK = 16
 
 #: The oldest live window of the history tests: 11:00, one hour before EVAL_NOW.
 ANCHOR = NOW.replace(hour=11, minute=0)
@@ -579,6 +584,185 @@ class TestOperatorPaths:
         assert report.partial_failure is False
         assert await history_windows(db_session, instance) == []
 
+    @pytest.mark.asyncio
+    async def test_a_raised_step_fault_is_visible_then_a_success_clears_it(
+        self, db_session, monkeypatch
+    ) -> None:
+        instance = await make_instance(db_session)
+        await add_rule(db_session, instance, 100)
+        await seed_anchor_and_decision(db_session, instance)
+        provider = HistoryProvider(by_window, first_event=H0 - 24 * HOUR)
+        await history_collector(
+            db_session, provider, search_cadence_max_searches_per_tick=1
+        ).collect(instance)
+        reading = await scope_row(db_session, instance)
+        assert reading is not None and reading.state == "READING"
+        live_before = len(await windows(db_session, instance))
+        original = RuleMatchCollector._read_history
+
+        async def broken(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            raise ProgressCodecError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(RuleMatchCollector, "_read_history", broken)
+        report = await history_collector(db_session, provider, now=NOW + HOUR).collect(instance)
+
+        failed = await scope_row(db_session, instance)
+        assert report.history_error == "ProgressCodecError"
+        assert failed is not None and failed.state == "READING"
+        assert failed.last_error_class == "ProgressCodecError"
+        assert failed.last_error_at == NOW + HOUR
+        assert len(await windows(db_session, instance)) > live_before
+
+        monkeypatch.setattr(RuleMatchCollector, "_read_history", original)
+        await history_collector(db_session, provider, now=NOW + 2 * HOUR).collect(instance)
+        cleared = await scope_row(db_session, instance)
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    @pytest.mark.asyncio
+    async def test_capacity_refusal_yields_without_halving_or_marking(self, db_session) -> None:
+        instance = await make_instance(db_session)
+        await add_rule(db_session, instance, 100)
+        await seed_anchor_and_decision(db_session, instance)
+        provider = HistoryProvider(by_window, first_event=H0 - 24 * HOUR)
+        await history_collector(
+            db_session, provider, search_cadence_max_searches_per_tick=1
+        ).collect(instance)
+        before = await scope_row(db_session, instance)
+        assert before is not None and before.state == "READING"
+        before_progress = copy.deepcopy(before.progress)
+        before_through = before.through
+        before.last_error_class = "EarlierProviderError"
+        before.last_error_at = NOW
+        await db_session.commit()
+        original = provider.get_rule_matches_windowed
+
+        async def refuse_history(window_start, window_end, **kwargs):  # type: ignore[no-untyped-def]
+            if window_end <= ANCHOR:
+                assert _ARIEL_PRIORITY.get() == "background"
+                raise ArielPermitUnavailable(7, 2, 4)
+            return await original(window_start, window_end, **kwargs)
+
+        provider.get_rule_matches_windowed = refuse_history  # type: ignore[method-assign]
+        report = await history_collector(db_session, provider, now=NOW + HOUR).collect(instance)
+
+        yielded = await scope_row(db_session, instance)
+        assert report.history_state == "READING"
+        assert yielded is not None and yielded.state == "READING"
+        assert yielded.through == before_through and yielded.progress == before_progress
+        assert yielded.last_error_class == "EarlierProviderError"
+        assert yielded.last_error_at == NOW
+        assert yielded.reason == "deferred: no Ariel permit within 7 s"
+        assert await history_windows(db_session, instance) == []
+        assert _ARIEL_PRIORITY.get() == "live"
+
+    @pytest.mark.asyncio
+    async def test_an_unexpected_step_fault_keeps_live_and_rolls_history_back(
+        self, db_session, monkeypatch
+    ) -> None:
+        instance = await make_instance(db_session)
+        await add_rule(db_session, instance, 100)
+        await seed_anchor_and_decision(db_session, instance)
+        provider = HistoryProvider(by_window, first_event=H0 - 24 * HOUR)
+        await history_collector(
+            db_session, provider, search_cadence_max_searches_per_tick=1
+        ).collect(instance)
+        before = await scope_row(db_session, instance)
+        assert before is not None and before.state == "READING"
+        before_progress = dict(before.progress)
+        before_through = before.through
+        history_before = await history_windows(db_session, instance)
+        live_before = len(
+            [row for row in await windows(db_session, instance) if row.origin == "LIVE"]
+        )
+        watermark_before = await db_session.scalar(
+            select(CollectionWatermark).where(
+                CollectionWatermark.instance_id == instance.id,
+                CollectionWatermark.collector == COLLECTOR_NAME,
+            )
+        )
+        assert watermark_before is not None
+        old_watermark = watermark_before.watermark_at
+        original = RuleMatchCollector._read_history
+
+        async def write_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            await original(self, *args, **kwargs)
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(RuleMatchCollector, "_read_history", write_then_crash)
+        failed_at = NOW + HOUR
+        report = await history_collector(
+            db_session, provider, now=failed_at
+        ).collect(instance)
+
+        failed = await scope_row(db_session, instance)
+        assert report.history_error == "RuntimeError"
+        assert failed is not None and failed.state == "READING"
+        assert failed.progress == before_progress and failed.through == before_through
+        assert failed.last_error_class == "RuntimeError"
+        assert failed.last_error_at == failed_at
+        assert await history_windows(db_session, instance) == history_before
+        assert len(
+            [row for row in await windows(db_session, instance) if row.origin == "LIVE"]
+        ) > live_before
+        await db_session.refresh(watermark_before)
+        assert watermark_before.watermark_at > old_watermark  # type: ignore[operator]
+
+        monkeypatch.setattr(RuleMatchCollector, "_read_history", original)
+        await history_collector(db_session, provider, now=NOW + 2 * HOUR).collect(instance)
+        cleared = await scope_row(db_session, instance)
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    @pytest.mark.asyncio
+    async def test_a_fault_after_the_step_wrote_rows_reports_the_pre_step_counts(
+        self, db_session, monkeypatch
+    ) -> None:
+        """A rolled-back step's written counts cannot stay in the tick's report."""
+        instance = await make_instance(db_session)
+        await add_rule(db_session, instance, 100)
+        await seed_anchor_and_decision(db_session, instance)
+        provider = HistoryProvider(by_window, first_event=H0 - 24 * HOUR)
+        await history_collector(
+            db_session, provider, search_cadence_max_searches_per_tick=1
+        ).collect(instance)
+        before = await scope_row(db_session, instance)
+        assert before is not None and before.state == "READING"
+        history_before = await history_windows(db_session, instance)
+        rows_original = RuleMatchCollector._write_history_rows
+        written: list[tuple[int, int]] = []
+
+        async def count_then_write(self, window_rows, metric_rows):  # type: ignore[no-untyped-def]
+            await rows_original(self, window_rows, metric_rows)
+            written.append((len(window_rows), len(metric_rows)))
+
+        monkeypatch.setattr(RuleMatchCollector, "_write_history_rows", count_then_write)
+        scope_original = RuleMatchCollector._write_history_scope
+
+        async def write_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            await scope_original(self, *args, **kwargs)
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(RuleMatchCollector, "_write_history_scope", write_then_crash)
+        failed_at = NOW + HOUR
+
+        report = await history_collector(db_session, provider, now=failed_at).collect(instance)
+
+        assert written and written[0][0] > 0  # the step wrote rows first
+        # Everything the step said about itself was said inside the savepoint, so
+        # the report is back to its pre-step defaults: no state, no counts.
+        assert report.history_state is None
+        assert report.history_reason is None
+        assert report.history_searches == 0
+        assert report.history_windows_written == 0
+        assert report.history_rows_written == 0
+        assert report.history_error == "RuntimeError"
+        failed = await scope_row(db_session, instance)
+        assert failed is not None and failed.state == "READING"
+        assert failed.last_error_class == "RuntimeError"
+        assert failed.last_error_at == failed_at
+        assert await history_windows(db_session, instance) == history_before
+
 
 def full_read_matches(start: datetime) -> dict:
     """The history read of the whole asked window: every window COMPLETE, no rows.
@@ -786,9 +970,8 @@ class TestStatementCount:
                 ).collect(instance)
             assert report.history_windows_written == 12
             counts[rules] = len(statements)
-            # The number is pinned independently: 14 statements per tick,
-            # measured on 2026-10-19, whatever the rows it writes.
-            assert counts[rules] == 14, counts
+            # HB-19 adds only SAVEPOINT / RELEASE SAVEPOINT to the old 14.
+            assert counts[rules] == 16, counts
 
         # Large step of F1: 168 windows x 100 rules = 16,800 metric rows.
         instance_large = await make_instance(db_session)
@@ -808,13 +991,13 @@ class TestStatementCount:
                 ),
                 rule_match_max_rows=5000,
             ).collect(instance_large)
-        assert len(statements_large) == 12
+        assert len(statements_large) == 14
         counts["large_168_100"] = len(statements_large)
 
         with capsys.disabled():
             print("\nrule-match collection+history statements per tick:", counts)
-        assert counts[1] == counts[100] == 14
-        assert counts.get("large_168_100") == 12
+        assert counts[1] == counts[100] == 16
+        assert counts.get("large_168_100") == 14
 
     @pytest.mark.asyncio
     async def test_history_statements_are_constant_in_the_number_of_windows(
@@ -859,11 +1042,11 @@ class TestStatementCount:
                 ).collect(instance)
             assert report.history_windows_written == span_buckets
             counts[(span_buckets, window_seconds)] = len(statements)
-            # Pinned independently at 14 statements per tick, measured on 2026-10-19.
-            assert counts[(span_buckets, window_seconds)] == 14, counts
+            # HB-19 adds only SAVEPOINT / RELEASE SAVEPOINT to the old 14.
+            assert counts[(span_buckets, window_seconds)] == 16, counts
 
         with capsys.disabled():
             print("\nrule-match collection+history statements per tick:", counts)
         assert (
-            counts[(12, 3600)] == counts[(168, 3600)] == counts[(10_080, 60)] == 14
+            counts[(12, 3600)] == counts[(168, 3600)] == counts[(10_080, 60)] == 16
         )

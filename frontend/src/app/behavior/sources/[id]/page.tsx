@@ -19,6 +19,7 @@ import Link from "next/link";
 import { RangeSelector } from "@/components/behavior/RangeSelector";
 import { SourceAdvanced } from "@/components/behavior/SourceAdvanced";
 import { SourceAnomalies } from "@/components/behavior/SourceAnomalies";
+import { SourceEvaluationNotice } from "@/components/behavior/SourceEvaluationNotice";
 import { SourceHeader } from "@/components/behavior/SourceHeader";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SourceQuality } from "@/components/behavior/SourceQuality";
@@ -40,17 +41,20 @@ import {
   isUnjudged,
   stateMeaningAgainst,
 } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { figureNewerThanVerdict } from "@/lib/evaluationFault";
 import {
   METRIC_LIMIT,
   baselineQuality,
   collectionHealth,
   parseRange,
+  SOURCE_7D_NOTE,
   partitionAnomalies,
   rangeLabel,
   summarizeSourceTimeline,
 } from "@/lib/sourceDetail";
 import { buildSeries } from "@/lib/timeseries";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "../sources.css";
 
@@ -66,12 +70,16 @@ export default async function SourceBehaviorPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { id } = await params;
-  const range = parseRange((await searchParams).range);
+  const query = await searchParams;
+  const range = parseRange(query.range);
+  const from7d = query.from === "7d";
+  const until = new Date().toISOString();
+  const since = new Date(Date.now() - range * 3600_000).toISOString();
 
   let behavior: SourceBehavior | null = null;
   let status = 0;
   try {
-    behavior = await api.sourceBehavior(id);
+    behavior = await api.sourceBehavior(id, { since, until });
   } catch (err) {
     status = err instanceof ApiError ? err.status : 0;
   }
@@ -96,18 +104,21 @@ export default async function SourceBehaviorPage({
     );
   }
 
-  const until = new Date().toISOString();
-  const since = new Date(Date.now() - range * 3600_000).toISOString();
-
   // Each of these enriches the page; none of them is the page. A failure in
   // one is reported in place rather than replacing everything with an error.
-  const [metaResult, bucketsResult, anomaliesResult, cellsResult] =
+  const [metaResult, bucketsResult, anomaliesResult, activeResult, cellsResult] =
     await Promise.allSettled([
       api.logSource(id),
       api.sourceMetrics(id, { since, until, limit: METRIC_LIMIT }),
       // log_source_id also matches a WAF endpoint's log source, so the kind
       // must be pinned explicitly to keep this page on Phase A anomalies.
       api.anomalies({ log_source_id: id, limit: 20, since, until, subject_kind: "LOG_SOURCE" }),
+      api.anomalies({
+        log_source_id: id,
+        active_only: true,
+        limit: 200,
+        subject_kind: "LOG_SOURCE",
+      }),
       api.sourceBaselines(id),
     ]);
 
@@ -118,10 +129,13 @@ export default async function SourceBehaviorPage({
   const anomalyPage: Page<AnomalySummary> | null =
     anomaliesResult.status === "fulfilled" ? anomaliesResult.value : null;
   const anomalies = anomalyPage?.items ?? [];
+  const activePage: Page<AnomalySummary> | null =
+    activeResult.status === "fulfilled" ? activeResult.value : null;
   const cells: BaselineCell[] =
     cellsResult.status === "fulfilled" ? cellsResult.value : [];
 
-  const { active, recent } = partitionAnomalies(anomalies);
+  const { active } = partitionAnomalies(activePage?.items ?? []);
+  const { recent } = partitionAnomalies(anomalies);
   const quality = baselineQuality(behavior, cells);
   const metricsFailed = bucketsResult.status === "rejected";
   const health = collectionHealth(buckets, behavior.last_bucket_at, range * 3600);
@@ -138,7 +152,8 @@ export default async function SourceBehaviorPage({
     expectedEps: behavior.expected_eps,
     missing,
     partial,
-    anomalyCount: anomalies.length,
+    anomalyCount: anomalyPage?.total ?? null,
+    shownAnomalyCount: anomalyPage?.items.length ?? null,
   });
 
   // Secondary conditions worth stating next to the numbers they qualify.
@@ -161,15 +176,26 @@ export default async function SourceBehaviorPage({
           low: behavior.expected_low,
           high: behavior.expected_high,
         })}</p>
+      <SourceEvaluationNotice source={behavior} />
 
       {/* --- 2. four primary metrics -------------------------------------- */}
       <div className="grid-4">
         <div className="card">
           <div className="k">Observed EPS</div>
           {/* A measured zero is 0.00; only an absent measurement is an em
-              dash. formatMetric enforces the distinction. */}
+              dash. formatMetric enforces the distinction. An unjudged bucket
+              still shows its collected EPS, qualified below, never a zero. */}
           <div className="v">{formatMetric(behavior.observed_eps)}</div>
-          <p className="metric-note">Most recent collected interval</p>
+          <p className="metric-note">
+            {figureNewerThanVerdict(behavior) ? (
+              <>
+                Collected <UtcTime value={behavior.last_bucket_at} variant="compact" />; newer
+                than the last verdict
+              </>
+            ) : (
+              "Most recent collected interval"
+            )}
+          </p>
         </div>
         <div className="card">
           <div className="k">Expected EPS</div>
@@ -197,9 +223,7 @@ export default async function SourceBehaviorPage({
           <div className="k">Last event</div>
           <div className="v metric-timestamp">
             {behavior.last_event_at ? (
-              <time dateTime={behavior.last_event_at}>
-                {formatDateTime(behavior.last_event_at)}
-              </time>
+              <UtcTime value={behavior.last_event_at} />
             ) : (
               <span className="muted">—</span>
             )}
@@ -222,6 +246,11 @@ export default async function SourceBehaviorPage({
           <h2 className="section-title">Observed volume</h2>
           <RangeSelector sourceId={behavior.log_source_id} active={range} />
         </div>
+        {from7d && (
+          <p className="notice" role="status">
+            {SOURCE_7D_NOTE}
+          </p>
+        )}
         {bucketsResult.status === "rejected" ? (
           <div className="notice" role="alert">
             Metric history could not be loaded. This is a failed request, not an
@@ -252,7 +281,8 @@ export default async function SourceBehaviorPage({
         <SourceAnomalies
           active={active}
           recent={recent}
-          failed={anomaliesResult.status === "rejected"}
+          activeFailed={activeResult.status === "rejected"}
+          recentFailed={anomaliesResult.status === "rejected"}
           windowLabel={rangeLabel(range)}
           unjudged={unjudged}
         />

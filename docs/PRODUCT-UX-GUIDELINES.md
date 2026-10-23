@@ -65,7 +65,8 @@ technical collection table.
 A row of KPI cards is permitted **only on the Dashboard**, and only when every
 card in it earns its place: a different structure from its neighbours, a
 breakdown derived from real fields, a drill-down link, its own honest states,
-and no vanity delta. The four Dashboard cards (`KpiRow`) meet this; identical
+and no vanity delta. The four Dashboard KPI widgets (`KpiTotalEps`, `KpiLogSources`,
+`KpiOffenses`, `KpiAnomalies`) meet this; identical
 number tiles remain prohibited everywhere, and `/behavior` and the incident
 page keep their pinned four-counter and comparison-block contracts (§3, §8).
 
@@ -254,7 +255,8 @@ that something is on the other side of it.
   `coverage_score` and `confidence` are nullable; provenance is explicit versus
   inferred.
 - **`/log-sources` and `/log-sources/[id]`** — *"which sources exist, and what
-  is this one's metadata and health?"* `health_score` is nullable.
+  is this one's metadata?"* Both show what QRadar reports and what the
+  SOC owns; neither draws a health score, because none is computed.
 - **`/searches`, `/searches/new` and `/searches/[id]`** — *"which stored
   searches exist, how are they authored, and how did they run?"* The frontend
   never supplies AQL of its own to execute; a run starts a stored, validated,

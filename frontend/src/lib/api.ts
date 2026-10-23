@@ -259,6 +259,14 @@ export interface HistoryGap {
   reason: string;
 }
 
+/** One log source of a console-wide reading: its key and, when known, its name. */
+export interface HistoryScopeSource {
+  /** The key the per-source floors are stored under (the QRadar log-source id). */
+  key: string;
+  /** The log source's name; null when the source is no longer known. */
+  name: string | null;
+}
+
 export interface HistoryScope {
   scope_key: string;
   /** The log source's name for a WAF or IPS scope row; null for a console-wide row. */
@@ -275,10 +283,22 @@ export interface HistoryScope {
   started_at: string | null;
   finished_at: string | null;
   reason: string | null;
+  last_error_class: string | null;
+  last_error_at: string | null;
   searches: number | null;
   buckets_read: number | null;
   days_read: number | null;
   gaps: HistoryGap[] | null;
+  /**
+   * The monitored sources the reading was short of (source volume and catch-all only).
+   * Null means "not measured": another family, a scope that has not searched, a stored
+   * progress that did not read back. The lists hold at most 25 names; the counts are
+   * the whole numbers. The API always sends all four fields.
+   */
+  sources_cut: HistoryScopeSource[] | null;
+  sources_silent: HistoryScopeSource[] | null;
+  sources_cut_count: number | null;
+  sources_silent_count: number | null;
   progress_unreadable: boolean;
   later_yes: string;
 }
@@ -337,19 +357,18 @@ export interface SocOverview {
   instance_version: string | null;
   instance_last_health_check_at?: string | null;
   generated_at: string;
-  average_health_score: number | null;
   log_sources: {
     total_log_sources: number;
     monitored_log_sources: number;
-    healthy_log_sources: number;
     silent_log_sources: number;
     anomalous_log_sources: number;
     in_maintenance: number;
   };
   offenses: {
-    active: number;
-    critical: number;
-    unassigned: number;
+    active: number | null;
+    critical: number | null;
+    critical_unknown?: number | null;
+    unassigned: number | null;
     oldest_age_seconds: number | null;
   };
   alerts: { open: number; acknowledged: number; by_severity: Record<string, number> };
@@ -367,7 +386,6 @@ export interface LogSourceSummary {
   maintenance_mode: boolean;
   qradar_status: string | null;
   last_event_time: string | null;
-  health_score: number | null;
   open_anomaly_count: number;
 }
 
@@ -388,14 +406,6 @@ export interface LogSourceDetail {
   owner: string | null;
   owner_email: string | null;
   qradar_status: string | null;
-  health_score: number | null;
-  health_breakdown: {
-    score: number;
-    freshness: number;
-    volume: number;
-    parsing: number;
-    collection: number;
-  } | null;
   business_hours_only: boolean;
   expected_interval_seconds: number | null;
   last_event_time: string | null;
@@ -403,7 +413,7 @@ export interface LogSourceDetail {
   instance_id?: string | null;
 }
 
-// --- Phase 2 types ---------------------------------------------------------
+// --- Search, log-source, offense and coverage types ------------------------
 export interface ScheduledSearch {
   id: string;
   name: string;
@@ -842,10 +852,10 @@ export interface OffenseHistoryPoint {
 }
 
 export interface OffenseAggregates {
-  active: number;
-  critical: number;
-  unassigned: number;
-  exceeding_sla: number;
+  active: number | null;
+  critical: number | null;
+  unassigned: number | null;
+  exceeding_sla: number | null;
   oldest_age_seconds: number | null;
   average_magnitude: number | null;
   sla_hours: number;
@@ -859,7 +869,7 @@ export interface CountEntry {
 
 export interface AgingBucket {
   bucket: string;
-  count: number;
+  count: number | null;
 }
 
 export interface OffenseAnalytics {
@@ -1088,6 +1098,30 @@ export interface SourceBehavior {
   last_bucket_completeness?: "COMPLETE" | "PARTIAL" | "MISSING" | null;
   last_event_at: string | null;
   open_anomaly_count: number;
+  // None when this source has never been evaluated and has no fault row.
+  evaluation?: SourceEvaluation | null;
+  // Given-up buckets in the selected window. A measured zero is 0.
+  skipped_buckets_in_window?: number | null;
+  skipped_buckets?: SkippedBucket[];
+}
+
+export interface SourceEvaluation {
+  judged_through: string | null;
+  failed_bucket_start: string | null;
+  attempts: number | null;
+  max_attempts: number | null;
+  error_class: string | null;
+  last_failure_at: string | null;
+  given_up_at: string | null;
+  resolved_at: string | null;
+}
+
+export interface SkippedBucket {
+  bucket_start: string;
+  error_class: string;
+  attempts: number;
+  given_up_at: string | null;
+  last_failure_at: string;
 }
 
 export interface AnomalyTransition {
@@ -1257,6 +1291,12 @@ export interface BehaviorSummary {
   monitored_sources: number;
   evidence_pending: number;
   evidence_failed: number;
+  // Sources with an open evaluation fault or a given-up bucket in 24 h.
+  sources_with_evaluation_faults: number;
+  // Given-up buckets in the last 24 h. These buckets have no verdict.
+  buckets_not_judged: number;
+  // Anomalies with a recorded resolution timestamp in the last 24 h.
+  resolved_last_24h: number;
   recently_resolved: AnomalySummary[];
   highest_deviation: AnomalySummary[];
 }
@@ -1293,15 +1333,6 @@ export type SubjectKind =
 
 /** EXACT, or LOWER_BOUND when the count is "at least n". */
 export type MeasurementKind = "EXACT" | "LOWER_BOUND";
-
-export type WafAnomalyTypeName =
-  | "WAF_REQUEST_RATE_SPIKE"
-  | "WAF_CLIENT_CONCENTRATION_SPIKE"
-  | "WAF_BLOCK_RATIO_SPIKE"
-  | "WAF_ERROR_RATIO_SPIKE"
-  | "WAF_CLIENT_ERROR_RATIO_SPIKE"
-  | "WAF_NEW_ENDPOINT_ACCESS"
-  | "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE";
 
 export interface WafEndpointRef {
   id: string;
@@ -1501,15 +1532,6 @@ export interface PagedWafEndpoints {
 // These mirror app/schemas/anomaly.py and app/schemas/ips_behavior.py (T-085).
 // A missing measurement is `null`, never 0. The API serves no contributor list
 // and no source IP for IPS, by design (docs/PHASE-D-IPS-BEHAVIOR.md §D.4).
-
-export type IpsAnomalyTypeName =
-  | "IPS_PORT_RATE_SPIKE"
-  | "IPS_DESTINATION_RATE_SPIKE"
-  | "IPS_SIGNATURE_BURST"
-  | "IPS_NEW_DESTINATION_PORT"
-  | "IPS_SOURCE_CONCENTRATION_SPIKE"
-  | "IPS_PORT_FANOUT_SPIKE"
-  | "IPS_BLOCK_RATIO_SHIFT";
 
 export type IpsDimensionName =
   | "TOTALS"
@@ -1995,7 +2017,7 @@ export interface PwValueRef {
 
 /** `PwDetectionDetailOut`: the detector's working, projected by whitelist. A figure the detector
  *  did not record is null, never 0. The band is in events per bucket; the new-value fields are
- *  counts and the API declares no unit for them (see `pwNewValueFigures`). */
+ *  counts and the API declares no unit for them (see `newValueFigures` in `components/propertywatch/pwFormat.ts`). */
 export interface PwDetectionDetail {
   reason: string | null;
   expected_low: number | null;
@@ -2339,10 +2361,8 @@ function qs(params: Record<string, string | number | boolean | undefined>): stri
 }
 
 export const api = {
-  overview: () => request<SocOverview>("/overview"),
   logSources: () => request<LogSourceSummary[]>("/log-sources"),
   logSource: (id: string) => request<LogSourceDetail>(`/log-sources/${id}`),
-  syncLogSources: () => request<unknown>("/log-sources/sync", { method: "POST" }),
 
   searches: (signal?: AbortSignal) => request<ScheduledSearch[]>("/searches", { signal }),
   search: (id: string, signal?: AbortSignal) =>
@@ -2421,8 +2441,8 @@ export const api = {
       body: JSON.stringify({ schedule_cron: scheduleCron }),
     }),
 
-  alerts: (status?: string) =>
-    request<Alert[]>(`/alerts${status ? `?status=${status}` : ""}`),
+  alerts: (params: { status?: string; limit?: number; offset?: number } = {}) =>
+    request<Page<Alert>>(`/alerts${qs(params)}`),
   alert: (id: string) => request<Alert>(`/alerts/${id}`),
   alertNotifications: (id: string) => request<Notification[]>(`/alerts/${id}/notifications`),
 
@@ -2440,7 +2460,6 @@ export const api = {
   offenseHistory: (id: number) =>
     request<OffenseHistoryPoint[]>(`/offenses/${id}/history`),
   offenseAggregates: () => request<OffenseAggregates>("/offenses/aggregates"),
-  offenseAnalytics: () => request<OffenseAnalytics>("/offenses/analytics"),
 
   rules: (params: {
     limit?: number;
@@ -2457,8 +2476,6 @@ export const api = {
   coverageSummary: () => request<CoverageSummary>("/coverage/summary"),
   coverageTechniques: (params: { limit?: number; offset?: number } = {}) =>
     request<Page<TechniqueCoverage>>(`/coverage/techniques${qs(params)}`),
-  coverageDegraded: () => request<Page<TechniqueCoverage>>("/coverage/degraded"),
-  coverageMissing: () => request<Page<TechniqueCoverage>>("/coverage/missing"),
   coverageByRule: () => request<RuleCoverageView[]>("/coverage/by-rule"),
   coverageByDataSource: () =>
     request<DataSourceCoverageView[]>("/coverage/by-data-source"),
@@ -2566,8 +2583,8 @@ export const api = {
   behaviorSummary: () => request<BehaviorSummary>("/anomalies/summary"),
 
   sourceBehaviors: () => request<SourceBehavior[]>("/behavior/sources"),
-  sourceBehavior: (id: string) =>
-    request<SourceBehavior>(`/behavior/sources/${id}`),
+  sourceBehavior: (id: string, params: { since?: string; until?: string } = {}) =>
+    request<SourceBehavior>(`/behavior/sources/${id}${qs(params)}`),
   sourceMetrics: (id: string, params: { since?: string; until?: string; limit?: number } = {}) =>
     request<MetricBucket[]>(`/behavior/sources/${id}/metrics${qs({ ...params })}`),
   sourceBaselines: (id: string, metric = "average_eps") =>
@@ -2691,7 +2708,7 @@ export function actionErrorMessage(err: unknown): string {
   return "The request could not be sent. Check your connection and try again.";
 }
 
-// Severity → CSS pill class, shared by Phase 2 views.
+// Severity → CSS pill class, shared by the views that show a severity.
 //
 // Severity grades how bad a finding is. It never takes the positive tone: a
 // LOW finding is still a finding, and green is reserved for a genuinely good
@@ -2758,6 +2775,8 @@ export interface FleetSourceCounts {
 export interface FleetBucketCounts {
   expected: number;
   complete: number;
+  // Of `complete`, the buckets read from QRadar history rather than collected by the cadence.
+  complete_from_history: number;
   partial: number;
   missing: number;
 }

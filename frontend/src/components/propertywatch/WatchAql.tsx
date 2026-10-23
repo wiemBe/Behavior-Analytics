@@ -8,7 +8,8 @@
 
 import { CodePanel } from "@/components/ui/CodePanel";
 import type { PwAqlQuery, WatchAql } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 /** The outcome of the AQL read: the text, or the HTTP status that refused it (0: no answer). */
 export type AqlRead = { kind: "ok"; aql: WatchAql } | { kind: "error"; status: number };
@@ -82,9 +83,9 @@ export function WatchAqlSection({ read }: { read: AqlRead | null }) {
               Generated for{" "}
               {aql.window_start && aql.window_end ? (
                 <>
-                  <time dateTime={aql.window_start}>{formatDateTime(aql.window_start)}</time>
+                  <UtcTime value={aql.window_start} />
                   {" → "}
-                  <time dateTime={aql.window_end}>{formatDateTime(aql.window_end)}</time>
+                  <UtcTime value={aql.window_end} />
                 </>
               ) : (
                 "a window that was not recorded"
@@ -105,8 +106,8 @@ export function WatchAqlSection({ read }: { read: AqlRead | null }) {
         ) : (
           <>
             <p className="subtitle">
-              Bucket <time dateTime={last.bucket_start}>{formatDateTime(last.bucket_start)}</time>,
-              collected <time dateTime={last.collected_at}>{formatDateTime(last.collected_at)}</time>,
+              Bucket <UtcTime value={last.bucket_start} />,
+              collected <UtcTime value={last.collected_at} />,
               watch version {last.watch_version}
               {last.watch_version !== aql.watch_version
                 ? `; the watch has since changed to version ${aql.watch_version}`

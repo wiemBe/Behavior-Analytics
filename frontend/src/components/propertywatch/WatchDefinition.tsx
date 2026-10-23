@@ -6,12 +6,15 @@
 import Link from "next/link";
 
 import type { PropertyWatch, PropertyWatchCatalog, WatchScope } from "@/lib/api";
-import { formatAge, formatDateTime } from "@/lib/health";
+import { formatAge } from "@/lib/health";
 import { formatDuration } from "@/lib/searchCadence";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import { WatchAqlSection, type AqlRead } from "./WatchAql";
 import { pwTypeLabel, scopeKindLabel, scopeText, statusLabel, statusReason } from "./pwFormat";
-import { historyGapText, historyHeaderText } from "./history";
+import { HistoryGapLine } from "./WatchHonesty";
+import { historyHeaderText } from "./history";
 
 export function WatchDefinition({
   watch,
@@ -138,14 +141,14 @@ export function WatchDefinition({
           <div>
             <dt>Created</dt>
             <dd className="num">
-              <time dateTime={watch.created_at}>{formatDateTime(watch.created_at)}</time>
+              <UtcTime value={watch.created_at} />
               {watch.created_by && <span className="muted"> by {watch.created_by}</span>}
             </dd>
           </div>
           <div>
             <dt>Last changed</dt>
             <dd className="num">
-              <time dateTime={watch.updated_at}>{formatDateTime(watch.updated_at)}</time>
+              <UtcTime value={watch.updated_at} />
               {watch.updated_by && <span className="muted"> by {watch.updated_by}</span>}
             </dd>
           </div>
@@ -172,23 +175,35 @@ export function WatchDefinition({
           <div>
             <dt>Requested window</dt>
             <dd className="num">
-              {watch.history.target_start && watch.history.end
-                ? `${formatDateTime(watch.history.target_start)} → ${formatDateTime(watch.history.end)}`
-                : "not recorded"}
+              {watch.history.target_start && watch.history.end ? (
+                <>
+                  <UtcTime value={watch.history.target_start} />
+                  {" → "}
+                  <UtcTime value={watch.history.end} />
+                </>
+              ) : (
+                "not recorded"
+              )}
             </dd>
           </div>
           <div>
             <dt>Read from QRadar</dt>
             <dd className="num">
-              {watch.history.floor && watch.history.through
-                ? `${formatDateTime(watch.history.floor)} → ${formatDateTime(watch.history.through)}`
-                : "no readable span recorded"}
+              {watch.history.floor && watch.history.through ? (
+                <>
+                  <UtcTime value={watch.history.floor} />
+                  {" → "}
+                  <UtcTime value={watch.history.through} />
+                </>
+              ) : (
+                "no readable span recorded"
+              )}
             </dd>
           </div>
           <div>
             <dt>History floor</dt>
             <dd className="num">
-              {watch.history.floor ? formatDateTime(watch.history.floor) : "not recorded"}
+              {watch.history.floor ? <UtcTime value={watch.history.floor} /> : "not recorded"}
             </dd>
           </div>
           <div>
@@ -201,7 +216,9 @@ export function WatchDefinition({
             <h3 className="pw-subtitle">History gaps</h3>
             <ul className="pw-def-changes" aria-label="History gaps">
               {(watch.history.gaps ?? []).map((gap) => (
-                <li key={`${gap.start}-${gap.end}`}>{historyGapText(gap)}</li>
+                <li key={`${gap.start}-${gap.end}`}>
+                  <HistoryGapLine gap={gap} />
+                </li>
               ))}
             </ul>
           </div>
@@ -282,7 +299,7 @@ function Membership({ scope }: { scope: WatchScope | null }) {
           <dd className="num">
             {scope.inventory_synced_at ? (
               <>
-                <time dateTime={scope.inventory_synced_at}>{formatDateTime(scope.inventory_synced_at)}</time>
+                <UtcTime value={scope.inventory_synced_at} />
                 {scope.inventory_age_seconds !== null && (
                   <span className="muted"> ({formatAge(scope.inventory_age_seconds)} ago)</span>
                 )}
@@ -314,7 +331,7 @@ function Membership({ scope }: { scope: WatchScope | null }) {
           <ul className="pw-def-changes" aria-label="Membership changes">
             {scope.changes.map((c) => (
               <li key={c.bucket_start}>
-                <time dateTime={c.bucket_start}>{formatDateTime(c.bucket_start)}</time>
+                <UtcTime value={c.bucket_start} />
                 {": "}
                 {c.member_count_before === null ? "unknown" : c.member_count_before} to{" "}
                 {c.member_count_after === null ? "unknown" : c.member_count_after} sources

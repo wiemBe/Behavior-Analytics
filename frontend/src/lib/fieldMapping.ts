@@ -19,6 +19,7 @@ import {
   type WafProfileIn,
   type WafValidationStatus,
 } from "@/lib/api";
+import { formatShare } from "@/lib/format";
 
 export const MISSING = "—";
 
@@ -26,23 +27,7 @@ export type Tone = "ok" | "warn" | "crit" | "info" | "neutral";
 
 // --- numbers ----------------------------------------------------------------
 
-/**
- * A share as a percentage. Null is not measured and renders as an em dash;
- * a measured 0 renders as "0 %".
- */
-export function formatShare(ratio: number | null | undefined): string {
-  if (ratio == null || !Number.isFinite(ratio)) return MISSING;
-  const pct = ratio * 100;
-  if (pct > 0 && pct < 0.1) return "<0.1 %";
-  const rounded = Math.round(pct * 10) / 10;
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} %`;
-}
-
-/** An event count with thousands separators; null is an em dash, 0 is "0". */
-export function formatCount(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return MISSING;
-  return n.toLocaleString("en-US");
-}
+export { formatCount, formatShare } from "@/lib/format";
 
 /** `HH:MM UTC`, for "since" lines where the date is not the point. */
 export function formatClock(value: string | null | undefined): string {
@@ -354,14 +339,6 @@ export function matchProperty(name: string, query: string): PropertyMatch | null
   // Back to positions in the original name; a run keeps any separator inside it.
   const ranges = merged.map(([a, b]): [number, number] => [origin[a], origin[b - 1] + 1]);
   return { score, ranges };
-}
-
-/** The words after a suggestion's name. */
-export function suggestionHint(p: PropertyCatalogOut["properties"][number]): string {
-  if (!p.name_allowed) return "not selectable: name not allowed";
-  if (p.applies_to_source_type === true) return "applies to this source type";
-  if (p.applies_to_source_type === false) return "other source type";
-  return "";
 }
 
 // --- validation words -------------------------------------------------------

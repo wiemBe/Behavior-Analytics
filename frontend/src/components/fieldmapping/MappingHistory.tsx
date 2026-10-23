@@ -3,7 +3,8 @@
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { MappingSchemaOut, WafProfileHistoryEntryOut } from "@/lib/api";
 import { MISSING, historyActionLabel, historyChanges, reasonText } from "@/lib/fieldMapping";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 function Change({ from, to }: { from: string | null; to: string | null }) {
   return (
@@ -56,7 +57,7 @@ export function MappingHistory({
             return (
               <tr key={`${e.at}-${e.action}-${i}`}>
                 <td className="nowrap">
-                  <time dateTime={e.at}>{formatDateTime(e.at)}</time>
+                  <UtcTime value={e.at} />
                 </td>
                 <td className="cell-name">{e.actor || MISSING}</td>
                 <td>

@@ -42,7 +42,8 @@ import {
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { WafMetricBucket } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
-import { formatDateTime } from "@/lib/health";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
+import { formatShare } from "@/lib/format";
 
 import { buildBaselineLookup, type BaselineSource } from "./wafBaseline";
 import { bucketWidth } from "./wafFormat";
@@ -238,7 +239,7 @@ export function WafRequestChart({
             const p = first?.dataIndex != null ? points[first.dataIndex] : undefined;
             if (!p) return "";
             const unit = width ? `requests / ${width}` : "requests / bucket";
-            const fmt = (v: number) => (ratio ? `${(v * scale).toFixed(1)}%` : v.toFixed(1));
+            const fmt = (v: number) => (ratio ? formatShare(v) : v.toFixed(1));
             const suffix = ratio ? "" : ` ${unit}`;
             const cell = seasonal && points[first!.dataIndex!].kind !== "GAP" ? cells[first!.dataIndex!] : null;
             const requests =
@@ -247,7 +248,7 @@ export function WafRequestChart({
                 : "not recorded";
             const observed = ratio
               ? p.observed != null
-                ? `${ratio.label}: ${(p.observed * 100).toFixed(1)}%`
+                ? `${ratio.label}: ${formatShare(p.observed)}`
                 : `${ratio.label}: not measured (${kindMeaning(p.kind)})`
               : p.observed != null
                 ? `Requests: ${p.lowerBound ? "≥ " : ""}${p.observed} ${unit}`
@@ -274,10 +275,10 @@ export function WafRequestChart({
                 : "";
             const coverage =
               p.coverage != null
-                ? `Endpoint coverage: ${(p.coverage * 100).toFixed(1)}%`
+                ? `Endpoint coverage: ${formatShare(p.coverage)}`
                 : "Endpoint coverage: not recorded";
             return [
-              formatDateTime(new Date(p.t).toISOString()),
+              utcTimeHtml(new Date(p.t).toISOString()),
               observed,
               reported,
               requestLine,

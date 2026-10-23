@@ -23,6 +23,7 @@ from app.core.config import get_settings
 from app.core.database import get_session
 from app.history.planner import Gap, PlannerSettings, new_progress
 from app.history.progress_codec import encode_progress
+from app.history.source_floors import SourceFloors
 from app.main import create_app
 from app.models.catchall import CatchallBucket
 from app.models.enums import (
@@ -55,6 +56,11 @@ NOBODY = Principal(subject="nobody", permissions=frozenset({"read:offenses"}))
 STAMP = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
 #: A bucket-aligned instant, so a stored progress decodes.
 START = datetime(2026, 10, 1, 0, 0, tzinfo=UTC)
+
+#: The statements one `GET /admin/history-backfill` runs, whatever the number of
+#: consoles, scopes and sources (HB-17, decision 4): the consoles, the decision,
+#: the scope rows, the two monitored sets, the names and the two source lists.
+_LIST_STATEMENTS = 8
 
 
 # --------------------------------------------------------------------------- the client
@@ -154,6 +160,8 @@ def scope_row(  # type: ignore[no-untyped-def]
         "started_at": STAMP,
         "finished_at": None,
         "reason": None,
+        "last_error_class": None,
+        "last_error_at": None,
         "progress": {},
     }
     values.update(kw)
@@ -180,6 +188,20 @@ def progress_body(  # type: ignore[no-untyped-def]
         gaps=gaps,
     )
     return encode_progress(body, {})
+
+
+#: A first event this late in the window is a cut source: its floor is later than
+#: `T0 + one bucket` (the margin is 24 h, the bucket 5 min).
+CUT = START - timedelta(hours=23)
+#: A first event this early is not: the floor is the start of the window.
+KEPT = START - timedelta(days=2)
+
+
+def floors_body(floors: dict[str, datetime]) -> dict:
+    """A stored progress that carries the per-source floors of a reading."""
+    settings = PlannerSettings(bucket_seconds=300)
+    body = new_progress(START, START, settings)
+    return encode_progress(body, SourceFloors(floors).encode())
 
 
 def waf_profile(instance_id: uuid.UUID, source_id: uuid.UUID, **kw) -> WafSourceProfile:  # type: ignore[no-untyped-def]
@@ -537,6 +559,8 @@ async def test_the_page_shows_a_yes_with_a_scope_row_in_every_state(  # type: ig
                     buckets_read=58,
                     gaps=gaps,
                 ),
+                last_error_class="ProviderUnavailableError",
+                last_error_at=STAMP,
             ),
             scope_row(instance.id, "RULE_MATCH", "", state="COMPLETE", finished_at=STAMP),
             scope_row(
@@ -580,9 +604,12 @@ async def test_the_page_shows_a_yes_with_a_scope_row_in_every_state(  # type: ig
     assert [g["reason"] for g in reading["gaps"]] == [g.reason for g in gaps]
     assert reading["gaps"][0]["start"].startswith("2026-10-01T00:00:00")
     assert reading["progress_unreadable"] is False
+    assert reading["last_error_class"] == "ProviderUnavailableError"
+    assert reading["last_error_at"].startswith("2026-10-19T12:00:00")
 
     complete = family_of(console, "RULE_MATCH")["scopes"][0]
     assert complete["state"] == "COMPLETE" and complete["reason"] is None
+    assert (complete["last_error_class"], complete["last_error_at"]) == (None, None)
     partial = family_of(console, "IPS")["scopes"][0]
     assert partial["state"] == "PARTIAL" and partial["reason"] == "stopped by ayse"
 
@@ -796,6 +823,201 @@ async def test_a_family_that_is_switched_off_is_a_row_not_an_absence(  # type: i
     assert waf["collection_enabled"] is False
     assert "WAF_COLLECTION_ENABLED" in waf["collection_reason"]
     assert waf["scopes"] == []
+
+
+# --------------------------------------------------------------------------- the named sources
+
+
+async def test_a_console_wide_reading_names_the_sources_it_was_short_of(  # type: ignore[no-untyped-def]
+    db_session, db_schema
+) -> None:
+    """HB-17: the reason gives counts only; the scope names the sources."""
+    instance = await make_instance(db_session)
+    for index in (1, 2, 3):
+        await make_log_source(db_session, instance, qradar_id=index, name=f"web-{index}")
+    for index in (10, 11):
+        await make_log_source(
+            db_session,
+            instance,
+            qradar_id=index,
+            name=f"ca-{index}",
+            type_id=67,  # a catch-all device type
+            monitoring_enabled=False,  # and not a Phase A source
+        )
+    db_session.add_all(
+        [
+            scope_row(
+                instance.id,
+                "PHASE_A",
+                "",
+                state="PARTIAL",
+                finished_at=STAMP,
+                reason=(
+                    "QRadar holds less than asked for 1 of 3 sources; "
+                    "1 source had no event in the window"
+                ),
+                progress=floors_body({"1": CUT, "2": KEPT}),
+            ),
+            scope_row(
+                instance.id,
+                "CATCHALL",
+                "",
+                state="PARTIAL",
+                finished_at=STAMP,
+                reason="QRadar holds less than asked for 1 of 2 sources",
+                progress=floors_body({"10": CUT}),
+            ),
+            scope_row(instance.id, "WAF", "1", state="PARTIAL", finished_at=STAMP),
+        ]
+    )
+    await db_session.commit()
+    console = Client(db_schema, READER).get(BASE).json()[0]
+
+    phase_a = family_of(console, "PHASE_A")["scopes"][0]
+    # Source 1 held less than asked; source 3 had no event at all.
+    assert phase_a["sources_cut"] == [{"key": "1", "name": "web-1"}]
+    assert phase_a["sources_cut_count"] == 1
+    assert phase_a["sources_silent"] == [{"key": "3", "name": "web-3"}]
+    assert phase_a["sources_silent_count"] == 1
+
+    catchall = family_of(console, "CATCHALL")["scopes"][0]
+    assert catchall["sources_cut"] == [{"key": "10", "name": "ca-10"}]
+    assert catchall["sources_cut_count"] == 1
+    assert catchall["sources_silent"] == [{"key": "11", "name": "ca-11"}]
+    assert catchall["sources_silent_count"] == 1
+
+    # A family that reads one source per scope has nothing to name: "not measured",
+    # never "none".
+    waf = family_of(console, "WAF")["scopes"][0]
+    assert waf["sources_cut"] is None
+    assert waf["sources_silent"] is None
+    assert waf["sources_cut_count"] is None
+    assert waf["sources_silent_count"] is None
+
+
+async def test_a_scope_that_has_not_searched_names_no_source(  # type: ignore[no-untyped-def]
+    db_session, db_schema
+) -> None:
+    """A `{}` progress has not been read: the four fields are null, not empty."""
+    instance = await make_instance(db_session)
+    await make_log_source(db_session, instance, qradar_id=1, name="web-1")
+    db_session.add(
+        scope_row(instance.id, "PHASE_A", "", state="WAITING", progress={})
+    )
+    await db_session.commit()
+    scope = family_of(Client(db_schema, READER).get(BASE).json()[0], "PHASE_A")["scopes"][0]
+    assert scope["sources_cut"] is None
+    assert scope["sources_silent"] is None
+    assert scope["sources_cut_count"] is None
+    assert scope["sources_silent_count"] is None
+
+
+async def test_a_progress_that_does_not_decode_names_no_source(  # type: ignore[no-untyped-def]
+    db_session, db_schema
+) -> None:
+    instance = await make_instance(db_session)
+    await make_log_source(db_session, instance, qradar_id=1, name="web-1")
+    db_session.add(
+        scope_row(instance.id, "PHASE_A", "", state="READING", progress={"version": 99})
+    )
+    await db_session.commit()
+    scope = family_of(Client(db_schema, READER).get(BASE).json()[0], "PHASE_A")["scopes"][0]
+    assert scope["progress_unreadable"] is True
+    assert scope["sources_cut"] is None
+    assert scope["sources_silent"] is None
+    assert scope["sources_cut_count"] is None
+    assert scope["sources_silent_count"] is None
+
+
+async def test_a_source_that_is_no_longer_monitored_is_not_named(  # type: ignore[no-untyped-def]
+    db_session, db_schema
+) -> None:
+    """The sets are judged against the sources monitored now (HB-17, decision 3)."""
+    instance = await make_instance(db_session)
+    await make_log_source(db_session, instance, qradar_id=1, name="web-1")
+    db_session.add(
+        scope_row(
+            instance.id,
+            "PHASE_A",
+            "",
+            state="PARTIAL",
+            progress=floors_body({"1": CUT, "9": CUT}),
+        )
+    )
+    await db_session.commit()
+    scope = family_of(Client(db_schema, READER).get(BASE).json()[0], "PHASE_A")["scopes"][0]
+    assert scope["sources_cut"] == [{"key": "1", "name": "web-1"}]
+    assert scope["sources_cut_count"] == 1
+
+
+async def test_the_page_costs_a_constant_number_of_statements(  # type: ignore[no-untyped-def]
+    db_session, db_schema
+) -> None:
+    """HB-17, decision 4: 30 sources cost the same statements as two."""
+    instance = await make_instance(db_session)
+    for index in range(1, 31):
+        await make_log_source(db_session, instance, qradar_id=index, name=f"web-{index}")
+    db_session.add_all(
+        [
+            scope_row(
+                instance.id,
+                "PHASE_A",
+                "",
+                state="PARTIAL",
+                progress=floors_body(
+                    {str(index): CUT for index in range(1, 6)}
+                    | {str(index): KEPT for index in range(6, 16)}
+                ),
+            ),
+            scope_row(
+                instance.id,
+                "CATCHALL",
+                "",
+                state="PARTIAL",
+                progress=floors_body({str(index): CUT for index in range(16, 21)}),
+            ),
+        ]
+    )
+    await db_session.commit()
+    client = Client(db_schema, READER)
+    console = client.get(BASE).json()[0]
+    scope = family_of(console, "PHASE_A")["scopes"][0]
+    # Five cut and fifteen silent sources, named: the list holds at most 25.
+    assert scope["sources_cut_count"] == 5
+    assert scope["sources_silent_count"] == 15
+    assert len(scope["sources_silent"]) == 15
+    # The statements are the page's, whatever the number of sources.
+    assert len(client.statements) == _LIST_STATEMENTS
+
+
+async def test_two_sources_cost_the_same_statements_as_thirty(  # type: ignore[no-untyped-def]
+    db_session, db_schema
+) -> None:
+    instance = await make_instance(db_session)
+    for index in (1, 2):
+        await make_log_source(db_session, instance, qradar_id=index, name=f"web-{index}")
+    db_session.add_all(
+        [
+            scope_row(
+                instance.id,
+                "PHASE_A",
+                "",
+                state="PARTIAL",
+                progress=floors_body({"1": CUT}),
+            ),
+            scope_row(
+                instance.id,
+                "CATCHALL",
+                "",
+                state="PARTIAL",
+                progress=floors_body({}),
+            ),
+        ]
+    )
+    await db_session.commit()
+    client = Client(db_schema, READER)
+    client.get(BASE)
+    assert len(client.statements) == _LIST_STATEMENTS
 
 
 async def test_the_window_is_limited_by_the_retention(db_session, db_schema) -> None:

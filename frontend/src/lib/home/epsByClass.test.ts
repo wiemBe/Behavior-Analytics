@@ -87,7 +87,17 @@ describe("epsByClass", () => {
 
   it("carries a PARTIAL coverage line", () => {
     const r = epsByClass(
-      fleet([fleetClass("DNS", { buckets: { expected: 48, complete: 30, partial: 10, missing: 8 } })]),
+      fleet([
+        fleetClass("DNS", {
+          buckets: {
+            expected: 48,
+            complete: 30,
+            complete_from_history: 0,
+            partial: 10,
+            missing: 8,
+          },
+        }),
+      ]),
     );
     expect(r.qualifiers).toEqual([
       { kind: "PARTIAL", have: 30, of: 48, unit: "intervals", text: "30 of 48 intervals collected" },

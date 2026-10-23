@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -73,68 +73,6 @@ _PW_TYPES = frozenset(t.value for t in PwAnomalyType)
 class AnomalyRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
-
-    # ------------------------------------------------------------------ list
-    def _filtered(
-        self,
-        *,
-        log_source_id: uuid.UUID | None = None,
-        instance_id: uuid.UUID | None = None,
-        anomaly_type: AnomalyType | None = None,
-        state: AnomalyState | None = None,
-        severity: Severity | None = None,
-        evidence_status: EvidenceStatus | None = None,
-        active_only: bool = False,
-        since: datetime | None = None,
-        until: datetime | None = None,
-    ) -> Select:
-        stmt = select(LogSourceAnomaly)
-        if log_source_id is not None:
-            stmt = stmt.where(LogSourceAnomaly.log_source_id == log_source_id)
-        if instance_id is not None:
-            # Anomalies carry no instance of their own; they inherit it from the
-            # source, so this is a subquery rather than a join to keep the
-            # count query above from double-counting.
-            stmt = stmt.where(
-                LogSourceAnomaly.log_source_id.in_(
-                    select(LogSource.id).where(LogSource.instance_id == instance_id)
-                )
-            )
-        if anomaly_type is not None:
-            stmt = stmt.where(LogSourceAnomaly.anomaly_type == anomaly_type)
-        if state is not None:
-            stmt = stmt.where(LogSourceAnomaly.state == state)
-        if severity is not None:
-            stmt = stmt.where(LogSourceAnomaly.severity == severity)
-        if evidence_status is not None:
-            stmt = stmt.where(LogSourceAnomaly.evidence_status == evidence_status)
-        if active_only:
-            stmt = stmt.where(
-                LogSourceAnomaly.state.in_([s.value for s in ACTIVE_ANOMALY_STATES])
-            )
-        if since is not None:
-            stmt = stmt.where(LogSourceAnomaly.detected_at >= since)
-        if until is not None:
-            stmt = stmt.where(LogSourceAnomaly.detected_at < until)
-        return stmt
-
-    async def list_anomalies(
-        self, *, limit: int, offset: int, **filters: Any
-    ) -> tuple[list[LogSourceAnomaly], int]:
-        stmt = self._filtered(**filters)
-        total = await self.session.scalar(
-            select(func.count()).select_from(stmt.subquery())
-        )
-        rows = list(
-            (
-                await self.session.scalars(
-                    stmt.order_by(LogSourceAnomaly.detected_at.desc())
-                    .limit(limit)
-                    .offset(offset)
-                )
-            ).all()
-        )
-        return rows, int(total or 0)
 
     # ------------------------------------------------------- unified list
     @staticmethod
@@ -541,6 +479,16 @@ class AnomalyRepository:
                 )
             ).all()
         )
+
+    async def resolved_count(self, *, since: datetime, until: datetime) -> int:
+        """Count resolution timestamps in one half-open window."""
+        count = await self.session.scalar(
+            select(func.count())
+            .select_from(LogSourceAnomaly)
+            .where(LogSourceAnomaly.resolved_at >= since)
+            .where(LogSourceAnomaly.resolved_at < until)
+        )
+        return int(count or 0)
 
     async def highest_deviation(self, *, limit: int = 10) -> list[LogSourceAnomaly]:
         """Active anomalies ranked by how far they departed from expectation.
@@ -1010,8 +958,3 @@ class AnomalyRepository:
             .options(defer(b.observations), defer(b.exclusion_counts))
         )
         return list(rows.all()), int(total or 0)
-
-
-def default_window(days: int = 1) -> tuple[datetime, datetime]:
-    now = datetime.now(UTC)
-    return now - timedelta(days=days), now

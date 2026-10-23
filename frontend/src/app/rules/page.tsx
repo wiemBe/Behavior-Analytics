@@ -1,7 +1,10 @@
 import { api, type Page, type RuleHealthCount, type RuleSummary } from "@/lib/api";
 import Link from "next/link";
+import { rulesAsOf } from "@/lib/home/asOf";
+import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
+import { ReportDataAge } from "@/components/shell/ReportDataAge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import {
@@ -9,7 +12,7 @@ import {
   healthTone,
   isUnestablished,
 } from "@/lib/health";
-import { axisTimeLabel } from "@/lib/searchRuns";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 import "./rules.css";
@@ -28,15 +31,15 @@ export default async function RulesPage({
 
   let page: Page<RuleSummary> | null = null;
   let summary: RuleHealthCount[] = [];
-  let error = false;
+  let error: string | null = null;
 
   try {
     [page, summary] = await Promise.all([
       api.rules({ limit: PAGE_SIZE, offset, search, health_status: health }),
       api.ruleHealthSummary(),
     ]);
-  } catch {
-    error = true;
+  } catch (err) {
+    error = loadErrorMessage(err, "rules", "read:rules");
   }
 
   if (error) {
@@ -47,11 +50,7 @@ export default async function RulesPage({
           actions={<Link href="/rules/statistics">Rule statistics</Link>}
         />
         <div className="notice" role="alert">
-          <p>
-            Backend unreachable. Start the stack, then run{" "}
-            <code>python -m app.cli.sync rules</code>. Nothing was changed; reload once the
-            backend answers.
-          </p>
+          <p>{error}</p>
         </div>
       </>
     );
@@ -64,6 +63,7 @@ export default async function RulesPage({
 
   return (
     <>
+      <ReportDataAge iso={rulesAsOf(items)} />
       <PageHeader
         title="Rule health"
         description="Analytics rules collected from QRadar, with a health verdict derived from what has actually been observed. Building blocks are collected but are not listed here."
@@ -85,11 +85,12 @@ export default async function RulesPage({
 
       {unestablished > 0 && (
         <div className="notice">
-          <strong>{unestablished} rules have no health verdict yet.</strong>{" "}
-          QRadar&rsquo;s rule inventory API exposes no last-fired timestamp and no
-          rule statistics, so silence cannot be distinguished from never having
-          been observed. These are reported as <code>INSUFFICIENT_DATA</code>{" "}
-          rather than being counted as detection gaps.
+          <strong>{unestablished} rules have no health verdict yet.</strong> A rule is{" "}
+          <code>INSUFFICIENT_DATA</code> when it cannot be judged. That includes a
+          dependency that has not been observed, and a window where QRadar exposes no
+          last-fired time or the collection does not cover it. Neither is a detection
+          gap. The health summary counts these rules together; it does not say which
+          cause applies to each.
         </div>
       )}
 
@@ -142,7 +143,7 @@ export default async function RulesPage({
               {items.map((r) => (
                 <tr key={r.id}>
                   <td className="cell-rule-name">
-                    <a href={`/rules/${r.id}`}>{r.name}</a>
+                    <Link href={`/rules/${r.id}`}>{r.name}</Link>
                   </td>
                   <td>{r.rule_type ?? "—"}</td>
                   <td>
@@ -156,9 +157,9 @@ export default async function RulesPage({
                     </span>
                   </td>
                   <td className="muted cell-meaning">{healthMeaning(r.health_status)}</td>
-                  <td className="nowrap">
+                  <td>
                     {r.last_fired_at ? (
-                      axisTimeLabel(r.last_fired_at)
+                      <UtcTime value={r.last_fired_at} wrapZone />
                     ) : (
                       <span className="muted">not observed</span>
                     )}

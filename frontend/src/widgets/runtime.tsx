@@ -3,7 +3,7 @@
 // What a placed widget's frame needs from its dashboard (UR.5.3, UR.5.4): the range it may be
 // given, the dashboard's own range, how to set the override, and whether it can be expanded.
 // A widget rendered outside a dashboard has no runtime: it follows the 24 h default, shows no
-// range control and no Expand, which is how the Phase 2 widgets render in their own tests.
+// range control and no Expand, which is how the Home widgets render in their own tests.
 
 import { createContext, useContext } from "react";
 

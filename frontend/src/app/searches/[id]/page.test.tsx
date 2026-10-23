@@ -16,7 +16,7 @@ import { ApiError, api, type ScheduledSearch, type SearchExecution, type SearchV
 //    as a measured number;
 //  - honesty: a null category reads "uncategorised", a null next-run time is omitted,
 //    and null version fields are em dashes with a compact UTC time.
-// The page's own components (ScheduleControl, RunSearchButton, ResultTrend) are
+// The page's own components (ScheduleControl, SearchRunControl, ResultTrend) are
 // rendered as-is; only `next/navigation` and ECharts are stubbed, and the trend's read
 // is mocked to its empty state.
 
@@ -158,7 +158,9 @@ describe("search detail contents", () => {
   it("names the search and orients the reader under it", async () => {
     await renderPage();
     expect(screen.getByRole("heading", { name: "Repeated authentication failures", level: 1 })).toBeInTheDocument();
-    expect(screen.getByText(/Credential Access · severity HIGH · v2 · next run 2026-10-15 08:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/Credential Access · severity HIGH · v2/)).toHaveTextContent(
+      "next run 2026-10-15 08:00:00 UTC",
+    );
     const run = screen.getByRole("button", { name: "Run now" });
     expect(run.closest("header")).toBeNull();
     expect(run.closest(".search-run-bar")).not.toBeNull();

@@ -2,14 +2,14 @@
 
 // KPI card 3 (UR.4.2): open offenses. Drills down to /offenses?status=OPEN.
 //
-// With no offense snapshot the analytics return zeros, identical to "none open";
-// the derivation uses a one-row probe to tell them apart. A probe that cannot be
-// read is passed as null and the derivation fails closed (NOT_COLLECTED when the
-// count is 0), so a failed probe never turns into "no open offenses".
+// A null analytics count is "not collected" on its own, so the card does not
+// wait for the probe in that case. A numeric zero still needs the probe: a probe
+// that cannot be read is passed as null and the derivation fails closed
+// (NOT_COLLECTED), so a failed probe never turns into "no open offenses".
 
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
-import { offensesCard, type OffensesCard } from "@/lib/home/offenses";
+import { countIsUnknown, offensesCard, type OffensesCard } from "@/lib/home/offenses";
 
 import { countNoun, Figure, Line, n } from "./KpiParts";
 import { WidgetFrame, WidgetQualifiers } from "./WidgetFrame";
@@ -52,8 +52,11 @@ export function KpiOffenses() {
   const probe = useApiResource(probeRead.key, probeRead.fetch);
   // Loading or failed probe: null, not an assumption either way.
   const probeData = probe.status === "ok" ? probe.data : null;
-  // Do not decide NOT_COLLECTED from a probe that is still on its way.
-  const probePending = probe.status === "idle" || probe.status === "loading";
+  // A null count is already unknown. A numeric zero waits for the probe, so a
+  // probe still on its way is not read as "no open offenses".
+  const countUnknown = state.status === "ok" && countIsUnknown(state.data.aggregates.active);
+  const probePending =
+    !countUnknown && (probe.status === "idle" || probe.status === "loading");
   return (
     <WidgetFrame
       variant="kpi"

@@ -22,9 +22,6 @@ const IPS_TYPE_LABELS: Record<string, string> = {
 /** The IPS detector types the list filter offers, in the order shown. */
 export const IPS_TYPES = Object.keys(IPS_TYPE_LABELS);
 
-/** The two subject kinds of IPS rows. */
-export const IPS_SUBJECT_KINDS = ["IPS_ENTITY", "IPS_SOURCE"] as const;
-
 export function isIpsType(type: string | null | undefined): boolean {
   return type != null && type in IPS_TYPE_LABELS;
 }

@@ -37,14 +37,6 @@ SORTABLE = {
     "qradar_offense_id": OffenseSnapshot.qradar_offense_id,
 }
 
-#: Columns free-text search may touch. Descriptions and usernames only — never
-#: an unbounded scan across every column.
-SEARCHABLE = (
-    OffenseSnapshot.description,
-    OffenseSnapshot.offense_source,
-    OffenseSnapshot.assigned_to,
-)
-
 
 @dataclass
 class OffenseFilters:
@@ -185,6 +177,7 @@ class OffenseRepository:
         row = (
             await self.session.execute(
                 select(
+                    func.count(),
                     func.count().filter(open_only),
                     func.count().filter(
                         and_(open_only, sub.c.magnitude >= critical_magnitude)
@@ -199,13 +192,18 @@ class OffenseRepository:
             )
         ).one()
 
+        # No latest snapshot at all is unknown. A capture in which nothing is
+        # open is a measured zero and stays a zero.
+        if int(row[0] or 0) == 0:
+            return _unknown_offense_metrics()
+
         return {
-            "active": int(row[0] or 0),
-            "critical": int(row[1] or 0),
-            "unassigned": int(row[2] or 0),
-            "exceeding_sla": int(row[3] or 0),
-            "oldest_age_seconds": int(row[4]) if row[4] is not None else None,
-            "average_magnitude": round(float(row[5]), 2) if row[5] is not None else None,
+            "active": int(row[1] or 0),
+            "critical": int(row[2] or 0),
+            "unassigned": int(row[3] or 0),
+            "exceeding_sla": int(row[4] or 0),
+            "oldest_age_seconds": int(row[5]) if row[5] is not None else None,
+            "average_magnitude": round(float(row[6]), 2) if row[6] is not None else None,
         }
 
     async def distribution(
@@ -237,7 +235,7 @@ class OffenseRepository:
         sub = self._latest_subquery(instance_id).alias("latest")
         open_only = sub.c.status == "OPEN"
 
-        selects = []
+        selects: list[Any] = []
         labels: list[str] = []
         previous = 0
         for hours in boundaries_hours:
@@ -256,11 +254,16 @@ class OffenseRepository:
             func.count().filter(and_(open_only, sub.c.age_seconds >= previous * 3600))
         )
         labels.append(f">{previous}h")
+        # One extra column: whether any latest snapshot exists. The band
+        # counts alone cannot tell "none open" from "nothing collected".
+        selects.append(func.count())
 
-        row = (await self.session.execute(select(*selects).select_from(sub))).one()
+        row = tuple((await self.session.execute(select(*selects).select_from(sub))).one())
+        if int(row[-1] or 0) == 0:
+            return [{"bucket": label, "count": None} for label in labels]
         return [
             {"bucket": label, "count": int(value or 0)}
-            for label, value in zip(labels, row, strict=True)
+            for label, value in zip(labels, row[:-1], strict=True)
         ]
 
     async def top_entities(
@@ -328,6 +331,18 @@ class OffenseRepository:
             }
             for b, avg, peak, count in rows
         ]
+
+
+def _unknown_offense_metrics() -> dict[str, Any]:
+    """The aggregate shape when no offense snapshot has been collected."""
+    return {
+        "active": None,
+        "critical": None,
+        "unassigned": None,
+        "exceeding_sla": None,
+        "oldest_age_seconds": None,
+        "average_magnitude": None,
+    }
 
 
 # The latest-snapshot subquery is used as an alias in most queries, so filters

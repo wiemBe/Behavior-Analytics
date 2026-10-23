@@ -120,7 +120,9 @@ describe("ResultTrend states", () => {
         search={search}
       />,
     );
-    expect(await screen.findByText(/never run since it was created on 2026-07-01 00:00:00 UTC/)).toBeInTheDocument();
+    expect(await screen.findByText(/never run since it was created on/)).toHaveTextContent(
+      "never run since it was created on 2026-07-01 00:00:00 UTC",
+    );
     expect(screen.getByText(/Run it from this page with Run now/)).toBeInTheDocument();
     expect(init).not.toHaveBeenCalled();
   });
@@ -216,7 +218,7 @@ describe("ResultTrend states", () => {
       <ResultTrend searchId="s-1" visualization="SINGLE_VALUE" executions={[execution()]} />,
     );
     expect(await screen.findByText("100")).toBeInTheDocument();
-    expect(screen.getByText(/result rows at 2026-07-20 10:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/result rows at/)).toHaveTextContent("result rows at 2026-07-20 10:00:00 UTC");
     expect(init).not.toHaveBeenCalled();
     unmount();
 

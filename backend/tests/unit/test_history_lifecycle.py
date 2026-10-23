@@ -21,9 +21,11 @@ from app.history.lifecycle import (
     ScopeRowView,
     bounded_reason,
     console_mode,
+    decision_view,
     new_scope_row,
     scope_action,
     scope_progress,
+    scope_view,
     transition_row,
 )
 from app.history.planner import PlannerSettings, new_progress
@@ -107,6 +109,67 @@ def test_the_tie_rule_equal_times_read_active() -> None:
         stop_requested_at=NOW, stop_requested_by="b",
     )
     assert console_mode(view) is ConsoleMode.ACTIVE
+
+
+class _TextAnswer:
+    def __str__(self) -> str:
+        return "NO"
+
+
+def test_decision_view_reads_none_attributes_and_mappings() -> None:
+    assert decision_view(None) is None
+    attributes = decision_view(
+        type(
+            "Row",
+            (),
+            {
+                "answer": "YES",
+                "days": 28,
+                "start_requested_at": NOW,
+                "start_requested_by": "a",
+                "stop_requested_at": None,
+                "stop_requested_by": None,
+            },
+        )()
+    )
+    assert attributes == DecisionView(
+        "YES", 28, start_requested_at=NOW, start_requested_by="a"
+    )
+    mapped = decision_view(
+        {
+            "answer": _TextAnswer(),
+            "days": None,
+            "start_requested_at": None,
+            "start_requested_by": None,
+            "stop_requested_at": None,
+            "stop_requested_by": None,
+        }
+    )
+    assert mapped == DecisionView("NO")
+
+
+def test_scope_view_reads_none_attributes_and_mappings() -> None:
+    assert scope_view(None) is None
+    columns = {
+        "state": "WAITING",
+        "days_requested": None,
+        "days_target": 7,
+        "target_start": None,
+        "floor": None,
+        "through": None,
+        "anchor": None,
+        "started_at": None,
+        "finished_at": None,
+        "reason": "waiting",
+        "progress": {},
+    }
+    from_attributes = scope_view(type("Scope", (), columns)())
+    from_mapping = scope_view(columns)
+    assert from_attributes == from_mapping
+    assert from_mapping is not None
+    assert from_mapping.state is S.WAITING
+    assert from_mapping.days_target == 7
+    assert from_mapping.reason == "waiting"
 
 
 @pytest.mark.parametrize(
@@ -362,6 +425,7 @@ def test_new_scope_row_has_every_column(family, live) -> None:  # type: ignore[n
     assert values["days_requested"] == 28
     assert values["progress"] == {}
     assert values["reason"] == action.reason
+    assert values["last_error_class"] is None and values["last_error_at"] is None
     reading = action.state is S.READING
     not_eligible = action.state is S.NOT_ELIGIBLE
     assert (values["started_at"] == NOW) is reading
@@ -417,6 +481,24 @@ def test_transition_row_anchor_found_starts_reading() -> None:
     assert values["progress"] == {}
 
 
+def test_transition_row_clears_the_previous_step_error() -> None:
+    reading = row(S.READING, days_requested=28, started_at=NOW - timedelta(hours=1))
+    action = act(F.PHASE_A, ConsoleMode.STOPPED, decision=stopped_decision(), scope=reading)
+
+    values = transition_row(
+        action,
+        instance_id=INSTANCE,
+        family=F.PHASE_A,
+        scope_key="",
+        row=reading,
+        decision=stopped_decision(),
+        at=NOW,
+    )
+
+    assert values["state"] == "PARTIAL"
+    assert values["last_error_class"] is None and values["last_error_at"] is None
+
+
 @pytest.mark.parametrize("state", [S.PARTIAL, S.COMPLETE])
 def test_transition_row_restart_keeps_evidence_and_clears_progress(state: S) -> None:
     target = ANCHOR - timedelta(days=28)
@@ -434,7 +516,8 @@ def test_transition_row_restart_keeps_evidence_and_clears_progress(state: S) -> 
     assert values["state"] == "READING"
     assert values["days_requested"] == 35
     assert values["started_at"] == START and values["finished_at"] is None
-    assert values["progress"] == {}
+    # HB-22 D2a: the previous progress stays until the new reading's first step.
+    assert values["progress"] == {"a": 1}
     assert (values["days_target"], values["target_start"], values["floor"], values["through"]) == (
         28,
         target,
@@ -477,6 +560,27 @@ def test_a_searched_scope_decodes() -> None:
     view = ScopeRowView(state=S.READING, target_start=T0, progress=searched_body())
     progress = scope_progress(view)
     assert progress is not None and progress.target_start == T0
+
+
+def test_a_restarted_reading_decodes_as_not_started_until_its_first_step() -> None:
+    """The stored body is the previous reading; the collector must plan a new one."""
+    body = searched_body()  # progress.started_at is NOW; the restart's started_at is later
+    restarted = ScopeRowView(
+        state=S.READING, target_start=T0, started_at=START, progress=body
+    )
+    assert scope_progress(restarted) is None
+    current = ScopeRowView(state=S.READING, target_start=T0, started_at=NOW, progress=body)
+    assert scope_progress(current) is not None
+    # A frozen collector clock restarts at the same instant the body started.
+    # The restart reason is what still says this body is the previous reading.
+    frozen = ScopeRowView(
+        state=S.READING,
+        target_start=T0,
+        started_at=NOW,
+        reason="read history now: topping up",
+        progress=body,
+    )
+    assert scope_progress(frozen) is None
 
 
 def test_empty_progress_with_kept_evidence_is_an_unsearched_restart() -> None:

@@ -6,6 +6,7 @@ guards of §B.4.4, the per-source floors, the prepend and the statement count.
 
 from __future__ import annotations
 
+import copy
 import math
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -29,6 +30,7 @@ from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import ProviderError
 from app.providers.mock import MockQRadarProvider
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from tests.integration.factories import FakeClock, make_instance, make_log_source
 
@@ -219,7 +221,13 @@ class TestLifecycle:
         assert waiting is not None and waiting.state == "WAITING"
         assert waiting.progress == {}
 
-        working = provider(always(row("fw-01", 50)))
+        working = provider(
+            lambda start: (
+                [row("fw-01", 50), row("ghost", 50, source=9999)]
+                if start == T0
+                else [row("fw-01", 50)]
+            )
+        )
         second = await collector(db_session, working).collect(inst)
 
         # The live bucket exists: the scope starts reading (the hand-off is a tick).
@@ -234,6 +242,8 @@ class TestLifecycle:
         # The first step reads the window and writes the history buckets.
         assert third.history_scope_state is HistoryState.READING
         assert third.history_buckets_written > 0
+        # The one row of an unknown source in the read window: counted, not stored.
+        assert third.history_unmapped_rows == 1
         history = await buckets(db_session, "HISTORY")
         assert history and all(b.origin == "HISTORY" for b in history)
         assert min(b.bucket_start for b in history) >= T0
@@ -313,6 +323,7 @@ class TestLifecycle:
             finished.floor,
             finished.through,
         )
+        previous_progress = copy.deepcopy(finished.progress)
 
         await HistoryBackfillRepository(db_session).request_start(
             inst.id, by="the operator", at=finished_at + timedelta(hours=1)
@@ -322,9 +333,10 @@ class TestLifecycle:
         assert again.history_scope_state is HistoryState.READING
         restarted = await scope(db_session, inst)
         assert restarted is not None and restarted.state == "READING"
-        # A restart reads a fresh window from the same anchor.
+        # A restart keeps the finished progress until its first step, and reads a fresh
+        # window from the same anchor when that step runs.
         assert restarted.anchor == FIRST
-        assert restarted.progress == {}
+        assert restarted.progress == previous_progress
         assert (
             restarted.days_target,
             restarted.target_start,
@@ -342,7 +354,7 @@ class TestLifecycle:
         stopped = await scope(db_session, inst)
         assert stopped is not None and stopped.state == "PARTIAL"
         assert stopped.reason == "stopped by the operator"
-        assert stopped.progress == {}
+        assert stopped.progress == previous_progress
         assert (stopped.days_target, stopped.target_start, stopped.floor, stopped.through) == (
             evidence
         )
@@ -373,13 +385,14 @@ class TestLifecycle:
         finished = await scope(db_session, inst)
         assert finished is not None and finished.finished_at is not None
         assert finished.through != first_values[3]
+        previous_progress = copy.deepcopy(finished.progress)
 
         await HistoryBackfillRepository(db_session).request_start(
             inst.id, by="the operator", at=finished.finished_at + timedelta(hours=1)
         )
         await collector(db_session, prov).collect(inst)
         restarted = await scope(db_session, inst)
-        assert restarted is not None and restarted.progress == {}
+        assert restarted is not None and restarted.progress == previous_progress
         await collector(db_session, prov).collect(inst)
 
         stepped = await scope(db_session, inst)
@@ -404,6 +417,7 @@ class TestLifecycle:
         assert finished is not None and finished.finished_at is not None
         earlier = (finished.days_target, finished.target_start, finished.floor, finished.through)
         assert finished.days_target == DAYS
+        previous_progress = copy.deepcopy(finished.progress)
 
         await HistoryBackfillRepository(db_session).request_start(
             inst.id, by="the operator", at=finished.finished_at + timedelta(hours=1)
@@ -411,7 +425,7 @@ class TestLifecycle:
         longer = DAYS + 1
         await collector(db_session, prov, history_backfill_days=longer).collect(inst)
         restarted = await scope(db_session, inst)
-        assert restarted is not None and restarted.progress == {}
+        assert restarted is not None and restarted.progress == previous_progress
         await collector(db_session, prov, history_backfill_days=longer).collect(inst)
 
         stepped = await scope(db_session, inst)
@@ -488,16 +502,186 @@ class TestLifecycle:
         failing = provider(always(row("fw-01", 50)))
         # The live window still works; the history window (before the anchor) fails.
         failing.catchall_fault = lambda s: (
-            ProviderError("QRadar is unreachable") if s.window_start < FIRST else None
+            ProviderError("SELECT sensitive_property FROM events")
+            if s.window_start < FIRST
+            else None
         )
+        live_before = len(await buckets(db_session, "LIVE"))
 
-        report = await collector(db_session, failing).collect(inst)
+        failed_at = NOW + timedelta(hours=1)
+        report = await collector(db_session, failing, now=failed_at).collect(inst)
 
         assert report.history_scope_state is HistoryState.READING
         assert await buckets(db_session, "HISTORY") == []
         reading = await scope(db_session, inst)
         assert reading is not None and reading.state == "READING"
         assert reading.through is None
+        assert reading.last_error_class == "ProviderError"
+        assert reading.last_error_at == failed_at
+        assert len(await buckets(db_session, "LIVE")) > live_before
+
+        failing.catchall_fault = None
+        await collector(db_session, failing, now=failed_at + timedelta(hours=1)).collect(inst)
+        cleared = await scope(db_session, inst)
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    async def test_capacity_refusal_yields_without_halving_or_marking(self, db_session) -> None:
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+        await collector(db_session, prov).collect(inst)
+        before = await scope(db_session, inst)
+        assert before is not None and before.state == "READING"
+        before_progress = copy.deepcopy(before.progress)
+        before.last_error_class = "EarlierProviderError"
+        before.last_error_at = NOW
+        await db_session.commit()
+
+        refusing = provider(always(row("fw-01", 50)))
+
+        def fault(search):  # type: ignore[no-untyped-def]
+            if search.window_start < FIRST:
+                assert _ARIEL_PRIORITY.get() == "background"
+                return ArielPermitUnavailable(7, 2, 4)
+            return None
+
+        refusing.catchall_fault = fault
+        report = await collector(db_session, refusing, now=NOW + timedelta(hours=1)).collect(inst)
+
+        yielded = await scope(db_session, inst)
+        assert report.history_scope_state is HistoryState.READING
+        assert yielded is not None and yielded.state == "READING"
+        assert yielded.through is None and yielded.progress == before_progress
+        assert yielded.last_error_class == "EarlierProviderError"
+        assert yielded.last_error_at == NOW
+        assert yielded.reason == "deferred: no Ariel permit within 7 s"
+        assert await buckets(db_session, "HISTORY") == []
+        assert _ARIEL_PRIORITY.get() == "live"
+
+    async def test_an_unexpected_step_fault_keeps_live_and_rolls_history_back(
+        self, db_session, monkeypatch
+    ) -> None:
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+        await collector(db_session, prov).collect(inst)
+        before = await scope(db_session, inst)
+        assert before is not None and before.state == "READING"
+        before_progress = dict(before.progress)
+        before_through = before.through
+        live_before = len(await buckets(db_session, "LIVE"))
+        history_before = len(await buckets(db_session, "HISTORY"))
+        watermark_before = (await watermark(db_session, inst)).watermark_at  # type: ignore[union-attr]
+        original = CatchallCollector._read_history
+
+        async def write_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            await original(self, *args, **kwargs)
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(CatchallCollector, "_read_history", write_then_crash)
+        failed_at = NOW + timedelta(hours=1)
+        report = await collector(db_session, prov, now=failed_at).collect(inst)
+
+        assert report.history_scope_state is HistoryState.READING
+        failed = await scope(db_session, inst)
+        assert failed is not None and failed.state == "READING"
+        assert failed.progress == before_progress and failed.through == before_through
+        assert failed.last_error_class == "RuntimeError"
+        assert failed.last_error_at == failed_at
+        assert len(await buckets(db_session, "HISTORY")) == history_before
+        assert len(await buckets(db_session, "LIVE")) > live_before
+        assert (await watermark(db_session, inst)).watermark_at > watermark_before  # type: ignore[union-attr,operator]
+
+        monkeypatch.setattr(CatchallCollector, "_read_history", original)
+        await collector(db_session, prov, now=failed_at + timedelta(hours=1)).collect(inst)
+        cleared = await scope(db_session, inst)
+        assert cleared is not None
+        assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    async def test_a_fault_after_settlement_reports_the_pre_tick_state(
+        self, db_session, monkeypatch
+    ) -> None:
+        """A rolled-back READING-to-COMPLETE write cannot leak into the report."""
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+        await collector(db_session, prov).collect(inst)
+        await db_session.commit()
+        original = CatchallCollector._finish_history
+        settled_states: list[HistoryState] = []
+
+        async def settle_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            state = await original(self, *args, **kwargs)
+            settled_states.append(state)
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(CatchallCollector, "_finish_history", settle_then_crash)
+
+        for tick in range(1, 8):
+            before = await scope(db_session, inst)
+            assert before is not None and before.state == HistoryState.READING.value
+            state_before = HistoryState(before.state)
+            history_before = len(await buckets(db_session, "HISTORY"))
+            live_before = len(await buckets(db_session, "LIVE"))
+            stored_watermark = await watermark(db_session, inst)
+            assert stored_watermark is not None and stored_watermark.watermark_at is not None
+            watermark_before = stored_watermark.watermark_at
+            failed_at = NOW + timedelta(hours=tick)
+
+            report = await collector(db_session, prov, now=failed_at).collect(inst)
+            if not settled_states:
+                await db_session.commit()
+                continue
+
+            assert settled_states == [HistoryState.COMPLETE]
+            assert report.history_scope_state is state_before
+            await db_session.commit()
+            failed = await scope(db_session, inst)
+            assert failed is not None and failed.state == state_before.value
+            assert failed.last_error_class == "RuntimeError"
+            assert failed.last_error_at == failed_at
+            assert len(await buckets(db_session, "HISTORY")) == history_before
+            assert len(await buckets(db_session, "LIVE")) > live_before
+            current_watermark = await watermark(db_session, inst)
+            assert current_watermark is not None
+            assert current_watermark.watermark_at > watermark_before
+            break
+        else:
+            pytest.fail("the catch-all history did not reach its settlement write")
+
+    async def test_a_fault_after_the_step_wrote_rows_reports_the_pre_step_counts(
+        self, db_session, monkeypatch
+    ) -> None:
+        """A rolled-back step's written counts cannot stay in the tick's report."""
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+        await collector(db_session, prov).collect(inst)
+        await db_session.commit()
+        history_before = len(await buckets(db_session, "HISTORY"))
+        original = CatchallCollector._write_history_senders
+        senders_at_fault: list[int] = []
+
+        async def write_then_crash(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            senders_at_fault.append(await original(self, *args, **kwargs))
+            raise RuntimeError("SELECT sensitive_property FROM events")
+
+        monkeypatch.setattr(CatchallCollector, "_write_history_senders", write_then_crash)
+        failed_at = NOW + timedelta(hours=1)
+
+        report = await collector(db_session, prov, now=failed_at).collect(inst)
+
+        assert senders_at_fault and senders_at_fault[0] > 0  # the step wrote rows first
+        assert report.history_searches == 0
+        assert report.history_buckets_written == 0
+        assert report.history_unmapped_rows == 0
+        assert report.history_senders_written == 0
+        assert report.history_scope_state is HistoryState.READING
+        failed = await scope(db_session, inst)
+        assert failed is not None and failed.last_error_class == "RuntimeError"
+        assert failed.last_error_at == failed_at
+        assert len(await buckets(db_session, "HISTORY")) == history_before
 
 
 # --------------------------------------------------------------------------- the guards

@@ -18,9 +18,10 @@ from sqlalchemy import func, select
 from app.models.enums import ExecutionStatus
 from app.models.search import SearchExecution
 from app.providers.mock import MockQRadarProvider
-from app.services.concurrency import InMemoryConcurrencyLimiter
+from app.services.ariel_permit import _ARIEL_PRIORITY
 from app.services.search_executor import SearchExecutor
 from app.services.search_scheduler import SearchScheduler
+from tests.integration.ariel_permit_fakes import CountingBudget
 from tests.integration.factories import make_search, utc
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -34,7 +35,7 @@ def _scheduler(session, **kwargs) -> SearchScheduler:
     executor = SearchExecutor(
         session,
         MockQRadarProvider(seed=1337),
-        InMemoryConcurrencyLimiter(per_instance=2, global_limit=4),
+        CountingBudget(global_limit=4, instance_limit=2),
         sleep=_noop_sleep,
     )
     return SearchScheduler(session, executor, **kwargs)
@@ -196,7 +197,7 @@ async def test_consecutive_failures_tracked_and_reset(db_session) -> None:
     # A provider that cannot execute AQL makes the run fail deterministically.
     failing = MockQRadarProvider(seed=1337)
     failing_executor = SearchExecutor(
-        db_session, failing, InMemoryConcurrencyLimiter(per_instance=2, global_limit=4),
+        db_session, failing, CountingBudget(global_limit=4, instance_limit=2),
         sleep=_noop_sleep,
     )
     failing_executor.provider = _NoAqlProvider(failing)
@@ -223,3 +224,194 @@ class _NoAqlProvider:
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
+
+
+# ------------------------------------------------------------- Ariel permit (AP-4)
+async def test_cycle_with_a_refusing_budget_records_first_and_defers_remaining_due_searches(
+    db_session, caplog,
+) -> None:
+    from app.models.enums import ExecutionErrorType
+
+    searches = [
+        await make_search(db_session, name=f"due-{i}", next_run_at=utc(h=10, mi=5))
+        for i in range(3)
+    ]
+    budget = CountingBudget(refuse=True)
+    provider = MockQRadarProvider(seed=1337)
+    executor = SearchExecutor(db_session, provider, budget, sleep=_noop_sleep)
+
+    report = await SearchScheduler(db_session, executor).run_due(now=utc(h=10, mi=6))
+
+    assert report.dispatched == ["due-0"]
+    assert report.deferred_capacity == ["due-1", "due-2"]
+    assert budget.refused == 1
+    assert budget.priorities == ["background"]
+    assert _ARIEL_PRIORITY.get() == "live"
+    capacity_logs = [
+        record
+        for record in caplog.records
+        if record.name == "app.search_scheduler" and hasattr(record, "deferred_count")
+    ]
+    assert [record.deferred_count for record in capacity_logs] == [2]
+    for index, search in enumerate(searches):
+        rows = list(
+            (
+                await db_session.scalars(
+                    select(SearchExecution).where(SearchExecution.search_id == search.id)
+                )
+            ).all()
+        )
+        if index == 0:
+            assert [(r.status, r.error_type) for r in rows] == [
+                (ExecutionStatus.FAILED, ExecutionErrorType.CAPACITY.value)
+            ]
+            assert search.consecutive_failures == 1
+            assert search.next_run_at == utc(h=10, mi=10)
+        else:
+            assert rows == []
+            assert search.consecutive_failures == 0
+            assert search.next_run_at == utc(h=10, mi=5)
+
+
+async def test_capacity_deferral_stops_at_remaining_slots_and_skips_in_flight(
+    db_session, caplog,
+) -> None:
+    """The deferred list is the searches this cycle would still have sent."""
+    from app.core.config import get_settings
+
+    settings = get_settings().model_copy(update={"search_max_dispatch_per_cycle": 2})
+    due = await make_search(db_session, name="due-0", next_run_at=utc(h=10, mi=1))
+    busy = await make_search(db_session, name="busy", next_run_at=utc(h=10, mi=2))
+    broken = await make_search(
+        db_session, name="broken", schedule_cron="not a cron", next_run_at=utc(h=10, mi=3)
+    )
+    nxt = await make_search(db_session, name="due-2", next_run_at=utc(h=10, mi=4))
+    later_due = await make_search(db_session, name="due-3", next_run_at=utc(h=10, mi=5))
+    not_due = await make_search(db_session, name="later", next_run_at=utc(h=10, mi=15))
+    db_session.add(
+        SearchExecution(
+            search_id=busy.id, run_key="in-flight", trigger="SCHEDULED",
+            query_version=1, status=ExecutionStatus.RUNNING, started_at=utc(h=10, mi=4),
+        )
+    )
+    await db_session.flush()
+    budget = CountingBudget(refuse=True)
+    executor = SearchExecutor(
+        db_session, MockQRadarProvider(seed=1337), budget, sleep=_noop_sleep,
+    )
+
+    report = await SearchScheduler(db_session, executor, settings=settings).run_due(
+        now=utc(h=10, mi=6)
+    )
+
+    assert report.dispatched == ["due-0"]
+    assert report.deferred_capacity == ["due-2"]
+    assert report.skipped_running == []
+    assert due.next_run_at == utc(h=10, mi=10)
+    assert busy.next_run_at == utc(h=10, mi=2)
+    assert broken.next_run_at == utc(h=10, mi=3)
+    assert nxt.next_run_at == utc(h=10, mi=4)
+    assert later_due.next_run_at == utc(h=10, mi=5)
+    assert not_due.next_run_at == utc(h=10, mi=15)
+    capacity_logs = [
+        record
+        for record in caplog.records
+        if record.name == "app.search_scheduler" and hasattr(record, "deferred_count")
+    ]
+    assert [record.deferred_count for record in capacity_logs] == [1]
+
+
+async def test_capacity_failures_open_the_streak_alert_at_the_threshold(db_session) -> None:
+    from app.alerts.fingerprint import search_failure_fingerprint
+    from app.alerts.search_alerts import SearchAlertEvaluator
+    from app.models.alert import Alert
+
+    class Enqueuer:
+        async def enqueue(self, alert, transition):
+            return []
+
+    search = await make_search(db_session, name="starved", next_run_at=utc(h=10, mi=5))
+    executor = SearchExecutor(
+        db_session, MockQRadarProvider(seed=1337), CountingBudget(refuse=True),
+        sleep=_noop_sleep,
+    )
+    scheduler = SearchScheduler(
+        db_session, executor,
+        alert_evaluator=SearchAlertEvaluator(db_session, enqueuer=Enqueuer()),
+    )
+
+    async def alert():
+        return await db_session.scalar(
+            select(Alert).where(Alert.fingerprint == search_failure_fingerprint(search.id))
+        )
+
+    for minute in (6, 11):
+        await scheduler.run_due(now=utc(h=10, mi=minute))
+        assert await alert() is None, "below SEARCH_FAILURE_ALERT_AFTER (3)"
+    assert search.consecutive_failures == 2
+
+    await scheduler.run_due(now=utc(h=10, mi=16))
+
+    assert search.consecutive_failures == 3
+    opened = await alert()
+    assert opened is not None
+    assert opened.evidence_snapshot["error_type"] == "CAPACITY"
+
+
+async def test_scheduled_search_is_refused_while_a_provider_lifecycle_holds_the_pool(
+    db_schema,
+) -> None:
+    """One PostgreSQL pool: a collector-style lifecycle holds the only global slot, a
+    scheduled search sharing it is refused at a short wait and sends nothing."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.config import Settings
+    from app.models.enums import ExecutionErrorType
+    from app.services.ariel_permit import ArielPermitBudget
+
+    settings = Settings(
+        _env_file=None,
+        ariel_max_concurrent_searches=1,
+        ariel_global_max_concurrent_searches=1,
+        ariel_permit_reserved_live_slots=0,
+        ariel_permit_wait_seconds=0.1,
+        ariel_permit_poll_seconds=0.02,
+    )
+    holder_engine = create_async_engine(db_schema)
+    engine = create_async_engine(db_schema, future=True)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    holder = ArielPermitBudget(holder_engine, settings, instance_id=None)
+    sent = {"n": 0}
+
+    class Counting(MockQRadarProvider):
+        async def create_ariel_search(self, aql: str):
+            sent["n"] += 1
+            return await super().create_ariel_search(aql)
+
+    try:
+        async with maker() as session:
+            search = await make_search(session, name="shares-pool", next_run_at=utc(h=10, mi=5))
+            budget = ArielPermitBudget.for_session(session, settings, instance_id=None)
+            executor = SearchExecutor(
+                session, Counting(seed=1), budget, settings=settings, sleep=_noop_sleep
+            )
+            async with holder.permit() as held:
+                assert held is not None
+                report = await SearchScheduler(session, executor, settings=settings).run_due(
+                    now=utc(h=10, mi=6)
+                )
+            row = await session.scalar(
+                select(SearchExecution).where(SearchExecution.search_id == search.id)
+            )
+            assert report.dispatched == ["shares-pool"]
+            assert row is not None and row.error_type == ExecutionErrorType.CAPACITY.value
+            assert sent["n"] == 0
+
+            # The holder released: the next cycle gets the slot and runs.
+            await SearchScheduler(session, executor, settings=settings).run_due(
+                now=utc(h=10, mi=11)
+            )
+            assert sent["n"] == 1
+    finally:
+        await engine.dispose()
+        await holder_engine.dispose()

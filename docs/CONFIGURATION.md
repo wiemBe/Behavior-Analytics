@@ -12,17 +12,17 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `ENVIRONMENT` | `development` | `development`, `staging` or `production` |
-| `DEBUG` | `false` | Diagnostic mode; refused in production |
+| `ENVIRONMENT` | `development` | `development`, `staging` or `production`. Staging is the production posture for a pre-production site |
+| `DEBUG` | `false` | Diagnostic mode; refused outside development |
 | `LAB_MODE` | `false` | Isolated accelerated lab profile; refused in production |
 | `LOG_LEVEL` | `INFO` | Application log level |
 | `API_PREFIX` | `/api/v1` | Versioned API prefix |
-| `QRADAR_PROVIDER` | `mock` | `mock`, `rest` or `mcp`; production refuses `mock` |
+| `QRADAR_PROVIDER` | `mock` | `mock`, `rest` or `mcp`; `mock` is refused outside development |
 | `QRADAR_BASE_URL` | empty | Preferred QRadar URL; `QRADAR_HOST` is a compatibility alias |
 | `QRADAR_API_TOKEN_FILE` | unset | File containing the read-only service token; preferred |
 | `QRADAR_SEC_TOKEN` | empty | Token value fallback; avoid in production |
 | `QRADAR_API_VERSION` | `20.0` | Default API version for unregistered connections |
-| `QRADAR_VERIFY_SSL` | `true` | TLS verification; `false` is refused by the REST provider |
+| `QRADAR_VERIFY_SSL` | `true` | TLS verification; `false` is refused outside development |
 | `QRADAR_CA_BUNDLE` | unset | Internal CA bundle path |
 | `QRADAR_TLS_ALLOW_MISSING_AKI` | `false` | Permit only the missing-AKI certificate condition |
 | `MCP_ENABLED` | `false` | Enable the optional MCP inventory integration |
@@ -33,10 +33,10 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `SECRET_KEY` | empty | Required application secret |
-| `ENCRYPTION_KEY` | empty | Fernet key for encrypted columns |
+| `SECRET_KEY` | empty | generated and validated; no feature reads it yet. The installer generates it. Outside development it must be at least 32 characters and must not be the `.env.example` placeholder |
+| `ENCRYPTION_KEY` | empty | Fernet key for encrypted columns. Outside development the `.env.example` placeholder and any value Fernet cannot construct are refused |
 | `ENCRYPTION_KEY_VERSION` | `1` | Active encryption-key version |
-| `ENCRYPTION_KEYS_JSON` | empty | JSON map of all keys accepted during rotation |
+| `ENCRYPTION_KEYS_JSON` | empty | JSON map of version to Fernet key. Outside development each entry must be a Fernet key; the startup error names the version and never the key |
 | `POSTGRES_USER` | `qradar_obs` | Database user |
 | `POSTGRES_PASSWORD` | empty | Database password |
 | `POSTGRES_DB` | `qradar_obs` | Database name |
@@ -50,8 +50,8 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `ARIEL_MAX_CONCURRENT_SEARCHES` | `3` | Concurrent searches per QRadar instance |
-| `ARIEL_GLOBAL_MAX_CONCURRENT_SEARCHES` | `6` | Concurrent searches across instances |
+| `ARIEL_MAX_CONCURRENT_SEARCHES` | `3` | Concurrent Ariel searches per QRadar console, across every process, held through PostgreSQL advisory-lock permits for a search's whole lifecycle. Collectors bind it per console; scheduled and manual searches are not console-scoped yet and take the global pool only |
+| `ARIEL_GLOBAL_MAX_CONCURRENT_SEARCHES` | `6` | Concurrent Ariel searches across every console and every process (collectors, scheduled searches and manual runs), through the same advisory-lock permits. A scheduled or manual search that gets no permit within `ARIEL_PERMIT_WAIT_SECONDS` fails with error type `CAPACITY` and is not retried; a manual run answers 503 |
 | `ARIEL_DEFAULT_TIMEOUT_SECONDS` | `300` | Default search timeout |
 | `ARIEL_MAX_TIMEOUT_SECONDS` | `900` | Maximum accepted timeout |
 | `ARIEL_MAX_TIME_RANGE_HOURS` | `168` | Maximum query time range |
@@ -62,6 +62,11 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `ARIEL_RETRY_MAX_SECONDS` | `60.0` | Maximum retry delay |
 | `ARIEL_STOP_PAD_SECONDS` | `60` | Padding on the Ariel stop bound; the `WHERE` interval is unchanged |
 | `ARIEL_MULTI_BUCKET_MAX_ROWS` | `5000` | Row cap before a keyed time window is split |
+| `ARIEL_PERMIT_LOCK_NAMESPACE` | `4713` | PostgreSQL advisory-lock namespace for the global Ariel permit pool; must be distinct from every other lock namespace |
+| `ARIEL_PERMIT_INSTANCE_LOCK_NAMESPACE` | `4714` | PostgreSQL advisory-lock namespace for per-console Ariel permit pools; must be distinct from every other lock namespace |
+| `ARIEL_PERMIT_WAIT_SECONDS` | `30` | Maximum wait for an Ariel permit (`0`–`600` seconds) |
+| `ARIEL_PERMIT_POLL_SECONDS` | `1` | Permit retry interval (more than `0`, at most `30` seconds) |
+| `ARIEL_PERMIT_RESERVED_LIVE_SLOTS` | `2` | Low-numbered global slots only live collection may take; must be below the global cap |
 
 ## Search cadence and bucket collection
 
@@ -75,15 +80,68 @@ complete data.
 |---|---:|---|
 | search-family cadence | `5 minutes` | Initial cadence; `15 minutes` for WAF and IPS |
 | `COLLECTION_INTERVAL_SECONDS` | `300` | Bucket width; it does not schedule collection |
-| `COLLECTION_BATCH_SIZE` | `50` | Sources handled in one collection batch |
+| `COLLECTION_BATCH_SIZE` | `50` | Accepted. No collector reads it |
 | `COLLECTION_MAX_BACKFILL_INTERVALS` | `12` | Buckets a metric run may backfill |
 | `SEARCH_CADENCE_SETTLE_SECONDS` | `120` | Delay after a slot boundary for late events |
 | `SEARCH_CADENCE_MAX_SEARCHES_PER_TICK` | `16` | Searches one family may spend per tick, including splits |
 | `ANOMALY_MAX_BUCKETS_PER_EVALUATION` | `120` | Source-volume buckets evaluated per source in one run |
 | `RULE_MATCH_WINDOW_SECONDS` | `3600` | Rule-match measurement window |
 
-`EXPLANATION_COLLECTION_INTERVAL_SECONDS` and `RULE_MATCH_COLLECTION_INTERVAL_SECONDS` remain
-accepted compatibility settings, but search-family cadence is the scheduler control.
+`EXPLANATION_COLLECTION_INTERVAL_SECONDS` (default `300`) and
+`RULE_MATCH_COLLECTION_INTERVAL_SECONDS` (default `900`) are accepted and ignored. No module
+reads them. Search-family cadence is the scheduler.
+
+Collection also uses these knobs. They share this section because the product has no separate
+reference heading for them.
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `COLLECTION_ADVISORY_LOCK_NAMESPACE` | `4711` | PostgreSQL advisory-lock namespace for metric collection |
+| `LOG_SOURCE_SYNC_INTERVAL_SECONDS` | `3600` | Full log-source inventory interval. Minimum `60` |
+| `INVENTORY_NEW_SOURCE_ALERTS_ENABLED` | `true` | Open a review alert for a new non-internal log source |
+| `OFFENSE_COLLECTION_INTERVAL_SECONDS` | `300` | Offense collection interval |
+| `OFFENSE_MAX_PAGES` | `20` | Pages of offenses walked per run |
+| `OFFENSE_PAGE_SIZE` | `100` | Accepted. Offense collection does not read it |
+| `OFFENSE_MAX_BACKFILL_HOURS` | `168` | How far a first run or a gap-fill may reach |
+| `OFFENSE_SLA_HOURS` | `24` | Open offenses older than this count as exceeding SLA |
+| `OFFENSE_CRITICAL_MAGNITUDE` | `7` | Magnitude at or above which an offense counts as critical |
+| `OFFENSE_STALE_AFTER_SECONDS` | `900` | Age after which a collection is an operational alert |
+| `OFFENSE_STALE_CHECK_INTERVAL_SECONDS` | `300` | How often that staleness check runs |
+| `OFFENSE_AGGREGATE_INTERVAL_SECONDS` | `300` | Offense aggregate calculation interval |
+| `RULE_COLLECTION_INTERVAL_SECONDS` | `3600` | Rule and building-block inventory interval |
+| `RULE_MAX_PAGES` | `20` | Accepted. Rule collection does not read it |
+| `RULE_METRIC_COLLECTION_INTERVAL_SECONDS` | `3600` | Rule-metric collection interval |
+| `RULE_METRIC_LOOKBACK_DAYS` | `30` | How far rule-metric collection looks back |
+| `RULE_METRIC_MAX_OFFENSES` | `10000` | Offense rows considered for rule metrics |
+| `RULE_MATCH_COLLECTION_ENABLED` | `false` | Measured rule-match collection switch |
+| `RULE_MATCH_SETTLE_LAG_SECONDS` | `300` | A window is collected only after it has been closed this long |
+| `RULE_MATCH_MAX_WINDOWS_PER_RUN` | `6` | Windows per run when the cadence is no longer than the window |
+| `RULE_MATCH_MAX_WINDOW_ATTEMPTS` | `3` | Failures before a window stays `FAILED` and the watermark moves on |
+| `RULE_MATCH_MAX_CATCHUP_SECONDS` | `86400` | A watermark further behind than this jumps forward; skipped windows are `FAILED` |
+| `RULE_MATCH_MAX_ROWS` | `2000` | A full page makes the window `TRUNCATED` |
+| `RULE_HEALTH_WINDOW_DAYS` | `30` | Window for "has this rule fired recently" |
+| `RULE_HEALTH_GRACE_PERIOD_DAYS` | `7` | A newer rule is `INSUFFICIENT_DATA`, never inactive |
+| `RULE_HEALTH_MIN_HISTORY_DAYS` | `3` | Observed history required before an inactivity verdict |
+| `RULE_HEALTH_INACTIVITY_DAYS` | `14` | Silence that marks a rule which has fired before as inactive |
+| `RULE_HEALTH_NOISY_DAILY_FIRINGS` | `500` | Firings per day above which a rule is noisy, unless the rule sets its own expectation |
+| `RULE_HEALTH_FLAP_THRESHOLD` | `2` | Consecutive agreeing evaluations before the stored verdict flips |
+| `RULE_HEALTH_LOGIC_VERSION` | `3` | Stamped when classification meaning changes. Not an operator tuning knob |
+| `RULE_HEALTH_EVALUATION_INTERVAL_SECONDS` | `1800` | Health classification interval. It reads only stored data |
+| `COVERAGE_EVALUATION_INTERVAL_SECONDS` | `3600` | Detection-coverage evaluation interval |
+| `COVERAGE_MIN_CONFIDENCE` | `0.5` | Inferred mappings below this are recorded and not counted |
+| `COVERAGE_LOGIC_VERSION` | `1` | Stamped when coverage classification meaning changes |
+| `ANOMALY_POLICY_VERSION` | `1` | Stamped on every Phase A anomaly when detection semantics change |
+| `EXPLANATION_ENABLED` | `true` | Run bounded explanation queries for an anomaly |
+| `EXPLANATION_TOP_VALUES` | `20` | Values retained per explanation dimension |
+| `EXPLANATION_BASELINE_WINDOW_MULTIPLE` | `3` | Comparison-window length as a multiple of the anomaly window |
+| `EXPLANATION_MAX_WINDOW_SECONDS` | `21600` | Hard ceiling on either explanation window |
+| `EXPLANATION_MAX_PER_RUN` | `5` | Anomalies explained per task run |
+| `EXPLANATION_QUERY_TIMEOUT_SECONDS` | `120` | Accepted. Explanation jobs do not read it |
+| `EXPLANATION_DIMENSIONS` | see below | Dimensions compared, in priority order |
+
+`EXPLANATION_DIMENSIONS` defaults to `qid`, `event_name`, `source_ip`, `destination_ip`,
+`destination_port`, `source_port`, `username`, `action`, `category`, `protocol`. A source is
+trimmed to the dimensions its DSM populates; the rest are recorded unavailable.
 
 ## Source-volume baselines and incidents
 
@@ -100,6 +158,12 @@ accepted compatibility settings, but search-family cadence is the scheduler cont
 | `ANOMALY_MIN_ABSOLUTE_DELTA_EVENTS` | `100` | Minimum absolute event change |
 | `ANOMALY_MIN_BUCKET_EVENTS` | `50` | Minimum material bucket population |
 | `ANOMALY_SILENCE_GRACE_BUCKETS` | `1` | Missing buckets tolerated before silence evaluation |
+| `ANOMALY_MAX_BUCKET_ATTEMPTS` | `3` | Failed evaluation ticks on one bucket before it is given up. `1`–`20` |
+| `ANOMALY_FAULT_RETENTION_DAYS` | `30` | Days a resolved or given-up fault is kept. `1`–`3650`. Daily task `apply_anomaly_fault_retention`; not gated by `RETENTION_ENABLED` |
+| `LOG_SOURCE_ANOMALY_RETENTION_DAYS` | `365` | Closed Phase A incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA). `1`–`3650`. Live states are kept. Task `apply_log_source_anomaly_retention`; not gated by `RETENTION_ENABLED`. An alert that lists the incident in `source_anomaly_ids` keeps it for the life of the alert, whatever the alert status (nothing deletes alerts). `evidence_snapshot` and `source_id` are not guards |
+| `LOG_SOURCE_ANOMALY_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch. `100`–`100000` |
+| `LOG_SOURCE_ANOMALY_RETENTION_MAX_BATCHES` | `20` | Batches per run. `1`–`1000` |
+| `LOG_SOURCE_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
 | `OUTAGE_ALERT_DEFAULT` | `ALERT` | Default source-silence policy when no override applies |
 
 ## WAF behavior
@@ -125,6 +189,37 @@ current version has validated successfully.
 | `WAF_ENDPOINT_ACTIVE_DAYS` | `7` | Idle days before an endpoint retires |
 | `WAF_METRIC_RETENTION_DAYS` | `35` | Endpoint metric retention |
 | `WAF_ANOMALY_RETENTION_DAYS` | `180` | Resolved WAF incident retention |
+| `WAF_URL_PROPERTY` | `URL` | Default URL property name. Scheduled collection reads the profile; the API uses this as the default |
+| `WAF_METHOD_PROPERTY` | `HTTP_Method` | Default method property name. Same split as `WAF_URL_PROPERTY` |
+| `WAF_VIRTUAL_HOST_PROPERTY` | empty | Default virtual-host property. Empty means not available. Scheduled collection reads the profile |
+| `WAF_MIN_BUCKET_REQUESTS` | `20` | Minimum requests in a bucket for a volume verdict |
+| `WAF_MIN_ABSOLUTE_DELTA_REQUESTS` | `50` | Minimum absolute change, in requests per bucket |
+| `WAF_SPIKE_RATIO` | `2.0` | Minimum observed/expected multiple for a spike candidate |
+| `WAF_VALIDATION_WINDOW_SECONDS` | `900` | Recent history a profile validation probe inspects |
+| `WAF_VALIDATION_PENDING_TIMEOUT_SECONDS` | `900` | Age after which a dead pending validation can be replaced |
+| `WAF_VALIDATION_LOCK_RETRY_DELAY_SECONDS` | `30` | Delay before validation retries a source the collector holds |
+| `WAF_VALIDATION_LOCK_MAX_RETRIES` | `20` | Retries before a fail-closed source-busy result |
+| `WAF_VALIDATION_MIN_RATIO` | `0.90` | Minimum population share for a required field |
+| `WAF_VALIDATION_MAX_VALUES` | `50` | Most frequent values fetched per property during validation |
+| `WAF_RETENTION_ENABLED` | `true` | Run bounded WAF metric retention |
+| `WAF_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
+| `WAF_RETENTION_MAX_BATCHES` | `20` | Batches per retention run |
+| `WAF_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule |
+| `WAF_ARIEL_PERMIT_WAIT_SECONDS` | `30` | Maximum wait for a WAF Ariel permit |
+| `WAF_ARIEL_PERMIT_POLL_SECONDS` | `1` | Permit retry interval |
+| `WAF_ARIEL_PERMIT_LOCK_NAMESPACE` | `4712` | Advisory-lock namespace for the WAF Ariel permit |
+| `WAF_BASELINE_REBUILD_CHUNK_SIZE` | `25` | Endpoints loaded together during a baseline rebuild |
+| `WAF_RATIO_MIN_DENOMINATOR` | `50` | Minimum denominator before a ratio detector judges |
+| `WAF_RATIO_MIN_NUMERATOR` | `10` | Minimum numerator before a ratio detector judges |
+| `WAF_RATIO_MIN_INCREASE` | `0.10` | Minimum share increase for a ratio spike |
+| `WAF_RATIO_MIN_MULTIPLE` | `2.0` | Minimum multiple for a ratio spike |
+| `WAF_CONCENTRATION_MIN_ENDPOINT_REQUESTS` | `50` | Minimum endpoint requests before a concentration verdict |
+| `WAF_CONCENTRATION_MIN_CLIENT_REQUESTS` | `20` | Minimum client requests before a concentration verdict |
+| `WAF_CONCENTRATION_MIN_INCREASE` | `0.20` | Minimum share increase for a concentration verdict |
+| `WAF_NEW_ENDPOINT_HISTORY_DAYS` | `7` | Complete history required before a new endpoint can be novel |
+| `WAF_NEW_ENDPOINT_WINDOW_BUCKETS` | `12` | Materiality window after an endpoint first appears |
+| `WAF_NEW_ENDPOINT_MIN_REQUESTS` | `20` | Minimum requests for a new endpoint |
+| `WAF_NEW_ENDPOINT_MIN_BUCKETS` | `2` | Minimum buckets for a new endpoint |
 
 Field names and blocked/allowed values belong to each source's versioned profile. See
 [`FIELD-MAPPING.md`](FIELD-MAPPING.md).
@@ -169,11 +264,38 @@ Field names and blocked/allowed values belong to each source's versioned profile
 | `IPS_MAX_EVALUATION_BUCKETS_PER_RUN` | `24` | Buckets evaluated per source and run |
 | `IPS_BASELINE_LOOKBACK_DAYS` | `28` | Compatible history used for a baseline |
 | `IPS_BASELINE_REBUILD_BATCH_SIZE` | `50` | Subjects rebuilt in one batch |
-| `IPS_RETENTION_ENABLED` | `true` | Run bounded IPS retention |
-| `IPS_METRIC_RETENTION_DAYS` | `35` | Bucket and entity-metric retention |
+| `IPS_RETENTION_ENABLED` | `true` | Run bounded IPS metric retention. Does not gate closed-incident retention |
+| `IPS_METRIC_RETENTION_DAYS` | `35` | Bucket and entity-metric retention. Must exceed `IPS_BASELINE_LOOKBACK_DAYS` when collection and this switch are both on |
 | `IPS_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
 | `IPS_RETENTION_MAX_BATCHES` | `20` | Batches per retention run |
-| `IPS_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule |
+| `IPS_RETENTION_INTERVAL_SECONDS` | `86400` | Metric retention schedule |
+| `IPS_ANOMALY_RETENTION_DAYS` | `365` | Closed IPS incidents (RESOLVED, NORMAL, INSUFFICIENT_DATA), entity and source. `1`–`3650`. Task `apply_ips_anomaly_retention`; not gated by `IPS_RETENTION_ENABLED` or `RETENTION_ENABLED`. An alert that lists the incident in `source_anomaly_ids` keeps it for the life of the alert, whatever the alert status (nothing deletes alerts). `evidence_snapshot` and `source_id` are not guards |
+| `IPS_ANOMALY_RETENTION_BATCH_SIZE` | `5000` | Incident rows deleted per batch |
+| `IPS_ANOMALY_RETENTION_MAX_BATCHES` | `20` | Batches per incident run |
+| `IPS_ANOMALY_RETENTION_INTERVAL_SECONDS` | `86400` | Incident retention schedule |
+| `IPS_SPIKE_RATIO` | `2.0` | Entity spike minimum multiple |
+| `IPS_MIN_ABSOLUTE_DELTA_EVENTS` | `50` | Minimum absolute rise for an entity spike |
+| `IPS_MIN_BUCKET_EVENTS` | `20` | Minimum bucket population for an entity spike |
+| `IPS_FANOUT_MIN_PORTS` | `20` | Minimum ports before a fan-out verdict |
+| `IPS_FANOUT_RATIO` | `2.0` | Minimum multiple for a port fan-out |
+| `IPS_FANOUT_MIN_DELTA_PORTS` | `15` | Minimum absolute port rise for a fan-out |
+| `IPS_RATIO_MIN_DENOMINATOR` | `50` | Minimum denominator before a block-ratio verdict |
+| `IPS_RATIO_MIN_NUMERATOR` | `10` | Minimum numerator before a block-ratio verdict |
+| `IPS_RATIO_MIN_INCREASE` | `0.10` | Minimum share increase for a block-ratio spike |
+| `IPS_RATIO_MIN_MULTIPLE` | `2.0` | Minimum multiple for a block-ratio spike |
+| `IPS_CONCENTRATION_MIN_SOURCE_EVENTS` | `50` | Minimum source events before a concentration verdict |
+| `IPS_CONCENTRATION_MIN_TOP1_EVENTS` | `20` | Minimum top-source events before a concentration verdict |
+| `IPS_CONCENTRATION_MIN_INCREASE` | `0.20` | Minimum share increase for a concentration verdict |
+| `IPS_NEW_PORT_HISTORY_DAYS` | `7` | Complete history required before a new port can be novel |
+| `IPS_NEW_PORT_WINDOW_BUCKETS` | `12` | Materiality window after a port first appears |
+| `IPS_NEW_PORT_MIN_EVENTS` | `20` | Minimum events for a new port |
+| `IPS_NEW_PORT_MIN_BUCKETS` | `2` | Minimum buckets for a new port |
+
+When `IPS_COLLECTION_ENABLED` and `IPS_RETENTION_ENABLED` are both on, startup refuses
+`IPS_METRIC_RETENTION_DAYS` that does not exceed `IPS_BASELINE_LOOKBACK_DAYS` (equality
+included). The metric retention task repeats that check and deletes nothing when the days
+do not exceed the lookback, even if collection is off. Closed-incident retention is a
+separate task and is not skipped by that check.
 
 ## Geography
 
@@ -332,6 +454,7 @@ settings.
 | `SEARCH_RESULT_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
 | `SEARCH_RESULT_RETENTION_MAX_BATCHES` | `20` | Batches per retention run |
 | `SEARCH_RESULT_RETENTION_INTERVAL_SECONDS` | `86400` | Retention schedule |
+| `QRADAR_PROPERTY_CATALOG_TTL_SECONDS` | `600` | How long the QRadar custom-property catalog is reused per instance |
 
 Operator-defined scheduled searches keep their own cron expression. New or changed schedules must
 have at least five minutes between fires.
@@ -340,15 +463,20 @@ have at least five minutes between fires.
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `API_DEFAULT_PAGE_SIZE` | `50` | Default list page size |
+| `API_DEFAULT_PAGE_SIZE` | `50` | Accepted. List routes declare their own default and only cap with `API_MAX_PAGE_SIZE` |
 | `API_MAX_PAGE_SIZE` | `200` | Maximum list page size |
 | `API_MAX_RANGE_DAYS` | `365` | Maximum accepted history range |
-| `AUTH_PROVIDER` | `local` | Authentication provider |
+| `AUTH_PROVIDER` | `local` | `local`, `session` or `oidc`. Outside development a request needs the session cookie; `local` is the development principal and `oidc` is refused |
+| `OIDC_ISSUER` | empty | Accepted. No login flow reads it. `AUTH_PROVIDER=oidc` is refused outside development |
+| `OIDC_CLIENT_ID` | empty | Accepted. No login flow reads it |
+| `OIDC_CLIENT_SECRET` | empty | Accepted. No login flow reads it. Scrubbed from support bundles |
+| `OIDC_REDIRECT_URI` | empty | Accepted. No login flow reads it |
+| `SESSION_CLEANUP_BATCH` | `500` | Expired session rows one login may delete |
 | `SESSION_IDLE_MINUTES` | `480` | Idle session lifetime |
 | `SESSION_MAX_HOURS` | `12` | Absolute session lifetime |
 | `LOGIN_LOCKOUT_THRESHOLD` | `5` | Failed attempts before lockout |
 | `LOGIN_LOCKOUT_MINUTES` | `15` | Lockout duration |
-| `PUBLIC_ORIGIN` | `http://localhost:3000` | Browser origin accepted for session protection |
+| `PUBLIC_ORIGIN` | `http://localhost:3000` | Browser origin. Outside development it must be an https origin with a host and no path, query or wildcard |
 | `RATE_LIMIT_DEFAULT` | `120/minute` | Default per-client and per-path API limit |
 | `RATE_LIMIT_SEARCH_EXECUTION` | `10/minute` | Manual search-execution limit |
 | `RATE_LIMIT_LOGIN` | `300/minute` | Login endpoint limit |
@@ -356,26 +484,62 @@ have at least five minutes between fires.
 ## Retention and notifications
 
 General Timescale retention is non-destructive by default: `RETENTION_ENABLED=false`, and each
-general retention day setting defaults to unset. Family-specific bounded retention switches are
-listed above.
+general retention day setting defaults to unset. That flag gates only the four chunk policies
+(`log_source_metric`, `search_result_metric`, `rule_metric`, `offense_snapshot`) reconciled by
+`apply_timescale_policies`. Daily batch deleters are not gated by it. Their day counts are the
+family settings above, plus the snapshot settings in this section. `./qradar-dash install`
+enables the Timescale policies and writes `90 days` for all four tables plus `7 days` for
+compression; a repeat install keeps operator-set values. The install summary names every deleter.
 
 | Setting | Default | Meaning |
 |---|---:|---|
+| `RULE_HEALTH_SNAPSHOT_RETENTION_DAYS` | `90` | `rule_health_snapshot` rows kept, by `evaluated_at`. `1`–`3650`. Task `apply_snapshot_retention` |
+| `DETECTION_COVERAGE_SNAPSHOT_RETENTION_DAYS` | `90` | `detection_coverage_snapshot` rows kept, by `captured_at`. `1`–`3650`. Same task |
+| `SNAPSHOT_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch, per snapshot table |
+| `SNAPSHOT_RETENTION_MAX_BATCHES` | `20` | Batches per table per run |
+| `SNAPSHOT_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
+| `RETENTION_ENABLED` | `false` | Enable reconciliation of the general Timescale retention policies; the production installer writes `true` |
+| `RETENTION_LOG_SOURCE_METRIC_DAYS` | unset | Days of source-volume chunks to retain; the production installer writes `90` |
+| `RETENTION_SEARCH_RESULT_METRIC_DAYS` | unset | Days of scheduled-search result chunks to retain; the production installer writes `90` |
+| `RETENTION_RULE_METRIC_DAYS` | unset | Days of rule-metric chunks to retain; the production installer writes `90` |
+| `RETENTION_OFFENSE_SNAPSHOT_DAYS` | unset | Days of offense-snapshot chunks to retain; the production installer writes `90` |
+| `COMPRESSION_AFTER_DAYS` | unset | Age in days after which eligible Timescale chunks are compressed; the production installer writes `7` |
 | `TIMESCALE_POLICY_INTERVAL_SECONDS` | `86400` | General policy reconciliation interval |
 | `NOTIFY_MAX_RETRIES` | `5` | Notification retry count |
 | `NOTIFY_RETRY_BASE_SECONDS` | `2.0` | Initial retry delay |
 | `NOTIFY_RETRY_MAX_SECONDS` | `300.0` | Maximum retry delay |
 | `NOTIFY_SEND_RECOVERY` | `true` | Deliver recovery transitions |
-| `NOTIFY_PER_CHANNEL_RATE` | `30/minute` | Per-channel delivery limit |
+| `NOTIFY_PER_CHANNEL_RATE` | `30/minute` | Accepted. No notifier reads it |
+
+These channel values are not `Settings` fields. `alerts/routing.py` and
+`alerts/notifiers/registry.py` read them from the process environment, so they belong in the
+production `.env`. A blank target adds no route. Doctor's unknown-setting check already
+allowlists the names, so a site that sets them is not warned. The installer does not write
+them; a repeat install keeps extra lines it does not own.
+
+| Setting | Default when unset | Meaning |
+|---|---:|---|
+| `NOTIFY_TEAMS_WEBHOOK_URL` | empty | Teams webhook. Blank adds no Teams route |
+| `NOTIFY_SLACK_WEBHOOK_URL` | empty | Slack webhook. Blank adds no Slack route |
+| `NOTIFY_GENERIC_WEBHOOK_URL` | empty | Generic webhook. Blank adds no generic route |
+| `NOTIFY_EMAIL_RECIPIENTS` | empty | Comma-separated recipients. Blank adds no email route |
+| `NOTIFY_SYSLOG_HOST` | empty | Syslog host. Blank adds no syslog route |
+| `NOTIFY_SYSLOG_PORT` | `514` | Syslog port |
+| `SMTP_HOST` | empty | SMTP host. Unused while email recipients are blank |
+| `SMTP_PORT` | `587` | SMTP port. Read as an integer from the environment, not validated by `Settings` |
+| `SMTP_USERNAME` | empty | SMTP username |
+| `SMTP_PASSWORD` | empty | SMTP password |
+| `SMTP_FROM` | `qradar-observability@example.internal` | Envelope sender |
+| `SMTP_USE_TLS` | `true` | Use TLS unless the value is not the word `true` |
 
 ## LLM interface
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `LLM_ENABLED` | `false` | Enable the future investigation-provider interface |
-| `LLM_PROVIDER` | `null` | Provider selector |
-| `LLM_API_KEY` | empty | Provider secret |
-| `LLM_MODEL` | `claude-opus-4-8` | Provider model name |
+| `LLM_ENABLED` | `false` | The installer writes this. No feature reads it. Production does not refuse this name |
+| `LLM_PROVIDER` | `null` | Accepted. No feature reads it |
+| `LLM_API_KEY` | empty | Accepted. No feature reads it. Scrubbed from support bundles |
+| `LLM_MODEL` | `claude-opus-4-8` | Accepted. No feature reads it |
 | `LLM_ALLOW_AUTONOMOUS_ACTIONS` | `false` | Must remain false; production refuses true |
 
 The interface accepts only a redacted, normalized investigation package and returns structured

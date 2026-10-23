@@ -34,7 +34,7 @@ import math
 import time
 import uuid
 from collections import deque
-from collections.abc import AsyncGenerator, Callable, Mapping
+from collections.abc import AsyncGenerator, Callable
 from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -71,6 +71,7 @@ from app.history import (
     scope_progress,
     transition_row,
 )
+from app.history.lifecycle import decision_view, deferred_scope_row, scope_row, scope_view, step_row
 from app.history.planner import (
     PlannerInputError,
     ScanOutcome,
@@ -92,8 +93,6 @@ from app.history.rule_match import (
     fold_chunk,
     planner_settings,
     scan_result,
-    scope_base,
-    step_scope_row,
 )
 from app.models.enums import SearchFamily
 from app.models.instance import QRadarInstance
@@ -113,6 +112,11 @@ from app.rules.matches import (
     failed_window,
     floor_to_window,
     fold_rule_matches,
+)
+from app.services.ariel_permit import (
+    ArielPermitUnavailable,
+    ariel_background_priority,
+    ariel_history_deferred_reason,
 )
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
@@ -162,46 +166,6 @@ class RuleMatchCollectionReport:
     error: str | None = None
     duration_ms: int = 0
     watermark_at: datetime | None = None
-
-
-def _value(row: object, name: str) -> object:
-    if isinstance(row, Mapping):
-        return row[name]
-    return getattr(row, name)
-
-
-def _decision_view(row: object | None) -> DecisionView | None:
-    """The lifecycle's view of a decision row, never the ORM object itself."""
-    if row is None:
-        return None
-    return DecisionView(
-        answer=str(_value(row, "answer")),
-        days=_value(row, "days"),  # type: ignore[arg-type]
-        start_requested_at=_value(row, "start_requested_at"),  # type: ignore[arg-type]
-        start_requested_by=_value(row, "start_requested_by"),  # type: ignore[arg-type]
-        stop_requested_at=_value(row, "stop_requested_at"),  # type: ignore[arg-type]
-        stop_requested_by=_value(row, "stop_requested_by"),  # type: ignore[arg-type]
-    )
-
-
-def _scope_view(row: object | None) -> ScopeRowView | None:
-    """The lifecycle's view of a scope row, whether stored or newly built."""
-    if row is None:
-        return None
-    progress = _value(row, "progress")
-    return ScopeRowView(
-        state=HistoryState(str(_value(row, "state"))),
-        days_requested=_value(row, "days_requested"),  # type: ignore[arg-type]
-        days_target=_value(row, "days_target"),  # type: ignore[arg-type]
-        target_start=_value(row, "target_start"),  # type: ignore[arg-type]
-        floor=_value(row, "floor"),  # type: ignore[arg-type]
-        through=_value(row, "through"),  # type: ignore[arg-type]
-        anchor=_value(row, "anchor"),  # type: ignore[arg-type]
-        started_at=_value(row, "started_at"),  # type: ignore[arg-type]
-        finished_at=_value(row, "finished_at"),  # type: ignore[arg-type]
-        reason=_value(row, "reason"),  # type: ignore[arg-type]
-        progress=dict(progress) if isinstance(progress, Mapping) else {},
-    )
 
 
 class RuleMatchCollector:
@@ -327,14 +291,79 @@ class RuleMatchCollector:
             report.watermark_at = watermark.watermark_at
             # History runs after the live pass, under the same lock and in the
             # same transaction, and never touches the live report's status.
-            await self._history_step(
-                instance,
-                started,
-                report,
-                window_seconds=window_seconds,
-                cadence_seconds=cadence.cadence_seconds,
-                rule_ids=rule_ids,
+            # What the report said before the step: a fault the savepoint rolls
+            # back must not leave the step's counts in it (as IPS restores).
+            report_before_history = (
+                report.history_state,
+                report.history_reason,
+                report.history_searches,
+                report.history_windows_written,
+                report.history_rows_written,
             )
+            try:
+                async with self.session.begin_nested():
+                    await self._history_step(
+                        instance,
+                        started,
+                        report,
+                        window_seconds=window_seconds,
+                        cadence_seconds=cadence.cadence_seconds,
+                        rule_ids=rule_ids,
+                    )
+            except ArielPermitUnavailable as exc:
+                (
+                    report.history_state,
+                    _history_reason,
+                    report.history_searches,
+                    report.history_windows_written,
+                    report.history_rows_written,
+                ) = report_before_history
+                reason = ariel_history_deferred_reason(exc)
+                report.history_state = HistoryState.READING.value
+                report.history_reason = reason
+                repository = HistoryBackfillRepository(self.session)
+                stored = (
+                    await repository.scopes(
+                        instance.id,
+                        HistoryFamily.RULE_MATCH.value,
+                        [RULE_MATCH_SCOPE_KEY],
+                    )
+                ).get(RULE_MATCH_SCOPE_KEY)
+                if stored is not None and stored.state == HistoryState.READING.value:
+                    await repository.write_scopes(
+                        [
+                            deferred_scope_row(
+                                stored,
+                                instance_id=instance.id,
+                                family=HistoryFamily.RULE_MATCH,
+                                scope_key=RULE_MATCH_SCOPE_KEY,
+                                reason=reason,
+                            )
+                        ]
+                    )
+            except Exception as exc:
+                (
+                    report.history_state,
+                    report.history_reason,
+                    report.history_searches,
+                    report.history_windows_written,
+                    report.history_rows_written,
+                ) = report_before_history
+                report.history_error = type(exc).__name__
+                await HistoryBackfillRepository(self.session).write_step_errors(
+                    instance.id,
+                    HistoryFamily.RULE_MATCH.value,
+                    {RULE_MATCH_SCOPE_KEY: exc},
+                    at=self._clock(),
+                )
+                logger.warning(
+                    "rule match history step failed",
+                    extra={
+                        "instance_id": str(instance.id),
+                        "scope_key": RULE_MATCH_SCOPE_KEY,
+                        "error_class": type(exc).__name__,
+                    },
+                )
             await self.session.flush()
 
         report.duration_ms = int((self._clock() - started).total_seconds() * 1000)
@@ -378,7 +407,7 @@ class RuleMatchCollector:
         """
         repository = HistoryBackfillRepository(self.session)
         decision_row = (await repository.decisions([instance.id])).get(instance.id)
-        decision = _decision_view(decision_row)
+        decision = decision_view(decision_row)
         mode = console_mode(decision)
         if decision is None or mode in (ConsoleMode.UNDECIDED, ConsoleMode.NO):
             report.history_reason = "the console has no Yes answer"
@@ -394,8 +423,8 @@ class RuleMatchCollector:
         scopes = await repository.scopes(
             instance.id, HistoryFamily.RULE_MATCH.value, [RULE_MATCH_SCOPE_KEY]
         )
-        scope_row = scopes.get(RULE_MATCH_SCOPE_KEY)
-        row = _scope_view(scope_row)
+        stored = scopes.get(RULE_MATCH_SCOPE_KEY)
+        row = scope_view(stored)
         action = scope_action(
             family=HistoryFamily.RULE_MATCH,
             mode=mode,
@@ -421,7 +450,7 @@ class RuleMatchCollector:
                 at=now,
             )
             await repository.write_scopes([values])
-            row = _scope_view(values)
+            row = scope_view(values)
             report.history_state = action.state.value if action.state else None
             if action.state is not HistoryState.READING:
                 return
@@ -438,7 +467,7 @@ class RuleMatchCollector:
                 at=now,
             )
             await repository.write_scopes([values])
-            row = _scope_view(values)
+            row = scope_view(values)
             report.history_state = action.state.value if action.state else None
             report.history_reason = action.reason
             if action.state is not HistoryState.READING:
@@ -464,7 +493,13 @@ class RuleMatchCollector:
             # A scope row that cannot be read back is a bug or a manual edit,
             # not a reason to lose the live pass. Stop this step; the next tick
             # retries, and the operator sees the reason on the scope row.
-            report.history_error = f"{type(exc).__name__}: {exc}"[:512]
+            report.history_error = type(exc).__name__
+            await repository.write_step_errors(
+                instance.id,
+                HistoryFamily.RULE_MATCH.value,
+                {RULE_MATCH_SCOPE_KEY: exc},
+                at=self._clock(),
+            )
             logger.warning(
                 "rule match history step failed",
                 extra={
@@ -578,10 +613,13 @@ class RuleMatchCollector:
                     return
                 report.history_searches += 1
                 try:
-                    totals = await self.provider.get_console_event_totals(
-                        span.start, span.end, bucket_seconds=window_seconds
-                    )
+                    with ariel_background_priority():
+                        totals = await self.provider.get_console_event_totals(
+                            span.start, span.end, bucket_seconds=window_seconds
+                        )
                     result = scan_result(span, totals, settings)
+                except ArielPermitUnavailable:
+                    raise
                 except ProviderError:
                     result = failed_scan(span)
                 scan = interpret_scan(progress, [result], end=anchor, settings=settings)
@@ -620,13 +658,13 @@ class RuleMatchCollector:
                 if scan.outcome is not ScanOutcome.FLOOR_FOUND:
                     report.history_state = HistoryState.READING.value
                     return
-                refreshed = _scope_view(
+                refreshed = scope_view(
                     {
-                        **scope_base(
+                        **scope_row(
+                            row,
                             instance_id=instance.id,
                             family=HistoryFamily.RULE_MATCH,
                             scope_key=RULE_MATCH_SCOPE_KEY,
-                            row=row,
                         ),
                         "state": HistoryState.READING.value,
                         "days_target": days_target,
@@ -655,12 +693,13 @@ class RuleMatchCollector:
                 report.history_searches += 1
                 begun = self._clock()
                 try:
-                    batch = await self.provider.get_rule_matches_windowed(
-                        chunk.start,
-                        chunk.end,
-                        window_seconds=window_seconds,
-                        max_rows=self.settings.rule_match_max_rows,
-                    )
+                    with ariel_background_priority():
+                        batch = await self.provider.get_rule_matches_windowed(
+                            chunk.start,
+                            chunk.end,
+                            window_seconds=window_seconds,
+                            max_rows=self.settings.rule_match_max_rows,
+                        )
                     fold = fold_chunk(
                         batch,
                         mapping,
@@ -669,6 +708,8 @@ class RuleMatchCollector:
                         duration_ms=int((self._clock() - begun).total_seconds() * 1000),
                         collected_at=self._clock(),
                     )
+                except ArielPermitUnavailable:
+                    raise
                 except ProviderError:
                     results.append(failed_chunk(chunk))
                     break
@@ -781,11 +822,11 @@ class RuleMatchCollector:
     ) -> None:
         """Write the scope row: the lifecycle's columns, then the planner's fields."""
         if trigger is None:
-            scope_values = scope_base(
+            scope_values = scope_row(
+                row,
                 instance_id=instance.id,
                 family=HistoryFamily.RULE_MATCH,
                 scope_key=RULE_MATCH_SCOPE_KEY,
-                row=row,
             )
         else:
             scope_values = transition_row(
@@ -803,9 +844,9 @@ class RuleMatchCollector:
                 at=now,
             )
         if progress is None:
-            scope_values.update(state=state.value, reason=bounded_reason(reason))
+            scope_values = step_row(scope_values, state=state, reason=reason)
         else:
-            scope_values = step_scope_row(
+            scope_values = step_row(
                 scope_values,
                 state=state,
                 days_target=days_target,

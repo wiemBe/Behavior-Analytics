@@ -9,9 +9,9 @@ import {
   type HistoryConsoleMode,
   type HistoryFamily,
   type HistoryFamilyEstimate,
-  type HistoryGap,
 } from "@/lib/api";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { formatCount } from "@/lib/format";
+
 
 export const READ_PERMISSION = "read:history_backfill";
 export const ADMIN_PERMISSION = "admin:history_backfill";
@@ -72,65 +72,14 @@ export function decidedBy(decision: { source: string; decided_by: string }): str
   return decision.source === "INSTALLER" ? "the installer" : decision.decided_by;
 }
 
-/** "History backfill: Yes, read 28 days. Recorded by the installer on 2026-10-19 12:04 UTC." */
-export function decisionSentence(console: HistoryConsole): string {
-  const decision = console.decision;
-  if (decision === null) return "History backfill: not decided. Nothing is read from QRadar's past.";
-  const by = decidedBy(decision);
-  const when = formatDateTime(decision.decided_at);
-  if (decision.answer === "NO") {
-    return `History backfill: No, history is not read. Recorded by ${by} on ${when}.`;
-  }
-  const days = decision.days === null ? "" : `, read ${decision.days} days`;
-  return `History backfill: Yes${days}. Recorded by ${by} on ${when}.`;
-}
-
-/** The requests made after the answer: what was asked, by whom, when. */
-export function requestSentences(console: HistoryConsole): string[] {
-  const d = console.decision;
-  if (d === null) return [];
-  const out: string[] = [];
-  if (d.start_requested_at) {
-    out.push(
-      `Read history now was asked by ${d.start_requested_by ?? "an operator"} on ${formatDateTime(d.start_requested_at)}.`,
-    );
-  }
-  if (d.stop_requested_at) {
-    out.push(
-      `Stop reading was asked by ${d.stop_requested_by ?? "an operator"} on ${formatDateTime(d.stop_requested_at)}.`,
-    );
-  }
-  return out;
-}
-
 /** A figure of days read: whole days without a decimal, anything else with one, 0.0 as 0.0. */
 export function formatDays(value: number): string {
   return Number.isInteger(value) && value > 0 ? String(value) : value.toFixed(1);
 }
 
-export function formatCount(value: number): string {
-  return value.toLocaleString("en-US");
-}
+export { formatCount } from "@/lib/format";
 
-/** `10-01 00:00 UTC to 10-01 00:30 UTC`, from the gap's two instants (the title has the year). */
-export function gapRange(gap: HistoryGap): string {
-  return `${formatDateTimeCompact(gap.start)} to ${formatDateTimeCompact(gap.end)}`;
-}
-
-/** A relative age, `12 min ago`; it follows the absolute time and never replaces it. */
-export function relativeAge(iso: string | null | undefined, now: Date): string {
-  if (!iso) return "";
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "";
-  const seconds = Math.round((now.getTime() - then) / 1000);
-  if (seconds < 0) return "";
-  if (seconds < 90) return "just now";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 90) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} d ago`;
-}
+export { relativeAge } from "@/lib/time";
 
 // --- the dialog -------------------------------------------------------------
 
@@ -212,10 +161,6 @@ export function costHours(estimate: HistoryConsoleEstimate | undefined): number 
 }
 
 // --- failures ---------------------------------------------------------------
-
-export function failureStatus(err: unknown): number | null {
-  return err instanceof ApiError ? err.status : null;
-}
 
 /** The console a 409 carries, when its body has one. */
 export function conflictConsole(err: unknown): HistoryConsole | null {

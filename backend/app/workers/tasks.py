@@ -1,9 +1,8 @@
 """Celery task entrypoints for background collection, detection and delivery.
 
 Each task is a thin synchronous wrapper that runs an async orchestration on a
-fresh event loop with its own AsyncSession. The orchestration functions are
-also importable and awaited directly by the APScheduler MVP fallback and by
-tests, so the scheduling mechanism and the work are decoupled.
+fresh event loop with its own AsyncSession. Tests import and await those
+orchestration functions directly.
 """
 
 from __future__ import annotations
@@ -17,8 +16,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from redis import Redis
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 from app.alerts.dispatcher import NotificationDispatcher
 from app.alerts.fingerprint import compute_fingerprint
@@ -41,7 +40,7 @@ from app.collectors.offense_collector import OffenseCollector
 from app.collectors.rule_collector import RuleCollector
 from app.collectors.rule_match_collector import RuleMatchCollector
 from app.collectors.rule_metric_collector import RuleMetricCollector
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.database import dispose_engine, get_sessionmaker
 from app.custom_rules.engine import CustomRuleEngine
 from app.custom_rules.retention import CustomRuleRetention
@@ -54,20 +53,24 @@ from app.models.waf import WafSourceProfile
 from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider, build_provider_for_instance
 from app.repositories.offense import OffenseRepository
+from app.services.anomaly_fault_retention import AnomalyFaultRetention
+from app.services.ariel_permit import ArielPermitBudget
 from app.services.catchall_retention import CatchallRetention
-from app.services.concurrency import InMemoryConcurrencyLimiter
 from app.services.detection_coverage import DetectionCoverageEvaluator
 from app.services.geo_retention import GeoRetention
+from app.services.ips_anomaly_retention import IpsAnomalyRetention
 from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
 from app.services.ips_profiles import IpsProfileService
 from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
+from app.services.log_source_anomaly_retention import LogSourceAnomalyRetention
 from app.services.pw_pipeline import PwInstancePipeline
 from app.services.pw_retention import PwRetention
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
 from app.services.search_result_retention import SearchResultRetention
 from app.services.search_scheduler import SearchScheduler
+from app.services.snapshot_retention import SnapshotRetention
 from app.services.timescale import apply_policies
 from app.services.waf_pipeline import PIPELINE_LOCK, eligible_profile_ids, run_waf_source
 from app.services.waf_profiles import WafProfileService
@@ -205,7 +208,15 @@ async def _for_each_instance(
         if not instances:
             return {"status": "no-instance", "instances": 0, "results": []}
 
-        for instance in instances:
+        # A rollback expires every loaded object, and reading an expired attribute on
+        # the async session raises MissingGreenlet. So the names are read once, here,
+        # and the instances a failed run left expired are reloaded before their turn.
+        names = [instance.name for instance in instances]
+        rolled_back = False
+        for instance, name in zip(instances, names, strict=True):
+            if rolled_back:
+                await session.refresh(instance)
+                rolled_back = False
             provider = (
                 # audit_session wires the MCP audit sink to AuditLog; it is
                 # inert for the REST provider, which audits via telemetry.
@@ -218,20 +229,21 @@ async def _for_each_instance(
                 await session.commit()
             except Exception as exc:
                 await session.rollback()
+                rolled_back = True
                 # The exception type only: an upstream message may carry
                 # request detail we must not persist or log.
                 outcome = {"status": "failed", "error_class": type(exc).__name__}
                 logger.warning(
                     "collection run failed",
                     extra={
-                        "instance": instance.name,
+                        "instance": name,
                         "error_class": type(exc).__name__,
                     },
                 )
             finally:
                 if provider is not None:
                     await provider.aclose()
-            results.append({"instance": instance.name, **outcome})
+            results.append({"instance": name, **outcome})
 
     return {"instances": len(results), "results": results}
 
@@ -669,10 +681,22 @@ async def calculate_offense_aggregates(instance_name: str | None = None) -> dict
                 sla_hours=settings.offense_sla_hours,
                 critical_magnitude=settings.offense_critical_magnitude,
             )
+            elapsed = int((time.perf_counter() - started) * 1000)
+            # No snapshot: the counts are null. `processed` stays an integer,
+            # and the skip says why, the same way a locked run reports a skip
+            # with a zero count rather than an empty success.
+            if aggregates["active"] is None:
+                return {
+                    "status": "skipped",
+                    "duration_ms": elapsed,
+                    **aggregates,
+                    "processed": 0,
+                    "skipped_reason": "no offense snapshot",
+                }
             return {
                 "status": "ok",
                 "processed": aggregates["active"],
-                "duration_ms": int((time.perf_counter() - started) * 1000),
+                "duration_ms": elapsed,
                 **aggregates,
             }
 
@@ -736,13 +760,21 @@ async def evaluate_anomalies() -> dict:
                 )
             ).all()
         )
-        opened = resolved = 0
+        opened = resolved = failed = given_up = 0
         for source in sources:
             report = await engine.evaluate_pending(source)
             opened += len(report.opened)
             resolved += len(report.resolved)
+            failed += report.failed
+            given_up += report.given_up
         await session.commit()
-        return {"sources": len(sources), "opened": opened, "resolved": resolved}
+        return {
+            "sources": len(sources),
+            "opened": opened,
+            "resolved": resolved,
+            "failed": failed,
+            "given_up": given_up,
+        }
 
 
 # -------------------------------------------------------- anomaly explanation
@@ -852,6 +884,10 @@ async def rebuild_baselines() -> dict:
 
 
 # ------------------------------------------------------------ scheduled search
+# The scheduler has no QRadar instance; a fixed id gives `collector_lock_key` a stable key.
+SEARCH_SCHEDULER_LOCK_ID = uuid.UUID(int=0)
+
+
 async def run_due_searches() -> dict:
     """Execute every stored search whose cron schedule has come due.
 
@@ -861,17 +897,53 @@ async def run_due_searches() -> dict:
     """
     settings = get_settings()
     maker = get_sessionmaker()
+    # One cycle at a time. The lock is a session advisory lock on a connection of
+    # its own, held outside the scheduler's session: that session commits after
+    # every search and returns its connection to the pool, which would not keep a
+    # lock taken on it. If this process dies the connection closes and PostgreSQL
+    # frees the lock.
+    async with maker() as probe:
+        bind = probe.bind
+    engine = bind.engine if isinstance(bind, AsyncConnection) else bind
+    if not isinstance(engine, AsyncEngine):
+        raise RuntimeError("run_due_searches needs an engine-bound session")
+    async with engine.connect() as raw_conn:
+        lock_conn = await raw_conn.execution_options(isolation_level="AUTOCOMMIT")
+        lock_session = AsyncSession(bind=lock_conn)
+        try:
+            lock = CollectorAdvisoryLock(
+                lock_session, settings, SEARCH_SCHEDULER_LOCK_ID, "search_scheduler"
+            )
+            async with lock as acquired:
+                if not acquired:
+                    return {"status": "skipped_locked"}
+                return await _run_due_searches_cycle(settings, maker)
+        finally:
+            await lock_session.close()
+            if engine.dialect.name == "postgresql":
+                try:
+                    await lock_conn.execute(text("SELECT pg_advisory_unlock_all()"))
+                except BaseException:
+                    # A lock that may still be held must not return to the pool:
+                    # closing the physical connection makes PostgreSQL free it.
+                    await lock_conn.invalidate()
+                    raise
+
+
+async def _run_due_searches_cycle(settings: Settings, maker: Any) -> dict:
     provider = build_provider()
     try:
         async with maker() as session:
-            limiter = InMemoryConcurrencyLimiter(
-                per_instance=settings.ariel_max_concurrent_searches,
-                global_limit=settings.ariel_global_max_concurrent_searches,
-            )
+            # Searches are not instance-scoped yet (execution_instance_key is always
+            # "default"), so the permit is global-only; a per-console budget binds
+            # without further change once they carry real instance ids.
+            permit = ArielPermitBudget.for_session(session, settings, instance_id=None)
             enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
             scheduler = SearchScheduler(
                 session,
-                SearchExecutor(session, provider, limiter, settings=settings),
+                SearchExecutor(
+                    session, provider, permit, settings=settings, commit_progress=True
+                ),
                 settings=settings,
                 alert_evaluator=SearchAlertEvaluator(
                     session, settings=settings, enqueuer=enqueuer
@@ -1311,6 +1383,30 @@ async def apply_waf_retention() -> dict:
         return report.as_dict()
 
 
+async def apply_log_source_anomaly_retention() -> dict:
+    """Delete closed Phase A incidents past the retention window.
+
+    Not gated by RETENTION_ENABLED. Live incidents, detector pointers and any
+    alert that lists the incident are kept for the life of the alert.
+    Exclusive children leave by cascade.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await LogSourceAnomalyRetention(session).run()).as_dict()
+
+
+async def apply_anomaly_fault_retention() -> dict:
+    """Delete closed anomaly evaluation faults older than the retention window.
+
+    An open fault is the source's current state and is never touched; a
+    given-up one is kept for the full window, because it is the only record
+    that its bucket has no verdict.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await AnomalyFaultRetention(session).run()).as_dict()
+
+
 async def evaluate_custom_rules() -> dict:
     """Judge custom threshold rules from stored buckets. Sends no Ariel search.
 
@@ -1398,6 +1494,16 @@ async def apply_ips_retention() -> dict:
         return (await IpsRetention(session).run()).as_dict()
 
 
+async def apply_ips_anomaly_retention() -> dict:
+    """Delete closed IPS incidents past the retention window.
+
+    Not the metric task: a lookback skip there must not freeze incident aging.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await IpsAnomalyRetention(session).run()).as_dict()
+
+
 # ------------------------------------------------------- property watches (G.6)
 async def dispatch_property_watch_collection(instance_name: str | None = None) -> dict:
     """Run one property-watch plan per instance after claiming its cadence slot.
@@ -1467,6 +1573,13 @@ async def apply_search_result_retention() -> dict:
     maker = get_sessionmaker()
     async with maker() as session:
         return (await SearchResultRetention(session).run()).as_dict()
+
+
+async def apply_snapshot_retention() -> dict:
+    """Delete aged rule-health and coverage snapshots. Not RETENTION_ENABLED."""
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await SnapshotRetention(session).run()).as_dict()
 
 
 async def apply_timescale_policies() -> dict:
@@ -1635,6 +1748,16 @@ def apply_waf_retention_task() -> dict:
     return _run(apply_waf_retention())
 
 
+@celery_app.task(name="apply_anomaly_fault_retention")
+def apply_anomaly_fault_retention_task() -> dict:
+    return _run(apply_anomaly_fault_retention())
+
+
+@celery_app.task(name="apply_log_source_anomaly_retention")
+def apply_log_source_anomaly_retention_task() -> dict:
+    return _run(apply_log_source_anomaly_retention())
+
+
 @celery_app.task(name="dispatch_ips_collection")
 def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
     return _run(dispatch_ips_collection(instance_name))
@@ -1643,6 +1766,11 @@ def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_ips_retention")
 def apply_ips_retention_task() -> dict:
     return _run(apply_ips_retention())
+
+
+@celery_app.task(name="apply_ips_anomaly_retention")
+def apply_ips_anomaly_retention_task() -> dict:
+    return _run(apply_ips_anomaly_retention())
 
 
 @celery_app.task(name="dispatch_property_watch_collection")
@@ -1658,6 +1786,11 @@ def apply_property_watch_retention_task() -> dict:
 @celery_app.task(name="apply_search_result_retention")
 def apply_search_result_retention_task() -> dict:
     return _run(apply_search_result_retention())
+
+
+@celery_app.task(name="apply_snapshot_retention")
+def apply_snapshot_retention_task() -> dict:
+    return _run(apply_snapshot_retention())
 
 
 @celery_app.task(name="apply_timescale_policies")

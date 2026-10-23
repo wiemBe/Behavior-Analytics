@@ -8,19 +8,27 @@ buckets and the plans the IPS estimate makes.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.core.config import Settings
+from app.history import catchall as catchall_family
+from app.history import phase_a
+from app.history.catchall import catchall_planner_settings
+from app.history.planner import PlannerSettings, new_progress
+from app.history.progress_codec import encode_progress
+from app.history.source_floors import SourceFloors
 from app.history.state import HistoryFamily
 from app.models.history_backfill import HistoryBackfillScope
+from app.schemas.history_backfill import ScopeOut, ScopeSourceOut
 from app.services.history_backfill import (
     bucket_seconds_of,
+    console_wide_planner,
     days_read,
     duration_words,
     floor_to_bucket,
-    group_sources,
     scope_out,
 )
 
@@ -83,12 +91,6 @@ def test_the_estimate_end_is_a_whole_bucket() -> None:
     assert floor_to_bucket(now, 3600) == datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
 
 
-def test_the_sources_are_grouped_in_a_fixed_order_at_most_size_per_plan() -> None:
-    assert group_sources([3, 1, 2], 2) == [[1, 2], [3]]
-    assert group_sources([], 2) == []
-    assert group_sources([5], 2) == [[5]]
-
-
 # --------------------------------------------------------------- the floor and the name
 
 
@@ -99,6 +101,7 @@ def stored_scope(
     floor: datetime | None = None,
     target_start: datetime | None = None,
     through: datetime | None = None,
+    progress: dict | None = None,
 ) -> HistoryBackfillScope:
     """A scope row as a family adapter would have stored it (no session needed)."""
     return HistoryBackfillScope(
@@ -115,7 +118,7 @@ def stored_scope(
         started_at=START,
         finished_at=None,
         reason=None,
-        progress={},
+        progress=progress or {},
     )
 
 
@@ -168,4 +171,254 @@ def test_a_scope_row_has_a_name_only_for_a_per_source_family() -> None:
     assert scope_out(stored_scope(HistoryFamily.PHASE_A), 300, "web-7").name is None
     # A source that is no longer known has none either: the page shows the key.
     assert scope_out(stored_scope(HistoryFamily.WAF, key="7"), 300).name is None
+
+
+# --------------------------------------------------------------- the named sources
+
+
+#: The margin and the bucket the console-wide families read with (24 h, 5 min).
+MARGIN = timedelta(hours=24)
+BUCKET = 300
+#: A first event this late in the window is a cut source: its floor is later than
+#: `T0 + one bucket`.
+CUT = START - timedelta(hours=23)
+#: A first event this early is not: the floor is the start of the window.
+KEPT = START - timedelta(days=2)
+
+
+def floors_progress(floors: SourceFloors, *, target_start: datetime = START) -> dict:
+    """A stored progress that carries the per-source floors of a reading."""
+    settings = PlannerSettings(bucket_seconds=BUCKET)
+    return encode_progress(new_progress(target_start, target_start, settings), floors.encode())
+
+
+def named_scope(
+    family: HistoryFamily,
+    floors: SourceFloors,
+    *,
+    monitored: Sequence[str] = (),
+    names: Mapping[str, str] | None = None,
+    progress: dict | None = None,
+) -> ScopeOut:
+    """The scope as the page shows it, with the sources a reading was short of."""
+    row = stored_scope(
+        family,
+        progress=progress if progress is not None else floors_progress(floors),
+    )
+    return scope_out(row, BUCKET, margin=MARGIN, monitored=monitored, names=names or {})
+
+
+def test_a_reading_names_the_sources_qradar_holds_less_than_asked_for() -> None:
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors({"1": CUT, "2": KEPT}),
+        monitored=["1", "2"],
+        names={"1": "web-1", "2": "web-2"},
+    )
+    assert shown.sources_cut == [ScopeSourceOut(key="1", name="web-1")]
+    assert shown.sources_cut_count == 1
+    assert shown.sources_silent == []
+    assert shown.sources_silent_count == 0
+
+
+def test_a_reading_names_the_sources_that_had_no_event_at_all() -> None:
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors({"1": KEPT}),
+        monitored=["1", "2"],
+        names={"1": "web-1", "2": "web-2"},
+    )
+    assert shown.sources_cut == []
+    assert shown.sources_cut_count == 0
+    assert shown.sources_silent == [ScopeSourceOut(key="2", name="web-2")]
+    assert shown.sources_silent_count == 1
+
+
+def test_a_reading_names_both_the_cut_and_the_silent_sources() -> None:
+    shown = named_scope(
+        HistoryFamily.CATCHALL,
+        SourceFloors({"1": CUT, "2": KEPT}),
+        monitored=["1", "2", "3"],
+        names={"1": "web-1", "2": "web-2", "3": "web-3"},
+    )
+    assert [item.key for item in shown.sources_cut] == ["1"]
+    assert shown.sources_cut_count == 1
+    assert [item.key for item in shown.sources_silent] == ["3"]
+    assert shown.sources_silent_count == 1
+
+
+def test_a_reading_with_nothing_missing_names_no_source_and_counts_nothing() -> None:
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors({"1": KEPT, "2": KEPT}),
+        monitored=["1", "2"],
+        names={"1": "web-1", "2": "web-2"},
+    )
+    assert shown.sources_cut == []
+    assert shown.sources_silent == []
+    assert (shown.sources_cut_count, shown.sources_silent_count) == (0, 0)
+
+
+def test_a_source_that_is_no_longer_monitored_is_not_named() -> None:
+    """The sets are judged against the sources monitored now, not against the floors."""
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors({"1": CUT, "9": CUT}),
+        monitored=["1"],
+        names={"1": "web-1", "9": "web-9"},
+    )
+    assert [item.key for item in shown.sources_cut] == ["1"]
+    assert shown.sources_cut_count == 1
+
+
+def test_the_named_sources_are_ordered_by_name_and_then_by_key() -> None:
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors({"2": CUT, "1": CUT, "3": CUT}),
+        monitored=["1", "2", "3"],
+        names={"1": "web-b", "2": "web-a", "3": "web-b"},
+    )
+    assert [(item.key, item.name) for item in shown.sources_cut] == [
+        ("2", "web-a"),
+        ("1", "web-b"),
+        ("3", "web-b"),
+    ]
+
+
+def test_a_source_without_a_name_is_named_by_its_key_and_sorts_last() -> None:
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors({"1": CUT, "2": CUT}),
+        monitored=["1", "2"],
+        names={"1": "web-1"},
+    )
+    assert [(item.key, item.name) for item in shown.sources_cut] == [("1", "web-1"), ("2", None)]
+
+
+def test_the_list_holds_at_most_twenty_five_names_and_the_count_is_the_whole_number() -> None:
+    keys = [str(index) for index in range(1, 31)]
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors(dict.fromkeys(keys, CUT)),
+        monitored=keys,
+        names={key: f"src-{key}" for key in keys},
+    )
+    assert len(shown.sources_cut) == 25
+    assert shown.sources_cut_count == 30
+    # The first 25 by name: "src-1", "src-10", "src-11", ... (the names sort as text).
+    assert shown.sources_cut[0] == ScopeSourceOut(key="1", name="src-1")
+    assert shown.sources_cut[1] == ScopeSourceOut(key="10", name="src-10")
+
+
+def test_a_family_that_reads_one_source_per_scope_names_nothing() -> None:
+    shown = named_scope(
+        HistoryFamily.WAF,
+        SourceFloors({"1": CUT}),
+        monitored=["1"],
+        names={"1": "web-1"},
+    )
+    assert shown.sources_cut is None
+    assert shown.sources_silent is None
+    assert shown.sources_cut_count is None
+    assert shown.sources_silent_count is None
+
+
+def test_a_scope_that_has_not_searched_yet_names_nothing() -> None:
+    """A `{}` progress has not been read: not "nothing was missing" (rule 8)."""
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors(),
+        monitored=["1"],
+        names={"1": "web-1"},
+        progress={},
+    )
+    assert shown.sources_cut is None
+    assert shown.sources_silent is None
+    assert shown.sources_cut_count is None
+    assert shown.sources_silent_count is None
+
+
+def test_a_progress_that_does_not_decode_names_nothing() -> None:
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors(),
+        monitored=["1"],
+        names={"1": "web-1"},
+        progress={"version": 99},
+    )
+    assert shown.progress_unreadable is True
+    assert shown.sources_cut is None
+    assert shown.sources_silent is None
+    assert shown.sources_cut_count is None
+    assert shown.sources_silent_count is None
+
+
+def test_a_progress_without_floors_names_nothing() -> None:
+    """Floors that cannot be read back are unknown, not an empty set of sources."""
+    settings = PlannerSettings(bucket_seconds=BUCKET)
+    progress = encode_progress(new_progress(START, START, settings), {})
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors(),
+        monitored=["1"],
+        names={"1": "web-1"},
+        progress=progress,
+    )
+    assert shown.sources_cut is None
+    assert shown.sources_silent is None
+    assert shown.sources_cut_count is None
+    assert shown.sources_silent_count is None
+
+
+def test_a_reading_whose_floor_proof_proved_no_source_names_nothing() -> None:
+    """HB-22 D2b: an empty floor map proves nothing, so nobody is "silent".
+
+    The lab's restart wrote its plan and failed before a single row, so the floors
+    were `{}` while 55 sources were monitored: the page named all 55 as silent
+    although 26 held history rows.
+    """
+    settings = PlannerSettings(bucket_seconds=BUCKET)
+    progress = encode_progress(new_progress(START, START, settings), SourceFloors().encode())
+    shown = named_scope(
+        HistoryFamily.PHASE_A,
+        SourceFloors(),
+        monitored=["1", "2"],
+        names={"1": "web-1", "2": "web-2"},
+        progress=progress,
+    )
+    assert shown.sources_cut is None
+    assert shown.sources_silent is None
+    assert shown.sources_cut_count is None
+    assert shown.sources_silent_count is None
+
+
+@pytest.mark.parametrize("family", [HistoryFamily.PHASE_A, HistoryFamily.CATCHALL])
+def test_an_empty_floor_map_is_no_proof_for_either_console_wide_family(
+    family: HistoryFamily,
+) -> None:
+    settings = PlannerSettings(bucket_seconds=BUCKET)
+    progress = encode_progress(new_progress(START, START, settings), SourceFloors().encode())
+    shown = named_scope(
+        family, SourceFloors(), monitored=["1"], names={"1": "web-1"}, progress=progress
+    )
+    assert (shown.sources_cut, shown.sources_silent) == (None, None)
+    assert (shown.sources_cut_count, shown.sources_silent_count) == (None, None)
+
+
+def test_the_console_wide_margin_and_bucket_are_the_collectors_own() -> None:
+    """The page judges the floors with the numbers the reading read with (§B.3.2)."""
+    settings = Settings()
+    for family in (HistoryFamily.PHASE_A, HistoryFamily.CATCHALL):
+        ours = console_wide_planner(family, settings)
+        phase = phase_a.planner_settings(settings, monitored=3, cadence_seconds=300)
+        catchall = catchall_planner_settings(settings, cadence_seconds=300)
+        assert (ours.margin, ours.bucket) == (phase.margin, phase.bucket), family
+        assert (ours.margin, ours.bucket) == (catchall.margin, catchall.bucket), family
+        assert ours.margin == timedelta(hours=settings.history_backfill_floor_margin_hours)
+        assert ours.bucket == timedelta(seconds=settings.collection_interval_seconds)
+
+
+def test_the_catch_all_source_key_is_the_qradar_id() -> None:
+    assert catchall_family.source_key(7) == "7"
+    assert phase_a.source_key(7) == "7"
 

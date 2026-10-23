@@ -43,7 +43,7 @@ Our `QRadarRestProvider` owns it; our `QRadarMCPProvider` never touches it.
 | `verify_ssl: false` | `config.example.json` | TLS interception of a privileged SIEM token | `verify_ssl: true`, mounted CA bundle |
 | `"debug": true` | `config.example.json` | Verbose error/stack disclosure | `debug: false` |
 | `GET/POST/DELETE` all `true` | `feature_toggles.json` | Full CRUD incl. reference-set and offense writes | `POST: false`, `DELETE: false` |
-| `uvicorn.run(app, host="0.0.0.0", port=5000)` | `server.py:349` | Binds all interfaces | never publish the port; internal Docker network only |
+| `uvicorn.run(app, host="0.0.0.0", port=5000)` | `server.py` `__main__` | Binds all interfaces | never publish the port; internal Docker network only |
 | Upstream compose maps `5001:5000` | `docker-compose.yml` | Reachable from host | our compose publishes **no** ports for MCP |
 
 We change none of this *in* the repo. All of it is overridden by **mounted configuration**
@@ -51,7 +51,7 @@ We change none of this *in* the repo. All of it is overridden by **mounted confi
 
 ### 1.4 `approval_required` is not a security control
 
-`approval_required` defaults to `True` in `tools/base.py:145`, GET tools override it to `False`,
+`approval_required` defaults to `True` in `tools/base.py` `MCPTool.approval_required`, GET tools override it to `False`,
 and only the four `data_classification` writes set it explicitly. The `reference_data`, `offense`
 and `ariel` write tools inherit the default. It is an **interactive client-side prompt hint** —
 an autonomous agent can simply not honour it. Our enforcement is the verb toggle plus network
@@ -162,7 +162,7 @@ Mounted read-only over the container's paths. **No upstream file is edited.**
 
 Defence in depth, because a toggle file is one bad mount away from being ignored:
 
-1. **Verb toggles** — `POST`/`DELETE` off (enforced in `utils/feature_toggle_manager.py:148`).
+1. **Verb toggles** — `POST`/`DELETE` off (enforced in `utils/feature_toggle_manager.py` `FeatureToggleManager.is_tool_enabled`).
 2. **Group toggles** — unlicensed/unused groups off, shrinking the surface further.
 3. **Network isolation** — MCP sits on an internal Compose network with **no published ports**.
 4. **Read-only QRadar service account** — the authorized service token itself carries only
@@ -182,5 +182,5 @@ Regenerate this matrix after any version bump:
 python backend/scripts/extract_mcp_capabilities.py --repo qradar-mcp --check docs/mcp-capability-matrix.md
 ```
 
-CI fails if the pinned commit exposes a tool absent from this document — a new write tool can
-never land silently.
+No CI step runs this check. A new tool on the pinned commit is not rejected until someone
+runs the command above.

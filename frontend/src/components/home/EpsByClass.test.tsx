@@ -10,7 +10,7 @@ import { fleet, fleetClass, noData } from "@/lib/home/fixtures";
 import { EpsByClass } from "./EpsByClass";
 import { failed, forbidden, loading, ok } from "./testkit";
 
-const { setOption, dispose, init, use, on } = vi.hoisted(() => {
+const { setOption, init, use, on } = vi.hoisted(() => {
   const setOption = vi.fn();
   const dispose = vi.fn();
   const on = vi.fn();
@@ -107,7 +107,21 @@ describe("EpsByClass", () => {
       "href",
       "/fleet/sources?class=FIREWALL",
     );
-    expect(screen.getByRole("link", { name: "Other classes" })).toHaveAttribute("href", "/fleet");
+    expect(screen.getByRole("link", { name: "Other classes" })).toHaveAttribute(
+      "href",
+      "/fleet?window=24h",
+    );
+    expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", "/fleet?window=24h");
+  });
+
+  it.each(["1h", "7d"] as const)("keeps window %s on the fleet links", (window) => {
+    res.state = ok(sevenFleet());
+    render(<EpsByClass range={window} />);
+    expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", `/fleet?window=${window}`);
+    expect(screen.getByRole("link", { name: "Other classes" })).toHaveAttribute(
+      "href",
+      `/fleet?window=${window}`,
+    );
   });
 
   it("goes to the class when its slice is clicked", () => {
@@ -141,11 +155,48 @@ describe("EpsByClass", () => {
   it("says Partial with the interval coverage", () => {
     res.state = ok(
       fleet([
-        fleetClass("FIREWALL", { buckets: { expected: 48, complete: 40, partial: 4, missing: 4 } }),
+        fleetClass("FIREWALL", {
+          buckets: {
+            expected: 48,
+            complete: 40,
+            complete_from_history: 0,
+            partial: 4,
+            missing: 4,
+          },
+        }),
       ]),
     );
     render(<EpsByClass />);
     expect(screen.getByText(/Partial: 40 of 48 intervals collected/)).toBeInTheDocument();
+  });
+
+  it("adds the history share only when complete buckets came from history", () => {
+    res.state = ok(fleet([fleetClass("FIREWALL")]));
+    const live = render(<EpsByClass />);
+    expect(screen.queryByText(/complete buckets were read from QRadar history/)).toBeNull();
+    live.unmount();
+
+    res.state = ok(
+      fleet([
+        fleetClass("FIREWALL", {
+          buckets: {
+            expected: 48,
+            complete: 40,
+            complete_from_history: 30,
+            partial: 4,
+            missing: 4,
+          },
+        }),
+      ]),
+    );
+    render(<EpsByClass />);
+    const note = screen.getByText(
+      "30 of 40 complete buckets were read from QRadar history, not judged.",
+    );
+    expect(note).toBeInTheDocument();
+    // The note stays on the widget's first screen: it precedes the class list.
+    const list = screen.getByText("Firewall").closest("table, ul, div") as HTMLElement;
+    expect(note.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("renders loading, forbidden and error", () => {
