@@ -327,7 +327,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
                     label: {
                       show: true,
                       position: "insideEndTop" as const,
-                      formatter: `Floor ${Math.round(coverage.floor * 100)} %`,
+                      formatter: `Floor ${formatCoveragePercent(coverage.floor)}`,
                       color: c.label,
                       fontFamily: c.font,
                     },

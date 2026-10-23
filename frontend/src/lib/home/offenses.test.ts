@@ -97,3 +97,26 @@ describe("offensesCard", () => {
     ]);
   });
 });
+
+describe("offensesCard unknown counts", () => {
+  it("takes the measured counts, and the measured magnitude count wins over the distribution", () => {
+    const r = offensesCard(
+      analytics({ active: 10, critical: 2, critical_unknown: 4, age_unknown: 1 }, [
+        { key: "unassigned", count: 3 },
+      ]),
+      snapshotExists,
+    );
+    expect(r.criticalUnknown).toBe(4);
+    expect(r.ageUnknown).toBe(1);
+    expect(r.breakdown).toEqual({ critical: 2, below: 4, unknown: 4 });
+  });
+
+  it("leaves both null when the backend sends none, and for no snapshot", () => {
+    const r = offensesCard(analytics({ active: 10, critical: 2 }), snapshotExists);
+    expect(r.criticalUnknown).toBeNull();
+    expect(r.ageUnknown).toBeNull();
+    const none = offensesCard(analytics({ active: null, critical_unknown: 3 }), snapshotExists);
+    expect(none.criticalUnknown).toBeNull();
+    expect(none.ageUnknown).toBeNull();
+  });
+});

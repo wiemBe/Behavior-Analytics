@@ -108,6 +108,10 @@ class OffenseAggregates(BaseModel):
     exceeding_sla: int | None
     oldest_age_seconds: int | None = None
     average_magnitude: float | None = None
+    #: Open offenses with no magnitude (not in `critical`) and no age (not in
+    #: `exceeding_sla`). None when no snapshot exists.
+    critical_unknown: int | None = None
+    age_unknown: int | None = None
     sla_hours: int
     critical_magnitude: int
 

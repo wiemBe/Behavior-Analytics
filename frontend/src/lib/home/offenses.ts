@@ -19,6 +19,10 @@ export interface OffensesCard {
   critical: number | null;
   unassigned: number | null;
   exceedingSla: number | null;
+  /** Open offenses with no magnitude (counted in neither critical nor below); 0 or null: no qualifier. */
+  criticalUnknown: number | null;
+  /** Open offenses with no age (not in the over-SLA count); 0 or null: no qualifier. */
+  ageUnknown: number | null;
   /** The product's own threshold (settings), e.g. 7. */
   criticalMagnitude: number;
   /** open = critical + below + unknown; null parts are not derivable. */
@@ -52,9 +56,14 @@ export function offensesCard(
   }
 
   const critical = a.critical;
-  const unknown = analytics.magnitude_distribution
-    .filter((e) => !Number.isFinite(Number(e.key)) || e.key.trim() === "")
-    .reduce((s, e) => s + e.count, 0);
+  // The count the backend measures wins; the distribution's non-numeric key is the fallback for
+  // a backend that does not send it.
+  const unknown =
+    typeof a.critical_unknown === "number"
+      ? a.critical_unknown
+      : analytics.magnitude_distribution
+          .filter((e) => !Number.isFinite(Number(e.key)) || e.key.trim() === "")
+          .reduce((s, e) => s + e.count, 0);
   const below = critical == null ? null : active - critical - unknown;
   return {
     ...base,
@@ -62,6 +71,8 @@ export function offensesCard(
     critical,
     unassigned: a.unassigned,
     exceedingSla: a.exceeding_sla,
+    criticalUnknown: a.critical_unknown ?? null,
+    ageUnknown: a.age_unknown ?? null,
     breakdown:
       critical == null
         ? null
@@ -80,6 +91,8 @@ function unknownOffenses(
     critical: null,
     unassigned: null,
     exceedingSla: null,
+    criticalUnknown: null,
+    ageUnknown: null,
     breakdown: null,
     qualifiers: [notCollected(reason)],
   };

@@ -381,3 +381,28 @@ describe("offense list metric group", () => {
     expect(container.querySelector(".offenses-cards-3")).toBeNull();
   });
 });
+
+describe("OffensesPage unknown counts", () => {
+  const card = (label: string) => screen.getByText(label).closest(".card") as HTMLElement;
+
+  it("notes open offenses with no magnitude and no age beside the counts they leave out", async () => {
+    vi.spyOn(api, "offenses").mockResolvedValue(page([offense()]));
+    vi.spyOn(api, "offenseAggregates").mockResolvedValue(
+      aggregates({ critical_unknown: 3, age_unknown: 2 }),
+    );
+    await renderPage();
+    expect(card("Critical (mag 8+)").textContent).toContain("+\u00a03\u00a0with unknown magnitude");
+    expect(card("Over 24h SLA").textContent).toContain("+\u00a02\u00a0with unknown age");
+    expect(card("Active").textContent).not.toContain("unknown");
+    expect(card("Unassigned").textContent).not.toContain("unknown");
+  });
+
+  it("adds nothing for zero or missing unknown counts", async () => {
+    vi.spyOn(api, "offenses").mockResolvedValue(page([offense()]));
+    vi.spyOn(api, "offenseAggregates").mockResolvedValue(
+      aggregates({ critical_unknown: 0, age_unknown: null }),
+    );
+    await renderPage();
+    expect(document.body.textContent).not.toMatch(/with unknown/);
+  });
+});

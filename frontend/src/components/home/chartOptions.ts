@@ -19,6 +19,7 @@ import { formatEpsValue } from "@/lib/fleet";
 import { historyMarkAreas, readHistoryShade } from "@/components/behavior/historyOrigin";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
 import { formatCount } from "@/lib/format";
+import { formatPercent } from "@/components/waf/wafFormat";
 
 import { epsHistoryLine, type EpsHistory } from "./epsHistory";
 
@@ -199,7 +200,7 @@ export function buildClassOption(
       ...tooltipBase(p),
       formatter: (params: unknown) => {
         const d = params as { name?: string; value?: number; percent?: number };
-        const share = d.percent != null ? ` (${d.percent.toFixed(0)} %)` : "";
+        const share = d.percent != null ? ` (${formatPercent(d.percent / 100, null, 0)})` : "";
         return `${d.name}: ${eps(d.value)} EPS${share}`;
       },
     },

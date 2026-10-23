@@ -221,3 +221,14 @@ describe("EpsByClass", () => {
     expect(screen.getByText(/latest refresh failed \(HTTP 503\)/)).toBeInTheDocument();
   });
 });
+
+describe("EpsByClass percent spelling", () => {
+  it("writes the share as a whole percent with U+00A0", () => {
+    res.state = ok(fleet([fleetClass("FIREWALL", { mean_eps: 750 }), fleetClass("WAF", { mean_eps: 250 })]));
+    render(<EpsByClass />);
+    const row = within(screen.getByRole("table", { name: /EPS by source class/ }))
+      .getByRole("link", { name: "Firewall" })
+      .closest("tr")!;
+    expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toContain("75\u00A0%");
+  });
+});

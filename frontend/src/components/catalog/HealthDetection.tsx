@@ -14,6 +14,7 @@ import { NOT_MEASURED } from "@/lib/behavior";
 import { secondary, WidgetFrame, WidgetLoading } from "@/components/home/WidgetFrame";
 import { Unmeasured } from "@/components/home/WidgetParts";
 import { formatCount } from "@/lib/format";
+import { formatPercent } from "@/components/waf/wafFormat";
 
 import { detectionView, ruleHealthView } from "./derive";
 
@@ -53,7 +54,7 @@ export function HealthDetection() {
             ) : (
               <>
                 <p className="cw-figure num">
-                  {view.coveredPercent.toFixed(1)} %
+                  {formatPercent(view.coveredPercent / 100)}
                   <span className="cw-unit">
                     {n(view.covered)} of {n(view.total)} techniques covered
                   </span>

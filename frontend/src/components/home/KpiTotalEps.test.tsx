@@ -201,3 +201,15 @@ describe("KpiTotalEps", () => {
     expect(within(note).getByText("13:55 UTC")).toBeInTheDocument();
   });
 });
+
+describe("KpiTotalEps percent spelling", () => {
+  it("writes the largest class's share as a whole percent with U+00A0", () => {
+    mocks.states[SUMMARY] = ok(
+      fleet([fleetClass("FIREWALL", { mean_eps: 800 }), fleetClass("WAF", { mean_eps: 200 })]),
+    );
+    mocks.states[SERIES] = ok(series([1, 2, 3]));
+    render(<KpiTotalEps />);
+    expect(document.body.textContent).toContain("largest: Firewall 80\u00A0%");
+    expect(document.body.textContent).not.toMatch(/80 %|80\.0/);
+  });
+});
