@@ -959,3 +959,109 @@ async def test_unknown_settings_pass_for_the_names_install_and_compose_use(
     assert result.message == "no unknown settings"
     assert result.runbook is None
     assert planted not in result.message
+
+
+class _PermitBudget:
+    def __init__(
+        self,
+        counts: Any,
+        *,
+        instance_id: Any = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.instance_id = instance_id
+        self.counts = counts
+        self.error = error
+
+    async def active_permits(self, _session: Any) -> Any:
+        if self.error is not None:
+            raise self.error
+        return self.counts
+
+
+def _install_budget(monkeypatch: pytest.MonkeyPatch, budget: _PermitBudget) -> None:
+    from app.services.ariel_permit import ArielPermitBudget
+
+    def for_session(_session: Any, _settings: Any, *, instance_id: Any) -> _PermitBudget:
+        del instance_id
+        return budget
+
+    monkeypatch.setattr(ArielPermitBudget, "for_session", for_session)
+
+
+def _permit_counts(**overrides: Any) -> Any:
+    from app.services.ariel_permit import ArielPermitCounts
+
+    values: dict[str, Any] = {
+        "global_held": 0,
+        "instance_held": 0,
+        "global_cap": 6,
+        "instance_cap": 3,
+        "reserved_live_slots": 2,
+    }
+    values.update(overrides)
+    return ArielPermitCounts(**values)
+
+
+@pytest.mark.asyncio
+async def test_ariel_permits_check_covers_every_state(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doctor = make_doctor(settings)
+    assert doctor_module._CHECK_RUNBOOKS[-1] == ("ariel_permits", "OPS-R63")
+
+    _install_budget(monkeypatch, _PermitBudget(_permit_counts()))
+    idle = await doctor.check_ariel_permits()
+    assert render_text([idle]) == (
+        "PASS  ariel_permits global 0/6, reserved live slots 2, "
+        "console-pool locks 0 (cap 3 per console)"
+    )
+    assert idle.runbook is None
+
+    _install_budget(
+        monkeypatch, _PermitBudget(_permit_counts(global_held=6, instance_held=4))
+    )
+    saturated = await doctor.check_ariel_permits()
+    assert render_text([saturated]) == (
+        "WARN  ariel_permits global 6/6, reserved live slots 2, "
+        "console-pool locks 4 (cap 3 per console); "
+        "live work is waiting and history yields    runbook: OPS-R63"
+    )
+
+    _install_budget(monkeypatch, _PermitBudget(_permit_counts(global_held=7)))
+    over = await doctor.check_ariel_permits()
+    assert render_text([over]) == (
+        "WARN  ariel_permits global 7/6, reserved live slots 2, "
+        "console-pool locks 0 (cap 3 per console); "
+        "live work is waiting and history yields    runbook: OPS-R63"
+    )
+
+    _install_budget(monkeypatch, _PermitBudget(None))
+    quiet = await doctor.check_ariel_permits()
+    assert render_text([quiet]) == "PASS  ariel_permits not enforced"
+    assert quiet.runbook is None
+
+    _install_budget(
+        monkeypatch,
+        _PermitBudget(
+            None,
+            instance_id=object(),
+            error=RuntimeError("password=planted-dsn"),
+        ),
+    )
+    failed = await doctor.check_ariel_permits()
+    assert render_text([failed]) == (
+        "FAIL  ariel_permits Ariel permit counts could not be read (RuntimeError)"
+        "    runbook: OPS-R63"
+    )
+    assert "planted-dsn" not in failed.message
+    assert "password" not in failed.message
+
+    _install_budget(
+        monkeypatch,
+        _PermitBudget(_permit_counts(global_held=1, instance_held=1), instance_id=object()),
+    )
+    one_console = await doctor.check_ariel_permits()
+    assert render_text([one_console]) == (
+        "PASS  ariel_permits global 1/6, reserved live slots 2, console 1/3"
+    )

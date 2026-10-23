@@ -156,11 +156,28 @@ class TestFleetAndStates:
         )
         assert missing is None
         watermark = await db_session.scalar(
-            select(CollectionWatermark).where(
-                CollectionWatermark.collector == watermark_collector(412)
-            )
+            select(CollectionWatermark)
+            .where(CollectionWatermark.collector == watermark_collector(412))
+            .execution_options(populate_existing=True)
         )
         assert watermark.watermark_at is None
+        assert watermark.last_error == type(failure).__name__
+        assert "query" not in watermark.last_error
+        assert watermark.consecutive_failures == 1
+
+        provider.ips_fault = None
+        again = await IpsCollector(
+            db_session, provider, settings=cfg(), clock=lambda: NOW
+        ).collect(instance)
+        cleared = await db_session.scalar(
+            select(CollectionWatermark)
+            .where(CollectionWatermark.collector == watermark_collector(412))
+            .execution_options(populate_existing=True)
+        )
+        assert again.buckets_written == 1
+        assert cleared.last_error is None
+        assert cleared.consecutive_failures == 0
+        assert cleared.watermark_at is not None
 
     @pytest.mark.parametrize(
         ("dimension", "error", "state"),

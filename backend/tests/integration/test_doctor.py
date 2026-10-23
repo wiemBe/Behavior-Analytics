@@ -395,3 +395,67 @@ async def test_anomaly_evaluation_check_fails_with_the_class_when_unreadable() -
         assert result.message.endswith(")")
     finally:
         await engine.dispose()
+
+
+async def test_ariel_permits_warns_when_real_advisory_locks_saturate_the_pool() -> None:
+    """One pg_locks read. Held locks warn; releasing them passes."""
+    from sqlalchemy import event, text
+
+    from app.cli.doctor import render_text
+
+    database_url = _database_url()
+    settings = _settings(database_url).model_copy(
+        update={
+            "ariel_global_max_concurrent_searches": 2,
+            "ariel_max_concurrent_searches": 3,
+            "ariel_permit_reserved_live_slots": 1,
+            "ariel_permit_lock_namespace": 24713,
+            "ariel_permit_instance_lock_namespace": 24714,
+        }
+    )
+    engine = create_async_engine(database_url)
+    holder = create_async_engine(database_url)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    doctor = Doctor(settings=settings, sessionmaker=maker)
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, _params, _context, _executemany) -> None:  # type: ignore[no-untyped-def]
+        statements.append(statement)
+
+    try:
+        idle = await doctor.check_ariel_permits()
+        assert render_text([idle]) == (
+            "PASS  ariel_permits global 0/2, reserved live slots 1, "
+            "console-pool locks 0 (cap 3 per console)"
+        )
+        conn = await holder.connect()
+        try:
+            await conn.execution_options(isolation_level="AUTOCOMMIT")
+            for slot in range(settings.ariel_global_max_concurrent_searches):
+                got = await conn.scalar(
+                    text("SELECT pg_try_advisory_lock(:ns, :slot)").bindparams(
+                        ns=settings.ariel_permit_lock_namespace, slot=slot
+                    )
+                )
+                assert got is True
+            event.listen(engine.sync_engine, "before_cursor_execute", record)
+            try:
+                saturated = await doctor.check_ariel_permits()
+            finally:
+                event.remove(engine.sync_engine, "before_cursor_execute", record)
+        finally:
+            await conn.invalidate()
+        assert render_text([saturated]) == (
+            "WARN  ariel_permits global 2/2, reserved live slots 1, "
+            "console-pool locks 0 (cap 3 per console); "
+            "live work is waiting and history yields    runbook: OPS-R63"
+        )
+        assert sum("pg_locks" in statement for statement in statements) == 1
+        cleared = await doctor.check_ariel_permits()
+        assert render_text([cleared]) == (
+            "PASS  ariel_permits global 0/2, reserved live slots 1, "
+            "console-pool locks 0 (cap 3 per console)"
+        )
+    finally:
+        await holder.dispose()
+        await engine.dispose()

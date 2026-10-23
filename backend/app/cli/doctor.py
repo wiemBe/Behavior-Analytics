@@ -43,6 +43,7 @@ from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider_for_instance
 from app.providers.tls import build_ssl_context
 from app.security.redaction import redact
+from app.services.ariel_permit import ArielPermitBudget
 from app.workers.celery_app import (
     ANOMALY_EVALUATION_CADENCE_SECONDS,
     BEAT_HEARTBEAT_KEY,
@@ -76,6 +77,7 @@ _CHECK_RUNBOOKS = (
     ("public_origin", "OPS-R12"),
     ("version_match", "OPS-R11"),
     ("unknown_settings", "OPS-R62"),
+    ("ariel_permits", "OPS-R63"),
 )
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
 _CREDENTIAL_URL_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
@@ -1162,6 +1164,51 @@ class Doctor:
             "ignored unknown settings: " + ", ".join(names),
             "OPS-R62",
         )
+
+    async def check_ariel_permits(self) -> CheckResult:
+        """Read the Ariel permit pools once.
+
+        The doctor builds a global-only budget, so the console figure is every
+        console-pool lock in this database, printed as
+        ``console-pool locks N (cap P per console)``. N can be larger than P.
+        A budget that has a console prints ``console held/cap`` for that one
+        console instead.
+        """
+        try:
+            async with self.sessionmaker() as session:
+                budget = ArielPermitBudget.for_session(
+                    session, self.settings, instance_id=None
+                )
+                counts = await budget.active_permits(session)
+        except Exception as exc:
+            return CheckResult(
+                "ariel_permits",
+                Status.FAIL,
+                f"Ariel permit counts could not be read ({type(exc).__name__})",
+                "OPS-R63",
+            )
+        if counts is None:
+            return CheckResult("ariel_permits", Status.PASS, "not enforced")
+        if budget.instance_id is not None:
+            console_figure = f"console {counts.instance_held}/{counts.instance_cap}"
+        else:
+            console_figure = (
+                f"console-pool locks {counts.instance_held} "
+                f"(cap {counts.instance_cap} per console)"
+            )
+        message = (
+            f"global {counts.global_held}/{counts.global_cap}, "
+            f"reserved live slots {counts.reserved_live_slots}, "
+            f"{console_figure}"
+        )
+        if counts.global_held >= counts.global_cap:
+            return CheckResult(
+                "ariel_permits",
+                Status.WARN,
+                f"{message}; live work is waiting and history yields",
+                "OPS-R63",
+            )
+        return CheckResult("ariel_permits", Status.PASS, message)
 
     async def run(self) -> list[CheckResult]:
         results: list[CheckResult] = []

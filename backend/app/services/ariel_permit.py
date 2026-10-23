@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import random
 import time
 import uuid
@@ -52,7 +53,9 @@ from app.providers.base import ProviderUnavailableError
 _ArielPriority = Literal["live", "background"]
 _ARIEL_PRIORITY: ContextVar[_ArielPriority] = ContextVar("ariel_priority", default="live")
 _MAX_ADVISORY_SLOT = 2**31 - 1
+_WAIT_LOG_SECONDS = 1.0
 ARIEL_HISTORY_DEFERRED_REASON = "deferred: no Ariel permit within {waited_seconds:g} s"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -190,14 +193,38 @@ class ArielPermitBudget:
             try:
                 await conn.execution_options(isolation_level="AUTOCOMMIT")
                 slots = await self._acquire(conn, started)
+                waited = self._monotonic() - started
                 if slots is None:
+                    # The permit does not know which family asked. The collection
+                    # watermark and the history reason already name it.
+                    logger.warning(
+                        "Ariel permit refused",
+                        extra={
+                            "priority": _ARIEL_PRIORITY.get(),
+                            "waited_seconds": waited,
+                            "instance_cap": self.instance_limit,
+                            "global_cap": self.global_limit,
+                        },
+                    )
                     yield None
                     return
                 instance_slot, global_slot = slots
+                if waited >= _WAIT_LOG_SECONDS:
+                    # The permit does not know which family asked. The collection
+                    # watermark and the history reason already name it.
+                    logger.info(
+                        "Ariel permit granted after a wait",
+                        extra={
+                            "waited_seconds": waited,
+                            "priority": _ARIEL_PRIORITY.get(),
+                            "global_slot": global_slot,
+                            "instance_slot": instance_slot,
+                        },
+                    )
                 yield ArielPermit(
                     global_slot=global_slot,
                     instance_slot=instance_slot,
-                    waited_seconds=self._monotonic() - started,
+                    waited_seconds=waited,
                 )
             finally:
                 await self._release_all(conn)

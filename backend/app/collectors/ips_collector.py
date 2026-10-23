@@ -121,6 +121,7 @@ from app.waf.admission import AdmissionPolicy, decide_admission
 
 COLLECTOR_NAME = "ips_collection"
 logger = logging.getLogger("app.collectors.ips_collector")
+_PRESERVE_ERROR = object()
 ENTITY_DIMENSIONS = (
     IpsDimension.DESTINATION_PORT,
     IpsDimension.DESTINATION_IP,
@@ -206,6 +207,33 @@ class _HistoryProvider:
             raise
 
 
+class _LiveTotalsFailure:
+    """Remember the class of a live TOTALS failure, then re-raise it.
+
+    The keyed search turns the exception into a failed cell and does not
+    return the class. A message is not stored: it can echo query text. History
+    keeps its own provider and is not wrapped.
+    """
+
+    def __init__(self, provider: QRadarProvider) -> None:
+        self.provider = provider
+        self.totals_errors: dict[int, str] = {}
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.provider, name)
+
+    async def get_ips_keyed(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return await self.provider.get_ips_keyed(*args, **kwargs)
+        except ProviderError as exc:
+            dimension = kwargs.get("dimension", args[0] if args else None)
+            if dimension is IpsDimension.TOTALS:
+                # Class name only. The exception text can echo the query.
+                for source_id in kwargs.get("qradar_log_source_ids", ()):
+                    self.totals_errors.setdefault(int(source_id), type(exc).__name__)
+            raise
+
+
 @dataclass(frozen=True)
 class _Candidate:
     fact: IpsEntityFact
@@ -233,6 +261,7 @@ class _SearchResult:
     outcomes: dict[tuple[int, datetime, IpsDimension], IpsCellOutcome]
     budget_blocked_reasons: dict[int, str]
     budget_blocked_windows: list[dict[str, object]]
+    totals_errors: dict[int, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -536,6 +565,7 @@ class IpsCollector:
                 interval,
                 report,
                 search_result.budget_blocked_reasons,
+                search_result.totals_errors,
             )
             if history_sources:
                 lifecycle_scope_values = scope_values
@@ -1404,6 +1434,10 @@ class IpsCollector:
         provider: QRadarProvider | None = None,
     ) -> _SearchResult:
         search_provider = provider or self.provider
+        totals_witness: _LiveTotalsFailure | None = None
+        if not isinstance(search_provider, _HistoryProvider):
+            totals_witness = _LiveTotalsFailure(search_provider)
+            search_provider = cast(QRadarProvider, totals_witness)
         by_window: dict[tuple[datetime, datetime], list[_Source]] = defaultdict(list)
         for source in sources:
             by_window[source.window].append(source)
@@ -1470,7 +1504,12 @@ class IpsCollector:
                     raise search_provider.deferred
                 for cell in cells:
                     out[(cell.qradar_log_source_id, cell.bucket_start, cell.dimension)] = cell
-        return _SearchResult(out, blocked_reasons, blocked_windows)
+        return _SearchResult(
+            out,
+            blocked_reasons,
+            blocked_windows,
+            totals_witness.totals_errors if totals_witness is not None else {},
+        )
 
     async def _persist(
         self,
@@ -1483,7 +1522,10 @@ class IpsCollector:
         bucket_seconds: int,
         report: IpsCollectionReport,
         budget_blocked_reasons: dict[int, str],
+        totals_errors: dict[int, str] | None = None,
     ) -> None:
+        if totals_errors is None:
+            totals_errors = {}
         source_uuids = [item.log_source.id for item in sources]
         existing_rows = (
             (
@@ -1519,6 +1561,8 @@ class IpsCollector:
                 else None
             )
             collected = 0
+            totals_failed = False
+            totals_error: str | None = None
             while cursor < item.window[1]:
                 if any(
                     outcome is not None
@@ -1535,6 +1579,16 @@ class IpsCollector:
                     (source.qradar_id, cursor, IpsDimension.TOTALS)
                 )
                 if totals_outcome is None or totals_outcome.state is not IpsCellState.COMPLETE:
+                    # Class name only, captured beside the live search. A budget
+                    # stop (NOT_COLLECTED) and a missing cell leave the marker.
+                    if totals_outcome is not None and totals_outcome.state in (
+                        IpsCellState.FAILED,
+                        IpsCellState.REJECTED,
+                    ):
+                        totals_failed = True
+                        totals_error = (
+                            totals_errors.get(source.qradar_id) or totals_outcome.state.value
+                        )
                     break
                 totals = fold_outcome(
                     totals_outcome,
@@ -1566,16 +1620,35 @@ class IpsCollector:
                 report.sources_collected += 1
                 report.buckets_written += collected
                 report.watermarks_advanced += 1
+            prior = watermarks.get(source.qradar_id)
+            # A complete window clears a previous totals failure. A totals
+            # failure records the class and counts the streak. Anything else
+            # (a budget stop, a partial window, a non-totals failure) keeps
+            # the marker the row already has.
+            window_done = collected > 0 and cursor >= item.window[1]
+            if totals_failed:
+                stored_error: str | None | object = totals_error
+                stored_failures: int | None = (
+                    (prior.consecutive_failures if prior is not None else 0) + 1
+                )
+            elif window_done:
+                stored_error = None
+                stored_failures = 0
+            else:
+                stored_error = _PRESERVE_ERROR
+                stored_failures = None
             watermark_values.append(
                 self._watermark_values(
                     instance,
                     source,
-                    watermarks.get(source.qradar_id),
+                    prior,
                     now=now,
                     watermark_at=last_done,
                     intervals_added=collected,
                     searches=report.searches_sent,
                     budget_blocked_reason=budget_blocked_reasons.get(source.qradar_id),
+                    last_error=stored_error,
+                    consecutive_failures=stored_failures,
                 )
             )
 
@@ -1948,6 +2021,8 @@ class IpsCollector:
         searches: int = 0,
         skip_reason: str | None = None,
         budget_blocked_reason: str | None = None,
+        last_error: str | None | object = _PRESERVE_ERROR,
+        consecutive_failures: int | None = None,
     ) -> dict[str, object]:
         current = (
             watermark_at
@@ -1966,6 +2041,14 @@ class IpsCollector:
         lag = None
         if current is not None:
             lag = max(0, int((now - current).total_seconds()))
+        if isinstance(last_error, str) or last_error is None:
+            stored_error: str | None = last_error
+        else:
+            stored_error = existing.last_error if existing else None
+        if consecutive_failures is None:
+            stored_failures = existing.consecutive_failures if existing else 0
+        else:
+            stored_failures = consecutive_failures
         return {
             "id": existing.id if existing is not None else uuid.uuid4(),
             "instance_id": instance.id,
@@ -1975,7 +2058,7 @@ class IpsCollector:
             "lag_seconds": lag,
             "intervals_collected": (existing.intervals_collected if existing else 0)
             + intervals_added,
-            "consecutive_failures": existing.consecutive_failures if existing else 0,
-            "last_error": existing.last_error if existing else None,
+            "consecutive_failures": stored_failures,
+            "last_error": stored_error,
             "collection_metadata": metadata,
         }
