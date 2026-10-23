@@ -19,6 +19,15 @@ import "./rules.css";
 
 const PAGE_SIZE = 25;
 
+/** The sentence under a rule name: why the verdict is not HEALTHY. Null shows nothing. */
+function rowReason(r: RuleSummary): string | null {
+  // A healthy rule needs no explanation, and a rule never evaluated has no verdict to explain.
+  if (r.health_status == null || r.health_status === "HEALTHY" || r.health_status === "UNKNOWN") {
+    return null;
+  }
+  return r.health_reason?.trim() || "No reason recorded";
+}
+
 export default async function RulesPage({
   searchParams,
 }: {
@@ -89,8 +98,8 @@ export default async function RulesPage({
           <code>INSUFFICIENT_DATA</code> when it cannot be judged. That includes a
           dependency that has not been observed, and a window where QRadar exposes no
           last-fired time or the collection does not cover it. Neither is a detection
-          gap. The health summary counts these rules together; it does not say which
-          cause applies to each.
+          gap. The health summary counts these rules together; the reason under each
+          rule name says which cause applies to it.
         </div>
       )}
 
@@ -140,10 +149,21 @@ export default async function RulesPage({
               </tr>
             </thead>
             <tbody>
-              {items.map((r) => (
+              {items.map((r) => {
+                const reason = rowReason(r);
+                return (
                 <tr key={r.id}>
                   <td className="cell-rule-name">
                     <Link href={`/rules/${r.id}`}>{r.name}</Link>
+                    {reason && (
+                      <p
+                        className="muted rule-reason"
+                        title={reason}
+                        aria-label={`Health reason: ${reason}`}
+                      >
+                        {reason}
+                      </p>
+                    )}
                   </td>
                   <td>{r.rule_type ?? "—"}</td>
                   <td>
@@ -166,7 +186,8 @@ export default async function RulesPage({
                   </td>
                   <td className="num">{r.offense_contribution_count}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           </TableScroll>

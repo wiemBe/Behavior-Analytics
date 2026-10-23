@@ -901,6 +901,8 @@ export interface RuleSummary {
   owner: string | null;
   health_status: string | null;
   health_evaluated_at: string | null;
+  // The reason stored with the verdict above; null when that evaluation recorded none.
+  health_reason: string | null;
   last_fired_at: string | null;
   offense_contribution_count: number;
   event_contribution_count: number;

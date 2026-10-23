@@ -23,6 +23,7 @@ function rule(): RuleDetail {
     owner: "SOC",
     health_status: "HEALTHY",
     health_evaluated_at: "2026-10-13T09:00:00Z",
+    health_reason: null,
     last_fired_at: "2026-10-13T08:45:00Z",
     offense_contribution_count: 4,
     event_contribution_count: 120,
@@ -181,5 +182,53 @@ describe("rule detail metric group", () => {
     const { container } = await renderPage();
     expect(container.querySelectorAll(".cards .card")).toHaveLength(4);
     expect(container.querySelector(".cards")).toHaveClass("rule-cards-2");
+  });
+});
+
+describe("rule detail health reason", () => {
+  beforeEach(() => {
+    vi.spyOn(ruleStatisticsApi, "capacityHistory").mockResolvedValue([]);
+  });
+
+  it("shows the reason stored with the verdict beside it", async () => {
+    vi.spyOn(api, "rule").mockResolvedValue({
+      ...rule(),
+      health_status: "INACTIVE",
+      health_reason: "No firing in 9 d, longer than the 7 d allowed.",
+    });
+    await renderPage();
+    expect(screen.getByText("No firing in 9 d, longer than the 7 d allowed.")).toBeInTheDocument();
+  });
+
+  it("does not borrow the newest history row's reason for a verdict it does not belong to", async () => {
+    vi.spyOn(api, "rule").mockResolvedValue({
+      ...rule(),
+      health_status: "INSUFFICIENT_DATA",
+      health_reason: null,
+    });
+    vi.spyOn(api, "ruleHealthHistory").mockResolvedValue([
+      {
+        evaluated_at: "2026-10-14T09:00:00Z",
+        status: "NOISY",
+        logic_version: 1,
+        confidence: 0.8,
+        reason: "a later evaluation's reason",
+        window_start: null,
+        window_end: null,
+        last_triggered_at: null,
+        trigger_count: 1,
+        offense_contribution_count: 0,
+        enabled: true,
+        building_blocks_healthy: null,
+        required_log_sources_healthy: null,
+        missing_dependencies: [],
+        evidence: {},
+      },
+    ]);
+    await renderPage();
+    const evidence = screen.getByText(/No complete rule-metric observation/);
+    expect(evidence).toBeInTheDocument();
+    // The history table still lists that row; only the evidence block must not use it.
+    expect(evidence.closest(".notice")).not.toHaveTextContent("a later evaluation's reason");
   });
 });

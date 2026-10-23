@@ -60,7 +60,9 @@ export default async function RuleDetailPage({
   }
 
   const r = rule;
-  const latest = history?.[0] ?? null;
+  // The reason stored with the verdict on the card above, not the newest history row: the two
+  // can differ, and a reason must belong to the verdict it sits beside.
+  const reason = r.health_reason?.trim() || null;
   const buildingBlocks = r.dependencies.filter((d) => d.kind === "BUILDING_BLOCK");
   const telemetry = r.dependencies.filter((d) => d.kind !== "BUILDING_BLOCK");
 
@@ -99,13 +101,13 @@ export default async function RuleDetailPage({
       {isUnestablished(r.health_status) ? (
         <div className="notice">
           <strong>{healthMeaning(r.health_status)}</strong>
-          <p>
-            {latest?.reason ??
+          <p className="rule-health-reason">
+            {reason ??
               "No complete rule-metric observation covers this rule. Missing data is reported as unestablished rather than as a detection gap."}
           </p>
         </div>
       ) : (
-        <p>{latest?.reason ?? healthMeaning(r.health_status)}</p>
+        <p className="rule-health-reason">{reason ?? healthMeaning(r.health_status)}</p>
       )}
 
       <div className="detail-grid">

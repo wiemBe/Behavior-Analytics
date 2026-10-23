@@ -37,6 +37,7 @@ const rule = (over: Partial<RuleSummary>): RuleSummary => ({
   owner: null,
   health_status: "HEALTHY",
   health_evaluated_at: null,
+  health_reason: null,
   last_fired_at: null,
   offense_contribution_count: 0,
   event_contribution_count: 0,

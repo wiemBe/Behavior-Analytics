@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,6 +36,7 @@ function rule(over: Partial<RuleSummary> = {}): RuleSummary {
     owner: "SOC",
     health_status: "HEALTHY",
     health_evaluated_at: "2026-10-15T09:00:00Z",
+    health_reason: null,
     last_fired_at: "2026-10-14T22:10:00Z",
     offense_contribution_count: 12,
     event_contribution_count: 90,
@@ -74,7 +78,8 @@ describe("rules list layout", () => {
     expect(notice).toBeTruthy();
     expect(notice).toHaveTextContent("dependency that has not been observed");
     expect(notice).toHaveTextContent("no last-fired time");
-    expect(notice).toHaveTextContent("does not say which cause applies to each");
+    expect(notice).toHaveTextContent("the reason under each rule name says which cause applies to it");
+    expect(notice).not.toHaveTextContent("does not say which cause applies to each");
     expect(notice).not.toHaveTextContent("silence cannot be distinguished");
   });
 
@@ -87,6 +92,14 @@ describe("rules list layout", () => {
     const { container } = render(await RulesPage({ searchParams: Promise.resolve({}) }));
     expect(container.querySelectorAll(".cards .card")).toHaveLength(7);
     expect(container.querySelector(".cards")).toHaveClass("rules-cards-4");
+  });
+
+  it("keeps summary labels on word boundaries and folds them at the 1280px breakpoint", () => {
+    const css = readFileSync(join(__dirname, "rules.css"), "utf8");
+    const labelRule = css.match(/\.cards\.rules-cards \.card \.k \{[^}]*\}/)?.[0] ?? "";
+    expect(labelRule).toMatch(/overflow-wrap:\s*normal/);
+    expect(labelRule).toMatch(/word-break:\s*normal/);
+    expect(css).toMatch(/@media \(max-width:\s*1280px\)/);
   });
 
   it("says in an alert what failed and what to do", async () => {
@@ -109,5 +122,85 @@ describe("rules list layout", () => {
       expect(alert).not.toHaveTextContent(gone);
     }
     expect(screen.queryByRole("table")).toBeNull();
+  });
+});
+
+describe("rules list health reason", () => {
+  const LONG =
+    "A dependency has not been observed, so the rule cannot be judged: building block " +
+    "BB:CategoryDefinition: Authentication Failures has no collected observation in the window, " +
+    "and the log source Firewall-DMZ-02 has produced no events since the last evaluation.";
+
+  async function renderRows(items: RuleSummary[]) {
+    vi.spyOn(api, "rules").mockResolvedValue({ items, total: items.length, limit: 25, offset: 0 });
+    return render(await RulesPage({ searchParams: Promise.resolve({}) }));
+  }
+
+  function reasonOf(name: string): HTMLElement | null {
+    const row = screen.getByRole("link", { name }).closest("tr")!;
+    return row.querySelector<HTMLElement>(".rule-reason");
+  }
+
+  it.each(["INSUFFICIENT_DATA", "INACTIVE", "NOISY", "DISABLED", "DEPENDENCY_DEGRADED", "NEVER_OBSERVED"])(
+    "shows the stored reason under the name of a %s rule",
+    async (status) => {
+      await renderRows([
+        rule({
+          name: "Rule A",
+          health_status: status,
+          health_reason: "The rule is 3.0 days old, inside the 7-day grace period.",
+        }),
+      ]);
+      const reason = reasonOf("Rule A")!;
+      expect(reason).toHaveTextContent("The rule is 3.0 days old, inside the 7-day grace period.");
+      expect(reason.closest("td")).toHaveClass("cell-rule-name");
+    },
+  );
+
+  it("shows nothing for a HEALTHY rule, even when a reason is stored", async () => {
+    await renderRows([rule({ name: "Rule A", health_status: "HEALTHY", health_reason: "Firing." })]);
+    expect(reasonOf("Rule A")).toBeNull();
+  });
+
+  it("shows nothing for an UNKNOWN rule that was never evaluated", async () => {
+    await renderRows([
+      rule({ name: "Rule A", health_status: "UNKNOWN", health_evaluated_at: null }),
+    ]);
+    expect(reasonOf("Rule A")).toBeNull();
+    expect(screen.queryByText("No reason recorded")).toBeNull();
+  });
+
+  it("says no reason was recorded for a verdict that has none", async () => {
+    await renderRows([
+      rule({ name: "Rule A", health_status: "INACTIVE", health_reason: null }),
+      rule({ id: "r-2", name: "Rule B", health_status: "NOISY", health_reason: "  " }),
+    ]);
+    expect(reasonOf("Rule A")).toHaveTextContent("No reason recorded");
+    expect(reasonOf("Rule B")).toHaveTextContent("No reason recorded");
+  });
+
+  it("clamps a long reason and keeps the whole text in its title and accessible name", async () => {
+    await renderRows([
+      rule({ name: "Rule A", health_status: "INSUFFICIENT_DATA", health_reason: LONG }),
+    ]);
+    const reason = reasonOf("Rule A")!;
+    expect(reason).toHaveAttribute("title", LONG);
+    expect(reason).toHaveAccessibleName(`Health reason: ${LONG}`);
+    expect(reason.textContent).toContain(LONG);
+    const css = readFileSync(join(__dirname, "rules.css"), "utf8");
+    const block = css.match(/\.rule-list-table \.rule-reason \{[^}]*\}/)?.[0] ?? "";
+    expect(block).toMatch(/-webkit-line-clamp:\s*2/);
+    expect(block).toMatch(/line-clamp:\s*2/);
+    expect(block).not.toMatch(/nowrap/);
+  });
+
+  it("labels a reason for assistive technology without adding visible text", async () => {
+    await renderRows([
+      rule({ name: "Rule A", health_status: "INACTIVE", health_reason: "Quiet for 4 d." }),
+    ]);
+    const reason = reasonOf("Rule A")!;
+    expect(reason).toHaveAccessibleName("Health reason: Quiet for 4 d.");
+    expect(reason).toHaveTextContent("Quiet for 4 d.");
+    expect(reason).not.toHaveTextContent("Health reason:");
   });
 });
