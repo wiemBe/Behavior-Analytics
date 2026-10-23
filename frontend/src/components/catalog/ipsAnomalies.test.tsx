@@ -9,7 +9,7 @@ import { homeReads } from "@/lib/api";
 import { page } from "@/lib/home/fixtures";
 
 import { IPS_ANOMALIES_LIMIT, mergeIpsAnomalies } from "./ipsAnomalies";
-import { RecentIpsAnomalies } from "./RecentIpsAnomalies";
+import { RecentIpsAnomalies, RecentIpsAnomaliesView } from "./RecentIpsAnomalies";
 
 const res = vi.hoisted(() => ({ byKey: {} as Record<string, unknown> }));
 vi.mock("@/hooks/useApiResource", () => ({
@@ -136,7 +136,7 @@ describe("RecentIpsAnomalies", () => {
     expect(screen.getByText(/Showing the latest 2 of 18\./)).toBeInTheDocument();
   });
 
-  it("links to the source list when the widget shows more sources, and names that list", () => {
+  it("links everything it counts from the header and has no other-kind footer link", () => {
     set(
       ok(page([entity("e1", "2026-10-12T08:00:00Z")])),
       ok(
@@ -147,27 +147,14 @@ describe("RecentIpsAnomalies", () => {
       ),
     );
     render(<RecentIpsAnomalies />);
-    expect(screen.getByRole("link", { name: "View active IPS source anomalies" })).toHaveAttribute(
+    expect(
+      screen.getByRole("link", { name: "View all active IPS entity and source anomalies" }),
+    ).toHaveAttribute(
       "href",
-      "/anomalies?subject_kind=IPS_SOURCE&active_only=true",
+      "/anomalies?subject_kind=IPS&active_only=true",
     );
-    expect(screen.getByRole("link", { name: "Entity anomalies" })).toHaveAttribute(
-      "href",
-      "/anomalies?subject_kind=IPS_ENTITY&active_only=true",
-    );
-  });
-
-  it("links to the entity list and to the source-level list", () => {
-    set(ok(page([entity("e1", "2026-10-12T09:00:00Z")])), ok(page([])));
-    render(<RecentIpsAnomalies />);
-    expect(screen.getByRole("link", { name: "View active IPS entity anomalies" })).toHaveAttribute(
-      "href",
-      "/anomalies?subject_kind=IPS_ENTITY&active_only=true",
-    );
-    expect(screen.getByRole("link", { name: "Source-level anomalies" })).toHaveAttribute(
-      "href",
-      "/anomalies?subject_kind=IPS_SOURCE&active_only=true",
-    );
+    expect(screen.queryByRole("link", { name: "Entity anomalies" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Source-level anomalies" })).toBeNull();
   });
 
   it("an empty list is not a clean bill", () => {
@@ -175,6 +162,9 @@ describe("RecentIpsAnomalies", () => {
     render(<RecentIpsAnomalies />);
     expect(screen.getByText(/not a clean bill/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "View all active IPS entity and source anomalies" }),
+    ).toHaveAttribute("href", "/anomalies?subject_kind=IPS&active_only=true");
   });
 
   it("one failed read fails the widget: it will not claim the latest of a half union", () => {
@@ -182,15 +172,49 @@ describe("RecentIpsAnomalies", () => {
     render(<RecentIpsAnomalies />);
     expect(screen.getByRole("alert")).toHaveTextContent("could not be read");
     expect(screen.queryByRole("table")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "View all active IPS entity and source anomalies" }),
+    ).toBeInTheDocument();
   });
 
   it("is loading, then names the permission when refused", () => {
     set(loading, ok(page([])));
     const { unmount } = render(<RecentIpsAnomalies />);
     expect(screen.getByRole("status")).toHaveTextContent(/^Loading/);
+    expect(
+      screen.getByRole("link", { name: "View all active IPS entity and source anomalies" }),
+    ).toBeInTheDocument();
     unmount();
     set(forbidden, ok(page([])));
     render(<RecentIpsAnomalies />);
     expect(screen.getByRole("status")).toHaveTextContent("permission read:anomalies");
+    expect(
+      screen.getByRole("link", { name: "View all active IPS entity and source anomalies" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the same header link when the frame marks its data stale", () => {
+    render(
+      <RecentIpsAnomaliesView
+        state={{
+          kind: "stale",
+          data: [page([entity("e1", "2026-10-12T09:00:00Z")]), page([])],
+          asOf: "2026-10-12T09:00:00Z",
+          ageSeconds: 7200,
+        }}
+      />,
+    );
+    expect(screen.getByText(/Stale: the latest data is from/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "View all active IPS entity and source anomalies" }),
+    ).toHaveAttribute("href", "/anomalies?subject_kind=IPS&active_only=true");
+  });
+
+  it("lets the subject and the line under it wrap instead of clipping", () => {
+    set(ok(page([entity("e1", "2026-10-12T09:00:00Z")])), ok(page([])));
+    render(<RecentIpsAnomalies />);
+    const cell = screen.getAllByRole("link", { name: /Destination port/ })[0].closest("td")!;
+    expect(cell).toHaveClass("cw-ips-name");
+    expect(cell.querySelector(".tw-sub")).toHaveTextContent(/lab-ips/);
   });
 });

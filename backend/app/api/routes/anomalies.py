@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -162,7 +163,7 @@ async def list_anomalies(
     | IpsAnomalyType
     | PwAnomalyType
     | None = Query(default=None),
-    subject_kind: SubjectKind | None = Query(default=None),
+    subject_kind: Annotated[list[SubjectKind] | None, Query()] = None,
     waf_endpoint_id: uuid.UUID | None = Query(default=None),
     ips_entity_id: uuid.UUID | None = Query(default=None),
     property_watch_id: uuid.UUID | None = Query(default=None),
@@ -323,7 +324,7 @@ async def anomaly_histogram(
     # as an id and answer every histogram call with a uuid parse error.
     since: datetime = Query(...),
     until: datetime = Query(...),
-    subject_kind: SubjectKind | None = Query(default=None),
+    subject_kind: Annotated[list[SubjectKind] | None, Query()] = None,
 ) -> AnomalyHistogramOut:
     """Anomaly counts per UTC hour and severity: the Home chart's own read.
 

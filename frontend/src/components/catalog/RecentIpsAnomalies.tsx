@@ -11,31 +11,56 @@ import { WidgetFrame } from "@/components/home/WidgetFrame";
 import { Unmeasured, When } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { statePillText } from "@/components/waf/wafLabels";
-import { useApiResource } from "@/hooks/useApiResource";
-import { homeReads, sevTone } from "@/lib/api";
+import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
+import { homeReads, sevTone, type AnomalySummary, type Page } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
 import { combine2 } from "@/lib/home/combine";
 import { useExpanded } from "@/widgets/runtime";
+import type { WidgetState } from "@/widgets/types";
 import { UtcTime } from "@/components/ui/UtcTime";
 
 
-import { IPS_ANOMALIES_LIMIT, IPS_DRILL_UNKNOWN, ipsDrillLink, mergeIpsAnomalies } from "./ipsAnomalies";
+import { IPS_ANOMALIES_LIMIT, mergeIpsAnomalies } from "./ipsAnomalies";
 
 import "./catalog.css";
 
 export const IPS_EMPTY =
   "No active IPS anomalies. An IPS entity or source without a reliable baseline is not judged, so this is not a clean bill.";
 
+export const IPS_DRILL = {
+  href: "/anomalies?subject_kind=IPS&active_only=true",
+  label: "View all",
+  ariaLabel: "View all active IPS entity and source anomalies",
+};
+
 export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
-  const expanded = useExpanded();
   const entityRead = homeReads.activeIpsAnomalies("IPS_ENTITY", IPS_ANOMALIES_LIMIT);
   const sourceRead = homeReads.activeIpsAnomalies("IPS_SOURCE", IPS_ANOMALIES_LIMIT);
   const entities = useApiResource(entityRead.key, entityRead.fetch);
   const sources = useApiResource(sourceRead.key, sourceRead.fetch);
   const state = combine2(entities, sources);
-  const view =
-    state.status === "ok" ? mergeIpsAnomalies(state.data[0], state.data[1]) : null;
-  const drill = state.status === "ok" ? ipsDrillLink(state.data[0], state.data[1]) : IPS_DRILL_UNKNOWN;
+  return <RecentIpsAnomaliesView id={id} state={state} />;
+}
+
+type IpsPages = [Page<AnomalySummary>, Page<AnomalySummary>];
+
+export function RecentIpsAnomaliesView({
+  id = "single",
+  state,
+}: {
+  id?: string;
+  state: ResourceState<IpsPages> | WidgetState<IpsPages>;
+}) {
+  const expanded = useExpanded();
+  const pages =
+    "status" in state
+      ? state.status === "ok"
+        ? state.data
+        : null
+      : state.kind === "ok" || state.kind === "stale"
+        ? state.data
+        : null;
+  const view = pages ? mergeIpsAnomalies(pages[0], pages[1]) : null;
 
   return (
     <WidgetFrame
@@ -43,11 +68,7 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
       title="Recent IPS anomalies"
       windowText="active now"
       badge={view?.badge}
-      link={{
-        href: drill.href,
-        label: drill.label,
-        ariaLabel: drill.ariaLabel,
-      }}
+      link={IPS_DRILL}
       state={state}
       what="the active IPS anomalies"
       permission="read:anomalies"
@@ -91,11 +112,11 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
                       <td className="tw-unfold">
                         <When iso={r.detectedAt} />
                       </td>
-                      <td className="tw-name tw-lead-col">
-                        <Link href={r.href} title={r.subject}>
+                      <td className="tw-name tw-lead-col cw-ips-name">
+                        <Link href={r.href}>
                           {r.subject}
                         </Link>
-                        <span className="tw-sub" title={r.sourceName}>
+                        <span className="tw-sub">
                           {r.typeLabel} · {r.sourceName}
                         </span>
                         <span className="tw-sub tw-wrap tw-fold-line">
@@ -142,20 +163,14 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
                 </tbody>
               </table>
             </TableScroll>
-            <p className="tw-note">
-              {view.shown
-                ? `${
-                    expanded ? view.shown.replace("the latest ", "") : view.shown
-                  }. ${
-                    expanded
-                      ? `The widget reads the latest ${IPS_ANOMALIES_LIMIT} of each kind; the Anomalies page lists the rest. `
-                      : ""
-                  }`
-                : ""}
-              <Link href={drill.otherHref} className="tw-link">
-                {drill.otherLabel}
-              </Link>
-            </p>
+            {view.shown ? (
+              <p className="tw-note">
+                {expanded ? view.shown.replace("the latest ", "") : view.shown}.
+                {expanded
+                  ? ` The widget reads the latest ${IPS_ANOMALIES_LIMIT} of each kind; the Anomalies page lists the rest.`
+                  : ""}
+              </p>
+            ) : null}
           </>
         );
       }}

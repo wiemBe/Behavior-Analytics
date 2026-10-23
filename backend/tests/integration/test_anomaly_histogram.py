@@ -123,7 +123,9 @@ async def world(s):  # type: ignore[no-untyped-def]
     return dict(inst=inst.id, fw=fw.id, ws=ws.id, ep=ep.id)
 
 
-def histogram(client: Client, params: dict) -> dict:  # type: ignore[type-arg]
+def histogram(
+    client: Client, params: dict | list[tuple[str, str]]
+) -> dict:  # type: ignore[type-arg]
     resp = client.get(HIST, params=params)
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -447,6 +449,66 @@ def test_ips_total_equals_list_for_ips_source_subject_kind(db_schema) -> None:  
     assert body["total"] == listed["total"]
     assert body["families"] == ["IPS_SOURCE"]
     assert sum(hour["total"] for hour in body["hours"]) == listed["total"]
+
+
+def test_repeated_subject_kinds_match_the_list_and_collapse_duplicates(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """Both IPS kinds and a cross-family union have exactly the list population."""
+    run(ips_world)
+    client = Client(READER)
+
+    cases = [
+        (["IPS_ENTITY"], 3, ["IPS_ENTITY"]),
+        (["IPS_ENTITY", "IPS_SOURCE"], 5, ["IPS_ENTITY", "IPS_SOURCE"]),
+        (["LOG_SOURCE", "IPS_SOURCE"], 6, ["LOG_SOURCE", "IPS_SOURCE"]),
+        (["IPS_ENTITY", "IPS_ENTITY"], 3, ["IPS_ENTITY"]),
+    ]
+    for kinds, total, families in cases:
+        params = [
+            ("since", _iso(H0)),
+            ("until", _iso(at(5))),
+            *(("subject_kind", kind) for kind in kinds),
+        ]
+        listed = client.get(
+            "/api/v1/anomalies", params=[*params, ("limit", "200")]
+        ).json()
+        body = histogram(client, params)
+        assert listed["total"] == body["total"] == total
+        assert body["families"] == families
+
+    invalid = [
+        ("since", _iso(H0)),
+        ("until", _iso(at(5))),
+        ("subject_kind", "IPS_ENTITY"),
+        ("subject_kind", "IPS_WHAT"),
+    ]
+    assert client.get(HIST, params=invalid).status_code == 422
+
+
+def test_repeated_subject_kinds_keep_the_histogram_at_one_statement(db_schema) -> None:  # type: ignore[no-untyped-def]
+    """One and two IPS kinds stay inside the histogram's single union statement."""
+    run(ips_world)
+    client = Client(READER)
+    one = histogram(
+        client,
+        [
+            ("since", _iso(H0)),
+            ("until", _iso(at(5))),
+            ("subject_kind", "IPS_ENTITY"),
+        ],
+    )
+    assert one["total"] == 3
+    one_statements = client.statements
+    two = histogram(
+        client,
+        [
+            ("since", _iso(H0)),
+            ("until", _iso(at(5))),
+            ("subject_kind", "IPS_ENTITY"),
+            ("subject_kind", "IPS_SOURCE"),
+        ],
+    )
+    assert two["total"] == 5
+    assert client.statements == one_statements == 1
 
 
 def test_ips_per_hour_severity_counts_add_up_across_families(db_schema) -> None:  # type: ignore[no-untyped-def]

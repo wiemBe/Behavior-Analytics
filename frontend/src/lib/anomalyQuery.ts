@@ -14,6 +14,8 @@ import type { SubjectKind } from "./api";
 
 export const PAGE_SIZE = 25;
 
+export type SearchParamValue = string | string[] | undefined;
+
 /** Mirrors the backend's `api_max_range_days` guard, applied before the call
  *  rather than after, so an over-wide range is corrected instead of 422ing. */
 export const MAX_RANGE_DAYS = 365;
@@ -56,11 +58,17 @@ export interface AnomalyQuery {
   rangeNote: string | null;
 }
 
-function pick(value: string | undefined, allowed: Set<string>): string {
+function first(value: SearchParamValue): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function pick(value: SearchParamValue, allowed: Set<string>): string {
+  value = first(value);
   return value && allowed.has(value) ? value : "";
 }
 
-function uuid(value: string | undefined): string {
+function uuid(value: SearchParamValue): string {
+  value = first(value);
   return value && UUID_RE.test(value) ? value : "";
 }
 
@@ -71,7 +79,8 @@ function uuid(value: string | undefined): string {
  * filter's labels and every timestamp on these pages state. Left bare,
  * `Date.parse` would read it in the server's local zone.
  */
-function instant(value: string | undefined): string {
+function instant(value: SearchParamValue): string {
+  value = first(value);
   if (!value) return "";
   const zoned = /(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
   const ms = Date.parse(zoned);
@@ -79,11 +88,11 @@ function instant(value: string | undefined): string {
 }
 
 export function parseAnomalyQuery(
-  params: Record<string, string | undefined>,
+  params: Record<string, SearchParamValue>,
 ): AnomalyQuery {
   // Negative or non-numeric offsets become 0 rather than being forwarded; the
   // backend rejects them, but a rejected page is a worse answer than page one.
-  const parsedOffset = Number(params.offset ?? 0);
+  const parsedOffset = Number(first(params.offset) ?? 0);
   const offset =
     Number.isFinite(parsedOffset) && parsedOffset > 0
       ? Math.floor(parsedOffset)
@@ -111,7 +120,7 @@ export function parseAnomalyQuery(
 
   return {
     offset,
-    active_only: params.active_only === "true",
+    active_only: first(params.active_only) === "true",
     log_source_id: uuid(params.log_source_id),
     instance_id: uuid(params.instance_id),
     anomaly_type: pick(params.anomaly_type, DETECTOR_TYPES),
@@ -147,17 +156,20 @@ export function paginationParams(
 // same rule applies, an allow-list, so a crafted value is dropped rather than
 // forwarded upstream or reflected back into the page.
 
-export const SUBJECT_KINDS: Array<{ value: SubjectKind; label: string }> = [
+export type SubjectFilterKind = SubjectKind | "IPS";
+
+export const SUBJECT_KINDS: Array<{ value: SubjectFilterKind; label: string }> = [
   { value: "LOG_SOURCE", label: "Log sources" },
   { value: "WAF_ENDPOINT", label: "WAF endpoints" },
   { value: "IPS_ENTITY", label: "IPS entities" },
   { value: "IPS_SOURCE", label: "IPS sources" },
+  { value: "IPS", label: "IPS entities and sources" },
   { value: "PW_VALUE", label: "Property watch values" },
 ];
 
 export interface SubjectQuery {
   /** "" when unset: both kinds are listed. */
-  subject_kind: SubjectKind | "";
+  subject_kind: SubjectFilterKind | "";
   /** A WAF detector type, or "" (Phase A types are parsed by `parseAnomalyQuery`). */
   waf_anomaly_type: string;
   /** An IPS detector type, or "". */
@@ -170,9 +182,10 @@ export interface SubjectQuery {
   property_watch_id: string;
 }
 
-export function parseSubjectQuery(params: Record<string, string | undefined>): SubjectQuery {
-  const kind = SUBJECT_KINDS.find((k) => k.value === params.subject_kind)?.value ?? "";
-  const type = params.anomaly_type;
+export function parseSubjectQuery(params: Record<string, SearchParamValue>): SubjectQuery {
+  const rawKind = first(params.subject_kind);
+  const kind = SUBJECT_KINDS.find((k) => k.value === rawKind)?.value ?? "";
+  const type = first(params.anomaly_type);
   return {
     subject_kind: kind,
     waf_anomaly_type: type && isWafType(type) ? type : "",
@@ -185,4 +198,12 @@ export function parseSubjectQuery(params: Record<string, string | undefined>): S
 
 export function subjectKindLabel(value: string): string {
   return SUBJECT_KINDS.find((k) => k.value === value)?.label ?? value;
+}
+
+/** Translate the URL-only all-IPS value into the repeated API query values. */
+export function subjectKindsForApi(
+  value: SubjectFilterKind | "",
+): SubjectKind | SubjectKind[] | undefined {
+  if (value === "IPS") return ["IPS_ENTITY", "IPS_SOURCE"];
+  return value || undefined;
 }

@@ -512,6 +512,98 @@ def test_ips_filters_combine_with_the_common_ones(db_schema) -> None:
     ).status_code == 422
 
 
+def test_repeated_subject_kinds_are_a_deduplicated_union(db_schema) -> None:
+    """Repeated kinds select one union; contradictions narrow rather than widen it."""
+    w = world()
+    client = Client(READER)
+
+    both = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "IPS_ENTITY"),
+            ("subject_kind", "IPS_SOURCE"),
+        ],
+    ).json()
+    assert both["total"] == 4
+    assert {item["subject_kind"] for item in both["items"]} == {
+        "IPS_ENTITY",
+        "IPS_SOURCE",
+    }
+
+    mixed = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "LOG_SOURCE"),
+            ("subject_kind", "IPS_SOURCE"),
+        ],
+    ).json()
+    assert mixed["total"] == 3
+    assert {item["subject_kind"] for item in mixed["items"]} == {
+        "LOG_SOURCE",
+        "IPS_SOURCE",
+    }
+
+    entity = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "IPS_ENTITY"),
+            ("subject_kind", "IPS_SOURCE"),
+            ("ips_entity_id", str(w["port"])),
+        ],
+    ).json()
+    assert entity["total"] == 2
+    assert {item["subject_kind"] for item in entity["items"]} == {"IPS_ENTITY"}
+
+    contradiction = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "LOG_SOURCE"),
+            ("subject_kind", "IPS_SOURCE"),
+            ("ips_entity_id", str(w["port"])),
+        ],
+    ).json()
+    assert contradiction["total"] == 0
+    assert contradiction["items"] == []
+
+    duplicate = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "IPS_ENTITY"),
+            ("subject_kind", "IPS_ENTITY"),
+        ],
+    ).json()
+    assert duplicate["total"] == 3
+    assert len({item["id"] for item in duplicate["items"]}) == 3
+
+
+def test_repeated_subject_kinds_keep_the_list_at_two_statements(db_schema) -> None:
+    """One and two kinds use the same counted union and page statements."""
+    world()
+    client = Client(READER)
+    one = client.get(
+        "/api/v1/anomalies",
+        params={"limit": 200, "subject_kind": "IPS_ENTITY"},
+    )
+    assert one.status_code == 200
+    one_statements = client.statements
+
+    two = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "IPS_ENTITY"),
+            ("subject_kind", "IPS_SOURCE"),
+        ],
+    )
+    assert two.status_code == 200
+    assert client.statements == one_statements == 2
+
+
 def test_pagination_across_a_tie_keeps_every_row(db_schema) -> None:
     async def setup(s):  # type: ignore[no-untyped-def]
         w = await ips_world(s)

@@ -1,6 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { parseSubjectQuery } from "@/lib/anomalyQuery";
+
 import { AnomalyFilters, chipLabel, withoutFilter } from "./AnomalyFilters";
 
 const empty = {
@@ -21,6 +23,30 @@ describe("subject filter", () => {
     const select = screen.getByLabelText("Subject kind") as HTMLSelectElement;
     expect(select.value).toBe("");
     expect(select.name).toBe("subject_kind");
+    expect([...select.options].map((option) => option.textContent)).toEqual([
+      "All subjects",
+      "Log sources",
+      "WAF endpoints",
+      "IPS entities",
+      "IPS sources",
+      "IPS entities and sources",
+      "Property watch values",
+    ]);
+  });
+
+  it("round-trips the combined IPS value through the form and URL parser", () => {
+    const { container } = render(
+      <AnomalyFilters values={{ ...empty, subject_kind: "IPS" }} sources={[]} />,
+    );
+    const form = container.querySelector("form")!;
+    const query = new URLSearchParams(new FormData(form) as never).toString();
+    expect(query).toContain("subject_kind=IPS");
+    expect(parseSubjectQuery(Object.fromEntries(new URLSearchParams(query))).subject_kind).toBe(
+      "IPS",
+    );
+    expect(screen.getByRole("link", { name: /IPS entities and sources/ })).toHaveTextContent(
+      "Subject: IPS entities and sources",
+    );
   });
 
   it("offers WAF detector types by name, in their own group beside the Phase A ones", () => {

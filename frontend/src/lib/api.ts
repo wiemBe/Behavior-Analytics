@@ -1317,7 +1317,7 @@ export interface AnomalyListParams {
   severity?: string;
   evidence_status?: string;
   active_only?: boolean;
-  subject_kind?: SubjectKind;
+  subject_kind?: SubjectKind | SubjectKind[];
   waf_endpoint_id?: string;
   ips_entity_id?: string;
   // A property watch's incidents (Phase G).
@@ -2359,10 +2359,15 @@ export interface CustomRuleCatalog {
   preview_hours_max: number;
 }
 
-function qs(params: Record<string, string | number | boolean | undefined>): string {
-  const parts = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== "")
-    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`);
+type QueryValue = string | number | boolean;
+
+function qs(params: Record<string, QueryValue | QueryValue[] | undefined>): string {
+  const parts = Object.entries(params).flatMap(([key, value]) => {
+    const values = Array.isArray(value) ? value : [value];
+    return values
+      .filter((item): item is QueryValue => item !== undefined && item !== "")
+      .map((item) => `${key}=${encodeURIComponent(String(item))}`);
+  });
   return parts.length ? `?${parts.join("&")}` : "";
 }
 
