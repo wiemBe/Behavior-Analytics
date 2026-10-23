@@ -20,7 +20,8 @@ Dört kural her bölümde geçerlidir:
 5. [Yedek ve geri alma](#yedek-ve-geri-alma)
 6. [Tanı](#tanı)
 7. [Geçmiş okuma](#geçmiş-okuma)
-8. [Belirtiler](#belirtiler)
+8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
+9. [Belirtiler](#belirtiler)
    (OPS-R1 ... OPS-R63; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
@@ -291,7 +292,8 @@ yolu `docs/OPERATIONS.md`.
 - Çıkış kodu 0: yığın sağlıklı, `/health/ready` ve `/version` 200 döndürdü, QRadar kontrolü geçti ve
   yönetici var.
 - Çıkış kodu 1: ön kontrol ya da çalışma adımı başarısız, QRadar kontrolü başarısız veya
-  `/health/ready` ya da `/version` 200 döndürmedi. Parola bu çıkıştan önce stdout'a yazılmış olabilir;
+  `/health/ready` ya da `/version` 200 döndürmedi ya da yayımlanan URL denetimi başarısız oldu (aşağıda).
+  Parola bu çıkıştan önce stdout'a yazılmış olabilir;
   başarısız QRadar kontrolü onu yutmaz. Özet aşamasına ulaşıldıysa QRadar veya API hatasında durum
   dosyası yine yazılır ve özet `API readiness      NOT READY` satırını gösterir.
 - Çıkış kodu 2: seçenek ya da etkileşimsiz yanıt dosyası geçersizdir; kurulum başlamaz.
@@ -302,6 +304,22 @@ yolu `docs/OPERATIONS.md`.
   komutunu yeniden çalıştır (`qradar add` satırı günceller); ya da `./qradar-dash status` ile duruma
   bak. Yığın ayağa kalkmadıysa (bir servis hiç sağlıklı olmadı) `.qradar-dash/state.json` yazılmaz;
   `docker compose ps` ve `./qradar-dash logs` ile bak.
+
+Özetten önce `install`, yayımlanan URL'yi de dener (yalnız paketle gelen vekilde; harici vekilde
+(`EXTERNAL_PROXY=yes`) bu denetim yoktur): `https://<ad>/api/v1/health/ready` adresine, ana makinedeki
+vekile (`--resolve` ile `127.0.0.1`) 15 saniye sınırıyla gider. 200 gelirse `public URL … answered
+HTTP 200 through the local proxy` yazılır. Sertifika doğrulanamıyorsa (curl çıkışı 60 ya da 51;
+kendinden imzalı ya da henüz güvenilmeyen sertifika) betik aynı isteği sertifika denetimi kapalı
+yineler. Şimdi 200 gelirse `[warn]` yazar ve `install` **0 ile çıkar**:
+
+```
+public URL https://<ad>/api/v1/health/ready answered HTTP 200 only with certificate checks disabled (curl exit 60 or 51). Browsers will warn unless the site CA is trusted. Continuing.
+```
+
+`[warn]` satırı stderr'e gider. Bu bir arıza değildir; yığın sağlıklıdır, tarayıcılar site CA'sı güvenilir olana kadar uyarır.
+Sertifika denetimi kapalıyken de 200 gelmezse (ya da hata başka bir curl kodudur) `public URL …
+failed (curl exit …, HTTP …). Next: ./qradar-dash logs proxy and ./qradar-dash doctor.` yazılır;
+özet yine basılır, ama çıkış kodu 1 olur.
 
 İlk oturum açmada parola değiştirmek zorunludur (`must_change_password`). Değiştirene kadar API her
 başka isteğe 403 `A password change is required before any other request.` ile cevap verir. Bu bir
@@ -487,7 +505,17 @@ reddeder.
 
 Aynı mekanizma gizli dizilerin yardımcı imajı için de geçerlidir (`alpine:3.20@sha256:…`;
 sabitleme `deploy/load-secrets.sh` içindedir). `docker load` onu da yalnız kimliğiyle tutabilir;
-betik düz `alpine:3.20` etiketini koyar ve sabitlenmiş başvurunun çözüldüğünü doğrular. Paketsiz
+betik düz `alpine:3.20` etiketini koyar ve sabitlenmiş başvurunun çözüldüğünü doğrular. Yükleme
+şunu yazar (`…` yerinde paketteki digest vardır):
+
+```
+[ ok ] docker load kept alpine:3.20@sha256:… only by its ID; set the tag alpine:3.20 on it (this moves an existing alpine:3.20 on this host)
+```
+
+Redis için söylenen burada da geçerlidir: bu makinede zaten var olan bir `alpine:3.20` etiketi
+yüklenen imaja taşınabilir; bir başka imajı gösteriyorsa o imaj etiketsiz kalır (silinmez).
+Sabitlenmiş başvuru düz etiketten sonra da çözülmezse betik redis'tekiyle aynı biçimde durur
+(`after docker load, alpine:3.20@sha256:… does not resolve: …`). Paketsiz
 `upgrade <sürüm> --offline` bu imajı da arar: yükseltme öncesi yedek onu çalıştırır, eksikse betik
 imajı adıyla söyler ve hiçbir konteyneri durdurmaz.
 
@@ -1394,6 +1422,84 @@ judged until it finishes". Devralma anında bu durum temizlenir.
 - **Okunmayan ilerleme.** Saklanan ilerleme geri okunamazsa okuma `PARTIAL` olur, gerekçesi "the
   stored history progress could not be read back". Sayılar `null` olur, sıfır değil. Arayüzden
   onarılacak bir şey yoktur: okuma kapanmıştır, izleme canlı toplamaya devam eder.
+
+---
+
+## Kapsam eşlemeleri
+
+`/coverage` sayfası "No ATT&CK technique mappings are configured, so coverage cannot be measured"
+yazıyorsa hiçbir eşleme yoktur. Platform MITRE içeriği almaz: her eşleme SOC'un kendi kararıdır ve
+API ile elle girilir. Eşleme bir ATT&CK teknik kimliğini (örn. `T1110`) platformun bir analiz
+kuralına bağlar. Yalnız platformun kendi veritabanına yazılır; QRadar'a hiçbir şey yazılmaz.
+
+**İzin.** `POST /api/v1/coverage/mappings` için `coverage:write` gerekir; izin her aramadan önce
+denetlenir. Yerleşik rollerden `admin` (`admin:*` ile), `analyst` ve `detection_engineer` bu izne
+sahiptir; `viewer` yalnız `read:*` taşır ve 403 `missing required permission: coverage:write` alır.
+
+**Kuralın UUID'sini bul.** `rule_id` platformun kural kimliğidir (UUID), QRadar'ın sayısal kural
+kimliği (`qradar_id`) **değildir**. İki yol vardır:
+
+- `/rules` sayfasında kuralın adına tıkla; adres `/rules/<UUID>` olur.
+- API: `GET /api/v1/rules?search=<kural adı>` yanıtındaki `items[].id` alanı (`read:rules` gerekir;
+  `qradar_id` aynı kayıttadır, karıştırma). Yapı taşları listede yoktur;
+  `include_building_blocks=true` ekle.
+
+**Eşleme ekle.** Oturum çerezi `qd_session`'dır. Komut satırından oturum açarken isteğe siteyle
+eşleşen `Origin` başlığını ekle (`https://<ad>`); bu araçta ayrı bir CSRF belirteci başlığı yoktur,
+koruma `Origin` denetimidir (bkz. OPS-R22). İlk oturum açmada parola değiştirilmiş olmalıdır
+(bkz. OPS-R27). Parola kabuk geçmişine girmesin diye klavyeden okunur (içinde `"` ya da `\` olan
+bir parola JSON'a böyle konamaz):
+
+```bash
+read -rs QD_PAROLA
+printf '{"username":"<kullanıcı>","password":"%s"}' "$QD_PAROLA" |
+  curl -sS -c cerez.txt -H 'Origin: https://<ad>' -H 'Content-Type: application/json' \
+    --cacert .secrets/tls.crt --data @- https://<ad>/api/v1/auth/login
+unset QD_PAROLA
+
+curl -sS -b cerez.txt -H 'Origin: https://<ad>' -H 'Content-Type: application/json' \
+  --cacert .secrets/tls.crt -X POST https://<ad>/api/v1/coverage/mappings \
+  --data '{"technique_id":"T1110","technique_name":"Brute Force","tactic":"Credential Access",
+           "rule_id":"<kuralın-UUID-si>","confidence":1.0,"provenance":"<kısa not>"}'
+rm cerez.txt
+```
+
+`--cacert <dosya>`, `curl`'e o dosyadaki sertifikaları verici olarak güvenilir saymasını söyler.
+`.secrets/tls.crt` sitenin kendi sertifikasıdır (kurulumda `TLS_CERT_FILE` olarak verilen dosya).
+Sertifika kendinden imzalıysa `--cacert .secrets/tls.crt` doğrudur: sertifika kendi vericisidir.
+Sertifikayı bir iç CA verdiyse bu dosya işe yaramaz ve `curl` çıkış 60 ile durur; onun yerine o CA'nın
+sertifika dosyasını ver (tarayıcılara güvenilir diye tanıtılan dosya; kurulum onun yolunu kaydetmez).
+Bu makine sertifikaya zaten güveniyorsa `--cacert` parametresini çıkar. Her durumda `https://<ad>`
+içindeki ad sertifikadaki adla eşleşmelidir. `-k` kullanma; install özetinin "site CA'sı güvenilir
+olana kadar" uyarısı da aynı durumu anlatır.
+
+Gövde alanları: `technique_id` (2-32 karakter, zorunlu), `rule_id` (zorunlu), `technique_name`,
+`tactic`, `provenance` (isteğe bağlı), `source` (`EXPLICIT` varsayılandır; SOC'un kendi eşlemesi
+budur) ve `confidence` (0 ile 1 arası, varsayılan 1.0). Birden çok konsol varsa `?instance_id=<UUID>`
+ekle; verilmezse ilk kayıtlı konsol kullanılır.
+
+| Yanıt | Anlamı |
+|---|---|
+| 201 | Eşleme kaydedildi; gövde kaydı döndürür. |
+| 400 `no QRadar instance configured` | Kayıtlı konsol yok; `install` konsolu kaydeder, onu bitir ya da yeniden çalıştır. |
+| 403 `missing required permission: coverage:write` | Kullanıcının rolünde izin yok. |
+| 404 `rule not found for this instance` | `rule_id` bu konsolda yok; `qradar_id` değil UUID'yi ver ve kural envanterinin eşitlendiğini kontrol et. |
+| 409 `mapping already exists` | Aynı teknik ve kural çifti zaten kayıtlı. |
+| 422 | Gövde geçersiz (kısa `technique_id`, 0-1 dışı `confidence`). |
+
+Eşleme her eklenişte denetim kaydına `coverage.mapping.create` olarak yazılır.
+
+**Sonucu hesapla.** Kapsam kararlarını `evaluate_detection_coverage` görevi hesaplar; beat onu
+`COVERAGE_EVALUATION_INTERVAL_SECONDS` aralığıyla çalıştırır (varsayılan 3600 saniye, en az 60).
+Beklemek istemezsen elle çalıştır:
+
+```bash
+docker compose exec -T backend python -m app.cli.sync coverage
+```
+
+`--instance <konsol-adı>` yalnız o konsolu işler, `--json` makine okunur çıktı verir. Sonuç
+`/coverage` sayfasında görünür. Kural sağlığı kapsamdan önce hesaplanır (`sync all` sırayı böyle
+tutar); kural envanteri henüz eşitlenmediyse önce `sync rules` ve `sync rule-health` çalıştır.
 
 ---
 
