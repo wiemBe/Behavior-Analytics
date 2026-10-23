@@ -24,7 +24,7 @@ Dört kural her bölümde geçerlidir:
    (OPS-R1 ... OPS-R63; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
-`support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
+`repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
 
 ---
 
@@ -125,8 +125,10 @@ sudo chmod 700 /var/backups/qradar-dash
 Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 1 KiB'dir. İlk haftadan sonra
 `pg_database_size` ile değiştirilecek bir tahmindir. `doctor` bu boyutu yazar.
 
-- **En az:** 4 vCPU, 8 GiB RAM, **Docker kökünde 80 GiB boş** disk. Bu ana makine, varsayılanda
-  kapalı aileler kapalı bırakılmış Phase A içindir.
+- **En az:** 4 vCPU, 8 GiB RAM, **Docker kökünde 80 GiB boş** disk. Bu ana makine Phase A ile
+  varsayılanda açık aileler (catch-all, geo, explanations) içindir. Bunlar Administration →
+  Search cadence sayfasından değiştirilmedikçe 5 dakikada bir aranır. WAF, IPS, kural eşleşmesi
+  toplama, özel kurallar ve mülk izleme (property watch) kapalı bırakılmıştır.
 - **Önerilen:** 8 vCPU, 16 GiB RAM, Docker ve Postgres için 400 GiB ve yedek dizini olarak bağlanmış
   **ikinci bir dosya sistemi** (400 GiB). İkinci dosya sistemi, veri diski dolduğunda bile yedeğe
   erişmeni sağlar. Yedek dizini ile Docker veri kökü aynı aygıttaysa kurulum ön kontrolü uyarır,
@@ -200,7 +202,10 @@ Sorular şu sırayla sorulur:
 
 Sorulmayanlar: LDAP (arayüzden yapılır), dedektör eşikleri, aile etkinleştirme, SMTP, webhook, LLM.
 WAF, IPS, kural eşleşmesi toplama, özel kurallar ve mülk izleme (property watch) varsayılanda
-**kapalı** kalır. Catch-all ve geo varsayılanda açıktır. Özet bunu söyler.
+**kapalı** kalır. Phase A her zaman açıktır. Catch-all, geo ve explanations varsayılanda açıktır.
+Kurulum özeti açık aileleri ve kapalı aileleri ayrı satırlarda yazar. Açık aileler, Administration →
+Search cadence sayfasından değiştirilmedikçe 5 dakikada bir aranır. WAF veya IPS açıksa özet, onların
+o sayfada değiştirilene kadar 15 dakika kullandığını da yazar.
 
 **Mülk izleme (Phase G).** İki anahtar vardır: `PW_COLLECTION_ENABLED` (varsayılan **false**) aile
 anahtarı, `PW_ALERTING_ENABLED` (varsayılan **false**) gölge moddur; gölge modda olaylar ve yaşam
@@ -948,16 +953,23 @@ Backend konteyneri çalışmıyorsa konteyner içi kısım yerine `doctor_incont
 Her satır şöyledir:
 
 ```
-PASS  db_connect     database accepted SELECT 1
-WARN  cadence_late   WAF_COLLECTION last run 2 h 10 m past its cadence    runbook: OPS-R30
-FAIL  migration_head database at 0024, image expects 0025                 runbook: OPS-R11
+PASS  db_connect         database accepted SELECT 1
+WARN  cadence            enabled families late or never run: WAF_COLLECTION    runbook: OPS-R30
+FAIL  migration_head     database at 0031, image expects 0032    runbook: OPS-R11
 ```
+
+Bu üç satır, konteyner içi kontrollerin tam kimlik listesi `render_text` ile hizalanınca çıkan
+genişliktir. En uzun kimlik `anomaly_evaluation` (18 karakter) olduğu için sütun 18'dir. Ana makine
+satırları ayrıdır ve 16 karakterlik sabit genişlik kullanır.
 
 Yalnız `PASS`, `WARN`, `FAIL` vardır. Neden tek satırdır. Kılavuz kimliği `OPS-R` ile giriş
 numarasıdır (`OPS-R30` 30. girişi gösterir). Çıktıda token, `.env` değeri, DSN ya da
 `ENCRYPTION_KEY` yoktur. Bağlantı hataları ana makineyi ve istisna sınıfını söyler, parolayı değil.
 
 Çıkış kodu: tümü PASS ise 0; FAIL olmadan en az bir WARN varsa 1; en az bir FAIL varsa 2.
+`./qradar-dash doctor --json` tek bir JSON dizisi yazar: önce ana makine kontrolleri, sonra
+konteynerin kendi `--json` çıktısı. `-h` ve `--help` kullanımı yazdırır ve 0 ile çıkar. Bilinmeyen
+argüman (`doctor --json extra` dahil) kullanımı yazdırır ve 2 ile çıkar.
 
 `doctor` hiçbir yazma işlemi yapmaz. Tek QRadar çağrısı `GET /system/about` isteğidir. QRadar'a ayrı
 bir TLS el sıkışması CA paketiyle yapılır ve `SEC` başlığı göndermez; sertifika süresi token
@@ -970,8 +982,9 @@ bağlanmaz.
 |---|---|---|
 | `disk_docker` | Docker kökünün `df -P` değeri. %70 ve üstü WARN, %90 ve üstü FAIL. | OPS-R14 |
 | `disk_backup` | `QRADAR_DASH_BACKUP_DIR` için aynı eşikler ve disk koruması. Veritabanı boyutu okunamazsa uyarır. | OPS-R14 |
-| `qradar_clock` | `timedatectl` NTP eşitliği. Eşitsiz saat ya da `timedatectl` yoksa WARN. | OPS-R15 |
-| `selinux` | `getenforce` sonucu PASS olarak yazılır, `Enforcing` dahil. Komut yoksa "SELinux is not installed". | yok |
+| `host_clock` | Bu ana makinenin NTP eşitliği (`timedatectl`). Eşitsiz saat ya da `timedatectl` yoksa WARN. Kimlik daha önce `qradar_clock` idi; ölçtüğü QRadar'ın saati değil, ana makinenin saatidir. Kılavuz kimliği değişmedi. | OPS-R15 |
+| `selinux` | `getenforce`. `Enforcing` ise PASS (`SELinux is Enforcing`). `Permissive` ise WARN (`SELinux is permissive: denials are logged, not enforced`). Komut yoksa, `Disabled` ya da boşsa PASS (`SELinux is not in use on this host`). Başka bir kip WARN olur ve kipin adını yazar. | yok |
+| `backup_age` | En yeni `qradar-dash-*` yedeği 26 saatten yeni ve yedek zamanlayıcısı etkinse PASS. Yedek yoksa ya da en yenisi 26 saatten eskiyse WARN ve `./qradar-dash backup manual` der. Zamanlayıcı `systemctl is-enabled qradar-dash-backup.timer` ile sorulur (kullanıcı birimi için `--user`); kapalıysa WARN olur ve `systemctl enable --now qradar-dash-backup.timer` der, birim hiç yoksa `./qradar-dash backup --install-timer` der. `systemctl` yoksa yalnız birim dosyasına bakılır (`/etc/systemd/system/qradar-dash-backup.timer` ya da `$HOME/.config/systemd/user/qradar-dash-backup.timer`). İki olgu aynı satırda yazılabilir. | yok |
 | `containers` | Compose'un döndürdüğü her servis çalışıyor ve sağlıklı mı. Kapalı `mcp` profilindeki `qradar-mcp` ve 0 koduyla çıkmış `migrate` yok sayılır. | OPS-R36, OPS-R41, OPS-R9, OPS-R11 |
 | `doctor_incontainer` | Yalnız backend çalışmıyorsa yazılır. | OPS-R36 |
 
@@ -991,7 +1004,7 @@ bağlanmaz.
 | `qradar_auth` | `GET /system/about`. | OPS-R1 |
 | `watermarks` | Her `collection_watermark` satırı: `consecutive_failures` 0 ve gecikme kadansın iki katından az ise PASS. `consecutive_failures` 3 ve üstü ya da `last_error` doluysa FAIL. | OPS-R30 |
 | `cadence` | Her `search_cadence` ailesi. Son çalışma yaşı kadans + yerleşme + 60 sn içinde olmalı. | OPS-R30 |
-| `families_off` | Varsayılanda kapalı dört bayrak. Yeni kurulum kırmızı görünmesin diye PASS olarak, bayrak adıyla yazılır. | OPS-R7 |
+| `families_off` | Kimlik aynı kalır. Satır önce `NAME=on` ya da `NAME=off` listesini, sonra açık aileleri (`on:`) ve kapalı aileleri (`off:`) ayrı yazar. Phase A her zaman açıktır. Yeni kurulum kırmızı görünmesin diye PASS'tir. | OPS-R7 |
 | `errors_recent` | `consecutive_failures > 0` olan filigran satırı sayısı: sıfır PASS, bir ya da iki WARN, üç ve üstü FAIL. | OPS-R30 |
 | `anomaly_evaluation` | Son 24 saatte verdict üretmeden bırakılan kova varsa FAIL; açık bir fault varsa ya da beklenen yargılama zamanı (kova sonu + yerleşme + bir beat + iki değerlendirme tick'i) geçmiş canlı bir kovası olan izlenen kaynak varsa WARN. | OPS-R61 |
 | `pg_database_size` | Veritabanı boyutu. Boş alan ana makine kontrolündedir. | OPS-R14 |
@@ -1002,9 +1015,9 @@ bağlanmaz.
 | `unknown_settings` | Ortamda bir ayara benzeyen ama ayar olmayan adlar. Adlar yazılır, değerler yazılmaz. Böyle bir ad yoksa PASS. Kurulumun yazdığı adlar burada görünmez. | OPS-R62 |
 | `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
 
-`families_off` WARN değil PASS verir: yeni kurulumda WAF, IPS, kural eşleşmeleri ve özel kurallar
-bilerek kapalıdır. Satır, bir ailenin neden filigranı olmadığını bayrak adıyla gösterir. Arayüz hiç
-çalışmamış bir aile için "zamanında" değil, tire gösterir.
+`families_off` WARN değil PASS verir. Satır açık ve kapalı aileleri ayrı yazar. Yeni kurulumda
+Phase A, catch-all, geo ve explanations açıktır; WAF, IPS, kural eşleşmeleri, özel kurallar ve mülk
+izleme bilerek kapalıdır. Arayüz hiç çalışmamış bir aile için "zamanında" değil, tire gösterir.
 
 `celery_beat` kalp atışına bakar (`doctor`: Redis anahtarı, sağlıklı ise 180 s altı).
 Bu anahtarı worker yazar; beat yazmaz. Beat'in Compose sağlık kontrolü
@@ -1037,9 +1050,16 @@ eksik ya da geçersizse geçersiz alanı adıyla bildirir, `Installed version: u
 ./qradar-dash logs
 ```
 
-`logs [service]`, `docker compose logs --tail=200 -f` komutudur. Servis verilmezse backend, worker
-ve beat izlenir. Uygulamanın günlük filtresi UUID biçimli token'ları yalnız zaten bir sır sözcüğü
-geçen satırlarda gizler. `logs` ikinci bir temizleyici değildir; temizleyici destek paketidir.
+`logs`, `docker compose logs` komutunun kendisidir: `cmd_logs` aldığı argümanları olduğu gibi iletir
+ve kendisi `--tail` ya da `-f` eklemez. Kuyruk ve izleme isteyen operatör onları verir:
+
+```bash
+./qradar-dash logs --tail=200 -f backend
+```
+
+Servis verilmezse Compose bütün servislerin günlüğünü yazar. Uygulamanın günlük filtresi UUID
+biçimli token'ları yalnız zaten bir sır sözcüğü geçen satırlarda gizler. `logs` ikinci bir
+temizleyici değildir; temizleyici destek paketidir.
 
 ### `support-bundle`
 
@@ -1053,7 +1073,8 @@ temizlenir. Okunamayan her tanı parçası tek satırlık bir `<parça>.error.tx
 engellemez. Birleştirilen dosyalar, filtrelenmemiş `.env` ve okunabilen sır dosyaları tek bir tar
 akışı olarak `docker compose run --rm --no-deps -T backend python -m app.cli.support_bundle`
 komutuna stdin'den verilir; temizlenmiş arşiv ancak temizleyici başarılı olursa son adına taşınır.
-Backend imajı yoksa ya da temizleyici hata verirse son arşiv oluşmaz.
+Backend imajı yoksa ya da temizleyici hata verirse son arşiv oluşmaz. Bilinmeyen bir argüman
+kullanımı yazdırır ve 2 ile çıkar; hiçbir arşiv yazılmaz.
 
 İçeriği: `doctor.txt` (birleşik rapor), `version.txt`, `compose-ps.txt`, `watermarks.txt` ve
 `cadence.txt`, `config.env` (sır satırları **maskelenmez, çıkarılır**) ve `logs/` (her servis için
@@ -1066,6 +1087,29 @@ Paket oluşturulurken `config.env` dosyasından `SECRET_KEY`, `ENCRYPTION_KEY`,
 `ENCRYPTION_KEYS_JSON`, `POSTGRES_PASSWORD`, `QRADAR_SEC_TOKEN`, `OIDC_CLIENT_SECRET`, `LLM_API_KEY`,
 `SMTP_PASSWORD` ve adında `WEBHOOK`, `PASSWORD` ya da `TOKEN` geçen her anahtar satırı çıkarılır.
 Sırlar destek paketine girmez. Paketi bir bilete eklemeden önce yine de elle gözden geçir.
+
+### `repair-state`
+
+```bash
+./qradar-dash repair-state
+```
+
+Yükseltme ya da geri alma bittikten sonra yığın sağlıklıysa ama `state.json` yazılamadıysa kayıt
+düzeltilir. Komut, son kayıt `failed` ise (ya da yükseltmenin geri dönüşü olmayan adımdan önce
+yazdığı başarısız deneme duruyorsa), `/api/v1/health/ready` HTTP 200 dönüyorsa ve veritabanındaki
+Alembic revizyonu çalışan imajın `migration_head` değeriyle aynıysa yazar. Çalışan sürüm
+`last_upgrade.to` ise sonuç `success` olur ve denemenin önceki imajları durur. Çalışan sürüm
+`last_upgrade.from` ise (ve ikisi farklıysa) sonuç `rolled_back` olur ve `previous_images` null
+yazılır. Son kayıt `success` olsa bile çalışan sürüm o kaydın `from` sürümüyse komut bunu elle
+yapılmış bir geri alma olarak kabul eder: ara `failed` yazımı kaybolmuş olsa da site onarılabilir
+kalır. Başarıda stdout tam olarak şunu söyler: `The upgrade itself succeeded; do not roll back.`
+Geri almada: `The rollback itself succeeded; do not roll back again.`
+
+Reddeder ve hiçbir şey yazmaz: kayıt yoksa, sonuç `rolled_back` ise, `success` kaydında çalışan
+sürüm `to` ise, `restored_from` doluysa, sağlık 200 değilse, revizyonlar uyuşmuyorsa, çalışan sürüm
+iki uçtan biri değilse. Her ret nedeni, gördüğü değeri ve sonraki komutu adlandırır
+(`./qradar-dash status`, `./qradar-dash doctor`, `./qradar-dash logs backend`). Bilinmeyen argüman
+2 ile çıkar. Ret ve yazılamama 1 ile çıkar. Kayıt yazıldıysa 0 ile çıkar.
 
 ### Günlük bakış
 
@@ -1680,7 +1724,8 @@ günlük dosyalarını silmek dolu bir veri volume'unu düzeltmez.
 **Olası neden:** Ana makine saati sıçradı. Beat UTC kullanır. Gecikme dedektörü gerçek bir anomali
 türüdür.
 
-**Doğrulama:** `qradar_clock` WARN ve `timedatectl` eşitli değil.
+**Doğrulama:** `host_clock` WARN ve `timedatectl` eşitli değil. Bu kimlik daha önce `qradar_clock`
+idi. Ölçtüğü QRadar konsolunun saati değil, bu ana makinenin NTP eşitliğidir.
 
 ```bash
 timedatectl

@@ -1,6 +1,6 @@
 """Read-only in-container diagnostics for a QRadar Observability deployment.
 
-The host-only qradar_clock and disk free-space checks are printed by
+The host-only host_clock and disk free-space checks are printed by
 ``./qradar-dash doctor``.
 """
 
@@ -825,6 +825,9 @@ class Doctor:
     async def check_families_off(self) -> CheckResult:
         # Every family switch in `_FAMILY_SWITCHES` order, then the custom-rule engine's switch
         # (F.1), which is not a `SearchFamily`. The environment name is the field's upper case.
+        # The comma-separated NAME=on|off prefix must stay first and must not gain another
+        # ", " after CUSTOM_RULES_ENABLED: test_doctor splits the message on ", " and requires
+        # that last name. The on/off clauses use spaces, not commas.
         flags = {
             attribute.upper(): bool(getattr(self.settings, attribute))
             for attribute in _FAMILY_SWITCHES.values()
@@ -833,7 +836,13 @@ class Doctor:
         summary = ", ".join(
             f"{name}={'on' if enabled else 'off'}" for name, enabled in flags.items()
         )
-        return CheckResult("families_off", Status.PASS, summary)
+        on = [name for name, enabled in flags.items() if enabled]
+        off = [name for name, enabled in flags.items() if not enabled]
+        on_text = " ".join(["PHASE_A", *on])
+        off_text = " ".join(off) if off else "none"
+        return CheckResult(
+            "families_off", Status.PASS, f"{summary}; on: {on_text}; off: {off_text}"
+        )
 
     async def check_errors_recent(self) -> CheckResult:
         try:

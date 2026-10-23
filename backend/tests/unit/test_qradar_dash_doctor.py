@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -13,7 +15,7 @@ SCRIPT = REPO / "qradar-dash"
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash is required")
 
-HOST_TOOLS = ("awk", "dirname", "head", "readlink", "sed")
+HOST_TOOLS = ("awk", "cat", "dirname", "head", "readlink", "sed", "tr")
 GIB_KIB = 1024 * 1024
 PS_FORMAT_ARG = r"{{.Service}}\t{{.State}}\t{{.Health}}\t{{.ExitCode}}"
 
@@ -37,6 +39,10 @@ case "$*" in
   *" exec -T postgres psql "*)
     printf '%s\n' "$STUB_DATABASE_SIZE"
     exit "${STUB_DATABASE_RC:-0}"
+    ;;
+  *" exec -T backend python -m app.cli.doctor --json")
+    printf '%s\n' "$STUB_INCONTAINER_JSON"
+    exit "${STUB_INCONTAINER_RC:-0}"
     ;;
   *" exec -T backend python -m app.cli.doctor")
     printf '%s\n' "$STUB_INCONTAINER_OUTPUT"
@@ -70,6 +76,21 @@ exit "${STUB_TIMEDATECTL_RC:-0}"
 GETENFORCE_STUB = r"""#!/bin/bash
 printf '%s\n' "$STUB_SELINUX"
 exit "${STUB_GETENFORCE_RC:-0}"
+"""
+
+# systemctl is the signal for the backup timer. The system scope answers STUB_SYSTEMCTL_STATE
+# and the --user scope answers STUB_SYSTEMCTL_USER_STATE; "missing" is what real systemd prints for
+# an unknown unit (not-found on stdout, exit 4); "silent" prints nothing on stdout.
+SYSTEMCTL_STUB = r"""#!/bin/bash
+printf '%s\n' "$*" >> "$STUB_SYSTEMCTL_CALLS"
+state=$STUB_SYSTEMCTL_STATE
+case " $* " in *" --user "*) state=$STUB_SYSTEMCTL_USER_STATE ;; esac
+case "$state" in
+  missing) printf 'not-found\n'; exit 4 ;;
+  silent) printf 'Failed to get unit file state\n' >&2; exit 1 ;;
+  disabled | masked) printf '%s\n' "$state"; exit 1 ;;
+  *) printf '%s\n' "$state"; exit 0 ;;
+esac
 """
 
 
@@ -126,6 +147,17 @@ class DoctorFixture:
         self._stub("df", DF_STUB)
         self._stub("timedatectl", TIMEDATECTL_STUB)
         self._stub("getenforce", GETENFORCE_STUB)
+        self._stub("systemctl", SYSTEMCTL_STUB)
+        date = shutil.which("date")
+        assert date is not None
+        (self.bin_dir / "date").symlink_to(date)
+        # A fresh stamped backup and the user timer unit keep backup_age at PASS,
+        # so an otherwise healthy host still exits 0.
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        (self.backup_dir / f"qradar-dash-{stamp}-manual").mkdir()
+        timer_dir = tmp_path / ".config" / "systemd" / "user"
+        timer_dir.mkdir(parents=True)
+        (timer_dir / "qradar-dash-backup.timer").write_text("[Timer]\nOnCalendar=daily\n")
 
         self.calls = tmp_path / "docker.calls"
         self.env = {
@@ -142,7 +174,14 @@ class DoctorFixture:
             "STUB_PS_ROWS": DEFAULT_SERVICES,
             "STUB_NTP_SYNC": "yes",
             "STUB_SELINUX": "Enforcing",
+            "STUB_SYSTEMCTL_CALLS": str(tmp_path / "systemctl.calls"),
+            "STUB_SYSTEMCTL_STATE": "enabled",
+            "STUB_SYSTEMCTL_USER_STATE": "missing",
             "STUB_INCONTAINER_OUTPUT": "PASS  db_connect       database accepted SELECT 1",
+            "STUB_INCONTAINER_JSON": (
+                '[{"id": "db_connect", "message": "database accepted SELECT 1", '
+                '"runbook": "OPS-R36", "status": "PASS"}]'
+            ),
         }
 
     def _stub(self, name: str, content: str) -> None:
@@ -153,11 +192,11 @@ class DoctorFixture:
     def remove_stub(self, name: str) -> None:
         (self.bin_dir / name).unlink()
 
-    def run(self, **overrides: str) -> subprocess.CompletedProcess[str]:
+    def run(self, *args: str, **overrides: str) -> subprocess.CompletedProcess[str]:
         env = {**self.env, **overrides}
         bash = shutil.which("bash") or "/bin/bash"
         return subprocess.run(  # noqa: S603
-            [bash, str(self.script), "doctor"],
+            [bash, str(self.script), "doctor", *args],
             cwd=self.root,
             env=env,
             capture_output=True,
@@ -185,8 +224,9 @@ def test_all_pass_returns_zero(doctor: DoctorFixture) -> None:
     assert "50% used; 40.0 GiB free" in result.stdout
     assert "PASS  disk_backup" in result.stdout
     assert "backup guard passes" in result.stdout
-    assert "PASS  qradar_clock" in result.stdout
-    assert "PASS  selinux          Enforcing" in result.stdout
+    assert "PASS  host_clock" in result.stdout
+    assert "PASS  selinux          SELinux is Enforcing" in result.stdout
+    assert "PASS  backup_age" in result.stdout
     assert "PASS  containers" in result.stdout
     assert "PASS  db_connect       database accepted SELECT 1" in result.stdout
     assert f"ps --all --format {PS_FORMAT_ARG}" in doctor.calls.read_text()
@@ -222,7 +262,7 @@ def test_backup_guard_fails_when_free_space_is_too_small(doctor: DoctorFixture) 
 
 
 def test_missing_backup_directory_warns_and_names_path(doctor: DoctorFixture) -> None:
-    doctor.backup_dir.rmdir()
+    shutil.rmtree(doctor.backup_dir)
 
     result = doctor.run()
 
@@ -235,7 +275,7 @@ def test_ntp_not_synchronized_warns(doctor: DoctorFixture) -> None:
     result = doctor.run(STUB_NTP_SYNC="no")
 
     assert result.returncode == 1
-    assert "WARN  qradar_clock" in result.stdout
+    assert "WARN  host_clock" in result.stdout
     assert "NTP is not synchronized" in result.stdout
     assert "runbook: OPS-R15" in result.stdout
 
@@ -246,7 +286,7 @@ def test_missing_timedatectl_warns(doctor: DoctorFixture) -> None:
     result = doctor.run()
 
     assert result.returncode == 1
-    assert "WARN  qradar_clock" in result.stdout
+    assert "WARN  host_clock" in result.stdout
     assert "timedatectl is not available; check NTP by hand" in result.stdout
 
 
@@ -256,7 +296,7 @@ def test_missing_getenforce_is_a_pass(doctor: DoctorFixture) -> None:
     result = doctor.run()
 
     assert result.returncode == 0, output(result)
-    assert "PASS  selinux          SELinux is not installed" in result.stdout
+    assert "PASS  selinux          SELinux is not in use on this host" in result.stdout
 
 
 def test_unhealthy_service_fails_and_names_it(doctor: DoctorFixture) -> None:
@@ -435,3 +475,246 @@ def test_incontainer_exit_one_sets_overall_exit_one(doctor: DoctorFixture) -> No
 
     assert result.returncode == 1
     assert "WARN  cadence          collection is late" in result.stdout
+
+
+def test_selinux_permissive_warns(doctor: DoctorFixture) -> None:
+    result = doctor.run(STUB_SELINUX="Permissive")
+
+    assert result.returncode == 1
+    assert "SELinux is permissive: denials are logged, not enforced" in result.stdout
+
+
+def test_selinux_disabled_is_a_pass(doctor: DoctorFixture) -> None:
+    result = doctor.run(STUB_SELINUX="Disabled")
+
+    assert result.returncode == 0, output(result)
+    assert "SELinux is not in use on this host" in result.stdout
+
+
+def test_unknown_selinux_mode_warns_and_names_it(doctor: DoctorFixture) -> None:
+    result = doctor.run(STUB_SELINUX="Weird")
+
+    assert result.returncode == 1
+    assert "SELinux mode is Weird" in result.stdout
+
+
+def test_old_backup_warns_and_names_the_path(doctor: DoctorFixture) -> None:
+    for child in doctor.backup_dir.iterdir():
+        shutil.rmtree(child)
+    old = datetime.now(UTC) - timedelta(hours=27)
+    path = doctor.backup_dir / f"qradar-dash-{old.strftime('%Y%m%dT%H%M%SZ')}-manual"
+    path.mkdir()
+
+    result = doctor.run()
+
+    assert result.returncode == 1
+    assert "WARN  backup_age" in result.stdout
+    assert str(path) in result.stdout
+    assert "./qradar-dash backup manual" in result.stdout
+
+
+def test_missing_timer_warns_with_the_install_command(doctor: DoctorFixture) -> None:
+    result = doctor.run(STUB_SYSTEMCTL_STATE="missing")
+
+    assert result.returncode == 1
+    text = result.stdout
+    assert "WARN  backup_age" in text
+    assert "./qradar-dash backup --install-timer" in text
+    assert str(doctor.backup_dir) in text
+
+
+def test_a_disabled_system_timer_warns_with_the_enable_command(
+    doctor: DoctorFixture,
+) -> None:
+    result = doctor.run(STUB_SYSTEMCTL_STATE="disabled")
+
+    assert result.returncode == 1
+    line = next(line for line in result.stdout.splitlines() if "backup_age" in line)
+    assert "backup timer is disabled" in line
+    assert "systemctl enable --now qradar-dash-backup.timer" in line
+    calls = (Path(doctor.env["STUB_SYSTEMCTL_CALLS"])).read_text().splitlines()
+    assert calls == ["is-enabled qradar-dash-backup.timer"]
+
+
+def test_a_disabled_user_timer_warns_with_the_user_enable_command(
+    doctor: DoctorFixture,
+) -> None:
+    result = doctor.run(
+        STUB_SYSTEMCTL_STATE="missing",
+        STUB_SYSTEMCTL_USER_STATE="disabled",
+    )
+
+    assert result.returncode == 1
+    line = next(line for line in result.stdout.splitlines() if "backup_age" in line)
+    assert "systemctl --user enable --now qradar-dash-backup.timer" in line
+    calls = (Path(doctor.env["STUB_SYSTEMCTL_CALLS"])).read_text().splitlines()
+    assert calls == [
+        "is-enabled qradar-dash-backup.timer",
+        "--user is-enabled qradar-dash-backup.timer",
+    ]
+
+
+def test_without_systemctl_a_timer_unit_file_is_enough(doctor: DoctorFixture) -> None:
+    doctor.remove_stub("systemctl")
+
+    result = doctor.run()
+
+    assert result.returncode == 0, output(result)
+    assert "PASS  backup_age" in result.stdout
+    assert "backup timer" not in result.stdout.lower()
+
+
+def test_without_systemctl_and_without_a_unit_file_the_timer_is_missing(
+    doctor: DoctorFixture,
+) -> None:
+    doctor.remove_stub("systemctl")
+    timer = (
+        Path(doctor.env["HOME"]) / ".config" / "systemd" / "user" / "qradar-dash-backup.timer"
+    )
+    timer.unlink()
+
+    result = doctor.run()
+
+    assert result.returncode == 1
+    assert "backup timer is not installed" in result.stdout
+    assert "./qradar-dash backup --install-timer" in result.stdout
+
+
+def test_old_backup_and_missing_timer_share_one_line(doctor: DoctorFixture) -> None:
+    for child in doctor.backup_dir.iterdir():
+        shutil.rmtree(child)
+    old = datetime.now(UTC) - timedelta(hours=30)
+    path = doctor.backup_dir / f"qradar-dash-{old.strftime('%Y%m%dT%H%M%SZ')}-manual"
+    path.mkdir()
+
+    result = doctor.run(STUB_SYSTEMCTL_STATE="missing")
+
+    assert result.returncode == 1
+    line = next(line for line in result.stdout.splitlines() if "backup_age" in line)
+    assert str(path) in line
+    assert "./qradar-dash backup --install-timer" in line
+    assert "./qradar-dash backup manual" in line
+
+
+def test_doctor_json_combines_host_and_container_checks(doctor: DoctorFixture) -> None:
+    result = doctor.run("--json")
+
+    assert result.returncode == 0, output(result)
+    payload = json.loads(result.stdout)
+    ids = [item["id"] for item in payload]
+    assert ids[:6] == [
+        "disk_docker",
+        "disk_backup",
+        "host_clock",
+        "selinux",
+        "backup_age",
+        "containers",
+    ]
+    assert "db_connect" in ids
+    assert "qradar_clock" not in ids
+    assert list(payload[0]) == ["id", "message", "runbook", "status"]
+    assert payload[0]["runbook"] is None
+    assert "PASS  disk_docker" not in result.stdout
+
+
+def test_doctor_json_keeps_a_container_value_that_holds_the_object_separator(
+    doctor: DoctorFixture,
+) -> None:
+    body = (
+        '[{"id": "db_connect", "message": "saw }, { inside one message", '
+        '"runbook": null, "status": "PASS"}]'
+    )
+
+    result = doctor.run("--json", STUB_INCONTAINER_JSON=body)
+
+    assert result.returncode == 0, output(result)
+    payload = json.loads(result.stdout)
+    assert payload[-1]["id"] == "db_connect"
+    assert payload[-1]["message"] == "saw }, { inside one message"
+    assert [item["id"] for item in payload][:6] == [
+        "disk_docker",
+        "disk_backup",
+        "host_clock",
+        "selinux",
+        "backup_age",
+        "containers",
+    ]
+
+
+def test_doctor_json_with_an_empty_container_array_is_still_one_array(
+    doctor: DoctorFixture,
+) -> None:
+    result = doctor.run("--json", STUB_INCONTAINER_JSON="[]")
+
+    assert result.returncode == 0, output(result)
+    payload = json.loads(result.stdout)
+    assert [item["id"] for item in payload][:6] == [
+        "disk_docker",
+        "disk_backup",
+        "host_clock",
+        "selinux",
+        "backup_age",
+        "containers",
+    ]
+    assert "db_connect" not in [item["id"] for item in payload]
+
+
+def test_doctor_json_rejects_a_container_array_that_is_not_json(doctor: DoctorFixture) -> None:
+    result = doctor.run("--json", STUB_INCONTAINER_JSON="not-json")
+
+    assert result.returncode == 2
+    payload = json.loads(result.stdout)
+    failed = [item for item in payload if item["id"] == "doctor_incontainer"]
+    assert failed and failed[0]["status"] == "FAIL"
+    assert "JSON array" in failed[0]["message"]
+
+
+def test_doctor_rejects_an_unknown_argument(doctor: DoctorFixture) -> None:
+    result = doctor.run("--json", "extra")
+
+    assert result.returncode == 2
+    assert "unknown doctor argument: extra" in result.stderr
+    assert "usage: ./qradar-dash doctor [--json]" in result.stderr
+
+
+def test_doctor_help_exits_zero(doctor: DoctorFixture) -> None:
+    result = doctor.run("--help")
+
+    assert result.returncode == 0
+    assert "repair-state" in result.stdout
+    assert "--json" in result.stdout
+
+
+def test_system_not_found_then_user_enabled_passes(doctor: DoctorFixture) -> None:
+    result = doctor.run(STUB_SYSTEMCTL_STATE="missing", STUB_SYSTEMCTL_USER_STATE="enabled")
+
+    assert result.returncode == 0, output(result)
+    assert "PASS  backup_age" in result.stdout
+    calls = Path(doctor.env["STUB_SYSTEMCTL_CALLS"]).read_text().splitlines()
+    assert calls == [
+        "is-enabled qradar-dash-backup.timer",
+        "--user is-enabled qradar-dash-backup.timer",
+    ]
+
+
+def test_a_silent_system_scope_then_user_enabled_passes(doctor: DoctorFixture) -> None:
+    result = doctor.run(STUB_SYSTEMCTL_STATE="silent", STUB_SYSTEMCTL_USER_STATE="enabled")
+
+    assert result.returncode == 0, output(result)
+    assert "PASS  backup_age" in result.stdout
+
+
+def test_both_scopes_not_found_is_the_missing_branch(doctor: DoctorFixture) -> None:
+    result = doctor.run(STUB_SYSTEMCTL_STATE="missing", STUB_SYSTEMCTL_USER_STATE="missing")
+
+    assert result.returncode == 1
+    assert "backup timer is not installed" in result.stdout
+    assert "./qradar-dash backup --install-timer" in result.stdout
+
+
+def test_an_enabled_system_timer_does_not_ask_the_user_scope(doctor: DoctorFixture) -> None:
+    result = doctor.run(STUB_SYSTEMCTL_STATE="enabled", STUB_SYSTEMCTL_USER_STATE="disabled")
+
+    assert result.returncode == 0, output(result)
+    calls = Path(doctor.env["STUB_SYSTEMCTL_CALLS"]).read_text().splitlines()
+    assert calls == ["is-enabled qradar-dash-backup.timer"]

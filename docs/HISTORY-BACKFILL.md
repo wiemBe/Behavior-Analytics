@@ -410,7 +410,7 @@ question: **does any verdict depend on the order in which admission saw the data
 | Property watches | yes | own rule (2026-10-18) | own rule | §B.11 |
 
 What this gives the operator, in the installer-Yes case: WAF and IPS collection are **off by default**
-(`config.py`; the installer summary says "Left off WAF, IPS, rule-match collection", `qradar-dash` `summary`), so no
+(`config.py`; the installer summary's left-off line is `Left off           WAF, IPS, rule-match collection, custom rules, property watch (turn them on later)`, `qradar-dash` `summary`), so no
 WAF or IPS scope exists at install. The answer is stored per console and **applies to every WAF or IPS source
 the first time it is collected**, whatever the date. A Yes at install therefore reaches WAF and IPS fully, and
 so does a Yes given in the UI later, for every source the operator has not yet enabled.
