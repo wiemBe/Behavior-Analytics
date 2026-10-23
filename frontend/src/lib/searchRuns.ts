@@ -1,12 +1,7 @@
-// How a scheduled-search execution is presented (docs/SEARCH-CADENCE.md §SC.8).
-//
-// A truncated run was cut off at the row cap, so its count is a lower bound
-// and the run cannot be judged against a threshold. These helpers keep that
-// distinction out of the components, and keep it out of the trend: a truncated
-// run has no stored point, so the chart must show a gap there, never a zero.
 
-import { formatDateTimeCompact } from "@/lib/health";
 import type { ResultMetricPoint, SearchExecution } from "@/lib/api";
+import { utcTimeText } from "@/components/ui/UtcTime";
+
 
 export interface ResultCount {
   kind: "measured" | "lower-bound" | "truncated-unknown" | "none";
@@ -93,7 +88,7 @@ export function trendRows(points: ResultMetricPoint[], truncatedAt: string[]): T
 
 /** A time whose zone is stated once elsewhere (an axis title, a column header): no "UTC". */
 export function axisTimeLabel(iso: string | null): string {
-  return formatDateTimeCompact(iso).replace(/ UTC$/, "");
+  return utcTimeText(iso, "compact", true);
 }
 
 /** Indices of measured values with no measured neighbour: a line cannot show them. */

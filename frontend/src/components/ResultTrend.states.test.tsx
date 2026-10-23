@@ -216,7 +216,7 @@ describe("ResultTrend states", () => {
       <ResultTrend searchId="s-1" visualization="SINGLE_VALUE" executions={[execution()]} />,
     );
     expect(await screen.findByText("100")).toBeInTheDocument();
-    expect(screen.getByText(/result rows at 2026-07-20 10:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/result rows at/)).toHaveTextContent("result rows at 2026-07-20 10:00:00 UTC");
     expect(init).not.toHaveBeenCalled();
     unmount();
 

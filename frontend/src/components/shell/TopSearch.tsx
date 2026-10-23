@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+
+
 // The top bar's search over lists the application already serves.
 //
 //   Sources           GET /fleet/sources?q=&limit=5
@@ -323,7 +326,7 @@ export function TopSearch() {
                   )}
                   {g.status === "ok" &&
                     g.hits.map((h) => (
-                      <a
+                      <Link
                         key={h.id}
                         id={optionId(h)}
                         href={h.href}
@@ -340,7 +343,7 @@ export function TopSearch() {
                       >
                         <span className="topsearch-title">{h.title}</span>
                         {h.sub && <span className="topsearch-sub">{h.sub}</span>}
-                      </a>
+                      </Link>
                     ))}
                 </div>
               ))}

@@ -58,7 +58,7 @@ import {
   validationState,
   type ConflictInfo,
 } from "@/lib/fieldMapping";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
@@ -817,7 +817,7 @@ export function IpsProfileEditor({
               <span className="muted">
                 {" "}
                 · version {profile.profile_version} validated{" "}
-                <time dateTime={profile.validated_at}>{formatDateTime(profile.validated_at)}</time>
+                <UtcTime value={profile.validated_at} />
               </span>
             )}
           </p>

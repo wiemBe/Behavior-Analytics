@@ -3,8 +3,9 @@ import { Evidence } from "@/components/Evidence";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type Notification } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
 import { axisTimeLabel } from "@/lib/searchRuns";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "./alert-detail.css";
 
@@ -64,7 +65,7 @@ export default async function AlertDetailPage({
 
       <div className="card alert-lifecycle">
         <div className="k">Lifecycle</div>
-        <p>Opened: {formatDateTime(alert.opened_at)}</p>
+        <p>Opened: {<UtcTime value={alert.opened_at} />}</p>
         <p>Acknowledged by: {alert.acknowledged_by ?? "—"}</p>
         <p>Resolved by: {alert.resolved_by ?? "—"}</p>
         <p>Resolution: {alert.resolution_reason ?? "—"}</p>

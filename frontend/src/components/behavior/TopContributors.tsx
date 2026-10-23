@@ -1,3 +1,4 @@
+import Link from "next/link";
 // "What changed?" — the three strongest pieces of evidence, above the fold.
 //
 // This replaces reading ten contributor tables to find out that the spike was
@@ -89,7 +90,7 @@ export function TopContributors({
       </ul>
 
       <p className="subtitle">
-        <a href={onViewAllHref}>View all evidence</a>
+        <Link href={onViewAllHref}>View all evidence</Link>
       </p>
     </>
   );

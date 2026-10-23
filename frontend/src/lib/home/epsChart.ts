@@ -10,6 +10,7 @@
 // coverage field, so the qualifier can never disagree with what is drawn.
 
 import type { FleetEpsSeries } from "@/lib/api";
+import { formatCount } from "@/lib/format";
 
 import { notCollected, partial, type Qualifier } from "./qualifiers";
 
@@ -106,7 +107,7 @@ export function epsChartModel(series: FleetEpsSeries): EpsChartModel {
 
 /** The tooltip line for an unmeasured step: how much of it was measured. */
 export function gapText(step: Pick<EpsStep, "cellsComplete" | "cellsExpected">): string {
-  const n = (v: number) => v.toLocaleString("en-US");
+  const n = (v: number) => formatCount(v);
   return `${n(step.cellsComplete)} of ${n(step.cellsExpected)} source-intervals measured`;
 }
 
@@ -120,7 +121,7 @@ export const windowText = (w: FleetEpsSeries["window"]) => WINDOW_TEXT[w];
 
 /** What the chart shows, as prose for assistive technology. */
 export function epsSummaryText(series: FleetEpsSeries, model: EpsChartModel): string {
-  const n = (v: number) => v.toLocaleString("en-US");
+  const n = (v: number) => formatCount(v);
   const head = `Fleet EPS over ${WINDOW_TEXT[series.window]}, times in UTC.`;
   if (model.measured === 0) {
     return `${head} No step was measured, so no line is drawn.`;

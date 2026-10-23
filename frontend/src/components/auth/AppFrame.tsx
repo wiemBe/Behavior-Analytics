@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+
+
 // The shell, except where the account is not allowed to see it. Sign-in has
 // no navigation. A password that must change, and an account with no
 // permission, replace the page they asked for.
@@ -84,10 +87,10 @@ export function AppFrame({ children }: { children: ReactNode }) {
   return (
     <>
       <header className="shell-head">
-        <a href="/behavior" className="brand plain">
+        <Link href="/behavior" className="brand plain">
           <span className="brand-name">Behavior Analytics</span>
           <span className="brand-sub">QRadar Anomaly &amp; Investigation</span>
-        </a>
+        </Link>
         <TopBar />
       </header>
       <div className="layout">

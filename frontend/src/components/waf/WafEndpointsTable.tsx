@@ -9,8 +9,7 @@ import { Fragment } from "react";
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { WafEndpointInventory } from "@/lib/api";
 import { formatCount, stateTone } from "@/lib/behavior";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
-import { axisTimeLabel } from "@/lib/searchRuns";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import { endpointLabel, statePillText } from "./wafLabels";
 
@@ -18,11 +17,7 @@ import "@/components/ui/controls.css";
 
 /** A time with its zone, or, under a header that already says "(UTC)", without it. */
 function Utc({ value, bare = false }: { value: string; bare?: boolean }) {
-  return (
-    <time className="nowrap" dateTime={value} title={formatDateTime(value)}>
-      {bare ? axisTimeLabel(value) : formatDateTimeCompact(value)}
-    </time>
-  );
+  return <UtcTime value={value} variant="compact" bare={bare} className="nowrap" />;
 }
 
 /** The method and path, with a break opportunity after each "/" so a path wraps between

@@ -11,7 +11,7 @@ import { useId, useMemo, useState } from "react";
 import { PropertyInput } from "@/components/fieldmapping/PropertyInput";
 import type { CatalogProperty, MappingFieldOut, MappingSchemaOut, PropertyCatalogOut } from "@/lib/api";
 import { catalogNote, draftErrors, type MappingDraft } from "@/lib/fieldMapping";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
@@ -167,7 +167,7 @@ export function FieldMappingForm({
         <p className="fm-catalog" role="status">
           {available ? (
             <>
-              Property list from this console, fetched {formatDateTime(catalog.fetched_at)}.{" "}
+              Property list from this console, fetched {<UtcTime value={catalog.fetched_at} />}.{" "}
               {catalog.filtered_by_source_type
                 ? `Properties that apply to ${typeName ?? "this source’s type"} come first.`
                 : "It is not filtered by log-source type."}

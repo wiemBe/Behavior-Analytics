@@ -2,7 +2,9 @@ import { api, type OffenseDetail, type OffenseHistoryPoint } from "@/lib/api";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatAge, formatDateTime, magnitudeTone } from "@/lib/health";
+import { formatAge, magnitudeTone } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "../offenses.css";
 import "./offense-detail.css";
@@ -168,19 +170,19 @@ export default async function OffenseDetailPage({
           </tr>
           <tr>
             <th>Started</th>
-            <td>{formatDateTime(o.start_time)}</td>
+            <td>{<UtcTime value={o.start_time} />}</td>
           </tr>
           <tr>
             <th>Last updated</th>
-            <td>{formatDateTime(o.last_updated_time)}</td>
+            <td>{<UtcTime value={o.last_updated_time} />}</td>
           </tr>
           <tr>
             <th>Closed</th>
-            <td>{formatDateTime(o.close_time)}</td>
+            <td>{<UtcTime value={o.close_time} />}</td>
           </tr>
           <tr>
             <th>Last collected</th>
-            <td>{formatDateTime(o.captured_at)}</td>
+            <td>{<UtcTime value={o.captured_at} />}</td>
           </tr>
         </tbody>
       </table>
@@ -228,7 +230,7 @@ export default async function OffenseDetailPage({
           <tbody>
             {history.map((h) => (
               <tr key={h.captured_at}>
-                <td className="nowrap">{formatDateTime(h.captured_at)}</td>
+                <td className="nowrap">{<UtcTime value={h.captured_at} />}</td>
                 <td>{h.status}</td>
                 <td className="num">{h.magnitude ?? "—"}</td>
                 <td className="num">{h.severity ?? "—"}</td>

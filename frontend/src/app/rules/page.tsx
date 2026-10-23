@@ -142,7 +142,7 @@ export default async function RulesPage({
               {items.map((r) => (
                 <tr key={r.id}>
                   <td className="cell-rule-name">
-                    <a href={`/rules/${r.id}`}>{r.name}</a>
+                    <Link href={`/rules/${r.id}`}>{r.name}</Link>
                   </td>
                   <td>{r.rule_type ?? "—"}</td>
                   <td>

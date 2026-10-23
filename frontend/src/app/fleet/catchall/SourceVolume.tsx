@@ -10,10 +10,11 @@
 import { useEffect, useId, useMemo, useState } from "react";
 
 import { ApiError, catchallApi, type CatchallSourceList } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
 
 import { HistoryKey } from "@/components/behavior/HistoryKey";
 import { originMarker } from "@/components/behavior/historyOrigin";
+import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+
 
 import { BucketChart } from "./BucketChart";
 import { SenderId } from "./SenderId";
@@ -96,9 +97,7 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
   const summary = series
     ? series.bucketSeconds === null
       ? "No bucket was measured in this range."
-      : `Events per ${unit} bucket from ${formatDateTime(new Date(sinceMs).toISOString())} to ${formatDateTime(
-          new Date(untilMs).toISOString(),
-        )}. ${series.gapCount} buckets were not measured and are shown as gaps, not as zero. ${series.lowerBoundCount} buckets are lower bounds.`
+      : `Events per ${unit} bucket from ${utcTimeText(new Date(sinceMs).toISOString())} to ${utcTimeText(new Date(untilMs).toISOString())}. ${series.gapCount} buckets were not measured and are shown as gaps, not as zero. ${series.lowerBoundCount} buckets are lower bounds.`
     : "";
 
   return (
@@ -163,11 +162,14 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
             <strong>No bucket was measured in this range.</strong>
           </p>
           <p>
-            {source?.latest_bucket_start
-              ? `The latest measured bucket of ${source.name} starts ${formatDateTime(
-                  source.latest_bucket_start,
-                )}. Choose a longer range to reach it.`
-              : `No bucket was ever measured for ${source?.name ?? "this source"}. An empty chart here is an absence of collection, not zero traffic.`}
+            {source?.latest_bucket_start ? (
+              <>
+                The latest measured bucket of {source.name} starts{" "}
+                <UtcTime value={source.latest_bucket_start} />. Choose a longer range to reach it.
+              </>
+            ) : (
+              `No bucket was ever measured for ${source?.name ?? "this source"}. An empty chart here is an absence of collection, not zero traffic.`
+            )}
           </p>
         </div>
       )}
@@ -175,9 +177,13 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
       {series && series.bucketSeconds !== null && (
         <>
           <p className="subtitle collected-up-to">
-            {upTo !== null
-              ? `Collected up to ${formatDateTime(new Date(upTo).toISOString())}. `
-              : "No bucket in this range holds a measurement. "}
+            {upTo !== null ? (
+              <>
+                Collected up to <UtcTime value={new Date(upTo).toISOString()} />.{" "}
+              </>
+            ) : (
+              "No bucket in this range holds a measurement. "
+            )}
             {series.gapCount > 0
               ? `${formatCount(series.gapCount)} ${series.gapCount === 1 ? "bucket" : "buckets"} before that ${
                   series.gapCount === 1 ? "was" : "were"

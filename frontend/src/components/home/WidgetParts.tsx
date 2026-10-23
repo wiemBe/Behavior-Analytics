@@ -4,8 +4,8 @@
 // unmeasured dash and the time cell. The frame and its states are in `WidgetFrame`.
 
 import { NOT_MEASURED } from "@/lib/behavior";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import { formatAgo } from "@/lib/home/format";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "./tables.css";
 
@@ -21,17 +21,15 @@ export function Unmeasured({ reason }: { reason?: string | null }) {
 
 /**
  * An instant in UTC with its zone, as a `<time>`, and its age in muted text.
- * Null prints a dash, not a date.
+ * A thin wrapper over `UtcTime`: null prints a dash, not a date, and a missing
+ * age is omitted rather than drawn beside the instant.
  */
 export function When({ iso }: { iso: string | null }) {
   if (!iso) return <Unmeasured reason="No time recorded" />;
   const ago = formatAgo(iso, Date.now());
   return (
     <span className="tw-when">
-      <time dateTime={iso} title={formatDateTime(iso)}>
-        {formatDateTimeCompact(iso)}
-      </time>
-      {ago && <span className="tw-sub">{ago}</span>}
+      <UtcTime value={iso} variant="compact" age={ago} ageClassName="tw-sub" />
     </span>
   );
 }

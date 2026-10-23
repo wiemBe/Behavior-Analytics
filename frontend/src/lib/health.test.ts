@@ -104,15 +104,15 @@ describe("magnitudeTone", () => {
 
 describe("formatAge", () => {
   it("formats days and hours", () => {
-    expect(formatAge(90000)).toBe("1d 1h");
+    expect(formatAge(90000)).toBe("1 d 1 h");
   });
 
   it("formats hours and minutes", () => {
-    expect(formatAge(3660)).toBe("1h 1m");
+    expect(formatAge(3660)).toBe("1 h 1 min");
   });
 
   it("formats minutes alone", () => {
-    expect(formatAge(120)).toBe("2m");
+    expect(formatAge(120)).toBe("2 min");
   });
 
   it("renders an unknown age as a dash, not as zero", () => {

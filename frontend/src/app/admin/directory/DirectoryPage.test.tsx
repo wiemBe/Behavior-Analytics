@@ -102,7 +102,9 @@ describe("DirectoryPage", () => {
 
   it("shows a saved configuration", async () => {
     render(<DirectoryPage />);
-    expect(await screen.findByText(/Version 3, last saved 2026-10-15 12:00:00 UTC by ada/)).toBeInTheDocument();
+    const saved = await screen.findByText(/Version 3/);
+    expect(saved).toHaveTextContent("Version 3, last saved 2026-10-15 12:00:00 UTC by ada");
+    expect(saved.querySelector("time")).toHaveAttribute("datetime", "2026-10-15T12:00:00Z");
     const form = screen.getByRole("form", { name: "Directory configuration" });
     expect(within(form).getByLabelText("URL 1")).toHaveValue("ldaps://dc1.example");
     expect(within(form).getByLabelText("URL 2")).toHaveValue("ldaps://dc2.example");

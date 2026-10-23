@@ -73,7 +73,7 @@ describe("default columns", () => {
     expect(within(row).getByText("47")).toBeInTheDocument();
     expect(within(row).getByText("528")).toBeInTheDocument();
     expect(within(row).getByText("+481")).toBeInTheDocument();
-    expect(within(row).getByText("95.9%")).toBeInTheDocument();
+    expect(within(row).getByText("95.9 %")).toBeInTheDocument();
   });
 
   it("shows a reduction's contribution as a magnitude, not a negative share", () => {
@@ -87,7 +87,7 @@ describe("default columns", () => {
       />,
     );
     const row = screen.getByRole("row", { name: /445/ });
-    expect(within(row).getByText("95.9%")).toBeInTheDocument();
+    expect(within(row).getByText("95.9 %")).toBeInTheDocument();
     // The delta keeps its sign: the direction of the change is a fact.
     expect(within(row).getByText("-481")).toBeInTheDocument();
   });

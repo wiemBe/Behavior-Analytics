@@ -72,8 +72,23 @@
   color: var(--crit-text);
 }
 
-/* The table. Ten columns: the cells are one step smaller than the page text so the row stays
-   whole on a wide screen; a text column keeps a floor so a word never shrinks to one letter. */
+/* The table. Eight metric columns, then a detail row for the reason and the later-yes
+   answer so both wrap across the table instead of being clipped in their own scroll.
+   Headers and cells wrap; a long token may break anywhere rather than widen the page. */
+.hb-table {
+  width: 100%;
+}
+.hb-table th,
+.hb-table td {
+  white-space: normal;
+  /* Break a token that cannot fit. Do not shrink a header below its own word,
+     which is what `anywhere` does and what split "Searches" mid-word. */
+  overflow-wrap: break-word;
+}
+.hb-table thead th {
+  white-space: normal;
+  overflow-wrap: normal;
+}
 .hb-table td {
   font-size: var(--fs-sm);
 }
@@ -82,10 +97,45 @@
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
 }
-.hb-table tbody tr:hover th.hb-family {
+.hb-table tbody:hover th,
+.hb-table tbody:hover td {
   background: var(--surface-3);
+}
+.hb-table tr.hb-metrics > th,
+.hb-table tr.hb-metrics > td {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.hb-table tr.hb-detail > td {
+  padding-top: 0;
+}
+.hb-table tbody tr:last-child td {
+  border-bottom: 1px solid var(--border);
+}
+.hb-detail-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+}
+.hb-detail-list > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: baseline;
+}
+.hb-detail-list dt {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+.hb-detail-list dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
 }
 .hb-table .cell-name {
   min-width: 12ch;
@@ -95,16 +145,6 @@
 }
 .hb-table .hb-when {
   min-width: 13ch;
-}
-.hb-table .hb-reason {
-  min-width: 20ch;
-  max-width: 30ch;
-  color: var(--text-2);
-}
-.hb-table .hb-later {
-  min-width: 12ch;
-  max-width: 20ch;
-  color: var(--text-2);
 }
 .hb-lead {
   margin: 0 0 2px;

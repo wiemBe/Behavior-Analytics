@@ -137,7 +137,7 @@ describe("offense list contents", () => {
     expect(within(card("Unassigned")).getByText("3")).toBeInTheDocument();
     expect(within(card("Over 24h SLA")).getByText("1")).toBeInTheDocument();
     // Age carries its unit, not a bare number.
-    expect(within(card("Oldest")).getByText("2d 0h")).toBeInTheDocument();
+    expect(within(card("Oldest")).getByText("2 d")).toBeInTheDocument();
   });
 
   it("gives a positive counter its alarm tone", async () => {
@@ -168,7 +168,7 @@ describe("offense list contents", () => {
     const row = within(table).getAllByRole("row")[1];
     expect(row).toHaveTextContent("Repeated authentication failures");
     expect(row).toHaveTextContent("analyst@example.com");
-    expect(row).toHaveTextContent("11h 0m");
+    expect(row).toHaveTextContent("11 h");
     // The header says (UTC); the cell does not repeat the zone.
     expect(row).toHaveTextContent("10-14 22:10");
     expect(row).not.toHaveTextContent("UTC");

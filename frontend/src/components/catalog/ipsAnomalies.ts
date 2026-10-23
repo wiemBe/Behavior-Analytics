@@ -10,6 +10,7 @@ import type { AnomalySummary, Page } from "@/lib/api";
 import { ipsFigures } from "@/components/ips/ipsDetectors";
 import { formatFigure } from "@/components/ips/ipsFormat";
 import { ipsSubjectText, rowTypeLabel } from "@/components/ips/ipsLabels";
+import { formatCount } from "@/lib/format";
 
 export const IPS_ANOMALIES_LIMIT = 5;
 
@@ -75,7 +76,7 @@ export function mergeIpsAnomalies(
     .sort((a, b) => Date.parse(b.detected_at) - Date.parse(a.detected_at) || a.id.localeCompare(b.id))
     .slice(0, limit);
   const total = entities.total + sources.total;
-  const n = (v: number) => v.toLocaleString("en-US");
+  const n = (v: number) => formatCount(v);
   return {
     rows: merged.map(row),
     total,

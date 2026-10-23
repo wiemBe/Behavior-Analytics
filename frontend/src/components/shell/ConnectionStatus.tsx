@@ -19,8 +19,9 @@ import { useEffect, useRef, useState } from "react";
 
 import type { Loaded } from "./TopBar";
 import type { HealthReady, SearchCadenceItem, SocOverview } from "@/lib/api";
-import { formatDateTimeCompact } from "@/lib/health";
 import { outcomeInfo } from "@/lib/searchCadence";
+import { relativeAge } from "@/lib/time";
+import { utcTimeText } from "@/components/ui/UtcTime";
 
 export type SignalTone = "ok" | "warn" | "crit" | "neutral";
 
@@ -60,13 +61,8 @@ function titleCase(s: string): string {
 
 function ageText(iso: string, now: number | null): string {
   if (now === null) return "";
-  const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (seconds < 60) return ", under 1m ago";
-  const m = Math.floor(seconds / 60);
-  if (m < 60) return `, ${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `, ${h}h ${m % 60}m ago`;
-  return `, ${Math.floor(h / 24)}d ago`;
+  const age = relativeAge(iso, now);
+  return age === "—" ? "" : `, ${age}`;
 }
 
 export function buildSignals(
@@ -115,7 +111,7 @@ export function buildSignals(
     } else if (checkedAt === undefined) {
       when = "check time not reported";
     } else {
-      when = `checked ${formatDateTimeCompact(checkedAt)}${ageText(checkedAt, now)}`;
+      when = `checked ${utcTimeText(checkedAt, "compact")}${ageText(checkedAt, now)}`;
     }
     out.push({
       key: "instance",
@@ -156,7 +152,7 @@ export function buildSignals(
         name: "Collection",
         tone: info?.tone ?? "neutral",
         value: info?.label ?? run.outcome ?? "Outcome not recorded",
-        detail: `Source volume, last run ${formatDateTimeCompact(run.at)}${ageText(run.at, now)}`,
+        detail: `Source volume, last run ${utcTimeText(run.at, "compact")}${ageText(run.at, now)}`,
       });
     }
   }

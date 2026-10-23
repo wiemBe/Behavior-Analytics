@@ -35,10 +35,11 @@ import {
   type PropertyWatch,
   type PwValueSeries,
 } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
 import { historyHeaderText } from "@/components/propertywatch/history";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
+
 import "../watches.css";
 
 export const metadata: Metadata = {
@@ -185,7 +186,7 @@ export default async function PropertyWatchPage({
               Last {watch.history.state === "READING" ? "collected " : ""}bucket{" "}
               {last ? (
                 <>
-                  <time dateTime={last}>{formatDateTime(last)}</time>{" "}
+                  <UtcTime value={last} />{" "}
                   <span className="muted">({relativeAge(last, end)})</span>
                 </>
               ) : (

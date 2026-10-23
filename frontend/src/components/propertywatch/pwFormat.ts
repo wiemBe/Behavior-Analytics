@@ -22,6 +22,7 @@ import type {
 import { delayText, latencyCadence, latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
 import { NOT_MEASURED } from "@/lib/behavior";
 import type { Tone } from "@/lib/health";
+import { formatCount } from "@/lib/format";
 
 /** Said once per page: the cadence is not a promise of speed. */
 export function pwLatency(cadence?: LatencyCadence | null): LatencyParts {
@@ -209,7 +210,7 @@ export function eventsUnit(bucketSeconds: number | null | undefined): string {
   return Number.isInteger(minutes) ? `events per ${minutes} min` : `events per ${bucketSeconds} s`;
 }
 
-const count = (n: number) => n.toLocaleString("en-US");
+const count = (n: number) => formatCount(n);
 
 /** `12`, or `at least 12` for a lower bound. A missing count is an em dash, never `0`. */
 export function formatEvents(
@@ -279,20 +280,7 @@ export function coverageText(coverage: PropertyWatch["coverage"]): string {
   return coverage.measurement === "LOWER_BOUND" ? `at least ${text}` : text;
 }
 
-/** A relative age, `12 min ago`; secondary to the absolute UTC time, never a replacement. */
-export function relativeAge(iso: string | null | undefined, now: Date): string {
-  if (!iso) return "";
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "";
-  const seconds = Math.round((now.getTime() - then) / 1000);
-  if (seconds < 0) return "";
-  if (seconds < 90) return "just now";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 90) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} d ago`;
-}
+export { relativeAge } from "@/lib/time";
 
 // --- the values table -----------------------------------------------------------
 
@@ -307,10 +295,7 @@ export function shareOfParsed(value: PwValue, latest: PwBucket | null): number |
   return value.events / latest.parsed_events;
 }
 
-/** `12.4 %`; a share, so one decimal is kept. */
-export function formatShare(share: number | null): string {
-  return share === null ? NOT_MEASURED : `${(share * 100).toFixed(1)} %`;
-}
+export { formatShare } from "@/lib/format";
 
 /** The expected range for the value's hour of the week, or why there is none. */
 export function expectedRangeText(value: PwValue): string {

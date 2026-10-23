@@ -1,3 +1,4 @@
+import Link from "next/link";
 // The values table of a watch page: every figure the chart carries, as text, so assistive
 // technology and a reader who cannot see the canvas lose nothing (guidelines §10).
 //
@@ -11,7 +12,7 @@
 
 import type { AnomalySummary, PwBucket, PwValue, PwWatchHistory } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
 
 import {
   baselineText,
@@ -85,19 +86,32 @@ export function WatchValuesTable({
       className={className}
       aria-sort={sort === key ? (key === "events" ? "descending" : "ascending") : "none"}
     >
-      <a className="sort-link" href={sortHref(key)}>
+      <Link className="sort-link" href={sortHref(key)}>
         {text}
-      </a>
+      </Link>
     </th>
   );
   return (
     <table className="table-dense pw-values" aria-label="Tracked values">
       <caption className="sr-only">
         Tracked values, pinned first. The latest bucket is
-        {latest ? ` ${formatDateTime(latest.bucket_start)}` : " not available"}; counts are {unit}.
-        {history?.floor
-          ? ` First seen includes the history read from QRadar, from ${formatDateTime(history.floor)}.`
-          : ""}
+        {latest ? (
+          <>
+            {" "}
+            <UtcTime value={latest.bucket_start} />
+          </>
+        ) : (
+          " not available"
+        )}
+        ; counts are {unit}.
+        {history?.floor ? (
+          <>
+            {" "}
+            First seen includes the history read from QRadar, from <UtcTime value={history.floor} />.
+          </>
+        ) : (
+          ""
+        )}
         Select up to {maxSelected} values to plot them.
       </caption>
       <thead>
@@ -116,7 +130,7 @@ export function WatchValuesTable({
           {header(
             "first_seen",
             history?.floor
-              ? `First seen (UTC; history read from ${formatDateTime(history.floor)})`
+              ? `First seen (UTC; history read from ${utcTimeText(history.floor)})`
               : "First seen (UTC)",
           )}
         </tr>
@@ -165,9 +179,7 @@ export function WatchValuesTable({
               <td className="num">{formatShare(shareOfParsed(v, latest))}</td>
               <td className="num cell-when nowrap">
                 {v.first_seen_at ? (
-                  <time dateTime={v.first_seen_at} title={formatDateTime(v.first_seen_at)}>
-                    {formatDateTimeCompact(v.first_seen_at)}
-                  </time>
+                  <UtcTime value={v.first_seen_at} variant="compact" />
                 ) : (
                   "—"
                 )}

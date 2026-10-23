@@ -35,10 +35,10 @@ describe("zero is not the same as unmeasured", () => {
     expect(formatMetric(0)).toBe("0.00");
     expect(formatCount(0)).toBe("0");
     expect(formatRatio(0)).toBe("0.00x");
-    expect(formatShare(0)).toBe("0.0%");
+    expect(formatShare(0)).toBe("0.0 %");
     expect(formatDelta(0)).toBe("0");
     expect(formatPercentDelta(0)).toBe("0.0%");
-    expect(formatDuration(0)).toBe("0s");
+    expect(formatDuration(0)).toBe("0 s");
   });
 
   it("renders an unmeasured value as an em dash, never as 0", () => {
@@ -74,16 +74,16 @@ describe("signed formatting", () => {
   });
 
   it("scales a fraction into a percentage", () => {
-    expect(formatShare(0.68)).toBe("68.0%");
+    expect(formatShare(0.68)).toBe("68.0 %");
   });
 });
 
 describe("formatDuration", () => {
   it("scales from seconds to days", () => {
-    expect(formatDuration(45)).toBe("45s");
-    expect(formatDuration(300)).toBe("5m");
-    expect(formatDuration(3900)).toBe("1h 5m");
-    expect(formatDuration(90000)).toBe("1d 1h");
+    expect(formatDuration(45)).toBe("45 s");
+    expect(formatDuration(300)).toBe("5 min");
+    expect(formatDuration(3900)).toBe("1 h 5 min");
+    expect(formatDuration(90000)).toBe("1 d 1 h");
   });
 
   it("reports a still-running anomaly as unmeasured rather than 0s", () => {

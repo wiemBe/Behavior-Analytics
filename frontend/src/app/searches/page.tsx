@@ -75,7 +75,7 @@ export default async function SearchCatalogPage() {
               {searches.map((s) => (
                 <tr key={s.id}>
                   <td>
-                    <a href={`/searches/${s.id}`}>{s.name}</a>
+                    <Link href={`/searches/${s.id}`}>{s.name}</Link>
                   </td>
                   <td>{s.category ?? "—"}</td>
                   <td>{s.mitre_techniques.join(", ") || "—"}</td>

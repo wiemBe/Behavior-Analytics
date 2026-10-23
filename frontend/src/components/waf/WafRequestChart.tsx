@@ -42,7 +42,7 @@ import {
 import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { WafMetricBucket } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
-import { formatDateTime } from "@/lib/health";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
 
 import { buildBaselineLookup, type BaselineSource } from "./wafBaseline";
 import { bucketWidth } from "./wafFormat";
@@ -277,7 +277,7 @@ export function WafRequestChart({
                 ? `Endpoint coverage: ${(p.coverage * 100).toFixed(1)}%`
                 : "Endpoint coverage: not recorded";
             return [
-              formatDateTime(new Date(p.t).toISOString()),
+              utcTimeHtml(new Date(p.t).toISOString()),
               observed,
               reported,
               requestLine,

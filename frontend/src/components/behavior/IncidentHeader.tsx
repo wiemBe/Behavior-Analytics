@@ -11,7 +11,8 @@ import Link from "next/link";
 import type { AnomalyDetail } from "@/lib/api";
 import { sevTone } from "@/lib/api";
 import { detectorLabel, stateTone } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 export { detectorLabel };
 
@@ -25,10 +26,10 @@ function Interval({ anomaly }: { anomaly: AnomalyDetail }) {
   if (!anomaly.anomaly_start) return <>Interval not recorded</>;
   return (
     <>
-      <time dateTime={anomaly.anomaly_start}>{formatDateTime(anomaly.anomaly_start)}</time>
+      <UtcTime value={anomaly.anomaly_start} />
       {" → "}
       {anomaly.anomaly_end ? (
-        <time dateTime={anomaly.anomaly_end}>{formatDateTime(anomaly.anomaly_end)}</time>
+        <UtcTime value={anomaly.anomaly_end} />
       ) : (
         // Still running: no end exists, and inventing one would report a
         // closed incident that is still open.

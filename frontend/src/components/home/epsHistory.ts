@@ -9,6 +9,7 @@ import {
   HISTORY_TEXT,
   type HistoryInterval,
 } from "@/components/behavior/historyOrigin";
+import { formatCount } from "@/lib/format";
 
 export interface EpsHistoryStep {
   /** Epoch ms of the step start. */
@@ -58,7 +59,7 @@ export function epsHistory(series: FleetEpsSeries, labelled = true): EpsHistory 
 export function epsHistoryLine(history: EpsHistory | undefined, t: number): string {
   const s = history?.steps.get(t);
   if (!s) return "";
-  const n = (v: number) => v.toLocaleString("en-US");
+  const n = (v: number) => formatCount(v);
   return `${n(s.fromHistory)} of ${n(s.complete)} cells read from QRadar history`;
 }
 

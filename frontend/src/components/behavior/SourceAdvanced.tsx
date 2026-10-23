@@ -17,7 +17,8 @@ import type {
   SourceBehavior,
 } from "@/lib/api";
 import { completenessMeaning, formatMetric } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+import { formatCount } from "@/lib/format";
 
 import { OriginMarker } from "./HistoryKey";
 
@@ -167,11 +168,9 @@ export function SourceAdvanced({
                 {recent.map((b) => (
                   <tr key={b.bucket_start}>
                     <td className="num">
-                      <time dateTime={b.bucket_start}>
-                        {formatDateTime(b.bucket_start)}
-                      </time>
+                      <UtcTime value={b.bucket_start} />
                     </td>
-                    <td className="num">{b.event_count.toLocaleString()}</td>
+                    <td className="num">{formatCount(b.event_count)}</td>
                     {/* A COMPLETE zero is a measurement and renders as 0.00.
                         Only an unobserved interval renders as an em dash. */}
                     <td className="num">
@@ -191,7 +190,7 @@ export function SourceAdvanced({
                       </span>
                       <OriginMarker origin={b.origin} />
                     </td>
-                    <td className="num">{formatDateTime(b.last_event_at)}</td>
+                    <td className="num">{<UtcTime value={b.last_event_at} />}</td>
                   </tr>
                 ))}
               </tbody>
@@ -204,11 +203,11 @@ export function SourceAdvanced({
         <dl className="dimension-meta">
           <div>
             <dt>Last collected bucket</dt>
-            <dd className="num">{formatDateTime(behavior.last_bucket_at)}</dd>
+            <dd className="num">{<UtcTime value={behavior.last_bucket_at} />}</dd>
           </div>
           <div>
             <dt>Last event</dt>
-            <dd className="num">{formatDateTime(behavior.last_event_at)}</dd>
+            <dd className="num">{<UtcTime value={behavior.last_event_at} />}</dd>
           </div>
           <div>
             <dt>Baseline samples</dt>

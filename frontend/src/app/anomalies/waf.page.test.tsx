@@ -223,8 +223,11 @@ describe("the subject cell", () => {
     const link = within(cell).getByRole("link", { name: "lab-waf-behavior-01" });
     expect(link).toHaveAttribute("title", "lab-waf-behavior-01");
     expect(link.className).toContain("subject-source");
-    // Below 1100 px the Started column folds in as one more line.
-    expect(within(cell).getByText(/^Started 10-12 09:00/).className).toContain("fold-sm");
+    // Below 1100 px the Started column folds in as one more line. The clock
+    // lives in a child <time>, so match that and climb to the fold line.
+    const started = within(cell).getByText("10-12 09:00 UTC").closest(".fold-started")!;
+    expect(started).toHaveTextContent(/^Started 10-12 09:00/);
+    expect(started.className).toContain("fold-sm");
   });
 
   it("omits the virtual host line when there is none", async () => {

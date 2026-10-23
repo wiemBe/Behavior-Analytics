@@ -14,23 +14,19 @@ import {
   type CatchallReviewStatus,
   type CatchallSender,
 } from "@/lib/api";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { formatCount } from "@/lib/format";
+import { utcTimeText } from "@/components/ui/UtcTime";
+
+
+export { formatCount };
 
 export const UNKNOWN = "unknown";
-const DASH = "—";
 
 // --- figures -------------------------------------------------------------------
 
-const COUNT = new Intl.NumberFormat("en-US");
-
-/** A count. Null is "not measured" (an em dash), never 0. */
-export function formatCount(value: number | null | undefined): string {
-  return value == null ? DASH : COUNT.format(value);
-}
-
 /** The 24 h figure of a sender: a lower bound, or `unknown` when no top list named it. */
 export function formatEvents24h(value: number | null): string {
-  return value == null ? UNKNOWN : COUNT.format(value);
+  return value == null ? UNKNOWN : formatCount(value);
 }
 
 export const EVENTS_24H_NOTE =
@@ -229,7 +225,7 @@ export function niceMax(value: number): number {
 
 /** A time for a column whose header already says UTC: `10-13 15:00`. */
 export function formatSeen(value: string): string {
-  return formatDateTimeCompact(value).replace(/ UTC$/, "");
+  return utcTimeText(value, "compact", true);
 }
 
 /** What a sender is called where it may wrap: after `.` and `-`, never mid-word. */
@@ -275,7 +271,7 @@ export function axisLabel(ms: number): string {
 
 export function windowText(startIso: string, seconds: number): string {
   const end = new Date(Date.parse(startIso) + seconds * 1000).toISOString();
-  return `${formatDateTime(startIso)} to ${formatDateTime(end)}`;
+  return `${utcTimeText(startIso)} to ${utcTimeText(end)}`;
 }
 
 export interface RangeOption {

@@ -53,7 +53,9 @@ describe("FleetPage", () => {
     await renderPage({ window: "7d" });
     expect(spy).toHaveBeenCalledWith("7d");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByText(/2026-10-12 08:00:00 UTC to 2026-10-13 08:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/Last 7 days:/)).toHaveTextContent(
+      "2026-10-12 08:00:00 UTC to 2026-10-13 08:00:00 UTC",
+    );
     expect(screen.getByRole("link", { name: "7 d" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "24 h" })).not.toHaveAttribute("aria-current");
   });

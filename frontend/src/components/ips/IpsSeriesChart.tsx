@@ -40,8 +40,9 @@ import {
   type OriginRow,
 } from "@/components/behavior/historyOrigin";
 import { readChartPalette } from "@/lib/chartPalette";
-import { formatDateTime } from "@/lib/health";
 import { bucketWidth } from "@/components/waf/wafFormat";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
+
 
 import type { IpsUnit } from "./ipsDetectors";
 import { buildIpsBaselineLookup, type IpsBaselineSource } from "./ipsBaseline";
@@ -243,7 +244,7 @@ export function IpsSeriesChart({
             const p = i != null ? points[i] : undefined;
             if (!p || i == null) return "";
             if (p.kind === "GAP") {
-              return [formatDateTime(new Date(p.t).toISOString()), kindMeaning("GAP")].join("<br/>");
+              return [utcTimeHtml(new Date(p.t).toISOString()), kindMeaning("GAP")].join("<br/>");
             }
             const cell = seasonal ? cells[i] : null;
             const observed =
@@ -275,7 +276,7 @@ export function IpsSeriesChart({
                   : "";
             }
             return [
-              formatDateTime(new Date(p.t).toISOString()),
+              utcTimeHtml(new Date(p.t).toISOString()),
               observed,
               reported,
               counts,

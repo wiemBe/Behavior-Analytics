@@ -9,12 +9,13 @@ import { homeReads } from "@/lib/api";
 import { WidgetFrame } from "@/components/home/WidgetFrame";
 import { Unmeasured } from "@/components/home/WidgetParts";
 import { TableScroll } from "@/components/ui/TableScroll";
+import { formatCount } from "@/lib/format";
 
 import { outageView } from "./derive";
 
 import "./catalog.css";
 
-const n = (v: number) => v.toLocaleString("en-US");
+const n = (v: number) => formatCount(v);
 
 export function OutagePolicy() {
   const read = homeReads.outageSummary("24h");

@@ -157,7 +157,9 @@ describe("a property-watch incident", () => {
       }),
     );
     await renderPage();
-    expect(screen.getByText(/The 7 days before 2026-10-20 09:05:00 UTC were verified/)).toHaveTextContent(
+    const verified = screen.getByText(/days before/);
+    expect(verified).toHaveTextContent("The 7 days before 2026-10-20 09:05:00 UTC were verified");
+    expect(verified).toHaveTextContent(
       "2,016 buckets, of which 2,016 were read from QRadar history from 2026-10-13 09:05:00 UTC and not judged",
     );
   });

@@ -106,8 +106,8 @@ describe("numbers", () => {
   it("gives a relative age that never replaces the time and never goes negative", () => {
     const now = new Date("2026-10-18T09:00:00Z");
     expect(relativeAge("2026-10-18T08:48:00Z", now)).toBe("12 min ago");
-    expect(relativeAge("2026-10-18T09:30:00Z", now)).toBe("");
-    expect(relativeAge(null, now)).toBe("");
+    expect(relativeAge("2026-10-18T09:30:00Z", now)).toBe("—");
+    expect(relativeAge(null, now)).toBe("—");
   });
 });
 

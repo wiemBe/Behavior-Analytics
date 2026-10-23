@@ -18,11 +18,12 @@ import { coverageText, eventsUnit, relativeAge } from "@/components/propertywatc
 import { valueText } from "@/components/propertywatch/WatchValuesTable";
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
 import { api, type PwBucket, type PwValueSeries } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
 import type { Qualifier } from "@/lib/home/qualifiers";
 import { ageSeconds, earlyState, isStale, widgetSelection } from "@/widgets/pwWidgetState";
 import type { RangedProps } from "@/widgets/runtime";
 import type { WidgetState } from "@/widgets/types";
+import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+
 
 import "./pwWidget.css";
 
@@ -258,7 +259,7 @@ export function PropertyWatchWidget({
     return frame(
       {
         kind: "empty",
-        reason: `No value is tracked for this watch in the last ${WINDOW_TEXT}. A value appears once a collected bucket admits it, and nothing is judged until then. Created ${formatDateTime(watch?.created_at)}.`,
+        reason: `No value is tracked for this watch in the last ${WINDOW_TEXT}. A value appears once a collected bucket admits it, and nothing is judged until then. Created ${utcTimeText(watch?.created_at)}.`,
       },
       { windowed: true },
     );
@@ -319,7 +320,7 @@ function PwBody({ drawn }: { drawn: Drawn }) {
         />
       </div>
       <p className="tw-note">
-        Last bucket <time dateTime={drawn.lastBucket}>{formatDateTime(drawn.lastBucket)}</time>{" "}
+        Last bucket <UtcTime value={drawn.lastBucket} />{" "}
         <span className="pww-age">({relativeAge(drawn.lastBucket, new Date()) || "age unknown"})</span>
         . Y axis: {unit}.
       </p>

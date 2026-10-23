@@ -15,7 +15,7 @@ import {
   type PwScopeOption,
   type WatchScope,
 } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import {
   DETECTORS,
@@ -32,6 +32,7 @@ import {
 } from "./authoring";
 import { WatchPropertyPicker, WatchScopePicker } from "./WatchPickers";
 import { latencyCadence } from "@/components/cadence/CadenceLatency";
+
 import { pinAvailability } from "./pwFormat";
 import { historyHeaderText } from "./history";
 
@@ -77,8 +78,8 @@ function PreviewResult({
         </span>
       </div>
       <p className="subtitle">
-        Last closed hour: <time dateTime={preview.window_start}>{formatDateTime(preview.window_start)}</time>{" "}
-        to <time dateTime={preview.window_end}>{formatDateTime(preview.window_end)}</time>.
+        Last closed hour: <UtcTime value={preview.window_start} />{" "}
+        to <UtcTime value={preview.window_end} />.
       </p>
       <dl className="pw-preview-facts">
         <div>

@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -679,6 +680,24 @@ describe("save refusals and the guard", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     await makeRangeDirty();
     await userEvent.click(screen.getByRole("link", { name: "Rules" }));
+    expect(screen.getByRole("dialog", { name: "Discard unsaved changes to Day shift?" })).toBeInTheDocument();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("guards a next/link the same way while dirty", async () => {
+    render(
+      <>
+        <Link href="/alerts" onClick={(event) => event.preventDefault()}>
+          Alerts
+        </Link>
+        <HomeDashboard />
+      </>,
+    );
+    await screen.findByRole("group", { name: "Window" }, { timeout: LAZY_WIDGET_TIMEOUT });
+    await userEvent.click(screen.getByRole("link", { name: "Alerts" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await makeRangeDirty();
+    await userEvent.click(screen.getByRole("link", { name: "Alerts" }));
     expect(screen.getByRole("dialog", { name: "Discard unsaved changes to Day shift?" })).toBeInTheDocument();
     expect(mocks.push).not.toHaveBeenCalled();
   });

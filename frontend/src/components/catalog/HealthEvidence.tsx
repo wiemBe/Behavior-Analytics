@@ -6,10 +6,11 @@
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
 import { WidgetFrame } from "@/components/home/WidgetFrame";
+import { formatCount } from "@/lib/format";
 
 import "./catalog.css";
 
-const n = (v: number) => v.toLocaleString("en-US");
+const n = (v: number) => formatCount(v);
 
 export function HealthEvidence() {
   const read = homeReads.anomalySummary();

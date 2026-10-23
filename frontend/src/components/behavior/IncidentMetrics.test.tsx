@@ -96,7 +96,7 @@ describe("IncidentMetrics", () => {
 
   it("shows the length of a closed incident", () => {
     view(anomaly({ anomaly_end: "2026-10-12T09:19:00Z", duration_seconds: 240 }));
-    expect(measure("Duration")).toHaveTextContent("4m");
+    expect(measure("Duration")).toHaveTextContent("4 min");
     expect(measure("Duration")).toHaveTextContent("Interval length");
   });
 
