@@ -96,8 +96,9 @@ doctor options
   --json            Print one JSON array and no text lines.
 
 repair-state
-  No options. Refuses unless the last upgrade outcome is failed, the API is ready,
-  and the database revision matches the running image. Writes nothing on refusal.
+  No options. Refuses unless the API is ready, the database revision matches the running
+  image, and the last upgrade outcome is failed, or success while the running version is that
+  upgrade's from version (a manual rollback whose record was lost). Writes nothing on refusal.
 EOF
 }
 
