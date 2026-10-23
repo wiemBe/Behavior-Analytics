@@ -498,6 +498,10 @@ compression; a repeat install keeps operator-set values. The install summary nam
 | `SNAPSHOT_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch, per snapshot table |
 | `SNAPSHOT_RETENTION_MAX_BATCHES` | `20` | Batches per table per run |
 | `SNAPSHOT_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
+| `RULE_MATCH_RETENTION_DAYS` | `90` | `rule_match_metric` (by `bucket_start`) and `rule_match_window` (by `window_start`) rows kept. `30`–`3650`. Must exceed `RULE_HEALTH_WINDOW_DAYS` (30). Task `apply_rule_match_retention`; not gated by `RETENTION_ENABLED` |
+| `RULE_MATCH_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
+| `RULE_MATCH_RETENTION_MAX_BATCHES` | `20` | Batches per table per run |
+| `RULE_MATCH_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
 | `RETENTION_ENABLED` | `false` | Enable reconciliation of the general Timescale retention policies; the production installer writes `true` |
 | `RETENTION_LOG_SOURCE_METRIC_DAYS` | unset | Days of source-volume chunks to retain; the production installer writes `90` |
 | `RETENTION_SEARCH_RESULT_METRIC_DAYS` | unset | Days of scheduled-search result chunks to retain; the production installer writes `90` |

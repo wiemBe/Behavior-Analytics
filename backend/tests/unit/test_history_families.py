@@ -41,6 +41,7 @@ def ns(**over: object) -> SimpleNamespace:
         "ips_retention_enabled": True,
         "ips_metric_retention_days": 35,
         "catchall_retention_days": 35,
+        "rule_match_retention_days": 90,
     }
     base.update(over)
     return SimpleNamespace(**base)
@@ -94,7 +95,7 @@ def test_a_family_without_a_switch_says_why() -> None:
     for spec in FAMILY_SPECS.values():
         assert (spec.collection_switch is None) == (spec.always_on_reason is not None)
     assert FAMILY_SPECS[HistoryFamily.PHASE_A].collection_switch is None
-    assert FAMILY_SPECS[HistoryFamily.RULE_MATCH].retention_setting is None
+    assert FAMILY_SPECS[HistoryFamily.RULE_MATCH].retention_setting == "rule_match_retention_days"
 
 
 def test_the_marker_tables_are_the_ones_each_family_writes() -> None:
@@ -198,6 +199,30 @@ def test_a_retention_switched_off_does_not_limit() -> None:
 def test_catchall_retention_has_no_switch() -> None:
     assert fit_family_window(HistoryFamily.CATCHALL, ns(catchall_retention_days=34)).days == 28
     assert fit_family_window(HistoryFamily.CATCHALL, ns(catchall_retention_days=30)).days == 26
+
+
+def test_rule_match_retention_has_no_switch() -> None:
+    # d x 24 + 72 < retention x 24: retention 32 admits 28 days, the asked 90 do not fit.
+    assert FAMILY_SPECS[HistoryFamily.RULE_MATCH].retention_switch is None
+    fitted = fit_family_window(
+        HistoryFamily.RULE_MATCH, ns(rule_match_retention_days=32, history_backfill_days=90)
+    )
+    assert fitted.days == 28
+    assert fitted.limited_by == ("rule_match_retention_days",)
+    assert fitted.reason is not None
+    assert "RULE_MATCH_RETENTION_DAYS is 32 days" in fitted.reason
+    assert "HISTORY_BACKFILL_MAX_HOURS is 72 hours" in fitted.reason
+
+
+def test_rule_match_retention_too_short_for_seven_days_is_unavailable() -> None:
+    # (5 x 24 - 73) // 24 = 1. The field's floor (ge=30) refuses such a value in
+    # Settings; the pure fitter still fails closed on it (repository rule 8).
+    fitted = fit_family_window(HistoryFamily.RULE_MATCH, ns(rule_match_retention_days=5))
+    assert fitted.days is None and not fitted.available
+    assert fitted.limited_by == ("rule_match_retention_days",)
+    assert fitted.reason is not None
+    assert "RULE_MATCH_RETENTION_DAYS is 5 days" in fitted.reason
+    assert "below the 7-day minimum" in fitted.reason
 
 
 def test_phase_a_retention_applies_only_when_enabled_and_set() -> None:

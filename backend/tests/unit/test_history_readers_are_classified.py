@@ -204,6 +204,7 @@ HISTORY_TABLES = (
             "app.services.rule_statistics.RuleStatisticsService._top": Reader(
                 "R6 (rule statistics)", ReaderKind.DISPLAY
             ),
+            "app.services.rule_match_retention.<module>": Reader("R7", ReaderKind.DELETE),
         },
     ),
     HistoryTable(

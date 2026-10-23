@@ -67,6 +67,7 @@ from app.services.log_source_anomaly_retention import LogSourceAnomalyRetention
 from app.services.pw_pipeline import PwInstancePipeline
 from app.services.pw_retention import PwRetention
 from app.services.rule_health import RuleHealthEvaluator
+from app.services.rule_match_retention import RuleMatchRetention
 from app.services.search_executor import SearchExecutor
 from app.services.search_result_retention import SearchResultRetention
 from app.services.search_scheduler import SearchScheduler
@@ -1582,6 +1583,13 @@ async def apply_snapshot_retention() -> dict:
         return (await SnapshotRetention(session).run()).as_dict()
 
 
+async def apply_rule_match_retention() -> dict:
+    """Delete measured rule-match rows older than the retention window."""
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await RuleMatchRetention(session).run()).as_dict()
+
+
 async def apply_timescale_policies() -> dict:
     """Reconcile the Timescale retention and compression policies with the settings.
 
@@ -1791,6 +1799,11 @@ def apply_search_result_retention_task() -> dict:
 @celery_app.task(name="apply_snapshot_retention")
 def apply_snapshot_retention_task() -> dict:
     return _run(apply_snapshot_retention())
+
+
+@celery_app.task(name="apply_rule_match_retention")
+def apply_rule_match_retention_task() -> dict:
+    return _run(apply_rule_match_retention())
 
 
 @celery_app.task(name="apply_timescale_policies")

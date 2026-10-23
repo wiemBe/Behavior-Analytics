@@ -33,6 +33,11 @@ def test_new_retention_tasks_are_daily_beats() -> None:
             settings.snapshot_retention_interval_seconds,
             tasks.apply_snapshot_retention_task,
         ),
+        "apply-rule-match-retention": (
+            "apply_rule_match_retention",
+            settings.rule_match_retention_interval_seconds,
+            tasks.apply_rule_match_retention_task,
+        ),
     }
     for key, (name, interval, shim) in expected.items():
         entry = celery_app.conf.beat_schedule[key]
@@ -51,8 +56,25 @@ def test_beat_start_does_not_send_the_new_deleters() -> None:
         "apply_log_source_anomaly_retention",
         "apply_ips_anomaly_retention",
         "apply_snapshot_retention",
+        "apply_rule_match_retention",
     ):
         assert name not in source
+
+
+def test_rule_match_sql_is_one_statement_shape_per_table() -> None:
+    """One bounded `DELETE` per table: strict cutoff, batch limit, key tuple."""
+    from app.services.rule_match_retention import _STATEMENTS as RULE_MATCH_STATEMENTS
+
+    assert [table for table, _sql in RULE_MATCH_STATEMENTS] == [
+        "rule_match_metric",
+        "rule_match_window",
+    ]
+    for _table, sql in RULE_MATCH_STATEMENTS:
+        assert sql.count("DELETE FROM") == 1
+        assert "LIMIT :batch" in sql
+        assert "<=" not in sql
+    assert "bucket_start < :cutoff" in RULE_MATCH_STATEMENTS[0][1]
+    assert "window_start < :cutoff" in RULE_MATCH_STATEMENTS[1][1]
 
 
 def test_incident_sql_names_terminal_states_and_both_reference_guards() -> None:
