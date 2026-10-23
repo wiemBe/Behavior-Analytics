@@ -67,8 +67,14 @@ class SearchExecutor:
         clock: Clock = _utcnow,
         sleep: Sleep | None = None,
         rng: random.Random | None = None,
+        commit_progress: bool = False,
     ) -> None:
         self.session = session
+        # True only for the scheduler's cycle: it commits the RUNNING row, the Ariel
+        # search id and each retry mark, so no transaction stays open while a search
+        # runs or backs off and the API can see the run. Everyone else (the manual
+        # run route) keeps the caller's transaction and the executor only flushes.
+        self.commit_progress = commit_progress
         self.provider = provider
         # The cross-process Ariel permit (docs/ARIEL-PERMIT.md §P.4). None means no
         # enforcement, as for the provider; production callers always pass one.
@@ -112,6 +118,7 @@ class SearchExecutor:
             execution.error_type = None
             execution.error_message = None
             await self.session.flush()
+            await self._checkpoint()
 
             start = self.clock()
             try:
@@ -136,6 +143,7 @@ class SearchExecutor:
                 execution.error_type = error_type
                 execution.error_message = str(exc)
                 await self.session.flush()
+                await self._checkpoint()
                 await self.sleep(delay)
                 continue
 
@@ -153,6 +161,10 @@ class SearchExecutor:
             )
             await self.session.flush()
             return execution
+
+    async def _checkpoint(self) -> None:
+        if self.commit_progress:
+            await self.session.commit()
 
     # ------------------------------------------------------------------ steps
     async def _run_once(self, search: ScheduledSearch, execution: SearchExecution) -> dict:
@@ -175,6 +187,7 @@ class SearchExecutor:
                 execution.ariel_search_id = search_id
                 execution.ariel_status = handle.status
                 await self.session.flush()
+                await self._checkpoint()
 
                 status = await self._poll_until_terminal(search, execution, search_id)
                 if status.status == "ERROR":

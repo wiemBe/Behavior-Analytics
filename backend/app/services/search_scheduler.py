@@ -28,6 +28,7 @@ Policy decisions worth stating explicitly:
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, tzinfo
@@ -683,28 +684,33 @@ class SearchScheduler:
         self.alerts = alert_evaluator
 
     async def run_due(self, *, now: datetime | None = None) -> SchedulerReport:
+        """One cycle. No transaction stays open across an Ariel search.
+
+        Per due search: claim it (row lock, due and in-flight re-check, move
+        `next_run_at`, PENDING row) and commit; run the search with no row lock
+        held; record the result and commit. The caller must not run two cycles at
+        once (`run_due_searches` holds a PostgreSQL advisory lock for that).
+        """
         now = now or self._clock()
         report = SchedulerReport()
 
-        searches = list(
-            (
-                await self.session.scalars(
-                    select(ScheduledSearch)
+        candidates = [
+            (row.id, row.name)
+            for row in (
+                await self.session.execute(
+                    select(ScheduledSearch.id, ScheduledSearch.name)
                     .where(ScheduledSearch.enabled.is_(True))
                     .order_by(ScheduledSearch.next_run_at.nulls_first())
                 )
             ).all()
-        )
-        report.considered = len(searches)
+        ]
+        await self.session.commit()  # the listing's read transaction ends here
+        report.considered = len(candidates)
 
-        for index, search in enumerate(searches):
+        for index, (search_id, name) in enumerate(candidates):
             if len(report.dispatched) >= self.settings.search_max_dispatch_per_cycle:
                 break
-            execution = await self._process(search, now, report)
-            if (
-                execution is not None
-                and execution.error_type == ExecutionErrorType.CAPACITY.value
-            ):
+            if await self._process(search_id, name, now, report):
                 # Only the searches this cycle would still have dispatched: the
                 # slots left after the ones already sent, skipping a run that is
                 # already in flight and a cron the cycle would not dispatch.
@@ -712,9 +718,14 @@ class SearchScheduler:
                     report.dispatched
                 )
                 deferred: list[str] = []
-                for candidate in searches[index + 1 :]:
+                for candidate_id, _candidate_name in candidates[index + 1 :]:
                     if len(deferred) >= remaining:
                         break
+                    candidate = await self.session.get(
+                        ScheduledSearch, candidate_id, populate_existing=True
+                    )
+                    if candidate is None:
+                        continue
                     if (
                         candidate.next_run_at is None
                         or _as_utc(candidate.next_run_at) > now
@@ -741,12 +752,64 @@ class SearchScheduler:
                     )
                 break
 
-        await self.session.flush()
+        await self.session.commit()
         return report
 
     async def _process(
-        self, search: ScheduledSearch, now: datetime, report: SchedulerReport
-    ) -> SearchExecution | None:
+        self, search_id: uuid.UUID, name: str, now: datetime, report: SchedulerReport
+    ) -> bool:
+        """Claim, run and record one search. True when Ariel capacity refused it."""
+        claim = await self._claim(search_id, name, now, report)
+        if claim is None:
+            return False
+        search, scheduled_for, run_key = claim
+        try:
+            execution = await self.executor.execute(
+                search, run_key=run_key, instance_key="default", trigger="SCHEDULED"
+            )
+        except Exception:
+            # The claim is committed; what the executor left stays as it is.
+            await self.session.rollback()
+            raise
+        return await self._record(search_id, name, execution, scheduled_for, report)
+
+    async def _claim(
+        self, search_id: uuid.UUID, name: str, now: datetime, report: SchedulerReport
+    ) -> tuple[ScheduledSearch, datetime, str] | None:
+        """Take one search in a short transaction and commit the claim.
+
+        The row lock (`SKIP LOCKED`), the due and in-flight re-checks, the
+        `next_run_at` move and the PENDING execution row commit together, so a
+        later reader sees either the whole claim or none of it.
+        """
+        try:
+            claim = await self._claim_locked(search_id, name, now, report)
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            raise
+        return claim
+
+    async def _claim_locked(
+        self, search_id: uuid.UUID, name: str, now: datetime, report: SchedulerReport
+    ) -> tuple[ScheduledSearch, datetime, str] | None:
+        search = await self.session.scalar(
+            select(ScheduledSearch)
+            .where(ScheduledSearch.id == search_id)
+            .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
+        )
+        if search is None:
+            # Locked by someone else, or deleted since the listing.
+            exists = await self.session.scalar(
+                select(ScheduledSearch.id).where(ScheduledSearch.id == search_id)
+            )
+            if exists is not None:
+                report.skipped_running.append(name)
+            return None
+        if not search.enabled:
+            return None
+
         try:
             # Unseen search: compute the next fire and wait for it.
             if search.next_run_at is None:
@@ -779,28 +842,60 @@ class SearchScheduler:
             report.invalid_cron.append(search.name)
             return None
 
-        return await self._dispatch(search, scheduled_for, report)
-
-    async def _dispatch(
-        self, search: ScheduledSearch, scheduled_for: datetime, report: SchedulerReport
-    ) -> SearchExecution:
         run_key = ScheduledSearchService.scheduled_run_key(search, scheduled_for)
-        execution = await self.executor.execute(
-            search, run_key=run_key, instance_key="default", trigger="SCHEDULED"
+        existing = await self.session.scalar(
+            select(SearchExecution.id).where(
+                SearchExecution.search_id == search.id, SearchExecution.run_key == run_key
+            )
         )
+        if existing is None:
+            self.session.add(
+                SearchExecution(
+                    search_id=search.id,
+                    run_key=run_key,
+                    trigger="SCHEDULED",
+                    query_version=search.query_version,
+                    status=ExecutionStatus.PENDING,
+                )
+            )
+        return search, scheduled_for, run_key
 
-        search.last_run_at = scheduled_for
-        if execution.status == ExecutionStatus.COMPLETED:
-            search.consecutive_failures = 0
-        else:
-            search.consecutive_failures += 1
+    async def _record(
+        self,
+        search_id: uuid.UUID,
+        name: str,
+        execution: SearchExecution,
+        scheduled_for: datetime,
+        report: SchedulerReport,
+    ) -> bool:
+        """Write the result of one sent search and commit it on its own.
 
-        await self.session.flush()
-        report.dispatched.append(search.name)
-
-        if self.alerts is not None:
-            await self.alerts.evaluate(search, execution)
-        return execution
+        A failure here is logged and rolled back for this search only: the
+        searches already committed stay committed.
+        """
+        capacity = execution.error_type == ExecutionErrorType.CAPACITY.value
+        report.dispatched.append(name)
+        try:
+            search = await self.session.get(
+                ScheduledSearch, search_id, populate_existing=True
+            )
+            if search is not None:
+                search.last_run_at = scheduled_for
+                if execution.status == ExecutionStatus.COMPLETED:
+                    search.consecutive_failures = 0
+                else:
+                    search.consecutive_failures += 1
+                await self.session.flush()
+                if self.alerts is not None:
+                    await self.alerts.evaluate(search, execution)
+            await self.session.commit()
+        except Exception:
+            logger.exception(
+                "could not record the result of a scheduled search",
+                extra={"search": name},
+            )
+            await self.session.rollback()
+        return capacity
 
     async def _has_run_in_flight(self, search: ScheduledSearch, now: datetime) -> bool:
         """True if a previous run is still going.

@@ -16,8 +16,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from redis import Redis
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 from app.alerts.dispatcher import NotificationDispatcher
 from app.alerts.fingerprint import compute_fingerprint
@@ -40,7 +40,7 @@ from app.collectors.offense_collector import OffenseCollector
 from app.collectors.rule_collector import RuleCollector
 from app.collectors.rule_match_collector import RuleMatchCollector
 from app.collectors.rule_metric_collector import RuleMetricCollector
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.database import dispose_engine, get_sessionmaker
 from app.custom_rules.engine import CustomRuleEngine
 from app.custom_rules.retention import CustomRuleRetention
@@ -884,6 +884,10 @@ async def rebuild_baselines() -> dict:
 
 
 # ------------------------------------------------------------ scheduled search
+# The scheduler has no QRadar instance; a fixed id gives `collector_lock_key` a stable key.
+SEARCH_SCHEDULER_LOCK_ID = uuid.UUID(int=0)
+
+
 async def run_due_searches() -> dict:
     """Execute every stored search whose cron schedule has come due.
 
@@ -893,6 +897,40 @@ async def run_due_searches() -> dict:
     """
     settings = get_settings()
     maker = get_sessionmaker()
+    # One cycle at a time. The lock is a session advisory lock on a connection of
+    # its own, held outside the scheduler's session: that session commits after
+    # every search and returns its connection to the pool, which would not keep a
+    # lock taken on it. If this process dies the connection closes and PostgreSQL
+    # frees the lock.
+    async with maker() as probe:
+        bind = probe.bind
+    engine = bind.engine if isinstance(bind, AsyncConnection) else bind
+    if not isinstance(engine, AsyncEngine):
+        raise RuntimeError("run_due_searches needs an engine-bound session")
+    async with engine.connect() as raw_conn:
+        lock_conn = await raw_conn.execution_options(isolation_level="AUTOCOMMIT")
+        lock_session = AsyncSession(bind=lock_conn)
+        try:
+            lock = CollectorAdvisoryLock(
+                lock_session, settings, SEARCH_SCHEDULER_LOCK_ID, "search_scheduler"
+            )
+            async with lock as acquired:
+                if not acquired:
+                    return {"status": "skipped_locked"}
+                return await _run_due_searches_cycle(settings, maker)
+        finally:
+            await lock_session.close()
+            if engine.dialect.name == "postgresql":
+                try:
+                    await lock_conn.execute(text("SELECT pg_advisory_unlock_all()"))
+                except BaseException:
+                    # A lock that may still be held must not return to the pool:
+                    # closing the physical connection makes PostgreSQL free it.
+                    await lock_conn.invalidate()
+                    raise
+
+
+async def _run_due_searches_cycle(settings: Settings, maker: Any) -> dict:
     provider = build_provider()
     try:
         async with maker() as session:
@@ -903,7 +941,9 @@ async def run_due_searches() -> dict:
             enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
             scheduler = SearchScheduler(
                 session,
-                SearchExecutor(session, provider, permit, settings=settings),
+                SearchExecutor(
+                    session, provider, permit, settings=settings, commit_progress=True
+                ),
                 settings=settings,
                 alert_evaluator=SearchAlertEvaluator(
                     session, settings=settings, enqueuer=enqueuer
