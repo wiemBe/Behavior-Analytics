@@ -6,6 +6,20 @@
   min-width: 9ch;
 }
 
+/* The reason a verdict was reached sits under the rule name, cut to two lines; the whole
+   sentence is the element's text and its `title`. */
+.rule-list-table .rule-reason {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  max-width: 60ch;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
 /* Metadata table: quiet key column of a fixed measure, value beside it. */
 .kv-table th {
   width: 22ch;
@@ -28,7 +42,11 @@
 .cards.rules-cards .card {
   padding: var(--sp-3) var(--sp-4);
 }
-@media (max-width: 1100px) {
+.cards.rules-cards .card .k {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+@media (max-width: 1280px) {
   .cards.rules-cards-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

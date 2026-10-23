@@ -22,7 +22,7 @@ from app.api.deps import SessionDep, SettingsDep
 from app.core.config import Settings
 from app.models.enums import RuleHealthStatus
 from app.models.instance import QRadarInstance
-from app.models.rule import RuleCapacitySample
+from app.models.rule import AnalyticsRule, RuleCapacitySample
 from app.repositories.audit import record_audit
 from app.repositories.rule import SORTABLE, RuleFilters, RuleRepository
 from app.schemas.rule import (
@@ -42,6 +42,7 @@ from app.security.rbac import (
     Principal,
     require_permission,
 )
+from app.security.sanitizer import sanitize_text
 from app.services.rule_statistics import RuleStatisticsService
 
 router = APIRouter(prefix="/rules", tags=["rules"])
@@ -66,6 +67,21 @@ async def _resolve_instance(
     return await session.scalar(select(QRadarInstance.id).limit(1))
 
 
+def _with_reason[T: RuleSummary](view: T, reason: str | None) -> T:
+    """`view` with the reason read for it; the ORM row has no such column.
+
+    `model_copy` skips the schema's validators, so the text is sanitised here, as every
+    other string on these schemas is.
+    """
+    clean = sanitize_text(reason) if reason is not None else None
+    return view.model_copy(update={"health_reason": clean})
+
+
+async def _detail(repo: RuleRepository, rule: AnalyticsRule) -> RuleDetail:
+    reasons = await repo.health_reasons([rule])
+    return _with_reason(RuleDetail.model_validate(rule), reasons.get(rule.id))
+
+
 async def _page(
     session: AsyncSession,
     settings: Settings,
@@ -78,8 +94,11 @@ async def _page(
     rules, total = await RuleRepository(session).list_rules(
         filters, limit=bounded, offset=offset
     )
+    reasons = await RuleRepository(session).health_reasons(rules)
     return RulePage(
-        items=[RuleSummary.model_validate(r) for r in rules],
+        items=[
+            _with_reason(RuleSummary.model_validate(r), reasons.get(r.id)) for r in rules
+        ],
         total=total,
         limit=bounded,
         offset=offset,
@@ -204,7 +223,7 @@ async def get_rule(rule_id: uuid.UUID, session: SessionDep) -> RuleDetail:
     rule = await RuleRepository(session).get(rule_id)
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "rule not found")
-    return RuleDetail.model_validate(rule)
+    return await _detail(RuleRepository(session), rule)
 
 
 @router.get("/{rule_id}/health-history", response_model=list[RuleHealthSnapshotOut])
@@ -286,4 +305,4 @@ async def update_rule_metadata(
         session, action="rule.update", actor=principal.subject,
         object_type="rule", object_id=str(rule_id), detail={"changes": changes},
     )
-    return RuleDetail.model_validate(rule)
+    return await _detail(repo, rule)
