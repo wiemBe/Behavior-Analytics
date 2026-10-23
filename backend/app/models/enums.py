@@ -686,6 +686,7 @@ class ExecutionErrorType(StrEnum):
     NETWORK = "NETWORK"                    # connectivity/transport failure — retryable
     PARSING = "PARSING"                    # result normalization failure
     CANCELLED = "CANCELLED"                # cancelled (expiry/operator)
+    CAPACITY = "CAPACITY"                  # no Ariel permit in time; nothing sent, never retried
 
 
 class DetectorSignal(StrEnum):

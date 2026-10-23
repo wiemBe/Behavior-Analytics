@@ -55,8 +55,8 @@ from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider, build_provider_for_instance
 from app.repositories.offense import OffenseRepository
 from app.services.anomaly_fault_retention import AnomalyFaultRetention
+from app.services.ariel_permit import ArielPermitBudget
 from app.services.catchall_retention import CatchallRetention
-from app.services.concurrency import InMemoryConcurrencyLimiter
 from app.services.detection_coverage import DetectionCoverageEvaluator
 from app.services.geo_retention import GeoRetention
 from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
@@ -206,7 +206,15 @@ async def _for_each_instance(
         if not instances:
             return {"status": "no-instance", "instances": 0, "results": []}
 
-        for instance in instances:
+        # A rollback expires every loaded object, and reading an expired attribute on
+        # the async session raises MissingGreenlet. So the names are read once, here,
+        # and the instances a failed run left expired are reloaded before their turn.
+        names = [instance.name for instance in instances]
+        rolled_back = False
+        for instance, name in zip(instances, names, strict=True):
+            if rolled_back:
+                await session.refresh(instance)
+                rolled_back = False
             provider = (
                 # audit_session wires the MCP audit sink to AuditLog; it is
                 # inert for the REST provider, which audits via telemetry.
@@ -219,20 +227,21 @@ async def _for_each_instance(
                 await session.commit()
             except Exception as exc:
                 await session.rollback()
+                rolled_back = True
                 # The exception type only: an upstream message may carry
                 # request detail we must not persist or log.
                 outcome = {"status": "failed", "error_class": type(exc).__name__}
                 logger.warning(
                     "collection run failed",
                     extra={
-                        "instance": instance.name,
+                        "instance": name,
                         "error_class": type(exc).__name__,
                     },
                 )
             finally:
                 if provider is not None:
                     await provider.aclose()
-            results.append({"instance": instance.name, **outcome})
+            results.append({"instance": name, **outcome})
 
     return {"instances": len(results), "results": results}
 
@@ -873,14 +882,14 @@ async def run_due_searches() -> dict:
     provider = build_provider()
     try:
         async with maker() as session:
-            limiter = InMemoryConcurrencyLimiter(
-                per_instance=settings.ariel_max_concurrent_searches,
-                global_limit=settings.ariel_global_max_concurrent_searches,
-            )
+            # Searches are not instance-scoped yet (execution_instance_key is always
+            # "default"), so the permit is global-only; a per-console budget binds
+            # without further change once they carry real instance ids.
+            permit = ArielPermitBudget.for_session(session, settings, instance_id=None)
             enqueuer = NotificationDispatcher(session, notifiers={}, policy=default_policy())
             scheduler = SearchScheduler(
                 session,
-                SearchExecutor(session, provider, limiter, settings=settings),
+                SearchExecutor(session, provider, permit, settings=settings),
                 settings=settings,
                 alert_evaluator=SearchAlertEvaluator(
                     session, settings=settings, enqueuer=enqueuer

@@ -7,8 +7,8 @@ Responsibilities and the guarantees they satisfy:
     DB unique constraint).
   * Never executes frontend-supplied AQL: only the stored query string of a
     persisted search is run, and it is re-validated defensively here too.
-  * Enforces timeout, max time range, max rows, and per-instance/global
-    concurrency.
+  * Enforces timeout, max time range and max rows, and holds one cross-process
+    Ariel permit for the whole search lifecycle (a refusal is a CAPACITY failure).
   * Polls Ariel rather than using QRadar's blocking wait, cancelling on timeout.
   * Retries retryable failures with exponential backoff + jitter, up to a cap.
   * Records QRadar search id, lifecycle state, duration, typed failure reason and
@@ -21,7 +21,8 @@ Clock and sleep are injected so lifecycle/timeout/retry tests are deterministic.
 from __future__ import annotations
 
 import random
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -40,8 +41,8 @@ from app.services.ariel_errors import (
     classify,
     is_retryable,
 )
+from app.services.ariel_permit import ArielPermitBudget, ArielPermitUnavailable
 from app.services.backoff import backoff_delay
-from app.services.concurrency import ConcurrencyLimiter
 
 Clock = Callable[[], datetime]
 Sleep = Callable[[float], Awaitable[None]]
@@ -56,7 +57,7 @@ class SearchExecutor:
         self,
         session: AsyncSession,
         provider: QRadarProvider,
-        limiter: ConcurrencyLimiter,
+        permit: ArielPermitBudget | None,
         *,
         settings: Settings | None = None,
         clock: Clock = _utcnow,
@@ -65,7 +66,9 @@ class SearchExecutor:
     ) -> None:
         self.session = session
         self.provider = provider
-        self.limiter = limiter
+        # The cross-process Ariel permit (docs/ARIEL-PERMIT.md §P.4). None means no
+        # enforcement, as for the provider; production callers always pass one.
+        self.permit = permit
         self.settings = settings or get_settings()
         self.clock = clock
         self._rng = rng or random.Random()  # noqa: S311 - jitter, not crypto
@@ -158,7 +161,7 @@ class SearchExecutor:
             settings=self.settings,
         )
 
-        async with self.limiter.slot(execution_instance_key(execution, search)):
+        async with self._hold_permit():
             handle = await self.provider.create_ariel_search(search.aql_query)
             # The row's ariel_search_id is nullable (a search is created before
             # the id exists), but past this point the id is always set; thread
@@ -187,6 +190,25 @@ class SearchExecutor:
                 "total_count": results.total_count,
                 "truncated": results.truncated,
             }
+
+    @asynccontextmanager
+    async def _hold_permit(self) -> AsyncIterator[None]:
+        """Hold one Ariel permit for the whole lifecycle: create, poll, results, cancel.
+
+        A refusal raises before anything is sent to QRadar; `classify` names it
+        CAPACITY and it is not retried.
+        """
+        if self.permit is None:
+            yield
+            return
+        async with self.permit.permit() as held:
+            if held is None:
+                raise ArielPermitUnavailable(
+                    self.permit.wait_seconds,
+                    self.permit.instance_limit,
+                    self.permit.global_limit,
+                )
+            yield
 
     async def _poll_until_terminal(
         self, search: ScheduledSearch, execution: SearchExecution, search_id: str
@@ -332,8 +354,10 @@ class SearchExecutor:
 
 
 def execution_instance_key(execution: SearchExecution, search: ScheduledSearch) -> str:
-    # Searches are not yet instance-scoped in the model; use a stable key so the
-    # global + per-"instance" caps both apply. Phase 3 wires real instance ids.
+    # Searches are not yet instance-scoped in the model, so every run is "default".
+    # The permit callers therefore build a global-only budget (instance_id=None);
+    # when searches get real instance ids, a per-console budget binds without
+    # further change to the executor.
     return "default"
 
 

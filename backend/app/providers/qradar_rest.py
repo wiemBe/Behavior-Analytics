@@ -24,9 +24,10 @@ import asyncio
 import logging
 import random
 import ssl
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from functools import wraps
+from typing import Any, ClassVar, Protocol, cast
 
 import httpx
 
@@ -103,6 +104,7 @@ from app.providers.telemetry import EndpointCategory, ErrorClass, observe
 from app.providers.tls import build_ssl_context
 from app.rules.matches import fold_windowed_rows, window_starts
 from app.security.sanitizer import sanitize_text
+from app.services.ariel_permit import ArielPermitBudget, ArielPermitUnavailable
 from app.services.backoff import backoff_delay
 from app.waf.bucketed import (
     fold_breakdown_buckets,
@@ -135,6 +137,39 @@ RULE_MATCH_WINDOWED_QUERY_VERSION = "rule_match/v2"
 #: The console-wide floor proof of the rule-match history backfill (HB-5). One
 #: row per bucket with events; the text is stored here, never built by a caller.
 CONSOLE_EVENT_TOTALS_QUERY_VERSION = "console_event_totals/v1"
+
+
+class _ArielPermitOwner(Protocol):
+    _permit: ArielPermitBudget | None
+
+
+def _holds_ariel_permit[**P, R](
+    method: Callable[P, Coroutine[Any, Any, R]],
+) -> Callable[P, Coroutine[Any, Any, R]]:
+    """Hold one configured permit around a provider-owned Ariel lifecycle.
+
+    Applied to exactly the four methods that run create, poll, results and cancel
+    themselves (docs/ARIEL-PERMIT.md §P.3). They never call each other, so a search
+    is counted once. A refusal raises before anything is sent to /ariel/searches.
+    `_permit is None` means no enforcement.
+    """
+
+    @wraps(method)
+    async def permitted(*args: P.args, **kwargs: P.kwargs) -> R:
+        owner = cast(_ArielPermitOwner, args[0])
+        budget = owner._permit
+        if budget is None:
+            return await method(*args, **kwargs)
+        async with budget.permit() as permit:
+            if permit is None:
+                raise ArielPermitUnavailable(
+                    budget.wait_seconds,
+                    budget.instance_limit,
+                    budget.global_limit,
+                )
+            return await method(*args, **kwargs)
+
+    return permitted
 
 
 def _rule_id(value: Any) -> int | None:
@@ -252,6 +287,7 @@ class QRadarRestProvider(QRadarProvider):
         clock: Callable[[], datetime] | None = None,
         ips_max_sources_per_search: int = 50,
         pw_max_sources_per_search: int = 50,
+        permit: ArielPermitBudget | None = None,
     ) -> None:
         if not verify_ssl:
             # Hard failure, not a warning. See config._production_hardening.
@@ -272,6 +308,7 @@ class QRadarRestProvider(QRadarProvider):
         self._ips_max_sources_per_search = max(1, int(ips_max_sources_per_search))
         self._pw_max_sources_per_search = max(1, int(pw_max_sources_per_search))
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._permit = permit
 
         if client is not None:
             self._client = client
@@ -635,6 +672,7 @@ class QRadarRestProvider(QRadarProvider):
             )
         return out
 
+    @_holds_ariel_permit
     async def get_log_source_metrics(
         self, window_start: datetime, window_end: datetime
     ) -> list[LogSourceMetricSample]:
@@ -733,6 +771,7 @@ class QRadarRestProvider(QRadarProvider):
             )
         return samples
 
+    @_holds_ariel_permit
     async def get_log_source_metrics_bucketed(
         self,
         window_start: datetime,
@@ -2096,6 +2135,7 @@ class QRadarRestProvider(QRadarProvider):
             ariel_searches=searches,
         )
 
+    @_holds_ariel_permit
     async def observe_property_rejection(
         self,
         *,
@@ -2169,6 +2209,7 @@ class QRadarRestProvider(QRadarProvider):
             ))
         return out
 
+    @_holds_ariel_permit
     async def _run_bounded_aggregate(self, aql: str, *, max_rows: int) -> list[dict]:
         """Create, poll and fetch one aggregate search under a hard time bound."""
         handle = await self.create_ariel_search(aql)
