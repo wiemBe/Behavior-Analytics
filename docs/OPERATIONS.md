@@ -354,9 +354,9 @@ Mevcut `.env` ile ikinci `install`:
   oturumları iptal eder.
 - `load-secrets.sh` ve `qradar add` yeniden çalışır; migrate'te Alembic zaten başta olduğundan bir
   şey yapmaz; `up -d` yeniden çalışır.
-- `COMPOSE_PROFILES` sihirbaz yanıtlarından yeniden yazılır (`proxy`, harici vekilde boş). Elle
-  eklenmiş `mcp` **korunmaz**: her `install` sonrasında `mcp` değerini yeniden ekle ve
-  `docker compose up -d qradar-mcp` çalıştır (bkz. OPS-R64). `upgrade` bu satıra dokunmaz.
+- `COMPOSE_PROFILES` içinde `proxy` sihirbaz yanıtına göre yazılır; elle eklenmiş diğer profiller
+  (pratikte `mcp`) korunur. `upgrade` ve `rollback`, `mcp` açıksa `qradar-mcp` servisini de hedef
+  imajla yeniden yaratır (bkz. OPS-R64).
 
 `--reconfigure` sır olmayan soruları yeniden sorar. Postgres volume'u varsa `ENCRYPTION_KEY` ve
 `POSTGRES_PASSWORD` değişimini reddeder.

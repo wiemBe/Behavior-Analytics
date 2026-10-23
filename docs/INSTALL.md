@@ -437,17 +437,10 @@ console uses the MCP service only when it is registered with `--provider mcp` an
 The server writes its log to standard output only. Read it with `docker compose logs qradar-mcp`.
 The `mcp_logs` volume stays empty; do not rely on it.
 
-**Re-running `install` removes `mcp`; `upgrade` does not move the service.**
-
-- `./qradar-dash install` rewrites `COMPOSE_PROFILES` from the wizard answers (`proxy`, or empty
-  with an external proxy). An operator-added `mcp` is not carried forward. The running container
-  is not stopped, but `doctor` stops counting it and `upgrade` stops pulling its image. After
-  every `install` run, add `mcp` to `COMPOSE_PROFILES` again.
-- `./qradar-dash upgrade` edits only `QRADAR_DASH_VERSION` (and the image prefix when the
-  repository was renamed), so `mcp` stays in `COMPOSE_PROFILES`, and it pulls the target
-  `qradar-mcp` image. It does not recreate the `qradar-mcp` container: its service list holds the
-  backend, the workers, the frontend and the proxy. After each upgrade, run
-  `docker compose up -d qradar-mcp` to move it to the new image.
+Re-running `./qradar-dash install` keeps `mcp` (and any other profile you added) in
+`COMPOSE_PROFILES`; the wizard decides only `proxy`. `./qradar-dash upgrade` and `rollback`
+recreate `qradar-mcp` with the target image in the same `up -d --wait` as the application, and wait
+for its healthcheck, whenever `mcp` is in `COMPOSE_PROFILES`.
 
 If MCP calls fail after the service is up, follow [`OPERATIONS.md`](OPERATIONS.md), OPS-R64. A TLS
 failure reaches the backend as an unavailability, not as an authentication error.
