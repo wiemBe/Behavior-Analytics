@@ -18,7 +18,7 @@ function at(
 }
 
 /**
- * The Home. Positions reproduce the Phase 2 Home: the KPI row (4 x 3 columns), fleet EPS
+ * The Home. Positions: the KPI row (4 x 3 columns), fleet EPS
  * (8) beside EPS by class (4), top sources, severity and health (3 x 4), recent anomalies and
  * recent offenses (2 x 6). Left out until their data exists: the geography map.
  */

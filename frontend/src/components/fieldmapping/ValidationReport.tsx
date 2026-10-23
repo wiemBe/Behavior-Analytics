@@ -16,7 +16,7 @@ import {
   formatShare,
   reasonText,
 } from "@/lib/fieldMapping";
-import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 

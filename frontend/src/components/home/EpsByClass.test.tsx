@@ -10,7 +10,7 @@ import { fleet, fleetClass, noData } from "@/lib/home/fixtures";
 import { EpsByClass } from "./EpsByClass";
 import { failed, forbidden, loading, ok } from "./testkit";
 
-const { setOption, dispose, init, use, on } = vi.hoisted(() => {
+const { setOption, init, use, on } = vi.hoisted(() => {
   const setOption = vi.fn();
   const dispose = vi.fn();
   const on = vi.fn();

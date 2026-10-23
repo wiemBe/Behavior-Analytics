@@ -85,16 +85,6 @@ function failure(err: unknown, verb: string): Msg {
   return { tone: "crit", text: `Not changed. ${actionErrorMessage(err)}` };
 }
 
-function unavailable(detail: string): PropertyCatalogOut {
-  return {
-    status: "UNAVAILABLE",
-    fetched_at: null,
-    filtered_by_source_type: false,
-    properties: [],
-    detail,
-  };
-}
-
 export function ProfileEditor({
   schema,
   source,

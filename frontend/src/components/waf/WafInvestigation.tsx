@@ -9,6 +9,7 @@
 import { LifecycleTimeline } from "@/components/behavior/LifecycleTimeline";
 import type { WafAnomalyDetail, WafBaselineCell, WafMetricBucket } from "@/lib/api";
 import { stateMeaning } from "@/lib/behavior";
+import { formatShare } from "@/lib/format";
 
 import { WafDetectionBlock } from "./WafDetectionBlock";
 import { WafIncidentHeader } from "./WafIncidentHeader";
@@ -37,7 +38,7 @@ export function wafChartSummary(
   const d = anomaly.detection;
   if (spec) {
     if (d?.expected_proportion != null) {
-      parts.push(`The expected proportion at detection was ${(d.expected_proportion * 100).toFixed(1)}%.`);
+      parts.push(`The expected proportion at detection was ${formatShare(d.expected_proportion)}.`);
     }
   } else if (d?.expected_low != null && d.expected_high != null) {
     parts.push(

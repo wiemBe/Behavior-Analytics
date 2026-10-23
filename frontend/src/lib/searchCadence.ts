@@ -107,12 +107,6 @@ export function presetToCron(seconds: number): string | null {
   return SCHEDULE_PRESETS.find((p) => p.seconds === seconds)?.cron ?? null;
 }
 
-/** `Every 1 h` for a preset cron, `Custom` for anything else. */
-export function scheduleLabel(cron: string): string {
-  const preset = cronToPreset(cron);
-  return preset ? `Every ${preset.label}` : "Custom";
-}
-
 /** A cadence option label from the API's allowed values. */
 export function cadenceLabel(seconds: number): string {
   return formatDuration(seconds);

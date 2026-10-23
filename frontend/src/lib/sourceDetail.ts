@@ -11,6 +11,7 @@
 
 import type { AnomalySummary, BaselineCell, MetricBucket, SourceBehavior } from "@/lib/api";
 import { formatMetric } from "@/lib/behavior";
+import { formatShare } from "@/lib/format";
 
 // --- time range ------------------------------------------------------------
 
@@ -146,7 +147,7 @@ export function baselineQuality(
       status: "INCOMPLETE",
       label: "Incomplete",
       tone: "warn",
-      explanation: `The baseline for this weekday and hour is built from ${cell.sample_count} sample${cell.sample_count === 1 ? "" : "s"} at ${(cell.completeness * 100).toFixed(0)}% collection completeness, and the backend has not marked it reliable. Verdicts against it are weaker than they appear.`,
+      explanation: `The baseline for this weekday and hour is built from ${cell.sample_count} sample${cell.sample_count === 1 ? "" : "s"} at ${formatShare(cell.completeness)} collection completeness, and the backend has not marked it reliable. Verdicts against it are weaker than they appear.`,
       cell,
     };
   }

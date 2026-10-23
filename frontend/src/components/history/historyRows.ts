@@ -14,7 +14,6 @@ import {
   NOT_READ,
   NOT_STARTED,
   SWITCHED_OFF,
-  familyName,
   stateInfo,
   type StateInfo,
 } from "./historyFormat";
@@ -185,8 +184,4 @@ export function rowsOf(console: HistoryConsole): HistoryRow[] {
     }
   }
   return rows;
-}
-
-export function familyLabel(row: HistoryRow): string {
-  return familyName(row.family);
 }

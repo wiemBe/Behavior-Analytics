@@ -28,7 +28,7 @@ export function formatPercent(
   // The shared spelling is one decimal and a space before "%". A non-default
   // precision keeps that space and does not use the tiny-share mark.
   const text =
-    digits === 1 ? formatShare(value) : `${(value * 100).toFixed(digits)} %`;
+    digits === 1 ? formatShare(value) : `${(value * 100).toFixed(digits)}\u00A0%`;
   return isLowerBound(measurement) ? `≥ ${text}` : text;
 }
 
@@ -39,7 +39,7 @@ export function formatPercent(
 export function formatPoints(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
   const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(1)} pp`;
+  return `${sign}${value.toFixed(1)}\u00A0pp`;
 }
 
 /** "5 min" for a 300 s bucket; null when the width is not known. */

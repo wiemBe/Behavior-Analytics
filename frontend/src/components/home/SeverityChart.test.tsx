@@ -7,7 +7,7 @@ import { lastHours } from "@/lib/home/severityPerHour";
 import { SeverityChart } from "./SeverityChart";
 import { failed, forbidden, loading, ok } from "./testkit";
 
-const { setOption, dispose, init, use, on } = vi.hoisted(() => {
+const { setOption, init, use, on } = vi.hoisted(() => {
   const setOption = vi.fn();
   const dispose = vi.fn();
   const on = vi.fn();

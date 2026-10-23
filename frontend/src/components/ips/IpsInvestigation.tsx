@@ -19,7 +19,7 @@ import type {
 
 import { reliableCellCount, type IpsBaselineSource } from "./ipsBaseline";
 import { detectorSpec, ipsFigures } from "./ipsDetectors";
-import { bucketWidth } from "./ipsFormat";
+import { formatShare } from "@/lib/format";
 import { ipsStateMeaning, ipsSubjectText, ipsTypeLabel } from "./ipsLabels";
 import {
   buildIpsEntitySeries,
@@ -90,11 +90,11 @@ export function ipsChartSummary(
   const parts = [`${quantity} for ${ipsSubjectText(anomaly)} across ${c.stored} stored buckets.`];
   if (d?.expected_low != null && d.expected_high != null) {
     const f = ipsFigures(anomaly, d);
-    const scale = f.unit === "share" ? 100 : 1;
-    const unit = f.unit === "share" ? "%" : f.unit === "ports" ? " distinct ports" : " events per bucket";
-    parts.push(
-      `The expected range at detection was ${(d.expected_low * scale).toFixed(1)} to ${(d.expected_high * scale).toFixed(1)}${unit}.`,
-    );
+    const range =
+      f.unit === "share"
+        ? `${formatShare(d.expected_low)} to ${formatShare(d.expected_high)}`
+        : `${d.expected_low.toFixed(1)} to ${d.expected_high.toFixed(1)}${f.unit === "ports" ? " distinct ports" : " events per bucket"}`;
+    parts.push(`The expected range at detection was ${range}.`);
   }
   if (c.gaps > 0) parts.push(`${c.gaps} intervals had no stored bucket and are drawn as gaps.`);
   if (c.notMeasured > 0) {

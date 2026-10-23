@@ -10,7 +10,7 @@ import {
   ipsSourceDetail,
 } from "./fixtures";
 import { ipsChartSummary, IpsInvestigation, type IpsSeriesData } from "./IpsInvestigation";
-import { buildIpsEntitySeries } from "./ipsSeries";
+import { buildIpsEntitySeries, buildIpsSourceSeries } from "./ipsSeries";
 
 const chartProps = vi.hoisted(() => ({ last: null as null | Record<string, unknown> }));
 vi.mock("./IpsSeriesChart", () => ({
@@ -360,5 +360,15 @@ describe("ipsChartSummary", () => {
     expect(text).toMatch(/70\.0 to 210\.0 events per bucket/);
     expect(text).toMatch(/1 intervals had no stored bucket/);
     expect(text).toMatch(/not as zero/);
+  });
+
+  it("spells the range of a share with the shared percent formatter", () => {
+    const text = ipsChartSummary(
+      ipsSourceDetail(),
+      buildIpsSourceSeries([ipsSourceBucket()], "concentration"),
+      "Largest source IP's share of events",
+    );
+    expect(text).toContain("The expected range at detection was 10.0\u00A0% to 27.0\u00A0%.");
+    expect(text).not.toMatch(/\d%/);
   });
 });

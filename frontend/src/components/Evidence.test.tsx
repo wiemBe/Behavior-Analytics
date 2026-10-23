@@ -49,10 +49,15 @@ describe("Evidence units", () => {
         }}
       />,
     );
-    expect(row("Observed")).toHaveTextContent("61.2%");
-    expect(row("Expected")).toHaveTextContent("90%");
+    expect(row("Observed")).toHaveTextContent("61.2 %");
+    expect(row("Expected")).toHaveTextContent("90.0 %");
     expect(row("Deviation")).toHaveTextContent("28.8pp");
     expect(row("Samples")).toHaveTextContent("48,210events");
+  });
+
+  it("shows a cardinality drop as a share with its own words after the sign", () => {
+    render(<Evidence data={{ anomaly_type: "CARDINALITY_DROP", observed_value: 3, deviation_score: 0.4375 }} />);
+    expect(row("Deviation").textContent).toBe("Deviation43.8\u00A0%below baseline");
   });
 
   it("uses seconds for a delay and singular units for a count of one", () => {

@@ -412,7 +412,7 @@ export interface LogSourceDetail {
   instance_id?: string | null;
 }
 
-// --- Phase 2 types ---------------------------------------------------------
+// --- Search, log-source, offense and coverage types ------------------------
 export interface ScheduledSearch {
   id: string;
   name: string;
@@ -1331,15 +1331,6 @@ export type SubjectKind =
 /** EXACT, or LOWER_BOUND when the count is "at least n". */
 export type MeasurementKind = "EXACT" | "LOWER_BOUND";
 
-export type WafAnomalyTypeName =
-  | "WAF_REQUEST_RATE_SPIKE"
-  | "WAF_CLIENT_CONCENTRATION_SPIKE"
-  | "WAF_BLOCK_RATIO_SPIKE"
-  | "WAF_ERROR_RATIO_SPIKE"
-  | "WAF_CLIENT_ERROR_RATIO_SPIKE"
-  | "WAF_NEW_ENDPOINT_ACCESS"
-  | "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE";
-
 export interface WafEndpointRef {
   id: string;
   normalized_endpoint: string;
@@ -1538,15 +1529,6 @@ export interface PagedWafEndpoints {
 // These mirror app/schemas/anomaly.py and app/schemas/ips_behavior.py (T-085).
 // A missing measurement is `null`, never 0. The API serves no contributor list
 // and no source IP for IPS, by design (docs/PHASE-D-IPS-BEHAVIOR.md §D.4).
-
-export type IpsAnomalyTypeName =
-  | "IPS_PORT_RATE_SPIKE"
-  | "IPS_DESTINATION_RATE_SPIKE"
-  | "IPS_SIGNATURE_BURST"
-  | "IPS_NEW_DESTINATION_PORT"
-  | "IPS_SOURCE_CONCENTRATION_SPIKE"
-  | "IPS_PORT_FANOUT_SPIKE"
-  | "IPS_BLOCK_RATIO_SHIFT";
 
 export type IpsDimensionName =
   | "TOTALS"
@@ -2032,7 +2014,7 @@ export interface PwValueRef {
 
 /** `PwDetectionDetailOut`: the detector's working, projected by whitelist. A figure the detector
  *  did not record is null, never 0. The band is in events per bucket; the new-value fields are
- *  counts and the API declares no unit for them (see `pwNewValueFigures`). */
+ *  counts and the API declares no unit for them (see `newValueFigures` in `components/propertywatch/pwFormat.ts`). */
 export interface PwDetectionDetail {
   reason: string | null;
   expected_low: number | null;
@@ -2376,10 +2358,8 @@ function qs(params: Record<string, string | number | boolean | undefined>): stri
 }
 
 export const api = {
-  overview: () => request<SocOverview>("/overview"),
   logSources: () => request<LogSourceSummary[]>("/log-sources"),
   logSource: (id: string) => request<LogSourceDetail>(`/log-sources/${id}`),
-  syncLogSources: () => request<unknown>("/log-sources/sync", { method: "POST" }),
 
   searches: (signal?: AbortSignal) => request<ScheduledSearch[]>("/searches", { signal }),
   search: (id: string, signal?: AbortSignal) =>
@@ -2477,7 +2457,6 @@ export const api = {
   offenseHistory: (id: number) =>
     request<OffenseHistoryPoint[]>(`/offenses/${id}/history`),
   offenseAggregates: () => request<OffenseAggregates>("/offenses/aggregates"),
-  offenseAnalytics: () => request<OffenseAnalytics>("/offenses/analytics"),
 
   rules: (params: {
     limit?: number;
@@ -2494,8 +2473,6 @@ export const api = {
   coverageSummary: () => request<CoverageSummary>("/coverage/summary"),
   coverageTechniques: (params: { limit?: number; offset?: number } = {}) =>
     request<Page<TechniqueCoverage>>(`/coverage/techniques${qs(params)}`),
-  coverageDegraded: () => request<Page<TechniqueCoverage>>("/coverage/degraded"),
-  coverageMissing: () => request<Page<TechniqueCoverage>>("/coverage/missing"),
   coverageByRule: () => request<RuleCoverageView[]>("/coverage/by-rule"),
   coverageByDataSource: () =>
     request<DataSourceCoverageView[]>("/coverage/by-data-source"),
@@ -2728,7 +2705,7 @@ export function actionErrorMessage(err: unknown): string {
   return "The request could not be sent. Check your connection and try again.";
 }
 
-// Severity → CSS pill class, shared by Phase 2 views.
+// Severity → CSS pill class, shared by the views that show a severity.
 //
 // Severity grades how bad a finding is. It never takes the positive tone: a
 // LOW finding is still a finding, and green is reserved for a genuinely good

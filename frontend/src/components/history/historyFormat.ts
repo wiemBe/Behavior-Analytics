@@ -9,9 +9,7 @@ import {
   type HistoryConsoleMode,
   type HistoryFamily,
   type HistoryFamilyEstimate,
-  type HistoryGap,
 } from "@/lib/api";
-import { utcTimeText } from "@/components/ui/UtcTime";
 import { formatCount } from "@/lib/format";
 
 
@@ -74,48 +72,12 @@ export function decidedBy(decision: { source: string; decided_by: string }): str
   return decision.source === "INSTALLER" ? "the installer" : decision.decided_by;
 }
 
-/** "History backfill: Yes, read 28 days. Recorded by the installer on 2026-10-19 12:04 UTC." */
-export function decisionSentence(console: HistoryConsole): string {
-  const decision = console.decision;
-  if (decision === null) return "History backfill: not decided. Nothing is read from QRadar's past.";
-  const by = decidedBy(decision);
-  const when = utcTimeText(decision.decided_at);
-  if (decision.answer === "NO") {
-    return `History backfill: No, history is not read. Recorded by ${by} on ${when}.`;
-  }
-  const days = decision.days === null ? "" : `, read ${decision.days} days`;
-  return `History backfill: Yes${days}. Recorded by ${by} on ${when}.`;
-}
-
-/** The requests made after the answer: what was asked, by whom, when. */
-export function requestSentences(console: HistoryConsole): string[] {
-  const d = console.decision;
-  if (d === null) return [];
-  const out: string[] = [];
-  if (d.start_requested_at) {
-    out.push(
-      `Read history now was asked by ${d.start_requested_by ?? "an operator"} on ${utcTimeText(d.start_requested_at)}.`,
-    );
-  }
-  if (d.stop_requested_at) {
-    out.push(
-      `Stop reading was asked by ${d.stop_requested_by ?? "an operator"} on ${utcTimeText(d.stop_requested_at)}.`,
-    );
-  }
-  return out;
-}
-
 /** A figure of days read: whole days without a decimal, anything else with one, 0.0 as 0.0. */
 export function formatDays(value: number): string {
   return Number.isInteger(value) && value > 0 ? String(value) : value.toFixed(1);
 }
 
 export { formatCount } from "@/lib/format";
-
-/** `10-01 00:00 UTC to 10-01 00:30 UTC`, from the gap's two instants (the title has the year). */
-export function gapRange(gap: HistoryGap): string {
-  return `${utcTimeText(gap.start, "compact")} to ${utcTimeText(gap.end, "compact")}`;
-}
 
 export { relativeAge } from "@/lib/time";
 
@@ -199,10 +161,6 @@ export function costHours(estimate: HistoryConsoleEstimate | undefined): number 
 }
 
 // --- failures ---------------------------------------------------------------
-
-export function failureStatus(err: unknown): number | null {
-  return err instanceof ApiError ? err.status : null;
-}
 
 /** The console a 409 carries, when its body has one. */
 export function conflictConsole(err: unknown): HistoryConsole | null {

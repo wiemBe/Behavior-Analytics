@@ -6,7 +6,7 @@ import { epsPoint, epsSeries } from "@/lib/home/fixtures";
 import { EpsChart } from "./EpsChart";
 import { failed, forbidden, loading, ok } from "./testkit";
 
-const { setOption, resize, dispose, init, use, on } = vi.hoisted(() => {
+const { setOption, dispose, init, use } = vi.hoisted(() => {
   const setOption = vi.fn();
   const resize = vi.fn();
   const dispose = vi.fn();

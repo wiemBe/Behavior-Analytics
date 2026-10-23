@@ -9,6 +9,8 @@
 // alert, a future detector) shows its numbers bare rather than under a guessed
 // unit, and a missing value is a dash with no unit after it.
 
+import { formatShare } from "@/lib/format";
+
 import "./Evidence.css";
 
 type Scale = "raw" | "percent";
@@ -93,6 +95,11 @@ function figure(value: unknown, scale: Scale): number | null {
   return scale === "percent" ? value * 100 : value;
 }
 
+/** A share's unit is the "%" of the shared formatter's text: what follows it is the rest. */
+function isShare(measure: Measure | null): measure is Measure & { unit: string } {
+  return measure !== null && measure.scale === "percent" && typeof measure.unit === "string" && measure.unit.startsWith("%");
+}
+
 function format(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 3 });
 }
@@ -127,12 +134,19 @@ export function Evidence({ data }: { data: Record<string, unknown> }) {
         <tbody>
           {rows.map(([label, key, measure]) => {
             const n = measure ? figure(data[key], measure.scale) : null;
+            const share = n != null && isShare(measure);
             return (
               <tr key={label}>
                 <td className="evidence-label">{label}</td>
-                <td className="num evidence-value">{n == null ? "—" : format(n)}</td>
+                <td className="num evidence-value">
+                  {n == null ? "—" : share ? formatShare(n / 100) : format(n)}
+                </td>
                 <td className="evidence-unit">
-                  {n != null && measure ? unitFor(measure.unit, n) : null}
+                  {n == null || !measure
+                    ? null
+                    : share
+                      ? ((measure.unit as string).slice(1).trim() || null)
+                      : unitFor(measure.unit, n)}
                 </td>
               </tr>
             );

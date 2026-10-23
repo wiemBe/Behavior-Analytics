@@ -72,7 +72,7 @@ describe("validation words", () => {
     const withGeneric = report({
       fields: [fieldReport({ field: "SIGNATURE", generic_name_ratio: 0.124, generic_name_events: 1240 })],
     });
-    expect(genericNameNotes(withGeneric)[0].text).toMatch(/^12\.4 % of events carry a generic/);
+    expect(genericNameNotes(withGeneric)[0].text).toMatch(/^12\.4\s% of events carry a generic/);
     const zero = report({ fields: [fieldReport({ field: "SIGNATURE", generic_name_ratio: 0, generic_name_events: 0 })] });
     expect(genericNameNotes(zero)).toEqual([]);
   });

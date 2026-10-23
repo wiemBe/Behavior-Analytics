@@ -194,6 +194,11 @@ describe("property-watch save and preview", () => {
     render(<WatchEditor catalog={catalog()} mode="edit" watch={watch()} initialScope={scope()} />);
     await save();
     expect(screen.getByText(/11 measured, 1 lower-bound/)).toBeInTheDocument();
+    // Every percent is the shared formatter's: one decimal, a space before the sign.
+    expect(screen.getByText("90.0 %")).toBeInTheDocument();
+    expect(screen.getByText("66.7 %")).toBeInTheDocument();
+    expect(screen.getByText("33.3 %")).toBeInTheDocument();
+    expect(screen.getByText(/parsed on 90\.0 % of events/)).toBeInTheDocument();
     expect(screen.getByText(/at most 100 events/)).toBeInTheDocument();
     expect(screen.getByText(/catalog consulted 3 types/)).toBeInTheDocument();
     expect(screen.getAllByText(/at least 600/).length).toBeGreaterThan(0);

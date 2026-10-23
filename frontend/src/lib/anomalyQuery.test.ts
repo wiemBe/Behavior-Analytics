@@ -7,6 +7,7 @@ import {
   MAX_RANGE_DAYS,
   paginationParams,
   parseAnomalyQuery,
+  parseSubjectQuery,
 } from "./anomalyQuery";
 
 const UUID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
@@ -149,6 +150,24 @@ describe("paginationParams", () => {
   it("does not carry the offset: the pagination control owns it", () => {
     const params = paginationParams(parseAnomalyQuery({ offset: "25" }));
     expect("offset" in params).toBe(false);
+  });
+});
+
+describe("subject parsing", () => {
+  it("accepts the two subject kinds and nothing else", () => {
+    expect(parseSubjectQuery({ subject_kind: "WAF_ENDPOINT" }).subject_kind).toBe("WAF_ENDPOINT");
+    expect(parseSubjectQuery({ subject_kind: "LOG_SOURCE" }).subject_kind).toBe("LOG_SOURCE");
+    expect(parseSubjectQuery({ subject_kind: "<script>" }).subject_kind).toBe("");
+    expect(parseSubjectQuery({}).subject_kind).toBe("");
+  });
+
+  it("accepts a WAF detector type from anomaly_type and drops anything else", () => {
+    expect(parseSubjectQuery({ anomaly_type: "WAF_BLOCK_RATIO_SPIKE" }).waf_anomaly_type).toBe(
+      "WAF_BLOCK_RATIO_SPIKE",
+    );
+    // A Phase A type is `parseAnomalyQuery`'s to parse, not this function's.
+    expect(parseSubjectQuery({ anomaly_type: "VOLUME_SPIKE" }).waf_anomaly_type).toBe("");
+    expect(parseSubjectQuery({ anomaly_type: "WAF_NOPE" }).waf_anomaly_type).toBe("");
   });
 });
 

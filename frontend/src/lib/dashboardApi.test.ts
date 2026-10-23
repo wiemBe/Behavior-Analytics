@@ -6,7 +6,6 @@ import {
   deleteDashboard,
   describeRefusal,
   duplicateDashboard,
-  fetchMe,
   getDashboard,
   listDashboards,
   patchDashboard,
@@ -100,11 +99,6 @@ describe("the dashboards client: method, path and body", () => {
     expect(lastCall(fetchMock).body).toEqual({ dashboard_id: null });
   });
 
-  it("reads GET /me", async () => {
-    const fetchMock = stub(200, { subject: "a", email: null, permissions: [], effective_permissions: [] });
-    await fetchMe();
-    expect(lastCall(fetchMock)).toMatchObject({ path: "/me", method: "GET" });
-  });
 });
 
 describe("the 204 branch of the shared request", () => {

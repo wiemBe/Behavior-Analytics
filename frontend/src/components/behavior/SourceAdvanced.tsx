@@ -19,7 +19,7 @@ import type {
 import { completenessMeaning, formatMetric } from "@/lib/behavior";
 import { clearedFaultLine } from "@/lib/evaluationFault";
 import { UtcTime } from "@/components/ui/UtcTime";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatShare } from "@/lib/format";
 
 import { OriginMarker } from "./HistoryKey";
 
@@ -126,7 +126,7 @@ export function SourceAdvanced({
                       {formatMetric(c.p05)} – {formatMetric(c.p95)}
                     </td>
                     <td className="num">{c.sample_count}</td>
-                    <td className="num">{(c.completeness * 100).toFixed(0)}%</td>
+                    <td className="num">{formatShare(c.completeness)}</td>
                     <td>
                       {/* Stated as a word, not only as a colour. */}
                       <span className={`pill pill-quiet ${c.is_reliable ? "ok" : "warn"}`}>
@@ -249,7 +249,7 @@ export function SourceAdvanced({
           <div>
             <dt>Baseline completeness</dt>
             <dd className="num">
-              {(behavior.baseline_completeness * 100).toFixed(0)}%
+              {formatShare(behavior.baseline_completeness)}
             </dd>
           </div>
           <div>

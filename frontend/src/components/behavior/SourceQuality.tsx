@@ -15,6 +15,7 @@ import {
   type CollectionHealth,
 } from "@/lib/sourceDetail";
 import { formatMetric } from "@/lib/behavior";
+import { formatShare } from "@/lib/format";
 import { relativeAgeFromSeconds } from "@/lib/time";
 import { UtcTime } from "@/components/ui/UtcTime";
 
@@ -67,7 +68,7 @@ export function SourceQuality({
               <div>
                 <dt>Cell completeness</dt>
                 <dd className="num">
-                  {(baseline.cell.completeness * 100).toFixed(0)}%
+                  {formatShare(baseline.cell.completeness)}
                 </dd>
               </div>
               <div>
