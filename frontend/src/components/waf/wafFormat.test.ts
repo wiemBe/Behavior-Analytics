@@ -27,9 +27,10 @@ describe("formatRequests", () => {
 
 describe("formatPercent and formatPoints", () => {
   it("formats a fraction as a percentage, with a lower bound as ≥", () => {
-    expect(formatPercent(0.318)).toBe("31.8%");
-    expect(formatPercent(0.624, "LOWER_BOUND")).toBe("≥ 62.4%");
-    expect(formatPercent(0)).toBe("0.0%");
+    expect(formatPercent(0.318)).toBe("31.8 %");
+    expect(formatPercent(0.624, "LOWER_BOUND")).toBe("≥ 62.4 %");
+    expect(formatPercent(0)).toBe("0.0 %");
+    expect(formatPercent(0.0003)).toBe("<0.1 %");
     expect(formatPercent(null)).toBe("—");
   });
 

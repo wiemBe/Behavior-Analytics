@@ -13,7 +13,7 @@ import { ApiError, catchallApi, type CatchallSourceList } from "@/lib/api";
 
 import { HistoryKey } from "@/components/behavior/HistoryKey";
 import { originMarker } from "@/components/behavior/historyOrigin";
-import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 
 import { BucketChart } from "./BucketChart";
@@ -30,7 +30,6 @@ import {
   latestMeasuredIndex,
   measurementText,
   stepMeasured,
-  windowText,
   type RangeOption,
   type SlotSeries,
 } from "./catchall";
@@ -39,6 +38,17 @@ type Load =
   | { kind: "loading" }
   | { kind: "error"; text: string; forbidden: boolean }
   | { kind: "ready"; series: SlotSeries };
+
+/** The selected bucket's span. A missing width shows only the start. */
+function BucketWindow({ startIso, seconds }: { startIso: string; seconds: number | null }) {
+  if (seconds === null) return <UtcTime value={startIso} />;
+  const end = new Date(Date.parse(startIso) + seconds * 1000).toISOString();
+  return (
+    <>
+      <UtcTime value={startIso} /> to <UtcTime value={end} />
+    </>
+  );
+}
 
 export function SourceVolume({ sources, now }: { sources: CatchallSourceList; now: string }) {
   const ids = useId();
@@ -94,11 +104,20 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
   const upTo = series ? collectedUpTo(series) : null;
   const unit = series?.bucketSeconds ? bucketUnit(series.bucketSeconds) : null;
 
-  const summary = series
-    ? series.bucketSeconds === null
-      ? "No bucket was measured in this range."
-      : `Events per ${unit} bucket from ${utcTimeText(new Date(sinceMs).toISOString())} to ${utcTimeText(new Date(untilMs).toISOString())}. ${series.gapCount} buckets were not measured and are shown as gaps, not as zero. ${series.lowerBoundCount} buckets are lower bounds.`
-    : "";
+  const summary = series ? (
+    series.bucketSeconds === null ? (
+      "No bucket was measured in this range."
+    ) : (
+      <>
+        Events per {unit} bucket from <UtcTime value={new Date(sinceMs).toISOString()} /> to{" "}
+        <UtcTime value={new Date(untilMs).toISOString()} />. {series.gapCount} buckets were not
+        measured and are shown as gaps, not as zero. {series.lowerBoundCount} buckets are lower
+        bounds.
+      </>
+    )
+  ) : (
+    ""
+  );
 
   return (
     <section aria-labelledby={`${ids}-h`} className="catchall-volume">
@@ -245,9 +264,14 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
           {slot && (
             <div className="panel bucket-detail" aria-label="Selected bucket" role="group">
               <h3 className="bucket-detail-title">
-                {slot.bucket
-                  ? windowText(slot.bucket.bucket_start, slot.bucket.bucket_seconds)
-                  : windowText(new Date(slot.t).toISOString(), series.bucketSeconds)}
+                <BucketWindow
+                  startIso={
+                    slot.bucket
+                      ? slot.bucket.bucket_start
+                      : new Date(slot.t).toISOString()
+                  }
+                  seconds={slot.bucket ? slot.bucket.bucket_seconds : series.bucketSeconds}
+                />
               </h3>
               {slot.bucket === null ? (
                 <p className="subtitle">

@@ -124,7 +124,12 @@ export function WafEndpointTraffic({
       badge={(view && badgeText(view.qualifiers)) || undefined}
       link={
         sourceId && !gone
-          ? { href: `/behavior/waf/sources/${sourceId}`, label: "Endpoints" }
+          ? {
+              href: `/behavior/waf/sources/${sourceId}`,
+              label: "Source endpoints",
+              ariaLabel:
+                "Open this source's endpoint list. It cannot select this endpoint.",
+            }
           : { href: "/behavior/waf", label: "WAF" }
       }
       state={state}

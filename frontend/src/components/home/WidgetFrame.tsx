@@ -286,7 +286,7 @@ function ReasonState({
   variant,
 }: {
   lead?: string;
-  reason: string;
+  reason: ReactNode;
   variant: WidgetVariant;
 }) {
   return (
@@ -396,7 +396,7 @@ type Shown<T> =
       ageSeconds: number | null;
       refreshFailed: { httpStatus: number | null } | null;
     }
-  | { kind: "empty" | "no_data" | "not_collected"; reason: string }
+  | { kind: "empty" | "no_data" | "not_collected"; reason: ReactNode }
   | { kind: "error"; httpStatus: number | null; action?: string }
   | { kind: "forbidden"; permission: string };
 

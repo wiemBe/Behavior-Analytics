@@ -19,7 +19,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { HISTORY_TEXT } from "@/components/behavior/historyOrigin";
 import { homeReads } from "@/lib/api";
 import { NOT_MEASURED } from "@/lib/behavior";
-import { formatEpsValue } from "@/lib/fleet";
+import { fleetDrillHref, formatEpsValue, type FleetWindow } from "@/lib/fleet";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import { sliceVar } from "@/lib/home/chartPalette";
 import { epsByClass, REST_KEY, type ClassEps, type EpsByClass as Model } from "@/lib/home/epsByClass";
@@ -35,8 +35,10 @@ import "./charts.css";
 echarts.use([PieChart, TooltipComponent, CanvasRenderer]);
 
 /** An aggregate has no class to filter by; it goes to the fleet's by-class table. */
-export function classHref(e: Pick<ClassEps, "key">): string {
-  return e.key === REST_KEY ? "/fleet" : `/fleet/sources?class=${encodeURIComponent(e.key)}`;
+export function classHref(e: Pick<ClassEps, "key">, window: FleetWindow): string {
+  return e.key === REST_KEY
+    ? fleetDrillHref(window)
+    : `/fleet/sources?class=${encodeURIComponent(e.key)}`;
 }
 
 const share = (v: number | null) => (v === null ? NOT_MEASURED : `${(v * 100).toFixed(0)} %`);
@@ -47,7 +49,7 @@ function reasonOf(model: Model): string {
   return q && q.kind === "INSUFFICIENT_DATA" ? q.reason : "No class has a mean EPS.";
 }
 
-function Donut({ model }: { model: Model }) {
+function Donut({ model, window }: { model: Model; window: FleetWindow }) {
   const router = useRouter();
   const option = useMemo(
     () => (p: HomePalette) => buildClassOption(model.entries, p),
@@ -55,7 +57,7 @@ function Donut({ model }: { model: Model }) {
   );
   const ref = useEChart(option, (click) => {
     const entry = click.dataIndex != null ? model.entries[click.dataIndex] : undefined;
-    if (entry) router.push(classHref(entry));
+    if (entry) router.push(classHref(entry, window));
   });
   return (
     <div className="hc-donut" aria-hidden="true">
@@ -68,7 +70,7 @@ function Donut({ model }: { model: Model }) {
   );
 }
 
-function List({ model }: { model: Model }) {
+function List({ model, window }: { model: Model; window: FleetWindow }) {
   return (
     <table className="hc-list">
       <caption className="sr-only">
@@ -92,7 +94,7 @@ function List({ model }: { model: Model }) {
               <svg className="hc-swatch" viewBox="0 0 1 1" aria-hidden="true" focusable="false">
                 <rect width="1" height="1" fill={sliceVar(i)} />
               </svg>
-              <Link href={classHref(e)}>{e.label}</Link>
+              <Link href={classHref(e, window)}>{e.label}</Link>
               {e.key === REST_KEY && model.restContains.length > 0 && (
                 <span className="hc-rest" title={model.restText ?? undefined}>
                   {model.restContains.join(", ")}
@@ -124,7 +126,7 @@ export function EpsByClass({ range }: RangedProps = {}) {
       title="EPS by source class"
       windowText={RANGE_TEXT[window]}
       badge={(model && badgeText(model.qualifiers)) || undefined}
-      link={{ href: "/fleet", label: "Fleet" }}
+      link={{ href: fleetDrillHref(window), label: "Fleet" }}
       state={state}
       what="EPS by class"
       permission="read:fleet"
@@ -142,8 +144,8 @@ export function EpsByClass({ range }: RangedProps = {}) {
                 <p className="tw-state">{reasonOf(model)}</p>
               ) : (
                 <div className="hc-class">
-                  <Donut model={model} />
-                  <List model={model} />
+                  <Donut model={model} window={window} />
+                  <List model={model} window={window} />
                 </div>
               )}
               {model.classesWithoutData > 0 && (

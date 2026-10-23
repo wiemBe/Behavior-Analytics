@@ -61,6 +61,7 @@ export default async function AnomaliesPage({
 
   let page: Page<AnomalySummary> | null = null;
   let sources: SourceBehavior[] = [];
+  let sourcesFailed = false;
   let error: string | null = null;
 
   try {
@@ -83,7 +84,10 @@ export default async function AnomaliesPage({
         since: q.since || undefined,
         until: q.until || undefined,
       }),
-      api.sourceBehaviors().catch(() => [] as SourceBehavior[]),
+      api.sourceBehaviors().catch(() => {
+        sourcesFailed = true;
+        return [] as SourceBehavior[];
+      }),
     ]);
     page = listed;
     sources = behaviors;
@@ -142,6 +146,7 @@ export default async function AnomaliesPage({
           until: q.until,
         }}
         sources={sources}
+        sourcesFailed={sourcesFailed}
       />
 
       {q.rangeNote && <div className="notice">{q.rangeNote}</div>}

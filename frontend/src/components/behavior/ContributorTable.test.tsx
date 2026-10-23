@@ -107,7 +107,7 @@ describe("row disclosure", () => {
     await user.click(screen.getByRole("button", { name: /Show detail for 445/ }));
 
     expect(screen.getByText("Percent delta")).toBeInTheDocument();
-    expect(screen.getByText("+1023.4%")).toBeInTheDocument();
+    expect(screen.getByText("+1023.4 %")).toBeInTheDocument();
     expect(screen.getByText("Baseline share")).toBeInTheDocument();
     expect(screen.getByText("Anomaly share")).toBeInTheDocument();
     expect(screen.getByText(/Rank, baseline to anomaly/)).toBeInTheDocument();

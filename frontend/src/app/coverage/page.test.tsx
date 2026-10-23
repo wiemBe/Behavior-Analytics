@@ -149,8 +149,13 @@ describe("coverage states", () => {
     vi.spyOn(api, "coverageTechniques").mockResolvedValue(page([]));
     await renderPage();
     const notice = screen.getByText("Coverage has not been evaluated.").closest(".notice")!;
-    expect(notice).toHaveTextContent(/not a finding of zero coverage/);
-    expect(notice).toHaveTextContent("POST /api/v1/coverage/mappings");
+    expect(notice).toHaveTextContent(
+      "No ATT&CK technique mappings are configured, so coverage cannot be measured. An administrator adds them. This is not a finding of zero coverage.",
+    );
+    expect(notice).not.toHaveTextContent("operations guide");
+    expect(notice).not.toHaveTextContent("README");
+    expect(notice).not.toHaveTextContent("POST /api/v1/coverage/mappings");
+    expect(notice).not.toHaveTextContent("python -m app.cli.sync");
     // No status counters and no technique table in this state.
     expect(screen.queryByText("COVERED")).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Technique" })).toBeNull();
@@ -187,7 +192,7 @@ describe("coverage contents", () => {
     await renderPage();
     expect(
       screen.getByText(
-        /12 techniques evaluated · 50% covered · 9 explicit \/ 3 inferred mappings ·/,
+        /12 techniques evaluated · 50\.0 % covered · 9 explicit \/ 3 inferred mappings ·/,
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/generated/)).toHaveTextContent("generated 2026-10-15 09:00:00 UTC");
@@ -212,7 +217,7 @@ describe("coverage contents", () => {
     expect(row).toHaveTextContent("Brute Force");
     expect(row).toHaveTextContent("Credential Access");
     expect(row).toHaveTextContent("COVERED");
-    expect(within(row).getByText("90%")).toBeInTheDocument();
+    expect(within(row).getByText("90.0 %")).toBeInTheDocument();
     expect(row).toHaveTextContent("At least one healthy enabled rule maps to this technique.");
   });
 
@@ -225,7 +230,7 @@ describe("coverage contents", () => {
     expect(row).toHaveTextContent("Yes");
     expect(row).toHaveTextContent("HEALTHY");
     expect(row).toHaveTextContent("T1110");
-    expect(row).toHaveTextContent("explicit 90%");
+    expect(row).toHaveTextContent("explicit 90.0 %");
   });
 
   it("renders the data-source-centric view, falling back to the ref and an em dash", async () => {
@@ -238,7 +243,7 @@ describe("coverage contents", () => {
     const row = within(table).getAllByRole("row")[1];
     expect(row).toHaveTextContent("227");
     expect(row).toHaveTextContent("LOG SOURCE");
-    expect(row).toHaveTextContent("explicit 80%");
+    expect(row).toHaveTextContent("explicit 80.0 %");
     expect(within(row).getByText("—")).toBeInTheDocument();
   });
 });
@@ -253,8 +258,9 @@ describe("coverage honesty", () => {
     expect(pill.className).not.toContain("ok");
     expect(pill.className).not.toContain("crit");
     expect(screen.getByText("No evaluation has run for this technique yet.")).toBeInTheDocument();
-    // A score that was never computed is an em dash, never 0%.
+    // A score that was never computed is an em dash, never 0.0 %.
     expect(screen.queryByText("0%")).toBeNull();
+    expect(screen.queryByText("0.0 %")).toBeNull();
   });
 
   it("shows an em dash for a missing name, tactic and score", async () => {

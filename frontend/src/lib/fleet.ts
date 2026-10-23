@@ -20,6 +20,8 @@ import {
   type FleetWindow,
   type SourceClass,
 } from "@/lib/api";
+
+export type { FleetWindow };
 import { detectorLabel, NOT_MEASURED } from "@/lib/behavior";
 
 // --- classes ------------------------------------------------------------------
@@ -72,6 +74,11 @@ export const DEFAULT_WINDOW: FleetWindow = "24h";
 
 export function parseWindow(value: string | undefined): FleetWindow {
   return FLEET_WINDOWS.some((w) => w.value === value) ? (value as FleetWindow) : DEFAULT_WINDOW;
+}
+
+/** Dashboard fleet widgets keep the window the analyst was looking at. */
+export function fleetDrillHref(window: FleetWindow): string {
+  return `/fleet?window=${window}`;
 }
 
 export function windowName(window: FleetWindow): string {

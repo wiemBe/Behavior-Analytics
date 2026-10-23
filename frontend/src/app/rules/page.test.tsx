@@ -54,12 +54,28 @@ describe("rules list layout", () => {
     expect(container.querySelector("[style]")).toBeNull();
   });
 
-  it("names the zone once in the header and keeps the time on one line", async () => {
+  it("keeps the year and the zone in the last-fired cell", async () => {
     render(await RulesPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole("columnheader", { name: "Last fired (UTC)" })).toBeInTheDocument();
-    const cell = screen.getByText("10-14 22:10");
-    expect(cell).toHaveClass("nowrap");
-    expect(cell).not.toHaveTextContent("UTC");
+    const cell = screen.getByRole("time");
+    expect(cell).toHaveTextContent("2026-10-14 22:10:00 UTC");
+    expect(cell.closest("td")).not.toHaveClass("nowrap");
+  });
+
+  it("does not attribute every unestablished rule to a missing last-fired time", async () => {
+    vi.spyOn(api, "ruleHealthSummary").mockResolvedValue([
+      { status: "INSUFFICIENT_DATA", count: 4 },
+      { status: "HEALTHY", count: 2 },
+    ]);
+    const { container } = render(await RulesPage({ searchParams: Promise.resolve({}) }));
+    const notice = [...container.querySelectorAll(".notice")].find((n) =>
+      n.textContent?.includes("dependency that has not been observed"),
+    );
+    expect(notice).toBeTruthy();
+    expect(notice).toHaveTextContent("dependency that has not been observed");
+    expect(notice).toHaveTextContent("no last-fired time");
+    expect(notice).toHaveTextContent("does not say which cause applies to each");
+    expect(notice).not.toHaveTextContent("silence cannot be distinguished");
   });
 
   it("sizes the health-count group from its count, so no card is left alone on a row", async () => {

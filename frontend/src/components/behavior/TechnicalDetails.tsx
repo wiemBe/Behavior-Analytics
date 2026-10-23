@@ -19,6 +19,7 @@ import {
   dimensionLabel,
   formatCount,
   formatMetric,
+  formatShare,
   formatRatio,
   hasConfidenceLimitation,
   robustScoreMeaning,
@@ -126,11 +127,7 @@ export function TechnicalDetails({
               <Row label="Baseline samples" value={formatCount(d.baseline_sample_count)} />
               <Row
                 label="Baseline completeness"
-                value={
-                  d.baseline_completeness != null
-                    ? `${(d.baseline_completeness * 100).toFixed(0)}%`
-                    : "—"
-                }
+                value={formatShare(d.baseline_completeness)}
               />
               <Row
                 label="Baseline version"

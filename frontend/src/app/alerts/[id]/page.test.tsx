@@ -100,6 +100,13 @@ describe("alert detail contents", () => {
     expect(screen.getByText("vol:227:1789").tagName).toBe("CODE");
   });
 
+  it("groups a large occurrence count", async () => {
+    vi.spyOn(api, "alert").mockResolvedValue(alert({ occurrence_count: 1200 }));
+    vi.spyOn(api, "alertNotifications").mockResolvedValue([]);
+    await renderPage();
+    expect(screen.getByText(/seen 1,200×/)).toBeInTheDocument();
+  });
+
   it("renders the captured evidence with its reason", async () => {
     await renderPage();
     expect(screen.getByText("average EPS 5.98 is above the baseline median")).toBeInTheDocument();

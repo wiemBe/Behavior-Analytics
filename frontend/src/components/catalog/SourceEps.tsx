@@ -14,6 +14,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads, type BucketSeries, type MetricBucket } from "@/lib/api";
 import { bucketsAsOf } from "@/lib/home/asOf";
 import { badgeText } from "@/lib/home/qualifiers";
+import { sourceDrillHref } from "@/lib/sourceDetail";
 import { RANGE_TEXT, useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 
 import { ConfigNotice } from "./ConfigNotice";
@@ -100,7 +101,7 @@ export function SourceEps({
       badge={badgeText(qualifiers) || undefined}
       link={
         sourceId !== null && !gone
-          ? { href: `/behavior/sources/${sourceId}`, label: "Source" }
+          ? { href: sourceDrillHref(sourceId, window), label: "Source" }
           : { href: "/behavior/sources", label: "Sources" }
       }
       state={state}

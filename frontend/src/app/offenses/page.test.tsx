@@ -21,7 +21,8 @@ import {
 //  - paging: `limit`, `offset`, `search` and `status` go to the API, and offset plus
 //    the filters are preserved in the paging links.
 // The status and magnitude pills carry a tone class the page uses as meaning
-// (OPEN -> warn, other -> ok; magnitude >= 7 -> crit, >= 4 -> warn, else ok), so
+// (OPEN -> warn, CLOSED -> ok, any other status neutral; magnitude >= 7 -> crit,
+// >= 4 -> warn, below 4 neutral), so
 // those classes are asserted here.
 
 function offense(over: Partial<OffenseSummary> = {}): OffenseSummary {
@@ -108,8 +109,14 @@ describe("offense list states", () => {
     vi.spyOn(api, "offenseAggregates").mockResolvedValue(aggregates());
     await renderPage();
     expect(
-      screen.getByText(/No offenses collected yet\. Run an offense sync to pull them from QRadar\./),
+      screen.getByText(
+        "No offenses have been collected from QRadar yet, so this list is empty. Offense collection is set up by an administrator.",
+      ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/OPS-R10/)).toBeNull();
+    expect(screen.queryByText(/operations guide/)).toBeNull();
+    expect(screen.queryByText(/offense sync/)).toBeNull();
+    expect(screen.queryByText(/POST/)).toBeNull();
   });
 
   it("distinguishes an empty filtered list from an uncollected one", async () => {
@@ -128,10 +135,11 @@ describe("offense list contents", () => {
     vi.spyOn(api, "offenseAggregates").mockResolvedValue(aggregates());
   });
 
-  it("counts the whole instance, not the page", async () => {
+  it("labels the filtered total apart from the open instance counts", async () => {
     await renderPage();
     const card = (label: string) => screen.getByText(label).closest(".card") as HTMLElement;
-    expect(within(card("Total")).getByText("1")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Open offenses, whole instance" })).toBeInTheDocument();
+    expect(within(card("Matching offenses")).getByText("1")).toBeInTheDocument();
     expect(within(card("Active")).getByText("7")).toBeInTheDocument();
     expect(within(card("Critical (mag 8+)")).getByText("2")).toBeInTheDocument();
     expect(within(card("Unassigned")).getByText("3")).toBeInTheDocument();
@@ -169,15 +177,38 @@ describe("offense list contents", () => {
     expect(row).toHaveTextContent("Repeated authentication failures");
     expect(row).toHaveTextContent("analyst@example.com");
     expect(row).toHaveTextContent("11 h");
-    // The header says (UTC); the cell does not repeat the zone.
-    expect(row).toHaveTextContent("10-14 22:10");
-    expect(row).not.toHaveTextContent("UTC");
+    // Full instant: the year and the zone stay in the cell. The header still says (UTC).
+    expect(row).toHaveTextContent("2026-10-14 22:10:00 UTC");
+    const started = within(row).getByRole("time");
+    expect(started.closest("td")).not.toHaveClass("nowrap");
   });
 
   it("tones the status and magnitude as the page means them", async () => {
     await renderPage();
     expect(screen.getByText("OPEN")).toHaveClass("warn");
+    expect(screen.getByText("OPEN")).not.toHaveClass("ok");
     expect(screen.getByText("8", { selector: ".pill" })).toHaveClass("crit");
+  });
+
+  it("keeps a low magnitude and a non-closed status neutral", async () => {
+    vi.spyOn(api, "offenses").mockResolvedValue(
+      page([offense({ magnitude: 3, status: "HIDDEN" })]),
+    );
+    await renderPage();
+    const mag = screen.getByText("3", { selector: ".pill" });
+    expect(mag).not.toHaveClass("ok");
+    expect(mag).not.toHaveClass("warn");
+    expect(mag).not.toHaveClass("crit");
+    const status = screen.getByText("HIDDEN");
+    expect(status).toHaveClass("pill");
+    expect(status).not.toHaveClass("ok");
+    expect(status).not.toHaveClass("warn");
+  });
+
+  it("tones only a closed offense as ok", async () => {
+    vi.spyOn(api, "offenses").mockResolvedValue(page([offense({ status: "CLOSED" })]));
+    await renderPage();
+    expect(screen.getByText("CLOSED")).toHaveClass("ok");
   });
 
   it("draws a missing value as an em dash, never a zero", async () => {
@@ -248,16 +279,18 @@ describe("nullable aggregate counts", () => {
       }),
     );
     await renderPage();
-    for (const label of ["Active", "Critical (mag 8+)", "Unassigned", "Over 24h SLA"]) {
+    for (const label of ["Active", "Critical (mag 8+)", "Unassigned", "Over 24h SLA", "Oldest"]) {
       const stat = card(label);
       expect(within(stat).getByText("—")).toBeInTheDocument();
-      expect(stat).toHaveTextContent("Not collected");
-      expect(stat).toHaveTextContent("No offense snapshot has been collected yet.");
+      expect(stat).not.toHaveTextContent("Not collected");
       const value = stat.querySelector(".v");
       expect(value).not.toHaveClass("crit");
       expect(value).not.toHaveClass("warn");
       expect(value).not.toHaveTextContent("0");
     }
+    const notes = screen.getAllByText(/No offense snapshot has been collected yet/);
+    expect(notes).toHaveLength(1);
+    expect(notes[0].closest("[role='status']")).not.toBeNull();
   });
 
   it("keeps a measured zero as 0, with no alarm tone and no not-collected note", async () => {
@@ -335,11 +368,16 @@ describe("offense list layout", () => {
 });
 
 describe("offense list metric group", () => {
-  it("holds the six counters in a group that folds to 3 + 3", async () => {
+  it("puts the filtered total beside the open instance group", async () => {
     vi.spyOn(api, "offenses").mockResolvedValue(page([offense()]));
     vi.spyOn(api, "offenseAggregates").mockResolvedValue(aggregates());
     const { container } = await renderPage();
-    expect(container.querySelectorAll(".cards .card")).toHaveLength(6);
-    expect(container.querySelector(".cards")).toHaveClass("offenses-cards-3");
+    const groups = container.querySelectorAll(".cards");
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toHaveClass("offenses-matching");
+    expect(groups[0].querySelectorAll(".card")).toHaveLength(1);
+    expect(groups[1]).toHaveClass("offenses-open");
+    expect(groups[1].querySelectorAll(".card")).toHaveLength(5);
+    expect(container.querySelector(".offenses-cards-3")).toBeNull();
   });
 });

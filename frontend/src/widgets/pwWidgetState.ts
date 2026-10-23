@@ -6,8 +6,6 @@ import { formatCoveragePercent, statusReason } from "@/components/propertywatch/
 import { historyProgress } from "@/components/propertywatch/history";
 import { PW_MAX_SERIES } from "@/components/propertywatch/pwSeries";
 import type { PropertyWatch, PropertyWatchCatalog, PwValue } from "@/lib/api";
-import { utcTimeText } from "@/components/ui/UtcTime";
-
 import type { WidgetState } from "./types";
 
 /**
@@ -77,7 +75,8 @@ export function earlyState(
         : statusReason(watch.status, watch.status_reason);
     return {
       kind: "empty",
-      reason: `No bucket has been collected for this watch yet. ${why} Created ${utcTimeText(watch.created_at)}.`,
+      reason: `No bucket has been collected for this watch yet. ${why} Created {at}.`,
+      at: watch.created_at,
     };
   }
   if (watch.status === "NOT_APPLICABLE") {
@@ -88,7 +87,8 @@ export function earlyState(
         : "";
     return {
       kind: "no_data",
-      reason: `The bucket of ${utcTimeText(c.bucket_start)} was collected, but the property parsed on no event${events}: coverage ${formatCoveragePercent(c.ratio)}. No value is measured and none is judged.`,
+      reason: `The bucket of {at} was collected, but the property parsed on no event${events}: coverage ${formatCoveragePercent(c.ratio)}. No value is measured and none is judged.`,
+      at: c.bucket_start,
     };
   }
   return null;

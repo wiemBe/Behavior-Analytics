@@ -40,6 +40,22 @@ export function rangeLabel(hours: RangeHours): string {
   return hours === 1 ? "1 hour" : `${hours} hours`;
 }
 
+/**
+ * The source page's nearest range for a dashboard window.
+ *
+ * 1 h and 24 h exist as ranges. 7 d does not: a week of 60-second buckets is
+ * 10080 rows, past the metrics cap of 5000, so the link is the longest range
+ * (24 h) and `from=7d` asks the page to say so.
+ */
+export function sourceDrillHref(sourceId: string, window: "1h" | "24h" | "7d"): string {
+  if (window === "1h") return `/behavior/sources/${sourceId}?range=1`;
+  if (window === "24h") return `/behavior/sources/${sourceId}?range=24`;
+  return `/behavior/sources/${sourceId}?range=24&from=7d`;
+}
+
+export const SOURCE_7D_NOTE =
+  "This chart is the latest 24 hours, the longest window this page can show. The widget covered 7 days; a 7-day window of one-minute buckets is not available here.";
+
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /**

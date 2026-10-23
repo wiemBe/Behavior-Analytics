@@ -5,8 +5,8 @@ import LogSourceDetailPage from "./page";
 import { ApiError, api, type LogSourceDetail } from "@/lib/api";
 
 // States this route renders, from `page.tsx`:
-//  - the read fails (it catches everything, so a 500 and a 404 look the same): a
-//    "Could not load log source <id>" notice;
+//  - the read fails: 401 session expired, 403 names read:log_sources, 404 is not
+//    in the inventory, and any other failure says the backend could not be reached;
 //  - the normal detail: the header line, the five-part health breakdown, the
 //    configuration card and the Phase-2 chart placeholder;
 //  - a null health breakdown: the breakdown cards are simply absent;
@@ -44,12 +44,12 @@ async function renderPage(id = "s-1") {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("log source detail states", () => {
-  it("names the source it could not load", async () => {
+  it("says the backend could not be reached on a non-auth failure", async () => {
     vi.spyOn(api, "logSource").mockRejectedValue(new ApiError(500, "secret"));
     await renderPage("s-9");
     expect(screen.getByRole("heading", { name: "Log Source Detail" })).toBeInTheDocument();
-    const notice = screen.getByText(/Could not load log source/);
-    expect(notice).toHaveTextContent("s-9");
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("The backend could not be reached. Reload the page to try again.");
     expect(notice).not.toHaveTextContent("secret");
   });
 
@@ -131,11 +131,18 @@ describe("log source detail honesty", () => {
     expect(container.querySelector("[style]")).toBeNull();
   });
 
-  it("says what failed and what to do as an alert", async () => {
-    vi.spyOn(api, "logSource").mockRejectedValue(new ApiError(404, "secret"));
+  it.each([
+    [401, "Your session has expired. Sign in again to continue."],
+    [403, "Ask an administrator for the read:log_sources grant."],
+    [404, "Log source s-9 is not in the inventory."],
+    [500, "The backend could not be reached. Reload the page to try again."],
+  ])("splits a %s read into its own sentence", async (status, sentence) => {
+    vi.spyOn(api, "logSource").mockRejectedValue(new ApiError(status, "secret"));
     await renderPage("s-9");
-    expect(screen.getByRole("alert")).toHaveTextContent("reload the page");
-    expect(screen.getByRole("heading", { name: "Log Source Detail", level: 1 })).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(sentence);
+    expect(alert).not.toHaveTextContent("secret");
+    if (status === 404) expect(alert).not.toHaveTextContent("Reload the page");
   });
 
   it("gives a missing expected interval no unit", async () => {

@@ -91,8 +91,8 @@ describe("a list with both kinds", () => {
     expect(volume).toHaveTextContent("≥ 412");
     expect(volume).toHaveTextContent("41.5 req");
     const ratio = screen.getByText("GET /api/x").closest("tr")!;
-    expect(ratio).toHaveTextContent("31.8%");
-    expect(ratio).toHaveTextContent("2.1%");
+    expect(ratio).toHaveTextContent("31.8 %");
+    expect(ratio).toHaveTextContent("2.1 %");
     expect(ratio).not.toHaveTextContent("req");
   });
 
@@ -199,7 +199,7 @@ describe("units in the mixed list", () => {
     expect(screen.getByText("GET /portal/login").closest("tr")).toHaveTextContent(
       "412 → 41.5 req / 5 min",
     );
-    expect(screen.getByText("GET /api/x").closest("tr")).toHaveTextContent("31.8% → 2.1%");
+    expect(screen.getByText("GET /api/x").closest("tr")).toHaveTextContent("31.8 % → 2.1 %");
   });
 
   it("keeps the Phase A unit when the list is filtered to log sources", async () => {

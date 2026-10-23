@@ -33,7 +33,8 @@ describe("earlyState", () => {
   it("no bucket is empty, with the creation time in UTC, never a zero", () => {
     const s = earlyState(watch({ coverage: null, status: null }), catalog());
     expect(s?.kind).toBe("empty");
-    expect(s && "reason" in s && s.reason).toContain("2026-10-10 09:00:00 UTC");
+    expect(s && "reason" in s && s.reason).toContain("Created {at}");
+    expect(s && "at" in s && s.at).toBe("2026-10-10T09:00:00Z");
   });
 
   it("maps a history read to empty with progress and no stale claim", () => {

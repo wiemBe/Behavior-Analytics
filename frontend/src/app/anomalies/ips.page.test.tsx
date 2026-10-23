@@ -80,8 +80,8 @@ describe("an IPS row among Phase A and WAF rows", () => {
       }),
     ]);
     const row = rowOf("Source-level");
-    expect(row).toHaveTextContent("62.0%");
-    expect(row).toHaveTextContent("18.0%");
+    expect(row).toHaveTextContent("62.0 %");
+    expect(row).toHaveTextContent("18.0 %");
     expect(row.textContent).not.toMatch(/EPS|events/);
   });
 

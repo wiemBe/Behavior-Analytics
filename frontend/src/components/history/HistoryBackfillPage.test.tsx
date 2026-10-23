@@ -409,11 +409,9 @@ describe("the history backfill page: the decision block", () => {
   it("states the answer, who, when and how", async () => {
     vi.spyOn(api, "historyBackfill").mockResolvedValue([reading()]);
     view();
-    expect(
-      await screen.findByText(
-        "History backfill: Yes, read 28 days. Recorded by the installer on 2026-10-19 12:00:00 UTC.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/History backfill: Yes, read 28 days/)).toHaveTextContent(
+      "History backfill: Yes, read 28 days. Recorded by the installer on 2026-10-19 12:00:00 UTC.",
+    );
     expect(screen.getByText(/Mode: Yes: history is read\./)).toBeInTheDocument();
   });
 
@@ -479,7 +477,9 @@ describe("the history backfill page: the decision block", () => {
     expect(stop).toHaveBeenCalledWith(LAB_ID);
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.getByText(/Mode: Yes: reading was stopped\./)).toBeInTheDocument();
-    expect(screen.getByText(/Stop reading was asked by ada on 2026-10-20 08:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/Stop reading was asked by ada on/)).toHaveTextContent(
+      "Stop reading was asked by ada on 2026-10-20 08:00:00 UTC",
+    );
     // Stopped: only Read history now is offered.
     expect(screen.queryByRole("button", { name: "Stop reading" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Read history now" })).toBeInTheDocument();

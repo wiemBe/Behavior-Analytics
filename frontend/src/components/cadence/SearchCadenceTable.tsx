@@ -19,7 +19,7 @@ import {
   outcomeInfo,
   worstCaseDelay,
 } from "@/lib/searchCadence";
-import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
@@ -63,7 +63,11 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
       const by = updated.updated_by ? `by ${updated.updated_by} ` : "";
       setOutcome({
         kind: "ok",
-        text: `Saved. Changed ${by}at ${utcTimeText(updated.updated_at)}.`,
+        text: (
+          <>
+            Saved. Changed {by}at <UtcTime value={updated.updated_at} />.
+          </>
+        ),
       });
     } catch (err) {
       setOutcome(

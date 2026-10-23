@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { api } from "@/lib/api";
+import { ApiError, api, type LogSourceDetail } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
 
 import { qradarStatusLabel, qradarStatusTone } from "../qradarStatus";
@@ -13,19 +13,27 @@ export default async function LogSourceDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const d = await api.logSource(id).catch(() => null);
+  let d: LogSourceDetail | null = null;
+  let status = 0;
+  try {
+    d = await api.logSource(id);
+  } catch (err) {
+    status = err instanceof ApiError ? err.status : 0;
+  }
   if (!d) {
+    const message =
+      status === 401
+        ? "Your session has expired. Sign in again to continue."
+        : status === 403
+          ? "You do not have permission to view this log source. Ask an administrator for the read:log_sources grant."
+          : status === 404
+            ? `Log source ${id} is not in the inventory.`
+            : "The backend could not be reached. Reload the page to try again.";
     return (
       <>
         <PageHeader title="Log Source Detail" />
         <div className="notice" role="alert">
-          <p>
-            <strong>Could not load log source {id}.</strong>
-          </p>
-          <p>
-            It may not exist in the inventory, or the backend may be unreachable. Check the
-            Log Sources list, or reload the page to try again.
-          </p>
+          <p>{message}</p>
         </div>
       </>
     );

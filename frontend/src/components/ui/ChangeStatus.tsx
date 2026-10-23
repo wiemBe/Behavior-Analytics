@@ -11,7 +11,7 @@ import "./controls.css";
 export type ChangeOutcome =
   | { kind: "idle" }
   | { kind: "pending" }
-  | { kind: "ok"; text: string }
+  | { kind: "ok"; text: ReactNode }
   | { kind: "forbidden"; text: string }
   | { kind: "error"; text: string };
 
@@ -40,7 +40,7 @@ export function ChangeStatus({ outcome }: { outcome: ChangeOutcome }) {
   if (outcome.kind === "ok") {
     return (
       <p className="change-status ok" role="status">
-        {withPermissionCode(outcome.text)}
+        {typeof outcome.text === "string" ? withPermissionCode(outcome.text) : outcome.text}
       </p>
     );
   }

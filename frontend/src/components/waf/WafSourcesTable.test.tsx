@@ -22,7 +22,7 @@ describe("WafSourcesTable", () => {
     const row = within(rowOf("lab-waf-behavior-01"));
     expect(row.getByText("VALID")).toBeInTheDocument();
     expect(row.getByText("for profile v3")).toBeInTheDocument();
-    expect(row.getByText(/97\.2%/)).toBeInTheDocument();
+    expect(row.getByText(/97\.2 %/)).toBeInTheDocument();
     expect(row.getByText(/132 \/ 500/)).toBeInTheDocument();
     expect(row.getByText("None")).toBeInTheDocument();
   });
@@ -71,7 +71,7 @@ describe("WafSourcesTable", () => {
     expect(row.getByText("No bucket collected yet")).toBeInTheDocument();
     expect(row.getByText("No bucket collected in range")).toBeInTheDocument();
     expect(row.queryByText("None")).not.toBeInTheDocument();
-    expect(row.queryByText(/0\.0%/)).not.toBeInTheDocument();
+    expect(row.queryByText(/0\.0 %/)).not.toBeInTheDocument();
     // The em dash carries its meaning for assistive technology.
     expect(row.getByText(/no bucket has been collected/)).toBeInTheDocument();
   });
@@ -92,7 +92,7 @@ describe("WafSourcesTable", () => {
       />,
     );
     const row = within(rowOf("lab-waf-behavior-01"));
-    expect(row.getByText(/≥ 62\.4%/)).toBeInTheDocument();
+    expect(row.getByText(/≥ 62\.4 %/)).toBeInTheDocument();
     expect(row.getByText("PARTIAL bucket")).toBeInTheDocument();
   });
 

@@ -56,7 +56,7 @@ export { formatShare } from "@/lib/format";
 export function formatPercentDelta(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
   const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(1)}%`;
+  return `${sign}${value.toFixed(1)} %`;
 }
 
 /** A signed absolute change, so a drop is visibly a drop. */

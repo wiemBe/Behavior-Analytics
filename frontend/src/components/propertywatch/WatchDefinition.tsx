@@ -13,7 +13,8 @@ import { UtcTime } from "@/components/ui/UtcTime";
 
 import { WatchAqlSection, type AqlRead } from "./WatchAql";
 import { pwTypeLabel, scopeKindLabel, scopeText, statusLabel, statusReason } from "./pwFormat";
-import { historyGapText, historyHeaderText } from "./history";
+import { HistoryGapLine } from "./WatchHonesty";
+import { historyHeaderText } from "./history";
 
 export function WatchDefinition({
   watch,
@@ -215,7 +216,9 @@ export function WatchDefinition({
             <h3 className="pw-subtitle">History gaps</h3>
             <ul className="pw-def-changes" aria-label="History gaps">
               {(watch.history.gaps ?? []).map((gap) => (
-                <li key={`${gap.start}-${gap.end}`}>{historyGapText(gap)}</li>
+                <li key={`${gap.start}-${gap.end}`}>
+                  <HistoryGapLine gap={gap} />
+                </li>
               ))}
             </ul>
           </div>

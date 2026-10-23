@@ -107,7 +107,21 @@ describe("EpsByClass", () => {
       "href",
       "/fleet/sources?class=FIREWALL",
     );
-    expect(screen.getByRole("link", { name: "Other classes" })).toHaveAttribute("href", "/fleet");
+    expect(screen.getByRole("link", { name: "Other classes" })).toHaveAttribute(
+      "href",
+      "/fleet?window=24h",
+    );
+    expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", "/fleet?window=24h");
+  });
+
+  it.each(["1h", "7d"] as const)("keeps window %s on the fleet links", (window) => {
+    res.state = ok(sevenFleet());
+    render(<EpsByClass range={window} />);
+    expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", `/fleet?window=${window}`);
+    expect(screen.getByRole("link", { name: "Other classes" })).toHaveAttribute(
+      "href",
+      `/fleet?window=${window}`,
+    );
   });
 
   it("goes to the class when its slice is clicked", () => {
