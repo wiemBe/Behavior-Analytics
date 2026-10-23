@@ -185,10 +185,21 @@ def _docker_skip_reason() -> str | None:
     return None
 
 
-def _dummy_env_file(directory: Path) -> Path:
-    """Interpolation values only. Not a project ``.env`` and not a secret."""
-    path = directory / "compose-config.env"
-    path.write_text(
+def _stage_compose_project(directory: Path) -> None:
+    """Copy the compose files and a dummy ``.env`` the anchor's ``env_file`` can open.
+
+    Values are interpolation stand-ins. Nothing here is a credential. The copy
+    is the Compose project, so the test does not read the checkout and does
+    not need ``--no-env-resolution`` (Compose 5.6 skips the anchor ``env_file``
+    with that flag; the CI runner's Compose still opens it).
+    """
+    for name in (
+        "docker-compose.yml",
+        "docker-compose.prod.yml",
+        "deploy/docker-compose.override.example.yml",
+    ):
+        shutil.copyfile(REPO / name, directory / Path(name).name)
+    (directory / ".env").write_text(
         "\n".join(
             (
                 "POSTGRES_USER=compose-config",
@@ -202,35 +213,41 @@ def _dummy_env_file(directory: Path) -> Path:
         ),
         encoding="utf-8",
     )
-    return path
 
 
-def _compose_config(*files: str, env_file: Path, profile: str | None = None) -> dict:
+def _compose_config(*files: str, project: Path, profile: str | None = None) -> dict:
     docker = shutil.which("docker")
     assert docker is not None
     env = os.environ.copy()
-    env.pop("COMPOSE_FILE", None)
-    env.pop("COMPOSE_PROFILES", None)
-    env["QRADAR_DASH_VERSION"] = "0.0.0-test"
-    # ``env_file: [.env]`` on the backend anchor makes Compose open the project
-    # ``.env``. This checkout does not have one. ``--env-file`` supplies
-    # interpolation; ``--no-env-resolution`` skips that service env file.
-    command = [
-        docker,
-        "compose",
-        "--project-directory",
-        str(REPO),
-        "--env-file",
-        str(env_file),
-    ]
+    for key in (
+        "COMPOSE_FILE",
+        "COMPOSE_PROFILES",
+        "COMPOSE_PROJECT_DIRECTORY",
+        "COMPOSE_ENV_FILES",
+    ):
+        env.pop(key, None)
+    env.update(
+        {
+            "POSTGRES_USER": "compose-config",
+            "POSTGRES_PASSWORD": "compose-config",
+            "POSTGRES_DB": "compose-config",
+            "QRADAR_CONSOLE_FQDN": "console.example.invalid",
+            "NEXT_PUBLIC_API_BASE_URL": "http://127.0.0.1:8000/api/v1",
+            "QRADAR_DASH_VERSION": "0.0.0-test",
+        }
+    )
+    # Flags: --project-directory <staged copy>, -f for each copied file,
+    # --profile mcp only for the override render, then `config`.
+    # No --env-file and no --no-env-resolution. Compose reads <copy>/.env.
+    command = [docker, "compose", "--project-directory", str(project)]
     if profile is not None:
         command.extend(["--profile", profile])
     for name in files:
-        command.extend(["-f", str(REPO / name)])
-    command.extend(["config", "--no-env-resolution"])
+        command.extend(["-f", str(project / Path(name).name)])
+    command.append("config")
     result = subprocess.run(  # noqa: S603
         command,
-        cwd=REPO,
+        cwd=project,
         env=env,
         capture_output=True,
         text=True,
@@ -256,17 +273,17 @@ def test_docker_compose_config_keeps_migrate_and_the_external_network(tmp_path: 
     reason = _docker_skip_reason()
     if reason is not None:
         pytest.skip(f"{reason}; the YAML merge test still covers depends_on")
-    env_file = _dummy_env_file(tmp_path)
-    base = _compose_config("docker-compose.yml", env_file=env_file)
+    _stage_compose_project(tmp_path)
+    base = _compose_config("docker-compose.yml", project=tmp_path)
     with_prod = _compose_config(
-        "docker-compose.yml", "docker-compose.prod.yml", env_file=env_file
+        "docker-compose.yml", "docker-compose.prod.yml", project=tmp_path
     )
     # qradar-mcp is behind the mcp profile. Without it, config omits the service.
     with_override = _compose_config(
         "docker-compose.yml",
         "docker-compose.prod.yml",
         "deploy/docker-compose.override.example.yml",
-        env_file=env_file,
+        project=tmp_path,
         profile="mcp",
     )
     for document in (base, with_prod, with_override):
