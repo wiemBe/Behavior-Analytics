@@ -59,16 +59,19 @@ from app.services.ariel_permit import ArielPermitBudget
 from app.services.catchall_retention import CatchallRetention
 from app.services.detection_coverage import DetectionCoverageEvaluator
 from app.services.geo_retention import GeoRetention
+from app.services.ips_anomaly_retention import IpsAnomalyRetention
 from app.services.ips_pipeline import IpsInstancePipeline, ips_pipeline_lock_key
 from app.services.ips_profiles import IpsProfileService
 from app.services.ips_retention import IpsRetention
 from app.services.locks import CollectorAdvisoryLock
+from app.services.log_source_anomaly_retention import LogSourceAnomalyRetention
 from app.services.pw_pipeline import PwInstancePipeline
 from app.services.pw_retention import PwRetention
 from app.services.rule_health import RuleHealthEvaluator
 from app.services.search_executor import SearchExecutor
 from app.services.search_result_retention import SearchResultRetention
 from app.services.search_scheduler import SearchScheduler
+from app.services.snapshot_retention import SnapshotRetention
 from app.services.timescale import apply_policies
 from app.services.waf_pipeline import PIPELINE_LOCK, eligible_profile_ids, run_waf_source
 from app.services.waf_profiles import WafProfileService
@@ -1341,6 +1344,18 @@ async def apply_waf_retention() -> dict:
         return report.as_dict()
 
 
+async def apply_log_source_anomaly_retention() -> dict:
+    """Delete closed Phase A incidents past the retention window.
+
+    Not gated by RETENTION_ENABLED. Live incidents, detector pointers and any
+    alert that lists the incident are kept for the life of the alert.
+    Exclusive children leave by cascade.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await LogSourceAnomalyRetention(session).run()).as_dict()
+
+
 async def apply_anomaly_fault_retention() -> dict:
     """Delete closed anomaly evaluation faults older than the retention window.
 
@@ -1440,6 +1455,16 @@ async def apply_ips_retention() -> dict:
         return (await IpsRetention(session).run()).as_dict()
 
 
+async def apply_ips_anomaly_retention() -> dict:
+    """Delete closed IPS incidents past the retention window.
+
+    Not the metric task: a lookback skip there must not freeze incident aging.
+    """
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await IpsAnomalyRetention(session).run()).as_dict()
+
+
 # ------------------------------------------------------- property watches (G.6)
 async def dispatch_property_watch_collection(instance_name: str | None = None) -> dict:
     """Run one property-watch plan per instance after claiming its cadence slot.
@@ -1509,6 +1534,13 @@ async def apply_search_result_retention() -> dict:
     maker = get_sessionmaker()
     async with maker() as session:
         return (await SearchResultRetention(session).run()).as_dict()
+
+
+async def apply_snapshot_retention() -> dict:
+    """Delete aged rule-health and coverage snapshots. Not RETENTION_ENABLED."""
+    maker = get_sessionmaker()
+    async with maker() as session:
+        return (await SnapshotRetention(session).run()).as_dict()
 
 
 async def apply_timescale_policies() -> dict:
@@ -1682,6 +1714,11 @@ def apply_anomaly_fault_retention_task() -> dict:
     return _run(apply_anomaly_fault_retention())
 
 
+@celery_app.task(name="apply_log_source_anomaly_retention")
+def apply_log_source_anomaly_retention_task() -> dict:
+    return _run(apply_log_source_anomaly_retention())
+
+
 @celery_app.task(name="dispatch_ips_collection")
 def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
     return _run(dispatch_ips_collection(instance_name))
@@ -1690,6 +1727,11 @@ def dispatch_ips_collection_task(instance_name: str | None = None) -> dict:
 @celery_app.task(name="apply_ips_retention")
 def apply_ips_retention_task() -> dict:
     return _run(apply_ips_retention())
+
+
+@celery_app.task(name="apply_ips_anomaly_retention")
+def apply_ips_anomaly_retention_task() -> dict:
+    return _run(apply_ips_anomaly_retention())
 
 
 @celery_app.task(name="dispatch_property_watch_collection")
@@ -1705,6 +1747,11 @@ def apply_property_watch_retention_task() -> dict:
 @celery_app.task(name="apply_search_result_retention")
 def apply_search_result_retention_task() -> dict:
     return _run(apply_search_result_retention())
+
+
+@celery_app.task(name="apply_snapshot_retention")
+def apply_snapshot_retention_task() -> dict:
+    return _run(apply_snapshot_retention())
 
 
 @celery_app.task(name="apply_timescale_policies")

@@ -131,10 +131,15 @@ Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 
   **ikinci bir dosya sistemi** (400 GiB). İkinci dosya sistemi, veri diski dolduğunda bile yedeğe
   erişmeni sağlar. Yedek dizini ile Docker veri kökü aynı aygıttaysa kurulum ön kontrolü uyarır,
   reddetmez. Aynı aygıttaki yedek hatalı bir migrasyondan kurtarır, ölü bir diskten kurtarmaz.
-- Retention (saklama süresi) ayarı `retention_enabled` varsayılanda kapalıdır. Kurulum sihirbazı
-  `RETENTION_ENABLED=true`, dört Timescale tablosunun her biri için 90 gün ve sıkıştırma için 7 gün
-  yazar. Politikalar `apply_timescale_policies` görevi çalışana kadar uygulanmaz. Bu yüzden diski
-  izle (bkz. OPS-R14).
+- Retention (saklama süresi): `RETENTION_ENABLED` varsayılanda kapalıdır ve yalnız dört Timescale
+  parça politikasını kapatır (`log_source_metric`, `search_result_metric`, `rule_metric`,
+  `offense_snapshot`). Kurulum sihirbazı `RETENTION_ENABLED=true`, bu dört tablo için 90 gün ve
+  sıkıştırma için 7 gün yazar. Politikalar `apply_timescale_policies` görevi çalışana kadar
+  uygulanmaz. Günlük satır silicileri bu bayraktan bağımsız çalışır: arama sonuçları 90 gün,
+  catch-all 35, coğrafya 35, WAF metrik 35 / kapalı olay 180, IPS metrik 35 / kapalı olay 365,
+  property-watch metrik 35 / kapalı olay 180, anomaly fault 30, özel kural ihlali 180, kapalı
+  Phase A olay 365, `rule_health_snapshot` 90, `detection_coverage_snapshot` 90. Diski izle
+  (bkz. OPS-R14).
 
 Ana makinenin izin vermesi gereken portlar:
 
@@ -968,7 +973,8 @@ bağlanmaz.
 | `db_connect` | `SELECT 1`. Hazırlık kontrolüyle aynı olgu. | OPS-R36 |
 | `migration_head` | `alembic_version` tablosu imajın başıyla aynı mı. | OPS-R11 |
 | `timescale` | Eklenti yüklü ve `log_source_metric` bir hypertable mı. | OPS-R14 |
-| `retention_policy` | `RETENTION_ENABLED` true iken gün sayısı ayarlı dört tablonun her birinde saklama politikası var mı; eksik tabloları adlarıyla tek satırda bildirir. | OPS-R14 |
+| `retention_policy` | `RETENTION_ENABLED` true iken gün sayısı ayarlı dört tablonun her birinde saklama politikası var mı; eksik tabloları adlarıyla tek satırda bildirir. Bayrak false iken sorgu atmaz ve "retention is disabled by configuration" yazar. | OPS-R14 |
+| `batch_retention` | Günlük satır silicileri, tablolar gün sayısına göre gruplanmış. Kendi kapısı olanlar bir kez yazılır (`WAF_RETENTION_ENABLED`, `IPS_RETENTION_ENABLED`). `RETENTION_ENABLED` bu görevleri kapatmaz. Görev adları bu bölümde ve `docs/CONFIGURATION.md` içindedir. Satır 1000 karakterde kesilir. Son çalışma kaydı yoktur; satır uydurmaz, Redis okumaz. Sorgu atmaz. PASS. | OPS-R14 |
 | `redis` | Broker URL'sinde `PING`. | OPS-R9 |
 | `celery_workers` | Backend konteynerinin içinden `inspect ping`. En az bir yanıt gerekir. | OPS-R41 |
 | `celery_beat` | Redis'teki kalp atışı anahtarı; yaşı 180 sn altında olmalı. | OPS-R9 |
@@ -1615,8 +1621,18 @@ kullanmaya devam et. Ayarlar bir imaja gömülene kadar `mcp` profilini kapalı 
 **Belirti:** Postgres `No space left on device` hatası veriyor ya da `doctor` disk satırı FAIL
 gösteriyor.
 
-**Olası neden:** `retention_enabled` false idi ya da true idi ama `apply_timescale_policies` görevi
-hiç çalışmadı. Docker json günlükleri 20 MB × 5 ile sınırlıdır ve diski dolduran şey bunlar değildir.
+**Olası neden:** Timescale politikası yoktu (`RETENTION_ENABLED` false ya da `apply_timescale_policies`
+hiç çalışmadı) ya da günlük siliciler beklenen pencereden uzun tutuluyordu. `RETENTION_ENABLED=false`
+yalnız dört Timescale parça politikasını kaldırır. Günlük siliciler yine çalışır: arama sonuçları 90
+gün (`apply_search_result_retention`), catch-all 35 (`apply_catchall_retention`), coğrafya 35
+(`apply_geo_retention`), WAF metrik 35 / kapalı olay 180 (`apply_waf_retention`, kapı
+`WAF_RETENTION_ENABLED`), IPS metrik 35 (`apply_ips_retention`, kapı `IPS_RETENTION_ENABLED`) /
+kapalı olay 365 (`apply_ips_anomaly_retention`), property-watch metrik 35 / kapalı olay 180
+(`apply_property_watch_retention`), anomaly fault 30 (`apply_anomaly_fault_retention`), özel kural
+ihlali 180 (`apply_custom_rule_retention`), kapalı Phase A olay 365
+(`apply_log_source_anomaly_retention`), `rule_health_snapshot` 90 ve `detection_coverage_snapshot`
+90 (`apply_snapshot_retention`). Docker json günlükleri 20 MB × 5 ile sınırlıdır ve diski dolduran
+şey bunlar değildir.
 
 **Doğrulama:** `disk_docker` ya da `disk_backup` FAIL ve `pg_database_size` satırı.
 
@@ -1624,8 +1640,9 @@ hiç çalışmadı. Docker json günlükleri 20 MB × 5 ile sınırlıdır ve di
 ./qradar-dash doctor
 ```
 
-**Çözüm:** Yer aç, sonra bir saklama politikasının var olduğunu doğrula (`retention_policy` PASS).
-Docker günlük dosyalarını silmek dolu bir veri volume'unu düzeltmez.
+**Çözüm:** Yer aç. `retention_policy` Timescale politikalarını doğrular (PASS). `batch_retention`
+günlük silicilerin gün sayılarını yazar; son çalışmayı kaydetmez, Redis'ten de okumaz. Docker
+günlük dosyalarını silmek dolu bir veri volume'unu düzeltmez.
 
 ### OPS-R15. Ana makine askıya alındıktan sonra filigranlar atlıyor ya da çok sayıda kaynak `TIMESTAMP_DELAY` gösteriyor
 

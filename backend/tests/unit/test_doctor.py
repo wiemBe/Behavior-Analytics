@@ -250,6 +250,139 @@ async def test_retention_policy_pass_lists_all_configured_tables(settings: Setti
     assert len(session.statements) == 1
 
 
+def _day_group(message: str, days: int) -> str:
+    prefix = f"{days}d: "
+    for part in message.split("; "):
+        if part.startswith(prefix):
+            return part[len(prefix) :]
+    raise AssertionError(f"{days}d group missing from {message}")
+
+
+def _largest_retention_days(attr: str) -> int:
+    """The field's ``le`` bound, or a large value when the field has none."""
+    for meta in Settings.model_fields[attr].metadata:
+        upper = getattr(meta, "le", None)
+        if upper is not None:
+            return int(upper)
+    return 1_000_000_000
+
+
+def _distinct_retention_days() -> dict[str, int]:
+    """One day per setting, each near ``le`` or a distinct large value.
+
+    Tables that share a setting stay together. Distinct settings each open
+    their own group, which is the long form of the doctor line.
+    """
+    attrs: list[str] = []
+    for deleter in doctor_module.BATCH_DELETERS:
+        for item in deleter.tables:
+            if item.days_attr not in attrs:
+                attrs.append(item.days_attr)
+    update: dict[str, int] = {}
+    for offset, attr in enumerate(attrs):
+        upper = None
+        lower = 1
+        for meta in Settings.model_fields[attr].metadata:
+            le = getattr(meta, "le", None)
+            ge = getattr(meta, "ge", None)
+            if le is not None:
+                upper = int(le)
+            if ge is not None:
+                lower = int(ge)
+        value = (1_000_000_000 if upper is None else upper) - offset
+        if value < lower:
+            raise AssertionError(f"{attr} distinct day {value} is below {lower}")
+        update[attr] = value
+    if len(set(update.values())) != len(update):
+        raise AssertionError(f"day values are not distinct: {update}")
+    return update
+
+
+@pytest.mark.asyncio
+async def test_batch_retention_lists_every_deleter_and_queries_nothing(
+    settings: Settings,
+) -> None:
+    session = FakeSession()
+    result = await make_doctor(settings, session).check_batch_retention()
+    assert result.status is Status.PASS
+    assert result.runbook == "OPS-R14"
+    assert session.statements == []
+    assert "not gated by RETENTION_ENABLED" in result.message
+    assert result.message.count("WAF_RETENTION_ENABLED") == 1
+    assert result.message.count("IPS_RETENTION_ENABLED") == 1
+    assert "apply_timescale_policies" not in result.message
+    assert frozenset(
+        item.table for deleter in doctor_module.BATCH_DELETERS for item in deleter.tables
+    ) == doctor_module._BATCH_TABLE_NAMES
+    for deleter in doctor_module.BATCH_DELETERS:
+        assert deleter.task not in result.message
+        for item in deleter.tables:
+            assert item.table in result.message
+    assert _day_group(result.message, 365) == "ips_anomaly, log_source_anomaly"
+    rendered_text = render_text([result])
+    rendered_json = render_json([result])
+    assert json.loads(rendered_json)[0]["message"] == result.message
+    assert result.message in rendered_text
+    assert "***redacted***" not in rendered_text + rendered_json
+    assert len(result.message) <= doctor_module._MESSAGE_CAP
+    changed = settings.model_copy(update={"catchall_retention_days": 17})
+    again = await make_doctor(changed, FakeSession()).check_batch_retention()
+    assert _day_group(again.message, 17) == "catchall_bucket, catchall_sender"
+    assert "catchall_bucket" not in _day_group(again.message, 35)
+    assert "catchall_sender" not in _day_group(again.message, 35)
+
+
+@pytest.mark.asyncio
+async def test_batch_retention_render_fits_at_largest_day_values(settings: Settings) -> None:
+    update = {
+        item.days_attr: _largest_retention_days(item.days_attr)
+        for deleter in doctor_module.BATCH_DELETERS
+        for item in deleter.tables
+    }
+    widened = settings.model_copy(update=update)
+    result = await make_doctor(widened, FakeSession()).check_batch_retention()
+    rendered_text = render_text([result])
+    rendered_json = render_json([result])
+    payload = json.loads(rendered_json)
+    assert payload[0]["message"] == result.message
+    assert result.message in rendered_text
+    assert len(result.message) <= doctor_module._MESSAGE_CAP
+    assert doctor_module._safe_text(result.message) == result.message
+    assert "***redacted***" not in rendered_text
+    assert "***redacted***" not in rendered_json
+    for name in doctor_module._BATCH_TABLE_NAMES:
+        assert name in rendered_text
+        assert name in payload[0]["message"]
+    assert "3650d:" in result.message
+    assert "1000000000d:" in result.message
+
+
+@pytest.mark.asyncio
+async def test_batch_retention_render_fits_when_every_day_value_differs(
+    settings: Settings,
+) -> None:
+    days = _distinct_retention_days()
+    widened = settings.model_copy(update=days)
+    result = await make_doctor(widened, FakeSession()).check_batch_retention()
+    rendered_text = render_text([result])
+    rendered_json = render_json([result])
+    payload = json.loads(rendered_json)
+    groups = [part for part in result.message.split("; ") if part[:1].isdigit()]
+    assert len(groups) == len(days)
+    for name in doctor_module._BATCH_TABLE_NAMES:
+        assert name in rendered_text
+        assert name in payload[0]["message"]
+    for gate in ("WAF_RETENTION_ENABLED", "IPS_RETENTION_ENABLED"):
+        assert gate in rendered_text
+        assert gate in payload[0]["message"]
+    assert "***redacted***" not in rendered_text
+    assert "***redacted***" not in rendered_json
+    assert payload[0]["message"] == result.message
+    assert result.message in rendered_text
+    assert doctor_module._safe_text(result.message) == result.message
+    assert len(result.message) <= doctor_module._MESSAGE_CAP
+
+
 @pytest.mark.asyncio
 async def test_redis_pass_and_fail(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
     passing = FakeRedis()

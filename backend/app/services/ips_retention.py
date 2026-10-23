@@ -67,6 +67,15 @@ class IpsRetention:
         if not self.settings.ips_retention_enabled:
             report.skipped_reason = "IPS retention is disabled"
             return report
+        if self.settings.ips_metric_retention_days <= self.settings.ips_baseline_lookback_days:
+            # Startup refuses this only when IPS collection and retention are
+            # both on, so a collection-off deploy can still reach a run.
+            # Deleting would drop samples a baseline rebuild relies on.
+            report.skipped_reason = (
+                "IPS_METRIC_RETENTION_DAYS does not exceed IPS_BASELINE_LOOKBACK_DAYS; "
+                "nothing deleted"
+            )
+            return report
         cutoff = self._clock() - timedelta(days=self.settings.ips_metric_retention_days)
         for table, statement in _STATEMENTS:
             deleted = 0

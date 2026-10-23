@@ -294,14 +294,47 @@ redaction, API schemas exclude secrets, and the frontend receives no QRadar cred
 
 ## Retention
 
-General Timescale chunk retention is disabled unless the operator enables it and supplies explicit
-day counts. WAF, IPS, catch-all, geography, search-result, custom-rule and property-watch families
-have separate bounded batch-retention settings. A retention task never interprets a missing bucket
-as an observation.
+`RETENTION_ENABLED` gates only the four Timescale chunk policies reconciled by
+`apply_timescale_policies`: `log_source_metric`, `search_result_metric`, `rule_metric` and
+`offense_snapshot`. It defaults to off. Daily batch deleters ignore that flag. A retention task
+never interprets a missing bucket as an observation.
+
+| Table | Task | Default | Own gate |
+|---|---|---:|---|
+| `search_result_metric` | `apply_search_result_retention` | 90 d | none |
+| `catchall_bucket`, `catchall_sender` | `apply_catchall_retention` | 35 d | none |
+| `geo_country_bucket` | `apply_geo_retention` | 35 d | none |
+| `waf_endpoint_metric`, `waf_source_bucket`, `waf_endpoint_baseline`, retired `waf_endpoint` | `apply_waf_retention` | 35 d | `WAF_RETENTION_ENABLED` |
+| `waf_anomaly` (terminal) | `apply_waf_retention` | 180 d | `WAF_RETENTION_ENABLED` |
+| `ips_entity_metric`, `ips_source_bucket`, retired unreferenced `ips_entity` | `apply_ips_retention` | 35 d | `IPS_RETENTION_ENABLED` |
+| `ips_anomaly` (terminal) | `apply_ips_anomaly_retention` | 365 d | none |
+| `pw_value_metric`, `pw_bucket`, retired `pw_value` | `apply_property_watch_retention` | 35 d | none |
+| `pw_anomaly` (terminal) | `apply_property_watch_retention` | 180 d | none |
+| `anomaly_evaluation_fault` (closed) | `apply_anomaly_fault_retention` | 30 d | none |
+| `custom_rule_breach` (resolved) | `apply_custom_rule_retention` | 180 d | none |
+| `log_source_anomaly` (terminal) | `apply_log_source_anomaly_retention` | 365 d | none |
+| `rule_health_snapshot` | `apply_snapshot_retention` | 90 d | none |
+| `detection_coverage_snapshot` | `apply_snapshot_retention` | 90 d | none |
+
+Terminal incident states are RESOLVED, NORMAL and INSUFFICIENT_DATA. Age is
+`COALESCE(resolved_at, anomaly_end, detected_at)`. CANDIDATE, OPEN, RECOVERING and SUPPRESSED
+are kept. Phase A and IPS incident deletes skip a row while a detector state still points at it
+(`active_anomaly_id` or `open_anomaly_id`, any detector state) or any alert lists the id in
+`source_anomaly_ids`, whatever the alert status. Nothing deletes an alert, and the alert detail
+links to the incident through that list, so the incident is kept for the life of the alert.
+`Alert.evidence_snapshot` is the alert's own copy and is not a guard. `Alert.source_id` is the
+log source, IPS entity or IPS source, not the incident, and is not a guard. Property-watch
+incidents still use an unresolved-alert guard plus a detector guard; that task does run
+(`apply_property_watch_retention`).
+
+Children that exist only for the incident leave in the same delete by `ON DELETE CASCADE`, not as
+a skip: `anomaly_state_transition`, `anomaly_explanation`, `anomaly_explanation_dimension`,
+`anomaly_explanation_contributor` for Phase A; `ips_anomaly_transition` for IPS. IPS has no
+separate evidence table. Snapshot deletes have no reference guard. Their foreign keys point at
+the rule or the instance, so a snapshot delete does not delete the parent.
+
+`rule_match_window` and `rule_match_metric` are not deleted by age. That gap is unchanged.
 
 Retention deletes a bucket by age whatever its origin, so a history bucket is deleted with the
 live ones of the same age. The history tables themselves (`history_backfill_decision`,
 `history_backfill_scope`) are not deleted by age.
-
-Property-watch resolved-incident retention is declared in configuration but is not currently
-applied by a task; those incident rows accumulate until that implementation exists.
