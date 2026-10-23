@@ -40,14 +40,15 @@ Our `QRadarRestProvider` owns it; our `QRadarMCPProvider` never touches it.
 
 | Upstream default | File | Risk | Our override |
 |---|---|---|---|
-| `verify_ssl: false` | `config.example.json` | TLS interception of a privileged SIEM token | `verify_ssl: true`, mounted CA bundle |
-| `"debug": true` | `config.example.json` | Verbose error/stack disclosure | `debug: false` |
+| No certificate verification unless `REQUESTS_CA_BUNDLE` is set (App mode, section 4.1) | `client/qradar_rest_client.py`, `server.py` | TLS interception of a privileged SIEM token | `REQUESTS_CA_BUNDLE=/run/secrets/qradar_ca.pem` |
+| `"debug": true` | `config.example.json` | Verbose error/stack disclosure | not applicable: without a `config.json` the file is never read |
 | `GET/POST/DELETE` all `true` | `feature_toggles.json` | Full CRUD incl. reference-set and offense writes | `POST: false`, `DELETE: false` |
 | `uvicorn.run(app, host="0.0.0.0", port=5000)` | `server.py` `__main__` | Binds all interfaces | never publish the port; internal Docker network only |
 | Upstream compose maps `5001:5000` | `docker-compose.yml` | Reachable from host | our compose publishes **no** ports for MCP |
 
-We change none of this *in* the repo. All of it is overridden by **mounted configuration**
-(`config.json`, `feature_toggles.json`) — see §4.
+We change none of this *in* the repo. The toggles are replaced by one file baked into the image
+(`deploy/mcp/Dockerfile`), the certificate check is switched on by an environment variable and
+the credentials arrive per request — see §4.
 
 ### 1.4 `approval_required` is not a security control
 
@@ -142,7 +143,9 @@ so nobody re-enables a verb without seeing what it unlocks.
 
 ## 4. Enforced configuration
 
-Mounted read-only over the container's paths. **No upstream file is edited.**
+`feature_toggles.json` replaces upstream's file inside the image: `deploy/mcp/Dockerfile` is
+`FROM` IBM's unmodified build of `qradar-mcp/` and adds that one `COPY`. It is not bind-mounted
+from the checkout, which an SELinux-enforcing host cannot read (OPS-R13). **No upstream file is edited.**
 
 ```jsonc
 // deploy/mcp/feature_toggles.json
@@ -160,7 +163,7 @@ Mounted read-only over the container's paths. **No upstream file is edited.**
 }
 ```
 
-Defence in depth, because a toggle file is one bad mount away from being ignored:
+Defence in depth, because a toggle file is one bad build away from being ignored:
 
 1. **Verb toggles** — `POST`/`DELETE` off (enforced in `utils/feature_toggle_manager.py` `FeatureToggleManager.is_tool_enabled`).
 2. **Group toggles** — unlicensed/unused groups off, shrinking the surface further.
@@ -178,6 +181,23 @@ Defence in depth, because a toggle file is one bad mount away from being ignored
 
 Layers 4 and 5 are the ones that actually hold. 1–3 are configuration and can be misconfigured;
 layer 6 notices that they were.
+
+### 4.1 TLS and authentication (App mode)
+
+The server reads `config.json` from `/opt/app-root/config.json` only (three directories above
+`client/qradar_rest_client.py`). Nothing is there, so it runs in "QRadar App mode":
+
+- **Console host:** `QRADAR_CONSOLE_FQDN`.
+- **TLS verification:** the shared `httpx` client uses `REQUESTS_CA_BUNDLE` as its CA file when
+  that variable is set and **does not verify at all otherwise** (`FUNCTIONAL_TEST_ENV` also
+  switches it off; compose never sets it). Compose sets `REQUESTS_CA_BUNDLE` to
+  `/run/secrets/qradar_ca.pem` from the read-only secrets volume. The server runs as uid 1001
+  with all capabilities dropped: it can read the CA (0444) and cannot read `qradar_sec_token`
+  (0400, owned by the backend's uid).
+- **Credentials:** only from the `SEC` request header (`auth_context.py`). `QRadarAuthMiddleware`
+  authenticates every request, `initialize` included, against QRadar with it, so a request
+  without a valid `SEC` header gets 401. `QRadarMCPProvider` sends the SEC token on every
+  request it makes. The hop is plain HTTP on the internal Docker network.
 
 ---
 

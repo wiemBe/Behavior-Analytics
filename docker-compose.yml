@@ -87,13 +87,29 @@ services:
 
   # ------------------------------------------------- IBM QRadar MCP (vendored)
   # Pinned to commit b8f6a4a3fe901eac4f55e4ca5d146d952f55db51.
-  # Upstream Dockerfile is used unmodified; only configuration is overridden.
-  qradar-mcp:
+  # The code is IBM's, built with the upstream Dockerfile unmodified (qradar-mcp-upstream).
+  # deploy/mcp/Dockerfile adds one file on top: feature_toggles.json, writes off. It is
+  # baked in, not bind-mounted: a checkout file is unreadable to a container on an
+  # SELinux-enforcing host (docs/OPERATIONS.md OPS-R13).
+  qradar-mcp-upstream:
     build:
       context: ./qradar-mcp
       dockerfile: Dockerfile
+    image: qradar-observability/qradar-mcp-upstream:b8f6a4a3
+    # Build-only: the profile is never enabled, so `up` never starts it. qradar-mcp
+    # builds it through `additional_contexts` below.
+    profiles: [mcp-build]
+
+  qradar-mcp:
+    build:
+      context: ./deploy/mcp
+      dockerfile: Dockerfile
+      additional_contexts:
+        upstream: service:qradar-mcp-upstream
     image: qradar-observability/qradar-mcp:b8f6a4a3
-    # NO ports: block. Internal network access only. This is deliberate.
+    # NO ports: block. Internal network access only. This is deliberate. The backend
+    # reaches this service over plain HTTP on the internal network and sends the SEC
+    # token with every request; nothing else can reach it.
     environment:
       APP_ROOT: /opt/app-root/qradar-mcp
       # Bare hostname, not a URL. Deliberately NOT ${QRADAR_HOST}: the backend
@@ -101,13 +117,18 @@ services:
       # value without an https:// scheme, so the two cannot share a variable.
       QRADAR_CONSOLE_FQDN: ${QRADAR_CONSOLE_FQDN}
       QRADAR_HOST: ${QRADAR_CONSOLE_FQDN}
+      # Without a config.json the server runs in "QRadar App mode", where it verifies
+      # the console certificate only if this names a CA bundle (upstream default: no
+      # verification). The same CA file the backend uses (docs/mcp-capability-matrix.md
+      # section 6). Never FUNCTIONAL_TEST_ENV: it switches verification off.
+      REQUESTS_CA_BUNDLE: /run/secrets/qradar_ca.pem
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PYTHONUNBUFFERED: "1"
     volumes:
-      # Read-only overrides. Upstream defaults enable POST+DELETE and disable
-      # TLS verification — see docs/mcp-capability-matrix.md section 1.3.
-      - ./deploy/mcp/feature_toggles.json:/opt/app-root/qradar-mcp/feature_toggles.json:ro
-      - ./deploy/mcp/config.json:/opt/app-root/qradar-mcp/config.json:ro
+      # The secrets volume, read-only, as for the backend. The server runs as uid 1001
+      # and reads only qradar_ca.pem (0444); qradar_sec_token is 0400 for the backend's
+      # uid, so the server cannot read it. It receives the token per request instead.
+      - qradar_secrets:/run/secrets:ro
       - mcp_logs:/opt/app-root/logs
     read_only: true
     tmpfs: [/tmp]

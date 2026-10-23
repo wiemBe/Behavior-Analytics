@@ -1455,3 +1455,248 @@ class TestToolFailureReporting:
             await provider.call_tool("get_system_info")
         assert "/srv/secret" not in str(exc.value)
         assert sink.only()["outcome"] == "FAILURE"
+
+
+# ----------------------------------------------------------------- SEC token (SEC-4)
+SEC_TOKEN = "tok-SECRET-5f3a9c1e"
+
+
+def build_authed(handler=None, *, server: FakeMCPServer | None = None, **kwargs):
+    return build_provider(handler, server=server, sec_token=SEC_TOKEN, **kwargs)
+
+
+class TestSecHeader:
+    @pytest.mark.asyncio
+    async def test_every_request_kind_carries_the_sec_header(self) -> None:
+        """The pinned server authenticates `initialize` too, so none may go without."""
+        provider, _, transport = build_authed(lambda r: tool_reply(r, [{"id": 1}]))
+        await provider.call_tool("list_rules")
+        assert transport.methods() == [
+            "initialize", "notifications/initialized", "tools/list", "tools/call"
+        ]
+        assert [r.headers.get("sec") for r in transport.requests] == [SEC_TOKEN] * 4
+
+    @pytest.mark.asyncio
+    async def test_every_tools_list_page_carries_it(self) -> None:
+        cursors = iter(["p2", "p3"])
+
+        class Paged(FakeMCPServer):
+            def __call__(self, request: httpx.Request) -> httpx.Response:
+                body = json.loads(request.content)
+                if body["method"] != "tools/list":
+                    return super().__call__(request)
+                cursor = (body.get("params") or {}).get("cursor")
+                nxt = next(cursors, None) if cursor != "p3" else None
+                result: dict = {"tools": tool_objects(self.tools)}
+                if nxt:
+                    result["nextCursor"] = nxt
+                return self.reply({"jsonrpc": "2.0", "id": body["id"], "result": result})
+
+        provider, _, transport = build_authed(server=Paged())
+        await provider.negotiate_capabilities()
+        assert transport.methods().count("tools/list") == 3
+        assert all(r.headers.get("sec") == SEC_TOKEN for r in transport.requests)
+
+    @pytest.mark.asyncio
+    async def test_the_header_is_sent_again_after_a_reinitialisation(self) -> None:
+        server = FakeMCPServer()
+        provider, _, transport = build_authed(lambda r: tool_reply(r, [{"id": 7}]),
+                                              server=server)
+        await provider.call_tool("list_rules")
+        server.expire_sessions()
+        assert await provider.call_tool("list_rules") == [{"id": 7}]
+        assert transport.methods().count("initialize") == 2
+        assert len(transport.requests) == 9
+        assert all(r.headers.get("sec") == SEC_TOKEN for r in transport.requests)
+
+    @pytest.mark.asyncio
+    async def test_a_provider_without_a_token_sends_no_sec_header(self) -> None:
+        provider, _, transport = build_provider()
+        await provider.call_tool("list_rules")
+        assert all("sec" not in r.headers for r in transport.requests)
+
+    @pytest.mark.asyncio
+    async def test_an_empty_token_is_no_token(self) -> None:
+        provider, _, transport = build_provider(sec_token="")
+        await provider.call_tool("list_rules")
+        assert all("sec" not in r.headers for r in transport.requests)
+
+    def test_the_token_is_not_on_the_default_client_headers(self) -> None:
+        provider = QRadarMCPProvider(base_url=BASE_URL, sec_token=SEC_TOKEN)
+        assert SEC_TOKEN not in repr(dict(provider._client.headers))
+
+
+def _failure_cases():
+    def unauthorised(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"code": "UNAUTHENTICATED"})
+
+    def times_out(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("read timed out", request=request)
+
+    def unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    def malformed_call(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"not json at all",
+                              headers={"content-type": "application/json"})
+
+    def is_error(request: httpx.Request) -> httpx.Response:
+        return tool_reply(request, "boom", isError=True)
+
+    return [
+        pytest.param(dict(handler=unauthorised, raw=True), "list_rules", id="401"),
+        pytest.param(dict(handler=times_out, raw=True), "list_rules", id="timeout"),
+        pytest.param(dict(handler=unreachable, raw=True), "list_rules", id="unreachable"),
+        pytest.param(dict(handler=malformed_call), "list_rules", id="malformed"),
+        pytest.param(dict(handler=is_error), "list_rules", id="tool-error"),
+        pytest.param(
+            dict(server=FakeMCPServer(REAL_DEFAULT_TOOLS)), "list_rules", id="refusal"
+        ),
+        pytest.param(dict(), "update_offense", id="denied-write"),
+    ]
+
+
+def _chain(exc: BaseException | None):
+    while exc is not None:
+        yield exc
+        exc = exc.__cause__ or exc.__context__
+
+
+class TestTheTokenNeverLeaks:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("build", "tool"), _failure_cases())
+    async def test_not_in_logs_audit_exceptions_or_repr(
+        self, build: dict, tool: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        provider, sink, _ = build_authed(**build)
+        with caplog.at_level(logging.DEBUG), pytest.raises(Exception) as caught:
+            await provider.call_tool(tool)
+
+        assert sink.records, "the failure must be audited, or this proves nothing"
+        logs = "\n".join(
+            r.getMessage() + repr(r.__dict__) + (str(r.exc_info[1]) if r.exc_info else "")
+            for r in caplog.records
+        )
+        assert SEC_TOKEN not in logs
+        assert SEC_TOKEN not in json.dumps(sink.records, default=repr)
+        for exc in _chain(caught.value):
+            assert SEC_TOKEN not in str(exc)
+            assert SEC_TOKEN not in repr(exc)
+        assert SEC_TOKEN not in repr(provider)
+        assert SEC_TOKEN not in str(provider)
+
+    @pytest.mark.asyncio
+    async def test_not_in_the_success_audit_record_or_log(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        provider, sink, _ = build_authed(lambda r: tool_reply(r, [{"id": 1}]))
+        with caplog.at_level(logging.DEBUG):
+            await provider.call_tool("list_rules")
+        assert SEC_TOKEN not in json.dumps(sink.records, default=repr)
+        assert SEC_TOKEN not in "\n".join(
+            r.getMessage() + repr(r.__dict__) for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_401_is_an_auth_error_that_names_no_token(self) -> None:
+        provider, sink, _ = build_authed(
+            lambda r: httpx.Response(401, json={"code": "UNAUTHENTICATED"}), raw=True
+        )
+        with pytest.raises(ProviderAuthError):
+            await provider.call_tool("list_rules")
+        assert sink.only()["outcome"] == "FAILURE"
+
+
+class TestFactoryPassesTheToken:
+    @staticmethod
+    async def _headers_sent(provider) -> list[str | None]:
+        transport = CountingTransport(FakeMCPServer())
+        await provider._client.aclose()
+        provider._client = httpx.AsyncClient(transport=transport, base_url=BASE_URL)
+        await provider.negotiate_capabilities()
+        return [r.headers.get("sec") for r in transport.requests]
+
+    @pytest.mark.asyncio
+    async def test_build_provider_sends_the_configured_token(self) -> None:
+        from app.core.config import ProviderKind, Settings
+        from app.providers.factory import build_provider as factory_build
+
+        settings = Settings(qradar_provider=ProviderKind.MCP, qradar_sec_token=SEC_TOKEN)
+        provider = factory_build(settings)
+        assert await self._headers_sent(provider) == [SEC_TOKEN] * 3
+
+    @pytest.mark.asyncio
+    async def test_build_provider_reads_the_token_file_and_trims_it(self, tmp_path) -> None:
+        from app.core.config import ProviderKind, Settings
+        from app.providers.factory import build_provider as factory_build
+
+        token_file = tmp_path / "token"
+        token_file.write_text(SEC_TOKEN + "\n")
+        settings = Settings(
+            qradar_provider=ProviderKind.MCP, qradar_api_token_file=str(token_file)
+        )
+        provider = factory_build(settings)
+        assert await self._headers_sent(provider) == [SEC_TOKEN] * 3
+
+    @pytest.mark.asyncio
+    async def test_an_instance_provider_sends_the_stored_token(self) -> None:
+        from unittest.mock import Mock
+
+        from app.core.config import Settings
+        from app.providers.factory import build_provider_for_instance
+
+        instance = Mock(provider_kind="mcp", sec_token=SEC_TOKEN, mcp_base_url=None)
+        provider = build_provider_for_instance(instance, Settings())
+        assert await self._headers_sent(provider) == [SEC_TOKEN] * 3
+
+    @pytest.mark.parametrize("stored", [None, ""])
+    def test_an_instance_without_a_token_is_refused(self, stored) -> None:
+        from unittest.mock import Mock
+
+        from app.core.config import Settings
+        from app.providers.factory import build_provider_for_instance
+
+        instance = Mock(provider_kind="mcp", sec_token=stored, mcp_base_url=None)
+        instance.name = "lab"
+        with pytest.raises(ValueError, match="no stored SEC token") as caught:
+            build_provider_for_instance(instance, Settings())
+        assert "lab" in str(caught.value)
+
+
+class TestProductionValidator:
+    @staticmethod
+    def _prod(**overrides):
+        from app.core.config import Environment, ProviderKind
+
+        base = {
+            "environment": Environment.PRODUCTION,
+            "debug": False,
+            "qradar_verify_ssl": True,
+            "secret_key": "x" * 40,
+            "encryption_key": "sxvVvbfjEG8mA0m2m6b1cQ2E0N4l7rXqO4uJ6c8zY5A=",
+            "qradar_provider": ProviderKind.MCP,
+            "qradar_sec_token": SEC_TOKEN,
+            "qradar_host": "https://qradar.example",
+            "public_origin": "https://soc.example",
+        }
+        base.update(overrides)
+        return base
+
+    def test_mcp_with_a_token_boots(self) -> None:
+        from app.core.config import Settings
+
+        Settings(**self._prod())
+
+    def test_mcp_without_a_token_is_refused(self) -> None:
+        from app.core.config import Settings
+
+        with pytest.raises(ValueError, match="QRADAR_PROVIDER=mcp") as caught:
+            Settings(**self._prod(qradar_sec_token=""))
+        assert SEC_TOKEN not in str(caught.value)
+
+    def test_mcp_with_a_token_file_boots(self, tmp_path) -> None:
+        from app.core.config import Settings
+
+        token_file = tmp_path / "token"
+        token_file.write_text(SEC_TOKEN)
+        Settings(**self._prod(qradar_sec_token="", qradar_api_token_file=str(token_file)))

@@ -377,21 +377,35 @@ The MCP container publishes no ports. Upstream write tools are disabled
 the direct REST/Ariel provider (`QRadarRestProvider`). The application does not
 depend on MCP.
 
-Production hosts are not supported until this configuration is delivered without
-a checkout bind mount (see [`OPERATIONS.md`](OPERATIONS.md), OPS-R13). Do not
-start the `mcp` profile on a production host.
+The profile needs nothing to copy or edit. It reuses what the backend already has:
 
-On a development or lab host, copy the example, set the read-only token, restrict
-the file and start the profile. `deploy/mcp/config.json` is gitignored.
+- **The token.** The backend sends `QRADAR_API_TOKEN_FILE` (or `QRADAR_SEC_TOKEN`) to the MCP
+  service in an `SEC` header on every request, and the service uses it to call QRadar. The
+  MCP container does not mount the token file: its user cannot read it. With
+  `QRADAR_PROVIDER=mcp`, production refuses to start without a token.
+- **The CA.** The service mounts the same secrets volume read-only at `/run/secrets` and verifies
+  the console certificate against `qradar_ca.pem` (`REQUESTS_CA_BUNDLE`). Without that variable
+  the pinned server does not verify the certificate at all.
+- **The toggle file.** `feature_toggles.json` is baked into the `qradar-mcp` image
+  (`deploy/mcp/Dockerfile`: IBM's unmodified build plus that one file), so no file of the
+  checkout is mounted.
+
+The hop from the backend to the MCP service is plain HTTP on the internal Docker network. The
+service publishes no port, so only containers on that network can reach it, and the token
+travels in that hop. Do not publish the port.
+
+Production hosts must not start the `mcp` profile until it has been validated against a real
+console (see [`OPERATIONS.md`](OPERATIONS.md), OPS-R13). On a development or lab host, load the
+secrets as for the rest of the stack and start the profile:
 
 ```bash
-cp deploy/mcp/config.json.example deploy/mcp/config.json
-chmod 600 deploy/mcp/config.json
 docker compose --profile mcp up -d qradar-mcp
 ```
 
-Set `authorized_service_token` in that file to the read-only QRadar token before
-starting the profile.
+`install --build` does not build this image. To build it from the checkout, run
+`docker compose --profile mcp build qradar-mcp`: Compose builds `./qradar-mcp` first (the
+`qradar-mcp-upstream` service) and passes it to `deploy/mcp/Dockerfile` as the named context
+`upstream`.
 
 ## Upgrade, backup and recovery
 

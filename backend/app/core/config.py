@@ -1288,6 +1288,11 @@ class Settings(BaseSettings):
             problems.append(
                 "QRADAR_API_TOKEN_FILE or QRADAR_SEC_TOKEN is required when QRADAR_PROVIDER=rest"
             )
+        if self.qradar_provider is ProviderKind.MCP and not self.has_qradar_token:
+            # The pinned server authenticates every request with the SEC header.
+            problems.append(
+                "QRADAR_API_TOKEN_FILE or QRADAR_SEC_TOKEN is required when QRADAR_PROVIDER=mcp"
+            )
         if self.llm_allow_autonomous_actions:
             problems.append(
                 "LLM_ALLOW_AUTONOMOUS_ACTIONS must be false; autonomous response is not implemented"
