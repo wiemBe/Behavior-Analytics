@@ -81,7 +81,7 @@ def _set_cookie(response: Response, token: str, settings: Settings) -> None:
         token,
         httponly=True,
         samesite="strict",
-        secure=settings.is_production,
+        secure=settings.is_hardened,
         path="/",
         max_age=settings.session_max_hours * 3600,
     )
@@ -93,7 +93,7 @@ def _clear_cookie(response: Response, settings: Settings) -> None:
         path="/",
         httponly=True,
         samesite="strict",
-        secure=settings.is_production,
+        secure=settings.is_hardened,
     )
 
 

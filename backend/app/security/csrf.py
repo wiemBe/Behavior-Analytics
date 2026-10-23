@@ -66,5 +66,5 @@ def request_refusal(request: Request, settings: Settings) -> str | None:
         request.headers.get("referer"),
         public_origin=settings.public_origin,
         enforced=settings.session_cookies_enforced(),
-        allow_dev_localhost=not settings.is_production,
+        allow_dev_localhost=not settings.is_hardened,
     )

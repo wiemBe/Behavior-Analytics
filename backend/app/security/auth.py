@@ -1,9 +1,9 @@
 """Resolve the request principal.
 
-Session cookies are required in production and whenever ``auth_provider`` is
-``session``. Development with ``auth_provider=local`` keeps the local-dev
-principal so the existing suite does not need a directory. ``oidc`` outside
-production is unchanged. The session lookup uses its own short transaction,
+Session cookies are required outside development and whenever ``auth_provider``
+is ``session``. Development with ``auth_provider=local`` keeps the local-dev
+principal so the existing suite does not need a directory. ``oidc`` in
+development is unchanged. The session lookup uses its own short transaction,
 so a route that does not authenticate never opens a database connection.
 """
 
@@ -111,12 +111,12 @@ async def _session_principal(
 
 
 def _local_principal(authorization: str | None, settings: Settings) -> Principal:
-    if settings.is_production:
-        # Production takes the session branch before this. Kept so a caller
-        # that reaches the local provider directly still fails closed.
+    if settings.is_hardened:
+        # A hardened environment takes the session branch before this. Kept so a
+        # caller that reaches the local provider directly still fails closed.
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
-            "local auth is disabled in production; configure AUTH_PROVIDER=session",
+            "local auth is disabled outside development; configure AUTH_PROVIDER=session",
         )
     if not authorization:
         return Principal(

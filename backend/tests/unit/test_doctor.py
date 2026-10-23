@@ -784,3 +784,45 @@ async def test_timed_out_check_fails_and_next_check_runs(
     )
     assert next_check_ran
     assert results[1].status is Status.PASS
+
+
+@pytest.mark.asyncio
+async def test_unknown_settings_pass_and_warn(settings: Settings) -> None:
+    clean = {
+        "CATCHALL_COLLECTION_ENABLED": "true",
+        "QRADAR_HOST": "https://qradar.example",
+        "NOTIFY_TEAMS_WEBHOOK_URL": "https://hooks.example/planted-webhook-secret",
+        "SMTP_HOST": "mail.example",
+        "GIT_SHA": "abc123",
+        "PATH": "/usr/bin",
+        "HOSTNAME": "box",
+    }
+    passed = await make_doctor(settings, environ=clean).check_unknown_settings()
+    assert passed.status is Status.PASS
+    assert passed.message == "no unknown settings"
+    assert passed.runbook is None
+
+    planted = "planted-secret-value-9f3a"
+    warned = await make_doctor(
+        settings, environ={**clean, "CATCHALL_COLLECTION_ENABLE": planted}
+    ).check_unknown_settings()
+    assert warned.status is Status.WARN
+    assert warned.message == "ignored unknown settings: CATCHALL_COLLECTION_ENABLE"
+    assert planted not in warned.message
+    assert warned.runbook == "OPS-R62"
+    assert ("unknown_settings", "OPS-R62") in doctor_module._CHECK_RUNBOOKS
+
+
+@pytest.mark.asyncio
+async def test_unknown_settings_pass_for_the_names_install_and_compose_use(
+    settings: Settings,
+) -> None:
+    from tests.unit.test_config_and_crypto import deployment_env_names
+
+    planted = "planted-install-value"
+    environ = dict.fromkeys(deployment_env_names(), planted)
+    result = await make_doctor(settings, environ=environ).check_unknown_settings()
+    assert result.status is Status.PASS
+    assert result.message == "no unknown settings"
+    assert result.runbook is None
+    assert planted not in result.message

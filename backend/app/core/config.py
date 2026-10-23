@@ -1,11 +1,14 @@
 """Application settings.
 
 Everything is sourced from the environment. No secret is ever hardcoded, and
-`Settings` refuses to construct an unsafe production configuration.
+`Settings` refuses to construct an unsafe configuration outside development.
+Staging is the production posture for a pre-production site.
 """
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -37,6 +40,135 @@ class ProviderKind(StrEnum):
     MCP = "mcp"
 
 
+#: The ``SECRET_KEY`` and ``ENCRYPTION_KEY`` strings shipped in ``.env.example``.
+#: A hardened environment refuses these exact values. The unit test
+#: ``test_placeholder_constant_matches_env_example`` fails if this map and the file drift apart.
+EXAMPLE_PLACEHOLDERS: dict[str, str] = {
+    "SECRET_KEY": "change-me-generate-a-64-byte-urlsafe-token",
+    "ENCRYPTION_KEY": "change-me-generate-a-fernet-key",
+}
+
+# ``./qradar-dash`` writes SECRET_KEY with ``openssl rand -base64 48``. The
+# docs also give the ``secrets`` one-liner. Neither value is logged.
+_APP_KEY_GENERATE = (
+    "Generate one with openssl rand -base64 48 "
+    'or python -c "import secrets; print(secrets.token_urlsafe(64))"'
+)
+# ``./qradar-dash`` generates this inside the backend image. The docs give the
+# same one-liner. The value that failed is never included in the message.
+_FERNET_KEY_GENERATE = (
+    'Generate one with python -c "from cryptography.fernet import Fernet; '
+    'print(Fernet.generate_key().decode())"'
+)
+
+#: Names ``os.environ`` reads under ``backend/app`` that are not ``Settings`` fields.
+#: Exact names, not prefixes: a prefix would also hide a typo of a real ``NOTIFY_*``
+#: setting (``notify_per_channel_rate`` and the other ``notify_*`` fields).
+#:   ``NOTIFY_TEAMS_WEBHOOK_URL`` and the other ``NOTIFY_*`` names — ``app/alerts/routing.py``
+#:   ``SMTP_*`` — ``app/alerts/notifiers/registry.py``
+#:   ``GIT_SHA`` — ``app/core/version.py``
+SETTINGS_ENV_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "NOTIFY_TEAMS_WEBHOOK_URL",
+        "NOTIFY_SLACK_WEBHOOK_URL",
+        "NOTIFY_GENERIC_WEBHOOK_URL",
+        "NOTIFY_EMAIL_RECIPIENTS",
+        "NOTIFY_SYSLOG_HOST",
+        "NOTIFY_SYSLOG_PORT",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USERNAME",
+        "SMTP_PASSWORD",
+        "SMTP_FROM",
+        "SMTP_USE_TLS",
+        "GIT_SHA",
+    }
+)
+
+#: Written by ``./qradar-dash install`` or interpolated by the compose files, and not a
+#: ``Settings`` field, but sharing a setting's first ``_`` segment. A prefix allowlist
+#: would hide typos. The unit test parses ``installer_env_key`` and both compose files
+#: and fails if any of those names is reported, so a new installer key cannot slip through.
+DEPLOYMENT_ENV_NAMES: frozenset[str] = frozenset(
+    {
+        "API_LOOPBACK_PORT",
+        "QRADAR_CONSOLE_FQDN",
+        "QRADAR_DASH_BACKUP_DIR",
+        "QRADAR_DASH_IMAGE_PREFIX",
+        "QRADAR_DASH_VERSION",
+    }
+)
+
+
+def _fernet_accepts(value: str) -> bool:
+    """True when ``cryptography.fernet.Fernet`` can construct a key from ``value``."""
+    from cryptography.fernet import Fernet
+
+    try:
+        Fernet(value)
+    except (ValueError, TypeError):
+        return False
+    return True
+
+
+def _encryption_keys_json_problems(raw: str) -> list[str]:
+    """Problems with ``ENCRYPTION_KEYS_JSON``. The key material is never quoted."""
+    text = raw.strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return ["ENCRYPTION_KEYS_JSON is not valid JSON"]
+    if not isinstance(parsed, dict):
+        return ["ENCRYPTION_KEYS_JSON must be a JSON object of version to Fernet key"]
+    not_integers: list[str] = []
+    not_fernet: list[str] = []
+    for ver, key in parsed.items():
+        label = ver if isinstance(ver, str) else str(ver)
+        try:
+            int(label)
+        except (TypeError, ValueError):
+            not_integers.append(label)
+            continue
+        if not isinstance(key, str) or not _fernet_accepts(key):
+            not_fernet.append(label)
+    problems: list[str] = []
+    if not_integers:
+        problems.append(
+            "ENCRYPTION_KEYS_JSON version " + ", ".join(not_integers) + " is not an integer"
+        )
+    if not_fernet:
+        problems.append(
+            "ENCRYPTION_KEYS_JSON has an entry Fernet cannot construct (version "
+            + ", ".join(not_fernet)
+            + "); "
+            + _FERNET_KEY_GENERATE
+        )
+    return problems
+
+
+def _hardened_secret_problems(secret: str, encryption: str, keys_json: str) -> list[str]:
+    """Placeholder and unusable-key refusals. Messages name the setting, never the value."""
+    problems: list[str] = []
+    if secret == EXAMPLE_PLACEHOLDERS["SECRET_KEY"]:
+        problems.append(
+            "SECRET_KEY is the placeholder shipped in .env.example; " + _APP_KEY_GENERATE
+        )
+    elif len(secret) < 32:
+        problems.append("SECRET_KEY must be at least 32 characters")
+    if not encryption:
+        problems.append("ENCRYPTION_KEY is required to encrypt stored credentials")
+    elif encryption == EXAMPLE_PLACEHOLDERS["ENCRYPTION_KEY"]:
+        problems.append(
+            "ENCRYPTION_KEY is the placeholder shipped in .env.example; " + _FERNET_KEY_GENERATE
+        )
+    elif not _fernet_accepts(encryption):
+        problems.append("ENCRYPTION_KEY is not a Fernet key; " + _FERNET_KEY_GENERATE)
+    problems.extend(_encryption_keys_json_problems(keys_json))
+    return problems
+
+
 LAB_PROFILE: dict[str, int] = {
     # One-minute buckets are the smallest interval the production validators
     # permit. Four samples and 1/2 hysteresis make a demonstration complete in
@@ -62,6 +194,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
+        # Unknown names are ignored, not refused. Startup and doctor report the
+        # ones that look like a setting (unknown_setting_names).
         extra="ignore",
         case_sensitive=False,
         # Fields carrying a validation_alias (qradar_host accepts both
@@ -744,9 +878,10 @@ class Settings(BaseSettings):
 
     # --- auth ---------------------------------------------------------------
     # "local" is the development convenience (a local-dev principal, no cookie).
-    # "session" reads the server-side session cookie. Production always reads
-    # the cookie, whichever of those two is set. "oidc" is refused at startup
-    # in production; outside production its behaviour is unchanged.
+    # "session" reads the server-side session cookie. Every environment except
+    # development reads the cookie, whichever of those two is set. "oidc" is
+    # refused at startup outside development; in development its behaviour is
+    # unchanged.
     auth_provider: Literal["local", "oidc", "session"] = "local"
     oidc_issuer: str = ""
     oidc_client_id: str = ""
@@ -799,14 +934,23 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.environment is Environment.PRODUCTION
 
+    @property
+    def is_hardened(self) -> bool:
+        """True for every environment except development.
+
+        Staging is the production posture for a pre-production site: the same
+        startup refusals, session cookie, CSRF check and local-principal refusal.
+        """
+        return self.environment is not Environment.DEVELOPMENT
+
     def session_cookies_enforced(self) -> bool:
         """True when a request must carry the session cookie.
 
-        Production never falls back to the development principal. Outside
-        production, only ``auth_provider=session`` does, so the existing suite
-        keeps working on the local provider.
+        Development with ``auth_provider=local`` keeps the local-dev principal.
+        Every other environment requires the cookie, and so does development
+        when ``auth_provider=session``, so the session suite still runs there.
         """
-        return self.is_production or self.auth_provider == "session"
+        return self.is_hardened or self.auth_provider == "session"
 
     def encryption_keyring(self) -> dict[int, str]:
         """All known Fernet keys by version, active version included.
@@ -816,8 +960,6 @@ class Settings(BaseSettings):
         is used to build a MultiFernet so ciphertext written under any historical
         key still decrypts.
         """
-        import json
-
         keys: dict[int, str] = {}
         primary = self.encryption_key.get_secret_value()
         if primary:
@@ -1079,27 +1221,30 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _production_hardening(self) -> Settings:
-        """Refuse to boot a production deployment with a development posture.
+        """Refuse to boot a non-development deployment with a development posture.
 
-        These are startup failures rather than warnings: every one of them is a
-        finding an auditor would raise, and a warning in a log nobody reads is
-        not a control.
+        Staging uses this posture. These are startup failures rather than
+        warnings: every one of them is a finding an auditor would raise, and a
+        warning in a log nobody reads is not a control.
         """
-        if not self.is_production:
+        if not self.is_hardened:
             return self
 
         problems: list[str] = []
 
         if self.debug:
-            problems.append("DEBUG must be false in production")
+            problems.append("DEBUG must be false outside development")
         if not self.qradar_verify_ssl:
-            problems.append("QRADAR_VERIFY_SSL must be true in production")
-        if len(self.secret_key.get_secret_value()) < 32:
-            problems.append("SECRET_KEY must be at least 32 characters")
-        if not self.encryption_key.get_secret_value():
-            problems.append("ENCRYPTION_KEY is required to encrypt stored credentials")
+            problems.append("QRADAR_VERIFY_SSL must be true outside development")
+        problems.extend(
+            _hardened_secret_problems(
+                self.secret_key.get_secret_value(),
+                self.encryption_key.get_secret_value(),
+                self.encryption_keys_json,
+            )
+        )
         if self.qradar_provider is ProviderKind.MOCK:
-            problems.append("QRADAR_PROVIDER=mock is not permitted in production")
+            problems.append("QRADAR_PROVIDER=mock is not permitted outside development")
         if self.qradar_provider is ProviderKind.REST and not self.has_qradar_token:
             problems.append(
                 "QRADAR_API_TOKEN_FILE or QRADAR_SEC_TOKEN is required when QRADAR_PROVIDER=rest"
@@ -1129,10 +1274,57 @@ class Settings(BaseSettings):
             )
 
         if problems:
-            raise ValueError("Unsafe production configuration:\n  - " + "\n  - ".join(problems))
+            # OPS-R17 names this sentence, including the environment. Staging raises
+            # it too: staging is the production posture for a pre-production site.
+            raise ValueError(
+                f"Unsafe configuration for ENVIRONMENT={self.environment.value}:\n  - "
+                + "\n  - ".join(problems)
+            )
         return self
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+@lru_cache(maxsize=1)
+def _known_setting_env_names() -> frozenset[str]:
+    """Upper-case field names and aliases ``Settings`` accepts from the environment."""
+    names: set[str] = set()
+    for field_name, field in Settings.model_fields.items():
+        names.add(field_name.upper())
+        alias = field.validation_alias
+        if isinstance(alias, str):
+            names.add(alias.upper())
+        elif isinstance(alias, AliasChoices):
+            for choice in alias.choices:
+                if isinstance(choice, str):
+                    names.add(choice.upper())
+    return frozenset(names)
+
+
+@lru_cache(maxsize=1)
+def _setting_env_prefixes() -> frozenset[str]:
+    return frozenset(name.split("_", 1)[0] for name in _known_setting_env_names())
+
+
+def unknown_setting_names(environ: Mapping[str, str]) -> tuple[str, ...]:
+    """Environment names that look like settings and are not.
+
+    A name looks like a setting when the segment before its first ``_`` is the
+    first segment of a ``Settings`` field or alias. The name itself must not be
+    a field or alias, and must not be on ``SETTINGS_ENV_ALLOWLIST`` or
+    ``DEPLOYMENT_ENV_NAMES``. The result is uppercase and sorted. Values are never read.
+    """
+    known = _known_setting_env_names()
+    prefixes = _setting_env_prefixes()
+    ignored = SETTINGS_ENV_ALLOWLIST | DEPLOYMENT_ENV_NAMES
+    found: set[str] = set()
+    for raw in environ:
+        name = raw.upper()
+        if not name or name in known or name in ignored:
+            continue
+        if name.split("_", 1)[0] in prefixes:
+            found.add(name)
+    return tuple(sorted(found))

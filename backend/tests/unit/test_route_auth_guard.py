@@ -12,11 +12,13 @@ import re
 import uuid
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app.core.config import get_settings
+from app.core.config import Environment, get_settings
 from app.core.database import get_session
 from app.main import create_app
+from app.security.auth import _local_principal
 
 _MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -30,8 +32,8 @@ _OPEN_PATHS = {
     # must still read which build is running.
     "/api/v1/version",
     # FastAPI's own schema and docs routes. create_app() mounts them only outside
-    # production (docs_url/openapi_url are None there) precisely to avoid
-    # advertising the surface; they expose no platform data.
+    # development (docs_url/openapi_url are None on a hardened site) precisely to
+    # avoid advertising the surface; they expose no platform data.
     "/openapi.json",
     "/docs",
     "/docs/oauth2-redirect",
@@ -300,3 +302,54 @@ def test_user_roles_list_is_on_the_openapi_guard() -> None:
     assert missing.status_code == 401, missing.text
     readonly = _client("local").get(path, headers={"Authorization": "Bearer read-only"})
     assert readonly.status_code == 403, readonly.text
+
+
+def _staging_app():
+    app = create_app()
+    settings = get_settings().model_copy(
+        update={
+            "environment": Environment.STAGING,
+            "auth_provider": "local",
+            "public_origin": "https://soc.example",
+        }
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    return app
+
+
+def test_staging_local_without_a_header_is_401_not_admin() -> None:
+    """A hardened site does not hand the local-dev admin principal to an anonymous request."""
+    app = _staging_app()
+    app.dependency_overrides[get_session] = _no_session
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/log-sources")
+    assert response.status_code == 401, response.text
+    assert response.json()["detail"] == "Authentication required."
+    assert "local-dev" not in response.text
+
+
+def test_local_principal_refuses_outside_development() -> None:
+    settings = get_settings().model_copy(
+        update={"environment": Environment.STAGING, "auth_provider": "local"}
+    )
+    with pytest.raises(HTTPException) as caught:
+        _local_principal(None, settings)
+    assert caught.value.status_code == 401
+    assert "outside development" in str(caught.value.detail)
+
+
+def test_staging_enforces_csrf_including_the_dev_origin() -> None:
+    app = _staging_app()
+    with TestClient(app, raise_server_exceptions=False) as client:
+        missing = client.post(
+            "/api/v1/auth/login", json={"username": "ada", "password": "x"}
+        )
+        local = client.post(
+            "/api/v1/auth/login",
+            json={"username": "ada", "password": "x"},
+            headers={"Origin": "http://localhost:3000"},
+        )
+    assert missing.status_code == 403, missing.text
+    assert "no Origin or Referer" in missing.json()["detail"]
+    assert local.status_code == 403, local.text
+    assert "localhost:3000" in local.json()["detail"]
