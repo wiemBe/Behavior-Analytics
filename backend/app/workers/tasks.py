@@ -679,10 +679,22 @@ async def calculate_offense_aggregates(instance_name: str | None = None) -> dict
                 sla_hours=settings.offense_sla_hours,
                 critical_magnitude=settings.offense_critical_magnitude,
             )
+            elapsed = int((time.perf_counter() - started) * 1000)
+            # No snapshot: the counts are null. `processed` stays an integer,
+            # and the skip says why, the same way a locked run reports a skip
+            # with a zero count rather than an empty success.
+            if aggregates["active"] is None:
+                return {
+                    "status": "skipped",
+                    "duration_ms": elapsed,
+                    **aggregates,
+                    "processed": 0,
+                    "skipped_reason": "no offense snapshot",
+                }
             return {
                 "status": "ok",
                 "processed": aggregates["active"],
-                "duration_ms": int((time.perf_counter() - started) * 1000),
+                "duration_ms": elapsed,
                 **aggregates,
             }
 

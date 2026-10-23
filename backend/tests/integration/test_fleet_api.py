@@ -18,6 +18,7 @@ from app.alerts.service import AlertInput, AlertService
 from app.api.routes import fleet as fleet_routes
 from app.core.database import get_session
 from app.fleet.service import ensure_seed_rules
+from app.history.origin import PHASE_A_HISTORY_SOURCE
 from app.main import create_app
 from app.models.alert import Alert
 from app.models.enums import (
@@ -30,7 +31,7 @@ from app.models.enums import (
 )
 from app.models.fleet import ClassificationRule, LogSourceClassification
 from app.models.identity import AuditLog
-from app.models.log_source import LogSourceAnomaly, LogSourceBaseline
+from app.models.log_source import LogSource, LogSourceAnomaly, LogSourceBaseline
 from app.models.outage import OutageAlertPolicy
 from app.security.auth import get_principal
 from app.security.rbac import Principal
@@ -902,3 +903,74 @@ def test_sources_q_matches_name_or_type_case_insensitively_and_sql_is_constant(d
         client.get(f"/api/v1/fleet/sources{query}")
         counts.append(client.statements)
     assert len(set(counts)) == 1, counts
+
+
+def test_rows_off_the_monitored_grid_do_not_change_the_summary(db_schema) -> None:
+    """Unmonitored, disabled, internal and wrong-width rows are not grid cells.
+
+    The sources exist for both reads, so the census stays put. Only metric rows
+    are added between them. The whole summary must be identical.
+    """
+
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        fw = await make_log_source(s, inst, qradar_id=1, name="fw-on")
+        unmon = await make_log_source(
+            s, inst, qradar_id=2, name="fw-unmon", monitoring_enabled=False
+        )
+        disabled = await make_log_source(s, inst, qradar_id=3, name="fw-off", enabled=False)
+        internal = await make_log_source(s, inst, qradar_id=4, name="Health Metrics")
+        s.add_all([
+            classification(fw, "FIREWALL"),
+            classification(unmon, "FIREWALL"),
+            classification(disabled, "FIREWALL"),
+            classification(internal, "QRADAR_INTERNAL", basis="INTERNAL"),
+        ])
+        await s.flush()
+        for k in range(1, 13):
+            await add_metric(s, fw, _bucket(k), event_count=3000, average_eps=10.0)
+
+    run(setup)
+    client = Client(VIEWER)
+    before = client.get("/api/v1/fleet/summary?window=1h").json()
+    fw = by_class(before)["FIREWALL"]
+    assert fw["monitored_sources"] == 1
+    assert fw["sources"] == {"enabled": 2, "disabled": 1}
+    assert fw["buckets"] == {
+        "expected": 12,
+        "complete": 12,
+        "complete_from_history": 0,
+        "partial": 0,
+        "missing": 0,
+    }
+    assert fw["events"] == 12 * 3000
+    assert fw["mean_eps"] == pytest.approx(10.0)
+
+    async def noise(s):  # type: ignore[no-untyped-def]
+        rows = {row.qradar_id: row for row in (await s.scalars(select(LogSource))).all()}
+        for src in (rows[2], rows[3], rows[4]):
+            for k in range(1, 13):
+                await add_metric(
+                    s, src, _bucket(k), event_count=1000000, average_eps=9999.0,
+                    collection_source=PHASE_A_HISTORY_SOURCE,
+                )
+            await add_metric(
+                s, src, _bucket(1) + timedelta(seconds=30), event_count=1000000,
+                completeness=BucketCompleteness.PARTIAL,
+                collection_source=PHASE_A_HISTORY_SOURCE,
+            )
+        # Same source, other width. The primary key is (source, bucket start),
+        # so these sit one second off the in-grid buckets.
+        for k in range(1, 13):
+            await add_metric(
+                s, rows[1], _bucket(k) + timedelta(seconds=1),
+                bucket_seconds=60, event_count=1000000, average_eps=9999.0,
+                completeness=(
+                    BucketCompleteness.PARTIAL if k == 1 else BucketCompleteness.COMPLETE
+                ),
+                collection_source=None if k == 1 else PHASE_A_HISTORY_SOURCE,
+            )
+
+    run(noise)
+    after = client.get("/api/v1/fleet/summary?window=1h").json()
+    assert before == after, (by_class(before)["FIREWALL"], by_class(after)["FIREWALL"])

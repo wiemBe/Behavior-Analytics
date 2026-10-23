@@ -6,7 +6,9 @@ from the one metric statement, so there is no query per class and none per sourc
 
 Honesty rules (AGENTS.md rule 8): only COMPLETE buckets contribute to events and
 EPS; a class with no complete bucket reports null, not zero; expected, complete
-and partial bucket counts travel with every figure.
+and partial bucket counts travel with every figure. Metric rows are the monitored
+grid only — the same predicates as the EPS series — so an unmonitored source or
+another bucket width cannot fill a gap.
 """
 
 from __future__ import annotations
@@ -58,6 +60,41 @@ def _class_of() -> ColumnElement[str]:
     return func.coalesce(LogSourceClassification.source_class, literal(_UNCLASSIFIED))
 
 
+def monitored_source() -> ColumnElement[bool]:
+    """Enabled and selected for monitoring."""
+    return LogSource.enabled.is_(True) & LogSource.monitoring_enabled.is_(True)
+
+
+def in_monitored_grid(source_class: ColumnElement[str]) -> ColumnElement[bool]:
+    """The population the EPS series sums: monitored, and not an internal source.
+
+    The summary's source census still counts everyone. Only the metric grid uses
+    this, so an internal source can be tallied without contributing EPS.
+    """
+    return monitored_source() & (source_class != _INTERNAL)
+
+
+def metric_grid_predicates(
+    source_class: ColumnElement[str],
+    *,
+    bucket_seconds: int,
+    window_start: datetime,
+    window_end: datetime,
+) -> tuple[ColumnElement[bool], ...]:
+    """Metric rows that are cells of the monitored grid.
+
+    The summary and the series both call this. A row from an unmonitored source,
+    a disabled source, an internal source, or another bucket width is not a cell,
+    so it cannot move complete, partial, events, EPS or `complete_from_history`.
+    """
+    return (
+        in_monitored_grid(source_class),
+        LogSourceMetric.bucket_seconds == bucket_seconds,
+        LogSourceMetric.bucket_start >= window_start,
+        LogSourceMetric.bucket_start < window_end,
+    )
+
+
 async def build_fleet_summary(
     session: AsyncSession,
     *,
@@ -74,7 +111,7 @@ async def build_fleet_summary(
 
     # 1. Sources by class: counts, monitored-enabled count for expectations, and
     #    the NEW / conflict tallies, all in one pass.
-    monitored = (LogSource.enabled.is_(True)) & (LogSource.monitoring_enabled.is_(True))
+    monitored = monitored_source()
     source_rows = (
         await session.execute(
             select(
@@ -107,8 +144,10 @@ async def build_fleet_summary(
         new_sources += n_new
         conflict_sources += n_conflict
 
-    # 2. Metrics per source in the window. COMPLETE rows feed events and EPS;
-    #    PARTIAL rows are counted only to say how much of the window is unusable.
+    # 2. Metrics per source on the monitored grid. COMPLETE rows feed events and
+    #    EPS; PARTIAL rows are counted only to say how much of the window is
+    #    unusable. The predicate is the series' own, so a row the series drops
+    #    cannot raise complete or partial here either.
     complete = LogSourceMetric.completeness == BucketCompleteness.COMPLETE.value
     partial = LogSourceMetric.completeness == BucketCompleteness.PARTIAL.value
     history = is_history_clause(LogSourceMetric)
@@ -131,8 +170,12 @@ async def build_fleet_summary(
                 LogSourceClassification.log_source_id == LogSource.id,
             )
             .where(
-                LogSourceMetric.bucket_start >= window_start,
-                LogSourceMetric.bucket_start < now,
+                *metric_grid_predicates(
+                    source_class,
+                    bucket_seconds=bucket_seconds,
+                    window_start=window_start,
+                    window_end=now,
+                )
             )
             .group_by(LogSource.id, LogSource.name, source_class)
         )
