@@ -74,6 +74,57 @@ async def holder(url: str, namespace: int, slot: int) -> AsyncIterator[AsyncConn
 
 
 class TestPermits:
+    async def test_cancellation_during_acquisition_releases_before_pool_reuse(
+        self, db_schema
+    ) -> None:
+        settings = budget_settings(limit=1, wait=10.0)
+        acquired = asyncio.Event()
+        never = asyncio.Event()
+        engine = create_async_engine(db_schema, pool_size=1, max_overflow=0)
+
+        class CancelAfterGrant(WafArielBudget):
+            async def _acquire(self, conn, started):  # type: ignore[no-untyped-def, override]
+                got = await conn.scalar(
+                    text("SELECT pg_try_advisory_lock(:ns, 0)").bindparams(
+                        ns=self.namespace
+                    )
+                )
+                assert got
+                acquired.set()
+                await never.wait()
+                return 0
+
+        async def wait_for_permit() -> None:
+            async with CancelAfterGrant(engine, settings).permit():
+                raise AssertionError("the cancelled acquisition must not enter the body")
+
+        task = asyncio.create_task(wait_for_permit())
+        try:
+            await acquired.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            async with engine.connect() as conn:
+                leaked = await conn.scalar(
+                    text(
+                        "SELECT count(*) FROM pg_locks "
+                        "WHERE locktype = 'advisory' AND pid = pg_backend_pid() "
+                        "AND classid = :ns AND objid = 0 AND granted"
+                    ).bindparams(ns=settings.waf_ariel_permit_lock_namespace)
+                )
+                assert leaked == 0
+
+            # The same one-connection pool must not retain the session lock.
+            async with WafArielBudget(engine, settings).permit() as reused:
+                assert reused is not None and reused.slot == 0
+        finally:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            await engine.dispose()
+
     async def test_permits_are_bounded_across_connections(self, db_schema) -> None:
         settings = budget_settings(limit=2)
         engines = [create_async_engine(db_schema) for _ in range(3)]

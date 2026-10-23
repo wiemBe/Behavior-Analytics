@@ -7,6 +7,7 @@ overlap. The tests drive the collector and the pipeline: the operator's path.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -42,6 +43,7 @@ from app.models.ips import (
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError
 from app.providers.mock import MockQRadarProvider
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.ips_pipeline import (
     IpsInstancePipeline,
     evaluation_collector,
@@ -1530,6 +1532,46 @@ class TestOperatorPath:
         cleared = await scope_of(db_session, instance, str(SOURCE_ID))
         assert cleared is not None
         assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    async def test_capacity_refusal_yields_without_halving_or_marking(self, db_session) -> None:
+        instance = await make_instance(db_session)
+        boundary = boundary_of(NOW)
+        target = boundary - timedelta(days=WINDOW_DAYS)
+        provider = ScriptedIpsProvider(window_events(target - MARGIN, boundary), now=NOW)
+        _, source = await add_source(db_session, instance, SOURCE_ID)
+        await record_yes(db_session, instance)
+        provider.ips_fault = lambda search: (
+            ProviderError("first fault") if search.window_end < boundary else None
+        )
+        await collect(db_session, instance, provider, hcfg(), NOW)
+        before = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert before is not None and before.state == "READING"
+        before_progress = copy.deepcopy(before.progress)
+        before_through = before.through
+        before_error_at = before.last_error_at
+
+        def refuse_history(search):  # type: ignore[no-untyped-def]
+            if search.window_end < boundary:
+                assert _ARIEL_PRIORITY.get() == "background"
+                return ArielPermitUnavailable(7, 2, 4)
+            return None
+
+        provider.ips_fault = refuse_history
+        await collect(db_session, instance, provider, hcfg(), NOW + BUCKET)
+
+        yielded = await scope_of(db_session, instance, str(SOURCE_ID))
+        assert yielded is not None and yielded.state == "READING"
+        assert yielded.progress == before_progress and yielded.through == before_through
+        assert yielded.last_error_class == "ProviderError"
+        assert yielded.last_error_at == before_error_at
+        assert yielded.reason == "deferred: no Ariel permit within 7 s"
+        rows = (
+            await db_session.scalars(
+                select(IpsSourceBucket).where(IpsSourceBucket.log_source_id == source.id)
+            )
+        ).all()
+        assert rows == []
+        assert _ARIEL_PRIORITY.get() == "live"
 
     async def test_a_lifecycle_fault_keeps_the_live_source_and_marks_the_reading_scope(
         self, db_session, monkeypatch

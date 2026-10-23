@@ -17,6 +17,7 @@ from app.models.log_source import LogSource
 from app.providers.base import ProviderError, QRadarProvider
 from app.providers.dto import IpsFieldProbeRequest, IpsSourceProbe
 from app.repositories.audit import record_audit
+from app.services.ariel_permit import ariel_background_priority
 
 AUDIT_OBJECT = "ips_source_profile"
 
@@ -166,7 +167,8 @@ class IpsProfileService:
         lookup_error: str | None = None
         found = False
         try:
-            found = await provider.get_log_source(log_source.qradar_id) is not None
+            with ariel_background_priority():
+                found = await provider.get_log_source(log_source.qradar_id) is not None
         except ProviderError as exc:
             lookup_error = f"{type(exc).__name__}: {exc}"[:400]
         if found:
@@ -178,13 +180,22 @@ class IpsProfileService:
                 )
                 for logical, reference in mapping.mapped().items()
             ]
-            probe = await provider.probe_ips_fields(
-                qradar_log_source_id=log_source.qradar_id,
-                window_start=window_start,
-                window_end=window_end,
-                fields=fields,
-                max_action_values=self.settings.ips_validation_max_action_values,
-            )
+            try:
+                with ariel_background_priority():
+                    probe = await provider.probe_ips_fields(
+                        qradar_log_source_id=log_source.qradar_id,
+                        window_start=window_start,
+                        window_end=window_end,
+                        fields=fields,
+                        max_action_values=self.settings.ips_validation_max_action_values,
+                    )
+            except ProviderError as exc:
+                probe = IpsSourceProbe(
+                    qradar_log_source_id=log_source.qradar_id,
+                    window_start=window_start,
+                    window_end=window_end,
+                    total_error=f"{type(exc).__name__}: {exc}"[:400],
+                )
         else:
             probe = IpsSourceProbe(
                 qradar_log_source_id=log_source.qradar_id,

@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerts.search_alerts import SearchAlertEvaluator
 from app.core.config import Settings, get_settings
-from app.models.enums import ExecutionStatus
+from app.models.enums import ExecutionErrorType, ExecutionStatus
 from app.models.search import ScheduledSearch, SearchExecution
 from app.services.scheduled_search import ScheduledSearchService
 from app.services.search_executor import SearchExecutor
@@ -78,6 +78,7 @@ class SchedulerReport:
     seeded: list[str] = field(default_factory=list)
     skipped_running: list[str] = field(default_factory=list)
     invalid_cron: list[str] = field(default_factory=list)
+    deferred_capacity: list[str] = field(default_factory=list)
 
 
 def next_fire_time(
@@ -696,17 +697,34 @@ class SearchScheduler:
         )
         report.considered = len(searches)
 
-        for search in searches:
+        for index, search in enumerate(searches):
             if len(report.dispatched) >= self.settings.search_max_dispatch_per_cycle:
                 break
-            await self._process(search, now, report)
+            execution = await self._process(search, now, report)
+            if (
+                execution is not None
+                and execution.error_type == ExecutionErrorType.CAPACITY.value
+            ):
+                report.deferred_capacity.extend(
+                    candidate.name
+                    for candidate in searches[index + 1 :]
+                    if candidate.next_run_at is not None
+                    and _as_utc(candidate.next_run_at) <= now
+                )
+                if report.deferred_capacity:
+                    logger.warning(
+                        "Ariel capacity refused a scheduled search; deferred %d due searches",
+                        len(report.deferred_capacity),
+                        extra={"deferred_count": len(report.deferred_capacity)},
+                    )
+                break
 
         await self.session.flush()
         return report
 
     async def _process(
         self, search: ScheduledSearch, now: datetime, report: SchedulerReport
-    ) -> None:
+    ) -> SearchExecution | None:
         try:
             # Unseen search: compute the next fire and wait for it.
             if search.next_run_at is None:
@@ -714,14 +732,14 @@ class SearchScheduler:
                     search.schedule_cron, search.schedule_timezone, after=None, now=now
                 )
                 report.seeded.append(search.name)
-                return
+                return None
 
             if _as_utc(search.next_run_at) > now:
-                return
+                return None
 
             if await self._has_run_in_flight(search, now):
                 report.skipped_running.append(search.name)
-                return
+                return None
 
             scheduled_for = _as_utc(search.next_run_at)
             # Reschedule from `now`, not from the missed tick, so a backlog
@@ -737,13 +755,13 @@ class SearchScheduler:
                 extra={"search": search.name, "error": str(exc)},
             )
             report.invalid_cron.append(search.name)
-            return
+            return None
 
-        await self._dispatch(search, scheduled_for, report)
+        return await self._dispatch(search, scheduled_for, report)
 
     async def _dispatch(
         self, search: ScheduledSearch, scheduled_for: datetime, report: SchedulerReport
-    ) -> None:
+    ) -> SearchExecution:
         run_key = ScheduledSearchService.scheduled_run_key(search, scheduled_for)
         execution = await self.executor.execute(
             search, run_key=run_key, instance_key="default", trigger="SCHEDULED"
@@ -760,6 +778,7 @@ class SearchScheduler:
 
         if self.alerts is not None:
             await self.alerts.evaluate(search, execution)
+        return execution
 
     async def _has_run_in_flight(self, search: ScheduledSearch, now: datetime) -> bool:
         """True if a previous run is still going.

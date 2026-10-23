@@ -486,6 +486,35 @@ def step_row(base: Mapping[str, Any], **changes: Any) -> dict[str, Any]:
     return values
 
 
+def deferred_scope_row(
+    stored: Any,
+    *,
+    instance_id: Any,
+    family: HistoryFamily,
+    scope_key: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Keep a stored step exactly where it is while naming a capacity deferral.
+
+    Unlike an ordinary written step, a capacity refusal is not a successful step and
+    therefore must not clear the previous provider-fault marker.
+    """
+
+    view = scope_view(stored)
+    if view is None:
+        raise LifecycleError("a deferred history step needs a stored scope")
+    values = scope_row(
+        view,
+        instance_id=instance_id,
+        family=family,
+        scope_key=scope_key,
+    )
+    values["reason"] = bounded_reason(reason)
+    values["last_error_class"] = stored.last_error_class
+    values["last_error_at"] = stored.last_error_at
+    return values
+
+
 # --------------------------------------------------------------------------- progress
 
 

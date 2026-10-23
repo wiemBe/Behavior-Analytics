@@ -7,6 +7,7 @@ and a constant statement count.
 
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime, timedelta
 from unittest import mock
 
@@ -27,6 +28,7 @@ from app.models.rule import (
 )
 from app.providers.base import ConsoleEventTotals, ProviderUnavailableError
 from app.rules.matches import CoverageState, assess_coverage
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from tests.integration.factories import make_instance
 from tests.integration.test_rule_match_collection import (
@@ -616,6 +618,43 @@ class TestOperatorPaths:
         cleared = await scope_row(db_session, instance)
         assert cleared is not None
         assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    @pytest.mark.asyncio
+    async def test_capacity_refusal_yields_without_halving_or_marking(self, db_session) -> None:
+        instance = await make_instance(db_session)
+        await add_rule(db_session, instance, 100)
+        await seed_anchor_and_decision(db_session, instance)
+        provider = HistoryProvider(by_window, first_event=H0 - 24 * HOUR)
+        await history_collector(
+            db_session, provider, search_cadence_max_searches_per_tick=1
+        ).collect(instance)
+        before = await scope_row(db_session, instance)
+        assert before is not None and before.state == "READING"
+        before_progress = copy.deepcopy(before.progress)
+        before_through = before.through
+        before.last_error_class = "EarlierProviderError"
+        before.last_error_at = NOW
+        await db_session.commit()
+        original = provider.get_rule_matches_windowed
+
+        async def refuse_history(window_start, window_end, **kwargs):  # type: ignore[no-untyped-def]
+            if window_end <= ANCHOR:
+                assert _ARIEL_PRIORITY.get() == "background"
+                raise ArielPermitUnavailable(7, 2, 4)
+            return await original(window_start, window_end, **kwargs)
+
+        provider.get_rule_matches_windowed = refuse_history  # type: ignore[method-assign]
+        report = await history_collector(db_session, provider, now=NOW + HOUR).collect(instance)
+
+        yielded = await scope_row(db_session, instance)
+        assert report.history_state == "READING"
+        assert yielded is not None and yielded.state == "READING"
+        assert yielded.through == before_through and yielded.progress == before_progress
+        assert yielded.last_error_class == "EarlierProviderError"
+        assert yielded.last_error_at == NOW
+        assert yielded.reason == "deferred: no Ariel permit within 7 s"
+        assert await history_windows(db_session, instance) == []
+        assert _ARIEL_PRIORITY.get() == "live"
 
     @pytest.mark.asyncio
     async def test_an_unexpected_step_fault_keeps_live_and_rolls_history_back(

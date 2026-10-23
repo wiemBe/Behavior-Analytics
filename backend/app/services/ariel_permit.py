@@ -52,6 +52,7 @@ from app.providers.base import ProviderUnavailableError
 _ArielPriority = Literal["live", "background"]
 _ARIEL_PRIORITY: ContextVar[_ArielPriority] = ContextVar("ariel_priority", default="live")
 _MAX_ADVISORY_SLOT = 2**31 - 1
+ARIEL_HISTORY_DEFERRED_REASON = "deferred: no Ariel permit within {waited_seconds:g} s"
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,12 @@ class ArielPermitUnavailable(ProviderUnavailableError):
             f"{waited_seconds:g} seconds (per-console cap {instance_cap}, "
             f"global cap {global_cap})"
         )
+
+
+def ariel_history_deferred_reason(exc: ArielPermitUnavailable) -> str:
+    """The single operator-facing reason used by every yielding history step."""
+
+    return ARIEL_HISTORY_DEFERRED_REASON.format(waited_seconds=exc.waited_seconds)
 
 
 @contextmanager

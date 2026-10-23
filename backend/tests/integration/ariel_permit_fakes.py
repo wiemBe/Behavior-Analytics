@@ -12,7 +12,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from app.services.ariel_permit import ArielPermit, ArielPermitCounts
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermit, ArielPermitCounts
 
 
 class CountingBudget:
@@ -35,9 +35,11 @@ class CountingBudget:
         self.peak = 0
         self.acquired = 0
         self.refused = 0
+        self.priorities: list[str] = []
 
     @asynccontextmanager
     async def permit(self) -> AsyncIterator[ArielPermit | None]:
+        self.priorities.append(_ARIEL_PRIORITY.get())
         if self.refuse:
             self.refused += 1
             yield None

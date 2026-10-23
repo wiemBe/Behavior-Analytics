@@ -30,6 +30,7 @@ from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import ProviderError
 from app.providers.mock import MockQRadarProvider
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import _ARIEL_PRIORITY, ArielPermitUnavailable
 from app.services.locks import collector_lock_key
 from tests.integration.factories import FakeClock, make_instance, make_log_source
 
@@ -524,6 +525,39 @@ class TestLifecycle:
         cleared = await scope(db_session, inst)
         assert cleared is not None
         assert cleared.last_error_class is None and cleared.last_error_at is None
+
+    async def test_capacity_refusal_yields_without_halving_or_marking(self, db_session) -> None:
+        inst, _ = await setup(db_session)
+        await decide(db_session, inst)
+        prov = provider(always(row("fw-01", 50)))
+        await collector(db_session, prov).collect(inst)
+        before = await scope(db_session, inst)
+        assert before is not None and before.state == "READING"
+        before_progress = copy.deepcopy(before.progress)
+        before.last_error_class = "EarlierProviderError"
+        before.last_error_at = NOW
+        await db_session.commit()
+
+        refusing = provider(always(row("fw-01", 50)))
+
+        def fault(search):  # type: ignore[no-untyped-def]
+            if search.window_start < FIRST:
+                assert _ARIEL_PRIORITY.get() == "background"
+                return ArielPermitUnavailable(7, 2, 4)
+            return None
+
+        refusing.catchall_fault = fault
+        report = await collector(db_session, refusing, now=NOW + timedelta(hours=1)).collect(inst)
+
+        yielded = await scope(db_session, inst)
+        assert report.history_scope_state is HistoryState.READING
+        assert yielded is not None and yielded.state == "READING"
+        assert yielded.through is None and yielded.progress == before_progress
+        assert yielded.last_error_class == "EarlierProviderError"
+        assert yielded.last_error_at == NOW
+        assert yielded.reason == "deferred: no Ariel permit within 7 s"
+        assert await buckets(db_session, "HISTORY") == []
+        assert _ARIEL_PRIORITY.get() == "live"
 
     async def test_an_unexpected_step_fault_keeps_live_and_rolls_history_back(
         self, db_session, monkeypatch

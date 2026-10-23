@@ -22,6 +22,7 @@ from app.collectors.waf_endpoint_collector import (
 )
 from app.core.config import Settings, get_settings
 from app.models.enums import AnomalyState, BucketCompleteness, WafAnomalyType, WafMeasurement
+from app.models.monitoring import CollectionWatermark
 from app.models.waf import (
     WafAnomaly,
     WafAnomalyTransition,
@@ -32,12 +33,20 @@ from app.models.waf import (
 )
 from app.providers.dto import WafObservationBatch, WafObservationBucketBatch, WafRequestGroup
 from app.rules.matches import window_starts
+from app.services.ariel_permit import ArielPermitUnavailable
 from app.waf.baseline import WafBaselineBuilder
 from app.waf.engine import WafAnomalyEngine
 from app.waf.observations import BucketFacts, observe
 from app.waf.profile import WafFieldMapping
 from app.waf.semantics import request_count_semantics
 from tests.integration.factories import make_instance, make_log_source
+from tests.integration.test_waf_productionization import (
+    T0,
+    StubWafProvider,
+    cfg,
+    run_at,
+    source_with_profile,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -270,6 +279,42 @@ class TestCollectionCompleteness:
         await db_session.rollback()
         rows = (await db_session.scalars(select(WafEndpointMetric))).all()
         assert rows == []
+
+    async def test_an_ariel_refusal_writes_no_bucket_and_holds_the_watermark(
+        self, db_session: AsyncSession
+    ) -> None:
+        """A live refusal fails closed on the same path as any provider error.
+
+        The collector re-raises it. The scheduled run rolls the attempt back,
+        writes no bucket, and records the class on the watermark.
+        """
+        provider = StubWafProvider()
+        configured = cfg()
+        profile, source = await source_with_profile(db_session, provider, configured)
+        profile_id = profile.id
+        instance_id = source.instance_id
+        collector_name = watermark_collector(source)
+        provider.error = ArielPermitUnavailable(30, 3, 6)
+
+        result = await run_at(db_session, profile_id, provider, configured, T0)
+
+        assert result["status"] == "failed"
+        assert result["error_class"] == "ArielPermitUnavailable"
+        assert (await db_session.scalars(select(WafSourceBucket))).all() == []
+        assert (await db_session.scalars(select(WafEndpointMetric))).all() == []
+        watermark = await db_session.scalar(
+            select(CollectionWatermark).where(
+                CollectionWatermark.instance_id == instance_id,
+                CollectionWatermark.collector == collector_name,
+            )
+        )
+        assert watermark is not None
+        assert watermark.watermark_at is None
+        assert watermark.consecutive_failures == 1
+        assert watermark.last_error and "ArielPermitUnavailable" in watermark.last_error
+        assert (watermark.collection_metadata or {}).get("last_error_class") == (
+            "ArielPermitUnavailable"
+        )
 
     async def test_unavailable_counts_are_null_not_zero(
         self, db_session: AsyncSession

@@ -22,6 +22,7 @@ from app.providers.factory import get_provider
 from app.providers.mock import MockQRadarProvider
 from app.security.auth import get_principal
 from app.security.rbac import Principal
+from app.services.ariel_permit import _ARIEL_PRIORITY
 from tests.integration.ariel_permit_fakes import CountingBudget
 
 pytestmark = [
@@ -97,6 +98,8 @@ def test_manual_run_with_a_full_budget_is_503_and_records_the_refusal(db_schema:
         "nothing was sent to QRadar"
     )
     assert provider.creates == 0
+    assert budget.priorities == ["background"]
+    assert _ARIEL_PRIORITY.get() == "live"
     rows = client.get(f"/api/v1/searches/{search_id}/executions").json()
     assert len(rows) == 1, "the refusal is recorded, not rolled back with the 503"
     assert rows[0]["status"] == "FAILED"

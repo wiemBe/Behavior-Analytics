@@ -34,6 +34,7 @@ from app.models.log_source import (
     LogSourceBaseline,
 )
 from app.providers.mock import MockQRadarProvider
+from app.services.ariel_permit import ArielPermitUnavailable
 from tests.integration.factories import add_metric, make_instance, make_log_source
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -471,3 +472,36 @@ class TestExplanationPackage:
             await ExplanationCollector(
                 db_session, BrokenProvider(), settings=settings
             ).collect(anomaly)
+
+    async def test_ariel_refusal_records_failed_evidence_and_no_contributors(
+        self, db_session
+    ) -> None:
+        class RefusedProvider(MockQRadarProvider):
+            async def get_dimension_aggregates(self, **kwargs):
+                raise ArielPermitUnavailable(30, 3, 6)
+
+        inst = await make_instance(db_session)
+        ls = await make_log_source(db_session, inst)
+        await _baseline(db_session, ls, median=BASELINE_EPS)
+        settings = _settings()
+        engine = AnomalyEngine(db_session, settings=settings)
+        await _feed(engine, db_session, ls, start_index=0, count=2, eps=SPIKE_EPS)
+        anomaly = await db_session.scalar(
+            select(LogSourceAnomaly).where(
+                LogSourceAnomaly.anomaly_type == AnomalyType.VOLUME_SPIKE
+            )
+        )
+
+        report = await ExplanationCollector(
+            db_session, RefusedProvider(), settings=settings
+        ).collect(anomaly)
+
+        assert report.status is EvidenceStatus.FAILED
+        assert report.error and "ArielPermitUnavailable" in report.error
+        assert anomaly.evidence_status == EvidenceStatus.FAILED.value
+        assert (
+            await db_session.scalar(
+                select(func.count()).select_from(AnomalyExplanationContributor)
+            )
+            == 0
+        )

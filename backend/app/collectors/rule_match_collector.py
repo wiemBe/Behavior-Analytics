@@ -72,7 +72,7 @@ from app.history import (
     scope_progress,
     transition_row,
 )
-from app.history.lifecycle import scope_row, scope_view, step_row
+from app.history.lifecycle import deferred_scope_row, scope_row, scope_view, step_row
 from app.history.planner import (
     PlannerInputError,
     ScanOutcome,
@@ -113,6 +113,11 @@ from app.rules.matches import (
     failed_window,
     floor_to_window,
     fold_rule_matches,
+)
+from app.services.ariel_permit import (
+    ArielPermitUnavailable,
+    ariel_background_priority,
+    ariel_history_deferred_reason,
 )
 from app.services.locks import CollectorAdvisoryLock
 from app.services.search_cadence import SearchCadenceService
@@ -339,6 +344,37 @@ class RuleMatchCollector:
                         window_seconds=window_seconds,
                         cadence_seconds=cadence.cadence_seconds,
                         rule_ids=rule_ids,
+                    )
+            except ArielPermitUnavailable as exc:
+                (
+                    report.history_state,
+                    _history_reason,
+                    report.history_searches,
+                    report.history_windows_written,
+                    report.history_rows_written,
+                ) = report_before_history
+                reason = ariel_history_deferred_reason(exc)
+                report.history_state = HistoryState.READING.value
+                report.history_reason = reason
+                repository = HistoryBackfillRepository(self.session)
+                stored = (
+                    await repository.scopes(
+                        instance.id,
+                        HistoryFamily.RULE_MATCH.value,
+                        [RULE_MATCH_SCOPE_KEY],
+                    )
+                ).get(RULE_MATCH_SCOPE_KEY)
+                if stored is not None and stored.state == HistoryState.READING.value:
+                    await repository.write_scopes(
+                        [
+                            deferred_scope_row(
+                                stored,
+                                instance_id=instance.id,
+                                family=HistoryFamily.RULE_MATCH,
+                                scope_key=RULE_MATCH_SCOPE_KEY,
+                                reason=reason,
+                            )
+                        ]
                     )
             except Exception as exc:
                 (
@@ -612,10 +648,13 @@ class RuleMatchCollector:
                     return
                 report.history_searches += 1
                 try:
-                    totals = await self.provider.get_console_event_totals(
-                        span.start, span.end, bucket_seconds=window_seconds
-                    )
+                    with ariel_background_priority():
+                        totals = await self.provider.get_console_event_totals(
+                            span.start, span.end, bucket_seconds=window_seconds
+                        )
                     result = scan_result(span, totals, settings)
+                except ArielPermitUnavailable:
+                    raise
                 except ProviderError:
                     result = failed_scan(span)
                 scan = interpret_scan(progress, [result], end=anchor, settings=settings)
@@ -689,12 +728,13 @@ class RuleMatchCollector:
                 report.history_searches += 1
                 begun = self._clock()
                 try:
-                    batch = await self.provider.get_rule_matches_windowed(
-                        chunk.start,
-                        chunk.end,
-                        window_seconds=window_seconds,
-                        max_rows=self.settings.rule_match_max_rows,
-                    )
+                    with ariel_background_priority():
+                        batch = await self.provider.get_rule_matches_windowed(
+                            chunk.start,
+                            chunk.end,
+                            window_seconds=window_seconds,
+                            max_rows=self.settings.rule_match_max_rows,
+                        )
                     fold = fold_chunk(
                         batch,
                         mapping,
@@ -703,6 +743,8 @@ class RuleMatchCollector:
                         duration_ms=int((self._clock() - begun).total_seconds() * 1000),
                         collected_at=self._clock(),
                     )
+                except ArielPermitUnavailable:
+                    raise
                 except ProviderError:
                     results.append(failed_chunk(chunk))
                     break

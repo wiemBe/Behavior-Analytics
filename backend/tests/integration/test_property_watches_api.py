@@ -49,6 +49,7 @@ from app.providers.dto import PwSearchKind
 from app.providers.mock import MockQRadarProvider
 from app.security.auth import get_principal
 from app.security.rbac import Principal
+from app.services.ariel_permit import _ARIEL_PRIORITY
 from app.services.property_catalog import PropertyCatalogService, get_property_catalog_service
 from app.services.property_watches import pinned_digest
 from app.services.seed import _ROLES
@@ -1145,6 +1146,13 @@ async def test_the_preview_sends_exactly_two_searches_and_persists_nothing(
 ) -> None:
     world = await _seed(db_session)
     provider = _scripted(MockQRadarProvider(seed=1))
+    priorities: list[str] = []
+
+    def record_priority(_search):  # type: ignore[no-untyped-def]
+        priorities.append(_ARIEL_PRIORITY.get())
+        return None
+
+    provider.pw_fault = record_priority
     client = _client(db_schema, _principal("detection_engineer"), provider=provider)
     made = _create(client, "previewed", pinned_values=[["SeededDave"]])
     before = [await _count(db_session, m) for m in (PwBucket, PwValue, PwValueMetric, PwAnomaly)]
@@ -1154,6 +1162,8 @@ async def test_the_preview_sends_exactly_two_searches_and_persists_nothing(
     assert [(s.search, s.scope_ids) for s in provider.pw_searches] == [
         (PwSearchKind.TOTALS, (TYPE_ID,)), (PwSearchKind.GROUPED, (TYPE_ID,))
     ], "totals and grouped: two searches, never a pinned one, never a split"
+    assert priorities == ["background", "background"]
+    assert _ARIEL_PRIORITY.get() == "live"
     assert body["mode"] == "PREVIEW" and body["searches_sent"] == 2
     assert body["outcome"] == "MEASURED" and body["reason"] is None
     assert body["bucket_seconds"] == 300 and body["buckets_measured"] == 12

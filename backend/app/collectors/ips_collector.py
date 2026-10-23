@@ -63,7 +63,7 @@ from app.history.ips import (
     fold_ips_history,
     ips_planner_settings,
 )
-from app.history.lifecycle import scope_row, scope_view
+from app.history.lifecycle import deferred_scope_row, scope_row, scope_view
 from app.history.planner import (
     ChunkResult,
     PlannerSettings,
@@ -109,6 +109,11 @@ from app.models.log_source import LogSource
 from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError, QRadarProvider
 from app.repositories.history_backfill import HistoryBackfillRepository
+from app.services.ariel_permit import (
+    ArielPermitUnavailable,
+    ariel_background_priority,
+    ariel_history_deferred_reason,
+)
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key
 from app.services.search_cadence import SearchCadenceService
@@ -184,6 +189,7 @@ class _HistoryProvider:
     def __init__(self, provider: QRadarProvider) -> None:
         self.provider = provider
         self.errors: dict[int, ProviderError] = {}
+        self.deferred: ArielPermitUnavailable | None = None
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.provider, name)
@@ -191,6 +197,9 @@ class _HistoryProvider:
     async def get_ips_keyed(self, *args: Any, **kwargs: Any) -> Any:
         try:
             return await self.provider.get_ips_keyed(*args, **kwargs)
+        except ArielPermitUnavailable as exc:
+            self.deferred = exc
+            raise
         except ProviderError as exc:
             for source_id in kwargs.get("qradar_log_source_ids", ()):
                 self.errors.setdefault(int(source_id), exc)
@@ -576,6 +585,35 @@ class IpsCollector:
                                 now=now,
                                 interval=interval,
                             )
+                except ArielPermitUnavailable as exc:
+                    (
+                        report.history_sources,
+                        report.history_searches,
+                        report.history_buckets_written,
+                        report.history_states,
+                    ) = report_before_history
+                    scope_keys = await self._history_fault_scope_keys(
+                        instance, history_fault
+                    )
+                    repository = HistoryBackfillRepository(self.session)
+                    stored = await repository.scopes(
+                        instance.id, HistoryFamily.IPS.value, scope_keys
+                    )
+                    reason = ariel_history_deferred_reason(exc)
+                    deferred_rows = [
+                        deferred_scope_row(
+                            scope,
+                            instance_id=instance.id,
+                            family=HistoryFamily.IPS,
+                            scope_key=scope_key,
+                            reason=reason,
+                        )
+                        for scope_key in scope_keys
+                        if (scope := stored.get(scope_key)) is not None
+                        and scope.state == HistoryState.READING.value
+                    ]
+                    if deferred_rows:
+                        await repository.write_scopes(deferred_rows)
                 except Exception as exc:
                     (
                         report.history_sources,
@@ -1050,15 +1088,18 @@ class IpsCollector:
         scan writes nothing itself.
         """
         group = IpsSourceGroup(fields=(), source_ids=(source.log_source.qradar_id,))
-        cells = await run_dimension(
-            cast(QRadarProvider, provider),
-            IpsDimension.TOTALS,
-            group,
-            (span.start, span.end),
-            interval,
-            max_rows=self.settings.ariel_multi_bucket_max_rows,
-            budget=budget,
-        )
+        with ariel_background_priority():
+            cells = await run_dimension(
+                cast(QRadarProvider, provider),
+                IpsDimension.TOTALS,
+                group,
+                (span.start, span.end),
+                interval,
+                max_rows=self.settings.ariel_multi_bucket_max_rows,
+                budget=budget,
+            )
+        if provider.deferred is not None:
+            raise provider.deferred
         totals: list[tuple[datetime, int]] = []
         status = SearchStatus.COMPLETE
         for cell in cells:
@@ -1087,12 +1128,15 @@ class IpsCollector:
         ChunkResult,
     ]:
         before = budget.used
-        searched = await self._search(
-            [replace(source, window=(span.start, span.end))],
-            interval,
-            budget,
-            provider=cast(QRadarProvider, provider),
-        )
+        with ariel_background_priority():
+            searched = await self._search(
+                [replace(source, window=(span.start, span.end))],
+                interval,
+                budget,
+                provider=cast(QRadarProvider, provider),
+            )
+        if provider.deferred is not None:
+            raise provider.deferred
         spent = budget.used - before
         result = self._history_chunk_result(source, span, searched.outcomes, searches=spent)
         return searched.outcomes, result
@@ -1416,6 +1460,14 @@ class IpsCollector:
                     max_rows=self.settings.ariel_multi_bucket_max_rows,
                     budget=budget,
                 )
+                if (
+                    isinstance(search_provider, _HistoryProvider)
+                    and search_provider.deferred is not None
+                ):
+                    # The keyed search turns a permit refusal into a failed cell
+                    # and would continue with the next dimension. Yield on the
+                    # first refusal so the step does not spend another wait.
+                    raise search_provider.deferred
                 for cell in cells:
                     out[(cell.qradar_log_source_id, cell.bucket_start, cell.dimension)] = cell
         return _SearchResult(out, blocked_reasons, blocked_windows)

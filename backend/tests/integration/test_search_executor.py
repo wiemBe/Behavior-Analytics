@@ -14,6 +14,7 @@ from app.models.search import SearchExecution
 from app.providers.base import ProviderCapability, ProviderUnavailableError
 from app.providers.dto import ArielSearchStatusDTO
 from app.providers.mock import MockQRadarProvider
+from app.services.ariel_permit import _ARIEL_PRIORITY
 from app.services.search_executor import SearchExecutor
 from tests.integration.ariel_permit_fakes import CountingBudget
 from tests.integration.factories import FakeClock, make_search, utc
@@ -395,6 +396,8 @@ async def test_refused_permit_fails_capacity_sends_nothing_and_is_not_retried(
     assert execution.error_type == ExecutionErrorType.CAPACITY.value
     assert provider.creates == 0, "a refusal must send nothing to QRadar"
     assert budget.refused == 1, "a capacity refusal is not retried"
+    assert budget.priorities == ["background"]
+    assert _ARIEL_PRIORITY.get() == "live"
     assert execution.retry_count == 0
     assert execution.ariel_search_id is None
     message = execution.error_message or ""

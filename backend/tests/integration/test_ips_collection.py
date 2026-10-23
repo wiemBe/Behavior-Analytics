@@ -29,6 +29,7 @@ from app.models.monitoring import CollectionWatermark
 from app.providers.base import ProviderError, ProviderQueryRejectedError
 from app.providers.dto import IpsKeyedRow
 from app.providers.mock import MockQRadarProvider
+from app.services.ariel_permit import ArielPermitUnavailable
 from app.services.ips_pipeline import ips_pipeline_lock_key
 from app.services.locks import collector_lock_key
 from tests.integration.factories import make_instance, make_log_source
@@ -130,12 +131,18 @@ class TestFleetAndStates:
         )
         assert invalid_wm.collection_metadata["last_skip_reason"]
 
-    async def test_missing_totals_writes_no_bucket_and_holds_watermark(self, db_session) -> None:
+    @pytest.mark.parametrize(
+        "failure",
+        [ProviderError("query text must not be stored"), ArielPermitUnavailable(30, 3, 6)],
+    )
+    async def test_missing_totals_writes_no_bucket_and_holds_watermark(
+        self, db_session, failure
+    ) -> None:
         instance = await make_instance(db_session)
         _, source = await add_source(db_session, instance, 412)
         provider = MockQRadarProvider(now=NOW)
         provider.ips_fault = lambda search: (
-            ProviderError("query text must not be stored")
+            failure
             if search.dimension is IpsDimension.TOTALS
             else None
         )
