@@ -131,6 +131,10 @@ services:
     ports:
       - "127.0.0.1:8000:8000"   # bound to loopback; front with a TLS reverse proxy
     networks: [internal, edge]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live',timeout=5).status==200 else 1)\""]
       interval: 15s
@@ -138,7 +142,8 @@ services:
       retries: 5
       start_period: 40s
 
-  # Runs migrations once, then exits. Everything else waits on it.
+  # Runs migrations once, then exits. Everything else waits on it:
+  # backend, celery-worker and celery-beat depend on this service exiting 0.
   migrate:
     <<: *backend-build
     command: ["alembic", "upgrade", "head"]
@@ -148,6 +153,10 @@ services:
 
   celery-worker:
     <<: *backend-build
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
     command:
       - celery
       - -A
@@ -165,6 +174,10 @@ services:
 
   celery-beat:
     <<: *backend-build
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
     command:
       - celery
       - -A
@@ -173,10 +186,19 @@ services:
       - --loglevel=INFO
       - --schedule=/tmp/celerybeat-schedule
     healthcheck:
-      # PersistentScheduler creates this file after it has loaded the Beat
-      # schedule. Its presence proves the process reached scheduler startup;
-      # Docker also marks the service unhealthy if PID 1 exits.
-      test: ["CMD-SHELL", "test -f /tmp/celerybeat-schedule"]
+      # PersistentScheduler rewrites its shelve when it syncs. Celery checks that
+      # time-based sync (Scheduler.sync_every, 180s) only after a tick, and a tick
+      # may sleep up to max_interval (DEFAULT_MAX_INTERVAL, 300s). A healthy beat
+      # can therefore go about sync_every + max_interval seconds between writes.
+      # The threshold is twice that gap. The newest mtime wins: Python 3.14's
+      # dbm.sqlite3 (the dev venv) appends to the -wal file and does not rewrite
+      # the main file until checkpoint; the image is Python 3.12 and may rewrite
+      # the main file or a .db/.dir/.pag sibling instead.
+      # Docker does not restart an unhealthy container. restart: acts on process
+      # exit. ./qradar-dash status (docker compose ps) and doctor's containers
+      # check surface the unhealthy state. The Redis heartbeat is not used here.
+      # The worker writes it, not the beat.
+      test: ["CMD-SHELL", "python -c \"import os,time,sys; b='/tmp/celerybeat-schedule'; threshold=960; ss=['','.db','.dat','.bak','.dir','.pag','-wal','-shm']; ms=[os.stat(b+s).st_mtime for s in ss if os.path.exists(b+s)]; sys.exit(0 if ms and time.time()-max(ms)<threshold else 1)\""]
       interval: 30s
       timeout: 5s
       retries: 3

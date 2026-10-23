@@ -996,9 +996,16 @@ bağlanmaz.
 bilerek kapalıdır. Satır, bir ailenin neden filigranı olmadığını bayrak adıyla gösterir. Arayüz hiç
 çalışmamış bir aile için "zamanında" değil, tire gösterir.
 
-`celery_beat` kalp atışına bakar, çünkü beat'in Compose sağlık kontrolü yalnız
-`/tmp/celerybeat-schedule` dosyasının var olduğunu sınar. Takılmış ama pid 1'i çıkmamış bir beat
-"sağlıklı" kalır.
+`celery_beat` kalp atışına bakar (`doctor`: Redis anahtarı, sağlıklı ise 180 s altı).
+Bu anahtarı worker yazar; beat yazmaz. Beat'in Compose sağlık kontrolü
+`/tmp/celerybeat-schedule` rafının en yeni mtime değerini ölçer (SQLite WAL
+kullanıldığında `-wal`, başka bir dbm kullanıldığında `.db` / `.dir` / `.pag`).
+Eşik 960 s'dir: Celery `Scheduler.sync_every` 180 s ile bir tick'in uyuyabileceği
+`max_interval` 300 s toplanır ve bu aralığın iki katı alınır. Dosya bundan
+eskiyse Compose servisi sağlıksız işaretler. Docker sağlıksız bir konteyneri
+yeniden başlatmaz; `restart:` yalnız süreç çıkınca uygulanır. `./qradar-dash status`
+(`docker compose ps`) ve `doctor` içindeki `containers` satırı bu durumu gösterir.
+`celery_beat` satırı dosya yaşı değildir.
 
 ### `status`
 
@@ -1428,12 +1435,16 @@ içinden aynı ana makineye TCP bağlantısı başarısız olur.
 ./qradar-dash doctor
 ```
 
-**Çözüm:** `docs/INSTALL.md` içindeki macvlan geçersiz kılma (override) bölümü:
-`./deploy/create-vmnet.sh` ve
-`backend`, `celery-worker`, `celery-beat` ile `migrate` servislerini o ağa koyan,
-git tarafından yok sayılan bir `docker-compose.override.yml`. Betik dosya varsa bütün Compose
-çağrılarına ekler ve kullanımını yazdırır. Ya da bir rota. Betik bir güvenlik duvarı değişikliği
-yapmaz.
+**Çözüm:** `docs/INSTALL.md` içindeki macvlan bölümü ve
+`deploy/docker-compose.override.example.yml`. Önce `./deploy/create-vmnet.sh`
+(`qradar-vmnet`; `--ip-range` DHCP havuzunun dışında). Örneği git tarafından yok
+sayılan `docker-compose.override.yml` olarak kopyala. Örnek ağı yeniden tanımlamaz;
+`external: true` ve `name: qradar-vmnet` ile betiğin oluşturduğu ağa bağlanır. Ağ
+yalnız QRadar'a bağlantı açan servislerdedir: `backend`, `celery-worker` ve profil
+açıksa `qradar-mcp`. `celery-beat` yalnız görev adını brokera yollar; `migrate`
+yalnız Postgres'e konuşur. Betik dosya varsa bütün Compose çağrılarına ekler ve
+kullanımını yazdırır. Ya da bir rota. Betik bir güvenlik duvarı değişikliği yapmaz.
+`:z` ve `label=disable` kullanılmaz.
 
 ```bash
 ./deploy/create-vmnet.sh
@@ -1613,8 +1624,11 @@ bu yüzden zorlayıcı (enforcing) ana makinede başarısız olur.
 getenforce
 ```
 
-**Çözüm:** **Yeniden etiketleme yapma.** SELinux kapatılmaz ve `:z` kullanılmaz. `load-secrets.sh`
-kullanmaya devam et. Ayarlar bir imaja gömülene kadar `mcp` profilini kapalı bırak.
+**Çözüm:** **Yeniden etiketleme yapma.** SELinux kapatılmaz ve `:z` kullanılmaz. Uygulama
+token'ı ve CA için `load-secrets.sh` kullanmaya devam et. Üretim ana makinelerinde `mcp`
+profili, yapılandırma checkout bağlama noktası olmadan gelene kadar desteklenmez
+(`docs/INSTALL.md`, Optional MCP service). Geliştirme ve laboratuvar ana makinelerinde
+örnek `deploy/mcp/config.json` dosyasına kopyalanır.
 
 ### OPS-R14. Postgres `No space left on device` veriyor ya da `doctor` diski FAIL gösteriyor
 
@@ -2018,7 +2032,10 @@ curl http://127.0.0.1:8000/api/v1/health/live
 curl http://127.0.0.1:8000/api/v1/health/ready
 ```
 
-**Çözüm:** Postgres sağlığına bak, sonra OPS-R14 ya da OPS-R35.
+**Çözüm:** Postgres sağlığına bak. `/ready`, `alembic_version.version_num` değerini
+imajın Alembic başıyla karşılaştırır. Baş uyuşmazlığında 503 her iki revizyonu
+adlandırır. Tablo yoksa ya da sorgu hata verirse yanıt yine 503'tür ve veritabanı
+hata metnini içermez. `OPS-R11` (`doctor` `migration_head`) ve `OPS-R14` ile doğrula.
 
 ### OPS-R37. Özel kurallar hiç değerlendirilmiyor
 

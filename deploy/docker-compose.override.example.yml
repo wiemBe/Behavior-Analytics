@@ -1,0 +1,28 @@
+# Macvlan override for a QRadar VM on a libvirt network.
+# See docs/INSTALL.md (§QRadar running on a libvirt network) and deploy/create-vmnet.sh.
+# Copy to docker-compose.override.yml. Do not commit that copy. No :z, no label=disable.
+#
+# Reference the network create-vmnet.sh creates. Do not declare a driver or IPAM
+# here: the script's --ip-range sits outside the libvirt DHCP pool, and an inline
+# network without that range can hand a container an address a VM already holds.
+
+networks:
+  qradar_vm:
+    external: true
+    name: qradar-vmnet
+
+services:
+  # backend: manual searches and the other API calls that open a QRadar connection.
+  backend:
+    networks:
+      - qradar_vm
+  # celery-worker: collectors and scheduled searches.
+  celery-worker:
+    networks:
+      - qradar_vm
+  # qradar-mcp: the optional profile's console client (QRADAR_CONSOLE_FQDN).
+  # celery-beat only publishes task names to the broker. migrate only opens
+  # Postgres. Neither is attached.
+  qradar-mcp:
+    networks:
+      - qradar_vm
