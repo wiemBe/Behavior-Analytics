@@ -58,13 +58,16 @@ def _report(name: str, result: dict) -> None:
         print(f"{name}: no matching enabled instance")
         return
 
+    # `instance` and `status` have their own columns in the line format.
+    # Every other key is printed: 0 stays 0, None renders as "unknown".
+    # `--json` keeps every key unchanged.
     for entry in result.get("results", []):
         instance = entry.get("instance", "?")
         status = entry.get("status")
         detail = " ".join(
-            f"{k}={v}"
+            f"{k}={v if v is not None else 'unknown'}"
             for k, v in entry.items()
-            if k not in ("instance", "status") and v not in (None, 0)
+            if k not in ("instance", "status")
         )
         print(f"{name:<12} {instance:<16} {status:<14} {detail}")
 

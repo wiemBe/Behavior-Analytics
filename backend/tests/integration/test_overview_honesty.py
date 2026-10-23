@@ -47,6 +47,7 @@ def test_no_offense_snapshot_is_unknown_on_the_overview_and_the_analytics(db_sch
     offenses = overview.json()["offenses"]
     assert offenses["active"] is None
     assert offenses["critical"] is None
+    assert offenses["critical_unknown"] is None
     assert offenses["unassigned"] is None
     assert offenses["oldest_age_seconds"] is None
     assert overview.json()["log_sources"]["silent_log_sources"] == 0
@@ -92,6 +93,7 @@ def test_a_closed_snapshot_measures_zero_open_offenses(db_schema) -> None:
     offenses = client.get("/api/v1/overview").json()["offenses"]
     assert offenses["active"] == 0
     assert offenses["critical"] == 0
+    assert offenses["critical_unknown"] == 0
     assert offenses["unassigned"] == 0
     assert offenses["oldest_age_seconds"] is None
 
@@ -118,6 +120,7 @@ def test_an_open_snapshot_counts_critical_and_unassigned(db_schema) -> None:
     assert offenses == {
         "active": 1,
         "critical": 1,
+        "critical_unknown": 0,
         "unassigned": 1,
         "oldest_age_seconds": 100,
     }
@@ -180,3 +183,56 @@ def test_silence_is_an_open_no_events_finding_not_a_null_timestamp(db_schema) ->
     run(setup)
     body = Client(VIEWER).get("/api/v1/overview").json()
     assert body["log_sources"]["silent_log_sources"] == 3
+
+
+def test_open_snapshot_with_null_magnitude_counts_unknown_not_critical(db_schema) -> None:
+    """A null magnitude is counted in critical_unknown, never in critical."""
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        s.add(_snapshot(
+            inst.id, qradar_id=10, status="OPEN", magnitude=None,
+            is_assigned=True, age_seconds=200,
+        ))
+
+    run(setup)
+    offenses = Client(VIEWER).get("/api/v1/overview").json()["offenses"]
+    assert offenses["active"] == 1
+    assert offenses["critical"] == 0
+    assert offenses["critical_unknown"] == 1
+    assert offenses["unassigned"] == 0
+    assert offenses["oldest_age_seconds"] == 200
+
+
+def test_open_snapshot_all_null_magnitudes_has_critical_unknown(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        s.add(_snapshot(inst.id, qradar_id=11, status="OPEN", magnitude=None))
+        s.add(_snapshot(inst.id, qradar_id=12, status="OPEN", magnitude=None))
+
+    run(setup)
+    offenses = Client(VIEWER).get("/api/v1/overview").json()["offenses"]
+    assert offenses["active"] == 2
+    assert offenses["critical"] == 0
+    assert offenses["critical_unknown"] == 2
+
+
+def test_oldest_age_uses_only_known_ages_not_zero_for_null(db_schema) -> None:
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        s.add(_snapshot(inst.id, qradar_id=13, status="OPEN", magnitude=5, age_seconds=50))
+        s.add(_snapshot(inst.id, qradar_id=14, status="OPEN", magnitude=5, age_seconds=None))
+
+    run(setup)
+    offenses = Client(VIEWER).get("/api/v1/overview").json()["offenses"]
+    assert offenses["oldest_age_seconds"] == 50
+
+
+def test_all_open_ages_null_yields_none_oldest(db_schema) -> None:
+    """Every OPEN row has a null age_seconds → oldest_age_seconds is None."""
+    async def setup(s):  # type: ignore[no-untyped-def]
+        inst = await make_instance(s)
+        s.add(_snapshot(inst.id, qradar_id=15, status="OPEN", magnitude=3, age_seconds=None))
+
+    run(setup)
+    offenses = Client(VIEWER).get("/api/v1/overview").json()["offenses"]
+    assert offenses["oldest_age_seconds"] is None

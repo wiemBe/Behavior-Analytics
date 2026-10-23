@@ -146,6 +146,7 @@ class OverviewOffenses(BaseModel):
     #: exists and none of its offenses is open.
     active: int | None
     critical: int | None
+    critical_unknown: int | None
     unassigned: int | None
     oldest_age_seconds: int | None = None
 
