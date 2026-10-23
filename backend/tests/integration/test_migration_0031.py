@@ -83,7 +83,7 @@ def test_0031_adds_clear_error_columns_and_downgrade_drops_them(clean_db: str) -
             assert "last_error_class" not in _columns(connection)
             assert "last_error_at" not in _columns(connection)
 
-        command.upgrade(config, "head")
+        command.upgrade(config, "0031")
         with engine.begin() as connection:
             assert MigrationContext.configure(connection).get_current_revision() == "0031"
             assert connection.execute(

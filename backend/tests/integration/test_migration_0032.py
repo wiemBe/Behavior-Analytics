@@ -109,7 +109,7 @@ def test_0032_adds_the_fault_table_and_downgrade_removes_it(clean_db: str) -> No
                 ).scalars()
             )
 
-        command.upgrade(config, "head")
+        command.upgrade(config, "0032")
         with engine.begin() as connection:
             assert MigrationContext.configure(connection).get_current_revision() == "0032"
             assert _columns(connection) == {
