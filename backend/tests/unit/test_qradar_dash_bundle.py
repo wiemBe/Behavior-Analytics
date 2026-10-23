@@ -87,7 +87,9 @@ if [ -d "$S" ]; then
       flag load-fail && { echo "write error" >&2; exit 1; }
       while read -r ref id; do
         add "$id" "$id"
-        if flag load-drop-digest && [[ $ref == *@sha256:* ]]; then continue; fi
+        if flag load-drop-digest && [[ $ref == *@sha256:* ]]; then
+          printf '%s %s\n' "$ref" "$id" >> "$S/dropped"; continue
+        fi
         if flag load-skew && [[ $ref == */backend:* ]]; then id="${id}00"; fi
         add "$ref" "$id"
       done < "$3"
@@ -103,14 +105,33 @@ if [ -d "$S" ]; then
         fi
         if [[ $subject != sha256:* ]]; then logit "$@"; exit 1; fi
       fi ;;
+    info)
+      if [[ $* == *DriverStatus* ]]; then
+        logit "$@"
+        store=$(cat "$S/store" 2>/dev/null); store=${store:-containerd}
+        case "$store" in
+          containerd) echo "[[driver-type io.containerd.snapshotter.v1]]" ;;
+          classic) echo "[[Backing Filesystem extfs] [Supports d_type true]]" ;;
+          *) exit 1 ;;
+        esac
+        exit 0
+      fi ;;
     tag)
       src=$(lookup "$2")
       if [ -n "$src" ]; then
         logit "$@"
-        if flag tag-refuse-digest && [[ $3 == *@* ]]; then
-          echo "invalid reference format" >&2; exit 1
+        # Docker 29 (containerd store) refuses a digest reference as a tag target.
+        if [[ $3 == *@* ]]; then
+          echo "refusing to create a tag with a digest reference" >&2; exit 1
         fi
-        add "$3" "$src"; exit 0
+        add "$3" "$src"
+        # With the plain tag set, the pinned reference resolves when the digest matches.
+        if [ -f "$S/dropped" ] && ! flag plain-no-resolve; then
+          while read -r ref id; do
+            if [ "${ref%%@*}" = "$3" ] && [ "$id" = "$src" ]; then add "$ref" "$id"; fi
+          done < "$S/dropped"
+        fi
+        exit 0
       fi ;;
   esac
 fi
@@ -452,8 +473,8 @@ def consumer_calls(inst: Install) -> list[str]:
     return log.read_text().splitlines() if log.exists() else []
 
 
-def consumer_flag(inst: Install, name: str) -> None:
-    (inst.root.parent / "imgstate" / name).write_text("")
+def consumer_flag(inst: Install, name: str, content: str = "") -> None:
+    (inst.root.parent / "imgstate" / name).write_text(content)
 
 
 def offline_install(inst: Install, bundle: Path) -> subprocess.CompletedProcess[str]:
@@ -621,7 +642,30 @@ def test_a_relative_bundle_path_is_relative_to_where_the_operator_ran_it(
     assert "Dry run: every check passed" in result.stdout
 
 
-def test_a_load_that_loses_the_redis_digest_is_tagged_back(
+PLAIN_REDIS = "redis:7.4-alpine"
+
+
+def manifest_text(bundle: Path) -> str:
+    with tarfile.open(bundle) as tar:
+        member = tar.extractfile("MANIFEST")
+        assert member is not None
+        return member.read().decode()
+
+
+def with_manifest(bundle: Path, edit) -> Path:  # type: ignore[no-untyped-def]
+    """The bundle with MANIFEST edited and SHA256SUMS recomputed, so only MANIFEST differs."""
+    with tarfile.open(bundle) as tar:
+        files = {m.name: tar.extractfile(m).read() for m in tar.getmembers() if m.isfile()}
+    files["MANIFEST"] = edit(files["MANIFEST"].decode()).encode()
+    sums = "".join(
+        f"{hashlib.sha256(data).hexdigest()}  {name}\n"
+        for name, data in sorted(files.items())
+        if name != "SHA256SUMS"
+    )
+    return rewrite(bundle, {"MANIFEST": files["MANIFEST"], "SHA256SUMS": sums.encode()})
+
+
+def test_a_load_that_loses_the_redis_digest_gets_the_plain_tag_and_the_pinned_ref_resolves(
     consumer: Install, producer: Producer
 ) -> None:
     bundle = producer.make()
@@ -631,39 +675,110 @@ def test_a_load_that_loses_the_redis_digest_is_tagged_back(
 
     assert result.returncode == 0, result.stdout + result.stderr
     ref = redis_reference()
-    assert "tagged sha256:" in result.stderr and f"as {ref}" in result.stderr
-    tags = [c for c in consumer_calls(consumer) if c.startswith("tag sha256:")]
-    assert any(c.endswith(f" {ref}") for c in tags)
+    assert f"set the tag {PLAIN_REDIS} on it" in result.stdout
+    assert f"moves an existing {PLAIN_REDIS}" in result.stdout
+    calls = consumer_calls(consumer)
+    tags = [c for c in calls if c.startswith("tag ")]
+    assert len(tags) == 1 and tags[0].endswith(f" {PLAIN_REDIS}")  # never a digest tag
+    assert f"image inspect --format {{{{.Id}}}} {ref}" in calls
+    assert (consumer.root / ".qradar-dash" / "state.json").is_file()
 
 
-def test_a_lost_redis_digest_that_cannot_be_tagged_is_refused_with_the_command(
+def test_a_pinned_ref_that_does_not_resolve_after_the_plain_tag_is_refused(
     consumer: Install, producer: Producer
 ) -> None:
     bundle = producer.make()
     consumer_flag(consumer, "load-drop-digest")
-    consumer_flag(consumer, "tag-refuse-digest")
+    consumer_flag(consumer, "plain-no-resolve")
 
     result = offline_install(consumer, bundle)
 
     assert result.returncode == 1, result.stdout
     ref = redis_reference()
-    assert f"{ref} is not present" in result.stderr
-    assert re.search(rf"Run: docker tag sha256:[0-9a-f]{{64}} {re.escape(ref)}", result.stderr)
+    assert f"{ref} does not resolve" in result.stderr
+    assert "does not carry the pinned digest on this Docker" in result.stderr
+    assert "bundle again" in result.stderr
+    assert "docker tag" not in result.stderr  # no advice Docker would refuse
+    assert not [c for c in consumer_calls(consumer) if c.startswith("tag ") and "@" in c]
     assert not (consumer.root / ".qradar-dash" / "state.json").exists()
     assert not (consumer.root / ".install-tmp").exists()
 
 
-def test_a_loaded_image_with_another_id_than_the_bundle_made_is_refused(
+def test_with_the_same_image_store_the_ids_are_compared(
     consumer: Install, producer: Producer
 ) -> None:
     bundle = producer.make()
-    consumer_flag(consumer, "load-skew")
+    assert "image_store containerd" in manifest_text(bundle)
+    consumer_flag(consumer, "load-skew")  # the receiving store also says containerd
 
     result = offline_install(consumer, bundle)
 
     assert result.returncode == 1
     assert "backend:0.1.0 is image sha256:" in result.stderr
     assert "the bundle was made from sha256:" in result.stderr
+    assert "were not compared" not in result.stdout
+
+
+def test_with_a_different_image_store_the_ids_are_not_compared_and_the_load_continues(
+    consumer: Install, producer: Producer
+) -> None:
+    bundle = producer.make()
+    consumer_flag(consumer, "store", "classic")
+    consumer_flag(consumer, "load-skew")  # IDs differ, as they would across stores
+
+    result = offline_install(consumer, bundle)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Image IDs were not compared" in result.stdout
+    assert "bundle host's image store is containerd and this host's is classic" in result.stdout
+    assert "SHA256SUMS" in result.stdout
+    assert "bundle images loaded and checked against MANIFEST" in result.stdout
+
+
+def test_a_different_image_store_still_requires_every_reference_to_resolve(
+    consumer: Install, producer: Producer
+) -> None:
+    bundle = producer.make()
+    consumer_flag(consumer, "store", "classic")
+    consumer_flag(consumer, "load-drop-digest")
+    consumer_flag(consumer, "plain-no-resolve")
+
+    result = offline_install(consumer, bundle)
+
+    assert result.returncode == 1
+    assert "Image IDs were not compared" in result.stdout
+    assert "does not resolve" in result.stderr
+
+
+def test_a_manifest_without_the_store_line_is_compared_as_before(
+    consumer: Install, producer: Producer
+) -> None:
+    bundle = with_manifest(
+        producer.make(),
+        lambda text: "".join(
+            line for line in text.splitlines(keepends=True) if not line.startswith("image_store")
+        ),
+    )
+    consumer_flag(consumer, "store", "classic")  # would differ, but the bundle does not say
+    consumer_flag(consumer, "load-skew")
+
+    result = offline_install(consumer, bundle)
+
+    assert result.returncode == 1
+    assert "the bundle was made from sha256:" in result.stderr
+    assert "were not compared" not in result.stdout
+
+
+def test_bundle_records_the_image_store_of_the_host_that_made_it(tmp_path: Path) -> None:
+    for store in ("containerd", "classic"):
+        prod = Producer(tmp_path, version="0.1.0" if store == "containerd" else "0.1.1")
+        prod.flag("store", store)
+        manifest = manifest_text(prod.make())
+        assert f"\nimage_store {store}\n" in manifest
+    unknown = Producer(tmp_path, version="0.1.2")
+    unknown.flag("store", "fail")
+    manifest = manifest_text(unknown.make())
+    assert "\nimage_store unknown\n" in manifest
 
 
 def test_a_failed_docker_load_stops_the_install_and_cleans_up(
@@ -759,12 +874,12 @@ def test_upgrade_with_a_bundle_whose_redis_digest_cannot_be_restored_is_refused_
 ) -> None:
     bundle = upgrade_bundle(tmp_path)
     (tmp_path / "imgstate" / "load-drop-digest").write_text("")
-    (tmp_path / "imgstate" / "tag-refuse-digest").write_text("")
+    (tmp_path / "imgstate" / "plain-no-resolve").write_text("")
 
     result = upgrade_store.run("upgrade", TARGET_VERSION, "--offline", str(bundle))
 
     assert result.returncode == 1
-    assert f"{redis_reference()} is not present" in result.stderr
+    assert f"{redis_reference()} does not resolve" in result.stderr
     assert " stop " not in upgrade_store.action_text()
 
 
@@ -777,7 +892,7 @@ def test_upgrade_with_a_lost_redis_digest_tags_it_back_and_continues(
     result = upgrade_store.run("upgrade", TARGET_VERSION, "--offline", str(bundle))
 
     assert result.returncode == 0, output(result)
-    assert f"as {redis_reference()}" in result.stderr
+    assert f"set the tag {PLAIN_REDIS} on it" in result.stdout
 
 
 def test_upgrade_with_a_bundle_for_another_prefix_is_refused_before_loading(

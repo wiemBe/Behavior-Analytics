@@ -358,10 +358,15 @@ that is not a tar, a tar with links or absolute or `..` paths, a bundle whose `V
 the checkout (install) or the upgrade target, and a bundle whose `image_prefix` differs from the
 site's. `bundle_load` extracts under `.install-tmp/`, runs `sha256sum -c`, refuses a member that
 `SHA256SUMS` does not cover, runs `docker load`, and then `bundle_verify_manifest` checks every
-`image` line with `docker image inspect`: the reference must resolve and its ID must equal the one
-recorded. A reference that does not resolve is tagged from the loaded ID; if Docker refuses that,
-the command stops and prints the `docker tag <id> <reference>` it tried. This handles the digest
-reference of redis, which `docker save` and `docker load` can lose on some image stores. A failure
+`image` line with `docker image inspect`: the reference must resolve and, when `MANIFEST`'s
+`image_store` (`containerd` or `classic`, from `docker info`, recorded by `docker_image_store`)
+equals this host's or is absent, its ID must equal the one recorded. `.Id` differs between the two
+stores, so with different stores the IDs are not compared, one line says so, and integrity rests on
+`SHA256SUMS`. `docker save` records no name for the digest-pinned redis image, and Docker refuses a
+digest reference as a tag target, so a reference that does not resolve after the load gets the plain
+`name:tag` from the loaded ID and the pinned reference must then resolve (measured on Docker 29.9.1,
+containerd store, OPS-21b); if not, the command stops with a message that the loaded image does not
+carry the pinned digest and says to make the bundle again. A failure
 anywhere loads nothing further and leaves no `.install-tmp/`. `upgrade --offline` without a bundle
 still requires the images to be loaded and names the first missing one.
 

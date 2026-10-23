@@ -436,20 +436,41 @@ Yükleme başlamadan şunlardan biri tutmazsa `nothing was loaded` yazılır ve 
 
 Çözüm hep aynıdır: paketi bağlı makineden yeniden kopyala ya da doğru sürümün/ön ekin paketini yap.
 
-`docker load` sonrasında `MANIFEST` içindeki her başvuru için `docker image inspect` çalışır ve
-kimlik, paketin yapıldığı kimlikle karşılaştırılır. Bazı Docker imaj depoları digest ile sabit bir
-başvuruyu (`redis:7.4-alpine@sha256:…`) `docker save`/`docker load` sonrası kaybedebilir; imaj o
-zaman yalnız kimliğiyle kalır ve Compose onu bulamaz. Betik bu durumda imajı kimliğinden o başvuruya
-etiketlemeyi dener (`[warn] docker load kept … only by its ID; tagged … as …`). Docker etiketlemeyi
-reddederse betik durur ve başvuruyu ile komutu yazar:
+`docker load` sonrasında `MANIFEST` içindeki her başvuru için `docker image inspect` çalışır. Kimlik
+(ID) karşılaştırması yalnız paketi yapan makine ile bu makinenin Docker imaj deposu (image store)
+aynı türdeyse yapılır; tür `MANIFEST` içindeki `image_store` satırında (`containerd` ya da
+`classic`) yazılır, çünkü `.Id` iki depoda farklı anlama gelir. Türler farklıysa betik şunu yazar ve
+sürer; bütünlük `images.tar` için yapılan `SHA256SUMS` denetimine dayanır, her başvurunun çözülmesi
+yine şarttır:
 
 ```
-after docker load, redis:7.4-alpine@sha256:… is not present (the bundle lists it as sha256:…). Docker dropped the reference. Run: docker tag sha256:… redis:7.4-alpine@sha256:…
+Image IDs were not compared: the bundle host's image store is containerd and this host's is classic; integrity rests on the SHA256SUMS check of images.tar. Every image reference is still checked.
 ```
 
-Bu komut da reddedilirse `docker image ls --digests` çıktısını ve `./qradar-dash support-bundle`
-paketini sakla ve yükseltmeyi/kurulumu sürdürme: redis başvurusu çözülmeden Compose imajı çekmeye
-çalışır.
+`image_store` satırı olmayan eski bir paketin kimlikleri her zaman karşılaştırılır.
+
+Redis digest ile sabitlenmiştir (`redis:7.4-alpine@sha256:…`). `docker save` böyle bir başvurunun
+adını kaydetmez; `docker load` sonrası imaj yalnız kimliğiyle kalır ve Compose onu bulamaz, çekmeye
+kalkar. Docker bir digest başvurusunu etiket hedefi olarak da reddeder (`refusing to create a tag
+with a digest reference`), bu yüzden betik yalnız düz etiketi koyar ve ardından sabitlenmiş
+başvurunun çözüldüğünü doğrular:
+
+```
+[ ok ] docker load kept redis:7.4-alpine@sha256:… only by its ID; set the tag redis:7.4-alpine on it (this moves an existing redis:7.4-alpine on this host)
+```
+
+Bu, bu makinede zaten var olan bir `redis:7.4-alpine` etiketini yüklenen imaja taşıyabilir; bir
+başka imajı gösteriyorsa o imaj etiketsiz kalır (silinmez). Düz etiket konduktan sonra da sabitlenmiş
+başvuru çözülmezse (yüklenen imaj bu Docker'da sabitlenmiş digest'i taşımıyor) betik durur ve
+hiçbir şey başlatmaz:
+
+```
+after docker load, redis:7.4-alpine@sha256:… does not resolve: the loaded image (sha256:…) does not carry the pinned digest on this Docker, even with the tag redis:7.4-alpine set. Make the bundle again with ./qradar-dash bundle on a connected host whose Docker image store is the same as this host's (…)
+```
+
+Çözüm: paketi, imaj deposu bu makineyle aynı türde olan bağlı bir makinede yeniden yap
+(`docker info` deposu gösterir). Elle yazılacak bir `docker tag … @sha256:…` komutu yoktur; Docker onu
+reddeder.
 
 ---
 
