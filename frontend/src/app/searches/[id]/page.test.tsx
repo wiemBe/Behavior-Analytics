@@ -158,7 +158,9 @@ describe("search detail contents", () => {
   it("names the search and orients the reader under it", async () => {
     await renderPage();
     expect(screen.getByRole("heading", { name: "Repeated authentication failures", level: 1 })).toBeInTheDocument();
-    expect(screen.getByText(/Credential Access · severity HIGH · v2 · next run 2026-10-15 08:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/Credential Access · severity HIGH · v2/)).toHaveTextContent(
+      "next run 2026-10-15 08:00:00 UTC",
+    );
     const run = screen.getByRole("button", { name: "Run now" });
     expect(run.closest("header")).toBeNull();
     expect(run.closest(".search-run-bar")).not.toBeNull();

@@ -57,8 +57,8 @@ describe("history backfill words", () => {
     expect(relativeAge("2026-10-20T11:48:00Z", now)).toBe("12 min ago");
     expect(relativeAge("2026-10-20T06:00:00Z", now)).toBe("6 h ago");
     expect(relativeAge("2026-10-10T12:00:00Z", now)).toBe("10 d ago");
-    expect(relativeAge("2026-10-21T12:00:00Z", now)).toBe("");
-    expect(relativeAge(null, now)).toBe("");
+    expect(relativeAge("2026-10-21T12:00:00Z", now)).toBe("—");
+    expect(relativeAge(null, now)).toBe("—");
   });
 
   it("never turns a missing estimate into a zero", () => {

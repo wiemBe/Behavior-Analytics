@@ -150,7 +150,7 @@ describe("offense detail contents", () => {
     expect(within(card("Severity")).getByText("7")).toBeInTheDocument();
     expect(within(card("Credibility")).getByText("6")).toBeInTheDocument();
     expect(within(card("Relevance")).getByText("5")).toBeInTheDocument();
-    expect(within(card("Age")).getByText("11h 0m")).toBeInTheDocument();
+    expect(within(card("Age")).getByText("11 h")).toBeInTheDocument();
   });
 
   it("lists the attributes with UTC times and both counts", async () => {

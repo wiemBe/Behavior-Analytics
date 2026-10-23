@@ -21,7 +21,7 @@ import {
   type CatchallSourceList,
   type Page,
 } from "@/lib/api";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import { SenderId } from "./SenderId";
 import {
@@ -33,7 +33,6 @@ import {
   emptyKind,
   formatCount,
   formatEvents24h,
-  formatSeen,
   reviewedBy,
   senderFailure,
   statusFilterLabel,
@@ -69,11 +68,7 @@ function readFailure(err: unknown): { text: string; forbidden: boolean } {
 
 /** `bare` drops the zone from the text where the column header names it; the title keeps it. */
 function Time({ value, bare = false }: { value: string; bare?: boolean }) {
-  return (
-    <time dateTime={value} title={formatDateTime(value)} className="nowrap">
-      {bare ? formatSeen(value) : formatDateTimeCompact(value)}
-    </time>
-  );
+  return <UtcTime value={value} variant="compact" bare={bare} className="nowrap" />;
 }
 
 function SenderRow({
@@ -245,7 +240,14 @@ function EmptyQueue({
         </p>
         <p>
           No sender is waiting for review.
-          {latest ? ` The latest measured bucket starts ${formatDateTime(latest)}.` : ""}
+          {latest ? (
+            <>
+              {" "}
+              The latest measured bucket starts <UtcTime value={latest} />.
+            </>
+          ) : (
+            ""
+          )}
         </p>
       </div>
     );

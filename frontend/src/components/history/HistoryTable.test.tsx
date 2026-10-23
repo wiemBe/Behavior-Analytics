@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -27,7 +30,7 @@ function reasonCell(over: Partial<HistoryScope> = {}, familyName = "PHASE_A"): H
   render(<HistoryTable console={console} now={NOW} />);
   const row = screen
     .getByRole("rowheader", { name: familyName === "PHASE_A" ? "Source volume" : familyName })
-    .closest("tr");
+    .closest("tbody");
   if (row === null) throw new Error(`no ${familyName} row`);
   return within(row).getAllByRole("cell")[7]!;
 }
@@ -146,6 +149,36 @@ describe("the history table reason cell", () => {
     expect(cell).toHaveTextContent("WAF history is complete.");
     expect(cell).not.toHaveTextContent("QRadar holds less than asked for:");
     expect(cell).not.toHaveTextContent("No event in the window:");
+  });
+
+  it("puts the reason and the later answer on a full-width row under the metrics", () => {
+    const console = consoleOf({
+      mode: "ACTIVE",
+      families: [
+        family({
+          scopes: [scope({ reason: "Reading is still in progress.", later_yes: "possible" })],
+        }),
+      ],
+    });
+    render(<HistoryTable console={console} now={NOW} />);
+    const body = screen.getByRole("rowheader", { name: "Source volume" }).closest("tbody");
+    if (body === null) throw new Error("no body");
+    const detail = within(body).getAllByRole("row")[1];
+    if (!detail) throw new Error("no detail row");
+    const cell = within(detail).getByRole("cell");
+    expect(cell).toHaveAttribute("colspan", "8");
+    expect(within(cell).getByText("Reason")).toBeInTheDocument();
+    expect(within(cell).getByText("Later Yes")).toBeInTheDocument();
+    expect(cell).toHaveTextContent("Reading is still in progress.");
+    expect(cell).toHaveTextContent("possible");
+  });
+
+  it("lets the reason wrap in the table instead of reserving a fixed column", () => {
+    const css = readFileSync(join(process.cwd(), "src/components/history/history.css"), "utf8");
+    expect(css).not.toMatch(/\.hb-reason\s*\{[^}]*min-width/);
+    expect(css).not.toMatch(/\.hb-later\s*\{[^}]*min-width/);
+    expect(css).toMatch(/\.hb-table thead th\s*\{[^}]*white-space:\s*normal/);
+    expect(css).toMatch(/overflow-wrap:\s*anywhere/);
   });
 
   it("keeps all six fields null on a synthesized absent-family row", () => {

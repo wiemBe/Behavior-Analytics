@@ -11,7 +11,9 @@ import { StatCard } from "@/components/StatCard";
 import { Pagination } from "@/components/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
-import { formatDateTime, healthMeaning, healthTone } from "@/lib/health";
+import { healthMeaning, healthTone } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "./coverage.css";
 
@@ -114,7 +116,7 @@ export default async function CoveragePage({
             {Math.round((summary?.covered_ratio ?? 0) * 100)}% covered ·{" "}
             {summary?.mapping_provenance.explicit ?? 0} explicit /{" "}
             {summary?.mapping_provenance.inferred ?? 0} inferred mappings ·
-            generated {formatDateTime(summary?.generated_at)}
+            generated {<UtcTime value={summary?.generated_at} />}
           </p>
 
           {items.length === 0 ? (

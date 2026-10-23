@@ -28,7 +28,7 @@ import {
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, type PropertyWatch, type PropertyWatchCatalog } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
@@ -178,9 +178,7 @@ export default async function PropertyWatchesPage() {
                       <td className="num cell-when nowrap">
                         {w.collected_through ? (
                           <>
-                            <time dateTime={w.collected_through}>
-                              {formatDateTime(w.collected_through)}
-                            </time>
+                            <UtcTime value={w.collected_through} />
                             <span className="cell-sub">{relativeAge(w.collected_through, now)}</span>
                           </>
                         ) : (

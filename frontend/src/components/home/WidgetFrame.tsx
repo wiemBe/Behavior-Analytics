@@ -33,6 +33,7 @@ import { formatClockUtc } from "@/components/shell/AutoRefresh";
 import type { ResourceState } from "@/hooks/useApiResource";
 import type { SearchFamily } from "@/lib/api";
 import { formatClock } from "@/lib/fieldMapping";
+import { formatDuration, relativeAgeFromSeconds } from "@/lib/time";
 import type { Qualifier } from "@/lib/home/qualifiers";
 import { RangeControl } from "@/widgets/RangeControl";
 import { useFamilyTiming } from "@/widgets/cadence";
@@ -278,13 +279,6 @@ function ReasonState({
   );
 }
 
-/** "3 h", "45 min": how old stale data is, in the largest whole unit. */
-function formatAge(seconds: number): string {
-  if (seconds < 3600) return `${Math.max(1, Math.floor(seconds / 60))} min`;
-  if (seconds < 48 * 3600) return `${Math.floor(seconds / 3600)} h`;
-  return `${Math.floor(seconds / 86400)} d`;
-}
-
 /** Data that is shown but old: when it is from, so it is never read as current. */
 function StaleNote({
   asOf,
@@ -306,14 +300,9 @@ function StaleNote({
   return (
     <p className={className} role="status">
       Stale: the latest data is from <time dateTime={asOf}>{formatClockUtc(asOf)}</time>,{" "}
-      {formatAge(ageSeconds)} old.
+      {formatDuration(ageSeconds)} old.
     </p>
   );
-}
-
-/** "under 1 min", "4 min", "3 h": the age after the data's own time (guidelines section 10). */
-function formatAgo(seconds: number): string {
-  return seconds < 60 ? "under 1 min" : formatAge(seconds);
 }
 
 /** Where the data reaches, in UTC, with its age after it; the fetch time is not shown. */
@@ -326,9 +315,11 @@ function DataToNote({
   ageSeconds: number;
   variant: WidgetVariant;
 }) {
+  const age = relativeAgeFromSeconds(ageSeconds);
   return (
     <p className={variant === "kpi" ? "kpi-foot" : "tw-note"}>
-      Data to <time dateTime={at}>{formatClockUtc(at)}</time>, {formatAgo(ageSeconds)} ago.
+      Data to <time dateTime={at}>{formatClockUtc(at)}</time>
+      {age === "—" ? "" : `, ${age}`}.
     </p>
   );
 }

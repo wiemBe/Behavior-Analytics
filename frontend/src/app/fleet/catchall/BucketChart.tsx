@@ -35,7 +35,7 @@ import {
   readHistoryShade,
 } from "@/components/behavior/historyOrigin";
 import { readChartPalette } from "@/lib/chartPalette";
-import { formatDateTime } from "@/lib/health";
+import { utcTimeHtml } from "@/components/ui/UtcTime";
 
 import {
   axisLabel,
@@ -113,7 +113,7 @@ export function BucketChart({
             const first = list[0] as { dataIndex?: number } | undefined;
             const slot = first?.dataIndex != null ? slots[first.dataIndex] : undefined;
             if (!slot) return "";
-            const when = formatDateTime(new Date(slot.t).toISOString());
+            const when = utcTimeHtml(new Date(slot.t).toISOString());
             if (!slot.bucket) {
               return [
                 when,

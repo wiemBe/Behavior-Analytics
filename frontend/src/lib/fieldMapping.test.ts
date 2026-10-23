@@ -46,12 +46,12 @@ describe("formatShare", () => {
     expect(formatShare(Number.NaN)).toBe("—");
   });
   it("renders a measured zero as 0 %", () => {
-    expect(formatShare(0)).toBe("0 %");
+    expect(formatShare(0)).toBe("0.0 %");
   });
   it("rounds to one decimal and drops a trailing .0", () => {
-    expect(formatShare(0.62)).toBe("62 %");
+    expect(formatShare(0.62)).toBe("62.0 %");
     expect(formatShare(0.9951)).toBe("99.5 %");
-    expect(formatShare(1)).toBe("100 %");
+    expect(formatShare(1)).toBe("100.0 %");
   });
   it("does not round a tiny positive share down to zero", () => {
     expect(formatShare(0.0003)).toBe("<0.1 %");
@@ -285,7 +285,7 @@ describe("fieldStatusInfo", () => {
   const ctx = { populatedRatio: 0.62, plausibleRatio: null, requiredCoverage: 0.9, usedByCollection: true };
   it("words low coverage with both shares", () => {
     expect(fieldStatusInfo("INSUFFICIENT_COVERAGE", ctx).sentence).toBe(
-      "Only 62 % of events carry it; collection needs 90 %.",
+      "Only 62.0 % of events carry it; collection needs 90.0 %.",
     );
   });
   it("does not invent a share when coverage was not measured", () => {
@@ -380,7 +380,7 @@ describe("reasonText", () => {
   });
   it("uses the measured share for low coverage", () => {
     expect(reasonText("METHOD: INSUFFICIENT_COVERAGE (62 of 100)", SCHEMA, 0.9, () => 0.62)).toBe(
-      "HTTP method: Only 62 % of events carry it; collection needs 90 %.",
+      "HTTP method: Only 62.0 % of events carry it; collection needs 90.0 %.",
     );
   });
   it("shows anything else verbatim", () => {

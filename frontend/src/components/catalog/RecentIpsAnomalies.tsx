@@ -14,9 +14,10 @@ import { statePillText } from "@/components/waf/wafLabels";
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads, sevTone } from "@/lib/api";
 import { stateTone } from "@/lib/behavior";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import { combine2 } from "@/lib/home/combine";
 import { useExpanded } from "@/widgets/runtime";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import { IPS_ANOMALIES_LIMIT, mergeIpsAnomalies } from "./ipsAnomalies";
 
@@ -105,9 +106,7 @@ export function RecentIpsAnomalies({ id = "single" }: { id?: string } = {}) {
                             {statePillText(r.state)}
                           </span>
                           {" · "}
-                          <time dateTime={r.detectedAt} title={formatDateTime(r.detectedAt)}>
-                            {formatDateTimeCompact(r.detectedAt)}
-                          </time>
+                          <UtcTime value={r.detectedAt} variant="compact" />
                         </span>
                       </td>
                       <td className="tw-unfold">

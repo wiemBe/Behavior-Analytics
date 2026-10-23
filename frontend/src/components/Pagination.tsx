@@ -1,7 +1,9 @@
+import Link from "next/link";
+
 // Offset pagination control.
 //
-// A server component: paging is a navigation, so it is plain links. That keeps
-// each page shareable and bookmarkable, and needs no client JavaScript.
+// A server component: paging is a navigation. `Link` still renders a real href,
+// so each page stays shareable and bookmarkable.
 
 function href(
   basePath: string,
@@ -42,12 +44,12 @@ export function Pagination({
       </span>
       <span className="pagination-links">
         {hasPrev ? (
-          <a href={href(basePath, Math.max(0, offset - limit), params)}>Previous</a>
+          <Link href={href(basePath, Math.max(0, offset - limit), params)}>Previous</Link>
         ) : (
           <span className="muted">Previous</span>
         )}
         {hasNext ? (
-          <a href={href(basePath, offset + limit, params)}>Next</a>
+          <Link href={href(basePath, offset + limit, params)}>Next</Link>
         ) : (
           <span className="muted">Next</span>
         )}

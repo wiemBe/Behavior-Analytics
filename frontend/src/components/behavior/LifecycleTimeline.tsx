@@ -12,7 +12,8 @@
 import { Disclosure } from "@/components/ui/Disclosure";
 import type { AnomalyTransition } from "@/lib/api";
 import { formatMetric, stateTone } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 export function LifecycleTimeline({
   transitions,
@@ -54,9 +55,7 @@ export function LifecycleTimeline({
                 →
               </span>
               <span className={`pill ${stateTone(t.to_state)}`}>{stateLabel(t.to_state)}</span>
-              <time className="muted num" dateTime={t.occurred_at}>
-                {formatDateTime(t.occurred_at)}
-              </time>
+              <UtcTime value={t.occurred_at} className="muted num" />
             </div>
 
             <p className="lifecycle-reason">
@@ -67,7 +66,7 @@ export function LifecycleTimeline({
               <dl className="dimension-meta">
                 <div>
                   <dt>Bucket</dt>
-                  <dd className="num">{formatDateTime(t.bucket_start)}</dd>
+                  <dd className="num">{<UtcTime value={t.bucket_start} />}</dd>
                 </div>
                 <div>
                   <dt>Observed</dt>

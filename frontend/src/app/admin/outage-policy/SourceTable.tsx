@@ -12,7 +12,7 @@ import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { outagePolicyApi, type OutageMode, type OutagePolicyRow } from "@/lib/api";
 import { classLabel } from "@/lib/fleet";
-import { formatDateTimeCompact } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import {
   graceParts,
@@ -138,9 +138,7 @@ function SourceRow({
         </td>
         <td>
           {row.updated_by ?? <span className="muted">—</span>}
-          <time className="cell-sub nowrap" dateTime={row.updated_at}>
-            {formatDateTimeCompact(row.updated_at)}
-          </time>
+          <UtcTime value={row.updated_at} variant="compact" className="cell-sub nowrap" />
         </td>
         <td className="cell-actions">
           <div className="actions">

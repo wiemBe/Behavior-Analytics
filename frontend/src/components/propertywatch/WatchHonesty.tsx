@@ -5,7 +5,7 @@
 // empty is not drawn, and a collection fault is never worded as a finding about the events.
 
 import type { PropertyWatch, PropertyWatchCatalog, PwBucket } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { utcTimeText } from "@/components/ui/UtcTime";
 
 import { statusLabel, statusReason } from "./pwFormat";
 import { historyGapText, historyStateText } from "./history";
@@ -125,7 +125,7 @@ export function honestyNotes(input: {
     notes.push({
       label: "ADMISSION",
       tone: "",
-      text: `${refused.rejected_over_quota.toLocaleString("en-US")} ${plural(refused.rejected_over_quota, "value was", "values were")} refused admission at ${formatDateTime(refused.bucket_start)}: the watch already tracks its maximum. They are counted in the bucket, not plotted.`,
+      text: `${refused.rejected_over_quota.toLocaleString("en-US")} ${plural(refused.rejected_over_quota, "value was", "values were")} refused admission at ${utcTimeText(refused.bucket_start)}: the watch already tracks its maximum. They are counted in the bucket, not plotted.`,
     });
   }
 
@@ -142,7 +142,7 @@ export function honestyNotes(input: {
     notes.push({
       label: "MEMBERSHIP CHANGED",
       tone: "",
-      text: `The scope's membership changed at ${formatDateTime(now.bucket_start)}${counts}. Buckets inside the grace window after a change are insufficient data, not normal.`,
+      text: `The scope's membership changed at ${utcTimeText(now.bucket_start)}${counts}. Buckets inside the grace window after a change are insufficient data, not normal.`,
     });
   }
   return notes;

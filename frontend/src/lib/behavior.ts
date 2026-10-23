@@ -42,11 +42,7 @@ export function formatMetric(
   return value.toFixed(digits);
 }
 
-/** Integer form of the same rule. */
-export function formatCount(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return NOT_MEASURED;
-  return value.toLocaleString();
-}
+export { formatCount } from "@/lib/format";
 
 /** A ratio, suffixed with x. A null ratio means the comparison does not exist. */
 export function formatRatio(value: number | null | undefined): string {
@@ -54,11 +50,7 @@ export function formatRatio(value: number | null | undefined): string {
   return `${value.toFixed(2)}x`;
 }
 
-/** A fraction in [0,1] as a percentage. Null stays unmeasured. */
-export function formatShare(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return NOT_MEASURED;
-  return `${(value * 100).toFixed(1)}%`;
-}
+export { formatShare } from "@/lib/format";
 
 /** A percentage delta already expressed in percent by the backend. */
 export function formatPercentDelta(value: number | null | undefined): string {
@@ -71,19 +63,10 @@ export function formatPercentDelta(value: number | null | undefined): string {
 export function formatDelta(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
   const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toLocaleString()}`;
+  return `${sign}${value.toLocaleString("en-US")}`;
 }
 
-/** Compact duration. Null means the anomaly has not ended, not "0s". */
-export function formatDuration(seconds: number | null | undefined): string {
-  if (seconds == null || Number.isNaN(seconds)) return NOT_MEASURED;
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const m = Math.floor(seconds / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ${m % 60}m`;
-  return `${Math.floor(h / 24)}d ${h % 24}h`;
-}
+export { formatDuration } from "@/lib/time";
 
 // --- detectors -------------------------------------------------------------
 

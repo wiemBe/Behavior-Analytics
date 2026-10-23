@@ -26,7 +26,8 @@ import {
   type CustomRuleCatalog,
   type CustomRulePreview,
 } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 function measuredValue(value: number | null, measurement: string | null, unit: string): string {
   if (value === null || measurement === null) return "—";
@@ -107,12 +108,12 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
         <dl className="cr-definition">
           <div><dt>Subject</dt><dd><span>{SUBJECT_KIND_LABELS[rule.subject_kind]} · </span><Link href={subject.href}>{subject.label}</Link></dd></div>
           <div><dt>Condition</dt><dd>{conditionText(rule)}</dd></div>
-          <div><dt>Last evaluated</dt><dd>{rule.last_evaluated_at ? <time dateTime={rule.last_evaluated_at}>{formatDateTime(rule.last_evaluated_at)}</time> : "Never evaluated"}</dd></div>
+          <div><dt>Last evaluated</dt><dd>{rule.last_evaluated_at ? <UtcTime value={rule.last_evaluated_at} /> : "Never evaluated"}</dd></div>
         </dl>
         {rule.last_status === "SUBJECT_RETIRED" && (
           <div className="banner">
             {subject.retiredAt ? (
-              <>This subject stopped being tracked at <time dateTime={subject.retiredAt}>{formatDateTime(subject.retiredAt)}</time>. The rule draws no verdict from later buckets.</>
+              <>This subject stopped being tracked at <UtcTime value={subject.retiredAt} />. The rule draws no verdict from later buckets.</>
             ) : (
               "This subject stopped being tracked. The rule draws no verdict from later buckets."
             )}
@@ -136,8 +137,8 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
               <div><dt>Worst reading</dt><dd className="num">{measuredValue(active.worst_value, active.worst_measurement, unit)}</dd></div>
               <div><dt>Last reading</dt><dd className="num">{measuredValue(active.last_value, active.last_measurement, unit)}</dd></div>
               <div><dt>Unmeasured</dt><dd className="num">{active.unmeasured_buckets} buckets</dd></div>
-              <div><dt>Opened</dt><dd><time dateTime={active.opened_at}>{formatDateTime(active.opened_at)}</time></dd></div>
-              <div><dt>Last bucket</dt><dd><time dateTime={active.last_bucket_start}>{formatDateTime(active.last_bucket_start)}</time></dd></div>
+              <div><dt>Opened</dt><dd><UtcTime value={active.opened_at} /></dd></div>
+              <div><dt>Last bucket</dt><dd><UtcTime value={active.last_bucket_start} /></dd></div>
             </dl>
             {rule.alerting_mode === "alerting" ? (
               <p>An alert is open in <Link href="/alerts">Alerts</Link>.</p>
@@ -160,8 +161,8 @@ export default async function CustomRuleDetailPage({ params }: { params: Promise
                 {breaches.map((breach) => (
                   <tr key={breach.id}>
                     <td><span className={`pill ${statusTone(breach.state)}`}>{statusLabel(breach.state)}</span></td>
-                    <td><time dateTime={breach.opened_at}>{formatDateTime(breach.opened_at)}</time></td>
-                    <td>{breach.resolved_at ? <time dateTime={breach.resolved_at}>{formatDateTime(breach.resolved_at)}</time> : "—"}</td>
+                    <td><UtcTime value={breach.opened_at} /></td>
+                    <td>{breach.resolved_at ? <UtcTime value={breach.resolved_at} /> : "—"}</td>
                     <td className="num">{measuredValue(breach.worst_value, breach.worst_measurement, unit)}</td>
                     <td className="num">{measuredValue(breach.last_value, breach.last_measurement, unit)}</td>
                     <td className="num">{breach.unmeasured_buckets} buckets</td>

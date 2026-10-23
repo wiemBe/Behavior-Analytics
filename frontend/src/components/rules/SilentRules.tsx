@@ -11,7 +11,7 @@ import "@/components/ui/controls.css";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { SilentSection } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import {
   formatCount,
@@ -32,7 +32,7 @@ function evidenceText(evidence: string): string {
 
 function Instant({ value, missing }: { value: string | null; missing: string }) {
   if (!value) return <span className="muted">{missing}</span>;
-  return <time dateTime={value}>{formatDateTime(value)}</time>;
+  return <UtcTime value={value} />;
 }
 
 export function SilentRules({

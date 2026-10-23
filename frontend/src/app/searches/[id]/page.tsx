@@ -12,8 +12,9 @@ import { CodePanel } from "@/components/ui/CodePanel";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type SearchExecution, type SearchVersion } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
 import { axisTimeLabel, truncatedRunTimes } from "@/lib/searchRuns";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "./search-detail.css";
 
@@ -73,7 +74,14 @@ export default async function SearchDetailPage({
           <>
             {search.category ?? "uncategorised"} · severity {search.severity} · v
             {search.query_version}
-            {search.next_run_at ? ` · next run ${formatDateTime(search.next_run_at)}` : ""}
+            {search.next_run_at ? (
+              <>
+                {" · next run "}
+                <UtcTime value={search.next_run_at} />
+              </>
+            ) : (
+              ""
+            )}
           </>
         }
       />

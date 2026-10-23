@@ -13,6 +13,7 @@ import { healthTone } from "@/lib/health";
 import { NOT_MEASURED } from "@/lib/behavior";
 import { secondary, WidgetFrame, WidgetLoading } from "@/components/home/WidgetFrame";
 import { Unmeasured } from "@/components/home/WidgetParts";
+import { formatCount } from "@/lib/format";
 
 import { detectionView, ruleHealthView } from "./derive";
 
@@ -20,7 +21,7 @@ import "./catalog.css";
 
 // One case for a verdict word: the coverage page's, upper case with the underscore read as a space.
 const word = (s: string) => s.replace(/_/g, " ");
-const n = (v: number) => v.toLocaleString("en-US");
+const n = (v: number) => formatCount(v);
 
 export function HealthDetection() {
   const coverageRead = homeReads.coverageSummary();

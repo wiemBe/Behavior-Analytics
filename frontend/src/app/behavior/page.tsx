@@ -40,8 +40,9 @@ import {
   healthSummaryText,
 } from "@/lib/behaviorOverview";
 import { detectorLabel, formatMetric, formatRatio, stateTone } from "@/lib/behavior";
-import { formatDateTimeCompact } from "@/lib/health";
 import { sourcesAsOf } from "@/lib/home/asOf";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "./overview.css";
 
@@ -52,17 +53,6 @@ export const metadata: Metadata = {
 /** How many rows the worklist and the recent list show before linking on. */
 const ATTENTION_LIMIT = 8;
 const RECENT_LIMIT = 6;
-
-/** "10-13 09:30 UTC": the zone may drop to a second line, the date and time may not. */
-function StartedAt({ value }: { value: string }) {
-  const cut = value.lastIndexOf(" ");
-  if (cut < 0) return <>{value}</>;
-  return (
-    <>
-      <span className="nowrap">{value.slice(0, cut)}</span> {value.slice(cut + 1)}
-    </>
-  );
-}
 
 export default async function BehaviorPage() {
   let summary: BehaviorSummary | null = null;
@@ -242,9 +232,9 @@ export default async function BehaviorPage() {
                   {attention.slice(0, ATTENTION_LIMIT).map((row) => (
                     <tr key={row.key}>
                       <td className="cell-name cell-name-single" title={row.sourceName}>
-                        <a href={`/behavior/sources/${row.sourceId}`}>
+                        <Link href={`/behavior/sources/${row.sourceId}`}>
                           {row.sourceName}
-                        </a>
+                        </Link>
                       </td>
                       <td>
                         <span className={`pill pill-wrap ${stateTone(row.state)}`}>
@@ -299,12 +289,12 @@ export default async function BehaviorPage() {
                       </td>
                       <td className="num">{formatRatio(row.deviation)}</td>
                       <td className="num cell-when">
-                        <StartedAt value={formatDateTimeCompact(row.at)} />
+                        <UtcTime value={row.at} variant="compact" wrapZone />
                       </td>
                       <td>
-                        <a href={row.href}>
+                        <Link href={row.href}>
                           {row.href.startsWith("/anomalies") ? "Investigate" : "Detail"}
-                        </a>
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -356,9 +346,9 @@ export default async function BehaviorPage() {
                         {a.severity}
                       </span>
                     </td>
-                    <td className="num">{formatDateTimeCompact(a.resolved_at)}</td>
+                    <td className="num">{<UtcTime value={a.resolved_at} variant="compact" />}</td>
                     <td>
-                      <a href={`/anomalies/${a.id}`}>Investigate</a>
+                      <Link href={`/anomalies/${a.id}`}>Investigate</Link>
                     </td>
                   </tr>
                 ))}

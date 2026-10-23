@@ -112,7 +112,7 @@ function reading(): HistoryConsole {
 function rowOf(name: string, scopeText?: string): HTMLElement {
   const rows = screen
     .getAllByRole("rowheader", { name })
-    .map((h) => h.closest("tr") as HTMLElement);
+    .map((h) => h.closest("tbody") as HTMLElement);
   const found = scopeText ? rows.find((r) => r.textContent?.includes(scopeText)) : rows[0];
   if (!found) throw new Error(`no ${name} row`);
   return found;
@@ -192,11 +192,12 @@ describe("the history backfill page: the table", () => {
       "Read",
       "Searches",
       "Read through",
-      "Reason",
-      "Later Yes",
     ]);
     // Phase A, WAF scope, WAF source without a scope row, catch-all, rule matches.
-    expect(within(table).getAllByRole("row")).toHaveLength(1 + 5);
+    // Each family is a metric row plus a detail row for the reason and later-yes.
+    expect(within(table).getAllByRole("row")).toHaveLength(1 + 10);
+    expect(within(table).getAllByText("Reason")).toHaveLength(5);
+    expect(within(table).getAllByText("Later Yes")).toHaveLength(5);
   });
 
   it("shows READING as days of the target, with the buckets beside it", async () => {
@@ -259,7 +260,7 @@ describe("the history backfill page: the table", () => {
     const proved = rowOf("WAF", "Log source 7");
     expect(proved).toHaveTextContent("Window proved");
     expect(proved).toHaveTextContent("09-21 10:00 UTC");
-    expect(within(proved).getByText("09-21 10:00 UTC")).toHaveAttribute(
+    expect(within(proved).getByText("09-21 10:00").closest("time")).toHaveAttribute(
       "title",
       "2026-09-21 10:00:00 UTC",
     );
@@ -272,9 +273,8 @@ describe("the history backfill page: the table", () => {
     expect(row).toHaveTextContent("Partial");
     expect(row).toHaveTextContent("the density gate stopped the reading");
     expect(row).toHaveTextContent("10-02 03:00 UTC to 10-02 04:00 UTC");
-    expect(within(row).getByText("10-02 03:00 UTC to 10-02 04:00 UTC")).toHaveAttribute(
-      "title",
-      "2026-10-02 03:00:00 UTC to 2026-10-02 04:00:00 UTC",
+    expect(within(row).getByTitle("2026-10-02 03:00:00 UTC to 2026-10-02 04:00:00 UTC")).toHaveTextContent(
+      "10-02 03:00 UTC to 10-02 04:00 UTC",
     );
     expect(row).toHaveTextContent("search failed");
   });

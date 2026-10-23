@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { api } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import { qradarStatusLabel, qradarStatusTone } from "../qradarStatus";
 
@@ -49,7 +50,7 @@ export default async function LogSourceDetailPage({
           Expected interval:{" "}
           {d.expected_interval_seconds == null ? "—" : `${d.expected_interval_seconds} s`}
         </p>
-        <p>Last event: {d.last_event_time ? formatDateTime(d.last_event_time) : "never"}</p>
+        <p>Last event: {d.last_event_time ? <UtcTime value={d.last_event_time} /> : "never"}</p>
         <p>
           QRadar status:{" "}
           <span className={`pill ${qradarStatusTone(d.qradar_status)}`}>
@@ -60,7 +61,7 @@ export default async function LogSourceDetailPage({
 
       <p className="subtitle detail-note">
         EPS trend, anomaly timeline and baseline overlay:{" "}
-        <a href={`/behavior/sources/${d.id}`}>source behavior</a>.
+        <Link href={`/behavior/sources/${d.id}`}>source behavior</Link>.
       </p>
     </>
   );

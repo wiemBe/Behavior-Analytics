@@ -190,7 +190,7 @@ describe("coverage contents", () => {
         /12 techniques evaluated · 50% covered · 9 explicit \/ 3 inferred mappings ·/,
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText(/generated 2026-10-15 09:00:00 UTC/)).toBeInTheDocument();
+    expect(screen.getByText(/generated/)).toHaveTextContent("generated 2026-10-15 09:00:00 UTC");
   });
 
   it("shows every technique column with score as a percentage", async () => {

@@ -85,7 +85,7 @@ describe("WidgetFrame data time", () => {
     expect(screen.queryByText(/Stale/)).not.toBeInTheDocument();
     view.unmount();
     frame(answer(), { at: ago(601), family: "PHASE_A_VOLUME" });
-    expect(note(/Stale: the latest data is from 11:49:59 UTC, 10 min old\./)).toBeInTheDocument();
+    expect(note(/Stale: the latest data is from 11:49:59 UTC, 10 min 1 s old\./)).toBeInTheDocument();
     // Stale data is still drawn.
     expect(screen.getByText("the figures")).toBeInTheDocument();
     expect(screen.queryByText(/Data to/)).not.toBeInTheDocument();

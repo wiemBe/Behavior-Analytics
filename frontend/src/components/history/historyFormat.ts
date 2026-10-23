@@ -11,7 +11,9 @@ import {
   type HistoryFamilyEstimate,
   type HistoryGap,
 } from "@/lib/api";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { utcTimeText } from "@/components/ui/UtcTime";
+import { formatCount } from "@/lib/format";
+
 
 export const READ_PERMISSION = "read:history_backfill";
 export const ADMIN_PERMISSION = "admin:history_backfill";
@@ -77,7 +79,7 @@ export function decisionSentence(console: HistoryConsole): string {
   const decision = console.decision;
   if (decision === null) return "History backfill: not decided. Nothing is read from QRadar's past.";
   const by = decidedBy(decision);
-  const when = formatDateTime(decision.decided_at);
+  const when = utcTimeText(decision.decided_at);
   if (decision.answer === "NO") {
     return `History backfill: No, history is not read. Recorded by ${by} on ${when}.`;
   }
@@ -92,12 +94,12 @@ export function requestSentences(console: HistoryConsole): string[] {
   const out: string[] = [];
   if (d.start_requested_at) {
     out.push(
-      `Read history now was asked by ${d.start_requested_by ?? "an operator"} on ${formatDateTime(d.start_requested_at)}.`,
+      `Read history now was asked by ${d.start_requested_by ?? "an operator"} on ${utcTimeText(d.start_requested_at)}.`,
     );
   }
   if (d.stop_requested_at) {
     out.push(
-      `Stop reading was asked by ${d.stop_requested_by ?? "an operator"} on ${formatDateTime(d.stop_requested_at)}.`,
+      `Stop reading was asked by ${d.stop_requested_by ?? "an operator"} on ${utcTimeText(d.stop_requested_at)}.`,
     );
   }
   return out;
@@ -108,29 +110,14 @@ export function formatDays(value: number): string {
   return Number.isInteger(value) && value > 0 ? String(value) : value.toFixed(1);
 }
 
-export function formatCount(value: number): string {
-  return value.toLocaleString("en-US");
-}
+export { formatCount } from "@/lib/format";
 
 /** `10-01 00:00 UTC to 10-01 00:30 UTC`, from the gap's two instants (the title has the year). */
 export function gapRange(gap: HistoryGap): string {
-  return `${formatDateTimeCompact(gap.start)} to ${formatDateTimeCompact(gap.end)}`;
+  return `${utcTimeText(gap.start, "compact")} to ${utcTimeText(gap.end, "compact")}`;
 }
 
-/** A relative age, `12 min ago`; it follows the absolute time and never replaces it. */
-export function relativeAge(iso: string | null | undefined, now: Date): string {
-  if (!iso) return "";
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "";
-  const seconds = Math.round((now.getTime() - then) / 1000);
-  if (seconds < 0) return "";
-  if (seconds < 90) return "just now";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 90) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} d ago`;
-}
+export { relativeAge } from "@/lib/time";
 
 // --- the dialog -------------------------------------------------------------
 

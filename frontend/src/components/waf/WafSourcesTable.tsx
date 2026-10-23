@@ -1,3 +1,4 @@
+import Link from "next/link";
 // One row per WAF source: can it be judged, how whole is its latest bucket, how
 // close is it to the endpoint ceiling, and is admission overflowing.
 //
@@ -8,7 +9,7 @@
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { WafSourceBehavior } from "@/lib/api";
 import { NOT_MEASURED, formatCount } from "@/lib/behavior";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import { formatPercent } from "./wafFormat";
 import { atCeiling, isOverflowing, sortByAttention, validationView } from "./wafSourceHealth";
@@ -67,7 +68,7 @@ function CoverageCell({ s }: { s: WafSourceBehavior }) {
     <>
       {formatPercent(b.endpoint_coverage_ratio, b.coverage_measurement)}
       <span className="cell-sub">
-        <span title={formatDateTime(b.bucket_start)}>{formatDateTimeCompact(b.bucket_start)}</span>
+        <UtcTime value={b.bucket_start} variant="compact" />
       </span>
       {b.completeness !== "COMPLETE" && <span className="cell-sub">{b.completeness} bucket</span>}
       {b.in_maintenance && <span className="cell-sub">In maintenance</span>}
@@ -165,14 +166,14 @@ export function WafSourcesTable({ sources }: { sources: WafSourceBehavior[] }) {
             return (
               <tr key={s.log_source_id}>
                 <td className="cell-name">
-                  <a href={`/behavior/waf/sources/${s.log_source_id}`}>{s.log_source_name}</a>
+                  <Link href={`/behavior/waf/sources/${s.log_source_id}`}>{s.log_source_name}</Link>
                   {s.product_label && <span className="cell-sub">{s.product_label}</span>}
                 </td>
                 <td>
                   {s.enabled ? "Enabled" : <span className="pill pill-quiet warn">Disabled</span>}
                   <span className="cell-sub">v{s.profile_version}</span>
                   <span className="cell-sub">
-                    <a href={`/admin/waf-sources/${s.log_source_id}`}>Profile settings</a>
+                    <Link href={`/admin/waf-sources/${s.log_source_id}`}>Profile settings</Link>
                   </span>
                 </td>
                 <td>

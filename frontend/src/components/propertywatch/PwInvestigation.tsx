@@ -14,7 +14,7 @@ import { PropertyWatchSeriesChart } from "@/components/propertywatch/PropertyWat
 import type { PwAnomalyDetail, PwBucket, PwValueSeries } from "@/lib/api";
 import { sevTone } from "@/lib/api";
 import { formatMetric, formatRatio, robustScoreMeaning, stateMeaning, stateTone } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import {
   eventsUnit,
@@ -103,10 +103,10 @@ export function PwInvestigation({
             <span className="incident-interval">
               {anomaly.anomaly_start ? (
                 <>
-                  <time dateTime={anomaly.anomaly_start}>{formatDateTime(anomaly.anomaly_start)}</time>
+                  <UtcTime value={anomaly.anomaly_start} />
                   {" → "}
                   {anomaly.anomaly_end ? (
-                    <time dateTime={anomaly.anomaly_end}>{formatDateTime(anomaly.anomaly_end)}</time>
+                    <UtcTime value={anomaly.anomaly_end} />
                   ) : (
                     "still running"
                   )}
@@ -164,7 +164,7 @@ export function PwInvestigation({
           <div>
             <dt>Detected</dt>
             <dd className="num">
-              <time dateTime={anomaly.detected_at}>{formatDateTime(anomaly.detected_at)}</time>
+              <UtcTime value={anomaly.detected_at} />
             </dd>
           </div>
         </dl>
@@ -270,10 +270,10 @@ export function PwInvestigation({
         {historyEvidence && (
           <p className="subtitle">
             The {historyEvidence.days.toLocaleString("en-US", { maximumFractionDigits: 1 })} days before{" "}
-            {formatDateTime(historyEvidence.before)} were verified:{" "}
+            {<UtcTime value={historyEvidence.before} />} were verified:{" "}
             {historyEvidence.verified.toLocaleString("en-US")} buckets, of which{" "}
             {historyEvidence.fromHistory.toLocaleString("en-US")} were read from QRadar history
-            from {formatDateTime(historyEvidence.floor)} and not judged.
+            from {<UtcTime value={historyEvidence.floor} />} and not judged.
           </p>
         )}
         {lower && (
@@ -324,13 +324,9 @@ export function PwInvestigation({
             <div>
               <dt>Incident window</dt>
               <dd className="num">
-                <time dateTime={anomaly.explanation_package.anomaly_window_start}>
-                  {formatDateTime(anomaly.explanation_package.anomaly_window_start)}
-                </time>
+                <UtcTime value={anomaly.explanation_package.anomaly_window_start} />
                 {" → "}
-                <time dateTime={anomaly.explanation_package.anomaly_window_end}>
-                  {formatDateTime(anomaly.explanation_package.anomaly_window_end)}
-                </time>
+                <UtcTime value={anomaly.explanation_package.anomaly_window_end} />
               </dd>
             </div>
             <div>

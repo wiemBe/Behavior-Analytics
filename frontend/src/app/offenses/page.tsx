@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { api, type OffenseAggregates, type OffenseSummary, type Page } from "@/lib/api";
 import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
@@ -121,7 +122,7 @@ export default async function OffensesPage({
               {items.map((o) => (
                 <tr key={o.qradar_offense_id}>
                   <td>
-                    <a href={`/offenses/${o.qradar_offense_id}`}>{o.qradar_offense_id}</a>
+                    <Link href={`/offenses/${o.qradar_offense_id}`}>{o.qradar_offense_id}</Link>
                   </td>
                   {/* Rendered as text, never as markup: this string comes from
                       QRadar. The backend sanitizes it; React escapes it again. */}

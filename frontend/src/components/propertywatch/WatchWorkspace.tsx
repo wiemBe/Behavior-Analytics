@@ -9,6 +9,7 @@
 // ids, the API's bound; the selection never exceeds five). Nothing is written.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
 import { Pagination } from "@/components/Pagination";
 import { TableScroll } from "@/components/ui/TableScroll";
@@ -23,6 +24,7 @@ import {
   type PwValueSeries,
   type WatchScope,
 } from "@/lib/api";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import { PropertyWatchSeriesChart } from "./PropertyWatchSeriesChart";
 import { honestyNotes, WatchHonesty } from "./WatchHonesty";
@@ -39,7 +41,6 @@ import {
 import { PW_RANGES, VALUES_PAGE_SIZE } from "./pwRange";
 import { PW_MAX_SERIES } from "./pwSeries";
 import { relativeAge } from "./pwFormat";
-import { formatDateTime } from "@/lib/health";
 
 import "./propertywatch.css";
 
@@ -166,7 +167,7 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
         <nav className="range-selector" aria-label="Window">
           <span className="muted">Window</span>
           {PW_RANGES.map((r) => (
-            <a
+            <Link
               key={r.key}
               href={
                 r.key === "24h"
@@ -177,16 +178,16 @@ export function WatchWorkspace(props: WatchWorkspaceProps) {
               aria-current={r.hours === hours ? "page" : undefined}
             >
               {r.label}
-            </a>
+            </Link>
           ))}
         </nav>
         <p className="subtitle">
           Last {hours === 168 ? "7 days" : `${hours} h`} to{" "}
-          <time dateTime={props.windowEnd}>{formatDateTime(props.windowEnd)}</time>.
+          <UtcTime value={props.windowEnd} />.
           {latest && (
             <>
               {" "}Latest bucket{latest.origin === "HISTORY" ? " read from QRadar history" : ""}{" "}
-              <time dateTime={latest.bucket_start}>{formatDateTime(latest.bucket_start)}</time>{" "}
+              <UtcTime value={latest.bucket_start} />{" "}
               <span className="muted">({relativeAge(latest.bucket_start, new Date(props.windowEnd))})</span>.
             </>
           )}

@@ -12,7 +12,7 @@ import "@/components/ui/controls.css";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { CapacitySample } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import { formatCapacity } from "./ruleStatistics";
 
@@ -85,9 +85,7 @@ export function CapacityHistory({
                 {samples.map((s) => (
                   <tr key={s.capacity_timestamp}>
                     <th scope="row">
-                      <time dateTime={s.capacity_timestamp}>
-                        {formatDateTime(s.capacity_timestamp)}
-                      </time>
+                      <UtcTime value={s.capacity_timestamp} />
                     </th>
                     <td className="num">
                       <Figure value={s.average_capacity} />

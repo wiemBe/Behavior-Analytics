@@ -11,7 +11,6 @@ import { useState } from "react";
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, type SearchCadenceItem } from "@/lib/api";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
 import {
   cadenceLabel,
   changeFailure,
@@ -20,6 +19,7 @@ import {
   outcomeInfo,
   worstCaseDelay,
 } from "@/lib/searchCadence";
+import { UtcTime, utcTimeText } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
@@ -63,7 +63,7 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
       const by = updated.updated_by ? `by ${updated.updated_by} ` : "";
       setOutcome({
         kind: "ok",
-        text: `Saved. Changed ${by}at ${formatDateTime(updated.updated_at)}.`,
+        text: `Saved. Changed ${by}at ${utcTimeText(updated.updated_at)}.`,
       });
     } catch (err) {
       setOutcome(
@@ -117,7 +117,7 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
         <td className="num">
           {lastRun ? (
             <>
-              <span className="nowrap" title={formatDateTime(lastRun.at)}>{formatDateTimeCompact(lastRun.at)}</span>
+              <UtcTime value={lastRun.at} variant="compact" className="nowrap" />
               {lastRun.outcome && <Outcome value={lastRun.outcome} />}
             </>
           ) : (
@@ -125,9 +125,7 @@ function CadenceRow({ initial }: { initial: SearchCadenceItem }) {
           )}
         </td>
         <td className="num">
-          <span className="nowrap" title={formatDateTime(item.next_dispatch_at)}>
-            {formatDateTimeCompact(item.next_dispatch_at)}
-          </span>
+          <UtcTime value={item.next_dispatch_at} variant="compact" className="nowrap" />
         </td>
         <td className="num">
           {lastRun === null ? (

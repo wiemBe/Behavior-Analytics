@@ -5,21 +5,9 @@
 // a family, and a scheduled search shows anything else as "Custom".
 
 import { ApiError, actionErrorMessage, type SearchFamily } from "@/lib/api";
+import { formatDuration } from "@/lib/time";
 
-/** One duration as `1 h 7 min`, `5 min`, `8 h` or `30 s`. Zero parts are dropped. */
-export function formatDuration(totalSeconds: number): string {
-  const total = Math.round(totalSeconds);
-  if (!Number.isFinite(total) || total < 0) return "—";
-  if (total === 0) return "0 s";
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const parts: string[] = [];
-  if (h) parts.push(`${h} h`);
-  if (m) parts.push(`${m} min`);
-  if (s) parts.push(`${s} s`);
-  return parts.join(" ");
-}
+export { formatDuration };
 
 /** A bucket width. Null means the family has no buckets, which is not zero. */
 export function formatBucket(seconds: number | null): string {

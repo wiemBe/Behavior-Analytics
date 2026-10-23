@@ -1,9 +1,10 @@
+import Link from "next/link";
 // The WAF sources table: one row per profile, needing-attention first.
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { MappingSchemaOut, WafSourceStatus } from "@/lib/api";
 import { collectionState, sortByAttention, validationState } from "@/lib/fieldMapping";
-import { formatDateTime, formatDateTimeCompact } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
 
@@ -46,7 +47,7 @@ export function WafSourceTable({
               return (
                 <tr key={s.profile_id}>
                   <td className="cell-name">
-                    <a href={`/admin/waf-sources/${s.log_source_id}`}>{s.log_source_name}</a>
+                    <Link href={`/admin/waf-sources/${s.log_source_id}`}>{s.log_source_name}</Link>
                     <span className="cell-sub">QRadar id {s.qradar_log_source_id}</span>
                   </td>
                   <td className="cell-name">
@@ -70,9 +71,7 @@ export function WafSourceTable({
                   <td className="num">
                     {s.validated_at ? (
                       <>
-                        <span className="nowrap" title={formatDateTime(s.validated_at)}>
-                          {formatDateTimeCompact(s.validated_at)}
-                        </span>
+                        <UtcTime value={s.validated_at} variant="compact" className="nowrap" />
                         {s.validated_profile_version !== s.profile_version &&
                           s.validated_profile_version !== null && (
                             <span className="cell-sub">of v{s.validated_profile_version}</span>

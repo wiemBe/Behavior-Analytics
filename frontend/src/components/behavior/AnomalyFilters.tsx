@@ -19,7 +19,8 @@ import { subjectKindLabel, SUBJECT_KINDS } from "@/lib/anomalyQuery";
 import { IPS_TYPES, isIpsType, ipsTypeLabel } from "@/components/ips/ipsLabels";
 import { PW_TYPES, pwTypeLabel, isPwType } from "@/components/propertywatch/pwFormat";
 import { WAF_TYPES, anomalyTypeLabel } from "@/components/waf/wafLabels";
-import { formatDateTime } from "@/lib/health";
+import { utcTimeText } from "@/components/ui/UtcTime";
+
 
 const DETECTOR_TYPES = ["VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS"];
 const STATES = [
@@ -90,9 +91,9 @@ export function chipLabel(
     case "evidence_status":
       return `Evidence: ${text}`;
     case "since":
-      return `From: ${formatDateTime(text)}`;
+      return `From: ${utcTimeText(text)}`;
     case "until":
-      return `To: ${formatDateTime(text)}`;
+      return `To: ${utcTimeText(text)}`;
     default:
       return `${key}: ${text}`;
   }

@@ -23,7 +23,8 @@ import {
   hasConfidenceLimitation,
   robustScoreMeaning,
 } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -158,26 +159,38 @@ export function TechnicalDetails({
             <Row label="Comparison strategy" value={packaged.comparison_strategy} />
             <Row
               label="Anomaly window"
-              value={`${formatDateTime(packaged.anomaly_window_start)} → ${formatDateTime(packaged.anomaly_window_end)}`}
+              value={
+                <>
+                  <UtcTime value={packaged.anomaly_window_start} />
+                  {" → "}
+                  <UtcTime value={packaged.anomaly_window_end} />
+                </>
+              }
             />
             <Row
               label="Baseline window"
-              value={`${formatDateTime(packaged.baseline_window_start)} → ${formatDateTime(packaged.baseline_window_end)}`}
+              value={
+                <>
+                  <UtcTime value={packaged.baseline_window_start} />
+                  {" → "}
+                  <UtcTime value={packaged.baseline_window_end} />
+                </>
+              }
             />
             <Row
               label="Anomaly-window events"
-              value={packaged.anomaly_total_events.toLocaleString()}
+              value={formatCount(packaged.anomaly_total_events)}
             />
             <Row
               label="Baseline-window events"
-              value={packaged.baseline_total_events.toLocaleString()}
+              value={formatCount(packaged.baseline_total_events)}
             />
-            <Row label="Requested" value={formatDateTime(packaged.requested_at)} />
+            <Row label="Requested" value={<UtcTime value={packaged.requested_at} />} />
             <Row
               label="Completed"
               value={
                 <>
-                  {formatDateTime(packaged.completed_at)}
+                  {<UtcTime value={packaged.completed_at} />}
                   {packaged.collection_duration_ms != null &&
                     ` (${packaged.collection_duration_ms} ms)`}
                 </>
@@ -238,9 +251,9 @@ export function TechnicalDetails({
             value={packaged ? `v${packaged.schema_version}` : "—"}
           />
           <Row label="Collection source" value="QRadar Ariel, via the backend collector" />
-          <Row label="Detected" value={formatDateTime(anomaly.detected_at)} />
-          <Row label="Opened" value={formatDateTime(anomaly.opened_at)} />
-          <Row label="Resolved" value={formatDateTime(anomaly.resolved_at)} />
+          <Row label="Detected" value={<UtcTime value={anomaly.detected_at} />} />
+          <Row label="Opened" value={<UtcTime value={anomaly.opened_at} />} />
+          <Row label="Resolved" value={<UtcTime value={anomaly.resolved_at} />} />
         </dl>
       </Disclosure>
     </div>

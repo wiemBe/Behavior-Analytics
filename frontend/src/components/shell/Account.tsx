@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+
+
 // Who is signed in. The top bar shows the username only. The rest — source,
 // roles, a password change for a local account, and Sign out — opens from
 // that control. The development principal has no session to end.
@@ -54,9 +57,9 @@ export function Account() {
           {roles.length > 0 ? `Roles: ${[...roles].sort().join(", ")}` : "Roles: none"}
         </p>
         {source === "LOCAL" ? (
-          <a className={styles.accountLink} href="/account">
+          <Link className={styles.accountLink} href="/account">
             Change password
-          </a>
+          </Link>
         ) : null}
         <ApiVersionLine className={styles.accountMeta} />
         {isDevPrincipal(me) ? null : <SignOutButton />}

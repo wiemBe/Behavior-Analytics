@@ -1,3 +1,4 @@
+import Link from "next/link";
 // A source's anomalies, split by whether they still need work.
 //
 // The split is derived from the lifecycle state, never from `resolved_at IS
@@ -14,7 +15,8 @@ import {
   formatRatio,
   stateTone,
 } from "@/lib/behavior";
-import { formatDateTimeCompact } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 function AnomalyTable({
   anomalies,
@@ -62,9 +64,7 @@ function AnomalyTable({
               </td>
               <td className="num">{formatRatio(a.deviation_ratio)}</td>
               <td className="num">
-                <time dateTime={a.anomaly_start ?? a.detected_at}>
-                  {formatDateTimeCompact(a.anomaly_start ?? a.detected_at)}
-                </time>
+                <UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />
               </td>
               <td>
                 <span className={`pill pill-quiet ${evidenceTone(a.evidence_status)}`}>
@@ -73,7 +73,7 @@ function AnomalyTable({
               </td>
               <td className="row-actions">
                 <div className="row-actions-inner">
-                  <a href={`/anomalies/${a.id}`}>Open</a>
+                  <Link href={`/anomalies/${a.id}`}>Open</Link>
                   <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
                     {a.severity}
                   </span>

@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+
+
 // Choosing which log source to configure.
 //
 // Lists the log sources that have no WAF profile, those QRadar classes as WAF
@@ -96,7 +99,7 @@ export function AddSourcePicker({ defaultOpen = false }: { defaultOpen?: boolean
               <ul className="fm-candidates" aria-label="Log sources without a WAF profile">
                 {state.items.map((c) => (
                   <li key={c.log_source_id}>
-                    <a href={`/admin/waf-sources/${c.log_source_id}?instance=${encodeURIComponent(c.instance_id)}`}>{c.name}</a>
+                    <Link href={`/admin/waf-sources/${c.log_source_id}?instance=${encodeURIComponent(c.instance_id)}`}>{c.name}</Link>
                     <span className="muted">
                       QRadar id {c.qradar_id}
                       {c.type_name ? ` · ${c.type_name}` : ""}

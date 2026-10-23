@@ -1,5 +1,6 @@
 import type { PwWatchHistory } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { utcTimeText } from "@/components/ui/UtcTime";
+
 
 const days = (value: number | null) =>
   value === null ? "an unknown number" : value.toLocaleString("en-US", { maximumFractionDigits: 1 });
@@ -41,7 +42,7 @@ export function historyStateText(history: PwWatchHistory): string | null {
     }
     case "PARTIAL":
       if (history.floor) {
-        return `History: ${historyProgress(history)}. QRadar holds events of this scope from ${formatDateTime(history.floor)}; earlier buckets are not claimed as zero.`;
+        return `History: ${historyProgress(history)}. QRadar holds events of this scope from ${utcTimeText(history.floor)}; earlier buckets are not claimed as zero.`;
       }
       return `History: ${historyProgress(history)}. ${history.reason ?? "The requested history could not be read in full."}`;
     case "UNAVAILABLE":
@@ -51,6 +52,6 @@ export function historyStateText(history: PwWatchHistory): string | null {
 
 export function historyGapText(gap: PwWatchHistory["gaps"] extends (infer T)[] | null ? T : never): string {
   const reason = gap.reason.trim().replace(/[.:;]+$/, "");
-  const range = `${formatDateTime(gap.start)} to ${formatDateTime(gap.end)}`;
+  const range = `${utcTimeText(gap.start)} to ${utcTimeText(gap.end)}`;
   return reason ? `Buckets from ${range} could not be read (${reason}).` : `Buckets from ${range} could not be read.`;
 }

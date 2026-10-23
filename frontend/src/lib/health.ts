@@ -82,16 +82,7 @@ export function magnitudeTone(magnitude: number | null | undefined): Tone {
   return "ok";
 }
 
-/** Compact humanised duration, e.g. "3d 4h". */
-export function formatAge(seconds: number | null | undefined): string {
-  if (seconds == null) return "—";
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
+export { formatAge } from "@/lib/time";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 

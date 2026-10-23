@@ -1,8 +1,9 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { api, sevTone, type Alert } from "@/lib/api";
 import { loadErrorMessage } from "@/lib/loadError";
-import { formatDateTimeCompact } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
 
 import "./alerts.css";
 
@@ -51,13 +52,13 @@ export default async function AlertsPage() {
               {alerts.map((a) => (
                 <tr key={a.id}>
                   <td className="alert-title">
-                    <a href={`/alerts/${a.id}`}>{a.title}</a>
+                    <Link href={`/alerts/${a.id}`}>{a.title}</Link>
                   </td>
                   <td><span className={`pill ${sevTone(a.severity)}`}>{a.severity}</span></td>
                   <td><span className={`pill ${statusTone(a.status)}`}>{a.status}</span></td>
                   <td className="num">{a.occurrence_count}</td>
-                  <td className="nowrap">{formatDateTimeCompact(a.first_seen_at)}</td>
-                  <td className="nowrap">{formatDateTimeCompact(a.last_seen_at)}</td>
+                  <td className="nowrap">{<UtcTime value={a.first_seen_at} variant="compact" />}</td>
+                  <td className="nowrap">{<UtcTime value={a.last_seen_at} variant="compact" />}</td>
                 </tr>
               ))}
             </tbody>

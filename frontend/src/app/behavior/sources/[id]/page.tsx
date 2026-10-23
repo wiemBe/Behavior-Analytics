@@ -40,7 +40,6 @@ import {
   isUnjudged,
   stateMeaningAgainst,
 } from "@/lib/behavior";
-import { formatDateTime } from "@/lib/health";
 import {
   METRIC_LIMIT,
   baselineQuality,
@@ -51,6 +50,8 @@ import {
   summarizeSourceTimeline,
 } from "@/lib/sourceDetail";
 import { buildSeries } from "@/lib/timeseries";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "../sources.css";
 
@@ -197,9 +198,7 @@ export default async function SourceBehaviorPage({
           <div className="k">Last event</div>
           <div className="v metric-timestamp">
             {behavior.last_event_at ? (
-              <time dateTime={behavior.last_event_at}>
-                {formatDateTime(behavior.last_event_at)}
-              </time>
+              <UtcTime value={behavior.last_event_at} />
             ) : (
               <span className="muted">—</span>
             )}

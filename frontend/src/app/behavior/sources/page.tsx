@@ -1,3 +1,4 @@
+import Link from "next/link";
 // The source-behavior inventory.
 //
 // This route owns the full monitored-source list, which previously sat at the
@@ -19,7 +20,6 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, type SourceBehavior } from "@/lib/api";
 import { formatMetric, formatRatio, isUnjudged, stateTone } from "@/lib/behavior";
-import { formatDateTimeCompact } from "@/lib/health";
 import {
   SOURCE_PAGE_SIZE,
   ariaSort,
@@ -31,6 +31,8 @@ import {
   sortSources,
   sourceQueryParams,
 } from "@/lib/sourceInventory";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 import "./sources.css";
 
@@ -55,10 +57,10 @@ function SortHeader({
   const arrow = sort === "none" ? "" : sort === "ascending" ? " ↑" : " ↓";
   return (
     <th scope="col" aria-sort={sort} className={numeric ? "num" : undefined}>
-      <a href={sortHref(query, column)} className="sort-link">
+      <Link href={sortHref(query, column)} className="sort-link">
         {label}
         <span aria-hidden="true">{arrow}</span>
-      </a>
+      </Link>
     </th>
   );
 }
@@ -146,7 +148,7 @@ export default async function SourcesIndexPage({
                 {visible.map((s) => (
                   <tr key={s.log_source_id}>
                     <td className="cell-name">
-                      <a href={`/behavior/sources/${s.log_source_id}`}>{s.name}</a>
+                      <Link href={`/behavior/sources/${s.log_source_id}`}>{s.name}</Link>
                     </td>
                     <td>
                       <span className={`pill ${stateTone(s.state)}`}>{s.state}</span>
@@ -163,20 +165,20 @@ export default async function SourcesIndexPage({
                       )}
                     </td>
                     <td className="num">{formatRatio(s.deviation_ratio)}</td>
-                    <td className="num">{formatDateTimeCompact(s.last_event_at)}</td>
+                    <td className="num">{<UtcTime value={s.last_event_at} variant="compact" />}</td>
                     <td className="num">
                       {s.open_anomaly_count > 0 ? (
-                        <a
+                        <Link
                           href={`/anomalies?log_source_id=${s.log_source_id}&active_only=true`}
                         >
                           {s.open_anomaly_count}
-                        </a>
+                        </Link>
                       ) : (
                         <span className="muted">0</span>
                       )}
                     </td>
                     <td className="col-detail">
-                      <a href={`/behavior/sources/${s.log_source_id}`}>Detail</a>
+                      <Link href={`/behavior/sources/${s.log_source_id}`}>Detail</Link>
                     </td>
                   </tr>
                 ))}

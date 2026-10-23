@@ -27,7 +27,8 @@ import { TableScroll } from "@/components/ui/TableScroll";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LoadingState } from "@/components/ui/RouteState";
 import { ApiError } from "@/lib/api";
-import { formatDateTime } from "@/lib/health";
+import { UtcTime } from "@/components/ui/UtcTime";
+
 
 type Load = "loading" | "ready" | "error" | "forbidden";
 type Outcome = { tone: "ok" | "warn"; heading?: string; lines: string[] };
@@ -329,7 +330,7 @@ export function UsersPage() {
                         <td>
                           <Status user={user} now={now} />
                         </td>
-                        <td className="num">{formatDateTime(user.last_login_at)}</td>
+                        <td className="num">{<UtcTime value={user.last_login_at} />}</td>
                         <td>
                           <button
                             type="button"
