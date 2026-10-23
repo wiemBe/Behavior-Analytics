@@ -52,6 +52,9 @@ docker compose up -d postgres redis
 docker compose run --rm migrate
 docker compose run --rm backend python -m app.services.seed
 docker compose up -d backend frontend celery-worker celery-beat
+# backend, celery-worker and celery-beat depend on migrate with
+# condition service_completed_successfully. The installer also runs
+# migrate explicitly (`docker compose run --rm migrate`).
 ```
 
 Open <http://localhost:3000>. The mock provider supplies deterministic inventory for development
@@ -319,8 +322,12 @@ curl --fail http://127.0.0.1:3000/
 ```
 
 The long-running services are `postgres`, `redis`, `backend`, `celery-worker`, `celery-beat` and
-`frontend`; each should be healthy. `migrate` is a one-shot service and should exit with code zero.
-The optional `qradar-mcp` service starts only with the `mcp` profile.
+`frontend`; each should be healthy. `migrate` is a one-shot and should exit 0. `backend`,
+`celery-worker` and `celery-beat` wait for that exit (`depends_on` condition
+`service_completed_successfully`) before they start, so `docker compose up` does not serve or
+collect against a schema that is still migrating or that failed to migrate. The installer's
+explicit `docker compose run --rm migrate` stays. The optional `qradar-mcp` service starts only
+with the `mcp` profile.
 
 ## One origin in production
 
@@ -344,25 +351,45 @@ value and the runbook explains how to measure it.
 ## QRadar running on a libvirt network
 
 If the host reaches a QRadar VM but containers receive `ECONNREFUSED`, libvirt may be rejecting
-forwarded traffic from the Compose bridge. Use `deploy/create-vmnet.sh` to create the external
-macvlan after adapting its interface and subnet to the host, then attach `backend`,
-`celery-worker`, `celery-beat` and `migrate` in a gitignored Compose override. Do not weaken the
-host firewall. When `docker-compose.override.yml` exists in the checkout, `./qradar-dash install`
-and `upgrade` load it after the production overlay, and the installer writes the same file list to
-`COMPOSE_FILE` for a bare `docker compose` command.
+forwarded traffic from the Compose bridge. Run `deploy/create-vmnet.sh` after adapting its
+interface and subnet to the host. The script creates the external macvlan `qradar-vmnet` and sets
+`--ip-range` outside the libvirt DHCP pool. Copy `deploy/docker-compose.override.example.yml` to
+the gitignored `docker-compose.override.yml`. The example references that network (`external: true`,
+`name: qradar-vmnet`). Do not declare a second macvlan in the override: without the script's
+`--ip-range`, a container can be given an address a VM already holds.
+
+Attach the network only to services that open a connection to QRadar: `backend` (manual searches
+and the other API provider calls), `celery-worker` (collectors and scheduled searches) and
+`qradar-mcp` (the optional profile's console client). `celery-beat` only publishes task names to
+the broker. `migrate` only talks to Postgres. Neither is attached. Do not weaken the host firewall,
+and do not set `:z` or `label=disable`.
+
+When `docker-compose.override.yml` exists in the checkout, `./qradar-dash install` and `upgrade`
+load it after the production overlay, and the installer writes the same file list to `COMPOSE_FILE`
+for a bare `docker compose` command.
 
 ## Optional MCP service
 
-The application does not depend on MCP. To enable its read-only inventory path, copy
-`deploy/mcp/config.json.example` to `deploy/mcp/config.json`, configure the read-only token, and
-start the profile:
+The MCP container publishes no ports. Upstream write tools are disabled
+(`deploy/mcp/feature_toggles.json` sets POST and DELETE to false). AQL stays on
+the direct REST/Ariel provider (`QRadarRestProvider`). The application does not
+depend on MCP.
+
+Production hosts are not supported until this configuration is delivered without
+a checkout bind mount (see [`OPERATIONS.md`](OPERATIONS.md), OPS-R13). Do not
+start the `mcp` profile on a production host.
+
+On a development or lab host, copy the example, set the read-only token, restrict
+the file and start the profile. `deploy/mcp/config.json` is gitignored.
 
 ```bash
+cp deploy/mcp/config.json.example deploy/mcp/config.json
+chmod 600 deploy/mcp/config.json
 docker compose --profile mcp up -d qradar-mcp
 ```
 
-The MCP container has no published ports. Its upstream write tools are disabled and the provider
-enforces an independent read-only allowlist. AQL remains on the direct REST/Ariel provider.
+Set `authorized_service_token` in that file to the read-only QRadar token before
+starting the profile.
 
 ## Upgrade, backup and recovery
 
