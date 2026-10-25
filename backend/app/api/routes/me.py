@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import SessionDep, get_principal
+from app.api.request_meta import client_ip, user_agent
 from app.models.identity import User
 from app.schemas.me import MeOut, PreferencesIn
 from app.security import rbac
@@ -53,20 +54,6 @@ def _me_out(principal: Principal) -> MeOut:
     )
 
 
-def _client_ip(request: Request) -> str | None:
-    # The proxy's client address, recorded as the auth routes record it.
-    # X-Forwarded-For is not trusted: a caller can put anything in it, and the
-    # audit record would then carry a lie.
-    if request.client is None or not request.client.host:
-        return None
-    return request.client.host[:64]
-
-
-def _user_agent(request: Request) -> str | None:
-    raw = request.headers.get("user-agent")
-    return raw[:512] if raw else None
-
-
 @router.get("", response_model=MeOut)
 async def get_me(principal: Principal = Depends(get_principal)) -> MeOut:
     """Return the authenticated caller's identity and permissions.
@@ -109,7 +96,7 @@ async def update_preferences(
         session,
         user,
         body.ui_language,
-        source_ip=_client_ip(request),
-        user_agent=_user_agent(request),
+        source_ip=client_ip(request),
+        user_agent=user_agent(request),
     )
     return _me_out(principal_for(user))
