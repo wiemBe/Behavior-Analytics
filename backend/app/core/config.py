@@ -443,6 +443,19 @@ class Settings(BaseSettings):
     # A full page makes the window TRUNCATED. Capped at 5,000 so one bulk upsert
     # (5 bound values a row) stays under the 32,767-parameter statement limit.
     rule_match_max_rows: int = Field(default=2000, ge=10, le=5000)
+    # Bounded repair of recent FAILED windows (RM-2): after the live pass, the
+    # collector re-reads windows that failed, oldest first. Inert while
+    # RULE_MATCH_COLLECTION_ENABLED is false.
+    rule_match_repair_enabled: bool = True
+    # A window older than this is never repaired: re-reading data QRadar has
+    # already rotated out would return nothing and be written COMPLETE, a false
+    # proof of silence. Must stay inside the console's event retention.
+    rule_match_repair_max_age_seconds: int = Field(default=86_400, ge=60, le=604_800)
+    # FAILED windows re-read per run, oldest first, within the live per-run cap.
+    rule_match_repair_max_windows_per_run: int = Field(default=6, ge=1, le=168)
+    # Repair attempts per window, on top of the live attempts already spent,
+    # before the window is left FAILED for good.
+    rule_match_repair_max_attempts: int = Field(default=3, ge=1, le=20)
     # Evaluation window for "has this rule fired recently".
     rule_health_window_days: int = Field(default=30, ge=1, le=365)
     # A rule newer than this is INSUFFICIENT_DATA, never INACTIVE: a detection
@@ -1142,6 +1155,44 @@ class Settings(BaseSettings):
             raise ValueError(
                 "RULE_MATCH_RETENTION_DAYS must exceed RULE_HEALTH_WINDOW_DAYS "
                 f"({self.rule_match_retention_days} <= {self.rule_health_window_days})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _rule_match_repair_bounds_are_consistent(self) -> Settings:
+        """Repair settings that contradict the live ones would fail closed at runtime.
+
+        An age bound below one window could select nothing; an age bound at or
+        beyond retention could re-read a window whose data is gone; a per-run
+        repair cap above the live cap is a configuration mistake. Refused only
+        where they can bite — collection and repair both on — as the WAF checks
+        above do: a deployment that collects no rule matches must not be refused
+        startup over a repair setting it never uses.
+        """
+        if not (self.rule_match_collection_enabled and self.rule_match_repair_enabled):
+            return self
+        if self.rule_match_repair_max_age_seconds < self.rule_match_window_seconds:
+            raise ValueError(
+                "RULE_MATCH_REPAIR_MAX_AGE_SECONDS must be at least one window "
+                f"({self.rule_match_repair_max_age_seconds} < "
+                f"{self.rule_match_window_seconds})"
+            )
+        if (
+            self.rule_match_repair_max_age_seconds
+            >= self.rule_match_retention_days * 86400
+        ):
+            raise ValueError(
+                "RULE_MATCH_REPAIR_MAX_AGE_SECONDS must stay inside "
+                "RULE_MATCH_RETENTION_DAYS "
+                f"({self.rule_match_repair_max_age_seconds} >= "
+                f"{self.rule_match_retention_days * 86400})"
+            )
+        if self.rule_match_repair_max_windows_per_run > self.rule_match_max_windows_per_run:
+            raise ValueError(
+                "RULE_MATCH_REPAIR_MAX_WINDOWS_PER_RUN must not exceed "
+                "RULE_MATCH_MAX_WINDOWS_PER_RUN "
+                f"({self.rule_match_repair_max_windows_per_run} > "
+                f"{self.rule_match_max_windows_per_run})"
             )
         return self
 

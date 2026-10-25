@@ -68,14 +68,21 @@ from app.models.rule import (
 )
 from app.rules.matches import (
     CoverageState,
+    FailedWindowFacts,
     MatchCoverage,
     MatchEvidence,
     assess_coverage,
+    failed_window_facts,
     floor_to_window,
     match_evidence,
 )
 
 logger = logging.getLogger("app.services.rule_health")
+
+
+def _utc(value: datetime) -> str:
+    """The house timestamp for a reason sentence: date, minute, UTC."""
+    return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
 
 
 def _kind_summary(seen: bool, any_degraded: bool, any_unknown: bool) -> bool | None:
@@ -125,6 +132,10 @@ class MeasuredMatches:
     #: coverage: a stored row is a match that happened.
     events: int = 0
     last_match_at: datetime | None = None
+    #: The span's FAILED windows, summarized for the reason sentence. None when
+    #: no FAILED window is in the span (a truncated or missing window has no
+    #: window to name).
+    failed_facts: FailedWindowFacts | None = None
 
 
 @dataclass
@@ -182,7 +193,7 @@ class RuleHealthEvaluator:
         ls_health = await self._log_source_type_health(instance.id, now)
         observation_status = await self._observation_status(instance.id, window_start)
         observation_complete = observation_status == "complete"
-        coverage = await self._match_coverage(instance.id, window_start, now)
+        coverage, failed_facts = await self._match_coverage(instance.id, window_start, now)
         match_sums = (
             await self._match_sums([r.id for r in rules], window_start)
             if coverage.state != CoverageState.NONE
@@ -205,7 +216,7 @@ class RuleHealthEvaluator:
                 observation_complete=observation_complete,
                 observation_status=observation_status,
                 matches=(
-                    MeasuredMatches(evidence, coverage, events, last_match)
+                    MeasuredMatches(evidence, coverage, events, last_match, failed_facts)
                     if coverage.state != CoverageState.NONE
                     else None
                 ),
@@ -440,23 +451,7 @@ class RuleHealthEvaluator:
                 # remove.
                 return verdict(
                     RuleHealthStatus.INSUFFICIENT_DATA,
-                    (
-                        (
-                            "Measured rule-match coverage of the evaluation window is "
-                            f"incomplete ({matches.coverage.complete} of "
-                            f"{matches.coverage.expected} windows are COMPLETE), so the "
-                            "absence of measured matches is not evidence that the rule "
-                            "has never fired."
-                        )
-                        if matches is not None
-                        and measurement
-                        and matches.evidence == MatchEvidence.EXACT
-                        else (
-                            "No completed rule-metric collection covers the evaluation "
-                            "window, so the absence of observed firings is not evidence "
-                            "that the rule has never fired."
-                        )
-                    ),
+                    self._incomplete_coverage_reason(matches),
                     confidence=0.2,
                     building_blocks_healthy=bb_ok,
                     required_log_sources_healthy=ls_ok,
@@ -537,6 +532,66 @@ class RuleHealthEvaluator:
         )
 
     # ------------------------------------------------------------- helpers
+    @staticmethod
+    def _incomplete_coverage_reason(matches: MeasuredMatches | None) -> str:
+        """Why a zero count proves nothing: the measurement, not the rule.
+
+        With measured matches and FAILED windows in the span, the sentence
+        names what an unrepaired window costs — how many windows, which span,
+        skipped or failed, the newest error's class (never its message), and
+        the moment the span stops holding them, after which the verdict heals
+        on its own.
+        """
+        if (
+            matches is None
+            # The match collector never ran (coverage NONE): as before, the
+            # sentence is about the rule-metric collection.
+            or matches.coverage.state == CoverageState.NONE
+            or matches.evidence != MatchEvidence.EXACT
+        ):
+            return (
+                "No completed rule-metric collection covers the evaluation "
+                "window, so the absence of observed firings is not evidence "
+                "that the rule has never fired."
+            )
+        coverage = matches.coverage
+        counts = f"({coverage.complete} of {coverage.expected} windows are COMPLETE)"
+        head = (
+            "Measured rule-match coverage of the evaluation window is "
+            f"incomplete {counts}, so the absence of measured matches is not "
+            "evidence that the rule has never fired."
+        )
+        facts = matches.failed_facts
+        if facts is None:
+            return head
+        causes: list[str] = []
+        if facts.failed:
+            noun = "window" if facts.failed == 1 else "windows"
+            clause = f"{facts.failed} {noun} failed to collect"
+            if facts.last_error_class:
+                clause += f" (latest error class: {facts.last_error_class})"
+            causes.append(clause)
+        if facts.skipped:
+            noun = "window" if facts.skipped == 1 else "windows"
+            verb = "was" if facts.skipped == 1 else "were"
+            causes.append(
+                f"{facts.skipped} {noun} {verb} skipped beyond the catch-up "
+                "horizon and never searched"
+            )
+        span = f"{_utc(facts.first_start)} UTC"
+        if facts.last_start != facts.first_start:
+            span += f" to {_utc(facts.last_start)} UTC"
+        affected = "window" if facts.first_start == facts.last_start else "windows"
+        return (
+            "Measured rule-match coverage of the evaluation window is "
+            f"incomplete {counts}: "
+            + "; ".join(causes)
+            + f". Affected {affected}: {span}. The absence of measured matches "
+            "is not evidence that the rule has never fired. The evaluation window "
+            "stops holding the last affected window at "
+            f"{_utc(facts.until)} UTC."
+        )
+
     @staticmethod
     def _aware(value: datetime) -> datetime:
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
@@ -626,10 +681,12 @@ class RuleHealthEvaluator:
 
     async def _match_coverage(
         self, instance_id: uuid.UUID, window_start: datetime, now: datetime
-    ) -> MatchCoverage:
-        """How much of the evaluation span the match windows cover.
+    ) -> tuple[MatchCoverage, FailedWindowFacts | None]:
+        """Coverage of the evaluation span, and its FAILED windows' story.
 
-        Two queries for the whole instance, whatever the number of rules.
+        Two queries for the whole instance, whatever the number of rules. The
+        `last_error` column rides the rows coverage already reads, so naming
+        the failed windows in a reason adds no query.
         """
         ever = (
             await self.session.scalar(
@@ -639,19 +696,31 @@ class RuleHealthEvaluator:
             )
         ) is not None
         rows: list[tuple[datetime, int, str]] = []
+        errors: list[tuple[datetime, int, str, str | None]] = []
         if ever:
+            settled_until = floor_to_window(
+                now - timedelta(seconds=self.settings.rule_match_settle_lag_seconds),
+                self.settings.rule_match_window_seconds,
+            )
             result = await self.session.execute(
                 select(
                     RuleMatchWindow.window_start,
                     RuleMatchWindow.window_seconds,
                     RuleMatchWindow.status,
+                    RuleMatchWindow.last_error,
                 ).where(
                     RuleMatchWindow.instance_id == instance_id,
                     RuleMatchWindow.window_start >= window_start,
+                    RuleMatchWindow.window_start < settled_until,
                 )
             )
-            rows = [(start, seconds, str(status)) for start, seconds, status in result.all()]
-        return assess_coverage(
+            fetched = result.all()
+            rows = [(start, seconds, str(status)) for start, seconds, status, _ in fetched]
+            errors = [
+                (start, seconds, str(status), error)
+                for start, seconds, status, error in fetched
+            ]
+        coverage = assess_coverage(
             rows,
             evaluation_start=window_start,
             now=now,
@@ -659,6 +728,16 @@ class RuleHealthEvaluator:
             settle_seconds=self.settings.rule_match_settle_lag_seconds,
             ever_collected=ever,
         )
+        facts = (
+            failed_window_facts(
+                errors,
+                window_seconds=self.settings.rule_match_window_seconds,
+                span=timedelta(days=self.settings.rule_health_window_days),
+            )
+            if ever
+            else None
+        )
+        return coverage, facts
 
     async def _match_sums(
         self, rule_ids: list[uuid.UUID], window_start: datetime
@@ -814,7 +893,14 @@ class RuleHealthEvaluator:
         A rule that fires every few weeks would otherwise oscillate between
         HEALTHY and INACTIVE on each evaluation, and anything alerting on the
         stored status would flap with it.
+
+        While a verdict is held back, `health_evaluated_at` is held back with
+        it: the reason shown beside the badge is read from the snapshot at
+        `health_evaluated_at` (RULE-1), so the column must keep naming the
+        evaluation that produced the verdict shown, never a newer one that
+        disagrees with it.
         """
+        previous_evaluated_at = rule.health_evaluated_at
         rule.health_evaluated_at = now
         if rule.health_status == verdict.status:
             return False
@@ -837,4 +923,7 @@ class RuleHealthEvaluator:
         if len(recent) >= threshold and all(s == verdict.status for s in recent):
             rule.health_status = verdict.status
             return True
+        # Held: the badge keeps the previous verdict, and its reason keeps the
+        # evaluation that verdict came from.
+        rule.health_evaluated_at = previous_evaluated_at
         return False

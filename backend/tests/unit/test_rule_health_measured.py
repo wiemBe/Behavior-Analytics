@@ -9,19 +9,43 @@ The invariants:
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.core.config import get_settings
 from app.models.enums import RuleHealthStatus
-from app.rules.matches import CoverageState, MatchCoverage, MatchEvidence
+from app.rules.matches import (
+    CoverageState,
+    FailedWindowFacts,
+    MatchCoverage,
+    MatchEvidence,
+)
 from app.services.rule_health import MeasuredMatches, RuleHealthEvaluator
 from tests.unit.test_rule_health import NOW, make_rule, settings
 
 COMPLETE = MatchCoverage(CoverageState.COMPLETE, expected=720, complete=720)
 INCOMPLETE = MatchCoverage(CoverageState.INCOMPLETE, expected=720, complete=719, failed=1)
 NONE = MatchCoverage(CoverageState.NONE)
+
+#: A 30-day span over two FAILED windows (2026-10-25 10:00 and 11:00 UTC), the
+#: outage shape RM-1 proved: the last window leaves the span 30 days later.
+FAILED_FACTS = FailedWindowFacts(
+    failed=2,
+    skipped=0,
+    first_start=datetime(2026, 10, 25, 10, tzinfo=UTC),
+    last_start=datetime(2026, 10, 25, 11, tzinfo=UTC),
+    last_error_class="ProviderError",
+    until=datetime(2026, 11, 24, 11, tzinfo=UTC),
+)
+SKIPPED_FACTS = FailedWindowFacts(
+    failed=0,
+    skipped=3,
+    first_start=datetime(2026, 10, 25, 10, tzinfo=UTC),
+    last_start=datetime(2026, 10, 25, 12, tzinfo=UTC),
+    last_error_class=None,
+    until=datetime(2026, 11, 24, 12, tzinfo=UTC),
+)
 
 
 def classify(rule, matches, *, observation_complete: bool = False, trigger_count: int = 0,
@@ -45,8 +69,8 @@ def classify(rule, matches, *, observation_complete: bool = False, trigger_count
     )
 
 
-def measured(evidence, coverage, events=0, last=None) -> MeasuredMatches:
-    return MeasuredMatches(evidence, coverage, events, last)
+def measured(evidence, coverage, events=0, last=None, failed_facts=None) -> MeasuredMatches:
+    return MeasuredMatches(evidence, coverage, events, last, failed_facts)
 
 
 class TestEventRules:
@@ -62,6 +86,69 @@ class TestEventRules:
 
         assert verdict.status == RuleHealthStatus.INSUFFICIENT_DATA
         assert "incomplete" in verdict.reason
+
+
+class TestIncompleteCoverageReason:
+    """What an unrepaired window costs, said in the reason (RM-2 item 2)."""
+
+    def test_failed_windows_are_named_with_their_span_and_error_class(self) -> None:
+        verdict = classify(
+            make_rule(), measured(MatchEvidence.EXACT, INCOMPLETE, failed_facts=FAILED_FACTS)
+        )
+
+        assert verdict.status == RuleHealthStatus.INSUFFICIENT_DATA
+        assert "719 of 720 windows are COMPLETE" in verdict.reason
+        assert "2 windows failed to collect (latest error class: ProviderError)" in verdict.reason
+        assert "2026-10-25 10:00 UTC to 2026-10-25 11:00 UTC" in verdict.reason
+        assert "never fired" in verdict.reason
+
+    def test_the_reason_names_the_date_the_span_stops_holding_them(self) -> None:
+        verdict = classify(
+            make_rule(), measured(MatchEvidence.EXACT, INCOMPLETE, failed_facts=FAILED_FACTS)
+        )
+
+        assert "2026-11-24 11:00 UTC" in verdict.reason
+        assert "stops holding the last affected window" in verdict.reason
+
+    def test_skipped_windows_say_they_were_never_searched(self) -> None:
+        verdict = classify(
+            make_rule(), measured(MatchEvidence.EXACT, INCOMPLETE, failed_facts=SKIPPED_FACTS)
+        )
+
+        assert "3 windows were skipped beyond the catch-up horizon" in verdict.reason
+        assert "last error" not in verdict.reason
+
+    def test_a_single_window_has_no_range(self) -> None:
+        one = FailedWindowFacts(
+            failed=1,
+            skipped=0,
+            first_start=FAILED_FACTS.first_start,
+            last_start=FAILED_FACTS.first_start,
+            last_error_class="ProviderError",
+            until=FAILED_FACTS.first_start + timedelta(days=30),
+        )
+        verdict = classify(
+            make_rule(), measured(MatchEvidence.EXACT, INCOMPLETE, failed_facts=one)
+        )
+
+        assert "Affected window: 2026-10-25 10:00 UTC." in verdict.reason
+
+    def test_without_failed_windows_the_sentence_keeps_its_counts_only(self) -> None:
+        """A TRUNCATED or missing gap has no window to name; the counts stand."""
+        verdict = classify(make_rule(), measured(MatchEvidence.EXACT, INCOMPLETE))
+
+        assert "incomplete (719 of 720 windows are COMPLETE)" in verdict.reason
+        assert "failed (" not in verdict.reason
+        assert "stops holding" not in verdict.reason
+
+    def test_the_verdict_is_unchanged_whatever_the_reason_says(self) -> None:
+        plain = classify(make_rule(), measured(MatchEvidence.EXACT, INCOMPLETE))
+        named = classify(
+            make_rule(), measured(MatchEvidence.EXACT, INCOMPLETE, failed_facts=FAILED_FACTS)
+        )
+
+        assert named.status is plain.status is RuleHealthStatus.INSUFFICIENT_DATA
+        assert named.confidence == plain.confidence
 
     def test_incomplete_coverage_overrides_a_legacy_complete_observation(self) -> None:
         """The measured path may only be stricter than the old one."""

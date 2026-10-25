@@ -64,15 +64,30 @@ class FakeScalars:
         return self.rows
 
 
+class FakeResult:
+    """The slice of a real result the doctor reads: `one()` or `all()`."""
+
+    def __init__(self, rows: list[Any]) -> None:
+        self.rows = rows
+
+    def one(self) -> Any:
+        return self.rows[0]
+
+    def all(self) -> list[Any]:
+        return self.rows
+
+
 class FakeSession:
     def __init__(
         self,
         *,
         scalar_values: list[Any] | None = None,
         scalars_values: list[list[Any]] | None = None,
+        execute_values: list[list[Any]] | None = None,
     ) -> None:
         self.scalar_values = list(scalar_values or [])
         self.scalars_values = list(scalars_values or [])
+        self.execute_values = list(execute_values or [])
         self.statements: list[object] = []
 
     async def __aenter__(self) -> FakeSession:
@@ -88,6 +103,13 @@ class FakeSession:
     async def scalars(self, query: object) -> FakeScalars:
         self.statements.append(query)
         return FakeScalars(self.scalars_values.pop(0))
+
+    async def execute(self, query: object) -> FakeResult:
+        self.statements.append(query)
+        value = self.execute_values.pop(0)
+        if isinstance(value, BaseException):
+            raise value
+        return FakeResult(value)
 
 
 class FakeSessionmaker:
@@ -859,9 +881,12 @@ def test_output_redacts_token_password_dsn_and_ciphertext() -> None:
 
 def test_exit_code_matrix() -> None:
     passed = CheckResult("pass", Status.PASS, "ok")
+    skipped = CheckResult("skip", Status.SKIP, "disabled")
     warned = CheckResult("warn", Status.WARN, "warn")
     failed = CheckResult("fail", Status.FAIL, "fail")
     assert exit_code([passed]) == 0
+    assert exit_code([skipped]) == 0
+    assert exit_code([passed, skipped]) == 0
     assert exit_code([passed, warned]) == 1
     assert exit_code([passed, warned, failed]) == 2
 
@@ -1008,7 +1033,8 @@ async def test_ariel_permits_check_covers_every_state(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     doctor = make_doctor(settings)
-    assert doctor_module._CHECK_RUNBOOKS[-1] == ("ariel_permits", "OPS-R63")
+    assert ("ariel_permits", "OPS-R63") in doctor_module._CHECK_RUNBOOKS
+    assert doctor_module._CHECK_RUNBOOKS[-1] == ("rule_match_coverage", "OPS-R65")
 
     _install_budget(monkeypatch, _PermitBudget(_permit_counts()))
     idle = await doctor.check_ariel_permits()
@@ -1065,3 +1091,47 @@ async def test_ariel_permits_check_covers_every_state(
     assert render_text([one_console]) == (
         "PASS  ariel_permits global 1/6, reserved live slots 2, console 1/3"
     )
+
+
+@pytest.mark.asyncio
+async def test_rule_match_coverage_check_covers_every_state(settings: Settings) -> None:
+    """Off, healthy, warned and unreadable: the check's four outcomes."""
+    now = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)
+    on = settings.model_copy(update={"rule_match_collection_enabled": True})
+
+    off = await make_doctor(settings, now=lambda: now).check_rule_match_coverage()
+    assert off.status is Status.SKIP
+    assert off.message == "rule-match collection is off; windows are not measured"
+    assert off.runbook is None
+
+    clean = await make_doctor(
+        on, FakeSession(execute_values=[[(0, None, None, 0, 0, 0, 0)]]), now=lambda: now
+    ).check_rule_match_coverage()
+    assert clean.status is Status.PASS
+    assert clean.message == "no failed or truncated rule-match window in the last 30 d"
+    assert clean.runbook is None
+
+    oldest = datetime(2026, 10, 25, 10, 0, tzinfo=UTC)
+    newest = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)
+    warned = await make_doctor(
+        on,
+        FakeSession(execute_values=[[(3, oldest, newest, 2, 1, 1, 1)]]),
+        now=lambda: now,
+    ).check_rule_match_coverage()
+    assert warned.status is Status.WARN
+    assert warned.runbook == "OPS-R65"
+    assert warned.message == (
+        "2 failed and 1 truncated rule-match window(s) in the last 30 d; "
+        "oldest 2026-10-25 10:00 UTC; "
+        "last affected window leaves the health span 2026-11-24 12:00 UTC; "
+        "1 repairable, 1 skipped beyond the catch-up horizon"
+    )
+
+    broken = await make_doctor(
+        on,
+        FakeSession(execute_values=[RuntimeError("boom")]),
+        now=lambda: now,
+    ).check_rule_match_coverage()
+    assert broken.status is Status.FAIL
+    assert broken.message == "rule-match window coverage could not be read (RuntimeError)"
+    assert broken.runbook == "OPS-R65"

@@ -1,6 +1,8 @@
 # Ariel permits: one cross-process slot held for a search's whole lifecycle
 
-Status: **design, 2026-10-22. Not built.** The build tasks are §P.9. This document generalises
+Status: **built, 2026-10-22.** The permit is implemented by
+`app/services/ariel_permit.py` and enforced around the provider lifecycle in
+`app/providers/qradar_rest.py`; the build record remains in §P.9. This document generalises
 the WAF-only budget of `app/services/waf_ariel_budget.py` `WafArielBudget` into a platform-wide
 Ariel permit, and gives the two settings that are documented as concurrency caps
 (`ARIEL_MAX_CONCURRENT_SEARCHES`, `ARIEL_GLOBAL_MAX_CONCURRENT_SEARCHES`) the enforcement they
