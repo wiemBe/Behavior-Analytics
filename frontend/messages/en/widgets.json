@@ -1,0 +1,419 @@
+{
+  "registry": {
+    "kpi_total_eps": {
+      "title": "Total EPS",
+      "description": "Fleet events per second over the chosen range, against the baselines that exist."
+    },
+    "kpi_log_sources": {
+      "title": "Log sources",
+      "description": "How many sources are monitored now and how many are judged normal."
+    },
+    "kpi_offenses": {
+      "title": "Open offenses",
+      "description": "Open offenses in the latest snapshot, by severity."
+    },
+    "kpi_anomalies": {
+      "title": "Active anomalies",
+      "description": "Anomalies active now, by detector and lifecycle."
+    },
+    "chart_eps_fleet_total": {
+      "title": "Fleet EPS",
+      "description": "Observed fleet EPS against the sum of per-source expected EPS, 1 h to 7 d."
+    },
+    "chart_eps_by_class": {
+      "title": "EPS by source class",
+      "description": "Mean EPS of each source class over the chosen range, with its share of the fleet."
+    },
+    "table_top_sources": {
+      "title": "Top log sources by EPS",
+      "description": "The five busiest sources over the chosen range with their deviation from expected."
+    },
+    "chart_anomaly_severity": {
+      "title": "Anomalies by severity",
+      "description": "Anomalies per hour over 24 h, stacked by severity (the latest 200 are read)."
+    },
+    "health_log_sources": {
+      "title": "Log source health",
+      "description": "Sources by verdict now, and the categories that need a decision."
+    },
+    "table_recent_anomalies": {
+      "title": "Recent anomalies",
+      "description": "The latest active anomalies with their deviation and a link to investigate."
+    },
+    "table_recent_offenses": {
+      "title": "Recent offenses",
+      "description": "The latest open offenses by last update, with their magnitude."
+    },
+    "health_detection": {
+      "title": "Detection health",
+      "description": "Technique coverage and rule verdicts: is detection holding up?"
+    },
+    "health_collection": {
+      "title": "Scheduled searches",
+      "description": "Per search family: cadence, last run and how late it is."
+    },
+    "health_evidence": {
+      "title": "Evidence collection",
+      "description": "Anomalies whose evidence is pending or failed."
+    },
+    "table_catchall_senders": {
+      "title": "Catch-all senders to review",
+      "description": "The newest unreviewed senders feeding the catch-all sources."
+    },
+    "table_fleet_classes": {
+      "title": "Source classes",
+      "description": "Sources, mean EPS over the chosen range and open silence per source class."
+    },
+    "table_outage_policy": {
+      "title": "Outage policy",
+      "description": "The default outage mode, the classes that depart from it and the overrides."
+    },
+    "waf_sources": {
+      "title": "WAF sources",
+      "description": "Profile verdict, endpoint coverage and active endpoints against the ceiling."
+    },
+    "table_recent_waf_anomalies": {
+      "title": "Recent WAF anomalies",
+      "description": "The latest active anomalies of WAF endpoints."
+    },
+    "waf_endpoint_traffic": {
+      "title": "WAF endpoint traffic",
+      "description": "One WAF endpoint's requests per bucket against its seasonal expected range. You choose the endpoint.",
+      "fields": {
+        "waf_source": "WAF source",
+        "endpoint": "Endpoint"
+      }
+    },
+    "chart_eps_observed_expected": {
+      "title": "Log source EPS",
+      "description": "One log source's EPS against its seasonal expected range. You choose the source; the fleet total is Fleet EPS.",
+      "fields": {
+        "source": "Log source"
+      }
+    },
+    "chart_search_results": {
+      "title": "Search results",
+      "description": "One scheduled search's stored results: a line, bars, the latest total, or the latest run's top rows.",
+      "fields": {
+        "search_id": "Search",
+        "metric_key": "Metric"
+      }
+    },
+    "chart_property_watch": {
+      "title": "Property watch",
+      "description": "One property watch: its pinned values and the top values of the last bucket, in events per bucket, with the coverage of the scope.",
+      "fields": {
+        "watch_id": "Property watch"
+      }
+    },
+    "ips_source_anomalies": {
+      "title": "Recent IPS anomalies",
+      "description": "The latest active anomalies of IPS entities and IPS sources, in each detector's own unit."
+    },
+    "map_geography": {
+      "title": "Geography",
+      "description": "Where traffic comes from, by country.",
+      "blockedBy": "the map widget is not built yet; geo collection is"
+    }
+  },
+  "categories": {
+    "KPI": "KPI",
+    "Chart": "Chart",
+    "Table": "Table",
+    "Health": "Health",
+    "Admin": "Admin"
+  },
+  "notAvailable": "Not available: {reason}.",
+  "templates": {
+    "soc_overview": {
+      "name": "SOC Overview",
+      "description": "Fleet volume, source health, anomalies and offenses. Geography is left out until its map is available."
+    },
+    "qradar_administration": {
+      "name": "QRadar Administration",
+      "description": "Search cadence, source classification, outage policy and detection evidence health."
+    },
+    "behavioral_analytics": {
+      "name": "Behavioral Analytics",
+      "description": "Active anomalies, evidence health and the anomaly worklist. The observed-versus-expected chart is left out: it needs a log source chosen per dashboard."
+    },
+    "log_source_monitoring": {
+      "name": "Log Source Monitoring",
+      "description": "Source verdicts, traffic mix, source classes and catch-all senders requiring review."
+    },
+    "waf_ips_monitoring": {
+      "name": "WAF / IPS Monitoring",
+      "description": "WAF sources beside the latest WAF and IPS anomalies. The endpoint traffic chart is left out: it needs an endpoint chosen per dashboard."
+    }
+  },
+  "range": {
+    "window": "Window",
+    "windowFor": "Window for {title}"
+  },
+  "expand": {
+    "close": "Close"
+  },
+  "view": {
+    "loadingEditor": "Loading dashboard editor…",
+    "unsupportedTitle": "Unsupported widget",
+    "unsupportedText": "This dashboard holds a widget of type {type} that this version does not know. It is kept in the layout and nothing was changed.",
+    "removed": "Widget removed.",
+    "applied": "Widget configuration applied.",
+    "added": "Added {title}.",
+    "discard": "Discard",
+    "widen": "Widen the window to customize",
+    "customize": "Customize",
+    "addWidget": "Add widget",
+    "done": "Done",
+    "unsaved": "Unsaved changes.",
+    "unsavedSession": "Unsaved changes. They last for this session only."
+  },
+  "catalog": {
+    "title": "Add a widget",
+    "close": "Close",
+    "checking": "Checking what your role can read…",
+    "permissionsUnread": "Your permissions could not be read, so every widget is listed. A widget your role cannot read shows that on the dashboard.",
+    "reads": "Reads",
+    "needs": "Needs",
+    "add": "Add",
+    "addNamed": "Add {title}",
+    "alreadyPlaced": "Already on this dashboard.",
+    "roleLacks": "Your role lacks {count, plural, one {permission} other {permissions}} {permissions}.",
+    "full": "A dashboard holds at most {max} widgets."
+  },
+  "configure": {
+    "title": "Configure {title}",
+    "timeRange": "Time range",
+    "follow": "Follow the dashboard ({range})",
+    "applyOff": "Apply is off until every choice above is made from what its read returned.",
+    "sessionOnly": "Applies to this session only; saving is not built yet.",
+    "cancel": "Cancel",
+    "apply": "Apply",
+    "chooseAbove": "Choose the option above first",
+    "loadingWhat": "Loading the {what}…",
+    "forbiddenWhat": "Your role cannot read the {what}, so nothing can be chosen here.",
+    "readFailed": "The {what} could not be read.",
+    "noAnswer": "The backend did not answer.",
+    "answeredWith": "The backend answered with HTTP {status}.",
+    "reopen": "Close this drawer and open it again; if it still fails, check that the backend is reachable.",
+    "noneWhat": "No {what}.",
+    "filter": "Filter {what}",
+    "shownOf": "{shown} of {total} shown",
+    "countWhat": "{count} {what}",
+    "choose": "Choose…",
+    "firstOf": "The read returned the first {count} of {total} {what}; only these can be chosen here."
+  },
+  "options": {
+    "retired": "retired",
+    "disabled": "disabled",
+    "monitoredSources": {
+      "what": "monitored log sources",
+      "emptyReason": "No log source is monitored yet, so there is no EPS to chart."
+    },
+    "wafSources": {
+      "what": "WAF sources",
+      "emptyReason": "No WAF source has a behavior profile yet, so no endpoint is tracked."
+    },
+    "wafSourceEndpoints": {
+      "what": "endpoints",
+      "emptyReason": "This source has tracked no endpoint yet.",
+      "needs": "Choose a WAF source first"
+    },
+    "propertyWatches": {
+      "what": "property watches",
+      "emptyReason": "No property watch exists yet, so there is nothing to chart."
+    },
+    "scheduledSearches": {
+      "what": "scheduled searches",
+      "emptyReason": "No scheduled search exists yet, so there is nothing to chart."
+    },
+    "searchMetricKeys": {
+      "what": "metric keys",
+      "emptyReason": "This search has stored no metric key yet.",
+      "needs": "Choose a search first"
+    }
+  },
+  "grid": {
+    "arrange": "Arrange {title}",
+    "edit": "Edit",
+    "move": "Move",
+    "resize": "Resize",
+    "moveButton": {
+      "left": "Left",
+      "right": "Right",
+      "up": "Up",
+      "down": "Down"
+    },
+    "moveNamed": {
+      "left": "Move {title} left",
+      "right": "Move {title} right",
+      "up": "Move {title} up",
+      "down": "Move {title} down"
+    },
+    "resizeButton": {
+      "wider": "Wider",
+      "narrower": "Narrow",
+      "taller": "Taller",
+      "shorter": "Shorten"
+    },
+    "resizeNamed": {
+      "wider": "Resize {title} wider",
+      "narrower": "Resize {title} narrower",
+      "taller": "Resize {title} taller",
+      "shorter": "Resize {title} shorter"
+    },
+    "configure": "Configure",
+    "configureNamed": "Configure {title}",
+    "expand": "Expand",
+    "expandNamed": "Expand {title}",
+    "remove": "Remove widget",
+    "removeNamed": "Remove {title}"
+  },
+  "menu": {
+    "permissionsUnread": "Your permissions could not be read ({reason}), so dashboards here are read-only.",
+    "cannotSave": "Your role cannot save dashboards; it needs the {permission} permission.",
+    "refused": "The server refused the change: {detail} The controls stay hidden until you reload.",
+    "sharedBy": "Shared by {owner}; you can read it and duplicate it into your own dashboards.",
+    "nameRequired": "Enter a name.",
+    "nameTooLong": "A name is at most {max} characters.",
+    "nameHint": "1 to {max} characters, unique among your dashboards.",
+    "template": "Template",
+    "name": "Name",
+    "cancel": "Cancel",
+    "close": "Close",
+    "deleteTitle": "Delete \"{name}\"?",
+    "deleteText": "The dashboard and its layout are removed for good, and it disappears for anyone it was shared with.",
+    "deleteDefault": "It is your default; afterwards the start page shows the SOC Overview template.",
+    "deleting": "Deleting…",
+    "deleteConfirm": "Delete dashboard",
+    "duplicateFailed": "\"{name}\" could not be duplicated",
+    "clearDefaultFailed": "The default could not be cleared",
+    "setDefaultFailed": "\"{name}\" could not be made your default",
+    "makePrivateFailed": "\"{name}\" could not be made private",
+    "shareFailed": "\"{name}\" could not be shared",
+    "rename": "Rename…",
+    "duplicateIntoMine": "Duplicate into my dashboards",
+    "duplicate": "Duplicate",
+    "clearDefault": "Clear default",
+    "setDefault": "Set as default",
+    "makePrivate": "Make private",
+    "shareWithEveryone": "Share with everyone",
+    "newFromTemplate": "New dashboard from template…",
+    "delete": "Delete…",
+    "manage": "Manage",
+    "actions": "Dashboard actions",
+    "restoreOpen": "Restore defaults…",
+    "resetOpen": "Reset to empty…",
+    "unknownTemplate": "Defaults cannot be restored because this client does not know template {key}.",
+    "newTitle": "New dashboard from template",
+    "newSubmit": "Create dashboard",
+    "renameTitle": "Rename dashboard",
+    "renameSubmit": "Rename",
+    "restoreTitle": "Restore {name} defaults?",
+    "restoreText": "Replace the current layout with {name} version {version}. Nothing is saved until you choose Done.",
+    "restoreConfirm": "Restore defaults",
+    "resetTitle": "Reset \"{name}\" to empty?",
+    "resetText": "Remove every widget from the current layout. Nothing is saved until you choose Done.",
+    "resetConfirm": "Reset to empty"
+  },
+  "switcher": {
+    "trigger": "Dashboards",
+    "loading": "Loading dashboards…",
+    "failed": "Saved dashboards could not be loaded: {reason}.",
+    "none": "You have no saved dashboards, and none is shared with you.",
+    "saved": "Saved dashboards",
+    "default": "Default",
+    "shared": "Shared",
+    "widgetCount": "{count, plural, one {# widget} other {# widgets}}",
+    "ownedBy": "owned by {owner}",
+    "templateGroup": "Template",
+    "templateEntry": "{name} (template)",
+    "notSaved": "Not saved"
+  },
+  "saveDialogs": {
+    "nameTakenTitle": "Choose another dashboard name",
+    "name": "Name",
+    "cancel": "Cancel",
+    "saveDashboard": "Save dashboard",
+    "copyName": "Copy of {name}",
+    "conflictTitle": "This dashboard changed since you opened it",
+    "conflictReload": "<b>Reload</b> discards your changes and shows the saved version.",
+    "conflictCopy": "<b>Save as a copy</b> keeps your changes under the name below.",
+    "conflictKeep": "<b>Keep editing</b> leaves both as they are.",
+    "copyLabel": "Copy name",
+    "keepEditing": "Keep editing",
+    "reload": "Reload",
+    "saveCopy": "Save as a copy",
+    "discardTitle": "Discard unsaved changes to {name}?",
+    "discardChoice": "<b>Discard</b> drops your changes and shows the saved layout.",
+    "keepChoice": "<b>Keep editing</b> leaves the dashboard as it is.",
+    "discard": "Discard"
+  },
+  "save": {
+    "failedKept": "Saving failed; your changes are still here.",
+    "unsavedKept": "Your unsaved changes are still here."
+  },
+  "propertyWatch": {
+    "defaultTitle": "Property watch",
+    "link": "Watch",
+    "what": "property watches",
+    "theWatch": "The property watch",
+    "theValues": "The tracked values",
+    "theBuckets": "The stored buckets",
+    "theSeries": "The series",
+    "chooseLead": "Choose a property watch.",
+    "chooseText": "No watch is set for this widget, so there is nothing to chart.",
+    "chooseHint": "Open Customize, then Configure, to choose one.",
+    "deletedLead": "This property watch was deleted.",
+    "deletedText": "The watch set for this widget no longer exists.",
+    "deletedHint": "Open Customize, then Configure, to choose another.",
+    "forbidden": "Your role cannot read property watches (permission read:property_watches). An administrator grants read:property_watches. Nothing was changed.",
+    "failed": "{what} could not be read. {answer} Nothing was changed, and the previous answer stays on screen when there is one. Use Refresh in the top bar; if it still fails, check that the backend is reachable.",
+    "noAnswer": "The backend did not answer.",
+    "answeredWith": "The backend answered with HTTP {status}.",
+    "collectionOff": "PW_COLLECTION_ENABLED is false, so no search is sent for any watch. Nothing new is collected, and no earlier bucket is drawn here. Open the watch for its history.",
+    "settingOff": "PW_COLLECTION_ENABLED is false, so no search is sent for any watch.",
+    "openHistory": "Open the watch for its history.",
+    "historyProgress": "{read} of {requested} days",
+    "unknownDays": "an unknown number",
+    "theRequested": "the requested",
+    "reading": "Reading history from QRadar: {progress}. Nothing is judged until it finishes.",
+    "disabled": "The watch is disabled, so no search is sent for it.",
+    "notRunYet": "It has not run yet: the first collection comes at the next cadence slot.",
+    "noBucket": "No bucket has been collected for this watch yet. {why} Created {at}.",
+    "inScope": "({parsed, number} of {total, number} events in scope)",
+    "notApplicable": "The bucket of {at} was collected, but the property parsed on no event{events}: coverage {coverage}. No value is measured and none is judged.",
+    "fiveMinuteIntervals": "five-minute intervals",
+    "partialText": "{have, number} of {of, number} five-minute intervals collected; the rest are gaps, not zero events",
+    "lowerBoundsText": "{lower, number} of {total, number} collected {lower, plural, one {bucket is a lower bound} other {buckets are lower bounds}}; their points read \"at least n\" and absent values are unknown, not zero",
+    "atLeast": "at least {value}",
+    "perBucket": "events per bucket",
+    "perMinutes": "events per {minutes} min",
+    "perSeconds": "events per {seconds} s",
+    "noCollected": "No collected bucket exists after the history hand-off. {reason} Open the watch to inspect the history read.",
+    "noFirstBucket": "The watch has not collected its first current bucket yet.",
+    "noValues": "No value is tracked for this watch in the last {window}. A value appears once a collected bucket admits it, and nothing is judged until then. Created <created></created>.",
+    "nothingToDraw": "No value is pinned, and no tracked value has a counted event in the last bucket, so there is nothing to draw. This is not a reading of zero events.",
+    "coverageBadge": "Coverage {value}",
+    "nonePlotted": "No value is plotted.",
+    "chartLabel": "{unit} for the pinned and the top values of the last bucket, in UTC",
+    "lastBucket": "Last bucket <time></time> <age></age>. Y axis: {unit}.",
+    "refreshFailed": "The latest refresh failed. The previous answer stays on screen; use Refresh in the top bar to try again."
+  },
+  "searchResults": {
+    "defaultTitle": "Search results",
+    "link": "Search",
+    "what": "search results",
+    "chooseLead": "Choose a search.",
+    "chooseText": "No search is set for this widget, so there is nothing to chart.",
+    "chooseHint": "Open Customize, then Configure, to choose one.",
+    "loading": "Loading result trend…",
+    "forbidden": "Your role cannot read search results (permission read:searches). An administrator grants read:searches. Nothing was changed.",
+    "deletedLead": "This search was deleted.",
+    "deletedText": "The search set for this widget no longer exists.",
+    "deletedHint": "Open Customize, then Configure, to choose another."
+  },
+  "configNotice": {
+    "configure": "Configure"
+  }
+}

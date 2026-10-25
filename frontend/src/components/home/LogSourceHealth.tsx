@@ -8,11 +8,14 @@
 // gate it; each category row stands on its read alone, and a read that failed
 // leaves that row at a dash with the reason, never at zero.
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 
 import { HealthDistribution } from "@/components/behavior/HealthDistribution";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { useApiResource } from "@/hooks/useApiResource";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { useMeasures } from "@/i18n/measures";
 import { homeReads } from "@/lib/api";
 import { sourcesAsOf } from "@/lib/home/asOf";
 import { useFamilyTiming } from "@/widgets/cadence";
@@ -23,7 +26,20 @@ import { logSources } from "@/lib/home/logSources";
 import { secondary, WidgetFrame, WidgetLoading, WidgetQualifiers } from "./WidgetFrame";
 import { Unmeasured } from "./WidgetParts";
 
+/** Which read stands behind a category, so its missing count names that read. */
+const GAP_READ = {
+  silent: "summary",
+  exceeding: "summary",
+  new: "fleet",
+  conflict: "fleet",
+  unclassified: "fleet",
+  maintenance: "overview",
+} as const;
+
 export function LogSourceHealth() {
+  const t = useTranslations("home.health");
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
   const behaviorRead = homeReads.sourceBehaviors();
   const summaryRead = homeReads.anomalySummary();
   const fleetRead = homeReads.fleetSummary("24h");
@@ -37,23 +53,23 @@ export function LogSourceHealth() {
   return (
     <WidgetFrame
       id="log-source-health"
-      title="Log source health"
-      windowText="latest state"
-      link={{ href: "/behavior/sources", label: "View all" }}
+      title={t("title")}
+      windowText={t("latestState")}
+      link={{ href: "/behavior/sources", label: t("link") }}
       state={behaviors}
       dataTo={{
         at: behaviors.status === "ok" ? sourcesAsOf(behaviors.data, bucketSeconds) : null,
         family: "PHASE_A_VOLUME",
       }}
-      what="the source states"
+      what={t("what")}
       permission="read:anomalies"
     >
       {({ data: sources }) => {
-          const sum = secondary(summary);
-          const fl = secondary(fleet);
-          const ov = secondary(overview);
+          const sum = secondary(summary, say);
+          const fl = secondary(fleet, say);
+          const ov = secondary(overview, say);
           if (sum.pending || fl.pending || ov.pending) {
-            return <WidgetLoading what="log source health" />;
+            return <WidgetLoading what={t("loadingWhat")} />;
           }
           const card = sum.data
             ? logSources(sum.data, sources, ov.data ? ov.data.log_sources.total_log_sources : null)
@@ -64,20 +80,22 @@ export function LogSourceHealth() {
             <>
               {card?.judgedText ? (
                 <p className="tw-lead">
-                  <span className="num">{card.judgedText}</span>
+                  <span className="num">
+                    {t("judgedNormal", {
+                      normal: measures.count(card.normal),
+                      judged: measures.count(card.judged),
+                    })}
+                  </span>
                   {card.notJudged > 0 && (
                     <span className="muted">
                       {" · "}
-                      {card.notJudged.toLocaleString("en-US")} not judged
+                      {t("notJudged", { count: measures.count(card.notJudged) })}
                     </span>
                   )}
                 </p>
               ) : null}
               {sources.length === 0 ? (
-                <p className="tw-state">
-                  No monitored log sources. Enable monitoring on a source to start collecting its
-                  volume baseline.
-                </p>
+                <p className="tw-state">{t("noSources")}</p>
               ) : (
                 <HealthDistribution
                   groups={groups}
@@ -86,7 +104,9 @@ export function LogSourceHealth() {
                     groups,
                     sources.length,
                     sum.data ? sum.data.silent_sources : 0,
+                    say,
                   )}
+                  say={say}
                 />
               )}
               {card && sources.length > 0 && (
@@ -97,39 +117,40 @@ export function LogSourceHealth() {
                 />
               )}
               {sum.data === null && (
-                <p className="tw-note">
-                  How many sources are judged normal is unavailable: the anomaly summary is not
-                  readable ({sum.gap}).
-                </p>
+                <p className="tw-note">{t("noSummary", { gap: sum.gap ?? "" })}</p>
               )}
-              <TableScroll label="Log source health categories">
-                <table className="tw-table tw-categories" aria-label="Log source health categories">
+              <TableScroll label={t("categories")}>
+                <table className="tw-table tw-categories" aria-label={t("categories")}>
                   <colgroup>
                     <col />
                     <col className="tw-col-count" />
                   </colgroup>
                   <thead>
                     <tr>
-                      <th scope="col">Category</th>
+                      <th scope="col">{t("category")}</th>
                       <th scope="col" className="num">
-                        Count
+                        {t("count")}
                       </th>
                     </tr>
                   </thead>
                   <tbody>
                     {categories.map((c) => (
                       <tr key={c.key}>
-                        <td className="tw-cat-label" title={c.definition}>
+                        <td className="tw-cat-label" title={t(`categoryDefinition.${c.key}`)}>
                           {c.href !== null && c.count !== null ? (
                             <Link className="tw-link" href={c.href}>
-                              {c.label}
+                              {t(`categoryLabel.${c.key}`)}
                             </Link>
                           ) : (
-                            c.label
+                            t(`categoryLabel.${c.key}`)
                           )}
                         </td>
                         <td className="num">
-                          {c.count === null ? <Unmeasured reason={c.gap} /> : c.count.toLocaleString("en-US")}
+                          {c.count === null ? (
+                            <Unmeasured reason={c.gap ? t(`gap.${GAP_READ[c.key]}`) : null} />
+                          ) : (
+                            measures.count(c.count)
+                          )}
                         </td>
                       </tr>
                     ))}

@@ -50,6 +50,7 @@ export function logSources(
         sources.length === 0
           ? "No monitored log source."
           : "No monitored source has a verdict yet.",
+        { code: sources.length === 0 ? "NO_MONITORED" : "NO_VERDICT" },
       ),
     );
   }

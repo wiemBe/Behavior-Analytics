@@ -1,0 +1,117 @@
+{
+  "forbidden": "Rolünüz arama sonuçlarını okuyamıyor (izin: read:searches). read:searches iznini bir yönetici verir. Hiçbir şey değiştirilmedi.",
+  "loading": "Sonuç eğilimi yükleniyor…",
+  "deletedLead": "Bu arama silinmiş.",
+  "deletedText": "Bu bileşen için ayarlanan arama artık yok.",
+  "deletedHint": "Başka birini seçmek için Özelleştir'i, ardından Yapılandır'ı açın.",
+  "neverRun": {
+    "createdBefore": "Bu arama, ",
+    "createdAfter": " tarihinde oluşturulduğundan beri hiç çalışmadı. ",
+    "noCreated": "Bu arama hiç çalışmadı. Oluşturulma zamanı kaydedilmemiş. ",
+    "howWidget": "Arama sayfasından Şimdi çalıştır ile çalıştırın veya zamanlamasını bekleyin.",
+    "howPage": "Bu sayfadan Şimdi çalıştır ile çalıştırın veya zamanlamasını bekleyin."
+  },
+  "stale": {
+    "before": "Güncel değil: son başarılı çalıştırma ",
+    "after": " zamanındaydı; üzerinden {age} geçti (zamanlama aralığı {interval})."
+  },
+  "atLeast": "en az ",
+  "tooltip": {
+    "truncatedRun": "Kırpılmış çalıştırma: sonuç sayısı kaydedilmedi",
+    "truncatedCap": "Arama satır sınırına ulaştı, bu yüzden yalnızca bir alt sınır var",
+    "resultCount": "Sonuç sayısı: {count}",
+    "failedCount": "sonuç yok (çalıştırma başarısız)",
+    "status": "Durum: {status}",
+    "duration": "Süre: {duration}",
+    "version": "Sorgu sürümü: v{version}",
+    "breached": "Eşik: aşıldı"
+  },
+  "axis": {
+    "time": "Zaman (UTC)",
+    "rows": "Sonuç satırı"
+  },
+  "series": {
+    "threshold": "eşik",
+    "lone": "Boşluklar arasında ölçülen çalıştırma",
+    "fail": "hata"
+  },
+  "noGrouped": {
+    "noExecution": "Bu aramanın hiç çalıştırması yok.",
+    "noRows": "Bu aramanın hiçbir çalıştırması gruplanmış satır kaydetmedi.",
+    "missing": "Eksik sayı sıfır olarak gösterilmez."
+  },
+  "metric": "Metrik",
+  "allRows": "Tüm satırlar",
+  "noPoints": "Bu aralıkta ölçülmüş nokta yok. Kırpılmış çalıştırmalar boşluktur, sıfır olarak çizilmez.",
+  "chartLabel": "Arama sonucu eğilimi",
+  "note": {
+    "points": "{count, plural, other {{shown} nokta}} · metrik ",
+    "threshold": " · eşik {operator} {value}",
+    "versions": " · kesik çizgiler sorgu sürümü değişikliklerini gösterir; sürümler arası sonuçlar karşılaştırılamaz",
+    "gaps": " · {count, plural, other {{shown} kırpılmış çalıştırma}} boşluk bıraktı: sayı kaydedilmedi, bu yüzden çizgi orada kesik"
+  },
+  "shape": {
+    "pie": "Pasta grafiği olarak kaydedilmiş. Tablo olarak gösterilir: gruplanmış satırlar için pasta çizilmez.",
+    "heatmap": "Isı haritası olarak kaydedilmiş. Isı haritası biçimi tanımlı değil, bu yüzden satırlar tablo olarak gösterilir."
+  },
+  "single": {
+    "thresholdBreached": "Eşik: aşıldı.",
+    "thresholdNoVerdict": "Eşik: karar yok.",
+    "truncatedNoCount": "Son çalıştırma kırpıldı. Satır sayısı kaydedilmedi, bu yüzden sıfır olarak gösterilmez.",
+    "rowsAtBefore": "Sonuç satırı, ",
+    "rowsAtAfter": " itibarıyla. ",
+    "timeOnlyAfter": ". ",
+    "olderSuccess": " Son çalıştırma kırpıldı, bu yüzden daha eski bir başarı güncel toplam değildir.",
+    "none": "Bu metrik için ölçülmüş değer yok. Sıfır olarak gösterilmez.",
+    "measuredBefore": "Sonuç satırı, ",
+    "measuredAfter": " itibarıyla."
+  },
+  "groups": {
+    "label": "Son çalıştırmanın satırları",
+    "captionStart": "Son çalıştırma",
+    "captionTime": ", ",
+    "captionEnd": ", en yüksek değer önce",
+    "captionShowing": ". {shown} / {total} satır gösteriliyor",
+    "metric": "Metrik",
+    "dimensions": "Boyutlar",
+    "value": "Değer (sonuç satırı)",
+    "noRow": "Bu metrik için satır yok. Sayı sıfır olarak gösterilmez.",
+    "lowerBound": "Değerler bir alt sınırdır: çalıştırma kırpıldı.",
+    "thresholdIn": " Eşik: {verdict}.",
+    "threshold": "Eşik: {verdict}.",
+    "breached": "aşıldı",
+    "noVerdict": "karar yok",
+    "showing": "{shown} / {total} satır gösteriliyor, en yüksek değer önce{keeps}.",
+    "keeps": " (bu görünüm {cap} satır tutar)",
+    "latestOnly": "Bu tablo, satır kaydeden son çalıştırmadır. Gösterge paneli aralığı onu filtrelemez."
+  },
+  "run": {
+    "failedPrefix": "Son çalıştırma {word}. {named} Çalıştırmayı inceleyin, sorguyu düzenleyin veya yeniden denemeyi bekleyin. {count}",
+    "failedWord": "başarısız oldu",
+    "endedWord": "{status} ile bitti",
+    "errorType": "Hata türü {type}. {words}",
+    "noErrorType": "Hata türü kaydedilmedi.",
+    "countUnknown": "Art arda {after} başarısız çalıştırmadan sonra bir search_failure uyarısı açılır.",
+    "countKnown": "Kaydedilen art arda hata: {failures}. {after} hatadan sonra bir search_failure uyarısı açılır.",
+    "truncated": "Son çalıştırma kırpıldı. {bound} {verdict}",
+    "boundAtLeast": "En az {count} satır saydı.",
+    "boundNone": "Satır sayısı kaydedilmedi, bu yüzden sıfır olarak gösterilmez.",
+    "verdictMet": "Sayı eşiği zaten karşılıyor.",
+    "verdictNone": "Eşiğin kararı yok: gerçek sayı yine de eşiğin üstünde olabilir.",
+    "completedNoCount": "Son çalıştırma tamamlandı. Satır sayısı kaydedilmedi.",
+    "completed": "Son çalıştırma tamamlandı ve {count} satır döndürdü.{breached}",
+    "breachedTail": " Eşik aşıldı.",
+    "other": "Son çalıştırma {status} durumunda. Henüz sonuç yok.",
+    "errors": {
+      "VALIDATION": "Sorgu çalışmadan önce reddedildi.",
+      "AUTH": "QRadar kimlik bilgilerini reddetti.",
+      "RATE_LIMITED": "QRadar aramayı kısıtladı.",
+      "TIMEOUT": "Arama zaman aşımını aştı.",
+      "SEARCH_FAILED": "QRadar aramanın başarısız olduğunu bildirdi.",
+      "NETWORK": "QRadar bağlantısı başarısız oldu.",
+      "PARSING": "Sonuç okunamadı.",
+      "CANCELLED": "Çalıştırma iptal edildi.",
+      "CAPACITY": "Çalışmadı: Ariel arama bütçesi doluydu."
+    }
+  }
+}

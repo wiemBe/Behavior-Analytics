@@ -9,8 +9,11 @@
 // Input is taken in native `<dialog>` forms. A refused write keeps its dialog open with the
 // server's own `detail`; the page re-reads the list after every write, nothing is optimistic.
 
+import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
+import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
+import { englishText } from "@/widgets/englishText";
 import { ApiError } from "@/lib/api";
 import {
   createDashboard,
@@ -22,6 +25,7 @@ import {
   type DashboardVisibility,
 } from "@/lib/dashboardApi";
 
+import { useWidgetCopy } from "./copy";
 import { usePopover, type DashboardTarget } from "./DashboardSwitcher";
 import { TEMPLATES, templateByKey } from "./templates";
 import type { DashboardLayout } from "./types";
@@ -62,37 +66,39 @@ export interface DashboardAccess {
 
 /**
  * What the caller may do with the dashboard shown. Pure. `refused` is the `detail` of a `403`
- * the server sent for a write; once set, no write control is offered.
+ * the server sent for a write; once set, no write control is offered. `t` is the root
+ * translator: the default keeps the English sentences for a caller that is not converted.
  */
 export function dashboardAccess(
   current: CurrentDashboard,
   caller: Caller,
   refused: string | null = null,
+  t: TextTranslator = englishText,
 ): DashboardAccess {
   if (caller.status === "loading") return { actions: [], note: null };
   if (caller.status === "failed") {
     return {
       actions: [],
-      note: `Your permissions could not be read (${caller.reason}), so dashboards here are read-only.`,
+      note: t("widgets.menu.permissionsUnread", { reason: caller.reason }),
     };
   }
   if (!caller.permissions.has(PERM_WRITE)) {
     return {
       actions: [],
-      note: `Your role cannot save dashboards; it needs the ${PERM_WRITE} permission.`,
+      note: t("widgets.menu.cannotSave", { permission: PERM_WRITE }),
     };
   }
   if (refused !== null) {
     return {
       actions: [],
-      note: `The server refused the change: ${refused} The controls stay hidden until you reload.`,
+      note: t("widgets.menu.refused", { detail: refused }),
     };
   }
   if (current.kind === "template") return { actions: ["new"], note: null };
   if (current.ownerSubject !== caller.subject) {
     return {
       actions: ["duplicate"],
-      note: `Shared by ${current.ownerSubject}; you can read it and duplicate it into your own dashboards.`,
+      note: t("widgets.menu.sharedBy", { owner: current.ownerSubject }),
     };
   }
   const actions: MenuAction[] = ["rename", "duplicate", "default"];
@@ -114,10 +120,10 @@ type DialogState =
   | { kind: "failed"; title: string; text: string };
 
 /** A trimmed name of 1 to 80 characters, or the sentence that says what is wrong. */
-export function nameProblem(raw: string): string | null {
+export function nameProblem(raw: string, t: TextTranslator = englishText): string | null {
   const name = raw.trim();
-  if (name.length === 0) return "Enter a name.";
-  if (name.length > NAME_MAX) return `A name is at most ${NAME_MAX} characters.`;
+  if (name.length === 0) return t("widgets.menu.nameRequired");
+  if (name.length > NAME_MAX) return t("widgets.menu.nameTooLong", { max: NAME_MAX });
   return null;
 }
 
@@ -174,6 +180,10 @@ function NameDialog({
   onSubmit: (name: string, templateKey: string) => Promise<string | null>;
   onClose: () => void;
 }) {
+  const t = useTranslations("widgets.menu");
+  const common = useTranslations("common");
+  const root = asTextTranslator(useTranslations());
+  const copy = useWidgetCopy();
   const [name, setName] = useState(initial);
   const [templateKey, setTemplateKey] = useState(TEMPLATES[0].key);
   const [error, setError] = useState<string | null>(null);
@@ -187,7 +197,7 @@ function NameDialog({
   }, []);
 
   const send = async () => {
-    const problem = nameProblem(name);
+    const problem = nameProblem(name, root);
     if (problem) {
       setError(problem);
       return;
@@ -212,7 +222,7 @@ function NameDialog({
       >
         {withTemplate ? (
           <div className="dg-modal-field">
-            <label htmlFor={`${fieldId}-tpl`}>Template</label>
+            <label htmlFor={`${fieldId}-tpl`}>{t("template")}</label>
             <select
               id={`${fieldId}-tpl`}
               value={templateKey}
@@ -220,14 +230,14 @@ function NameDialog({
             >
               {TEMPLATES.map((template) => (
                 <option key={template.key} value={template.key}>
-                  {template.name}
+                  {copy.templateName(template)}
                 </option>
               ))}
             </select>
           </div>
         ) : null}
         <div className="dg-modal-field">
-          <label htmlFor={fieldId}>Name</label>
+          <label htmlFor={fieldId}>{t("name")}</label>
           <input
             id={fieldId}
             ref={inputRef}
@@ -239,7 +249,7 @@ function NameDialog({
             aria-describedby={error ? errorId : undefined}
             onChange={(event) => setName(event.target.value)}
           />
-          <p className="dg-modal-hint">1 to {NAME_MAX} characters, unique among your dashboards.</p>
+          <p className="dg-modal-hint">{t("nameHint", { max: NAME_MAX })}</p>
         </div>
         {error ? (
           <p className="dg-modal-error" id={errorId} role="alert">
@@ -248,10 +258,10 @@ function NameDialog({
         ) : null}
         <div className="dg-modal-actions">
           <button type="button" className="action secondary" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </button>
           <button type="submit" className="action" disabled={busy}>
-            {busy ? "Saving…" : submit}
+            {busy ? common("saving") : submit}
           </button>
         </div>
       </form>
@@ -270,17 +280,17 @@ function ConfirmDelete({
   onConfirm: () => Promise<string | null>;
   onClose: () => void;
 }) {
+  const t = useTranslations("widgets.menu");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => cancelRef.current?.focus(), []);
   return (
-    <Modal title={`Delete "${name}"?`} onClose={onClose}>
+    <Modal title={t("deleteTitle", { name })} onClose={onClose}>
       <div className="dg-modal-form">
         <p className="dg-modal-text">
-          The dashboard and its layout are removed for good, and it disappears for anyone it was
-          shared with.
-          {isDefault ? " It is your default; afterwards the start page shows the SOC Overview template." : ""}
+          {t("deleteText")}
+          {isDefault ? ` ${t("deleteDefault")}` : ""}
         </p>
         {error ? (
           <p className="dg-modal-error" role="alert">
@@ -289,7 +299,7 @@ function ConfirmDelete({
         ) : null}
         <div className="dg-modal-actions">
           <button type="button" ref={cancelRef} className="action secondary" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </button>
           <button
             type="button"
@@ -302,7 +312,7 @@ function ConfirmDelete({
               if (refusal) setError(refusal);
             }}
           >
-            {busy ? "Deleting…" : "Delete dashboard"}
+            {busy ? t("deleting") : t("deleteConfirm")}
           </button>
         </div>
       </div>
@@ -333,6 +343,9 @@ export function DashboardMenu({
   onRequestNavigation,
 }: DashboardMenuProps) {
   const { open, setOpen, root, trigger } = usePopover();
+  const t = useTranslations("widgets.menu");
+  const say = asTextTranslator(useTranslations());
+  const copy = useWidgetCopy();
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [busy, setBusy] = useState(false);
   const panelId = useId();
@@ -366,10 +379,10 @@ export function DashboardMenu({
     } catch (error) {
       if (error instanceof ApiError && error.status === 403) {
         setDialog(null);
-        onRefused(describeRefusal(error));
+        onRefused(describeRefusal(error, say));
         return null;
       }
-      return describeRefusal(error);
+      return describeRefusal(error, say);
     }
   };
 
@@ -395,14 +408,14 @@ export function DashboardMenu({
     if (!saved) return;
     if (action === "duplicate") {
       navigate(() => {
-        void direct(`"${saved.name}" could not be duplicated`, async () => {
+        void direct(t("duplicateFailed", { name: saved.name }), async () => {
           const copy = await duplicateDashboard(saved.id);
           return { go: { kind: "saved", id: copy.id } };
         });
       });
     } else if (action === "default") {
       void direct(
-        saved.isDefault ? "The default could not be cleared" : `"${saved.name}" could not be made your default`,
+        saved.isDefault ? t("clearDefaultFailed") : t("setDefaultFailed", { name: saved.name }),
         async () => {
           await setDefaultDashboard(saved.isDefault ? null : saved.id);
           return { go: null };
@@ -412,8 +425,8 @@ export function DashboardMenu({
       const shared = saved.visibility === "SHARED";
       void direct(
         shared
-          ? `"${saved.name}" could not be made private`
-          : `"${saved.name}" could not be shared`,
+          ? t("makePrivateFailed", { name: saved.name })
+          : t("shareFailed", { name: saved.name }),
         async () => {
           await patchDashboard(saved.id, { visibility: shared ? "PRIVATE" : "SHARED" });
           return { go: null };
@@ -425,19 +438,19 @@ export function DashboardMenu({
   const label = (action: MenuAction): string => {
     switch (action) {
       case "rename":
-        return "Rename…";
+        return t("rename");
       case "duplicate":
         return saved && !access.actions.includes("rename")
-          ? "Duplicate into my dashboards"
-          : "Duplicate";
+          ? t("duplicateIntoMine")
+          : t("duplicate");
       case "default":
-        return saved?.isDefault ? "Clear default" : "Set as default";
+        return saved?.isDefault ? t("clearDefault") : t("setDefault");
       case "visibility":
-        return saved?.visibility === "SHARED" ? "Make private" : "Share with everyone";
+        return saved?.visibility === "SHARED" ? t("makePrivate") : t("shareWithEveryone");
       case "new":
-        return "New dashboard from template…";
+        return t("newFromTemplate");
       case "delete":
-        return "Delete…";
+        return t("delete");
     }
   };
 
@@ -452,11 +465,11 @@ export function DashboardMenu({
         disabled={busy}
         onClick={() => setOpen(!open)}
       >
-        Manage
+        {t("manage")}
       </button>
       {open ? (
         <div className="dg-pop-panel dg-menu-panel" id={panelId}>
-          <ul className="dg-pop-list" aria-label="Dashboard actions">
+          <ul className="dg-pop-list" aria-label={t("actions")}>
             {access.actions.map((action) => (
               <li key={action}>
                 <button
@@ -479,7 +492,7 @@ export function DashboardMenu({
                       setDialog({ kind: "failed", title: "restore", text: "" });
                     }}
                   >
-                    Restore defaults…
+                    {t("restoreOpen")}
                   </button>
                 ) : saved.templateKey === null || saved.templateKey === undefined ? (
                   <button
@@ -490,7 +503,7 @@ export function DashboardMenu({
                       setDialog({ kind: "failed", title: "reset", text: "" });
                     }}
                   >
-                    Reset to empty…
+                    {t("resetOpen")}
                   </button>
                 ) : null}
               </li>
@@ -498,15 +511,15 @@ export function DashboardMenu({
           </ul>
           {customizing && unknownTemplate ? (
             <p className="dg-pop-note">
-              Defaults cannot be restored because this client does not know template {unknownTemplate}.
+              {t("unknownTemplate", { key: unknownTemplate })}
             </p>
           ) : null}
         </div>
       ) : null}
       {dialog?.kind === "new" ? (
         <NameDialog
-          title="New dashboard from template"
-          submit="Create dashboard"
+          title={t("newTitle")}
+          submit={t("newSubmit")}
           initial=""
           withTemplate
           onClose={close}
@@ -526,8 +539,8 @@ export function DashboardMenu({
       ) : null}
       {dialog?.kind === "rename" && saved ? (
         <NameDialog
-          title="Rename dashboard"
-          submit="Rename"
+          title={t("renameTitle")}
+          submit={t("renameSubmit")}
           initial={saved.name}
           withTemplate={false}
           onClose={close}
@@ -553,15 +566,20 @@ export function DashboardMenu({
         />
       ) : null}
       {dialog?.kind === "failed" && dialog.title === "restore" && saved && restoreTemplate ? (
-        <Modal title={`Restore ${restoreTemplate.name} defaults?`} onClose={close}>
+        <Modal
+          title={t("restoreTitle", { name: copy.templateName(restoreTemplate) })}
+          onClose={close}
+        >
           <div className="dg-modal-form">
             <p className="dg-modal-text">
-              Replace the current layout with {restoreTemplate.name} version {restoreTemplate.version}.
-              Nothing is saved until you choose Done.
+              {t("restoreText", {
+                name: copy.templateName(restoreTemplate),
+                version: restoreTemplate.version,
+              })}
             </p>
             <div className="dg-modal-actions">
               <button type="button" className="action secondary" onClick={close}>
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="button"
@@ -571,21 +589,19 @@ export function DashboardMenu({
                   close();
                 }}
               >
-                Restore defaults
+                {t("restoreConfirm")}
               </button>
             </div>
           </div>
         </Modal>
       ) : null}
       {dialog?.kind === "failed" && dialog.title === "reset" && saved ? (
-        <Modal title={`Reset "${saved.name}" to empty?`} onClose={close}>
+        <Modal title={t("resetTitle", { name: saved.name })} onClose={close}>
           <div className="dg-modal-form">
-            <p className="dg-modal-text">
-              Remove every widget from the current layout. Nothing is saved until you choose Done.
-            </p>
+            <p className="dg-modal-text">{t("resetText")}</p>
             <div className="dg-modal-actions">
               <button type="button" className="action secondary" onClick={close}>
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="button"
@@ -595,7 +611,7 @@ export function DashboardMenu({
                   close();
                 }}
               >
-                Reset to empty
+                {t("resetConfirm")}
               </button>
             </div>
           </div>
@@ -609,7 +625,7 @@ export function DashboardMenu({
             </p>
             <div className="dg-modal-actions">
               <button type="button" className="action secondary" onClick={close}>
-                Close
+                {t("close")}
               </button>
             </div>
           </div>

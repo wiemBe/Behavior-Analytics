@@ -6,10 +6,11 @@
 // dialog's title is the widget's title with its effective range; the range control sits in
 // its header so the figures can be re-read without leaving it.
 
+import { useTranslations } from "next-intl";
 import { useEffect, useRef, type ReactNode } from "react";
 
+import { useWidgetCopy } from "./copy";
 import { RangeControl } from "./RangeControl";
-import { RANGE_TEXT } from "./runtime";
 import type { WidgetRange } from "./types";
 
 import "./dashboard.css";
@@ -30,6 +31,8 @@ export function ExpandDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const t = useTranslations("widgets.expand");
+  const copy = useWidgetCopy();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -58,13 +61,13 @@ export function ExpandDialog({
       <header className="dg-expand-head">
         <h2 id="dg-expand-title" className="dg-expand-title">
           {title}
-          {rangeOptions ? <span className="tw-window">{RANGE_TEXT[range]}</span> : null}
+          {rangeOptions ? <span className="tw-window">{copy.range(range)}</span> : null}
         </h2>
         {rangeOptions ? (
           <RangeControl options={rangeOptions} value={range} onChange={onRange} title={title} />
         ) : null}
         <button type="button" ref={closeRef} className="action secondary" onClick={onClose}>
-          Close
+          {t("close")}
         </button>
       </header>
       <div className="dg-expand-body">{children}</div>

@@ -1,0 +1,117 @@
+{
+  "forbidden": "Your role cannot read search results (permission read:searches). An administrator grants read:searches. Nothing was changed.",
+  "loading": "Loading result trend…",
+  "deletedLead": "This search was deleted.",
+  "deletedText": "The search set for this widget no longer exists.",
+  "deletedHint": "Open Customize, then Configure, to choose another.",
+  "neverRun": {
+    "createdBefore": "This search has never run since it was created on ",
+    "createdAfter": ". ",
+    "noCreated": "This search has never run. The creation time was not recorded. ",
+    "howWidget": "Run it from the search page with Run now, or wait for its schedule.",
+    "howPage": "Run it from this page with Run now, or wait for its schedule."
+  },
+  "stale": {
+    "before": "Stale: the last successful run was ",
+    "after": ", {age} old (schedule interval {interval})."
+  },
+  "atLeast": "at least ",
+  "tooltip": {
+    "truncatedRun": "Truncated run: no result count recorded",
+    "truncatedCap": "The search hit its row cap, so only a lower bound exists",
+    "resultCount": "Result count: {count}",
+    "failedCount": "no result (run failed)",
+    "status": "Status: {status}",
+    "duration": "Duration: {duration}",
+    "version": "Query version: v{version}",
+    "breached": "Threshold: breached"
+  },
+  "axis": {
+    "time": "Time (UTC)",
+    "rows": "Result rows"
+  },
+  "series": {
+    "threshold": "threshold",
+    "lone": "Measured run between gaps",
+    "fail": "fail"
+  },
+  "noGrouped": {
+    "noExecution": "This search has no execution.",
+    "noRows": "No execution of this search stored a grouped row.",
+    "missing": "A missing count is not shown as zero."
+  },
+  "metric": "Metric",
+  "allRows": "All rows",
+  "noPoints": "No measured points in this window. Truncated runs are gaps and are not drawn as zero.",
+  "chartLabel": "Search result trend",
+  "note": {
+    "points": "{shown} point{count, plural, one {} other {s}} · metric ",
+    "threshold": " · threshold {operator} {value}",
+    "versions": " · dashed lines mark query-version changes; results across versions are not comparable",
+    "gaps": " · {shown} truncated run{count, plural, one {} other {s}} left a gap: no count was stored, so the line is broken there"
+  },
+  "shape": {
+    "pie": "Stored as a pie chart. It is shown as a table: a pie over grouped rows is not drawn.",
+    "heatmap": "Stored as a heatmap. No heatmap shape is defined, so the rows are shown as a table."
+  },
+  "single": {
+    "thresholdBreached": "Threshold: breached.",
+    "thresholdNoVerdict": "Threshold: no verdict.",
+    "truncatedNoCount": "The latest run was truncated. The row count was not recorded, so it is not shown as zero.",
+    "rowsAtBefore": "result rows at ",
+    "rowsAtAfter": ". ",
+    "timeOnlyAfter": ". ",
+    "olderSuccess": " The latest run was truncated, so an older success is not the current total.",
+    "none": "No measured value for this metric. It is not shown as zero.",
+    "measuredBefore": "result rows at ",
+    "measuredAfter": "."
+  },
+  "groups": {
+    "label": "Latest run rows",
+    "captionStart": "Latest run",
+    "captionTime": ", ",
+    "captionEnd": ", highest value first",
+    "captionShowing": ". Showing {shown} of {total} rows",
+    "metric": "Metric",
+    "dimensions": "Dimensions",
+    "value": "Value (result rows)",
+    "noRow": "No row for this metric. The count is not shown as zero.",
+    "lowerBound": "Values are a lower bound: the run was truncated.",
+    "thresholdIn": " Threshold: {verdict}.",
+    "threshold": "Threshold: {verdict}.",
+    "breached": "breached",
+    "noVerdict": "no verdict",
+    "showing": "Showing {shown} of {total} rows, highest value first{keeps}.",
+    "keeps": " (this view keeps {cap})",
+    "latestOnly": "This table is the latest run that stored rows. The dashboard range does not filter it."
+  },
+  "run": {
+    "failedPrefix": "The latest run {word}. {named} Inspect the execution, edit the query, or wait for the retry. {count}",
+    "failedWord": "failed",
+    "endedWord": "ended {status}",
+    "errorType": "Error type {type}. {words}",
+    "noErrorType": "No error type was recorded.",
+    "countUnknown": "A search_failure alert opens after {after} consecutive failed runs.",
+    "countKnown": "Consecutive failures recorded: {failures}. A search_failure alert opens after {after}.",
+    "truncated": "The latest run was truncated. {bound} {verdict}",
+    "boundAtLeast": "It counted at least {count} rows.",
+    "boundNone": "The row count was not recorded, so it is not shown as zero.",
+    "verdictMet": "The count already meets the threshold.",
+    "verdictNone": "The threshold has no verdict: the true count may still be above it.",
+    "completedNoCount": "The latest run completed. The row count was not recorded.",
+    "completed": "The latest run completed and returned {count} rows.{breached}",
+    "breachedTail": " The threshold was breached.",
+    "other": "The latest run is {status}. There is no result yet.",
+    "errors": {
+      "VALIDATION": "The query was rejected before it ran.",
+      "AUTH": "QRadar refused the credentials.",
+      "RATE_LIMITED": "QRadar throttled the search.",
+      "TIMEOUT": "The search exceeded its timeout.",
+      "SEARCH_FAILED": "QRadar reported that the search failed.",
+      "NETWORK": "The connection to QRadar failed.",
+      "PARSING": "The result could not be read.",
+      "CANCELLED": "The run was cancelled.",
+      "CAPACITY": "Not run: the Ariel search budget was full."
+    }
+  }
+}

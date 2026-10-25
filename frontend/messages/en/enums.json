@@ -1,0 +1,69 @@
+{
+  "severity": {
+    "CRITICAL": "Critical",
+    "HIGH": "High",
+    "MEDIUM": "Medium",
+    "LOW": "Low",
+    "INFO": "Info"
+  },
+  "anomalyState": {
+    "INSUFFICIENT_DATA": "INSUFFICIENT_DATA",
+    "NORMAL": "NORMAL",
+    "CANDIDATE": "CANDIDATE",
+    "OPEN": "OPEN",
+    "RECOVERING": "RECOVERING",
+    "RESOLVED": "RESOLVED",
+    "SUPPRESSED": "SUPPRESSED"
+  },
+  "offenseStatus": {
+    "OPEN": "OPEN",
+    "HIDDEN": "HIDDEN",
+    "CLOSED": "CLOSED"
+  },
+  "sourceClass": {
+    "WAF": "WAF",
+    "IPS": "IPS",
+    "FIREWALL": "Firewall",
+    "PROXY": "Proxy",
+    "VPN": "VPN",
+    "LINUX": "Linux",
+    "WINDOWS": "Windows",
+    "NETWORK": "Network",
+    "DNS": "DNS",
+    "DATABASE": "Database",
+    "EMAIL": "Email",
+    "ENDPOINT": "Endpoint",
+    "CLOUD": "Cloud",
+    "IDENTITY": "Identity",
+    "APPLICATION": "Application",
+    "QRADAR_INTERNAL": "QRadar internal",
+    "OTHER": "Other",
+    "UNCLASSIFIED": "Unclassified"
+  },
+  "severityPill": {
+    "CRITICAL": "CRITICAL",
+    "HIGH": "HIGH",
+    "MEDIUM": "MEDIUM",
+    "LOW": "LOW",
+    "INFO": "INFO"
+  },
+  "anomalyType": {
+    "VOLUME_SPIKE": "Volume spike",
+    "VOLUME_DROP": "Volume drop",
+    "NO_EVENTS": "No events",
+    "WAF_REQUEST_RATE_SPIKE": "Request-rate spike",
+    "WAF_CLIENT_CONCENTRATION_SPIKE": "Client concentration spike",
+    "WAF_BLOCK_RATIO_SPIKE": "Block-ratio spike",
+    "WAF_ERROR_RATIO_SPIKE": "Server-error ratio spike",
+    "WAF_CLIENT_ERROR_RATIO_SPIKE": "Client-error ratio spike",
+    "WAF_NEW_ENDPOINT_ACCESS": "New endpoint access",
+    "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE": "Client endpoint fan-out spike",
+    "IPS_PORT_RATE_SPIKE": "Destination-port rate spike",
+    "IPS_DESTINATION_RATE_SPIKE": "Destination rate spike",
+    "IPS_SIGNATURE_BURST": "Signature burst",
+    "IPS_NEW_DESTINATION_PORT": "New destination port",
+    "IPS_SOURCE_CONCENTRATION_SPIKE": "Source concentration spike",
+    "IPS_PORT_FANOUT_SPIKE": "Port fan-out spike",
+    "IPS_BLOCK_RATIO_SHIFT": "Block-ratio shift"
+  }
+}

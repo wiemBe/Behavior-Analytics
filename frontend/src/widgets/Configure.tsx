@@ -10,11 +10,13 @@
 // body and not part of the stored config. Apply is off while a read is loading, has failed or
 // is empty, and until each read key holds an id the read returned.
 
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { useApiResource } from "@/hooks/useApiResource";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
-import { RANGE_TEXT } from "./runtime";
+import { messageKey, useWidgetCopy } from "./copy";
 import {
   isReadField,
   type AnyWidgetDef,
@@ -69,12 +71,24 @@ function ReadField({
   onReady?: (key: string, ready: boolean) => void;
   fieldKey: string;
 }) {
+  const t = useTranslations("widgets.configure");
+  const words = useTranslations("widgets.options");
+  const say = asTextTranslator(useTranslations());
   const parent = source.dependsOn ? ((values[source.dependsOn] as string | null) ?? null) : null;
   const read = source.read(parent);
+  // What the options are, and why a read may be empty: the catalog's words when the source has an
+  // entry, else the source's own English text (a source added without messages).
+  const own = source.messageKey && words.has(`${source.messageKey}.what` as never);
+  const what = own ? words(`${source.messageKey}.what` as never) : source.what;
+  const emptyReason = own
+    ? words(`${source.messageKey}.emptyReason` as never)
+    : source.emptyReason;
+  const needs =
+    own && source.needs ? words(`${source.messageKey}.needs` as never) : source.needs;
   const state = useApiResource(read?.key ?? null, read?.fetch ?? NO_READ);
   const [filter, setFilter] = useState("");
   const chosen = typeof values[fieldKey] === "string" ? (values[fieldKey] as string) : null;
-  const list = state.status === "ok" && read ? read.options(state.data) : null;
+  const list = state.status === "ok" && read ? read.options(state.data, say) : null;
   const options = list ? list.options : [];
   const ready = state.status === "ok" && options.some((o) => o.id === chosen);
 
@@ -89,7 +103,7 @@ function ReadField({
       <div className="dg-field">
         {fieldLabel}
         <select id={id} value="" disabled>
-          <option value="">{source.needs ?? "Choose the option above first"}</option>
+          <option value="">{needs ?? t("chooseAbove")}</option>
         </select>
       </div>
     );
@@ -99,7 +113,7 @@ function ReadField({
       <div className="dg-field">
         {fieldLabel}
         <p className="dg-field-state" role="status">
-          Loading the {source.what}…
+          {t("loadingWhat", { what })}
         </p>
       </div>
     );
@@ -109,7 +123,7 @@ function ReadField({
       <div className="dg-field">
         {fieldLabel}
         <p className="dg-field-state" role="alert">
-          Your role cannot read the {source.what}, so nothing can be chosen here.
+          {t("forbiddenWhat", { what })}
         </p>
       </div>
     );
@@ -119,12 +133,11 @@ function ReadField({
       <div className="dg-field">
         {fieldLabel}
         <p className="dg-field-state" role="alert">
-          <strong>The {source.what} could not be read.</strong>{" "}
+          <strong>{t("readFailed", { what })}</strong>{" "}
           {state.httpStatus === null
-            ? "The backend did not answer. "
-            : `The backend answered with HTTP ${state.httpStatus}. `}
-          Close this drawer and open it again; if it still fails, check that the backend is
-          reachable.
+            ? t("noAnswer")
+            : t("answeredWith", { status: state.httpStatus })}{" "}
+          {t("reopen")}
         </p>
       </div>
     );
@@ -134,7 +147,7 @@ function ReadField({
       <div className="dg-field">
         {fieldLabel}
         <p className="dg-field-state" role="status">
-          <strong>No {source.what}.</strong> {source.emptyReason}
+          <strong>{t("noneWhat", { what })}</strong> {emptyReason}
         </p>
       </div>
     );
@@ -152,16 +165,16 @@ function ReadField({
           <input
             id={filterId}
             type="search"
-            aria-label={`Filter ${source.what}`}
-            placeholder={`Filter ${source.what}`}
+            aria-label={t("filter", { what })}
+            placeholder={t("filter", { what })}
             autoComplete="off"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           />
           <p className="dg-field-note" aria-live="polite">
             {filter.trim()
-              ? `${shown.length} of ${options.length} shown`
-              : `${options.length} ${source.what}`}
+              ? t("shownOf", { shown: shown.length, total: options.length })
+              : t("countWhat", { count: options.length, what })}
           </p>
         </>
       ) : null}
@@ -176,7 +189,7 @@ function ReadField({
           <option value="" disabled hidden />
         ) : (
           <option value="" disabled>
-            Choose…
+            {t("choose")}
           </option>
         )}
         {shown.map((option) => (
@@ -187,8 +200,7 @@ function ReadField({
       </select>
       {list && list.total > options.length ? (
         <p className="dg-field-note">
-          The read returned the first {options.length} of {list.total} {source.what}; only
-          these can be chosen here.
+          {t("firstOf", { count: options.length, total: list.total, what })}
         </p>
       ) : null}
     </div>
@@ -201,18 +213,26 @@ export function ConfigForm({
   values,
   onChange,
   onReady,
+  type,
 }: {
   schema: AnyWidgetDef["config"];
+  /** The registry type, so a field's label is looked up in the catalog; absent: the schema's. */
+  type?: string;
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
   /** Reported by each read field: true once it holds an id its read returned. */
   onReady?: (key: string, ready: boolean) => void;
 }) {
   const base = useId();
+  const fields = useTranslations("widgets.registry");
   return (
     <>
       {Object.entries(schema).map(([key, field]) => {
-        const label = (field as { label: string }).label;
+        const labelKey = type ? `${messageKey(type)}.fields.${key}` : null;
+        const label =
+          labelKey && fields.has(labelKey as never)
+            ? fields(labelKey as never)
+            : (field as { label: string }).label;
         if (isReadField(field as never)) {
           return (
             <ReadField
@@ -280,6 +300,8 @@ export function ConfigureDrawer({
   onApply: (choice: ConfigChoice) => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("widgets.configure");
+  const copy = useWidgetCopy();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const firstRef = useRef<HTMLDivElement>(null);
   const rangeId = useId();
@@ -323,14 +345,14 @@ export function ConfigureDrawer({
     >
       <header className="dg-catalog-head">
         <h2 id="dg-configure-title" className="dg-catalog-title">
-          Configure {def.title}
+          {t("title", { title: copy.title(def) })}
         </h2>
       </header>
-      <p className="dg-catalog-note">{def.description}</p>
+      <p className="dg-catalog-note">{copy.description(def)}</p>
       <div className="dg-catalog-body dg-configure-body" ref={firstRef}>
         {def.range !== null ? (
           <div className="dg-field">
-            <label htmlFor={rangeId}>Time range</label>
+            <label htmlFor={rangeId}>{t("timeRange")}</label>
             <select
               id={rangeId}
               value={range ?? FOLLOW}
@@ -338,10 +360,12 @@ export function ConfigureDrawer({
                 setRange(event.target.value === FOLLOW ? null : (event.target.value as WidgetRange))
               }
             >
-              <option value={FOLLOW}>Follow the dashboard ({RANGE_TEXT[dashboardRange]})</option>
+              <option value={FOLLOW}>
+                {t("follow", { range: copy.range(dashboardRange) })}
+              </option>
               {def.range.map((option) => (
                 <option key={option} value={option}>
-                  {RANGE_TEXT[option]}
+                  {copy.range(option)}
                 </option>
               ))}
             </select>
@@ -354,19 +378,18 @@ export function ConfigureDrawer({
             setConfig((current) => setConfigKey(def.config, current, key, value))
           }
           onReady={onReady}
+          type={def.type}
         />
         {blocked ? (
           <p className="dg-catalog-note" id="dg-configure-blocked">
-            Apply is off until every choice above is made from what its read returned.
+            {t("applyOff")}
           </p>
         ) : null}
-        <p className="dg-catalog-note">
-          Applies to this session only; saving is not built yet.
-        </p>
+        <p className="dg-catalog-note">{t("sessionOnly")}</p>
       </div>
       <footer className="dg-configure-foot">
         <button type="button" className="action secondary" onClick={onClose}>
-          Cancel
+          {t("cancel")}
         </button>
         <button
           type="button"
@@ -375,7 +398,7 @@ export function ConfigureDrawer({
           aria-describedby={blocked ? "dg-configure-blocked" : undefined}
           onClick={() => onApply({ range, config })}
         >
-          Apply
+          {t("apply")}
         </button>
       </footer>
     </dialog>

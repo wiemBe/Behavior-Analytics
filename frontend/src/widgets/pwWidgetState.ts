@@ -2,10 +2,12 @@
 // reads any value, how it picks the values it draws, and when a last bucket counts as old. No
 // React and no fetch, so each rule has a unit test.
 
-import { formatCoveragePercent, statusReason } from "@/components/propertywatch/pwFormat";
-import { historyProgress } from "@/components/propertywatch/history";
+import { statusReason } from "@/components/propertywatch/pwFormat";
 import { PW_MAX_SERIES } from "@/components/propertywatch/pwSeries";
+import { type TextTranslator } from "@/i18n/textTranslator";
+import { englishText } from "@/widgets/englishText";
 import type { PropertyWatch, PropertyWatchCatalog, PwValue } from "@/lib/api";
+import { formatPercent, type FormatLocale } from "@/lib/format";
 import type { WidgetState } from "./types";
 
 /**
@@ -39,43 +41,48 @@ const NOT_COLLECTED_STATUSES: ReadonlySet<string> = new Set([
 /**
  * The state the watch and the switches decide alone, or null when values must be read to go on.
  * `empty`, `no_data` and `not_collected` carry the reason in words; none of them is a zero.
+ *
+ * `t` is the root translator and `locale` the language of the figures; the defaults keep the
+ * English text. `{at}` stays in the reason: the widget draws the instant in its place. The words
+ * of `statusReason` are the API's and stay as they are.
  */
 export function earlyState(
   watch: PropertyWatch,
   catalog: Pick<PropertyWatchCatalog, "collection_enabled"> | null,
+  t: TextTranslator = englishText,
+  locale: FormatLocale = "en",
 ): WidgetState<never> | null {
   if (catalog && !catalog.collection_enabled) {
-    return {
-      kind: "not_collected",
-      reason:
-        "PW_COLLECTION_ENABLED is false, so no search is sent for any watch. Nothing new is collected, and no earlier bucket is drawn here. Open the watch for its history.",
-    };
+    return { kind: "not_collected", reason: t("widgets.propertyWatch.collectionOff") };
   }
   if (watch.status !== null && NOT_COLLECTED_STATUSES.has(watch.status)) {
     const setting =
-      watch.status === "NOT_ENABLED"
-        ? "PW_COLLECTION_ENABLED is false, so no search is sent for any watch. "
-        : "";
+      watch.status === "NOT_ENABLED" ? `${t("widgets.propertyWatch.settingOff")} ` : "";
     return {
       kind: "not_collected",
-      reason: `${setting}${statusReason(watch.status, watch.status_reason)} Open the watch for its history.`,
+      reason: `${setting}${statusReason(watch.status, watch.status_reason)} ${t("widgets.propertyWatch.openHistory")}`,
     };
   }
   if (watch.history.state === "READING") {
+    const h = watch.history;
+    const progress = t("widgets.propertyWatch.historyProgress", {
+      read: h.days_read === null ? t("widgets.propertyWatch.unknownDays") : h.days_read,
+      requested: h.days_requested ?? t("widgets.propertyWatch.theRequested"),
+    });
     return {
       kind: "empty",
-      reason: `Reading history from QRadar: ${historyProgress(watch.history)}. Nothing is judged until it finishes.`,
+      reason: t("widgets.propertyWatch.reading", { progress }),
     };
   }
   if (watch.coverage === null) {
     const why = !watch.enabled
-      ? "The watch is disabled, so no search is sent for it."
+      ? t("widgets.propertyWatch.disabled")
       : watch.status === null
-        ? "It has not run yet: the first collection comes at the next cadence slot."
+        ? t("widgets.propertyWatch.notRunYet")
         : statusReason(watch.status, watch.status_reason);
     return {
       kind: "empty",
-      reason: `No bucket has been collected for this watch yet. ${why} Created {at}.`,
+      reason: t("widgets.propertyWatch.noBucket", { why, at: "{at}" }),
       at: watch.created_at,
     };
   }
@@ -83,11 +90,15 @@ export function earlyState(
     const c = watch.coverage;
     const events =
       c.total_events !== null && c.parsed_events !== null
-        ? ` (${c.parsed_events.toLocaleString("en-US")} of ${c.total_events.toLocaleString("en-US")} events in scope)`
+        ? ` ${t("widgets.propertyWatch.inScope", { parsed: c.parsed_events, total: c.total_events })}`
         : "";
     return {
       kind: "no_data",
-      reason: `The bucket of {at} was collected, but the property parsed on no event${events}: coverage ${formatCoveragePercent(c.ratio)}. No value is measured and none is judged.`,
+      reason: t("widgets.propertyWatch.notApplicable", {
+        at: "{at}",
+        events,
+        coverage: formatPercent(c.ratio, null, 0, locale),
+      }),
       at: c.bucket_start,
     };
   }

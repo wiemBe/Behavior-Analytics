@@ -18,21 +18,21 @@ import { GridComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { useRefreshTick } from "@/components/shell/AutoRefresh";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useEnumLabels } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { useMeasures } from "@/i18n/measures";
 import { homeReads } from "@/lib/api";
 import { severityVar, type HomePalette } from "@/lib/home/chartPalette";
-import { badgeText } from "@/lib/home/qualifiers";
-import {
-  lastHours,
-  severityPerHour,
-  severityText,
-  type SeverityPerHour,
-} from "@/lib/home/severityPerHour";
+import { lastHours, severityPerHour, type SeverityPerHour } from "@/lib/home/severityPerHour";
+import { useWidgetCopy } from "@/widgets/copy";
 
 import { buildSeverityOption, stackOrder } from "./chartOptions";
+import { badgePhrase } from "./qualifierText";
 import { useEChart } from "./useEChart";
 import { WidgetFrame } from "./WidgetFrame";
 
@@ -42,8 +42,6 @@ echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 const HOURS = 24;
 const HOUR_MS = 3_600_000;
-/** The header and the empty sentence share this, taken from the hour span the chart reads. */
-const WINDOW_LABEL = `${HOURS} h`;
 
 /** The anomalies list for a range, and for one severity within it. */
 export function anomaliesHref(since: string, until: string, severity?: string): string {
@@ -51,8 +49,6 @@ export function anomaliesHref(since: string, until: string, severity?: string): 
   if (severity) q.set("severity", severity);
   return `/anomalies?${q.toString()}`;
 }
-
-const word = (s: string) => `${s.charAt(0)}${s.slice(1).toLowerCase()}`;
 
 function Columns({
   model,
@@ -62,12 +58,37 @@ function Columns({
   range: { since: string; until: string };
 }) {
   const router = useRouter();
-  const option = useMemo(() => (p: HomePalette) => buildSeverityOption(model, p), [model]);
+  const t = useTranslations("home.severity");
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
+  const { label } = useEnumLabels();
+  const option = useMemo(
+    () => (p: HomePalette) =>
+      buildSeverityOption(model, p, undefined, { t: say, locale: measures.locale }),
+    [model, say, measures.locale],
+  );
   const ref = useEChart(option, (click) => {
     const hour = click.dataIndex != null ? model.hours[click.dataIndex] : undefined;
     if (!hour) return;
     const end = new Date(Date.parse(hour.start) + HOUR_MS).toISOString();
     router.push(anomaliesHref(hour.start, end, click.seriesName));
+  });
+  // The stack as prose: the totals the chart cannot give a screen reader.
+  const seen = model.hours.reduce((sum, hour) => sum + hour.total, 0);
+  const bySeverity = model.severities
+    .map(
+      (s) =>
+        `${measures.count(model.hours.reduce((sum, hour) => sum + (hour.counts[s] ?? 0), 0))} ${label("severity", s).toLocaleLowerCase(measures.locale === "tr" ? "tr-TR" : "en-US")}`,
+    )
+    .join(", ");
+  const summary = t("summary", {
+    since: range.since,
+    until: range.until,
+    bound: model.lowerBound ? t("atLeast") : "",
+    seen: measures.count(seen),
+    hours: measures.count(model.hours.length),
+    by: bySeverity ? ` (${bySeverity})` : "",
+    tail: model.lowerBound ? t("cappedTail") : ".",
   });
   return (
     <>
@@ -75,16 +96,16 @@ function Columns({
         ref={ref}
         className="hc-chart"
         role="img"
-        aria-label="Anomalies per hour by severity, last 24 hours"
+        aria-label={t("ariaLabel")}
       />
-      <p className="sr-only">{severityText(model, range)}</p>
-      <ul className="hc-key-list" aria-label="Severity key">
+      <p className="sr-only">{summary}</p>
+      <ul className="hc-key-list" aria-label={t("keyLabel")}>
         {stackOrder(model.severities).map((s) => (
           <li key={s}>
             <svg className="hc-swatch" viewBox="0 0 1 1" aria-hidden="true" focusable="false">
               <rect width="1" height="1" fill={severityVar(s)} />
             </svg>
-            {word(s)}
+            {label("severity", s)}
           </li>
         ))}
       </ul>
@@ -111,6 +132,11 @@ function emptyWindow(
 }
 
 export function SeverityChart() {
+  const t = useTranslations("home.severity");
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
+  const copy = useWidgetCopy();
+  const windowLabel = copy.range("24h");
   const tick = useRefreshTick();
   // The range moves with the hour, not with the render, so the request's key is stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,12 +149,12 @@ export function SeverityChart() {
   return (
     <WidgetFrame
       id="home-severity"
-      title="Anomalies by severity"
-      windowText={WINDOW_LABEL}
-      badge={(model && badgeText(model.qualifiers)) || undefined}
-      link={{ href: anomaliesHref(range.since, range.until), label: "Anomalies" }}
+      title={t("title")}
+      windowText={windowLabel}
+      badge={(model && badgePhrase(say, measures, model.qualifiers)) || undefined}
+      link={{ href: anomaliesHref(range.since, range.until), label: t("link") }}
       state={state}
-      what="the anomaly list"
+      what={t("what")}
       permission="read:anomalies"
       fillBody
     >
@@ -136,22 +162,13 @@ export function SeverityChart() {
         if (!model) return null;
         const kind = emptyWindow(model, ok.data.total, ok.data.items.length);
         if (kind === "empty") {
-          return <p className="tw-state">No anomaly opened in the last {WINDOW_LABEL}.</p>;
+          return <p className="tw-state">{t("empty", { window: windowLabel })}</p>;
         }
         if (kind === "capped") {
-          return (
-            <p className="tw-state">
-              None of the returned anomalies fall in this window. The list was capped, so this is
-              not a measured zero.
-            </p>
-          );
+          return <p className="tw-state">{t("capped")}</p>;
         }
         if (kind === "uncounted") {
-          return (
-            <p className="tw-state">
-              The list&apos;s total does not match the rows returned, so this window is not counted.
-            </p>
-          );
+          return <p className="tw-state">{t("uncounted")}</p>;
         }
         return <Columns model={model} range={range} />;
       }}

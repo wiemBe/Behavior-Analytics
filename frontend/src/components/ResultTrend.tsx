@@ -18,6 +18,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfigNotice } from "@/components/catalog/ConfigNotice";
+import { ENGLISH_TREND, trendCount, type TrendI18n } from "@/components/trendText";
 import { runReadout } from "@/components/searches/authoring";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -32,7 +33,7 @@ import {
   type SearchResultTrend,
 } from "@/lib/api";
 import { readChartPalette } from "@/lib/chartPalette";
-import { formatDuration } from "@/lib/searchCadence";
+import { durationText } from "@/i18n/measures";
 import {
   axisTimeLabel,
   formatRunDuration,
@@ -76,7 +77,7 @@ export type TrendVisualization =
   | "PIE"
   | "HEATMAP";
 
-/** Refused read of this widget. Names the permission and who grants it. */
+/** Refused read of this widget (English; the body shows `trend.forbidden`). Names the permission and who grants it. */
 export const SEARCH_RESULTS_FORBIDDEN =
   "Your role cannot read search results (permission read:searches). An administrator grants read:searches. Nothing was changed.";
 
@@ -173,28 +174,41 @@ function formatDimensions(dimensions: Record<string, unknown>): string {
   return parts.length ? parts.join(", ") : "—";
 }
 
-function httpMessage(status: number | null): string {
-  return actionErrorMessage(new ApiError(status ?? 500, ""));
+function httpMessage(status: number | null, x: TrendI18n): string {
+  return actionErrorMessage(new ApiError(status ?? 500, ""), x === ENGLISH_TREND ? undefined : x.t);
+}
+
+/** The `units` namespace's translator (`second`, `minute`, `hour`, `day`) from a full-key one. */
+function unitsOf(x: TrendI18n) {
+  return (key: string, values?: Record<string, string | number>) => x.t(`units.${key}`, values);
 }
 
 function refused(states: { status: string }[]): boolean {
   return states.some((state) => state.status === "forbidden");
 }
 
-function CreatedLine({ createdAt, variant }: { createdAt: string | null; variant: "page" | "widget" }) {
-  const how =
-    variant === "widget"
-      ? "Run it from the search page with Run now, or wait for its schedule."
-      : "Run it from this page with Run now, or wait for its schedule.";
+function CreatedLine({
+  createdAt,
+  variant,
+  x,
+}: {
+  createdAt: string | null;
+  variant: "page" | "widget";
+  x: TrendI18n;
+}) {
+  const { t } = x;
+  const how = variant === "widget" ? t("trend.neverRun.howWidget") : t("trend.neverRun.howPage");
   return (
     <div className={variant === "widget" ? "tw-state" : "notice"}>
       <p>
         {createdAt ? (
           <>
-            This search has never run since it was created on <UtcTime value={createdAt} />.{" "}
+            {t("trend.neverRun.createdBefore")}
+            <UtcTime value={createdAt} />
+            {t("trend.neverRun.createdAfter")}
           </>
         ) : (
-          "This search has never run. The creation time was not recorded. "
+          t("trend.neverRun.noCreated")
         )}
         {how}
       </p>
@@ -202,21 +216,28 @@ function CreatedLine({ createdAt, variant }: { createdAt: string | null; variant
   );
 }
 
-function StaleLine({ stale }: { stale: Staleness }) {
+function StaleLine({ stale, x }: { stale: Staleness; x: TrendI18n }) {
+  const units = unitsOf(x);
   return (
     <p className="subtitle trend-note" role="status">
-      Stale: the last successful run was {<UtcTime value={stale.at} />},{" "}
-      {formatDuration(stale.ageMs / 1000)} old (schedule interval{" "}
-      {formatDuration(stale.intervalMs / 1000)}).
+      {x.t("trend.stale.before")}
+      <UtcTime value={stale.at} />
+      {x.t("trend.stale.after", {
+        age: durationText(units, stale.ageMs / 1000),
+        interval: durationText(units, stale.intervalMs / 1000),
+      })}
     </p>
   );
 }
 
-function LowerBoundValue({ value }: { value: number }) {
+/** The mark before a lower bound; the screen reader hears `trend.atLeast` instead. */
+const LOWER_BOUND_MARK = "≥ ";
+
+function LowerBoundValue({ value, x }: { value: number; x: TrendI18n }) {
   return (
     <>
-      <span aria-hidden="true">≥ </span>
-      <span className="sr-only">at least </span>
+      <span aria-hidden="true">{LOWER_BOUND_MARK}</span>
+      <span className="sr-only">{x.t("trend.atLeast")}</span>
       <span className="num">{value}</span>
     </>
   );
@@ -234,6 +255,7 @@ export function ResultTrend({
   honourRange = false,
   range: rangeProp,
   now,
+  i18n: x = ENGLISH_TREND,
 }: {
   searchId: string;
   /** Series key. Omitted on a table: the table starts on all rows. */
@@ -250,7 +272,10 @@ export function ResultTrend({
   range?: WidgetRange | null;
   /** Clock for the staleness check. Tests pass a fixed instant. */
   now?: number;
+  /** The interface language; without it the trend is in English (the search page). */
+  i18n?: TrendI18n;
 }) {
+  const { t } = x;
   const chartRef = useRef<echarts.ECharts | null>(null);
   // The node, not only the option: the option can be ready while a loading
   // branch is still mounted, and the effect would otherwise miss the div.
@@ -403,21 +428,26 @@ export function ResultTrend({
           if (row.point === null) {
             return [
               utcTimeHtml(row.at),
-              "Truncated run: no result count recorded",
-              "The search hit its row cap, so only a lower bound exists",
+              t("trend.tooltip.truncatedRun"),
+              t("trend.tooltip.truncatedCap"),
             ].join("<br/>");
           }
           const point = row.point;
           const count = FAILED_STATUSES.has(point.execution_status)
-            ? "no result (run failed)"
-            : String(point.value);
+            ? t("trend.tooltip.failedCount")
+            : trendCount(point.value, x.locale);
           return [
             utcTimeHtml(point.bucket_start),
-            `Result count: ${count}`,
-            `Status: ${point.execution_status}`,
-            `Duration: ${formatRunDuration(point.duration_ms)}`,
-            `Query version: v${point.query_version}`,
-            point.threshold_breached ? "Threshold: breached" : "",
+            t("trend.tooltip.resultCount", { count }),
+            t("trend.tooltip.status", { status: point.execution_status }),
+            t("trend.tooltip.duration", {
+              duration:
+                x === ENGLISH_TREND
+                  ? formatRunDuration(point.duration_ms)
+                  : formatRunDuration(point.duration_ms, unitsOf(x), x.locale),
+            }),
+            t("trend.tooltip.version", { version: point.query_version }),
+            point.threshold_breached ? t("trend.tooltip.breached") : "",
           ]
             .filter(Boolean)
             .join("<br/>");
@@ -425,7 +455,7 @@ export function ResultTrend({
       },
       xAxis: {
         type: "time",
-        name: "Time (UTC)",
+        name: t("trend.axis.time"),
         nameLocation: "middle",
         nameGap: 32,
         nameTextStyle: text,
@@ -438,7 +468,7 @@ export function ResultTrend({
       },
       yAxis: {
         type: "value",
-        name: "Result rows",
+        name: t("trend.axis.rows"),
         nameTextStyle: { ...text, align: "left" },
         min: 0,
         // Same spacing as the fleet EPS axis: few ticks, and ECharts drops a
@@ -481,7 +511,7 @@ export function ResultTrend({
                   label: { show: false },
                   data: [
                     ...lone.map((i) => ({
-                      name: "Measured run between gaps",
+                      name: t("trend.series.lone"),
                       coord: [times[i], values[i] as number],
                       symbol: "circle",
                       symbolSize: 5,
@@ -493,7 +523,7 @@ export function ResultTrend({
                       symbol: "pin",
                       symbolSize: 44,
                       itemStyle: { color: palette.crit },
-                      label: { show: true, color: palette.tooltipText, fontSize: 12, formatter: "fail" },
+                      label: { show: true, color: palette.tooltipText, fontSize: 12, formatter: t("trend.series.fail") },
                     })),
                   ],
                 }
@@ -503,7 +533,7 @@ export function ResultTrend({
           ? [
               {
                 type: "line" as const,
-                name: "threshold",
+                name: t("trend.series.threshold"),
                 data: times.map((t) => [t, trend.threshold_value]),
                 showSymbol: false,
                 lineStyle: { color: palette.crit, type: "dotted" as const, width: 1 },
@@ -514,7 +544,7 @@ export function ResultTrend({
           : []),
       ],
     };
-  }, [viz, seriesType, trend, rows]);
+  }, [viz, seriesType, trend, rows, t, x]);
 
   useEffect(() => {
     if (!chartNode || !option) return;
@@ -541,13 +571,13 @@ export function ResultTrend({
   if (waiting) {
     body = (
       <p className={box} role="status">
-        Loading result trend…
+        {t("trend.loading")}
       </p>
     );
   } else if (refused(reads)) {
     body = (
       <p className={box} role="alert">
-        {SEARCH_RESULTS_FORBIDDEN}
+        {t("trend.forbidden")}
       </p>
     );
   } else if (
@@ -558,9 +588,9 @@ export function ResultTrend({
   ) {
     body = (
       <ConfigNotice
-        lead="This search was deleted."
-        text="The search set for this widget no longer exists."
-        hint="Open Customize, then Configure, to choose another."
+        lead={t("trend.deletedLead")}
+        text={t("trend.deletedText")}
+        hint={t("trend.deletedHint")}
       />
     );
   } else if (
@@ -576,25 +606,25 @@ export function ResultTrend({
     const status = failed.status === "error" ? failed.httpStatus : null;
     body = (
       <p className={box} role="alert">
-        {httpMessage(status)}
+        {httpMessage(status, x)}
       </p>
     );
   } else if (latest && FAILED_STATUSES.has(latest.status)) {
     body = (
       <p className={box} role="alert">
-        {runReadout(latest, loadedSearch?.consecutive_failures ?? null).text}
+        {runReadout(latest, loadedSearch?.consecutive_failures ?? null, t).text}
       </p>
     );
   } else if (knowNeverRun || (executions === undefined && trend !== null && trend.points.length === 0)) {
-    body = <CreatedLine createdAt={createdAt} variant={variant} />;
+    body = <CreatedLine createdAt={createdAt} variant={variant} x={x} />;
   } else if (tableMode && groupsState.status === "ok" && groupsState.data.empty !== null) {
     body = (
       <div className={box}>
         <p>
           {groupsState.data.empty === "no_execution"
-            ? "This search has no execution."
-            : "No execution of this search stored a grouped row."}{" "}
-          A missing count is not shown as zero.
+            ? t("trend.noGrouped.noExecution")
+            : t("trend.noGrouped.noRows")}{" "}
+          {t("trend.noGrouped.missing")}
         </p>
       </div>
     );
@@ -616,6 +646,7 @@ export function ResultTrend({
         stale={stale}
         honourRange={honourRange}
         expanded={expanded}
+        x={x}
       />
     );
   }
@@ -643,6 +674,7 @@ function TrendBody({
   stale,
   honourRange,
   expanded,
+  x,
 }: {
   viz: TrendVisualization;
   variant: "page" | "widget";
@@ -659,13 +691,15 @@ function TrendBody({
   stale: Staleness | null;
   honourRange: boolean;
   expanded: boolean;
+  x: TrendI18n;
 }) {
+  const { t } = x;
   const picker = (
     <div className="trend-toolbar">
       <label>
-        Metric{" "}
-        <select aria-label="Metric" value={activeKey} onChange={(event) => onPick(event.target.value)}>
-          {tableMode ? <option value="">All rows</option> : null}
+        {t("trend.metric")}{" "}
+        <select aria-label={t("trend.metric")} value={activeKey} onChange={(event) => onPick(event.target.value)}>
+          {tableMode ? <option value="">{t("trend.allRows")}</option> : null}
           {pickerKeys.map((key) => (
             <option key={key} value={key}>
               {key}
@@ -680,8 +714,8 @@ function TrendBody({
     return (
       <>
         {picker}
-        <SingleValue trend={trend} latest={latest} />
-        {stale ? <StaleLine stale={stale} /> : null}
+        <SingleValue trend={trend} latest={latest} x={x} />
+        {stale ? <StaleLine stale={stale} x={x} /> : null}
       </>
     );
   }
@@ -690,7 +724,7 @@ function TrendBody({
     return (
       <>
         {picker}
-        <ShapeNote viz={viz} />
+        <ShapeNote viz={viz} x={x} />
         <GroupsTable
           groups={groups}
           metricKey={activeKey}
@@ -698,8 +732,9 @@ function TrendBody({
           expanded={expanded}
           honourRange={honourRange}
           variant={variant}
+          x={x}
         />
-        {stale ? <StaleLine stale={stale} /> : null}
+        {stale ? <StaleLine stale={stale} x={x} /> : null}
       </>
     );
   }
@@ -707,9 +742,7 @@ function TrendBody({
   if (!trend || trend.points.length === 0) {
     return (
       <div className={variant === "widget" ? "tw-state" : "notice"}>
-        <p>
-          No measured points in this window. Truncated runs are gaps and are not drawn as zero.
-        </p>
+        <p>{t("trend.noPoints")}</p>
       </div>
     );
   }
@@ -717,38 +750,30 @@ function TrendBody({
   return (
     <>
       {picker}
-      <div ref={onChart} className="chart" role="img" aria-label="Search result trend" />
+      <div ref={onChart} className="chart" role="img" aria-label={t("trend.chartLabel")} />
       <p className="subtitle trend-note">
-        {trend.count} point{trend.count === 1 ? "" : "s"} · metric <code>{trend.metric_key}</code>
+        {t("trend.note.points", { count: trend.count, shown: trendCount(trend.count, x.locale) })}
+        <code>{trend.metric_key}</code>
         {trend.threshold_value != null
-          ? ` · threshold ${trend.threshold_operator} ${trend.threshold_value}`
+          ? t("trend.note.threshold", {
+              operator: trend.threshold_operator ?? "",
+              value: trend.threshold_value,
+            })
           : ""}
-        {versionBoundaries(trend.points).length > 0
-          ? " · dashed lines mark query-version changes; results across versions are not comparable"
-          : ""}
-        {gapCount > 0
-          ? ` · ${gapCount} truncated run${gapCount === 1 ? "" : "s"} left a gap: no count was stored, so the line is broken there`
-          : ""}
+        {versionBoundaries(trend.points).length > 0 ? t("trend.note.versions") : ""}
+        {gapCount > 0 ? t("trend.note.gaps", { count: gapCount, shown: trendCount(gapCount, x.locale) }) : ""}
       </p>
-      {stale ? <StaleLine stale={stale} /> : null}
+      {stale ? <StaleLine stale={stale} x={x} /> : null}
     </>
   );
 }
 
-function ShapeNote({ viz }: { viz: TrendVisualization }) {
+function ShapeNote({ viz, x }: { viz: TrendVisualization; x: TrendI18n }) {
   if (viz === "PIE") {
-    return (
-      <p className="subtitle trend-note">
-        Stored as a pie chart. It is shown as a table: a pie over grouped rows is not drawn.
-      </p>
-    );
+    return <p className="subtitle trend-note">{x.t("trend.shape.pie")}</p>;
   }
   if (viz === "HEATMAP") {
-    return (
-      <p className="subtitle trend-note">
-        Stored as a heatmap. No heatmap shape is defined, so the rows are shown as a table.
-      </p>
-    );
+    return <p className="subtitle trend-note">{x.t("trend.shape.heatmap")}</p>;
   }
   return null;
 }
@@ -756,34 +781,43 @@ function ShapeNote({ viz }: { viz: TrendVisualization }) {
 function SingleValue({
   trend,
   latest,
+  x,
 }: {
   trend: SearchResultTrend | null;
   latest: SearchExecution | null;
+  x: TrendI18n;
 }) {
+  const { t } = x;
   if (latest?.truncated) {
     const count = resultCount(latest);
     const when = latest.completed_at ?? latest.started_at;
-    const verdict = latest.threshold_breached ? "Threshold: breached." : "Threshold: no verdict.";
+    const verdict = latest.threshold_breached
+      ? t("trend.single.thresholdBreached")
+      : t("trend.single.thresholdNoVerdict");
     return (
       <div>
         <p className="trend-value">
           {count.kind === "lower-bound" && count.value != null ? (
-            <LowerBoundValue value={count.value} />
+            <LowerBoundValue value={count.value} x={x} />
           ) : (
-            "The latest run was truncated. The row count was not recorded, so it is not shown as zero."
+            t("trend.single.truncatedNoCount")
           )}
         </p>
         <p className="subtitle trend-note">
           {count.kind === "lower-bound" ? (
             <>
-              result rows at <UtcTime value={when} />.{" "}
+              {t("trend.single.rowsAtBefore")}
+              <UtcTime value={when} />
+              {t("trend.single.rowsAtAfter")}
             </>
           ) : (
             <>
-              <UtcTime value={when} />.{" "}
+              <UtcTime value={when} />
+              {t("trend.single.timeOnlyAfter")}
             </>
           )}
-          {verdict} The latest run was truncated, so an older success is not the current total.
+          {verdict}
+          {t("trend.single.olderSuccess")}
         </p>
       </div>
     );
@@ -792,19 +826,17 @@ function SingleValue({
     ? [...trend.points].reverse().find((point) => !FAILED_STATUSES.has(point.execution_status))
     : undefined;
   if (!measured) {
-    return (
-      <p className="subtitle">
-        No measured value for this metric. It is not shown as zero.
-      </p>
-    );
+    return <p className="subtitle">{t("trend.single.none")}</p>;
   }
   return (
     <div>
       <p className="trend-value">
-        <span className="num">{measured.value}</span>
+        <span className="num">{trendCount(measured.value, x.locale)}</span>
       </p>
       <p className="subtitle trend-note">
-        result rows at {<UtcTime value={measured.bucket_start} />}.
+        {t("trend.single.measuredBefore")}
+        <UtcTime value={measured.bucket_start} />
+        {t("trend.single.measuredAfter")}
       </p>
     </div>
   );
@@ -817,6 +849,7 @@ function GroupsTable({
   expanded,
   honourRange,
   variant,
+  x,
 }: {
   groups: LatestGroups;
   metricKey: string;
@@ -824,46 +857,53 @@ function GroupsTable({
   expanded: boolean;
   honourRange: boolean;
   variant: "page" | "widget";
+  x: TrendI18n;
 }) {
+  const { t } = x;
   const shown = metricKey ? groups.rows.filter((row) => row.metric_key === metricKey) : groups.rows;
   const run = executions?.find((execution) => execution.id === groups.execution_id) ?? null;
   const verdict = groups.values_are_lower_bounds
     ? run?.threshold_breached
-      ? "breached"
-      : "no verdict"
+      ? t("trend.groups.breached")
+      : t("trend.groups.noVerdict")
     : run?.threshold_breached
-      ? "breached"
+      ? t("trend.groups.breached")
       : null;
   const cap = expanded ? 500 : 50;
+  const figures = {
+    shown: trendCount(shown.length, x.locale),
+    total: trendCount(groups.total, x.locale),
+  };
   return (
     <>
-      <TableScroll label="Latest run rows">
+      <TableScroll label={t("trend.groups.label")}>
         <table className="table-dense">
           <caption className="subtitle trend-note">
-            Latest run
+            {t("trend.groups.captionStart")}
             {groups.started_at ? (
               <>
-                , <UtcTime value={groups.started_at} />
+                {t("trend.groups.captionTime")}
+                <UtcTime value={groups.started_at} />
               </>
             ) : (
               ""
             )}
-            , highest value first
-            {groups.total > shown.length ? `. Showing ${shown.length} of ${groups.total} rows` : ""}
+            {t("trend.groups.captionEnd")}
+            {groups.total > shown.length ? t("trend.groups.captionShowing", figures) : ""}
           </caption>
           <thead>
             <tr>
-              <th scope="col">Metric</th>
-              <th scope="col">Dimensions</th>
+              <th scope="col">{t("trend.groups.metric")}</th>
+              <th scope="col">{t("trend.groups.dimensions")}</th>
               <th scope="col" className="num">
-                Value (result rows)
+                {t("trend.groups.value")}
               </th>
             </tr>
           </thead>
           <tbody>
             {shown.length === 0 ? (
               <tr>
-                <td colSpan={3}>No row for this metric. The count is not shown as zero.</td>
+                <td colSpan={3}>{t("trend.groups.noRow")}</td>
               </tr>
             ) : (
               shown.map((row) => (
@@ -873,7 +913,11 @@ function GroupsTable({
                   </td>
                   <td className="trend-dims">{formatDimensions(row.dimensions)}</td>
                   <td className="num">
-                    {groups.values_are_lower_bounds ? <LowerBoundValue value={row.value} /> : row.value}
+                    {groups.values_are_lower_bounds ? (
+                      <LowerBoundValue value={row.value} x={x} />
+                    ) : (
+                      trendCount(row.value, x.locale)
+                    )}
                   </td>
                 </tr>
               ))
@@ -883,24 +927,23 @@ function GroupsTable({
       </TableScroll>
       {groups.values_are_lower_bounds ? (
         <p className="subtitle trend-note">
-          Values are a lower bound: the run was truncated.
-          {verdict ? ` Threshold: ${verdict}.` : ""}
+          {t("trend.groups.lowerBound")}
+          {verdict ? t("trend.groups.thresholdIn", { verdict }) : ""}
         </p>
       ) : verdict ? (
-        <p className="subtitle trend-note">Threshold: {verdict}.</p>
+        <p className="subtitle trend-note">{t("trend.groups.threshold", { verdict })}</p>
       ) : null}
       {groups.total > shown.length ? (
         <p className="subtitle trend-note">
-          Showing {shown.length} of {groups.total} rows, highest value first
-          {cap < groups.total ? ` (this view keeps ${cap})` : ""}.
+          {t("trend.groups.showing", {
+            ...figures,
+            keeps: cap < groups.total ? t("trend.groups.keeps", { cap: trendCount(cap, x.locale) }) : "",
+          })}
         </p>
       ) : null}
       {honourRange && variant === "widget" ? (
-        <p className="subtitle trend-note">
-          This table is the latest run that stored rows. The dashboard range does not filter it.
-        </p>
+        <p className="subtitle trend-note">{t("trend.groups.latestOnly")}</p>
       ) : null}
     </>
   );
 }
-

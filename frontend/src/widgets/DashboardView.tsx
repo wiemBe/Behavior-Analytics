@@ -12,6 +12,7 @@
 // Editing is offered only at 12 columns. Expand stays local because it changes no layout.
 
 import dynamic from "next/dynamic";
+import { useTranslations } from "next-intl";
 import {
   useCallback,
   useEffect,
@@ -31,6 +32,7 @@ import { useInView } from "@/hooks/useInView";
 import { Catalog, MAX_WIDGETS } from "./Catalog";
 import { ConfigureDrawer, hasConfigure, type ConfigChoice } from "./Configure";
 import { CadenceProvider } from "./cadence";
+import { useWidgetCopy } from "./copy";
 import { ExpandDialog } from "./Expand";
 import {
   columnsForWidth,
@@ -50,13 +52,18 @@ import "@/components/home/kpi.css";
 import "@/components/home/tables.css";
 import "./dashboard.css";
 
+function EditorLoading() {
+  const t = useTranslations("widgets.view");
+  return (
+    <p className="dg-editor-loading" role="status">
+      {t("loadingEditor")}
+    </p>
+  );
+}
+
 const EditGrid = dynamic(() => import("./Grid").then((module) => module.EditGrid), {
   ssr: false,
-  loading: () => (
-    <p className="dg-editor-loading" role="status">
-      Loading dashboard editor…
-    </p>
-  ),
+  loading: EditorLoading,
 });
 
 /** The grid's columns, from its own width (the sidebar takes a share of the viewport). */
@@ -136,23 +143,21 @@ function PlacedWidget({
   onConfigure?: ((trigger: HTMLElement) => void) | null;
   expanded?: boolean;
 }) {
+  const t = useTranslations("widgets.view");
+  const copy = useWidgetCopy();
   const def = widgetDef(widget.type);
   let content: ReactNode;
   if (!def) {
     content = (
       <NoticeFrame
         id={widget.id}
-        title="Unsupported widget"
-        text={`This dashboard holds a widget of type ${widget.type} that this version does not know. It is kept in the layout and nothing was changed.`}
+        title={t("unsupportedTitle")}
+        text={t("unsupportedText", { type: widget.type })}
       />
     );
   } else if (def.status === "blocked") {
     content = (
-      <NoticeFrame
-        id={widget.id}
-        title={def.title}
-        text={`Not available: ${def.blockedBy}.`}
-      />
+      <NoticeFrame id={widget.id} title={copy.title(def)} text={copy.notAvailable(def)} />
     );
   } else {
     const Component = def.Component;
@@ -220,7 +225,7 @@ function PlacedCell({
   const Deferred = useMemo(
     () =>
       def && def.status === "live"
-        ? placeholderFor(def.title, def.category === "KPI")
+        ? placeholderFor(def, def.category === "KPI")
         : null,
     [def],
   );
@@ -288,6 +293,9 @@ export function DashboardView({
   onDiscard,
   onCustomizeChange,
 }: DashboardViewProps) {
+  const t = useTranslations("widgets.view");
+  const common = useTranslations("common");
+  const copy = useWidgetCopy();
   const [localLayout, setLocalLayout] = useState(initial);
   const layout = onLayoutChange ? initial : localLayout;
   const [customizing, setCustomizing] = useState(false);
@@ -334,8 +342,8 @@ export function DashboardView({
       ...l,
       widgets: compactLayout(l.widgets.filter((widget) => widget.id !== id)),
     }));
-    setNotice("Widget removed.");
-  }, [updateLayout]);
+    setNotice(t("removed"));
+  }, [updateLayout, t]);
 
   const setRange = useCallback((id: string, range: WidgetRange | null) => {
     updateLayout((l) => ({
@@ -351,7 +359,7 @@ export function DashboardView({
         widget.id === id ? { ...widget, range: choice.range, config: choice.config } : widget,
       ),
     }));
-    setNotice("Widget configuration applied.");
+    setNotice(t("applied"));
     closeOverlay(setConfigureId);
   };
 
@@ -389,7 +397,7 @@ export function DashboardView({
         },
       ],
     });
-    setNotice(`Added ${def.title}.`);
+    setNotice(t("added", { title: copy.title(def) }));
     setCatalogOpen(false);
   };
 
@@ -397,12 +405,12 @@ export function DashboardView({
     <>
       {dirty && canSave ? (
         <button type="button" className="action" disabled={saving} onClick={() => void onSave?.()}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? common("saving") : common("save")}
         </button>
       ) : null}
       {dirty ? (
         <button type="button" className="action secondary" onClick={onDiscard}>
-          Discard
+          {t("discard")}
         </button>
       ) : null}
     </>
@@ -414,7 +422,7 @@ export function DashboardView({
       <>
         {lead}
         {pending}
-        {dirty ? null : <p className="dg-hint">Widen the window to customize</p>}
+        {dirty ? null : <p className="dg-hint">{t("widen")}</p>}
       </>
     );
   } else if (!editing) {
@@ -423,7 +431,7 @@ export function DashboardView({
         {lead}
         {pending}
         <button type="button" className="action secondary" onClick={() => setCustomize(true)}>
-          Customize
+          {t("customize")}
         </button>
       </>
     );
@@ -437,7 +445,7 @@ export function DashboardView({
           className="action secondary"
           onClick={() => setCatalogOpen(true)}
         >
-          Add widget
+          {t("addWidget")}
         </button>
         <button
           type="button"
@@ -451,7 +459,7 @@ export function DashboardView({
             setNotice("");
           }}
         >
-          {saving ? "Saving…" : "Done"}
+          {saving ? common("saving") : t("done")}
         </button>
       </>
     );
@@ -464,8 +472,8 @@ export function DashboardView({
         <p className="dg-status dg-save-status" role="status" aria-live="polite">
           {dirty
             ? canSave
-              ? "Unsaved changes."
-              : "Unsaved changes. They last for this session only."
+              ? t("unsaved")
+              : t("unsavedSession")
             : null}
           {saveMessage ? `${dirty ? " " : ""}${saveMessage}` : null}
           {notice ? <span className="dg-notice"> {notice}</span> : null}
@@ -508,7 +516,7 @@ export function DashboardView({
       </div>
       {expanded && expandedDef ? (
         <ExpandDialog
-          title={expandedDef.title}
+          title={copy.title(expandedDef)}
           range={effectiveRange(expanded.range, layout.range)}
           rangeOptions={expandedDef.range}
           onRange={(range) => setRange(expanded.id, range)}

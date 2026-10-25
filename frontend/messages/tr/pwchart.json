@@ -1,0 +1,69 @@
+{
+  "unit": {
+    "perBucket": "olay / zaman dilimi",
+    "perMinutes": "olay / {minutes} dk",
+    "perSeconds": "olay / {seconds} sn"
+  },
+  "kind": {
+    "EXACT": "kesin sayı",
+    "LOWER_BOUND": "alt sınır: en az bu kadar",
+    "MEASURED_ZERO": "ölçülmüş sıfır",
+    "UNKNOWN": "bilinmiyor: sıfır değil",
+    "NOT_AN_OBSERVATION": "bu değer o sırada izlenmiyordu",
+    "NOT_COLLECTED": "zaman dilimi toplanmadı"
+  },
+  "atLeast": "en az {value}",
+  "atMost": "en çok ",
+  "fromHistory": "QRadar geçmişinden okundu, değerlendirilmedi",
+  "tooltip": {
+    "point": "{label}: {value} {unit} ({kind}{origin})",
+    "notPlotted": "{label}: çizilmedi, {kind}{origin}",
+    "origin": "; QRadar geçmişinden okundu, değerlendirilmedi",
+    "expectedRange": "Haftanın bu saati için beklenen aralık: {low} ile {high} arası {unit}",
+    "expectedMedian": "Beklenen medyan: {median} {unit}",
+    "learning": "Beklenen aralık: öğreniliyor, henüz güvenilir değil",
+    "noBaseline": "Beklenen aralık: bu saat için baseline yok",
+    "shareUnknown": "Ayrıştırılan pay: bu zaman dilimi için bilinmiyor",
+    "share": "Ayrıştırılan pay: {bound}{share}",
+    "unparsed": "Ayrıştırılmayan kalan: {bound}{value} {unit}",
+    "atLeastBound": "en az ",
+    "atMostBound": "en çok "
+  },
+  "axis": {
+    "time": "Zaman (UTC)",
+    "share": "Ayrıştırılan pay (%)",
+    "floor": "Alt sınır {percent}"
+  },
+  "area": {
+    "notCollected": "toplanmadı",
+    "incident": "olay",
+    "history": "QRadar geçmişinden okundu, değerlendirilmedi",
+    "detection": "tespitteki beklenen aralık"
+  },
+  "chart": {
+    "ariaLabel": "Seçilen değerler için zaman dilimi başına olay sayısı ve kapsamın ayrıştırılan payı",
+    "empty": "Çizilen değer yok.",
+    "summaryValues": "{count} değer için {unit}, UTC.",
+    "summaryCollected": "Aralıkta toplanan beş dakikalık aralık: {collected} / {window}.",
+    "summaryTable": "Aynı rakamlar değerler tablosunda var.",
+    "keyLabel": "Grafik anahtarı",
+    "pinned": "sabitlenmiş",
+    "bandHour": "Haftanın saati için beklenen aralık",
+    "notCollected": "Toplanmadı",
+    "history": "QRadar geçmişinden okundu, değerlendirilmedi",
+    "bandDetection": "Tespitteki beklenen aralık",
+    "incident": "Olay",
+    "lowerBound": "En az bu kadar (alt sınır)",
+    "historyTable": "Grafikte gösterilen QRadar geçmişi",
+    "historyCaption": "QRadar geçmişinden okunan ve değerlendirilmeyen aralıklar",
+    "from": "Başlangıç (UTC)",
+    "to": "Bitiş (UTC)",
+    "meaning": "Anlamı",
+    "gaps": "Çizgideki boşluklar toplanmamış zaman dilimleridir",
+    "gapsMore": ", alt sınırlı bir zaman diliminde bilinmeyen değerler veya değerin izlenmediği zamanlar",
+    "notZero": ". Bunlar sıfır olay değildir; 0'daki çizgi ölçülmüş bir sıfırdır.",
+    "oneAtATime": " Beklenen aralık bir seferde tek değer için çizilir: bandını görmek için tek bir değer seçin.",
+    "dropped": " Seçilen {count} değer daha çizilmedi; grafik en çok {max} gösterir.",
+    "coveragePanel": " Alt panel, kapsamdaki olayların özelliğin ayrıştırıldığı payıdır."
+  }
+}

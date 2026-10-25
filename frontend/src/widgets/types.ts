@@ -6,6 +6,8 @@
 
 import type { ComponentType, ReactNode } from "react";
 
+import type { TextTranslator } from "@/i18n/textTranslator";
+
 export type WidgetCategory = "KPI" | "Chart" | "Table" | "Health" | "Admin";
 
 /** The per-widget range presets (UR.5.3). */
@@ -33,7 +35,8 @@ export interface ConfigOptionList {
 export interface OptionsRead<T = any> {
   key: string;
   fetch: (signal: AbortSignal) => Promise<T>;
-  options: (payload: T) => ConfigOptionList;
+  /** `t` is the root translator, for the interface words a label carries ("(disabled)"). */
+  options: (payload: T, t?: TextTranslator) => ConfigOptionList;
 }
 
 /**
@@ -42,6 +45,11 @@ export interface OptionsRead<T = any> {
  * while none is chosen. Changing the parent clears this key.
  */
 export interface OptionsSource {
+  /**
+   * The entry under `widgets.options` that holds `what`, `emptyReason` and `needs` in both
+   * languages. Absent: the English fields below are shown as they are.
+   */
+  messageKey?: string;
   /** What the options are, plural, for the field's states: "WAF sources". */
   what: string;
   /** Why the read may legitimately return nothing; shown when it does. */

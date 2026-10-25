@@ -3,6 +3,8 @@
 // The browser never runs AQL. These functions only shape the stored definition
 // and read the API's refusal. A reason string is copied through unchanged.
 
+import { ENGLISH_TREND } from "@/components/trendText";
+import type { TextTranslator } from "@/i18n/textTranslator";
 import { ApiError, type CallerInfo, type ScheduledSearch, type ScheduledSearchCreate, type ScheduledSearchUpdate, type SearchExecution, type SearchVersion } from "@/lib/api";
 import { SCHEDULE_PRESETS, cronToPreset } from "@/lib/searchCadence";
 import { resultCount } from "@/lib/searchRuns";
@@ -335,63 +337,63 @@ function lcsLengths(a: string[], b: string[]): number[][] {
   return dp;
 }
 
-const ERROR_WORDS: Record<string, string> = {
-  VALIDATION: "The query was rejected before it ran.",
-  AUTH: "QRadar refused the credentials.",
-  RATE_LIMITED: "QRadar throttled the search.",
-  TIMEOUT: "The search exceeded its timeout.",
-  SEARCH_FAILED: "QRadar reported that the search failed.",
-  NETWORK: "The connection to QRadar failed.",
-  PARSING: "The result could not be read.",
-  CANCELLED: "The run was cancelled.",
-  CAPACITY: "Not run: the Ariel search budget was full.",
-};
-
 export interface RunReadout {
   tone: "crit" | "warn" | "neutral";
   /** The status in words, including a lower bound when the run was truncated. */
   text: string;
 }
 
-/** What a run may claim. A missing count is not zero. A truncated count is a lower bound. */
-export function runReadout(execution: SearchExecution, consecutiveFailures: number | null): RunReadout {
+/**
+ * What a run may claim. A missing count is not zero. A truncated count is a lower bound. The
+ * sentences are the `trend.run` messages: `t` is the interface language's translator (full
+ * keys); without one they are English, as before.
+ */
+export function runReadout(
+  execution: SearchExecution,
+  consecutiveFailures: number | null,
+  t: TextTranslator = ENGLISH_TREND.t,
+): RunReadout {
   const failed = execution.status === "FAILED" || execution.status === "TIMEOUT" || execution.status === "CANCELLED";
   if (failed) {
+    const errorKey = execution.error_type ? `trend.run.errors.${execution.error_type}` : null;
     const named = execution.error_type
-      ? `Error type ${execution.error_type}. ${ERROR_WORDS[execution.error_type] ?? ""}`.trim()
-      : "No error type was recorded.";
+      ? t("trend.run.errorType", {
+          type: execution.error_type,
+          words: errorKey && t.has?.(errorKey) ? t(errorKey) : "",
+        }).trim()
+      : t("trend.run.noErrorType");
     const count =
       consecutiveFailures == null
-        ? `A search_failure alert opens after ${SEARCH_FAILURE_ALERT_AFTER} consecutive failed runs.`
-        : `Consecutive failures recorded: ${consecutiveFailures}. A search_failure alert opens after ${SEARCH_FAILURE_ALERT_AFTER}.`;
-    const word = execution.status === "FAILED" ? "failed" : `ended ${execution.status}`;
-    return {
-      tone: "crit",
-      text: `The latest run ${word}. ${named} Inspect the execution, edit the query, or wait for the retry. ${count}`,
-    };
+        ? t("trend.run.countUnknown", { after: SEARCH_FAILURE_ALERT_AFTER })
+        : t("trend.run.countKnown", { failures: consecutiveFailures, after: SEARCH_FAILURE_ALERT_AFTER });
+    const word =
+      execution.status === "FAILED"
+        ? t("trend.run.failedWord")
+        : t("trend.run.endedWord", { status: execution.status });
+    return { tone: "crit", text: t("trend.run.failedPrefix", { word, named, count }) };
   }
   if (execution.truncated) {
     const count = resultCount(execution);
     const bound =
       count.kind === "lower-bound"
-        ? `It counted at least ${count.value} rows.`
-        : "The row count was not recorded, so it is not shown as zero.";
+        ? t("trend.run.boundAtLeast", { count: count.value ?? 0 })
+        : t("trend.run.boundNone");
     const verdict = execution.threshold_breached
-      ? "The count already meets the threshold."
-      : "The threshold has no verdict: the true count may still be above it.";
-    return { tone: "warn", text: `The latest run was truncated. ${bound} ${verdict}` };
+      ? t("trend.run.verdictMet")
+      : t("trend.run.verdictNone");
+    return { tone: "warn", text: t("trend.run.truncated", { bound, verdict }) };
   }
   if (execution.status === "COMPLETED") {
     if (execution.result_count == null) {
-      return { tone: "neutral", text: "The latest run completed. The row count was not recorded." };
+      return { tone: "neutral", text: t("trend.run.completedNoCount") };
     }
-    const breached = execution.threshold_breached ? " The threshold was breached." : "";
+    const breached = execution.threshold_breached ? t("trend.run.breachedTail") : "";
     return {
       tone: "neutral",
-      text: `The latest run completed and returned ${execution.result_count} rows.${breached}`,
+      text: t("trend.run.completed", { count: execution.result_count, breached }),
     };
   }
-  return { tone: "neutral", text: `The latest run is ${execution.status}. There is no result yet.` };
+  return { tone: "neutral", text: t("trend.run.other", { status: execution.status }) };
 }
 
 export function runRequestFailure(err: unknown): string {

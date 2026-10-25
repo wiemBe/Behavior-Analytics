@@ -13,21 +13,23 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { useApiResource } from "@/hooks/useApiResource";
-import { HISTORY_TEXT } from "@/components/behavior/historyOrigin";
+import { useEnumLabels } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { useMeasures } from "@/i18n/measures";
 import { homeReads } from "@/lib/api";
-import { NOT_MEASURED } from "@/lib/behavior";
-import { formatPercent } from "@/lib/format";
-import { fleetDrillHref, formatEpsValue, type FleetWindow } from "@/lib/fleet";
+import { fleetDrillHref, CLASS_LABELS, type FleetWindow } from "@/lib/fleet";
 import type { HomePalette } from "@/lib/home/chartPalette";
 import { sliceVar } from "@/lib/home/chartPalette";
 import { epsByClass, REST_KEY, type ClassEps, type EpsByClass as Model } from "@/lib/home/epsByClass";
-import { badgeText } from "@/lib/home/qualifiers";
-import { RANGE_TEXT, useEffectiveRange, type RangedProps } from "@/widgets/runtime";
+import { useWidgetCopy } from "@/widgets/copy";
+import { useEffectiveRange, type RangedProps } from "@/widgets/runtime";
 
 import { buildClassOption } from "./chartOptions";
+import { badgePhrase, reasonText } from "./qualifierText";
 import { useEChart } from "./useEChart";
 import { WidgetFrame } from "./WidgetFrame";
 
@@ -42,19 +44,45 @@ export function classHref(e: Pick<ClassEps, "key">, window: FleetWindow): string
     : `/fleet/sources?class=${encodeURIComponent(e.key)}`;
 }
 
-const share = (v: number | null) => formatPercent(v, null, 0);
-const eps = (v: number | null | undefined) => formatEpsValue(v) ?? NOT_MEASURED;
+/** The class a label names, found by the label the derivation took from `CLASS_LABELS`. */
+const CLASS_OF_LABEL = new Map(Object.entries(CLASS_LABELS).map(([key, label]) => [label, key]));
 
-function reasonOf(model: Model): string {
-  const q = model.qualifiers.find((x) => x.kind === "INSUFFICIENT_DATA");
-  return q && q.kind === "INSUFFICIENT_DATA" ? q.reason : "No class has a mean EPS.";
+/** The words of the entries and the figures, in the interface language. */
+function useClassWords() {
+  const t = useTranslations("home.epsClass");
+  const measures = useMeasures();
+  const { label } = useEnumLabels();
+  return {
+    t,
+    measures,
+    /** An entry's name: a class by its key, the aggregate by its own word. */
+    entry: (e: Pick<ClassEps, "key" | "label">) =>
+      e.key === REST_KEY ? t("rest") : label("sourceClass", e.key),
+    /** A class named by its English label (the aggregate's contents). */
+    byLabel: (english: string) => {
+      const key = CLASS_OF_LABEL.get(english);
+      return key ? label("sourceClass", key) : english;
+    },
+    share: (v: number | null) => measures.percent(v, 0),
+    eps: (v: number | null | undefined) => measures.eps(v),
+  };
 }
 
 function Donut({ model, window }: { model: Model; window: FleetWindow }) {
   const router = useRouter();
+  const units = useTranslations("units");
+  const say = asTextTranslator(useTranslations());
+  const words = useClassWords();
+  const entries = useMemo(
+    () => model.entries.map((e) => ({ ...e, label: words.entry(e) })),
+    // `words.entry` follows the language; the model is what changes the entries.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [model.entries, words.measures.locale],
+  );
   const option = useMemo(
-    () => (p: HomePalette) => buildClassOption(model.entries, p),
-    [model.entries],
+    () => (p: HomePalette) =>
+      buildClassOption(entries, p, undefined, { t: say, locale: words.measures.locale }),
+    [entries, say, words.measures.locale],
   );
   const ref = useEChart(option, (click) => {
     const entry = click.dataIndex != null ? model.entries[click.dataIndex] : undefined;
@@ -64,27 +92,31 @@ function Donut({ model, window }: { model: Model; window: FleetWindow }) {
     <div className="hc-donut" aria-hidden="true">
       <div ref={ref} className="hc-donut-canvas" />
       <div className="hc-donut-total">
-        <span className="hc-donut-num">{eps(model.totalEps)}</span>
-        <span className="hc-donut-unit">EPS</span>
+        <span className="hc-donut-num">{words.eps(model.totalEps)}</span>
+        <span className="hc-donut-unit">{units("eps")}</span>
       </div>
     </div>
   );
 }
 
 function List({ model, window }: { model: Model; window: FleetWindow }) {
+  const words = useClassWords();
+  const { t } = words;
+  const units = useTranslations("units");
+  const restText = model.restContains.length
+    ? t("restContents", { classes: model.restContains.map(words.byLabel).join(", ") })
+    : undefined;
   return (
     <table className="hc-list">
-      <caption className="sr-only">
-        Mean EPS by source class, complete intervals only. Total {eps(model.totalEps)} EPS.
-      </caption>
+      <caption className="sr-only">{t("caption", { eps: words.eps(model.totalEps) })}</caption>
       <thead>
         <tr>
-          <th scope="col">Class</th>
+          <th scope="col">{t("class")}</th>
           <th scope="col" className="num">
-            EPS
+            {units("eps")}
           </th>
           <th scope="col" className="num">
-            Share
+            {t("share")}
           </th>
         </tr>
       </thead>
@@ -95,15 +127,15 @@ function List({ model, window }: { model: Model; window: FleetWindow }) {
               <svg className="hc-swatch" viewBox="0 0 1 1" aria-hidden="true" focusable="false">
                 <rect width="1" height="1" fill={sliceVar(i)} />
               </svg>
-              <Link href={classHref(e, window)}>{e.label}</Link>
+              <Link href={classHref(e, window)}>{words.entry(e)}</Link>
               {e.key === REST_KEY && model.restContains.length > 0 && (
-                <span className="hc-rest" title={model.restText ?? undefined}>
-                  {model.restContains.join(", ")}
+                <span className="hc-rest" title={restText}>
+                  {model.restContains.map(words.byLabel).join(", ")}
                 </span>
               )}
             </th>
-            <td className="num">{eps(e.eps)}</td>
-            <td className="num">{share(e.share)}</td>
+            <td className="num">{words.eps(e.eps)}</td>
+            <td className="num">{words.share(e.share)}</td>
           </tr>
         ))}
       </tbody>
@@ -112,11 +144,20 @@ function List({ model, window }: { model: Model; window: FleetWindow }) {
 }
 
 export function EpsByClass({ range }: RangedProps = {}) {
+  const t = useTranslations("home.epsClass");
+  const history = useTranslations("home.history");
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
+  const copy = useWidgetCopy();
   const window = useEffectiveRange(range);
   const read = homeReads.fleetSummary(window);
   const state = useApiResource(read.key, read.fetch);
   const data = state.status === "ok" ? state.data : null;
   const model = useMemo(() => (data ? epsByClass(data) : null), [data]);
+  const reasonOf = (m: Model): string => {
+    const q = m.qualifiers.find((x) => x.kind === "INSUFFICIENT_DATA");
+    return q && q.kind === "INSUFFICIENT_DATA" ? reasonText(say, q) : t("noMean");
+  };
   const complete = data?.classes.reduce((sum, c) => sum + c.buckets.complete, 0) ?? 0;
   const fromHistory =
     data?.classes.reduce((sum, c) => sum + c.buckets.complete_from_history, 0) ?? 0;
@@ -124,12 +165,12 @@ export function EpsByClass({ range }: RangedProps = {}) {
   return (
     <WidgetFrame
       id="home-eps-class"
-      title="EPS by source class"
-      windowText={RANGE_TEXT[window]}
-      badge={(model && badgeText(model.qualifiers)) || undefined}
-      link={{ href: fleetDrillHref(window), label: "Fleet" }}
+      title={t("title")}
+      windowText={copy.range(window)}
+      badge={(model && badgePhrase(say, measures, model.qualifiers)) || undefined}
+      link={{ href: fleetDrillHref(window), label: t("link") }}
       state={state}
-      what="EPS by class"
+      what={t("what")}
       permission="read:fleet"
     >
       {() =>
@@ -137,8 +178,10 @@ export function EpsByClass({ range }: RangedProps = {}) {
             <>
               {fromHistory > 0 && (
                 <p className="tw-note">
-                  {fromHistory.toLocaleString("en-US")} of {complete.toLocaleString("en-US")} complete
-                  buckets were {HISTORY_TEXT}.
+                  {history("buckets", {
+                    from: measures.count(fromHistory),
+                    complete: measures.count(complete),
+                  })}
                 </p>
               )}
               {model.entries.length === 0 ? (
@@ -150,11 +193,7 @@ export function EpsByClass({ range }: RangedProps = {}) {
                 </div>
               )}
               {model.classesWithoutData > 0 && (
-                <p className="tw-note">
-                  {model.classesWithoutData} class{model.classesWithoutData === 1 ? " has" : "es have"}{" "}
-                  no complete bucket and {model.classesWithoutData === 1 ? "is" : "are"} not in the
-                  total.
-                </p>
+                <p className="tw-note">{t("withoutData", { count: model.classesWithoutData })}</p>
               )}
             </>
           )

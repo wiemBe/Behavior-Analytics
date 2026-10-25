@@ -1,5 +1,5 @@
 
-import { formatCount } from "@/lib/format";
+import { formatCount, type FormatLocale } from "@/lib/format";
 
 // The parts a KPI card's body is built from: a figure with its unit and a line
 // of breakdown parts. The frame and its honesty qualifiers are in `WidgetFrame`.
@@ -69,11 +69,6 @@ export function Line({
 }
 
 /** A count and the noun it measures, kept together when the line wraps. */
-export function countNoun(value: number, noun: string): string {
-  return `${n(value)}\u00a0${noun}`;
-}
-
-/** "1,234.56": EPS with thousands separators and two decimals. */
-export function n(value: number): string {
-  return formatCount(value);
+export function countNoun(value: number, noun: string, locale: FormatLocale = "en"): string {
+  return `${formatCount(value, locale)}\u00a0${noun}`;
 }

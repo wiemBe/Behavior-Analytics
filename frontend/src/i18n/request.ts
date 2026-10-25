@@ -20,7 +20,10 @@ import { getRequestConfig } from "next-intl/server";
 import { LOCALE_COOKIE, toLocale, type Locale } from "./locale";
 
 export async function loadMessages(locale: Locale) {
-  return (await import(`../../messages/${locale}.json`)).default;
+  // Two literal specifiers so the bundler emits one chunk per locale and nothing else.
+  const assembled =
+    locale === "tr" ? await import("../../messages/tr") : await import("../../messages/en");
+  return assembled.default;
 }
 
 export async function requestConfiguration() {

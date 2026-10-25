@@ -21,6 +21,7 @@
 // the answer. After a write the list read is repeated under a new key; the server is the source
 // of truth, and what the list held stays on screen until the new answer lands.
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -29,6 +30,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { useReportDataAge } from "@/components/shell/AutoRefresh";
 import { epsSeriesAsOf } from "@/lib/home/asOf";
 import { useApiResource, type ResourceState } from "@/hooks/useApiResource";
+import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
+import { englishText } from "@/widgets/englishText";
 import { homeReads } from "@/lib/api";
 import {
   dashboardReads,
@@ -52,6 +55,7 @@ import {
   NameTakenDialog,
   UnsavedChangesDialog,
 } from "@/widgets/DashboardSaveDialogs";
+import { useWidgetCopy } from "@/widgets/copy";
 import { columnsForWidth, type GridColumns } from "@/widgets/layout";
 import { SOC_OVERVIEW, templateByKey } from "@/widgets/templates";
 import {
@@ -68,18 +72,15 @@ export const TEMPLATE_PARAM = "template";
 
 const NBSP = "\u00a0";
 
-const TEMPLATE_DESCRIPTION =
-  "24 h view of fleet volume, source health, anomalies and offenses. Times are UTC.";
-
 /** Why a read failed, in words: the status when the server answered, else that it did not. */
-function readFailure(state: ResourceState<unknown>): string {
-  if (state.status === "forbidden") return "your role cannot read dashboards (permission read:dashboards)";
+function readFailure(state: ResourceState<unknown>, t: TextTranslator = englishText): string {
+  if (state.status === "forbidden") return t("dashboard.readForbidden");
   if (state.status === "error") {
     return state.httpStatus === null
-      ? "the server could not be reached"
-      : `the server answered HTTP ${state.httpStatus}`;
+      ? t("dashboard.unreachable")
+      : t("dashboard.answeredHttp", { status: state.httpStatus });
   }
-  return "the read has not finished";
+  return t("dashboard.notFinished");
 }
 
 export function dashboardHref(target: DashboardTarget, hasDefault: boolean): string {
@@ -89,6 +90,7 @@ export function dashboardHref(target: DashboardTarget, hasDefault: boolean): str
 
 /** The grid before the dashboard to show is known: the template's geometry, empty. */
 function GridSkeleton() {
+  const t = useTranslations("dashboard");
   const ref = useRef<HTMLDivElement>(null);
   const [cols, setCols] = useState<GridColumns>(12);
   useLayoutEffect(() => {
@@ -110,7 +112,7 @@ function GridSkeleton() {
   return (
     <div ref={ref} className="dg-measure" data-cols={cols} aria-busy="true">
       <p className="sr-only" role="status">
-        Loading dashboard…
+        {t("loading")}
       </p>
       <div className="dg" data-cols={cols} aria-hidden="true">
         {kinds.map((kind, index) => (
@@ -159,6 +161,9 @@ function DashboardSession({
   onChanged,
   onRefused,
 }: DashboardSessionProps) {
+  const t = useTranslations("dashboard");
+  const say = asTextTranslator(useTranslations());
+  const copy = useWidgetCopy();
   const router = useRouter();
   const [nameRefusal, setNameRefusal] = useState<string | null>(null);
   const [conflictOpen, setConflictOpen] = useState(false);
@@ -195,7 +200,7 @@ function DashboardSession({
           isDefault: currentSource.dashboard.is_default,
           templateKey: currentSource.dashboard.template_key,
         };
-  const access = dashboardAccess(current, caller, refused);
+  const access = dashboardAccess(current, caller, refused, say);
   const mayWrite =
     refused === null &&
     caller.status === "ok" &&
@@ -203,16 +208,17 @@ function DashboardSession({
     (current.kind === "template" || current.ownerSubject === caller.subject);
   const name =
     currentSource.kind === "template"
-      ? currentSource.template.name
+      ? copy.templateName(currentSource.template)
       : currentSource.dashboard.name;
   const templateShown = currentSource.kind === "template";
   // A dashboard made from a template, with no description of its own, says what the template
   // holds and which widget was left out. The line takes the row the header reserves for its
   // qualifiers, so nothing below it moves.
-  const templateText =
+  const knownTemplate =
     currentSource.kind === "saved" && !description
-      ? templateByKey(currentSource.dashboard.template_key)?.description
+      ? templateByKey(currentSource.dashboard.template_key)
       : undefined;
+  const templateText = knownTemplate ? copy.templateDescription(knownTemplate) : undefined;
 
   const requestNavigation = useCallback(
     (action: () => void) => {
@@ -290,13 +296,15 @@ function DashboardSession({
     <>
       {templateShown ? (
         <>
-          <span className="badge">Template, not saved</span>
-          <span className="dg-qualifier">{TEMPLATE_DESCRIPTION}</span>
+          <span className="badge">{t("templateNotSaved")}</span>
+          <span className="dg-qualifier">{t("templateDescription")}</span>
         </>
       ) : null}
-      {current.kind === "saved" && current.isDefault ? <span className="badge">Default</span> : null}
+      {current.kind === "saved" && current.isDefault ? (
+        <span className="badge">{t("default")}</span>
+      ) : null}
       {current.kind === "saved" && current.visibility === "SHARED" ? (
-        <span className="badge">Shared</span>
+        <span className="badge">{t("shared")}</span>
       ) : null}
       {access.note ? <span className="dg-qualifier">{access.note}</span> : null}
       {templateText ? (
@@ -324,7 +332,13 @@ function DashboardSession({
         canSave={mayWrite}
         saveOnDone={templateShown}
         saving={state.saveState === "saving"}
-        saveMessage={state.saveState === "saved" || state.saveState === "error" ? state.message : null}
+        saveMessage={
+          state.saveState === "saved"
+            ? t("saved")
+            : state.saveState === "error"
+              ? state.message
+              : null
+        }
         onSave={() => handleSave()}
         onDiscard={editor.discard}
         leading={leading}
@@ -353,7 +367,7 @@ function DashboardSession({
               return null;
             }
             if (outcome.kind === "forbidden") onRefused(outcome.message);
-            return "message" in outcome ? outcome.message : "The dashboard could not be saved.";
+            return "message" in outcome ? outcome.message : t("saveFailed");
           }}
         />
       ) : null}
@@ -372,7 +386,7 @@ function DashboardSession({
               return null;
             }
             if (outcome.kind === "forbidden") onRefused(outcome.message);
-            return "message" in outcome ? outcome.message : "The copy could not be saved.";
+            return "message" in outcome ? outcome.message : t("copyFailed");
           }}
         />
       ) : null}
@@ -397,6 +411,9 @@ function DashboardSession({
 }
 
 export function HomeDashboard() {
+  const t = useTranslations("dashboard");
+  const say = asTextTranslator(useTranslations());
+  const copy = useWidgetCopy();
   const router = useRouter();
   const wanted = useSearchParams()?.get("dashboard") ?? null;
   const [rev, setRev] = useState(0);
@@ -446,7 +463,7 @@ export function HomeDashboard() {
       ? { status: "ok", subject: me.data.subject, permissions: new Set(me.data.effective_permissions) }
       : me.status === "loading" || me.status === "idle"
         ? { status: "loading" }
-        : { status: "failed", reason: readFailure(me) };
+        : { status: "failed", reason: readFailure(me, say) };
 
   const known = item ?? dashboard;
   const current: CurrentDashboard | null = showTemplate
@@ -462,7 +479,9 @@ export function HomeDashboard() {
           isDefault: item ? item.is_default : (dashboard?.is_default ?? false),
         }
       : null;
-  const access = current ? dashboardAccess(current, caller, refused) : { actions: [], note: null };
+  const access = current
+    ? dashboardAccess(current, caller, refused, say)
+    : { actions: [], note: null };
 
   const changed = (change: DashboardChange) => {
     if (change.go === "start") held.current = null;
@@ -475,7 +494,7 @@ export function HomeDashboard() {
     <DashboardSwitcher
       items={items}
       loading={!items && !listFailed}
-      failure={listFailed ? readFailure(list) : null}
+      failure={listFailed ? readFailure(list, say) : null}
       subject={caller.status === "ok" ? caller.subject : null}
       current={savedId ? { kind: "saved", id: savedId } : { kind: "template" }}
       onSelect={(target) => router.push(dashboardHref(target, defaultItem !== null))}
@@ -490,18 +509,20 @@ export function HomeDashboard() {
     />
   ) : null;
 
-  const title = showTemplate ? SOC_OVERVIEW.name : (known?.name ?? "Dashboard");
+  const title = showTemplate ? copy.templateName(SOC_OVERVIEW) : (known?.name ?? t("defaultName"));
   const meta = (
     <>
       {showTemplate ? (
         <>
-          <span className="badge">Template, not saved</span>
-          <span className="dg-qualifier">{TEMPLATE_DESCRIPTION}</span>
+          <span className="badge">{t("templateNotSaved")}</span>
+          <span className="dg-qualifier">{t("templateDescription")}</span>
         </>
       ) : null}
-      {current?.kind === "saved" && current.isDefault ? <span className="badge">Default</span> : null}
+      {current?.kind === "saved" && current.isDefault ? (
+        <span className="badge">{t("default")}</span>
+      ) : null}
       {current?.kind === "saved" && current.visibility === "SHARED" ? (
-        <span className="badge">Shared</span>
+        <span className="badge">{t("shared")}</span>
       ) : null}
       {access.note ? <span className="dg-qualifier">{access.note}</span> : null}
     </>
@@ -539,8 +560,7 @@ export function HomeDashboard() {
     const notice =
       listFailed && wanted !== TEMPLATE_PARAM ? (
         <p className="dg-status" role="status">
-          Saved dashboards could not be loaded: {readFailure(list)}. This is the SOC Overview
-          template, and changes here are not saved.
+          {t("listFailed", { reason: readFailure(list, say) })}
         </p>
       ) : null;
     body = (
@@ -551,7 +571,7 @@ export function HomeDashboard() {
         caller={caller}
         items={items}
         listLoading={!items && !listFailed}
-        listFailure={listFailed ? readFailure(list) : null}
+        listFailure={listFailed ? readFailure(list, say) : null}
         defaultItem={defaultItem}
         refused={refused}
         description={null}
@@ -571,7 +591,7 @@ export function HomeDashboard() {
           caller={caller}
           items={items}
           listLoading={!items && !listFailed}
-          listFailure={listFailed ? readFailure(list) : null}
+          listFailure={listFailed ? readFailure(list, say) : null}
           defaultItem={defaultItem}
           refused={refused}
           description={detail.data.description}
@@ -585,12 +605,12 @@ export function HomeDashboard() {
           {header(null, null)}
           <Problem>
             <p>
-              <strong>This dashboard&apos;s layout cannot be shown.</strong>
+              <strong>{t("layoutFailedTitle")}</strong>
             </p>
-            <p>{read.reason} Nothing was changed; you can still rename or delete it.</p>
+            <p>{t("layoutFailedText", { reason: read.reason })}</p>
             <p className="notice-actions">
               <Link className="action secondary" href={dashboardHref({ kind: "template" }, true)}>
-                Open the SOC Overview template
+                {t("openTemplate")}
               </Link>
             </p>
           </Problem>
@@ -606,27 +626,24 @@ export function HomeDashboard() {
           {notFound ? (
             <>
               <p>
-                <strong>This dashboard does not exist, or it is not shared with you.</strong>
+                <strong>{t("notFoundTitle")}</strong>
               </p>
-              <p>It may have been deleted or made private since the link was made.</p>
+              <p>{t("notFoundText")}</p>
               <p className="notice-actions">
                 <Link className="action secondary" href="/">
-                  {defaultItem ? "Open your default dashboard" : "Open the SOC Overview template"}
+                  {defaultItem ? t("openDefault") : t("openTemplate")}
                 </Link>
               </p>
             </>
           ) : (
             <>
               <p>
-                <strong>This dashboard could not be loaded.</strong>
+                <strong>{t("loadFailedTitle")}</strong>
               </p>
-              <p>
-                {readFailure(detail)}. Nothing was changed. Refresh to try again, or open the
-                template.
-              </p>
+              <p>{t("loadFailedText", { reason: readFailure(detail, say) })}</p>
               <p className="notice-actions">
                 <Link className="action secondary" href={dashboardHref({ kind: "template" }, true)}>
-                  Open the SOC Overview template
+                  {t("openTemplate")}
                 </Link>
               </p>
             </>

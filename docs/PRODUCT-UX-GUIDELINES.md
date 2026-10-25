@@ -471,6 +471,15 @@ sign precedes the number without a space: `%31,8`, `≥ %12,5` and `<%0,1`. Engl
 and compact timestamps are identical and explicitly UTC in both languages; only surrounding words
 and relative ages are translated.
 
+Turkish writes a count of a total as `M / N <noun>` with U+00A0 around the slash and before the
+noun: `4.596 / 4.608 aralık`, `Değerlendirilen 4 kaynak: 3 normal`, `Kırpılmış: ilk 96 / 237`. It
+never attaches a suffix to a number (`3'ü`, `4 kaynaktan 3 tanesi`). A number and its unit are
+never separated by an ordinary space: `24 sa`, `5 dk`, `2 sa 55 dk`, `7 gün`, `968,70 EPS` and
+`olay / 5 dk` use U+00A0 (English keeps its ordinary space). A Turkish sentence never starts with a
+lowercase letter or with a placeholder that holds a lowercase noun: the message opens with a fixed
+word (`Okunamadı: {what}.`, `Rolünüz bunu okuyamıyor: {what} (izin: {permission}).`).
+`src/i18n/turkishText.contract.test.ts` pins all three rules over the Turkish catalog.
+
 Turkish copy uses the formal register (`siz`) and short button imperatives such as `Kaydet` and
 `Tekrar dene`. It uses no exclamation marks and no word meaning “live” or “real-time” (`canlı`,
 `gerçek zamanlı`, `anlık`), because collection runs on a cadence. As in English, an error says what
@@ -507,6 +516,17 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | settings | ayarlar |
 | sign in | oturum aç |
 | sign out | oturumu kapat |
+| snapshot | kesit |
+| severity | önem derecesi |
+| lifecycle | yaşam döngüsü |
+| template | şablon |
+| customize | özelleştir |
+| manage | yönet |
+| expand | büyüt |
+| discard | vazgeç |
+| property watch | özellik izleme |
+| scheduled search | zamanlanmış arama |
+| hour, day, second (units) | sa, gün, sn |
 
 ---
 

@@ -5,9 +5,13 @@
 // read returned and nothing else. A button and a list: `Esc` closes it and returns focus to the
 // button; a click outside closes it; choosing an entry asks the page to navigate.
 
+import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { DashboardListItem } from "@/lib/dashboardApi";
+
+import { useWidgetCopy } from "./copy";
+import { SOC_OVERVIEW } from "./templates";
 
 import "./dashboard.css";
 
@@ -67,6 +71,8 @@ export function DashboardSwitcher({
   onSelect,
 }: DashboardSwitcherProps) {
   const { open, setOpen, root, trigger } = usePopover();
+  const t = useTranslations("widgets.switcher");
+  const copy = useWidgetCopy();
   const panelId = useId();
   const choose = (target: DashboardTarget) => {
     setOpen(false);
@@ -85,25 +91,25 @@ export function DashboardSwitcher({
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen(!open)}
       >
-        Dashboards
+        {t("trigger")}
       </button>
       {open ? (
         <div className="dg-pop-panel dg-switch-panel" id={panelId}>
           {loading ? (
             <p className="dg-pop-note" role="status">
-              Loading dashboards…
+              {t("loading")}
             </p>
           ) : null}
           {failure ? (
             <p className="dg-pop-note" role="status">
-              Saved dashboards could not be loaded: {failure}.
+              {t("failed", { reason: failure })}
             </p>
           ) : null}
           {items && items.length === 0 ? (
-            <p className="dg-pop-note">You have no saved dashboards, and none is shared with you.</p>
+            <p className="dg-pop-note">{t("none")}</p>
           ) : null}
           {items && items.length > 0 ? (
-            <ul className="dg-pop-list" aria-label="Saved dashboards">
+            <ul className="dg-pop-list" aria-label={t("saved")}>
               {items.map((item) => {
                 const mine = subject !== null && item.owner_subject === subject;
                 const here = current.kind === "saved" && current.id === item.id;
@@ -117,12 +123,14 @@ export function DashboardSwitcher({
                     >
                       <span className="dg-pop-name">{item.name}</span>
                       <span className="dg-pop-marks">
-                        {item.is_default ? <span className="badge">Default</span> : null}
-                        {item.visibility === "SHARED" ? <span className="badge">Shared</span> : null}
+                        {item.is_default ? <span className="badge">{t("default")}</span> : null}
+                        {item.visibility === "SHARED" ? <span className="badge">{t("shared")}</span> : null}
                       </span>
                       <span className="dg-pop-sub">
-                        {item.widget_count} {item.widget_count === 1 ? "widget" : "widgets"}
-                        {subject !== null && !mine ? `, owned by ${item.owner_subject}` : ""}
+                        {t("widgetCount", { count: item.widget_count })}
+                        {subject !== null && !mine
+                          ? `, ${t("ownedBy", { owner: item.owner_subject })}`
+                          : ""}
                       </span>
                     </button>
                   </li>
@@ -130,7 +138,7 @@ export function DashboardSwitcher({
               })}
             </ul>
           ) : null}
-          <ul className="dg-pop-list dg-pop-template" aria-label="Template">
+          <ul className="dg-pop-list dg-pop-template" aria-label={t("templateGroup")}>
             <li>
               <button
                 type="button"
@@ -138,8 +146,10 @@ export function DashboardSwitcher({
                 aria-current={templateCurrent ? "true" : undefined}
                 onClick={() => choose({ kind: "template" })}
               >
-                <span className="dg-pop-name">SOC Overview (template)</span>
-                <span className="dg-pop-sub">Not saved</span>
+                <span className="dg-pop-name">
+                  {t("templateEntry", { name: copy.templateName(SOC_OVERVIEW) })}
+                </span>
+                <span className="dg-pop-sub">{t("notSaved")}</span>
               </button>
             </li>
           </ul>

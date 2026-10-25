@@ -18,9 +18,11 @@ function at(
 }
 
 /**
- * The Home. Positions: the KPI row (4 x 3 columns), fleet EPS
- * (8) beside EPS by class (4), top sources, severity and health (3 x 4), recent anomalies and
- * recent offenses (2 x 6). Left out until their data exists: the geography map.
+ * The Home. Positions: the KPI row (4 x 3 columns, 8 rows: the Turkish breakdown lines wrap to one
+ * more line than the English ones, and a card never scrolls), fleet EPS (8) beside EPS by class
+ * (4), top sources, severity and health (3 x 4, 16 rows), recent anomalies and recent offenses
+ * (2 x 6, 16 rows: the Turkish tables need one row more than the English ones). Left out until
+ * their data exists: the geography map.
  */
 export const SOC_OVERVIEW: DescribedDashboardTemplate = {
   key: "soc_overview",
@@ -32,17 +34,17 @@ export const SOC_OVERVIEW: DescribedDashboardTemplate = {
     v: 1,
     range: "24h",
     widgets: [
-      at("kpieps", "kpi.total_eps", 0, 0, 3, 7),
-      at("kpisrc", "kpi.log_sources", 3, 0, 3, 7),
-      at("kpioff", "kpi.offenses", 6, 0, 3, 7),
-      at("kpianom", "kpi.anomalies", 9, 0, 3, 7),
-      at("epsfleet", "chart.eps_fleet_total", 0, 7, 8, 14),
-      at("epsclass", "chart.eps_by_class", 8, 7, 4, 14),
-      at("topsrc", "table.top_sources", 0, 21, 4, 15),
-      at("sevchart", "chart.anomaly_severity", 4, 21, 4, 15),
-      at("srchealth", "health.log_sources", 8, 21, 4, 15),
-      at("recanom", "table.recent_anomalies", 0, 36, 6, 15),
-      at("recoff", "table.recent_offenses", 6, 36, 6, 15),
+      at("kpieps", "kpi.total_eps", 0, 0, 3, 8),
+      at("kpisrc", "kpi.log_sources", 3, 0, 3, 8),
+      at("kpioff", "kpi.offenses", 6, 0, 3, 8),
+      at("kpianom", "kpi.anomalies", 9, 0, 3, 8),
+      at("epsfleet", "chart.eps_fleet_total", 0, 8, 8, 14),
+      at("epsclass", "chart.eps_by_class", 8, 8, 4, 14),
+      at("topsrc", "table.top_sources", 0, 22, 4, 16),
+      at("sevchart", "chart.anomaly_severity", 4, 22, 4, 16),
+      at("srchealth", "health.log_sources", 8, 22, 4, 16),
+      at("recanom", "table.recent_anomalies", 0, 38, 6, 16),
+      at("recoff", "table.recent_offenses", 6, 38, 6, 16),
     ],
   },
 };

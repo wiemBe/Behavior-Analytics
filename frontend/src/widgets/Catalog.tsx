@@ -9,21 +9,63 @@
 // A real dialog: `showModal` makes the page behind it inert and gives `Esc`; focus moves to the
 // Close button on open and returns to the trigger on close.
 
+import { useTranslations } from "next-intl";
 import { useEffect, useRef, type RefObject } from "react";
 
 import { useApiResource } from "@/hooks/useApiResource";
+import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
+import { englishText } from "@/widgets/englishText";
 import { homeReads } from "@/lib/api";
 
+import { useWidgetCopy } from "./copy";
 import { WIDGETS } from "./registry";
 import type { AnyWidgetDef, WidgetCategory } from "./types";
 
 const CATEGORIES: WidgetCategory[] = ["KPI", "Chart", "Table", "Health", "Admin"];
 
-/** The neutral reason: information, not a warning. */
+/** The neutral reason, in English: information, not a warning. */
 export const ALREADY_PLACED = "Already on this dashboard.";
 
 /** Widgets one dashboard may hold (UR.5.5). */
 export const MAX_WIDGETS = 24;
+
+export type Unavailable = { kind: "blocked" | "role" | "placed" | "full"; text: string };
+
+/**
+ * Why a catalog entry cannot be added, with the kind that decides how it is drawn, or null when
+ * it can be added. `t` is the root translator; the default keeps the English sentences.
+ */
+export function unavailable(
+  def: AnyWidgetDef,
+  held: ReadonlySet<string> | null,
+  placedTypes: ReadonlySet<string>,
+  placedCount: number,
+  t: TextTranslator = englishText,
+): Unavailable | null {
+  if (def.status === "blocked") {
+    const key = `widgets.registry.${def.type.replace(/\./g, "_")}.blockedBy`;
+    const reason = t.has?.(key) ? t(key) : (def.blockedBy ?? "");
+    return { kind: "blocked", text: t("widgets.notAvailable", { reason }) };
+  }
+  if (held) {
+    const missing = def.requires.filter((p) => !held.has(p));
+    if (missing.length > 0) {
+      return {
+        kind: "role",
+        text: t("widgets.catalog.roleLacks", { count: missing.length, permissions: missing.join(", ") }),
+      };
+    }
+  }
+  // A widget without config keys shows the same thing twice, so a second copy is refused. One
+  // with config keys (an endpoint, a source) can be placed once per subject, so it is not.
+  if (placedTypes.has(def.type) && Object.keys(def.config).length === 0) {
+    return { kind: "placed", text: t("widgets.catalog.alreadyPlaced") };
+  }
+  if (placedCount >= MAX_WIDGETS) {
+    return { kind: "full", text: t("widgets.catalog.full", { max: MAX_WIDGETS }) };
+  }
+  return null;
+}
 
 /** Why a catalog entry cannot be added, or null when it can. */
 export function unavailableReason(
@@ -31,21 +73,9 @@ export function unavailableReason(
   held: ReadonlySet<string> | null,
   placedTypes: ReadonlySet<string>,
   placedCount: number,
+  t: TextTranslator = englishText,
 ): string | null {
-  if (def.status === "blocked") return `Not available: ${def.blockedBy}.`;
-  if (held) {
-    const missing = def.requires.filter((p) => !held.has(p));
-    if (missing.length > 0) {
-      return `Your role lacks ${missing.length === 1 ? "permission" : "permissions"} ${missing.join(", ")}.`;
-    }
-  }
-  // A widget without config keys shows the same thing twice, so a second copy is refused. One
-  // with config keys (an endpoint, a source) can be placed once per subject, so it is not.
-  if (placedTypes.has(def.type) && Object.keys(def.config).length === 0) return ALREADY_PLACED;
-  if (placedCount >= MAX_WIDGETS) {
-    return `A dashboard holds at most ${MAX_WIDGETS} widgets.`;
-  }
-  return null;
+  return unavailable(def, held, placedTypes, placedCount, t)?.text ?? null;
 }
 
 /** A route as the analyst reads it: a path parameter is `{id}`, not a template placeholder. */
@@ -64,6 +94,9 @@ export function Catalog({
   onAdd: (def: AnyWidgetDef) => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("widgets.catalog");
+  const root = asTextTranslator(useTranslations());
+  const copy = useWidgetCopy();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef: RefObject<HTMLButtonElement | null> = useRef(null);
   const me = homeReads.me();
@@ -94,17 +127,17 @@ export function Catalog({
     >
       <header className="dg-catalog-head">
         <h2 id="dg-catalog-title" className="dg-catalog-title">
-          Add a widget
+          {t("title")}
         </h2>
         <button type="button" ref={closeRef} className="action secondary" onClick={onClose}>
-          Close
+          {t("close")}
         </button>
       </header>
       {caller.status === "ok" ? null : (
         <p className="dg-catalog-note">
           {caller.status === "idle" || caller.status === "loading"
-            ? "Checking what your role can read…"
-            : "Your permissions could not be read, so every widget is listed. A widget your role cannot read shows that on the dashboard."}
+            ? t("checking")
+            : t("permissionsUnread")}
         </p>
       )}
       <div className="dg-catalog-body">
@@ -114,32 +147,33 @@ export function Catalog({
           return (
             <section key={category} aria-labelledby={`dg-cat-${category}`}>
               <h3 id={`dg-cat-${category}`} className="dg-catalog-category">
-                {category}
+                {copy.category(category)}
               </h3>
               <ul className="dg-catalog-list">
                 {defs.map((def) => {
-                  const reason = unavailableReason(def, held, placedTypes, placedCount);
+                  const why = unavailable(def, held, placedTypes, placedCount, root);
+                  const reason = why?.text ?? null;
                   const reasonId = `dg-reason-${def.type}`;
                   return (
                     <li key={def.type} className="dg-catalog-item">
                       <div className="dg-catalog-text">
-                        <p className="dg-catalog-name">{def.title}</p>
-                        <p className="dg-catalog-desc">{def.description}</p>
+                        <p className="dg-catalog-name">{copy.title(def)}</p>
+                        <p className="dg-catalog-desc">{copy.description(def)}</p>
                         {def.status === "live" ? (
                           <dl className="dg-catalog-facts">
                             <div>
-                              <dt>Reads</dt>
+                              <dt>{t("reads")}</dt>
                               <dd>{def.sources.map(showRoute).join(", ")}</dd>
                             </div>
                             <div>
-                              <dt>Needs</dt>
+                              <dt>{t("needs")}</dt>
                               <dd>{def.requires.join(", ")}</dd>
                             </div>
                           </dl>
                         ) : null}
                         {reason ? (
                           <p
-                            className={`dg-catalog-reason${reason === ALREADY_PLACED ? " info" : ""}`}
+                            className={`dg-catalog-reason${why?.kind === "placed" ? " info" : ""}`}
                             id={reasonId}
                           >
                             {reason}
@@ -151,10 +185,10 @@ export function Catalog({
                         className="action secondary"
                         disabled={reason !== null}
                         aria-describedby={reason ? reasonId : undefined}
-                        aria-label={`Add ${def.title}`}
+                        aria-label={t("addNamed", { title: copy.title(def) })}
                         onClick={() => onAdd(def)}
                       >
-                        Add
+                        {t("add")}
                       </button>
                     </li>
                   );
