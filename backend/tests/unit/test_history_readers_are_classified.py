@@ -195,6 +195,17 @@ HISTORY_TABLES = (
             "app.collectors.rule_match_collector.RuleMatchCollector._prior_attempts": Reader(
                 "HB-5 retries", ReaderKind.EVIDENCE
             ),
+            # RM-2: the repair selector. FAILED live windows inside the age
+            # bound, re-read by the collector itself, so EVIDENCE like the
+            # retry count it shares a column with.
+            "app.collectors.rule_match_collector.RuleMatchCollector._repair_starts": Reader(
+                "RM-2 repair selector", ReaderKind.EVIDENCE
+            ),
+            # RM-2: the doctor's operational count of failed and truncated
+            # windows, both origins, for the operator's WARN.
+            "app.cli.doctor.Doctor.check_rule_match_coverage": Reader(
+                "RM-2 doctor coverage count", ReaderKind.DISPLAY
+            ),
             "app.services.rule_health.RuleHealthEvaluator._match_coverage": Reader(
                 "R2 (rule health)", ReaderKind.EVIDENCE
             ),

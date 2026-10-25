@@ -24,7 +24,7 @@ import httpx
 import redis.asyncio as redis
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import and_, case, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Environment, Settings, get_settings, unknown_setting_names
@@ -38,10 +38,12 @@ from app.models.monitoring import (
     AnomalyEvaluationWatermark,
     CollectionWatermark,
 )
+from app.models.rule import RuleMatchWindow, RuleMatchWindowStatus
 from app.models.search_cadence import SearchCadenceSetting
 from app.providers.base import QRadarProvider
 from app.providers.factory import build_provider_for_instance
 from app.providers.tls import build_ssl_context
+from app.rules.matches import SKIPPED_REASON
 from app.security.redaction import redact
 from app.services.ariel_permit import ArielPermitBudget
 from app.workers.celery_app import (
@@ -78,6 +80,7 @@ _CHECK_RUNBOOKS = (
     ("version_match", "OPS-R11"),
     ("unknown_settings", "OPS-R62"),
     ("ariel_permits", "OPS-R63"),
+    ("rule_match_coverage", "OPS-R65"),
 )
 _TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])")
 _CREDENTIAL_URL_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
@@ -89,6 +92,7 @@ _SECRET_ASSIGNMENT_RE = re.compile(
 
 class Status(StrEnum):
     PASS = "PASS"  # noqa: S105 - diagnostic status, not a credential
+    SKIP = "SKIP"
     WARN = "WARN"
     FAIL = "FAIL"
 
@@ -1225,6 +1229,107 @@ class Doctor:
                 "OPS-R63",
             )
         return CheckResult("ariel_permits", Status.PASS, message)
+
+    async def check_rule_match_coverage(self) -> CheckResult:
+        """FAILED and TRUNCATED rule-match windows inside the health span.
+
+        One grouped query over every console. A window here keeps every
+        never-fired EVENT rule INSUFFICIENT_DATA until the span stops holding
+        it, so it is worth a WARN even while the automatic repair (RM-2) is
+        retrying: the message says how many windows are still repairable and
+        how many were skipped beyond the catch-up horizon and never will be.
+        """
+        if not self.settings.rule_match_collection_enabled:
+            return CheckResult(
+                "rule_match_coverage",
+                Status.SKIP,
+                "rule-match collection is off; windows are not measured",
+            )
+        failed_status = RuleMatchWindowStatus.FAILED
+        truncated_status = RuleMatchWindowStatus.TRUNCATED
+        now = self.now()
+        cutoff = now - timedelta(days=self.settings.rule_health_window_days)
+        # The collector's `_repair_starts` selector, mirrored: FAILED, live,
+        # not horizon-skipped, inside the repair age bound, with attempts left.
+        repairable = and_(
+            RuleMatchWindow.status == failed_status,
+            is_live_clause(RuleMatchWindow),
+            RuleMatchWindow.last_error.is_distinct_from(SKIPPED_REASON),
+            RuleMatchWindow.window_start
+            >= now - timedelta(seconds=self.settings.rule_match_repair_max_age_seconds),
+            RuleMatchWindow.attempts
+            < (
+                self.settings.rule_match_max_window_attempts
+                + self.settings.rule_match_repair_max_attempts
+            ),
+        )
+        try:
+            async with self.sessionmaker() as session:
+                total, oldest, newest, failed, truncated, repairable_n, skipped_n = (
+                    await session.execute(
+                        select(
+                            func.count(),
+                            func.min(RuleMatchWindow.window_start),
+                            func.max(RuleMatchWindow.window_start),
+                            func.sum(case((RuleMatchWindow.status == failed_status, 1), else_=0)),
+                            func.sum(
+                                case((RuleMatchWindow.status == truncated_status, 1), else_=0)
+                            ),
+                            func.sum(case((repairable, 1), else_=0)),
+                            func.sum(
+                                case(
+                                    (
+                                        and_(
+                                            RuleMatchWindow.status == failed_status,
+                                            RuleMatchWindow.last_error == SKIPPED_REASON,
+                                        ),
+                                        1,
+                                    ),
+                                    else_=0,
+                                )
+                            ),
+                        ).where(
+                            RuleMatchWindow.window_start >= cutoff,
+                            RuleMatchWindow.status.in_((failed_status, truncated_status)),
+                        )
+                    )
+                ).one()
+        except Exception as exc:
+            return CheckResult(
+                "rule_match_coverage",
+                Status.FAIL,
+                f"rule-match window coverage could not be read ({type(exc).__name__})",
+                "OPS-R65",
+            )
+        if not total:
+            return CheckResult(
+                "rule_match_coverage",
+                Status.PASS,
+                f"no failed or truncated rule-match window in the last "
+                f"{self.settings.rule_health_window_days} d",
+            )
+        oldest_text = (
+            oldest.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+            if oldest is not None
+            else "unknown"
+        )
+        leaves_text = (
+            (newest + timedelta(days=self.settings.rule_health_window_days))
+            .astimezone(UTC)
+            .strftime("%Y-%m-%d %H:%M UTC")
+            if newest is not None
+            else "unknown"
+        )
+        return CheckResult(
+            "rule_match_coverage",
+            Status.WARN,
+            f"{int(failed)} failed and {int(truncated)} truncated rule-match window(s) "
+            f"in the last {self.settings.rule_health_window_days} d; oldest {oldest_text}; "
+            f"last affected window leaves the health span {leaves_text}; "
+            f"{int(repairable_n)} repairable, "
+            f"{int(skipped_n)} skipped beyond the catch-up horizon",
+            "OPS-R65",
+        )
 
     async def run(self) -> list[CheckResult]:
         results: list[CheckResult] = []

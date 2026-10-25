@@ -24,6 +24,12 @@ from app.models.rule import RuleMatchWindowStatus
 from app.providers.base import ProviderError
 from app.providers.dto import RuleMatchBatch, RuleMatchRow
 
+#: The `last_error` of a FAILED window the catch-up horizon skipped without
+#: searching. Its events may already be gone, so it is never repaired
+#: automatically (RM-2). Defined here, the pure module, because both the writer
+#: (the collector's horizon skip) and the reader (the health reason) need it.
+SKIPPED_REASON = "skipped: beyond the catch-up horizon"
+
 
 class MatchEvidence(StrEnum):
     """What measured matches can say about a rule of one type."""
@@ -139,6 +145,75 @@ def failed_window(
         row_cap=row_cap,
         unknown_ids=0,
         query_version=query_version,
+    )
+
+
+@dataclass(frozen=True)
+class FailedWindowFacts:
+    """What an analyst needs to know about a span's FAILED windows, bounded.
+
+    `failed` were searched and failed; `skipped` were never searched (the
+    catch-up horizon stepped over them, and their events may be gone).
+    `last_error_class` is the class name of the newest failed window's error —
+    never the message, which can hold appliance text. `until` is when a span of
+    `span` width stops holding the last affected window: past that moment the
+    verdict heals on its own.
+    """
+
+    failed: int
+    skipped: int
+    first_start: datetime
+    last_start: datetime
+    last_error_class: str | None
+    until: datetime
+
+
+def failed_window_facts(
+    windows: Iterable[tuple[datetime, int, str, str | None]],
+    *,
+    window_seconds: int,
+    span: timedelta,
+) -> FailedWindowFacts | None:
+    """Summarize the FAILED windows among `windows` for one reason sentence.
+
+    `windows` are (start, width, status, last_error) rows the caller already
+    holds — the evaluator reads them for coverage, so this adds no query. Only
+    FAILED rows of the current width count: a TRUNCATED, missing or obsolete-
+    width window has no failed window to name, and its story is the coverage
+    counts. Returns None when no FAILED window is in the rows, so the caller
+    keeps its usual sentence for every other shape of gap.
+    """
+    failed = skipped = 0
+    first: datetime | None = None
+    last: datetime | None = None
+    latest_failed: datetime | None = None
+    error_class: str | None = None
+    for start, seconds, status, last_error in windows:
+        if seconds != window_seconds or status != RuleMatchWindowStatus.FAILED:
+            continue
+        start = start.astimezone(UTC)
+        if last_error == SKIPPED_REASON:
+            skipped += 1
+        else:
+            failed += 1
+            if latest_failed is None or start > latest_failed:
+                latest_failed = start
+                # The writer stores ``"{ClassName}: {message}"``. Refuse a
+                # legacy or malformed value rather than risk exposing its
+                # message as though it were a class name.
+                candidate, separator, _ = (last_error or "").partition(":")
+                error_class = candidate if separator and candidate.isidentifier() else None
+        first = start if first is None or start < first else first
+        last = start if last is None or start > last else last
+    if first is None or last is None:
+        return None
+    return FailedWindowFacts(
+        failed=failed,
+        skipped=skipped,
+        first_start=first,
+        last_start=last,
+        last_error_class=error_class,
+        until=last + span,
     )
 
 

@@ -22,7 +22,7 @@ Dört kural her bölümde geçerlidir:
 7. [Geçmiş okuma](#geçmiş-okuma)
 8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
 9. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R64; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+   (OPS-R1 ... OPS-R65; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -993,7 +993,8 @@ Bu üç satır, konteyner içi kontrollerin tam kimlik listesi `render_text` ile
 genişliktir. En uzun kimlik `anomaly_evaluation` (18 karakter) olduğu için sütun 18'dir. Ana makine
 satırları ayrıdır ve 16 karakterlik sabit genişlik kullanır.
 
-Yalnız `PASS`, `WARN`, `FAIL` vardır. Neden tek satırdır. Kılavuz kimliği `OPS-R` ile giriş
+`PASS`, `SKIP`, `WARN`, `FAIL` vardır. `SKIP`, ilgili özellik kapalı olduğu için denetimin
+uygulanmadığını söyler ve çıkış kodunu yükseltmez. Neden tek satırdır. Kılavuz kimliği `OPS-R` ile giriş
 numarasıdır (`OPS-R30` 30. girişi gösterir). Çıktıda token, `.env` değeri, DSN ya da
 `ENCRYPTION_KEY` yoktur. Bağlantı hataları ana makineyi ve istisna sınıfını söyler, parolayı değil.
 
@@ -1045,6 +1046,7 @@ bağlanmaz.
 | `version_match` | Frontend probu ile `/api/v1/version` aynı mı. | OPS-R11 |
 | `unknown_settings` | Ortamda bir ayara benzeyen ama ayar olmayan adlar. Adlar yazılır, değerler yazılmaz. Böyle bir ad yoksa PASS. Kurulumun yazdığı adlar burada görünmez. | OPS-R62 |
 | `ariel_permits` | Global havuz held/cap, ayrılmış canlı yuvalar. Konsol tarafı, tek konsol yokken `console-pool locks N (cap P per console)` olarak yazılır. N bu veritabanındaki bütün konsol kilitleridir, bir konsolun kendi tutuşu değildir. Bütçede gerçekten tek konsol varsa satır `console held/cap` yazar. Havuz doluysa (`held >= cap`) WARN; canlı iş bekler, geçmiş okuma yerini verir. Zorlama kapalıysa `not enforced` ve PASS. Okuma hatasında yalnız hata sınıfı. | OPS-R63 |
+| `rule_match_coverage` | `RULE_HEALTH_WINDOW_DAYS` içindeki `FAILED` ve `TRUNCATED` kural-eşleşme pencerelerini tek sorguda sayar; en eski pencereyi, sağlık aralığından çıkacağı UTC zamanı, onarılabilir ve catch-up ufku nedeniyle atlanmış sayıları yazar. Biri varsa WARN, yoksa PASS, toplama kapalıysa SKIP. | OPS-R65 |
 
 `families_off` WARN değil PASS verir. Satır açık ve kapalı aileleri ayrı yazar. Yeni kurulumda
 Phase A, catch-all, geo ve explanations açıktır; WAF, IPS, kural eşleşmeleri, özel kurallar ve mülk
@@ -2904,3 +2906,31 @@ birlikte okunur.
   `qradar add` komutunu yeniden çalıştır. MCP servisi token'ı hiç saklamaz; her istekte backend'den alır.
 
 Token hiçbir komutta yazdırılmaz; günlüklerde de yoktur.
+
+### OPS-R65. Kural-eşleşme pencereleri `FAILED` veya `TRUNCATED` kalıyor
+
+**Belirti:** `doctor`, `rule_match_coverage` için WARN verir. Satır son 30 günlük sağlık
+aralığındaki başarısız ve kesilmiş pencere sayılarını, en eskisini, onun aralıktan çıkacağı UTC
+zamanını, otomatik onarıma hâlâ uygun olanları ve catch-up ufku nedeniyle hiç aranmadan atlananları
+yazar. Bu pencereler aralıkta kaldıkça sessiz EVENT kuralları `NEVER_OBSERVED` yerine
+`INSUFFICIENT_DATA` kalır.
+
+**Olası neden:** Ariel araması canlı denemeleri ve onarım denemelerini tüketmiştir; ya da worker
+kesintisi catch-up ufkunu aşmış ve pencereler hiç aranmadan atlanmıştır. `TRUNCATED`, tek pencerenin
+satır sınırına ulaştığını gösterir ve otomatik onarımın kapsamı dışındadır.
+
+**Doğrulama:** Önce QRadar erişimini ve Ariel izinlerini doğrula; hata metni değil, sınıfı worker
+günlüğündedir.
+
+```bash
+./qradar-dash doctor
+./qradar-dash logs --tail=200 celery-worker
+```
+
+**Çözüm:** Ariel erişimini düzelt ve onarım sınırındaki pencereler için sonraki kural-eşleşme
+kadansını bekle. Onarım yalnız `RULE_MATCH_REPAIR_MAX_AGE_SECONDS` içindeki yakın `FAILED` canlı
+pencereleri, sınırlı sayıda dener. Catch-up ufku nedeniyle atlanan pencere yeniden okunmaz: olaylar
+QRadar'dan dönmüş olabilir ve boş bir okuma sessizliğin kanıtı sayılamaz. Böyle bir pencere için
+`doctor` satırındaki UTC çıkış zamanını bekle; daha yeni başka pencereler varsa kendi başlangıç
+zamanlarından `RULE_HEALTH_WINDOW_DAYS` sonra ayrı ayrı çıkarlar. Satır `TRUNCATED` diyorsa satır
+sınırı ve sorgu yükü ayrı bir tasarım gerektirir; bu onarım onu sağlıklı saymaz.

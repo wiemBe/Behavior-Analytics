@@ -119,6 +119,10 @@ reference heading for them.
 | `RULE_MATCH_MAX_WINDOW_ATTEMPTS` | `3` | Failures before a window stays `FAILED` and the watermark moves on |
 | `RULE_MATCH_MAX_CATCHUP_SECONDS` | `86400` | A watermark further behind than this jumps forward; skipped windows are `FAILED` |
 | `RULE_MATCH_MAX_ROWS` | `2000` | A full page makes the window `TRUNCATED` |
+| `RULE_MATCH_REPAIR_ENABLED` | `true` | Re-read recent `FAILED` live windows after the live pass. Inert while `RULE_MATCH_COLLECTION_ENABLED` is false |
+| `RULE_MATCH_REPAIR_MAX_AGE_SECONDS` | `86400` | Oldest repairable window start. `3600`–`604800` with the default window; at least one `RULE_MATCH_WINDOW_SECONDS`, below `RULE_MATCH_RETENTION_DAYS`, and must stay inside the console's event retention |
+| `RULE_MATCH_REPAIR_MAX_WINDOWS_PER_RUN` | `6` | Failed windows selected oldest first per run. `1`–`168`, and no greater than `RULE_MATCH_MAX_WINDOWS_PER_RUN` |
+| `RULE_MATCH_REPAIR_MAX_ATTEMPTS` | `3` | Additional repair searches after the live attempt ceiling. `1`–`20`; exhausted windows remain `FAILED` |
 | `RULE_HEALTH_WINDOW_DAYS` | `30` | Window for "has this rule fired recently" |
 | `RULE_HEALTH_GRACE_PERIOD_DAYS` | `7` | A newer rule is `INSUFFICIENT_DATA`, never inactive |
 | `RULE_HEALTH_MIN_HISTORY_DAYS` | `3` | Observed history required before an inactivity verdict |

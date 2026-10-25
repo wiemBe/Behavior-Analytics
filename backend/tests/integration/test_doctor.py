@@ -21,6 +21,7 @@ from app.models.monitoring import (
     AnomalyEvaluationWatermark,
     CollectionWatermark,
 )
+from app.models.rule import RuleMatchWindow, RuleMatchWindowStatus
 from app.models.search_cadence import SearchCadenceSetting
 from tests.integration.schema_reset import reset_public_schema
 
@@ -116,6 +117,87 @@ async def test_database_backed_doctor_checks_with_real_rows() -> None:
             await session.commit()
         assert (await doctor.check_watermarks()).status is Status.WARN
         assert (await doctor.check_cadence()).status is Status.WARN
+    finally:
+        await engine.dispose()
+
+
+async def test_rule_match_coverage_check_reads_all_windows_in_one_statement() -> None:
+    """The real grouped query distinguishes failed, skipped and truncated rows."""
+    from sqlalchemy import event
+
+    database_url = _database_url()
+    _migrate(database_url)
+    engine = create_async_engine(database_url)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    now = datetime(2026, 10, 25, 12, tzinfo=UTC)
+    try:
+        async with maker() as session:
+            instance = QRadarInstance(
+                id=uuid.uuid4(),
+                name="rule-match-doctor",
+                console_host="https://fixture.invalid",
+                provider_kind="mock",
+            )
+            session.add(instance)
+            await session.flush()
+            common = {
+                "instance_id": instance.id,
+                "window_seconds": 3600,
+                "origin": "LIVE",
+                "rows_returned": 0,
+                "row_cap": 2000,
+                "unknown_ids": 0,
+                "query_version": "rule_match/v1",
+                "collected_at": now,
+            }
+            session.add_all(
+                [
+                    RuleMatchWindow(
+                        **common,
+                        window_start=now - timedelta(hours=3),
+                        status=RuleMatchWindowStatus.TRUNCATED,
+                        attempts=1,
+                    ),
+                    RuleMatchWindow(
+                        **common,
+                        window_start=now - timedelta(hours=2),
+                        status=RuleMatchWindowStatus.FAILED,
+                        attempts=0,
+                        last_error="skipped: beyond the catch-up horizon",
+                    ),
+                    RuleMatchWindow(
+                        **common,
+                        window_start=now - timedelta(hours=1),
+                        status=RuleMatchWindowStatus.FAILED,
+                        attempts=3,
+                        last_error="ProviderError: unavailable",
+                    ),
+                ]
+            )
+            await session.commit()
+
+        statements: list[str] = []
+
+        def record(_conn, _cursor, statement, *_args) -> None:  # type: ignore[no-untyped-def]
+            if "rule_match_window" in statement:
+                statements.append(statement)
+
+        event.listen(engine.sync_engine, "before_cursor_execute", record)
+        try:
+            settings = _settings(database_url).model_copy(
+                update={"rule_match_collection_enabled": True}
+            )
+            result = await Doctor(
+                settings=settings, sessionmaker=maker, now=lambda: now
+            ).check_rule_match_coverage()
+        finally:
+            event.remove(engine.sync_engine, "before_cursor_execute", record)
+
+        assert result.status is Status.WARN
+        assert "2 failed and 1 truncated" in result.message
+        assert "1 repairable, 1 skipped" in result.message
+        assert "leaves the health span 2026-11-24 11:00 UTC" in result.message
+        assert len(statements) == 1
     finally:
         await engine.dispose()
 
