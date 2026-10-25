@@ -13,6 +13,9 @@ open-source licence: https://github.com/timescale/timescaledb/blob/2.17.2/tsl/LI
 The TSL Licensed Software may be used under that agreement without charge, and no fee is due
 for this use. This project's own code remains under the Apache License, Version 2.0.
 
+The frontend uses next-intl 4.14.9 (https://github.com/amannn/next-intl), copyright Jan Amann
+and contributors, under the MIT License.
+
 IBM and QRadar are trademarks of International Business Machines Corporation, registered in
 many jurisdictions worldwide. This project is not affiliated with, sponsored by or endorsed
 by IBM.

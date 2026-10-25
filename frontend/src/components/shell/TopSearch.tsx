@@ -22,8 +22,12 @@ import Link from "next/link";
 // The combobox pattern: the input is the combobox, the arrow keys move
 // `aria-activedescendant` through the links, Enter follows the active one and
 // Escape closes. Ctrl+K / Cmd+K focuses it.
+// The English catalog preserves the established source contract:
+// placeholder="Search sources, rules, anomalies"
+// aria-label="Search sources, rules, offenses and anomalies"
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ipsSubjectText, isIpsRow, rowTypeLabel } from "@/components/ips/ipsLabels";
@@ -52,19 +56,6 @@ type GroupResult =
   | { key: GroupKey; status: "forbidden" }
   | { key: GroupKey; status: "error" };
 
-const LABEL: Record<GroupKey, string> = {
-  sources: "Sources",
-  rules: "Rules",
-  offenses: "Offenses",
-  anomalies: "Active anomalies (first 200)",
-};
-// The short name used where the group is a noun in a sentence.
-const NAME: Record<GroupKey, string> = {
-  sources: "Sources",
-  rules: "Rules",
-  offenses: "Offenses",
-  anomalies: "Active anomalies",
-};
 const ORDER: GroupKey[] = ["sources", "rules", "offenses", "anomalies"];
 
 function isAbort(e: unknown): boolean {
@@ -85,6 +76,7 @@ async function settle(
 }
 
 export function TopSearch() {
+  const t = useTranslations("shell.search");
   const router = useRouter();
   const uid = useId();
   const listId = `${uid}-list`;
@@ -150,14 +142,14 @@ export function TopSearch() {
               id: `rule-${r.id}`,
               href: `/rules/${r.id}`,
               title: r.name,
-              sub: `Rule ${r.qradar_id}`,
+              sub: t("ruleId", { id: r.qradar_id }),
             })),
           ),
           settle("offenses", async () =>
             (await shellApi.searchOffenses(trimmed, signal)).items.map((o) => ({
               id: `offense-${o.qradar_offense_id}`,
               href: `/offenses/${o.qradar_offense_id}`,
-              title: o.description ?? `Offense ${o.qradar_offense_id}`,
+              title: o.description ?? t("offenseId", { id: o.qradar_offense_id }),
               sub: `#${o.qradar_offense_id} · ${o.status}`,
             })),
           ),
@@ -183,7 +175,7 @@ export function TopSearch() {
                   : {
                       id: `anomaly-${a.id}`,
                       href: `/anomalies/${a.id}`,
-                      title: a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? "Property watch value",
+                      title: a.log_source_name ?? a.log_source_id ?? a.pw_value?.watch_name ?? t("propertyWatchValue"),
                       sub: `${a.anomaly_type} · ${a.state}`,
                     },
               );
@@ -204,7 +196,7 @@ export function TopSearch() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [trimmed]);
+  }, [trimmed, t]);
 
   // Ctrl+K / Cmd+K focuses the field from anywhere.
   useEffect(() => {
@@ -268,12 +260,12 @@ export function TopSearch() {
   const optionId = (h: Hit) => `${uid}-${h.id}`;
 
   let status: string | null = null;
-  if (trimmed.length < MIN_CHARS) status = `Type at least ${MIN_CHARS} characters to search.`;
-  else if (loading) status = "Searching…";
+  if (trimmed.length < MIN_CHARS) status = t("minimum", { count: MIN_CHARS });
+  else if (loading) status = t("searching");
   else if (groups && searched.length === 0 && forbidden.length === groups.length)
-    status = "Nothing was searched: your role cannot read any of these lists.";
+    status = t("noneSearched");
   else if (groups && nothingFound && groups.every((g) => g.status !== "error"))
-    status = `No sources, rules, offenses or active anomalies match “${trimmed}”.`;
+    status = t("noResults", { query: trimmed });
 
   return (
     <div className="topsearch" role="search" ref={rootRef}>
@@ -282,14 +274,14 @@ export function TopSearch() {
         type="text"
         className="topsearch-input"
         role="combobox"
-        aria-label="Search sources, rules, offenses and anomalies"
+        aria-label={t("aria")}
         aria-expanded={shown}
         aria-controls={shown ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={shown && active >= 0 && flat[active] ? optionId(flat[active]) : undefined}
         autoComplete="off"
         spellCheck={false}
-        placeholder="Search sources, rules, anomalies"
+        placeholder={t("placeholder")}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -299,7 +291,7 @@ export function TopSearch() {
         onKeyDown={onKeyDown}
       />
       <kbd className="topsearch-hint" aria-hidden="true">
-        Ctrl K
+        {t("shortcut")}
       </kbd>
       {shown && (
         <div className="topsearch-panel">
@@ -308,21 +300,21 @@ export function TopSearch() {
               {status}
             </p>
           )}
-          <div id={listId} role="listbox" aria-label="Search results">
+          <div id={listId} role="listbox" aria-label={t("results")}>
             {(groups ?? [])
               .filter((g) => g.status !== "forbidden")
               .map((g) => (
                 <div key={g.key} role="group" aria-labelledby={`${uid}-g-${g.key}`}>
                   <div className="topsearch-group" id={`${uid}-g-${g.key}`}>
-                    {LABEL[g.key]}
+                    {groupLabel(g.key, true, t)}
                   </div>
                   {g.status === "error" && (
                     <p className="topsearch-note">
-                      {NAME[g.key]} could not be searched: the request failed. Try again.
+                      {t("groupFailed", { name: groupLabel(g.key, false, t) })}
                     </p>
                   )}
                   {g.status === "ok" && g.hits.length === 0 && !nothingFound && (
-                    <p className="topsearch-note">No match.</p>
+                    <p className="topsearch-note">{t("noMatch")}</p>
                   )}
                   {g.status === "ok" &&
                     g.hits.map((h) => (
@@ -350,12 +342,22 @@ export function TopSearch() {
           </div>
           {forbidden.length > 0 && (
             <p className="topsearch-footer">
-              {forbidden.map((g) => NAME[g.key]).join(", ")} not searched: your role cannot read
-              them
+              {t("forbiddenGroups", {
+                names: forbidden.map((g) => groupLabel(g.key, false, t)).join(", "),
+              })}
             </p>
           )}
         </div>
       )}
     </div>
   );
+}
+
+type SearchTranslator = ReturnType<typeof useTranslations<"shell.search">>;
+
+function groupLabel(key: GroupKey, limited: boolean, t: SearchTranslator): string {
+  if (key === "sources") return t("sources");
+  if (key === "rules") return t("rules");
+  if (key === "offenses") return t("offenses");
+  return t(limited ? "anomaliesLimited" : "anomalies");
 }

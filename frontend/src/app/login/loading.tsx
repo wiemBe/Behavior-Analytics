@@ -1,5 +1,9 @@
+"use client";
+
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
+import { useTranslations } from "next-intl";
 
 export default function Loading() {
-  return <BoundaryLoading title="Sign in" what="the sign-in form" />;
+  const t = useTranslations("login");
+  return <BoundaryLoading title={t("title")} what={t("loading")} />;
 }

@@ -4,10 +4,12 @@
 // says so; it never falls back to a remembered or hard-coded number.
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { shellApi } from "@/lib/api";
 
 export function ApiVersionLine({ className }: { className?: string }) {
+  const t = useTranslations("auth");
   const [state, setState] = useState<{ version: string } | "failed" | null>(null);
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export function ApiVersionLine({ className }: { className?: string }) {
   if (state === null) return null;
   return (
     <p className={className}>
-      {state === "failed" ? "API version could not be read" : `API version ${state.version}`}
+      {state === "failed" ? t("apiVersionFailed") : t("apiVersion", { version: state.version })}
     </p>
   );
 }

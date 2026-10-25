@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-
-
+import { useTranslations } from "next-intl";
 // Who is signed in. The top bar shows the username only. The rest — source,
 // roles, a password change for a local account, and Sign out — opens from
 // that control. The development principal has no session to end.
@@ -16,6 +15,8 @@ import { useSession } from "@/components/auth/session";
 import styles from "@/components/auth/auth.module.css";
 
 export function Account() {
+  const t = useTranslations("shell.account");
+  const password = useTranslations("password");
   const session = useSession();
   const details = useRef<HTMLDetailsElement>(null);
 
@@ -47,18 +48,25 @@ export function Account() {
 
   return (
     <details ref={details} className={styles.account}>
-      <summary className={styles.accountSummary} aria-label={`Account: ${name}`}>
+      <summary className={styles.accountSummary} aria-label={t("label", { name })}>
         {name}
       </summary>
       <div className={styles.accountMenu}>
-        <p>Signed in as {name}</p>
-        {source ? <p className={styles.accountMeta}>Source: {source}</p> : null}
+        <p>{t("signedInAs", { name })}</p>
+        {source ? <p className={styles.accountMeta}>{t("source", { source })}</p> : null}
         <p className={styles.accountMeta}>
-          {roles.length > 0 ? `Roles: ${[...roles].sort().join(", ")}` : "Roles: none"}
+          {roles.length > 0
+            ? t("roles", { roles: [...roles].sort().join(", ") })
+            : t("rolesNone")}
         </p>
+        {!isDevPrincipal(me) ? (
+          <Link className={styles.accountLink} href="/account">
+            {t("settings")}
+          </Link>
+        ) : null}
         {source === "LOCAL" ? (
           <Link className={styles.accountLink} href="/account">
-            Change password
+            {password("change")}
           </Link>
         ) : null}
         <ApiVersionLine className={styles.accountMeta} />

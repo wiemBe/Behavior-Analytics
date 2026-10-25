@@ -448,6 +448,68 @@ observed contributor", "largest volume change", "behavior is consistent with",
 
 ---
 
+## Language
+
+The interface is offered in English and Turkish; English is the default. The analyst chooses the
+language under Account settings, and the server stores the choice on the user account so it follows
+the analyst to other browsers. The URL never carries a locale.
+
+Phase 1 translates interface copy: navigation, headings, controls, labels, table headers, notices
+and designed loading, empty, error and honesty states. Sentences written by the backend, including
+anomaly explanations, rule-health reasons, alert text and evaluation notes, remain English until
+the backend exposes message codes. Frontend code must never translate those sentences by matching
+their text.
+
+The following technical terms remain English in Turkish: offense, log source, EPS, WAF, IPS, AQL,
+baseline, MCP, LDAP, QRadar, DSM, QID, ATT&CK, CIDR, HTTP and UTC, along with product-object names
+that match QRadar's screens. A Turkish suffix attached to an English term takes an apostrophe, for
+example `offense'lar` and `log source'un`.
+
+Turkish numbers use a dot for digit groups and a comma for decimals: `1.204` and `31,8`. The percent
+sign precedes the number without a space: `%31,8`, `≥ %12,5` and `<%0,1`. English retains `1,204`,
+`31.8 %` (with U+00A0), `≥ 12.5 %` and `<0.1 %`. The missing mark is `—` in both languages. Absolute
+and compact timestamps are identical and explicitly UTC in both languages; only surrounding words
+and relative ages are translated.
+
+Turkish copy uses the formal register (`siz`) and short button imperatives such as `Kaydet` and
+`Tekrar dene`. It uses no exclamation marks and no word meaning “live” or “real-time” (`canlı`,
+`gerçek zamanlı`, `anlık`), because collection runs on a cadence. As in English, an error says what
+failed and what the analyst can do.
+
+Recurring interface terms use this glossary. A route task adds a missing word here before using it.
+
+| English | Turkish |
+|---|---|
+| anomaly | anomali |
+| source | kaynak |
+| detector | algılayıcı |
+| verdict | karar |
+| status | durum |
+| insufficient data | yetersiz veri |
+| partial | kısmi |
+| truncated | kırpılmış |
+| not collected | toplanmadı |
+| stale | güncel değil |
+| forbidden | izin yok |
+| expected range | beklenen aralık |
+| bucket | zaman dilimi |
+| cadence | sıklık |
+| collection | toplama |
+| search | arama |
+| rule | kural |
+| alert | uyarı |
+| acknowledge | alındı olarak işaretle |
+| investigation | inceleme |
+| evidence | kanıt |
+| contributor | katkı sağlayan |
+| dashboard | gösterge paneli |
+| widget | bileşen |
+| settings | ayarlar |
+| sign in | oturum aç |
+| sign out | oturumu kapat |
+
+---
+
 ## 8. Component contracts
 
 Each reusable component owns an invariant. Fix presentation problems in the
@@ -581,7 +643,8 @@ skeleton. `LoadingState` is a polite live region naming what is loading.
 `ErrorState` is an alert that says the page could not be displayed, that
 nothing was changed, and what to try; it **must not** render the exception
 text, which can carry a stack trace or an upstream URL. Next's error digest may
-be shown as a reference.
+be shown as a reference. Its `what` argument is one translated noun phrase in
+the nominative so English and Turkish can compose the surrounding sentence.
 
 ### `TopBar`, `TopSearch`, `AutoRefresh`, `AlertBell`, `ConnectionStatus`
 

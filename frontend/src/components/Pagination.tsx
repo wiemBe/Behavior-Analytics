@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 // Offset pagination control.
 //
@@ -32,26 +33,27 @@ export function Pagination({
   basePath: string;
   params?: Record<string, string | undefined>;
 }) {
+  const t = useTranslations("ui");
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + limit, total);
   const hasPrev = offset > 0;
   const hasNext = offset + limit < total;
 
   return (
-    <nav className="pagination" aria-label="Pagination">
+    <nav className="pagination" aria-label={t("pagination")}>
       <span className="muted">
-        {from}–{to} of {total}
+        {t("pageRange", { from, to, total })}
       </span>
       <span className="pagination-links">
         {hasPrev ? (
-          <Link href={href(basePath, Math.max(0, offset - limit), params)}>Previous</Link>
+          <Link href={href(basePath, Math.max(0, offset - limit), params)}>{t("previous")}</Link>
         ) : (
-          <span className="muted">Previous</span>
+          <span className="muted">{t("previous")}</span>
         )}
         {hasNext ? (
-          <Link href={href(basePath, offset + limit, params)}>Next</Link>
+          <Link href={href(basePath, offset + limit, params)}>{t("next")}</Link>
         ) : (
-          <span className="muted">Next</span>
+          <span className="muted">{t("next")}</span>
         )}
       </span>
     </nav>

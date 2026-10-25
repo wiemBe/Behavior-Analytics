@@ -12,6 +12,7 @@
 // credential — and React escapes it again on the way into the DOM.
 
 import { useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 
 export function CodePanel({
   label,
@@ -24,6 +25,7 @@ export function CodePanel({
   /** Short context shown beside the label, e.g. row count. */
   meta?: string;
 }) {
+  const t = useTranslations("ui");
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -53,14 +55,14 @@ export function CodePanel({
             type="button"
             className="action secondary"
             onClick={copy}
-            aria-label={`Copy the ${label} query to the clipboard`}
+            aria-label={t("copyQueryLabel", { label })}
           >
-            Copy query
+            {t("copyQuery")}
           </button>
           {/* Announced when it changes, so the copy is confirmed to a screen
               reader rather than only to the eye. */}
           <span role="status" aria-live="polite" className="muted">
-            {copied ? "Query copied to clipboard" : ""}
+            {copied ? t("queryCopied") : null}
           </span>
         </div>
         {/* Scrolls inside itself. A long single-line AQL statement would
