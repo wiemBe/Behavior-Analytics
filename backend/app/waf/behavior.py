@@ -38,7 +38,7 @@ from typing import Any
 
 from app.anomaly import statistics as rstats
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
-from app.core.text import percent
+from app.core.text import percent, points
 from app.models.enums import (
     DetectorSignal,
     RobustScoreStatus,
@@ -446,8 +446,8 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
 
     if rise < thr.ratio_min_increase:
         return g.not_proven(
-            f"{_pct(observed)} is {rise * 100:+.1f} pp from the expected {_pct(expected)}, below "
-            f"the {thr.ratio_min_increase * 100:.0f} pp minimum rise",
+            f"{_pct(observed)} is {points(rise)} from the expected {_pct(expected)}, below "
+            f"the {points(thr.ratio_min_increase, precision=0, signed=False)} minimum rise",
             observed=observed, expected=expected,
         )
     if multiple is not None and multiple < thr.ratio_min_multiple:
@@ -465,7 +465,7 @@ def detect_ratio(ctx: WafDetectionContext, d: RatioDefinition) -> WafSpikeVerdic
         f"{bound}{k} of {n} {d.denominator_noun} to {_subject(ctx)} were {d.numerator_noun} "
         f"({bound}{_pct(observed)}), against an expected {_pct(expected)} from "
         f"{cell.denominator_sum:.0f} historical requests "
-        f"({rise * 100:+.1f} pp"
+        f"({points(rise)}"
         + (f", {multiple:.1f}x" if multiple is not None else "")
         + f"); {basis}"
     )
@@ -593,9 +593,9 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
     }
     if rise < thr.concentration_min_increase:
         return g.not_proven(
-            f"the largest source IP's share {_pct(share)} is {rise * 100:+.1f} pp from the "
+            f"the largest source IP's share {_pct(share)} is {points(rise)} from the "
             f"expected {_pct(expected)}, below the "
-            f"{thr.concentration_min_increase * 100:.0f} pp minimum rise",
+            f"{points(thr.concentration_min_increase, precision=0, signed=False)} minimum rise",
             observed=share, expected=expected,
         )
     passed, basis, magnitude = _surprise(share, cell, thr, facts)
@@ -612,7 +612,7 @@ def detect_client_concentration_spike(ctx: WafDetectionContext) -> WafSpikeVerdi
     reason = (
         f"the largest source IP sent {top1} of {n} requests to {_subject(ctx)} "
         f"({_pct(share)}), against an expected share of {_pct(expected)} "
-        f"({rise * 100:+.1f} pp); the five largest sent {_pct(top5 / n)}{volume_text}; {basis}"
+        f"({points(rise)}); the five largest sent {_pct(top5 / n)}{volume_text}; {basis}"
     )
     return _result(dt, AnomalyEvidence(
         anomaly_type=dt,
