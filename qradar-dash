@@ -2890,6 +2890,42 @@ previous_images_are_local() { # previous_images_are_local MAP
   done < <(printf '%s\n' "${1//,/$'\n'}")
 }
 
+rollback_service_image() { # rollback_service_image SERVICE
+  case "$1" in
+    celery-worker | celery-beat) say backend ;;
+    *) say "$1" ;;
+  esac
+}
+
+rollback_service_profile() { # rollback_service_profile SERVICE
+  case "$1" in
+    qradar-mcp) say mcp ;;
+    *) say "$1" ;;
+  esac
+}
+
+rollback_unrecorded_images_are_ready() { # rollback_unrecorded_images_are_ready MAP VERSION
+  local map=$1 version=$2 prefix service image ref profile
+  prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
+  : "${prefix:=$DEFAULT_IMAGE_PREFIX}"
+  for service in "${UPGRADE_SERVICES[@]}"; do
+    image_map_digest "$map" "$service" >/dev/null 2>&1 && continue
+    image=$(rollback_service_image "$service")
+    ref=$prefix/$image:$version
+    if docker image inspect "$ref" >/dev/null 2>&1; then
+      say "$service: no recorded image; using $ref (local)"
+      continue
+    fi
+    if docker pull "$ref"; then
+      say "$service: no recorded image; using $ref (pulled)"
+      continue
+    fi
+    profile=$(rollback_service_profile "$service")
+    fail "rollback refused: $service has no recorded image from the upgrade and $ref is neither local nor pullable. Next: load the $version offline bundle (docker load -i …/images.tar), or remove $profile from COMPOSE_PROFILES and run rollback again. Nothing was changed."
+    return 1
+  done
+}
+
 tag_previous_images() { # tag_previous_images MAP VERSION
   local map=$1 version=$2 prefix service digest
   prefix=$(env_get QRADAR_DASH_IMAGE_PREFIX)
@@ -3324,10 +3360,12 @@ cmd_rollback() {
     fail "rollback refused: backup version does not match last_upgrade.from"
     return 1
   }
+  set_upgrade_services
   previous_images_are_local "$old_images" || {
     fail "rollback refused: a previous image is absent or has the wrong local digest (${PREVIOUS_IMAGE_PROBLEM:-unknown}). Next: ./qradar-dash doctor. Nothing was changed."
     return 1
   }
+  rollback_unrecorded_images_are_ready "$old_images" "$old_version" || return 1
   encryption_key_compatible "$backup/env.bak" || {
     fail "rollback refused: the backup's ENCRYPTION_KEY is not the current key or in ENCRYPTION_KEYS_JSON"
     return 1
@@ -3347,7 +3385,6 @@ cmd_rollback() {
     IFS= read -r answer || answer=""
     [ "$answer" = rollback ] || { fail "rollback confirmation was not given"; return 1; }
   fi
-  set_upgrade_services
   at=$(state_now) || return 1
   perform_rollback "$backup" "$old_version" "$old_images" \
     "$STATE_LAST_FROM" "$STATE_LAST_TO" "$at"

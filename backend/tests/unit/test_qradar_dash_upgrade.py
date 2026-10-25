@@ -106,6 +106,9 @@ fi
 if [ "$1 $2" = "image inspect" ]; then
   subject=${!#}
   [ "${STUB_OFFLINE_MISSING:-0}" -eq 0 ] || exit 1
+  if [ -n "${STUB_MISSING_IMAGE:-}" ] && [ "$subject" = "$STUB_MISSING_IMAGE" ]; then
+    exit 1
+  fi
   [ "${STUB_HELPER_MISSING:-0}" -eq 0 ] || {
     case "$subject" in alpine:*@sha256:* ) exit 1 ;; esac
   }
@@ -120,6 +123,7 @@ if [ "$1 $2" = "image inspect" ]; then
 fi
 if [ "$1" = tag ]; then exit 0; fi
 case "$*" in
+  pull\ *) exit "${STUB_PULL_RC:-0}" ;;
   *" pull "*) exit "${STUB_PULL_RC:-0}" ;;
   "run --rm --entrypoint cat "*)
     [ "${STUB_NOTES_RC:-0}" -eq 0 ] || exit "$STUB_NOTES_RC"
