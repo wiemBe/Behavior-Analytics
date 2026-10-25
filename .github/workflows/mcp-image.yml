@@ -22,6 +22,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # The same entry as release.yml's qradar-mcp matrix entry; a test pins them equal.
+          - name: qradar-mcp
+            context: deploy/mcp
+            build-contexts: upstream=oci-layout://{0}/.qradar-mcp-upstream
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,8 +54,8 @@ jobs:
       - name: Build the derived image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: deploy/mcp
-          build-contexts: upstream=oci-layout://${{ github.workspace }}/.qradar-mcp-upstream
+          context: ${{ matrix.context }}
+          build-contexts: ${{ format(matrix.build-contexts, github.workspace) }}
           push: false
           load: true
           tags: qradar-dash-check/qradar-mcp:check
