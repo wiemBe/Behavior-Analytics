@@ -1,8 +1,9 @@
 # Phase G — property watches: track any property's values on a scope (2026-10-17)
 
-Status: **building, 2026-10-17** (designed by T-125; PW-1 foundations built). The build
-(PW-1…, §G.16) starts only after the operations work (OPS-5, OPS-6,
-OPS-9 round 2, OPS-10), by the user's order of 2026-10-17 (§G.16). It follows the shape of
+Status: **built, first shipped in `v0.1.2`** (designed 2026-10-17 by T-125; built as PW-1 to
+PW-11, §G.16, after the operations work the user ordered first; live-measured in the lab on
+2026-10-18 — §G.16's PW-10 note). Not built: value **masking** (§G.7.2) and the correlation
+candidates B, C and D (§G.9.2). It follows the shape of
 [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) and
 [`PHASE-F-CUSTOM-DETECTIONS.md`](PHASE-F-CUSTOM-DETECTIONS.md) and rests on
 [`SEARCH-CADENCE.md`](SEARCH-CADENCE.md) (the search cadence), [`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md)
@@ -37,8 +38,8 @@ The user's answers at 12:55 on 2026-10-17 (binding):
 The one-sentence answer to the user's question is **yes**: every ingredient exists — the synced
 inventory with groups, the per-type custom-property catalog, validated field references, keyed
 fleet-wide searches with truncation splits, entity admission, seasonal baselines, the lifecycle,
-shadow-mode alerting and the F.1 rule engine. What is missing is the watch itself: the model, the
-collector, the detectors, the API and the UI (§G.16 builds exactly those).
+shadow-mode alerting and the F.1 rule engine. What was missing was the watch itself: the model, the
+collector, the detectors, the API and the UI (§G.16 designed exactly those; all built).
 
 ---
 

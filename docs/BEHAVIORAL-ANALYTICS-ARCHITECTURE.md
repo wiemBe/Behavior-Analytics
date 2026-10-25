@@ -1,9 +1,16 @@
 # Behavioral Analytics Architecture
 
-Status: Phase A complete and live-validated. Phase B is in design and discovery —
-its implementation contract is [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md),
-and Phase B production code must be built from that document, not from this one.
-Phases C–F are roadmap only and MUST NOT be implemented from this document alone.
+Status: Phase A complete and live-validated (first shipped in `v0.4.0-phase-a`). Phases B to F and
+the property watches of Phase G are **built**, each from its own design document and none from this
+one: [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md) (B),
+[PHASE-C-LOG-SOURCE-FLEET.md](PHASE-C-LOG-SOURCE-FLEET.md) (C),
+[PHASE-D-IPS-BEHAVIOR.md](PHASE-D-IPS-BEHAVIOR.md) (D),
+[PHASE-E-RULE-ANALYTICS.md](PHASE-E-RULE-ANALYTICS.md) (E),
+[PHASE-F-CUSTOM-DETECTIONS.md](PHASE-F-CUSTOM-DETECTIONS.md) (F) and
+[PHASE-G-PROPERTY-WATCH.md](PHASE-G-PROPERTY-WATCH.md) (G). B to F first shipped in release
+`v0.1.0`, the property watches and history bootstrap in `v0.1.2`. This document is the
+architecture record: the later-phase sketches in §3.1 and §10.1 are superseded, and a phase is
+still built only from its own design document, never from this one.
 
 ---
 
@@ -63,8 +70,8 @@ They must be preserved and kept working. They are not the product's headline.
 | Phase | Scope | Status |
 |---|---|---|
 | **A** | Log-source volume behavior: EPS spike, drop, silence, seasonal baseline, anomaly-interval investigation, top-contributor explanation | **Complete**, live-validated 2026-08-02 |
-| **B** | WAF behavior: endpoint request-rate baseline, error/block ratio, new endpoint access, peer-group baseline for new clients, request-pattern anomalies | **Backend slice complete**, live-validated 2026-08-03; API/UI and ratio/novelty detectors pending. See [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md) |
-| C | Firewall and IPS behavior: source IP × destination, source IP × destination port, distinct destination and port counts, deny-rate anomalies, scan behavior, exploit/signature bursts | Roadmap |
+| **B** | WAF behavior: endpoint request-rate baseline, error/block ratio, new endpoint access, peer-group baseline for new clients, request-pattern anomalies | **Built** — backend live-validated 2026-08-03; the ratio, concentration and novelty detectors with it (§30 of [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md)); the analyst API and UI since 2026-10-13. Not built: peer groups for new clients (§27.9) and request-pattern anomalies (§11.3) |
+| C | Firewall and IPS behavior: source IP × destination, source IP × destination port, distinct destination and port counts, deny-rate anomalies, scan behavior, exploit/signature bursts | **IPS part built** as Phase D ([PHASE-D-IPS-BEHAVIOR.md](PHASE-D-IPS-BEHAVIOR.md)) — per-source dimensions (source IP, port, protocol, signature), concentration, port fan-out and block ratio, live-validated 2026-10-16; not this sketch's pairwise keys. The rest is roadmap |
 | D | User behavior: user × host, user × source IP, user × application, login-time behavior, new system access, failed-login patterns, privileged activity | Roadmap |
 | E | Feedback and model management: false-positive feedback, threshold tuning, maintenance windows, baseline versions, model drift, detector performance | Roadmap |
 | F | Internal LLM investigation assistant: evidence summarization, investigation plan, related historical anomalies, suggested AQL, internal playbook/RAG context | Roadmap |
@@ -634,7 +641,9 @@ through to `RESOLVED`. See [LAB-DEMO-RESULTS.md](LAB-DEMO-RESULTS.md).
 **Phase B status:** the backend vertical slice — endpoint normalizer, collector, seasonal
 baseline, `WAF_REQUEST_RATE_SPIKE` and lifecycle — is implemented and live-validated
 (2026-08-03), and is off by default. Its anomaly API, UI rendering and Celery
-schedule are not built. The implementation contract is
+schedule are **built** — the API and UI on 2026-10-13 (`app/api/routes/anomalies.py`,
+`frontend/src/app/behavior/waf`) and the per-source beat schedule in
+`app/workers/celery_app.py` (`dispatch_waf_collection`). The implementation contract is
 [PHASE-B-WAF-BEHAVIOR.md](PHASE-B-WAF-BEHAVIOR.md), which supersedes the Phase B
 entity and metric sketches in §3.1 and §10.1 above; §27 of that document is the
 consolidated design for what remains. The roadmap's
@@ -682,10 +691,10 @@ Deliberately **not** shared. Each domain owns typed persistence and detectors.
 | Detection input | `MetricPoint`, `DetectionContext`, `detectors.py` | `WafPoint`, `WafDetectionContext`, `waf/detector.py` |
 | Thresholds | `ThresholdResolver` (criticality, `custom_thresholds`) | `WafThresholds` from `waf_*` settings |
 | State, incident, transition | `LogSourceDetectorState`, `LogSourceAnomaly`, `AnomalyStateTransition` | `WafDetectorState`, `WafAnomaly`, `WafAnomalyTransition` |
-| Engine | `AnomalyEngine`: alerts, maintenance, explanation hand-off | `WafAnomalyEngine`: maintenance (recorded per bucket); no alerts or explanation yet |
+| Engine | `AnomalyEngine`: alerts, maintenance, explanation hand-off | `WafAnomalyEngine`: maintenance (recorded per bucket) and alerting through the shared `AlertService` (`app/waf/engine.py`); explanation is the detector's reason text, not the Phase A package |
 | Metric identity | `query_provenance` telemetry and aggregation; not enforced | `metric_semantics` on rows, buckets and cells; enforced fail-closed |
 | Scheduling | `collect_metrics`, `evaluate_anomalies`, `rebuild_baselines` as separate jobs | one `collect_waf_source` run per source: collect → evaluate → train |
-| Evidence package | `AnomalyExplanation*`, `ExplanationCollector` | not built |
+| Evidence package | `AnomalyExplanation*`, `ExplanationCollector` | not reused: a WAF incident serves `detection` from `waf_detection_detail` (`app/schemas/anomaly.py`) with its breakdowns and contributors |
 | Detector-type enum | `AnomalyType` | `WafAnomalyType` |
 
 **The rule for Phase C and later.** A new domain adds its own entity, metric,
@@ -719,7 +728,7 @@ measured.
 | `REPEATED_PAYLOAD` | Synthetic only | a payload signature requires reading payloads, which the platform never does |
 | `CARDINALITY_DROP` | **Unsupported** | no `distinct_source_ip_count` baseline is built, and Ariel counts no distinct IPs |
 | `COLLECTION_ERROR` | **Unsupported** | a failed collection raises before any bucket exists; failures live on the collection watermark |
-| `WAF_REQUEST_RATE_SPIKE` | **Operational** (per enabled profile) | scheduled since Phase B.1 for sources with an enabled, validated profile; off by default; incidents not yet exposed by the analyst API. Declares `LOWER_BOUND_PROVES_INCREASE`: on a bucket whose counts are lower bounds it can prove a spike, never normality (Phase B §29.2) |
+| `WAF_REQUEST_RATE_SPIKE` | **Operational** (per enabled profile) | scheduled since Phase B.1 for sources with an enabled, validated profile; off by default; incidents served by the analyst API and UI since 2026-10-13 (`app/api/routes/anomalies.py`, `frontend/src/app/behavior/waf`). Declares `LOWER_BOUND_PROVES_INCREASE`: on a bucket whose counts are lower bounds it can prove a spike, never normality (Phase B §29.2) |
 
 **Enforcement.** Each metric row's `query_provenance.telemetry` records what its
 provider measured; rows collected before that key existed fall back to what

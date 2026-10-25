@@ -1,6 +1,8 @@
 # Phase D — IPS traffic behavior (goal G2)
 
-Status: **design, 2026-10-13.** It builds on the WAF architecture
+Status: **built, first shipped in `v0.1.0`** (designed 2026-10-13; build status §D.0a). Every
+§D.13 task is built, including the analyst UI and the §D.12 live validation, which ran on
+the lab sources on 2026-10-14 to 2026-10-16 (T-054 — see the as-built note in §D.12). It builds on the WAF architecture
 ([`PHASE-B-WAF-BEHAVIOR.md`](PHASE-B-WAF-BEHAVIOR.md) §27–§30), the search cadence
 ([`SEARCH-CADENCE.md`](SEARCH-CADENCE.md)) and the field-mapping contract
 ([`FIELD-MAPPING.md`](FIELD-MAPPING.md) §FM.9).
@@ -18,6 +20,11 @@ versioned baseline builder, `ips_anomaly_fingerprint`), T-051c (the engine, the 
 that source's own evaluation), T-052 (§D.10 alerting), T-053 (`/admin/ips-sources` UI), T-078 (per-field
 status on `GET /ips/sources`), T-079 (the IPS bucket width on `/admin/search-cadence`); **not
 built** — T-054 (§D.12 live validation).
+
+> **As built (2026-10-16).** The items that were still open when this was written have followed:
+> the analyst view's UI (§D.11, then **[BUILT]**) and the live validation (T-054, listed above
+> as not built; it ran and was closed by the merge `e26c683` in the git history; §D.12). Every
+> §D.13 task is built.
 
 ## D.0 What the user asked
 
@@ -257,14 +264,20 @@ Two ruled differences from WAF:
 
 1. **Profile administration** (§D.3) — **[BUILT]** API and `/admin/ips-sources`, from the field-mapping
    components (T-049, T-053; per-field status on `/ips/sources` from T-078).
-2. **Analyst view** — API **[BUILT]** (T-085), UI **[DESIGN]**. With the WAF analyst API and UI
+2. **Analyst view** — API **[BUILT]** (T-085), UI **[BUILT]** (the analyst UI; the link and filter that show every active IPS anomaly). With the WAF analyst API and UI
    (design §27.14–§27.15), one subject model: anomaly list with `subject_kind` `IPS_ENTITY`/`IPS_SOURCE`, investigation
-   detail with the seasonal band, contributors and every honesty state. Scheduled after the
-   profile UI.
+   detail with the seasonal band, contributors and every honesty state
+   (`app/api/routes/anomalies.py`, `frontend/src/components/ips`).
 
-## D.12 Live validation **[DESIGN]**
+## D.12 Live validation **[BUILT — run 2026-10-14 to 2026-10-16]**
 
-Not run (T-054).
+> **As built.** T-054 ran the scenarios below on lab sources 412 and 413; its parts are recorded in
+> the git history (`ac44bf6` the port sweep, `0bdc334` signature-burst with alerting on and
+> source-concentration, `31bdd47` block-shift with alerts opened and resolved; closed by the merge
+> `e26c683`). The block-ratio scenario ran once the lab console had an action custom property to
+> map — so the design text's last sentence below stopped holding. Two recorded caveats: hours 07–09
+> of one run were voided by a generator defect (D-1, fixed after the defect was found), and a fan-out lead did not
+> reproduce (`8be8770`). The rest of the design text below is what was to be validated.
 
 On the lab sources 412 and 413, at ≤ 5 EPS per the lab guide: validate both profiles; run
 `ips-baseline` long enough to train the cells the scenario hours need (or a documented shortened
@@ -282,7 +295,7 @@ can create; it is skipped until then.
 | T-051 | D.6–D.7 baselines and detectors, capability specs, engine with bulk loaders, lifecycle — **[BUILT]**: T-051a pure detectors, T-051b tables `0021`, baseline builder and fingerprint, T-051c engine, lifecycle and pipeline step, T-051d per-source training bound |
 | T-052 | D.10 alerting — **[BUILT]** |
 | T-053 | `/admin/ips-sources` UI from the field-mapping components; screenshots — **[BUILT]** |
-| T-054 | D.12 live validation — **[DESIGN]** |
+| T-054 | D.12 live validation — **[BUILT]** (ran 2026-10-14 to 2026-10-16; §D.12's as-built note) |
 | T-055 | Docs: README, this design's [BUILT] markers — **[BUILT]** (this revision) |
 
 Order: T-049 → T-050 → T-051 → T-052; T-053 after T-049; T-054 last.

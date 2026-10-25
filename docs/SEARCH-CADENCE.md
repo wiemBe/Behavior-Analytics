@@ -1,7 +1,8 @@
 # Search cadence — how often the platform searches QRadar (2026-10-12, amended 2026-10-18)
 
-Status: **built on `feat/phase-ce`, 2026-10-12** (T-033 to T-039). **Live validation (T-040)
-is pending.** It rests on the live facts measured on the lab console on 2026-10-12: one search
+Status: **built and live-validated, first shipped in `v0.1.0`** (built 2026-10-12 on
+`feat/phase-ce`, T-033 to T-039; the live validation T-040 ran the same day — §SC.10 is its
+report). It rests on the live facts measured on the lab console on 2026-10-12: one search
 returns every 5-minute bucket of its window (`starttime/300000` as the key), and an 8-hour Phase A
 window of 184 rows takes 0.61 s.
 
