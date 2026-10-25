@@ -1,8 +1,10 @@
 # Phase C — log-source fleet: inventory, classification, new sources (goal G1)
 
-Status: **design, 2026-10-12**. It rests on the live facts measured on the lab console on
+Status: **built, first shipped in `v0.1.0`** (designed 2026-10-12). It rests on the live facts measured on the lab console on
 2026-10-12 — 51 log sources, of which only 4 delivered events in the last hour — and serves goal
-G1, log-source fleet monitoring.
+G1, log-source fleet monitoring. Part 1 is built as designed: the fleet model, classification and
+seed rules (migration `0011`, `app/fleet/`), the `/api/v1/fleet` routes, and the
+`/log-sources`, `/fleet` and `/admin/classification-rules` UIs.
 
 ## C.0 What the user asked for
 
@@ -175,10 +177,13 @@ builds on.
 
 # Part 2 (Phase C.2): outage policy and catch-all senders
 
-Status: **design, 2026-10-13 (sixth session).** Live facts from the lab: a sender on a catch-all
+Status: **built, first shipped in `v0.1.0`** (designed 2026-10-13, sixth session). Live facts from the lab: a sender on a catch-all
 source is told apart by `logsourceidentifier`, not `sourceip`, and the SIM Generic marker is
 `qid = 18750001`. It covers the two G1 gaps C.1 left: "be alerted
-when **selected** sources stop" and "track SIM Generic Log".
+when **selected** sources stop" and "track SIM Generic Log". Both halves are built as designed:
+the outage policy (migration `0019`, `app/fleet/outage_policy.py`, `/api/v1/outage-policy`,
+`/admin/outage-policy`) and the catch-all senders (migration `0020`, `app/catchall/`, the
+`/fleet/catchall` queue).
 
 ## C.7 Outage alert policy [DECISION, 2026-10-13]
 

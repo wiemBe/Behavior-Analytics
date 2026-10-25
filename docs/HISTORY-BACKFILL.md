@@ -1,6 +1,6 @@
 # History backfill: every baseline reads its past from Ariel once, for learning only
 
-Status: **built, 2026-10-20.** The design is implemented: the shared core, the five family
+Status: **built, first shipped in `v0.1.2`** (built 2026-10-20). The design is implemented: the shared core, the five family
 adapters, the admin API, the installer question and the admin page. It generalises
 [`PHASE-G-HISTORY-BOOTSTRAP.md`](PHASE-G-HISTORY-BOOTSTRAP.md)
 (cited as §H.n, the model for property watches) to the platform-wide baselines, and changes none of its text.

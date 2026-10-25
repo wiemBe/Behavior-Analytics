@@ -3,7 +3,7 @@
 Implementation reference for the first behavioral detector. Concepts and the
 long-term roadmap live in [BEHAVIORAL-ANALYTICS-ARCHITECTURE.md](./BEHAVIORAL-ANALYTICS-ARCHITECTURE.md).
 
-Status: **complete and live-validated.** Spike, drop, multi-source isolation and
+Status: **complete and live-validated**, first shipped in `v0.4.0-phase-a`. Spike, drop, multi-source isolation and
 NO_EVENTS have all been observed end to end against a real QRadar appliance —
 see §11 and `docs/LAB-DEMO-RESULTS.md`.
 

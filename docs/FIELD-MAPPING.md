@@ -1,6 +1,12 @@
 # Field mappings editable in the UI — WAF now, IPS with Phase D (2026-10-12)
 
-Status: **design, 2026-10-12.** Tasks T-041 to T-045 build it.
+Status: **built, first shipped in `v0.1.0`** (designed 2026-10-12; T-041 to T-045 merged on
+2026-10-13). §FM.3–§FM.8 are built as specified: the `/api/v1/waf` profile administration
+(`app/api/routes/waf.py`), the asynchronous validation of §FM.5 (migration `0015`,
+`WafProfileService`), the property catalog of §FM.6 (`app/services/property_catalog.py`) and the
+`/admin/waf-sources` UI of §FM.8 (`frontend/src/app/admin/waf-sources`,
+`frontend/src/components/fieldmapping`). The same components serve the IPS editor, which Phase D
+built (`app/ips/profile.py`, `frontend/src/app/admin/ips-sources`).
 
 ## FM.0 What the user asked
 
@@ -11,10 +17,19 @@ Restated as requirements:
 1. An administrator can see and change, **in the UI**, which QRadar property each logical WAF field
    is read from (URL, method, virtual host, action, response code, rule id, user agent), per WAF log
    source, without the CLI and without a restart.
-2. The same capability exists for IPS sources when IPS behavior (Phase D) is built. Phase D is not
-   built yet, so for IPS this design fixes the **contract** Phase D must follow (§FM.9).
+2. The same capability exists for IPS sources when IPS behavior (Phase D) is built. Phase D was
+   not built when this was designed, so for IPS the design fixed the **contract** Phase D must
+   follow (§FM.9); as built, Phase D took that contract (`app/ips/profile.py`,
+   [`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) §D.3).
 
 ## FM.1 What exists
+
+> **As built.** This was the inventory on 2026-10-12. §FM.4–§FM.8 are built as specified
+> (`app/api/routes/waf.py`, migration `0015`, `app/services/property_catalog.py`,
+> `frontend/src/app/admin/waf-sources` and `frontend/src/components/fieldmapping`), and Phase D
+> built the IPS half on the same components (`app/ips/profile.py`,
+> `frontend/src/app/admin/ips-sources`). The bullets below record the starting point, not the
+> present.
 
 - **Per-source WAF profile, built in Phase B.1** (`waf_source_profile`, design
   [§27.2–27.3](PHASE-B-WAF-BEHAVIOR.md)). Each WAF log source has its own mapping of logical field →
@@ -350,8 +365,10 @@ Consequences:
   raw CSV; FTD's type has none.
 - The lab events are deterministic: these numbers show what parses, not how a real fleet behaves.
 
-Phase D is not built (§0 roadmap item 4). When it is, IPS sources get the same administration, with
-these differences (T-030 and T-041 confirmed the syntax and the population):
+Phase D is built the way this section specifies (`app/ips/profile.py`, the `/api/v1/ips` routes of
+`app/api/routes/ips.py`, `/admin/ips-sources`;
+[`PHASE-D-IPS-BEHAVIOR.md`](PHASE-D-IPS-BEHAVIOR.md) §D.3). IPS sources get the same
+administration, with these differences (T-030 and T-041 confirmed the syntax and the population):
 
 - **Field references have two kinds.** IPS fields are mostly QRadar **normalized** fields, which
   DSMs fill for every product: `sourceip`, `destinationip`, `destinationport`, `protocolid`, `qid`.

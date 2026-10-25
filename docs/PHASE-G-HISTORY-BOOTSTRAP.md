@@ -1,6 +1,6 @@
 # Phase G, history bootstrap: a watch reads its past from Ariel once, for learning only (2026-10-18)
 
-Status: **built, 2026-10-20.** The design is implemented: the shared core in `backend/app/history/`,
+Status: **built, first shipped in `v0.1.2`** (built 2026-10-20). The design is implemented: the shared core in `backend/app/history/`,
 the property-watch adapter in `backend/app/property_watch/bootstrap.py`, the API and the UI. It
 extends [`PHASE-G-PROPERTY-WATCH.md`](PHASE-G-PROPERTY-WATCH.md) (cited as §G.n) and changes none of
 its text: the sentences this design makes wrong are listed in §H.0.4, and the docs round corrected

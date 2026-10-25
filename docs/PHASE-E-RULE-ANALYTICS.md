@@ -1,6 +1,12 @@
 # Phase E — rule analytics (goal G3)
 
-Status: **design, 2026-10-12**. It rests on the live facts measured on the lab console on
+Status: **partly built, first shipped in `v0.1.0`** (designed 2026-10-12). §E.2 is built: the
+`rule_match` collector, migration `0012` and the windows
+(`app/collectors/rule_match_collector.py`, `app/providers/base.py` `get_rule_matches`). §E.3 is
+built: the statistics API and the `/rules/statistics` UI (`app/api/routes/rules.py`
+`rule_statistics`, `app/schemas/rule_statistics.py`, `frontend/src/app/rules/statistics`). Not
+built: §E.4 stays deferred — it is the user's decision — and §E.5's "later" row (the flows search
+and the per-source breakdown) is not built. It rests on the live facts measured on the lab console on
 2026-10-12 (§E.1), and serves goal G3, rule analytics: how much each rule fires, how much EPS it
 costs, and how many rules are active or passive.
 
