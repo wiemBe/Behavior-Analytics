@@ -35,6 +35,7 @@ next-env.d.ts
 # Data / logs
 logs/
 *.log
+*.pid
 postgres_data/
 
 # Lab generator output. Run manifests and captured event files describe one
