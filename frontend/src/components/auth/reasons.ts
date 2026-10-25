@@ -2,6 +2,7 @@
 // is shown as sent. Nothing here rewrites a reason into a friendlier guess.
 
 import { ApiError } from "@/lib/api";
+import { englishText, type TextTranslator } from "@/i18n/fallback";
 
 function textOf(item: unknown): string {
   if (typeof item === "string") return item;
@@ -13,9 +14,9 @@ function textOf(item: unknown): string {
 }
 
 /** Every reason an `ApiError` carried, in order, with blanks removed. */
-export function errorTexts(err: unknown): string[] {
+export function errorTexts(err: unknown, t: TextTranslator = englishText): string[] {
   if (!(err instanceof ApiError)) {
-    return ["The request could not be sent. Check your connection and try again."];
+    return [t("auth.requestSendFailed")];
   }
   const detail = err.detail;
   if (Array.isArray(detail)) {
@@ -24,5 +25,5 @@ export function errorTexts(err: unknown): string[] {
   }
   if (typeof detail === "string" && detail.trim() !== "") return [detail];
   if (err.message.trim() !== "") return [err.message];
-  return ["The request failed."];
+  return [t("auth.requestFailed")];
 }

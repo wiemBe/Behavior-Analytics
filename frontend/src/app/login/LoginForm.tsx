@@ -5,6 +5,7 @@
 // says to wait. The password is never written to web storage.
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useState, type FormEvent } from "react";
 
 import { login } from "@/components/auth/client";
@@ -15,10 +16,14 @@ import { useSession } from "@/components/auth/session";
 import styles from "@/components/auth/auth.module.css";
 import { ApiError, destinationAfterLogin } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { asTextTranslator } from "@/i18n/fallback";
 
 type Problem = { heading?: string; lines: string[]; alert?: boolean };
 
 export function LoginForm() {
+  const t = useTranslations("login");
+  const auth = useTranslations("auth");
+  const common = useTranslations("common");
   const session = useSession();
   const router = useRouter();
   const params = useSearchParams();
@@ -36,14 +41,14 @@ export function LoginForm() {
       result = await login(username, password);
     } catch (err) {
       setPending(false);
-      setProblem(loginProblem(err));
+      setProblem(loginProblem(err, t, auth));
       return;
     }
     try {
       await session.reload();
     } catch {
       setPending(false);
-      setProblem({ lines: ["Signed in, but the account could not be read. Try again."] });
+      setProblem({ lines: [t("signedInReadFailed")] });
       return;
     }
     setPending(false);
@@ -54,16 +59,16 @@ export function LoginForm() {
 
   return (
     <div className={styles.column}>
-      <p className={styles.product}>Behavior Analytics</p>
-      <PageHeader title="Sign in" description="A local account or a directory account." />
+      <p className={styles.product}>{common("product")}</p>
+      <PageHeader title={t("title")} description={t("description")} />
       <form
         className={styles.form}
-        aria-label="Sign in"
+        aria-label={t("form")}
         onSubmit={(event) => void onSubmit(event)}
         aria-busy={pending}
       >
         <label className={styles.field}>
-          <span className={styles.label}>Username</span>
+          <span className={styles.label}>{t("username")}</span>
           <input
             className={styles.control}
             name="username"
@@ -75,7 +80,7 @@ export function LoginForm() {
           />
         </label>
         <label className={styles.field}>
-          <span className={styles.label}>Password</span>
+          <span className={styles.label}>{t("password")}</span>
           <input
             className={styles.control}
             type="password"
@@ -93,7 +98,7 @@ export function LoginForm() {
           </p>
         ) : null}
         <button type="submit" className={`action ${styles.submit}`} disabled={pending}>
-          {pending ? "Signing in" : "Sign in"}
+          {pending ? t("signingIn") : t("title")}
         </button>
         {problem && !refused ? (
           <ReasonList tone="warn" heading={problem.heading} lines={problem.lines} />
@@ -104,17 +109,21 @@ export function LoginForm() {
   );
 }
 
-function loginProblem(err: unknown): Problem {
-  const lines = errorTexts(err);
+function loginProblem(
+  err: unknown,
+  t: ReturnType<typeof useTranslations<"login">>,
+  auth: ReturnType<typeof useTranslations<"auth">>,
+): Problem {
+  const lines = errorTexts(err, asTextTranslator(auth));
   if (err instanceof ApiError && err.status === 401) return { lines, alert: true };
   if (err instanceof ApiError && err.status === 503) {
     return {
-      heading: "The directory could not be reached. Local accounts still work.",
+      heading: t("directoryFailed"),
       lines,
     };
   }
   if (err instanceof ApiError && err.status === 429) {
-    return { heading: "Wait, then try again.", lines };
+    return { heading: t("wait"), lines };
   }
   return { lines };
 }

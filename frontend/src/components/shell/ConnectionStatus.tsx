@@ -16,12 +16,13 @@
 //   - "Flow Collectors" and "Event Processors" are not here: no data source.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import type { Loaded } from "./TopBar";
 import type { HealthReady, SearchCadenceItem, SocOverview } from "@/lib/api";
 import { outcomeInfo } from "@/lib/searchCadence";
-import { relativeAge } from "@/lib/time";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { asTextTranslator, englishText, type TextTranslator } from "@/i18n/fallback";
 
 export type SignalTone = "ok" | "warn" | "crit" | "neutral";
 
@@ -41,13 +42,6 @@ export function worstTone(signals: Signal[]): SignalTone | null {
   return signals.reduce<SignalTone>((w, s) => (RANK[s.tone] > RANK[w] ? s.tone : w), "ok");
 }
 
-const WORD: Record<SignalTone, string> = {
-  ok: "Connected",
-  neutral: "Unknown",
-  warn: "Degraded",
-  crit: "Problem",
-};
-
 const INSTANCE_TONE: Record<string, SignalTone> = {
   HEALTHY: "ok",
   DEGRADED: "warn",
@@ -55,14 +49,41 @@ const INSTANCE_TONE: Record<string, SignalTone> = {
   UNKNOWN: "neutral",
 };
 
-function titleCase(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+function ageText(iso: string, now: number | null, t: TextTranslator): string {
+  if (now === null) return "";
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then) || now < then) return "";
+  const seconds = Math.floor((now - then) / 1000);
+  let age: string;
+  if (seconds < 60) age = t("format.underMinuteAgo");
+  else if (seconds < 3600) age = t("format.minutesAgo", { count: Math.floor(seconds / 60) });
+  else if (seconds < 86400) age = t("format.hoursAgo", { count: Math.floor(seconds / 3600) });
+  else age = t("format.daysAgo", { count: Math.floor(seconds / 86400) });
+  return t("shell.connection.ageSuffix", { age });
 }
 
-function ageText(iso: string, now: number | null): string {
-  if (now === null) return "";
-  const age = relativeAge(iso, now);
-  return age === "—" ? "" : `, ${age}`;
+function outcomeLabel(outcome: string, fallback: string, t: TextTranslator): string {
+  const key: Record<string, string> = {
+    ok: "complete",
+    partial: "partial",
+    failed: "failed",
+    "no-instance": "noEnabledInstance",
+    "no-sources": "noEligibleWafSource",
+    dispatched: "dispatched",
+  };
+  return key[outcome] ? t(`shell.connection.${key[outcome]}`) : fallback;
+}
+
+function instanceLabel(status: string, t: TextTranslator): string {
+  const key: Record<string, string> = {
+    HEALTHY: "healthy",
+    DEGRADED: "degraded",
+    UNREACHABLE: "unreachable",
+    UNKNOWN: "unknown",
+  };
+  return key[status]
+    ? t(`shell.connection.${key[status]}`)
+    : status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 }
 
 export function buildSignals(
@@ -70,35 +91,36 @@ export function buildSignals(
   overview: Loaded<SocOverview>,
   cadence: Loaded<SearchCadenceItem[]>,
   now: number | null,
+  t: TextTranslator = englishText,
 ): Signal[] {
   const out: Signal[] = [];
 
   // 1. The backend itself. A refusal here is still "cannot reach", not omitted:
   //    /health/ready is open, so a 403 means something in front of it is wrong.
   if (health.state === "loading") {
-    out.push({ key: "backend", name: "Backend and database", tone: "neutral", value: "Checking", detail: null });
+    out.push({ key: "backend", name: t("shell.connection.backend"), tone: "neutral", value: t("shell.connection.checking"), detail: null });
   } else if (health.state === "ok" && health.data.status === "ready" && health.data.database === "ok") {
-    out.push({ key: "backend", name: "Backend and database", tone: "ok", value: "OK", detail: null });
+    out.push({ key: "backend", name: t("shell.connection.backend"), tone: "ok", value: t("common.ok"), detail: null });
   } else {
     out.push({
       key: "backend",
-      name: "Backend and database",
+      name: t("shell.connection.backend"),
       tone: "crit",
-      value: "Backend unreachable",
+      value: t("shell.connection.backendUnreachable"),
       detail: null,
     });
   }
 
   // 2. The QRadar instance, as the backend last established it.
   if (overview.state === "loading") {
-    out.push({ key: "instance", name: "QRadar instance", tone: "neutral", value: "Checking", detail: null });
+    out.push({ key: "instance", name: t("shell.connection.instance"), tone: "neutral", value: t("shell.connection.checking"), detail: null });
   } else if (overview.state === "error") {
     out.push({
       key: "instance",
-      name: "QRadar instance",
+      name: t("shell.connection.instance"),
       tone: "neutral",
-      value: "Unavailable",
-      detail: "The overview could not be read.",
+      value: t("shell.connection.unavailable"),
+      detail: t("shell.connection.overviewFailed"),
     });
   } else if (overview.state === "ok") {
     const o = overview.data;
@@ -107,23 +129,23 @@ export function buildSignals(
     let detail: ReactNode;
     if (checkedAt === null) {
       tone = "neutral";
-      detail = [o.instance_version, "never checked"].filter(Boolean).join(" · ");
+      detail = [o.instance_version, t("shell.connection.neverChecked")].filter(Boolean).join(" · ");
     } else if (checkedAt === undefined) {
-      detail = [o.instance_version, "check time not reported"].filter(Boolean).join(" · ");
+      detail = [o.instance_version, t("shell.connection.checkTimeMissing")].filter(Boolean).join(" · ");
     } else {
       detail = (
         <>
           {o.instance_version ? `${o.instance_version} · ` : null}
-          checked <UtcTime value={checkedAt} variant="compact" />
-          {ageText(checkedAt, now)}
+          {t("shell.connection.checked")} <UtcTime value={checkedAt} variant="compact" />
+          {ageText(checkedAt, now, t)}
         </>
       );
     }
     out.push({
       key: "instance",
-      name: "QRadar instance",
+      name: t("shell.connection.instance"),
       tone,
-      value: titleCase(o.instance_status),
+      value: instanceLabel(o.instance_status, t),
       detail,
     });
   }
@@ -131,14 +153,14 @@ export function buildSignals(
 
   // 3. Collection: the last volume-search run.
   if (cadence.state === "loading") {
-    out.push({ key: "collection", name: "Collection", tone: "neutral", value: "Checking", detail: null });
+    out.push({ key: "collection", name: t("shell.connection.collection"), tone: "neutral", value: t("shell.connection.checking"), detail: null });
   } else if (cadence.state === "error") {
     out.push({
       key: "collection",
-      name: "Collection",
+      name: t("shell.connection.collection"),
       tone: "neutral",
-      value: "Unavailable",
-      detail: "The collection status could not be read.",
+      value: t("shell.connection.unavailable"),
+      detail: t("shell.connection.collectionFailed"),
     });
   } else if (cadence.state === "ok") {
     const volume = cadence.data.find((c) => c.family === "PHASE_A_VOLUME");
@@ -146,22 +168,24 @@ export function buildSignals(
     if (!run) {
       out.push({
         key: "collection",
-        name: "Collection",
+        name: t("shell.connection.collection"),
         tone: "neutral",
-        value: "No run recorded",
-        detail: "Source volume has not run since the last upgrade.",
+        value: t("shell.connection.noRun"),
+        detail: t("shell.connection.noVolumeRun"),
       });
     } else {
       const info = run.outcome ? outcomeInfo(run.outcome) : null;
       out.push({
         key: "collection",
-        name: "Collection",
+        name: t("shell.connection.collection"),
         tone: info?.tone ?? "neutral",
-        value: info?.label ?? run.outcome ?? "Outcome not recorded",
+        value: run.outcome
+          ? outcomeLabel(run.outcome, info?.label ?? run.outcome, t)
+          : t("shell.connection.outcomeMissing"),
         detail: (
           <>
-            Source volume, last run <UtcTime value={run.at} variant="compact" />
-            {ageText(run.at, now)}
+            {t("shell.connection.lastRun")} <UtcTime value={run.at} variant="compact" />
+            {ageText(run.at, now, t)}
           </>
         ),
       });
@@ -181,6 +205,8 @@ export function ConnectionStatus({
   overview: Loaded<SocOverview>;
   cadence: Loaded<SearchCadenceItem[]>;
 }) {
+  const translate = useTranslations();
+  const t = asTextTranslator(translate);
   // "Now" is the browser's clock, so ages render after mount only.
   const [now, setNow] = useState<number | null>(null);
   const ref = useRef<HTMLDetailsElement>(null);
@@ -205,22 +231,34 @@ export function ConnectionStatus({
     };
   }, []);
 
-  const signals = buildSignals(health, overview, cadence, now);
+  const signals = buildSignals(health, overview, cadence, now, t);
   const worst = worstTone(signals) ?? "neutral";
-  const word = signals.every((s) => s.value === "Checking") ? "Checking" : WORD[worst];
+  const word = signals.every((s) => s.value === t("shell.connection.checking"))
+    ? t("shell.connection.checking")
+    : t(
+        `shell.connection.${
+          worst === "ok"
+            ? "connected"
+            : worst === "neutral"
+              ? "unknown"
+              : worst === "warn"
+                ? "degraded"
+                : "problem"
+        }`,
+      );
   const toneClass = worst === "neutral" ? "" : worst;
 
   return (
     <details className="topbar-status" ref={ref}>
-      <summary className="topbar-status-summary" aria-label={`Connection status: ${word}`}>
+      <summary className="topbar-status-summary" aria-label={t("shell.connection.label", { status: word })}>
         <span className="topbar-label" aria-hidden="true">
-          Status
+          {t("shell.connection.status")}
         </span>
         <span className={`pill ${toneClass}`.trim()} aria-hidden="true">
           {word}
         </span>
       </summary>
-      <ul className="topbar-status-list" aria-label="Connection signals">
+      <ul className="topbar-status-list" aria-label={t("shell.connection.signals")}>
         {signals.map((s) => (
           <li key={s.key} className="topbar-status-row">
             <span className="topbar-status-name">{s.name}</span>

@@ -1,3 +1,58 @@
 {
-  "extends": ["next/core-web-vitals"]
+  "extends": ["next/core-web-vitals"],
+  "overrides": [
+    {
+      "files": [
+        "src/app/layout.tsx",
+        "src/app/error.tsx",
+        "src/app/loading.tsx",
+        "src/app/login/LoginForm.tsx",
+        "src/app/login/error.tsx",
+        "src/app/login/loading.tsx",
+        "src/app/login/page.tsx",
+        "src/app/account/AccountHome.tsx",
+        "src/app/account/page.tsx",
+        "src/app/account/password/error.tsx",
+        "src/app/account/password/loading.tsx",
+        "src/app/account/password/page.tsx",
+        "src/components/Pagination.tsx",
+        "src/components/shell/Account.tsx",
+        "src/components/shell/AlertBell.tsx",
+        "src/components/shell/AppNav.tsx",
+        "src/components/shell/AutoRefresh.tsx",
+        "src/components/shell/ConnectionStatus.tsx",
+        "src/components/shell/ReportDataAge.tsx",
+        "src/components/shell/TopBar.tsx",
+        "src/components/shell/TopSearch.tsx",
+        "src/components/ui/ChangeStatus.tsx",
+        "src/components/ui/CodePanel.tsx",
+        "src/components/ui/Disclosure.tsx",
+        "src/components/ui/PageHeader.tsx",
+        "src/components/ui/RouteState.tsx",
+        "src/components/ui/TableScroll.tsx",
+        "src/components/ui/Tabs.tsx",
+        "src/components/ui/UtcTime.tsx",
+        "src/components/auth/ApiVersionLine.tsx",
+        "src/components/auth/AppFrame.tsx",
+        "src/components/auth/NoRole.tsx",
+        "src/components/auth/PasswordChange.tsx",
+        "src/components/auth/ReasonList.tsx",
+        "src/components/auth/SignOutButton.tsx",
+        "src/components/auth/accountStatus.ts",
+        "src/components/auth/probeCopy.ts",
+        "src/components/auth/reasons.ts",
+        "src/components/auth/session.tsx"
+      ],
+      "rules": {
+        "react/jsx-no-literals": [
+          "error",
+          {
+            "noStrings": true,
+            "ignoreProps": true,
+            "allowedStrings": ["—", "·", "…", "/", ":", "(", ")", ","]
+          }
+        ]
+      }
+    }
+  ]
 }

@@ -18,6 +18,7 @@
 // when it moves. The tick lives beside the data age in the same provider.
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   createContext,
   useCallback,
@@ -97,6 +98,7 @@ function dialogOpen(): boolean {
 }
 
 export function AutoRefresh({ onRefresh }: { onRefresh?: () => void }) {
+  const t = useTranslations("shell.refresh");
   const router = useRouter();
   const selectId = useId();
   const { dataTo } = useContext(DataAgeContext);
@@ -130,7 +132,7 @@ export function AutoRefresh({ onRefresh }: { onRefresh?: () => void }) {
   return (
     <div className="topbar-refresh">
       <label htmlFor={selectId} className="topbar-label">
-        Refresh
+        {t("label")}
       </label>
       <select
         id={selectId}
@@ -138,19 +140,19 @@ export function AutoRefresh({ onRefresh }: { onRefresh?: () => void }) {
         value={choice}
         onChange={(e) => setChoice(e.target.value as RefreshChoice)}
       >
-        <option value="off">Off</option>
-        <option value="1">1 min</option>
-        <option value="5">5 min</option>
+        <option value="off">{t("off")}</option>
+        <option value="1">{t("oneMinute")}</option>
+        <option value="5">{t("fiveMinutes")}</option>
       </select>
       <div className="topbar-times">
         {last && (
           <span>
-            Refreshed <time dateTime={last.toISOString()}>{formatClockUtc(last)}</time>
+            {t("refreshed")} <time dateTime={last.toISOString()}>{formatClockUtc(last)}</time>
           </span>
         )}
         {dataTo && formatClockUtc(dataTo) && (
           <span>
-            Data to <time dateTime={dataTo}>{formatClockUtc(dataTo)}</time>
+            {t("dataTo")} <time dateTime={dataTo}>{formatClockUtc(dataTo)}</time>
           </span>
         )}
       </div>

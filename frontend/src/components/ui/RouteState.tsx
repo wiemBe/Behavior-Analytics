@@ -4,11 +4,17 @@
 // is waiting on a server round trip, and what the analyst needs is to know
 // that, and what to do if it does not end.
 
-/** Shown by a route's `loading.tsx` while its server data is fetched. */
+import { useTranslations } from "next-intl";
+
+/**
+ * Shown by a route's `loading.tsx` while its server data is fetched.
+ * `what` is a translated nominative noun phrase: Turkish composes it before the verb.
+ */
 export function LoadingState({ what }: { what: string }) {
+  const t = useTranslations("states");
   return (
     <p className="notice" role="status" aria-live="polite">
-      Loading {what}…
+      {t("loading", { what })}
     </p>
   );
 }
@@ -30,19 +36,20 @@ export function ErrorState({
   digest?: string;
   onRetry: () => void;
 }) {
+  const t = useTranslations("states");
+  const common = useTranslations("common");
   return (
     <div className="notice" role="alert">
       <p>
-        <strong>{what} could not be displayed.</strong>
+        <strong>{t("couldNotDisplay", { what })}</strong>
       </p>
       <p>
-        The page failed while rendering. Nothing on it was changed. Try again; if
-        it keeps failing, check that the backend is reachable.
-        {digest ? ` Reference: ${digest}.` : ""}
+        {t("renderFailed")}
+        {digest ? t("reference", { digest }) : null}
       </p>
       <p>
         <button type="button" className="action secondary" onClick={onRetry}>
-          Try again
+          {common("tryAgain")}
         </button>
       </p>
     </div>

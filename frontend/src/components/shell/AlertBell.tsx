@@ -8,18 +8,23 @@
 // The `crit` tone appears only for a count above zero.
 
 import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 
 import type { Loaded } from "./TopBar";
 import type { SocOverview } from "@/lib/api";
+import { formatCount } from "@/lib/format";
+import type { Locale } from "@/i18n/locale";
 
 export function AlertBell({ overview }: { overview: Loaded<SocOverview> }) {
+  const t = useTranslations("shell.alerts");
+  const locale = useLocale() as Locale;
   const count = overview.state === "ok" ? overview.data.alerts.open : null;
   const name =
     count !== null
-      ? `Open alerts: ${count}`
+      ? t("visible", { count })
       : overview.state === "loading"
-        ? "Open alerts: loading"
-        : "Open alerts: unavailable";
+        ? t("loading")
+        : t("unavailable");
   const tone = count !== null && count > 0 ? "crit" : "";
 
   return (
@@ -27,11 +32,11 @@ export function AlertBell({ overview }: { overview: Loaded<SocOverview> }) {
       href="/alerts?status=OPEN"
       className="topbar-bell plain"
       aria-label={name}
-      title={count === null && overview.state !== "loading" ? "Alert count unavailable" : undefined}
+      title={count === null && overview.state !== "loading" ? t("countUnavailable") : undefined}
     >
-      <span aria-hidden="true">Alerts</span>
+      <span aria-hidden="true">{t("label")}</span>
       <span className={`pill ${tone}`.trim()} aria-hidden="true">
-        {count === null ? "—" : count}
+        {count === null ? "—" : formatCount(count, locale)}
       </span>
     </Link>
   );

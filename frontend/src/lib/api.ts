@@ -3538,6 +3538,16 @@ export interface CallerInfo {
   auth_source?: string | null;
   must_change_password?: boolean;
   roles?: string[];
+  /** Stored interface preference. Older backends omit it. */
+  ui_language?: "en" | "tr";
+}
+
+/** Store the signed-in account's interface language. */
+export function updateUiLanguage(uiLanguage: "en" | "tr") {
+  return request<CallerInfo>("/me/preferences", {
+    method: "PUT",
+    body: JSON.stringify({ ui_language: uiLanguage }),
+  });
 }
 
 // The configurable catalog widgets (UI-3.5b). A window is a preset the widget's range names;

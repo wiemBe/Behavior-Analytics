@@ -5,6 +5,7 @@
 // first read cannot overwrite a sign-in that already finished.
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   createContext,
   useCallback,
@@ -17,6 +18,7 @@ import {
 
 import { fetchSession, logout } from "./client";
 import { ApiError, type CallerInfo } from "@/lib/api";
+import { isLocale, readLocaleCookie, writeLocaleCookie } from "@/i18n/locale";
 
 export interface SessionValue {
   status: "loading" | "anonymous" | "error" | "ready";
@@ -48,7 +50,15 @@ export function StaticSession({ value, children }: { value: SessionValue; childr
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  const t = useTranslations("auth");
+  const sessionFailed = t("sessionFailed");
+  const signOutFailed = t("signOutFailed");
   const requestId = useRef(0);
+  // A failed cookie write must not be retried by every reload. This records the
+  // account preference attempted during this provider lifetime before writing.
+  const localeSyncAttempt = useRef<string | null>(null);
   const [status, setStatus] = useState<SessionValue["status"]>("loading");
   const [me, setMe] = useState<CallerInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +69,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const next = await fetchSession(signal);
       if (id !== requestId.current || signal?.aborted) return;
+      if (
+        next.username != null &&
+        isLocale(next.ui_language) &&
+        next.ui_language !== readLocaleCookie() &&
+        localeSyncAttempt.current !== next.ui_language
+      ) {
+        localeSyncAttempt.current = next.ui_language;
+        if (writeLocaleCookie(next.ui_language)) routerRef.current.refresh();
+      }
       setMe(next);
       setError(null);
       setStatus("ready");
@@ -70,11 +89,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setStatus("anonymous");
         return;
       }
-      setError(err instanceof ApiError ? err.message : "The session could not be read.");
+      setError(err instanceof ApiError ? err.message : sessionFailed);
       setStatus("error");
       throw err;
     }
-  }, []);
+  }, [sessionFailed]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -93,7 +112,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await logout();
     } catch (err) {
       if (!(err instanceof ApiError) || err.status !== 401) {
-        const message = err instanceof ApiError ? err.message : "Sign out could not be completed.";
+        const message = err instanceof ApiError ? err.message : signOutFailed;
         setError(message);
         return message;
       }
@@ -104,7 +123,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setStatus("anonymous");
     router.replace("/login");
     return null;
-  }, [router]);
+  }, [router, signOutFailed]);
 
   const value: SessionValue = { status, me, error, reload, signOut };
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

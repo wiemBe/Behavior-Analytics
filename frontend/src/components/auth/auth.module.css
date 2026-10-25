@@ -10,6 +10,24 @@
   min-width: 0;
 }
 
+.accountSettings {
+  width: min(100%, var(--admin-form-max));
+  min-width: 0;
+}
+
+.settingsSection {
+  min-width: 0;
+}
+
+.settingsSection + .settingsSection {
+  margin-top: var(--sp-7);
+}
+
+.settingsSection > h2,
+.settingsSection > .column > h2 {
+  margin: 0 0 var(--sp-2);
+}
+
 .product {
   margin: 0 0 var(--sp-2);
   font-size: var(--fs-sm);
