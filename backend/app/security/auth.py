@@ -46,6 +46,7 @@ def principal_for(user: User) -> Principal:
         must_change_password=user.must_change_password,
         roles=tuple(sorted(role.name for role in user.roles)),
         user_id=user.id,
+        ui_language=user.ui_language,
     )
 
 

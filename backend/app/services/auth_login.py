@@ -445,6 +445,39 @@ async def change_own_password(
     )
 
 
+async def change_ui_language(
+    session: AsyncSession,
+    user: User,
+    ui_language: str,
+    *,
+    source_ip: str | None,
+    user_agent: str | None,
+) -> bool:
+    """Set the account's interface language. Return True when it changed.
+
+    Writing the value the row already holds is a no-op and writes no audit
+    record: the account's state did not change, so its trail should not claim
+    one did.
+    """
+    if user.ui_language == ui_language:
+        return False
+    old = user.ui_language
+    user.ui_language = ui_language
+    await record_audit(
+        session,
+        action="account.preferences.update",
+        actor=user.username or str(user.id),
+        actor_id=user.id,
+        object_type="user",
+        object_id=str(user.id),
+        outcome="SUCCESS",
+        detail={"username": user.username, "old": old, "new": ui_language},
+        source_ip=source_ip,
+        user_agent=user_agent,
+    )
+    return True
+
+
 def _clean_display(value: str | None) -> str | None:
     cleaned = sanitize_text(value)
     if not cleaned:

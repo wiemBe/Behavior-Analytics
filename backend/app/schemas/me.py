@@ -1,8 +1,14 @@
-"""API contract for the caller's identity and permissions."""
+"""API contract for the caller's identity, permissions, and own preferences."""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+# D-37. The interface languages the product ships. The column's check
+# constraint allows the same two values.
+UiLanguage = Literal["en", "tr"]
 
 
 class MeOut(BaseModel):
@@ -20,3 +26,12 @@ class MeOut(BaseModel):
     auth_source: str | None = None
     must_change_password: bool = False
     roles: list[str] = Field(default_factory=list)
+    ui_language: UiLanguage = "en"
+
+
+class PreferencesIn(BaseModel):
+    """The caller's own account preferences. No other key is accepted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ui_language: UiLanguage
