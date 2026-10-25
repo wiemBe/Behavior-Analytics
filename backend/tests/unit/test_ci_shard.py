@@ -497,10 +497,12 @@ def test_the_stdout_is_exactly_what_load_weights_accepts(tmp_path: Path) -> None
 
 
 def test_the_stderr_table_predicts_the_shard_totals(tmp_path: Path) -> None:
-    """The table shows each shard's seconds, from the old and the new weights.
+    """The table shows the measured shard totals from the old and new weights.
 
-    The old weights file is empty, so every file counts as the median 1 and
-    both old shards get one second. The measured times are 6 and 2 seconds.
+    The old weights file is empty, so every file counts as the median weight 1.
+    The old assignment puts ``test_x`` (measured 6 s) in shard 1 and ``test_y``
+    (measured 2 s) in shard 2: the measured old totals are 6 and 2. The new
+    weights match the measured times, so the new totals are also 6 and 2.
     """
     make_tree(tmp_path, {}, ["test_x.py", "test_y.py"])
     report = tmp_path / "shard-1.xml"
@@ -513,7 +515,46 @@ def test_the_stderr_table_predicts_the_shard_totals(tmp_path: Path) -> None:
     )
     result = weights_from(report, of=2, root=tmp_path)
     assert result.returncode == 0, result.stderr
-    assert shard_rows(result.stderr) == [(1, 1, 6), (2, 1, 2)]
+    assert shard_rows(result.stderr) == [(1, 6, 6), (2, 2, 2)]
+
+
+def test_old_weights_at_different_scale_show_measured_imbalance(tmp_path: Path) -> None:
+    """Old weights on a different scale: the old column reflects measured seconds."""
+    make_tree(
+        tmp_path,
+        {"test_x.py": 100, "test_y.py": 100, "test_z.py": 100},
+        ["test_x.py", "test_y.py", "test_z.py"],
+    )
+    report = tmp_path / "shard-1.xml"
+    write_report(
+        report,
+        [
+            ("tests.integration.test_x", "test_x", "6.0"),
+            ("tests.integration.test_y", "test_y", "2.0"),
+            ("tests.integration.test_z", "test_z", "3.0"),
+        ],
+    )
+    result = weights_from(report, of=2, root=tmp_path)
+    assert result.returncode == 0, result.stderr
+    rows = shard_rows(result.stderr)
+    assert rows == [(1, 9, 6), (2, 2, 5)]
+
+
+def test_unmeasured_file_counts_as_median_in_both_columns(tmp_path: Path) -> None:
+    """A file on disk with no measured time counts as the median of measured times."""
+    make_tree(tmp_path, {}, ["test_x.py", "test_y.py", "test_z.py"])
+    report = tmp_path / "shard-1.xml"
+    write_report(
+        report,
+        [
+            ("tests.integration.test_x", "test_one", "6.0"),
+            ("tests.integration.test_y", "test_two", "2.0"),
+        ],
+    )
+    result = weights_from(report, of=2, root=tmp_path)
+    assert result.returncode == 0, result.stderr
+    rows = shard_rows(result.stderr)
+    assert rows == [(1, 10, 6), (2, 2, 6)]
 
 
 def test_the_shard_mode_defaults_to_five_shards(tmp_path: Path) -> None:
