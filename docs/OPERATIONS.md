@@ -893,6 +893,10 @@ başka bir yedeği seçemez. Sıradan önce, hiçbir konteyner durdurulmadan red
   (`rollback refused: backup version does not match last_upgrade.from`).
 - Önceki imajlardan biri yerelde yoksa ya da özeti tutmuyorsa
   (`rollback refused: a previous image is absent or has the wrong local digest`).
+- Yükseltmeden sonra açılan bir servisin (örneğin `mcp` profilinin) kayıtlı imajı yoktur. Geri alma
+  eski sürüm etiketini kullanır ve çevrimiçi sunucuda imajı çeker; çevrimdışı sunucuda ise eski
+  paketin imajları yüklenene ya da profil `COMPOSE_PROFILES` içinden çıkarılana kadar hiçbir şeyi
+  değiştirmeden reddeder.
 - Yedeğin `ENCRYPTION_KEY` değeri ne geçerli anahtar ne de `ENCRYPTION_KEYS_JSON` içindeyse
   (`rollback refused: the backup's ENCRYPTION_KEY is not the current key or in
   ENCRYPTION_KEYS_JSON`).
