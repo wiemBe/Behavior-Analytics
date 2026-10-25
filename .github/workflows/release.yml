@@ -80,7 +80,9 @@ jobs:
             # built with its own Dockerfile (step "Build the upstream qradar-mcp") plus
             # one COPY of feature_toggles.json (writes off). Nothing else is changed.
             context: deploy/mcp
-            build-contexts: upstream=oci-layout://${{ github.workspace }}/.qradar-mcp-upstream
+            # A template: github.workspace is empty while a matrix expands, so the step
+            # fills in {0} with format() (REL-1; v0.1.5 failed on "/.qradar-mcp-upstream").
+            build-contexts: upstream=oci-layout://{0}/.qradar-mcp-upstream
             base-label: ""
           - name: proxy
             context: deploy/proxy
@@ -191,7 +193,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
-          build-contexts: ${{ matrix.build-contexts }}
+          build-contexts: ${{ format(matrix.build-contexts, github.workspace) }}
           push: true
           tags: ${{ steps.names.outputs.tags }}
           build-args: |

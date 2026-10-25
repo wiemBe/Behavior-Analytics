@@ -434,6 +434,77 @@ def test_the_baked_toggle_file_keeps_every_write_verb_off() -> None:
     assert toggles["verb_toggles"] == {"GET": True, "POST": False, "DELETE": False}
 
 
+BUILD_CONTEXTS_EXPRESSION = "${{ format(matrix.build-contexts, github.workspace) }}"
+# Contexts that exist only once a runner has the job: empty while a matrix expands (REL-1).
+RUNNER_ONLY_CONTEXTS = re.compile(r"\b(github\.workspace|runner\.|env\.|steps\.|job\.)")
+
+
+def _format(template: str, *args: str) -> str:
+    """The part of GitHub's ``format()`` these workflows use: ``{0}``, ``{{`` and ``}}``."""
+    out = re.sub(r"\{(\d+)\}", lambda m: args[int(m.group(1))], template)
+    return out.replace("{{", "{").replace("}}", "}")
+
+
+def _workflow(name: str) -> dict:
+    return yaml.safe_load((REPO / ".github/workflows" / name).read_text(encoding="utf-8"))
+
+
+def _mcp_entry(workflow: dict, job: str) -> dict:
+    include = workflow["jobs"][job]["strategy"]["matrix"]["include"]
+    return next(e for e in include if e["name"] == "qradar-mcp")
+
+
+def test_the_mcp_image_check_mirrors_the_release_matrix_entry_and_expression() -> None:
+    release = _workflow("release.yml")
+    check = _workflow("mcp-image.yml")
+    assert _mcp_entry(check, "build") == {
+        k: v for k, v in _mcp_entry(release, "images").items() if k != "base-label"
+    }
+    release_final = next(
+        s for s in release["jobs"]["images"]["steps"] if s.get("name") == "Build and push"
+    )
+    check_final = next(
+        s for s in check["jobs"]["build"]["steps"] if s.get("name") == "Build the derived image"
+    )
+    for step in (release_final, check_final):
+        assert step["with"]["build-contexts"] == BUILD_CONTEXTS_EXPRESSION
+        assert step["with"]["context"] == "${{ matrix.context }}"
+
+
+def test_no_workflow_matrix_value_uses_a_context_that_only_exists_on_the_runner() -> None:
+    def walk(value: object):
+        if isinstance(value, dict):
+            for item in value.values():
+                yield from walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from walk(item)
+        elif isinstance(value, str):
+            yield value
+
+    checked = 0
+    for path in sorted((REPO / ".github/workflows").glob("*.yml")):
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for job_name, job in document.get("jobs", {}).items():
+            matrix = job.get("strategy", {}).get("matrix") if isinstance(job, dict) else None
+            if not isinstance(matrix, dict):
+                continue
+            checked += 1
+            for text in walk(matrix):
+                assert not RUNNER_ONLY_CONTEXTS.search(text), f"{path.name} {job_name}: {text}"
+    assert checked >= 3  # release images, mcp-image build, ci integration shards
+
+
+def test_the_mcp_build_context_template_renders_against_the_workspace() -> None:
+    include = _workflow("release.yml")["jobs"]["images"]["strategy"]["matrix"]["include"]
+    rendered = {e["name"]: _format(e["build-contexts"], "/w/repo") for e in include}
+    assert rendered["qradar-mcp"] == "upstream=oci-layout:///w/repo/.qradar-mcp-upstream"
+    assert rendered["backend"] == "repo=."
+    assert {rendered[n] for n in ("frontend", "postgres", "proxy")} == {""}
+    for entry in include:  # only the qradar-mcp template holds a placeholder
+        assert ("{" in entry["build-contexts"]) == (entry["name"] == "qradar-mcp")
+
+
 def test_the_release_workflow_builds_the_upstream_first_and_passes_it_as_a_context() -> None:
     workflow = yaml.safe_load(
         (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
@@ -451,7 +522,7 @@ def test_the_release_workflow_builds_the_upstream_first_and_passes_it_as_a_conte
     assert upstream["with"]["push"] is False
     assert upstream["with"]["outputs"].startswith("type=oci,dest=")
     assert upstream["if"] == "matrix.name == 'qradar-mcp'"
-    assert final["with"]["build-contexts"] == "${{ matrix.build-contexts }}"
+    assert final["with"]["build-contexts"] == BUILD_CONTEXTS_EXPRESSION
     assert final["with"]["context"] == "${{ matrix.context }}"
 
 
