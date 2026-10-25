@@ -179,20 +179,44 @@ def weights_from(seconds: dict[str, float], root: Path) -> dict[str, int]:
     return weights
 
 
-def print_table(root: Path, weights: dict[str, int], of: int) -> None:
+def _median_time(seconds: dict[str, float]) -> float:
+    """The median of the measured times, for files with no measured time."""
+    if not seconds:
+        return 0.0
+    return statistics.median(sorted(seconds.values()))
+
+
+def print_table(root: Path, weights: dict[str, int], seconds: dict[str, float], of: int) -> None:
     """The shard totals the old and the new weights predict, on stderr.
 
-    Both predictions use the same assignment as the splitter, so the operator
-    sees the spread the refresh buys before the new weights are written.
+    For each of ``old`` (from ``load_weights``) and ``new`` (from ``weights``):
+    take the shard assignment that weight file produces (the file lists from
+    ``assign_shards``), and sum, per shard, the measured seconds of its
+    files. A file with no measured time counts as the median of the measured
+    times. Whole seconds are printed with half-up rounding (like the weights),
+    and the spread is ``max / min``.
     """
     files = integration_files(root)
-    _, old = assign_shards(files, load_weights(root), of)
-    _, new = assign_shards(files, weights, of)
+    old_assign, _ = assign_shards(files, load_weights(root), of)
+    new_assign, _ = assign_shards(files, weights, of)
+
+    def totals_for(assignments: list[list[str]]) -> list[int]:
+        median_time = _median_time(seconds)
+        result: list[int] = []
+        for shard_files in assignments:
+            shard_total = 0.0
+            for rel in shard_files:
+                shard_total += seconds.get(rel, median_time)
+            result.append(int(shard_total + 0.5))
+        return result
+
+    old_totals = totals_for(old_assign)
+    new_totals = totals_for(new_assign)
     print(f"predicted shard seconds from the measured times ({of} shards):", file=sys.stderr)
     print(f"{'shard':>5} {'old':>5} {'new':>5}", file=sys.stderr)
-    for index, (before, after) in enumerate(zip(old, new, strict=True), 1):
+    for index, (before, after) in enumerate(zip(old_totals, new_totals, strict=True), 1):
         print(f"{index:>5d} {before:>5d} {after:>5d}", file=sys.stderr)
-    print(f"{'spread':>5} {spread(old):>5} {spread(new):>5}", file=sys.stderr)
+    print(f"{'spread':>5} {spread(old_totals):>5} {spread(new_totals):>5}", file=sys.stderr)
 
 
 def spread(totals: list[int]) -> str:
@@ -240,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         weights = weights_from(seconds, args.root)
         print(json.dumps(weights, sort_keys=True, indent=2))
-        print_table(args.root, weights, of)
+        print_table(args.root, weights, seconds, of)
         return 0
 
     if args.shard is None:
