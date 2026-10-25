@@ -161,7 +161,24 @@ runs in no job or in two.
 `backend/scripts/ci_shard.py` splits `tests/integration` into the shards. The split is a greedy
 longest-processing-time assignment over the per-file durations in
 `backend/tests/integration/shard_weights.json`, so the shards weigh the same and finish together.
-Refresh the weights when the integration suite changes shape (a new file, a much slower test):
+The weights come from CI's own numbers: every shard writes a JUnit XML report and uploads it as the
+artifact `integration-durations-shard-<n>` (test names, class names, times and failure text only —
+no secret exists in the job's environment for a failure text to carry). Refresh the weights from
+those artifacts when the integration suite changes shape (a new file, a much slower test):
+
+```bash
+gh run download <run-id> --pattern 'integration-durations-shard-*' --dir <dir>
+cd backend
+python scripts/ci_shard.py --weights-from <dir>/*/*.xml > tests/integration/shard_weights.json
+```
+
+The command prints the new weights on stdout and, on stderr, the shard seconds the old and the new
+weights predict from the measured times — read that table before keeping the file. A file the
+reports do not mention is left out and counts as the median of the known weights, so a missing
+entry is harmless but unbalanced.
+
+The fallback, when no CI run is at hand, is one local run; those seconds come from one machine, and
+only their ratios matter:
 
 ```bash
 cd backend
@@ -172,8 +189,6 @@ pytest -rs -m integration --durations=0 --durations-min=0
 
 Sum the setup, call and teardown seconds of each file in that report and write them into
 `backend/tests/integration/shard_weights.json` as `{"tests/integration/test_x.py": seconds, ...}`.
-A file with no entry counts as the median of the known weights, so a missing entry is harmless but
-unbalanced. The seconds come from one local machine: only their ratios matter.
 
 ## Frontend tests
 
