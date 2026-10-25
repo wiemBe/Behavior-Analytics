@@ -20,6 +20,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.api.deps import SessionDep, SettingsDep, requires
+from app.api.request_meta import client_ip
 from app.schemas.history_backfill import (
     ConflictOut,
     ConsoleEstimateOut,
@@ -42,10 +43,6 @@ _CREATED: dict[int | str, dict[str, Any]] = {status.HTTP_201_CREATED: {"model": 
 
 def _not_found() -> HTTPException:
     return HTTPException(status.HTTP_404_NOT_FOUND, "console not found")
-
-
-def _source_ip(request: Request) -> str | None:
-    return request.client.host if request.client is not None else None
 
 
 def _conflict(detail: str, console: ConsoleOut) -> JSONResponse:
@@ -81,7 +78,7 @@ async def decide_history_backfill(
 ) -> ConsoleOut | JSONResponse:
     try:
         outcome = await HistoryBackfillService(session, settings).decide(
-            instance_id, payload.answer, actor=principal.subject, source_ip=_source_ip(request)
+            instance_id, payload.answer, actor=principal.subject, source_ip=client_ip(request)
         )
     except ConsoleNotFoundError:
         raise _not_found() from None
@@ -103,7 +100,7 @@ async def _request(
 ) -> ConsoleOut | JSONResponse:
     try:
         outcome = await HistoryBackfillService(session, settings).request(
-            instance_id, kind, actor=principal.subject, source_ip=_source_ip(request)
+            instance_id, kind, actor=principal.subject, source_ip=client_ip(request)
         )
     except ConsoleNotFoundError:
         raise _not_found() from None

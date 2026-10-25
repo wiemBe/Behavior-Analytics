@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.deps import SessionDep, SettingsDep, requires
+from app.api.request_meta import client_ip
 from app.models.enums import SearchCadence, SearchFamily
 from app.models.search_cadence import SearchCadenceSetting
 from app.schemas.search_cadence import (
@@ -89,7 +90,7 @@ async def update_search_cadence(
         search_family,
         int(payload.cadence_seconds),
         actor=principal.subject,
-        source_ip=request.client.host if request.client is not None else None,
+        source_ip=client_ip(request),
     )
     return _as_out(
         row,
