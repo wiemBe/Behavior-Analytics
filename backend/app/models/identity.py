@@ -71,6 +71,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "failed_login_count >= 0",
             name="failed_login_count_non_negative",
         ),
+        CheckConstraint(
+            "ui_language IN ('en', 'tr')",
+            name="ui_language_known",
+        ),
     )
 
     # NULL when the directory entry has no mail. The unique index allows many
@@ -94,6 +98,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # D-37. The analyst's interface language: the choice is stored on the
+    # account, so it follows them to every browser. Only its owner sets it.
+    ui_language: Mapped[str] = mapped_column(String(2), default="en", nullable=False)
 
     roles: Mapped[list[Role]] = relationship(
         secondary=user_role, back_populates="users", lazy="selectin"

@@ -1,13 +1,20 @@
-"""Caller identity and permissions endpoint."""
+"""Caller identity, permissions, and own-account preferences."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from typing import Literal, cast
 
-from app.api.deps import get_principal
-from app.schemas.me import MeOut
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from app.api.deps import SessionDep, get_principal
+from app.models.identity import User
+from app.schemas.me import MeOut, PreferencesIn
 from app.security import rbac
+from app.security.auth import principal_for
 from app.security.rbac import Principal
+from app.services.auth_login import change_ui_language
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -29,6 +36,37 @@ def _effective_permissions(principal: Principal) -> list[str]:
     return effective
 
 
+def _me_out(principal: Principal) -> MeOut:
+    """The caller's answer, shared by GET /me and PUT /me/preferences."""
+    # The column's check constraint already pins ui_language to the Literal's
+    # two values; the cast is for the type checker, pydantic still validates.
+    return MeOut(
+        subject=principal.subject,
+        email=principal.email,
+        permissions=sorted(principal.permissions),
+        effective_permissions=_effective_permissions(principal),
+        username=principal.username,
+        auth_source=principal.auth_source,
+        must_change_password=principal.must_change_password,
+        roles=list(principal.roles),
+        ui_language=cast(Literal["en", "tr"], principal.ui_language),
+    )
+
+
+def _client_ip(request: Request) -> str | None:
+    # The proxy's client address, recorded as the auth routes record it.
+    # X-Forwarded-For is not trusted: a caller can put anything in it, and the
+    # audit record would then carry a lie.
+    if request.client is None or not request.client.host:
+        return None
+    return request.client.host[:64]
+
+
+def _user_agent(request: Request) -> str | None:
+    raw = request.headers.get("user-agent")
+    return raw[:512] if raw else None
+
+
 @router.get("", response_model=MeOut)
 async def get_me(principal: Principal = Depends(get_principal)) -> MeOut:
     """Return the authenticated caller's identity and permissions.
@@ -37,15 +75,41 @@ async def get_me(principal: Principal = Depends(get_principal)) -> MeOut:
     caller's own subject, email and granted permissions, plus the derived
     effective permissions. Nothing secret is exposed.
     """
-    granted = sorted(principal.permissions)
-    effective = _effective_permissions(principal)
-    return MeOut(
-        subject=principal.subject,
-        email=principal.email,
-        permissions=granted,
-        effective_permissions=effective,
-        username=principal.username,
-        auth_source=principal.auth_source,
-        must_change_password=principal.must_change_password,
-        roles=list(principal.roles),
+    return _me_out(principal)
+
+
+@router.put("/preferences", response_model=MeOut)
+async def update_preferences(
+    request: Request,
+    body: PreferencesIn,
+    session: SessionDep,
+    principal: Principal = Depends(get_principal),
+) -> MeOut:
+    """Store the caller's interface language on their own account.
+
+    Any signed-in caller may use it: like GET /me it touches only the
+    caller's own row, so no permission beyond a session applies. A principal
+    without an account (a development principal) has nothing to store the
+    choice on, and nothing is written. Re-sending the value the row already
+    holds is a 200 that writes no audit record.
+    """
+    if principal.user_id is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This session has no account to store a preference on.",
+        )
+    user = await session.scalar(
+        select(User)
+        .where(User.id == principal.user_id)
+        .options(selectinload(User.roles))
     )
+    if user is None or user.disabled_at is not None or not user.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authentication required.")
+    await change_ui_language(
+        session,
+        user,
+        body.ui_language,
+        source_ip=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    return _me_out(principal_for(user))

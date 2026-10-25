@@ -55,10 +55,15 @@ _OPEN_PATHS = {
 # Draft preview is POST because the unsaved rule is a body. It reads stored
 # buckets, writes nothing, and the router already requires `read:custom_rules`,
 # which `read:*` satisfies. `custom_rule:write` is not required.
+#
+# The interface language is the caller's own account, like logout: D-37 keeps
+# it behind the session and no permission, so a read-only principal may change
+# it. (The bearer local-token has no account and gets the route's 409.)
 _READONLY_MAY_MUTATE: set[tuple[str, str]] = {
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/logout"),
     ("POST", "/api/v1/custom-rules/preview"),
+    ("PUT", "/api/v1/me/preferences"),
 }
 
 # Minimal valid bodies. A handler-level permission check runs after body
