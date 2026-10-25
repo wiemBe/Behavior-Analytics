@@ -378,7 +378,8 @@ dialog.dg-catalog::backdrop {
 }
 /* At KPI density the select must not make the title row taller than its text. */
 .wr-select {
-  width: var(--dash-select-w);
+  /* "24 sa" and "7 gün" are longer than "24 h": the token plus one step. */
+  width: calc(var(--dash-select-w) + var(--sp-3));
   padding: 0 var(--sp-1);
   font-size: var(--fs-xs);
   line-height: var(--lh-tight);
@@ -460,6 +461,13 @@ dialog.dg-catalog::backdrop {
 }
 .tw-pill {
   align-self: flex-start;
+}
+/* A pill in the body carries a sentence ("Kısmi: 4.608 aralık içinden 4.596 tanesi toplandı"):
+   it wraps between words inside the card instead of running past its edge. The frame measures the
+   natural width of the pill (`tw-measuring`), so the wrap is off for that moment. */
+.tw:not(.tw-measuring) .tw-body > .tw-pill {
+  max-width: 100%;
+  white-space: normal;
 }
 /* The frame measures whether title, pill and controls fit one line: for that moment the head
    does not wrap and the title keeps its natural width. It is undone before the next paint. */

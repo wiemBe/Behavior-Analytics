@@ -1,0 +1,69 @@
+{
+  "severity": {
+    "CRITICAL": "Kritik",
+    "HIGH": "Yüksek",
+    "MEDIUM": "Orta",
+    "LOW": "Düşük",
+    "INFO": "Bilgi"
+  },
+  "anomalyState": {
+    "INSUFFICIENT_DATA": "YETERSİZ VERİ",
+    "NORMAL": "NORMAL",
+    "CANDIDATE": "ADAY",
+    "OPEN": "AÇIK",
+    "RECOVERING": "DÜZELİYOR",
+    "RESOLVED": "ÇÖZÜLDÜ",
+    "SUPPRESSED": "BASTIRILDI"
+  },
+  "offenseStatus": {
+    "OPEN": "Açık",
+    "HIDDEN": "Gizli",
+    "CLOSED": "Kapalı"
+  },
+  "sourceClass": {
+    "WAF": "WAF",
+    "IPS": "IPS",
+    "FIREWALL": "Güvenlik duvarı",
+    "PROXY": "Proxy",
+    "VPN": "VPN",
+    "LINUX": "Linux",
+    "WINDOWS": "Windows",
+    "NETWORK": "Ağ",
+    "DNS": "DNS",
+    "DATABASE": "Veritabanı",
+    "EMAIL": "E-posta",
+    "ENDPOINT": "Uç nokta",
+    "CLOUD": "Bulut",
+    "IDENTITY": "Kimlik",
+    "APPLICATION": "Uygulama",
+    "QRADAR_INTERNAL": "QRadar dahili",
+    "OTHER": "Diğer",
+    "UNCLASSIFIED": "Sınıflanmamış"
+  },
+  "severityPill": {
+    "CRITICAL": "KRİTİK",
+    "HIGH": "YÜKSEK",
+    "MEDIUM": "ORTA",
+    "LOW": "DÜŞÜK",
+    "INFO": "BİLGİ"
+  },
+  "anomalyType": {
+    "VOLUME_SPIKE": "Hacim artışı",
+    "VOLUME_DROP": "Hacim düşüşü",
+    "NO_EVENTS": "Olay yok",
+    "WAF_REQUEST_RATE_SPIKE": "İstek hızı artışı",
+    "WAF_CLIENT_CONCENTRATION_SPIKE": "İstemci yoğunlaşması artışı",
+    "WAF_BLOCK_RATIO_SPIKE": "Engelleme oranı artışı",
+    "WAF_ERROR_RATIO_SPIKE": "Sunucu hata oranı artışı",
+    "WAF_CLIENT_ERROR_RATIO_SPIKE": "İstemci hata oranı artışı",
+    "WAF_NEW_ENDPOINT_ACCESS": "Yeni endpoint erişimi",
+    "WAF_CLIENT_ENDPOINT_FANOUT_SPIKE": "İstemci endpoint dağılımı artışı",
+    "IPS_PORT_RATE_SPIKE": "Hedef port hızı artışı",
+    "IPS_DESTINATION_RATE_SPIKE": "Hedef hızı artışı",
+    "IPS_SIGNATURE_BURST": "İmza patlaması",
+    "IPS_NEW_DESTINATION_PORT": "Yeni hedef port",
+    "IPS_SOURCE_CONCENTRATION_SPIKE": "Kaynak yoğunlaşması artışı",
+    "IPS_PORT_FANOUT_SPIKE": "Port dağılımı artışı",
+    "IPS_BLOCK_RATIO_SHIFT": "Engelleme oranı kayması"
+  }
+}

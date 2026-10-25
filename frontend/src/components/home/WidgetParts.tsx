@@ -3,8 +3,11 @@
 // The parts the Home tables put inside a `WidgetFrame`: the qualifier list, the
 // unmeasured dash and the time cell. The frame and its states are in `WidgetFrame`.
 
+import { useTranslations } from "next-intl";
+
 import { NOT_MEASURED } from "@/lib/behavior";
 import { formatAgo } from "@/lib/home/format";
+import type { AgeWords } from "@/lib/time";
 import { UtcTime } from "@/components/ui/UtcTime";
 
 import "./tables.css";
@@ -25,8 +28,10 @@ export function Unmeasured({ reason }: { reason?: string | null }) {
  * age is omitted rather than drawn beside the instant.
  */
 export function When({ iso }: { iso: string | null }) {
-  if (!iso) return <Unmeasured reason="No time recorded" />;
-  const ago = formatAgo(iso, Date.now());
+  const t = useTranslations("home.parts");
+  const format = useTranslations("format");
+  if (!iso) return <Unmeasured reason={t("noTime")} />;
+  const ago = formatAgo(iso, Date.now(), format as AgeWords);
   return (
     <span className="tw-when">
       <UtcTime value={iso} variant="compact" age={ago} ageClassName="tw-sub" />

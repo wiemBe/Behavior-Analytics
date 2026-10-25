@@ -1,0 +1,12 @@
+{
+  "title": "Oturum aç",
+  "form": "Oturum aç",
+  "loading": "oturum açma formu",
+  "description": "Yerel hesap veya dizin hesabı.",
+  "username": "Kullanıcı adı",
+  "password": "Parola",
+  "signingIn": "Oturum açılıyor",
+  "signedInReadFailed": "Oturum açıldı ancak hesap okunamadı. Tekrar deneyin.",
+  "directoryFailed": "Dizine erişilemedi. Yerel hesaplar kullanılabilir.",
+  "wait": "Bekleyip tekrar deneyin."
+}

@@ -1,0 +1,16 @@
+{
+  "title": "Account settings",
+  "loading": "the account",
+  "language": "Language",
+  "languageDescription": "Choose the language used by the interface.",
+  "languageGroup": "Interface language",
+  "english": "English",
+  "turkish": "Türkçe",
+  "saved": "The language preference was saved.",
+  "browserOnly": "This session has no account to store a preference on. The language is saved on this browser only.",
+  "saveFailed": "The language preference could not be saved. Check your connection and try again.",
+  "cookieFailed": "The language preference was not applied because this browser did not keep the cookie.",
+  "password": "Password",
+  "directoryPassword": "An LDAP account changes its password in the directory, not here.",
+  "noPassword": "This account has no password to change here."
+}

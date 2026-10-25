@@ -7,23 +7,20 @@
 // (`?dashboard=`), which a client component reads, so it sits inside a Suspense boundary.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 
 import { HomeDashboard } from "@/components/home/HomeDashboard";
+import { HomeFallback } from "@/components/home/HomeFallback";
 
-export const metadata: Metadata = {
-  title: "Dashboard",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("dashboard");
+  return { title: t("title") };
+}
 
 export default function HomePage() {
   return (
-    <Suspense
-      fallback={
-        <p role="status" aria-live="polite">
-          Loading dashboard…
-        </p>
-      }
-    >
+    <Suspense fallback={<HomeFallback />}>
       <HomeDashboard />
     </Suspense>
   );

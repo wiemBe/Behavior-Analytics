@@ -3,6 +3,7 @@
 // keeps the server's `detail` text ("you already have a dashboard named 'X'", "the limit is
 // 20 dashboards per owner") for the UI to show as it is.
 
+import type { TextTranslator } from "@/i18n/textTranslator";
 import type { DashboardLayout, LayoutWidget, WidgetRange } from "@/widgets/types";
 
 import { ApiError, request } from "./api";
@@ -211,8 +212,8 @@ export function readLayout(raw: unknown): LayoutRead {
  * one (a duplicate name, the 20-dashboard limit, a validation message), and otherwise what is
  * known. An exception's message is never shown.
  */
-export function describeRefusal(error: unknown): string {
-  return asSentence(refusalWords(error));
+export function describeRefusal(error: unknown, t?: TextTranslator): string {
+  return asSentence(refusalWords(error, t));
 }
 
 /** The server's words as a sentence: first character capitalised, a full stop if none ends it. */
@@ -223,9 +224,12 @@ export function asSentence(text: string): string {
   return /[.!?]$/.test(head) ? head : `${head}.`;
 }
 
-function refusalWords(error: unknown): string {
+// The server's own `detail` stays as it sent it; only the fixed fallbacks take `t` (`errors.*`).
+function refusalWords(error: unknown, t?: TextTranslator): string {
   if (!(error instanceof ApiError)) {
-    return "The request did not reach the server. Check that the backend is reachable and try again.";
+    return t
+      ? t("errors.notReached")
+      : "The request did not reach the server. Check that the backend is reachable and try again.";
   }
   const detail = error.detail;
   if (typeof detail === "string" && detail) return detail;
@@ -240,5 +244,5 @@ function refusalWords(error: unknown): string {
     if (messages.length > 0) return messages.join("; ");
   }
   if (isObject(detail) && typeof detail.message === "string") return detail.message;
-  return `The server answered HTTP ${error.status}.`;
+  return t ? t("errors.httpStatus", { status: error.status }) : `The server answered HTTP ${error.status}.`;
 }

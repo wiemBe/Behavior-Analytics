@@ -1,0 +1,12 @@
+{
+  "second": "{count} s",
+  "minute": "{count} min",
+  "hour": "{count} h",
+  "day": "{count} d",
+  "eps": "EPS",
+  "range": {
+    "1h": "1 h",
+    "24h": "24 h",
+    "7d": "7 d"
+  }
+}

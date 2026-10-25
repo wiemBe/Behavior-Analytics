@@ -6,10 +6,14 @@
 // and then there is a dash and no bar at all (an empty bar would read as 0). With no
 // snapshot the widget says NOT_COLLECTED, which is not "no open offenses".
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useEnumLabels } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { useMeasures } from "@/i18n/measures";
 import { homeReads } from "@/lib/api";
 import { MAGNITUDE_SEGMENTS, RECENT_OFFENSES_LIMIT, recentOffenses } from "@/lib/home/recentOffenses";
 
@@ -17,6 +21,9 @@ import { useExpanded } from "@/widgets/runtime";
 
 import { secondary, WidgetFrame, WidgetLoading, WidgetQualifiers } from "./WidgetFrame";
 import { Unmeasured, When } from "./WidgetParts";
+
+/** QRadar's own offense number, "#1234": an identifier, not interface text. */
+const offenseTag = (id: number) => `#${id}`;
 
 function MagnitudeBar({ segments }: { segments: number }) {
   return (
@@ -36,6 +43,10 @@ function MagnitudeBar({ segments }: { segments: number }) {
 }
 
 export function RecentOffenses() {
+  const t = useTranslations("home.offenses");
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
+  const { label } = useEnumLabels();
   const expanded = useExpanded();
   const openRead = homeReads.recentOffenses(RECENT_OFFENSES_LIMIT);
   const probeRead = homeReads.offenseProbe();
@@ -45,28 +56,28 @@ export function RecentOffenses() {
   return (
     <WidgetFrame
       id="recent-offenses"
-      title="Recent offenses"
-      windowText="open, by last update"
-      link={{ href: "/offenses?status=OPEN", label: "View all" }}
+      title={t("title")}
+      windowText={t("window")}
+      link={{ href: "/offenses?status=OPEN", label: t("link") }}
       state={open}
-      what="the open offenses"
+      what={t("what")}
       permission="read:offenses"
     >
       {({ data }) => {
-          const p = secondary(probe);
+          const p = secondary(probe, say);
           // An empty list needs the probe to say why it is empty.
           if (data.items.length === 0 && p.pending) {
-            return <WidgetLoading what="the offense snapshot state" />;
+            return <WidgetLoading what={t("snapshotWhat")} />;
           }
           const view = recentOffenses(data, p.data);
           if (view.qualifiers.length > 0 && view.rows.length === 0) {
             return <WidgetQualifiers qualifiers={view.qualifiers} />;
           }
-          if (view.empty !== null) return <p className="tw-state">{view.empty}</p>;
+          if (view.empty !== null) return <p className="tw-state">{t("emptyOpen")}</p>;
           return (
             <>
-              <TableScroll label="Recent offenses">
-                <table className="tw-table" aria-label="Recent offenses">
+              <TableScroll label={t("title")}>
+                <table className="tw-table" aria-label={t("title")}>
                   <colgroup>
                     <col className="tw-col-time" />
                     <col />
@@ -74,11 +85,11 @@ export function RecentOffenses() {
                   </colgroup>
                   <thead>
                     <tr>
-                      <th scope="col">Last updated</th>
-                      <th scope="col">Offense</th>
+                      <th scope="col">{t("lastUpdated")}</th>
+                      <th scope="col">{t("offense")}</th>
                       <th scope="col" className="num">
-                        Magnitude
-                        <span className="tw-sub tw-wrap">of 10</span>
+                        {t("magnitude")}
+                        <span className="tw-sub tw-wrap">{t("outOfTen")}</span>
                       </th>
                     </tr>
                   </thead>
@@ -91,17 +102,17 @@ export function RecentOffenses() {
                         <td className="tw-name">
                           <Link
                             href={r.href}
-                            title={r.description ?? `Offense ${r.id}`}
+                            title={r.description ?? t("offenseId", { id: r.id })}
                           >
-                            {r.description ?? `Offense ${r.id}`}
+                            {r.description ?? t("offenseId", { id: r.id })}
                           </Link>
                           <span className="tw-sub">
-                            #{r.id} · {r.status}
+                            {offenseTag(r.id)} · {label("offenseStatus", r.status)}
                           </span>
                         </td>
                         <td className="num">
                           {r.magnitude === null || r.segments === null ? (
-                            <Unmeasured reason="Magnitude not recorded" />
+                            <Unmeasured reason={t("noMagnitude")} />
                           ) : (
                             <span className="tw-measure">
                               <MagnitudeBar segments={r.segments} />
@@ -117,8 +128,12 @@ export function RecentOffenses() {
               {view.shown && (
                 <p className="tw-note">
                   {expanded
-                    ? `${view.shown.replace("the latest ", "")}. The widget reads the latest ${RECENT_OFFENSES_LIMIT}; the Offenses page lists the rest.`
-                    : `${view.shown}.`}
+                    ? t("showingExpanded", {
+                        shown: view.rows.length,
+                        total: measures.count(view.openTotal),
+                        limit: RECENT_OFFENSES_LIMIT,
+                      })
+                    : t("showing", { shown: view.rows.length, total: measures.count(view.openTotal) })}
                 </p>
               )}
             </>

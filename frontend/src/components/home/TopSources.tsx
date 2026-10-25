@@ -8,16 +8,19 @@
 // "at least" because its class's window has gaps, a deviation that is the latest
 // bucket's and not the window's mean, and a state the behavior list could not give.
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useEnumLabels } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { useMeasures } from "@/i18n/measures";
 import { homeReads } from "@/lib/api";
-import { formatRatio, NOT_MEASURED, stateTone } from "@/lib/behavior";
-import { formatEpsValue } from "@/lib/fleet";
-import { deviationGapText, epsShares, topSources } from "@/lib/home/topSources";
-import { statePillText } from "@/components/waf/wafLabels";
-import { RANGE_TEXT, useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
+import { stateTone } from "@/lib/behavior";
+import { epsShares, topSources } from "@/lib/home/topSources";
+import { useWidgetCopy } from "@/widgets/copy";
+import { useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 
 import { secondary, WidgetFrame, WidgetLoading } from "./WidgetFrame";
 import { Unmeasured } from "./WidgetParts";
@@ -33,9 +36,15 @@ function EpsBar({ share }: { share: number | null }) {
 }
 
 export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) {
+  const t = useTranslations("home.topSources");
+  const units = useTranslations("units");
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
+  const { label, statePill } = useEnumLabels();
+  const copy = useWidgetCopy();
   const expanded = useExpanded(expandedProp);
   const window = useEffectiveRange(range);
-  const windowText = RANGE_TEXT[window];
+  const windowText = copy.range(window);
   const fleetRead = homeReads.fleetSummary(window);
   const behaviorRead = homeReads.sourceBehaviors();
   const fleet = useApiResource(fleetRead.key, fleetRead.fetch);
@@ -44,30 +53,27 @@ export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) 
   return (
     <WidgetFrame
       id="top-sources"
-      title="Top log sources by EPS"
+      title={t("title")}
       windowText={windowText}
-      link={{ href: "/behavior/sources", label: "View all" }}
+      link={{ href: "/behavior/sources", label: t("link") }}
       state={fleet}
-      what="the fleet summary"
+      what={t("what")}
       permission="read:fleet"
     >
       {({ data }) => {
-          const beh = secondary(behaviors);
-          if (beh.pending) return <WidgetLoading what="source states" />;
+          const beh = secondary(behaviors, say);
+          if (beh.pending) return <WidgetLoading what={t("statesWhat")} />;
           const rows = topSources(data, beh.data, expanded ? Infinity : undefined);
           if (rows.length === 0) {
             return (
-              <p className="tw-state">
-                No log source has a complete bucket in the last {windowText}, so none can be ranked
-                by EPS.
-              </p>
+              <p className="tw-state">{t("empty", { window: windowText })}</p>
             );
           }
           const shares = epsShares(rows);
           return (
             <>
-              <TableScroll label="Top log sources by EPS">
-                <table className="tw-table" aria-label="Top log sources by EPS">
+              <TableScroll label={t("title")}>
+                <table className="tw-table" aria-label={t("title")}>
                   <colgroup>
                     <col />
                     <col className="tw-col-eps" />
@@ -76,16 +82,16 @@ export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) 
                   </colgroup>
                   <thead>
                     <tr>
-                      <th scope="col">Source</th>
+                      <th scope="col">{t("source")}</th>
                       <th scope="col" className="num">
-                        Mean EPS
+                        {t("meanEps")}
                       </th>
                       <th scope="col" className="num">
-                        Deviation
-                        <span className="tw-sub tw-wrap">{rows[0].deviationBasis}</span>
+                        {t("deviation")}
+                        <span className="tw-sub tw-wrap">{t("latestBucket")}</span>
                       </th>
                       <th scope="col" className="tw-unfold">
-                        State
+                        {t("state")}
                       </th>
                     </tr>
                   </thead>
@@ -97,13 +103,13 @@ export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) 
                             {r.name}
                           </Link>
                           <span className="tw-sub tw-wrap">
-                            {r.classLabel}
+                            {label("sourceClass", r.sourceClass)}
                             <span className="tw-fold">
                               {r.state === null ? (
-                                "State unavailable"
+                                t("stateUnavailable")
                               ) : (
                                 <span className={`tw-state-word ${stateTone(r.state)}`}>
-                                  {statePillText(r.state)}
+                                  {statePill(r.state)}
                                 </span>
                               )}
                             </span>
@@ -112,33 +118,33 @@ export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) 
                         <td className="num">
                           <span className="tw-measure stack">
                             <span>
-                              {formatEpsValue(r.eps) ?? NOT_MEASURED}
-                              <span className="unit"> EPS</span>
+                              {measures.eps(r.eps)}
+                              <span className="unit">{measures.gap}{units("eps")}</span>
                             </span>
                             <EpsBar share={shares[i]} />
                           </span>
                           {r.epsIsLowerBound && r.eps !== null && (
                             <span
                               className="tw-sub"
-                              title={`The class's ${windowText} window has missing or partial intervals, so this is a floor.`}
+                              title={t("floorTitle", { window: windowText })}
                             >
-                              at least
+                              {t("atLeast")}
                             </span>
                           )}
                         </td>
                         <td className="num">
                           {r.deviation === null ? (
-                            <Unmeasured reason={r.deviationGap ? deviationGapText(r.deviationGap) : null} />
+                            <Unmeasured reason={r.deviationGap ? t(`gap.${r.deviationGap}`) : null} />
                           ) : (
-                            formatRatio(r.deviation)
+                            measures.ratio(r.deviation)
                           )}
                         </td>
                         <td className="tw-unfold">
                           {r.state === null ? (
-                            <Unmeasured reason="State unavailable" />
+                            <Unmeasured reason={t("stateUnavailable")} />
                           ) : (
                             <span className={`tw-state-word ${stateTone(r.state)}`}>
-                              {statePillText(r.state)}
+                              {statePill(r.state)}
                             </span>
                           )}
                         </td>
@@ -149,16 +155,14 @@ export function TopSources({ range, expanded: expandedProp }: RangedProps = {}) 
               </TableScroll>
               {expanded && (
                 <p className="tw-note">
-                  Showing {rows.length.toLocaleString("en-US")} of{" "}
-                  {rows.length.toLocaleString("en-US")} sources: the fleet summary lists the top
-                  five of each class.
+                  {t("expandedNote", {
+                    shown: measures.count(rows.length),
+                    total: measures.count(rows.length),
+                  })}
                 </p>
               )}
               {beh.data === null && (
-                <p className="tw-note">
-                  Deviation and state are unavailable: the source behavior list is not readable
-                  ({beh.gap}).
-                </p>
+                <p className="tw-note">{t("noBehavior", { gap: beh.gap ?? "" })}</p>
               )}
             </>
           );

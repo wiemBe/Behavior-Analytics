@@ -6,9 +6,10 @@
 // the one that does not fit, so the unused one is out of the accessibility tree too). Choosing
 // sets the widget's override in the in-memory layout; nothing is saved.
 
+import { useTranslations } from "next-intl";
 import { useId } from "react";
 
-import { RANGE_TEXT } from "./runtime";
+import { useWidgetCopy } from "./copy";
 import type { WidgetRange } from "./types";
 
 import "./dashboard.css";
@@ -29,11 +30,13 @@ export function RangeControl({
   /** The widget's title, so each control is named per widget. */
   title: string;
 }) {
+  const t = useTranslations("widgets.range");
+  const copy = useWidgetCopy();
   const selectId = useId();
   const select = (
     <span className={`wr-select-wrap${compact ? "" : " wr-alt"}`}>
       <label className="sr-only" htmlFor={selectId}>
-        Window for {title}
+        {t("windowFor", { title })}
       </label>
       <select
         id={selectId}
@@ -43,7 +46,7 @@ export function RangeControl({
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            {RANGE_TEXT[option]}
+            {copy.range(option)}
           </option>
         ))}
       </select>
@@ -52,7 +55,7 @@ export function RangeControl({
   if (compact) return select;
   return (
     <>
-      <div className="wr-presets" role="group" aria-label="Window">
+      <div className="wr-presets" role="group" aria-label={t("window")}>
         {options.map((option) => (
           <button
             key={option}
@@ -61,7 +64,7 @@ export function RangeControl({
             aria-pressed={option === value}
             onClick={() => onChange(option)}
           >
-            {RANGE_TEXT[option]}
+            {copy.range(option)}
           </button>
         ))}
       </div>

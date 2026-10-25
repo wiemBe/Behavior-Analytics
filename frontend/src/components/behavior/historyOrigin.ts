@@ -162,12 +162,13 @@ export function historyMarkAreas(
   intervals: HistoryInterval[],
   shade: HistoryShade,
   labelled = true,
+  text: string = HISTORY_TEXT,
 ): HistoryMarkArea[] {
   const widest = intervals.reduce(
     (best, s, i) => (s.end - s.start > (intervals[best]?.end ?? 0) - (intervals[best]?.start ?? 0) ? i : best),
     0,
   );
-  return intervals.map((s, i) => historyMarkArea(s.start, s.end, shade, labelled && i === widest));
+  return intervals.map((s, i) => historyMarkArea(s.start, s.end, shade, labelled && i === widest, text));
 }
 
 /** One span between two axis values (epoch ms on a time axis, a category on a category axis). */
@@ -176,11 +177,12 @@ export function historyMarkArea<X extends number | string>(
   to: X,
   shade: HistoryShade,
   labelled: boolean,
+  text: string = HISTORY_TEXT,
 ): HistoryMarkArea<X> {
   return [
     {
       xAxis: from,
-      name: HISTORY_TEXT,
+      name: text,
       itemStyle: {
         color: shade.color,
         borderColor: shade.border,
@@ -192,7 +194,7 @@ export function historyMarkArea<X extends number | string>(
             label: {
               show: true,
               position: "insideTopLeft" as const,
-              formatter: HISTORY_TEXT,
+              formatter: text,
               color: shade.text,
               fontFamily: shade.font,
               fontSize: 12,

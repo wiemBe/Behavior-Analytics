@@ -1,0 +1,16 @@
+{
+  "title": "Hesap ayarları",
+  "loading": "hesap",
+  "language": "Dil",
+  "languageDescription": "Arayüzde kullanılan dili seçin.",
+  "languageGroup": "Arayüz dili",
+  "english": "English",
+  "turkish": "Türkçe",
+  "saved": "Dil tercihi kaydedildi.",
+  "browserOnly": "Bu oturumda tercihi saklayacak bir hesap yok. Dil yalnızca bu tarayıcıda kaydedildi.",
+  "saveFailed": "Dil tercihi kaydedilemedi. Bağlantınızı denetleyip tekrar deneyin.",
+  "cookieFailed": "Tarayıcı çerezi saklamadığı için dil tercihi uygulanamadı.",
+  "password": "Parola",
+  "directoryPassword": "LDAP hesabı parolasını burada değil, dizinde değiştirir.",
+  "noPassword": "Bu hesabın burada değiştirilecek bir parolası yok."
+}

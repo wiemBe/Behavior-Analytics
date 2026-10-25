@@ -1,0 +1,9 @@
+{
+  "copyQueryLabel": "Copy the {label} query to the clipboard",
+  "copyQuery": "Copy query",
+  "queryCopied": "Query copied to clipboard",
+  "pagination": "Pagination",
+  "pageRange": "{from}–{to} of {total}",
+  "previous": "Previous",
+  "next": "Next"
+}

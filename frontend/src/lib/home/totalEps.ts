@@ -51,7 +51,7 @@ export function totalEps(summary: FleetSummary): TotalEps {
   ).length;
 
   if (meanEps === null) {
-    qualifiers.push(insufficient("No class has a complete bucket in this window."));
+    qualifiers.push(insufficient("No class has a complete bucket in this window.", { code: "NO_CLASS_COMPLETE" }));
   }
   const expected = classes.reduce((s, c) => s + c.buckets.expected, 0);
   const complete = classes.reduce((s, c) => s + c.buckets.complete, 0);

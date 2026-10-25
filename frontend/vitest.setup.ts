@@ -3,8 +3,8 @@ import { cleanup } from "@testing-library/react";
 import { createTranslator } from "next-intl";
 import { afterEach, vi } from "vitest";
 
-import en from "./messages/en.json";
-import tr from "./messages/tr.json";
+import en from "./messages/en";
+import tr from "./messages/tr";
 
 // Existing tests predate the provider and deliberately keep rendering components directly. The
 // mock supplies real next-intl translators backed by the English catalog, preserving those tests

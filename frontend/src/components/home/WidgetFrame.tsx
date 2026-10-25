@@ -19,6 +19,7 @@
 // Two variants share the states and differ in density and voice: `kpi` is the compact card
 // of the KPI row (one terse paragraph per state), `panel` is the larger widget.
 
+import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 import {
   createContext,
@@ -31,15 +32,20 @@ import {
 
 import { formatClockUtc } from "@/components/shell/AutoRefresh";
 import type { ResourceState } from "@/hooks/useApiResource";
+import { type TextTranslator } from "@/i18n/textTranslator";
+import { englishText } from "@/widgets/englishText";
+import { upperFirst, useMeasures } from "@/i18n/measures";
+import type { FormatLocale } from "@/lib/format";
 import type { SearchFamily } from "@/lib/api";
 import { formatClock } from "@/lib/fieldMapping";
-import { formatDuration, relativeAgeFromSeconds } from "@/lib/time";
 import type { Qualifier } from "@/lib/home/qualifiers";
 import { RangeControl } from "@/widgets/RangeControl";
 import { useFamilyTiming } from "@/widgets/cadence";
 import { effectiveRange, WidgetRuntimeContext } from "@/widgets/runtime";
 import { deriveStale } from "@/widgets/state";
 import type { WidgetState } from "@/widgets/types";
+
+import { qualifierPill, qualifierText } from "./qualifierText";
 
 import "./kpi.css";
 import "./tables.css";
@@ -153,26 +159,21 @@ export interface WidgetFrameProps<T> {
 }
 
 export function WidgetLoading({ what, variant = "panel" }: { what: string; variant?: WidgetVariant }) {
+  const t = useTranslations("states");
+  const locale = useLocale() as FormatLocale;
   return (
     <p className={variant === "kpi" ? "kpi-state" : "tw-state"} role="status" aria-live="polite">
-      Loading {what}…
+      {upperFirst(t("loading", { what }), locale)}
     </p>
   );
 }
 
-const QUALIFIER_WORDS: Record<Qualifier["kind"], { pill: string; tone: string }> = {
-  INSUFFICIENT_DATA: { pill: "Insufficient data", tone: "" },
-  PARTIAL: { pill: "Partial", tone: "warn" },
-  TRUNCATED: { pill: "Truncated", tone: "warn" },
-  NOT_COLLECTED: { pill: "Not collected", tone: "" },
+const QUALIFIER_TONE: Record<Qualifier["kind"], string> = {
+  INSUFFICIENT_DATA: "",
+  PARTIAL: "warn",
+  TRUNCATED: "warn",
+  NOT_COLLECTED: "",
 };
-
-function qualifierText(q: Qualifier, compact: boolean): string {
-  if (q.kind === "PARTIAL" && compact) {
-    return `${q.have.toLocaleString("en-US")} of ${q.of.toLocaleString("en-US")} ${q.unit}`;
-  }
-  return q.kind === "INSUFFICIENT_DATA" || q.kind === "NOT_COLLECTED" ? q.reason : q.text;
-}
 
 /** Honesty qualifiers, with the established compact KPI or panel presentation. */
 export function WidgetQualifiers({
@@ -187,16 +188,19 @@ export function WidgetQualifiers({
   /** Tooltip and accessible name for `extra` when the visible text is shorter. */
   extraTitle?: string;
 }) {
+  const states = useTranslations("states");
+  const measures = useMeasures();
+  const say = useTranslations() as unknown as TextTranslator;
   if (qualifiers.length === 0 && !extra) return null;
+  const pill = (q: Qualifier) => qualifierPill(states as unknown as (key: string) => string, q.kind);
+  const text = (q: Qualifier, compact: boolean) => qualifierText(say, measures, q, compact);
   if (variant === "kpi") {
     return (
       <p className="kpi-qualifiers">
         {qualifiers.map((q) => (
           <span className="kpi-qualifier" key={q.kind}>
-            <span className={`pill ${QUALIFIER_WORDS[q.kind].tone}`.trim()}>
-              {QUALIFIER_WORDS[q.kind].pill}
-            </span>
-            <span className="kpi-qualifier-text">{qualifierText(q, true)}</span>
+            <span className={`pill ${QUALIFIER_TONE[q.kind]}`.trim()}>{pill(q)}</span>
+            <span className="kpi-qualifier-text">{text(q, true)}</span>
           </span>
         ))}
         {extra ? (
@@ -217,7 +221,7 @@ export function WidgetQualifiers({
           key={`${q.kind}-${i}`}
           className={q.kind === "PARTIAL" || q.kind === "TRUNCATED" ? "warn" : ""}
         >
-          <span className="kind">{QUALIFIER_WORDS[q.kind].pill}</span>: {qualifierText(q, false)}
+          <span className="kind">{pill(q)}</span>: {text(q, false)}
         </li>
       ))}
       {extra ? (
@@ -245,19 +249,22 @@ function FailedState({
   action?: string;
   variant: WidgetVariant;
 }) {
+  const t = useTranslations("home.frame");
+  // English names the subject with an article ("the fleet summary"); the sentence adds its own.
   const subject = what.replace(/^the\s+/i, "");
   return (
     <div className={`${variant === "kpi" ? "kpi-state" : "tw-state"} widget-error`} role="alert">
       <p className="widget-error-title">
-        <strong>The {subject} could not be read.</strong>
+        <strong>{t("couldNotRead", { subject })}</strong>
       </p>
       <p className="widget-error-action">
         {action ??
-          `${
-            httpStatus === null
-              ? "The backend did not answer. "
-              : `The backend answered with HTTP ${httpStatus}. `
-          }Nothing was changed. Use Refresh in the top bar; if it still fails, check that the backend is reachable.`}
+          t("readAdvice", {
+            answer:
+              httpStatus === null
+                ? t("noAnswer")
+                : t("answeredWith", { status: httpStatus }),
+          })}
       </p>
     </div>
   );
@@ -272,9 +279,10 @@ function ForbiddenState({
   permission: string;
   variant: WidgetVariant;
 }) {
+  const t = useTranslations("home.frame");
   return (
     <p className={variant === "kpi" ? "kpi-state" : "tw-state"} role="status">
-      Your role cannot read {what} (permission {permission}). Nothing was changed.
+      {t("forbidden", { what, permission })}
     </p>
   );
 }
@@ -307,18 +315,22 @@ function StaleNote({
   ageSeconds: number | null;
   variant: WidgetVariant;
 }) {
+  const t = useTranslations("home.frame");
+  const measures = useMeasures();
   const className = variant === "kpi" ? "kpi-foot kpi-refresh-failed" : "tw-note warn";
   if (ageSeconds === null) {
     return (
       <p className={className} role="status">
-        Stale: the time the latest data reaches cannot be read.
+        {t("staleUnreadable")}
       </p>
     );
   }
   return (
     <p className={className} role="status">
-      Stale: the latest data is from <time dateTime={asOf}>{formatClockUtc(asOf)}</time>,{" "}
-      {formatDuration(ageSeconds)} old.
+      {t.rich("stale", {
+        time: () => <time dateTime={asOf}>{formatClockUtc(asOf)}</time>,
+        age: measures.duration(ageSeconds),
+      })}
     </p>
   );
 }
@@ -333,11 +345,13 @@ function DataToNote({
   ageSeconds: number;
   variant: WidgetVariant;
 }) {
-  const age = relativeAgeFromSeconds(ageSeconds);
+  const t = useTranslations("home.frame");
+  const measures = useMeasures();
+  const age = measures.age(ageSeconds);
+  const time = () => <time dateTime={at}>{formatClockUtc(at)}</time>;
   return (
     <p className={variant === "kpi" ? "kpi-foot" : "tw-note"}>
-      Data to <time dateTime={at}>{formatClockUtc(at)}</time>
-      {age === "—" ? "" : `, ${age}`}.
+      {age === "—" ? t.rich("dataTo", { time }) : t.rich("dataToAge", { time, age })}
     </p>
   );
 }
@@ -355,26 +369,30 @@ function RefreshNote({
   dataAt: string | null;
   variant: WidgetVariant;
 }) {
+  const t = useTranslations("home.frame");
   if (!failed) return null;
   if (variant === "kpi") {
     return dataAt ? (
       <p className="kpi-foot kpi-refresh-failed" role="status">
-        Refresh failed; showing data to <time dateTime={dataAt}>{formatClockUtc(dataAt)}</time>.
+        {t.rich("kpiRefreshDataTo", {
+          time: () => <time dateTime={dataAt}>{formatClockUtc(dataAt)}</time>,
+        })}
       </p>
     ) : (
       <p className="kpi-foot kpi-refresh-failed" role="status">
-        Refresh failed; showing data received at{" "}
-        <time dateTime={receivedAt}>{formatClock(receivedAt)}</time>.
+        {t.rich("kpiRefreshReceived", {
+          time: () => <time dateTime={receivedAt}>{formatClock(receivedAt)}</time>,
+        })}
       </p>
     );
   }
+  const status = failed.httpStatus === null ? "" : ` (HTTP ${failed.httpStatus})`;
   return (
     <p className="tw-note warn" role="status">
-      The latest refresh failed
-      {failed.httpStatus === null ? "" : ` (HTTP ${failed.httpStatus})`}.{" "}
+      {t("refreshFailed", { status })}{" "}
       {dataAt
-        ? `Showing the data to ${formatClockUtc(dataAt)}.`
-        : `Showing the data received at ${formatClockUtc(receivedAt)}.`}
+        ? t("showingDataTo", { time: formatClockUtc(dataAt) })
+        : t("showingReceived", { time: formatClockUtc(receivedAt) })}
     </p>
   );
 }
@@ -490,6 +508,7 @@ export function WidgetFrame<T>({
   children,
 }: WidgetFrameProps<T>) {
   const kpi = variant === "kpi";
+  const t = useTranslations("home.frame");
   const edit = useContext(WidgetEditContext);
   const runtime = useContext(WidgetRuntimeContext);
   const expanded = runtime?.expanded ?? false;
@@ -531,10 +550,10 @@ export function WidgetFrame<T>({
       body = <ReasonState reason={shown.reason} variant={variant} />;
       break;
     case "no_data":
-      body = <ReasonState lead="No data." reason={shown.reason} variant={variant} />;
+      body = <ReasonState lead={t("noDataLead")} reason={shown.reason} variant={variant} />;
       break;
     case "not_collected":
-      body = <ReasonState lead="Not collected." reason={shown.reason} variant={variant} />;
+      body = <ReasonState lead={t("notCollectedLead")} reason={shown.reason} variant={variant} />;
       break;
     case "ok":
     case "stale":
@@ -586,10 +605,10 @@ export function WidgetFrame<T>({
         <button
           type="button"
           className="tw-expand"
-          aria-label={`Expand ${title}`}
+          aria-label={t("expandNamed", { title })}
           onClick={(event) => runtime.onExpand?.(event.currentTarget)}
         >
-          Expand
+          {t("expand")}
         </button>
       ) : null}
     </>
@@ -640,7 +659,10 @@ export function WidgetFrame<T>({
 }
 
 /** A secondary read's data, or null with the reason it is not there. */
-export function secondary<T>(state: ResourceState<T>): {
+export function secondary<T>(
+  state: ResourceState<T>,
+  t: TextTranslator = englishText,
+): {
   data: T | null;
   gap: string | null;
   pending: boolean;
@@ -649,9 +671,9 @@ export function secondary<T>(state: ResourceState<T>): {
     case "ok":
       return { data: state.data, gap: null, pending: false };
     case "forbidden":
-      return { data: null, gap: "your role cannot read it", pending: false };
+      return { data: null, gap: t("home.frame.gapForbidden"), pending: false };
     case "error":
-      return { data: null, gap: "it could not be read", pending: false };
+      return { data: null, gap: t("home.frame.gapFailed"), pending: false };
     default:
       return { data: null, gap: null, pending: true };
   }

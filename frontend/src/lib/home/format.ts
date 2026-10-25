@@ -1,6 +1,6 @@
 // Small formatters the Home tables share. A time carries its zone and its age.
 
-import { relativeAge } from "@/lib/time";
+import { relativeAge, type AgeWords } from "@/lib/time";
 
 /**
  * The Dashboard's age, omitted rather than drawn when there is nothing to say.
@@ -8,8 +8,12 @@ import { relativeAge } from "@/lib/time";
  * the instant is missing, unparsable or in the future, so a clock skew prints
  * no age beside the absolute time.
  */
-export function formatAgo(iso: string | null | undefined, nowMs: number): string | null {
-  const age = relativeAge(iso, nowMs);
+export function formatAgo(
+  iso: string | null | undefined,
+  nowMs: number,
+  say?: AgeWords,
+): string | null {
+  const age = relativeAge(iso, nowMs, say);
   return age === "—" ? null : age;
 }
 

@@ -1,6 +1,9 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 import { NAME_MAX, nameProblem } from "./DashboardMenu";
 
@@ -54,6 +57,7 @@ function DashboardNameField({
   error: string | null;
   onChange: (value: string) => void;
 }) {
+  const t = useTranslations("widgets.menu");
   const fieldId = useId();
   const errorId = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -75,7 +79,7 @@ function DashboardNameField({
         onChange={(event) => onChange(event.target.value)}
       />
       <p className="dg-modal-hint" id={error ? errorId : undefined}>
-        1 to {NAME_MAX} characters, unique among your dashboards.
+        {t("nameHint", { max: NAME_MAX })}
       </p>
     </div>
   );
@@ -94,16 +98,19 @@ export function NameTakenDialog({
   onSave: (name: string) => Promise<string | null>;
   onClose: () => void;
 }) {
+  const t = useTranslations("widgets.saveDialogs");
+  const common = useTranslations("common");
+  const root = asTextTranslator(useTranslations());
   const [name, setName] = useState(initialName);
   const [error, setError] = useState<string | null>(serverMessage);
   const submit = async () => {
-    const problem = nameProblem(name);
+    const problem = nameProblem(name, root);
     if (problem) return setError(problem);
     const refusal = await onSave(name.trim());
     if (refusal) setError(refusal);
   };
   return (
-    <Modal title="Choose another dashboard name" onClose={onClose}>
+    <Modal title={t("nameTakenTitle")} onClose={onClose}>
       <form
         className="dg-modal-form"
         noValidate
@@ -115,13 +122,13 @@ export function NameTakenDialog({
         <p className="dg-modal-error" role="alert">
           {error}
         </p>
-        <DashboardNameField value={name} label="Name" error={error} onChange={setName} />
+        <DashboardNameField value={name} label={t("name")} error={error} onChange={setName} />
         <div className="dg-modal-actions">
           <button type="button" className="action secondary" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </button>
           <button type="submit" className="action" disabled={busy}>
-            {busy ? "Saving…" : "Save dashboard"}
+            {busy ? common("saving") : t("saveDashboard")}
           </button>
         </div>
       </form>
@@ -142,29 +149,32 @@ export function ConflictDialog({
   onSaveCopy: (name: string) => Promise<string | null>;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(`Copy of ${dashboardName}`);
+  const t = useTranslations("widgets.saveDialogs");
+  const common = useTranslations("common");
+  const root = asTextTranslator(useTranslations());
+  const [name, setName] = useState(t("copyName", { name: dashboardName }));
   const [error, setError] = useState<string | null>(null);
   const submitCopy = async () => {
-    const problem = nameProblem(name);
+    const problem = nameProblem(name, root);
     if (problem) return setError(problem);
     const refusal = await onSaveCopy(name.trim());
     if (refusal) setError(refusal);
   };
   return (
-    <Modal title="This dashboard changed since you opened it" onClose={onClose}>
+    <Modal title={t("conflictTitle")} onClose={onClose}>
       <div className="dg-modal-form">
         <ul className="dg-modal-choices">
           <li>
-            <strong>Reload</strong> discards your changes and shows the saved version.
+            {t.rich("conflictReload", { b: (chunks) => <strong>{chunks}</strong> })}
           </li>
           <li>
-            <strong>Save as a copy</strong> keeps your changes under the name below.
+            {t.rich("conflictCopy", { b: (chunks) => <strong>{chunks}</strong> })}
           </li>
           <li>
-            <strong>Keep editing</strong> leaves both as they are.
+            {t.rich("conflictKeep", { b: (chunks) => <strong>{chunks}</strong> })}
           </li>
         </ul>
-        <DashboardNameField value={name} label="Copy name" error={error} onChange={setName} />
+        <DashboardNameField value={name} label={t("copyLabel")} error={error} onChange={setName} />
         {error ? (
           <p className="dg-modal-error" role="alert">
             {error}
@@ -172,13 +182,13 @@ export function ConflictDialog({
         ) : null}
         <div className="dg-modal-actions">
           <button type="button" className="action secondary" onClick={onClose}>
-            Keep editing
+            {t("keepEditing")}
           </button>
           <button type="button" className="action secondary" disabled={busy} onClick={() => void onReload()}>
-            Reload
+            {t("reload")}
           </button>
           <button type="button" className="action" disabled={busy} onClick={() => void submitCopy()}>
-            {busy ? "Saving…" : "Save as a copy"}
+            {busy ? common("saving") : t("saveCopy")}
           </button>
         </div>
       </div>
@@ -195,25 +205,22 @@ export function UnsavedChangesDialog({
   onDiscard: () => void;
   onKeep: () => void;
 }) {
+  const t = useTranslations("widgets.saveDialogs");
   const keep = useRef<HTMLButtonElement>(null);
   useEffect(() => keep.current?.focus(), []);
   return (
-    <Modal title={`Discard unsaved changes to ${dashboardName}?`} onClose={onKeep}>
+    <Modal title={t("discardTitle", { name: dashboardName })} onClose={onKeep}>
       <div className="dg-modal-form">
         <ul className="dg-modal-choices">
-          <li>
-            <strong>Discard</strong> drops your changes and shows the saved layout.
-          </li>
-          <li>
-            <strong>Keep editing</strong> leaves the dashboard as it is.
-          </li>
+          <li>{t.rich("discardChoice", { b: (chunks) => <strong>{chunks}</strong> })}</li>
+          <li>{t.rich("keepChoice", { b: (chunks) => <strong>{chunks}</strong> })}</li>
         </ul>
         <div className="dg-modal-actions">
           <button ref={keep} type="button" className="action secondary" onClick={onKeep}>
-            Keep editing
+            {t("keepEditing")}
           </button>
           <button type="button" className="action" onClick={onDiscard}>
-            Discard
+            {t("discard")}
           </button>
         </div>
       </div>

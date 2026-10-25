@@ -11,23 +11,38 @@
 // is available to assistive technology. Nothing here is conveyed by colour
 // alone.
 
+import type { TextTranslator } from "@/i18n/textTranslator";
 import type { HealthGroup } from "@/lib/behaviorOverview";
+
+/** The empty notice without a translator (the Behavior page, not converted yet). */
+const NO_SOURCES =
+  "No monitored log sources. Enable monitoring on a source to start collecting its volume baseline.";
 
 export function HealthDistribution({
   groups,
   total,
   summary,
+  say,
 }: {
   groups: HealthGroup[];
   total: number;
   /** The distribution as a sentence, from `healthSummaryText`. */
   summary: string;
+  /**
+   * The interface-language translator. Without it the component keeps its English (the Behavior
+   * page, which is not converted yet, passes none); with it the group words come from the catalog
+   * by the group's key, and a group the catalog lacks keeps the label the derivation gave it.
+   */
+  say?: TextTranslator;
 }) {
+  const word = (g: HealthGroup) => {
+    const key = `home.healthGroups.${g.key}`;
+    return say?.has?.(key) ? say(key) : g.label;
+  };
   if (total === 0 || groups.length === 0) {
     return (
       <div className="notice">
-        No monitored log sources. Enable monitoring on a source to start
-        collecting its volume baseline.
+        {say ? say("home.healthGroups.noSources") : NO_SOURCES}
       </div>
     );
   }
@@ -56,7 +71,7 @@ export function HealthDistribution({
             width={g.count}
             height={1}
           >
-            <title>{`${g.label}: ${g.count}`}</title>
+            <title>{[word(g), g.count].join(": ")}</title>
           </rect>
         ))}
       </svg>
@@ -66,7 +81,7 @@ export function HealthDistribution({
           <li key={g.key}>
             <span className={`health-dot ${g.tone}`} aria-hidden="true" />
             <span className="health-count num">{g.count}</span>
-            <span className="muted">{g.label}</span>
+            <span className="muted">{word(g)}</span>
           </li>
         ))}
       </ul>

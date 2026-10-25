@@ -19,8 +19,8 @@ import { TIME_AXIS_FORMATTER } from "@/components/home/chartOptions";
 import type { PwBucket } from "@/lib/api";
 import { utcTimeHtml } from "@/components/ui/UtcTime";
 
-import { eventsUnit, formatCoveragePercent, formatEvents } from "./pwFormat";
-import { isolated, kindWords, type PlotModel, type PlotPoint, type Span } from "./pwSeries";
+import { isolated, type PlotModel, type PlotPoint, type Span } from "./pwSeries";
+import { ENGLISH_PW, pwDecimal, pwEvents, pwKind, pwPercent, pwUnit, type PwI18n } from "./pwText";
 
 import type { EChartsOption } from "echarts";
 
@@ -99,17 +99,24 @@ export function buildCoverage(
 
 const enc = (text: string) => format.encodeHTML(text);
 
-function pointLine(name: string, p: PlotPoint, unit: string): string {
+function pointLine(name: string, p: PlotPoint, unit: string, x: PwI18n): string {
   const label = enc(name);
-  const origin = p.origin === "HISTORY" ? "; read from QRadar history, not judged" : "";
+  const origin = p.origin === "HISTORY" ? x.t("pwchart.tooltip.origin") : "";
+  const kind = pwKind(x, p.kind);
   switch (p.kind) {
     case "EXACT":
     case "MEASURED_ZERO":
-      return `${label}: ${formatEvents(p.value)} ${unit} (${kindWords(p.kind)}${origin})`;
+      return x.t("pwchart.tooltip.point", { label, value: pwEvents(x, p.value), unit, kind, origin });
     case "LOWER_BOUND":
-      return `${label}: ${formatEvents(p.value, "LOWER_BOUND")} ${unit} (${kindWords(p.kind)}${origin})`;
+      return x.t("pwchart.tooltip.point", {
+        label,
+        value: pwEvents(x, p.value, "LOWER_BOUND"),
+        unit,
+        kind,
+        origin,
+      });
     default:
-      return `${label}: not plotted, ${kindWords(p.kind)}${origin}`;
+      return x.t("pwchart.tooltip.notPlotted", { label, kind, origin });
   }
 }
 
@@ -120,41 +127,59 @@ function pointLine(name: string, p: PlotPoint, unit: string): string {
 export function pwTooltip(
   model: PlotModel,
   index: number,
-  opts: { unit: string; coverage?: CoverageModel | null },
+  opts: { unit: string; coverage?: CoverageModel | null; i18n?: PwI18n },
 ): string {
+  const x = opts.i18n ?? ENGLISH_PW;
   const t = model.slots[index];
   if (t === undefined) return "";
   const lines = [utcTimeHtml(new Date(t).toISOString())];
   for (const line of model.lines) {
     const p = line.points[index];
     if (!p) continue;
-    lines.push(pointLine(line.label, p, opts.unit));
+    lines.push(pointLine(line.label, p, opts.unit, x));
   }
   const single = model.lines.length === 1 ? model.lines[0].points[index] : null;
   if (single) {
     if (single.low !== null && single.high !== null) {
       lines.push(
-        `Expected range for this hour of the week: ${formatEvents(single.low)} to ${formatEvents(single.high)} ${opts.unit}`,
+        x.t("pwchart.tooltip.expectedRange", {
+          low: pwEvents(x, single.low),
+          high: pwEvents(x, single.high),
+          unit: opts.unit,
+        }),
       );
-      if (single.median !== null) lines.push(`Expected median: ${single.median.toFixed(1)} ${opts.unit}`);
+      if (single.median !== null) {
+        lines.push(
+          x.t("pwchart.tooltip.expectedMedian", { median: pwDecimal(x, single.median), unit: opts.unit }),
+        );
+      }
     } else if (single.kind !== "NOT_COLLECTED") {
       lines.push(
         single.baseline === "LEARNING"
-          ? "Expected range: learning, not yet reliable"
-          : "Expected range: no baseline for this hour",
+          ? x.t("pwchart.tooltip.learning")
+          : x.t("pwchart.tooltip.noBaseline"),
       );
     }
   }
   const cov = opts.coverage?.points[index];
   if (cov) {
     if (cov.ratio === null) {
-      lines.push("Parsed share: not known for this bucket");
+      lines.push(x.t("pwchart.tooltip.shareUnknown"));
     } else {
-      const share = formatCoveragePercent(cov.ratio);
-      lines.push(`Parsed share: ${cov.lowerBound ? "at least " : ""}${share}`);
+      const share = pwPercent(x, cov.ratio);
+      lines.push(
+        x.t("pwchart.tooltip.share", {
+          bound: cov.lowerBound ? x.t("pwchart.tooltip.atLeastBound") : "",
+          share,
+        }),
+      );
       if (cov.unparsed !== null) {
         lines.push(
-          `Unparsed remainder: ${cov.lowerBound ? "at most " : ""}${formatEvents(cov.unparsed)} ${opts.unit}`,
+          x.t("pwchart.tooltip.unparsed", {
+            bound: cov.lowerBound ? x.t("pwchart.tooltip.atMostBound") : "",
+            value: pwEvents(x, cov.unparsed),
+            unit: opts.unit,
+          }),
         );
       }
     }
@@ -187,6 +212,8 @@ export interface PwOptionInput {
   coverage?: CoverageModel | null;
   compact?: boolean;
   reduceMotion?: boolean;
+  /** The interface language; without it the chart is in English (the watch pages). */
+  i18n?: PwI18n;
 }
 
 export interface DetectionBand {
@@ -199,8 +226,9 @@ export interface DetectionBand {
 /** The option for the series chart, with the coverage panel beneath it on the same time axis. */
 export function buildPwOption(input: PwOptionInput): EChartsOption {
   const { model, palette: c, coverage = null, compact = false } = input;
+  const x = input.i18n ?? ENGLISH_PW;
   const bucketSeconds = model.bucketMs / 1000;
-  const unit = eventsUnit(bucketSeconds);
+  const unit = pwUnit(x, bucketSeconds);
   const showCoverage = coverage !== null && !compact;
   // With no value plotted the parsed share still stands alone: a property that stopped parsing
   // must be visible as a coverage collapse, not as an empty chart.
@@ -214,9 +242,9 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
     start: Date.parse(i.start),
     end: i.end ? Date.parse(i.end) : last,
   }));
-  const gapAreas = areas(model.uncollected, c.gap, "not collected");
-  const incidentAreas = areas(incidentSpans, c.anomaly, "incident");
-  const historyAreas = areas(model.history, c.history, "read from QRadar history, not judged");
+  const gapAreas = areas(model.uncollected, c.gap, x.t("pwchart.area.notCollected"));
+  const incidentAreas = areas(incidentSpans, c.anomaly, x.t("pwchart.area.incident"));
+  const historyAreas = areas(model.history, c.history, x.t("pwchart.area.history"));
   const detected = input.detectionBand ?? null;
   const detectionAreas: MarkAreaPair[] =
     detected && model.lines.length > 0
@@ -226,7 +254,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
               xAxis: Date.parse(detected.start),
               yAxis: detected.low,
               itemStyle: { color: c.band },
-              name: "expected range at detection",
+              name: x.t("pwchart.area.detection"),
             },
             { xAxis: detected.end ? Date.parse(detected.end) : last, yAxis: detected.high },
           ],
@@ -327,7 +355,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
                     label: {
                       show: true,
                       position: "insideEndTop" as const,
-                      formatter: `Floor ${formatCoveragePercent(coverage.floor)}`,
+                      formatter: x.t("pwchart.axis.floor", { percent: pwPercent(x, coverage.floor) }),
                       color: c.label,
                       fontFamily: c.font,
                     },
@@ -361,7 +389,11 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
         const list = Array.isArray(params) ? params : [params];
         const first = list[0] as { dataIndex?: number } | undefined;
         if (first?.dataIndex == null) return "";
-        return pwTooltip(model, first.dataIndex, { unit, coverage: showCoverage ? coverage : null });
+        return pwTooltip(model, first.dataIndex, {
+          unit,
+          coverage: showCoverage ? coverage : null,
+          i18n: x,
+        });
       },
     },
     xAxis: showCoverage && !mainPanel
@@ -369,7 +401,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
           {
             type: "time",
             gridIndex: 0,
-            name: "Time (UTC)",
+            name: x.t("pwchart.axis.time"),
             nameLocation: "middle",
             nameGap: 30,
             nameTextStyle: text,
@@ -383,7 +415,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
           {
             type: "time",
             gridIndex: 1,
-            name: "Time (UTC)",
+            name: x.t("pwchart.axis.time"),
             nameLocation: "middle",
             nameGap: 30,
             nameTextStyle: text,
@@ -395,7 +427,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
           {
             type: "time",
             gridIndex: 0,
-            name: "Time (UTC)",
+            name: x.t("pwchart.axis.time"),
             nameLocation: "middle",
             nameGap: 24,
             nameTextStyle: text,
@@ -418,7 +450,7 @@ export function buildPwOption(input: PwOptionInput): EChartsOption {
             {
               type: "value" as const,
               gridIndex: covIndex,
-              name: "Parsed share (%)",
+              name: x.t("pwchart.axis.share"),
               nameTextStyle: { ...text, align: "left" as const },
               min: 0,
               max: 100,

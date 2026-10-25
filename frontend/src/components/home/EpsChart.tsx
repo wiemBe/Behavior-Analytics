@@ -19,21 +19,25 @@ import {
 } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
 import { useApiResource } from "@/hooks/useApiResource";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { useMeasures } from "@/i18n/measures";
 import { homeReads, type FleetEpsSeries } from "@/lib/api";
 import { epsSeriesAsOf } from "@/lib/home/asOf";
-import { epsChartModel, epsSummaryText, windowText, type EpsChartModel } from "@/lib/home/epsChart";
+import { epsChartModel, type EpsChartModel } from "@/lib/home/epsChart";
 import type { HomePalette } from "@/lib/home/chartPalette";
-import { badgeText } from "@/lib/home/qualifiers";
 import { fleetDrillHref } from "@/lib/fleet";
+import { useWidgetCopy } from "@/widgets/copy";
 import { useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 
-import { HistoryKey } from "@/components/behavior/HistoryKey";
+import "@/components/behavior/history.css";
 
-import { buildEpsOption, EXPECTED_NAME } from "./chartOptions";
+import { buildEpsOption } from "./chartOptions";
 import { epsHistory, epsHistorySummary, type EpsHistory } from "./epsHistory";
+import { badgePhrase, reasonText } from "./qualifierText";
 import { useEChart } from "./useEChart";
 import { WidgetFrame } from "./WidgetFrame";
 
@@ -48,68 +52,96 @@ echarts.use([
   CanvasRenderer,
 ]);
 
-const EXPECTED_MEANING =
-  "The sum of every source's expected EPS, drawn only where every source has a reliable baseline. It is not a range.";
-
 function Chart({ series, model }: { series: FleetEpsSeries; model: EpsChartModel }) {
+  const t = useTranslations("home.eps");
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
+  const copy = useWidgetCopy();
   const expanded = useExpanded();
   // The tile is too small to hold the words clear of the line; the key, tooltip and text say it.
   const history = useMemo(() => epsHistory(series, expanded), [series, expanded]);
+  const i18n = useMemo(() => ({ t: say, locale: measures.locale }), [say, measures.locale]);
   const option = useMemo(
     () =>
       model.measured > 0
-        ? (p: HomePalette) => buildEpsOption(model, p, undefined, history)
+        ? (p: HomePalette) => buildEpsOption(model, p, undefined, history, i18n)
         : null,
-    [model, history],
+    [model, history, i18n],
   );
   const ref = useEChart(option);
-  const label = `Fleet EPS, ${windowText(series.window)}`;
+  const windowLabel = copy.range(series.window);
+  const label = t("ariaLabel", { window: windowLabel });
 
   if (model.measured === 0) {
     // Nothing measured: the reason replaces the chart, and no empty axes stand in for it.
     const q = model.qualifiers[0];
     return (
       <p className="tw-state">
-        {q && q.kind === "NOT_COLLECTED" ? q.reason : "No step was measured."} No line is drawn; a
-        step that was not measured is not zero traffic.
+        {q && q.kind === "NOT_COLLECTED" ? reasonText(say, q) : t("noStep")}{" "}
+        {t("noLine")}
       </p>
     );
   }
+  // What the chart shows, as prose for assistive technology.
+  const head = t("summaryHead", { window: windowLabel });
+  const summary =
+    `${head} ` +
+    t("summaryMeasured", {
+      measured: measures.count(model.measured),
+      total: measures.count(model.total),
+      peak: measures.eps(model.peak as number),
+    }) +
+    (model.hasExpected ? ` ${t("summaryExpected")}` : ` ${t("summaryNoExpected")}`) +
+    (model.measured < model.total ? ` ${t("summaryGaps")}` : "");
   return (
     <>
       <div ref={ref} className="hc-chart" role="img" aria-label={label} />
-      <p className="sr-only">{[epsSummaryText(series, model), epsHistorySummary(history)].filter(Boolean).join(" ")}</p>
+      <p className="sr-only">
+        {[summary, epsHistorySummary(history, say)].filter(Boolean).join(" ")}
+      </p>
       <Key model={model} history={history} />
     </>
   );
 }
 
 function Key({ model, history }: { model: EpsChartModel; history: EpsHistory }) {
+  const t = useTranslations("home.eps");
+  const chart = useTranslations("home.chart");
+  const historyT = useTranslations("home.history");
   if (model.measured === 0) return <span />;
   return (
-    <ul className="hc-key-list" aria-label="Chart key">
+    <ul className="hc-key-list" aria-label={t("keyLabel")}>
       <li>
         <span className="chart-key chart-key-observed" aria-hidden="true" />
-        Observed
+        {t("observed")}
       </li>
       {model.hasExpected && (
-        <li title={EXPECTED_MEANING}>
+        <li title={t("expectedMeaning")}>
           <span className="chart-key chart-key-expected" aria-hidden="true" />
-          {EXPECTED_NAME}
+          {chart("expectedName")}
         </li>
       )}
       {model.gaps.length > 0 && (
-        <li title="Intervals where not every source-interval was complete. They are not zero traffic.">
+        <li title={t("notMeasuredMeaning")}>
           <span className="chart-key chart-key-gap" aria-hidden="true" />
-          Not measured
+          {t("notMeasured")}
         </li>
       )}
-      {history.spans.length > 0 && <HistoryKey />}
+      {history.spans.length > 0 && (
+        <li>
+          <span className="chart-key chart-key-history" aria-hidden="true" />
+          {historyT("key")}
+        </li>
+      )}
     </ul>
   );
 }
 
 export function EpsChart({ range }: RangedProps = {}) {
+  const t = useTranslations("home.eps");
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
+  const copy = useWidgetCopy();
   const window = useEffectiveRange(range);
   const read = homeReads.epsSeries(window, "none");
   const state = useApiResource(read.key, read.fetch);
@@ -119,13 +151,13 @@ export function EpsChart({ range }: RangedProps = {}) {
   return (
     <WidgetFrame
       id="home-eps"
-      title="Fleet EPS"
-      windowText={windowText(window)}
-      badge={(model && badgeText(model.qualifiers)) || undefined}
-      link={{ href: fleetDrillHref(window), label: "Fleet" }}
+      title={t("title")}
+      windowText={copy.range(window)}
+      badge={(model && badgePhrase(say, measures, model.qualifiers)) || undefined}
+      link={{ href: fleetDrillHref(window), label: t("link") }}
       state={state}
       dataTo={{ at: data ? epsSeriesAsOf(data) : null, family: "PHASE_A_VOLUME" }}
-      what="the fleet EPS series"
+      what={t("what")}
       permission="read:fleet"
       fillBody
     >

@@ -1,8 +1,8 @@
 import { parse, TYPE, type MessageFormatElement } from "@formatjs/icu-messageformat-parser";
 import { describe, expect, it } from "vitest";
 
-import en from "../../messages/en.json";
-import tr from "../../messages/tr.json";
+import en from "../../messages/en";
+import tr from "../../messages/tr";
 
 interface Catalog {
   [key: string]: string | Catalog;
@@ -54,6 +54,23 @@ const IDENTICAL_ALLOWLIST = new Set([
   "shell.search.shortcut",
   "account.english",
   "account.turkish",
+  // I18N-3: QRadar object names and product terms the glossary keeps in English.
+  "enums.anomalyState.NORMAL",
+  "enums.sourceClass.DNS",
+  "enums.sourceClass.IPS",
+  "enums.sourceClass.LINUX",
+  "enums.sourceClass.PROXY",
+  "enums.sourceClass.VPN",
+  "enums.sourceClass.WAF",
+  "enums.sourceClass.WINDOWS",
+  "home.healthGroups.normal",
+  "widgets.configure.countWhat",
+  "pwchart.tooltip.point",
+  "trend.groups.captionTime",
+  "trend.single.timeOnlyAfter",
+  "home.healthGroupsInline.normal",
+  "home.offenses.offense",
+  "units.eps",
 ]);
 
 describe("message catalog contract", () => {

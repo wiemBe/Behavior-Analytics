@@ -3,6 +3,8 @@
 // All requests go through the backend API. The browser holds no QRadar
 // credentials and never contacts QRadar or the MCP service directly.
 
+import type { TextTranslator } from "@/i18n/textTranslator";
+
 const PUBLIC_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 function baseUrl(): string {
@@ -2695,28 +2697,32 @@ export const api = {
 // or an upstream URL, and this text goes straight into the DOM. Known HTTP
 // statuses get an actionable message; everything else degrades to a fixed
 // string.
-export function actionErrorMessage(err: unknown): string {
+export function actionErrorMessage(err: unknown, t?: TextTranslator): string {
+  // The sentences are fixed; `t` (the interface language's translator, full keys) words them
+  // from the `errors` namespace. Without it they stay English. A backend validation detail is
+  // shown as the server sent it.
+  const say = (key: string, english: string) => (t ? t(`errors.${key}`) : english);
   if (err instanceof ApiError) {
     switch (err.status) {
       case 401:
-        return "Your session has expired. Sign in again to continue.";
+        return say("sessionExpired", "Your session has expired. Sign in again to continue.");
       case 403:
-        return "You do not have permission to perform this action.";
+        return say("forbidden", "You do not have permission to perform this action.");
       case 404:
-        return "This item no longer exists. Refresh the page.";
+        return say("notFound", "This item no longer exists. Refresh the page.");
       case 409:
-        return "This conflicts with the current state. Refresh and try again.";
+        return say("conflict", "This conflicts with the current state. Refresh and try again.");
       case 422:
         // The backend's validation detail is generated from the schema and is
         // safe to show; it tells the operator what to correct.
-        return err.message || "The request was rejected as invalid.";
+        return err.message || say("invalid", "The request was rejected as invalid.");
       default:
         return err.status >= 500
-          ? "The server could not complete the request. Try again shortly."
-          : err.message || "The request failed.";
+          ? say("server", "The server could not complete the request. Try again shortly.")
+          : err.message || say("failed", "The request failed.");
     }
   }
-  return "The request could not be sent. Check your connection and try again.";
+  return say("notSent", "The request could not be sent. Check your connection and try again.");
 }
 
 // Severity → CSS pill class, shared by the views that show a severity.

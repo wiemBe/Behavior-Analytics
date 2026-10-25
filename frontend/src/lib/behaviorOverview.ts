@@ -9,6 +9,7 @@
 // governing constraint is the same one that governs the rest of Phase A: a
 // value that was never measured must never be counted as a measurement.
 
+import type { TextTranslator } from "@/i18n/textTranslator";
 import type { AnomalyState, AnomalySummary, SourceBehavior } from "@/lib/api";
 
 /**
@@ -298,11 +299,29 @@ export function healthSummaryText(
   groups: HealthGroup[],
   total: number,
   silent: number,
+  t?: TextTranslator,
 ): string {
+  if (t) return healthSummaryIn(t, groups, total, silent);
   if (total === 0) return "No monitored log sources.";
   const parts = groups.map((g) => `${g.count} ${g.label.toLowerCase()}`);
   const base = `${total} monitored source${total === 1 ? "" : "s"}: ${parts.join(", ")}.`;
   return silent > 0
     ? `${base} ${silent} ${silent === 1 ? "is" : "are"} currently silent.`
     : base;
+}
+
+/** The same sentence in the interface language: the group's word by its key, the counts by `t`. */
+function healthSummaryIn(
+  t: TextTranslator,
+  groups: HealthGroup[],
+  total: number,
+  silent: number,
+): string {
+  if (total === 0) return t("home.healthSummary.none");
+  const parts = groups.map((g) => {
+    const key = `home.healthGroupsInline.${g.key}`;
+    return `${g.count} ${t.has?.(key) ? t(key) : g.label.toLowerCase()}`;
+  });
+  const base = t("home.healthSummary.total", { total, parts: parts.join(", ") });
+  return silent > 0 ? `${base} ${t("home.healthSummary.silent", { silent })}` : base;
 }

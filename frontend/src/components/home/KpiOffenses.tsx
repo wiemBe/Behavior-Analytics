@@ -7,49 +7,61 @@
 // that cannot be read is passed as null and the derivation fails closed
 // (NOT_COLLECTED), so a failed probe never turns into "no open offenses".
 
+import { useTranslations } from "next-intl";
+
 import { useApiResource } from "@/hooks/useApiResource";
+import { useMeasures } from "@/i18n/measures";
 import { homeReads } from "@/lib/api";
 import { countIsUnknown, offensesCard, type OffensesCard } from "@/lib/home/offenses";
 
-import { countNoun, Figure, Line, n } from "./KpiParts";
+import { countNoun, Figure, Line } from "./KpiParts";
 import { WidgetFrame, WidgetQualifiers } from "./WidgetFrame";
 
 function Body({ card }: { card: OffensesCard }) {
+  const t = useTranslations("home.kpiOffenses");
+  const { count, locale } = useMeasures();
   if (card.open === null) {
     return (
       <>
-        <Figure value={null} unit="open offenses" />
+        <Figure value={null} unit={t("unit")} />
         <WidgetQualifiers variant="kpi" qualifiers={card.qualifiers} />
       </>
     );
   }
   const b = card.breakdown;
+  const nbsp = "\u00a0";
   return (
     <>
-      <Figure value={n(card.open)} unit="open offenses" />
+      <Figure value={count(card.open)} unit={t("unit")} />
       <Line
-        title={`Critical means magnitude of ${card.criticalMagnitude} or more, the product's own threshold.`}
+        title={t("criticalMeans", { magnitude: card.criticalMagnitude })}
         parts={[
-          `${card.critical === null ? "\u2014" : countNoun(card.critical, "critical")} (\u2265 ${card.criticalMagnitude})`,
-          b && b.below !== null ? countNoun(b.below, "below") : "\u2014\u00a0below",
+          `${card.critical === null ? "\u2014" : countNoun(card.critical, t("critical"), locale)} (\u2265 ${card.criticalMagnitude})`,
+          b && b.below !== null
+            ? countNoun(b.below, t("below"), locale)
+            : `\u2014${nbsp}${t("below")}`,
         ]}
       />
       {b && b.unknown > 0 && (
         <Line
-          title="Open offenses with no magnitude: in neither the critical nor the below count."
-          parts={[`+\u00a0${n(b.unknown)}\u00a0with unknown magnitude`]}
+          title={t("unknownMagnitudeTitle")}
+          parts={[t("unknownMagnitude", { count: count(b.unknown) })]}
         />
       )}
       <Line
         parts={[
-          card.unassigned === null ? "\u2014\u00a0unassigned" : countNoun(card.unassigned, "unassigned"),
-          card.exceedingSla === null ? "\u2014\u00a0over SLA" : countNoun(card.exceedingSla, "over SLA"),
+          card.unassigned === null
+            ? `\u2014${nbsp}${t("unassigned")}`
+            : countNoun(card.unassigned, t("unassigned"), locale),
+          card.exceedingSla === null
+            ? `\u2014${nbsp}${t("overSla")}`
+            : countNoun(card.exceedingSla, t("overSla"), locale),
         ]}
       />
       {card.ageUnknown !== null && card.ageUnknown > 0 && (
         <Line
-          title="Open offenses with no age: not in the over SLA count."
-          parts={[`+\u00a0${n(card.ageUnknown)}\u00a0with unknown age`]}
+          title={t("unknownAgeTitle")}
+          parts={[t("unknownAge", { count: count(card.ageUnknown) })]}
         />
       )}
     </>
@@ -57,6 +69,7 @@ function Body({ card }: { card: OffensesCard }) {
 }
 
 export function KpiOffenses() {
+  const t = useTranslations("home.kpiOffenses");
   const analyticsRead = homeReads.offenseAnalytics();
   const probeRead = homeReads.offenseProbe();
   const state = useApiResource(analyticsRead.key, analyticsRead.fetch);
@@ -72,15 +85,15 @@ export function KpiOffenses() {
     <WidgetFrame
       variant="kpi"
       id="kpi-offenses"
-      title="Open offenses, latest snapshot"
+      title={t("title")}
       link={{
         href: "/offenses?status=OPEN",
-        label: "Offenses",
-        ariaLabel: "View open offenses",
+        label: t("link"),
+        ariaLabel: t("linkLabel"),
       }}
-      what="offenses"
+      what={t("what")}
       permission="read:offenses"
-      description="Offenses open in the latest collected snapshot. Critical is magnitude at or above the product's threshold; an offense with no magnitude, or no age, is counted apart from those counts."
+      description={t("description")}
       state={probePending && state.status === "ok" ? { status: "loading" } : state}
     >
       {({ data }) => <Body card={offensesCard(data, probeData)} />}
