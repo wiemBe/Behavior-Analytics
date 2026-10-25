@@ -229,6 +229,13 @@ BATCH_DELETERS: tuple[BatchDeleter, ...] = (
             ),
         ),
     ),
+    BatchDeleter(
+        "apply_rule_match_retention",
+        (
+            BatchTable("rule_match_metric", "rule_match_retention_days"),
+            BatchTable("rule_match_window", "rule_match_retention_days"),
+        ),
+    ),
 )
 
 #: Table names from the deleter catalog. Derived, not copied, so a new table

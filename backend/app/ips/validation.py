@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.text import percent
 from app.ips.profile import IpsFieldMapping, IpsFieldReference
 from app.models.enums import IpsFieldStatus, IpsLogicalField, IpsProfileValidationStatus
 from app.providers.dto import IpsFieldProbe, IpsSourceProbe
@@ -123,8 +124,8 @@ def evaluate_field(
         )
         if probe.generic_name_events > 0:
             warning = (
-                f"{logical.value}: {result.generic_name_ratio:.1%} of events use a generic "
-                "Unknown QID name"
+                f"{logical.value}: {percent(result.generic_name_ratio, precision=1)} of events "
+                "use a generic Unknown QID name"
             )
             result.warnings.append(warning)
 
@@ -134,8 +135,8 @@ def evaluate_field(
     elif used_by_collection and result.populated_ratio < min_ratio:
         result.status = IpsFieldStatus.INSUFFICIENT_COVERAGE
         result.detail = (
-            f"populated on {result.populated_ratio:.1%} of events, below the "
-            f"required {min_ratio:.0%}"
+            f"populated on {percent(result.populated_ratio, precision=1)} of events, below "
+            f"the required {percent(min_ratio)}"
         )
     return result
 

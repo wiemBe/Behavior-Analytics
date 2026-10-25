@@ -200,7 +200,7 @@ SHARE_DETAILS = {
     "baseline_low": 0.2, "baseline_high": 0.3, "deviation_score": 9.0, "threshold": 3.5,
     "sample_count": 12, "interval_start": "2026-10-13T09:00:00+00:00",
     "interval_end": "2026-10-13T10:00:00+00:00", "confidence": 0.85,
-    "reason": "the largest source IP sent 700 of 1000 events (70.0%)",
+    "reason": "the largest source IP sent 700 of 1000 events (70.0\u00a0%)",
     "insufficient_data": False,
     "extra": {
         "evidence_version": 1, "detector_type": "IPS_SOURCE_CONCENTRATION_SPIKE",
@@ -510,6 +510,98 @@ def test_ips_filters_combine_with_the_common_ones(db_schema) -> None:
     assert Client(READER).get(
         "/api/v1/anomalies", params={"subject_kind": "IPS_WHAT"}
     ).status_code == 422
+
+
+def test_repeated_subject_kinds_are_a_deduplicated_union(db_schema) -> None:
+    """Repeated kinds select one union; contradictions narrow rather than widen it."""
+    w = world()
+    client = Client(READER)
+
+    both = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "IPS_ENTITY"),
+            ("subject_kind", "IPS_SOURCE"),
+        ],
+    ).json()
+    assert both["total"] == 4
+    assert {item["subject_kind"] for item in both["items"]} == {
+        "IPS_ENTITY",
+        "IPS_SOURCE",
+    }
+
+    mixed = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "LOG_SOURCE"),
+            ("subject_kind", "IPS_SOURCE"),
+        ],
+    ).json()
+    assert mixed["total"] == 3
+    assert {item["subject_kind"] for item in mixed["items"]} == {
+        "LOG_SOURCE",
+        "IPS_SOURCE",
+    }
+
+    entity = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "IPS_ENTITY"),
+            ("subject_kind", "IPS_SOURCE"),
+            ("ips_entity_id", str(w["port"])),
+        ],
+    ).json()
+    assert entity["total"] == 2
+    assert {item["subject_kind"] for item in entity["items"]} == {"IPS_ENTITY"}
+
+    contradiction = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "LOG_SOURCE"),
+            ("subject_kind", "IPS_SOURCE"),
+            ("ips_entity_id", str(w["port"])),
+        ],
+    ).json()
+    assert contradiction["total"] == 0
+    assert contradiction["items"] == []
+
+    duplicate = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "IPS_ENTITY"),
+            ("subject_kind", "IPS_ENTITY"),
+        ],
+    ).json()
+    assert duplicate["total"] == 3
+    assert len({item["id"] for item in duplicate["items"]}) == 3
+
+
+def test_repeated_subject_kinds_keep_the_list_at_two_statements(db_schema) -> None:
+    """One and two kinds use the same counted union and page statements."""
+    world()
+    client = Client(READER)
+    one = client.get(
+        "/api/v1/anomalies",
+        params={"limit": 200, "subject_kind": "IPS_ENTITY"},
+    )
+    assert one.status_code == 200
+    one_statements = client.statements
+
+    two = client.get(
+        "/api/v1/anomalies",
+        params=[
+            ("limit", "200"),
+            ("subject_kind", "IPS_ENTITY"),
+            ("subject_kind", "IPS_SOURCE"),
+        ],
+    )
+    assert two.status_code == 200
+    assert client.statements == one_statements == 2
 
 
 def test_pagination_across_a_tie_keeps_every_row(db_schema) -> None:

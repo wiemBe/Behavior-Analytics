@@ -17,7 +17,7 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `LAB_MODE` | `false` | Isolated accelerated lab profile; refused in production |
 | `LOG_LEVEL` | `INFO` | Application log level |
 | `API_PREFIX` | `/api/v1` | Versioned API prefix |
-| `QRADAR_PROVIDER` | `mock` | `mock`, `rest` or `mcp`; `mock` is refused outside development |
+| `QRADAR_PROVIDER` | `mock` | `mock`, `rest` or `mcp`; `mock` is refused outside development. `mcp` needs the same token as `rest` (`QRADAR_API_TOKEN_FILE` or `QRADAR_SEC_TOKEN`); production refuses it without one |
 | `QRADAR_BASE_URL` | empty | Preferred QRadar URL; `QRADAR_HOST` is a compatibility alias |
 | `QRADAR_API_TOKEN_FILE` | unset | File containing the read-only service token; preferred |
 | `QRADAR_SEC_TOKEN` | empty | Token value fallback; avoid in production |
@@ -26,7 +26,7 @@ in source control. Prefer `QRADAR_API_TOKEN_FILE` to the token environment varia
 | `QRADAR_CA_BUNDLE` | unset | Internal CA bundle path |
 | `QRADAR_TLS_ALLOW_MISSING_AKI` | `false` | Permit only the missing-AKI certificate condition |
 | `MCP_ENABLED` | `false` | Enable the optional MCP inventory integration |
-| `MCP_BASE_URL` | `http://qradar-mcp:5000` | Internal MCP service URL |
+| `MCP_BASE_URL` | `http://qradar-mcp:5000` | Internal MCP service URL; plain HTTP on the internal network, and the backend sends the SEC token to it. The MCP container verifies the console certificate with the same CA as the backend (`/run/secrets/qradar_ca.pem`) |
 | `MCP_TIMEOUT_SECONDS` | `60` | MCP request timeout |
 
 ## Secrets, database and queue
@@ -498,6 +498,10 @@ compression; a repeat install keeps operator-set values. The install summary nam
 | `SNAPSHOT_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch, per snapshot table |
 | `SNAPSHOT_RETENTION_MAX_BATCHES` | `20` | Batches per table per run |
 | `SNAPSHOT_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
+| `RULE_MATCH_RETENTION_DAYS` | `90` | `rule_match_metric` (by `bucket_start`) and `rule_match_window` (by `window_start`) rows kept. `30`–`3650`. Must exceed `RULE_HEALTH_WINDOW_DAYS` (30). Task `apply_rule_match_retention`; not gated by `RETENTION_ENABLED` |
+| `RULE_MATCH_RETENTION_BATCH_SIZE` | `5000` | Rows deleted per batch |
+| `RULE_MATCH_RETENTION_MAX_BATCHES` | `20` | Batches per table per run |
+| `RULE_MATCH_RETENTION_INTERVAL_SECONDS` | `86400` | Schedule. Minimum `3600` |
 | `RETENTION_ENABLED` | `false` | Enable reconciliation of the general Timescale retention policies; the production installer writes `true` |
 | `RETENTION_LOG_SOURCE_METRIC_DAYS` | unset | Days of source-volume chunks to retain; the production installer writes `90` |
 | `RETENTION_SEARCH_RESULT_METRIC_DAYS` | unset | Days of scheduled-search result chunks to retain; the production installer writes `90` |

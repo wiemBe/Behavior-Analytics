@@ -116,3 +116,18 @@ def test_the_release_resolves_every_pin_it_ships_with() -> None:
         "deploy/load-secrets.sh",  # SECRETS_HELPER_IMAGE, the secrets helper
     ):
         assert reference in run, f"the digest step no longer checks {reference}"
+
+
+def test_the_mcp_image_check_is_read_only_pinned_and_never_pushes() -> None:
+    check = workflow("mcp-image.yml")
+    assert check.get("permissions") == {"contents": "read"}
+    for name, job in check["jobs"].items():
+        assert not write_scopes(job.get("permissions")), name
+        for step in job["steps"]:
+            if "uses" in step:
+                assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", step["uses"]), step["uses"]
+            with_ = step.get("with", {})
+            assert with_.get("push", False) is False
+            assert "login" not in step.get("uses", "")
+    text = (WORKFLOWS / "mcp-image.yml").read_text(encoding="utf-8")
+    assert "upstream=oci-layout://" in text

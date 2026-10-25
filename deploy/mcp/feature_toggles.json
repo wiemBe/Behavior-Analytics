@@ -1,5 +1,5 @@
 {
-  "_comment": "Mounted read-only over /opt/app-root/qradar-mcp/feature_toggles.json. Upstream ships POST+DELETE enabled; this file disables the entire write surface. See docs/mcp-capability-matrix.md section 3 for what each verb unlocks.",
+  "_comment": "Baked into the qradar-mcp image over /opt/app-root/qradar-mcp/feature_toggles.json by deploy/mcp/Dockerfile. Upstream ships POST+DELETE enabled; this file disables the entire write surface. See docs/mcp-capability-matrix.md section 3 for what each verb unlocks.",
   "verb_toggles": {
     "GET": true,
     "POST": false,

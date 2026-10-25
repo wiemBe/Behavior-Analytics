@@ -482,6 +482,12 @@ class Settings(BaseSettings):
     snapshot_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
     snapshot_retention_max_batches: int = Field(default=20, ge=1, le=1000)
     snapshot_retention_interval_seconds: int = Field(default=86400, ge=3600)
+    # Measured rule-match rows (Phase E.1a) and their windows. Must exceed the
+    # longest reader window (rule_health_window_days = 30, statistics range = 30).
+    rule_match_retention_days: int = Field(default=90, ge=30, le=3650)
+    rule_match_retention_batch_size: int = Field(default=5000, ge=100, le=100_000)
+    rule_match_retention_max_batches: int = Field(default=20, ge=1, le=1000)
+    rule_match_retention_interval_seconds: int = Field(default=86400, ge=3600)
 
     # --- API guardrails -----------------------------------------------------
     api_default_page_size: int = Field(default=50, ge=1, le=500)
@@ -1120,6 +1126,26 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _rule_match_retention_covers_readers(self) -> Settings:
+        """Deleting measured matches a reader still needs would silently thin health.
+
+        Rule health reads `rule_health_window_days` of match windows and
+        metrics, the `/rule-statistics` range is capped at 30 days by the
+        endpoint, and the history backfill's window is the smaller of
+        `history_backfill_days` and `rule_health_window_days` (the family's
+        lookback setting). Refusing below `rule_health_window_days` covers
+        all three.
+        """
+        # Not gated by any collection switch: the rows exist independently of
+        # whether any collection is on today.
+        if self.rule_match_retention_days <= self.rule_health_window_days:
+            raise ValueError(
+                "RULE_MATCH_RETENTION_DAYS must exceed RULE_HEALTH_WINDOW_DAYS "
+                f"({self.rule_match_retention_days} <= {self.rule_health_window_days})"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _waf_novelty_history_is_retained(self) -> Settings:
         """A novelty history longer than retention could never be complete.
 
@@ -1287,6 +1313,11 @@ class Settings(BaseSettings):
         if self.qradar_provider is ProviderKind.REST and not self.has_qradar_token:
             problems.append(
                 "QRADAR_API_TOKEN_FILE or QRADAR_SEC_TOKEN is required when QRADAR_PROVIDER=rest"
+            )
+        if self.qradar_provider is ProviderKind.MCP and not self.has_qradar_token:
+            # The pinned server authenticates every request with the SEC header.
+            problems.append(
+                "QRADAR_API_TOKEN_FILE or QRADAR_SEC_TOKEN is required when QRADAR_PROVIDER=mcp"
             )
         if self.llm_allow_autonomous_actions:
             problems.append(

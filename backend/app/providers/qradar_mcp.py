@@ -16,7 +16,8 @@ Deliberately restricted, in this order of precedence:
      that contradicts the allowlist — notably by exposing a known write tool —
      the provider marks itself degraded and refuses to dispatch rather than
      quietly continuing against a server that is not in the expected posture.
-     It is not yet called on the production path.
+     `call_tool` negotiates automatically, once per provider instance, before
+     its first request; a refusal is terminal for that instance.
 
 A denied write tool never falls back to REST. Silently satisfying a blocked
 request through another path would defeat the entire control, so denial is
@@ -25,6 +26,7 @@ terminal and audited.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
@@ -131,6 +133,18 @@ KNOWN_WRITE_TOOLS: frozenset[str] = frozenset(
 #: Belt and braces against a future edit widening the allowlist by accident.
 FORBIDDEN_TOOL_PREFIXES: tuple[str, ...] = ("create_ariel", "delete_ariel", "validate_aql")
 
+#: The server speaks MCP Streamable HTTP: `initialize`, then `notifications/initialized`,
+#: then requests that carry the `Mcp-Session-Id` the server issued. It refuses a client
+#: whose `Accept` lacks either media type, and answers requests in `text/event-stream`.
+#: Measured against the pinned image (docs/mcp-capability-matrix.md section 6).
+PROTOCOL_VERSION = "2025-06-18"
+SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = ("2025-06-18", "2025-03-26")
+_ACCEPT = "application/json, text/event-stream"
+
+#: `tools/list` pages followed before capability discovery gives up. An unseen page
+#: could hold a write tool, so running out of pages is a refusal, not a pass.
+MAX_TOOL_LIST_PAGES = 20
+
 #: Responses larger than this are refused unread. A hostile or broken MCP server
 #: must not be able to exhaust worker memory.
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -148,6 +162,15 @@ class MCPResponseTooLarge(ProviderError):
     """The MCP server returned more data than we will read."""
 
 
+class _SessionExpired(ProviderUnavailableError):
+    """The server no longer knows our session id (HTTP 404). Handled inside the provider."""
+
+    audit_label = "SessionExpired"
+
+    def __init__(self) -> None:
+        super().__init__("MCP session expired")
+
+
 class QRadarMCPProvider(QRadarProvider):
     # Note: no AQL_EXECUTION. This is the whole point of the split.
     capabilities = frozenset(
@@ -161,6 +184,7 @@ class QRadarMCPProvider(QRadarProvider):
         self,
         *,
         base_url: str,
+        sec_token: str | None = None,
         timeout: float = 60.0,
         connect_timeout: float = 10.0,
         max_response_bytes: int = MAX_RESPONSE_BYTES,
@@ -168,6 +192,11 @@ class QRadarMCPProvider(QRadarProvider):
         audit_sink: Callable[[dict], Awaitable[None]] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        # The pinned server authenticates every request, `initialize` included, against
+        # QRadar with the `SEC` header it receives (docs/mcp-capability-matrix.md section
+        # 6). Held privately and sent per request, never on the client's default headers
+        # and never in a log record, an error message or a repr.
+        self._sec_token = sec_token or None
         self._timeout = timeout
         self._max_response_bytes = max_response_bytes
         # Callable invoked with one audit record per tool call. The Celery/API
@@ -176,10 +205,16 @@ class QRadarMCPProvider(QRadarProvider):
         self._audit_sink = audit_sink
         self._client = client or httpx.AsyncClient(
             base_url=self._base_url,
-            headers={"Accept": "application/json"},
+            headers={"Accept": _ACCEPT},
             timeout=httpx.Timeout(timeout, connect=connect_timeout),
         )
         self._negotiated: frozenset[str] | None = None
+        # Set when negotiation found a posture we refuse; terminal for this instance.
+        self._refusal: str | None = None
+        self._session_id: str | None = None
+        self._protocol_version = PROTOCOL_VERSION
+        self._initialized = False
+        self._ready_lock = asyncio.Lock()
         self._request_id = 0
 
     async def aclose(self) -> None:
@@ -227,35 +262,205 @@ class QRadarMCPProvider(QRadarProvider):
                 )
         return clean
 
+    # ------------------------------------------------------- session handshake
+    @staticmethod
+    def _fail(exc_type: type[ProviderError], message: str, label: str) -> ProviderError:
+        """Build a provider error that carries the label the audit record uses."""
+        exc = exc_type(message)
+        exc.audit_label = label  # type: ignore[attr-defined]
+        return exc
+
+    def _request_headers(self, *, with_session: bool) -> dict[str, str]:
+        # The Streamable HTTP transport answers 406 unless the client accepts both
+        # media types, whichever one it then chooses to answer with.
+        headers = {"Accept": _ACCEPT, "Content-Type": "application/json"}
+        if self._sec_token is not None:
+            headers["SEC"] = self._sec_token
+        if with_session:
+            headers["MCP-Protocol-Version"] = self._protocol_version
+            if self._session_id is not None:
+                headers["Mcp-Session-Id"] = self._session_id
+        return headers
+
+    async def _post(
+        self, payload: dict[str, Any], headers: dict[str, str], outcome: dict
+    ) -> tuple[int, httpx.Headers, bytes]:
+        """POST to the MCP endpoint, reading at most `max_response_bytes` of the body."""
+        limit = self._max_response_bytes
+        too_large = MCPResponseTooLarge(f"MCP response exceeded the {limit} byte limit")
+        async with self._client.stream(
+            "POST", "/mcp", json=payload, headers=headers
+        ) as response:
+            declared = response.headers.get("content-length")
+            if declared is not None and declared.isdigit() and int(declared) > limit:
+                outcome["error_class"] = ErrorClass.MALFORMED
+                raise too_large
+            buffer = bytearray()
+            async for chunk in response.aiter_bytes():
+                buffer += chunk
+                if len(buffer) > limit:
+                    outcome["error_class"] = ErrorClass.MALFORMED
+                    raise too_large
+            return response.status_code, response.headers, bytes(buffer)
+
+    async def _exchange(
+        self,
+        payload: dict[str, Any],
+        *,
+        what: str,
+        with_session: bool = True,
+        expect_body: bool = True,
+    ) -> tuple[Any, httpx.Headers]:
+        """One request to the MCP endpoint, mapped onto the provider's error types.
+
+        Raises `_SessionExpired` (internal) for a 404 on a request that carried a
+        session id: the Streamable HTTP transport answers "Session not found" that way.
+        """
+        with observe(PROVIDER_NAME, EndpointCategory.MCP_TOOL) as outcome:
+            headers = self._request_headers(with_session=with_session)
+            try:
+                status, resp_headers, raw = await self._post(payload, headers, outcome)
+            except httpx.TimeoutException as exc:
+                outcome["error_class"] = ErrorClass.TIMEOUT
+                raise self._fail(
+                    ProviderUnavailableError, f"{what} timed out", "Timeout"
+                ) from exc
+            except httpx.TransportError as exc:
+                outcome["error_class"] = ErrorClass.NETWORK
+                raise self._fail(
+                    ProviderUnavailableError, "Could not reach the MCP service", "Transport"
+                ) from exc
+
+            if status in (401, 403):
+                outcome["error_class"] = ErrorClass.AUTH
+                raise self._fail(ProviderAuthError, "MCP service rejected the request", "Auth")
+            if status == 404 and with_session and self._session_id is not None:
+                outcome["error_class"] = ErrorClass.UPSTREAM_ERROR
+                raise _SessionExpired()
+            if status >= 400:
+                outcome["error_class"] = ErrorClass.UPSTREAM_ERROR
+                raise self._fail(
+                    ProviderUnavailableError, f"{what} failed upstream", f"HTTP{status}"
+                )
+            if not expect_body:
+                return None, resp_headers
+            body = self._decode(
+                raw, resp_headers.get("content-type", ""), payload.get("id"), outcome
+            )
+        return body, resp_headers
+
+    async def _initialize(self) -> None:
+        """`initialize` then `notifications/initialized`; keeps the session id."""
+        self._session_id = None
+        self._protocol_version = PROTOCOL_VERSION
+        self._request_id += 1
+        body, headers = await self._exchange(
+            {
+                "jsonrpc": "2.0",
+                "id": self._request_id,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "clientInfo": {"name": "qradar-dash", "version": "0"},
+                },
+            },
+            what="MCP session initialisation",
+            with_session=False,
+        )
+        result = body.get("result") if isinstance(body, dict) else None
+        if not isinstance(result, dict) or (isinstance(body, dict) and body.get("error")):
+            raise self._fail(
+                ProviderUnavailableError, "MCP initialize was not answered", "InitializeFailed"
+            )
+        version = result.get("protocolVersion")
+        if version not in SUPPORTED_PROTOCOL_VERSIONS:
+            raise self._fail(
+                ProviderUnavailableError,
+                "MCP server speaks an unsupported protocol version",
+                "ProtocolVersion",
+            )
+        self._protocol_version = str(version)
+        self._session_id = headers.get("mcp-session-id")
+        await self._exchange(
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            what="MCP session initialisation",
+            expect_body=False,
+        )
+
     # --------------------------------------------------- capability handshake
     async def negotiate_capabilities(self) -> frozenset[str]:
-        """Discover the server's tool set and refuse an unexpected posture.
+        """Discover the server's tool set with `tools/list` and refuse an unexpected posture.
 
         Fails closed on two conditions:
           * the server advertises a known write tool (writes are enabled), or
           * it advertises none of our allowlisted tools (wrong server/version).
+
+        A refusal is terminal for this instance: this and every later `call_tool`
+        raise without network I/O. A transport or auth failure is not a refusal;
+        the next attempt tries again. `call_tool` runs this automatically before
+        the first tool call.
         """
-        with observe(PROVIDER_NAME, EndpointCategory.MCP_TOOL) as outcome:
+        async with self._ready_lock:
+            return await self._negotiate_locked()
+
+    async def _negotiate_locked(self) -> frozenset[str]:
+        if self._refusal is not None:
+            raise MCPCapabilityError(self._refusal)
+        for attempt in (1, 2):
+            if not self._initialized:
+                await self._initialize()
+                self._initialized = True
             try:
-                response = await self._client.get("/tools")
-            except httpx.TimeoutException as exc:
-                outcome["error_class"] = ErrorClass.TIMEOUT
-                raise ProviderUnavailableError("MCP capability discovery timed out") from exc
-            except httpx.TransportError as exc:
-                outcome["error_class"] = ErrorClass.NETWORK
-                raise ProviderUnavailableError("Could not reach the MCP service") from exc
+                advertised = await self._list_tools()
+                break
+            except _SessionExpired:
+                # The session went away between `initialize` and `tools/list`.
+                self._initialized = False
+                if attempt == 2:
+                    raise
+        try:
+            self._check_posture(advertised)
+        except MCPCapabilityError as exc:
+            self._refusal = str(exc)
+            self._negotiated = None
+            raise
+        self._negotiated = frozenset(advertised & ALLOWED_TOOLS)
+        return self._negotiated
 
-            if response.status_code in (401, 403):
-                outcome["error_class"] = ErrorClass.AUTH
-                raise ProviderAuthError("MCP service rejected the request")
-            if response.status_code >= 400:
-                outcome["error_class"] = ErrorClass.UPSTREAM_ERROR
-                raise ProviderUnavailableError("MCP capability discovery failed")
+    async def _list_tools(self) -> set[str]:
+        names: set[str] = set()
+        cursor: str | None = None
+        for _ in range(MAX_TOOL_LIST_PAGES):
+            self._request_id += 1
+            payload: dict[str, Any] = {
+                "jsonrpc": "2.0",
+                "id": self._request_id,
+                "method": "tools/list",
+            }
+            if cursor is not None:
+                payload["params"] = {"cursor": cursor}
+            body, _ = await self._exchange(payload, what="MCP capability discovery")
+            names |= self._extract_tool_names(self._unwrap_list(body))
+            cursor = body["result"].get("nextCursor") if isinstance(body, dict) else None
+            if not isinstance(cursor, str) or not cursor:
+                return names
+        # An unseen page could hold a write tool; do not guess.
+        raise MCPCapabilityError("MCP capability discovery did not finish within its page limit")
 
-            body = self._decode(response, outcome)
+    @staticmethod
+    def _unwrap_list(body: Any) -> Any:
+        if not isinstance(body, dict):
+            raise MCPCapabilityError("MCP capability discovery returned an unexpected shape")
+        if body.get("error") is not None:
+            raise ProviderError("MCP capability discovery reported an error")
+        result = body.get("result")
+        if not isinstance(result, dict):
+            raise MCPCapabilityError("MCP capability discovery returned an unexpected shape")
+        return result
 
-        advertised = self._extract_tool_names(body)
-
+    @staticmethod
+    def _check_posture(advertised: set[str]) -> None:
         exposed_writes = advertised & KNOWN_WRITE_TOOLS
         if exposed_writes:
             # Do not proceed. A server advertising write tools is not in the
@@ -265,14 +470,11 @@ class QRadarMCPProvider(QRadarProvider):
                 "MCP service advertises write tools; refusing to operate. "
                 f"Offending tools: {', '.join(sorted(exposed_writes))}"
             )
-        if advertised and not (advertised & ALLOWED_TOOLS):
+        if not (advertised & ALLOWED_TOOLS):
             raise MCPCapabilityError(
                 "MCP service advertises no allowlisted read tools; capability discovery "
                 "is inconsistent with the pinned qradar-mcp commit"
             )
-
-        self._negotiated = frozenset(advertised & ALLOWED_TOOLS)
-        return self._negotiated
 
     @staticmethod
     def _extract_tool_names(body: Any) -> set[str]:
@@ -288,6 +490,27 @@ class QRadarMCPProvider(QRadarProvider):
                 names.add(item["name"])
         return names
 
+    async def _ensure_ready(self) -> None:
+        """Handshake and negotiate once per instance, before the first tool call."""
+        async with self._ready_lock:
+            if self._refusal is not None:
+                raise MCPCapabilityError(self._refusal)
+            if self._initialized and self._negotiated is not None:
+                return
+            await self._negotiate_locked()
+
+    async def _reinitialise(self) -> None:
+        """A session the server no longer knows: start over, negotiating again.
+
+        The server may have been restarted with other toggles, so the posture is
+        re-checked rather than assumed.
+        """
+        async with self._ready_lock:
+            self._initialized = False
+            self._session_id = None
+            self._negotiated = None
+            await self._negotiate_locked()
+
     # ----------------------------------------------------------- invocation
     async def call_tool(
         self, tool_name: str, arguments: dict[str, Any] | None = None, *, caller: str = "system"
@@ -298,6 +521,9 @@ class QRadarMCPProvider(QRadarProvider):
         Arguments are recorded only as key names, and the response body is never
         audited: both can carry QRadar data we have no reason to duplicate into
         the audit log.
+
+        Order: allowlist guard, argument validation, capability negotiation (once
+        per instance), then the request. A blocked tool never produces a request.
         """
         args = dict(arguments or {})
         started = datetime.now(UTC)
@@ -318,6 +544,32 @@ class QRadarMCPProvider(QRadarProvider):
             # not a transport failure.
             raise
 
+        arg_keys = sorted(clean_args)
+
+        async def audit_failure(exc: ProviderError) -> None:
+            label = getattr(exc, "audit_label", None) or type(exc).__name__
+            await self._audit(
+                tool_name, caller=caller,
+                outcome="TIMEOUT" if label == "Timeout" else "FAILURE",
+                started=started, arg_keys=arg_keys, error=label,
+            )
+
+        async def prepare(action: Callable[[], Awaitable[None]]) -> None:
+            try:
+                await action()
+            except MCPCapabilityError:
+                # Terminal: no request, no fallback, and the refusal is on record.
+                await self._audit(
+                    tool_name, caller=caller, outcome="DENIED", started=started,
+                    arg_keys=arg_keys, error="CapabilityRefused",
+                )
+                raise
+            except ProviderError as exc:
+                await audit_failure(exc)
+                raise
+
+        await prepare(self._ensure_ready)
+
         if self._negotiated is not None and tool_name not in self._negotiated:
             await self._audit(
                 tool_name,
@@ -331,7 +583,8 @@ class QRadarMCPProvider(QRadarProvider):
                 f"MCP tool {tool_name!r} was not advertised during capability negotiation"
             )
 
-        with observe(PROVIDER_NAME, EndpointCategory.MCP_TOOL) as outcome:
+        body: Any = None
+        for attempt in (1, 2):
             self._request_id += 1
             payload = {
                 "jsonrpc": "2.0",
@@ -340,47 +593,31 @@ class QRadarMCPProvider(QRadarProvider):
                 "params": {"name": tool_name, "arguments": clean_args},
             }
             try:
-                response = await self._client.post("/mcp", json=payload)
-            except httpx.TimeoutException as exc:
-                outcome["error_class"] = ErrorClass.TIMEOUT
-                await self._audit(
-                    tool_name, caller=caller, outcome="TIMEOUT", started=started,
-                    arg_keys=sorted(clean_args), error="Timeout",
-                )
-                raise ProviderUnavailableError(f"MCP tool {tool_name} timed out") from exc
-            except httpx.TransportError as exc:
-                outcome["error_class"] = ErrorClass.NETWORK
-                await self._audit(
-                    tool_name, caller=caller, outcome="FAILURE", started=started,
-                    arg_keys=sorted(clean_args), error="Transport",
-                )
-                raise ProviderUnavailableError("Could not reach the MCP service") from exc
-
-            if response.status_code in (401, 403):
-                outcome["error_class"] = ErrorClass.AUTH
-                await self._audit(
-                    tool_name, caller=caller, outcome="FAILURE", started=started,
-                    arg_keys=sorted(clean_args), error="Auth",
-                )
-                raise ProviderAuthError("MCP service rejected the request")
-            if response.status_code >= 400:
-                outcome["error_class"] = ErrorClass.UPSTREAM_ERROR
-                await self._audit(
-                    tool_name, caller=caller, outcome="FAILURE", started=started,
-                    arg_keys=sorted(clean_args), error=f"HTTP{response.status_code}",
-                )
-                raise ProviderUnavailableError(f"MCP tool {tool_name} failed upstream")
-
-            try:
-                body = self._decode(response, outcome)
+                body, _ = await self._exchange(payload, what=f"MCP tool {tool_name}")
+                break
+            except _SessionExpired:
+                if attempt == 2:
+                    gone = self._fail(
+                        ProviderUnavailableError,
+                        "MCP session expired and could not be re-established",
+                        "SessionExpired",
+                    )
+                    await audit_failure(gone)
+                    raise gone from None
+                await prepare(self._reinitialise)
+                if tool_name not in (self._negotiated or frozenset()):
+                    await self._audit(
+                        tool_name, caller=caller, outcome="DENIED", started=started,
+                        arg_keys=sorted(args), error="NotNegotiated",
+                    )
+                    raise MCPToolNotAllowedError(
+                        f"MCP tool {tool_name!r} was not advertised during capability negotiation"
+                    ) from None
             except ProviderError as exc:
-                # An oversized or unparseable body is still a completed call
-                # attempt. Letting it escape unaudited would leave the most
-                # common tool-side failures invisible to incident review.
-                await self._audit(
-                    tool_name, caller=caller, outcome="FAILURE", started=started,
-                    arg_keys=sorted(clean_args), error=type(exc).__name__,
-                )
+                # Timeouts, transport and auth failures, upstream errors, oversized
+                # and unparseable bodies: each is a completed call attempt, and
+                # leaving one unaudited would hide the most common tool-side failures.
+                await audit_failure(exc)
                 raise
 
         try:
@@ -391,18 +628,18 @@ class QRadarMCPProvider(QRadarProvider):
             # fault, so it is the failure an operator most needs recorded.
             await self._audit(
                 tool_name, caller=caller, outcome="FAILURE", started=started,
-                arg_keys=sorted(clean_args), error=type(exc).__name__,
+                arg_keys=arg_keys, error=type(exc).__name__,
             )
             raise
 
         await self._audit(
             tool_name, caller=caller, outcome="SUCCESS", started=started,
-            arg_keys=sorted(clean_args), error=None,
+            arg_keys=arg_keys, error=None,
         )
         return result
 
-    def _decode(self, response: httpx.Response, outcome: dict) -> Any:
-        raw = response.content
+    def _decode(self, raw: bytes, content_type: str, want_id: Any, outcome: dict) -> Any:
+        """Parse a JSON body, or pick the JSON-RPC response out of an event stream."""
         if len(raw) > self._max_response_bytes:
             outcome["error_class"] = ErrorClass.MALFORMED
             raise MCPResponseTooLarge(
@@ -410,11 +647,52 @@ class QRadarMCPProvider(QRadarProvider):
             )
         if not raw:
             return None
+        if content_type.split(";", 1)[0].strip().lower() == "text/event-stream":
+            return self._decode_event_stream(raw, want_id, outcome)
         try:
             return json.loads(raw)
         except ValueError as exc:
             outcome["error_class"] = ErrorClass.MALFORMED
             raise MalformedUpstreamResponse("MCP returned a body that was not valid JSON") from exc
+
+    @staticmethod
+    def _decode_event_stream(raw: bytes, want_id: Any, outcome: dict) -> Any:
+        """The JSON-RPC response for `want_id` from a `text/event-stream` body.
+
+        Events are separated by a blank line; an event's `data:` lines are joined
+        with a newline. Other fields, comments and messages for other ids (server
+        notifications) are skipped.
+        """
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            outcome["error_class"] = ErrorClass.MALFORMED
+            raise MalformedUpstreamResponse("MCP event stream was not valid UTF-8") from exc
+        events: list[list[str]] = [[]]
+        for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+            if line == "":
+                events.append([])
+            elif line.startswith("data:"):
+                data = line[5:]
+                events[-1].append(data[1:] if data.startswith(" ") else data)
+        for data_lines in events:
+            if not data_lines:
+                continue
+            try:
+                message = json.loads("\n".join(data_lines))
+            except ValueError as exc:
+                outcome["error_class"] = ErrorClass.MALFORMED
+                raise MalformedUpstreamResponse(
+                    "MCP event stream carried data that was not valid JSON"
+                ) from exc
+            if (
+                isinstance(message, dict)
+                and message.get("id") == want_id
+                and ("result" in message or "error" in message)
+            ):
+                return message
+        outcome["error_class"] = ErrorClass.MALFORMED
+        raise MalformedUpstreamResponse("MCP event stream held no response to the request")
 
     @staticmethod
     def _unwrap(tool_name: str, body: Any) -> Any:
@@ -428,6 +706,10 @@ class QRadarMCPProvider(QRadarProvider):
             raise ProviderError(f"MCP tool {tool_name} reported an error")
 
         result = body.get("result", body)
+        if isinstance(result, dict) and result.get("isError") is True:
+            # A tool failure arrives as HTTP 200 with the error prose in the content
+            # blocks. That text is untrusted, so report the tool, not the message.
+            raise ProviderError(f"MCP tool {tool_name} reported an error")
         if isinstance(result, dict) and isinstance(result.get("content"), list):
             # MCP content blocks: concatenate the text parts and parse as JSON.
             texts: list[str] = [

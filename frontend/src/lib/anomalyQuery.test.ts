@@ -8,6 +8,7 @@ import {
   paginationParams,
   parseAnomalyQuery,
   parseSubjectQuery,
+  subjectKindsForApi,
 } from "./anomalyQuery";
 
 const UUID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
@@ -154,11 +155,23 @@ describe("paginationParams", () => {
 });
 
 describe("subject parsing", () => {
-  it("accepts the two subject kinds and nothing else", () => {
+  it("accepts a single kind and the combined IPS value, and ignores an unknown value", () => {
     expect(parseSubjectQuery({ subject_kind: "WAF_ENDPOINT" }).subject_kind).toBe("WAF_ENDPOINT");
     expect(parseSubjectQuery({ subject_kind: "LOG_SOURCE" }).subject_kind).toBe("LOG_SOURCE");
+    expect(parseSubjectQuery({ subject_kind: "IPS" }).subject_kind).toBe("IPS");
     expect(parseSubjectQuery({ subject_kind: "<script>" }).subject_kind).toBe("");
     expect(parseSubjectQuery({}).subject_kind).toBe("");
+  });
+
+  it("reads the first value safely when Next supplies an array", () => {
+    expect(parseSubjectQuery({ subject_kind: ["IPS", "IPS_SOURCE"] }).subject_kind).toBe("IPS");
+    expect(parseAnomalyQuery({ active_only: ["true", "false"] }).active_only).toBe(true);
+  });
+
+  it("expands the combined IPS value to the two repeated API kinds", () => {
+    expect(subjectKindsForApi("IPS")).toEqual(["IPS_ENTITY", "IPS_SOURCE"]);
+    expect(subjectKindsForApi("IPS_SOURCE")).toBe("IPS_SOURCE");
+    expect(subjectKindsForApi("")).toBeUndefined();
   });
 
   it("accepts a WAF detector type from anomaly_type and drops anything else", () => {

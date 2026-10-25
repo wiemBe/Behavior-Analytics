@@ -520,6 +520,7 @@ class TestEnumFieldJsonBodies:
             "owner": None,
             "health_status": "UNKNOWN",
             "health_evaluated_at": None,
+            "health_reason": None,
             "last_fired_at": None,
             "offense_contribution_count": 0,
             "event_contribution_count": 0,

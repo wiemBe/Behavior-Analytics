@@ -51,6 +51,7 @@ def build_provider(settings: Settings | None = None) -> QRadarProvider:
         case ProviderKind.MCP:
             return QRadarMCPProvider(
                 base_url=settings.mcp_base_url,
+                sec_token=settings.resolve_qradar_token().get_secret_value(),
                 timeout=settings.mcp_timeout_seconds,
             )
 
@@ -115,8 +116,15 @@ def build_provider_for_instance(
                 ),
             )
         case ProviderKind.MCP:
+            token = instance.sec_token
+            if not token:
+                raise ValueError(
+                    f"QRadar instance '{instance.name}' has no stored SEC token; "
+                    "re-register it with a token file."
+                )
             return QRadarMCPProvider(
                 base_url=instance.mcp_base_url or settings.mcp_base_url,
+                sec_token=token,
                 timeout=settings.mcp_timeout_seconds,
                 # Without a session there is nowhere to persist to; the
                 # provider then falls back to log-only auditing rather than

@@ -887,6 +887,7 @@ def test_install_summary_names_every_retention_window(
         "custom-rule breaches 180d",
         "rule-health snapshots 90d",
         "coverage snapshots 90d",
+        "rule-match rows 90d",
         "WAF metrics 35d",
         "IPS metrics 35d",
         "search results 90d",

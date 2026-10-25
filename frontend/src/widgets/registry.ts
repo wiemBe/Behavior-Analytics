@@ -426,7 +426,7 @@ export const WIDGETS: readonly AnyWidgetDef[] = [
     requires: ["read:anomalies"],
     sources: ["/anomalies"],
     size: { w: 6, h: 17, minW: 4, minH: 11 },
-    drillDown: "/anomalies?subject_kind=IPS_ENTITY&active_only=true",
+    drillDown: "/anomalies?subject_kind=IPS&active_only=true",
     loader: () =>
       import("@/components/catalog/RecentIpsAnomalies").then((m) => m.RecentIpsAnomalies),
   }),

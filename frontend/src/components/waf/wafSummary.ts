@@ -7,7 +7,8 @@
 
 import type { WafAnomalyDetail } from "@/lib/api";
 
-import { formatPercent, formatRequests, requestsUnit, SINCE_UNIT } from "./wafFormat";
+import { formatPercent } from "@/lib/format";
+import { formatRequests, requestsUnit, SINCE_UNIT } from "./wafFormat";
 import { endpointLabel, isLowerBound } from "./wafLabels";
 
 export interface WafSummary {

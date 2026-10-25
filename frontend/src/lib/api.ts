@@ -858,6 +858,10 @@ export interface OffenseAggregates {
   exceeding_sla: number | null;
   oldest_age_seconds: number | null;
   average_magnitude: number | null;
+  /** Open offenses with no magnitude (in neither `critical` nor the rest); null: no snapshot. */
+  critical_unknown?: number | null;
+  /** Open offenses with no age (not in `exceeding_sla`); null: no snapshot. */
+  age_unknown?: number | null;
   sla_hours: number;
   critical_magnitude: number;
 }
@@ -897,6 +901,8 @@ export interface RuleSummary {
   owner: string | null;
   health_status: string | null;
   health_evaluated_at: string | null;
+  // The reason stored with the verdict above; null when that evaluation recorded none.
+  health_reason: string | null;
   last_fired_at: string | null;
   offense_contribution_count: number;
   event_contribution_count: number;
@@ -1311,7 +1317,7 @@ export interface AnomalyListParams {
   severity?: string;
   evidence_status?: string;
   active_only?: boolean;
-  subject_kind?: SubjectKind;
+  subject_kind?: SubjectKind | SubjectKind[];
   waf_endpoint_id?: string;
   ips_entity_id?: string;
   // A property watch's incidents (Phase G).
@@ -2353,10 +2359,15 @@ export interface CustomRuleCatalog {
   preview_hours_max: number;
 }
 
-function qs(params: Record<string, string | number | boolean | undefined>): string {
-  const parts = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== "")
-    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`);
+type QueryValue = string | number | boolean;
+
+function qs(params: Record<string, QueryValue | QueryValue[] | undefined>): string {
+  const parts = Object.entries(params).flatMap(([key, value]) => {
+    const values = Array.isArray(value) ? value : [value];
+    return values
+      .filter((item): item is QueryValue => item !== undefined && item !== "")
+      .map((item) => `${key}=${encodeURIComponent(String(item))}`);
+  });
   return parts.length ? `?${parts.join("&")}` : "";
 }
 

@@ -304,3 +304,169 @@ def test_docker_compose_config_keeps_migrate_and_the_external_network(tmp_path: 
         assert required <= _service_networks(with_override["services"][name])
     for name in ("celery-beat", "migrate"):
         assert "qradar_vm" not in _service_networks(with_override["services"][name])
+
+
+# ------------------------------------------------------------ qradar-mcp service (SEC-4)
+MCP_SECRETS_MOUNT = "/run/secrets"
+# `localhost/` so an unbuilt upstream is never resolved from Docker Hub; an image, not a
+# `service:` reference, because Compose 2.x refuses a service of an inactive profile there.
+UPSTREAM_IMAGE = "localhost/qradar-mcp-upstream:b8f6a4a3"
+
+
+def _mcp_volume_entries(service: dict) -> list[dict]:
+    """The service's volumes as long-form mappings, whichever form the file used."""
+    entries: list[dict] = []
+    for item in service.get("volumes", []):
+        if isinstance(item, str):
+            parts = item.split(":")
+            entries.append(
+                {
+                    "source": parts[0],
+                    "target": parts[1],
+                    "read_only": len(parts) > 2 and "ro" in parts[2].split(","),
+                    "bind": parts[0].startswith((".", "/", "~")),
+                }
+            )
+        else:
+            entries.append(
+                {
+                    "source": item.get("source"),
+                    "target": item["target"],
+                    "read_only": bool(item.get("read_only")),
+                    "bind": item.get("type") == "bind",
+                }
+            )
+    return entries
+
+
+def _assert_mcp_service(service: dict) -> None:
+    entries = _mcp_volume_entries(service)
+    # A checkout file is user_home_t: an SELinux-enforcing host cannot read it from a
+    # container (OPS-R13). Named volumes only.
+    assert [e for e in entries if e["bind"]] == []
+    by_target = {e["target"]: e for e in entries}
+    assert set(by_target) == {MCP_SECRETS_MOUNT, "/opt/app-root/logs"}
+    # The same volume key the backend mounts; the overlay renames the volume behind it.
+    assert by_target[MCP_SECRETS_MOUNT]["source"] == "qradar_secrets"
+    assert by_target[MCP_SECRETS_MOUNT]["read_only"] is True
+    environment = service["environment"]
+    if isinstance(environment, list):
+        environment = dict(item.split("=", 1) for item in environment)
+    assert environment["REQUESTS_CA_BUNDLE"] == f"{MCP_SECRETS_MOUNT}/qradar_ca.pem"
+    # FUNCTIONAL_TEST_ENV switches certificate verification off in the pinned server.
+    assert "FUNCTIONAL_TEST_ENV" not in environment
+    assert "ports" not in service
+    assert service["read_only"] is True
+    assert service["cap_drop"] == ["ALL"]
+
+
+def test_the_mcp_service_has_no_checkout_mount_and_verifies_tls_in_the_yaml() -> None:
+    base = load_compose(REPO / "docker-compose.yml")
+    overlay = load_compose(REPO / "docker-compose.prod.yml")
+    merged = _unwrap(compose_merge(base, overlay))
+    assert isinstance(merged, dict)
+    for document in (_unwrap(base), merged):
+        assert isinstance(document, dict)
+        _assert_mcp_service(document["services"]["qradar-mcp"])
+    mcp = base["services"]["qradar-mcp"]
+    assert mcp["build"]["context"] == "./deploy/mcp"
+    assert mcp["build"]["additional_contexts"] == {"upstream": f"docker-image://{UPSTREAM_IMAGE}"}
+    # The upstream build is a build-only service: no profile that `up` ever enables.
+    upstream = base["services"]["qradar-mcp-upstream"]
+    assert upstream["build"]["context"] == "./qradar-mcp"
+    assert "dockerfile" not in upstream or upstream["dockerfile"] == "Dockerfile"
+    assert upstream["profiles"] == ["mcp-build"]
+    assert upstream["image"] == UPSTREAM_IMAGE
+
+
+def test_docker_compose_config_shows_the_mcp_service_without_a_bind_mount(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reason = _docker_skip_reason()
+    if reason is not None:
+        pytest.skip(reason)
+    _stage_compose_project(tmp_path)
+    monkeypatch.delenv("SECRETS_VOLUME", raising=False)
+    base = _compose_config("docker-compose.yml", project=tmp_path, profile="mcp")
+    monkeypatch.setenv("SECRETS_VOLUME", "site-secrets")
+    with_prod = _compose_config(
+        "docker-compose.yml", "docker-compose.prod.yml", project=tmp_path, profile="mcp"
+    )
+    _assert_mcp_service(base["services"]["qradar-mcp"])
+    _assert_mcp_service(with_prod["services"]["qradar-mcp"])
+    assert base["volumes"]["qradar_secrets"]["name"] == "qradar-observability-secrets"
+    # The overlay renames the volume; the service follows because it mounts the same key.
+    assert with_prod["volumes"]["qradar_secrets"]["name"] == "site-secrets"
+    for document in (base, with_prod):
+        build = document["services"]["qradar-mcp"]["build"]
+        assert build["additional_contexts"] == {"upstream": f"docker-image://{UPSTREAM_IMAGE}"}
+
+
+def test_the_mcp_dockerfile_adds_only_the_toggle_file_to_the_upstream_build() -> None:
+    lines = [
+        line.strip()
+        for line in (REPO / "deploy/mcp/Dockerfile").read_text(encoding="utf-8").splitlines()
+    ]
+    instructions = [
+        line.split()[0].upper() for line in lines if line and not line.startswith("#")
+    ]
+    # LABEL continuation lines start with a key, not an instruction; keep the first word.
+    assert "RUN" not in instructions
+    assert "USER" not in instructions
+    assert [i for i in instructions if i in {"FROM", "COPY", "ADD", "ENV", "CMD"}] == [
+        "FROM",
+        "COPY",
+    ]
+    assert "FROM upstream" in lines
+    copies = [line for line in lines if line.startswith("COPY ")]
+    assert len(copies) == 1
+    assert copies[0].endswith(
+        "feature_toggles.json /opt/app-root/qradar-mcp/feature_toggles.json"
+    )
+    assert "--chown=1001:1001" in copies[0]
+    assert not (REPO / "deploy/mcp/config.json").exists()
+
+
+def test_the_baked_toggle_file_keeps_every_write_verb_off() -> None:
+    import json
+
+    toggles = json.loads((REPO / "deploy/mcp/feature_toggles.json").read_text(encoding="utf-8"))
+    assert toggles["verb_toggles"] == {"GET": True, "POST": False, "DELETE": False}
+
+
+def test_the_release_workflow_builds_the_upstream_first_and_passes_it_as_a_context() -> None:
+    workflow = yaml.safe_load(
+        (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    )
+    images = workflow["jobs"]["images"]
+    entry = next(e for e in images["strategy"]["matrix"]["include"] if e["name"] == "qradar-mcp")
+    assert entry["context"] == "deploy/mcp"
+    assert entry["build-contexts"].startswith("upstream=oci-layout://")
+    steps = images["steps"]
+    names = [step.get("name", "") for step in steps]
+    upstream = steps[names.index("Build the upstream qradar-mcp")]
+    final = next(s for s in steps if s.get("name") == "Build and push")
+    assert names.index("Build the upstream qradar-mcp") < names.index("Build and push")
+    assert upstream["with"]["context"] == "qradar-mcp"
+    assert upstream["with"]["push"] is False
+    assert upstream["with"]["outputs"].startswith("type=oci,dest=")
+    assert upstream["if"] == "matrix.name == 'qradar-mcp'"
+    assert final["with"]["build-contexts"] == "${{ matrix.build-contexts }}"
+    assert final["with"]["context"] == "${{ matrix.context }}"
+
+
+def test_no_file_points_at_the_inert_mcp_config() -> None:
+    needles = ("deploy/mcp/config.json", "qradar-mcp/config.json")
+    offenders = []
+    for name in (
+        "docker-compose.yml",
+        "docker-compose.prod.yml",
+        "qradar-dash",
+        "docs/INSTALL.md",
+        "docs/OPERATIONS.md",
+        "docs/mcp-capability-matrix.md",
+        ".github/workflows/release.yml",
+    ):
+        text = (REPO / name).read_text(encoding="utf-8")
+        offenders += [name for needle in needles if needle in text]
+    assert offenders == []

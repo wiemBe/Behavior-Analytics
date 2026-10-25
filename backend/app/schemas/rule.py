@@ -35,6 +35,10 @@ class RuleSummary(_Sanitized):
     owner: str | None = None
     health_status: RuleHealthStatus
     health_evaluated_at: datetime | None = None
+    # The reason of the snapshot written at `health_evaluated_at`, so it always belongs to
+    # the verdict shown beside it. Null when that snapshot is absent (aged out, or never
+    # written) or recorded none.
+    health_reason: str | None = None
     last_fired_at: datetime | None = None
     offense_contribution_count: int = 0
     event_contribution_count: int = 0

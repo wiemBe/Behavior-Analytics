@@ -114,6 +114,7 @@ describe("the subject filter", () => {
       "WAF endpoints",
       "IPS entities",
       "IPS sources",
+      "IPS entities and sources",
       "Property watch values",
     ]);
     expect(select.name).toBe("subject_kind");

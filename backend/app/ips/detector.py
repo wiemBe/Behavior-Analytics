@@ -35,6 +35,7 @@ from typing import Any
 from app.anomaly import statistics as rstats
 from app.anomaly.capabilities import ips_input_scope
 from app.anomaly.evidence import AnomalyEvidence, healthy, insufficient
+from app.core.text import percent
 from app.ips.fold import GENERIC_NAME_PREFIX
 from app.ips.inputs import (
     IPS_ENTITY_EVENTS_METRIC,
@@ -154,7 +155,8 @@ class IpsVerdict:
 
 # --------------------------------------------------------------------- helpers
 def _pct(value: float | None) -> str:
-    return "n/a" if value is None else f"{value:.1%}"
+    """The share spelling for IPS sentences: one decimal of the shared helper."""
+    return percent(value, precision=1)
 
 
 def _events(value: float) -> str:
@@ -325,9 +327,9 @@ class _Guard:
             )
         if coverage and not facts.coverage_met(self.thr.min_coverage):
             ratio = facts.coverage_ratio
-            seen = "was not measurable" if ratio is None else f"was {ratio:.0%}"
+            seen = "was not measurable" if ratio is None else f"was {percent(ratio)}"
             return self.insufficient(
-                f"{label} coverage {seen}, below the {self.thr.min_coverage:.0%} floor: the "
+                f"{label} coverage {seen}, below the {percent(self.thr.min_coverage)} floor: the "
                 "events without a value may differ in kind from the ones with one, so the "
                 "visible numbers bound nothing"
             )

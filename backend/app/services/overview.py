@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.models.alert import Alert
 from app.models.enums import ACTIVE_ANOMALY_STATES, AlertStatus, AnomalyType
 from app.models.instance import QRadarInstance
@@ -22,8 +23,9 @@ from app.schemas.log_source import (
 
 
 class OverviewService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, settings: Settings | None = None) -> None:
         self.session = session
+        self.settings = settings or get_settings()
         self.ls_repo = LogSourceRepository(session)
 
     async def build(self) -> SocOverview:
@@ -99,8 +101,11 @@ class OverviewService:
             OffenseSnapshot.status == "OPEN",
         )
         rows = list((await self.session.scalars(base)).all())
+        critical_magnitude = self.settings.offense_critical_magnitude
         active = len(rows)
-        critical = sum(1 for r in rows if r.magnitude is not None and r.magnitude >= 7)
+        critical = sum(
+            1 for r in rows if r.magnitude is not None and r.magnitude >= critical_magnitude
+        )
         critical_unknown = sum(1 for r in rows if r.magnitude is None)
         unassigned = sum(1 for r in rows if not r.is_assigned)
         known_ages = [r.age_seconds for r in rows if r.age_seconds is not None]

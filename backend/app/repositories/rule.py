@@ -8,11 +8,12 @@ row is the classic N+1 that turns a 300-rule inventory into 301 queries.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, desc, func, or_, select
+from sqlalchemy import Select, desc, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -93,6 +94,27 @@ class RuleRepository:
         )
         rules = list((await self.session.scalars(stmt)).unique().all())
         return rules, total
+
+    async def health_reasons(
+        self, rules: Sequence[AnalyticsRule]
+    ) -> dict[uuid.UUID, str | None]:
+        """The reason of each rule's snapshot at its own `health_evaluated_at`.
+
+        One statement for the whole page, whatever its size. A rule whose snapshot is
+        absent (aged out by retention, or never written) is simply not in the result, so
+        a reason is never borrowed from an older or newer verdict.
+        """
+        keys = [
+            (r.id, r.health_evaluated_at) for r in rules if r.health_evaluated_at is not None
+        ]
+        if not keys:
+            return {}
+        rows = await self.session.execute(
+            select(RuleHealthSnapshot.rule_id, RuleHealthSnapshot.reason).where(
+                tuple_(RuleHealthSnapshot.rule_id, RuleHealthSnapshot.evaluated_at).in_(keys)
+            )
+        )
+        return {row.rule_id: row.reason for row in rows}
 
     async def get(self, rule_id: uuid.UUID) -> AnalyticsRule | None:
         return await self.session.scalar(

@@ -55,3 +55,11 @@ describe("the Definition tab history", () => {
     expect(screen.getByText(/membership of a group is today's/)).toBeInTheDocument();
   });
 });
+
+describe("the coverage floor sentence", () => {
+  it("spells the floor as a whole percent with U+00A0 before the sign", () => {
+    render(<WatchDefinition watch={watch()} catalog={catalog()} scope={scope()} />);
+    const sentence = screen.getByText((_, node) => /coverage\s+floor is/.test(node?.textContent ?? "") && node?.tagName === "P");
+    expect(sentence.textContent).toContain("floor is 90\u00A0%:");
+  });
+});

@@ -100,10 +100,10 @@ FAMILY_SPECS: dict[HistoryFamily, FamilySpec] = {
         collection_switch="rule_match_collection_enabled",
         always_on_reason=None,
         lookback_setting="rule_health_window_days",
-        retention_setting=None,
+        retention_setting="rule_match_retention_days",
         retention_switch=None,
         search_family="RULE_MATCH",
-        retention_note="nothing deletes rule_match_window or rule_match_metric rows by age",
+        retention_note="the retention task has no switch; the family reads the rule-health window",
     ),
 }
 

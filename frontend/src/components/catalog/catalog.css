@@ -29,6 +29,21 @@
   text-overflow: clip;
 }
 
+/* The IPS anomaly cell (UI-7.5): the subject (a port or an address, or "Source-level") is the one
+   fact that tells two rows apart, so the link and the line under it wrap instead of clipping. */
+.tw-table td.tw-name.cw-ips-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.tw-table td.tw-name.cw-ips-name a,
+.tw-table td.tw-name.cw-ips-name .tw-sub {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* A subject widget whose subject is not chosen, or no longer exists (UI-3.5b): a sentence and,
    while customizing, the one action that fixes it. */
 .cw-config {

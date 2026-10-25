@@ -20,8 +20,9 @@ Dört kural her bölümde geçerlidir:
 5. [Yedek ve geri alma](#yedek-ve-geri-alma)
 6. [Tanı](#tanı)
 7. [Geçmiş okuma](#geçmiş-okuma)
-8. [Belirtiler](#belirtiler)
-   (OPS-R1 ... OPS-R63; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
+8. [Kapsam eşlemeleri](#kapsam-eşlemeleri)
+9. [Belirtiler](#belirtiler)
+   (OPS-R1 ... OPS-R64; `doctor` satırındaki `runbook: OPS-R30` yazısı 30. girişi gösterir)
 
 `install`, `status`, `logs`, `doctor`, `backup`, `restore`, `upgrade`, `rollback`,
 `repair-state`, `support-bundle` ve `bundle` (çevrimdışı paket) çalışır.
@@ -140,8 +141,8 @@ Bayt/satır değerleri ölçülmüş değildir. Planlama sabiti satır başına 
   uygulanmaz. Günlük satır silicileri bu bayraktan bağımsız çalışır: arama sonuçları 90 gün,
   catch-all 35, coğrafya 35, WAF metrik 35 / kapalı olay 180, IPS metrik 35 / kapalı olay 365,
   property-watch metrik 35 / kapalı olay 180, anomaly fault 30, özel kural ihlali 180, kapalı
-  Phase A olay 365, `rule_health_snapshot` 90, `detection_coverage_snapshot` 90. Diski izle
-  (bkz. OPS-R14).
+  Phase A olay 365, `rule_health_snapshot` 90, `detection_coverage_snapshot` 90,
+  `rule_match_metric` ve `rule_match_window` 90. Diski izle (bkz. OPS-R14).
 
 Ana makinenin izin vermesi gereken portlar:
 
@@ -291,7 +292,8 @@ yolu `docs/OPERATIONS.md`.
 - Çıkış kodu 0: yığın sağlıklı, `/health/ready` ve `/version` 200 döndürdü, QRadar kontrolü geçti ve
   yönetici var.
 - Çıkış kodu 1: ön kontrol ya da çalışma adımı başarısız, QRadar kontrolü başarısız veya
-  `/health/ready` ya da `/version` 200 döndürmedi. Parola bu çıkıştan önce stdout'a yazılmış olabilir;
+  `/health/ready` ya da `/version` 200 döndürmedi ya da yayımlanan URL denetimi başarısız oldu (aşağıda).
+  Parola bu çıkıştan önce stdout'a yazılmış olabilir;
   başarısız QRadar kontrolü onu yutmaz. Özet aşamasına ulaşıldıysa QRadar veya API hatasında durum
   dosyası yine yazılır ve özet `API readiness      NOT READY` satırını gösterir.
 - Çıkış kodu 2: seçenek ya da etkileşimsiz yanıt dosyası geçersizdir; kurulum başlamaz.
@@ -302,6 +304,22 @@ yolu `docs/OPERATIONS.md`.
   komutunu yeniden çalıştır (`qradar add` satırı günceller); ya da `./qradar-dash status` ile duruma
   bak. Yığın ayağa kalkmadıysa (bir servis hiç sağlıklı olmadı) `.qradar-dash/state.json` yazılmaz;
   `docker compose ps` ve `./qradar-dash logs` ile bak.
+
+Özetten önce `install`, yayımlanan URL'yi de dener (yalnız paketle gelen vekilde; harici vekilde
+(`EXTERNAL_PROXY=yes`) bu denetim yoktur): `https://<ad>/api/v1/health/ready` adresine, ana makinedeki
+vekile (`--resolve` ile `127.0.0.1`) 15 saniye sınırıyla gider. 200 gelirse `public URL … answered
+HTTP 200 through the local proxy` yazılır. Sertifika doğrulanamıyorsa (curl çıkışı 60 ya da 51;
+kendinden imzalı ya da henüz güvenilmeyen sertifika) betik aynı isteği sertifika denetimi kapalı
+yineler. Şimdi 200 gelirse `[warn]` yazar ve `install` **0 ile çıkar**:
+
+```
+public URL https://<ad>/api/v1/health/ready answered HTTP 200 only with certificate checks disabled (curl exit 60 or 51). Browsers will warn unless the site CA is trusted. Continuing.
+```
+
+`[warn]` satırı stderr'e gider. Bu bir arıza değildir; yığın sağlıklıdır, tarayıcılar site CA'sı güvenilir olana kadar uyarır.
+Sertifika denetimi kapalıyken de 200 gelmezse (ya da hata başka bir curl kodudur) `public URL …
+failed (curl exit …, HTTP …). Next: ./qradar-dash logs proxy and ./qradar-dash doctor.` yazılır;
+özet yine basılır, ama çıkış kodu 1 olur.
 
 İlk oturum açmada parola değiştirmek zorunludur (`must_change_password`). Değiştirene kadar API her
 başka isteğe 403 `A password change is required before any other request.` ile cevap verir. Bu bir
@@ -336,6 +354,9 @@ Mevcut `.env` ile ikinci `install`:
   oturumları iptal eder.
 - `load-secrets.sh` ve `qradar add` yeniden çalışır; migrate'te Alembic zaten başta olduğundan bir
   şey yapmaz; `up -d` yeniden çalışır.
+- `COMPOSE_PROFILES` içinde `proxy` sihirbaz yanıtına göre yazılır; elle eklenmiş diğer profiller
+  (pratikte `mcp`) korunur. `upgrade` ve `rollback`, `mcp` açıksa `qradar-mcp` servisini de hedef
+  imajla yeniden yaratır (bkz. OPS-R64).
 
 `--reconfigure` sır olmayan soruları yeniden sorar. Postgres volume'u varsa `ENCRYPTION_KEY` ve
 `POSTGRES_PASSWORD` değişimini reddeder.
@@ -487,7 +508,17 @@ reddeder.
 
 Aynı mekanizma gizli dizilerin yardımcı imajı için de geçerlidir (`alpine:3.20@sha256:…`;
 sabitleme `deploy/load-secrets.sh` içindedir). `docker load` onu da yalnız kimliğiyle tutabilir;
-betik düz `alpine:3.20` etiketini koyar ve sabitlenmiş başvurunun çözüldüğünü doğrular. Paketsiz
+betik düz `alpine:3.20` etiketini koyar ve sabitlenmiş başvurunun çözüldüğünü doğrular. Yükleme
+şunu yazar (`…` yerinde paketteki digest vardır):
+
+```
+[ ok ] docker load kept alpine:3.20@sha256:… only by its ID; set the tag alpine:3.20 on it (this moves an existing alpine:3.20 on this host)
+```
+
+Redis için söylenen burada da geçerlidir: bu makinede zaten var olan bir `alpine:3.20` etiketi
+yüklenen imaja taşınabilir; bir başka imajı gösteriyorsa o imaj etiketsiz kalır (silinmez).
+Sabitlenmiş başvuru düz etiketten sonra da çözülmezse betik redis'tekiyle aynı biçimde durur
+(`after docker load, alpine:3.20@sha256:… does not resolve: …`). Paketsiz
 `upgrade <sürüm> --offline` bu imajı da arar: yükseltme öncesi yedek onu çalıştırır, eksikse betik
 imajı adıyla söyler ve hiçbir konteyneri durdurmaz.
 
@@ -1397,6 +1428,84 @@ judged until it finishes". Devralma anında bu durum temizlenir.
 
 ---
 
+## Kapsam eşlemeleri
+
+`/coverage` sayfası "No ATT&CK technique mappings are configured, so coverage cannot be measured"
+yazıyorsa hiçbir eşleme yoktur. Platform MITRE içeriği almaz: her eşleme SOC'un kendi kararıdır ve
+API ile elle girilir. Eşleme bir ATT&CK teknik kimliğini (örn. `T1110`) platformun bir analiz
+kuralına bağlar. Yalnız platformun kendi veritabanına yazılır; QRadar'a hiçbir şey yazılmaz.
+
+**İzin.** `POST /api/v1/coverage/mappings` için `coverage:write` gerekir; izin her aramadan önce
+denetlenir. Yerleşik rollerden `admin` (`admin:*` ile), `analyst` ve `detection_engineer` bu izne
+sahiptir; `viewer` yalnız `read:*` taşır ve 403 `missing required permission: coverage:write` alır.
+
+**Kuralın UUID'sini bul.** `rule_id` platformun kural kimliğidir (UUID), QRadar'ın sayısal kural
+kimliği (`qradar_id`) **değildir**. İki yol vardır:
+
+- `/rules` sayfasında kuralın adına tıkla; adres `/rules/<UUID>` olur.
+- API: `GET /api/v1/rules?search=<kural adı>` yanıtındaki `items[].id` alanı (`read:rules` gerekir;
+  `qradar_id` aynı kayıttadır, karıştırma). Yapı taşları listede yoktur;
+  `include_building_blocks=true` ekle.
+
+**Eşleme ekle.** Oturum çerezi `qd_session`'dır. Komut satırından oturum açarken isteğe siteyle
+eşleşen `Origin` başlığını ekle (`https://<ad>`); bu araçta ayrı bir CSRF belirteci başlığı yoktur,
+koruma `Origin` denetimidir (bkz. OPS-R22). İlk oturum açmada parola değiştirilmiş olmalıdır
+(bkz. OPS-R27). Parola kabuk geçmişine girmesin diye klavyeden okunur (içinde `"` ya da `\` olan
+bir parola JSON'a böyle konamaz):
+
+```bash
+read -rs QD_PAROLA
+printf '{"username":"<kullanıcı>","password":"%s"}' "$QD_PAROLA" |
+  curl -sS -c cerez.txt -H 'Origin: https://<ad>' -H 'Content-Type: application/json' \
+    --cacert .secrets/tls.crt --data @- https://<ad>/api/v1/auth/login
+unset QD_PAROLA
+
+curl -sS -b cerez.txt -H 'Origin: https://<ad>' -H 'Content-Type: application/json' \
+  --cacert .secrets/tls.crt -X POST https://<ad>/api/v1/coverage/mappings \
+  --data '{"technique_id":"T1110","technique_name":"Brute Force","tactic":"Credential Access",
+           "rule_id":"<kuralın-UUID-si>","confidence":1.0,"provenance":"<kısa not>"}'
+rm cerez.txt
+```
+
+`--cacert <dosya>`, `curl`'e o dosyadaki sertifikaları verici olarak güvenilir saymasını söyler.
+`.secrets/tls.crt` sitenin kendi sertifikasıdır (kurulumda `TLS_CERT_FILE` olarak verilen dosya).
+Sertifika kendinden imzalıysa `--cacert .secrets/tls.crt` doğrudur: sertifika kendi vericisidir.
+Sertifikayı bir iç CA verdiyse bu dosya işe yaramaz ve `curl` çıkış 60 ile durur; onun yerine o CA'nın
+sertifika dosyasını ver (tarayıcılara güvenilir diye tanıtılan dosya; kurulum onun yolunu kaydetmez).
+Bu makine sertifikaya zaten güveniyorsa `--cacert` parametresini çıkar. Her durumda `https://<ad>`
+içindeki ad sertifikadaki adla eşleşmelidir. `-k` kullanma; install özetinin "site CA'sı güvenilir
+olana kadar" uyarısı da aynı durumu anlatır.
+
+Gövde alanları: `technique_id` (2-32 karakter, zorunlu), `rule_id` (zorunlu), `technique_name`,
+`tactic`, `provenance` (isteğe bağlı), `source` (`EXPLICIT` varsayılandır; SOC'un kendi eşlemesi
+budur) ve `confidence` (0 ile 1 arası, varsayılan 1.0). Birden çok konsol varsa `?instance_id=<UUID>`
+ekle; verilmezse ilk kayıtlı konsol kullanılır.
+
+| Yanıt | Anlamı |
+|---|---|
+| 201 | Eşleme kaydedildi; gövde kaydı döndürür. |
+| 400 `no QRadar instance configured` | Kayıtlı konsol yok; `install` konsolu kaydeder, onu bitir ya da yeniden çalıştır. |
+| 403 `missing required permission: coverage:write` | Kullanıcının rolünde izin yok. |
+| 404 `rule not found for this instance` | `rule_id` bu konsolda yok; `qradar_id` değil UUID'yi ver ve kural envanterinin eşitlendiğini kontrol et. |
+| 409 `mapping already exists` | Aynı teknik ve kural çifti zaten kayıtlı. |
+| 422 | Gövde geçersiz (kısa `technique_id`, 0-1 dışı `confidence`). |
+
+Eşleme her eklenişte denetim kaydına `coverage.mapping.create` olarak yazılır.
+
+**Sonucu hesapla.** Kapsam kararlarını `evaluate_detection_coverage` görevi hesaplar; beat onu
+`COVERAGE_EVALUATION_INTERVAL_SECONDS` aralığıyla çalıştırır (varsayılan 3600 saniye, en az 60).
+Beklemek istemezsen elle çalıştır:
+
+```bash
+docker compose exec -T backend python -m app.cli.sync coverage
+```
+
+`--instance <konsol-adı>` yalnız o konsolu işler, `--json` makine okunur çıktı verir. Sonuç
+`/coverage` sayfasında görünür. Kural sağlığı kapsamdan önce hesaplanır (`sync all` sırayı böyle
+tutar); kural envanteri henüz eşitlenmediyse önce `sync rules` ve `sync rule-health` çalıştır.
+
+---
+
 ## Belirtiler
 
 Her giriş dört bölümden oluşur: **Belirti**, **Olası neden**, **Doğrulama**, **Çözüm**. Doğrulama
@@ -1672,8 +1781,10 @@ tam `https` köken olarak ayarla.
 
 **Belirti:** Bir konteyner, checkout içinde olan bir dosyayı okuyamıyor.
 
-**Olası neden:** SELinux `user_home_t`. MCP servisi checkout'u bağlar; etkin bir `mcp` profili
-bu yüzden zorlayıcı (enforcing) ana makinede başarısız olur.
+**Olası neden:** SELinux `user_home_t`. Checkout'tan bağlanan bir dosyayı konteyner okuyamaz.
+MCP servisi artık checkout'u bağlamaz: `feature_toggles.json` imajın içindedir ve CA ile token
+adlandırılmış `qradar_secrets` birimindendir. Bu belirtiyi gören servis büyük olasılıkla
+checkout'tan bir dosya bağlayan yerel bir `docker-compose.override.yml` taşıyordur.
 
 **Doğrulama:** `ausearch` ya da günlük, `container_t` için `denied` gösterir ve `getenforce`
 çıktısı `Enforcing` olur.
@@ -1683,10 +1794,10 @@ getenforce
 ```
 
 **Çözüm:** **Yeniden etiketleme yapma.** SELinux kapatılmaz ve `:z` kullanılmaz. Uygulama
-token'ı ve CA için `load-secrets.sh` kullanmaya devam et. Üretim ana makinelerinde `mcp`
-profili, yapılandırma checkout bağlama noktası olmadan gelene kadar desteklenmez
-(`docs/INSTALL.md`, Optional MCP service). Geliştirme ve laboratuvar ana makinelerinde
-örnek `deploy/mcp/config.json` dosyasına kopyalanır.
+token'ı ve CA için `load-secrets.sh` kullanmaya devam et. Bağlama noktasını override
+dosyasından kaldır. `mcp` profili 2026-10-23'te gerçek bir konsola karşı doğrulandı; üretimde
+nasıl açıldığı `docs/INSTALL.md` içinde, Optional MCP service bölümündedir. Profil için kopyalanacak
+ya da düzenlenecek bir dosya yoktur.
 
 ### OPS-R14. Postgres `No space left on device` veriyor ya da `doctor` diski FAIL gösteriyor
 
@@ -1703,7 +1814,8 @@ kapalı olay 365 (`apply_ips_anomaly_retention`), property-watch metrik 35 / kap
 (`apply_property_watch_retention`), anomaly fault 30 (`apply_anomaly_fault_retention`), özel kural
 ihlali 180 (`apply_custom_rule_retention`), kapalı Phase A olay 365
 (`apply_log_source_anomaly_retention`), `rule_health_snapshot` 90 ve `detection_coverage_snapshot`
-90 (`apply_snapshot_retention`). Docker json günlükleri 20 MB × 5 ile sınırlıdır ve diski dolduran
+90 (`apply_snapshot_retention`), `rule_match_metric` ve `rule_match_window` 90
+(`apply_rule_match_retention`). Docker json günlükleri 20 MB × 5 ile sınırlıdır ve diski dolduran
 şey bunlar değildir.
 
 **Doğrulama:** `disk_docker` ya da `disk_backup` FAIL ve `pg_database_size` satırı.
@@ -2719,3 +2831,76 @@ Doluysa WARN. `GET /api/v1/searches/ariel-budget` aynı sayıları döner. Yanı
 
 **Çözüm:** Yükü düşür: kadansları seyrelt ya da geçmiş okumayı azalt. Tavanları, cihazın
 kaldırdığı ölçüde yükselt. Ölçülmüş sınırlar AP-8'dedir. İzni kapatarak çözme.
+
+### OPS-R64. MCP çağrıları başarısız oluyor
+
+**Belirti:** `mcp` profili açık ve bir MCP çağrısı iki sağlayıcı hatasından biriyle düşüyor:
+
+- `MCP service rejected the request`: sağlayıcının auth hatası. MCP servisi 401 ya da 403 döndü.
+- `MCP session initialisation failed upstream`: sağlayıcının erişilemezlik hatası. MCP servisi
+  oturum açılırken 4xx/5xx döndü; TLS hatasında bu HTTP 500'dür.
+
+Servise hiç ulaşılamazsa hata bunlardan biri değil, `Could not reach the MCP service` olur.
+Servis ayakta değilse ya da profil `COMPOSE_PROFILES` içinde yoksa önce `docker compose ps
+qradar-mcp` ile konteynerin çalıştığına bak.
+
+**Olası neden:** Dördü de `qradar-mcp` ile konsol arasındadır:
+
+1. `qradar_ca.pem` yanlış ya da eksik: zincirin yalnız bir parçası var, ya da konsolun CA'sı değil.
+2. Konsol sertifikasının SAN alanlarında `QRADAR_CONSOLE_FQDN` değeri yok.
+3. `internal` ağdan konsola rota yok (bkz. OPS-R4; macvlan override'ında `qradar-mcp` da vardır).
+4. Token eksik ya da yanlış: backend `SEC` başlığına boş ya da geçersiz değer koyuyor.
+
+Sunucunun kendi günlüğündeki `Authentication failed for both user and service` satırı **hem bozuk CA
+hem eksik ya da yanlış token için aynıdır**. TLS hatası backend'e auth hatası olarak değil, HTTP 500
+ve erişilemezlik olarak ulaşır. Bu yüzden satır tek başına nedeni söylemez; aşağıdaki TLS denetimiyle
+birlikte okunur.
+
+**Doğrulama:** Sırayla. Hiçbir komut token yazdırmaz ve hiçbiri bir şeyi değiştirmez.
+
+1. Sunucunun günlüğü. Sunucu yalnız standart çıktıya yazar; `mcp_logs` birimi boş kalır.
+
+   ```bash
+   ./qradar-dash logs --tail=200 qradar-mcp
+   ```
+
+2. Konteynerin içinden TLS denetimi. Komut, sunucunun kullandığı aynı CA dosyasını
+   (`REQUESTS_CA_BUNDLE`) ve aynı adı (`QRADAR_CONSOLE_FQDN`) kullanır; imajda hiçbir şey kurmaz.
+   Yalnız el sıkışır, token ve istek göndermez.
+
+   ```bash
+   docker compose exec qradar-mcp python -c 'import os,socket,ssl; h=os.environ["QRADAR_CONSOLE_FQDN"]; c=ssl.create_default_context(cafile=os.environ["REQUESTS_CA_BUNDLE"]); s=c.wrap_socket(socket.create_connection((h,443),10),server_hostname=h); print("TLS OK",s.version(),s.getpeercert()["subjectAltName"])'
+   ```
+
+   - `TLS OK ...` ve SAN listesi: CA ve ad doğru; geriye neden 4 kalır (neden 3 aralıklı da olabilir).
+   - `CERTIFICATE_VERIFY_FAILED ... unable to get local issuer certificate`: neden 1.
+   - `CERTIFICATE_VERIFY_FAILED ... Hostname mismatch, certificate is not valid for '<ad>'`: neden 2.
+   - `TimeoutError` ya da `OSError`: neden 3.
+
+   Ayrıntılı zincir dökümü gerekirse imajda `openssl` vardır; ana makinedeki OPS-R2 komutunun
+   aynısı `docker compose exec qradar-mcp openssl s_client ...` ile de çalışır.
+
+3. Token tarafı, ancak 2. adım `TLS OK` verdiyse: `./qradar-dash doctor` içindeki `qradar_auth`
+   satırı backend'in aynı token'la yaptığı kendi QRadar denetimidir. FAIL ise token sorunu OPS-R1'dedir.
+   PASS ise ve MCP yine `rejected the request` veriyorsa, MCP için kayıtlı konsolun saklı token'ı
+   eskidir (`qradar add` ile yeniden kaydet).
+
+```bash
+./qradar-dash doctor
+```
+
+**Çözüm:**
+
+- Neden 1: Kökü, sonra ara sertifikaları `.secrets/qradar-ca.pem` dosyasında birleştir; sonra
+  `./deploy/load-secrets.sh` çalıştır ve `docker compose restart qradar-mcp` ile servisi yeniden
+  başlat (OPS-R2). Konsol sertifikasında AKI yoksa backend için `QRADAR_TLS_ALLOW_MISSING_AKI=true`
+  gerekir (OPS-R3); sunucunun Python'u AKI'siz bir CA'yı kabul etti.
+- Neden 2: `.env` içindeki `QRADAR_CONSOLE_FQDN` değerini sertifikanın bir SAN değerine eşitle
+  (IP SAN varsa IP de olur) ve `docker compose up -d qradar-mcp` ile konteyneri yeniden yarat.
+  Ya da konsola SAN'ı olan bir sertifika düzenlet.
+- Neden 3: OPS-R4'teki macvlan override'ını ya da bir rotayı ekle; `qradar-mcp` konsola `internal`
+  ağdan ulaşabilmeli.
+- Neden 4: `.secrets/qradar.sec` dosyasını değiştir, `./deploy/load-secrets.sh` çalıştır ve OPS-R1'deki
+  `qradar add` komutunu yeniden çalıştır. MCP servisi token'ı hiç saklamaz; her istekte backend'den alır.
+
+Token hiçbir komutta yazdırılmaz; günlüklerde de yoktur.

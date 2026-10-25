@@ -233,3 +233,14 @@ describe("the expected range at detection", () => {
     expect((withBand.series as unknown[]).length).toBe((without.series as unknown[]).length);
   });
 });
+
+describe("the coverage floor label", () => {
+  it("is a whole percent with U+00A0 before the sign", () => {
+    const model = buildPlot({ series: one, ...WINDOW });
+    const coverage = buildCoverage(model.slots, [bucket(0)], 0.9);
+    const option = opt(buildPwOption({ model, palette, coverage }));
+    const share = option.series.find((s) => s.name === "Parsed share")!;
+    const line = share.markLine as unknown as { label: { formatter: string } };
+    expect(line.label.formatter).toBe("Floor 90\u00A0%");
+  });
+});

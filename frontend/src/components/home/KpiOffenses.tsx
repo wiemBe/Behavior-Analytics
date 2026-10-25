@@ -32,15 +32,26 @@ function Body({ card }: { card: OffensesCard }) {
         parts={[
           `${card.critical === null ? "\u2014" : countNoun(card.critical, "critical")} (\u2265 ${card.criticalMagnitude})`,
           b && b.below !== null ? countNoun(b.below, "below") : "\u2014\u00a0below",
-          b && b.unknown !== null && b.unknown > 0 && countNoun(b.unknown, "unknown"),
         ]}
       />
+      {b && b.unknown > 0 && (
+        <Line
+          title="Open offenses with no magnitude: in neither the critical nor the below count."
+          parts={[`+\u00a0${n(b.unknown)}\u00a0with unknown magnitude`]}
+        />
+      )}
       <Line
         parts={[
           card.unassigned === null ? "\u2014\u00a0unassigned" : countNoun(card.unassigned, "unassigned"),
           card.exceedingSla === null ? "\u2014\u00a0over SLA" : countNoun(card.exceedingSla, "over SLA"),
         ]}
       />
+      {card.ageUnknown !== null && card.ageUnknown > 0 && (
+        <Line
+          title="Open offenses with no age: not in the over SLA count."
+          parts={[`+\u00a0${n(card.ageUnknown)}\u00a0with unknown age`]}
+        />
+      )}
     </>
   );
 }
@@ -69,7 +80,7 @@ export function KpiOffenses() {
       }}
       what="offenses"
       permission="read:offenses"
-      description="Offenses open in the latest collected snapshot. Critical is magnitude at or above the product's threshold; unknown is an offense with no magnitude."
+      description="Offenses open in the latest collected snapshot. Critical is magnitude at or above the product's threshold; an offense with no magnitude, or no age, is counted apart from those counts."
       state={probePending && state.status === "ok" ? { status: "loading" } : state}
     >
       {({ data }) => <Body card={offensesCard(data, probeData)} />}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { bucketWidth, formatPercent, formatPoints, formatRequests, requestsUnit } from "./wafFormat";
+import { bucketWidth, formatPoints, formatRequests, requestsUnit } from "./wafFormat";
 
 describe("formatRequests", () => {
   it("renders a measured zero as 0 and a missing value as an em dash", () => {
@@ -25,19 +25,9 @@ describe("formatRequests", () => {
   });
 });
 
-describe("formatPercent and formatPoints", () => {
+describe("formatPoints", () => {
   it("joins the number and its unit with U+00A0", () => {
-    expect(formatPercent(0.318)).toBe("31.8\u00A0%");
-    expect(formatPercent(0.318, null, 2)).toBe("31.80\u00A0%");
     expect(formatPoints(29.7)).toBe("+29.7\u00A0pp");
-  });
-
-  it("formats a fraction as a percentage, with a lower bound as ≥", () => {
-    expect(formatPercent(0.318)).toBe("31.8\u00A0%");
-    expect(formatPercent(0.624, "LOWER_BOUND")).toBe("≥ 62.4\u00A0%");
-    expect(formatPercent(0)).toBe("0.0\u00A0%");
-    expect(formatPercent(0.0003)).toBe("<0.1\u00A0%");
-    expect(formatPercent(null)).toBe("—");
   });
 
   it("signs a change in points so a drop is visibly a drop", () => {

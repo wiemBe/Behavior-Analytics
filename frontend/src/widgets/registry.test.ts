@@ -104,6 +104,9 @@ describe("widget registry", () => {
     // UI-3.5b: the IPS analyst API and its UI exist, so the IPS widget is no longer blocked.
     expect(widgetDef("ips.source_anomalies")?.status).toBe("live");
     expect(widgetDef("ips.source_anomalies")?.blockedBy).toBeUndefined();
+    expect(widgetDef("ips.source_anomalies")?.drillDown({})).toBe(
+      "/anomalies?subject_kind=IPS&active_only=true",
+    );
   });
 
   it("keeps every default size inside its own bounds and the grid", () => {
