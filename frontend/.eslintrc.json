@@ -110,7 +110,41 @@
         "src/components/behavior/SourceRowQualifier.tsx",
         "src/components/behavior/TechnicalDetails.tsx",
         "src/components/behavior/TopContributors.tsx",
-        "src/components/behavior/VolumeChart.tsx"
+        "src/components/behavior/VolumeChart.tsx",
+        "src/app/alerts/error.tsx",
+        "src/app/alerts/loading.tsx",
+        "src/app/alerts/page.tsx",
+        "src/app/custom-rules/error.tsx",
+        "src/app/custom-rules/loading.tsx",
+        "src/app/custom-rules/new/error.tsx",
+        "src/app/custom-rules/new/loading.tsx",
+        "src/app/custom-rules/new/page.tsx",
+        "src/app/custom-rules/page.tsx",
+        "src/app/offenses/error.tsx",
+        "src/app/offenses/loading.tsx",
+        "src/app/offenses/page.tsx",
+        "src/app/rules/error.tsx",
+        "src/app/rules/loading.tsx",
+        "src/app/rules/page.tsx",
+        "src/app/rules/statistics/error.tsx",
+        "src/app/rules/statistics/loading.tsx",
+        "src/app/rules/statistics/page.tsx",
+        "src/components/AlertActions.tsx",
+        "src/components/OffenseFilters.tsx",
+        "src/components/customrules/CustomRuleEditor.tsx",
+        "src/components/customrules/CustomRuleLatency.tsx",
+        "src/components/customrules/CustomRuleWriteNotice.tsx",
+        "src/components/customrules/PreviewChart.tsx",
+        "src/components/customrules/RuleActions.tsx",
+        "src/components/customrules/RuleStatus.tsx",
+        "src/components/customrules/StoredRulePreview.tsx",
+        "src/components/customrules/SubjectPicker.tsx",
+        "src/components/rules/CapacityHistory.tsx",
+        "src/components/rules/CostliestRules.tsx",
+        "src/components/rules/MeasurementWindow.tsx",
+        "src/components/rules/MostMatched.tsx",
+        "src/components/rules/RuleComposition.tsx",
+        "src/components/rules/SilentRules.tsx"
       ],
       "rules": {
         "react/jsx-no-literals": [
@@ -118,7 +152,7 @@
           {
             "noStrings": true,
             "ignoreProps": true,
-            "allowedStrings": ["—", "·", "…", "/", ":", "(", ")", ","]
+            "allowedStrings": ["—", "·", "…", "/", ":", "(", ")", ",", ".", "≥", "≥ "]
           }
         ]
       }
@@ -126,7 +160,19 @@
     {
       "files": [
         "src/app/anomalies/\\[id\\]/page.tsx",
-        "src/app/behavior/sources/\\[id\\]/page.tsx"
+        "src/app/behavior/sources/\\[id\\]/page.tsx",
+        "src/app/alerts/\\[id\\]/error.tsx",
+        "src/app/alerts/\\[id\\]/loading.tsx",
+        "src/app/alerts/\\[id\\]/page.tsx",
+        "src/app/custom-rules/\\[id\\]/error.tsx",
+        "src/app/custom-rules/\\[id\\]/loading.tsx",
+        "src/app/custom-rules/\\[id\\]/page.tsx",
+        "src/app/offenses/\\[id\\]/error.tsx",
+        "src/app/offenses/\\[id\\]/loading.tsx",
+        "src/app/offenses/\\[id\\]/page.tsx",
+        "src/app/rules/\\[id\\]/error.tsx",
+        "src/app/rules/\\[id\\]/loading.tsx",
+        "src/app/rules/\\[id\\]/page.tsx"
       ],
       "rules": {
         "react/jsx-no-literals": [
@@ -134,7 +180,7 @@
           {
             "noStrings": true,
             "ignoreProps": true,
-            "allowedStrings": ["—", "·", "…", "/", ":", "(", ")", ","]
+            "allowedStrings": ["—", "·", "…", "/", ":", "(", ")", ",", ".", "≥", "≥ "]
           }
         ]
       }

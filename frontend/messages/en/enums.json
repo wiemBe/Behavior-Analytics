@@ -65,5 +65,44 @@
     "IPS_SOURCE_CONCENTRATION_SPIKE": "Source concentration spike",
     "IPS_PORT_FANOUT_SPIKE": "Port fan-out spike",
     "IPS_BLOCK_RATIO_SHIFT": "Block-ratio shift"
+  },
+  "alertStatus": {
+    "OPEN": "Open",
+    "ACKNOWLEDGED": "Acknowledged",
+    "RESOLVED": "Resolved"
+  },
+  "alertStatusPill": {
+    "OPEN": "OPEN",
+    "ACKNOWLEDGED": "ACKNOWLEDGED",
+    "RESOLVED": "RESOLVED"
+  },
+  "notificationStatus": {
+    "PENDING": "PENDING",
+    "SENT": "SENT",
+    "FAILED": "FAILED",
+    "DEAD_LETTER": "DEAD_LETTER",
+    "SUPPRESSED": "SUPPRESSED"
+  },
+  "notificationChannel": {
+    "TEAMS": "TEAMS",
+    "EMAIL": "EMAIL",
+    "SLACK": "SLACK",
+    "WEBHOOK": "WEBHOOK",
+    "SYSLOG": "SYSLOG"
+  },
+  "alertTransition": {
+    "OPENED": "OPENED",
+    "ACKNOWLEDGED": "ACKNOWLEDGED",
+    "RESOLVED": "RESOLVED"
+  },
+  "ruleHealth": {
+    "HEALTHY": "HEALTHY",
+    "NEVER_OBSERVED": "NEVER OBSERVED",
+    "INACTIVE": "INACTIVE",
+    "NOISY": "NOISY",
+    "DISABLED": "DISABLED",
+    "DEPENDENCY_DEGRADED": "DEPENDENCY DEGRADED",
+    "INSUFFICIENT_DATA": "INSUFFICIENT DATA",
+    "UNKNOWN": "UNKNOWN"
   }
 }

@@ -6,16 +6,26 @@ import {
   ruleStatisticsApi,
 } from "@/lib/api";
 import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
 import { CapacityHistory } from "@/components/rules/CapacityHistory";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { formatShare } from "@/lib/format";
 import { healthMeaning, healthTone, isUnestablished } from "@/lib/health";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { enumLabel } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import type { Locale } from "@/i18n/locale";
+import { formatCount } from "@/lib/format";
 
 import "@/components/ui/controls.css";
 
 import "../rules.css";
+
+export async function generateMetadata() {
+  const t = await getTranslations("rules.meta");
+  return { title: t("detail") };
+}
 
 export default async function RuleDetailPage({
   params,
@@ -23,6 +33,9 @@ export default async function RuleDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const t = await getTranslations("rules.detail");
+  const say = asTextTranslator(await getTranslations());
+  const locale = (await getLocale()) as Locale;
 
   let rule: RuleDetail | null = null;
   let history: RuleHealthSnapshot[] | null = [];
@@ -44,16 +57,16 @@ export default async function RuleDetailPage({
   if (missing || error || !rule) {
     return (
       <>
-        <PageHeader title="Rule" />
+        <PageHeader title={t("title")} />
         <div className="notice" role={missing ? "status" : "alert"}>
           <p>
             {missing
-              ? "This rule has not been collected."
-              : "Could not load this rule. Try again shortly."}
+              ? t("missing")
+              : t("failed")}
           </p>
         </div>
         <p>
-          <Link href="/rules">Back to rules</Link>
+          <Link href="/rules">{t("back")}</Link>
         </p>
       </>
     );
@@ -65,45 +78,52 @@ export default async function RuleDetailPage({
   const reason = r.health_reason?.trim() || null;
   const buildingBlocks = r.dependencies.filter((d) => d.kind === "BUILDING_BLOCK");
   const telemetry = r.dependencies.filter((d) => d.kind !== "BUILDING_BLOCK");
+  const dependencyLabel = (group: "mappingSources" | "dependencyKinds", value: string) => {
+    const key = `rules.detail.${group}.${value}`;
+    return say.has?.(key) ? say(key) : value;
+  };
 
   return (
     <>
       <p className="muted">
-        <Link href="/rules">← Rule Health</Link>
+        <Link href="/rules">{t("crumb")}</Link>
       </p>
       <PageHeader
         title={r.name}
-        description={`QRadar rule ${r.qradar_id}${r.is_building_block ? " · building block" : ""}`}
+        description={t("description", {
+          id: r.qradar_id,
+          buildingBlock: r.is_building_block ? t("buildingBlockSuffix") : "",
+        })}
       />
 
       <div className="cards rule-cards rule-cards-2">
         <div className="card">
-          <div className="k">Health</div>
+          <div className="k">{t("health")}</div>
           <div className={`v ${healthTone(r.health_status)}`}>
-            {r.health_status?.replace(/_/g, " ") ?? "—"}
+            {r.health_status ? enumLabel(say, "ruleHealth", r.health_status) : "—"}
           </div>
         </div>
         <div className="card">
-          <div className="k">Enabled</div>
-          <div className={`v ${r.enabled ? "ok" : "warn"}`}>{r.enabled ? "Yes" : "No"}</div>
+          <div className="k">{t("enabled")}</div>
+          <div className={`v ${r.enabled ? "ok" : "warn"}`}>{r.enabled ? t("yes") : t("no")}</div>
         </div>
         <div className="card">
-          <div className="k">Offense contributions</div>
-          <div className="v">{r.offense_contribution_count}</div>
+          <div className="k">{t("offenseContributions")}</div>
+          <div className="v">{formatCount(r.offense_contribution_count, locale)}</div>
         </div>
         <div className="card">
-          <div className="k">Event contributions</div>
-          <div className="v">{r.event_contribution_count}</div>
+          <div className="k">{t("eventContributions")}</div>
+          <div className="v">{formatCount(r.event_contribution_count, locale)}</div>
         </div>
       </div>
 
-      <h3>Health evidence</h3>
+      <h3>{t("healthEvidence")}</h3>
       {isUnestablished(r.health_status) ? (
         <div className="notice">
           <strong>{healthMeaning(r.health_status)}</strong>
           <p className="rule-health-reason">
             {reason ??
-              "No complete rule-metric observation covers this rule. Missing data is reported as unestablished rather than as a detection gap."}
+              t("unestablishedFallback")}
           </p>
         </div>
       ) : (
@@ -112,28 +132,36 @@ export default async function RuleDetailPage({
 
       <div className="detail-grid">
         <div className="detail-block">
-          <h4>Building blocks ({buildingBlocks.length})</h4>
+          <h4>{t("buildingBlocks", { count: formatCount(buildingBlocks.length, locale) })}</h4>
           {buildingBlocks.length === 0 ? (
-            <p className="muted">No building-block dependencies were exposed by QRadar.</p>
+            <p className="muted">{t("noBuildingBlocks")}</p>
           ) : (
             <ul>
               {buildingBlocks.map((d) => (
                 <li key={`${d.kind}:${d.target_ref}`}>
-                  {d.target_name ?? d.target_ref} · {d.source.toLowerCase()} · {formatShare(d.confidence)}
+                  {t("dependency", {
+                    name: d.target_name ?? d.target_ref,
+                    source: dependencyLabel("mappingSources", d.source),
+                    confidence: formatShare(d.confidence, locale),
+                  })}
                 </li>
               ))}
             </ul>
           )}
         </div>
         <div className="detail-block">
-          <h4>Telemetry requirements ({telemetry.length})</h4>
+          <h4>{t("telemetry", { count: formatCount(telemetry.length, locale) })}</h4>
           {telemetry.length === 0 ? (
-            <p className="muted">No log-source dependencies were exposed by QRadar.</p>
+            <p className="muted">{t("noTelemetry")}</p>
           ) : (
             <ul>
               {telemetry.map((d) => (
                 <li key={`${d.kind}:${d.target_ref}`}>
-                  {d.target_name ?? d.target_ref} · {d.kind.replace(/_/g, " ")} · {d.source.toLowerCase()}
+                  {t("telemetryDependency", {
+                    name: d.target_name ?? d.target_ref,
+                    kind: dependencyLabel("dependencyKinds", d.kind),
+                    source: dependencyLabel("mappingSources", d.source),
+                  })}
                 </li>
               ))}
             </ul>
@@ -141,45 +169,45 @@ export default async function RuleDetailPage({
         </div>
       </div>
 
-      <h3>Metadata</h3>
-      <TableScroll label="Rule metadata">
-      <table className="kv-table" aria-label="Rule metadata">
+      <h3>{t("metadata")}</h3>
+      <TableScroll label={t("metadataLabel")}>
+      <table className="kv-table" aria-label={t("metadataLabel")}>
         <tbody>
           <tr>
-            <th>Rule type</th>
+            <th>{t("ruleType")}</th>
             <td>{r.rule_type ?? "—"}</td>
           </tr>
           <tr>
-            <th>Origin</th>
+            <th>{t("origin")}</th>
             <td>{r.origin ?? "—"}</td>
           </tr>
           <tr>
-            <th>Owner</th>
+            <th>{t("owner")}</th>
             <td>{r.owner ?? "—"}</td>
           </tr>
           <tr>
-            <th>Building block</th>
-            <td>{r.is_building_block ? "Yes" : "No"}</td>
+            <th>{t("buildingBlock")}</th>
+            <td>{r.is_building_block ? t("yes") : t("no")}</td>
           </tr>
           <tr>
-            <th>Last fired</th>
+            <th>{t("lastFired")}</th>
             <td>
               {r.last_fired_at ? (
                 <UtcTime value={r.last_fired_at} />
               ) : (
-                <span className="muted">not observed</span>
+                <span className="muted">{t("notObserved")}</span>
               )}
             </td>
           </tr>
           <tr>
-            <th>Health evaluated</th>
+            <th>{t("healthEvaluated")}</th>
             <td>{<UtcTime value={r.health_evaluated_at} />}</td>
           </tr>
           <tr>
-            <th>MITRE techniques</th>
+            <th>{t("mitre")}</th>
             <td>
               {r.mitre_techniques.length === 0 ? (
-                <span className="muted">none mapped</span>
+                <span className="muted">{t("noneMapped")}</span>
               ) : (
                 <ul className="chips">
                   {r.mitre_techniques.map((t) => (
@@ -197,40 +225,39 @@ export default async function RuleDetailPage({
 
       <CapacityHistory samples={capacityHistory} />
 
-      <h3>Health history</h3>
+      <h3>{t("history")}</h3>
       {history === null ? (
         <div className="notice" role="alert">
           <p>
-            <strong>The health history could not be loaded.</strong>
+            <strong>{t("historyFailedTitle")}</strong>
           </p>
           <p>
-            Nothing was changed, and this does not mean no evaluation was stored. Reload the
-            page; if it keeps failing, check that the backend is reachable.
+            {t("historyFailedHelp")}
           </p>
         </div>
       ) : history.length === 0 ? (
-        <div className="notice">No rule-health evaluation has been stored yet.</div>
+        <div className="notice">{t("historyEmpty")}</div>
       ) : (
-        <TableScroll label="Rule health history">
-        <table className="rules-history table-dense" aria-label="Rule health history">
+        <TableScroll label={t("historyLabel")}>
+        <table className="rules-history table-dense" aria-label={t("historyLabel")}>
           <thead>
             <tr>
-              <th>Evaluated</th>
-              <th>Status</th>
-              <th className="num">Confidence</th>
-              <th className="num">Triggers</th>
-              <th className="num">Offenses</th>
-              <th>Reason</th>
+              <th>{t("evaluated")}</th>
+              <th>{t("status")}</th>
+              <th className="num">{t("confidence")}</th>
+              <th className="num">{t("triggers")}</th>
+              <th className="num">{t("offenses")}</th>
+              <th>{t("reason")}</th>
             </tr>
           </thead>
           <tbody>
             {history.map((h) => (
               <tr key={h.evaluated_at}>
                 <td className="nowrap">{<UtcTime value={h.evaluated_at} />}</td>
-                <td><span className={`pill ${healthTone(h.status)}`}>{h.status.replace(/_/g, " ")}</span></td>
-                <td className="num">{formatShare(h.confidence)}</td>
-                <td className="num">{h.trigger_count}</td>
-                <td className="num">{h.offense_contribution_count}</td>
+                <td><span className={`pill ${healthTone(h.status)}`}>{enumLabel(say, "ruleHealth", h.status)}</span></td>
+                <td className="num">{formatShare(h.confidence, locale)}</td>
+                <td className="num">{formatCount(h.trigger_count, locale)}</td>
+                <td className="num">{formatCount(h.offense_contribution_count, locale)}</td>
                 <td className="muted cell-reason">{h.reason ?? "—"}</td>
               </tr>
             ))}

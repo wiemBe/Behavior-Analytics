@@ -17,18 +17,32 @@ export type EnumGroup =
   | "sourceClass"
   | "anomalyType";
 
+type ExtendedEnumGroup =
+  | "alertStatus"
+  | "alertStatusPill"
+  | "notificationChannel"
+  | "notificationStatus"
+  | "alertTransition"
+  | "ruleHealth";
+
 /** The part of a translator this module needs: next-intl's `t` and its `has`. */
 export interface EnumTranslator {
   (key: string): string;
-  has(key: string): boolean;
+  has?(key: string): boolean;
 }
 
 /** The label of `value` in `group`, or `value` itself when the catalog has no message for it. */
-export function enumLabel(t: EnumTranslator, group: EnumGroup, value: string): string {
+export function enumLabel(
+  t: EnumTranslator,
+  group: EnumGroup | ExtendedEnumGroup,
+  value: string,
+): string {
   // A "." in a value would read as a path into the catalog, so such a value is never a key.
   if (value === "" || value.includes(".")) return value;
   const key = `${group}.${value}`;
-  return t.has(key) ? t(key) : value;
+  if (t.has?.(key)) return t(key);
+  const rootKey = `enums.${key}`;
+  return t.has?.(rootKey) ? t(rootKey) : value;
 }
 
 /** The anomaly state as a pill shows it; a state the catalog lacks is its code in capitals. */

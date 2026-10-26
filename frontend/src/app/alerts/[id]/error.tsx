@@ -1,6 +1,7 @@
 "use client";
 
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
+import { useTranslations } from "next-intl";
 
 export default function AlertsIdError({
   error,
@@ -9,5 +10,6 @@ export default function AlertsIdError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <BoundaryError title="Alert Detail" what="This alert" digest={error.digest} onRetry={reset} />;
+  const t = useTranslations("alerts.boundary");
+  return <BoundaryError title={t("detailTitle")} what={t("detailWhatError")} digest={error.digest} onRetry={reset} />;
 }

@@ -13,18 +13,20 @@ import "@/components/ui/controls.css";
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { CapacitySample } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useLocale, useTranslations } from "next-intl";
+import type { Locale } from "@/i18n/locale";
 
 import { formatCapacity } from "./ruleStatistics";
 
 export const CAPACITY_UNIT = "millions of events per second (QRadar's unit)";
 
-function Figure({ value }: { value: number | null }) {
+function Figure({ value, locale, missing }: { value: number | null; locale: Locale; missing: string }) {
   return value === null ? (
-    <span className="muted" aria-label="Not reported">
+    <span className="muted" aria-label={missing}>
       —
     </span>
   ) : (
-    <>{formatCapacity(value)}</>
+    <>{formatCapacity(value, locale)}</>
   );
 }
 
@@ -34,50 +36,50 @@ export function CapacityHistory({
   /** Null when the request failed; an empty list when QRadar never re-benchmarked. */
   samples: CapacitySample[] | null;
 }) {
+  const t = useTranslations("rules.capacity");
+  const locale = useLocale() as Locale;
   return (
     <section aria-labelledby="rule-capacity">
-      <h3 id="rule-capacity">Capacity history</h3>
+      <h3 id="rule-capacity">{t("heading")}</h3>
       {samples === null ? (
         <div className="notice" role="alert">
           <p>
-            <strong>The capacity history could not be loaded.</strong>
+            <strong>{t("failedTitle")}</strong>
           </p>
           <p>
-            Nothing was changed, and this does not mean the rule has no history. Reload the page;
-            if it keeps failing, check that the backend is reachable.
+            {t("failedHelp")}
           </p>
         </div>
       ) : samples.length === 0 ? (
         <div className="notice">
           <p>
-            <strong>QRadar has not re-benchmarked this rule since collection began.</strong>
+            <strong>{t("emptyTitle")}</strong>
           </p>
           <p>
-            A sample is stored only when QRadar reports a new benchmark time. This is not an error.
+            {t("emptyHelp")}
           </p>
         </div>
       ) : (
         <>
           <p className="subtitle">
-            QRadar&rsquo;s capacity benchmark: how fast the rule could be evaluated, so a lower
-            figure is costlier. It is not a firing rate. Newest first, in UTC. Unit: {CAPACITY_UNIT}.
+            {t("description", { unit: locale === "en" ? CAPACITY_UNIT : t("unit") })}
           </p>
-          <TableScroll label="Capacity history">
+          <TableScroll label={t("label")}>
             <table className="stats-table stats-capacity">
               <caption className="sr-only">
-                Capacity benchmarks for this rule, newest first.
+                {t("caption")}
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Benchmarked</th>
+                  <th scope="col">{t("benchmarked")}</th>
                   <th scope="col" className="num">
-                    Average capacity
+                    {t("average")}
                   </th>
                   <th scope="col" className="num">
-                    Base capacity
+                    {t("base")}
                   </th>
                   <th scope="col" className="num">
-                    Host id
+                    {t("host")}
                   </th>
                 </tr>
               </thead>
@@ -88,14 +90,14 @@ export function CapacityHistory({
                       <UtcTime value={s.capacity_timestamp} />
                     </th>
                     <td className="num">
-                      <Figure value={s.average_capacity} />
+                      <Figure value={s.average_capacity} locale={locale} missing={t("notReported")} />
                     </td>
                     <td className="num">
-                      <Figure value={s.base_capacity} />
+                      <Figure value={s.base_capacity} locale={locale} missing={t("notReported")} />
                     </td>
                     <td className="num">
                       {s.base_host_id === null ? (
-                        <span className="muted" aria-label="Not reported">
+                        <span className="muted" aria-label={t("notReported")}>
                           —
                         </span>
                       ) : (

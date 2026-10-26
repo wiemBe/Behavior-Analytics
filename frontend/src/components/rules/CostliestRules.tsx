@@ -10,15 +10,21 @@ import "@/components/ui/controls.css";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { CostSection } from "@/lib/api";
+import { useLocale, useTranslations } from "next-intl";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
-import { formatCapacity, formatCount, kindLabel } from "./ruleStatistics";
+import { formatCapacity, kindLabel } from "./ruleStatistics";
 
 export function CostliestRules({ cost }: { cost: CostSection }) {
+  const t = useTranslations("rules.cost");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   return (
     <section aria-labelledby="stats-cost">
       <div className="section-head">
         <h2 className="section-title" id="stats-cost">
-          Costliest by benchmark
+          {t("heading")}
         </h2>
       </div>
       <p className="subtitle">{cost.label}</p>
@@ -26,22 +32,21 @@ export function CostliestRules({ cost }: { cost: CostSection }) {
       {cost.items.length === 0 ? (
         <div className="notice">
           <p>
-            <strong>No enabled rule has a benchmark to rank.</strong>
+            <strong>{t("emptyTitle")}</strong>
           </p>
-          <p>The API returned no non-zero capacity benchmark for an enabled rule.</p>
+          <p>{t("emptyHelp")}</p>
         </div>
       ) : (
-        <TableScroll label="Costliest rules by benchmark">
+        <TableScroll label={t("label")}>
           <table className="stats-table stats-cost">
             <caption className="sr-only">
-              Enabled rules ordered from the lowest capacity benchmark, which is the costliest to
-              evaluate. Unit: {cost.unit}.
+              {t("caption", { unit: cost.unit })}
             </caption>
             <thead>
               <tr>
-                <th scope="col">Rule</th>
+                <th scope="col">{t("rule")}</th>
                 <th scope="col" className="num">
-                  Average capacity
+                  {t("average")}
                   <span className="cell-sub">{cost.unit}</span>
                 </th>
               </tr>
@@ -51,9 +56,9 @@ export function CostliestRules({ cost }: { cost: CostSection }) {
                 <tr key={r.rule_id}>
                   <th scope="row" className="cell-rule">
                     <Link href={`/rules/${r.rule_id}`}>{r.name}</Link>
-                    <span className="cell-sub">{kindLabel(r.rule_type, r.is_building_block)}</span>
+                    <span className="cell-sub">{kindLabel(r.rule_type, r.is_building_block, say)}</span>
                   </th>
-                  <td className="num">{formatCapacity(r.average_capacity)}</td>
+                  <td className="num">{formatCapacity(r.average_capacity, locale)}</td>
                 </tr>
               ))}
             </tbody>
@@ -62,9 +67,7 @@ export function CostliestRules({ cost }: { cost: CostSection }) {
       )}
 
       <p className="table-note">
-        {formatCount(cost.no_benchmark_count)} enabled{" "}
-        {cost.no_benchmark_count === 1 ? "rule has" : "rules have"} no benchmark and{" "}
-        {cost.no_benchmark_count === 1 ? "is" : "are"} left out of this ranking.
+        {t("excluded", { count: cost.no_benchmark_count })}
       </p>
     </section>
   );

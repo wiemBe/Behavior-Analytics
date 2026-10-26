@@ -1,5 +1,6 @@
 import { api, type Page, type RuleHealthCount, type RuleSummary } from "@/lib/api";
 import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
 import { rulesAsOf } from "@/lib/home/asOf";
 import { loadErrorMessage } from "@/lib/loadError";
 import { StatCard } from "@/components/StatCard";
@@ -13,6 +14,10 @@ import {
   isUnestablished,
 } from "@/lib/health";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { enumLabel } from "@/i18n/enumLabels";
+import { asTextTranslator } from "@/i18n/textTranslator";
+import type { Locale } from "@/i18n/locale";
+import { formatCount } from "@/lib/format";
 
 import "@/components/ui/controls.css";
 import "./rules.css";
@@ -20,12 +25,17 @@ import "./rules.css";
 const PAGE_SIZE = 25;
 
 /** The sentence under a rule name: why the verdict is not HEALTHY. Null shows nothing. */
-function rowReason(r: RuleSummary): string | null {
+function rowReason(r: RuleSummary, fallback: string): string | null {
   // A healthy rule needs no explanation, and a rule never evaluated has no verdict to explain.
   if (r.health_status == null || r.health_status === "HEALTHY" || r.health_status === "UNKNOWN") {
     return null;
   }
-  return r.health_reason?.trim() || "No reason recorded";
+  return r.health_reason?.trim() || fallback;
+}
+
+export async function generateMetadata() {
+  const t = await getTranslations("rules.meta");
+  return { title: t("list") };
 }
 
 export default async function RulesPage({
@@ -37,6 +47,9 @@ export default async function RulesPage({
   const offset = Math.max(0, Number(params.offset ?? 0) || 0);
   const search = params.search ?? "";
   const health = params.health_status ?? "";
+  const t = await getTranslations("rules");
+  const say = asTextTranslator(await getTranslations());
+  const locale = (await getLocale()) as Locale;
 
   let page: Page<RuleSummary> | null = null;
   let summary: RuleHealthCount[] = [];
@@ -48,15 +61,15 @@ export default async function RulesPage({
       api.ruleHealthSummary(),
     ]);
   } catch (err) {
-    error = loadErrorMessage(err, "rules", "read:rules");
+    error = loadErrorMessage(err, t("loadNoun"), "read:rules", say);
   }
 
   if (error) {
     return (
       <>
         <PageHeader
-          title="Rule health"
-          actions={<Link href="/rules/statistics">Rule statistics</Link>}
+          title={t("title")}
+          actions={<Link href="/rules/statistics">{t("statisticsLink")}</Link>}
         />
         <div className="notice" role="alert">
           <p>{error}</p>
@@ -74,9 +87,9 @@ export default async function RulesPage({
     <>
       <ReportDataAge iso={rulesAsOf(items)} />
       <PageHeader
-        title="Rule health"
-        description="Analytics rules collected from QRadar, with a health verdict derived from what has actually been observed. Building blocks are collected but are not listed here."
-        actions={<Link href="/rules/statistics">Rule statistics</Link>}
+        title={t("title")}
+        description={t("description")}
+        actions={<Link href="/rules/statistics">{t("statisticsLink")}</Link>}
       />
 
       {summary.length > 0 && (
@@ -84,8 +97,8 @@ export default async function RulesPage({
           {summary.map((s) => (
             <StatCard
               key={s.status}
-              label={s.status.replace(/_/g, " ")}
-              value={s.count}
+              label={enumLabel(say, "ruleHealth", s.status)}
+              value={formatCount(s.count, locale)}
               tone={healthTone(s.status) || undefined}
             />
           ))}
@@ -94,12 +107,8 @@ export default async function RulesPage({
 
       {unestablished > 0 && (
         <div className="notice">
-          <strong>{unestablished} rules have no health verdict yet.</strong> A rule is{" "}
-          <code>INSUFFICIENT_DATA</code> when it cannot be judged. That includes a
-          dependency that has not been observed, and a window where QRadar exposes no
-          last-fired time or the collection does not cover it. Neither is a detection
-          gap. The health summary counts these rules together; the reason under each
-          rule name says which cause applies to it.
+          <strong>{t("summaryNoticeTitle", { count: formatCount(unestablished, locale) })}</strong>{" "}
+          {t("summaryNotice")}
         </div>
       )}
 
@@ -108,49 +117,49 @@ export default async function RulesPage({
           type="search"
           name="search"
           defaultValue={search}
-          placeholder="Search rule name…"
-          aria-label="Search rules"
+          placeholder={t("filters.placeholder")}
+          aria-label={t("filters.search")}
         />
         <select
           name="health_status"
           defaultValue={health}
-          aria-label="Filter by health status"
+          aria-label={t("filters.health")}
         >
-          <option value="">All health states</option>
+          <option value="">{t("filters.all")}</option>
           {summary.map((s) => (
             <option key={s.status} value={s.status}>
-              {s.status.replace(/_/g, " ")}
+              {enumLabel(say, "ruleHealth", s.status)}
             </option>
           ))}
         </select>
-        <button type="submit">Filter</button>
-        {(search || health) && <Link href="/rules">Clear</Link>}
+        <button type="submit">{t("filters.filter")}</button>
+        {(search || health) && <Link href="/rules">{t("filters.clear")}</Link>}
       </form>
 
       {items.length === 0 ? (
         <div className="notice">
           {search || health
-            ? "No rules match these filters."
-            : "No rules collected yet. Run a rule sync to pull them from QRadar."}
+            ? t("emptyFiltered")
+            : t("empty")}
         </div>
       ) : (
         <>
-          <TableScroll label="Rules">
-          <table className="rule-list-table table-dense" aria-label="Rules">
+          <TableScroll label={t("table.label")}>
+          <table className="rule-list-table table-dense" aria-label={t("table.label")}>
             <thead>
               <tr>
-                <th>Rule</th>
-                <th>Type</th>
-                <th>Enabled</th>
-                <th>Health</th>
-                <th>Meaning</th>
-                <th className="col-time">Last fired (UTC)</th>
-                <th className="num">Offenses</th>
+                <th>{t("table.rule")}</th>
+                <th>{t("table.type")}</th>
+                <th>{t("table.enabled")}</th>
+                <th>{t("table.health")}</th>
+                <th>{t("table.meaning")}</th>
+                <th className="col-time">{t("table.lastFired")}</th>
+                <th className="num">{t("table.offenses")}</th>
               </tr>
             </thead>
             <tbody>
               {items.map((r) => {
-                const reason = rowReason(r);
+                const reason = rowReason(r, t("noReason"));
                 return (
                 <tr key={r.id}>
                   <td className="cell-rule-name">
@@ -159,7 +168,7 @@ export default async function RulesPage({
                       <p
                         className="muted rule-reason"
                         title={reason}
-                        aria-label={`Health reason: ${reason}`}
+                        aria-label={t("table.healthReason", { reason })}
                       >
                         {reason}
                       </p>
@@ -168,12 +177,12 @@ export default async function RulesPage({
                   <td>{r.rule_type ?? "—"}</td>
                   <td>
                     <span className={`pill ${r.enabled ? "ok" : "warn"}`}>
-                      {r.enabled ? "enabled" : "disabled"}
+                      {r.enabled ? t("table.enabledValue") : t("table.disabledValue")}
                     </span>
                   </td>
                   <td>
                     <span className={`pill ${healthTone(r.health_status)}`}>
-                      {r.health_status?.replace(/_/g, " ") ?? "—"}
+                      {r.health_status ? enumLabel(say, "ruleHealth", r.health_status) : "—"}
                     </span>
                   </td>
                   <td className="muted cell-meaning">{healthMeaning(r.health_status)}</td>
@@ -181,10 +190,10 @@ export default async function RulesPage({
                     {r.last_fired_at ? (
                       <UtcTime value={r.last_fired_at} wrapZone />
                     ) : (
-                      <span className="muted">not observed</span>
+                      <span className="muted">{t("table.notObserved")}</span>
                     )}
                   </td>
-                  <td className="num">{r.offense_contribution_count}</td>
+                  <td className="num">{formatCount(r.offense_contribution_count, locale)}</td>
                 </tr>
                 );
               })}

@@ -1,13 +1,21 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 
 import { CustomRuleEditor } from "@/components/customrules/CustomRuleEditor";
 import { CustomRuleWriteNotice } from "@/components/customrules/CustomRuleWriteNotice";
-import { CadenceLatency, canReadSearchCadence } from "@/components/cadence/CadenceLatency";
-import { customRuleAccessFrom, customRuleLatencyFor, type CustomRuleAccess } from "@/components/customrules/authoring";
+import { canReadSearchCadence } from "@/components/cadence/CadenceLatency";
+import { CustomRuleLatency } from "@/components/customrules/CustomRuleLatency";
+import { customRuleAccessFrom, type CustomRuleAccess } from "@/components/customrules/authoring";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ApiError, api, type CallerInfo, type CustomRuleCatalog } from "@/lib/api";
 
+export async function generateMetadata() {
+  const t = await getTranslations("customRules.meta");
+  return { title: t("new") };
+}
+
 export default async function NewCustomRulePage() {
+  const t = await getTranslations("customRules.new");
   let catalog: CustomRuleCatalog | null = null;
   let access: CustomRuleAccess = "unknown";
   let canLink = false;
@@ -28,26 +36,26 @@ export default async function NewCustomRulePage() {
 
   return (
     <>
-      <PageHeader title="New custom rule" />
+      <PageHeader title={t("title")} />
       {forbidden ? (
         <div className="notice" role="alert">
-          <p><strong>The custom-rule catalog is forbidden for this account.</strong></p>
-          <p>Reading it needs <code>read:custom_rules</code>. Ask an admin to grant a role that includes it.</p>
+          <p><strong>{t("forbiddenTitle")}</strong></p>
+          <p>{t("forbiddenHelp")}</p>
         </div>
       ) : failed || catalog === null ? (
         <div className="notice" role="alert">
-          <p><strong>The rule editor could not be loaded.</strong></p>
-          <p>The catalog of metrics and bounds is unavailable. Check the backend, then reload the page.</p>
+          <p><strong>{t("failedTitle")}</strong></p>
+          <p>{t("failedHelp")}</p>
         </div>
       ) : access === "writer" ? (
         <>
-          <CadenceLatency className="cr-latency" parts={customRuleLatencyFor(catalog)} canLink={canLink} />
+          <CustomRuleLatency className="cr-latency" catalog={catalog} canLink={canLink} />
           <CustomRuleEditor catalog={catalog} mode="create" />
         </>
       ) : (
         <>
           <CustomRuleWriteNotice unknown={access === "unknown"} />
-          <p className="field-hint"><Link href="/custom-rules">Back to custom rules</Link></p>
+          <p className="field-hint"><Link href="/custom-rules">{t("back")}</Link></p>
         </>
       )}
     </>

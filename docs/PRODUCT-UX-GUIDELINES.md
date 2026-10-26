@@ -526,6 +526,12 @@ Recurring interface terms use this glossary. A route task adds a missing word he
 | discard | vazgeç |
 | property watch | özellik izleme |
 | scheduled search | zamanlanmış arama |
+| breach | ihlal |
+| shadow mode | gölge modu |
+| lower bound | alt sınır |
+| maintenance | bakım |
+| capacity | kapasite |
+| match | eşleşme |
 | hour, day, second (units) | sa, gün, sn |
 
 ---
