@@ -11,12 +11,14 @@ import "@/components/ui/controls.css";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { MatchRankRow } from "@/lib/api";
+import { useLocale, useTranslations } from "next-intl";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 import {
   formatCount,
   formatRate,
   kindLabel,
-  LOWER_BOUND_MEANING,
   statsHref,
   typeLabel,
   typeTitle,
@@ -24,19 +26,26 @@ import {
   type StatsQuery,
 } from "./ruleStatistics";
 
-const RANKS: { value: Rank; label: string }[] = [
-  { value: "events", label: "Matched events" },
-  { value: "matches", label: "Match records" },
-];
+const RANKS: Rank[] = ["events", "matches"];
 
 /**
  * A rate under the display floor reads "< 0.01". As a lower bound, "≥ < 0.01" is gibberish and
  * "≥ 0.01" would be false (the measured bound is below 0.01), so the cell says what is true: the
  * figure is below the floor and it is a lower bound. No digits are invented for it.
  */
-function RateBound({ lower, perSecond }: { lower: boolean; perSecond: number }) {
-  const text = formatRate(perSecond);
-  if (lower && text.startsWith("<")) return <span>{text}&nbsp;(lower bound)</span>;
+function RateBound({
+  lower,
+  perSecond,
+  locale,
+  t,
+}: {
+  lower: boolean;
+  perSecond: number;
+  locale: Locale;
+  t: ReturnType<typeof useTranslations<"rules.matched">>;
+}) {
+  const text = formatRate(perSecond, locale);
+  if (lower && text.startsWith("<")) return <span>{t("floorLower", { value: text })}</span>;
   return <Bound lower={lower}>{text}</Bound>;
 }
 
@@ -54,24 +63,27 @@ export function MostMatched({
   reason: string | null;
   query: StatsQuery;
 }) {
+  const t = useTranslations("rules.matched");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const anyLower = (rows ?? []).some((r) => r.lower_bound);
 
   return (
     <section aria-labelledby="stats-top">
       <div className="section-head row between">
         <h2 className="section-title" id="stats-top">
-          Most matched
+          {t("heading")}
         </h2>
-        <nav className="range-selector" aria-label="Rank by">
-          <span className="muted">Rank by</span>
-          {RANKS.map((r) => (
+        <nav className="range-selector" aria-label={t("rankBy")}>
+          <span className="muted">{t("rankBy")}</span>
+          {RANKS.map((rank) => (
             <Link
-              key={r.value}
-              href={statsHref({ ...query, rank: r.value })}
-              className={`range-option${r.value === query.rank ? " range-option-active" : ""}`}
-              aria-current={r.value === query.rank ? "page" : undefined}
+              key={rank}
+              href={statsHref({ ...query, rank })}
+              className={`range-option${rank === query.rank ? " range-option-active" : ""}`}
+              aria-current={rank === query.rank ? "page" : undefined}
             >
-              {r.label}
+              {rank === "events" ? t("eventsRank") : t("recordsRank")}
             </Link>
           ))}
         </nav>
@@ -81,47 +93,46 @@ export function MostMatched({
         <div className="banner" role="status">
           <div>
             <p>
-              <strong>{reason ?? "No complete window exists to measure rule matches."}</strong>
+              <strong>{reason ?? t("missingTitle")}</strong>
             </p>
-            <p>No ranking is shown, and no rule is reported as quiet.</p>
+            <p>{t("missingHelp")}</p>
           </div>
         </div>
       ) : rows.length === 0 ? (
         <div className="notice">
           <p>
-            <strong>No rule matched in the measured windows.</strong>
+            <strong>{t("empty")}</strong>
           </p>
         </div>
       ) : (
         <>
           {reason && (
             <p className="table-note stats-top-reason">
-              <strong>PARTIAL.</strong> {reason}
+              <strong>{t("partial")}</strong> {reason}
             </p>
           )}
-          <TableScroll label="Most matched rules">
+          <TableScroll label={t("label")}>
             <table className="stats-table stats-top">
               <caption className="sr-only">
-                Rules ranked by {query.rank === "events" ? "matched events" : "match records"} over
-                the measured windows, with the match rate in events per second.
+                {query.rank === "events" ? t("captionEvents") : t("captionRecords")}
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Rule</th>
+                  <th scope="col">{t("rule")}</th>
                   <th scope="col" className="stats-wide-fact">
-                    Type
+                    {t("type")}
                   </th>
                   <th scope="col" className="stats-wide-fact">
-                    Building block
+                    {t("buildingBlock")}
                   </th>
                   <th scope="col" className="num">
-                    Matched events
+                    {t("matchedEvents")}
                   </th>
                   <th scope="col" className="num">
-                    Match records
+                    {t("matchRecords")}
                   </th>
                   <th scope="col" className="num">
-                    Match rate (events/s)
+                    {t("matchRate")}
                   </th>
                 </tr>
               </thead>
@@ -131,22 +142,24 @@ export function MostMatched({
                     <th scope="row" className="cell-rule">
                       <Link href={`/rules/${r.rule_id}`}>{r.name}</Link>
                       <span className="cell-sub stats-narrow-fact">
-                        {kindLabel(r.rule_type, r.is_building_block)}
-                        {r.enabled ? "" : ", disabled"}
+                        {kindLabel(r.rule_type, r.is_building_block, say)}
+                        {r.enabled ? "" : t("disabledSuffix")}
                       </span>
                     </th>
                     <td className="stats-wide-fact">
-                      <span title={typeTitle(r.rule_type)}>{typeLabel(r.rule_type)}</span>
+                      <span title={typeTitle(r.rule_type, say)}>{typeLabel(r.rule_type, say)}</span>
                     </td>
-                    <td className="stats-wide-fact">{r.is_building_block ? "Yes" : "No"}</td>
-                    <td className="num">
-                      <Bound lower={r.lower_bound}>{formatCount(r.matched_events)}</Bound>
-                    </td>
-                    <td className="num">
-                      <Bound lower={r.lower_bound}>{formatCount(r.match_records)}</Bound>
+                    <td className="stats-wide-fact">
+                      {r.is_building_block ? say("rules.detail.yes") : say("rules.detail.no")}
                     </td>
                     <td className="num">
-                      <RateBound lower={r.lower_bound} perSecond={r.match_rate_per_second} />
+                      <Bound lower={r.lower_bound}>{formatCount(r.matched_events, locale)}</Bound>
+                    </td>
+                    <td className="num">
+                      <Bound lower={r.lower_bound}>{formatCount(r.match_records, locale)}</Bound>
+                    </td>
+                    <td className="num">
+                      <RateBound lower={r.lower_bound} perSecond={r.match_rate_per_second} locale={locale} t={t} />
                     </td>
                   </tr>
                 ))}
@@ -155,7 +168,7 @@ export function MostMatched({
           </TableScroll>
           {anyLower && (
             <p className="table-note">
-              <strong>≥</strong> marks a lower bound. {LOWER_BOUND_MEANING}
+              <strong>≥</strong> {t("lowerNote", { meaning: say("rules.helpers.lowerBoundMeaning") })}
             </p>
           )}
         </>

@@ -10,6 +10,9 @@ import {
   loadWafEndpoints,
   loadWafSources,
 } from "@/components/customrules/inventory";
+import type { TextTranslator } from "@/i18n/textTranslator";
+
+import { customRulesEnglishText } from "./englishText";
 
 export interface RuleSubject {
   label: string;
@@ -26,11 +29,15 @@ function entityLabel(entity: IpsEntityInventory): string {
   return `${entity.dimension}: ${entity.display_name ?? entity.value_key}`;
 }
 
-function subjectId(rule: CustomRule): string {
-  return rule.log_source_id ?? rule.source_class ?? rule.waf_endpoint_id ?? rule.ips_entity_id ?? "unknown subject";
+function subjectId(rule: CustomRule, t: TextTranslator): string {
+  return rule.log_source_id ?? rule.source_class ?? rule.waf_endpoint_id ?? rule.ips_entity_id
+    ?? t("customRules.detail.unknownSubject");
 }
 
-export async function resolveRuleSubjects(rules: CustomRule[]): Promise<Map<string, RuleSubject>> {
+export async function resolveRuleSubjects(
+  rules: CustomRule[],
+  t: TextTranslator = customRulesEnglishText,
+): Promise<Map<string, RuleSubject>> {
   const resolved = new Map<string, RuleSubject>();
   const needsLogSources = rules.some((rule) => rule.subject_kind === "LOG_SOURCE");
   const needsWaf = rules.some((rule) => rule.subject_kind === "WAF_ENDPOINT");
@@ -122,7 +129,7 @@ export async function resolveRuleSubjects(rules: CustomRule[]): Promise<Map<stri
   for (const rule of rules) {
     if (resolved.has(rule.id)) continue;
     resolved.set(rule.id, {
-      label: subjectId(rule),
+      label: subjectId(rule, t),
       href: rule.log_source_id ? `/behavior/sources/${rule.log_source_id}` : "/anomalies",
       retiredAt: null,
     });

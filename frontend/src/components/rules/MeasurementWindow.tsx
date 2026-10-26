@@ -5,45 +5,58 @@
 // state the same fact twice.
 
 import type { RuleStatisticsWindow } from "@/lib/api";
+import { useLocale, useTranslations } from "next-intl";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator } from "@/i18n/textTranslator";
 import {
   daysLabel,
+  formatCount,
   formatSpan,
   windowBreakdown,
   windowState,
 } from "./ruleStatistics";
 
 export function MeasurementWindow({ window: w }: { window: RuleStatisticsWindow }) {
+  const t = useTranslations("rules.measurement");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const state = windowState(w);
-  const requested = `${w.days} ${daysLabel(w.days)}`;
+  const requested = `${formatCount(w.days, locale)} ${daysLabel(w.days, say)}`;
   const fromHistory = w.history_windows ?? 0;
 
   return (
     <p
       className={`stats-window ${state === "complete" ? "ok" : state === "partial" ? "warn" : "neutral"}`}
       role="region"
-      aria-label="Measurement window"
+      aria-label={t("label")}
     >
       {state === "complete" ? (
         <>
-          <strong>Complete.</strong> Matches measured over {formatSpan(w.measured_seconds)} of the
-          last {requested}: {windowBreakdown(w)}.
+          <strong>{t("complete")}</strong>{" "}
+          {t("completeSentence", {
+            measured: formatSpan(w.measured_seconds, locale, say),
+            requested,
+            breakdown: windowBreakdown(w, locale, say),
+          })}
         </>
       ) : (
         <>
-          <strong>{state === "partial" ? "PARTIAL." : "INSUFFICIENT_DATA."}</strong>{" "}
+          <strong>{state === "partial" ? t("partial") : t("insufficient")}</strong>{" "}
           {w.reason ??
             (state === "partial"
-              ? "The requested span is not fully collected."
-              : "No complete rule-match window exists in the requested span.")}
+              ? t("partialFallback")
+              : t("insufficientFallback"))}
         </>
       )}{" "}
       {fromHistory > 0 && (
         <>
-          {fromHistory.toLocaleString("en-US")} of {w.complete_windows.toLocaleString("en-US")}{" "}
-          complete windows were read from QRadar history, not judged.{" "}
+          {t("history", {
+            history: formatCount(fromHistory, locale),
+            complete: formatCount(w.complete_windows, locale),
+          })}{" "}
         </>
       )}
-      Times are UTC.
+      {t("utc")}
     </p>
   );
 }

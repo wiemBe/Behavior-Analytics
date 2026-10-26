@@ -65,5 +65,44 @@
     "IPS_SOURCE_CONCENTRATION_SPIKE": "Kaynak yoğunlaşması artışı",
     "IPS_PORT_FANOUT_SPIKE": "Port dağılımı artışı",
     "IPS_BLOCK_RATIO_SHIFT": "Engelleme oranı kayması"
+  },
+  "alertStatus": {
+    "OPEN": "Açık",
+    "ACKNOWLEDGED": "Alındı",
+    "RESOLVED": "Çözüldü"
+  },
+  "alertStatusPill": {
+    "OPEN": "AÇIK",
+    "ACKNOWLEDGED": "ALINDI",
+    "RESOLVED": "ÇÖZÜLDÜ"
+  },
+  "notificationStatus": {
+    "PENDING": "Bekliyor",
+    "SENT": "Gönderildi",
+    "FAILED": "Başarısız",
+    "DEAD_LETTER": "Teslim edilemedi",
+    "SUPPRESSED": "Bastırıldı"
+  },
+  "notificationChannel": {
+    "TEAMS": "Teams kanalı",
+    "EMAIL": "E-posta",
+    "SLACK": "Slack kanalı",
+    "WEBHOOK": "Webhook kanalı",
+    "SYSLOG": "Syslog kanalı"
+  },
+  "alertTransition": {
+    "OPENED": "Açıldı",
+    "ACKNOWLEDGED": "Alındı",
+    "RESOLVED": "Çözüldü"
+  },
+  "ruleHealth": {
+    "HEALTHY": "Sağlıklı",
+    "NEVER_OBSERVED": "Hiç gözlemlenmedi",
+    "INACTIVE": "Etkin değil",
+    "NOISY": "Gürültülü",
+    "DISABLED": "Devre dışı",
+    "DEPENDENCY_DEGRADED": "Bağımlılık bozulmuş",
+    "INSUFFICIENT_DATA": "Yetersiz veri",
+    "UNKNOWN": "Bilinmiyor"
   }
 }

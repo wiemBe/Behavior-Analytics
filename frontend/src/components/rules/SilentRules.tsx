@@ -12,6 +12,9 @@ import "@/components/ui/controls.css";
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { SilentSection } from "@/lib/api";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { useLocale, useTranslations } from "next-intl";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator, type TextTranslator } from "@/i18n/textTranslator";
 
 import {
   formatCount,
@@ -21,13 +24,11 @@ import {
   typeTitle,
 } from "./ruleStatistics";
 
-const EVIDENCE_TEXT: Record<string, string> = {
-  LOWER_BOUND: "silence unknown, matches are a lower bound",
-  NOT_MEASURED: "matches not measured",
-};
-
-function evidenceText(evidence: string): string {
-  return EVIDENCE_TEXT[evidence] ?? evidence.replace(/_/g, " ").toLowerCase();
+function evidenceText(evidence: string, locale: Locale, t: TextTranslator): string {
+  if (evidence === "LOWER_BOUND") return t("rules.silent.evidenceLower");
+  if (evidence === "NOT_MEASURED") return t("rules.silent.evidenceMissing");
+  // Preserve the legacy English presentation while showing an API sentence verbatim in Turkish.
+  return locale === "en" ? evidence.replaceAll("_", " ").toLowerCase() : evidence;
 }
 
 function Instant({ value, missing }: { value: string | null; missing: string }) {
@@ -42,11 +43,14 @@ export function SilentRules({
   silent: SilentSection | null;
   reason: string | null;
 }) {
+  const t = useTranslations("rules.silent");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   return (
     <section aria-labelledby="stats-silent">
       <div className="section-head">
         <h2 className="section-title" id="stats-silent">
-          Silent enabled rules
+          {t("heading")}
         </h2>
       </div>
 
@@ -54,38 +58,39 @@ export function SilentRules({
         <div className="banner" role="status">
           <div>
             <p>
-              <strong>Silence was not judged.</strong> This is not a count of zero: no enabled rule
-              is reported as silent.
+              <strong>{t("notJudged")}</strong> {t("notJudgedHelp")}
             </p>
-            <p className="stats-window-reason">{reason ?? "The API gave no reason."}</p>
+            <p className="stats-window-reason">{reason ?? t("noReason")}</p>
           </div>
         </div>
       ) : (
         <>
           <p className="subtitle">
             {silent.items_truncated
-              ? `Showing ${formatCount(silent.items.length)} of ${formatCount(silent.total)} enabled rules with no match in the measured windows.`
+              ? t("showing", {
+                  shown: formatCount(silent.items.length, locale),
+                  total: formatCount(silent.total, locale),
+                })
               : silent.total === 0
-                ? "No judged enabled rule was silent in the measured windows."
-                : `${formatCount(silent.total)} enabled ${silent.total === 1 ? "rule" : "rules"} with no match in the measured windows.`}{" "}
-            A rule first seen recently has had little time to match; check its first-seen time.
+                ? t("none")
+                : t("count", { count: silent.total })}{" "}
+            {t("recency")}
           </p>
 
           {silent.items.length > 0 && (
-            <TableScroll label="Silent enabled rules">
+            <TableScroll label={t("label")}>
               <table className="stats-table stats-silent">
                 <caption className="sr-only">
-                  Enabled rules with a measured zero over a complete span, with the time each was
-                  first seen and last fired, in UTC.
+                  {t("caption")}
                 </caption>
                 <thead>
                   <tr>
-                    <th scope="col">Rule</th>
+                    <th scope="col">{t("rule")}</th>
                     <th scope="col" className="stats-wide-fact">
-                      Type
+                      {t("type")}
                     </th>
-                    <th scope="col">First seen</th>
-                    <th scope="col">Last fired</th>
+                    <th scope="col">{t("firstSeen")}</th>
+                    <th scope="col">{t("lastFired")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -94,18 +99,18 @@ export function SilentRules({
                       <th scope="row" className="cell-rule">
                         <Link href={`/rules/${r.rule_id}`}>{r.name}</Link>
                         <span className="cell-sub stats-narrow-fact">
-                          {kindLabel(r.rule_type, r.is_building_block)}, {originLabel(r.origin)}
+                          {kindLabel(r.rule_type, r.is_building_block, say)}, {originLabel(r.origin, say)}
                         </span>
                       </th>
                       <td className="stats-wide-fact">
-                        <span title={typeTitle(r.rule_type)}>{typeLabel(r.rule_type)}</span>
-                        <span className="cell-sub">{originLabel(r.origin)}</span>
+                        <span title={typeTitle(r.rule_type, say)}>{typeLabel(r.rule_type, say)}</span>
+                        <span className="cell-sub">{originLabel(r.origin, say)}</span>
                       </td>
                       <td>
-                        <Instant value={r.first_seen_at} missing="not recorded" />
+                        <Instant value={r.first_seen_at} missing={t("notRecorded")} />
                       </td>
                       <td>
-                        <Instant value={r.last_fired_at} missing="not observed" />
+                        <Instant value={r.last_fired_at} missing={t("notObserved")} />
                       </td>
                     </tr>
                   ))}
@@ -118,22 +123,23 @@ export function SilentRules({
             <div className="stats-excluded">
               <p>
                 <strong>
-                  {formatCount(silent.excluded_count)} enabled{" "}
-                  {silent.excluded_count === 1 ? "rule was" : "rules were"} not judged,
+                  {t("excluded", { count: silent.excluded_count })}
                 </strong>{" "}
-                because {lowerFirst(silent.excluded_reason)}
+                {t("because", {
+                  reason: locale === "en" ? lowerFirst(silent.excluded_reason) : silent.excluded_reason,
+                })}
               </p>
               <div className="stats-excluded-detail">
-                <h3>Not judged, by type</h3>
-                <TableScroll label="Not judged, by type">
+                <h3>{t("excludedHeading")}</h3>
+                <TableScroll label={t("excludedLabel")}>
                 <table className="stats-table stats-excluded-table">
-                  <caption className="sr-only">Enabled rules that were not judged, by type.</caption>
+                  <caption className="sr-only">{t("excludedCaption")}</caption>
                   <thead>
                     <tr>
-                      <th scope="col">Type</th>
-                      <th scope="col">Why</th>
+                      <th scope="col">{t("type")}</th>
+                      <th scope="col">{t("why")}</th>
                       <th scope="col" className="num">
-                        Rules
+                        {t("rules")}
                       </th>
                     </tr>
                   </thead>
@@ -141,10 +147,10 @@ export function SilentRules({
                     {silent.excluded.map((x) => (
                       <tr key={`${x.rule_type ?? "null"}:${x.evidence}`}>
                         <th scope="row">
-                          <span title={typeTitle(x.rule_type)}>{typeLabel(x.rule_type)}</span>
+                          <span title={typeTitle(x.rule_type, say)}>{typeLabel(x.rule_type, say)}</span>
                         </th>
-                        <td>{evidenceText(x.evidence)}</td>
-                        <td className="num">{formatCount(x.count)}</td>
+                        <td>{evidenceText(x.evidence, locale, say)}</td>
+                        <td className="num">{formatCount(x.count, locale)}</td>
                       </tr>
                     ))}
                   </tbody>

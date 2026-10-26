@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
+import { useTranslations } from "next-intl";
 
 export default function OffensesIdError({
   error,
@@ -11,14 +12,15 @@ export default function OffensesIdError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("offenses.boundary");
   return (
     <>
       <p className="muted">
-        <Link href="/offenses">← Offenses</Link>
+        <Link href="/offenses">{t("back")}</Link>
       </p>
       <BoundaryError
-        title="Offense"
-        what="This offense"
+        title={t("detailTitle")}
+        what={t("detailWhatError")}
         digest={error.digest}
         onRetry={reset}
       />

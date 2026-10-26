@@ -6,8 +6,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { actionErrorMessage, api } from "@/lib/api";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 // Mirrors AlertActionIn.reason (max_length=1000) in app/schemas/alert.py.
 // The backend leaves the reason optional, so this does not force one; it only
@@ -18,6 +20,8 @@ type Action = "acknowledge" | "resolve";
 
 export function AlertActions({ alertId, status }: { alertId: string; status: string }) {
   const router = useRouter();
+  const t = useTranslations("alerts.actions");
+  const say = asTextTranslator(useTranslations());
   const [pending, setPending] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -59,7 +63,7 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
       // the change instead of showing stale data next to a success message.
       router.refresh();
     } catch (err) {
-      setError(actionErrorMessage(err));
+      setError(actionErrorMessage(err, say));
     } finally {
       setPending(null);
     }
@@ -68,9 +72,9 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
   if (status === "RESOLVED") {
     return (
       <div className="card alert-actions">
-        <div className="k">Operator Actions</div>
+        <div className="k">{t("heading")}</div>
         <p className="subtitle alert-actions-closed">
-          This alert is resolved. No further action is available.
+          {t("resolved")}
         </p>
       </div>
     );
@@ -78,7 +82,7 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
 
   return (
     <div className="card alert-actions">
-      <div className="k">Operator Actions</div>
+      <div className="k">{t("heading")}</div>
 
       <div className="actions alert-actions-row">
         {status === "OPEN" && (
@@ -88,21 +92,21 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
             disabled={busy}
             aria-busy={pending === "acknowledge"}
             onClick={() =>
-              run("acknowledge", () => api.acknowledgeAlert(alertId), "Alert acknowledged.")
+              run("acknowledge", () => api.acknowledgeAlert(alertId), t("acknowledged"))
             }
           >
-            {pending === "acknowledge" ? "Acknowledging…" : "Acknowledge"}
+            {pending === "acknowledge" ? t("acknowledging") : t("acknowledge")}
           </button>
         )}
 
         <input
           type="text"
           className="field"
-          placeholder="Resolution reason (optional)"
+          placeholder={t("reasonPlaceholder")}
           maxLength={REASON_MAX}
           value={reason}
           disabled={busy}
-          aria-label="Resolution reason"
+          aria-label={t("reasonLabel")}
           onChange={(e) => setReason(e.target.value)}
         />
 
@@ -114,7 +118,7 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
           aria-expanded={confirming}
           onClick={() => setConfirming(true)}
         >
-          Resolve
+          {t("resolve")}
         </button>
       </div>
 
@@ -122,7 +126,7 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
         <div
           className="alert-actions-confirm"
           role="group"
-          aria-label="Confirm resolve"
+          aria-label={t("confirmLabel")}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.stopPropagation();
@@ -130,7 +134,7 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
             }
           }}
         >
-          <p>Resolve this alert? A resolved alert cannot be reopened.</p>
+          <p>{t("confirm")}</p>
           <div className="actions">
             <button
               type="button"
@@ -142,12 +146,12 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
                 await run(
                   "resolve",
                   () => api.resolveAlert(alertId, reason.trim()),
-                  "Alert resolved.",
+                  t("resolvedDone"),
                 );
                 closeConfirm();
               }}
             >
-              {pending === "resolve" ? "Resolving…" : "Resolve alert"}
+              {pending === "resolve" ? t("resolving") : t("resolveAlert")}
             </button>
             <button
               type="button"
@@ -155,7 +159,7 @@ export function AlertActions({ alertId, status }: { alertId: string; status: str
               disabled={busy}
               onClick={closeConfirm}
             >
-              Cancel
+              {t("cancel")}
             </button>
           </div>
         </div>

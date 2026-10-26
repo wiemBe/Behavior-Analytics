@@ -9,21 +9,29 @@ import {
   type CustomRuleSubjectKind,
   type CustomRuleUpdate,
 } from "@/lib/api";
-import { delayText, latencyCadence, latencyParts, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
+import { latencyCadence, type LatencyCadence, type LatencyParts } from "@/components/cadence/CadenceLatency";
+import type { Locale } from "@/i18n/locale";
+import type { TextTranslator } from "@/i18n/textTranslator";
+import { formatCount } from "@/lib/format";
+
+import { customRulesEnglishText } from "./englishText";
 
 export const CUSTOM_RULE_WRITE = "custom_rule:write";
 
 /** Said once per page. The delay is a number only when the page holds the family's cadence. */
-export function customRuleLatency(cadence?: LatencyCadence | null): LatencyParts {
-  return latencyParts(
-    "Rules",
-    cadence,
-    RULE_CLOSING,
-  );
+export function customRuleLatency(
+  cadence?: LatencyCadence | null,
+  locale: Locale = "en",
+  t: TextTranslator = customRulesEnglishText,
+): LatencyParts {
+  const delay = customRuleDelayText(cadence, locale, t);
+  return {
+    lead: delay
+      ? t("customRules.latency.knownLead", { delay })
+      : t("customRules.latency.unknownLead"),
+    tail: t("customRules.latency.tail", { closing: t("customRules.latency.closing") }),
+  };
 }
-
-const RULE_CLOSING =
-  "This is not a seconds-level correlation engine — for alerting within seconds, use QRadar's own rules.";
 
 /**
  * The sentence for a catalog: each subject kind's delay comes from the cadence of the family it is
@@ -31,25 +39,56 @@ const RULE_CLOSING =
  * names its kinds. A kind whose family has no cadence in the catalog makes the whole sentence
  * figure-free: a number is never guessed for it.
  */
-export function customRuleLatencyFor(catalog: CustomRuleCatalog | null): LatencyParts {
+export function customRuleLatencyFor(
+  catalog: CustomRuleCatalog | null,
+  locale: Locale = "en",
+  t: TextTranslator = customRulesEnglishText,
+): LatencyParts {
   const cadences = catalog?.cadences;
   const kinds = catalog?.subject_kinds ?? [];
-  if (!cadences || kinds.length === 0) return customRuleLatency();
+  if (!cadences || kinds.length === 0) return customRuleLatency(undefined, locale, t);
   const groups = new Map<string, string[]>();
   for (const kind of kinds) {
     const cadence = cadences.find((c) => c.family === kind.search_family);
-    const delay = delayText(latencyCadence(cadence));
-    if (!delay) return customRuleLatency();
-    groups.set(delay, [...(groups.get(delay) ?? []), SUBJECT_KIND_LABELS[kind.subject_kind]]);
+    const duration = customRuleDelayText(latencyCadence(cadence), locale, t);
+    const delay = duration ? t("customRules.latency.delay", { duration }) : null;
+    if (!delay) return customRuleLatency(undefined, locale, t);
+    groups.set(delay, [...(groups.get(delay) ?? []), subjectKindLabel(kind.subject_kind, t)]);
   }
   if (groups.size === 1) {
-    return customRuleLatency(latencyCadence(cadences.find((c) => c.family === kinds[0].search_family)));
+    return customRuleLatency(
+      latencyCadence(cadences.find((c) => c.family === kinds[0].search_family)),
+      locale,
+      t,
+    );
   }
-  const by = [...groups].map(([delay, labels]) => `${labels.join(", ")}: ${delay}`).join("; ");
+  const by = [...groups]
+    .map(([delay, labels]) => t("customRules.latency.group", { labels: labels.join(", "), delay }))
+    .join("; ");
   return {
-    lead: `Rules are judged on collected 5-minute buckets, by subject — ${by} — after the events arrive (the schedule is set on `,
-    tail: `). ${RULE_CLOSING}`,
+    lead: t("customRules.latency.byLead", { groups: by }),
+    tail: t("customRules.latency.tail", { closing: t("customRules.latency.closing") }),
   };
+}
+
+export function customRuleDelayText(
+  cadence: LatencyCadence | null | undefined,
+  locale: Locale,
+  t: TextTranslator,
+): string | null {
+  if (!cadence) return null;
+  const seconds = cadence.cadenceSeconds + (cadence.bucketSeconds ?? 0) + cadence.settleSeconds;
+  const parts: string[] = [];
+  const values = [
+    ["durationDay", Math.floor(seconds / 86400)],
+    ["durationHour", Math.floor((seconds % 86400) / 3600)],
+    ["durationMinute", Math.floor((seconds % 3600) / 60)],
+    ["durationSecond", seconds % 60],
+  ] as const;
+  for (const [key, value] of values) {
+    if (value > 0) parts.push(t(`customRules.latency.${key}`, { count: formatCount(value, locale) }));
+  }
+  return parts.join(" ");
 }
 
 export type CustomRuleAccess = "writer" | "reader" | "unknown";
@@ -71,10 +110,22 @@ export const SUBJECT_KIND_LABELS: Record<CustomRuleSubjectKind, string> = {
   PW_VALUE: "Property watch value",
 };
 
+export function subjectKindLabel(
+  kind: CustomRuleSubjectKind,
+  t: TextTranslator = customRulesEnglishText,
+): string {
+  return t(`customRules.authoring.subjectKinds.${kind}`);
+}
+
 /** A kind label inside a sentence. Acronyms stay uppercase; other labels take a lowercase first word. */
-export function subjectKindInSentence(kind: CustomRuleSubjectKind): string {
-  const label = SUBJECT_KIND_LABELS[kind];
-  return /^[A-Z]{2,}\b/.test(label) ? label : `${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+export function subjectKindInSentence(
+  kind: CustomRuleSubjectKind,
+  t: TextTranslator = customRulesEnglishText,
+): string {
+  const label = subjectKindLabel(kind, t);
+  return /^[A-Z]{2,}\b/.test(label)
+    ? label
+    : `${label.charAt(0).toLocaleLowerCase()}${label.slice(1)}`;
 }
 
 const METRIC_LABELS: Record<string, string> = {
@@ -107,26 +158,37 @@ const OPERATOR_SIGNS: Record<string, string> = {
   EQ: "=",
 };
 
-export function metricLabel(metric: string): string {
-  return METRIC_LABELS[metric] ?? metric.toLowerCase().replaceAll("_", " ");
+export function metricLabel(metric: string, t: TextTranslator = customRulesEnglishText): string {
+  return metric in METRIC_LABELS ? t(`customRules.authoring.metrics.${metric}`) : metric;
 }
 
-export function operatorWord(operator: string): string {
-  return OPERATOR_WORDS[operator] ?? operator;
+export function operatorWord(operator: string, t: TextTranslator = customRulesEnglishText): string {
+  return operator in OPERATOR_WORDS ? t(`customRules.authoring.operators.${operator}`) : operator;
 }
 
 export function operatorSign(operator: string): string {
   return OPERATOR_SIGNS[operator] ?? operator;
 }
 
-export function formatValue(value: number, unit: string): string {
-  const number = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)));
-  return `${number} ${unit}`;
+export function formatValue(value: number, unit: string, locale: Locale = "en"): string {
+  const number = locale === "en"
+    ? Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)))
+    : value.toLocaleString("tr-TR", { maximumFractionDigits: 4 });
+  return `${number}${locale === "tr" ? "\u00a0" : " "}${unit}`;
 }
 
-export function conditionText(rule: Pick<CustomRule, "metric" | "operator" | "threshold_value" | "threshold_unit" | "sustain_buckets">): string {
+export function conditionText(
+  rule: Pick<CustomRule, "metric" | "operator" | "threshold_value" | "threshold_unit" | "sustain_buckets">,
+  locale: Locale = "en",
+  t: TextTranslator = customRulesEnglishText,
+): string {
   const unit = rule.threshold_unit ?? "units";
-  return `${metricLabel(rule.metric)} ${operatorSign(rule.operator)} ${formatValue(rule.threshold_value, unit)} for ${rule.sustain_buckets} ${rule.sustain_buckets === 1 ? "bucket" : "buckets"}`;
+  return t("customRules.authoring.condition", {
+    metric: metricLabel(rule.metric, t),
+    operator: operatorSign(rule.operator),
+    value: formatValue(rule.threshold_value, unit, locale),
+    count: rule.sustain_buckets,
+  });
 }
 
 export function editorSummary(
@@ -135,10 +197,18 @@ export function editorSummary(
   unit: string,
   sustain: number,
   recovery: number,
+  locale: Locale = "en",
+  t: TextTranslator = customRulesEnglishText,
 ): string {
-  const breach = operatorWord(operator);
-  const recover = operator === "GT" ? "at or below" : operator === "GE" ? "below" : operator === "LT" ? "at or above" : operator === "LE" ? "above" : "not equal to";
-  return `Fires after ${sustain} consecutive ${sustain === 1 ? "bucket" : "buckets"} ${breach} ${formatValue(threshold, unit)}; recovers after ${recovery} ${recovery === 1 ? "bucket" : "buckets"} ${recover}.`;
+  const breach = operatorWord(operator, t);
+  const recoverKey = operator === "GT" ? "recoverGT" : operator === "GE" ? "recoverGE" : operator === "LT" ? "recoverLT" : operator === "LE" ? "recoverLE" : "recoverEQ";
+  return t("customRules.authoring.summary", {
+    sustain,
+    breach,
+    value: formatValue(threshold, unit, locale),
+    recovery,
+    recover: t(`customRules.authoring.operators.${recoverKey}`),
+  });
 }
 
 export interface EditorDraft {
@@ -214,10 +284,14 @@ function positiveInteger(value: string): number | null {
   return parsed >= 1 ? parsed : null;
 }
 
-export function draftReason(draft: EditorDraft, metric: CustomRuleCatalogMetric | null): string | null {
-  if (draft.name.trim() === "") return "Name is required.";
-  if (draft.name.trim().length > 80) return "Name must be 80 characters or fewer.";
-  if (draft.description.trim().length > 2000) return "Description must be 2,000 characters or fewer.";
+export function draftReason(
+  draft: EditorDraft,
+  metric: CustomRuleCatalogMetric | null,
+  t: TextTranslator = customRulesEnglishText,
+): string | null {
+  if (draft.name.trim() === "") return t("customRules.authoring.validation.nameRequired");
+  if (draft.name.trim().length > 80) return t("customRules.authoring.validation.nameLength");
+  if (draft.description.trim().length > 2000) return t("customRules.authoring.validation.descriptionLength");
   const selected =
     draft.subjectKind === "FLEET_CLASS"
       ? draft.sourceClass
@@ -228,17 +302,17 @@ export function draftReason(draft: EditorDraft, metric: CustomRuleCatalogMetric 
         : draft.subjectKind === "PW_VALUE"
           ? draft.pwValueId
           : draft.logSourceId;
-  if (!selected) return `Choose a ${subjectKindInSentence(draft.subjectKind)}.`;
-  if (!metric || metric.subject_kind !== draft.subjectKind) return "Choose a metric for this subject kind.";
+  if (!selected) return t("customRules.authoring.validation.chooseSubject", { subject: subjectKindInSentence(draft.subjectKind, t) });
+  if (!metric || metric.subject_kind !== draft.subjectKind) return t("customRules.authoring.validation.chooseMetric");
   const threshold = Number(draft.threshold);
   if (draft.threshold.trim() === "" || !Number.isFinite(threshold) || threshold < 0) {
-    return "Threshold must be a number greater than or equal to zero.";
+    return t("customRules.authoring.validation.threshold");
   }
   if (metric.is_ratio && (threshold <= 0 || threshold >= 1)) {
-    return "A share threshold must be greater than zero and less than one.";
+    return t("customRules.authoring.validation.share");
   }
-  if (positiveInteger(draft.sustain) === null) return "Sustain must be at least one bucket.";
-  if (positiveInteger(draft.recovery) === null) return "Recovery must be at least one bucket.";
+  if (positiveInteger(draft.sustain) === null) return t("customRules.authoring.validation.sustain");
+  if (positiveInteger(draft.recovery) === null) return t("customRules.authoring.validation.recovery");
   return null;
 }
 
@@ -284,8 +358,11 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-export function classifySaveError(error: unknown): SaveRefusal {
-  if (!(error instanceof ApiError)) return { kind: "error", detail: "The rule could not be saved. Try again." };
+export function classifySaveError(
+  error: unknown,
+  t: TextTranslator = customRulesEnglishText,
+): SaveRefusal {
+  if (!(error instanceof ApiError)) return { kind: "error", detail: t("customRules.authoring.saveFailed") };
   const detail = record(error.detail);
   if (error.status === 422 && Array.isArray(detail?.reasons)) {
     return { kind: "reasons", reasons: detail.reasons.filter((reason): reason is string => typeof reason === "string") };
@@ -300,7 +377,7 @@ export function classifySaveError(error: unknown): SaveRefusal {
       updatedBy: typeof detail.updated_by === "string" ? detail.updated_by : null,
     };
   }
-  return { kind: "error", detail: typeof error.detail === "string" ? error.detail : "The rule could not be saved. Try again." };
+  return { kind: "error", detail: typeof error.detail === "string" ? error.detail : t("customRules.authoring.saveFailed") };
 }
 
 /** Words an analyst reads. Only a recorded OK verdict takes the positive tone. */
@@ -315,6 +392,8 @@ const STATUS_WORDS: Record<string, string> = {
   SUBJECT_RETIRED: "Subject retired",
   DISABLED: "Disabled",
   NOT_ENABLED: "Not enabled",
+  INSUFFICIENT_DATA: "Insufficient data",
+  NORMAL: "Normal",
 };
 
 export function statusTone(status: string | null): string {
@@ -324,9 +403,12 @@ export function statusTone(status: string | null): string {
   return "";
 }
 
-export function statusLabel(status: string | null): string {
-  if (status === null) return "Never evaluated";
-  return STATUS_WORDS[status] ?? status.replaceAll("_", " ").toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
+export function statusLabel(
+  status: string | null,
+  t: TextTranslator = customRulesEnglishText,
+): string {
+  if (status === null) return t("customRules.authoring.status.null");
+  return status in STATUS_WORDS ? t(`customRules.authoring.status.${status}`) : status;
 }
 
 /** The engine's reason, unchanged. Null means the engine recorded none, so the UI shows none. */

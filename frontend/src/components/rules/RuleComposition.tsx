@@ -8,6 +8,9 @@ import "@/components/ui/controls.css";
 
 import { TableScroll } from "@/components/ui/TableScroll";
 import type { RuleCountRow } from "@/lib/api";
+import { useLocale, useTranslations } from "next-intl";
+import type { Locale } from "@/i18n/locale";
+import { asTextTranslator } from "@/i18n/textTranslator";
 
 import {
   ALL_ORIGINS,
@@ -28,6 +31,9 @@ export function RuleComposition({
   counts: RuleCountRow[];
   query: StatsQuery;
 }) {
+  const t = useTranslations("rules.composition");
+  const say = asTextTranslator(useTranslations());
+  const locale = useLocale() as Locale;
   const origins = originsPresent(counts);
   const groups = pivotCounts(counts, query.origin);
 
@@ -35,11 +41,11 @@ export function RuleComposition({
     <section aria-labelledby="stats-composition">
       <div className="section-head row between">
         <h2 className="section-title" id="stats-composition">
-          Rule composition
+          {t("heading")}
         </h2>
         {origins.length > 0 && (
-          <nav className="range-selector" aria-label="Origin">
-            <span className="muted">Origin</span>
+          <nav className="range-selector" aria-label={t("origin")}>
+            <span className="muted">{t("origin")}</span>
             {[ALL_ORIGINS, ...origins].map((o) => (
               <Link
                 key={o}
@@ -47,7 +53,7 @@ export function RuleComposition({
                 className={`range-option${o === query.origin ? " range-option-active" : ""}`}
                 aria-current={o === query.origin ? "page" : undefined}
               >
-                {originFilterLabel(o)}
+                {originFilterLabel(o, say)}
               </Link>
             ))}
           </nav>
@@ -57,32 +63,31 @@ export function RuleComposition({
       {groups.length === 0 ? (
         <div className="notice">
           <p>
-            <strong>No rules are collected for this origin.</strong>
+            <strong>{t("emptyTitle")}</strong>
           </p>
           <p>
-            Choose another origin, or run a rule sync (<code>python -m app.cli.sync rules</code>)
-            to collect rules from QRadar.
+            {t("emptyHelp")}
           </p>
         </div>
       ) : (
-        <TableScroll label="Rule composition">
+        <TableScroll label={t("label")}>
           <table className="stats-table stats-composition">
             <caption className="sr-only">
-              Rules and building blocks by type, split into enabled and disabled
-              {query.origin === ALL_ORIGINS ? "" : `, for origin ${originFilterLabel(query.origin)}`}
-              .
+              {query.origin === ALL_ORIGINS
+                ? t("captionAll")
+                : t("captionOrigin", { origin: originFilterLabel(query.origin, say) })}
             </caption>
             <thead>
               <tr>
-                <th scope="col">Type</th>
+                <th scope="col">{t("type")}</th>
                 <th scope="col" className="num">
-                  Enabled
+                  {t("enabled")}
                 </th>
                 <th scope="col" className="num">
-                  Disabled
+                  {t("disabled")}
                 </th>
                 <th scope="col" className="num">
-                  Total
+                  {t("total")}
                 </th>
               </tr>
             </thead>
@@ -90,24 +95,24 @@ export function RuleComposition({
               <tbody key={g.buildingBlocks ? "bb" : "rules"}>
                 <tr className="stats-group">
                   <th scope="rowgroup" colSpan={4}>
-                    {g.buildingBlocks ? "Building blocks" : "Rules"}
+                    {g.buildingBlocks ? t("buildingBlocks") : t("rules")}
                   </th>
                 </tr>
                 {g.rows.map((r) => (
                   <tr key={r.type ?? "null"}>
                     <th scope="row">
-                      <span title={typeTitle(r.type)}>{typeLabel(r.type)}</span>
+                      <span title={typeTitle(r.type, say)}>{typeLabel(r.type, say)}</span>
                     </th>
-                    <td className="num">{formatCount(r.enabled)}</td>
-                    <td className="num">{formatCount(r.disabled)}</td>
-                    <td className="num">{formatCount(r.total)}</td>
+                    <td className="num">{formatCount(r.enabled, locale)}</td>
+                    <td className="num">{formatCount(r.disabled, locale)}</td>
+                    <td className="num">{formatCount(r.total, locale)}</td>
                   </tr>
                 ))}
                 <tr className="stats-total">
-                  <th scope="row">{g.buildingBlocks ? "All building blocks" : "All rules"}</th>
-                  <td className="num">{formatCount(g.totals.enabled)}</td>
-                  <td className="num">{formatCount(g.totals.disabled)}</td>
-                  <td className="num">{formatCount(g.totals.total)}</td>
+                  <th scope="row">{g.buildingBlocks ? t("allBuildingBlocks") : t("allRules")}</th>
+                  <td className="num">{formatCount(g.totals.enabled, locale)}</td>
+                  <td className="num">{formatCount(g.totals.disabled, locale)}</td>
+                  <td className="num">{formatCount(g.totals.total, locale)}</td>
                 </tr>
               </tbody>
             ))}

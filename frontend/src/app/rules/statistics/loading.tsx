@@ -2,11 +2,17 @@ import Link from "next/link";
 
 import { BoundaryLoading } from "@/components/boundary/BoundaryLoading";
 import { DAY_CHOICES } from "@/components/rules/ruleStatistics";
+import { useLocale, useTranslations } from "next-intl";
+import type { Locale } from "@/i18n/locale";
+import { formatCount } from "@/lib/format";
 
 export default function Loading() {
+  const t = useTranslations("rules.statistics");
+  const boundary = useTranslations("rules.boundary");
+  const locale = useLocale() as Locale;
   const daySelector = (
-    <nav className="range-selector stats-days" aria-label="Measurement days">
-      <span className="muted">Window</span>
+    <nav className="range-selector stats-days" aria-label={t("daysLabel")}>
+      <span className="muted">{t("window")}</span>
       {DAY_CHOICES.map((choice) => (
         <Link
           key={choice}
@@ -14,7 +20,7 @@ export default function Loading() {
           className={`range-option${choice === 7 ? " range-option-active" : ""}`}
           aria-current={choice === 7 ? "page" : undefined}
         >
-          {choice} {choice === 1 ? "day" : "days"}
+          {formatCount(choice, locale)} {choice === 1 ? t("day") : t("days")}
         </Link>
       ))}
     </nav>
@@ -22,9 +28,9 @@ export default function Loading() {
 
   return (
     <BoundaryLoading
-      title="Rule statistics"
-      what="rule statistics"
-      description="Inventory composition, measured matching load, proven silence and QRadar evaluation benchmarks."
+      title={t("title")}
+      what={boundary("statisticsWhat")}
+      description={t("description")}
       actions={daySelector}
     />
   );
