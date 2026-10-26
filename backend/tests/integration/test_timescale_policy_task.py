@@ -6,7 +6,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
@@ -56,6 +56,11 @@ def make_settings(**kw):  # type: ignore[no-untyped-def]
 async def run_task(monkeypatch, hypertables):  # type: ignore[no-untyped-def]
     engine = create_async_engine(hypertables)
     maker = async_sessionmaker(engine, expire_on_commit=False)
+    statements: list[str] = []
+
+    @event.listens_for(engine.sync_engine, "before_cursor_execute")
+    def _record(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        statements.append(statement)
 
     @asynccontextmanager
     async def session_cm():
@@ -68,6 +73,10 @@ async def run_task(monkeypatch, hypertables):  # type: ignore[no-untyped-def]
         settings = make_settings(**kw)
         monkeypatch.setattr(tasks, "get_settings", lambda: settings)
         return await tasks.apply_timescale_policies()
+
+    # Every SQL statement the task's engine executed, in order, so a test can
+    # assert on what a run issued.
+    run.statements = statements  # type: ignore[attr-defined]
 
     yield run
     try:
@@ -193,6 +202,49 @@ async def test_unsetting_one_table_and_compression_removes_only_those(
     assert "rule_metric" not in intervals(rows, "policy_retention", 2)
     assert len(intervals(rows, "policy_retention", 2)) == 3
     assert [r for r in rows if r[1] == "policy_compression"] == []
+
+
+async def test_a_removal_is_committed_before_the_next_table_is_touched(
+    db_session, run_task, monkeypatch
+) -> None:
+    # The deadlock shape from feat CI: a run removes log_source_metric's
+    # compression job and then reaches search_result_metric. The removal must
+    # already be committed by then, i.e. visible to a separate connection —
+    # held open in the run's own transaction it is what deadlocked the run
+    # against the just-scheduled policy jobs.
+    await run_task(**ALL_ON)
+    original = timescale._reconcile_compression
+    seen: dict[str, int] = {}
+
+    async def probe(session, table, days):  # type: ignore[no-untyped-def]
+        if table == "search_result_metric":
+            engine = create_async_engine(db_schema_url(db_session))
+            try:
+                async with engine.connect() as conn:
+                    seen["log_source_metric"] = (await conn.execute(text(
+                        "SELECT count(*) FROM timescaledb_information.jobs "
+                        "WHERE proc_name = 'policy_compression' "
+                        "AND hypertable_name = 'log_source_metric'"
+                    ))).scalar_one()
+            finally:
+                await engine.dispose()
+        return await original(session, table, days)
+
+    monkeypatch.setattr(timescale, "_reconcile_compression", probe)
+    result = await run_task(**{**ALL_ON, "compression_after_days": None})
+    assert result["failed"] == []
+    assert seen == {"log_source_metric": 0}
+
+
+async def test_an_unchanged_second_run_issues_no_alter_table(db_session, run_task) -> None:
+    await run_task(**ALL_ON)
+    # Fresh hypertables: the first run turns compression on for every table.
+    alters = [s for s in run_task.statements if s.startswith("ALTER TABLE")]  # type: ignore[attr-defined]
+    assert len(alters) == 4
+    await run_task(**ALL_ON)
+    # Nothing changed: re-issuing the SET would take an ACCESS EXCLUSIVE lock on
+    # every hypertable, held until the reconcile's commit, for nothing.
+    assert [s for s in run_task.statements if s.startswith("ALTER TABLE")] == alters  # type: ignore[attr-defined]
 
 
 async def test_turning_retention_off_removes_every_retention_job(db_session, run_task) -> None:
