@@ -1,4 +1,6 @@
-import ast, pathlib, re, json
+import ast
+import json
+import pathlib
 
 root = pathlib.Path("/home/efe/Documents/QRadar-Dash/qradar-mcp/tools")
 rows = []
@@ -34,22 +36,30 @@ for py in sorted(root.rglob("*.py")):
         eps = []
         for call in [n for n in ast.walk(tree) if isinstance(n, ast.Call)]:
             f = call.func
-            if isinstance(f, ast.Attribute) and f.attr in ("get", "post", "delete", "put", "patch"):
-                if isinstance(f.value, ast.Attribute) and f.value.attr == "client":
-                    if call.args:
-                        a = call.args[0]
-                        if isinstance(a, ast.Constant):
-                            eps.append((f.attr.upper(), a.value))
-                        elif isinstance(a, ast.JoinedStr):
-                            parts = []
-                            for v in a.values:
-                                if isinstance(v, ast.Constant):
-                                    parts.append(str(v.value))
-                                else:
-                                    inner = v.value
-                                    nm = getattr(inner, "id", None) or getattr(inner, "attr", None) or "param"
-                                    parts.append("{%s}" % nm)
-                            eps.append((f.attr.upper(), "".join(parts)))
+            if (
+                isinstance(f, ast.Attribute)
+                and f.attr in ("get", "post", "delete", "put", "patch")
+                and isinstance(f.value, ast.Attribute)
+                and f.value.attr == "client"
+                and call.args
+            ):
+                a = call.args[0]
+                if isinstance(a, ast.Constant):
+                    eps.append((f.attr.upper(), a.value))
+                elif isinstance(a, ast.JoinedStr):
+                    parts = []
+                    for v in a.values:
+                        if isinstance(v, ast.Constant):
+                            parts.append(str(v.value))
+                        else:
+                            inner = v.value
+                            attr_name = (
+                                getattr(inner, "id", None)
+                                or getattr(inner, "attr", None)
+                                or "param"
+                            )
+                            parts.append(f"{{{attr_name}}}")
+                    eps.append((f.attr.upper(), "".join(parts)))
         rows.append({
             "group": py.parent.name,
             "tool": name,
