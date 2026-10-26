@@ -196,6 +196,14 @@ New file `.github/workflows/release.yml`. Trigger: a tag `v*`. The workflow:
 
 `GITHUB_TOKEN` needs `packages:write`. No extra secret is stored in the repository.
 
+**[design]** The workflow also runs on demand, as a dry run:
+`gh workflow run release.yml --ref <branch>`. The dispatched run is the release
+workflow itself, not a copy of it: the pin, VERSION and notes checks, the gates,
+every image build (including the frontend bundle check) and the digest check all
+run; nothing is pushed to ghcr.io and no GitHub Release is written. It is run on
+the release commit before the tag is pushed, so a release is never the
+workflow's first run (`v0.1.5` was, and failed).
+
 ### 2.2 Images
 
 | Compose service | Image | Notes |
