@@ -7,14 +7,24 @@ effect of running `alembic upgrade`. All policies default to disabled.
 Reconciling, not just adding: each table's policy job is read back from
 `timescaledb_information.jobs` and its interval compared with the setting. An
 unchanged policy is left alone (stable job id), a different one is removed and
-added again inside a savepoint, and an unset one is removed (`if_exists`).
+added again, and an unset one is removed (`if_exists`).
 `add_*_policy(..., if_not_exists => TRUE)` would keep an old interval, so it is
 not relied on. Safe to repeat, including on hypertables with compressed chunks.
+
+Each reconcile commits its own transaction. Removing a policy job deletes
+Timescale's catalog rows and cancels a running job, and the locks that takes on
+the job catalog are held until commit — a savepoint release does not release
+them. One transaction across the whole loop would therefore make the next
+table's reconcile wait on, and deadlock with, the very policy job an earlier
+table just scheduled (a new job starts at once), so no statement of one
+reconcile runs inside another's transaction.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +35,17 @@ logger = logging.getLogger("app.timescale")
 
 
 _METRIC_TABLES = ("log_source_metric", "search_result_metric", "rule_metric", "offense_snapshot")
+
+# Postgres SQLSTATE for a deadlock victim ("deadlock detected").
+_DEADLOCK_SQLSTATE = "40P01"
+# A deadlocked reconcile is retried: the policy job it ran into finishes or is
+# cancelled on its own. At most one + len(_DEADLOCK_RETRY_PAUSES) attempts, in
+# total, with _DEADLOCK_RETRY_PAUSES[i] seconds before retry i + 1. A test sets
+# the pauses to 0.
+_DEADLOCK_RETRY_PAUSES: tuple[float, ...] = (0.5, 1.0)
+
+# A reconcile callable: one table's retention or compression reconcile.
+_Reconcile = Callable[[AsyncSession, str, int | None], Awaitable[str]]
 
 
 async def _timescale_available(session: AsyncSession) -> bool:
@@ -48,6 +69,17 @@ async def _hypertables(session: AsyncSession) -> set[str]:
         text("SELECT hypertable_name FROM timescaledb_information.hypertables")
     )
     return {row[0] for row in result}
+
+
+async def _compression_enabled(session: AsyncSession, table: str) -> bool:
+    """Whether the hypertable already has `timescaledb.compress` turned on."""
+    result = await session.execute(
+        text(
+            "SELECT compression_enabled FROM timescaledb_information.hypertables "
+            "WHERE hypertable_name = :t"
+        ).bindparams(t=table)
+    )
+    return bool(result.scalar())
 
 
 async def _policy_config(session: AsyncSession, table: str, proc: str) -> dict[str, str] | None:
@@ -112,7 +144,11 @@ async def _reconcile_compression(session: AsyncSession, table: str, days: int | 
     if days < 1:
         raise ValueError(f"compression for {table} must be >= 1 day, got {days}")
     # `table` comes from the module constant _METRIC_TABLES, never from input.
-    await session.execute(text("ALTER TABLE " + table + " SET (timescaledb.compress = true)"))
+    # The SET holds an ACCESS EXCLUSIVE lock until the reconcile's commit, so it
+    # runs only when compression is not on yet — re-issuing it on an already
+    # enabled hypertable buys nothing and locks the table for nothing.
+    if not await _compression_enabled(session, table):
+        await session.execute(text("ALTER TABLE " + table + " SET (timescaledb.compress = true)"))
     current = await _policy_config(session, table, "policy_compression")
     if current is not None:
         if await _same_interval(session, current.get("compress_after"), days):
@@ -126,13 +162,57 @@ async def _reconcile_compression(session: AsyncSession, table: str, days: int | 
     return f"compression={days}d"
 
 
+def _is_deadlock(exc: Exception) -> bool:
+    """Whether exc is a Postgres deadlock (SQLSTATE 40P01).
+
+    SQLAlchemy wraps the driver's error in a DBAPIError whose `.orig` is its
+    asyncpg adapter error, which carries the server's SQLSTATE on `.sqlstate`.
+    """
+    return getattr(getattr(exc, "orig", None), "sqlstate", None) == _DEADLOCK_SQLSTATE
+
+
+async def _reconcile_in_own_transaction(
+    session: AsyncSession, label: str, table: str, reconcile: _Reconcile, days: int | None
+) -> str:
+    """Run one reconcile alone in its own transaction, retrying a deadlock.
+
+    Committed when it succeeds, rolled back when it raises, so no statement of
+    one reconcile runs in another's transaction (see the module docstring for
+    why). A deadlock is retried after a pause — the policy job that caused it
+    ends on its own; any other error, and a deadlock that survives every
+    attempt, is reported as `error:<ExceptionType>` without raising.
+    """
+    attempts = 1 + len(_DEADLOCK_RETRY_PAUSES)
+    for attempt in range(1, attempts + 1):
+        try:
+            outcome = await reconcile(session, table, days)
+            await session.commit()
+            return outcome
+        except Exception as exc:
+            await session.rollback()
+            if attempt < attempts and _is_deadlock(exc):
+                pause = _DEADLOCK_RETRY_PAUSES[attempt - 1]
+                if pause:
+                    await asyncio.sleep(pause)
+                continue
+            logger.error(
+                "%s policy failed",
+                label,
+                extra={"table": table, "attempts": attempt},
+                exc_info=True,
+            )
+            return f"error:{type(exc).__name__}"
+    raise AssertionError("unreachable: the loop returns on every path")  # pragma: no cover
+
+
 async def apply_policies(session: AsyncSession, settings: Settings | None = None) -> dict[str, str]:
     """Reconcile retention/compression policies with configuration.
 
     Returns a per-table description of the action taken, for logging/auditing.
-    Compression results sit under `_compression:<table>` keys. Each table is
-    reconciled inside its own savepoint: a failure is reported as
-    `error:<ExceptionType>` for that table and the others still run.
+    Compression results sit under `_compression:<table>` keys. Each table's
+    retention and each table's compression reconcile commits its own
+    transaction, so a failure is reported as `error:<ExceptionType>` for that
+    table and the others still run.
     """
     settings = settings or get_settings()
     outcome: dict[str, str] = {}
@@ -143,26 +223,19 @@ async def apply_policies(session: AsyncSession, settings: Settings | None = None
 
     retention = settings.retention_days()
     managed = await _hypertables(session)
+    # End the reads' transaction: the reconciles below each run in their own.
+    await session.commit()
 
     for table in _METRIC_TABLES:
         if table not in managed:
             outcome[table] = "not-a-hypertable"
             continue
-        try:
-            async with session.begin_nested():
-                outcome[table] = await _reconcile_retention(session, table, retention.get(table))
-        except Exception as exc:
-            outcome[table] = f"error:{type(exc).__name__}"
-            logger.error("retention policy failed", extra={"table": table}, exc_info=True)
-        try:
-            async with session.begin_nested():
-                outcome[f"_compression:{table}"] = await _reconcile_compression(
-                    session, table, settings.compression_after_days
-                )
-        except Exception as exc:
-            outcome[f"_compression:{table}"] = f"error:{type(exc).__name__}"
-            logger.error("compression policy failed", extra={"table": table}, exc_info=True)
+        outcome[table] = await _reconcile_in_own_transaction(
+            session, "retention", table, _reconcile_retention, retention.get(table)
+        )
+        outcome[f"_compression:{table}"] = await _reconcile_in_own_transaction(
+            session, "compression", table, _reconcile_compression, settings.compression_after_days
+        )
 
-    await session.commit()
     logger.info("timescale policies applied", extra={"outcome": outcome})
     return outcome
