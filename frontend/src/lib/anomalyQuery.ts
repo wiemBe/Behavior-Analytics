@@ -11,6 +11,8 @@ import { isPwType } from "@/components/propertywatch/pwFormat";
 import { isWafType } from "@/components/waf/wafLabels";
 
 import type { SubjectKind } from "./api";
+import { ENGLISH_ANOMALIES } from "./anomaliesI18n";
+import type { BehaviorI18n } from "./behaviorI18n";
 
 export const PAGE_SIZE = 25;
 
@@ -89,6 +91,7 @@ function instant(value: SearchParamValue): string {
 
 export function parseAnomalyQuery(
   params: Record<string, SearchParamValue>,
+  i18n: BehaviorI18n = ENGLISH_ANOMALIES,
 ): AnomalyQuery {
   // Negative or non-numeric offsets become 0 rather than being forwarded; the
   // backend rejects them, but a rejected page is a worse answer than page one.
@@ -106,7 +109,7 @@ export function parseAnomalyQuery(
   // operator meant. Sending it through would only produce a 422.
   if (since && until && Date.parse(since) > Date.parse(until)) {
     [since, until] = [until, since];
-    rangeNote = "The start and end times were inverted and have been swapped.";
+    rangeNote = i18n.t("anomalies.rangeNote.swapped");
   }
 
   if (since && until) {
@@ -114,7 +117,7 @@ export function parseAnomalyQuery(
     const max = MAX_RANGE_DAYS * 86400_000;
     if (span > max) {
       since = new Date(Date.parse(until) - max).toISOString();
-      rangeNote = `The requested range exceeded ${MAX_RANGE_DAYS} days and was clamped.`;
+      rangeNote = i18n.t("anomalies.rangeNote.clamped", { days: MAX_RANGE_DAYS });
     }
   }
 
@@ -196,8 +199,10 @@ export function parseSubjectQuery(params: Record<string, SearchParamValue>): Sub
   };
 }
 
-export function subjectKindLabel(value: string): string {
-  return SUBJECT_KINDS.find((k) => k.value === value)?.label ?? value;
+export function subjectKindLabel(value: string, i18n: BehaviorI18n = ENGLISH_ANOMALIES): string {
+  return SUBJECT_KINDS.some((k) => k.value === value)
+    ? i18n.t(`anomalies.subjectKind.${value}`)
+    : value;
 }
 
 /** Translate the URL-only all-IPS value into the repeated API query values. */

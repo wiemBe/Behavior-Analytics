@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function BehaviorError({
@@ -9,10 +11,11 @@ export default function BehaviorError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("behavior.boundary");
   return (
     <BoundaryError
-      title="Behavioral overview"
-      what="Behavioral analytics"
+      title={t("title")}
+      what={t("errorWhat")}
       digest={error.digest}
       onRetry={reset}
     />

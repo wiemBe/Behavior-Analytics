@@ -80,7 +80,53 @@
         "src/components/behavior/HealthDistribution.tsx",
         "src/components/catalog/ConfigNotice.tsx",
         "src/components/ResultTrend.tsx",
-        "src/components/propertywatch/PropertyWatchSeriesChart.tsx"
+        "src/components/propertywatch/PropertyWatchSeriesChart.tsx",
+        "src/app/anomalies/error.tsx",
+        "src/app/anomalies/loading.tsx",
+        "src/app/anomalies/page.tsx",
+        "src/app/behavior/error.tsx",
+        "src/app/behavior/loading.tsx",
+        "src/app/behavior/page.tsx",
+        "src/app/behavior/sources/page.tsx",
+        "src/components/Evidence.tsx",
+        "src/components/StatCard.tsx",
+        "src/components/behavior/AnomalyFilters.tsx",
+        "src/components/behavior/AnomalyRows.tsx",
+        "src/components/behavior/AnomalyTabs.tsx",
+        "src/components/behavior/ContributorTable.tsx",
+        "src/components/behavior/DimensionExplorer.tsx",
+        "src/components/behavior/EvidenceBanner.tsx",
+        "src/components/behavior/HistoryKey.tsx",
+        "src/components/behavior/IncidentHeader.tsx",
+        "src/components/behavior/IncidentMetrics.tsx",
+        "src/components/behavior/LifecycleTimeline.tsx",
+        "src/components/behavior/RangeSelector.tsx",
+        "src/components/behavior/SourceAdvanced.tsx",
+        "src/components/behavior/SourceAnomalies.tsx",
+        "src/components/behavior/SourceEvaluationNotice.tsx",
+        "src/components/behavior/SourceFilters.tsx",
+        "src/components/behavior/SourceHeader.tsx",
+        "src/components/behavior/SourceQuality.tsx",
+        "src/components/behavior/SourceRowQualifier.tsx",
+        "src/components/behavior/TechnicalDetails.tsx",
+        "src/components/behavior/TopContributors.tsx",
+        "src/components/behavior/VolumeChart.tsx"
+      ],
+      "rules": {
+        "react/jsx-no-literals": [
+          "error",
+          {
+            "noStrings": true,
+            "ignoreProps": true,
+            "allowedStrings": ["—", "·", "…", "/", ":", "(", ")", ","]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/app/anomalies/\\[id\\]/page.tsx",
+        "src/app/behavior/sources/\\[id\\]/page.tsx"
       ],
       "rules": {
         "react/jsx-no-literals": [

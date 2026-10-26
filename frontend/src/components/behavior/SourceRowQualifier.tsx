@@ -5,23 +5,34 @@
 // (T-170 §3). A given-up gap after evaluation has resumed names the missing
 // bucket instead of claiming the watermark is the stall.
 
+import { useTranslations } from "next-intl";
+import type { ReactNode } from "react";
+
 import type { SourceBehavior } from "@/lib/api";
 import { rowQualifierModel } from "@/lib/evaluationFault";
 import { UtcTime } from "@/components/ui/UtcTime";
+import { grouped } from "@/lib/figureText";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
+
+/** A rich-text tag that renders `node`. */
+function slot(node: ReactNode): () => ReactNode {
+  return function Slot() {
+    return node;
+  };
+}
 
 export function SourceRowQualifier({ source }: { source: SourceBehavior }) {
-  const model = rowQualifierModel(source);
+  const t = useTranslations("behavior.qualifier");
+  const i18n = useBehaviorI18n();
+  const model = rowQualifierModel(source, i18n);
   if (model == null) return null;
+  const time = (value: string) => slot(<UtcTime value={value} variant="compact" />);
   if (model.kind === "retrying") {
     return (
       <span className="cell-sub">
-        {model.judgedThrough ? (
-          <>
-            Not judged since <UtcTime value={model.judgedThrough} variant="compact" />
-          </>
-        ) : (
-          "A bucket has no verdict"
-        )}
+        {model.judgedThrough
+          ? t.rich("notJudgedSince", { time: time(model.judgedThrough) })
+          : t("noVerdict")}
         {model.givenUpSuffix ? ` · ${model.givenUpSuffix}` : null}
       </span>
     );
@@ -30,37 +41,21 @@ export function SourceRowQualifier({ source }: { source: SourceBehavior }) {
   if (count === 1) {
     return (
       <span className="cell-sub">
-        {latestBucket ? (
-          <>
-            1 bucket not judged: <UtcTime value={latestBucket} variant="compact" />
-          </>
-        ) : (
-          "1 bucket not judged"
-        )}
+        {latestBucket ? t.rich("oneWithTime", { time: time(latestBucket) }) : t("one")}
       </span>
     );
   }
   if (count != null && count > 1) {
     return (
       <span className="cell-sub">
-        {count.toLocaleString("en-US")} buckets not judged in 24 h
-        {latestBucket ? (
-          <>
-            , latest <UtcTime value={latestBucket} variant="compact" />
-          </>
-        ) : null}
+        {t("many", { count, shown: grouped(count, i18n.locale) })}
+        {latestBucket ? t.rich("latest", { time: time(latestBucket) }) : null}
       </span>
     );
   }
   return (
     <span className="cell-sub">
-      {latestBucket ? (
-        <>
-          bucket not judged: <UtcTime value={latestBucket} variant="compact" />
-        </>
-      ) : (
-        "bucket not judged"
-      )}
+      {latestBucket ? t.rich("unitWithTime", { time: time(latestBucket) }) : t("unit")}
     </span>
   );
 }

@@ -11,6 +11,7 @@
 
 import type { TextTranslator } from "@/i18n/textTranslator";
 import type { AnomalyState, AnomalySummary, SourceBehavior } from "@/lib/api";
+import { ENGLISH_BEHAVIOR, type BehaviorI18n } from "@/lib/behaviorI18n";
 
 /**
  * Ratio bounds at which a source is called materially deviating.
@@ -138,11 +139,12 @@ function anomalyPriority(anomaly: AnomalySummary): number {
   return PRIORITY.HIGH_DEVIATION;
 }
 
-function anomalyIssue(anomaly: AnomalySummary): string {
-  if (anomaly.anomaly_type === "NO_EVENTS") return "No events received";
-  if (anomaly.evidence_status === "FAILED") return "Evidence collection failed";
-  if (anomaly.anomaly_type === "VOLUME_DROP") return "Volume below baseline";
-  if (anomaly.anomaly_type === "VOLUME_SPIKE") return "Volume above baseline";
+function anomalyIssue(anomaly: AnomalySummary, i18n: BehaviorI18n): string {
+  const say = (key: string) => i18n.t(`behavior.attention.issue.${key}`);
+  if (anomaly.anomaly_type === "NO_EVENTS") return say("noEvents");
+  if (anomaly.evidence_status === "FAILED") return say("evidenceFailed");
+  if (anomaly.anomaly_type === "VOLUME_DROP") return say("volumeBelow");
+  if (anomaly.anomaly_type === "VOLUME_SPIKE") return say("volumeAbove");
   return anomaly.anomaly_type;
 }
 
@@ -160,6 +162,7 @@ function anomalyIssue(anomaly: AnomalySummary): string {
 export function buildAttentionRows(
   sources: SourceBehavior[],
   anomalies: AnomalySummary[],
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
 ): AttentionRow[] {
   const rows: AttentionRow[] = [];
   const claimed = new Set<string>();
@@ -175,7 +178,7 @@ export function buildAttentionRows(
       sourceId: anomaly.log_source_id,
       sourceName: anomaly.log_source_name ?? anomaly.log_source_id,
       state: anomaly.state,
-      issue: anomalyIssue(anomaly),
+      issue: anomalyIssue(anomaly, i18n),
       observed: anomaly.observed_value,
       expected: anomaly.expected_value,
       deviation: anomaly.deviation_ratio,
@@ -195,7 +198,7 @@ export function buildAttentionRows(
         sourceId: source.log_source_id,
         sourceName: source.name,
         state: source.state,
-        issue: "No adequate baseline",
+        issue: i18n.t("behavior.attention.issue.noBaseline"),
         observed: source.observed_eps,
         // Not zero and not the observed value: an unbaselined source has no
         // expectation, and rendering one would invent the comparison.
@@ -215,7 +218,7 @@ export function buildAttentionRows(
         sourceId: source.log_source_id,
         sourceName: source.name,
         state: source.state,
-        issue: "Deviating from baseline",
+        issue: i18n.t("behavior.attention.issue.deviating"),
         observed: source.observed_eps,
         expected: source.expected_eps,
         deviation: source.deviation_ratio,

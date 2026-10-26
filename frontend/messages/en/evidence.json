@@ -1,0 +1,26 @@
+{
+  "none": "no evidence captured",
+  "tableLabel": "Detector evidence metrics",
+  "label": {
+    "observed": "Observed",
+    "expected": "Expected",
+    "baselineLow": "Baseline low",
+    "baselineHigh": "Baseline high",
+    "deviation": "Deviation",
+    "threshold": "Threshold",
+    "samples": "Samples",
+    "confidence": "Confidence"
+  },
+  "unit": {
+    "baselineSample": "{count, plural, one {baseline sample} other {baseline samples}}",
+    "event": "{count, plural, one {event} other {events}}",
+    "events": "events",
+    "eventsPerBucket": "events / bucket",
+    "timesLimit": "× limit",
+    "sourceIps": "source IPs",
+    "belowBaseline": "below baseline",
+    "error": "{count, plural, one {error} other {errors}}",
+    "interval": "{count, plural, one {interval} other {intervals}}",
+    "zeroToOne": "(0 to 1)"
+  }
+}

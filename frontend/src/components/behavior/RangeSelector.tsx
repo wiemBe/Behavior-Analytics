@@ -10,8 +10,10 @@
 // unbounded request.
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { RANGE_HOURS, rangeLabel, type RangeHours } from "@/lib/sourceDetail";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 export function RangeSelector({
   sourceId,
@@ -20,9 +22,11 @@ export function RangeSelector({
   sourceId: string;
   active: RangeHours;
 }) {
+  const t = useTranslations("behavior.range");
+  const i18n = useBehaviorI18n();
   return (
-    <nav className="range-selector" aria-label="Chart time range">
-      <span className="muted">Range</span>
+    <nav className="range-selector" aria-label={t("nav")}>
+      <span className="muted">{t("title")}</span>
       {RANGE_HOURS.map((hours) => (
         <Link
           key={hours}
@@ -30,7 +34,7 @@ export function RangeSelector({
           className={`range-option${hours === active ? " range-option-active" : ""}`}
           aria-current={hours === active ? "page" : undefined}
         >
-          {rangeLabel(hours)}
+          {rangeLabel(hours, i18n)}
         </Link>
       ))}
     </nav>
