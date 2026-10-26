@@ -28,6 +28,8 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
+import { useFleetText } from "@/lib/fleetText";
+
 import { HistoryText } from "@/components/behavior/HistoryKey";
 import {
   historyMarkArea,
@@ -79,7 +81,9 @@ export function BucketChart({
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
 
-  const unit = `events / ${bucketUnit(bucketSeconds)}`;
+  const text = useFleetText();
+  const { say, locale } = text;
+  const unit = say("catchall.chart.unit", { bucket: bucketUnit(bucketSeconds, text) });
   const buildOption = useMemo(() => {
     return (): EChartsOption => {
       const c = readChartPalette();
@@ -117,20 +121,23 @@ export function BucketChart({
             if (!slot.bucket) {
               return [
                 when,
-                slot.state === "gap"
-                  ? "Not measured (no row was stored for this bucket)"
-                  : "Not collected yet (after the latest measured bucket)",
+                slot.state === "gap" ? say("catchall.chart.gap") : say("catchall.chart.beyond"),
               ].join("<br/>");
             }
             const b = slot.bucket;
             const atLeast = slot.state === "lower_bound";
             return [
               when,
-              `Events: ${atLeast ? "at least " : ""}${formatCount(b.events)} ${unit}`,
-              `Distinct senders: ${b.distinct_senders_lower_bound ? "at least " : ""}${formatCount(
-                b.distinct_senders,
-              )}`,
-              atLeast ? "Truncated search: more events may exist" : "",
+              say("catchall.chart.events", {
+                atLeast: atLeast ? `${say("catchall.atLeast")} ` : "",
+                count: formatCount(b.events, locale),
+                unit,
+              }),
+              say("catchall.chart.distinct", {
+                atLeast: b.distinct_senders_lower_bound ? `${say("catchall.atLeast")} ` : "",
+                count: formatCount(b.distinct_senders, locale),
+              }),
+              atLeast ? say("catchall.chart.truncated") : "",
               originText(b.origin),
             ]
               .filter(Boolean)
@@ -140,7 +147,7 @@ export function BucketChart({
         xAxis: {
           type: "category",
           data: categories,
-          name: "Bucket start (UTC)",
+          name: say("catchall.chart.xAxis"),
           nameLocation: "middle",
           nameGap: 32,
           nameTextStyle: text,
@@ -150,7 +157,7 @@ export function BucketChart({
         },
         yAxis: {
           type: "value",
-          name: `Volume (${unit})`,
+          name: say("catchall.chart.yAxis", { unit }),
           nameTextStyle: { ...text, align: "left" },
           min: 0,
           max: yMax,
@@ -163,7 +170,7 @@ export function BucketChart({
             // The not-measured shading: one full-height bar per unmeasured
             // bucket, drawn first and behind the events.
             type: "bar",
-            name: "Not measured",
+            name: say("catchall.chart.seriesGap"),
             data: band,
             silent: true,
             barGap: "-100%",
@@ -176,7 +183,7 @@ export function BucketChart({
           },
           {
             type: "bar",
-            name: "Events",
+            name: say("catchall.chart.seriesEvents"),
             data: slots.map((s) => {
               const value = barValue(s);
               return value === null
@@ -203,7 +210,7 @@ export function BucketChart({
         ],
       };
     };
-  }, [slots, selected, unit]);
+  }, [slots, selected, unit, say, locale]);
 
   useEffect(() => {
     const el = containerRef.current;

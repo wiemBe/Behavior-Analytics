@@ -7,9 +7,12 @@
 // text beside it says how far collection got. The selected bucket shows its top
 // senders and what admission did, in words.
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ApiError, catchallApi, type CatchallSourceList } from "@/lib/api";
+import { plainCount, useFleetText } from "@/lib/fleetText";
+import { unitGap } from "@/i18n/measures";
 
 import { HistoryKey } from "@/components/behavior/HistoryKey";
 import { originMarker } from "@/components/behavior/historyOrigin";
@@ -20,7 +23,6 @@ import { BucketChart } from "./BucketChart";
 import { SenderId } from "./SenderId";
 import {
   RANGES,
-  REFUSED_NOTE,
   admissionSentences,
   buildSlots,
   bucketUnit,
@@ -29,6 +31,7 @@ import {
   formatCount,
   latestMeasuredIndex,
   measurementText,
+  rangeLabel,
   stepMeasured,
   type RangeOption,
   type SlotSeries,
@@ -41,16 +44,27 @@ type Load =
 
 /** The selected bucket's span. A missing width shows only the start. */
 function BucketWindow({ startIso, seconds }: { startIso: string; seconds: number | null }) {
+  const t = useTranslations("catchall.volume");
   if (seconds === null) return <UtcTime value={startIso} />;
   const end = new Date(Date.parse(startIso) + seconds * 1000).toISOString();
   return (
     <>
-      <UtcTime value={startIso} /> to <UtcTime value={end} />
+      {t.rich("window", {
+        start: () => <UtcTime value={startIso} />,
+        end: () => <UtcTime value={end} />,
+      })}
     </>
   );
 }
 
 export function SourceVolume({ sources, now }: { sources: CatchallSourceList; now: string }) {
+  const t = useTranslations("catchall.volume");
+  const q = useTranslations("catchall.queue");
+  const common = useTranslations("common");
+  const text = useFleetText();
+  const { locale } = text;
+  const textRef = useRef(text);
+  textRef.current = text;
   const ids = useId();
   // Open on the source that was measured most recently, not on an arbitrary one.
   const initialSource = useMemo(() => {
@@ -88,8 +102,8 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
           forbidden: err instanceof ApiError && err.status === 403,
           text:
             err instanceof ApiError && err.status === 403
-              ? "Your role cannot read the fleet (permission read:fleet). Nothing was changed."
-              : "The buckets could not be loaded. The backend may be unreachable; check that it is running, then try again.",
+              ? textRef.current.say("fleet.errors.forbidden")
+              : textRef.current.say("catchall.volume.unreachable"),
         });
       });
     return () => {
@@ -102,17 +116,20 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
   const series = load.kind === "ready" ? load.series : null;
   const slot = series && selected != null ? series.slots[selected] : null;
   const upTo = series ? collectedUpTo(series) : null;
-  const unit = series?.bucketSeconds ? bucketUnit(series.bucketSeconds) : null;
+  const unit = series?.bucketSeconds ? bucketUnit(series.bucketSeconds, text) : null;
 
   const summary = series ? (
     series.bucketSeconds === null ? (
-      "No bucket was measured in this range."
+      t("noBucket")
     ) : (
       <>
-        Events per {unit} bucket from <UtcTime value={new Date(sinceMs).toISOString()} /> to{" "}
-        <UtcTime value={new Date(untilMs).toISOString()} />. {series.gapCount} buckets were not
-        measured and are shown as gaps, not as zero. {series.lowerBoundCount} buckets are lower
-        bounds.
+        {t.rich("summary", {
+          unit: unit ?? "",
+          gaps: plainCount(series.gapCount, locale),
+          lower: plainCount(series.lowerBoundCount, locale),
+          start: () => <UtcTime value={new Date(sinceMs).toISOString()} />,
+          end: () => <UtcTime value={new Date(untilMs).toISOString()} />,
+        })}
       </>
     )
   ) : (
@@ -122,12 +139,12 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
   return (
     <section aria-labelledby={`${ids}-h`} className="catchall-volume">
       <h2 id={`${ids}-h`} className="section-title">
-        Volume by source
+        {t("heading")}
       </h2>
 
-      <div className="filters" role="group" aria-label="Choose a source and a range">
+      <div className="filters" role="group" aria-label={t("chooseGroup")}>
         <label className="sr-only" htmlFor={`${ids}-src`}>
-          Catch-all source
+          {t("source")}
         </label>
         <select id={`${ids}-src`} value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
           {sources.items.map((s) => (
@@ -136,7 +153,7 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
             </option>
           ))}
         </select>
-        <div className="range-selector" role="group" aria-label="Range">
+        <div className="range-selector" role="group" aria-label={t("rangeGroup")}>
           {RANGES.map((r) => (
             <button
               key={r.key}
@@ -145,7 +162,7 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
               aria-pressed={r.key === range.key}
               onClick={() => setRange(r)}
             >
-              {r.label}
+              {rangeLabel(r, text)}
             </button>
           ))}
         </div>
@@ -153,7 +170,7 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
 
       {load.kind === "loading" && (
         <p className="subtitle" role="status">
-          Loading buckets…
+          {t("loading")}
         </p>
       )}
 
@@ -161,14 +178,14 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
         <div className="notice" role="alert">
           <p>
             <strong>
-              {load.forbidden ? "The buckets cannot be shown." : "The buckets could not be loaded."}
+              {load.forbidden ? t("errorForbidden") : t("errorFailed")}
             </strong>
           </p>
           <p>{load.text}</p>
           {!load.forbidden && (
             <p>
               <button type="button" className="action secondary" onClick={() => setTick((n) => n + 1)}>
-                Try again
+                {common("tryAgain")}
               </button>
             </p>
           )}
@@ -178,16 +195,18 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
       {series && series.bucketSeconds === null && (
         <div className="notice">
           <p>
-            <strong>No bucket was measured in this range.</strong>
+            <strong>{t("noBucket")}</strong>
           </p>
           <p>
             {source?.latest_bucket_start ? (
               <>
-                The latest measured bucket of {source.name} starts{" "}
-                <UtcTime value={source.latest_bucket_start} />. Choose a longer range to reach it.
+                {t.rich("latestBucket", {
+                  name: source.name,
+                  time: () => <UtcTime value={source.latest_bucket_start as string} />,
+                })}
               </>
             ) : (
-              `No bucket was ever measured for ${source?.name ?? "this source"}. An empty chart here is an absence of collection, not zero traffic.`
+              t("neverMeasured", { name: source?.name ?? t("thisSource") })
             )}
           </p>
         </div>
@@ -196,48 +215,44 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
       {series && series.bucketSeconds !== null && (
         <>
           <p className="subtitle collected-up-to">
-            {upTo !== null ? (
-              <>
-                Collected up to <UtcTime value={new Date(upTo).toISOString()} />.{" "}
-              </>
-            ) : (
-              "No bucket in this range holds a measurement. "
-            )}
+            {upTo !== null
+              ? t.rich("collectedUpTo", {
+                  time: () => <UtcTime value={new Date(upTo).toISOString()} />,
+                })
+              : t("noMeasurement")}{" "}
             {series.gapCount > 0
-              ? `${formatCount(series.gapCount)} ${series.gapCount === 1 ? "bucket" : "buckets"} before that ${
-                  series.gapCount === 1 ? "was" : "were"
-                } not measured (shaded). They are unknown, not zero.`
-              : "Every bucket before that was measured."}
+              ? t("gaps", { count: series.gapCount })
+              : t("allMeasured")}
           </p>
           <BucketChart
             slots={series.slots}
             bucketSeconds={series.bucketSeconds}
             selected={selected}
             onSelect={setSelected}
-            ariaLabel={`Events per ${unit} bucket for ${source?.name ?? "the source"}`}
+            ariaLabel={t("chartLabel", { unit: unit ?? "", name: source?.name ?? t("theSource") })}
             textSummary={summary}
           />
-          <ul className="chart-legend" aria-label="Chart key">
+          <ul className="chart-legend" aria-label={t("key")}>
             <li>
               <span className="chart-key chart-key-bar" aria-hidden="true" />
-              Events per bucket
+              {t("keyEvents")}
             </li>
             {series.lowerBoundCount > 0 && (
               <li>
                 <span className="chart-key chart-key-bar-lower" aria-hidden="true" />
-                At least: the search was truncated, so more events may exist
+                {t("keyLower")}
               </li>
             )}
             {series.gapCount > 0 && (
               <li>
                 <span className="chart-key chart-key-gap" aria-hidden="true" />
-                Not measured
+                {t("keyGap")}
               </li>
             )}
             {historyCount(series.slots) > 0 && <HistoryKey />}
           </ul>
 
-          <div className="bucket-nav" role="group" aria-label="Choose a bucket">
+          <div className="bucket-nav" role="group" aria-label={t("chooseBucket")}>
             <button
               type="button"
               className="action secondary"
@@ -246,7 +261,7 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
                 selected != null && setSelected(stepMeasured(series.slots, selected, -1))
               }
             >
-              Earlier measured bucket
+              {t("earlier")}
             </button>
             <button
               type="button"
@@ -256,13 +271,13 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
                 selected != null && setSelected(stepMeasured(series.slots, selected, 1))
               }
             >
-              Later measured bucket
+              {t("later")}
             </button>
-            <span className="muted">Or click a bar in the chart.</span>
+            <span className="muted">{t("orClick")}</span>
           </div>
 
           {slot && (
-            <div className="panel bucket-detail" aria-label="Selected bucket" role="group">
+            <div className="panel bucket-detail" aria-label={t("selected")} role="group">
               <h3 className="bucket-detail-title">
                 <BucketWindow
                   startIso={
@@ -275,92 +290,91 @@ export function SourceVolume({ sources, now }: { sources: CatchallSourceList; no
               </h3>
               {slot.bucket === null ? (
                 <p className="subtitle">
-                  {slot.state === "gap"
-                    ? "This bucket was not measured: no row was stored for it. Its volume is unknown, not zero."
-                    : "This bucket is after the latest measured one. Collection had not reached it, so nothing is known about it yet."}
+                  {slot.state === "gap" ? t("notMeasuredDetail") : t("beyondDetail")}
                 </p>
               ) : (
                 <div className="bucket-grid">
                   <dl className="bucket-facts">
                     <div>
-                      <dt>Measurement</dt>
+                      <dt>{t("measurement")}</dt>
                       <dd>
                         <span
                           className={`pill ${slot.state === "lower_bound" ? "warn" : ""}`}
                         >
-                          {slot.state === "lower_bound" ? "At least" : "Exact"}
+                          {slot.state === "lower_bound" ? t("pillAtLeast") : t("pillExact")}
                         </span>
-                        {measurementText(slot.bucket) && (
-                          <span className="cell-sub">{measurementText(slot.bucket)}</span>
+                        {measurementText(slot.bucket, text) && (
+                          <span className="cell-sub">{measurementText(slot.bucket, text)}</span>
                         )}
                       </dd>
                     </div>
                     {originMarker(slot.bucket.origin) && (
                       <div>
-                        <dt>Origin</dt>
+                        <dt>{t("origin")}</dt>
                         <dd>
                           <span className="pill">{originMarker(slot.bucket.origin)}</span>
                         </dd>
                       </div>
                     )}
                     <div>
-                      <dt>Events</dt>
+                      <dt>{t("events")}</dt>
                       <dd className="num">
-                        {slot.state === "lower_bound" ? "at least " : ""}
-                        {formatCount(slot.bucket.events)}
-                        <span className="unit"> events / {unit}</span>
+                        {slot.state === "lower_bound" ? `${text.say("catchall.atLeast")} ` : ""}
+                        {formatCount(slot.bucket.events, locale)}
+                        <span className="unit">
+                          {unitGap(locale)}
+                          {t("eventsPer", { unit: unit ?? "" })}
+                        </span>
                       </dd>
                     </div>
                     <div>
-                      <dt>Records</dt>
-                      <dd className="num">{formatCount(slot.bucket.records)}</dd>
+                      <dt>{t("records")}</dt>
+                      <dd className="num">{formatCount(slot.bucket.records, locale)}</dd>
                     </div>
                     <div>
-                      <dt>Distinct senders</dt>
+                      <dt>{t("distinct")}</dt>
                       <dd className="num">
-                        {slot.bucket.distinct_senders_lower_bound ? "at least " : ""}
-                        {formatCount(slot.bucket.distinct_senders)}
+                        {slot.bucket.distinct_senders_lower_bound
+                          ? `${text.say("catchall.atLeast")} `
+                          : ""}
+                        {formatCount(slot.bucket.distinct_senders, locale)}
                       </dd>
                     </div>
                   </dl>
 
                   <div className="bucket-admission">
-                    <h4>What admission did</h4>
+                    <h4>{t("admissionHeading")}</h4>
                     <ul className="plain-list">
-                      {admissionSentences(slot.bucket).map((line) => (
+                      {admissionSentences(slot.bucket, text).map((line) => (
                         <li key={line}>{line}</li>
                       ))}
                     </ul>
-                    <p className="muted">{REFUSED_NOTE}</p>
+                    <p className="muted">{text.say("catchall.admission.refusedNote")}</p>
                   </div>
 
                   <div className="bucket-top">
-                    <h4>Top senders in this bucket</h4>
+                    <h4>{t("topHeading")}</h4>
                     {slot.bucket.top_senders.length === 0 ? (
-                      <p className="muted">
-                        No tracked sender is listed for this bucket.
-                      </p>
+                      <p className="muted">{t("noTop")}</p>
                     ) : (
                       <div className="bucket-top-table">
                         <table className="catchall-table">
-                          <caption className="sr-only">
-                            The busiest tracked senders of the selected bucket, at most 20.
-                          </caption>
+                          <caption className="sr-only">{t("topCaption")}</caption>
                           <thead>
                             <tr>
-                              <th scope="col">Sender</th>
+                              <th scope="col">{q("thSender")}</th>
                               <th scope="col" className="num">
-                                Events
+                                {t("events")}
                               </th>
                             </tr>
                           </thead>
                           <tbody>
-                            {slot.bucket.top_senders.slice(0, 20).map((t) => (
-                              <tr key={t.identifier}>
+                            {slot.bucket.top_senders.slice(0, 20).map((top) => (
+                              <tr key={top.identifier}>
                                 <th scope="row" className="cell-sender">
-                                  <SenderId value={t.identifier} />
+                                  <SenderId value={top.identifier} />
                                 </th>
-                                <td className="num">{formatCount(t.events)}</td>
+                                <td className="num">{formatCount(top.events, locale)}</td>
                               </tr>
                             ))}
                           </tbody>

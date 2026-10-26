@@ -11,9 +11,13 @@ import type {
   RuleHealthCount,
   SearchCadenceItem,
 } from "@/lib/api";
+import { durationText } from "@/i18n/measures";
 import { classLabel } from "@/lib/fleet";
+import type { FleetText } from "@/lib/fleetText";
 import { truncated, type Qualifier } from "@/lib/home/qualifiers";
-import { familyInfo, formatDuration } from "@/lib/searchCadence";
+import { familyInfo } from "@/lib/searchCadence";
+
+import { englishCatalogText } from "./catalogText";
 
 /** A run later than this beyond its due time is "late"; the scheduler ticks every 60 s. */
 export const LATE_TOLERANCE_SECONDS = 60;
@@ -74,7 +78,13 @@ export interface CadenceRow {
  * latest run's age exceeds that, so a family that never ran since the upgrade is "not
  * measured", never "on time".
  */
-export function cadenceRows(items: SearchCadenceItem[], nowMs: number): CadenceRow[] {
+export function cadenceRows(
+  items: SearchCadenceItem[],
+  nowMs: number,
+  text: FleetText = englishCatalogText,
+): CadenceRow[] {
+  const duration = (seconds: number) =>
+    durationText((key, values) => text.say(`units.${key}`, values), seconds);
   return items.map((item) => {
     const ranAt = item.last_run ? Date.parse(item.last_run.at) : NaN;
     let lateSeconds: number | null = null;
@@ -85,9 +95,9 @@ export function cadenceRows(items: SearchCadenceItem[], nowMs: number): CadenceR
     }
     return {
       family: item.family,
-      name: familyInfo(item.family).name,
+      name: familyName(item.family, text),
       cadenceSeconds: item.cadence_seconds,
-      cadence: formatDuration(item.cadence_seconds),
+      cadence: duration(item.cadence_seconds),
       lastRunAt: item.last_run ? item.last_run.at : null,
       lateSeconds,
       late: lateSeconds !== null && lateSeconds > 0,
@@ -95,10 +105,24 @@ export function cadenceRows(items: SearchCadenceItem[], nowMs: number): CadenceR
   });
 }
 
-export function lateText(row: CadenceRow): string | null {
+/**
+ * The name of a search family: the catalog's word by family code; a family the catalog does not
+ * know keeps the name `familyInfo` gives it (its raw key when unknown there too).
+ */
+export function familyName(family: string, text: FleetText = englishCatalogText): string {
+  const key = `catalog.family.${family}`;
+  return text.say.has?.(key) ? text.say(key) : familyInfo(family).name;
+}
+
+export function lateText(row: CadenceRow, text: FleetText = englishCatalogText): string | null {
   if (row.lateSeconds === null) return null;
   // Whole minutes: the scheduler ticks once a minute, so seconds would be false precision.
-  return row.lateSeconds === 0 ? "On time" : formatDuration(Math.ceil(row.lateSeconds / 60) * 60);
+  return row.lateSeconds === 0
+    ? text.say("catalog.collection.onTime")
+    : durationText(
+        (key, values) => text.say(`units.${key}`, values),
+        Math.ceil(row.lateSeconds / 60) * 60,
+      );
 }
 
 // --- table.catchall_senders -----------------------------------------------------------
@@ -137,12 +161,13 @@ export interface ClassRow {
 export function classRows(
   s: FleetSummary,
   limit: number = FLEET_CLASS_ROWS,
+  text: FleetText = englishCatalogText,
 ): { rows: ClassRow[]; hidden: number; incomplete: boolean } {
   const withSources = s.classes.filter((c: FleetClassSummary) => c.sources.enabled + c.sources.disabled > 0);
   const all = withSources
     .map((c) => ({
       key: c.source_class,
-      label: classLabel(c.source_class),
+      label: classLabel(c.source_class, text),
       sources: c.sources.enabled + c.sources.disabled,
       meanEps: c.mean_eps,
       silent: c.monitored_sources > 0 ? (c.open_incidents.NO_EVENTS ?? 0) : null,
@@ -164,12 +189,12 @@ export interface OutageRow {
   overrides: number;
 }
 
-export function outageView(s: OutageFleetSummary) {
+export function outageView(s: OutageFleetSummary, text: FleetText = englishCatalogText) {
   const rows: OutageRow[] = s.classes
     .filter((c) => c.outage_mode !== s.outage_default || c.outage_overrides > 0)
     .map((c) => ({
       key: c.source_class,
-      label: classLabel(c.source_class),
+      label: classLabel(c.source_class, text),
       mode: c.outage_mode,
       overrides: c.outage_overrides,
     }))

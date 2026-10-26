@@ -23,6 +23,9 @@ import {
 
 export type { FleetWindow };
 import { detectorLabel, NOT_MEASURED } from "@/lib/behavior";
+import type { FormatLocale } from "@/lib/format";
+import { formatCount } from "@/lib/format";
+import { englishFleetText, plainCount, type FleetText } from "@/lib/fleetText";
 
 // --- classes ------------------------------------------------------------------
 
@@ -52,9 +55,19 @@ export const ALL_CLASSES = Object.keys(CLASS_LABELS) as SourceClass[];
 /** What an operator may assign: UNCLASSIFIED is what clearing the override gives. */
 export const ASSIGNABLE_CLASSES = ALL_CLASSES.filter((c) => c !== "UNCLASSIFIED");
 
-export function classLabel(value: string | null | undefined): string {
+/**
+ * The words of the catalog by value, or the value itself when the catalog has no message for it
+ * (a value this build does not know is still information).
+ */
+function labelOf(text: FleetText, group: string, value: string, english?: string): string {
+  const key = `${group}.${value}`;
+  if (value !== "" && !value.includes(".") && text.say.has?.(key)) return text.say(key);
+  return english ?? value;
+}
+
+export function classLabel(value: string | null | undefined, text: FleetText = englishFleetText): string {
   if (value == null) return NOT_MEASURED;
-  return CLASS_LABELS[value as SourceClass] ?? value;
+  return labelOf(text, "enums.sourceClass", value, CLASS_LABELS[value as SourceClass] ?? value);
 }
 
 /** Tone of a class pill. Only UNCLASSIFIED is flagged: it needs a decision. */
@@ -81,8 +94,8 @@ export function fleetDrillHref(window: FleetWindow): string {
   return `/fleet?window=${window}`;
 }
 
-export function windowName(window: FleetWindow): string {
-  return { "1h": "1 hour", "24h": "24 hours", "7d": "7 days" }[window];
+export function windowName(window: FleetWindow, text: FleetText = englishFleetText): string {
+  return text.say(`fleet.window.name.${window}`);
 }
 
 // --- the figures of one class -----------------------------------------------------
@@ -90,14 +103,23 @@ export function windowName(window: FleetWindow): string {
 export const NOT_MEASURED_TEXT = "Not measured";
 
 /** EPS to two decimals; a measured 0 reads "0.00", a missing value reads null. */
-export function formatEpsValue(value: number | null | undefined): string | null {
+export function formatEpsValue(
+  value: number | null | undefined,
+  locale: FormatLocale = "en",
+): string | null {
   if (value == null || Number.isNaN(value)) return null;
-  return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return value.toLocaleString(locale === "tr" ? "tr-TR" : "en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
-export function formatEventCount(value: number | null | undefined): string | null {
+export function formatEventCount(
+  value: number | null | undefined,
+  locale: FormatLocale = "en",
+): string | null {
   if (value == null || Number.isNaN(value)) return null;
-  return value.toLocaleString("en-US");
+  return value.toLocaleString(locale === "tr" ? "tr-TR" : "en-US");
 }
 
 export interface CompletenessInfo {
@@ -113,18 +135,28 @@ export interface CompletenessInfo {
  * A class with no expected buckets has no monitored source: that is its own
  * state, not "100% complete".
  */
-export function completenessInfo(b: FleetBucketCounts): CompletenessInfo {
+export function completenessInfo(
+  b: FleetBucketCounts,
+  fleet: FleetText = englishFleetText,
+): CompletenessInfo {
+  const { say, locale } = fleet;
   if (b.expected <= 0) {
-    return { state: "none", text: "No monitored sources", detail: null };
+    return { state: "none", text: say("fleet.completeness.none"), detail: null };
   }
-  const text = `${b.complete.toLocaleString("en-US")} of ${b.expected.toLocaleString("en-US")} buckets complete`;
+  const text = say("fleet.completeness.text", {
+    complete: formatCount(b.complete, locale),
+    expected: formatCount(b.expected, locale),
+  });
   if (b.complete >= b.expected && b.partial === 0 && b.missing === 0) {
     return { state: "complete", text, detail: null };
   }
   return {
     state: "incomplete",
     text,
-    detail: `${b.partial.toLocaleString("en-US")} partial, ${b.missing.toLocaleString("en-US")} missing`,
+    detail: say("fleet.completeness.detail", {
+      partial: formatCount(b.partial, locale),
+      missing: formatCount(b.missing, locale),
+    }),
   };
 }
 
@@ -141,34 +173,45 @@ export interface ExpectedInfo {
  * sources only, so when some sources have none it understates the class and
  * must not be compared with the mean as if it covered all of it.
  */
-export function expectedInfo(c: FleetClassSummary): ExpectedInfo {
-  const value = formatEpsValue(c.expected_eps);
+export function expectedInfo(c: FleetClassSummary, fleet: FleetText = englishFleetText): ExpectedInfo {
+  const { say, locale } = fleet;
+  const value = formatEpsValue(c.expected_eps, locale);
   if (value === null) {
     return {
       value: null,
-      note: "No source has a baseline yet.",
+      note: say("fleet.expected.noBaseline"),
       partial: false,
     };
   }
   const share = c.baseline_share;
   if (share == null || share <= 0) {
-    return { value, note: `From ${c.baseline_sources} sources with a baseline.`, partial: false };
+    return {
+      value,
+      note: say("fleet.expected.from", { count: plainCount(c.baseline_sources, locale) }),
+      partial: false,
+    };
   }
   const monitored = Math.round(c.baseline_sources / share);
   const partial = c.baseline_sources < monitored;
   return {
     value,
-    note: `From ${c.baseline_sources} of ${monitored} sources with a baseline.`,
+    note: say("fleet.expected.fromOf", {
+      count: plainCount(c.baseline_sources, locale),
+      total: plainCount(monitored, locale),
+    }),
     partial,
   };
 }
 
 /** Open Phase A incidents as `[label, count]`, most numerous first. */
-export function openIncidentList(c: FleetClassSummary): [string, number][] {
+export function openIncidentList(
+  c: FleetClassSummary,
+  text: FleetText = englishFleetText,
+): [string, number][] {
   return Object.entries(c.open_incidents)
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([type, n]) => [detectorLabel(type), n]);
+    .map(([type, n]) => [labelOf(text, "enums.anomalyType", type, detectorLabel(type)), n]);
 }
 
 /** Whether the class has sources to measure at all. */
@@ -178,6 +221,7 @@ export function hasSources(c: FleetClassSummary): boolean {
 
 // --- classification, in words -------------------------------------------------------
 
+/** The English wording; the catalog (`fleet.basis`) carries both languages. */
 const BASIS_LABELS: Record<string, string> = {
   OVERRIDE: "Operator override",
   INTERNAL: "QRadar internal",
@@ -189,10 +233,11 @@ const BASIS_LABELS: Record<string, string> = {
   IDENTIFIER_REGEX: "Identifier rule",
 };
 
-export function basisLabel(basis: string): string {
-  return BASIS_LABELS[basis] ?? basis;
+export function basisLabel(basis: string, text: FleetText = englishFleetText): string {
+  return labelOf(text, "fleet.basis", basis, BASIS_LABELS[basis] ?? basis);
 }
 
+/** The English wording; the catalog (`fleet.conflict.subject`) carries both languages. */
 const BASIS_SUBJECT: Record<string, string> = {
   OVERRIDE: "override",
   INTERNAL: "QRadar",
@@ -203,10 +248,14 @@ const BASIS_SUBJECT: Record<string, string> = {
   IDENTIFIER_REGEX: "identifier",
 };
 
-function says(basis: string | null, cls: string | null): string | null {
+function says(basis: string | null, cls: string | null, text: FleetText): string | null {
   if (basis == null || cls == null) return null;
   const subject = BASIS_SUBJECT[basis];
-  return subject ? `${subject} says ${classLabel(cls)}` : null;
+  if (!subject) return null;
+  return text.say("fleet.conflict.says", {
+    subject: labelOf(text, "fleet.conflict.subject", basis, subject),
+    class: classLabel(cls, text),
+  });
 }
 
 /**
@@ -214,27 +263,33 @@ function says(basis: string | null, cls: string | null): string | null {
  * "type says IPS, name says Linux". The winner's own basis comes first; a
  * conflict entry repeating it is dropped. Empty when there is no conflict.
  */
-export function conflictText(source: Pick<FleetSource, "basis" | "source_class" | "conflicts">): string {
+export function conflictText(
+  source: Pick<FleetSource, "basis" | "source_class" | "conflicts">,
+  text: FleetText = englishFleetText,
+): string {
   if (source.conflicts.length === 0) return "";
   const parts: string[] = [];
-  const winner = says(source.basis, source.source_class);
+  const winner = says(source.basis, source.source_class, text);
   if (winner && source.source_class !== "UNCLASSIFIED") parts.push(winner);
   for (const c of source.conflicts as ClassificationConflict[]) {
-    const part = says(c.basis, c.class);
+    const part = says(c.basis, c.class, text);
     if (part && !parts.includes(part)) parts.push(part);
   }
   return parts.join(", ");
 }
 
-export function reviewLabel(status: ClassificationReviewStatus | null): string {
-  if (status === "NEW") return "New";
-  if (status === "REVIEWED") return "Reviewed";
-  return "Not recorded";
+export function reviewLabel(
+  status: ClassificationReviewStatus | null,
+  text: FleetText = englishFleetText,
+): string {
+  if (status === "NEW") return text.say("fleet.review.NEW");
+  if (status === "REVIEWED") return text.say("fleet.review.REVIEWED");
+  return text.say("fleet.review.notRecorded");
 }
 
-export function originLabel(autoDiscovered: boolean | null): string {
-  if (autoDiscovered == null) return "Origin not recorded";
-  return autoDiscovered ? "Auto-discovered" : "Configured";
+export function originLabel(autoDiscovered: boolean | null, text: FleetText = englishFleetText): string {
+  if (autoDiscovered == null) return text.say("fleet.origin.notRecorded");
+  return autoDiscovered ? text.say("fleet.origin.auto") : text.say("fleet.origin.configured");
 }
 
 // --- the source list's query ----------------------------------------------------------
@@ -305,12 +360,17 @@ export function fleetApiParams(q: FleetSourceQuery): FleetSourceParams {
 }
 
 /** The active filters as readable chips: "Class: Linux". */
-export function activeFilterLabels(q: FleetSourceQuery): string[] {
+export function activeFilterLabels(q: FleetSourceQuery, text: FleetText = englishFleetText): string[] {
+  const { say } = text;
   const labels: string[] = [];
-  if (q.class) labels.push(`Class: ${classLabel(q.class)}`);
-  if (q.review_status) labels.push(`Review: ${reviewLabel(q.review_status)}`);
-  if (q.has_conflict) labels.push(q.has_conflict === "true" ? "Conflicting only" : "No conflict");
-  if (q.basis) labels.push(`Basis: ${basisLabel(q.basis)}`);
+  if (q.class) labels.push(say("fleet.chips.class", { value: classLabel(q.class, text) }));
+  if (q.review_status) {
+    labels.push(say("fleet.chips.review", { value: reviewLabel(q.review_status, text) }));
+  }
+  if (q.has_conflict) {
+    labels.push(say(q.has_conflict === "true" ? "fleet.chips.conflicting" : "fleet.chips.noConflict"));
+  }
+  if (q.basis) labels.push(say("fleet.chips.basis", { value: basisLabel(q.basis, text) }));
   return labels;
 }
 
@@ -411,12 +471,15 @@ export function ruleFailure(err: unknown): RuleFailure {
 }
 
 /** The same for a source write (override, review). */
-export function sourceFailure(err: unknown): { kind: "forbidden" | "error"; text: string } {
+export function sourceFailure(
+  err: unknown,
+  text: FleetText = englishFleetText,
+): { kind: "forbidden" | "error"; text: string } {
   if (err instanceof ApiError && err.status === 403) {
-    return {
-      kind: "forbidden",
-      text: "Your role cannot change a source's classification (permission log_source:write). Nothing was changed.",
-    };
+    return { kind: "forbidden", text: text.say("fleet.failure.sourceForbidden") };
   }
-  return { kind: "error", text: `Not changed. ${actionErrorMessage(err)}` };
+  return {
+    kind: "error",
+    text: text.say("fleet.failure.notChanged", { reason: actionErrorMessage(err, text.say) }),
+  };
 }

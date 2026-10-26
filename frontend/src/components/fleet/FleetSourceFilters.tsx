@@ -3,6 +3,7 @@
 // `offset` by not carrying it. Every control has a real label, visually hidden
 // so the row stays compact.
 
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 
 import {
@@ -14,54 +15,57 @@ import {
   reviewLabel,
   type FleetSourceQuery,
 } from "@/lib/fleet";
+import { useFleetText } from "@/lib/fleetText";
 
 export function FleetSourceFilters({ query }: { query: FleetSourceQuery }) {
+  const t = useTranslations("fleet.filters");
+  const text = useFleetText();
   return (
     <form className="filters" method="get" action="/fleet/sources">
       <label className="sr-only" htmlFor="fleet-class">
-        Class
+        {t("class")}
       </label>
       <select id="fleet-class" name="class" defaultValue={query.class}>
-        <option value="">Any class</option>
+        <option value="">{t("anyClass")}</option>
         {ALL_CLASSES.map((c) => (
           <option key={c} value={c}>
-            {classLabel(c)}
+            {classLabel(c, text)}
           </option>
         ))}
       </select>
 
       <label className="sr-only" htmlFor="fleet-review">
-        Review status
+        {t("review")}
       </label>
       <select id="fleet-review" name="review_status" defaultValue={query.review_status}>
-        <option value="">Any review status</option>
-        <option value="NEW">{reviewLabel("NEW")}</option>
-        <option value="REVIEWED">{reviewLabel("REVIEWED")}</option>
+        <option value="">{t("anyReview")}</option>
+        <option value="NEW">{reviewLabel("NEW", text)}</option>
+        <option value="REVIEWED">{reviewLabel("REVIEWED", text)}</option>
       </select>
 
       <label className="sr-only" htmlFor="fleet-conflict">
-        Conflicts
+        {t("conflicts")}
       </label>
       <select id="fleet-conflict" name="has_conflict" defaultValue={query.has_conflict}>
-        <option value="">Conflict or not</option>
-        <option value="true">Conflicting class only</option>
-        <option value="false">No conflict</option>
+        <option value="">{t("conflictOrNot")}</option>
+        <option value="true">{t("conflictOnly")}</option>
+        <option value="false">{t("noConflict")}</option>
       </select>
 
       <label className="sr-only" htmlFor="fleet-basis">
-        Classification basis
+        {t("basis")}
       </label>
       <select id="fleet-basis" name="basis" defaultValue={query.basis}>
-        <option value="">Any basis</option>
+        <option value="">{t("anyBasis")}</option>
         {BASIS_OPTIONS.map((b) => (
           <option key={b} value={b}>
-            {basisLabel(b)}
+            {basisLabel(b, text)}
           </option>
         ))}
       </select>
 
-      <button type="submit">Filter</button>
-      {isFleetFiltered(query) && <Link href="/fleet/sources">Clear</Link>}
+      <button type="submit">{t("filter")}</button>
+      {isFleetFiltered(query) && <Link href="/fleet/sources">{t("clear")}</Link>}
     </form>
   );
 }

@@ -7,15 +7,20 @@
 // A source that is not chosen, or no longer monitored, is a sentence with Configure. It never
 // falls back to another source's data.
 
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 
+import { badgePhrase } from "@/components/home/qualifierText";
 import { WidgetFrame, WidgetLoading, secondary } from "@/components/home/WidgetFrame";
 import { useApiResource } from "@/hooks/useApiResource";
+import { useMeasures } from "@/i18n/measures";
+import { asTextTranslator } from "@/i18n/textTranslator";
 import { homeReads, type BucketSeries, type MetricBucket } from "@/lib/api";
+import { plainCount, useFleetText } from "@/lib/fleetText";
 import { bucketsAsOf } from "@/lib/home/asOf";
-import { badgeText } from "@/lib/home/qualifiers";
 import { sourceDrillHref } from "@/lib/sourceDetail";
-import { RANGE_TEXT, useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
+import { useWidgetCopy } from "@/widgets/copy";
+import { useEffectiveRange, useExpanded, type RangedProps } from "@/widgets/runtime";
 
 import { ConfigNotice } from "./ConfigNotice";
 import { SourceEpsChart } from "./SourceEpsChart";
@@ -35,29 +40,31 @@ const idle = async (): Promise<never> => {
   throw new Error("not read");
 };
 
-const NOT_CHOSEN: Body = {
-  kind: "notice",
-  lead: "Choose a log source.",
-  text: "No log source is set for this widget, so there is nothing to chart.",
-  hint: "Open Customize, then Configure, to choose one.",
-};
-const GONE: Body = {
-  kind: "notice",
-  lead: "This log source is no longer monitored.",
-  text: "The source set for this widget is not in the monitored list any more. No other source is drawn in its place.",
-  hint: "Open Customize, then Configure, to choose another.",
-};
-
-const INSUFFICIENT =
-  "No reliable expected range for this window yet: the baseline cells for these weekdays and hours are still learning. EPS is drawn without a band, and nothing is judged.";
-
 export function SourceEps({
   id = "single",
   config,
   range,
 }: { id?: string; config?: Partial<SourceEpsConfig> } & RangedProps) {
+  const t = useTranslations("catalog.sourceEps");
+  const copy = useWidgetCopy();
+  const say = asTextTranslator(useTranslations());
+  const measures = useMeasures();
+  const text = useFleetText();
   const window = useEffectiveRange(range);
+  const windowWords = copy.range(window);
   const expanded = useExpanded();
+  const notChosenNotice: Body = {
+    kind: "notice",
+    lead: t("notChosenLead"),
+    text: t("notChosenText"),
+    hint: t("notChosenHint"),
+  };
+  const goneNotice: Body = {
+    kind: "notice",
+    lead: t("goneLead"),
+    text: t("goneText"),
+    hint: t("goneHint"),
+  };
   const sourceId = typeof config?.source === "string" && config.source !== "" ? config.source : null;
 
   const seriesRead = sourceId ? homeReads.sourceSeries(sourceId, window) : null;
@@ -75,7 +82,7 @@ export function SourceEps({
       (list.status === "ok" && found === undefined));
   const label = found?.name ?? null;
 
-  const cells = secondary(cellsState);
+  const cells = secondary(cellsState, say);
   const lookup = useMemo(() => (cells.data ? sourceCellLookup(cells.data) : null), [cells.data]);
   const qualifiers = useMemo(() => {
     if (series.status !== "ok") return [];
@@ -84,32 +91,32 @@ export function SourceEps({
       buckets.map((b) => ({ start: b.bucket_start, completeness: b.completeness })),
       lookup,
       truncated ? { shown: buckets.length, total } : null,
-      lookup ? INSUFFICIENT : "The expected range could not be read, so none is drawn.",
+      lookup ? t("insufficient") : t("rangeUnread"),
     );
-  }, [series, lookup]);
+  }, [series, lookup, t]);
 
   let state: Parameters<typeof WidgetFrame<Body>>[0]["state"];
-  if (sourceId === null) state = { kind: "ok", data: NOT_CHOSEN, asOf: null };
-  else if (gone) state = { kind: "ok", data: GONE, asOf: null };
+  if (sourceId === null) state = { kind: "ok", data: notChosenNotice, asOf: null };
+  else if (gone) state = { kind: "ok", data: goneNotice, asOf: null };
   else state = mapResource(series, (s): Body => ({ kind: "series", series: s }));
 
   return (
     <WidgetFrame
       id={`eps-source-${id}`}
-      title={label ?? "Log source EPS"}
-      windowText={sourceId !== null && !gone ? RANGE_TEXT[window] : undefined}
-      badge={badgeText(qualifiers) || undefined}
+      title={label ?? t("title")}
+      windowText={sourceId !== null && !gone ? windowWords : undefined}
+      badge={badgePhrase(say, measures, qualifiers) || undefined}
       link={
         sourceId !== null && !gone
-          ? { href: sourceDrillHref(sourceId, window), label: "Source" }
-          : { href: "/behavior/sources", label: "Sources" }
+          ? { href: sourceDrillHref(sourceId, window), label: t("linkSource") }
+          : { href: "/behavior/sources", label: t("linkSources") }
       }
       state={state}
       dataTo={{
         at: sourceId === null || gone || series.status !== "ok" ? null : bucketsAsOf(series.data.buckets),
         family: "PHASE_A_VOLUME",
       }}
-      what="the source's EPS series"
+      what={t("what")}
       permission="read:anomalies"
       fillBody
     >
@@ -119,18 +126,19 @@ export function SourceEps({
         if (buckets.length === 0) {
           return (
             <p className="tw-state">
-              <strong>No metric buckets stored.</strong> None was stored for this source in the
-              last {RANGE_TEXT[window]}. That is an absence of collection, not zero EPS.
+              {t.rich("noBuckets", {
+                range: windowWords,
+                b: (chunks) => <strong>{chunks}</strong>,
+              })}
             </p>
           );
         }
-        if (cells.pending) return <WidgetLoading what="the expected range" />;
+        if (cells.pending) return <WidgetLoading what={t("expectedRangeWhat")} />;
         const facts = buckets.map((b) => ({ start: b.bucket_start, completeness: b.completeness }));
         if (!hasMeasured(facts)) {
           return (
             <p className="tw-state">
-              <strong>No bucket was fully collected.</strong> No line is drawn; a bucket that was
-              not collected is not zero EPS.
+              {t.rich("noneCollected", { b: (chunks) => <strong>{chunks}</strong> })}
             </p>
           );
         }
@@ -139,15 +147,23 @@ export function SourceEps({
           <>
             {expanded && label ? (
               <p className="tw-state">
-                <strong>{label}</strong> events per second, last {RANGE_TEXT[window]}.
+                {t.rich("expandedLead", {
+                  label,
+                  range: windowWords,
+                  b: (chunks) => <strong>{chunks}</strong>,
+                })}
               </p>
             ) : null}
             <SourceEpsChart
               buckets={buckets}
               lookup={lookup}
               labelled={expanded}
-              ariaLabel={`${label ?? "Log source"} EPS against the expected range, last ${RANGE_TEXT[window]}`}
-              textSummary={`${complete} of ${buckets.length} stored buckets were fully collected in the last ${RANGE_TEXT[window]}.`}
+              ariaLabel={t("chartLabel", { label: label ?? t("logSource"), range: windowWords })}
+              textSummary={t("summary", {
+                complete: plainCount(complete, text.locale),
+                total: plainCount(buckets.length, text.locale),
+                range: windowWords,
+              })}
             />
             {qualifiers
               .filter((q) => q.kind === "INSUFFICIENT_DATA")

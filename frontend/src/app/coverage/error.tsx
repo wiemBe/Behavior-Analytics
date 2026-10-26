@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function CoverageError({
@@ -9,10 +11,11 @@ export default function CoverageError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("coverage");
   return (
     <BoundaryError
-      title="Detection Coverage"
-      what="Detection coverage"
+      title={t("title")}
+      what={t("errorWhat")}
       digest={error.digest}
       onRetry={reset}
     />

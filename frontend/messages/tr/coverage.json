@@ -1,0 +1,67 @@
+{
+  "title": "Algılama kapsamı",
+  "loadingWhat": "Algılama kapsamı",
+  "errorWhat": "Algılama kapsamı",
+  "description": "Eşlenen kurallardan ve gözlenen sağlıklarından türetilen MITRE ATT&CK teknik kapsamı. Kapsam, bir kuralın yalnızca var olmasından çıkarılmaz.",
+  "status": {
+    "COVERED": "KAPSANDI",
+    "PARTIAL": "KISMİ",
+    "DEGRADED": "BOZULMUŞ",
+    "MISSING": "EKSİK",
+    "NOT_COVERED": "KAPSANMADI",
+    "NOT_EVALUATED": "DEĞERLENDİRİLMEDİ",
+    "HEALTHY": "SAĞLIKLI",
+    "NOISY": "GÜRÜLTÜLÜ",
+    "INACTIVE": "ETKİN DEĞİL",
+    "NEVER_OBSERVED": "HİÇ GÖZLENMEDİ",
+    "DEPENDENCY_DEGRADED": "BAĞIMLILIK BOZULMUŞ",
+    "DISABLED": "DEVRE DIŞI",
+    "INSUFFICIENT_DATA": "YETERSİZ VERİ",
+    "UNKNOWN": "BİLİNMİYOR"
+  },
+  "kind": {
+    "BUILDING_BLOCK": "Yapı bloğu",
+    "LOG_SOURCE_TYPE": "Log source türü",
+    "LOG_SOURCE": "Log source"
+  },
+  "source": {
+    "explicit": "açık",
+    "inferred": "çıkarımsal"
+  },
+  "notEvaluatedHeading": "Kapsam değerlendirilmedi.",
+  "notEvaluatedBody": "Hiçbir ATT&CK teknik eşlemesi yapılandırılmamış; bu yüzden kapsam ölçülemez. Eşlemeleri bir yönetici ekler. Bu, sıfır kapsam bulgusu değildir.",
+  "summary": "{total} teknik değerlendirildi · {covered} kapsandı · {explicit} açık / {inferred} çıkarımsal eşleme · oluşturulma: <time></time>",
+  "noTechniques": "Bu sayfada teknik yok.",
+  "techniques": {
+    "label": "Teknikler",
+    "technique": "Teknik",
+    "name": "Ad",
+    "tactic": "Taktik",
+    "status": "Durum",
+    "rules": "Kurallar",
+    "score": "Puan",
+    "evidence": "Kanıt"
+  },
+  "byRule": {
+    "heading": "Kural odaklı görünüm",
+    "empty": "Henüz hiçbir kuralın ATT&CK teknik eşlemesi yok.",
+    "label": "Kurala göre kapsam",
+    "rule": "Kural",
+    "enabled": "Etkin",
+    "health": "Sağlık",
+    "techniques": "Teknikler",
+    "evidence": "Kanıt",
+    "yes": "Evet",
+    "no": "Hayır"
+  },
+  "byDataSource": {
+    "heading": "Veri kaynağı odaklı görünüm",
+    "empty": "Bu QRadar envanterinde kuraldan log source'a bağımlılık bilgisi yok.",
+    "label": "Veri kaynağına göre kapsam",
+    "dataSource": "Veri kaynağı",
+    "kind": "Tür",
+    "rules": "Kurallar",
+    "techniques": "Teknikler",
+    "evidence": "Kanıt"
+  }
+}

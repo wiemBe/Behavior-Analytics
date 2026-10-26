@@ -7,6 +7,7 @@
 // platform now uses, not what the click assumed. Permissions are never judged
 // here; a 403 is shown with the permission it names.
 
+import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
 import { ChangeStatus, type ChangeOutcome } from "@/components/ui/ChangeStatus";
@@ -22,6 +23,7 @@ import {
   reviewLabel,
   sourceFailure,
 } from "@/lib/fleet";
+import { useFleetText } from "@/lib/fleetText";
 import { UtcTime } from "@/components/ui/UtcTime";
 
 import "@/components/ui/controls.css";
@@ -33,6 +35,8 @@ function SourceRow({
   initial: FleetSource;
   rules: Map<string, ClassificationRule>;
 }) {
+  const t = useTranslations("fleet.sourcesTable");
+  const text = useFleetText();
   const [source, setSource] = useState(initial);
   const [editing, setEditing] = useState(false);
   const [choice, setChoice] = useState<SourceClass>(
@@ -43,7 +47,7 @@ function SourceRow({
   const selectId = useId();
 
   const rule = source.rule_id ? rules.get(source.rule_id) : undefined;
-  const conflict = conflictText(source);
+  const conflict = conflictText(source, text);
   const reviewed = source.review_status === "REVIEWED";
 
   async function applyOverride(next: SourceClass | null) {
@@ -58,11 +62,16 @@ function SourceRow({
         kind: "ok",
         text:
           next === null
-            ? `Override cleared. Class is now ${classLabel(updated.source_class)} (${basisLabel(updated.basis).toLowerCase()}).`
-            : `Saved. Class is now ${classLabel(updated.source_class)}.`,
+            ? t("overrideCleared", {
+                class: classLabel(updated.source_class, text),
+                basis: basisLabel(updated.basis, text).toLocaleLowerCase(
+                  text.locale === "tr" ? "tr-TR" : "en-US",
+                ),
+              })
+            : t("saved", { class: classLabel(updated.source_class, text) }),
       });
     } catch (err) {
-      setOutcome(sourceFailure(err));
+      setOutcome(sourceFailure(err, text));
     } finally {
       setPending(null);
     }
@@ -77,9 +86,9 @@ function SourceRow({
     try {
       const updated = await fleetApi.markReviewed(source.id);
       setSource(updated);
-      setOutcome({ kind: "ok", text: "Marked reviewed." });
+      setOutcome({ kind: "ok", text: t("markedReviewed") });
     } catch (err) {
-      setOutcome(sourceFailure(err));
+      setOutcome(sourceFailure(err, text));
     } finally {
       setPending(null);
     }
@@ -90,17 +99,17 @@ function SourceRow({
       <th scope="row" className="cell-source">
         {source.name}
         <span className="cell-sub">
-          {source.type_name ?? "Type not recorded"}
-          {source.enabled ? "" : " · disabled"}
+          {source.type_name ?? t("typeNotRecorded")}
+          {source.enabled ? "" : t("disabledSuffix")}
         </span>
       </th>
       <td className="cell-classification">
         <span className={`pill ${classTone(source.source_class)}`}>
-          {classLabel(source.source_class)}
+          {classLabel(source.source_class, text)}
         </span>
         <span className="cell-sub">
-          {basisLabel(source.basis)}
-          {source.override_by ? ` · set by ${source.override_by}` : ""}
+          {basisLabel(source.basis, text)}
+          {source.override_by ? t("setBy", { name: source.override_by }) : ""}
         </span>
         {rule && (
           <span className="cell-sub">
@@ -109,24 +118,24 @@ function SourceRow({
         )}
         {conflict && (
           <span className="cell-sub conflict-text">
-            <strong>Conflict:</strong> {conflict}
+            <strong>{t("conflict")}</strong> {conflict}
           </span>
         )}
       </td>
       <td className="num">
         <UtcTime value={source.first_seen_at} variant="compact" className="nowrap" />
-        <span className="cell-sub">{originLabel(source.auto_discovered)}</span>
+        <span className="cell-sub">{originLabel(source.auto_discovered, text)}</span>
       </td>
       <td>
         <span className={`pill pill-quiet ${source.review_status === "NEW" ? "warn" : ""}`}>
-          {reviewLabel(source.review_status)}
+          {reviewLabel(source.review_status, text)}
         </span>
       </td>
       <td className="cell-actions">
         {editing ? (
           <div className="override-editor">
             <label htmlFor={selectId} className="muted">
-              Class for {source.name}
+              {t("classFor", { name: source.name })}
             </label>
             <select
               id={selectId}
@@ -137,7 +146,7 @@ function SourceRow({
             >
               {ASSIGNABLE_CLASSES.map((c) => (
                 <option key={c} value={c}>
-                  {classLabel(c)}
+                  {classLabel(c, text)}
                 </option>
               ))}
             </select>
@@ -148,7 +157,7 @@ function SourceRow({
                 disabled={pending !== null}
                 onClick={() => void applyOverride(choice)}
               >
-                Apply
+                {t("apply")}
               </button>
               <button
                 type="button"
@@ -156,7 +165,7 @@ function SourceRow({
                 disabled={pending !== null}
                 onClick={() => setEditing(false)}
               >
-                Cancel
+                {t("cancel")}
               </button>
             </div>
           </div>
@@ -165,35 +174,35 @@ function SourceRow({
             <button
               type="button"
               className="action secondary"
-              aria-label={`Set class for ${source.name}`}
+              aria-label={t("setClassFor", { name: source.name })}
               disabled={pending !== null}
               onClick={() => {
                 setOutcome({ kind: "idle" });
                 setEditing(true);
               }}
             >
-              Set class
+              {t("setClass")}
             </button>
             {source.override_class !== null && (
               <button
                 type="button"
                 className="action secondary"
-                aria-label={`Clear override for ${source.name}`}
+                aria-label={t("clearOverrideFor", { name: source.name })}
                 disabled={pending !== null}
                 onClick={() => void applyOverride(null)}
               >
-                Clear override
+                {t("clearOverride")}
               </button>
             )}
             {!reviewed && (
               <button
                 type="button"
                 className="action secondary"
-                aria-label={`Mark ${source.name} reviewed`}
+                aria-label={t("markReviewedFor", { name: source.name })}
                 disabled={pending !== null}
                 onClick={() => void markReviewed()}
               >
-                Mark reviewed
+                {t("markReviewed")}
               </button>
             )}
           </div>
@@ -211,23 +220,21 @@ export function FleetSourcesTable({
   items: FleetSource[];
   rules?: ClassificationRule[];
 }) {
+  const t = useTranslations("fleet.sourcesTable");
   const ruleById = new Map(rules.map((r) => [r.id, r]));
   return (
-    <TableScroll label="Log sources and their classification">
+    <TableScroll label={t("label")}>
       <table className="fleet-table">
-        <caption className="sr-only">
-          Log sources with their class, the basis for it, any conflict between rules, when the
-          platform first saw them and their review status.
-        </caption>
+        <caption className="sr-only">{t("caption")}</caption>
         <thead>
           <tr>
-            <th scope="col">Source</th>
-            <th scope="col">Class and basis</th>
+            <th scope="col">{t("source")}</th>
+            <th scope="col">{t("classBasis")}</th>
             <th scope="col" className="num">
-              First seen
+              {t("firstSeen")}
             </th>
-            <th scope="col">Review</th>
-            <th scope="col">Actions</th>
+            <th scope="col">{t("review")}</th>
+            <th scope="col">{t("actions")}</th>
           </tr>
         </thead>
         <tbody>

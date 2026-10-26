@@ -5,6 +5,7 @@
 // actions an analyst takes (set the class, mark reviewed).
 
 import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 
 import { FleetSourceFilters } from "@/components/fleet/FleetSourceFilters";
 import { FleetSourcesTable } from "@/components/fleet/FleetSourcesTable";
@@ -18,10 +19,12 @@ import {
   isFleetFiltered,
   parseFleetSourceQuery,
 } from "@/lib/fleet";
+import { fleetTextOf } from "@/lib/fleetText";
 
-export const metadata: Metadata = {
-  title: "Fleet sources",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("fleet.meta");
+  return { title: t("sources") };
+}
 
 export default async function FleetSourcesPage({
   searchParams,
@@ -29,6 +32,8 @@ export default async function FleetSourcesPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const query = parseFleetSourceQuery(await searchParams);
+  const t = await getTranslations("fleet.sourcesPage");
+  const text = fleetTextOf(await getTranslations(), await getLocale());
 
   let items: FleetSource[] = [];
   let total = 0;
@@ -49,23 +54,23 @@ export default async function FleetSourcesPage({
   } catch (err) {
     error =
       err instanceof ApiError && err.status === 403
-        ? "Your role cannot read the fleet (permission read:fleet). Nothing was changed."
+        ? text.say("fleet.errors.forbidden")
         : err instanceof ApiError && err.status === 401
-          ? "Your session has expired. Sign in again to continue."
-          : "The source list could not be loaded. The backend may be unreachable; check that it is running, then reload the page.";
+          ? text.say("errors.sessionExpired")
+          : t("unreachable");
   }
 
-  const filters = activeFilterLabels(query);
+  const filters = activeFilterLabels(query, text);
 
   return (
     <>
       <PageHeader
-        title="Fleet sources"
-        description="New and ambiguously classified log sources, with the class each one was given and why. Times are UTC."
+        title={t("title")}
+        description={t("description")}
       />
       <FleetSourceFilters query={query} />
       {filters.length > 0 && (
-        <ul className="filter-chips fleet-filter-chips" aria-label="Active filters">
+        <ul className="filter-chips fleet-filter-chips" aria-label={t("activeFilters")}>
           {filters.map((f) => (
             <li key={f} className="filter-chip">
               {f}
@@ -77,7 +82,7 @@ export default async function FleetSourcesPage({
       {error ? (
         <div className="notice" role="alert">
           <p>
-            <strong>The source list could not be shown.</strong>
+            <strong>{t("noticeHeading")}</strong>
           </p>
           <p>{error}</p>
         </div>
@@ -85,15 +90,11 @@ export default async function FleetSourcesPage({
         <div className="notice">
           <p>
             <strong>
-              {isFleetFiltered(query)
-                ? "No source matches these filters."
-                : "No log sources are in the inventory."}
+              {isFleetFiltered(query) ? t("emptyFiltered") : t("emptyInventory")}
             </strong>
           </p>
           <p>
-            {isFleetFiltered(query)
-              ? "Widen or clear the filters to see more sources."
-              : "Run an inventory sync from the Log Sources page; sources appear here once they are synced."}
+            {isFleetFiltered(query) ? t("emptyFilteredHint") : t("emptyInventoryHint")}
           </p>
         </div>
       ) : (

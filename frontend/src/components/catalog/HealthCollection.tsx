@@ -4,8 +4,12 @@
 // family: its cadence, when it last ran and how late that run is against its cadence. A family
 // that has not run since the upgrade has no lateness; it is an em dash, not "on time".
 
+import { useTranslations } from "next-intl";
+
 import { useApiResource } from "@/hooks/useApiResource";
 import { homeReads } from "@/lib/api";
+import { useFleetText } from "@/lib/fleetText";
+import { formatCount } from "@/lib/format";
 import { WidgetFrame } from "@/components/home/WidgetFrame";
 import { Unmeasured, When } from "@/components/home/WidgetParts";
 
@@ -14,43 +18,43 @@ import { cadenceRows, lateText } from "./derive";
 import "./catalog.css";
 
 export function HealthCollection() {
+  const t = useTranslations("catalog.collection");
+  const text = useFleetText();
   const read = homeReads.searchCadence();
   const state = useApiResource(read.key, read.fetch);
 
   return (
     <WidgetFrame
       id="health-collection"
-      title="Scheduled searches"
-      windowText="latest run"
-      link={{ href: "/admin/search-cadence", label: "Cadence" }}
+      title={t("title")}
+      windowText={t("windowText")}
+      link={{ href: "/admin/search-cadence", label: t("link") }}
       state={state}
-      what="the search cadence"
+      what={t("what")}
       permission="read:search_cadence"
     >
       {({ data }) => {
         if (data.length === 0) {
           return (
-            <p className="tw-state">
-              No search family was returned. The cadence migration seeds them, so check that the
-              database migrations have been applied.
-            </p>
+            <p className="tw-state">{t("empty")}</p>
           );
         }
-        const rows = cadenceRows(data, Date.now());
+        const rows = cadenceRows(data, Date.now(), text);
         const late = rows.filter((r) => r.late).length;
         return (
           <>
             <p className="tw-lead">
-              <span className="num">
-                {late.toLocaleString("en-US")} of {rows.length.toLocaleString("en-US")}
-              </span>{" "}
-              families late
+              {t.rich("late", {
+                late: formatCount(late, text.locale),
+                total: formatCount(rows.length, text.locale),
+                num: (chunks) => <span className="num">{chunks}</span>,
+              })}
               {rows.some((r) => r.lateSeconds === null) ? (
-                <span className="muted"> · some have not run since the upgrade</span>
+                <span className="muted"> · {t("someNotRun")}</span>
               ) : null}
             </p>
             <table className="tw-table cw-table">
-              <caption className="sr-only">Search families, cadence and last run</caption>
+              <caption className="sr-only">{t("caption")}</caption>
               <colgroup>
                 <col />
                 <col className="tw-col-badge" />
@@ -59,13 +63,13 @@ export function HealthCollection() {
               </colgroup>
               <thead>
                 <tr>
-                  <th scope="col">Family</th>
+                  <th scope="col">{t("family")}</th>
                   <th scope="col" className="num">
-                    Cadence
+                    {t("cadence")}
                   </th>
-                  <th scope="col">Last run</th>
+                  <th scope="col">{t("lastRun")}</th>
                   <th scope="col" className="num">
-                    Late by
+                    {t("lateBy")}
                   </th>
                 </tr>
               </thead>
@@ -81,10 +85,10 @@ export function HealthCollection() {
                     </td>
                     <td className="num cw-nowrap">
                       {r.lateSeconds === null ? (
-                        <Unmeasured reason="This family has not run since the upgrade" />
+                        <Unmeasured reason={t("neverRan")} />
                       ) : (
                         <span className={r.late ? "tw-state-word warn" : "tw-state-word"}>
-                          {lateText(r)}
+                          {lateText(r, text)}
                         </span>
                       )}
                     </td>
