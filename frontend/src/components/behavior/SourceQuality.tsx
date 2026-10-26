@@ -9,20 +9,20 @@
 // Neither section presents an absence of collection as source silence, and
 // neither presents a zero MAD as an error.
 
+import { useTranslations } from "next-intl";
+
 import {
   seasonalCellLabel,
   type BaselineQuality,
   type CollectionHealth,
 } from "@/lib/sourceDetail";
 import { formatMetric } from "@/lib/behavior";
+import { MAD_EPS } from "@/lib/behaviorI18n";
+import { plainCount } from "@/lib/figureText";
 import { formatShare } from "@/lib/format";
-import { relativeAgeFromSeconds } from "@/lib/time";
+import { relativeAgeFromSeconds, type AgeWords } from "@/lib/time";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { UtcTime } from "@/components/ui/UtcTime";
-
-
-function lagText(seconds: number | null): string {
-  return relativeAgeFromSeconds(seconds);
-}
 
 export function SourceQuality({
   baseline,
@@ -43,11 +43,17 @@ export function SourceQuality({
   /** The log source's QRadar-reported status, when the inventory call worked. */
   qradarStatus: string | null;
 }) {
+  const t = useTranslations("behavior.quality");
+  const age = useTranslations("format") as unknown as AgeWords;
+  const common = useTranslations("common");
+  const i18n = useBehaviorI18n();
+  const metric = (value: number | null | undefined, digits = 2) =>
+    formatMetric(value, digits, i18n.locale);
   return (
     <div className="quality-grid">
       <section className="panel">
         <div className="row dimension-panel-head">
-          <h3>Baseline quality</h3>
+          <h3>{t("baselineTitle")}</h3>
           <span className={`pill ${baseline.tone}`}>{baseline.label}</span>
         </div>
         <p className="subtitle">{baseline.explanation}</p>
@@ -56,36 +62,36 @@ export function SourceQuality({
           {baseline.cell && (
             <>
               <div>
-                <dt>Samples</dt>
+                <dt>{t("samples")}</dt>
                 <dd className="num">{baseline.cell.sample_count}</dd>
               </div>
               <div>
-                <dt>Seasonal cell</dt>
+                <dt>{t("seasonalCell")}</dt>
                 <dd className="num">
-                  {seasonalCellLabel(baseline.cell.weekday, baseline.cell.hour)}
+                  {seasonalCellLabel(baseline.cell.weekday, baseline.cell.hour, i18n)}
                 </dd>
               </div>
               <div>
-                <dt>Cell completeness</dt>
+                <dt>{t("cellCompleteness")}</dt>
                 <dd className="num">
-                  {formatShare(baseline.cell.completeness)}
+                  {formatShare(baseline.cell.completeness, i18n.locale)}
                 </dd>
               </div>
               <div>
-                <dt>MAD (EPS)</dt>
-                <dd className="num">{formatMetric(baseline.cell.mad, 3)}</dd>
+                <dt>{MAD_EPS}</dt>
+                <dd className="num">{metric(baseline.cell.mad, 3)}</dd>
               </div>
             </>
           )}
           <div>
-            <dt>Expected range (EPS)</dt>
+            <dt>{t("expectedRange")}</dt>
             <dd className="num">
               {/* No band exists without a baseline. An em dash says so; a
                   "0.00 – 0.00" would be an expectation we never formed. */}
               {expectedLow == null || expectedHigh == null ? (
                 <span className="muted">—</span>
               ) : (
-                `${formatMetric(expectedLow)} – ${formatMetric(expectedHigh)}`
+                `${metric(expectedLow)} – ${metric(expectedHigh)}`
               )}
             </dd>
           </div>
@@ -94,22 +100,20 @@ export function SourceQuality({
 
       <section className="panel">
         <div className="row dimension-panel-head">
-          <h3>Collection health</h3>
+          <h3>{t("collectionTitle")}</h3>
           {collectionUnknown ? (
-            <span className="pill">Unknown</span>
+            <span className="pill">{common("unknown")}</span>
           ) : (
             <span className={`pill ${collection.tone}`}>{collection.label}</span>
           )}
         </div>
         <p className="subtitle">
-          {collectionUnknown
-            ? "The metric history could not be loaded, so collection cannot be judged. This is a failed request, not a statement about the source or its collector."
-            : collection.explanation}
+          {collectionUnknown ? t("collectionUnknown") : collection.explanation}
         </p>
 
         <dl className="dimension-meta">
           <div>
-            <dt>Latest collected interval</dt>
+            <dt>{t("latestInterval")}</dt>
             <dd className="num">
               {lastBucketAt ? (
                 <UtcTime value={lastBucketAt} />
@@ -121,13 +125,13 @@ export function SourceQuality({
           {collectionUnknown ? (
             <>
               <div>
-                <dt>Collection lag</dt>
+                <dt>{t("lag")}</dt>
                 <dd className="num">
                   <span className="muted">—</span>
                 </dd>
               </div>
               <div>
-                <dt>Intervals in window</dt>
+                <dt>{t("intervals")}</dt>
                 <dd className="num">
                   <span className="muted">—</span>
                 </dd>
@@ -136,26 +140,28 @@ export function SourceQuality({
           ) : (
             <>
               <div>
-                <dt>Collection lag</dt>
-                <dd className="num">{lagText(collection.lagSeconds)}</dd>
+                <dt>{t("lag")}</dt>
+                <dd className="num">{relativeAgeFromSeconds(collection.lagSeconds, age)}</dd>
               </div>
               <div>
-                <dt>Intervals in window</dt>
+                <dt>{t("intervals")}</dt>
                 {/* The window's edges can both hold a bucket, so the count of
                     stored buckets may exceed the nominal count; the
                     denominator never reads lower than the numerator. */}
                 <dd className="num">
-                  {collection.total - collection.incomplete} of{" "}
-                  {Math.max(collection.expected, collection.total)} fully observed
+                  {t("intervalsObserved", {
+                    observed: plainCount(collection.total - collection.incomplete, i18n.locale),
+                    total: plainCount(Math.max(collection.expected, collection.total), i18n.locale),
+                  })}
                 </dd>
               </div>
             </>
           )}
           <div>
-            <dt>QRadar log source status</dt>
+            <dt>{t("qradarStatus")}</dt>
             {/* Reported by QRadar about the log source. Not a statement about
                 whether our collector ran, which the API does not expose. */}
-            <dd>{qradarStatus ?? <span className="muted">unavailable</span>}</dd>
+            <dd>{qradarStatus ?? <span className="muted">{t("unavailable")}</span>}</dd>
           </div>
         </dl>
       </section>

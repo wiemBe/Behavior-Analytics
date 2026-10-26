@@ -1,0 +1,26 @@
+{
+  "none": "kanıt kaydedilmedi",
+  "tableLabel": "Algılayıcı kanıt ölçümleri",
+  "label": {
+    "observed": "Gözlenen",
+    "expected": "Beklenen",
+    "baselineLow": "Baseline alt sınırı",
+    "baselineHigh": "Baseline üst sınırı",
+    "deviation": "Sapma",
+    "threshold": "Eşik",
+    "samples": "Örnek",
+    "confidence": "Güven"
+  },
+  "unit": {
+    "baselineSample": "{count, plural, other {baseline örneği}}",
+    "event": "{count, plural, other {olay}}",
+    "events": "olay",
+    "eventsPerBucket": "olay / zaman dilimi",
+    "timesLimit": "× sınır",
+    "sourceIps": "kaynak IP",
+    "belowBaseline": "baseline'ın altında",
+    "error": "{count, plural, other {hata}}",
+    "interval": "{count, plural, other {aralık}}",
+    "zeroToOne": "(0 ile 1 arası)"
+  }
+}

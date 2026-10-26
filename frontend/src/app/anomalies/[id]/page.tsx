@@ -16,6 +16,7 @@
 // the three strongest contributors, and everything else behind three tabs.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 
 import { EvidenceBanner } from "@/components/behavior/EvidenceBanner";
@@ -49,15 +50,17 @@ import {
   type WafMetricBucket,
 } from "@/lib/api";
 import { ratioSpecFor } from "@/components/waf/wafSeries";
-import { dimensionLabel, hasConfidenceLimitation, stateMeaning } from "@/lib/behavior";
+import { dimensionLabel, hasConfidenceLimitation, stateMeaningIn } from "@/lib/behavior";
+import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
 import { summarizeAnomaly, summarizeTimeline } from "@/lib/summarize";
 import { buildSeries } from "@/lib/timeseries";
 
 import "./incident.css";
 
-export const metadata: Metadata = {
-  title: "Anomaly investigation",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("anomalies.detail");
+  return { title: t("metaTitle") };
+}
 
 /** How much surrounding context the timeline shows around the anomaly. */
 const CONTEXT_HOURS = 6;
@@ -242,6 +245,7 @@ export default async function AnomalyDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const t = await getTranslations("anomalies.detail");
 
   let loaded: AnomalyDetail | WafAnomalyDetail | IpsAnomalyDetail | PwAnomalyDetail | null = null;
   let status = 0;
@@ -254,19 +258,19 @@ export default async function AnomalyDetailPage({
   if (!loaded) {
     return (
       <>
-        <PageHeader title="Anomaly investigation" />
+        <PageHeader title={t("title")} />
         <div className="notice" role="alert">
           <p>
             {status === 404
-              ? "This anomaly does not exist. It may have been removed, or the link may be wrong."
+              ? t("notFound")
               : status === 403
-                ? "You do not have permission to view anomaly evidence. Ask an administrator for the read:anomalies grant."
+                ? t("forbidden")
                 : status === 401
-                  ? "Your session has expired. Sign in again to continue."
-                  : "Could not load this anomaly. The backend may be unreachable; reload the page to try again."}
+                  ? t("expired")
+                  : t("failed")}
           </p>
           <p className="incident-error-link">
-            <Link href="/anomalies">Back to all anomalies</Link>
+            <Link href="/anomalies">{t("back")}</Link>
           </p>
         </div>
       </>
@@ -301,6 +305,8 @@ export default async function AnomalyDetailPage({
     );
   }
   const anomaly: AnomalyDetail = loaded;
+  const i18n = await getBehaviorI18n();
+  const { label: enumText } = await getEnumLabels();
 
   // The timeline is context around the incident, so the window is anchored to
   // the anomaly rather than to now — an anomaly from last week must still
@@ -328,24 +334,27 @@ export default async function AnomalyDetailPage({
 
   const pkg = anomaly.explanation_package;
   const detection = anomaly.detection;
-  const summary = summarizeAnomaly(anomaly);
+  const summary = summarizeAnomaly(anomaly, i18n);
   const degenerate = hasConfidenceLimitation(detection?.robust_score_status);
 
   const points = buildSeries(buckets);
   const incomplete = buckets.filter((b) => b.completeness !== "COMPLETE").length;
-  const chartSummary = summarizeTimeline({
+  const chartSummary = summarizeTimeline(
+    {
     observed: points.map((p) => p.observed),
     expected: detection?.expected_eps ?? anomaly.expected_value,
     anomalyStart: anomaly.anomaly_start,
     anomalyEnd: anomaly.anomaly_end,
     state: anomaly.state,
     incompleteBuckets: incomplete,
-    totalBuckets: buckets.length,
-  });
+      totalBuckets: buckets.length,
+    },
+    i18n,
+  );
 
   const truncated = (pkg?.dimensions ?? [])
     .filter((d) => d.availability === "TRUNCATED")
-    .map((d) => dimensionLabel(d.dimension));
+    .map((d) => dimensionLabel(d.dimension, i18n));
 
   return (
     <>
@@ -355,18 +364,17 @@ export default async function AnomalyDetailPage({
       {/* --- B. deterministic summary ------------------------------------ */}
       <p className="incident-summary">{summary.text}</p>
       {summary.caveat && <p className="subtitle">{summary.caveat}</p>}
-      <p className="subtitle">{stateMeaning(anomaly.state)}</p>
+      <p className="subtitle">{stateMeaningIn(anomaly.state, i18n)}</p>
 
       {/* --- C. the four primary metrics, as one comparison --------------- */}
       <IncidentMetrics anomaly={anomaly} confidenceLimited={degenerate} />
 
       {/* --- D. the timeline --------------------------------------------- */}
       <section>
-        <h2 className="section-title">Timeline</h2>
+        <h2 className="section-title">{t("timeline")}</h2>
         {bucketsFailed ? (
           <div className="notice" role="alert">
-            Metric history could not be loaded. The rest of this investigation
-            is unaffected, but the timeline is absent rather than empty.
+            {t("metricsFailed")}
           </div>
         ) : (
           <VolumeChart
@@ -379,11 +387,11 @@ export default async function AnomalyDetailPage({
                 ? [{ start: anomaly.anomaly_start, end: anomaly.anomaly_end }]
                 : []
             }
-            transitions={anomaly.transitions.map((t) => ({
-              at: t.occurred_at,
-              label: t.to_state,
+            transitions={anomaly.transitions.map((tr) => ({
+              at: tr.occurred_at,
+              label: enumText("anomalyState", tr.to_state),
             }))}
-            ariaLabel="Observed volume, expected baseline and the anomalous interval"
+            ariaLabel={t("chartAria")}
             textSummary={chartSummary}
           />
         )}
@@ -391,11 +399,9 @@ export default async function AnomalyDetailPage({
 
       {/* --- E. what changed --------------------------------------------- */}
       <section>
-        <h2 className="section-title">What changed</h2>
+        <h2 className="section-title">{t("whatChanged")}</h2>
         <p className="subtitle">
-          The strongest contributors, one per dimension. These are the values
-          that moved most during the interval — a measured share of the change,
-          not a statement of cause.
+          {t("whatChangedNote")}
         </p>
         <TopContributors
           packaged={pkg}
@@ -413,7 +419,7 @@ export default async function AnomalyDetailPage({
 
       {/* --- G. everything else, behind tabs ------------------------------ */}
       <section id="evidence">
-        <h2 className="section-title">Investigation detail</h2>
+        <h2 className="section-title">{t("investigation")}</h2>
         <AnomalyTabs
           evidence={(
             <DimensionExplorer

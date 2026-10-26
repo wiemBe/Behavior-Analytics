@@ -29,10 +29,14 @@ import {
 } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef } from "react";
 
+import { TURKISH_ECHARTS_LOCALE } from "@/components/home/chartLocale";
 import type { MetricBucket } from "@/lib/api";
+import { fixed, grouped } from "@/lib/figureText";
 import { readChartPalette } from "@/lib/chartPalette";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import {
   buildSeries,
   isolatedPoints,
@@ -83,9 +87,6 @@ export interface TransitionMarker {
   label: string;
 }
 
-/** The unit every value on this chart is in. */
-const UNIT = "EPS";
-
 /**
  * Union of overlapping or touching `[start, end]` intervals, in epoch ms.
  *
@@ -116,7 +117,7 @@ export function VolumeChart({
   expectedHigh,
   anomalies = [],
   transitions = [],
-  ariaLabel = "Observed volume against expected baseline",
+  ariaLabel,
   textSummary,
 }: {
   buckets: MetricBucket[];
@@ -131,6 +132,9 @@ export function VolumeChart({
   textSummary?: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const t = useTranslations("behavior.chart");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
 
   const points = useMemo(() => buildSeries(buckets), [buckets]);
   const unobserved = useMemo(() => unobservedIntervals(buckets), [buckets]);
@@ -175,7 +179,7 @@ export function VolumeChart({
             { xAxis: m.end },
           ],
         ),
-        ...historyMarkAreas(history, readHistoryShade()),
+        ...historyMarkAreas(history, readHistoryShade(), true, i18n.t("behavior.history.text")),
       ];
 
       // Honour the OS-level preference: the CSS guard cannot reach a canvas
@@ -205,16 +209,17 @@ export function VolumeChart({
             const first = list[0] as { dataIndex?: number } | undefined;
             const p = first?.dataIndex != null ? points[first.dataIndex] : undefined;
             if (!p) return "";
+            const eps = (value: number) => fixed(value, 2, locale);
             const observed =
               p.observed != null
-                ? `Observed: ${p.observed.toFixed(2)} ${UNIT}`
-                : `Observed: not measured (${kindMeaning(p.kind)})`;
+                ? t("tooltip.observed", { value: eps(p.observed) })
+                : t("tooltip.notMeasured", { meaning: kindMeaning(p.kind, i18n) });
             const reported =
               p.observed == null && p.reported != null
-                ? `Reported by the partial collection: ${p.reported.toFixed(2)} ${UNIT}`
+                ? t("tooltip.reported", { value: eps(p.reported) })
                 : "";
             const band = hasBand
-              ? `Expected range: ${expectedLow.toFixed(2)} – ${expectedHigh.toFixed(2)} ${UNIT}`
+              ? t("tooltip.band", { low: eps(expectedLow), high: eps(expectedHigh) })
               : "";
             // Whether this instant falls inside a known anomalous interval, so
             // the tooltip states the incident rather than only the number.
@@ -227,11 +232,13 @@ export function VolumeChart({
               utcTimeHtml(new Date(p.t).toISOString()),
               observed,
               reported,
-              expected != null ? `Expected: ${expected.toFixed(2)} ${UNIT}` : "",
+              expected != null ? t("tooltip.expected", { value: eps(expected) }) : "",
               band,
-              `Collection: ${kindMeaning(p.kind)}`,
-              inAnomaly ? `Anomalous interval: ${inAnomaly.label ?? "anomaly"}` : "",
-              originText(origins.get(p.t)),
+              t("tooltip.collection", { meaning: kindMeaning(p.kind, i18n) }),
+              inAnomaly
+                ? t("tooltip.anomalous", { label: inAnomaly.label ?? t("tooltip.anomalyFallback") })
+                : "",
+              originText(origins.get(p.t), { say: i18n.t, locale }),
             ]
               .filter(Boolean)
               .join("<br/>");
@@ -239,7 +246,7 @@ export function VolumeChart({
         },
         xAxis: {
           type: "time",
-          name: "Time (UTC)",
+          name: t("axis.time"),
           nameLocation: "middle",
           nameGap: 32,
           nameTextStyle: text,
@@ -248,12 +255,16 @@ export function VolumeChart({
         },
         yAxis: {
           type: "value",
-          name: "Events per second (EPS)",
+          name: t("axis.eps"),
           nameTextStyle: { ...text, align: "left" },
           min: 0,
           splitLine: { lineStyle: { color: c.grid } },
           axisLine: { lineStyle: { color: c.axis } },
-          axisLabel: text,
+          // ECharts groups digits the English way; Turkish groups with a dot.
+          axisLabel:
+            locale === "tr"
+              ? { ...text, formatter: (value: number) => grouped(value, locale) }
+              : text,
         },
         series: [
           {
@@ -343,13 +354,18 @@ export function VolumeChart({
         ],
       };
     };
-  }, [points, unobserved, expected, expectedLow, expectedHigh, hasBand, anomalies, transitions, history, origins]);
+  }, [points, unobserved, expected, expectedLow, expectedHigh, hasBand, anomalies, transitions, history, origins, t, i18n, locale]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !buildOption) return;
 
-    const chart = echarts.init(el);
+    // ECharts names months from its locale; English is its default, Turkish is given here.
+    const chart = echarts.init(
+      el,
+      undefined,
+      locale === "tr" ? { locale: TURKISH_ECHARTS_LOCALE as never } : undefined,
+    );
     chart.setOption(buildOption());
 
     // ECharts does not track element size on its own; without this the chart
@@ -361,66 +377,65 @@ export function VolumeChart({
       observer.disconnect();
       chart.dispose();
     };
-  }, [buildOption]);
+  }, [buildOption, locale]);
 
   if (points.length === 0) {
     return (
-      <div className="notice">
-        No metric buckets were collected for this window. This is an absence of
-        collection, not an observation of zero traffic.
-      </div>
+      <div className="notice">{t("empty")}</div>
     );
   }
 
   return (
     <>
-      <div ref={containerRef} className="chart" role="img" aria-label={ariaLabel} />
+      <div
+        ref={containerRef}
+        className="chart"
+        role="img"
+        aria-label={ariaLabel ?? t("ariaDefault")}
+      />
       {/* The chart's content as prose. A canvas is opaque to a screen reader,
           so without this the series, the band and the gaps are unreachable. */}
       {textSummary && <p className="sr-only">{textSummary}</p>}
       <HistoryText rows={buckets} />
       {/* A key for the marks that were actually drawn, and nothing else. */}
-      <ul className="chart-legend" aria-label="Chart key">
+      <ul className="chart-legend" aria-label={t("key.title")}>
         <li>
           <span className="chart-key chart-key-observed" aria-hidden="true" />
-          Observed {UNIT}
+          {t("key.observed")}
         </li>
         {expected != null && (
           <li>
             <span className="chart-key chart-key-expected" aria-hidden="true" />
-            Expected median
+            {t("key.median")}
           </li>
         )}
         {hasBand && (
           <li>
             <span className="chart-key chart-key-band" aria-hidden="true" />
-            Expected range
+            {t("key.range")}
           </li>
         )}
         {unobserved.length > 0 && (
           <li>
             <span className="chart-key chart-key-gap" aria-hidden="true" />
-            Not fully collected
+            {t("key.gap")}
           </li>
         )}
         {anomalies.length > 0 && (
           <li>
             <span className="chart-key chart-key-anomaly" aria-hidden="true" />
-            Anomalous interval
+            {t("key.anomaly")}
           </li>
         )}
         {transitions.length > 0 && (
           <li>
             <span className="chart-key chart-key-rule" aria-hidden="true" />
-            Lifecycle transition
+            {t("key.transition")}
           </li>
         )}
         {history.length > 0 && <HistoryKey />}
       </ul>
-      <p className="subtitle chart-note">
-        Gaps in the observed line are intervals that were not fully collected.
-        They are not zero traffic.
-      </p>
+      <p className="subtitle chart-note">{t("note")}</p>
     </>
   );
 }

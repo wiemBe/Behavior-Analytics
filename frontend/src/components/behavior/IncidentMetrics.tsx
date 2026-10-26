@@ -9,6 +9,8 @@
 // A null is not a zero. An unmeasured value renders as an em dash, and a
 // still-running incident has no duration — it is unmeasured, not `0s`.
 
+import { useTranslations } from "next-intl";
+
 import type { AnomalyDetail } from "@/lib/api";
 import {
   formatDelta,
@@ -16,6 +18,7 @@ import {
   formatMetric,
   formatRatio,
 } from "@/lib/behavior";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 export function IncidentMetrics({
   anomaly,
@@ -25,42 +28,50 @@ export function IncidentMetrics({
   /** The detector's score was degenerate, so its confidence is capped. */
   confidenceLimited: boolean;
 }) {
+  const t = useTranslations("anomalies.metrics");
+  const units = useTranslations("units");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
   const running = anomaly.anomaly_end == null;
+  const scale = confidenceLimited
+    ? `${t("confidenceScale")} · ${t("confidenceLimited")}`
+    : t("confidenceScale");
 
   return (
-    <section className="measure" aria-label="Incident measurements">
+    <section className="measure" aria-label={t("title")}>
       <dl className="measure-grid">
         <div className="measure-item measure-lead">
-          <dt>Observed</dt>
+          <dt>{t("observed")}</dt>
           <dd className="measure-value">
-            {formatMetric(anomaly.observed_value)}
-            <span className="measure-unit">EPS</span>
+            {formatMetric(anomaly.observed_value, 2, locale)}
+            <span className="measure-unit">{units("eps")}</span>
           </dd>
-          <dd className="measure-note">During the anomalous interval</dd>
+          <dd className="measure-note">{t("observedNote")}</dd>
         </div>
 
         <div className="measure-item">
-          <dt>Expected</dt>
+          <dt>{t("expected")}</dt>
           <dd className="measure-value">
-            {formatMetric(anomaly.expected_value)}
-            <span className="measure-unit">EPS</span>
+            {formatMetric(anomaly.expected_value, 2, locale)}
+            <span className="measure-unit">{units("eps")}</span>
           </dd>
-          <dd className="measure-note">Seasonal baseline, this weekday and hour</dd>
+          <dd className="measure-note">{t("expectedNote")}</dd>
         </div>
 
         <div className="measure-item">
-          <dt>Deviation</dt>
-          <dd className="measure-value">{formatRatio(anomaly.deviation_ratio)}</dd>
+          <dt>{t("deviation")}</dt>
+          <dd className="measure-value">{formatRatio(anomaly.deviation_ratio, locale)}</dd>
           <dd className="measure-note">
-            <span className="num">{formatDelta(anomaly.absolute_delta)}</span> events
-            against expected
+            {t.rich("deviationNote", {
+              delta: () => <span className="num">{formatDelta(anomaly.absolute_delta, locale)}</span>,
+            })}
           </dd>
         </div>
 
         <div className="measure-item measure-item-minor">
-          <dt>Duration</dt>
-          <dd className="measure-value">{formatDuration(anomaly.duration_seconds)}</dd>
-          <dd className="measure-note">{running ? "Still running" : "Interval length"}</dd>
+          <dt>{t("duration")}</dt>
+          <dd className="measure-value">{formatDuration(anomaly.duration_seconds, i18n)}</dd>
+          <dd className="measure-note">{running ? t("stillRunning") : t("intervalLength")}</dd>
         </div>
       </dl>
 
@@ -68,14 +79,9 @@ export function IncidentMetrics({
           it is the detector's own score for this verdict, and its limitation
           is stated where it is read. */}
       <dl className="measure-foot">
-        <dt>Detector confidence</dt>
-        <dd className="num">{formatMetric(anomaly.confidence)}</dd>
-        <dd className="muted">
-          {" "}
-          (0 to 1)
-          {confidenceLimited &&
-            " · Confidence limited because baseline variability is zero. See technical details."}
-        </dd>
+        <dt>{t("confidence")}</dt>
+        <dd className="num">{formatMetric(anomaly.confidence, 2, locale)}</dd>
+        <dd className="muted"> {scale}</dd>
       </dl>
     </section>
   );

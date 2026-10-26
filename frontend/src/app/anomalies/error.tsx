@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function AnomaliesError({
@@ -9,5 +11,8 @@ export default function AnomaliesError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <BoundaryError title="Anomalies" what="Anomalies" digest={error.digest} onRetry={reset} />;
+  const t = useTranslations("anomalies.boundary");
+  return (
+    <BoundaryError title={t("title")} what={t("errorWhat")} digest={error.digest} onRetry={reset} />
+  );
 }

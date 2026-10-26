@@ -1,7 +1,9 @@
 // The Turkish catalog: the same namespaces as ../en/index.ts, in the same order. See the rule there.
 
 import account from "./account.json";
+import anomalies from "./anomalies.json";
 import auth from "./auth.json";
+import behavior from "./behavior.json";
 import catalog from "./catalog.json";
 import catchall from "./catchall.json";
 import common from "./common.json";
@@ -11,6 +13,7 @@ import dashboard from "./dashboard.json";
 import dashboardBoundary from "./dashboardBoundary.json";
 import enums from "./enums.json";
 import errors from "./errors.json";
+import evidence from "./evidence.json";
 import fleet from "./fleet.json";
 import format from "./format.json";
 import home from "./home.json";
@@ -28,7 +31,9 @@ import widgets from "./widgets.json";
 
 const messages = {
   account,
+  anomalies,
   auth,
+  behavior,
   catalog,
   catchall,
   common,
@@ -38,6 +43,7 @@ const messages = {
   dashboardBoundary,
   enums,
   errors,
+  evidence,
   fleet,
   format,
   home,

@@ -43,36 +43,34 @@ export function healthTone(status: string | null | undefined): Tone {
   }
 }
 
-/** Operator-facing explanation of what a verdict actually asserts. */
-export function healthMeaning(status: string | null | undefined): string {
-  switch (status) {
-    case "INSUFFICIENT_DATA":
-      return "Not enough collected evidence to judge — this is not a finding.";
-    case "NOT_EVALUATED":
-      return "No evaluation has run for this technique yet.";
-    case "HEALTHY":
-      return "Firing within expected bounds.";
-    case "DISABLED":
-      return "Disabled in QRadar, so it cannot contribute detection.";
-    case "NOISY":
-      return "Firing far above its expected rate.";
-    case "INACTIVE":
-      return "Has fired before, but not recently.";
-    case "NEVER_OBSERVED":
-      return "Observed continuously and never seen to fire.";
-    case "DEPENDENCY_DEGRADED":
-      return "A building block or log source it depends on is unhealthy.";
-    case "COVERED":
-      return "At least one healthy enabled rule maps to this technique.";
-    case "PARTIAL":
-      return "Mapped, but the contributing detection is not fully healthy.";
-    case "DEGRADED":
-      return "Mapped rules exist but are impaired.";
-    case "MISSING":
-      return "No rule maps to this technique.";
-    default:
-      return "";
-  }
+/** The English of `healthMeaning`, for callers that pass no translator (and for the bundle of every
+ *  page that imports this file: the catalog is not imported here). */
+const MEANING: Record<string, string> = {
+  INSUFFICIENT_DATA: "Not enough collected evidence to judge — this is not a finding.",
+  NOT_EVALUATED: "No evaluation has run for this technique yet.",
+  HEALTHY: "Firing within expected bounds.",
+  DISABLED: "Disabled in QRadar, so it cannot contribute detection.",
+  NOISY: "Firing far above its expected rate.",
+  INACTIVE: "Has fired before, but not recently.",
+  NEVER_OBSERVED: "Observed continuously and never seen to fire.",
+  DEPENDENCY_DEGRADED: "A building block or log source it depends on is unhealthy.",
+  COVERED: "At least one healthy enabled rule maps to this technique.",
+  PARTIAL: "Mapped, but the contributing detection is not fully healthy.",
+  DEGRADED: "Mapped rules exist but are impaired.",
+  MISSING: "No rule maps to this technique.",
+};
+
+/**
+ * Operator-facing explanation of what a verdict actually asserts. With a translator (the
+ * `behavior.health.meaning` messages) it reads in the interface language; the rules, offenses and
+ * coverage pages pass none until their wave is merged and keep today's English.
+ */
+export function healthMeaning(
+  status: string | null | undefined,
+  t?: (key: string) => string,
+): string {
+  if (status == null || !Object.hasOwn(MEANING, status)) return "";
+  return t ? t(`behavior.health.meaning.${status}`) : MEANING[status];
 }
 
 export function magnitudeTone(magnitude: number | null | undefined): Tone {

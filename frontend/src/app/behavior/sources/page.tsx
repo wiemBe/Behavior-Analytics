@@ -1,4 +1,3 @@
-import Link from "next/link";
 // The source-behavior inventory.
 //
 // This route owns the full monitored-source list, which previously sat at the
@@ -13,6 +12,8 @@ import Link from "next/link";
 // there is room to explain them.
 
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
+import Link from "next/link";
 
 import { SourceFilters } from "@/components/behavior/SourceFilters";
 import { SourceRowQualifier } from "@/components/behavior/SourceRowQualifier";
@@ -21,6 +22,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { TableScroll } from "@/components/ui/TableScroll";
 import { ApiError, api, type SourceBehavior } from "@/lib/api";
 import { formatMetric, formatRatio, isUnjudged, stateTone } from "@/lib/behavior";
+import { getBehaviorI18n, getEnumLabels } from "@/lib/behaviorI18n.server";
+import { plainCount } from "@/lib/figureText";
 import {
   SOURCE_PAGE_SIZE,
   ariaSort,
@@ -37,9 +40,10 @@ import { UtcTime } from "@/components/ui/UtcTime";
 
 import "./sources.css";
 
-export const metadata: Metadata = {
-  title: "Sources",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("behavior.sources");
+  return { title: t("metaTitle") };
+}
 
 /** A sortable column header: a link, so it is keyboard-operable for free. */
 function SortHeader({
@@ -72,6 +76,10 @@ export default async function SourcesIndexPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const query = parseSourceQuery(await searchParams);
+  const t = await getTranslations("behavior.sources");
+  const errors = await getTranslations("behavior.errors");
+  const { locale } = await getBehaviorI18n();
+  const { statePill } = await getEnumLabels();
 
   let sources: SourceBehavior[] = [];
   let error: string | null = null;
@@ -80,10 +88,10 @@ export default async function SourcesIndexPage({
   } catch (err) {
     error =
       err instanceof ApiError && err.status === 403
-        ? "You do not have permission to view behavioral analytics."
+        ? errors("forbidden")
         : err instanceof ApiError && err.status === 401
-          ? "Your session has expired. Sign in again to continue."
-          : "Source behavior could not be loaded. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health.";
+          ? errors("expired")
+          : t("failed");
   }
 
   const matched = sortSources(
@@ -96,13 +104,8 @@ export default async function SourcesIndexPage({
   return (
     <>
       <PageHeader
-        title="Sources"
-        description={
-          <>
-            Current volume against the seasonal baseline for this weekday and
-            hour. Times are UTC.
-          </>
-        }
+        title={t("title")}
+        description={t("description")}
       />
 
       <SourceFilters query={query} />
@@ -113,35 +116,32 @@ export default async function SourcesIndexPage({
         </div>
       ) : matched.length === 0 ? (
         <div className="notice">
-          {isFiltered(query)
-            ? "No sources match these filters. This is a filtered view, not a statement about the fleet."
-            : "No monitored log sources. Enable monitoring on a source to start collecting its volume baseline."}
+          {isFiltered(query) ? t("noMatch") : t("none")}
         </div>
       ) : (
         <>
-          <TableScroll label="Monitored log sources">
+          <TableScroll label={t("label")}>
             <table className="source-inventory">
               <caption className="sr-only">
-                Monitored log sources with observed and expected events per
-                second, deviation from baseline, and active anomaly count.
+                {t("caption")}
               </caption>
               <thead>
                 <tr>
-                  <SortHeader label="Source" column="name" query={query} />
-                  <th scope="col">State</th>
+                  <SortHeader label={t("source")} column="name" query={query} />
+                  <th scope="col">{t("state")}</th>
                   <th scope="col" className="num">
-                    Observed (EPS)
+                    {t("observed")}
                   </th>
                   <th scope="col" className="num">
-                    Expected (EPS)
+                    {t("expected")}
                   </th>
-                  <SortHeader label="Deviation" column="deviation" query={query} numeric />
-                  <SortHeader label="Last event" column="last_event" query={query} numeric />
+                  <SortHeader label={t("deviation")} column="deviation" query={query} numeric />
+                  <SortHeader label={t("lastEvent")} column="last_event" query={query} numeric />
                   <th scope="col" className="num">
-                    Anomalies
+                    {t("anomalies")}
                   </th>
                   <th scope="col" className="col-detail">
-                    <span className="sr-only">Detail</span>
+                    <span className="sr-only">{t("detail")}</span>
                   </th>
                 </tr>
               </thead>
@@ -153,34 +153,34 @@ export default async function SourcesIndexPage({
                       <SourceRowQualifier source={s} />
                     </td>
                     <td>
-                      <span className={`pill ${stateTone(s.state)}`}>{s.state}</span>
+                      <span className={`pill ${stateTone(s.state)}`}>{statePill(s.state)}</span>
                     </td>
-                    <td className="num">{formatMetric(s.observed_eps)}</td>
+                    <td className="num">{formatMetric(s.observed_eps, 2, locale)}</td>
                     {/* An unbaselined source has no expectation at all.
                         Rendering a 0 here would invent one, and make the
                         observed value look like a spike against it. */}
                     <td className="num">
                       {isUnjudged(s.state) ? (
-                        <span className="muted">still learning</span>
+                        <span className="muted">{t("stillLearning")}</span>
                       ) : (
-                        formatMetric(s.expected_eps)
+                        formatMetric(s.expected_eps, 2, locale)
                       )}
                     </td>
-                    <td className="num">{formatRatio(s.deviation_ratio)}</td>
+                    <td className="num">{formatRatio(s.deviation_ratio, locale)}</td>
                     <td className="num">{<UtcTime value={s.last_event_at} variant="compact" />}</td>
                     <td className="num">
                       {s.open_anomaly_count > 0 ? (
                         <Link
                           href={`/anomalies?log_source_id=${s.log_source_id}&active_only=true`}
                         >
-                          {s.open_anomaly_count}
+                          {plainCount(s.open_anomaly_count, locale)}
                         </Link>
                       ) : (
-                        <span className="muted">0</span>
+                        <span className="muted">{plainCount(0, locale)}</span>
                       )}
                     </td>
                     <td className="col-detail">
-                      <Link href={`/behavior/sources/${s.log_source_id}`}>Detail</Link>
+                      <Link href={`/behavior/sources/${s.log_source_id}`}>{t("detail")}</Link>
                     </td>
                   </tr>
                 ))}

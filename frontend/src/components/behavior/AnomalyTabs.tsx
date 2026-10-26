@@ -7,8 +7,10 @@
 // mechanics — selection, arrow-key movement, focus — need to run in the
 // browser.
 
-import { Tabs } from "@/components/ui/Tabs";
+import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+
+import { Tabs } from "@/components/ui/Tabs";
 
 export function AnomalyTabs({
   evidence,
@@ -19,15 +21,16 @@ export function AnomalyTabs({
   lifecycle: ReactNode;
   technical: ReactNode;
 }) {
+  const t = useTranslations("anomalies.tabs");
   return (
     <Tabs
-      label="Investigation detail"
+      label={t("title")}
       tabs={[
         // Evidence first: "what changed" is the question the page exists to
         // answer, and the other two panels support that answer.
-        { id: "evidence", label: "Evidence", content: () => evidence },
-        { id: "lifecycle", label: "Lifecycle", content: () => lifecycle },
-        { id: "technical", label: "Technical details", content: () => technical },
+        { id: "evidence", label: t("evidence"), content: () => evidence },
+        { id: "lifecycle", label: t("lifecycle"), content: () => lifecycle },
+        { id: "technical", label: t("technical"), content: () => technical },
       ]}
     />
   );

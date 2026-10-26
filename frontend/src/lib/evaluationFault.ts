@@ -6,6 +6,7 @@
 // collected EPS with the last verdict as if they agreed.
 
 import type { BehaviorSummary, SourceBehavior, SourceEvaluation } from "@/lib/api";
+import { ENGLISH_BEHAVIOR, grouped, plainCount, type BehaviorI18n } from "@/lib/behaviorI18n";
 
 export function evaluationOf(source: SourceBehavior): SourceEvaluation | null {
   return source.evaluation ?? null;
@@ -53,14 +54,10 @@ export function windowIsPartial(source: SourceBehavior): boolean {
   );
 }
 
-function bucketWord(count: number): string {
-  return count === 1 ? "bucket" : "buckets";
-}
-
-function attemptsPhrase(attempts: number | null): string {
-  if (attempts == null) return "its evaluation failed";
-  if (attempts === 1) return "its evaluation failed once";
-  return `its evaluation failed ${attempts} times`;
+function attemptsPhrase(attempts: number | null, i18n: BehaviorI18n): string {
+  if (attempts == null) return i18n.t("behavior.fault.attempts.unknown");
+  if (attempts === 1) return i18n.t("behavior.fault.attempts.once");
+  return i18n.t("behavior.fault.attempts.times", { count: plainCount(attempts, i18n.locale) });
 }
 
 export function rowQualifierKind(
@@ -85,14 +82,14 @@ export type RowQualifierModel =
       latestBucket: string | null;
     };
 
-function givenUpSuffix(source: SourceBehavior): string | null {
+function givenUpSuffix(source: SourceBehavior, i18n: BehaviorI18n): string | null {
   const count = source.skipped_buckets_in_window;
   if (typeof count === "number") {
     if (count <= 0) return null;
-    return `${count.toLocaleString("en-US")} ${bucketWord(count)} given up in 24 h`;
+    return i18n.t("behavior.fault.givenUp.count", { count, shown: grouped(count, i18n.locale) });
   }
   if ((source.skipped_buckets?.length ?? 0) > 0) {
-    return "buckets given up in 24 h";
+    return i18n.t("behavior.fault.givenUp.some");
   }
   return null;
 }
@@ -106,14 +103,17 @@ function latestSkippedBucket(source: SourceBehavior): string | null {
 }
 
 /** Inventory-row copy. Retrying keeps "since"; a given-up gap after resume does not. */
-export function rowQualifierModel(source: SourceBehavior): RowQualifierModel | null {
+export function rowQualifierModel(
+  source: SourceBehavior,
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
+): RowQualifierModel | null {
   const kind = rowQualifierKind(source);
   if (kind == null) return null;
   if (kind === "retrying") {
     return {
       kind: "retrying",
       judgedThrough: source.evaluation?.judged_through ?? null,
-      givenUpSuffix: givenUpSuffix(source),
+      givenUpSuffix: givenUpSuffix(source, i18n),
     };
   }
   return {
@@ -187,13 +187,20 @@ export function clearedFaultLine(source: SourceBehavior): {
   };
 }
 
-export function attemptsUsed(attempts: number | null, maxAttempts: number | null): string | null {
+export function attemptsUsed(
+  attempts: number | null,
+  maxAttempts: number | null,
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
+): string | null {
   if (attempts == null || maxAttempts == null) return null;
-  return `${attempts} of ${maxAttempts} attempts used`;
+  return i18n.t("behavior.fault.attempts.used", {
+    attempts: plainCount(attempts, i18n.locale),
+    max: plainCount(maxAttempts, i18n.locale),
+  });
 }
 
-export function attemptsFailed(attempts: number | null): string {
-  return attemptsPhrase(attempts);
+export function attemptsFailed(attempts: number | null, i18n: BehaviorI18n = ENGLISH_BEHAVIOR): string {
+  return attemptsPhrase(attempts, i18n);
 }
 
 export type EvaluationFaultQualifier = {
@@ -212,23 +219,22 @@ export type EvaluationFaultQualifier = {
  */
 export function evaluationFaultQualifier(
   summary: BehaviorSummary,
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
 ): EvaluationFaultQualifier | null {
   const sources = summary.sources_with_evaluation_faults ?? 0;
   if (sources === 0) return null;
-  const sourceBit =
-    sources === 1 ? "1 source" : `${sources.toLocaleString("en-US")} sources`;
-  const sourceClause =
-    sources === 1
-      ? "1 source has an evaluation fault"
-      : `${sources.toLocaleString("en-US")} sources have an evaluation fault`;
   const buckets = summary.buckets_not_judged ?? 0;
-  const bucketClause =
-    buckets === 1
-      ? "1 bucket was not judged in 24 h"
-      : `${buckets.toLocaleString("en-US")} buckets were not judged in 24 h`;
+  const sourceCount = { count: sources, shown: grouped(sources, i18n.locale) };
+  const sourceClause = i18n.t("behavior.fault.qualifier.sourcesClause", sourceCount);
+  const bucketClause = i18n.t("behavior.fault.qualifier.bucketsClause", {
+    count: buckets,
+    shown: grouped(buckets, i18n.locale),
+  });
   return {
-    text: `Not judged: ${sourceBit} (24 h)`,
+    text: i18n.t("behavior.fault.qualifier.text", sourceCount),
     detail:
-      buckets > 0 ? `${sourceClause}; ${bucketClause}` : sourceClause,
+      buckets > 0
+        ? `${sourceClause}; ${bucketClause}`
+        : sourceClause,
   };
 }

@@ -16,7 +16,11 @@ import type {
   EvidenceStatus,
   RobustScoreStatus,
 } from "@/lib/api";
+import { ENGLISH_BEHAVIOR, fixed, grouped, wordOrValue, type BehaviorI18n } from "@/lib/behaviorI18n";
+import { durationText, formatRatioLocale, formatSignedPercent } from "@/i18n/measures";
+import type { FormatLocale } from "@/lib/format";
 import type { Tone } from "@/lib/health";
+import { formatDuration as englishDuration } from "@/lib/time";
 
 // Re-exported for components that only need the tone union.
 export type { Tone };
@@ -37,52 +41,60 @@ export const NOT_MEASURED = "—";
 export function formatMetric(
   value: number | null | undefined,
   digits = 2,
+  locale: FormatLocale = "en",
 ): string {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
-  return value.toFixed(digits);
+  return fixed(value, digits, locale);
 }
 
 export { formatCount } from "@/lib/format";
 
 /** A ratio, suffixed with x. A null ratio means the comparison does not exist. */
-export function formatRatio(value: number | null | undefined): string {
+export function formatRatio(value: number | null | undefined, locale: FormatLocale = "en"): string {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
-  return `${value.toFixed(2)}x`;
+  return locale === "en" ? `${value.toFixed(2)}x` : formatRatioLocale(value, locale);
 }
 
 export { formatShare } from "@/lib/format";
 
 /** A percentage delta already expressed in percent by the backend. */
-export function formatPercentDelta(value: number | null | undefined): string {
+export function formatPercentDelta(
+  value: number | null | undefined,
+  locale: FormatLocale = "en",
+): string {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
+  if (locale !== "en") return formatSignedPercent(value, locale);
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(1)}\u00A0%`;
 }
 
 /** A signed absolute change, so a drop is visibly a drop. */
-export function formatDelta(value: number | null | undefined): string {
+export function formatDelta(value: number | null | undefined, locale: FormatLocale = "en"): string {
   if (value == null || Number.isNaN(value)) return NOT_MEASURED;
   const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toLocaleString("en-US")}`;
+  return `${sign}${grouped(value, locale)}`;
 }
 
-export { formatDuration } from "@/lib/time";
+/** "3 h 20 min" / "3 sa 20 dk"; without a translator exactly `lib/time`'s English. */
+export function formatDuration(
+  totalSeconds: number | null | undefined,
+  i18n?: BehaviorI18n,
+): string {
+  if (!i18n) return englishDuration(totalSeconds);
+  return durationText((key, values) => i18n.t(`units.${key}`, values), totalSeconds);
+}
 
 // --- detectors -------------------------------------------------------------
 
-/** Detector identifiers as an analyst would say them. */
-const DETECTOR_LABELS: Record<string, string> = {
-  VOLUME_SPIKE: "Volume spike",
-  VOLUME_DROP: "Volume drop",
-  NO_EVENTS: "No events",
-};
+/** The Phase A detectors; the other families name theirs in their own helpers. */
+const DETECTOR_TYPES = new Set(["VOLUME_SPIKE", "VOLUME_DROP", "NO_EVENTS"]);
 
 /**
- * The detector's name for display. An identifier this build does not know is
- * shown as-is rather than hidden or guessed at.
+ * The detector's name for display, from the `enums.anomalyType` table. An identifier this build
+ * does not know is shown as-is rather than hidden or guessed at.
  */
-export function detectorLabel(type: string): string {
-  return DETECTOR_LABELS[type] ?? type;
+export function detectorLabel(type: string, i18n: BehaviorI18n = ENGLISH_BEHAVIOR): string {
+  return DETECTOR_TYPES.has(type) ? wordOrValue(i18n, "enums.anomalyType", type) : type;
 }
 
 // --- lifecycle -------------------------------------------------------------
@@ -142,39 +154,43 @@ export interface BandObservation {
  * so. Outside the band, it names the detector's verdict and says the value is not inside.
  * With a number missing, it names the verdict and claims nothing about the band.
  */
-export function stateMeaningAgainst(state: AnomalyStateOrNullLocal, band: BandObservation): string {
-  return meaning(state, band);
+export function stateMeaningAgainst(
+  state: AnomalyStateOrNullLocal,
+  band: BandObservation,
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
+): string {
+  return meaning(state, i18n, band);
 }
 
-/** What a lifecycle state means, in a sentence, for a page that shows no band beside it. */
+/**
+ * What a lifecycle state means, in a sentence, for a page that shows no band beside it. English;
+ * `stateMeaningIn` takes the interface language. (Two functions, not an optional argument: this one
+ * is passed to `Array.map`, which would hand it the index.)
+ */
 export function stateMeaning(state: AnomalyStateOrNullLocal): string {
-  return meaning(state);
+  return meaning(state, ENGLISH_BEHAVIOR);
 }
 
-function meaning(state: AnomalyStateOrNullLocal, band?: BandObservation): string {
+export function stateMeaningIn(state: AnomalyStateOrNullLocal, i18n: BehaviorI18n): string {
+  return meaning(state, i18n);
+}
+
+function meaning(state: AnomalyStateOrNullLocal, i18n: BehaviorI18n, band?: BandObservation): string {
+  const say = (key: string) => i18n.t(`behavior.state.meaning.${key}`);
   switch (state) {
     case "INSUFFICIENT_DATA":
-      return "No adequate baseline for this seasonal cell yet — this source is not being judged, which is not the same as being healthy.";
+    case "CANDIDATE":
+    case "OPEN":
+    case "RECOVERING":
+    case "RESOLVED":
+    case "SUPPRESSED":
+      return say(state);
     case "NORMAL": {
       const place = band ? bandPlace(band) : "unspecified";
-      if (place === "outside") {
-        return "NORMAL by the detector's verdict for this weekday and hour; the observed value shown here is not inside the expected band.";
-      }
-      if (place === "unknown") {
-        return "NORMAL by the detector's verdict for this weekday and hour.";
-      }
-      return "Observed volume is within the expected band for this weekday and hour.";
+      if (place === "outside") return say("NORMAL_outside");
+      if (place === "unknown") return say("NORMAL_unknown");
+      return say("NORMAL_inside");
     }
-    case "CANDIDATE":
-      return "One abnormal interval recorded. Not yet an incident: promotion requires consecutive abnormal intervals.";
-    case "OPEN":
-      return "Confirmed incident — enough consecutive abnormal intervals to rule out a single-bucket artefact.";
-    case "RECOVERING":
-      return "Back inside the expected band, but held open until enough consecutive normal intervals confirm it.";
-    case "RESOLVED":
-      return "Closed after sustained normal behavior.";
-    case "SUPPRESSED":
-      return "Detected while the source was in maintenance. Recorded for history, never notified.";
     default:
       return "";
   }
@@ -249,53 +265,49 @@ export function newAndDisappearedAreDeterminate(
   return availability === "AVAILABLE";
 }
 
-export function dimensionMeaning(
+/** What a dimension's availability means, in English; `dimensionMeaningIn` takes the language. */
+export function dimensionMeaning(availability: DimensionAvailability | null | undefined): string {
+  return dimensionMeaningIn(availability, ENGLISH_BEHAVIOR);
+}
+
+export function dimensionMeaningIn(
   availability: DimensionAvailability | null | undefined,
+  i18n: BehaviorI18n,
 ): string {
   switch (availability) {
     case "AVAILABLE":
-      return "Collected in full for both windows.";
     case "TRUNCATED":
-      return "The result hit the configured value cap, so the contributors below are the top of the list rather than the whole of it. New and disappeared values cannot be determined under a cap — a value can look new simply because it fell below the cap in the other window — so those counts are not reported.";
     case "UNAVAILABLE":
-      return "Unavailable — this field was not exposed by the QRadar event schema or DSM for the selected interval. It has not been checked, and no conclusion may be drawn from the absence of contributors here.";
     case "FAILED":
-      return "The query for this dimension did not complete. It has not been checked.";
+      return i18n.t(`behavior.dimension.meaning.${availability}`);
     default:
       return "";
   }
 }
 
-/** Human labels for the explanation dimensions the backend requests. */
-const DIMENSION_LABELS: Record<string, string> = {
-  qid: "QID",
-  event_name: "Event name",
-  source_ip: "Source IP",
-  destination_ip: "Destination IP",
-  destination_port: "Destination port",
-  source_port: "Source port",
-  username: "Username",
-  action: "Action",
-  category: "Category",
-  protocol: "Protocol",
-};
+/**
+ * The explanation dimensions the backend requests, by the field name it sends. `qid` is a QRadar
+ * term and reads the same in both languages, so it is not a catalog message.
+ */
+const QID_LABEL = "QID";
 
-export function dimensionLabel(dimension: string): string {
-  return DIMENSION_LABELS[dimension] ?? dimension;
+/** The label of a dimension; a field this build does not know is shown as the backend sent it. */
+export function dimensionLabel(dimension: string, i18n: BehaviorI18n = ENGLISH_BEHAVIOR): string {
+  if (dimension === "qid") return QID_LABEL;
+  return wordOrValue(i18n, "behavior.dimension.label", dimension);
 }
 
 // --- buckets ---------------------------------------------------------------
 
 export function completenessMeaning(
   completeness: BucketCompleteness | null | undefined,
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
 ): string {
   switch (completeness) {
     case "COMPLETE":
-      return "The whole interval was observed.";
     case "PARTIAL":
-      return "Only part of this interval was collected, so its volume is an undercount rather than a measurement. It never enters a baseline or drives a verdict.";
     case "MISSING":
-      return "This interval was not collected at all. Its absence says nothing about whether the source was sending events.";
+      return i18n.t(`behavior.bucket.meaning.${completeness}`);
     default:
       return "";
   }
@@ -305,14 +317,13 @@ export function completenessMeaning(
 
 export function robustScoreMeaning(
   status: RobustScoreStatus | null | undefined,
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
 ): string {
   switch (status) {
     case "OK":
-      return "MAD was non-zero, so the robust z-score is a meaningful measure of surprise and the verdict rests on it.";
     case "DEGENERATE":
-      return "MAD was zero — more than half the baseline samples were identical, which is normal for a steady low-volume source. The z-score is therefore an artefact of the floored scale and was not used. The verdict rests on the deterministic expected-bound, ratio and absolute-delta tests instead, which is sound but weaker evidence, and the confidence is capped to reflect that.";
     case "UNAVAILABLE":
-      return "No robust score could be computed for this verdict.";
+      return i18n.t(`behavior.score.meaning.${status}`);
     default:
       return "";
   }
