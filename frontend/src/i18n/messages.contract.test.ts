@@ -71,6 +71,8 @@ const IDENTICAL_ALLOWLIST = new Set([
   "home.healthGroupsInline.normal",
   "home.offenses.offense",
   "units.eps",
+  // I18N-5: punctuation around a placeholder, the same in both languages.
+  "customRules.latency.tail",
 ]);
 
 describe("message catalog contract", () => {
