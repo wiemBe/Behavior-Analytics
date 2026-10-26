@@ -4,76 +4,98 @@
 // the advanced section. Times go through UtcTime. The copy names the bucket
 // that has no verdict and never draws a zero for it.
 
+import { useTranslations } from "next-intl";
+import { Fragment, type ReactNode } from "react";
+
+import { UtcTime } from "@/components/ui/UtcTime";
 import type { SourceBehavior } from "@/lib/api";
 import {
+  attemptsFailed,
   attemptsUsed,
   givenUpNotice,
   retryingNotice,
 } from "@/lib/evaluationFault";
-import { UtcTime } from "@/components/ui/UtcTime";
+import { grouped } from "@/lib/figureText";
+import { errorClassText } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 function BucketTime({ value }: { value: string }) {
   return <UtcTime value={value} variant="compact" />;
 }
 
+/** The sentences of one notice, one space between them. */
+function Sentences({ parts }: { parts: ReactNode[] }) {
+  return (
+    <>
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 ? " " : null}
+          {part}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 export function SourceEvaluationNotice({ source }: { source: SourceBehavior }) {
+  const t = useTranslations("behavior.evaluationNotice");
+  const i18n = useBehaviorI18n();
   const retrying = retryingNotice(source);
   if (retrying) {
-    const used = attemptsUsed(retrying.attempts, retrying.maxAttempts);
+    const used = attemptsUsed(retrying.attempts, retrying.maxAttempts, i18n);
+    const { lastFailure, judgedThrough } = retrying;
+    const parts: ReactNode[] = [
+      t.rich("noVerdict", { bucket: () => <BucketTime value={retrying.failedBucket} /> }),
+      lastFailure
+        ? t.rich("failedAt", {
+            time: () => <BucketTime value={lastFailure} />,
+            errorClass: errorClassText(retrying.errorClass),
+          })
+        : t("failed"),
+    ];
+    if (used) parts.push(`${used}.`);
+    parts.push(
+      judgedThrough
+        ? t.rich("coverThrough", { time: () => <BucketTime value={judgedThrough} /> })
+        : t("nextAttempt"),
+    );
     return (
       <div className="notice" role="status">
-        The <BucketTime value={retrying.failedBucket} /> bucket has no verdict.
-        {retrying.lastFailure ? (
-          <>
-            {" "}
-            Its evaluation failed at <BucketTime value={retrying.lastFailure} />
-            {retrying.errorClass ? ` (${retrying.errorClass})` : ""}.
-          </>
-        ) : (
-          " Its evaluation failed."
-        )}
-        {used ? ` ${used}.` : ""}
-        {retrying.judgedThrough ? (
-          <>
-            {" "}
-            Verdicts for this source cover buckets through{" "}
-            <BucketTime value={retrying.judgedThrough} />; the next attempt runs
-            at the next evaluation tick.
-          </>
-        ) : (
-          " The next attempt runs at the next evaluation tick."
-        )}
+        <Sentences parts={parts} />
       </div>
     );
   }
 
   const given = givenUpNotice(source);
   if (given) {
-    let skipped: string | null = null;
-    if (given.skipped === 1) skipped = "1 bucket in this window has no verdict.";
+    const bucket = () => <BucketTime value={given.failedBucket} />;
+    const phrase = given.attempts != null ? attemptsFailed(given.attempts, i18n) : null;
+    const errorClass = errorClassText(given.errorClass);
+    const last = given.lastFailure ? () => <BucketTime value={given.lastFailure as string} /> : null;
+    const first = t.rich(
+      phrase != null
+        ? last
+          ? "notJudgedAttemptsLast"
+          : "notJudgedAttempts"
+        : last
+          ? "notJudgedLast"
+          : "notJudged",
+      { bucket, phrase: phrase ?? "", time: last ?? (() => null), errorClass },
+    );
+    const parts: ReactNode[] = [first];
+    if (given.skipped === 1) parts.push(t("skippedOne"));
     else if (given.skipped != null && given.skipped > 1) {
-      skipped = `${given.skipped.toLocaleString("en-US")} buckets in this window have no verdict.`;
+      parts.push(
+        t("skippedMany", { count: given.skipped, shown: grouped(given.skipped, i18n.locale) }),
+      );
+    }
+    const resumedAt = given.judgedThrough;
+    if (given.resumed && resumedAt) {
+      parts.push(t.rich("resumed", { time: () => <BucketTime value={resumedAt} /> }));
     }
     return (
       <div className="notice" role="status">
-        The <BucketTime value={given.failedBucket} /> bucket was not judged
-        {given.attempts != null
-          ? `: ${given.attempts === 1 ? "its evaluation failed once" : `its evaluation failed ${given.attempts} times`}`
-          : ""}
-        {given.lastFailure ? (
-          <>
-            , most recently at <BucketTime value={given.lastFailure} />
-            {given.errorClass ? ` (${given.errorClass})` : ""}
-          </>
-        ) : null}
-        .{skipped ? ` ${skipped}` : ""}
-        {given.resumed && given.judgedThrough ? (
-          <>
-            {" "}
-            Evaluation resumed; verdicts now cover buckets through{" "}
-            <BucketTime value={given.judgedThrough} />.
-          </>
-        ) : null}
+        <Sentences parts={parts} />
       </div>
     );
   }

@@ -13,7 +13,7 @@
 // real measurement of silence — and must be drawn as zero, not as a gap.
 
 import type { Metadata } from "next";
-
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 
 import { RangeSelector } from "@/components/behavior/RangeSelector";
@@ -41,13 +41,13 @@ import {
   isUnjudged,
   stateMeaningAgainst,
 } from "@/lib/behavior";
+import { getBehaviorI18n } from "@/lib/behaviorI18n.server";
 import { figureNewerThanVerdict } from "@/lib/evaluationFault";
 import {
   METRIC_LIMIT,
   baselineQuality,
   collectionHealth,
   parseRange,
-  SOURCE_7D_NOTE,
   partitionAnomalies,
   rangeLabel,
   summarizeSourceTimeline,
@@ -58,9 +58,10 @@ import { UtcTime } from "@/components/ui/UtcTime";
 
 import "../sources.css";
 
-export const metadata: Metadata = {
-  title: "Source behavior",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("behavior.sourcePage");
+  return { title: t("metaTitle") };
+}
 
 export default async function SourceBehaviorPage({
   params,
@@ -71,6 +72,10 @@ export default async function SourceBehaviorPage({
 }) {
   const { id } = await params;
   const query = await searchParams;
+  const t = await getTranslations("behavior.sourcePage");
+  const errors = await getTranslations("behavior.errors");
+  const i18n = await getBehaviorI18n();
+  const { locale } = i18n;
   const range = parseRange(query.range);
   const from7d = query.from === "7d";
   const until = new Date().toISOString();
@@ -88,17 +93,17 @@ export default async function SourceBehaviorPage({
     return (
       <>
         <PageHeader
-          title="Source behavior"
-          meta={<Link href="/behavior/sources">← All sources</Link>}
+          title={t("title")}
+          meta={<Link href="/behavior/sources">{t("allSources")}</Link>}
         />
         <div className="notice" role="alert">
           {status === 404
-            ? "This log source does not exist. It may have been removed from monitoring; choose another from the source list."
+            ? t("notFound")
             : status === 403
-              ? "You do not have permission to view behavioral analytics."
+              ? errors("forbidden")
               : status === 401
-                ? "Your session has expired. Sign in again to continue."
-                : "Could not load this source. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health."}
+                ? errors("expired")
+                : t("failed")}
         </div>
       </>
     );
@@ -136,16 +141,17 @@ export default async function SourceBehaviorPage({
 
   const { active } = partitionAnomalies(activePage?.items ?? []);
   const { recent } = partitionAnomalies(anomalies);
-  const quality = baselineQuality(behavior, cells);
+  const quality = baselineQuality(behavior, cells, i18n);
   const metricsFailed = bucketsResult.status === "rejected";
-  const health = collectionHealth(buckets, behavior.last_bucket_at, range * 3600);
+  const health = collectionHealth(buckets, behavior.last_bucket_at, range * 3600, Date.now(), i18n);
   const unjudged = isUnjudged(behavior.state) || behavior.expected_eps == null;
 
   const points = buildSeries(buckets);
   const missing = buckets.filter((b) => b.completeness === "MISSING").length;
   const partial = buckets.filter((b) => b.completeness === "PARTIAL").length;
 
-  const chartSummary = summarizeSourceTimeline({
+  const chartSummary = summarizeSourceTimeline(
+    {
     hours: range,
     observed: points.map((p) => p.observed),
     currentEps: behavior.observed_eps,
@@ -153,74 +159,83 @@ export default async function SourceBehaviorPage({
     missing,
     partial,
     anomalyCount: anomalyPage?.total ?? null,
-    shownAnomalyCount: anomalyPage?.items.length ?? null,
-  });
+      shownAnomalyCount: anomalyPage?.items.length ?? null,
+    },
+    i18n,
+  );
 
   // Secondary conditions worth stating next to the numbers they qualify.
   const notes: string[] = [];
-  if (unjudged) notes.push("Baseline still learning");
-  if (quality.status === "DEGENERATE") notes.push("Baseline variability is zero");
+  if (unjudged) notes.push(t("notes.learning"));
+  if (quality.status === "DEGENERATE") notes.push(t("notes.zeroVariability"));
   // With the metric read failed there are no intervals to judge collection by:
   // saying "delayed" would turn a failed request into a claim about the source.
-  if (!metricsFailed && health.status !== "CURRENT") notes.push(`Collection ${health.label.toLowerCase()}`);
-  if (behavior.observed_eps === 0) notes.push("Source is currently silent");
-  if (meta?.monitoring_enabled === false) notes.push("Monitoring disabled");
-  if (meta?.maintenance_mode) notes.push("Maintenance mode active");
+  if (!metricsFailed && health.status !== "CURRENT") {
+    notes.push(
+      t("notes.collection", {
+        status: health.label.toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"),
+      }),
+    );
+  }
+  if (behavior.observed_eps === 0) notes.push(t("notes.silent"));
+  if (meta?.monitoring_enabled === false) notes.push(t("notes.monitoringDisabled"));
+  if (meta?.maintenance_mode) notes.push(t("notes.maintenance"));
 
   return (
     <>
       {/* --- 1. compact header ------------------------------------------- */}
       <SourceHeader behavior={behavior} meta={meta} />
-      <p className="subtitle">{stateMeaningAgainst(behavior.state, {
+      <p className="subtitle">{stateMeaningAgainst(
+        behavior.state,
+        {
           observed: behavior.observed_eps,
           low: behavior.expected_low,
           high: behavior.expected_high,
-        })}</p>
+        },
+        i18n,
+      )}</p>
       <SourceEvaluationNotice source={behavior} />
 
       {/* --- 2. four primary metrics -------------------------------------- */}
       <div className="grid-4">
         <div className="card">
-          <div className="k">Observed EPS</div>
+          <div className="k">{t("observedEps")}</div>
           {/* A measured zero is 0.00; only an absent measurement is an em
               dash. formatMetric enforces the distinction. An unjudged bucket
               still shows its collected EPS, qualified below, never a zero. */}
-          <div className="v">{formatMetric(behavior.observed_eps)}</div>
+          <div className="v">{formatMetric(behavior.observed_eps, 2, locale)}</div>
           <p className="metric-note">
-            {figureNewerThanVerdict(behavior) ? (
-              <>
-                Collected <UtcTime value={behavior.last_bucket_at} variant="compact" />; newer
-                than the last verdict
-              </>
-            ) : (
-              "Most recent collected interval"
-            )}
+            {figureNewerThanVerdict(behavior)
+              ? t.rich("collectedNewer", {
+                  time: () => <UtcTime value={behavior.last_bucket_at} variant="compact" />,
+                })
+              : t("mostRecent")}
           </p>
         </div>
         <div className="card">
-          <div className="k">Expected EPS</div>
+          <div className="k">{t("expectedEps")}</div>
           <div className="v">
             {/* No reliable baseline means no expectation exists. A 0 here
                 would be an invented expectation the observed value is then
                 judged against. */}
             {unjudged ? (
-              <span className="metric-learning">Still learning</span>
+              <span className="metric-learning">{t("stillLearning")}</span>
             ) : (
-              formatMetric(behavior.expected_eps)
+              formatMetric(behavior.expected_eps, 2, locale)
             )}
           </div>
-          <p className="metric-note">Seasonal baseline for this weekday and hour</p>
+          <p className="metric-note">{t("expectedNote")}</p>
         </div>
         <div className="card">
-          <div className="k">Deviation</div>
+          <div className="k">{t("deviation")}</div>
           {/* Not computed when there is no expectation to deviate from. */}
           <div className="v">
-            {unjudged ? <span className="muted">—</span> : formatRatio(behavior.deviation_ratio)}
+            {unjudged ? <span className="muted">—</span> : formatRatio(behavior.deviation_ratio, locale)}
           </div>
-          <p className="metric-note">Observed against expected</p>
+          <p className="metric-note">{t("deviationNote")}</p>
         </div>
         <div className="card">
-          <div className="k">Last event</div>
+          <div className="k">{t("lastEvent")}</div>
           <div className="v metric-timestamp">
             {behavior.last_event_at ? (
               <UtcTime value={behavior.last_event_at} />
@@ -229,7 +244,7 @@ export default async function SourceBehaviorPage({
             )}
           </div>
           <p className="metric-note">
-            {behavior.last_event_at ? "Most recent event observed" : "No event observed"}
+            {behavior.last_event_at ? t("lastEventNote") : t("noEvent")}
           </p>
         </div>
       </div>
@@ -243,18 +258,17 @@ export default async function SourceBehaviorPage({
       {/* --- 3. the chart -------------------------------------------------- */}
       <section>
         <div className="row section-head">
-          <h2 className="section-title">Observed volume</h2>
+          <h2 className="section-title">{t("volume")}</h2>
           <RangeSelector sourceId={behavior.log_source_id} active={range} />
         </div>
         {from7d && (
           <p className="notice" role="status">
-            {SOURCE_7D_NOTE}
+            {i18n.t("behavior.source.note7d")}
           </p>
         )}
         {bucketsResult.status === "rejected" ? (
           <div className="notice" role="alert">
-            Metric history could not be loaded. This is a failed request, not an
-            absence of traffic.
+            {t("metricsFailed")}
           </div>
         ) : (
           <VolumeChart
@@ -267,9 +281,9 @@ export default async function SourceBehaviorPage({
               .map((a) => ({
                 start: a.anomaly_start as string,
                 end: a.anomaly_end,
-                label: detectorLabel(a.anomaly_type),
+                label: detectorLabel(a.anomaly_type, i18n),
               }))}
-            ariaLabel={`Observed EPS for ${behavior.name} against its expected baseline`}
+            ariaLabel={t("chartAria", { name: behavior.name })}
             textSummary={chartSummary}
           />
         )}
@@ -277,20 +291,20 @@ export default async function SourceBehaviorPage({
 
       {/* --- 4. anomalies, above the technical detail ---------------------- */}
       <section>
-        <h2 className="section-title">Anomalies</h2>
+        <h2 className="section-title">{t("anomalies")}</h2>
         <SourceAnomalies
           active={active}
           recent={recent}
           activeFailed={activeResult.status === "rejected"}
           recentFailed={anomaliesResult.status === "rejected"}
-          windowLabel={rangeLabel(range)}
+          windowLabel={rangeLabel(range, i18n)}
           unjudged={unjudged}
         />
       </section>
 
       {/* --- 5 & 6. baseline quality and collection health ----------------- */}
       <section>
-        <h2 className="section-title">Data quality</h2>
+        <h2 className="section-title">{t("quality")}</h2>
         <SourceQuality
           baseline={quality}
           collection={health}
@@ -304,7 +318,7 @@ export default async function SourceBehaviorPage({
 
       {/* --- 7. advanced, all collapsed ------------------------------------ */}
       <section>
-        <h2 className="section-title">Technical detail</h2>
+        <h2 className="section-title">{t("technical")}</h2>
         <SourceAdvanced
           behavior={behavior}
           meta={meta}

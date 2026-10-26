@@ -17,6 +17,8 @@
 
 import type { AnomalyDetail } from "@/lib/api";
 import { formatMetric } from "@/lib/behavior";
+import { ENGLISH_ANOMALIES } from "@/lib/anomaliesI18n";
+import { plainCount, wordOrValue, type BehaviorI18n } from "@/lib/behaviorI18n";
 import {
   contributorDisplayValue,
   selectHeadlineContributors,
@@ -36,55 +38,51 @@ export interface IncidentSummary {
  * "destination port 445" rather than "Destination port: 445" — the summary is
  * prose, and a label-colon-value pair reads as a form field.
  */
-function phrase(pick: HeadlineContributor): string {
+function phrase(pick: HeadlineContributor, i18n: BehaviorI18n): string {
   const value = contributorDisplayValue(pick.contributor);
   switch (pick.dimension) {
     case "event_name":
     case "qid":
-      return `${value} traffic`;
+      return i18n.t("anomalies.summary.phrase.traffic", { value });
     case "destination_port":
-      return `destination port ${value}`;
     case "source_port":
-      return `source port ${value}`;
     case "source_ip":
-      return `source IP ${value}`;
     case "destination_ip":
-      return `destination IP ${value}`;
     case "action":
-      return `action ${value}`;
     case "protocol":
-      return `protocol ${value}`;
     case "category":
-      return `category ${value}`;
     case "username":
-      return `user ${value}`;
+      return i18n.t(`anomalies.summary.phrase.${pick.dimension}`, { value });
     default:
-      return `${pick.dimensionLabel.toLowerCase()} ${value}`;
+      return `${pick.dimensionLabel.toLocaleLowerCase(i18n.locale === "tr" ? "tr-TR" : "en-US")} ${value}`;
   }
 }
 
 /** "a, b and c" — an Oxford-comma-free list, because this is one sentence. */
-function joinPhrases(parts: string[]): string {
+function joinPhrases(parts: string[], i18n: BehaviorI18n): string {
   if (parts.length === 1) return parts[0];
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  if (parts.length === 2) return i18n.t("anomalies.summary.join.two", { a: parts[0], b: parts[1] });
+  return i18n.t("anomalies.summary.join.many", {
+    head: parts.slice(0, -1).join(", "),
+    last: parts[parts.length - 1],
+  });
 }
 
 /** The volume clause: what the detector measured, in both directions. */
-function volumeClause(anomaly: AnomalyDetail): string {
-  const observed = formatMetric(anomaly.observed_value);
-  const expected = formatMetric(anomaly.expected_value);
+function volumeClause(anomaly: AnomalyDetail, i18n: BehaviorI18n): string {
+  const expected = formatMetric(anomaly.expected_value, 2, i18n.locale);
+  const observed = formatMetric(anomaly.observed_value, 2, i18n.locale);
 
   if (anomaly.anomaly_type === "NO_EVENTS") {
     // No observed value to state: the finding is the absence of one.
     return anomaly.expected_value != null
-      ? `No events were observed for a source that normally produces approximately ${expected} EPS.`
-      : "No events were observed for this source.";
+      ? i18n.t("anomalies.summary.volume.noEventsExpected", { expected })
+      : i18n.t("anomalies.summary.volume.noEvents");
   }
 
   // A missing measurement is never described as a change from or to a number.
   if (anomaly.observed_value == null || anomaly.expected_value == null) {
-    return "Event volume deviated from its expected baseline.";
+    return i18n.t("anomalies.summary.volume.deviated");
   }
 
   const direction =
@@ -93,28 +91,32 @@ function volumeClause(anomaly: AnomalyDetail): string {
       ? "decreased"
       : "increased";
 
-  return `Event volume ${direction} from an expected ${expected} EPS to ${observed} EPS.`;
+  return i18n.t(`anomalies.summary.volume.${direction}`, { expected, observed });
 }
 
 /** The evidence clause: what the collected dimensions showed, if anything. */
 function contributorClause(
   anomaly: AnomalyDetail,
   picks: HeadlineContributor[],
+  i18n: BehaviorI18n,
 ): string {
   if (picks.length === 0) {
     switch (anomaly.evidence_status) {
       case "PENDING":
-        return "Contributor evidence is still being collected.";
+        return i18n.t("anomalies.summary.evidence.pending");
       case "FAILED":
-        return "Contributor evidence collection failed, so no contributors are available.";
+        return i18n.t("anomalies.summary.evidence.failed");
       case "NOT_REQUESTED":
-        return "No contributor evidence has been requested for this anomaly.";
+        return i18n.t("anomalies.summary.evidence.notRequested");
       default:
-        return "Contributor evidence is not available.";
+        return i18n.t("anomalies.summary.evidence.unavailable");
     }
   }
 
-  const parts = picks.map(phrase);
+  const parts = joinPhrases(
+    picks.map((pick) => phrase(pick, i18n)),
+    i18n,
+  );
   // A drop's contributors are reductions. Calling them "contributors" without
   // saying so reads as though those values increased.
   const isDrop =
@@ -123,26 +125,23 @@ function contributorClause(
       anomaly.expected_value != null &&
       anomaly.observed_value < anomaly.expected_value);
 
-  if (isDrop) {
-    return picks.length === 1
-      ? `The largest observed reduction was in ${parts[0]}.`
-      : `The largest observed reductions were in ${joinPhrases(parts)}.`;
-  }
-  return picks.length === 1
-    ? `The largest observed contributor was ${parts[0]}.`
-    : `The largest observed contributors were ${joinPhrases(parts)}.`;
+  const kind = isDrop ? "reduction" : "contributor";
+  return i18n.t(
+    `anomalies.summary.largest.${kind}.${picks.length === 1 ? "one" : "many"}`,
+    { parts },
+  );
 }
 
 /** The stated limitation on the evidence, where one applies. */
-function caveatFor(anomaly: AnomalyDetail, picks: HeadlineContributor[]): string | null {
-  if (anomaly.evidence_status === "PARTIAL") {
-    return "Some QRadar fields were unavailable or truncated.";
-  }
+function caveatFor(
+  anomaly: AnomalyDetail,
+  picks: HeadlineContributor[],
+  i18n: BehaviorI18n,
+): string | null {
+  if (anomaly.evidence_status === "PARTIAL") return i18n.t("anomalies.summary.caveat.partial");
   // Even on an otherwise complete package, a headline drawn from a capped
   // dimension is the top of a list rather than the whole of it.
-  if (picks.some((p) => p.truncated)) {
-    return "Some results were limited to the top values.";
-  }
+  if (picks.some((p) => p.truncated)) return i18n.t("anomalies.summary.caveat.capped");
   return null;
 }
 
@@ -152,11 +151,14 @@ function caveatFor(anomaly: AnomalyDetail, picks: HeadlineContributor[]): string
  * Same input, same sentence, every time — it is a pure function of the API
  * response and holds no clock, no randomness and no model.
  */
-export function summarizeAnomaly(anomaly: AnomalyDetail): IncidentSummary {
-  const picks = selectHeadlineContributors(anomaly.explanation_package);
+export function summarizeAnomaly(
+  anomaly: AnomalyDetail,
+  i18n: BehaviorI18n = ENGLISH_ANOMALIES,
+): IncidentSummary {
+  const picks = selectHeadlineContributors(anomaly.explanation_package, 3, i18n);
   return {
-    text: `${volumeClause(anomaly)} ${contributorClause(anomaly, picks)}`,
-    caveat: caveatFor(anomaly, picks),
+    text: `${volumeClause(anomaly, i18n)} ${contributorClause(anomaly, picks, i18n)}`,
+    caveat: caveatFor(anomaly, picks, i18n),
   };
 }
 
@@ -168,51 +170,64 @@ export function summarizeAnomaly(anomaly: AnomalyDetail): IncidentSummary {
  * how it ended, and how much of the window was not collected — the last being
  * the fact a sighted reader gets from the shaded gaps.
  */
-export function summarizeTimeline({
-  observed,
-  expected,
-  anomalyStart,
-  anomalyEnd,
-  state,
-  incompleteBuckets,
-  totalBuckets,
-}: {
-  observed: (number | null)[];
-  expected: number | null;
-  anomalyStart: string | null;
-  anomalyEnd: string | null;
-  state: string;
-  incompleteBuckets: number;
-  totalBuckets: number;
-}): string {
+export function summarizeTimeline(
+  {
+    observed,
+    expected,
+    anomalyStart,
+    anomalyEnd,
+    state,
+    incompleteBuckets,
+    totalBuckets,
+  }: {
+    observed: (number | null)[];
+    expected: number | null;
+    anomalyStart: string | null;
+    anomalyEnd: string | null;
+    state: string;
+    incompleteBuckets: number;
+    totalBuckets: number;
+  },
+  i18n: BehaviorI18n = ENGLISH_ANOMALIES,
+): string {
   const measured = observed.filter((v): v is number => v != null);
 
-  if (measured.length === 0) {
-    return "No volume was observed in this window, so the chart has no series to describe.";
-  }
+  if (measured.length === 0) return i18n.t("anomalies.summary.timeline.none");
 
-  const min = Math.min(...measured);
-  const max = Math.max(...measured);
+  const metric = (value: number) => formatMetric(value, 2, i18n.locale);
   const parts: string[] = [
-    `Observed volume ranged from ${formatMetric(min)} to ${formatMetric(max)} EPS across ${totalBuckets} interval${totalBuckets === 1 ? "" : "s"}.`,
+    i18n.t("anomalies.summary.timeline.range", {
+      min: metric(Math.min(...measured)),
+      max: metric(Math.max(...measured)),
+      count: totalBuckets,
+      shown: plainCount(totalBuckets, i18n.locale),
+    }),
   ];
 
   if (expected != null) {
-    parts.push(`The expected baseline was ${formatMetric(expected)} EPS.`);
+    parts.push(i18n.t("anomalies.summary.timeline.expected", { expected: metric(expected) }));
   }
 
   if (anomalyStart) {
+    const stateText = wordOrValue(i18n, "enums.anomalyState", state);
     parts.push(
       anomalyEnd
-        ? `The anomalous interval ran from ${anomalyStart} to ${anomalyEnd}, and the anomaly is now ${state}.`
-        : `The anomalous interval began at ${anomalyStart} and has not ended; the anomaly is ${state}.`,
+        ? i18n.t("anomalies.summary.timeline.ran", {
+            start: anomalyStart,
+            end: anomalyEnd,
+            state: stateText,
+          })
+        : i18n.t("anomalies.summary.timeline.running", { start: anomalyStart, state: stateText }),
     );
   }
 
   if (incompleteBuckets > 0) {
     // The gaps are the point: they are absent collection, not observed silence.
     parts.push(
-      `${incompleteBuckets} interval${incompleteBuckets === 1 ? " was" : "s were"} not fully collected and ${incompleteBuckets === 1 ? "is" : "are"} shown as a gap rather than as zero traffic.`,
+      i18n.t("anomalies.summary.timeline.gaps", {
+        count: incompleteBuckets,
+        shown: plainCount(incompleteBuckets, i18n.locale),
+      }),
     );
   }
 

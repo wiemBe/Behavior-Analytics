@@ -1,0 +1,501 @@
+{
+  "state": {
+    "meaning": {
+      "INSUFFICIENT_DATA": "No adequate baseline for this seasonal cell yet — this source is not being judged, which is not the same as being healthy.",
+      "NORMAL_outside": "NORMAL by the detector's verdict for this weekday and hour; the observed value shown here is not inside the expected band.",
+      "NORMAL_unknown": "NORMAL by the detector's verdict for this weekday and hour.",
+      "NORMAL_inside": "Observed volume is within the expected band for this weekday and hour.",
+      "CANDIDATE": "One abnormal interval recorded. Not yet an incident: promotion requires consecutive abnormal intervals.",
+      "OPEN": "Confirmed incident — enough consecutive abnormal intervals to rule out a single-bucket artefact.",
+      "RECOVERING": "Back inside the expected band, but held open until enough consecutive normal intervals confirm it.",
+      "RESOLVED": "Closed after sustained normal behavior.",
+      "SUPPRESSED": "Detected while the source was in maintenance. Recorded for history, never notified."
+    }
+  },
+  "dimension": {
+    "meaning": {
+      "AVAILABLE": "Collected in full for both windows.",
+      "TRUNCATED": "The result hit the configured value cap, so the contributors below are the top of the list rather than the whole of it. New and disappeared values cannot be determined under a cap — a value can look new simply because it fell below the cap in the other window — so those counts are not reported.",
+      "UNAVAILABLE": "Unavailable — this field was not exposed by the QRadar event schema or DSM for the selected interval. It has not been checked, and no conclusion may be drawn from the absence of contributors here.",
+      "FAILED": "The query for this dimension did not complete. It has not been checked."
+    },
+    "label": {
+      "event_name": "Event name",
+      "source_ip": "Source IP",
+      "destination_ip": "Destination IP",
+      "destination_port": "Destination port",
+      "source_port": "Source port",
+      "username": "Username",
+      "action": "Action",
+      "category": "Category",
+      "protocol": "Protocol"
+    }
+  },
+  "bucket": {
+    "meaning": {
+      "COMPLETE": "The whole interval was observed.",
+      "PARTIAL": "Only part of this interval was collected, so its volume is an undercount rather than a measurement. It never enters a baseline or drives a verdict.",
+      "MISSING": "This interval was not collected at all. Its absence says nothing about whether the source was sending events."
+    }
+  },
+  "score": {
+    "meaning": {
+      "OK": "MAD was non-zero, so the robust z-score is a meaningful measure of surprise and the verdict rests on it.",
+      "DEGENERATE": "MAD was zero — more than half the baseline samples were identical, which is normal for a steady low-volume source. The z-score is therefore an artefact of the floored scale and was not used. The verdict rests on the deterministic expected-bound, ratio and absolute-delta tests instead, which is sound but weaker evidence, and the confidence is capped to reflect that.",
+      "UNAVAILABLE": "No robust score could be computed for this verdict."
+    }
+  },
+  "range": {
+    "label": "{count, plural, one {# hour} other {# hours}}",
+    "nav": "Chart time range",
+    "title": "Range"
+  },
+  "source": {
+    "note7d": "This chart is the latest 24 hours, the longest window this page can show. The widget covered 7 days; a 7-day window of one-minute buckets is not available here."
+  },
+  "weekday": {
+    "1": "Mon",
+    "2": "Tue",
+    "3": "Wed",
+    "4": "Thu",
+    "5": "Fri",
+    "6": "Sat",
+    "7": "Sun",
+    "unknown": "ISO weekday {weekday}, hour {hour} UTC"
+  },
+  "baseline": {
+    "label": {
+      "STILL_LEARNING": "Still learning",
+      "DEGENERATE": "Zero variability",
+      "INCOMPLETE": "Incomplete",
+      "RELIABLE": "Reliable"
+    },
+    "explanation": {
+      "learningSome": "Only {count, plural, one {{shown} complete sample} other {{shown} complete samples}} for this weekday and hour so far — not enough to judge this source against. It is not being assessed, which is not the same as being healthy.",
+      "learningNone": "No complete samples for this weekday and hour yet. This source is not being assessed, which is not the same as being healthy.",
+      "degenerate": "Baseline variability is zero — more than half of the {samples} samples for this weekday and hour were identical, which is normal for a steady low-volume source. The robust z-score is therefore an artefact and is not used; material deviations fall back to the deterministic expected-band test, which is sound but weaker evidence.",
+      "incomplete": "The baseline for this weekday and hour is built from {count, plural, one {{shown} sample} other {{shown} samples}} at {completeness} collection completeness, and the backend has not marked it reliable. Verdicts against it are weaker than they appear.",
+      "reliableCell": "Baseline is based on {count, plural, one {{shown} complete sample} other {{shown} complete samples}} for this weekday and hour.",
+      "reliableSeasonal": "Baseline is based on {count, plural, one {{shown} complete sample} other {{shown} complete samples}} for this seasonal cell."
+    }
+  },
+  "collection": {
+    "label": {
+      "NONE": "No recent collection",
+      "DELAYED": "Delayed",
+      "PARTIAL": "Partial",
+      "CURRENT": "Current"
+    },
+    "explanation": {
+      "none": "No metric buckets have been collected for this source. This is an absence of collection, not an observation that the source is silent.",
+      "delayed": "The newest collected interval is {minutes} minutes old, more than {factor} collection intervals behind. Recent volume for this source is not yet known — this says nothing about whether it is sending events.",
+      "absent": "{count, plural, one {{shown} interval has} other {{shown} intervals have}} no stored bucket at all",
+      "incomplete": "{count, plural, one {{shown} was} other {{shown} were}} only partly collected",
+      "and": " and ",
+      "partial": "Of the {expected} intervals this window covers, {bits}. They are drawn as gaps rather than as zero, and never enter a baseline — their absence says nothing about whether the source was sending events.",
+      "current": "All {total} intervals in this window were fully collected."
+    }
+  },
+  "timeline": {
+    "over": "Observed volume over the last {range}.",
+    "noneCollected": "No interval in this window was fully collected, so there is no observed series to describe.",
+    "ranged": "Values ranged from {min} to {max} EPS across {count, plural, one {{shown} fully collected interval} other {{shown} fully collected intervals}}.",
+    "current": "The most recent observation is {value} EPS.",
+    "currentNone": "The most recent interval has no trustworthy observation.",
+    "expected": "The expected baseline is {value} EPS.",
+    "expectedNone": "No baseline expectation exists yet for this source; it is still learning.",
+    "missing": "{count, plural, one {{shown} interval} other {{shown} intervals}} not collected",
+    "partial": "{count, plural, one {{shown} interval} other {{shown} intervals}} only partly collected",
+    "and": " and ",
+    "gaps": "{bits} — drawn as gaps rather than as zero traffic, because they were not observed.",
+    "anomaliesUnknown": "Anomaly history could not be loaded for this window.",
+    "anomaliesShowing": "Showing {shown} of {total} anomalies detected in this window.",
+    "anomaliesNone": "No anomalies were detected in this window.",
+    "anomaliesSome": "{count, plural, one {{shown} anomaly was} other {{shown} anomalies were}} detected in this window."
+  },
+  "attention": {
+    "issue": {
+      "noEvents": "No events received",
+      "evidenceFailed": "Evidence collection failed",
+      "volumeBelow": "Volume below baseline",
+      "volumeAbove": "Volume above baseline",
+      "noBaseline": "No adequate baseline",
+      "deviating": "Deviating from baseline"
+    }
+  },
+  "series": {
+    "kind": {
+      "COMPLETE": "whole interval observed",
+      "PARTIAL": "partially collected — the reported volume is an undercount, not a measurement",
+      "MISSING": "interval not collected — this is not evidence of silence",
+      "GAP": "no bucket was stored for this interval at all"
+    }
+  },
+  "health": {
+    "meaning": {
+      "INSUFFICIENT_DATA": "Not enough collected evidence to judge — this is not a finding.",
+      "NOT_EVALUATED": "No evaluation has run for this technique yet.",
+      "HEALTHY": "Firing within expected bounds.",
+      "DISABLED": "Disabled in QRadar, so it cannot contribute detection.",
+      "NOISY": "Firing far above its expected rate.",
+      "INACTIVE": "Has fired before, but not recently.",
+      "NEVER_OBSERVED": "Observed continuously and never seen to fire.",
+      "DEPENDENCY_DEGRADED": "A building block or log source it depends on is unhealthy.",
+      "COVERED": "At least one healthy enabled rule maps to this technique.",
+      "PARTIAL": "Mapped, but the contributing detection is not fully healthy.",
+      "DEGRADED": "Mapped rules exist but are impaired.",
+      "MISSING": "No rule maps to this technique."
+    }
+  },
+  "fault": {
+    "attempts": {
+      "unknown": "its evaluation failed",
+      "once": "its evaluation failed once",
+      "times": "its evaluation failed {count} times",
+      "used": "{attempts} of {max} attempts used"
+    },
+    "givenUp": {
+      "count": "{count, plural, one {{shown} bucket} other {{shown} buckets}} given up in 24 h",
+      "some": "buckets given up in 24 h"
+    },
+    "qualifier": {
+      "text": "Not judged: {count, plural, one {{shown} source} other {{shown} sources}} (24 h)",
+      "sourcesClause": "{count, plural, one {{shown} source has} other {{shown} sources have}} an evaluation fault",
+      "bucketsClause": "{count, plural, one {{shown} bucket was} other {{shown} buckets were}} not judged in 24 h"
+    }
+  },
+  "history": {
+    "text": "read from QRadar history, not judged",
+    "textCapital": "Read from QRadar history, not judged",
+    "originUnknown": "origin unknown",
+    "originLine": "Origin: origin unknown (the source's bucket record is missing)",
+    "span": "{start} to {end} UTC",
+    "summaryHistory": "{count, plural, one {{history} of {total} bucket was} other {{history} of {total} buckets were}} read from QRadar history, not judged ({spans}).",
+    "summaryUnknown": "{count, plural, one {{unknown} bucket has} other {{unknown} buckets have}} an origin unknown: the source's bucket record is missing."
+  },
+  "filters": {
+    "searchLabel": "Search by source name",
+    "searchPlaceholder": "Search source name…",
+    "stateLabel": "Behavior state",
+    "allStates": "All states",
+    "anomalyLabel": "Anomaly status",
+    "anyAnomaly": "Any anomaly status",
+    "hasActive": "Has active anomaly",
+    "noActive": "No active anomaly",
+    "baselineLabel": "Baseline adequacy",
+    "anyBaseline": "Any baseline",
+    "insufficientOnly": "Insufficient data only",
+    "baselinedOnly": "Baselined only",
+    "submit": "Filter",
+    "clear": "Clear"
+  },
+  "header": {
+    "allSources": "← All sources",
+    "judgedThrough": "Judged through <time></time>",
+    "partial": "PARTIAL",
+    "qradarId": "QRadar ID {id}",
+    "criticality": "Criticality {value}",
+    "monitoringDisabled": "Monitoring disabled",
+    "maintenanceMode": "Maintenance mode",
+    "inventoryDetail": "Inventory detail"
+  },
+  "qualifier": {
+    "notJudgedSince": "Not judged since <time></time>",
+    "noVerdict": "A bucket has no verdict",
+    "one": "1 bucket not judged",
+    "oneWithTime": "1 bucket not judged: <time></time>",
+    "many": "{count, plural, other {{shown} buckets}} not judged in 24 h",
+    "latest": ", latest <time></time>",
+    "unit": "bucket not judged",
+    "unitWithTime": "bucket not judged: <time></time>"
+  },
+  "evaluationNotice": {
+    "noVerdict": "The <bucket></bucket> bucket has no verdict.",
+    "failedAt": "Its evaluation failed at <time></time>{errorClass}.",
+    "failed": "Its evaluation failed.",
+    "coverThrough": "Verdicts for this source cover buckets through <time></time>; the next attempt runs at the next evaluation tick.",
+    "nextAttempt": "The next attempt runs at the next evaluation tick.",
+    "notJudged": "The <bucket></bucket> bucket was not judged.",
+    "notJudgedAttempts": "The <bucket></bucket> bucket was not judged: {phrase}.",
+    "notJudgedLast": "The <bucket></bucket> bucket was not judged, most recently at <time></time>{errorClass}.",
+    "notJudgedAttemptsLast": "The <bucket></bucket> bucket was not judged: {phrase}, most recently at <time></time>{errorClass}.",
+    "skippedOne": "1 bucket in this window has no verdict.",
+    "skippedMany": "{count, plural, other {{shown} buckets}} in this window have no verdict.",
+    "resumed": "Evaluation resumed; verdicts now cover buckets through <time></time>."
+  },
+  "quality": {
+    "baselineTitle": "Baseline quality",
+    "samples": "Samples",
+    "seasonalCell": "Seasonal cell",
+    "cellCompleteness": "Cell completeness",
+    "expectedRange": "Expected range (EPS)",
+    "collectionTitle": "Collection health",
+    "collectionUnknown": "The metric history could not be loaded, so collection cannot be judged. This is a failed request, not a statement about the source or its collector.",
+    "latestInterval": "Latest collected interval",
+    "lag": "Collection lag",
+    "intervals": "Intervals in window",
+    "intervalsObserved": "{observed} of {total} fully observed",
+    "qradarStatus": "QRadar log source status",
+    "unavailable": "unavailable"
+  },
+  "sourceAnomalies": {
+    "detector": "Detector",
+    "state": "State",
+    "observedExpected": "Observed → Expected (EPS)",
+    "deviation": "Deviation",
+    "started": "Started",
+    "evidence": "Evidence",
+    "actions": "Actions",
+    "open": "Open",
+    "needsAttention": "Needs attention",
+    "activeFailed": "The active incident list could not be loaded for this source. Whether an incident is currently open, a candidate, or recovering is unknown.",
+    "noActive": "No incident is currently open, a candidate, or recovering for this source.",
+    "activeLabel": "Active anomalies",
+    "activeCaption": "Anomalies still open, candidate or recovering for this source.",
+    "recentlyClosed": "Recently closed",
+    "historyFailed": "Anomaly history could not be loaded for this source. This is a failed request, not an absence of anomalies.",
+    "noneUnjudged": "No anomalies — but this source has no adequate baseline, so no detector has judged it. This is not a clean result.",
+    "noneInWindow": "No anomalies were detected in the last {range}.",
+    "closedLabel": "Recently closed anomalies",
+    "closedCaption": "Anomalies that have resolved or are no longer active for this source."
+  },
+  "evidenceStatus": {
+    "NOT_REQUESTED": "NOT_REQUESTED",
+    "PENDING": "PENDING",
+    "COMPLETE": "COMPLETE",
+    "PARTIAL": "PARTIAL",
+    "UNAVAILABLE": "UNAVAILABLE",
+    "FAILED": "FAILED"
+  },
+  "evidenceWord": {
+    "NOT_REQUESTED": "Not requested",
+    "PENDING": "Pending",
+    "COMPLETE": "Complete",
+    "PARTIAL": "Partial",
+    "UNAVAILABLE": "Unavailable",
+    "FAILED": "Failed"
+  },
+  "availability": {
+    "AVAILABLE": "AVAILABLE",
+    "TRUNCATED": "TRUNCATED",
+    "UNAVAILABLE": "UNAVAILABLE",
+    "FAILED": "FAILED"
+  },
+  "completeness": {
+    "COMPLETE": "COMPLETE",
+    "PARTIAL": "PARTIAL",
+    "MISSING": "MISSING"
+  },
+  "advanced": {
+    "yes": "yes",
+    "no": "no",
+    "clearedWithTime": "Last evaluation fault: the <bucket></bucket> bucket {failed}{errorClass} at <time></time>; judged on retry at <resolved></resolved>.",
+    "clearedNoTime": "Last evaluation fault: the <bucket></bucket> bucket {failed}{errorClass}; judged on retry at <resolved></resolved>.",
+    "clearedFailed": {
+      "unknown": "failed",
+      "once": "failed once",
+      "times": "failed {count} times"
+    },
+    "baselineHistory": "Baseline history",
+    "notLoaded": "not loaded",
+    "cellsNote": "{count} cells",
+    "cellsFailed": "Baseline history could not be loaded. This is a failed request, not an absence of baselines.",
+    "cellsEmpty": "No baseline cells have been computed for this source yet. It is not being judged against any expectation.",
+    "cellsLabel": "Baseline cells",
+    "cellsCaption": "Seasonal baseline cells for this source, one per weekday and hour, with median, variability and sample count.",
+    "weekday": "Weekday (ISO)",
+    "hour": "Hour (UTC)",
+    "median": "Median (EPS)",
+    "samples": "Samples",
+    "completeness": "Completeness",
+    "reliable": "Reliable",
+    "version": "Version",
+    "metricBuckets": "Metric buckets",
+    "mostRecent": "{count} most recent",
+    "bucketsFailed": "Metric history could not be loaded (see the alert above). This is a failed request, not an absence of collection.",
+    "bucketsEmpty": "No metric buckets were collected in this window. This is an absence of collection, not an observation of zero traffic.",
+    "bucketsCaption": "The most recently collected intervals, with observed volume and how completely each was collected.",
+    "interval": "Interval",
+    "events": "Events",
+    "averageEps": "Average EPS",
+    "peakEps": "Peak EPS",
+    "lastEvent": "Last event",
+    "collectionDetails": "Collection details",
+    "bucketsNotJudged": "Buckets not judged",
+    "lastCollected": "Last collected bucket",
+    "baselineSamples": "Baseline samples",
+    "baselineCompleteness": "Baseline completeness",
+    "collectionSource": "Collection source",
+    "collectionSourceValue": "QRadar Ariel, via the backend collector",
+    "sourceMetadata": "Source metadata",
+    "qradarId": "QRadar ID",
+    "type": "Type",
+    "owner": "Owner",
+    "enabled": "Enabled",
+    "monitoring": "Monitoring",
+    "monitoringOn": "enabled",
+    "monitoringOff": "disabled",
+    "maintenance": "Maintenance mode",
+    "maintenanceOn": "active",
+    "maintenanceOff": "inactive",
+    "qradarStatus": "QRadar status",
+    "timezone": "Timezone",
+    "metadataFailed": "Inventory metadata could not be loaded for this source."
+  },
+  "chart": {
+    "ariaDefault": "Observed volume against expected baseline",
+    "tooltip": {
+      "observed": "Observed: {value} EPS",
+      "notMeasured": "Observed: not measured ({meaning})",
+      "reported": "Reported by the partial collection: {value} EPS",
+      "band": "Expected range: {low} – {high} EPS",
+      "expected": "Expected: {value} EPS",
+      "collection": "Collection: {meaning}",
+      "anomalous": "Anomalous interval: {label}",
+      "anomalyFallback": "anomaly"
+    },
+    "axis": {
+      "time": "Time (UTC)",
+      "eps": "Events per second (EPS)"
+    },
+    "empty": "No metric buckets were collected for this window. This is an absence of collection, not an observation of zero traffic.",
+    "key": {
+      "title": "Chart key",
+      "observed": "Observed EPS",
+      "median": "Expected median",
+      "range": "Expected range",
+      "gap": "Not fully collected",
+      "anomaly": "Anomalous interval",
+      "transition": "Lifecycle transition"
+    },
+    "note": "Gaps in the observed line are intervals that were not fully collected. They are not zero traffic."
+  },
+  "scoreStatus": {
+    "OK": "OK",
+    "DEGENERATE": "DEGENERATE",
+    "UNAVAILABLE": "UNAVAILABLE"
+  },
+  "errors": {
+    "forbidden": "You do not have permission to view behavioral analytics.",
+    "expired": "Your session has expired. Sign in again to continue."
+  },
+  "boundary": {
+    "title": "Behavioral overview",
+    "errorWhat": "Behavioral analytics",
+    "loadingWhat": "behavioral analytics"
+  },
+  "overview": {
+    "metaTitle": "Overview",
+    "title": "Behavioral overview",
+    "description": "{shown} monitored sources, each compared with its own baseline for this weekday and hour. <utc>Times are UTC.</utc>",
+    "failed": "Behavioral analytics could not be loaded. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health.",
+    "failedShort": "Behavioral analytics could not be loaded.",
+    "stats": {
+      "openAnomalies": "Open anomalies",
+      "silentSources": "Silent sources",
+      "highDeviation": "High deviation",
+      "highDeviationNote": "Sources at or beyond 2x, or at or below half, their expected volume.",
+      "insufficientData": "Insufficient data",
+      "insufficientNote": "Not being judged — a zero above does not cover these."
+    },
+    "strip": {
+      "spikes": "Spikes",
+      "drops": "Drops",
+      "candidates": "Candidates",
+      "recovering": "Recovering",
+      "resolved24h": "Resolved, 24 h",
+      "evidencePending": "Evidence pending",
+      "evidenceFailed": "Evidence failed"
+    },
+    "banner": {
+      "lead": "{count, plural, one {{shown} of {total} monitored source has} other {{shown} of {total} monitored sources have}} no adequate baseline for the current seasonal cell.",
+      "rest": "{count, plural, one {It is} other {They are}} not being judged, so no anomaly count above covers {count, plural, one {it} other {them}}. A zero here is the absence of a verdict, not a clean bill of health."
+    },
+    "attention": {
+      "title": "Needs attention",
+      "activeFailed": "The active anomaly list could not be loaded; this worklist may be incomplete.",
+      "ranked": "Ranked from the {shown} most recent of {total} active anomalies. <link>View all active anomalies</link>.",
+      "unmatched": "{count, plural, one {{shown} active anomaly} other {{shown} active anomalies}} could not be matched to a worklist row. <link>View all active anomalies</link>.",
+      "empty": "Nothing is currently anomalous, deviating materially from its baseline, or waiting on a baseline. Sources that are simply normal are not listed here.",
+      "label": "Sources needing attention",
+      "caption": "Sources needing attention, ordered by lifecycle state, then severity, then deviation, then recency.",
+      "source": "Source",
+      "state": "State",
+      "issue": "Issue and severity",
+      "observedExpected": "Observed / expected (EPS)",
+      "deviation": "Deviation",
+      "started": "Started",
+      "detail": "Detail",
+      "investigate": "Investigate",
+      "showing": "Showing the {limit} highest-priority of {total}. <link>See all active anomalies</link>."
+    },
+    "recent": {
+      "title": "Recently resolved",
+      "empty": "No anomalies have been resolved yet.",
+      "latest": "Latest {shown} of the {total} most recently resolved anomalies.",
+      "label": "Recently resolved anomalies",
+      "caption": "Anomalies that closed after sustained normal behavior.",
+      "source": "Source",
+      "detector": "Detector",
+      "severity": "Severity",
+      "resolved": "Resolved",
+      "detail": "Detail",
+      "investigate": "Investigate"
+    },
+    "health": {
+      "title": "Source health",
+      "viewAll": "View all {shown} sources"
+    }
+  },
+  "sources": {
+    "metaTitle": "Sources",
+    "title": "Sources",
+    "description": "Current volume against the seasonal baseline for this weekday and hour. Times are UTC.",
+    "failed": "Source behavior could not be loaded. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health.",
+    "noMatch": "No sources match these filters. This is a filtered view, not a statement about the fleet.",
+    "none": "No monitored log sources. Enable monitoring on a source to start collecting its volume baseline.",
+    "label": "Monitored log sources",
+    "caption": "Monitored log sources with observed and expected events per second, deviation from baseline, and active anomaly count.",
+    "source": "Source",
+    "state": "State",
+    "observed": "Observed (EPS)",
+    "expected": "Expected (EPS)",
+    "deviation": "Deviation",
+    "lastEvent": "Last event",
+    "anomalies": "Anomalies",
+    "detail": "Detail",
+    "stillLearning": "still learning"
+  },
+  "sourcePage": {
+    "metaTitle": "Source behavior",
+    "title": "Source behavior",
+    "allSources": "← All sources",
+    "notFound": "This log source does not exist. It may have been removed from monitoring; choose another from the source list.",
+    "failed": "Could not load this source. The backend may be unreachable. Reload the page to try again; if it persists, check the backend health.",
+    "observedEps": "Observed EPS",
+    "collectedNewer": "Collected <time></time>; newer than the last verdict",
+    "mostRecent": "Most recent collected interval",
+    "expectedEps": "Expected EPS",
+    "stillLearning": "Still learning",
+    "expectedNote": "Seasonal baseline for this weekday and hour",
+    "deviation": "Deviation",
+    "deviationNote": "Observed against expected",
+    "lastEvent": "Last event",
+    "lastEventNote": "Most recent event observed",
+    "noEvent": "No event observed",
+    "notes": {
+      "learning": "Baseline still learning",
+      "zeroVariability": "Baseline variability is zero",
+      "collection": "Collection {status}",
+      "silent": "Source is currently silent",
+      "monitoringDisabled": "Monitoring disabled",
+      "maintenance": "Maintenance mode active"
+    },
+    "volume": "Observed volume",
+    "metricsFailed": "Metric history could not be loaded. This is a failed request, not an absence of traffic.",
+    "chartAria": "Observed EPS for {name} against its expected baseline",
+    "anomalies": "Anomalies",
+    "quality": "Data quality",
+    "technical": "Technical detail"
+  }
+}

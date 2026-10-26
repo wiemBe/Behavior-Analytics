@@ -11,6 +11,7 @@
 
 import type { AnomalySummary, BaselineCell, MetricBucket, SourceBehavior } from "@/lib/api";
 import { formatMetric } from "@/lib/behavior";
+import { ENGLISH_BEHAVIOR, plainCount, type BehaviorI18n } from "@/lib/behaviorI18n";
 import { formatShare } from "@/lib/format";
 
 // --- time range ------------------------------------------------------------
@@ -37,8 +38,8 @@ export function parseRange(value: string | undefined): RangeHours {
     : DEFAULT_RANGE;
 }
 
-export function rangeLabel(hours: RangeHours): string {
-  return hours === 1 ? "1 hour" : `${hours} hours`;
+export function rangeLabel(hours: RangeHours, i18n: BehaviorI18n = ENGLISH_BEHAVIOR): string {
+  return i18n.t("behavior.range.label", { count: hours });
 }
 
 /**
@@ -54,10 +55,7 @@ export function sourceDrillHref(sourceId: string, window: "1h" | "24h" | "7d"): 
   return `/behavior/sources/${sourceId}?range=24&from=7d`;
 }
 
-export const SOURCE_7D_NOTE =
-  "This chart is the latest 24 hours, the longest window this page can show. The widget covered 7 days; a 7-day window of one-minute buckets is not available here.";
-
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+export const SOURCE_7D_NOTE = ENGLISH_BEHAVIOR.t("behavior.source.note7d");
 
 /**
  * A seasonal cell as an analyst reads it: `Mon 12:00 UTC`.
@@ -65,10 +63,15 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
  * The backend keys cells by ISO weekday (1 = Monday) and the UTC hour. A bare
  * "Weekday 7, hour 12" asks the reader to know both conventions.
  */
-export function seasonalCellLabel(weekday: number, hour: number): string {
-  const day = WEEKDAYS[weekday - 1];
+export function seasonalCellLabel(
+  weekday: number,
+  hour: number,
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
+): string {
+  const key = `behavior.weekday.${weekday}`;
+  const day = Number.isInteger(weekday) && i18n.t.has?.(key) ? i18n.t(key) : null;
   if (!day || !Number.isInteger(hour) || hour < 0 || hour > 23) {
-    return `ISO weekday ${weekday}, hour ${hour} UTC`;
+    return i18n.t("behavior.weekday.unknown", { weekday, hour });
   }
   return `${day} ${String(hour).padStart(2, "0")}:00 UTC`;
 }
@@ -111,21 +114,24 @@ export function currentCell(
 export function baselineQuality(
   source: SourceBehavior,
   cells: BaselineCell[],
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
 ): BaselineQuality {
   const cell = currentCell(cells, source.expected_eps);
   const samples = source.baseline_sample_count;
+  const label = (status: BaselineStatus) => i18n.t(`behavior.baseline.label.${status}`);
+  const shown = (n: number) => ({ count: n, shown: plainCount(n, i18n.locale) });
 
   // No expectation at all: the detector has declined to judge this source, and
   // nothing about the cells below changes that.
   if (source.state === "INSUFFICIENT_DATA" || source.expected_eps == null) {
     return {
       status: "STILL_LEARNING",
-      label: "Still learning",
+      label: label("STILL_LEARNING"),
       tone: "",
       explanation:
         samples > 0
-          ? `Only ${samples} complete sample${samples === 1 ? "" : "s"} for this weekday and hour so far — not enough to judge this source against. It is not being assessed, which is not the same as being healthy.`
-          : "No complete samples for this weekday and hour yet. This source is not being assessed, which is not the same as being healthy.",
+          ? i18n.t("behavior.baseline.explanation.learningSome", shown(samples))
+          : i18n.t("behavior.baseline.explanation.learningNone"),
       cell,
     };
   }
@@ -135,9 +141,11 @@ export function baselineQuality(
   if (cell && cell.mad === 0) {
     return {
       status: "DEGENERATE",
-      label: "Zero variability",
+      label: label("DEGENERATE"),
       tone: "warn",
-      explanation: `Baseline variability is zero — more than half of the ${cell.sample_count} samples for this weekday and hour were identical, which is normal for a steady low-volume source. The robust z-score is therefore an artefact and is not used; material deviations fall back to the deterministic expected-band test, which is sound but weaker evidence.`,
+      explanation: i18n.t("behavior.baseline.explanation.degenerate", {
+        samples: plainCount(cell.sample_count, i18n.locale),
+      }),
       cell,
     };
   }
@@ -145,20 +153,23 @@ export function baselineQuality(
   if (cell && !cell.is_reliable) {
     return {
       status: "INCOMPLETE",
-      label: "Incomplete",
+      label: label("INCOMPLETE"),
       tone: "warn",
-      explanation: `The baseline for this weekday and hour is built from ${cell.sample_count} sample${cell.sample_count === 1 ? "" : "s"} at ${formatShare(cell.completeness)} collection completeness, and the backend has not marked it reliable. Verdicts against it are weaker than they appear.`,
+      explanation: i18n.t("behavior.baseline.explanation.incomplete", {
+        ...shown(cell.sample_count),
+        completeness: formatShare(cell.completeness, i18n.locale),
+      }),
       cell,
     };
   }
 
   return {
     status: "RELIABLE",
-    label: "Reliable",
+    label: label("RELIABLE"),
     tone: "ok",
     explanation: cell
-      ? `Baseline is based on ${cell.sample_count} complete sample${cell.sample_count === 1 ? "" : "s"} for this weekday and hour.`
-      : `Baseline is based on ${samples} complete sample${samples === 1 ? "" : "s"} for this seasonal cell.`,
+      ? i18n.t("behavior.baseline.explanation.reliableCell", shown(cell.sample_count))
+      : i18n.t("behavior.baseline.explanation.reliableSeasonal", shown(samples)),
     cell,
   };
 }
@@ -204,6 +215,7 @@ export function collectionHealth(
   /** Seconds the chart covers, so absent intervals can be counted. */
   windowSeconds: number,
   now: number = Date.now(),
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
 ): CollectionHealth {
   const total = buckets.length;
   const incomplete = buckets.filter((b) => b.completeness !== "COMPLETE").length;
@@ -223,10 +235,9 @@ export function collectionHealth(
   if (total === 0 && lagSeconds == null) {
     return {
       status: "NONE",
-      label: "No recent collection",
+      label: i18n.t("behavior.collection.label.NONE"),
       tone: "crit",
-      explanation:
-        "No metric buckets have been collected for this source. This is an absence of collection, not an observation that the source is silent.",
+      explanation: i18n.t("behavior.collection.explanation.none"),
       incomplete,
       total,
       expected,
@@ -238,9 +249,12 @@ export function collectionHealth(
   if (lagSeconds != null && lagSeconds > width * DELAY_FACTOR) {
     return {
       status: "DELAYED",
-      label: "Delayed",
+      label: i18n.t("behavior.collection.label.DELAYED"),
       tone: "warn",
-      explanation: `The newest collected interval is ${Math.round(lagSeconds / 60)} minutes old, more than ${DELAY_FACTOR} collection intervals behind. Recent volume for this source is not yet known — this says nothing about whether it is sending events.`,
+      explanation: i18n.t("behavior.collection.explanation.delayed", {
+        minutes: plainCount(Math.round(lagSeconds / 60), i18n.locale),
+        factor: DELAY_FACTOR,
+      }),
       incomplete,
       total,
       expected,
@@ -252,14 +266,19 @@ export function collectionHealth(
   const uncollected = incomplete + absent;
   if (uncollected > 0) {
     const bits: string[] = [];
-    if (absent > 0) bits.push(`${absent} interval${absent === 1 ? " has" : "s have"} no stored bucket at all`);
-    if (incomplete > 0)
-      bits.push(`${incomplete} ${incomplete === 1 ? "was" : "were"} only partly collected`);
+    const count = (n: number) => ({ count: n, shown: plainCount(n, i18n.locale) });
+    if (absent > 0) bits.push(i18n.t("behavior.collection.explanation.absent", count(absent)));
+    if (incomplete > 0) {
+      bits.push(i18n.t("behavior.collection.explanation.incomplete", count(incomplete)));
+    }
     return {
       status: "PARTIAL",
-      label: "Partial",
+      label: i18n.t("behavior.collection.label.PARTIAL"),
       tone: "warn",
-      explanation: `Of the ${expected} intervals this window covers, ${bits.join(" and ")}. They are drawn as gaps rather than as zero, and never enter a baseline — their absence says nothing about whether the source was sending events.`,
+      explanation: i18n.t("behavior.collection.explanation.partial", {
+        expected: plainCount(expected, i18n.locale),
+        bits: bits.join(i18n.t("behavior.collection.explanation.and")),
+      }),
       incomplete,
       total,
       expected,
@@ -270,9 +289,11 @@ export function collectionHealth(
 
   return {
     status: "CURRENT",
-    label: "Current",
+    label: i18n.t("behavior.collection.label.CURRENT"),
     tone: "ok",
-    explanation: `All ${total} intervals in this window were fully collected.`,
+    explanation: i18n.t("behavior.collection.explanation.current", {
+      total: plainCount(total, i18n.locale),
+    }),
     incomplete,
     total,
     expected,
@@ -336,72 +357,77 @@ export function partitionAnomalies(anomalies: AnomalySummary[]): {
  * — critically — how much of the window was not collected, which is the fact a
  * sighted reader takes from the shaded gaps.
  */
-export function summarizeSourceTimeline({
-  hours,
-  observed,
-  currentEps,
-  expectedEps,
-  missing,
-  partial,
-  anomalyCount,
-  shownAnomalyCount = anomalyCount,
-}: {
-  hours: number;
-  observed: (number | null)[];
-  currentEps: number | null;
-  expectedEps: number | null;
-  missing: number;
-  partial: number;
-  anomalyCount: number | null;
-  shownAnomalyCount?: number | null;
-}): string {
-  const parts: string[] = [`Observed volume over the last ${rangeLabel(hours as RangeHours)}.`];
+export function summarizeSourceTimeline(
+  {
+    hours,
+    observed,
+    currentEps,
+    expectedEps,
+    missing,
+    partial,
+    anomalyCount,
+    shownAnomalyCount = anomalyCount,
+  }: {
+    hours: number;
+    observed: (number | null)[];
+    currentEps: number | null;
+    expectedEps: number | null;
+    missing: number;
+    partial: number;
+    anomalyCount: number | null;
+    shownAnomalyCount?: number | null;
+  },
+  i18n: BehaviorI18n = ENGLISH_BEHAVIOR,
+): string {
+  const t = (key: string, values?: Record<string, string | number>) =>
+    i18n.t(`behavior.timeline.${key}`, values);
+  const metric = (value: number) => formatMetric(value, 2, i18n.locale);
+  const count = (n: number) => ({ count: n, shown: plainCount(n, i18n.locale) });
+  const parts: string[] = [t("over", { range: rangeLabel(hours as RangeHours, i18n) })];
 
   const measured = observed.filter((v): v is number => v != null);
   if (measured.length === 0) {
-    parts.push(
-      "No interval in this window was fully collected, so there is no observed series to describe.",
-    );
+    parts.push(t("noneCollected"));
   } else {
     parts.push(
-      `Values ranged from ${formatMetric(Math.min(...measured))} to ${formatMetric(Math.max(...measured))} EPS across ${measured.length} fully collected interval${measured.length === 1 ? "" : "s"}.`,
+      t("ranged", {
+        min: metric(Math.min(...measured)),
+        max: metric(Math.max(...measured)),
+        ...count(measured.length),
+      }),
     );
   }
 
   parts.push(
     currentEps != null
-      ? `The most recent observation is ${formatMetric(currentEps)} EPS.`
-      : "The most recent interval has no trustworthy observation.",
+      ? t("current", { value: metric(currentEps) })
+      : t("currentNone"),
   );
 
   parts.push(
     expectedEps != null
-      ? `The expected baseline is ${formatMetric(expectedEps)} EPS.`
-      : "No baseline expectation exists yet for this source; it is still learning.",
+      ? t("expected", { value: metric(expectedEps) })
+      : t("expectedNone"),
   );
 
   if (missing > 0 || partial > 0) {
     const bits: string[] = [];
-    if (missing > 0) bits.push(`${missing} interval${missing === 1 ? "" : "s"} not collected`);
-    if (partial > 0)
-      bits.push(`${partial} interval${partial === 1 ? "" : "s"} only partly collected`);
-    parts.push(
-      `${bits.join(" and ")} — drawn as gaps rather than as zero traffic, because they were not observed.`,
-    );
+    if (missing > 0) bits.push(t("missing", count(missing)));
+    if (partial > 0) bits.push(t("partial", count(partial)));
+    parts.push(t("gaps", { bits: bits.join(t("and")) }));
   }
 
   if (anomalyCount == null) {
-    parts.push("Anomaly history could not be loaded for this window.");
+    parts.push(t("anomaliesUnknown"));
   } else if (shownAnomalyCount != null && shownAnomalyCount < anomalyCount) {
     parts.push(
-      `Showing ${shownAnomalyCount} of ${anomalyCount} anomalies detected in this window.`,
+      t("anomaliesShowing", {
+        shown: plainCount(shownAnomalyCount, i18n.locale),
+        total: plainCount(anomalyCount, i18n.locale),
+      }),
     );
   } else {
-    parts.push(
-      anomalyCount === 0
-        ? "No anomalies were detected in this window."
-        : `${anomalyCount} anomal${anomalyCount === 1 ? "y was" : "ies were"} detected in this window.`,
-    );
+    parts.push(anomalyCount === 0 ? t("anomaliesNone") : t("anomaliesSome", count(anomalyCount)));
   }
 
   return parts.join(" ");

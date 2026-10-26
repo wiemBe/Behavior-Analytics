@@ -9,15 +9,26 @@
 // alert, a future detector) shows its numbers bare rather than under a guessed
 // unit, and a missing value is a dash with no unit after it.
 
-import { formatShare } from "@/lib/format";
+import { useLocale, useTranslations } from "next-intl";
+
+import { asTextTranslator } from "@/i18n/textTranslator";
+import { formatShare, type FormatLocale } from "@/lib/format";
 
 import "./Evidence.css";
 
 type Scale = "raw" | "percent";
 
+/** A unit that is a word, by its catalog key (`evidence.unit.<word>`); it follows the figure's count. */
+interface Word {
+  word: string;
+}
+
 interface Measure {
-  /** The unit shown after the figure; a [singular, plural] pair follows the figure. */
-  unit: string | [string, string] | null;
+  /**
+   * The unit shown after the figure: a symbol both languages share (`EPS`, `z`, `s`) or a word
+   * looked up in the catalog.
+   */
+  unit: string | Word | null;
   /** A share is stored 0 to 1 and shown as a percentage. */
   scale: Scale;
 }
@@ -30,28 +41,29 @@ interface Spec {
 }
 
 const raw = (unit: Measure["unit"]): Measure => ({ unit, scale: "raw" });
-const percent = (unit: string): Measure => ({ unit, scale: "percent" });
+const percent = (unit: string | Word): Measure => ({ unit, scale: "percent" });
+const word = (key: string): Word => ({ word: key });
 
 const VOLUME: Spec = {
   value: raw("EPS"),
   threshold: raw("z"),
   deviation: raw("z"),
-  samples: raw(["baseline sample", "baseline samples"]),
+  samples: raw(word("baselineSample")),
 };
 const RATIO: Spec = {
   value: percent("%"),
   threshold: percent("%"),
   deviation: percent("pp"),
-  samples: raw(["event", "events"]),
+  samples: raw(word("event")),
 };
 
 /** The detector table. Keys are the Phase A `AnomalyType` values. */
 const SPECS: Record<string, Spec> = {
   NO_EVENTS: {
-    value: raw("events / bucket"),
-    threshold: raw("events"),
+    value: raw(word("eventsPerBucket")),
+    threshold: raw(word("events")),
     deviation: raw(null),
-    samples: raw(["baseline sample", "baseline samples"]),
+    samples: raw(word("baselineSample")),
   },
   VOLUME_DROP: VOLUME,
   VOLUME_SPIKE: VOLUME,
@@ -60,26 +72,26 @@ const SPECS: Record<string, Spec> = {
   TIMESTAMP_DELAY: {
     value: raw("s"),
     threshold: raw("s"),
-    deviation: raw("× limit"),
-    samples: raw(["interval", "intervals"]),
+    deviation: raw(word("timesLimit")),
+    samples: raw(word("interval")),
   },
   CARDINALITY_DROP: {
-    value: raw("source IPs"),
-    threshold: raw("source IPs"),
-    deviation: percent("% below baseline"),
-    samples: raw(["baseline sample", "baseline samples"]),
+    value: raw(word("sourceIps")),
+    threshold: raw(word("sourceIps")),
+    deviation: percent(word("belowBaseline")),
+    samples: raw(word("baselineSample")),
   },
   COLLECTION_ERROR: {
-    value: raw(["error", "errors"]),
-    threshold: raw(["error", "errors"]),
-    deviation: raw(["error", "errors"]),
-    samples: raw(["interval", "intervals"]),
+    value: raw(word("error")),
+    threshold: raw(word("error")),
+    deviation: raw(word("error")),
+    samples: raw(word("interval")),
   },
   REPEATED_PAYLOAD: {
-    value: raw(["interval", "intervals"]),
-    threshold: raw(["interval", "intervals"]),
-    deviation: raw(["interval", "intervals"]),
-    samples: raw(["interval", "intervals"]),
+    value: raw(word("interval")),
+    threshold: raw(word("interval")),
+    deviation: raw(word("interval")),
+    samples: raw(word("interval")),
   },
 };
 
@@ -95,58 +107,66 @@ function figure(value: unknown, scale: Scale): number | null {
   return scale === "percent" ? value * 100 : value;
 }
 
-/** A share's unit is the "%" of the shared formatter's text: what follows it is the rest. */
-function isShare(measure: Measure | null): measure is Measure & { unit: string } {
-  return measure !== null && measure.scale === "percent" && typeof measure.unit === "string" && measure.unit.startsWith("%");
+/**
+ * A share is a percentage figure whose unit is the "%" of the shared formatter: the "%" and a
+ * word after it ("% below baseline" is the share, then "below baseline"). A plain "pp" is not.
+ */
+function isShare(measure: Measure | null): measure is Measure {
+  return measure !== null && measure.scale === "percent" && measure.unit !== "pp";
 }
 
-function format(n: number): string {
-  return n.toLocaleString("en-US", { maximumFractionDigits: 3 });
-}
-
-function unitFor(unit: Measure["unit"], n: number): string | null {
-  if (unit == null) return null;
-  if (typeof unit === "string") return unit;
-  return n === 1 ? unit[0] : unit[1];
+function format(n: number, locale: FormatLocale): string {
+  return n.toLocaleString(locale === "tr" ? "tr-TR" : "en-US", { maximumFractionDigits: 3 });
 }
 
 export function Evidence({ data }: { data: Record<string, unknown> }) {
+  const t = useTranslations("evidence");
+  // Unit and label keys are built from the detector table, so they are looked up by name.
+  const lookup = asTextTranslator(t);
+  const locale = useLocale() as FormatLocale;
   if (!data || Object.keys(data).length === 0) {
-    return <span className="subtitle">no evidence captured</span>;
+    return <span className="subtitle">{t("none")}</span>;
   }
   const spec = (typeof data.anomaly_type === "string" && SPECS[data.anomaly_type]) || NONE;
 
   const rows: [string, string, Measure | null][] = [
-    ["Observed", "observed_value", spec.value],
-    ["Expected", "expected_value", spec.value],
-    ["Baseline low", "baseline_low", spec.value],
-    ["Baseline high", "baseline_high", spec.value],
-    ["Deviation", "deviation_score", spec.deviation],
-    ["Threshold", "threshold", spec.threshold],
-    ["Samples", "sample_count", spec.samples],
+    ["observed", "observed_value", spec.value],
+    ["expected", "expected_value", spec.value],
+    ["baselineLow", "baseline_low", spec.value],
+    ["baselineHigh", "baseline_high", spec.value],
+    ["deviation", "deviation_score", spec.deviation],
+    ["threshold", "threshold", spec.threshold],
+    ["samples", "sample_count", spec.samples],
     // The detector's own 0-to-1 score, stated as such, as the incident page does.
-    ["Confidence", "confidence", { unit: "(0 to 1)", scale: "raw" }],
+    ["confidence", "confidence", { unit: word("zeroToOne"), scale: "raw" }],
   ];
+  const unitText = (unit: Measure["unit"], n: number): string | null => {
+    if (unit == null) return null;
+    if (typeof unit === "string") return unit;
+    return lookup(`unit.${unit.word}`, { count: n });
+  };
   return (
     <div className="evidence">
       {typeof data.reason === "string" && <p className="evidence-reason">{data.reason}</p>}
-      <table className="evidence-table" aria-label="Detector evidence metrics">
+      <table className="evidence-table" aria-label={t("tableLabel")}>
         <tbody>
-          {rows.map(([label, key, measure]) => {
+          {rows.map(([name, key, measure]) => {
             const n = measure ? figure(data[key], measure.scale) : null;
             const share = n != null && isShare(measure);
             return (
-              <tr key={label}>
-                <td className="evidence-label">{label}</td>
+              <tr key={name}>
+                <td className="evidence-label">{lookup(`label.${name}`)}</td>
                 <td className="num evidence-value">
-                  {n == null ? "—" : share ? formatShare(n / 100) : format(n)}
+                  {n == null ? "—" : share ? formatShare(n / 100, locale) : format(n, locale)}
                 </td>
                 <td className="evidence-unit">
                   {n == null || !measure
                     ? null
                     : share
-                      ? ((measure.unit as string).slice(1).trim() || null)
-                      : unitFor(measure.unit, n)}
+                      ? typeof measure.unit === "string"
+                        ? null
+                        : unitText(measure.unit, n)
+                      : unitText(measure.unit, n)}
                 </td>
               </tr>
             );

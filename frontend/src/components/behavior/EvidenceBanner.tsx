@@ -10,22 +10,15 @@
 // distinguishes them, so it renders for every status except COMPLETE, where
 // there is nothing to qualify.
 
+import { useTranslations } from "next-intl";
+
 import type { EvidenceStatus } from "@/lib/api";
 import { evidenceTone } from "@/lib/behavior";
+import { evidenceCode } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
-const MESSAGES: Record<EvidenceStatus, string | null> = {
-  COMPLETE: null,
-  PARTIAL:
-    "Some QRadar fields were unavailable or truncated. The available evidence is shown below; the dimensions that were not collected have not been checked, and no conclusion follows from the absence of contributors there.",
-  UNAVAILABLE:
-    "This log source's DSM exposes none of the requested fields for this interval, so no contributor analysis was possible. This is a property of the source, not a transient error.",
-  FAILED:
-    "Contributor evidence collection failed. Detection metrics and lifecycle data remain available, and this says nothing about what happened during the anomaly — it is worth retrying.",
-  PENDING:
-    "Contributor evidence is still being collected. The analysis below is not yet available: this is a backlog, not a finding.",
-  NOT_REQUESTED:
-    "No evidence collection has been requested for this anomaly. Nothing has been looked at.",
-};
+/** The statuses that carry a sentence; COMPLETE has nothing to qualify. */
+const WORDED = new Set<string>(["PARTIAL", "UNAVAILABLE", "FAILED", "PENDING", "NOT_REQUESTED"]);
 
 export function EvidenceBanner({
   status,
@@ -38,8 +31,11 @@ export function EvidenceBanner({
   /** Labels of dimensions capped at the value limit. */
   truncatedDimensions?: string[];
 }) {
-  const message = MESSAGES[status];
+  const t = useTranslations("anomalies.banner");
+  const i18n = useBehaviorI18n();
+  const message = WORDED.has(status) ? t(`status.${status}` as "status.PARTIAL") : null;
   const tone = evidenceTone(status);
+  const lead = `${evidenceCode(i18n, status)}.`;
 
   return (
     <>
@@ -47,7 +43,7 @@ export function EvidenceBanner({
         <p className={`banner ${tone}`} role={status === "FAILED" ? "alert" : undefined}>
           <span>
             {/* The status word itself, so the banner is not colour-only. */}
-            <strong>{status}.</strong> {message}
+            <strong>{lead}</strong> {message}
           </span>
         </p>
       )}
@@ -55,11 +51,8 @@ export function EvidenceBanner({
       {truncatedDimensions.length > 0 && (
         <p className="banner warn">
           <span>
-            <strong>Truncated.</strong> Some results were limited to the top
-            values ({truncatedDimensions.join(", ")}). New, disappeared and
-            cardinality counts cannot be determined under a cap — a value can
-            look new simply because it fell below the cap in the other window —
-            so those counts are withheld rather than reported.
+            <strong>{t("truncatedLead")}</strong>{" "}
+            {t("truncated", { dimensions: truncatedDimensions.join(", ") })}
           </span>
         </p>
       )}
@@ -69,7 +62,7 @@ export function EvidenceBanner({
         // React escapes it again on the way into the DOM.
         <p className="banner crit" role="alert">
           <span>
-            <strong>Collection error.</strong> {error}
+            <strong>{t("errorLead")}</strong> {error}
           </span>
         </p>
       )}

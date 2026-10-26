@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 // A source's anomalies, split by whether they still need work.
 //
 // The split is derived from the lifecycle state, never from `resolved_at IS
@@ -7,6 +8,7 @@ import Link from "next/link";
 // the backend corrected in ec5d352 — the UI must not reintroduce it.
 
 import { TableScroll } from "@/components/ui/TableScroll";
+import { useEnumLabels } from "@/i18n/enumLabels";
 import { sevTone, type AnomalySummary } from "@/lib/api";
 import {
   detectorLabel,
@@ -15,8 +17,9 @@ import {
   formatRatio,
   stateTone,
 } from "@/lib/behavior";
+import { ARROW, evidenceCode } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 import { UtcTime } from "@/components/ui/UtcTime";
-
 
 function AnomalyTable({
   anomalies,
@@ -27,55 +30,59 @@ function AnomalyTable({
   label: string;
   caption: string;
 }) {
+  const t = useTranslations("behavior.sourceAnomalies");
+  const i18n = useBehaviorI18n();
+  const { statePill, severityPill } = useEnumLabels();
+  const { locale } = i18n;
   return (
     <TableScroll label={label}>
       <table className="sticky-actions">
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr>
-            <th scope="col">Detector</th>
-            <th scope="col">State</th>
+            <th scope="col">{t("detector")}</th>
+            <th scope="col">{t("state")}</th>
             <th scope="col" className="num">
-              Observed → Expected (EPS)
+              {t("observedExpected")}
             </th>
             <th scope="col" className="num">
-              Deviation
+              {t("deviation")}
             </th>
             <th scope="col" className="num">
-              Started
+              {t("started")}
             </th>
-            <th scope="col">Evidence</th>
+            <th scope="col">{t("evidence")}</th>
             <th scope="col">
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">{t("actions")}</span>
             </th>
           </tr>
         </thead>
         <tbody>
           {anomalies.map((a) => (
             <tr key={a.id}>
-              <td>{detectorLabel(a.anomaly_type)}</td>
+              <td>{detectorLabel(a.anomaly_type, i18n)}</td>
               <td>
-                <span className={`pill pill-strong ${stateTone(a.state)}`}>{a.state}</span>
+                <span className={`pill pill-strong ${stateTone(a.state)}`}>{statePill(a.state)}</span>
               </td>
               <td className="num">
-                {formatMetric(a.observed_value)}
-                <span className="muted"> → </span>
-                {formatMetric(a.expected_value)}
+                {formatMetric(a.observed_value, 2, locale)}
+                <span className="muted"> {ARROW} </span>
+                {formatMetric(a.expected_value, 2, locale)}
               </td>
-              <td className="num">{formatRatio(a.deviation_ratio)}</td>
+              <td className="num">{formatRatio(a.deviation_ratio, locale)}</td>
               <td className="num">
                 <UtcTime value={a.anomaly_start ?? a.detected_at} variant="compact" />
               </td>
               <td>
                 <span className={`pill pill-quiet ${evidenceTone(a.evidence_status)}`}>
-                  {a.evidence_status}
+                  {evidenceCode(i18n, a.evidence_status)}
                 </span>
               </td>
               <td className="row-actions">
                 <div className="row-actions-inner">
-                  <Link href={`/anomalies/${a.id}`}>Open</Link>
+                  <Link href={`/anomalies/${a.id}`}>{t("open")}</Link>
                   <span className={`pill pill-quiet ${sevTone(a.severity)}`}>
-                    {a.severity}
+                    {severityPill(a.severity)}
                   </span>
                 </div>
               </td>
@@ -105,47 +112,43 @@ export function SourceAnomalies({
   /** The source has no adequate baseline, so nothing has judged it. */
   unjudged: boolean;
 }) {
+  const t = useTranslations("behavior.sourceAnomalies");
   return (
     <div className="stack-6">
       <div>
-        <h3>Needs attention</h3>
+        <h3>{t("needsAttention")}</h3>
         {activeFailed ? (
           <p className="notice" role="alert">
-            The active incident list could not be loaded for this source. Whether an incident
-            is currently open, a candidate, or recovering is unknown.
+            {t("activeFailed")}
           </p>
         ) : active.length === 0 ? (
           <p className="subtitle">
-            No incident is currently open, a candidate, or recovering for this
-            source.
+            {t("noActive")}
           </p>
         ) : (
           <AnomalyTable
             anomalies={active}
-            label="Active anomalies"
-            caption="Anomalies still open, candidate or recovering for this source."
+            label={t("activeLabel")}
+            caption={t("activeCaption")}
           />
         )}
       </div>
 
       <div>
-        <h3>Recently closed</h3>
+        <h3>{t("recentlyClosed")}</h3>
         {recentFailed ? (
           <p className="notice" role="alert">
-            Anomaly history could not be loaded for this source. This is a failed request, not
-            an absence of anomalies.
+            {t("historyFailed")}
           </p>
         ) : recent.length === 0 ? (
           <p className="subtitle">
-            {unjudged
-              ? "No anomalies — but this source has no adequate baseline, so no detector has judged it. This is not a clean result."
-              : `No anomalies were detected in the last ${windowLabel}.`}
+            {unjudged ? t("noneUnjudged") : t("noneInWindow", { range: windowLabel })}
           </p>
         ) : (
           <AnomalyTable
             anomalies={recent}
-            label="Recently closed anomalies"
-            caption="Anomalies that have resolved or are no longer active for this source."
+            label={t("closedLabel")}
+            caption={t("closedCaption")}
           />
         )}
       </div>

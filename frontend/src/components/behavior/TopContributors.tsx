@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 // "What changed?" — the three strongest pieces of evidence, above the fold.
 //
 // This replaces reading ten contributor tables to find out that the spike was
@@ -15,6 +16,8 @@ import {
   selectHeadlineContributors,
 } from "@/lib/contributors";
 import { formatCount, formatDelta, formatShare } from "@/lib/behavior";
+import { ARROW } from "@/lib/behaviorI18n";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 export function TopContributors({
   packaged,
@@ -27,18 +30,21 @@ export function TopContributors({
   evidenceStatus: string;
   onViewAllHref?: string;
 }) {
-  const picks = selectHeadlineContributors(packaged);
+  const t = useTranslations("anomalies.top");
+  const i18n = useBehaviorI18n();
+  const { locale } = i18n;
+  const picks = selectHeadlineContributors(packaged, 3, i18n);
 
   if (picks.length === 0) {
     return (
       <div className="notice">
         {anomalyType === "NO_EVENTS"
-          ? "No contributor comparison is available for a zero-event interval. There were no events to compare against the baseline, so nothing here has been ruled out."
+          ? t("noEvents")
           : evidenceStatus === "PENDING"
-            ? "Contributor evidence is still being collected. This is a backlog, not a finding."
+            ? t("pending")
             : evidenceStatus === "FAILED"
-              ? "No contributors: evidence collection failed (see the notice below)."
-              : "No contributor evidence is available for this anomaly. No field has been examined, so nothing has been ruled out."}
+              ? t("failed")
+              : t("unavailable")}
       </div>
     );
   }
@@ -58,31 +64,26 @@ export function TopContributors({
               <div className="k">{pick.dimensionLabel}</div>
               <p className="contributor-value">{contributorDisplayValue(c)}</p>
               <p className="contributor-change num">
-                {formatCount(c.baseline_count)} → {formatCount(c.anomaly_count)}
+                {formatCount(c.baseline_count, locale)} {ARROW} {formatCount(c.anomaly_count, locale)}
               </p>
               <p className="contributor-stats">
-                <span className={`num ${isDrop ? "crit-text" : ""}`}>
-                  {formatDelta(c.absolute_delta)}
-                </span>
-                <span className="muted"> events · </span>
-                <span className="num">
-                  {/* Magnitude: the share is signed, and "-95.9% contribution"
-                      is not how an analyst describes a reduction. */}
-                  {formatShare(
-                    c.contribution_share == null
-                      ? null
-                      : Math.abs(c.contribution_share),
-                  )}
-                </span>
-                <span className="muted">
-                  {isDrop ? " of the reduction" : " of the increase"}
-                </span>
+                {/* Magnitude: the share is signed, and "-95.9% contribution"
+                    is not how an analyst describes a reduction. */}
+                {t.rich(isDrop ? "statsReduction" : "statsIncrease", {
+                  delta: formatDelta(c.absolute_delta, locale),
+                  share: formatShare(
+                    c.contribution_share == null ? null : Math.abs(c.contribution_share),
+                    locale,
+                  ),
+                  deltaTag: (chunks) => (
+                    <span className={`num ${isDrop ? "crit-text" : ""}`}>{chunks}</span>
+                  ),
+                  shareTag: (chunks) => <span className="num">{chunks}</span>,
+                  muted: (chunks) => <span className="muted">{chunks}</span>,
+                })}
               </p>
               {pick.truncated && (
-                <p className="metric-note">
-                  From a result capped at the value limit — the top of the list,
-                  not the whole of it.
-                </p>
+                <p className="metric-note">{t("capped")}</p>
               )}
             </li>
           );
@@ -90,7 +91,7 @@ export function TopContributors({
       </ul>
 
       <p className="subtitle">
-        <Link href={onViewAllHref}>View all evidence</Link>
+        <Link href={onViewAllHref}>{t("viewAll")}</Link>
       </p>
     </>
   );

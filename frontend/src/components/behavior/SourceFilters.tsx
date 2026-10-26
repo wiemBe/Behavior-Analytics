@@ -10,7 +10,9 @@
 // becoming unlabelled to a screen reader.
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
+import { useEnumLabels } from "@/i18n/enumLabels";
 import { isFiltered, type SourceQuery } from "@/lib/sourceInventory";
 
 const STATES = [
@@ -24,47 +26,49 @@ const STATES = [
 ];
 
 export function SourceFilters({ query }: { query: SourceQuery }) {
+  const t = useTranslations("behavior.filters");
+  const { label } = useEnumLabels();
   return (
     <form className="filters source-filters" method="get" action="/behavior/sources">
       <label className="sr-only" htmlFor="source-q">
-        Search by source name
+        {t("searchLabel")}
       </label>
       <input
         id="source-q"
         type="search"
         name="q"
         defaultValue={query.q}
-        placeholder="Search source name…"
+        placeholder={t("searchPlaceholder")}
       />
 
       <label className="sr-only" htmlFor="source-state">
-        Behavior state
+        {t("stateLabel")}
       </label>
       <select id="source-state" name="state" defaultValue={query.state}>
-        <option value="">All states</option>
+        <option value="">{t("allStates")}</option>
         {STATES.map((s) => (
           <option key={s} value={s}>
-            {s}
+            {label("anomalyState", s)}
           </option>
         ))}
       </select>
 
       <label className="sr-only" htmlFor="source-anomaly">
-        Anomaly status
+        {t("anomalyLabel")}
       </label>
       <select id="source-anomaly" name="anomaly" defaultValue={query.anomaly}>
-        <option value="">Any anomaly status</option>
-        <option value="active">Has active anomaly</option>
-        <option value="none">No active anomaly</option>
+        <option value="">{t("anyAnomaly")}</option>
+        <option value="active">{t("hasActive")}</option>
+        <option value="none">{t("noActive")}</option>
       </select>
 
       <label className="sr-only" htmlFor="source-data">
-        Baseline adequacy
+        {t("baselineLabel")}
       </label>
       <select id="source-data" name="data" defaultValue={query.data}>
-        <option value="">Any baseline</option>
-        <option value="insufficient">Insufficient data only</option>
-        <option value="adequate">Baselined only</option>
+        <option value="">{t("anyBaseline")}</option>
+        <option value="insufficient">{t("insufficientOnly")}</option>
+        <option value="adequate">{t("baselinedOnly")}</option>
       </select>
 
       {/* Carried so that filtering does not silently discard the chosen
@@ -72,8 +76,8 @@ export function SourceFilters({ query }: { query: SourceQuery }) {
       <input type="hidden" name="sort" value={query.sort} />
       <input type="hidden" name="dir" value={query.dir} />
 
-      <button type="submit">Filter</button>
-      {isFiltered(query) && <Link href="/behavior/sources">Clear</Link>}
+      <button type="submit">{t("submit")}</button>
+      {isFiltered(query) && <Link href="/behavior/sources">{t("clear")}</Link>}
     </form>
   );
 }

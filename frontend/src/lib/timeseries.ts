@@ -14,6 +14,7 @@
 // `connectNulls: false` so the gap stays visible.
 
 import type { BucketCompleteness, MetricBucket } from "@/lib/api";
+import { ENGLISH_BEHAVIOR, type BehaviorI18n } from "@/lib/behaviorI18n";
 
 export type PointKind = BucketCompleteness | "GAP";
 
@@ -96,16 +97,13 @@ export function unobservedIntervals(
   return out;
 }
 
-export function kindMeaning(kind: PointKind): string {
+export function kindMeaning(kind: PointKind, i18n: BehaviorI18n = ENGLISH_BEHAVIOR): string {
   switch (kind) {
     case "COMPLETE":
-      return "whole interval observed";
     case "PARTIAL":
-      return "partially collected — the reported volume is an undercount, not a measurement";
     case "MISSING":
-      return "interval not collected — this is not evidence of silence";
     case "GAP":
-      return "no bucket was stored for this interval at all";
+      return i18n.t(`behavior.series.kind.${kind}`);
     default:
       return "";
   }
