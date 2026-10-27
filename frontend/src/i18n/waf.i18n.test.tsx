@@ -150,8 +150,8 @@ describe("WAF behavior routes in Turkish", () => {
     expect(screen.getByText("1.204 / 500 endpoint etkin")).toBeInTheDocument();
     expect(screen.getByText("Kullanım dışı")).toBeInTheDocument();
     expect(screen.getByText("Değerlendirilmedi")).toBeInTheDocument();
-    // Pagination belongs to the finished shared-component wave; this route passes the real total.
-    expect(screen.getByText("1–50 / 1204")).toBeInTheDocument();
+    // Pagination groups the real total in the locale's form since I18N-6 round 1.
+    expect(screen.getByText("1–50 / 1.204")).toBeInTheDocument();
     view.unmount();
 
     vi.spyOn(api, "wafBehaviorSource").mockResolvedValue(wafSource({ validation_current: false, enabled: false }));
