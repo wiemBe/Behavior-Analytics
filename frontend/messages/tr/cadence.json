@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "title": "Arama sıklığı"
+  },
+  "page": {
+    "title": "Arama sıklığı",
+    "description": "Her arama ailesinin QRadar'ı ne sıklıkla sorguladığı ve bunun yol açtığı algılama gecikmesi. Saatler UTC'dir.",
+    "loadingWhat": "Arama sıklığı",
+    "errorWhat": "Arama sıklığı",
+    "couldNotShow": "Arama sıklığı gösterilemedi.",
+    "forbidden": "Rolünüz arama sıklığını okuyamıyor (izin: read:search_cadence). Hiçbir şey değiştirilmedi.",
+    "failed": "Arama sıklığı yüklenemedi. Backend'e erişilemiyor olabilir; çalıştığını denetleyin, sonra sayfayı yenileyin. Hiçbir şey değiştirilmedi.",
+    "emptyTitle": "Hiçbir arama ailesi döndürülmedi.",
+    "empty": "Dört aile (Phase A hacmi, WAF toplama, anomali açıklamaları ve kural eşleşmeleri) sıklık migration'ı tarafından eklenir; bu yüzden boş liste, eklemenin çalışmadığı anlamına gelir. Veritabanı migration'larının uygulandığını denetleyin, sonra sayfayı yenileyin."
+  },
+  "table": {
+    "label": "Aileye göre arama sıklığı",
+    "caption": "Arama aileleri; sıklık, zaman dilimi genişliği, en kötü durum gecikmesi, son çalıştırma, sonraki çalıştırma ve son çalıştırmada gönderilen arama sayısıyla birlikte. Saatler UTC'dir.",
+    "family": "Aile",
+    "cadence": "Sıklık",
+    "bucket": "Zaman dilimi",
+    "noBuckets": "— = zaman dilimi yok",
+    "worstCase": "En kötü durum algılama gecikmesi",
+    "formula": "sıklık + zaman dilimi + yerleşme payı",
+    "lastRun": "Son çalıştırma (UTC)",
+    "nextRun": "Sonraki çalıştırma (UTC)",
+    "searchesSent": "Son çalıştırmadaki arama",
+    "cadenceFor": "{name} için sıklık",
+    "noBucketsTitle": "Bu ailenin zaman dilimi yok",
+    "notRun": "Yükseltmeden beri çalışmadı",
+    "noRunYet": "Henüz çalışmadı",
+    "notCounted": "sayılmadı",
+    "notCountedTitle": "Bu aile aramalarını henüz saymıyor",
+    "savedBy": "Kaydedildi. {user} tarafından <time></time> zamanında değiştirildi.",
+    "saved": "Kaydedildi. <time></time> zamanında değiştirildi.",
+    "forbidden": "Rolünüz arama sıklığını değiştiremiyor (izin: admin:search_cadence).",
+    "notesLabel": "Tablonun okunuşu",
+    "noteCadence": "Sıklık, bir ailenin QRadar'da ne zaman arama yapacağını belirler. Ailenin sakladığı zaman dilimi genişliği değişmez.",
+    "noteExplanation": "Anomali açıklamalarının zaman dilimi yoktur; bu yüzden gecikmeleri, bir algılamanın değil kanıtın ne kadar geç geleceğini sınırlar.",
+    "noteMissing": "“Yükseltmeden beri çalışmadı”, ailenin sıklık takibi başladığından beri çalışmadığı anlamına gelir. “Sayılmadı”, ailenin aramalarını henüz saymadığı anlamına gelir. İkisi de sıfır değildir."
+  },
+  "delay": {
+    "upTo": "en fazla {duration}",
+    "evidenceUpTo": "kanıt en fazla {duration}"
+  },
+  "schedule": {
+    "every": "Her {duration}",
+    "custom": "Özel"
+  },
+  "outcome": {
+    "ok": "Tamamlandı",
+    "partial": "Kısmi",
+    "failed": "Başarısız",
+    "no-instance": "Etkin sistem yok",
+    "no-sources": "Uygun WAF kaynağı yok",
+    "dispatched": "Gönderildi"
+  },
+  "change": {
+    "nothingChanged": "{forbidden} Hiçbir şey değiştirilmedi.",
+    "notChanged": "Değiştirilmedi. {reason}"
+  },
+  "family": {
+    "PHASE_A_VOLUME": { "name": "Phase A hacmi", "scope": "Log source başına olay sayısı" },
+    "WAF_COLLECTION": { "name": "WAF toplama", "scope": "Uç nokta, durum ve istemci dökümleri" },
+    "ANOMALY_EXPLANATION": { "name": "Anomali açıklamaları", "scope": "Açık anomaliler için kanıt" },
+    "RULE_MATCH": { "name": "Kural eşleşmeleri", "scope": "Kural başına eşleşen olaylar" },
+    "IPS_COLLECTION": { "name": "IPS toplama", "scope": "Kaynak başına port, IP, imza ve yayılım" },
+    "CATCHALL_SENDERS": { "name": "Catch-all gönderenleri", "scope": "SIM Generic ve Universal DSM'leri besleyen gönderenler" },
+    "GEO_COLLECTION": { "name": "Coğrafya", "scope": "Kaynak ve hedef adrese göre ülke başına olaylar" },
+    "PROPERTY_WATCH": { "name": "Özellik izlemeleri", "scope": "İzlenen özellik değeri başına olay sayısı" }
+  },
+  "latency": {
+    "link": "Arama sıklığı",
+    "knownLead": "{subject}, olaylar geldikten sonra {delay} içinde, toplanmış 5 dakikalık zaman dilimlerinde değerlendirilir (zamanlama şurada ayarlanır: ",
+    "unknownLead": "{subject}, ailelerinin her toplamasından sonra, toplanmış 5 dakikalık zaman dilimlerinde değerlendirilir (zamanlama şurada ayarlanır: ",
+    "tail": "). {closing}"
+  }
+}

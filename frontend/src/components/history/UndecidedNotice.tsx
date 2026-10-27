@@ -5,6 +5,7 @@
 // where the failure is reported).
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 import { holds } from "@/components/auth/access";
@@ -14,6 +15,7 @@ import { api } from "@/lib/api";
 import { READ_PERMISSION } from "./historyFormat";
 
 export function UndecidedNotice() {
+  const t = useTranslations("history.undecided");
   const session = useSession();
   const granted = session.status === "ready" && session.me ? session.me.permissions : [];
   const allowed = session.status === "ready" && holds(granted, READ_PERMISSION);
@@ -42,8 +44,10 @@ export function UndecidedNotice() {
   return (
     <p className="banner" role="status">
       <span>
-        <strong>History backfill is not decided.</strong> Nothing is read from QRadar&apos;s past
-        until it is. <Link href="/admin/history-backfill">Open History backfill</Link>
+        {t.rich("lead", {
+          strong: (chunks) => <strong>{chunks}</strong>,
+          link: (chunks) => <Link href="/admin/history-backfill">{chunks}</Link>,
+        })}
       </span>
     </p>
   );

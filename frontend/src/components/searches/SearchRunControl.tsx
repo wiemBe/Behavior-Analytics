@@ -4,11 +4,13 @@
 // saved version, never the text in the editor.
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { api, type SearchExecution } from "@/lib/api";
 import { runRequestFailure } from "@/components/searches/authoring";
 import { LatestRunStatus } from "@/components/searches/LatestRunStatus";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import "./searches.css";
 
@@ -23,6 +25,8 @@ export function SearchRunControl({
   consecutiveFailures?: number | null;
 }) {
   const router = useRouter();
+  const t = useTranslations("searches.run");
+  const i18n = useBehaviorI18n();
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [execution, setExecution] = useState<SearchExecution | null>(null);
@@ -37,7 +41,7 @@ export function SearchRunControl({
       setExecution(result);
       router.refresh();
     } catch (err) {
-      setError(runRequestFailure(err));
+      setError(runRequestFailure(err, i18n));
     } finally {
       setRunning(false);
     }
@@ -56,7 +60,7 @@ export function SearchRunControl({
         disabled={running}
         aria-busy={running}
       >
-        {running ? "Running…" : "Run now"}
+        {running ? t("running") : t("runNow")}
       </button>
       {shown && <LatestRunStatus execution={shown} consecutiveFailures={failures} />}
       {error && (

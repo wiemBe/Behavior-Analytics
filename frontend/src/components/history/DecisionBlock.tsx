@@ -4,17 +4,14 @@
 // when and how, and the one or two actions the mode allows. Each action says in plain words what
 // it does before it is confirmed (§B.5), and the response's own message is shown after it.
 
+import { useTranslations } from "next-intl";
 import { useId, useState, type ReactNode } from "react";
 
 import { ApiError, api, type HistoryConsole } from "@/lib/api";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import { DecisionLine, RequestLines } from "./DecisionLine";
-import {
-  ADMIN_PERMISSION,
-  CONFIRM_TEXT,
-  conflictConsole,
-  modeText,
-} from "./historyFormat";
+import { ADMIN_PERMISSION, confirmText, conflictConsole, modeText } from "./historyFormat";
 
 import "./history.css";
 
@@ -24,13 +21,6 @@ interface Outcome {
   tone: "ok" | "crit";
   text: ReactNode;
 }
-
-const LABEL: Record<Action, string> = {
-  yes: "Read history now",
-  no: "Record No",
-  start: "Read history now",
-  stop: "Stop reading",
-};
 
 /** Which actions the console's mode allows, in the order they are offered. */
 export function allowedActions(console: HistoryConsole): Action[] {
@@ -52,11 +42,6 @@ export function allowedActions(console: HistoryConsole): Action[] {
   }
 }
 
-function confirmText(action: Action, console: HistoryConsole, days: number | null): string {
-  if (action === "yes") return CONFIRM_TEXT.yes(days);
-  return CONFIRM_TEXT[action];
-}
-
 export function DecisionBlock({
   console: consoleState,
   canAdmin,
@@ -70,6 +55,10 @@ export function DecisionBlock({
   onChange: (next: HistoryConsole) => void;
 }) {
   const id = useId();
+  const t = useTranslations("history.decision");
+  const common = useTranslations("common");
+  const i18n = useBehaviorI18n();
+  const label = (action: Action) => t(action);
   const [confirming, setConfirming] = useState<Action | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -94,7 +83,8 @@ export function DecisionBlock({
         tone: "ok",
         text: next.message ?? (
           <>
-            Recorded. <DecisionLine console={next} />
+            {t("recorded")}
+            <DecisionLine console={next} />
           </>
         ),
       });
@@ -108,24 +98,29 @@ export function DecisionBlock({
           tone: "crit",
           text: (
             <>
-              Not changed.{why} What is recorded now: <DecisionLine console={recorded} />
+              {t("notChangedLead")}
+              {why}
+              {t("recordedNow")}
+              <DecisionLine console={recorded} />
             </>
           ),
         });
       } else if (err instanceof ApiError && err.status === 409) {
         setOutcome({
           tone: "crit",
-          text: `Not changed. ${typeof err.detail === "string" ? err.detail : "The request was refused"}.`,
+          text: t("refused", {
+            detail: typeof err.detail === "string" ? err.detail : t("refusedFallback"),
+          }),
         });
       } else if (err instanceof ApiError && err.status === 403) {
         setOutcome({
           tone: "crit",
-          text: `Not changed. Your role cannot change the history backfill (permission ${ADMIN_PERMISSION}).`,
+          text: t("forbidden", { permission: ADMIN_PERMISSION }),
         });
       } else {
         setOutcome({
           tone: "crit",
-          text: "Not changed. The request could not be completed. Check that the backend is reachable, then try again.",
+          text: t("failed"),
         });
       }
     } finally {
@@ -139,17 +134,19 @@ export function DecisionBlock({
         <DecisionLine console={consoleState} />
       </p>
       <p className="hb-decision-sub">
-        Mode: {modeText(consoleState.mode)}.
+        {t("mode", { mode: modeText(consoleState.mode, i18n) })}
         <RequestLines console={consoleState} />
       </p>
 
       {!canAdmin ? (
         <p className="hb-decision-sub">
-          Changing the answer needs the permission <code className="perm">{ADMIN_PERMISSION}</code>.
+          {t.rich("needsPermission", {
+            perm: (chunks) => <code className="perm">{chunks}</code>,
+          })}
         </p>
       ) : confirming === null ? (
         actions.length > 0 && (
-          <div className="hb-actions" role="group" aria-label={`Actions for ${consoleState.name}`}>
+          <div className="hb-actions" role="group" aria-label={t("actionsFor", { name: consoleState.name })}>
             {actions.map((action) => (
               <button
                 key={action}
@@ -158,7 +155,7 @@ export function DecisionBlock({
                 disabled={busy}
                 onClick={() => setConfirming(action)}
               >
-                {LABEL[action]}
+                {label(action)}
               </button>
             ))}
           </div>
@@ -166,9 +163,9 @@ export function DecisionBlock({
       ) : (
         <div className="hb-confirm" role="group" aria-labelledby={`${id}-confirm`}>
           <p id={`${id}-confirm`} className="hb-confirm-title">
-            {LABEL[confirming]}?
+            {t("confirmTitle", { action: label(confirming) })}
           </p>
-          <p>{confirmText(confirming, consoleState, days)}</p>
+          <p>{confirmText(confirming, days, i18n)}</p>
           <div className="hb-actions">
             <button
               type="button"
@@ -177,7 +174,7 @@ export function DecisionBlock({
               aria-busy={busy}
               onClick={() => void run(confirming)}
             >
-              {busy ? "Saving…" : `Confirm: ${LABEL[confirming]}`}
+              {busy ? common("saving") : t("confirm", { action: label(confirming) })}
             </button>
             <button
               type="button"
@@ -185,7 +182,7 @@ export function DecisionBlock({
               disabled={busy}
               onClick={() => setConfirming(null)}
             >
-              Cancel
+              {t("cancel")}
             </button>
           </div>
         </div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function HistoryBackfillError({
@@ -9,12 +11,8 @@ export default function HistoryBackfillError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("history.page");
   return (
-    <BoundaryError
-      title="History backfill"
-      what="The history backfill"
-      digest={error.digest}
-      onRetry={reset}
-    />
+    <BoundaryError title={t("title")} what={t("errorWhat")} digest={error.digest} onRetry={reset} />
   );
 }

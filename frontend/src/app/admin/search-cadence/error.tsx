@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { BoundaryError } from "@/components/boundary/BoundaryLoading";
 
 export default function SearchCadenceError({
@@ -9,5 +11,8 @@ export default function SearchCadenceError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <BoundaryError title="Search cadence" what="Search cadence" digest={error.digest} onRetry={reset} />;
+  const t = useTranslations("cadence.page");
+  return (
+    <BoundaryError title={t("title")} what={t("errorWhat")} digest={error.digest} onRetry={reset} />
+  );
 }

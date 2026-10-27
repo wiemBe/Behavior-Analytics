@@ -3,6 +3,7 @@
 
 import { runReadout } from "@/components/searches/authoring";
 import type { SearchExecution } from "@/lib/api";
+import { useBehaviorI18n } from "@/lib/useBehaviorI18n";
 
 import "./searches.css";
 
@@ -13,7 +14,8 @@ export function LatestRunStatus({
   execution: SearchExecution;
   consecutiveFailures: number | null;
 }) {
-  const readout = runReadout(execution, consecutiveFailures);
+  const { t, locale } = useBehaviorI18n();
+  const readout = runReadout(execution, consecutiveFailures, t, locale);
   const tone =
     readout.tone === "neutral"
       ? "banner latest-run search-run-note"

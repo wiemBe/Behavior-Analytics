@@ -5,6 +5,7 @@ import alerts from "./alerts.json";
 import anomalies from "./anomalies.json";
 import auth from "./auth.json";
 import behavior from "./behavior.json";
+import cadence from "./cadence.json";
 import catalog from "./catalog.json";
 import catchall from "./catchall.json";
 import common from "./common.json";
@@ -18,6 +19,7 @@ import errors from "./errors.json";
 import evidence from "./evidence.json";
 import fleet from "./fleet.json";
 import format from "./format.json";
+import history from "./history.json";
 import home from "./home.json";
 import logSources from "./logSources.json";
 import login from "./login.json";
@@ -26,6 +28,7 @@ import offenses from "./offenses.json";
 import password from "./password.json";
 import pwchart from "./pwchart.json";
 import rules from "./rules.json";
+import searches from "./searches.json";
 import shell from "./shell.json";
 import states from "./states.json";
 import trend from "./trend.json";
@@ -40,6 +43,7 @@ const messages = {
   anomalies,
   auth,
   behavior,
+  cadence,
   catalog,
   catchall,
   common,
@@ -53,6 +57,7 @@ const messages = {
   evidence,
   fleet,
   format,
+  history,
   home,
   logSources,
   login,
@@ -61,6 +66,7 @@ const messages = {
   password,
   pwchart,
   rules,
+  searches,
   shell,
   states,
   trend,
